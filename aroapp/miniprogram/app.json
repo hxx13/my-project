@@ -1,0 +1,111 @@
+{
+  "cloud": true,
+  "lazyCodeLoading": "requiredComponents",
+  "resizable": true,
+  "pages": [
+    "pages/index/index",
+    "pages/room/index",
+    "pages/overview/index",
+    "pages/telemetry/index",
+    "pages/mine/index"
+  ],
+  "subPackages": [
+    {
+      "root": "package-feature",
+      "name": "feature",
+      "pages": [
+        "pages/animalRoomRun/index",
+        "pages/roomAudit/index",
+        "pages/aiPortrait/index",
+        "pages/about/index",
+        "pages/releaseNotesAdmin/index",
+        "pages/releaseNotesEdit/index",
+        "pages/announcementAdmin/index",
+        "pages/announcementEdit/index",
+        "pages/homeBulletinDetail/index",
+        "pages/settings/index",
+        "pages/settingsRoomWatch/index",
+        "pages/notifications/index",
+        "pages/staffChatHub/index",
+        "pages/staffChatRoom/index",
+        "pages/fileTemplates/index",
+        "pages/repairRequest/index",
+        "pages/repairProcess/index",
+        "pages/purchaseRequest/index",
+        "pages/purchaseProcess/index",
+        "pages/supplies/index",
+        "pages/suppliesMine/index",
+        "pages/suppliesClaimExport/index",
+        "pages/suppliesAudit/index",
+        "pages/suppliesProcess/index",
+        "pages/suppliesAdmin/index",
+        "pages/adminPersonnel/index",
+        "pages/assetRecord/index",
+        "pages/facilityMaintenance/index",
+        "pages/facilityMaintenance/historyInsp",
+        "pages/facilityMaintenance/settings",
+        "pages/assetTransferRecord/index",
+        "pages/dahuaIssue/index",
+        "pages/studentReviewHub/index",
+        "pages/studentMaterial/index",
+        "pages/studentMaterialRequests/index",
+        "pages/studentGroupActivity/index",
+        "pages/studentCageShelf/index",
+        "pages/studentAccessRecords/index",
+        "pages/studentViolations/index",
+        "pages/materialAdmin/index",
+        "pages/doorControl/index",
+        "pages/newsDetail/newsDetail",
+        "pages/allnews/allnews"
+      ]
+    }
+  ],
+  "preloadRule": {
+    "pages/index/index": {
+      "network": "all",
+      "packages": ["feature"]
+    },
+    "pages/mine/index": {
+      "network": "all",
+      "packages": ["feature"]
+    }
+  },
+  "window": {
+    "navigationBarTitleText": "aroapp",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f8fa",
+    "pageOrientation": "portrait"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#646566",
+    "selectedColor": "#1989fa",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/room/index",
+        "text": "房间"
+      },
+      {
+        "pagePath": "pages/overview/index",
+        "text": "概览"
+      },
+      {
+        "pagePath": "pages/telemetry/index",
+        "text": "温湿度"
+      },
+      {
+        "pagePath": "pages/mine/index",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

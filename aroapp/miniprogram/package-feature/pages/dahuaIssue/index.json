@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "校园卡管理",
+  "usingComponents": {
+    "exempt-setup-panel": "../../components/exempt-setup-panel/index"
+  }
+}

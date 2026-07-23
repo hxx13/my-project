@@ -1,0 +1,206 @@
+<view class="page">
+  <view class="card">
+    <view class="title">转移记录</view>
+    <view class="row">
+      <input class="input" value="{{ keyword }}" bindinput="onKeywordInput" placeholder="按资产或申请人检索" />
+      <van-button size="small" type="primary" bindtap="applySearch">查询</van-button>
+    </view>
+  </view>
+
+  <view wx:if="{{ loading }}" class="meta">加载中…</view>
+  <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无转移记录" />
+  <view wx:else>
+    <view wx:for="{{ rows }}" wx:for-index="rindex" wx:key="id" class="card">
+      <view class="item-title-row">
+        <view class="item-title">{{ item.assetName }}（{{ item.assetCode }}）</view>
+        <view class="detail-mini-btn" data-id="{{ item.id }}" bindtap="openAssetDetail">详情</view>
+      </view>
+      <view class="item-sub">申请人：{{ item.applicantName || item.applicantId }}</view>
+      <view class="item-sub">转移时间：{{ item.transferTime ? item.transferTime.replace('T', ' ').slice(0, 10) : '-' }}</view>
+      <view class="item-sub">
+        <text>地点：</text>
+        <text class="transfer-from">{{ item.fromLocation || '-' }}</text>
+        <text class="transfer-arrow"> → </text>
+        <text class="transfer-to">{{ item.transferLocation || '-' }}</text>
+      </view>
+      <view wx:if="{{ item.fromUserName || item.applicantName }}" class="item-sub">
+        <text>使用人：</text>
+        <text class="transfer-from">{{ item.fromUserName || '-' }}</text>
+        <text class="transfer-arrow"> → </text>
+        <text class="transfer-to">{{ item.applicantName || '-' }}</text>
+      </view>
+      <view wx:if="{{ item.remark }}" class="item-sub">备注：{{ item.remark }}</view>
+      <view class="item-sub">状态：{{ item.statusLabel }}</view>
+      <view class="item-sub item-sub--dim">型号：{{ item.summaryLoading ? '加载中…' : (item.summaryModel || '-') }}</view>
+      <view wx:if="{{ item.beforeList.length }}" class="thumb-section">
+        <view class="thumb-label">转移前</view>
+        <scroll-view scroll-x class="thumb-scroll">
+          <image
+            wx:for="{{ item.beforeList }}"
+            wx:for-item="img"
+            wx:for-index="ix"
+            wx:key="ix"
+            class="thumb-img"
+            src="{{ img }}"
+            mode="aspectFill"
+            data-rindex="{{ rindex }}"
+            data-ix="{{ ix }}"
+            data-kind="before"
+            catchtap="previewListPhoto"
+          />
+        </scroll-view>
+      </view>
+      <view wx:if="{{ item.afterList.length }}" class="thumb-section">
+        <view class="thumb-label">转移后</view>
+        <scroll-view scroll-x class="thumb-scroll">
+          <image
+            wx:for="{{ item.afterList }}"
+            wx:for-item="img"
+            wx:for-index="ix"
+            wx:key="ix"
+            class="thumb-img"
+            src="{{ img }}"
+            mode="aspectFill"
+            data-rindex="{{ rindex }}"
+            data-ix="{{ ix }}"
+            data-kind="after"
+            catchtap="previewListPhoto"
+          />
+        </scroll-view>
+      </view>
+      <view class="row-act">
+        <view class="row-act-inner">
+          <view class="link-btn link-btn--info" data-id="{{ item.id }}" bindtap="openPdfPopup">获取下载链接</view>
+        </view>
+        <view wx:if="{{ item.status === 'IN_PROGRESS' }}" class="row-act-inner">
+          <view class="link-btn {{ listBusy ? 'disabled' : '' }}" data-id="{{ item.id }}" bindtap="openContinuePanel">继续办理</view>
+          <view class="link-btn link-btn--warn {{ listBusy ? 'disabled' : '' }}" data-id="{{ item.id }}" bindtap="tapWithdraw">撤回</view>
+        </view>
+        <view wx:if="{{ canDeleteTransfer }}" class="row-act-inner row-act-inner--del">
+          <view class="link-btn link-btn--danger {{ listBusy ? 'disabled' : '' }}" data-id="{{ item.id }}" bindtap="tapDeleteRecord">删除记录</view>
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{ rows.length > 0 }}" class="pager-foot card">
+      <text class="pager-txt">第 {{ page }} / {{ totalPages }} 页，共 {{ total }} 条</text>
+      <view class="pager-btns">
+        <view class="link-btn {{ page <= 1 || loading ? 'disabled' : '' }}" bindtap="prevPage">上一页</view>
+        <view class="link-btn {{ page >= totalPages || loading ? 'disabled' : '' }}" bindtap="nextPage">下一页</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{ showContinuePanel }}" class="continue-mask" bindtap="closeContinuePanel">
+    <view class="continue-panel" catchtap="noop">
+      <view class="panel-head">
+        <text class="panel-title">补充转移后照片</text>
+        <text class="panel-close" bindtap="closeContinuePanel">关闭</text>
+      </view>
+      <view wx:if="{{ continueRecord }}" class="field">
+        <text class="label">资产</text>
+        <text class="value">{{ continueRecord.assetName }}（{{ continueRecord.assetCode }}）</text>
+      </view>
+      <view wx:if="{{ continueRecord && continueRecord.afterList.length }}" class="field">
+        <text class="label">已有转移后照片</text>
+        <scroll-view scroll-x class="thumb-scroll">
+          <view
+            wx:for="{{ continueRecord.afterList }}"
+            wx:for-item="img"
+            wx:for-index="cix"
+            wx:key="cix"
+            class="thumb-wrap"
+          >
+            <image
+              class="thumb-img"
+              src="{{ img }}"
+              mode="aspectFill"
+              data-cix="{{ cix }}"
+              catchtap="previewContinuePhoto"
+            />
+            <view
+              class="thumb-del {{ deletingAfterPhoto ? 'thumb-del--disabled' : '' }}"
+              data-cix="{{ cix }}"
+              catchtap="removeContinuePhoto"
+            >×</view>
+          </view>
+        </scroll-view>
+      </view>
+      <view class="field">
+        <text class="label">追加照片</text>
+        <view
+          class="link-btn {{ uploadingContinue ? 'disabled' : '' }}"
+          bindtap="pickContinuePhotos"
+        >{{ uploadingContinue ? '上传中…' : '选择/拍照上传' }}</view>
+      </view>
+      <view class="continue-actions">
+        <view class="primary-btn" bindtap="confirmTransferComplete">确认转移完毕</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{ showAssetDetailPopup }}" class="continue-mask" bindtap="closeAssetDetailPopup">
+    <view class="continue-panel detail-panel" catchtap="noop">
+      <view class="panel-head">
+        <text class="panel-title">物品详情</text>
+        <text class="panel-close" bindtap="closeAssetDetailPopup">关闭</text>
+      </view>
+      <view wx:if="{{ assetDetailTransfer }}" class="field">
+        <text class="label">资产</text>
+        <text class="value">{{ assetDetailTransfer.assetName }}（{{ assetDetailTransfer.assetCode }}）</text>
+      </view>
+      <view wx:if="{{ assetDetailTransfer }}" class="field">
+        <text class="label">转移状态</text>
+        <text class="value">{{ assetDetailTransfer.statusLabel }}</text>
+      </view>
+
+      <view wx:if="{{ assetDetailLoading }}" class="meta">加载详情中…</view>
+      <block wx:elif="{{ assetDetailAsset }}">
+        <view class="field">
+          <text class="label">当前位置</text>
+          <text class="value">{{ assetDetailLocation }}</text>
+        </view>
+        <view class="field">
+          <text class="label">锁定状态</text>
+          <text class="value">{{ assetDetailAsset.locked === 1 ? '已锁定' : '未锁定' }}</text>
+        </view>
+        <view wx:if="{{ assetDetailAsset.note }}" class="field">
+          <text class="label">备注</text>
+          <text class="value">{{ assetDetailAsset.note }}</text>
+        </view>
+        <view wx:if="{{ assetDetailRows.length }}" class="field">
+          <text class="label">资产字段</text>
+          <view wx:for="{{ assetDetailRows }}" wx:key="key" class="kv-line">
+            <text class="kv-k">{{ item.label }}</text>
+            <text class="kv-v" selectable="true">{{ item.value }}</text>
+          </view>
+        </view>
+      </block>
+      <view wx:else class="meta">未获取到该资产详情</view>
+    </view>
+  </view>
+
+  <view wx:if="{{ showPdfPopup }}" class="continue-mask" bindtap="closePdfPopup">
+    <view class="continue-panel detail-panel" catchtap="noop">
+      <view class="panel-head">
+        <text class="panel-title">PDF下载链接</text>
+        <text class="panel-close" bindtap="closePdfPopup">关闭</text>
+      </view>
+      <view wx:if="{{ pdfRecord }}" class="field">
+        <text class="label">资产</text>
+        <text class="value">{{ pdfRecord.assetName }}（{{ pdfRecord.assetCode }}）</text>
+      </view>
+      <view class="field">
+        <view class="link-btn link-btn--info {{ pdfLoading ? 'disabled' : '' }}" bindtap="getPdfLink">{{ pdfLoading ? '处理中…' : '获取下载链接' }}</view>
+      </view>
+      <view wx:if="{{ pdfLoading && pdfLinks.length === 0 }}" class="meta">加载中…</view>
+      <view wx:elif="{{ pdfLinks.length === 0 }}" class="meta">暂无链接，点击上方按钮生成</view>
+      <view wx:else>
+        <view wx:for="{{ pdfLinks }}" wx:key="id" class="field">
+          <text class="label">{{ item.fileName || '-' }}（{{ item.status || '-' }}）</text>
+          <text class="value">到期：{{ pdfExpireText(item.expireAt) }}</text>
+          <view class="link-btn" data-idx="{{ index }}" bindtap="copyPdfLink">复制链接</view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

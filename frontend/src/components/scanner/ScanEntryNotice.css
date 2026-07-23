@@ -1,0 +1,50 @@
+/* ═══════════════════════════════════════════════════════════
+   ScanEntryNotice — 扫描弹窗主题适配
+   覆写 --mn-* 组件令牌，引用扫描专属 --scan-* 令牌
+   ═══════════════════════════════════════════════════════════ */
+
+.scan-entry-notice {
+  /* ── 居中弹窗：暗色玻璃风格 ── */
+  --mn-modal-bg:     var(--app-color-surface-container);
+  --mn-modal-border: color-mix(in srgb, var(--scan-accent-ink, var(--app-color-accent)) 15%, transparent);
+  --mn-modal-shadow: 0 0 40px color-mix(in srgb, var(--scan-glow, var(--app-color-accent)) 15%, transparent);
+
+  /* ── 角落胶囊：深色玻璃 + 更强模糊 ── */
+  --mn-pill-bg:      color-mix(in srgb, var(--app-color-surface-container) 88%, transparent);
+  --mn-pill-border:  color-mix(in srgb, var(--scan-accent-ink, var(--app-color-accent)) 22%, transparent);
+  --mn-pill-shadow:  0 0 24px color-mix(in srgb, var(--scan-glow, var(--app-color-accent)) 10%, transparent);
+
+  /* ── 强调色：继承扫描强调色（青/紫随 scanPaletteCssVars 注入） ── */
+  --mn-accent:       var(--scan-accent-ink, var(--app-color-accent));
+  --mn-accent-soft:  color-mix(in srgb, var(--scan-accent-ink, var(--app-color-accent)) 10%, transparent);
+
+  /* ── z-index：在扫描弹窗之上 ── */
+  --mn-z-modal:      305;
+  --mn-z-pill:       315;
+}
+
+/* ── QR 底部横条（居中竖排）── */
+.scan-entry-qr-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--app-color-border-default);
+}
+
+.scan-entry-qr-strip__info {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.6875rem;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-entry-qr-strip__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125rem;
+}

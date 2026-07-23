@@ -1,0 +1,136 @@
+<view class="page" wx:if="{{ pageGateOk }}">
+  <!-- 当日协作表全屏：一级目录不展示格子内容，点此进入 -->
+  <view wx:if="{{ sheetView }}" class="hist-sheet-overlay">
+    <view class="hist-sheet-nav">
+      <view class="fm-chip fm-chip-xs fm-chip-ghost" bindtap="closeSheetView">返回</view>
+      <text class="hist-sheet-nav-title">{{ sheetViewDate }}</text>
+      <view class="fm-chip fm-chip-xs fm-chip-ghost {{ exportBusy ? 'fm-disabled' : '' }}" bindtap="exportDailyExcelInView">导出</view>
+    </view>
+    <scroll-view scroll-y class="hist-sheet-scroll">
+      <view class="daily-pad">
+        <view wx:if="{{ sheet.id }}" class="sheet-meta">
+          <view class="sheet-meta-row">
+            <text class="meta-text">状态 {{ sheetStatusText }} · v{{ sheet.version }}</text>
+            <view class="meta-btns">
+              <view class="fm-pill fm-pill-sm fm-pill-ghost" bindtap="refreshSheetInView">刷新</view>
+              <view class="fm-pill fm-pill-sm fm-pill-info" bindtap="submitDailySheetInView">登记</view>
+              <view class="fm-pill fm-pill-sm fm-pill-danger" wx:if="{{ sheet.id }}" bindtap="deleteDailySheetInView">删当日表</view>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{ sheet.id && sheetMatrix.length && sheetItems.length }}" class="matrix-wrap">
+          <scroll-view scroll-x="true" class="matrix-scroll">
+            <view class="matrix">
+              <view class="matrix-row matrix-head">
+                <view class="matrix-cell sticky-col">机房</view>
+                <view wx:for="{{ sheetItems }}" wx:key="rowKey" class="matrix-cell head-cell">{{ item.label }}</view>
+              </view>
+              <view wx:for="{{ sheetMatrix }}" wx:for-item="row" wx:key="siteId" class="matrix-row">
+                <view class="matrix-cell sticky-col site-name">{{ row.siteName }}</view>
+                <view wx:for="{{ row.cells }}" wx:for-item="c" wx:key="key" class="matrix-cell">
+                  <picker wx:if="{{ c.selectMode }}" mode="selector" range="{{ c.optionLabels }}" value="{{ c.selectIndex }}" data-key="{{ c.key }}" bindchange="onMatrixSelectPick">
+                    <view class="cell-input cell-input--picker">{{ c.value }}</view>
+                  </picker>
+                  <input wx:else class="cell-input" value="{{ c.value }}" data-key="{{ c.key }}" bindinput="onMatrixCellInput" />
+                </view>
+              </view>
+            </view>
+          </scroll-view>
+        </view>
+        <view wx:if="{{ sheet.id && sheetItems.length === 0 }}" class="hint-amber">当前模板无巡查项。</view>
+        <view wx:if="{{ !sheet.id }}" class="hint-muted">加载中…</view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <block wx:if="{{ !sheetView }}">
+    <view class="toolbar">
+      <view wx:if="{{ sites.length > 1 }}" class="fm-select-row" style="margin:0;padding:0 24rpx 12rpx;border:0;">
+        <text class="fm-select-label">机房</text>
+        <view class="fm-select-chip fm-select-chip--grow" bindtap="openSiteFilterSheet">
+          {{ sites[sitePickerIndex] ? (sites[sitePickerIndex].name || sites[sitePickerIndex].id) : '请选择（用于新增单笔）' }}
+        </view>
+      </view>
+      <view class="hist-list-hint">点击下方日期打开当日巡查表；「+」为新增单笔巡查记录。</view>
+    </view>
+    <view class="list-pad">
+      <van-empty wx:if="{{ !loading && sheetSummaryRows.length === 0 }}" description="暂无按日巡查表" />
+      <block wx:for="{{ sheetSummaryRows }}" wx:key="id">
+        <view class="card card-tappable" data-date="{{ item.sheetDate }}" bindtap="openSheetFromList">
+          <view class="card-head-row">
+            <text class="card-title-ellipsis">{{ item.sheetDate }} 巡查表</text>
+            <view class="fm-chip fm-chip-xs fm-chip-primary">打开</view>
+          </view>
+          <view class="card-sub">{{ item.templateName || '巡查模板' }} · {{ item.statusText }} · v{{ item.version }}</view>
+        </view>
+      </block>
+    </view>
+    <view class="fm-fab-round" bindtap="openAddPopup"><text class="fm-fab-plus">+</text></view>
+  </block>
+
+  <van-popup show="{{ addPopup }}" position="bottom" round bind:close="closeAddPopup" custom-style="max-height:88vh;">
+    <view class="popup-body">
+      <view class="popup-title">新增单笔巡查</view>
+      <view class="fm-select-row">
+        <text class="fm-select-label">模板</text>
+        <view class="fm-select-chip fm-select-chip--grow" bindtap="openAddTplSheet">{{ formTemplateName }}</view>
+      </view>
+      <block wx:for="{{ inspFieldRows }}" wx:key="itemId">
+        <van-field label="{{ item.label }}" value="{{ item.value }}" data-item-id="{{ item.itemId }}" bind:change="onInspFieldChange" />
+      </block>
+      <van-cell title="巡查时间" value="{{ formInspectedAt }}" is-link border="{{ false }}" bind:click="openInspTimePicker" />
+      <view class="popup-actions-row">
+        <view class="fm-chip fm-chip-ghost" bindtap="closeAddPopup">取消</view>
+        <view class="fm-chip fm-chip-primary" bindtap="submitAdd">保存</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ timePickerShow }}" position="bottom" round bind:close="closeTimePicker">
+    <van-datetime-picker
+      type="datetime"
+      value="{{ timePickerValue }}"
+      min-date="{{ pickerMinTs }}"
+      max-date="{{ pickerMaxTs }}"
+      bind:input="onTimePickerInput"
+      bind:confirm="confirmInspTimePicker"
+      bind:cancel="closeTimePicker"
+    />
+  </van-popup>
+
+  <van-popup show="{{ siteFilterSheetShow }}" position="bottom" round bind:close="closeSiteFilterSheet">
+    <view class="fm-sheet">
+      <view class="fm-sheet-title">选择机房（用于新增）</view>
+      <scroll-view scroll-y style="max-height:55vh">
+        <view
+          wx:for="{{ sites }}"
+          wx:for-index="idx"
+          wx:key="id"
+          class="fm-sheet-row {{ sitePickerIndex === idx ? 'fm-sheet-row--on' : '' }}"
+          data-idx="{{ idx }}"
+          bindtap="pickSiteFilter"
+        >
+          {{ item.name || item.id }}
+        </view>
+      </scroll-view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ addTplSheetShow }}" position="bottom" round bind:close="closeAddTplSheet">
+    <view class="fm-sheet">
+      <view class="fm-sheet-title">选择巡查模板</view>
+      <scroll-view scroll-y style="max-height:55vh">
+        <view
+          wx:for="{{ addTplNames }}"
+          wx:for-index="idx"
+          wx:key="idx"
+          class="fm-sheet-row"
+          data-idx="{{ idx }}"
+          bindtap="pickAddTemplate"
+        >
+          {{ item }}
+        </view>
+      </scroll-view>
+    </view>
+  </van-popup>
+</view>

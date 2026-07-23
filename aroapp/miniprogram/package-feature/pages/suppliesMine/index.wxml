@@ -1,0 +1,112 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <subpage-nav-bar
+    title="我的领用记录"
+    show-switch="{{ showStudentSwitch }}"
+    switch-label="学生"
+    bind:switch="onSwitchStudent"
+  />
+  <view class="tabs">
+    <view class="tab tab-with-badge {{ activeTab === 'mine' ? 'tab-on' : '' }}" data-tab="mine" bindtap="onTabChange">
+      <text>我的记录</text>
+      <view wx:if="{{ minePendingBadgeText }}" class="tab-badge">{{ minePendingBadgeText }}</view>
+    </view>
+    <view class="tab {{ activeTab === 'recycle' ? 'tab-on' : '' }}" data-tab="recycle" bindtap="onTabChange">回收站</view>
+  </view>
+  <view wx:if="{{ loading }}" class="muted">加载中…</view>
+  <van-empty wx:elif="{{ activeTab === 'mine' && rows.length === 0 }}" description="暂无记录" />
+  <van-empty wx:elif="{{ activeTab === 'recycle' && recycleRows.length === 0 }}" description="回收站为空" />
+  <view wx:elif="{{ activeTab === 'mine' }}" class="list">
+    <view
+      wx:for="{{ rows }}"
+      wx:key="id"
+      class="row-card"
+      data-id="{{ item.id }}"
+      bindtap="openDetail"
+    >
+      <view class="row-title">{{ item.displayTitle }}</view>
+      <view class="row-sub">{{ item.statusText }} · {{ item.createdAtText }}</view>
+      <view wx:if="{{ item.status === 'FULFILLED' }}" class="row-extra">
+        出库 {{ item.fulfilledAtText }}<text wx:if="{{ item.fulfilledByName }}"> · {{ item.fulfilledByName }}</text>
+      </view>
+      <view class="row-hint">点击查看明细</view>
+      <view class="row-ops">
+        <view wx:if="{{ item.status === 'PENDING' }}" class="btn-pill btn-pill-primary" data-id="{{ item.id }}" catchtap="goReviseInMall">修改</view>
+        <view class="btn-pill btn-pill-ghost" data-id="{{ item.id }}" catchtap="goClaimExport">导出/预览</view>
+        <view class="btn-pill btn-pill-danger" data-id="{{ item.id }}" catchtap="onDeleteRecord">删除</view>
+      </view>
+    </view>
+  </view>
+  <view wx:elif="{{ activeTab === 'recycle' }}" class="list">
+    <view wx:for="{{ recycleRows }}" wx:key="id" class="row-card row-card-muted">
+      <view class="row-title">{{ item.statusText }} · {{ item.createdAtText }}</view>
+      <view class="row-sub">删除：{{ item.deletedAtText }} · 清理：{{ item.purgeAfterText }}</view>
+      <view class="row-ops">
+        <view class="btn-pill btn-pill-primary" data-id="{{ item.id }}" catchtap="onRestoreRecord">恢复</view>
+      </view>
+    </view>
+  </view>
+  <view wx:if="{{ total > size }}" class="pager pager-rounded">
+    <view class="pager-btn" bindtap="prevPage">上一页</view>
+    <text class="pager-num">{{ page }}</text>
+    <view class="pager-btn" bindtap="nextPage">下一页</view>
+  </view>
+  <view wx:if="{{ activeTab === 'recycle' && recycleTotal > size }}" class="pager pager-rounded">
+    <view class="pager-btn" bindtap="prevRecyclePage">上一页</view>
+    <text class="pager-num">{{ recyclePage }}</text>
+    <view class="pager-btn" bindtap="nextRecyclePage">下一页</view>
+  </view>
+</view>
+
+<van-popup show="{{ detailShow }}" position="center" round bind:close="onDetailPopupClose" custom-style="width:92%;max-height:78vh;padding:0;overflow:hidden;">
+  <view wx:if="{{ detail }}" class="detail-root">
+    <view class="detail-meta">
+      <text class="detail-status-tag {{ detail.status === 'PENDING' ? 'detail-status-warn' : (detail.status === 'FULFILLED' ? 'detail-status-ok' : 'detail-status-muted') }}">{{ detail.statusText }}</text>
+      <text class="detail-meta-text">{{ detail.createdAtText }}<text wx:if="{{ detail.applicantName && detail.applicantName !== '本人' }}"> · {{ detail.applicantName }}</text></text>
+    </view>
+    <text wx:if="{{ detail.status === 'FULFILLED' }}" class="detail-meta-extra">出库 {{ detail.fulfilledAtText }}<text wx:if="{{ detail.fulfilledByName }}"> · {{ detail.fulfilledByName }}</text></text>
+
+    <scroll-view scroll-y class="detail-scroll" enhanced show-scrollbar="{{ false }}">
+      <view wx:for="{{ detail.lines }}" wx:key="id" class="detail-line">
+        <image
+          wx:if="{{ item.coverAbsUrl }}"
+          class="detail-thumb"
+          src="{{ item.coverAbsUrl }}"
+          mode="aspectFill"
+          lazy-load
+          data-url="{{ item.coverAbsUrl }}"
+          bindtap="previewLineImage"
+        />
+        <view wx:else class="detail-thumb detail-thumb-ph">
+          <text>{{ item.nameInitial }}</text>
+        </view>
+        <view class="detail-mid">
+          <text class="detail-name">{{ item.snapshotName }}</text>
+          <text wx:if="{{ item.specLabel }}" class="detail-spec">{{ item.specLabel }}</text>
+          <view class="detail-qty-row">
+            <text class="detail-qty-main">×{{ item.qty }}</text>
+            <text wx:if="{{ item.fulfilledQty != null && item.fulfilledQty !== item.qty }}" class="detail-qty-sub">实发 {{ item.fulfilledQty }}</text>
+          </view>
+          <text wx:if="{{ item.remark }}" class="detail-remark">{{ item.remark }}</text>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="detail-foot">
+      <view wx:if="{{ detail.status === 'PENDING' }}" class="detail-foot-btn detail-foot-btn-primary" data-id="{{ detail.id }}" bindtap="goReviseInMall">修改</view>
+      <view class="detail-foot-btn detail-foot-btn-ghost" bindtap="closeDetail">关闭</view>
+    </view>
+  </view>
+</van-popup>
+
+  <view wx:if="{{ confirmDeleteShow }}" class="confirm-mask" catchtouchmove="noop">
+    <view class="confirm-box">
+      <text class="confirm-title">删除记录</text>
+      <text class="confirm-body">确认删除该领用工单？删除后可在回收站恢复。</text>
+      <view class="confirm-actions">
+        <view class="confirm-btn ghost" bindtap="cancelDelete">取消</view>
+        <view class="confirm-btn danger" bindtap="confirmDelete">删除</view>
+      </view>
+    </view>
+  </view>
+</block>

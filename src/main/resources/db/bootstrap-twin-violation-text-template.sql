@@ -1,0 +1,9 @@
+-- 违规文案模板预设表：保存常用文案模板，供手动/自动违规创建时调用
+CREATE TABLE IF NOT EXISTS twin_violation_text_template (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(128) NOT NULL COMMENT '模板名称',
+    violation_text TEXT NOT NULL COMMENT '违规文案内容',
+    sort_order INT NOT NULL DEFAULT 0 COMMENT '排序权重',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='违规文案模板预设';

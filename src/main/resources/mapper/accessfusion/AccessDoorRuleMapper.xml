@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessDoorRuleMapper">
+
+    <select id="selectAllEnabled" resultType="com.example.demo.modules.accessfusion.entity.AccessDoorRule">
+        SELECT id, rule_set_id AS ruleSetId, stats_task_id AS statsTaskId, channel_code AS channelCode,
+               channel_name AS channelName, door_mode AS doorMode, paired_entry_channel AS pairedEntryChannel,
+               paired_exit_channel AS pairedExitChannel, zone_id AS zoneId, campus, floor,
+               debounce_seconds AS debounceSeconds, max_swipes_per_minute AS maxSwipesPerMinute, enabled
+        FROM access_door_rule WHERE enabled = 1
+    </select>
+
+    <select id="selectEnabledForTask" resultType="com.example.demo.modules.accessfusion.entity.AccessDoorRule">
+        SELECT id, rule_set_id AS ruleSetId, stats_task_id AS statsTaskId, channel_code AS channelCode,
+               channel_name AS channelName, door_mode AS doorMode, paired_entry_channel AS pairedEntryChannel,
+               paired_exit_channel AS pairedExitChannel, zone_id AS zoneId, campus, floor,
+               debounce_seconds AS debounceSeconds, max_swipes_per_minute AS maxSwipesPerMinute, enabled
+        FROM access_door_rule
+        WHERE enabled = 1 AND (stats_task_id = #{statsTaskId} OR stats_task_id = 0)
+    </select>
+
+    <select id="selectPage" resultType="com.example.demo.modules.accessfusion.entity.AccessDoorRule">
+        SELECT id, rule_set_id AS ruleSetId, stats_task_id AS statsTaskId, channel_code AS channelCode,
+               channel_name AS channelName, door_mode AS doorMode, paired_entry_channel AS pairedEntryChannel,
+               paired_exit_channel AS pairedExitChannel, zone_id AS zoneId, campus, floor,
+               debounce_seconds AS debounceSeconds, max_swipes_per_minute AS maxSwipesPerMinute, enabled
+        FROM access_door_rule
+        <where>
+            <if test="statsTaskId != null">
+                AND stats_task_id = #{statsTaskId}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (channel_code LIKE CONCAT('%', #{keyword}, '%') OR channel_name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY channel_code
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countPage" resultType="int">
+        SELECT COUNT(*) FROM access_door_rule
+        <where>
+            <if test="statsTaskId != null">
+                AND stats_task_id = #{statsTaskId}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (channel_code LIKE CONCAT('%', #{keyword}, '%') OR channel_name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+    </select>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessfusion.entity.AccessDoorRule">
+        SELECT id, rule_set_id AS ruleSetId, stats_task_id AS statsTaskId, channel_code AS channelCode, channel_name AS channelName,
+               door_mode AS doorMode, paired_entry_channel AS pairedEntryChannel,
+               paired_exit_channel AS pairedExitChannel, zone_id AS zoneId, campus, floor,
+               debounce_seconds AS debounceSeconds, max_swipes_per_minute AS maxSwipesPerMinute, enabled
+        FROM access_door_rule WHERE id = #{id}
+    </select>
+
+    <select id="selectBestForChannel" resultType="com.example.demo.modules.accessfusion.entity.AccessDoorRule">
+        SELECT id, rule_set_id AS ruleSetId, stats_task_id AS statsTaskId, channel_code AS channelCode,
+               channel_name AS channelName, door_mode AS doorMode, paired_entry_channel AS pairedEntryChannel,
+               paired_exit_channel AS pairedExitChannel, zone_id AS zoneId, campus, floor,
+               debounce_seconds AS debounceSeconds, max_swipes_per_minute AS maxSwipesPerMinute, enabled
+        FROM access_door_rule
+        WHERE enabled = 1 AND channel_code = #{channelCode}
+          AND stats_task_id IN
+          <foreach collection="taskIds" item="tid" open="(" separator="," close=")">#{tid}</foreach>
+        ORDER BY stats_task_id DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectByChannel" resultType="com.example.demo.modules.accessfusion.entity.AccessDoorRule">
+        SELECT id, rule_set_id AS ruleSetId, channel_code AS channelCode, channel_name AS channelName,
+               door_mode AS doorMode, paired_entry_channel AS pairedEntryChannel,
+               paired_exit_channel AS pairedExitChannel, zone_id AS zoneId, campus, floor,
+               debounce_seconds AS debounceSeconds, max_swipes_per_minute AS maxSwipesPerMinute, enabled
+        FROM access_door_rule WHERE channel_code = #{channelCode} LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_door_rule (
+            rule_set_id, stats_task_id, channel_code, channel_name, door_mode, paired_entry_channel, paired_exit_channel,
+            zone_id, campus, floor, debounce_seconds, max_swipes_per_minute, enabled
+        ) VALUES (
+            #{ruleSetId}, #{statsTaskId}, #{channelCode}, #{channelName}, #{doorMode}, #{pairedEntryChannel}, #{pairedExitChannel},
+            #{zoneId}, #{campus}, #{floor}, #{debounceSeconds}, #{maxSwipesPerMinute}, #{enabled}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE access_door_rule SET
+            stats_task_id = #{statsTaskId},
+            channel_name = #{channelName}, door_mode = #{doorMode},
+            paired_entry_channel = #{pairedEntryChannel}, paired_exit_channel = #{pairedExitChannel},
+            zone_id = #{zoneId}, campus = #{campus}, floor = #{floor},
+            debounce_seconds = #{debounceSeconds}, max_swipes_per_minute = #{maxSwipesPerMinute},
+            enabled = #{enabled}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">DELETE FROM access_door_rule WHERE id = #{id}</delete>
+</mapper>

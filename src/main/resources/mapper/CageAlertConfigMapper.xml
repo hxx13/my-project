@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageAlertConfigMapper">
+
+    <update id="ensureTable">
+        CREATE TABLE IF NOT EXISTS cage_alert_config (
+            id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+            status_code     VARCHAR(32)  NOT NULL COMMENT '状态码',
+            status_label    VARCHAR(64)  COMMENT '状态显示名',
+            threshold_days  INT          NOT NULL DEFAULT 7 COMMENT '持续天数阈值',
+            enabled         TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '是否启用',
+            created_at      DATETIME     DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    </update>
+
+    <update id="migrateSchema">
+        ALTER TABLE cage_alert_config ADD COLUMN mode VARCHAR(16) NOT NULL DEFAULT 'auto' AFTER enabled
+    </update>
+
+    <update id="migrateDropOldKey">
+        ALTER TABLE cage_alert_config DROP INDEX status_code
+    </update>
+
+    <update id="migrateAddNewKey">
+        ALTER TABLE cage_alert_config ADD UNIQUE KEY uk_code_mode (status_code, mode)
+    </update>
+
+    <select id="selectAllEnabled" resultType="com.example.demo.modules.cageshelf.entity.CageAlertConfig">
+        SELECT id, status_code AS statusCode, status_label AS statusLabel,
+               threshold_days AS thresholdDays, enabled, mode,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM cage_alert_config
+        WHERE enabled = 1 AND mode = #{mode}
+        ORDER BY id
+    </select>
+
+    <select id="selectAll" resultType="com.example.demo.modules.cageshelf.entity.CageAlertConfig">
+        SELECT id, status_code AS statusCode, status_label AS statusLabel,
+               threshold_days AS thresholdDays, enabled, mode,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM cage_alert_config
+        WHERE mode = #{mode}
+        ORDER BY id
+    </select>
+
+    <delete id="deleteByMode">
+        DELETE FROM cage_alert_config WHERE mode = #{mode}
+    </delete>
+
+    <insert id="batchInsert">
+        INSERT INTO cage_alert_config (status_code, status_label, threshold_days, enabled, mode)
+        VALUES
+        <foreach collection="list" item="c" separator=",">
+        (#{c.statusCode}, #{c.statusLabel}, #{c.thresholdDays}, #{c.enabled}, #{c.mode})
+        </foreach>
+    </insert>
+
+</mapper>

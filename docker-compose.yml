@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  mysql8:
+    image: mysql:8.0
+    container_name: twin_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: SuperAdmin@2026
+      MYSQL_DATABASE: twin_system
+      TZ: Asia/Shanghai
+    command: --default-time-zone='+08:00'
+    ports:
+      - "3306:3306"
+    volumes:
+      - twin_mysql_data:/var/lib/mysql # 数据持久化挂载，重启不丢数据
+
+volumes:
+  twin_mysql_data:
+

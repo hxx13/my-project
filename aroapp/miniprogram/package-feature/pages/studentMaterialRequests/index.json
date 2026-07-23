@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "我的申领",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "van-empty": "@vant/weapp/empty/index",
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}

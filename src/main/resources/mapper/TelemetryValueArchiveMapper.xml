@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryValueArchiveMapper">
+
+    <resultMap id="ArchiveMap" type="com.example.demo.modules.telemetry.entity.TelemetryValueArchiveRow">
+        <id column="id" property="id"/>
+        <result column="sample_at" property="sampleAt"/>
+        <result column="variable_name" property="variableName"/>
+        <result column="numeric_value" property="numericValue"/>
+        <result column="raw_value" property="rawValue"/>
+        <result column="metric_kind_code" property="metricKindCode"/>
+        <result column="room_canonical" property="roomCanonical"/>
+        <result column="bundle_code" property="bundleCode"/>
+        <result column="schema_version" property="schemaVersion"/>
+        <result column="ingest_batch_id" property="ingestBatchId"/>
+        <result column="ext_json" property="extJson"/>
+    </resultMap>
+
+    <insert id="insertBatch">
+        INSERT INTO telemetry_value_archive (
+            sample_at, variable_name, numeric_value, raw_value,
+            metric_kind_code, room_canonical, bundle_code,
+            schema_version, ingest_batch_id, ext_json
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.sampleAt}, #{item.variableName}, #{item.numericValue}, #{item.rawValue},
+            #{item.metricKindCode}, #{item.roomCanonical}, #{item.bundleCode},
+            #{item.schemaVersion}, #{item.ingestBatchId}, #{item.extJson})
+        </foreach>
+    </insert>
+
+    <delete id="deleteOlderThan">
+        DELETE FROM telemetry_value_archive WHERE sample_at &lt; #{cutoff}
+    </delete>
+
+    <delete id="deleteOlderThanBatch">
+        DELETE FROM telemetry_value_archive
+        WHERE sample_at &lt; #{cutoff}
+        ORDER BY sample_at ASC
+        LIMIT #{limit}
+    </delete>
+
+    <select id="countAll" resultType="long">
+        SELECT COUNT(1) FROM telemetry_value_archive
+    </select>
+
+    <select id="countOlderThan" resultType="long">
+        SELECT COUNT(1) FROM telemetry_value_archive WHERE sample_at &lt; #{cutoff}
+    </select>
+
+    <select id="selectOldestSampleAt" resultType="java.time.LocalDateTime">
+        SELECT MIN(sample_at) FROM telemetry_value_archive
+    </select>
+
+    <select id="selectNewestSampleAt" resultType="java.time.LocalDateTime">
+        SELECT MAX(sample_at) FROM telemetry_value_archive
+    </select>
+
+    <sql id="filterWhere">
+        <where>
+            <if test="variableQ != null and variableQ != ''">
+                AND variable_name LIKE CONCAT('%', #{variableQ}, '%')
+            </if>
+            <if test="from != null">
+                AND sample_at &gt;= #{from}
+            </if>
+            <if test="to != null">
+                AND sample_at &lt;= #{to}
+            </if>
+        </where>
+    </sql>
+
+    <select id="countByFilter" resultType="long">
+        SELECT COUNT(1) FROM telemetry_value_archive
+        <include refid="filterWhere"/>
+    </select>
+
+    <select id="selectPageByFilter" resultMap="ArchiveMap">
+        SELECT id, sample_at, variable_name, numeric_value, raw_value,
+               metric_kind_code, room_canonical, bundle_code,
+               schema_version, ingest_batch_id, ext_json
+        FROM telemetry_value_archive
+        <include refid="filterWhere"/>
+        ORDER BY sample_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectSeriesAsc" resultMap="ArchiveMap">
+        SELECT id, sample_at, variable_name, numeric_value, raw_value,
+               metric_kind_code, room_canonical, bundle_code,
+               schema_version, ingest_batch_id, ext_json
+        FROM telemetry_value_archive
+        WHERE variable_name = #{variableName}
+        <if test="from != null">
+            AND sample_at &gt;= #{from}
+        </if>
+        <if test="to != null">
+            AND sample_at &lt;= #{to}
+        </if>
+        ORDER BY sample_at ASC, id ASC
+    </select>
+
+    <select id="selectFleetAgg" resultType="com.example.demo.modules.telemetry.dto.archive.TelemetryFleetAggRow">
+        SELECT
+            room_canonical AS roomCanonical,
+            metric_kind_code AS metricKindCode,
+            SUBSTRING_INDEX(GROUP_CONCAT(variable_name ORDER BY sample_at DESC), ',', 1) AS variable_name,
+            SUBSTRING_INDEX(GROUP_CONCAT(numeric_value ORDER BY sample_at DESC), ',', 1) + 0 AS latest_value,
+            MIN(numeric_value) AS min_value,
+            MAX(numeric_value) AS max_value,
+            AVG(numeric_value) AS avg_value,
+            COUNT(1) AS sample_count,
+            MAX(sample_at) AS latest_at
+        FROM telemetry_value_archive
+        WHERE sample_at &gt;= #{from}
+          AND sample_at &lt;= #{to}
+          AND room_canonical IS NOT NULL
+          AND room_canonical != ''
+          AND numeric_value IS NOT NULL
+        <if test="metricKindCode != null and metricKindCode != ''">
+            AND metric_kind_code = #{metricKindCode}
+        </if>
+        <if test="floorFilter != null and floorFilter != ''">
+            AND room_canonical LIKE CONCAT(#{floorFilter}, '%')
+        </if>
+        GROUP BY room_canonical, metric_kind_code
+    </select>
+
+    <select id="selectPartitionBucketSamples" resultMap="ArchiveMap">
+        SELECT id, sample_at, variable_name, numeric_value, raw_value,
+               metric_kind_code, room_canonical, bundle_code,
+               schema_version, ingest_batch_id, ext_json
+        FROM telemetry_value_archive
+        WHERE sample_at &gt;= #{from}
+          AND sample_at &lt;= #{to}
+          AND numeric_value IS NOT NULL
+          AND room_canonical IS NOT NULL
+        <if test="metricKindCode != null and metricKindCode != ''">
+            AND metric_kind_code = #{metricKindCode}
+        </if>
+        <if test="floorFilter != null and floorFilter != ''">
+            AND room_canonical LIKE CONCAT(#{floorFilter}, '%')
+        </if>
+        ORDER BY sample_at ASC
+        LIMIT 50000
+    </select>
+</mapper>

@@ -1,0 +1,104 @@
+/* 通行中心动效 — 手绘跳动文案（无遮罩） */
+
+.access-motion-portal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  pointer-events: none;
+  user-select: none;
+  overflow: visible;
+}
+
+/** 飞行阶段仅走 compositor（transform），避免 left/top 布局动画卡顿 */
+.access-motion-portal--flying {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/** 中心停留：动效在上、手绘文案在下，加大间距避免跳动字与动效重叠 */
+.access-motion-portal--caption-below {
+  gap: clamp(1.75rem, 5vh, 3rem);
+}
+
+.access-motion-portal--caption-below .access-motion-doodle-text {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  padding-top: 0.5rem;
+}
+
+.access-motion-doodle-text {
+  margin: 0;
+  padding: 0.45rem 0.9rem 0.5rem;
+  max-width: min(92vw, 24rem);
+  text-align: center;
+  font-family: "Segoe Print", "Comic Sans MS", "Ma Shan Zheng", "KaiTi", cursive;
+  font-size: clamp(1.1rem, 3vw, 1.45rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  color: var(--app-color-text-primary);
+  background: color-mix(in srgb, var(--app-color-surface-elevated) 82%, var(--app-color-accent) 18%);
+  border: 0.14em solid color-mix(in srgb, var(--app-color-text-primary) 72%, var(--app-color-border-default));
+  border-radius: var(--app-radius-element, 0.5rem);
+  box-shadow:
+    0.12em 0.12em 0 color-mix(in srgb, var(--app-color-text-primary) 55%, transparent),
+    0 0 0 0.06em color-mix(in srgb, var(--app-color-accent) 25%, transparent);
+  text-shadow:
+    0.05em 0.05em 0 color-mix(in srgb, var(--app-color-accent) 45%, transparent),
+    -0.03em 0.04em 0 color-mix(in srgb, var(--app-color-scan-ai-accent, var(--app-color-accent-secondary)) 30%, transparent);
+  transform: rotate(-1.2deg);
+}
+
+.dark .access-motion-doodle-text {
+  color: var(--app-color-text-primary);
+  background: color-mix(in srgb, var(--app-color-surface-container) 78%, var(--app-color-accent) 22%);
+  border-color: color-mix(in srgb, var(--app-color-accent) 55%, var(--app-color-border-default));
+  box-shadow:
+    0.12em 0.12em 0 color-mix(in srgb, var(--app-color-accent) 35%, transparent),
+    0 0 0.75rem color-mix(in srgb, var(--app-color-accent) 28%, transparent);
+  text-shadow:
+    0 0 0.12em color-mix(in srgb, var(--app-color-surface-page) 85%, transparent),
+    0.05em 0.05em 0 color-mix(in srgb, var(--app-color-accent) 65%, transparent),
+    -0.03em 0.04em 0 color-mix(in srgb, var(--app-color-feedback-warning) 35%, transparent);
+}
+
+.access-motion-doodle-text__char {
+  display: inline-block;
+  animation: access-motion-char-bounce 1.05s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+.access-motion-doodle-text--done .access-motion-doodle-text__char {
+  animation-name: access-motion-char-pop;
+  animation-duration: 0.85s;
+}
+
+@keyframes access-motion-char-bounce {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  35% {
+    transform: translateY(-0.28em) rotate(-4deg);
+  }
+  55% {
+    transform: translateY(-0.1em) rotate(3deg);
+  }
+}
+
+@keyframes access-motion-char-pop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    transform: translateY(-0.22em) scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .access-motion-doodle-text__char {
+    animation: none;
+  }
+}

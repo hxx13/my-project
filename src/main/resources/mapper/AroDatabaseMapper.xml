@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aro.mapper.AroDatabaseMapper">
+
+    <insert id="batchInsertAccessLogs">
+        INSERT IGNORE INTO aro_access_log(
+            id, accessType, create_time, user_id, name,
+            email, mobile_phone, office_phone, user_type_names, department_id,
+            project_group_id, project_group_names, area_id, area_name, floor_id,
+            floor_name, room_id, room_name, is_shared_card, is_keep_card, is_borrowed_card,
+            feed_source, feed_summary_zh, feed_detail_zh, device_display_name
+        )
+        VALUES
+        <foreach collection="records" item="r" separator=",">
+            (
+                #{r.id}, #{r.accessType}, #{r.createTime}, #{r.userId}, #{r.name},
+                #{r.email}, #{r.mobilePhone}, #{r.officePhone}, #{r.userTypeNames}, #{r.departmentId},
+                #{r.projectGroupId}, #{r.projectGroupNames}, #{r.areaId}, #{r.areaName}, #{r.floorId},
+                #{r.floorName}, #{r.roomId}, #{r.roomName},
+                COALESCE(#{r.isSharedCard}, 0), COALESCE(#{r.isKeepCard}, 0), COALESCE(#{r.isBorrowedCard}, 0),
+                #{r.feedSource}, #{r.feedSummaryZh}, #{r.feedDetailZh}, #{r.deviceDisplayName}
+            )
+        </foreach>
+    </insert>
+
+    <select id="getTodayRecords" resultType="map">
+        SELECT id,
+               create_time,
+               create_time  AS event_time,
+               accessType AS action,
+               feed_source AS feed_source,
+               CASE WHEN accessType = 1 THEN '进入'
+                    WHEN accessType = 2 THEN '离开'
+                    WHEN accessType = 3 THEN '离开'
+                    ELSE '其他'
+               END         AS event_type,
+               room_name,
+               name         AS person_name
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+          AND create_time >= #{todayStart}
+          AND (feed_source IS NULL OR feed_source != 'TWIN_AUTO_SIGNOUT')
+        ORDER BY create_time ASC
+    </select>
+
+    <select id="selectAccessRecordsByUserId" resultType="map">
+        SELECT id,
+               create_time  AS event_time,
+               CASE WHEN accessType = 1 THEN '进入'
+                    WHEN accessType = 2 THEN '离开'
+                    WHEN accessType = 3 THEN '离开'
+                    ELSE '其他'
+               END         AS event_type,
+               room_name,
+               name         AS person_name
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countAccessRecordsByUserId" resultType="int">
+        SELECT COUNT(*)
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+    </select>
+
+    <select id="selectAccessLogsByUserAndDateRange" resultType="map">
+        SELECT id,
+               create_time  AS event_time,
+               CASE WHEN accessType = 1 THEN '进入'
+                    WHEN accessType = 2 THEN '离开'
+                    WHEN accessType = 3 THEN '离开'
+                    ELSE '其他'
+               END         AS event_type,
+               room_name,
+               name         AS person_name
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+          AND create_time &gt;= #{startDate}
+          AND create_time &lt;= #{endDate}
+        ORDER BY create_time ASC
+    </select>
+
+    <select id="getUserTotalExp" resultType="double">
+        SELECT total_exp
+        FROM aro_personnel
+        WHERE user_id = #{userId}
+    </select>
+
+    <select id="countPersonnel" resultType="int">
+        SELECT COUNT(*)
+        FROM aro_personnel
+    </select>
+
+    <select id="countAccessLogs" resultType="int">
+        SELECT COUNT(*)
+        FROM aro_access_log
+    </select>
+
+    <select id="getLatestAccessLogCreateTime" resultType="string">
+        SELECT MAX(create_time)
+        FROM aro_access_log
+    </select>
+
+    <select id="findPersonnelNameByUserId" resultType="string">
+        SELECT name
+        FROM aro_personnel
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <select id="findPersonnelNamesByUserIds" resultType="java.util.HashMap">
+        SELECT user_id AS userId, MIN(name) AS name
+        FROM aro_personnel
+        WHERE user_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        GROUP BY user_id
+    </select>
+
+    <select id="countAccessLogsOnDay" resultType="int">
+        SELECT COUNT(*)
+        FROM aro_access_log
+        WHERE create_time &gt;= CONCAT(#{day}, ' 00:00:00')
+          AND create_time &lt; DATE_ADD(CONCAT(#{day}, ' 00:00:00'), INTERVAL 1 DAY)
+    </select>
+
+    <select id="findExistingAccessLogIds" resultType="string">
+        SELECT id
+        FROM aro_access_log
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="selectLatestRoomNamesByRoomIds" resultType="map">
+        SELECT r.room_id AS roomId,
+               (SELECT al.room_name
+                FROM aro_access_log al
+                WHERE al.room_id = r.room_id
+                  AND al.room_name IS NOT NULL
+                  AND TRIM(al.room_name) != ''
+                ORDER BY al.create_time DESC
+                LIMIT 1) AS roomName
+        FROM (SELECT DISTINCT room_id AS room_id
+              FROM aro_access_log
+              WHERE room_id IN
+              <foreach collection="roomIds" item="rid" open="(" separator="," close=")">
+                  #{rid}
+              </foreach>
+              ) r
+    </select>
+
+    <select id="findTodayUnexitedEntersForUser" resultType="map">
+        SELECT log.id AS id,
+               log.user_id AS userId,
+               log.name AS name,
+               log.room_id AS roomId,
+               log.room_name AS roomName,
+               log.area_name AS areaName,
+               log.floor_name AS floorName,
+               log.project_group_names AS projectGroupNames,
+               log.create_time AS enterTime
+        FROM aro_access_log log
+        WHERE log.user_id = #{userId}
+          AND log.accessType = 1
+          AND log.create_time &gt;= CONCAT(CURDATE(), ' 00:00:00')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM aro_access_log out_log
+              WHERE out_log.user_id = log.user_id
+                AND out_log.room_id = log.room_id
+                AND out_log.accessType IN (2, 3)
+                AND out_log.create_time &gt; log.create_time
+          )
+    </select>
+
+</mapper>

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.student.mapper.StudentCageShelfSnapshotMapper">
+
+    <insert id="batchInsert">
+        INSERT INTO student_cage_shelf_snapshot (
+            snapshot_batch_id, shelve_id, room_id, room_name,
+            campus_name, area_name, floor_name, shelve_name,
+            position_x, position_y, position_label,
+            animal_cage_type, state_label,
+            project_pi_name, department_name,
+            cage_box_qr_code, aup_number,
+            is_empty, raw_data_json, special_statuses_json,
+            refreshed_at, refreshed_by
+        ) VALUES
+        <foreach collection="list" item="row" separator=",">
+            (
+                #{row.snapshotBatchId}, #{row.shelveId}, #{row.roomId}, #{row.roomName},
+                #{row.campusName}, #{row.areaName}, #{row.floorName}, #{row.shelveName},
+                #{row.positionX}, #{row.positionY}, #{row.positionLabel},
+                #{row.animalCageType}, #{row.stateLabel},
+                #{row.projectPiName}, #{row.departmentName},
+                #{row.cageBoxQrCode}, #{row.aupNumber},
+                #{row.isEmpty}, #{row.rawDataJson}, #{row.specialStatusesJson},
+                #{row.refreshedAt}, #{row.refreshedBy}
+            )
+        </foreach>
+    </insert>
+
+    <select id="selectGridByShelve" resultType="map">
+        SELECT id, snapshot_batch_id AS snapshotBatchId,
+               shelve_id AS shelveId, room_id AS roomId,
+               room_name AS roomName, campus_name AS campusName,
+               area_name AS areaName, floor_name AS floorName,
+               shelve_name AS shelveName,
+               position_x AS positionX, position_y AS positionY,
+               position_label AS positionLabel,
+               animal_cage_type AS animalCageType,
+               state_label AS stateLabel,
+               project_pi_name AS projectPiName,
+               department_name AS departmentName,
+               cage_box_qr_code AS cageBoxQrCode,
+               aup_number AS aupNumber,
+               is_empty AS isEmpty,
+               raw_data_json AS rawDataJson,
+               special_statuses_json AS specialStatusesJson,
+               refreshed_at AS refreshedAt,
+               refreshed_by AS refreshedBy,
+               created_at AS createdAt
+        FROM student_cage_shelf_snapshot
+        WHERE shelve_id = #{shelveId}
+          AND snapshot_batch_id = #{latestBatchId}
+        ORDER BY position_y, position_x
+    </select>
+
+    <select id="selectGridByShelveAndGroups" resultType="map">
+        SELECT id, snapshot_batch_id AS snapshotBatchId,
+               shelve_id AS shelveId, room_id AS roomId,
+               room_name AS roomName, campus_name AS campusName,
+               area_name AS areaName, floor_name AS floorName,
+               shelve_name AS shelveName,
+               position_x AS positionX, position_y AS positionY,
+               position_label AS positionLabel,
+               animal_cage_type AS animalCageType,
+               state_label AS stateLabel,
+               project_pi_name AS projectPiName,
+               department_name AS departmentName,
+               cage_box_qr_code AS cageBoxQrCode,
+               aup_number AS aupNumber,
+               is_empty AS isEmpty,
+               raw_data_json AS rawDataJson,
+               special_statuses_json AS specialStatusesJson,
+               refreshed_at AS refreshedAt,
+               refreshed_by AS refreshedBy,
+               created_at AS createdAt
+        FROM student_cage_shelf_snapshot
+        WHERE shelve_id = #{shelveId}
+          AND snapshot_batch_id = #{latestBatchId}
+          <if test="groupNames != null and groupNames.size() > 0">
+              AND (
+              <foreach collection="groupNames" item="g" separator=" OR ">
+                  (
+                      department_name = #{g}
+                      OR project_pi_name = #{g}
+                      OR (project_pi_name != '' AND #{g} LIKE CONCAT('%', project_pi_name, '%'))
+                      OR (department_name != '' AND #{g} LIKE CONCAT('%', department_name, '%'))
+                      OR (project_pi_name != '' AND project_pi_name = SUBSTRING_INDEX(#{g}, '的', 1))
+                      OR (project_pi_name != '' AND project_pi_name LIKE CONCAT(SUBSTRING_INDEX(#{g}, '的', 1), '%'))
+                  )
+              </foreach>
+              )
+          </if>
+          <if test="groupNames == null or groupNames.size() == 0">
+              AND 1 = 0
+          </if>
+        ORDER BY position_y, position_x
+    </select>
+
+    <select id="selectLatestBatchId" resultType="string">
+        SELECT snapshot_batch_id
+        FROM student_cage_shelf_snapshot
+        WHERE shelve_id = #{shelveId}
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+    <delete id="deleteOldBatches">
+        DELETE FROM student_cage_shelf_snapshot
+        WHERE shelve_id = #{shelveId}
+          AND snapshot_batch_id != #{latestBatchId}
+    </delete>
+
+    <delete id="deleteOlderThan">
+        DELETE FROM student_cage_shelf_snapshot
+        WHERE created_at &lt; #{cutoff}
+    </delete>
+
+    <select id="selectDistinctShelves" resultType="map">
+        SELECT DISTINCT
+               shelve_id AS shelveId,
+               shelve_name AS shelveName,
+               campus_name AS campusName,
+               area_name AS areaName,
+               floor_name AS floorName,
+               room_name AS roomName,
+               CAST(room_id AS CHAR) AS roomId
+        FROM student_cage_shelf_snapshot
+        WHERE 1 = 1
+          <if test="groupNames != null and groupNames.size() > 0">
+              AND (
+              <foreach collection="groupNames" item="g" separator=" OR ">
+                  (
+                      department_name = #{g}
+                      OR project_pi_name = #{g}
+                      OR (project_pi_name != '' AND #{g} LIKE CONCAT('%', project_pi_name, '%'))
+                      OR (department_name != '' AND #{g} LIKE CONCAT('%', department_name, '%'))
+                      OR (project_pi_name != '' AND project_pi_name = SUBSTRING_INDEX(#{g}, '的', 1))
+                      OR (project_pi_name != '' AND project_pi_name LIKE CONCAT(SUBSTRING_INDEX(#{g}, '的', 1), '%'))
+                  )
+              </foreach>
+              )
+          </if>
+          <if test="groupNames == null or groupNames.size() == 0">
+              AND 1 = 0
+          </if>
+        ORDER BY campus_name, area_name, floor_name, room_name, shelve_name
+    </select>
+
+    <select id="countRecentRefreshByUser" resultType="int">
+        SELECT COUNT(DISTINCT snapshot_batch_id)
+        FROM student_cage_shelf_snapshot
+        WHERE refreshed_by = #{userId}
+          AND refreshed_at >= #{since}
+    </select>
+
+    <select id="countByRefreshedBy" resultType="int">
+        SELECT COUNT(DISTINCT snapshot_batch_id)
+        FROM student_cage_shelf_snapshot
+        WHERE refreshed_by = #{userId}
+    </select>
+
+    <select id="selectCageTypeCountsByShelveIds" resultType="map">
+        SELECT s.shelve_id AS shelveId,
+               s.animal_cage_type AS animalCageType,
+               COUNT(*) AS cnt
+        FROM student_cage_shelf_snapshot s
+        INNER JOIN (
+            SELECT shelve_id, MAX(snapshot_batch_id) AS latest_batch
+            FROM student_cage_shelf_snapshot
+            WHERE shelve_id IN
+            <foreach collection="shelveIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+            GROUP BY shelve_id
+        ) b ON s.shelve_id = b.shelve_id AND s.snapshot_batch_id = b.latest_batch
+        GROUP BY s.shelve_id, s.animal_cage_type
+    </select>
+
+</mapper>

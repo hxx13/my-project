@@ -1,0 +1,110 @@
+/**
+ * Twin Debug 暗色：页面级打透 + 模块外壳（共享令牌见 night-sky-surface-theme.css）
+ */
+
+.twin-chrome-debug-root--night-sky {
+    --dash-night-surface-mix: 4%;
+    --dash-night-surface-mix-soft: 2%;
+}
+
+.twin-chrome-debug-root--night-sky [data-twin-debug-pipeline],
+.twin-chrome-debug-root--night-sky [data-twin-debug-orders],
+.twin-chrome-debug-root--night-sky [data-twin-debug-prediction],
+.twin-chrome-debug-root--night-sky [data-twin-debug-cards],
+.twin-chrome-debug-root--night-sky [data-twin-debug-heatmap],
+.twin-chrome-debug-root--night-sky [data-twin-debug-personnel] {
+    background: transparent !important;
+}
+
+.twin-chrome-debug-root--night-sky [data-twin-debug-pipeline] [role="toolbar"],
+.twin-chrome-debug-root--night-sky [data-twin-debug-pipeline-filters],
+.twin-chrome-debug-root--night-sky [data-twin-debug-pipeline-table],
+.twin-chrome-debug-root--night-sky [data-twin-debug-orders] .rounded-xl.border,
+.twin-chrome-debug-root--night-sky [data-twin-debug-prediction] .rounded-xl.border,
+.twin-chrome-debug-root--night-sky [data-twin-debug-personnel] .rounded-xl.border,
+.twin-chrome-debug-root--night-sky [data-twin-debug-heatmap] .rounded-xl.border,
+.twin-chrome-debug-root--night-sky article.rounded-xl.border {
+    border-color: color-mix(in srgb, var(--dash-night-border-warm) 40%, transparent) !important;
+    background: var(--dash-night-panel-bg) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: var(--dash-night-shadow-elev-sm) !important;
+}
+
+.twin-chrome-debug-root--night-sky [data-twin-debug-admin-search] input[type="search"]:focus {
+    border-color: color-mix(in srgb, var(--dash-night-accent-warm) 45%, transparent) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--dash-night-accent-warm) 18%, transparent) !important;
+}
+
+.twin-chrome-debug-root--night-sky [data-twin-debug-cards] .rounded-2xl.border {
+    border-color: color-mix(in srgb, var(--dash-night-border-warm) 38%, transparent) !important;
+    background: color-mix(in srgb, var(--dash-night-bg-student) var(--dash-night-surface-mix), transparent) !important;
+}
+
+.twin-chrome-debug-root--night-sky [data-twin-debug-heatmap] .bg-emerald-200 {
+    background: color-mix(in srgb, var(--app-color-feedback-success) 35%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-feedback-success) 45%, transparent) !important;
+}
+
+.twin-chrome-debug-root--night-sky [data-twin-debug-heatmap] .bg-amber-300 {
+    background: color-mix(in srgb, var(--app-color-feedback-warning) 42%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-feedback-warning) 52%, transparent) !important;
+}
+
+.twin-chrome-debug-root--night-sky [data-twin-debug-heatmap] .bg-orange-500 {
+    background: color-mix(in srgb, var(--dash-night-accent-warm) 55%, transparent) !important;
+    border-color: color-mix(in srgb, var(--dash-night-accent-warm) 65%, transparent) !important;
+}
+
+.twin-chrome-debug-root--night-sky [data-twin-debug-heatmap] .bg-red-600 {
+    background: color-mix(in srgb, var(--app-color-feedback-error) 58%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-feedback-error) 68%, transparent) !important;
+}
+
+/* DebugNav Dock */
+[data-twin-debug-night="1"] .twin-debug-dock {
+    border-color: color-mix(in srgb, var(--app-color-scan-profile-border) 38%, transparent) !important;
+    background: color-mix(in srgb, var(--app-color-scan-student-bg) 55%, transparent) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: var(--dash-night-shadow-elev-md);
+}
+
+[data-twin-debug-night="1"] .twin-debug-dock .text-slate-400 {
+    color: color-mix(in srgb, var(--app-color-scan-accent-ink) 55%, transparent) !important;
+}
+
+[data-twin-debug-night="1"] .twin-debug-dock button.text-white,
+[data-twin-debug-night="1"] .twin-debug-dock .bg-white\/10 {
+    color: var(--app-color-scan-accent-ink) !important;
+}
+
+[data-twin-debug-night="1"] .twin-debug-dock .bg-blue-500 {
+    background: var(--app-color-scan-profile-accent) !important;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--app-color-scan-profile-accent) 45%, transparent);
+}
+
+[data-twin-debug-night="1"] .twin-debug-dock .bg-red-500\/90,
+[data-twin-debug-night="1"] .twin-debug-dock .bg-red-500 {
+    background: color-mix(in srgb, var(--app-color-feedback-error) 78%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-feedback-error) 55%, transparent) !important;
+    color: white !important;
+    box-shadow: 0 0 10px color-mix(in srgb, var(--app-color-feedback-error) 35%, transparent);
+}
+
+[data-twin-debug-night="1"] .twin-debug-dock .bg-slate-800\/90,
+[data-twin-debug-night="1"] .twin-debug-dock .bg-slate-800 {
+    background: color-mix(in srgb, var(--app-color-scan-student-bg) 72%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-scan-profile-border) 40%, transparent) !important;
+    color: var(--app-color-scan-accent-ink) !important;
+}
+
+[data-twin-debug-night="1"] .twin-debug-dock .bg-slate-700 {
+    background: color-mix(in srgb, var(--app-color-scan-ai-bg) 55%, transparent) !important;
+}
+
+[data-twin-debug-night="1"] .twin-debug-dock .bg-amber-500 {
+    background: color-mix(in srgb, var(--app-color-feedback-warning) 75%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-scan-student-bg) 80%, transparent) !important;
+}
+

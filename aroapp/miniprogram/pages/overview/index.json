@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "概览",
+  "enablePullDownRefresh": true,
+  "disableScroll": false,
+  "backgroundTextStyle": "dark",
+  "usingComponents": {}
+}

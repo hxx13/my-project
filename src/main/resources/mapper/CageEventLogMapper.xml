@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageEventLogMapper">
+
+    <update id="ensureTable">
+        CREATE TABLE IF NOT EXISTS cage_event_log (
+            id               BIGINT AUTO_INCREMENT PRIMARY KEY,
+            scan_batch_id    VARCHAR(64)   NOT NULL,
+            event_type       VARCHAR(24)   NOT NULL,
+            cage_box_qr_code VARCHAR(64),
+            prev_shelve_id   VARCHAR(64),
+            prev_position    VARCHAR(16),
+            prev_campus_name VARCHAR(64),
+            prev_room_name   VARCHAR(64),
+            curr_shelve_id   VARCHAR(64),
+            curr_position    VARCHAR(16),
+            curr_campus_name VARCHAR(64),
+            curr_room_name   VARCHAR(64),
+            prev_value_json  TEXT,
+            curr_value_json  TEXT,
+            detail_summary   VARCHAR(512),
+            pi_name          VARCHAR(64),
+            project_pi_name  VARCHAR(64),
+            department_name  VARCHAR(128),
+            changed_at       DATETIME      NOT NULL,
+            INDEX idx_box     (cage_box_qr_code),
+            INDEX idx_batch   (scan_batch_id),
+            INDEX idx_type    (event_type, changed_at),
+            INDEX idx_pos_curr (curr_shelve_id, curr_position),
+            INDEX idx_pos_prev (prev_shelve_id, prev_position),
+            INDEX idx_pi      (project_pi_name),
+            INDEX idx_time    (changed_at),
+            INDEX idx_campus  (curr_campus_name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    </update>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_event_log (
+            scan_batch_id, event_type, cage_box_qr_code,
+            prev_shelve_id, prev_position, prev_campus_name, prev_room_name,
+            curr_shelve_id, curr_position, curr_campus_name, curr_room_name,
+            prev_value_json, curr_value_json, detail_summary,
+            pi_name, project_pi_name, department_name,
+            changed_at
+        ) VALUES (
+            #{scanBatchId}, #{eventType}, #{cageBoxQrCode},
+            #{prevShelveId}, #{prevPosition}, #{prevCampusName}, #{prevRoomName},
+            #{currShelveId}, #{currPosition}, #{currCampusName}, #{currRoomName},
+            #{prevValueJson}, #{currValueJson}, #{detailSummary},
+            #{piName}, #{projectPiName}, #{departmentName},
+            #{changedAt}
+        )
+    </insert>
+
+    <insert id="batchInsert">
+        INSERT INTO cage_event_log (
+            scan_batch_id, event_type, cage_box_qr_code,
+            prev_shelve_id, prev_position, prev_campus_name, prev_room_name,
+            curr_shelve_id, curr_position, curr_campus_name, curr_room_name,
+            prev_value_json, curr_value_json, detail_summary,
+            pi_name, project_pi_name, department_name,
+            changed_at
+        ) VALUES
+        <foreach collection="list" item="e" separator=",">
+        (
+            #{e.scanBatchId}, #{e.eventType}, #{e.cageBoxQrCode},
+            #{e.prevShelveId}, #{e.prevPosition}, #{e.prevCampusName}, #{e.prevRoomName},
+            #{e.currShelveId}, #{e.currPosition}, #{e.currCampusName}, #{e.currRoomName},
+            #{e.prevValueJson}, #{e.currValueJson}, #{e.detailSummary},
+            #{e.piName}, #{e.projectPiName}, #{e.departmentName},
+            #{e.changedAt}
+        )
+        </foreach>
+    </insert>
+
+    <select id="selectByBatchId" resultType="com.example.demo.modules.cageshelf.entity.CageEventLog">
+        SELECT * FROM cage_event_log
+        WHERE scan_batch_id = #{scanBatchId}
+        <if test="eventType != null and eventType != ''">
+            AND event_type = #{eventType}
+        </if>
+        ORDER BY changed_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="search" resultType="com.example.demo.modules.cageshelf.entity.CageEventLog">
+        SELECT * FROM cage_event_log
+        WHERE 1=1
+        <if test="eventType != null and eventType != ''">
+            AND event_type = #{eventType}
+        </if>
+        <if test="campusName != null and campusName != ''">
+            AND (curr_campus_name = #{campusName} OR prev_campus_name = #{campusName})
+        </if>
+        <if test="startTime != null and startTime != ''">
+            AND changed_at &gt;= #{startTime}
+        </if>
+        <if test="endTime != null and endTime != ''">
+            AND changed_at &lt;= #{endTime}
+        </if>
+        <if test="searchText != null and searchText != ''">
+            AND (
+                cage_box_qr_code LIKE CONCAT('%', #{searchText}, '%')
+                OR curr_position LIKE CONCAT('%', #{searchText}, '%')
+                OR prev_position LIKE CONCAT('%', #{searchText}, '%')
+                OR curr_room_name LIKE CONCAT('%', #{searchText}, '%')
+                OR project_pi_name LIKE CONCAT('%', #{searchText}, '%')
+                OR department_name LIKE CONCAT('%', #{searchText}, '%')
+                OR detail_summary LIKE CONCAT('%', #{searchText}, '%')
+            )
+        </if>
+        ORDER BY changed_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countSearch" resultType="int">
+        SELECT COUNT(*) FROM cage_event_log
+        WHERE 1=1
+        <if test="eventType != null and eventType != ''">
+            AND event_type = #{eventType}
+        </if>
+        <if test="campusName != null and campusName != ''">
+            AND (curr_campus_name = #{campusName} OR prev_campus_name = #{campusName})
+        </if>
+        <if test="startTime != null and startTime != ''">
+            AND changed_at &gt;= #{startTime}
+        </if>
+        <if test="endTime != null and endTime != ''">
+            AND changed_at &lt;= #{endTime}
+        </if>
+        <if test="searchText != null and searchText != ''">
+            AND (
+                cage_box_qr_code LIKE CONCAT('%', #{searchText}, '%')
+                OR curr_position LIKE CONCAT('%', #{searchText}, '%')
+                OR prev_position LIKE CONCAT('%', #{searchText}, '%')
+                OR curr_room_name LIKE CONCAT('%', #{searchText}, '%')
+                OR project_pi_name LIKE CONCAT('%', #{searchText}, '%')
+                OR department_name LIKE CONCAT('%', #{searchText}, '%')
+                OR detail_summary LIKE CONCAT('%', #{searchText}, '%')
+            )
+        </if>
+    </select>
+
+    <select id="timelineByBox" resultType="map">
+        SELECT * FROM cage_event_log
+        WHERE cage_box_qr_code = #{cageBoxQrCode}
+        ORDER BY changed_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectRecentStatusAdded" resultType="com.example.demo.modules.cageshelf.entity.CageEventLog">
+        SELECT * FROM cage_event_log
+        WHERE event_type = 'STATUS_ADDED'
+          AND (
+            <foreach collection="statusCodes" item="code" separator=" OR ">
+              detail_summary LIKE CONCAT('新增 «', #{code}, '» %')
+            </foreach>
+          )
+          <if test="scanBatchId != null and scanBatchId != ''">
+            AND scan_batch_id = #{scanBatchId}
+          </if>
+          <if test="referenceTime != null">
+            AND changed_at &lt;= DATE_SUB(#{referenceTime}, INTERVAL #{delayDays} DAY)
+          </if>
+          <if test="referenceTime == null">
+            AND changed_at &lt;= DATE_SUB(NOW(), INTERVAL #{delayDays} DAY)
+          </if>
+        ORDER BY changed_at DESC
+    </select>
+
+    <select id="countStatusRemovedAfter" resultType="int">
+        SELECT COUNT(1) FROM cage_event_log
+        WHERE event_type = 'STATUS_REMOVED'
+          AND detail_summary LIKE CONCAT('解除 «', #{statusCode}, '» %')
+          AND curr_shelve_id = #{currShelveId}
+          AND curr_position = #{currPosition}
+          AND changed_at &gt; #{sinceTime}
+    </select>
+
+    <delete id="deleteByScanBatchId">
+        DELETE FROM cage_event_log WHERE scan_batch_id = #{scanBatchId}
+    </delete>
+
+</mapper>

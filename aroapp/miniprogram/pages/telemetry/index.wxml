@@ -1,0 +1,14 @@
+<view class="telemetry-page">
+  <view wx:if="{{ telemetryLoading && !telemetryPage }}" class="state">加载中…</view>
+  <view wx:elif="{{ telemetryErr }}" class="state state-err">{{ telemetryErr }}</view>
+  <animal-room-telemetry
+    wx:else
+    id="telemetry-comp"
+    telemetry-page="{{ telemetryPage }}"
+    show-room-overview-entry="{{ false }}"
+    bind:telemetryreload="onTelemetryReload"
+    bind:telemetrytagmerge="onTelemetryTagMerge"
+    bind:telemetrytabchange="onTelemetryTabChange"
+    bind:telemetryfetchtab="onTelemetryFetchTab"
+  />
+</view>

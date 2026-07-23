@@ -1,0 +1,446 @@
+<view class="staff-work-inbox">
+  <view class="svc-tabs">
+    <view
+      class="svc-tab {{ activeTab === 'timeline' ? 'svc-tab-on svc-tab-on--timeline' : '' }}"
+      data-tab="timeline"
+      bindtap="onTabChange"
+    >全部</view>
+    <view wx:if="{{ canStaff }}" class="svc-tab-slot svc-tab-slot--notice">
+      <view
+        class="svc-tab {{ activeTab === 'notice' ? 'svc-tab-on svc-tab-on--notice' : '' }}"
+        data-tab="notice"
+        bindtap="onTabChange"
+      >通知</view>
+      <view wx:if="{{ noticeSubTabBadgeText }}" class="svc-tab-done-badge">{{ noticeSubTabBadgeText }}</view>
+    </view>
+    <view
+      wx:else
+      class="svc-tab {{ activeTab === 'notice' ? 'svc-tab-on svc-tab-on--notice' : '' }}"
+      data-tab="notice"
+      bindtap="onTabChange"
+    >通知</view>
+    <view wx:if="{{ canStaff }}" class="svc-tab-slot svc-tab-slot--pending">
+      <view
+        class="svc-tab {{ activeTab === 'pending' ? 'svc-tab-on svc-tab-on--pending' : '' }}"
+        data-tab="pending"
+        bindtap="onTabChange"
+      >待处理</view>
+      <view wx:if="{{ pendingTabBadgeText }}" class="svc-tab-done-badge">{{ pendingTabBadgeText }}</view>
+    </view>
+    <view wx:if="{{ canStaff }}" class="svc-tab-slot">
+      <view
+        class="svc-tab {{ activeTab === 'done' ? 'svc-tab-on svc-tab-on--done' : '' }}"
+        data-tab="done"
+        bindtap="onTabChange"
+      >已处理</view>
+      <view wx:if="{{ receiptUnreadBadgeText }}" class="svc-tab-done-badge">{{ receiptUnreadBadgeText }}</view>
+    </view>
+  </view>
+
+  <block wx:if="{{ activeTab === 'timeline' }}">
+    <view class="svc-toolbar svc-toolbar-row">
+      <view class="svc-toolbar-left">
+        <text class="svc-toolbar-title">全部</text>
+        <view class="svc-filter" bindtap="toggleTimelineOnlyUnread">
+          <text class="svc-filter-dot {{ timelineOnlyUnread ? 'svc-filter-dot-on' : '' }}" />
+          <text class="svc-filter-txt">仅未读</text>
+        </view>
+      </view>
+      <text class="svc-toolbar-action" bindtap="markAllRead">全部已读</text>
+    </view>
+    <text class="svc-toolbar-desc svc-toolbar-desc--timeline">按工单类型、申请人、时间与正文摘要展示</text>
+    <view wx:if="{{ timelineLoading && (!timelineDisplayRows || timelineDisplayRows.length === 0) }}" class="svc-placeholder">加载中…</view>
+    <van-empty wx:elif="{{ !timelineDisplayRows || timelineDisplayRows.length === 0 }}" description="{{ timelineOnlyUnread ? '暂无未读动态' : '暂无动态' }}" />
+    <view wx:else class="svc-session">
+      <view
+        wx:for="{{ timelineDisplayRows }}"
+        wx:for-index="tlIdx"
+        wx:key="kindId"
+        class="svc-card svc-card--{{ item.themeKey }} {{ item.unread ? 'svc-card--unread' : '' }}"
+      >
+        <view class="svc-card-inner">
+          <view
+            class="svc-card-main {{ item.timelineTapProcess ? 'svc-card-main--tap' : '' }}"
+            bindtap="onTimelineMainTap"
+            data-kind-id="{{ item.kindId }}"
+          >
+            <view class="svc-card-head">
+              <text class="svc-type">{{ item.present.typeLine }}</text>
+              <view class="svc-card-head-trail">
+                <text wx:if="{{ item.present.timeText }}" class="svc-time">{{ item.present.timeText }}</text>
+                <view
+                  wx:if="{{ item.kind === 'NOTIFICATION' && item.unread }}"
+                  class="svc-read-pill-hit"
+                  catchtap="markTimelineNotificationRead"
+                  data-id="{{ item.id }}"
+                  data-kind-id="{{ item.kindId }}"
+                  hover-class="svc-read-pill-hit-hover"
+                >
+                  <text class="svc-read-pill-text svc-read-pill-text--{{ item.themeKey }}">已读</text>
+                </view>
+              </view>
+            </view>
+            <view class="svc-card-body">
+              <view wx:if="{{ item.present.metaLabel && item.present.metaValue }}" class="svc-meta-row">
+                <text class="svc-meta-k">{{ item.present.metaLabel }}</text>
+                <text class="svc-meta-v">{{ item.present.metaValue }}</text>
+              </view>
+              <text wx:if="{{ item.present.primary }}" class="svc-primary">{{ item.present.primary }}</text>
+              <text wx:if="{{ item.present.secondary }}" class="svc-secondary">{{ item.present.secondary }}</text>
+            </view>
+          </view>
+          <view class="svc-card-foot" catchtap="onTimelineDetailTap" data-kind-id="{{ item.kindId }}">
+            <text class="svc-foot-hint">{{ item.unread ? '查看详情' : '详情' }}</text>
+            <text class="svc-foot-arrow">›</text>
+          </view>
+        </view>
+      </view>
+      <view class="svc-list-foot">
+        <text wx:if="{{ timelineLoading }}" class="svc-list-foot-text">加载中…</text>
+        <text wx:elif="{{ !timelineHasMore }}" class="svc-list-foot-text">没有更多了</text>
+      </view>
+    </view>
+  </block>
+
+  <block wx:elif="{{ activeTab === 'notice' }}">
+    <view class="svc-toolbar svc-toolbar-row">
+      <view class="svc-toolbar-left">
+        <text class="svc-toolbar-title">通知</text>
+        <view class="svc-filter" bindtap="toggleOnlyUnread">
+          <text class="svc-filter-dot {{ onlyUnread ? 'svc-filter-dot-on' : '' }}" />
+          <text class="svc-filter-txt">仅未读</text>
+        </view>
+      </view>
+      <text class="svc-toolbar-action" bindtap="markAllRead">全部已读</text>
+    </view>
+    <text wx:if="{{ canStaff }}" class="svc-toolbar-hint">工单类动态请在「全部」或「待处理」查看</text>
+
+    <view wx:if="{{ loading }}" class="svc-placeholder">加载中…</view>
+    <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无通知" />
+    <view wx:else class="svc-session">
+      <view
+        wx:for="{{ rows }}"
+        wx:key="id"
+        class="svc-card svc-card--{{ item.themeKey }} {{ item.isRead === 0 ? 'svc-card--unread' : '' }} {{ item.tappable ? 'svc-card-tap' : '' }}"
+        data-tappable="{{ item.tappable }}"
+        data-notification-id="{{ item.id }}"
+        data-biztype="{{ item.bizType }}"
+        data-eventtype="{{ item.eventType }}"
+        data-bizid="{{ item.bizId }}"
+        bindtap="onNoticeTap"
+      >
+        <view class="svc-card-inner">
+          <view class="svc-card-head">
+            <text class="svc-type">{{ item.present.typeLine }}</text>
+            <text class="svc-time">{{ item.present.timeText }}</text>
+          </view>
+          <view class="svc-card-body">
+            <view wx:if="{{ item.present.metaLabel && item.present.metaValue }}" class="svc-meta-row">
+              <text class="svc-meta-k">{{ item.present.metaLabel }}</text>
+              <text class="svc-meta-v">{{ item.present.metaValue }}</text>
+            </view>
+            <text wx:if="{{ item.present.primary }}" class="svc-primary">{{ item.present.primary }}</text>
+            <text wx:if="{{ item.present.secondary }}" class="svc-secondary">{{ item.present.secondary }}</text>
+          </view>
+          <view class="svc-card-actions svc-card-actions--notice">
+            <view
+              wx:if="{{ item.isRead === 0 }}"
+              class="svc-read-pill-hit svc-read-pill-hit--inline"
+              catchtap="markRead"
+              data-id="{{ item.id }}"
+              hover-class="svc-read-pill-hit-hover"
+            >
+              <text class="svc-read-pill-text svc-read-pill-text--{{ item.themeKey }}">已读</text>
+            </view>
+            <text wx:else class="svc-read-ok">已读</text>
+          </view>
+        </view>
+      </view>
+      <view class="svc-list-foot">
+        <text wx:if="{{ loadingMore }}" class="svc-list-foot-text">加载中…</text>
+        <text wx:elif="{{ !hasMore }}" class="svc-list-foot-text">没有更多了</text>
+      </view>
+    </view>
+  </block>
+
+  <block wx:elif="{{ activeTab === 'pending' && canStaff }}">
+    <view class="svc-toolbar">
+      <text class="svc-toolbar-title">待处理</text>
+      <text class="svc-toolbar-desc">需要您跟进的工单</text>
+    </view>
+
+    <view wx:if="{{ pendingLoading }}" class="svc-placeholder">加载中…</view>
+    <van-empty wx:elif="{{ unifiedPending.length === 0 }}" description="暂无待处理工单" />
+    <view wx:else class="svc-session">
+      <view
+        wx:for="{{ unifiedPending }}"
+        wx:key="key"
+        class="svc-card svc-card--{{ item.themeKey }} svc-card-tap"
+        data-kind="{{ item.workKind }}"
+        data-id="{{ item.id }}"
+        bindtap="onWorkTap"
+      >
+        <view class="svc-card-inner">
+          <view class="svc-card-head">
+            <text class="svc-type">{{ item.present.typeLine }}</text>
+            <text class="svc-time">{{ item.present.timeText }}</text>
+          </view>
+          <view class="svc-card-body">
+            <view wx:if="{{ item.present.metaLabel && item.present.metaValue }}" class="svc-meta-row">
+              <text class="svc-meta-k">{{ item.present.metaLabel }}</text>
+              <text class="svc-meta-v">{{ item.present.metaValue }}</text>
+            </view>
+            <text wx:if="{{ item.present.primary }}" class="svc-primary">{{ item.present.primary }}</text>
+            <text wx:if="{{ item.present.secondary }}" class="svc-secondary">{{ item.present.secondary }}</text>
+          </view>
+          <view class="svc-card-foot svc-card-foot--split">
+            <view
+              wx:if="{{ item.hasUnreadNotice }}"
+              class="svc-read-pill-hit svc-read-pill-hit--inline"
+              catchtap="markWorkItemRead"
+              data-kind="{{ item.workKind }}"
+              data-id="{{ item.id }}"
+              hover-class="svc-read-pill-hit-hover"
+            >
+              <text class="svc-read-pill-text svc-read-pill-text--{{ item.themeKey }}">已读</text>
+            </view>
+            <view class="svc-card-foot-nav">
+              <text class="svc-foot-hint">去处理</text>
+              <text class="svc-foot-arrow">›</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:elif="{{ activeTab === 'done' && canStaff }}">
+    <block wx:if="{{ receiptUnreadRows.length }}">
+      <view class="svc-toolbar svc-toolbar-receipt">
+        <text class="svc-toolbar-title">待确认回执</text>
+        <text class="svc-toolbar-desc">报修 · 采购 · 物资办结通知（未读）</text>
+      </view>
+      <view class="svc-session svc-session-receipt">
+        <view
+          wx:for="{{ receiptUnreadRows }}"
+          wx:key="nid"
+          class="svc-card svc-card--{{ item.themeKey }} svc-card--unread"
+        >
+          <view class="svc-card-inner">
+            <view class="svc-card-head">
+              <text class="svc-type">{{ item.typeLine }}</text>
+              <view class="svc-card-head-trail">
+                <text wx:if="{{ item.timeText }}" class="svc-time">{{ item.timeText }}</text>
+                <view
+                  class="svc-read-pill-hit"
+                  catchtap="onCompletionReceiptMarkRead"
+                  data-nid="{{ item.nid }}"
+                  hover-class="svc-read-pill-hit-hover"
+                >
+                  <text class="svc-read-pill-text svc-read-pill-text--{{ item.themeKey }}">已读</text>
+                </view>
+              </view>
+            </view>
+            <view class="svc-card-body svc-card-body--receipt">
+              <text class="svc-primary">{{ item.primary }}</text>
+            </view>
+            <view
+              class="svc-card-foot"
+              catchtap="onCompletionReceiptOpenDetail"
+              data-nid="{{ item.nid }}"
+              data-biztype="{{ item.bizType }}"
+              data-bizid="{{ item.bizId }}"
+            >
+              <text class="svc-foot-hint">查看回执详情</text>
+              <text class="svc-foot-arrow">›</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </block>
+
+    <view class="svc-toolbar">
+      <text class="svc-toolbar-title">已处理</text>
+      <text class="svc-toolbar-desc">最近完成的记录</text>
+    </view>
+
+    <view wx:if="{{ doneLoading }}" class="svc-placeholder">加载中…</view>
+    <van-empty wx:elif="{{ unifiedDone.length === 0 }}" description="暂无已处理记录" />
+    <view wx:else class="svc-session">
+      <view
+        wx:for="{{ unifiedDone }}"
+        wx:key="key"
+        class="svc-card svc-card--{{ item.themeKey }} {{ item.hasUnreadNotice ? 'svc-card--unread' : 'svc-card--muted' }} svc-card-tap"
+        data-kind="{{ item.workKind }}"
+        data-id="{{ item.id }}"
+        bindtap="onWorkTap"
+      >
+        <view class="svc-card-inner">
+          <view class="svc-card-head">
+            <text class="svc-type">{{ item.present.typeLine }}</text>
+            <view class="svc-card-head-trail">
+              <text wx:if="{{ item.present.timeText }}" class="svc-time">{{ item.present.timeText }}</text>
+              <view
+                wx:if="{{ item.hasUnreadNotice }}"
+                class="svc-read-pill-hit"
+                catchtap="markWorkItemRead"
+                data-kind="{{ item.workKind }}"
+                data-id="{{ item.id }}"
+                hover-class="svc-read-pill-hit-hover"
+              >
+                <text class="svc-read-pill-text svc-read-pill-text--{{ item.themeKey }}">已读</text>
+              </view>
+            </view>
+          </view>
+          <view class="svc-card-body">
+            <view wx:if="{{ item.present.metaLabel && item.present.metaValue }}" class="svc-meta-row">
+              <text class="svc-meta-k">{{ item.present.metaLabel }}</text>
+              <text class="svc-meta-v">{{ item.present.metaValue }}</text>
+            </view>
+            <text wx:if="{{ item.present.primary }}" class="svc-primary">{{ item.present.primary }}</text>
+            <text wx:if="{{ item.present.secondary }}" class="svc-secondary">{{ item.present.secondary }}</text>
+          </view>
+          <view wx:if="{{ item.workKind === 'claim' }}" class="svc-card-foot svc-card-foot--linkonly">
+            <text class="svc-mini-link svc-mini-link--supplies" data-id="{{ item.id }}" catchtap="onDoneClaimPdfLink">获取下载链接</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+<van-popup show="{{ popupShow }}" round position="center" closeable close-icon-position="top-right" bind:close="onPopupClose" custom-style="width:92%;max-width:680rpx;max-height:76vh;padding:0;--popup-close-icon-z-index:300;">
+  <view wx:if="{{ claimDetail }}" class="pop-root">
+    <view class="pop-top">
+      <text class="pop-title">出库处理</text>
+      <text class="pop-sub">{{ claimDetail.createdAtText }} · {{ claimDetail.statusText }}</text>
+    </view>
+    <scroll-view scroll-y class="pop-scroll">
+      <view class="pop-compact">
+        <text class="pop-k">申请人</text>
+        <text class="pop-v">{{ claimDetail.applicantDisplay }}</text>
+      </view>
+      <view wx:if="{{ claimDetail.status === 'FULFILLED' }}" class="pop-done pop-done-tight">
+        <text class="pop-k">出库</text>
+        <text class="pop-v">{{ claimDetail.fulfilledAtText || '-' }}<text wx:if="{{ claimDetail.fulfilledByName }}"> · {{ claimDetail.fulfilledByName }}</text></text>
+      </view>
+      <view class="pop-lines">
+        <view wx:for="{{ claimDetail.lines }}" wx:key="id" class="pop-line">
+          <view class="pop-line-main">
+            <text class="pop-name">{{ item.snapshotName }}</text>
+            <text class="pop-qty">申{{ item.qty }} / 发{{ item.fulfilledQty != null ? item.fulfilledQty : 0 }}</text>
+          </view>
+          <checkbox-group wx:if="{{ canProcessClaims && claimDetail.status === 'PENDING' }}" data-id="{{ item.id }}" bindchange="onLineGrantChange">
+            <label class="pop-check">
+              <checkbox value="1" checked="{{ grantMap[item.id] === true }}" />
+              <text class="pop-check-txt">发</text>
+            </label>
+          </checkbox-group>
+        </view>
+      </view>
+      <view class="pop-block">
+        <view class="pop-btn ghost" bindtap="getClaimPdfLink">{{ claimPdfLoading ? '处理中…' : '获取下载链接' }}</view>
+        <view wx:if="{{ claimPdfLoading && claimPdfLinks.length === 0 }}" class="pop-v">加载中…</view>
+        <view wx:elif="{{ claimPdfLinks.length === 0 }}" class="pop-v">暂无链接，点击上方按钮生成</view>
+        <view wx:else>
+          <view wx:for="{{ claimPdfLinks }}" wx:key="id" class="pop-line">
+            <view class="pop-line-main">
+              <text class="pop-name">{{ item.fileName || '-' }}</text>
+              <text class="pop-qty">到期：{{ item.expireAt ? item.expireAt.replace('T', ' ').slice(0, 19) : '-' }}</text>
+            </view>
+            <view class="pop-check">
+              <text class="pop-check-txt" data-idx="{{ index }}" bindtap="copyClaimPdfLink">复制</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="pop-foot" wx:if="{{ canProcessClaims && claimDetail.status === 'PENDING' }}">
+      <view class="pop-btn ghost" bindtap="closePopup">取消</view>
+      <view class="pop-btn primary {{ fulfilling ? 'pop-btn-disabled' : '' }}" bindtap="confirmFulfill">
+        {{ fulfilling ? '提交中…' : '确认出库' }}
+      </view>
+    </view>
+    <view class="pop-foot pop-foot-known" wx:else>
+      <view class="pop-btn primary pop-btn-known" bindtap="closePopup">知道了</view>
+    </view>
+  </view>
+
+  <view wx:elif="{{ workOrderDetail }}" class="pop-root">
+    <view class="pop-top">
+      <text class="pop-title">{{ workOrderDetail.kindTitle }}</text>
+      <text class="pop-sub">{{ workOrderDetail.createTimeText }} · {{ workOrderDetail.statusText }}</text>
+    </view>
+    <scroll-view scroll-y class="pop-scroll">
+      <view class="pop-compact">
+        <text class="pop-k">申请人</text>
+        <text class="pop-v">{{ workOrderDetail.applicantLine }}</text>
+      </view>
+      <view wx:if="{{ workOrderDetail.processorLine }}" class="pop-compact">
+        <text class="pop-k">处理人</text>
+        <text class="pop-v">{{ workOrderDetail.processorLine }}</text>
+      </view>
+      <view wx:if="{{ workOrderDetail.isPublicText }}" class="pop-compact">
+        <text class="pop-k">可见性</text>
+        <text class="pop-v">{{ workOrderDetail.isPublicText }}</text>
+      </view>
+      <view class="pop-compact">
+        <text class="pop-k">地点</text>
+        <text class="pop-v">{{ workOrderDetail.location }}</text>
+      </view>
+      <view class="pop-block">
+        <text class="pop-k">内容</text>
+        <text class="pop-v pop-v-multiline">{{ workOrderDetail.content }}</text>
+      </view>
+      <view wx:if="{{ workOrderDetail.startTimeText }}" class="pop-compact">
+        <text class="pop-k">接单时间</text>
+        <text class="pop-v">{{ workOrderDetail.startTimeText }}</text>
+      </view>
+      <view wx:if="{{ workOrderDetail.finishTimeText }}" class="pop-compact">
+        <text class="pop-k">完成时间</text>
+        <text class="pop-v">{{ workOrderDetail.finishTimeText }}</text>
+      </view>
+      <view wx:if="{{ workOrderDetail.resultRemark }}" class="pop-block">
+        <text class="pop-k">处理说明</text>
+        <text class="pop-v pop-v-multiline">{{ workOrderDetail.resultRemark }}</text>
+      </view>
+      <view wx:if="{{ workOrderDetail.hasRequestImages }}" class="pop-img-sec">
+        <text class="pop-sec-title">申请附图</text>
+        <view class="pop-img-row">
+          <image
+            wx:for="{{ workOrderDetail.requestImageUrls }}"
+            wx:for-item="imgUrl"
+            wx:for-index="imgIdx"
+            wx:key="*this"
+            class="pop-thumb"
+            src="{{ imgUrl }}"
+            mode="aspectFill"
+            data-field="request"
+            data-idx="{{ imgIdx }}"
+            bindtap="previewWorkOrderImages"
+          />
+        </view>
+      </view>
+      <view wx:if="{{ workOrderDetail.hasResultImages }}" class="pop-img-sec">
+        <text class="pop-sec-title">处理附图</text>
+        <view class="pop-img-row">
+          <image
+            wx:for="{{ workOrderDetail.resultImageUrls }}"
+            wx:for-item="imgUrl"
+            wx:for-index="imgIdx"
+            wx:key="*this"
+            class="pop-thumb"
+            src="{{ imgUrl }}"
+            mode="aspectFill"
+            data-field="result"
+            data-idx="{{ imgIdx }}"
+            bindtap="previewWorkOrderImages"
+          />
+        </view>
+      </view>
+    </scroll-view>
+    <view class="pop-foot pop-foot-known">
+      <view class="pop-btn primary pop-btn-known" bindtap="closePopup">知道了</view>
+    </view>
+  </view>
+</van-popup>
+</view>

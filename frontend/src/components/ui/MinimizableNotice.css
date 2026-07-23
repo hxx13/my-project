@@ -1,0 +1,335 @@
+/* ═══════════════════════════════════════════════════════════
+   MinimizableNotice — 组件层令牌（第三层）
+   全部引用语义层 var(--app-*)，调用方通过 className 覆写
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 默认令牌（Bento 暖色系） ── */
+.minimizable-notice {
+  --mn-modal-bg:       var(--app-color-surface-elevated);
+  --mn-modal-border:   var(--app-color-border-default);
+  --mn-modal-shadow:   var(--app-elevation-modal);
+  --mn-modal-radius:   var(--app-radius-container);
+
+  --mn-pill-bg:        color-mix(in srgb, var(--app-color-surface-container) 88%, transparent);
+  --mn-pill-border:    var(--app-color-border-default);
+  --mn-pill-shadow:    var(--app-elevation-card);
+  --mn-pill-radius:    var(--app-radius-pill);
+
+  --mn-accent:         var(--app-color-accent);
+  --mn-accent-soft:    var(--app-color-accent-soft);
+  --mn-success:        var(--app-color-feedback-success);
+  --mn-success-soft:   var(--app-color-feedback-success-soft);
+  --mn-warning:        var(--app-color-feedback-warning);
+  --mn-warning-soft:   var(--app-color-feedback-warning-soft);
+
+  --mn-text-primary:   var(--app-color-text-primary);
+  --mn-text-secondary: var(--app-color-text-secondary);
+  --mn-text-inverse:   var(--app-color-text-inverse);
+
+  --mn-z-modal:        200;
+  --mn-z-pill:         320;
+}
+
+/* ── 居中弹窗 backdrop ── */
+.mn-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--mn-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.30);
+  backdrop-filter: blur(4px);
+}
+
+/* ── 居中弹窗卡片 ── */
+.mn-modal-card {
+  position: relative;
+  width: min(92vw, 440px);
+  background: var(--mn-modal-bg);
+  border: 1px solid var(--mn-modal-border);
+  border-radius: var(--mn-modal-radius);
+  box-shadow: var(--mn-modal-shadow);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+/* ── 图标容器 ── */
+.mn-icon-well {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  border: 2px solid var(--mn-accent);
+  background: var(--mn-accent-soft);
+  color: var(--mn-accent);
+  flex-shrink: 0;
+}
+
+.mn-icon-well--success {
+  border-color: var(--mn-success);
+  background: var(--mn-success-soft);
+  color: var(--mn-success);
+}
+
+.mn-icon-well--warning {
+  border-color: var(--mn-warning);
+  background: var(--mn-warning-soft);
+  color: var(--mn-warning);
+}
+
+/* ── 标题 / 描述 ── */
+.mn-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--mn-text-primary);
+  line-height: 1.4;
+}
+
+.mn-desc {
+  font-size: 0.8125rem;
+  color: var(--mn-text-secondary);
+  line-height: 1.5;
+  max-width: 36ch;
+}
+
+/* ── 自定义内容插槽（extra slot）── */
+.mn-extra {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* ── 倒计时行 ── */
+.mn-countdown-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.mn-countdown-badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background: var(--mn-warning-soft);
+  color: var(--mn-warning);
+  letter-spacing: 0.04em;
+}
+
+.mn-countdown-time {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--mn-text-primary);
+}
+
+/* ── 按钮行 ── */
+.mn-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.mn-btn {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  border-radius: var(--app-radius-element);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease-out;
+  border: none;
+}
+
+.mn-btn--primary {
+  background: var(--mn-accent);
+  color: var(--mn-text-inverse);
+}
+.mn-btn--primary:hover {
+  filter: brightness(1.08);
+}
+
+.mn-btn--ghost {
+  background: transparent;
+  color: var(--mn-text-secondary);
+}
+.mn-btn--ghost:hover {
+  background: var(--app-color-surface-hover);
+  color: var(--mn-text-primary);
+}
+
+.mn-btn--secondary {
+  background: transparent;
+  color: var(--mn-warning);
+  border: 1px solid var(--mn-warning);
+}
+.mn-btn--secondary:hover {
+  background: var(--mn-warning-soft);
+}
+
+/* ── 关闭 & 最小化按钮 ── */
+.mn-close-btn {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--mn-text-secondary);
+  cursor: pointer;
+  transition: background 150ms;
+}
+.mn-close-btn:hover {
+  background: var(--app-color-surface-hover);
+  color: var(--mn-text-primary);
+}
+
+.mn-minimize-btn {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--mn-text-secondary);
+  cursor: pointer;
+  transition: background 150ms;
+}
+.mn-minimize-btn:hover {
+  background: var(--app-color-surface-hover);
+  color: var(--mn-text-primary);
+}
+
+/* ── 飞行中的卡片（覆盖在居中弹窗上） ── */
+.mn-fly-card {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+  z-index: var(--mn-z-modal);
+}
+
+/* ── 角落胶囊 ── */
+.mn-pill-portal {
+  position: fixed;
+  z-index: var(--mn-z-pill);
+}
+
+.mn-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 40px;
+  padding: 0 0.75rem;
+  background: var(--mn-pill-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--mn-pill-border);
+  border-radius: var(--mn-pill-radius);
+  box-shadow: var(--mn-pill-shadow);
+  cursor: pointer;
+  user-select: none;
+  transition: box-shadow 200ms ease-out;
+}
+.mn-pill:hover {
+  box-shadow: var(--app-elevation-dropdown);
+}
+
+.mn-pill-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--mn-accent);
+  flex-shrink: 0;
+}
+
+.mn-pill-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--mn-warning);
+  white-space: nowrap;
+}
+
+.mn-pill-time {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--mn-text-primary);
+  white-space: nowrap;
+}
+
+.mn-pill-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--mn-text-secondary);
+  cursor: pointer;
+  margin-left: 0.25rem;
+  flex-shrink: 0;
+}
+.mn-pill-dismiss:hover {
+  background: var(--app-color-surface-hover);
+  color: var(--mn-text-primary);
+}
+
+/* ── 动画关键帧 ── */
+@keyframes mn-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes mn-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes mn-scale-in {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+@keyframes mn-scale-out {
+  from { opacity: 1; transform: scale(1)    translateY(0); }
+  to   { opacity: 0; transform: scale(0.94) translateY(4px); }
+}
+@keyframes mn-pill-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes mn-pill-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.8); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mn-backdrop,
+  .mn-modal-card,
+  .mn-pill {
+    animation: none !important;
+  }
+}

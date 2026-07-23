@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.supplies.mapper.SupplyClaimOrderMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.supplies.entity.SupplyClaimOrder">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="applicantName" column="applicant_name"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="fulfilledAt" column="fulfilled_at"/>
+        <result property="fulfilledBy" column="fulfilled_by"/>
+        <result property="deleted" column="deleted"/>
+        <result property="deletedTime" column="deleted_time"/>
+        <result property="deletedBy" column="deleted_by"/>
+        <result property="purgeAfterTime" column="purge_after_time"/>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO supply_claim_order(id, user_id, applicant_name, status, created_at)
+        VALUES (#{id}, #{userId}, #{applicantName}, #{status}, #{createdAt})
+    </insert>
+
+    <select id="findById" resultMap="Base">
+        SELECT * FROM supply_claim_order WHERE id = #{id} AND deleted = 0 LIMIT 1
+    </select>
+
+    <select id="findByIdAny" resultMap="Base">
+        SELECT * FROM supply_claim_order WHERE id = #{id} LIMIT 1
+    </select>
+
+    <select id="findByIdForUpdate" resultMap="Base">
+        SELECT * FROM supply_claim_order WHERE id = #{id} AND deleted = 0 LIMIT 1 FOR UPDATE
+    </select>
+
+    <update id="updateWithdrawn">
+        UPDATE supply_claim_order
+        SET status = 'WITHDRAWN'
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = 'PENDING'
+          AND deleted = 0
+    </update>
+
+    <update id="updateFulfilled">
+        UPDATE supply_claim_order
+        SET status = 'FULFILLED',
+            fulfilled_at = #{fulfilledAt},
+            fulfilled_by = #{fulfilledBy}
+        WHERE id = #{id}
+          AND status = 'PENDING'
+          AND deleted = 0
+    </update>
+
+    <select id="listPendingAll" resultMap="Base">
+        SELECT * FROM supply_claim_order
+        WHERE status = 'PENDING'
+          AND deleted = 0
+        ORDER BY created_at ASC
+    </select>
+
+    <select id="countPendingAll" resultType="int">
+        SELECT COUNT(1) FROM supply_claim_order
+        WHERE status = 'PENDING' AND deleted = 0
+    </select>
+
+    <select id="listPendingByUser" resultMap="Base">
+        SELECT * FROM supply_claim_order
+        WHERE status = 'PENDING' AND user_id = #{userId} AND deleted = 0
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="countPendingByUser" resultType="int">
+        SELECT COUNT(1) FROM supply_claim_order
+        WHERE status = 'PENDING' AND user_id = #{userId} AND deleted = 0
+    </select>
+
+    <select id="listMine" resultMap="Base">
+        SELECT * FROM supply_claim_order
+        WHERE user_id = #{userId}
+          AND deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countMine" resultType="int">
+        SELECT COUNT(1) FROM supply_claim_order
+        WHERE user_id = #{userId}
+          AND deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
+
+    <select id="listByUserCreatedBetween" resultMap="Base">
+        SELECT * FROM supply_claim_order
+        WHERE user_id = #{userId}
+          AND deleted = 0
+          AND created_at &gt;= #{from}
+          AND created_at &lt; #{toExclusive}
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByUserCreatedBetween" resultType="int">
+        SELECT COUNT(1) FROM supply_claim_order
+        WHERE user_id = #{userId}
+          AND deleted = 0
+          AND created_at &gt;= #{from}
+          AND created_at &lt; #{toExclusive}
+    </select>
+
+    <select id="listRecentClosedAll" resultMap="Base">
+        SELECT *
+        FROM supply_claim_order
+        WHERE status IN ('FULFILLED', 'WITHDRAWN')
+          AND deleted = 0
+        ORDER BY COALESCE(fulfilled_at, created_at) DESC, created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="listRecentClosedByUser" resultMap="Base">
+        SELECT *
+        FROM supply_claim_order
+        WHERE user_id = #{userId}
+          AND status IN ('FULFILLED', 'WITHDRAWN')
+          AND deleted = 0
+        ORDER BY COALESCE(fulfilled_at, created_at) DESC, created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <update id="deleteById">
+        UPDATE supply_claim_order
+        SET deleted = 1,
+            deleted_time = NOW(),
+            deleted_by = #{operatorId},
+            purge_after_time = #{purgeAfter}
+        WHERE id = #{id}
+          AND deleted = 0
+    </update>
+
+    <select id="listRecycle" resultMap="Base">
+        SELECT *
+        FROM supply_claim_order
+        WHERE deleted = 1
+        ORDER BY deleted_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="listRecycleByUser" resultMap="Base">
+        SELECT *
+        FROM supply_claim_order
+        WHERE deleted = 1
+          AND user_id = #{userId}
+        ORDER BY deleted_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countRecycle" resultType="int">
+        SELECT COUNT(1)
+        FROM supply_claim_order
+        WHERE deleted = 1
+    </select>
+
+    <select id="countRecycleByUser" resultType="int">
+        SELECT COUNT(1)
+        FROM supply_claim_order
+        WHERE deleted = 1
+          AND user_id = #{userId}
+    </select>
+
+    <select id="findRecycleByIdForUser" resultMap="Base">
+        SELECT *
+        FROM supply_claim_order
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted = 1
+        LIMIT 1
+    </select>
+
+    <update id="restoreById">
+        UPDATE supply_claim_order
+        SET deleted = 0,
+            deleted_time = NULL,
+            deleted_by = NULL,
+            purge_after_time = NULL
+        WHERE id = #{id}
+          AND deleted = 1
+    </update>
+
+    <delete id="hardDeleteById">
+        DELETE FROM supply_claim_order
+        WHERE id = #{id}
+          AND deleted = 1
+    </delete>
+
+    <delete id="hardDeleteByIds">
+        DELETE FROM supply_claim_order
+        WHERE deleted = 1
+        <if test="ids != null and ids.size() > 0">
+            AND id IN
+            <foreach collection="ids" item="id" open="(" close=")" separator=",">
+                #{id}
+            </foreach>
+        </if>
+    </delete>
+
+    <select id="listDistinctApplicantUserIds" resultType="java.lang.String">
+        SELECT DISTINCT user_id
+        FROM supply_claim_order
+        WHERE deleted = 0
+          AND user_id IS NOT NULL
+          AND user_id &lt;&gt; ''
+        ORDER BY user_id
+    </select>
+</mapper>

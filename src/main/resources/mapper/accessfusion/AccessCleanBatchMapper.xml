@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessCleanBatchMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_clean_batch (batch_type, window_start, window_end, status)
+        VALUES (#{batchType}, #{windowStart}, #{windowEnd}, #{status})
+    </insert>
+
+    <update id="updateDone">
+        UPDATE access_clean_batch SET
+            status = #{status}, raw_in = #{rawIn}, cleaned_out = #{cleanedOut}, visit_out = #{visitOut},
+            review_count = #{reviewCount}, error_message = #{errorMessage}, finished_at = #{finishedAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanBatch">
+        SELECT id, batch_type AS batchType, window_start AS windowStart, window_end AS windowEnd, status,
+               raw_in AS rawIn, cleaned_out AS cleanedOut, visit_out AS visitOut, review_count AS reviewCount,
+               error_message AS errorMessage, started_at AS startedAt, finished_at AS finishedAt
+        FROM access_clean_batch WHERE id = #{id}
+    </select>
+
+    <select id="selectRecent" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanBatch">
+        SELECT id, batch_type AS batchType, window_start AS windowStart, window_end AS windowEnd, status,
+               raw_in AS rawIn, cleaned_out AS cleanedOut, visit_out AS visitOut, review_count AS reviewCount,
+               error_message AS errorMessage, started_at AS startedAt, finished_at AS finishedAt
+        FROM access_clean_batch ORDER BY id DESC LIMIT #{limit}
+    </select>
+</mapper>

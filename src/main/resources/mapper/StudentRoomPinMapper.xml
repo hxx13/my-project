@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.student.mapper.StudentRoomPinMapper">
+
+    <select id="selectPinnedRoomIds" resultType="string">
+        SELECT room_id FROM student_room_pin WHERE user_id = #{userId} ORDER BY created_at ASC
+    </select>
+
+    <insert id="insert">
+        INSERT IGNORE INTO student_room_pin (user_id, room_id) VALUES (#{userId}, #{roomId})
+    </insert>
+
+    <delete id="delete">
+        DELETE FROM student_room_pin WHERE user_id = #{userId} AND room_id = #{roomId}
+    </delete>
+
+    <select id="exists" resultType="int">
+        SELECT COUNT(*) FROM student_room_pin WHERE user_id = #{userId} AND room_id = #{roomId}
+    </select>
+</mapper>

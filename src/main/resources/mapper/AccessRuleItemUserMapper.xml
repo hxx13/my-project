@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessrule.mapper.AccessRuleItemUserMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO access_rule_item_user (item_id, room_id, aro_user_id)
+        VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (#{r.itemId}, #{r.roomId}, #{r.aroUserId})
+        </foreach>
+    </insert>
+
+    <select id="selectByItemId" resultType="com.example.demo.modules.accessrule.entity.AccessRuleItemUser">
+        SELECT id, item_id AS itemId, room_id AS roomId, aro_user_id AS aroUserId
+        FROM access_rule_item_user WHERE item_id = #{itemId}
+    </select>
+</mapper>

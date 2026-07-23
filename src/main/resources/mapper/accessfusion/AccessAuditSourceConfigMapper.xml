@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessAuditSourceConfigMapper">
+
+    <select id="selectAll" resultType="com.example.demo.modules.accessfusion.entity.AccessAuditSourceConfig">
+        SELECT id, name, enabled, swing_task_id AS swingTaskId, channel_code AS channelCode,
+               person_code AS personCode, person_name AS personName, open_type AS openType,
+               require_mapping AS requireMapping, open_success_only AS openSuccessOnly,
+               auto_sync_enabled AS autoSyncEnabled, last_sync_at AS lastSyncAt,
+               last_sync_count AS lastSyncCount, last_preview_swing_count AS lastPreviewSwingCount,
+               last_preview_raw_count AS lastPreviewRawCount, created_at AS createdAt, updated_at AS updatedAt
+        FROM access_audit_source_config
+        ORDER BY id DESC
+    </select>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessfusion.entity.AccessAuditSourceConfig">
+        SELECT id, name, enabled, swing_task_id AS swingTaskId, channel_code AS channelCode,
+               person_code AS personCode, person_name AS personName, open_type AS openType,
+               require_mapping AS requireMapping, open_success_only AS openSuccessOnly,
+               auto_sync_enabled AS autoSyncEnabled, last_sync_at AS lastSyncAt,
+               last_sync_count AS lastSyncCount, last_preview_swing_count AS lastPreviewSwingCount,
+               last_preview_raw_count AS lastPreviewRawCount, created_at AS createdAt, updated_at AS updatedAt
+        FROM access_audit_source_config WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_audit_source_config (
+            name, enabled, swing_task_id, channel_code, person_code, person_name, open_type,
+            require_mapping, open_success_only, auto_sync_enabled
+        ) VALUES (
+            #{name}, #{enabled}, #{swingTaskId}, #{channelCode}, #{personCode}, #{personName}, #{openType},
+            #{requireMapping}, #{openSuccessOnly}, #{autoSyncEnabled}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE access_audit_source_config SET
+            name = #{name},
+            enabled = #{enabled},
+            swing_task_id = #{swingTaskId},
+            channel_code = #{channelCode},
+            person_code = #{personCode},
+            person_name = #{personName},
+            open_type = #{openType},
+            require_mapping = #{requireMapping},
+            open_success_only = #{openSuccessOnly},
+            auto_sync_enabled = #{autoSyncEnabled}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete">DELETE FROM access_audit_source_config WHERE id = #{id}</delete>
+
+    <update id="updateSyncStats">
+        UPDATE access_audit_source_config SET
+            last_sync_at = NOW(),
+            last_sync_count = #{syncCount},
+            last_preview_swing_count = #{swingPreview},
+            last_preview_raw_count = #{rawPreview}
+        WHERE id = #{id}
+    </update>
+</mapper>

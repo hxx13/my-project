@@ -1,0 +1,576 @@
+<view class="page">
+  <view class="card">
+    <!-- 标题行：标题 + 校区选择 + 操作按钮 -->
+    <view class="title-row">
+      <view class="title">资产记录</view>
+      <view class="title-right">
+        <view class="ui-btn ui-btn-campus {{ campus === '浦东' ? 'campus-pudong' : (campus === '浦西' ? 'campus-puxi' : '') }}" bindtap="onCampusTap">
+          {{ campus || '校区' }} <text class="campus-arrow">▾</text>
+        </view>
+        <view class="ui-btn ui-btn-add" bindtap="openAddPanel">
+          <van-icon name="scan" size="16" /> 添加
+        </view>
+        <view class="ui-btn ui-btn-export" bindtap="openExportPicker">导出</view>
+        <view class="ui-btn ui-btn-transfer" bindtap="openApplyPanel">申请转移</view>
+        <view class="ui-btn {{ batchAssets.length ? 'ui-btn-batch-entry' : 'ui-btn-batch-entry-empty' }}" bindtap="openBatchPanel">
+          批量
+          <text wx:if="{{ batchAssets.length }}" class="batch-entry-count">{{ batchAssets.length }}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 搜索栏 -->
+    <view class="search-bar">
+      <view class="search-input-wrap">
+        <input class="search-input" value="{{ keyword }}" bindinput="onKeywordInput" placeholder="检索编号/名称/地点" />
+        <cover-view wx:if="{{ keyword }}" class="clear-btn" bindtap="onClearKeyword">✕</cover-view>
+        <view class="scan-btn" bindtap="onScanKeyword">
+          <van-icon name="scan" size="18" />
+        </view>
+      </view>
+      <view class="ui-btn ui-btn-search-main" bindtap="applySearch">查询</view>
+      <view class="ui-btn ui-btn-search-filter {{ showFilters ? 'filter-active' : '' }}" bindtap="onToggleFilters">筛选</view>
+      <view class="ui-btn ui-btn-search-sub" bindtap="refreshList">刷新</view>
+    </view>
+
+    <!-- Vant 下拉筛选（默认收起，紧凑尺寸） -->
+    <view wx:if="{{ showFilters }}" class="filter-drop">
+      <van-dropdown-menu active-color="#3b82f6" z-index="{{ 900 }}">
+        <van-dropdown-item
+          title="{{ filterAssetNameIndex > 0 ? assetNameOptions[filterAssetNameIndex] : '资产名称' }}"
+          value="{{ filterAssetNameIndex }}"
+          options="{{ assetNameDropdownOptions }}"
+          bind:change="onAssetNameDropdownChange"
+        />
+        <van-dropdown-item
+          title="{{ filterUserIndex > 0 ? userOptions[filterUserIndex] : '使用人' }}"
+          value="{{ filterUserIndex }}"
+          options="{{ userDropdownOptions }}"
+          bind:change="onUserDropdownChange"
+        />
+        <van-dropdown-item
+          title="{{ filterModelIndex > 0 ? modelOptions[filterModelIndex] : '规格型号' }}"
+          value="{{ filterModelIndex }}"
+          options="{{ modelDropdownOptions }}"
+          bind:change="onModelDropdownChange"
+        />
+      </van-dropdown-menu>
+    </view>
+  </view>
+
+  <!-- 资产列表（flex 填充剩余空间，内部 scroll-view 独立滚动） -->
+  <view class="list-panel">
+    <scroll-view
+      scroll-y
+      class="list-scroll"
+      enhanced
+      show-scrollbar="{{ false }}"
+      lower-threshold="120"
+      bindscrolltolower="onListReachBottom"
+    >
+      <view wx:if="{{ loading }}" class="meta">加载中…</view>
+      <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无资产记录" />
+      <view wx:else>
+        <view wx:for="{{ rows }}" wx:key="id" class="asset-item-card card-campus-{{ item.rowCampus === '浦东' ? 'pudong' : (item.rowCampus === '浦西' ? 'puxi' : 'unknown') }}">
+          <view class="item-row">
+            <text class="item-row-label">资产编号</text>
+            <text class="item-row-value">{{ item.assetCode || '-' }}</text>
+            <view
+              class="campus-tag {{ item.rowCampus === '浦东' ? 'campus-tag-pudong' : (item.rowCampus === '浦西' ? 'campus-tag-puxi' : 'campus-tag-unknown') }}"
+              data-id="{{ item.id }}"
+              catchtap="onRowCampusTap"
+            >
+              {{ item.rowCampus || '未识别' }}
+            </view>
+          </view>
+          <view class="item-row">
+            <text class="item-row-label">资产名称</text>
+            <text class="item-row-value">{{ item.assetName || '-' }}</text>
+          </view>
+          <view class="item-row">
+            <text class="item-row-label">存放地点</text>
+            <text class="item-row-value">{{ item.currentLocation || '-' }}</text>
+          </view>
+          <view class="item-row">
+            <text class="item-row-label">规格型号</text>
+            <text class="item-row-value">{{ item.specModel || '-' }}</text>
+          </view>
+          <view class="item-row item-row-with-actions">
+            <text class="item-row-label">使用人</text>
+            <text class="item-row-value item-row-value-with-actions">{{ item.assetUser || '-' }}</text>
+            <view class="inline-card-actions">
+              <view class="ui-btn ui-btn-plain ui-btn-mini {{ batchAssetIdMap[item.id] ? 'ui-btn-batch-remove' : 'ui-btn-batch-add' }}" data-id="{{ item.id }}" bindtap="onToggleBatchAsset">
+                {{ batchAssetIdMap[item.id] ? '−移除' : '+批量' }}
+              </view>
+              <view class="ui-btn ui-btn-plain ui-btn-mini ui-btn-transfer-card" data-id="{{ item.id }}" bindtap="openApplyForAsset">转移</view>
+              <view class="ui-btn ui-btn-plain ui-btn-mini ui-btn-detail-card" data-id="{{ item.id }}" bindtap="openDetailPanel">详情</view>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{ loadingMore }}" class="meta">加载更多中…</view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 资产详情面板（加宽 / 字号加大 / 空字段折叠） -->
+  <view wx:if="{{ showDetailPanel }}" class="detail-mask" bindtap="closeDetailPanel" catchtouchmove="noop">
+    <view class="detail-panel" catchtap="noop">
+      <view class="panel-head">
+        <text class="panel-title">资产详情</text>
+        <view class="panel-actions">
+          <view wx:if="{{ detailEditing }}" class="panel-act-btn panel-act-save" bindtap="saveDetailEdit">保存</view>
+          <view wx:else class="panel-act-btn panel-act-edit" bindtap="startDetailEdit">编辑</view>
+          <view wx:if="{{ detailEditing }}" class="panel-act-btn panel-act-scan" bindtap="openScanFill">扫码填充</view>
+          <view class="panel-act-btn {{ batchAssetIdMap[detailAsset.id] ? 'panel-act-remove' : 'panel-act-add' }}" bindtap="onToggleBatchAsset" data-id="{{ detailAsset.id }}">
+            {{ batchAssetIdMap[detailAsset.id] ? '− 移出' : '+ 批量' }}
+          </view>
+          <view class="panel-act-btn panel-act-close" bindtap="closeDetailPanel">关闭</view>
+        </view>
+      </view>
+      <scroll-view scroll-y class="detail-scroll">
+        <view class="detail-card">
+          <view class="detail-row">
+            <text class="detail-label">资产名称</text>
+            <block wx:if="{{ detailEditing }}">
+              <input class="input detail-edit-input" value="{{ detailAssetName }}" bindinput="onDetailAssetNameInput" placeholder="请输入资产名称" />
+            </block>
+            <block wx:else>
+              <text class="detail-value">{{ detailAsset.assetName || '-' }}</text>
+            </block>
+          </view>
+          <view class="detail-row">
+            <text class="detail-label">资产编号</text>
+            <text class="detail-value">{{ detailAsset.assetCode || '-' }}</text>
+          </view>
+          <view class="detail-row">
+            <text class="detail-label">存放地点</text>
+            <block wx:if="{{ detailEditing }}">
+              <input class="input detail-edit-input" value="{{ detailLocation }}" bindinput="onDetailLocationInput" placeholder="请输入存放地点" />
+            </block>
+            <block wx:else>
+              <text class="detail-value">{{ detailLocation || '-' }}</text>
+            </block>
+          </view>
+        </view>
+
+        <!-- 有值字段按分组折叠 -->
+        <block wx:for="{{ detailGroups }}" wx:for-item="group" wx:key="name">
+          <view class="detail-group-header" data-name="{{ group.name }}" bindtap="toggleGroup">
+            <text class="group-title">{{ group.name }}</text>
+            <text class="group-arrow">{{ group.open ? '▴' : '▾' }}</text>
+          </view>
+          <view wx:if="{{ group.open }}" class="detail-card">
+            <view wx:for="{{ group.columns }}" wx:for-item="col" wx:key="columnKey" class="detail-row">
+              <text class="detail-label">{{ col.displayLabel || col.columnLabel }}</text>
+              <block wx:if="{{ detailEditing }}">
+                <input class="input detail-edit-input" data-key="{{ col.columnKey }}" value="{{ detailEditValues[col.columnKey] || '' }}" bindinput="onDetailEditInput" placeholder="请输入内容" />
+              </block>
+              <block wx:else>
+                <text class="detail-value">{{ detailAsset.dynamicValues[col.columnKey] || '-' }}</text>
+              </block>
+            </view>
+          </view>
+        </block>
+
+        <!-- 折叠的空字段 -->
+        <view wx:if="{{ detailEmptyColumns.length }}" class="detail-more-wrap">
+          <view class="detail-more-btn" bindtap="toggleMoreFields">
+            <text>{{ detailShowMore ? '收起' : '展开' }}其他字段（{{ detailEmptyColumns.length }}项）</text>
+            <text class="more-arrow">{{ detailShowMore ? '▴' : '▾' }}</text>
+          </view>
+          <view wx:if="{{ detailShowMore }}" class="detail-card">
+            <view wx:for="{{ detailEmptyColumns }}" wx:for-item="col" wx:key="columnKey" class="detail-row">
+              <text class="detail-label detail-label-empty">{{ col.displayLabel || col.columnLabel }}</text>
+              <block wx:if="{{ detailEditing }}">
+                <input class="input detail-edit-input" data-key="{{ col.columnKey }}" value="{{ detailEditValues[col.columnKey] || '' }}" bindinput="onDetailEditInput" placeholder="无" />
+              </block>
+              <block wx:else>
+                <text class="detail-value detail-value-empty">-</text>
+              </block>
+            </view>
+          </view>
+        </view>
+
+        <!-- 转移状态（仅有过转移时展示） -->
+        <view wx:if="{{ detailAsset.latestTransferRequestId }}" class="detail-card detail-transfer-card">
+          <view class="detail-row">
+            <text class="detail-label">转移状态</text>
+            <text class="detail-value detail-value-status">{{ detailTransferStatusText }}</text>
+          </view>
+          <view wx:if="{{ detailAsset.latestTransferTime }}" class="detail-row">
+            <text class="detail-label">转移时间</text>
+            <text class="detail-value">{{ detailAsset.latestTransferTimeText || detailAsset.latestTransferTime }}</text>
+          </view>
+          <view wx:if="{{ detailAsset.latestTransferLocation }}" class="detail-row">
+            <text class="detail-label">转移至</text>
+            <text class="detail-value">{{ detailAsset.latestTransferLocation }}</text>
+          </view>
+          <view wx:if="{{ detailAsset.latestTransferApplicant }}" class="detail-row">
+            <text class="detail-label">申请人</text>
+            <text class="detail-value">{{ detailAsset.latestTransferApplicant }}</text>
+          </view>
+        </view>
+
+        <!-- 资产照片 -->
+        <view class="detail-card">
+          <view class="detail-photo-header">
+            <text class="detail-label">转移前参考照片</text>
+            <view class="ui-icon-btn-sm" catchtap="chooseDetailPhotos">
+              <van-icon name="photograph" size="16" />
+            </view>
+          </view>
+          <view wx:if="{{ detailPhotoUrls.length }}" class="photo-grid">
+            <view wx:for="{{ detailPhotoUrls }}" wx:for-item="purl" wx:for-index="pidx" wx:key="pidx" class="photo-thumb-wrap">
+              <image class="photo-thumb" src="{{ purl.url || purl.tempPath || purl }}" mode="aspectFill" data-index="{{ pidx }}" catchtap="previewDetailPhotoUrls" />
+              <text class="photo-remove" data-index="{{ pidx }}" catchtap="removeDetailPhoto">×</text>
+            </view>
+          </view>
+          <view wx:else class="detail-photo-empty">暂无照片</view>
+        </view>
+
+        <!-- 转移后照片 -->
+        <view wx:if="{{ detailAfterPhotos.length }}" class="detail-card">
+          <text class="detail-label">转移后照片</text>
+          <view class="photo-grid" style="margin-top:10rpx">
+            <view wx:for="{{ detailAfterPhotos }}" wx:for-item="purl" wx:for-index="pidx" wx:key="pidx" class="photo-thumb-wrap">
+              <image class="photo-thumb" src="{{ purl }}" mode="aspectFill" data-index="{{ pidx }}" catchtap="previewDetailAfterPhotos" />
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <!-- 扫码填充确认面板 -->
+  <view wx:if="{{ showFillPanel }}" class="detail-mask" catchtouchmove="noop">
+    <view class="fill-panel" catchtap="noop">
+      <view class="panel-head">
+        <text class="panel-title">扫码填充</text>
+        <text class="panel-close" bindtap="closeFillPanel">关闭</text>
+      </view>
+      <scroll-view scroll-y class="fill-scroll">
+        <view class="field">
+          <text class="label">已扫描资产</text>
+          <text class="value">{{ fillSourceAsset.assetName || '-' }}（{{ fillSourceAsset.assetCode || '-' }}）</text>
+        </view>
+        <view class="field">
+          <text class="label">存放地点</text>
+          <text class="value">{{ fillSourceAsset.location || '-' }}</text>
+        </view>
+        <view class="field"><text class="label">以下字段可自动填充：</text></view>
+        <view wx:for="{{ fillFields }}" wx:key="key" class="fill-field-row" data-key="{{ item.key }}" bindtap="toggleFillField">
+          <view class="fill-checkbox {{ fillChecked[item.key] ? 'fill-checkbox-on' : '' }}">✓</view>
+          <text class="fill-field-label">{{ item.label }}</text>
+          <text class="fill-field-value">{{ item.value }}</text>
+        </view>
+      </scroll-view>
+      <view class="fill-actions">
+        <view class="ui-btn ui-btn-primary ui-btn-mini" data-mode="all" bindtap="applyFillFields">全部填充</view>
+        <view class="ui-btn ui-btn-plain ui-btn-mini" data-mode="checked" bindtap="applyFillFields">填充选中</view>
+        <view class="ui-btn ui-btn-plain ui-btn-mini" data-mode="empty" bindtap="applyFillFields">仅填空字段</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 添加资产面板 -->
+  <view wx:if="{{ showAddPanel }}" class="mask" catchtouchmove="noop">
+    <view class="panel">
+      <view class="panel-head">
+        <text class="panel-title">添加资产</text>
+        <text class="panel-close" bindtap="closeAddPanel">关闭</text>
+      </view>
+      <view wx:if="{{ addExistingAsset }}" class="existing-hint">
+        <view class="existing-icon">⚠️</view>
+        <view class="existing-text">该资产编号已存在于系统中</view>
+        <view class="existing-detail">{{ addExistingAsset.assetName }} · {{ addExistingAsset.location || '未知地点' }}</view>
+        <view class="existing-actions">
+          <view class="ui-btn ui-btn-primary ui-btn-mini" bindtap="viewExistingAssetDetail">查看详情</view>
+          <view class="ui-btn ui-btn-plain ui-btn-mini" bindtap="closeAddPanel">关闭</view>
+        </view>
+      </view>
+      <block wx:else>
+        <view class="field">
+          <text class="label">资产编号</text>
+          <view class="row">
+            <input class="input" value="{{ addAssetCode }}" placeholder="扫码或手动输入编号" />
+            <view class="ui-btn ui-btn-primary ui-btn-mini" bindtap="onScanAddAssetCode">
+              <van-icon name="scan" size="16" /> 扫码
+            </view>
+          </view>
+        </view>
+        <view class="field">
+          <text class="label">资产名称（必填）</text>
+          <input class="input" value="{{ addAssetName }}" bindinput="onAddAssetNameInput" placeholder="请输入资产名称" />
+        </view>
+        <view class="field">
+          <text class="label">存放地点</text>
+          <view class="location-input-wrap">
+            <input class="input" value="{{ addLocation }}" bindinput="onAddLocationInput" bindblur="onAddLocationBlur" placeholder="输入或选择已有地点" />
+            <view wx:if="{{ showLocationPicker && locationFiltered.length }}" class="location-suggestions">
+              <view wx:for="{{ locationFiltered }}" wx:key="index" class="location-suggestion-item" data-index="{{ index }}" catchtap="selectLocationSuggestion">{{ item }}</view>
+            </view>
+          </view>
+        </view>
+        <view class="field">
+          <text class="label">备注（可选）</text>
+          <input class="input" value="{{ addNote }}" bindinput="onAddNoteInput" placeholder="备注信息" />
+        </view>
+        <view class="field">
+          <text class="label">资产照片（可选）</text>
+          <view class="photo-toolbar">
+            <view class="ui-icon-btn {{ addUploadingPhoto ? 'ui-btn-disabled' : '' }}" catchtap="chooseAddPhotos">
+              <van-icon wx:if="{{ !addUploadingPhoto }}" name="photograph" size="18" />
+              <text wx:else>...</text>
+            </view>
+          </view>
+          <view wx:if="{{ addPhotoUrls.length }}" class="photo-grid">
+            <view wx:for="{{ addPhotoUrls }}" wx:for-index="aidx" wx:key="aidx" class="photo-thumb-wrap">
+              <image class="photo-thumb" src="{{ item.url || item.tempPath }}" mode="aspectFill" data-index="{{ aidx }}" catchtap="previewAddPhotos" />
+              <text class="photo-remove" data-index="{{ aidx }}" catchtap="removeAddPhoto">×</text>
+            </view>
+          </view>
+        </view>
+        <view class="ui-btn ui-btn-primary ui-btn-submit" bindtap="submitAddAsset">提交创建资产</view>
+      </block>
+    </view>
+  </view>
+
+  <!-- 申请转移面板（居中弹窗 + 扫码锁定） -->
+  <view wx:if="{{ showApplyPanel }}" class="detail-mask" catchtouchmove="noop">
+    <view class="apply-panel" catchtap="noop">
+      <view class="panel-head">
+        <text class="panel-title">申请转移</text>
+        <view class="panel-actions">
+          <text wx:if="{{ applyStep === 'form' }}" class="panel-close" bindtap="backToSearch">重选</text>
+          <text class="panel-close" bindtap="closeApplyPanel">关闭</text>
+        </view>
+      </view>
+
+      <!-- 搜索步骤 -->
+      <block wx:if="{{ applyStep === 'search' }}">
+        <view class="field">
+          <text class="label">搜索或扫码锁定资产</text>
+          <view class="row">
+            <input class="input" value="{{ searchKeyword }}" bindinput="onApplySearchInput" placeholder="输入编号或名称" />
+            <view class="ui-btn ui-btn-primary ui-btn-mini" bindtap="onScanApplyAsset">
+              <van-icon name="scan" size="16" />
+            </view>
+            <view class="ui-btn ui-btn-primary ui-btn-mini" bindtap="doApplySearch">搜索</view>
+          </view>
+        </view>
+        <scroll-view wx:if="{{ searchRows.length }}" scroll-y class="apply-search-scroll">
+          <view wx:for="{{ searchRows }}" wx:key="id" class="search-row" data-id="{{ item.id }}" bindtap="pickApplyAsset">
+            <view class="search-name">{{ item.assetName }}</view>
+            <view class="search-sub">{{ item.assetCode }} · {{ item.location || '-' }}</view>
+          </view>
+        </scroll-view>
+        <view wx:elif="{{ searchKeyword && !searchRows.length }}" class="meta">未找到匹配资产</view>
+      </block>
+
+      <!-- 表单步骤 -->
+      <block wx:if="{{ applyStep === 'form' && applyAsset }}">
+        <view class="transfer-asset-card">
+          <view class="transfer-asset-name">{{ applyAsset.assetName }}</view>
+          <view class="transfer-asset-code">{{ applyAsset.assetCode }}</view>
+          <view class="transfer-asset-from">当前：{{ applyCurrentLocation || '-' }}</view>
+        </view>
+
+        <view class="field">
+          <text class="label">转移日期</text>
+          <picker mode="date" value="{{ transferDate }}" bindchange="onTransferDateChange">
+            <view class="picker picker-date">{{ transferDate || '选择日期' }}</view>
+          </picker>
+        </view>
+
+        <view class="field">
+          <text class="label">转移至</text>
+          <view class="location-input-wrap">
+            <input class="input" value="{{ transferLocation }}" bindinput="onTransferLocationInput" bindblur="onTransferLocationBlur" placeholder="目标存放地点" />
+            <view wx:if="{{ transferLocationPickerShow && transferLocationFiltered.length }}" class="location-suggestions">
+              <view wx:for="{{ transferLocationFiltered }}" wx:key="index" class="location-suggestion-item" data-index="{{ index }}" catchtap="selectTransferLocationSuggestion">{{ item }}</view>
+            </view>
+          </view>
+        </view>
+
+        <view class="field">
+          <text class="label">使用人</text>
+          <input class="input" value="{{ transferUserName }}" bindinput="onTransferUserNameInput" placeholder="更新资产使用人" />
+        </view>
+
+        <view class="field">
+          <text class="label">工号</text>
+          <input class="input" value="{{ transferUserEmployeeId }}" bindinput="onTransferUserEmployeeIdInput" placeholder="使用人工号" />
+        </view>
+
+        <view class="field">
+          <text class="label">备注</text>
+          <input class="input" value="{{ transferRemark }}" bindinput="onTransferRemarkInput" placeholder="选填" />
+        </view>
+
+        <view class="field">
+          <text class="label">转移前照片</text>
+          <view class="photo-toolbar">
+            <view class="ui-icon-btn {{ uploadingPhotoSlot === 'before' ? 'ui-btn-disabled' : '' }}" data-slot="before" catchtap="chooseTransferSlotPhotos">
+              <van-icon wx:if="{{ uploadingPhotoSlot !== 'before' }}" name="photograph" size="18" />
+              <text wx:else>...</text>
+            </view>
+            <text wx:if="{{ transferPhotosBefore.length }}" class="photo-count">{{ transferPhotosBefore.length }}张</text>
+          </view>
+          <view wx:if="{{ transferPhotosBefore.length }}" class="photo-grid">
+            <view wx:for="{{ transferPhotosBefore }}" wx:for-index="bidx" wx:key="bidx" class="photo-thumb-wrap">
+              <image class="photo-thumb" src="{{ item.url || item.tempPath }}" mode="aspectFill" data-slot="before" data-index="{{ bidx }}" catchtap="previewTransferSlotPhotos" />
+              <text class="photo-remove" data-slot="before" data-index="{{ bidx }}" catchtap="removeTransferSlotPhoto">×</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="ui-btn ui-btn-submit" bindtap="submitTransfer">提交转移申请</view>
+      </block>
+    </view>
+  </view>
+
+  <!-- 扫码快捷入口（左下角） -->
+  <view class="scan-float-btn" bindtap="onScanKeyword">
+    <van-icon name="scan" size="22" color="#fff" />
+  </view>
+
+  <!-- 批量记录浮动入口（右下角） -->
+  <view wx:if="{{ batchAssets.length }}" class="batch-float-btn" bindtap="openBatchPanel">
+    <text class="batch-float-icon">⊞</text>
+    <text class="batch-float-count">{{ batchAssets.length }}</text>
+  </view>
+
+  <!-- 批量记录面板 -->
+  <view wx:if="{{ showBatchPanel }}" class="detail-mask" bindtap="closeBatchPanel" catchtouchmove="noop">
+    <view class="batch-panel" catchtap="noop">
+      <view class="panel-head">
+        <text class="panel-title">批量记录（{{ batchAssets.length }}条）</text>
+        <view class="panel-actions">
+          <text class="panel-close" bindtap="onBatchCheckAll">全选</text>
+          <text class="panel-close" bindtap="onBatchUncheckAll">取消全选</text>
+          <text class="panel-close" bindtap="closeBatchPanel">关闭</text>
+        </view>
+      </view>
+      <!-- 工具栏 -->
+      <view class="batch-toolbar">
+        <view class="ui-btn ui-btn-primary ui-btn-mini" bindtap="openBatchScanFill">扫码填充</view>
+        <view class="ui-btn ui-btn-plain ui-btn-mini" bindtap="openBatchEdit">编辑</view>
+        <view class="ui-btn ui-btn-plain ui-btn-mini ui-btn-clear-all" bindtap="onClearAllBatch">清空全部</view>
+        <text class="batch-hint">已勾选 {{ batchCheckedCount }} 项</text>
+      </view>
+      <!-- 资产列表 -->
+      <scroll-view scroll-y class="batch-scroll">
+        <view wx:for="{{ batchAssets }}" wx:key="id" class="batch-asset-row">
+          <view class="batch-checkbox {{ batchChecked[item.id] ? 'batch-checkbox-on' : '' }}" data-id="{{ item.id }}" bindtap="onBatchCheckToggle">
+            <text wx:if="{{ batchChecked[item.id] }}">✓</text>
+          </view>
+          <view class="batch-asset-info">
+            <text class="batch-asset-code">{{ item.assetCode || '-' }}</text>
+            <text class="batch-asset-name">{{ item.assetName || '-' }}<text class="batch-asset-location"> · {{ item.location || '-' }}</text></text>
+          </view>
+          <view class="batch-asset-remove" data-id="{{ item.id }}" bindtap="onToggleBatchAsset">−</view>
+        </view>
+      </scroll-view>
+
+      <!-- 批量扫码填充子面板 -->
+      <view wx:if="{{ showBatchFillPanel }}" class="batch-sub-mask" catchtap="closeBatchFillPanel" catchtouchmove="noop">
+        <view class="batch-sub-panel" catchtap="noop">
+          <view class="panel-head">
+            <text class="panel-title">扫码填充</text>
+            <view class="panel-actions">
+              <text class="panel-close panel-close-primary" bindtap="applyBatchFill">应用填充</text>
+              <text class="panel-close" bindtap="closeBatchFillPanel">关闭</text>
+            </view>
+          </view>
+          <view wx:if="{{ batchFillSourceAsset }}" class="batch-fill-source">
+            来源：{{ batchFillSourceAsset.assetName }}（{{ batchFillSourceAsset.assetCode }}）
+          </view>
+          <scroll-view scroll-y class="batch-fill-scroll">
+            <view wx:for="{{ batchFillFields }}" wx:for-item="field" wx:key="key" class="batch-fill-field">
+              <view class="batch-fill-field-head" data-key="{{ field.key }}" bindtap="onBatchFillFieldToggle">
+                <view class="fill-checkbox {{ batchFillChecked[field.key] ? 'fill-checkbox-on' : '' }}">✓</view>
+                <text class="batch-fill-label">{{ field.label }}</text>
+                <text class="batch-fill-arrow">→</text>
+                <text class="batch-fill-source-val">{{ field.sourceValue }}</text>
+              </view>
+              <!-- 预览：批量资产中该字段的现有值（去重） -->
+              <view wx:if="{{ batchFillChecked[field.key] && field.previews.length }}" class="batch-fill-previews">
+                <text class="batch-fill-previews-title">当前批量中的值：</text>
+                <view wx:for="{{ field.previews }}" wx:for-item="pv" wx:for-index="pvi" wx:key="pvi" class="batch-fill-preview-row">
+                  <text class="batch-fill-preview-val">{{ pv.value }}</text>
+                  <text class="batch-fill-preview-assets">（{{ pv.assetNamesStr }}）</text>
+                </view>
+              </view>
+            </view>
+          </scroll-view>
+        </view>
+      </view>
+
+      <!-- 批量编辑子面板 -->
+      <view wx:if="{{ showBatchEditPanel }}" class="batch-sub-mask" catchtap="closeBatchEditPanel" catchtouchmove="noop">
+        <view class="batch-sub-panel" catchtap="noop">
+          <view class="panel-head">
+            <text class="panel-title">批量编辑</text>
+            <view class="panel-actions">
+              <text class="panel-close panel-close-primary" bindtap="applyBatchEdit">应用编辑</text>
+              <text class="panel-close" bindtap="closeBatchEditPanel">关闭</text>
+            </view>
+          </view>
+          <scroll-view scroll-y class="batch-fill-scroll">
+            <view wx:for="{{ batchEditFields }}" wx:for-item="field" wx:key="key" class="batch-fill-field">
+              <view class="batch-fill-field-head" data-key="{{ field.key }}" bindtap="onBatchEditFieldToggle">
+                <view class="fill-checkbox {{ batchEditChecked[field.key] ? 'fill-checkbox-on' : '' }}">✓</view>
+                <text class="batch-fill-label">{{ field.label }}</text>
+              </view>
+              <block wx:if="{{ batchEditChecked[field.key] }}">
+                <input class="input batch-edit-input" value="{{ batchEditValues[field.key] || '' }}" data-key="{{ field.key }}" bindinput="onBatchEditValueInput" placeholder="输入新值" />
+                <view wx:if="{{ field.previews.length }}" class="batch-fill-previews">
+                  <text class="batch-fill-previews-title">当前批量中的值：</text>
+                  <view wx:for="{{ field.previews }}" wx:for-item="pv" wx:for-index="pvi" wx:key="pvi" class="batch-fill-preview-row">
+                    <text class="batch-fill-preview-val">{{ pv.value }}</text>
+                    <text class="batch-fill-preview-assets">（{{ pv.assetNamesStr }}）</text>
+                  </view>
+                </view>
+              </block>
+            </view>
+          </scroll-view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 导出确认对话框 -->
+  <view wx:if="{{ showExportConfirm }}" class="detail-mask" bindtap="closeExportConfirm" catchtouchmove="noop">
+    <view class="export-confirm-dialog" catchtap="noop">
+      <text class="export-confirm-title">确认导出 Excel</text>
+      <text class="export-confirm-hint">将导出 {{ exportSavedCount }} 列，点击「导出」直接执行</text>
+      <view class="export-confirm-actions">
+        <text class="export-confirm-config" bindtap="onExportConfig">配置列</text>
+        <view class="export-confirm-right">
+          <text class="panel-close" bindtap="closeExportConfirm">取消</text>
+          <text class="panel-close panel-close-primary" bindtap="onExportNow">导出</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 导出列选择面板 -->
+  <view wx:if="{{ showExportPicker }}" class="detail-mask" bindtap="closeExportPicker" catchtouchmove="noop">
+    <view class="export-panel" catchtap="noop">
+      <view class="panel-head">
+        <text class="panel-title">配置导出列</text>
+        <view class="panel-actions">
+          <text class="panel-close" bindtap="onExportToggleAll">{{ exportAllChecked ? '取消全选' : '全选' }}</text>
+          <text class="panel-close panel-close-primary" bindtap="onSaveExportConfig">保存</text>
+          <text class="panel-close" bindtap="closeExportPicker">取消</text>
+        </view>
+      </view>
+      <scroll-view scroll-y class="export-scroll">
+        <view wx:for="{{ exportColumns }}" wx:key="key" class="export-col-row" data-key="{{ item.key }}" bindtap="onExportColumnToggle">
+          <view class="fill-checkbox {{ item.checked ? 'fill-checkbox-on' : '' }}">✓</view>
+          <text class="export-col-label">{{ item.label }}</text>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</view>

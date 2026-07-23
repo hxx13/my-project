@@ -1,0 +1,353 @@
+/* 底部 TabBar 由 embedded van-tabbar placeholder 占位，勿重复 page padding-bottom */
+page {
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.page {
+  height: 100%;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #eef2f7 0%, #f7f8fa 32%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.page-top-filters {
+  flex-shrink: 0;
+  padding: 16rpx 20rpx 12rpx;
+  background: #fff;
+  border-bottom: 1rpx solid #ebedf0;
+  box-shadow: 0 2rpx 12rpx rgba(15, 23, 42, 0.04);
+}
+
+.layout {
+  display: flex;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar-col {
+  width: 196rpx;
+  flex-shrink: 0;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-right: 1rpx solid #ebedf0;
+  box-shadow: 4rpx 0 24rpx rgba(0, 0, 0, 0.03);
+}
+
+.campus-sidebar {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+  background: transparent;
+}
+
+.campus-block {
+  border-bottom: 1rpx solid #f7f7f7;
+}
+
+.campus-row {
+  padding: 24rpx 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.campus-name {
+  font-size: 28rpx;
+  color: #323233;
+  font-weight: 600;
+}
+
+.campus-arrow {
+  font-size: 24rpx;
+  color: #969799;
+}
+
+.floor-list {
+  padding-bottom: 12rpx;
+}
+
+.floor-item {
+  margin: 0 10rpx 10rpx;
+  padding: 10rpx 10rpx 10rpx 12rpx;
+  border-radius: 10rpx;
+  font-size: 22rpx;
+  color: #646566;
+  background: #f6f7f9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
+}
+
+.floor-item-txt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floor-badge {
+  flex-shrink: 0;
+  min-width: 28rpx;
+  height: 30rpx;
+  padding: 0 8rpx;
+  line-height: 30rpx;
+  font-size: 20rpx;
+  font-weight: 600;
+  color: #fff;
+  background: #ee0a24;
+  border-radius: 99rpx;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.floor-item-active {
+  color: #1989fa;
+  background: #e8f3ff;
+  font-weight: 600;
+}
+
+.floor-empty {
+  margin: 0 12rpx 10rpx;
+  font-size: 22rpx;
+  color: #c8c9cc;
+}
+
+/* 横向 flex 子项须 height:100%；height:0 仅适用于 sidebar 内纵向 scroll-view */
+.room-panel {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  padding: 16rpx 20rpx 24rpx;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.panel-head {
+  margin-bottom: 16rpx;
+}
+
+.panel-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+
+.panel-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.panel-sub {
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.empty-text {
+  padding: 48rpx 24rpx;
+  font-size: 26rpx;
+  color: #969799;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.room-group {
+  margin-bottom: 20rpx;
+}
+
+.room-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 4rpx 12rpx;
+  margin-bottom: 2rpx;
+  border-bottom: 1rpx solid #ebedf0;
+}
+
+.room-group-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #323233;
+}
+
+.room-group-count {
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.audit-card {
+  background: #fff;
+  border-radius: 12rpx;
+  padding: 14rpx 16rpx;
+  margin-bottom: 12rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+  border: 1rpx solid #ebedf0;
+}
+
+.audit-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+  gap: 10rpx;
+}
+
+.audit-name {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #323233;
+}
+
+.audit-id {
+  font-size: 20rpx;
+  color: #969799;
+  word-break: break-all;
+  text-align: right;
+  flex: 1;
+}
+
+.audit-row {
+  display: flex;
+  gap: 10rpx;
+  font-size: 22rpx;
+  line-height: 1.45;
+  margin-bottom: 4rpx;
+}
+
+.audit-row .k {
+  color: #969799;
+  width: 112rpx;
+  flex-shrink: 0;
+}
+
+.audit-row .v {
+  color: #323233;
+  flex: 1;
+  word-break: break-all;
+}
+
+.audit-row .v.mono {
+  font-family: ui-monospace, monospace;
+}
+
+.audit-card-ops {
+  margin-top: 10rpx;
+  padding-top: 10rpx;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.audit-card-ops-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.audit-op-pill {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 52rpx;
+  line-height: 50rpx;
+  padding: 0 6rpx;
+  font-size: 20rpx;
+  font-weight: 500;
+  text-align: center;
+  border-radius: 8rpx;
+  border: 1rpx solid #dcdee0;
+  color: #646566;
+  background: #fafafa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-op-pill--orange {
+  border-color: #ff976a;
+  color: #ed6a0c;
+  background: #fff8f2;
+}
+
+.audit-op-pill--blue {
+  border-color: #1989fa;
+  color: #1989fa;
+  background: #f0f8ff;
+}
+
+.audit-op-pill--gray {
+  border-color: #c8c9cc;
+  color: #323233;
+  background: #fff;
+}
+
+.audit-op-pill--green {
+  border-color: #07c160;
+  color: #07a14f;
+  background: #f1fff7;
+}
+
+.popup-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  margin-bottom: 20rpx;
+  color: #323233;
+}
+
+.popup-save {
+  margin-top: 24rpx !important;
+}
+
+.bind-hint {
+  font-size: 26rpx;
+  color: #646566;
+  margin-bottom: 16rpx;
+}
+
+.filter-pills-room {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 12rpx;
+  width: 100%;
+  min-width: 0;
+}
+
+.filter-pill-room {
+  flex-shrink: 0;
+  padding: 10rpx 28rpx;
+  border-radius: 32rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #64748b;
+  background: #ffffff;
+  border: 1rpx solid #e2e8f0;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.filter-pill-room--active {
+  color: #ffffff;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.exempt-rooms {
+  font-size: 20rpx;
+  color: #b45309;
+  padding: 2rpx 0 0;
+  font-weight: 500;
+}

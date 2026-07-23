@@ -1,0 +1,61 @@
+<view class="hub">
+  <scroll-view wx:if="{{mode === 'overview'}}" class="hub-panel hub-overview" scroll-y>
+    <view class="hub-overview-nav" hover-class="hub-nav-hover" bindtap="enterTelemetry">
+      <text class="hub-overview-nav-title">房间概览</text>
+      <text class="hub-overview-nav-action">返回温湿度</text>
+    </view>
+    <view wx:if="{{telemetryLoading && !telemetryPage}}" class="hub-ov-muted art-pad">加载中…</view>
+    <view wx:elif="{{telemetryErr}}" class="hub-ov-err art-pad">{{telemetryErr}}</view>
+    <view wx:elif="{{!telemetryPage || !telemetryPage.runningStatusRooms || !telemetryPage.runningStatusRooms.length}}" class="hub-ov-muted art-pad">暂无房间概览数据。</view>
+    <block wx:else>
+      <view wx:for="{{telemetryPage.runningStatusRooms}}" wx:for-index="ovIdx" wx:key="ovIdx" class="ov-card">
+        <view class="ov-card-hd">
+          <text class="ov-room-name">{{item.roomName || '未命名房间'}}</text>
+          <text class="ov-campus" wx:if="{{item.campus}}">{{item.campus}}</text>
+        </view>
+        <view class="ov-stats">
+          <view class="ov-stat">
+            <text class="ov-stat-l">总位</text>
+            <text class="ov-stat-v">{{item.totalCapacity != null ? item.totalCapacity : '—'}}</text>
+          </view>
+          <view class="ov-stat">
+            <text class="ov-stat-l">余位卡</text>
+            <text class="ov-stat-v">{{item.remainingCards != null ? item.remainingCards : '—'}}</text>
+          </view>
+          <view class="ov-stat">
+            <text class="ov-stat-l">在楼人数</text>
+            <text class="ov-stat-v">{{item.campusUserCount != null ? item.campusUserCount : '—'}}</text>
+          </view>
+          <view class="ov-stat">
+            <text class="ov-stat-l">借卡</text>
+            <text class="ov-stat-v">{{item.borrowedCardCount != null ? item.borrowedCardCount : '—'}}</text>
+          </view>
+          <view class="ov-stat">
+            <text class="ov-stat-l">跟进</text>
+            <text class="ov-stat-v">{{item.followingCount != null ? item.followingCount : '—'}}</text>
+          </view>
+        </view>
+        <view class="ov-meta" wx:if="{{item.capacityBindRoomId}}">
+          <text class="ov-meta-t">容量绑定流水</text>
+          <text class="ov-meta-v">{{item.capacityBindRoomId}}</text>
+        </view>
+      </view>
+    </block>
+  </scroll-view>
+
+  <view wx:else class="hub-panel hub-telemetry-wrap">
+    <view wx:if="{{telemetryLoading && !telemetryPage}}" class="hub-ov-muted art-pad">加载中…</view>
+    <view wx:elif="{{telemetryErr}}" class="hub-ov-err art-pad">{{telemetryErr}}</view>
+    <animal-room-telemetry
+      wx:else
+      id="telemetry-comp"
+      telemetry-page="{{telemetryPage}}"
+      embedded-host="{{ true }}"
+      bind:telemetryreload="onTelemetryReload"
+      bind:telemetrytagmerge="onTelemetryTagMerge"
+      bind:telemetrytabchange="onTelemetryTabChange"
+      bind:telemetryfetchtab="onTelemetryFetchTab"
+      bind:openroomoverview="onOpenRoomOverview"
+    />
+  </view>
+</view>

@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessCleanPackageItemMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO access_clean_package_item (
+            package_id, last_run_id, swing_row_id, record_id, swing_time, channel_code, channel_name,
+            person_code, person_name, mapping_user_id, department_id, department_name, audience_type,
+            disposition, auto_reason, manual_override, manual_verdict, direction, direction_override, flags_json
+        ) VALUES
+        <foreach collection="items" item="it" separator=",">
+            (
+                #{it.packageId}, #{it.lastRunId}, #{it.swingRowId}, #{it.recordId}, #{it.swingTime}, #{it.channelCode},
+                #{it.channelName}, #{it.personCode}, #{it.personName}, #{it.mappingUserId},
+                #{it.departmentId}, #{it.departmentName}, #{it.audienceType},
+                #{it.disposition}, #{it.autoReason}, #{it.manualOverride}, #{it.manualVerdict},
+                #{it.direction}, #{it.directionOverride}, #{it.flagsJson}
+            )
+        </foreach>
+    </insert>
+
+    <delete id="deleteByPackageId">DELETE FROM access_clean_package_item WHERE package_id = #{packageId}</delete>
+
+    <delete id="deleteByLastRunId">DELETE FROM access_clean_package_item WHERE last_run_id = #{lastRunId}</delete>
+
+    <delete id="deleteAll">DELETE FROM access_clean_package_item</delete>
+
+    <delete id="deleteByChannelCodes">
+        DELETE FROM access_clean_package_item
+        WHERE channel_code IN
+        <foreach collection="channelCodes" item="c" open="(" separator="," close=")">#{c}</foreach>
+    </delete>
+
+    <select id="countAll" resultType="int">SELECT COUNT(*) FROM access_clean_package_item</select>
+
+    <select id="selectByPackage" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanPackageItem">
+        SELECT id, package_id AS packageId, last_run_id AS lastRunId, swing_row_id AS swingRowId, record_id AS recordId,
+               swing_time AS swingTime, channel_code AS channelCode, channel_name AS channelName,
+               person_code AS personCode, person_name AS personName, mapping_user_id AS mappingUserId,
+               department_id AS departmentId, department_name AS departmentName, audience_type AS audienceType,
+               disposition, auto_reason AS autoReason, manual_override AS manualOverride,
+               manual_verdict AS manualVerdict, direction, direction_override AS directionOverride, flags_json AS flagsJson
+        FROM access_clean_package_item
+        WHERE package_id = #{packageId}
+        <if test="disposition != null and disposition != ''">AND disposition = #{disposition}</if>
+        ORDER BY swing_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByPackage" resultType="int">
+        SELECT COUNT(*) FROM access_clean_package_item
+        WHERE package_id = #{packageId}
+        <if test="disposition != null and disposition != ''">AND disposition = #{disposition}</if>
+    </select>
+
+    <select id="selectByLastRunId" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanPackageItem">
+        SELECT id, package_id AS packageId, last_run_id AS lastRunId, swing_row_id AS swingRowId, record_id AS recordId,
+               swing_time AS swingTime, channel_code AS channelCode, channel_name AS channelName,
+               person_code AS personCode, person_name AS personName, mapping_user_id AS mappingUserId,
+               department_id AS departmentId, department_name AS departmentName, audience_type AS audienceType,
+               disposition, auto_reason AS autoReason, manual_override AS manualOverride,
+               manual_verdict AS manualVerdict, direction, direction_override AS directionOverride, flags_json AS flagsJson
+        FROM access_clean_package_item
+        WHERE last_run_id = #{lastRunId}
+        <if test="disposition != null and disposition != ''">AND disposition = #{disposition}</if>
+        ORDER BY swing_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByLastRunId" resultType="int">
+        SELECT COUNT(*) FROM access_clean_package_item
+        WHERE last_run_id = #{lastRunId}
+        <if test="disposition != null and disposition != ''">AND disposition = #{disposition}</if>
+    </select>
+
+    <select id="summarizeByLastRunId" resultType="map">
+        SELECT COUNT(*) AS totalScanned,
+               SUM(CASE WHEN disposition = 'INCLUDED' THEN 1 ELSE 0 END) AS includedCount,
+               SUM(CASE WHEN disposition = 'EXCLUDED' THEN 1 ELSE 0 END) AS excludedCount
+        FROM access_clean_package_item
+        WHERE last_run_id = #{lastRunId}
+    </select>
+
+    <select id="selectAllByPackage" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanPackageItem">
+        SELECT id, package_id AS packageId, last_run_id AS lastRunId, swing_row_id AS swingRowId, record_id AS recordId,
+               swing_time AS swingTime, channel_code AS channelCode, channel_name AS channelName,
+               person_code AS personCode, person_name AS personName, mapping_user_id AS mappingUserId,
+               department_id AS departmentId, department_name AS departmentName, audience_type AS audienceType,
+               disposition, auto_reason AS autoReason, manual_override AS manualOverride,
+               manual_verdict AS manualVerdict, direction, direction_override AS directionOverride, flags_json AS flagsJson
+        FROM access_clean_package_item
+        WHERE package_id = #{packageId}
+        ORDER BY swing_time
+    </select>
+
+    <insert id="upsertBatch">
+        INSERT INTO access_clean_package_item (
+            package_id, last_run_id, swing_row_id, record_id, swing_time, channel_code, channel_name,
+            person_code, person_name, mapping_user_id, department_id, department_name, audience_type,
+            disposition, auto_reason, manual_override, manual_verdict, direction, direction_override, flags_json
+        ) VALUES
+        <foreach collection="items" item="it" separator=",">
+            (
+                #{it.packageId}, #{it.lastRunId}, #{it.swingRowId}, #{it.recordId}, #{it.swingTime}, #{it.channelCode},
+                #{it.channelName}, #{it.personCode}, #{it.personName}, #{it.mappingUserId},
+                #{it.departmentId}, #{it.departmentName}, #{it.audienceType},
+                #{it.disposition}, #{it.autoReason}, #{it.manualOverride}, #{it.manualVerdict},
+                #{it.direction}, #{it.directionOverride}, #{it.flagsJson}
+            )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            last_run_id = VALUES(last_run_id),
+            swing_row_id = VALUES(swing_row_id),
+            swing_time = VALUES(swing_time),
+            channel_name = VALUES(channel_name),
+            person_code = VALUES(person_code),
+            person_name = VALUES(person_name),
+            mapping_user_id = VALUES(mapping_user_id),
+            department_id = VALUES(department_id),
+            department_name = VALUES(department_name),
+            audience_type = VALUES(audience_type),
+            disposition = VALUES(disposition),
+            auto_reason = VALUES(auto_reason),
+            manual_override = COALESCE(VALUES(manual_override), manual_override),
+            manual_verdict = COALESCE(VALUES(manual_verdict), manual_verdict),
+            direction = COALESCE(VALUES(direction), direction),
+            direction_override = COALESCE(VALUES(direction_override), direction_override),
+            flags_json = VALUES(flags_json)
+    </insert>
+
+    <select id="summarizePackage" resultType="map">
+        SELECT COUNT(*) AS totalScanned,
+               SUM(CASE WHEN disposition = 'INCLUDED' THEN 1 ELSE 0 END) AS includedCount,
+               SUM(CASE WHEN disposition = 'EXCLUDED' THEN 1 ELSE 0 END) AS excludedCount,
+               SUM(CASE WHEN manual_verdict = 'REJECTED'
+                        OR mapping_user_id IS NULL OR mapping_user_id = ''
+                   THEN 1 ELSE 0 END) AS reviewCount,
+               MIN(swing_time) AS windowStart,
+               MAX(swing_time) AS windowEnd
+        FROM access_clean_package_item
+        WHERE package_id = #{packageId}
+    </select>
+
+    <!-- 清洗包统计：通道 + 进出方向 + 时间；不与 ARO 校区/楼层混筛 -->
+    <sql id="PackageDirectionExpr">
+        UPPER(TRIM(COALESCE(NULLIF(TRIM(i.direction_override), ''), NULLIF(TRIM(i.direction), ''))))
+    </sql>
+
+    <sql id="PackageAnalyticsScope">
+        FROM access_clean_package_item i
+        WHERE i.disposition = 'INCLUDED'
+        <if test="startTime != null and startTime != ''">AND i.swing_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND i.swing_time &lt;= #{endTime}</if>
+        <if test="channelCodes != null and channelCodes.size() > 0">
+            AND i.channel_code IN
+            <foreach collection="channelCodes" item="ch" open="(" separator="," close=")">#{ch}</foreach>
+        </if>
+        <if test="actionType != null and actionType == 1">
+            AND <include refid="PackageDirectionExpr"/> = 'ENTER'
+        </if>
+        <if test="actionType != null and actionType == 2">
+            AND <include refid="PackageDirectionExpr"/> = 'EXIT'
+        </if>
+    </sql>
+
+    <select id="countAudienceSets" resultType="map">
+        SELECT COUNT(*) AS totalEvents,
+               COUNT(*) AS totalSets,
+               SUM(CASE WHEN i.audience_type = 'STUDENT' THEN 1 ELSE 0 END) AS studentEvents,
+               SUM(CASE WHEN i.audience_type = 'STUDENT' THEN 1 ELSE 0 END) AS studentSets,
+               SUM(CASE WHEN i.audience_type IS NULL OR i.audience_type != 'STUDENT' THEN 1 ELSE 0 END) AS staffEvents,
+               SUM(CASE WHEN i.audience_type IS NULL OR i.audience_type != 'STUDENT' THEN 1 ELSE 0 END) AS staffSets
+        <include refid="PackageAnalyticsScope"/>
+    </select>
+
+    <!-- uniqueUsers 以本查询为准；uniqueGroups 以 listForAggregation + 聚合器逗号拆分为准（与 byProjectGroup 一致） -->
+    <sql id="PackageDistinctUserExpr">
+        COALESCE(
+            NULLIF(TRIM(i.mapping_user_id), ''),
+            NULLIF(TRIM(i.person_code), ''),
+            NULLIF(TRIM(i.record_id), '')
+        )
+    </sql>
+
+    <select id="countScopeMetrics" resultType="map">
+        SELECT
+            (SELECT COUNT(DISTINCT <include refid="PackageDistinctUserExpr"/>)
+             FROM access_clean_package_item i
+             WHERE i.disposition = 'INCLUDED'
+             <if test="startTime != null and startTime != ''">AND i.swing_time &gt;= #{startTime}</if>
+             <if test="endTime != null and endTime != ''">AND i.swing_time &lt;= #{endTime}</if>
+             <if test="channelCodes != null and channelCodes.size() > 0">
+                 AND i.channel_code IN
+                 <foreach collection="channelCodes" item="ch" open="(" separator="," close=")">#{ch}</foreach>
+             </if>
+             <if test="actionType != null and actionType == 1">
+                 AND <include refid="PackageDirectionExpr"/> = 'ENTER'
+             </if>
+             <if test="actionType != null and actionType == 2">
+                 AND <include refid="PackageDirectionExpr"/> = 'EXIT'
+             </if>
+            ) AS uniqueUsers,
+            (SELECT COUNT(DISTINCT g.gname) FROM (
+                SELECT TRIM(ap.project_group_name) AS gname
+                FROM access_clean_package_item i
+                INNER JOIN aro_personnel ap ON ap.user_id = i.mapping_user_id
+                    AND ap.project_group_name IS NOT NULL AND TRIM(ap.project_group_name) != ''
+                WHERE i.disposition = 'INCLUDED'
+                <if test="startTime != null and startTime != ''">AND i.swing_time &gt;= #{startTime}</if>
+                <if test="endTime != null and endTime != ''">AND i.swing_time &lt;= #{endTime}</if>
+                <if test="channelCodes != null and channelCodes.size() > 0">
+                    AND i.channel_code IN
+                    <foreach collection="channelCodes" item="ch" open="(" separator="," close=")">#{ch}</foreach>
+                </if>
+                <if test="actionType != null and actionType == 1">
+                    AND <include refid="PackageDirectionExpr"/> = 'ENTER'
+                </if>
+                <if test="actionType != null and actionType == 2">
+                    AND <include refid="PackageDirectionExpr"/> = 'EXIT'
+                </if>
+                UNION
+                SELECT '未标注课题组' AS gname
+                FROM access_clean_package_item i
+                WHERE i.disposition = 'INCLUDED'
+                <if test="startTime != null and startTime != ''">AND i.swing_time &gt;= #{startTime}</if>
+                <if test="endTime != null and endTime != ''">AND i.swing_time &lt;= #{endTime}</if>
+                <if test="channelCodes != null and channelCodes.size() > 0">
+                    AND i.channel_code IN
+                    <foreach collection="channelCodes" item="ch" open="(" separator="," close=")">#{ch}</foreach>
+                </if>
+                <if test="actionType != null and actionType == 1">
+                    AND <include refid="PackageDirectionExpr"/> = 'ENTER'
+                </if>
+                <if test="actionType != null and actionType == 2">
+                    AND <include refid="PackageDirectionExpr"/> = 'EXIT'
+                </if>
+                AND (
+                    TRIM(COALESCE(i.mapping_user_id, '')) = ''
+                    OR NOT EXISTS (
+                        SELECT 1 FROM aro_personnel ap2
+                        WHERE ap2.user_id = i.mapping_user_id
+                          AND ap2.project_group_name IS NOT NULL AND TRIM(ap2.project_group_name) != ''
+                    )
+                )
+            ) g) AS uniqueGroups
+    </select>
+
+    <select id="countEventsByChannel" resultType="map">
+        SELECT i.channel_code AS channelCode,
+               MAX(i.channel_name) AS channelName,
+               COUNT(*) AS eventCount
+        <include refid="PackageAnalyticsScope"/>
+        GROUP BY i.channel_code
+        ORDER BY eventCount DESC
+    </select>
+
+    <!-- 分布/趋势专用：与 PackageAnalyticsScope 同条件，禁止单独加 mapping 过滤（见 post-save 规模口径计划） -->
+    <select id="listForAggregation" resultType="map">
+        SELECT i.mapping_user_id AS userId,
+               i.person_name AS name,
+               CASE
+                   WHEN COALESCE(NULLIF(i.direction_override, ''), i.direction) = 'ENTER' THEN 1
+                   WHEN COALESCE(NULLIF(i.direction_override, ''), i.direction) = 'EXIT' THEN 2
+                   ELSE NULL
+               END AS accessType,
+               DATE_FORMAT(i.swing_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               COALESCE(mr.region_name, '清洗通道') AS areaName,
+               COALESCE(mr.room_name, i.channel_name, i.channel_code) AS roomName,
+               COALESCE(mr.room_id, CONCAT('ch:', i.channel_code)) AS roomId,
+               i.department_id AS departmentId,
+               (SELECT GROUP_CONCAT(DISTINCT ap.project_group_name SEPARATOR ',')
+                FROM aro_personnel ap
+                WHERE ap.user_id = i.mapping_user_id
+                  AND ap.project_group_name IS NOT NULL AND ap.project_group_name != ''
+                LIMIT 3) AS projectGroupNames,
+               i.audience_type AS audienceType
+        FROM access_clean_package_item i
+        LEFT JOIN room_mapping_channel mc ON mc.channel_code = i.channel_code
+        LEFT JOIN room_mapping_room mr ON mr.room_id = mc.room_id
+        WHERE i.disposition = 'INCLUDED'
+        <if test="startTime != null and startTime != ''">AND i.swing_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND i.swing_time &lt;= #{endTime}</if>
+        <if test="channelCodes != null and channelCodes.size() > 0">
+            AND i.channel_code IN
+            <foreach collection="channelCodes" item="ch" open="(" separator="," close=")">#{ch}</foreach>
+        </if>
+        <if test="actionType != null and actionType == 1">
+            AND <include refid="PackageDirectionExpr"/> = 'ENTER'
+        </if>
+        <if test="actionType != null and actionType == 2">
+            AND <include refid="PackageDirectionExpr"/> = 'EXIT'
+        </if>
+        ORDER BY i.swing_time ASC
+        LIMIT 500000
+    </select>
+
+    <sql id="LibraryItemColumns">
+        id, package_id AS packageId, last_run_id AS lastRunId, swing_row_id AS swingRowId, record_id AS recordId,
+        swing_time AS swingTime, channel_code AS channelCode, channel_name AS channelName,
+        person_code AS personCode, person_name AS personName, mapping_user_id AS mappingUserId,
+        department_id AS departmentId, department_name AS departmentName, audience_type AS audienceType,
+        disposition, auto_reason AS autoReason, manual_override AS manualOverride,
+        manual_verdict AS manualVerdict, direction, direction_override AS directionOverride, flags_json AS flagsJson
+    </sql>
+
+    <sql id="LibraryItemFilter">
+        <where>
+            <if test="startTime != null and startTime != ''">AND i.swing_time &gt;= #{startTime}</if>
+            <if test="endTime != null and endTime != ''">AND i.swing_time &lt;= #{endTime}</if>
+            <if test="channelCodes != null and channelCodes.size() > 0">
+                AND i.channel_code IN
+                <foreach collection="channelCodes" item="ch" open="(" separator="," close=")">#{ch}</foreach>
+            </if>
+            <if test="disposition != null and disposition != ''">AND i.disposition = #{disposition}</if>
+            <if test="audienceType != null and audienceType != ''">AND i.audience_type = #{audienceType}</if>
+            <if test="actionType != null and actionType == 1">
+                AND COALESCE(NULLIF(i.direction_override, ''), i.direction) = 'ENTER'
+            </if>
+            <if test="actionType != null and actionType == 2">
+                AND COALESCE(NULLIF(i.direction_override, ''), i.direction) = 'EXIT'
+            </if>
+            <if test="personName != null and personName != ''">
+                AND i.person_name LIKE CONCAT('%', #{personName}, '%')
+            </if>
+            <if test="lastRunId != null">AND i.last_run_id = #{lastRunId}</if>
+            <if test="statsPullTaskId != null and statsPullTaskId > 0">
+                AND (
+                    EXISTS (
+                        SELECT 1 FROM twin_dahua_swing_record s
+                        WHERE s.id = i.swing_row_id
+                          AND s.task_id = #{statsPullTaskId}
+                          AND s.pull_task_type = 'STATS'
+                    )
+                    OR (
+                        i.swing_row_id IS NULL
+                        AND EXISTS (
+                            SELECT 1 FROM access_clean_execution_log e
+                            WHERE e.id = i.last_run_id AND e.stats_pull_task_id = #{statsPullTaskId}
+                        )
+                    )
+                )
+            </if>
+        </where>
+    </sql>
+
+    <select id="listLibraryItems" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanPackageItem">
+        SELECT <include refid="LibraryItemColumns"/>
+        FROM access_clean_package_item i
+        <include refid="LibraryItemFilter"/>
+        ORDER BY i.swing_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countLibraryItems" resultType="int">
+        SELECT COUNT(*) FROM access_clean_package_item i <include refid="LibraryItemFilter"/>
+    </select>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanPackageItem">
+        SELECT <include refid="LibraryItemColumns"/>
+        FROM access_clean_package_item i WHERE i.id = #{id}
+    </select>
+
+    <update id="updateItemFields">
+        UPDATE access_clean_package_item SET
+            disposition = COALESCE(#{disposition}, disposition),
+            direction_override = COALESCE(#{directionOverride}, direction_override),
+            manual_verdict = COALESCE(#{manualVerdict}, manual_verdict),
+            audience_type = COALESCE(#{audienceType}, audience_type),
+            manual_override = 1
+        WHERE id = #{id}
+    </update>
+
+    <select id="summarizeGlobalLibrary" resultType="map">
+        SELECT COUNT(*) AS totalScanned,
+               SUM(CASE WHEN i.disposition = 'INCLUDED' THEN 1 ELSE 0 END) AS includedCount,
+               SUM(CASE WHEN i.disposition = 'EXCLUDED' THEN 1 ELSE 0 END) AS excludedCount,
+               COUNT(DISTINCT i.channel_code) AS channelCount
+        FROM access_clean_package_item i
+    </select>
+
+    <select id="countIncludedBetween" resultType="int">
+        SELECT COUNT(*) FROM access_clean_package_item
+        WHERE channel_code = #{channelCode}
+          AND disposition = 'INCLUDED'
+          AND swing_time &gt;= #{startTime}
+          AND swing_time &lt;= #{endTime}
+    </select>
+</mapper>

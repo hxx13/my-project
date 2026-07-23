@@ -1,0 +1,60 @@
+package com.example.demo.modules.twin.dashboard.mapper;
+
+import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
+
+@Mapper
+public interface TwinStudentViolationMapper {
+
+    int expireActivePastDue();
+
+    /** 交互验证完成后，若已超过 expire_at 则立即结束 */
+    int expireByIdIfPastDue(@Param("id") long id);
+
+    int supersedeActiveByTargetUserId(@Param("targetUserId") String targetUserId);
+
+    TwinStudentViolation selectActiveByTargetUserId(@Param("targetUserId") String targetUserId);
+
+    int insert(TwinStudentViolation row);
+
+    int updateClearById(@Param("id") long id, @Param("clearedByUserId") String clearedByUserId);
+
+    /** 管理员标记已处理：不再在扫码弹窗展示（非 ACTIVE） */
+    int markProcessedById(@Param("id") long id, @Param("operatorUserId") String operatorUserId);
+
+    int incrementEnterSuccess(@Param("id") long id);
+
+    List<TwinStudentViolation> selectRecent(
+            @Param("targetUserId") String targetUserId,
+            @Param("limit") int limit
+    );
+
+    /** 主页大屏公示：仅 ACTIVE 且未过期，每人最新一条；按创建时间倒序 */
+    List<TwinStudentViolation> selectActiveForDashboardBoard(@Param("limit") int limit);
+
+    TwinStudentViolation selectById(@Param("id") long id);
+
+    int updateEditableById(TwinStudentViolation row);
+
+    /** 交互拼图完成；unlockOnVerify=1 时同步解除禁入 */
+    int acknowledgeInteractiveById(@Param("id") long id, @Param("unlockOnVerify") int unlockOnVerify);
+
+    int deleteById(@Param("id") long id);
+
+    /** 检查用户是否已有 ACTIVE 的自动滞留违规（用于去重） */
+    int countActiveAutoStrandedByUserId(@Param("targetUserId") String targetUserId);
+
+    /** 按笼架违规父记录ID查询子记录 */
+    List<TwinStudentViolation> selectByCageViolationId(@Param("cageViolationId") long cageViolationId);
+
+    /** 设置子记录的笼架违规父记录ID */
+    int setCageViolationId(@Param("id") long id, @Param("cageViolationId") long cageViolationId);
+
+    /** MySQL 命名锁：与当前事务/连接绑定，跨实例互斥 AUTO_STRANDED 创建 */
+    Integer tryAcquireLock(@Param("lockName") String lockName, @Param("timeoutSeconds") int timeoutSeconds);
+
+    Integer releaseLock(@Param("lockName") String lockName);
+}

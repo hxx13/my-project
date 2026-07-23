@@ -1,0 +1,190 @@
+<view class="page">
+  <view class="layout">
+    <view class="sidebar-col">
+      <scroll-view class="campus-sidebar" scroll-y>
+        <view
+          class="mine-nav {{ selectedView === 'mine' ? 'mine-nav-active' : '' }}"
+          bindtap="onMineTap"
+        >
+          <text class="mine-nav-text">我的</text>
+        </view>
+        <view wx:for="{{ campusDisplayList }}" wx:key="campus" class="campus-block">
+          <view class="campus-row" data-campus="{{ item.campus }}" bindtap="onCampusToggle">
+            <text class="campus-name">{{ item.campus }}</text>
+            <text class="campus-arrow">{{ item.expanded ? '▾' : '▸' }}</text>
+          </view>
+          <view wx:if="{{ item.expanded }}" class="floor-list">
+            <view
+              wx:for="{{ item.floors }}"
+              wx:for-item="floorItem"
+              wx:key="floor"
+              class="floor-item {{ selectedView === 'campus' && selectedCampus === item.campus && selectedFloor === floorItem.floor ? 'floor-item-active' : '' }}"
+              data-campus="{{ item.campus }}"
+              data-floor="{{ floorItem.floor }}"
+              bindtap="onFloorTap"
+            >
+              <text class="floor-item-txt">{{ floorItem.floor }}</text>
+              <view wx:if="{{ floorItem.floorPersonCount > 0 }}" class="floor-badge">{{ floorItem.floorPersonCount }}</view>
+            </view>
+            <view wx:if="{{ !item.floors.length }}" class="floor-empty">暂无楼层</view>
+          </view>
+        </view>
+      </scroll-view>
+      <view
+        wx:if="{{ showAuditEntry || showStudentReviewEntry }}"
+        class="sidebar-footers"
+      >
+        <view wx:if="{{ showAuditEntry }}" class="sidebar-footer sidebar-footer-issue" bindtap="onDahuaIssueTap">
+          <text class="sidebar-footer-text">校园卡管理</text>
+        </view>
+        <view wx:if="{{ showAuditEntry }}" class="sidebar-footer" bindtap="onAuditTap">
+          <text class="sidebar-footer-text">审核入口</text>
+        </view>
+        <view wx:if="{{ showStudentReviewEntry }}" class="sidebar-footer sidebar-footer-review" bindtap="onStudentReviewTap">
+          <view class="sidebar-footer-inner">
+            <text class="sidebar-footer-text">学生审核</text>
+            <view wx:if="{{ badgeStudentReviewText }}" class="sidebar-footer-badge">{{ badgeStudentReviewText }}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <scroll-view class="room-panel" scroll-y>
+      <view class="panel-head">
+        <view class="panel-head-left">
+          <text class="panel-title" wx:if="{{ selectedView === 'mine' }}">我的</text>
+          <text class="panel-title" wx:else>{{ selectedCampus }} {{ selectedFloor }}</text>
+          <text class="panel-sub">共 {{ currentRooms.length }} 间</text>
+        </view>
+        <view class="panel-head-right">
+          <view class="panel-head-badges">
+            <view wx:if="{{ presencePhase }}" class="presence-dot presence-dot-{{ presencePhase }}">
+              <view class="presence-dot-core"></view>
+              <text class="presence-dot-label">{{ presenceLabel }}</text>
+            </view>
+            <view class="permission-badge permission-badge-{{ permissionKey }}">{{ permissionBadgeText }}</view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{ !currentRooms.length }}" class="empty-text">
+        {{ selectedView === 'mine' ? '暂无与我相关的房间' : '当前楼层暂无房间' }}
+      </view>
+      <view wx:else class="room-grid">
+        <view
+          wx:for="{{ currentRooms }}"
+          wx:key="roomId"
+          class="room-cell"
+          bindtap="onRoomTap"
+          data-id="{{ item.roomId }}"
+        >
+          <view class="room-card {{ item.permissionKey ? 'room-card-' + item.permissionKey : '' }}">
+            <view class="room-card-line room-card-line-name">
+              <text
+                class="room-name"
+                style="font-size: {{ item.nameFontRpx }}rpx; transform: scale({{ item.nameScale }});"
+              >{{ item.shortName }}</text>
+            </view>
+            <view class="room-card-line room-card-line-dots">
+              <view class="capacity-dots" style="gap: {{ item.dotGapRpx }}rpx;">
+                <view
+                  wx:for="{{ item.dotList }}"
+                  wx:for-item="dot"
+                  wx:key="index"
+                  class="dot-circle {{ dot.colorClass }}"
+                />
+              </view>
+            </view>
+            <view wx:if="{{ item.permissionBadge }}" class="room-card-perm room-card-perm-{{ item.permissionKey }}">{{ item.permissionBadge }}</view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <van-popup
+    show="{{ showDetail }}"
+    position="center"
+    round
+    closeable
+    custom-class="room-detail-popup"
+    bind:close="closeDetail"
+  >
+    <scroll-view scroll-y class="detail-scroll" wx:if="{{ detailRoom }}">
+      <view class="detail-wrap">
+        <view class="detail-title-wrap">
+          <text class="detail-title">{{ detailRoom.roomName }}</text>
+        </view>
+        <view class="detail-stats">
+          <view class="stat-chip">
+            <text class="stat-label">上限</text>
+            <text class="stat-value">{{ detailRoom.totalCapacity }}</text>
+          </view>
+          <view class="stat-chip stat-chip-primary">
+            <text class="stat-label">当前房间人数</text>
+            <text class="stat-value">{{ detailRoom.currentRoomCount }}</text>
+          </view>
+        </view>
+        <view class="detail-section-title">在场人员</view>
+        <view wx:if="{{ !detailRoom.occupantRows.length }}" class="detail-empty">暂无人员</view>
+        <view wx:for="{{ detailRoom.occupantRows }}" wx:key="index" class="occupant-card">
+          <view class="occupant-card-head">
+            <text class="occupant-name">{{ item.userName }}</text>
+            <text class="occupant-badge">{{ item.entryTypeLabel }}</text>
+          </view>
+          <view wx:if="{{ item.projectGroup }}" class="occupant-time-row">
+            <text class="occupant-time-label">课题组</text>
+            <text class="occupant-time-value">{{ item.projectGroup }}</text>
+          </view>
+          <view class="occupant-time-row">
+            <text class="occupant-time-label">进入时间</text>
+            <text class="occupant-time-value">{{ item.entryTime }}</text>
+          </view>
+        </view>
+
+        <!-- 延迟免冻结（与 H5 MobileRoomDetailDialog 同源） -->
+        <view
+          wx:if="{{ scanDelayEnabled && delayOptions.length && subjectUserId }}"
+          class="delay-section"
+        >
+          <view class="delay-toggle-btn {{ delayStatus === 'pending' ? 'delay-toggle-pending' : delayStatus === 'approved' ? 'delay-toggle-approved' : '' }}" bindtap="{{ delayStatus === 'none' ? 'toggleDelayPanel' : '' }}">
+            <text class="delay-toggle-icon">{{ delayStatus === 'approved' ? '✅' : '⏱' }}</text>
+            <text class="delay-toggle-label">{{ delayStatus === 'pending' ? '审核中' : delayStatus === 'approved' ? (delayApprovedLabel || '已通过') : scanDelayButtonLabel }}</text>
+            <text wx:if="{{ delayStatus === 'none' }}" class="delay-toggle-arrow">{{ showDelayPanel ? '▴' : '▾' }}</text>
+          </view>
+
+          <view wx:if="{{ showDelayPanel }}" class="delay-option-list">
+            <view
+              wx:for="{{ delayOptions }}"
+              wx:key="id"
+              class="delay-option-row {{ activeDelayOptionId === item.id ? 'delay-option-row-active' : '' }}"
+            >
+              <!-- 选项左边界固定，右边界向左压缩（与 H5 MobileRoomDetailDialog 一致） -->
+              <view
+                class="delay-option-main {{ activeDelayOptionId === item.id ? 'delay-option-main-active' : '' }}"
+                data-id="{{ item.id }}"
+                bindtap="onDelayOptionTap"
+              >
+                <view class="delay-option-title-row">
+                  <text class="delay-option-label">{{ item.optionLabel }}</text>
+                  <text wx:if="{{ item.requireApproval }}" class="delay-option-tag">需审核</text>
+                </view>
+                <text wx:if="{{ item.hint }}" class="delay-option-hint">{{ item.hint }}</text>
+              </view>
+              <view class="delay-action-btn delay-action-cancel" catchtap="onDelayCancel">取消</view>
+              <view
+                class="delay-action-btn delay-action-confirm {{ delaySubmitting && activeDelayOptionId === item.id ? 'delay-action-disabled' : '' }}"
+                data-id="{{ item.id }}"
+                catchtap="onDelayConfirm"
+              >
+                <text wx:if="{{ delaySubmitting && activeDelayOptionId === item.id }}">…</text>
+                <text wx:elif="{{ item.requireApproval }}">提交</text>
+                <text wx:else>确认</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </van-popup>
+</view>

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.upload.mapper.UploadFileRecordMapper">
+
+    <resultMap id="BaseResultMap" type="com.example.demo.modules.upload.entity.UploadFileRecord">
+        <id column="id" property="id"/>
+        <result column="storage_key" property="storageKey"/>
+        <result column="public_url" property="publicUrl"/>
+        <result column="wechat_file_id" property="wechatFileId"/>
+        <result column="original_name" property="originalName"/>
+        <result column="mime_type" property="mimeType"/>
+        <result column="size_bytes" property="sizeBytes"/>
+        <result column="source" property="source"/>
+        <result column="synced_to_wechat" property="syncedToWechat"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.example.demo.modules.upload.entity.UploadFileRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO upload_file_record (storage_key, public_url, wechat_file_id,
+            original_name, mime_type, size_bytes, source, synced_to_wechat)
+        VALUES (#{storageKey}, #{publicUrl}, #{wechatFileId},
+            #{originalName}, #{mimeType}, #{sizeBytes}, #{source},
+            #{syncedToWechat})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT * FROM upload_file_record WHERE id = #{id}
+    </select>
+
+    <select id="selectByStorageKey" resultMap="BaseResultMap">
+        SELECT * FROM upload_file_record WHERE storage_key = #{storageKey}
+    </select>
+
+    <select id="selectByWechatFileId" resultMap="BaseResultMap">
+        SELECT * FROM upload_file_record WHERE wechat_file_id = #{wechatFileId} LIMIT 1
+    </select>
+
+    <select id="selectByStorageKeyIn" resultMap="BaseResultMap">
+        SELECT * FROM upload_file_record
+        WHERE storage_key IN
+        <foreach collection="keys" item="key" open="(" separator="," close=")">
+            #{key}
+        </foreach>
+    </select>
+
+    <select id="selectPendingSync" resultMap="BaseResultMap">
+        SELECT * FROM upload_file_record
+        WHERE synced_to_wechat = 0 AND wechat_file_id IS NULL
+        ORDER BY created_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="updateWechatFileId">
+        UPDATE upload_file_record
+        SET wechat_file_id = #{wechatFileId},
+            synced_to_wechat = #{syncedToWechat}
+        WHERE id = #{id}
+    </update>
+
+    <select id="countPendingSync" resultType="int">
+        SELECT COUNT(1) FROM upload_file_record
+        WHERE synced_to_wechat = 0 AND wechat_file_id IS NULL
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM upload_file_record WHERE id = #{id}
+    </delete>
+
+</mapper>

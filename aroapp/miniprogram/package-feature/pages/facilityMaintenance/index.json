@@ -1,0 +1,15 @@
+{
+  "navigationBarTitleText": "检查维护",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "van-tabs": "@vant/weapp/tabs/index",
+    "van-tab": "@vant/weapp/tab/index",
+    "van-cell": "@vant/weapp/cell/index",
+    "van-field": "@vant/weapp/field/index",
+    "van-popup": "@vant/weapp/popup/index",
+    "van-empty": "@vant/weapp/empty/index",
+    "van-datetime-picker": "@vant/weapp/datetime-picker/index",
+    "van-checkbox": "@vant/weapp/checkbox/index",
+    "van-checkbox-group": "@vant/weapp/checkbox-group/index"
+  }
+}

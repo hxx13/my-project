@@ -1,0 +1,127 @@
+.ae-page {
+  min-height: 100vh;
+  background: #f5f6f7;
+  display: flex;
+  flex-direction: column;
+  --cell-font-size: 30rpx;
+  --cell-line-height: 46rpx;
+  --cell-label-font-size: 26rpx;
+  --cell-label-line-height: 40rpx;
+  --field-input-text-color: #323233;
+  --field-placeholder-text-color: #969799;
+}
+
+.ae-scroll {
+  flex: 1;
+  height: 0;
+  padding-bottom: 24rpx;
+}
+
+.ae-section {
+  margin-bottom: 8rpx;
+}
+.ae-section-label {
+  display: block;
+  padding: 20rpx 32rpx 12rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #646566;
+  line-height: 1.4;
+}
+
+.ae-editor-wrap {
+  margin: 0 24rpx;
+  padding: 16rpx;
+  background: #fff;
+  border-radius: 18rpx;
+  border: 1rpx solid rgba(235, 238, 239, 0.95);
+  box-shadow: 0 4rpx 18rpx rgba(31, 56, 88, 0.04);
+}
+
+.ae-status-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 24rpx;
+  padding: 48rpx;
+}
+.ae-status-text {
+  font-size: 28rpx;
+  color: #646566;
+  line-height: 1.5;
+}
+.ae-error-text {
+  font-size: 30rpx;
+  color: #ee0a24;
+  text-align: center;
+  line-height: 1.55;
+}
+
+.ae-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 32rpx;
+  background: #fff;
+}
+.ae-switch-copy {
+  flex: 1;
+  min-width: 0;
+  padding-right: 16rpx;
+}
+.ae-switch-label {
+  display: block;
+  font-size: 30rpx;
+  color: #323233;
+  line-height: 1.45;
+}
+.ae-switch-hint {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  color: #646566;
+  line-height: 1.5;
+}
+
+.ae-foot {
+  padding: 20rpx 24rpx;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1rpx solid #ebedf0;
+}
+.ae-foot-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+}
+.ae-foot-row--main {
+  margin-top: 12rpx;
+}
+
+.ae-btn {
+  padding: 18rpx 36rpx;
+  font-size: 28rpx;
+  line-height: 1.2;
+  border-radius: 999rpx;
+  border: 1rpx solid transparent;
+  text-align: center;
+}
+.ae-btn--primary {
+  flex: 1;
+  color: #fff;
+  background: linear-gradient(135deg, #c41e3a 0%, #ac1736 100%);
+  box-shadow: 0 4rpx 14rpx rgba(172, 23, 54, 0.22);
+}
+.ae-btn--ghost {
+  min-width: 160rpx;
+  color: #646566;
+  border-color: #dcdee0;
+  background: #fff;
+}
+.ae-btn--danger {
+  color: #ee0a24;
+  border-color: rgba(238, 10, 36, 0.28);
+  background: rgba(238, 10, 36, 0.04);
+}

@@ -1,0 +1,8 @@
+阿里云 ECS 与方案三（云函数 → Spring）对接时安全组建议：
+
+1. 入站放行 Spring 监听端口（常见 8080，或 443 若仅 Nginx 对外）。
+2. 云函数出口 IP 非固定，一般无法只放行「腾讯云」；公网端口建议配合：
+   - Spring app.mp.proxy.secret 与云函数 PROXY_SHARED_SECRET 同时启用；或
+   - 仅 Nginx 对外 TLS，后端 Spring 只监听内网。
+3. SSH（22）建议限制为你的办公/家庭出口 IP，勿对 0.0.0.0/0 长期开放弱口令。
+4. 变更 SPRING_BASE_URL 或换机时，只改云函数环境变量与 DNS/安全组即可。

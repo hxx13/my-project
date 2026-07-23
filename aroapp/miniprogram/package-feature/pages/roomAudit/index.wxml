@@ -1,0 +1,152 @@
+<view class="page">
+  <view class="page-top-filters">
+    <view class="filter-pills-room">
+      <view class="filter-pill-room {{exemptFilter==='all'?'filter-pill-room--active':''}}" data-filter="all" bindtap="onExemptFilterTap">全部</view>
+      <view class="filter-pill-room {{exemptFilter==='exempt'?'filter-pill-room--active':''}}" data-filter="exempt" bindtap="onExemptFilterTap">已豁免</view>
+      <view class="filter-pill-room {{exemptFilter==='controlled'?'filter-pill-room--active':''}}" data-filter="controlled" bindtap="onExemptFilterTap">未豁免</view>
+    </view>
+  </view>
+
+  <view class="layout">
+    <view class="sidebar-col">
+      <scroll-view class="campus-sidebar" scroll-y>
+        <view wx:for="{{ campusDisplayList }}" wx:key="campus" class="campus-block">
+          <view class="campus-row" data-campus="{{ item.campus }}" bindtap="onCampusToggle">
+            <text class="campus-name">{{ item.campus }}</text>
+            <text class="campus-arrow">{{ item.expanded ? '▾' : '▸' }}</text>
+          </view>
+          <view wx:if="{{ item.expanded }}" class="floor-list">
+            <view
+              wx:for="{{ item.floors }}"
+              wx:for-item="floorItem"
+              wx:key="floor"
+              class="floor-item {{ selectedCampus === item.campus && selectedFloor === floorItem.floor ? 'floor-item-active' : '' }}"
+              data-campus="{{ item.campus }}"
+              data-floor="{{ floorItem.floor }}"
+              bindtap="onFloorTap"
+            >
+              <text class="floor-item-txt">{{ floorItem.floor }}</text>
+              <view wx:if="{{ floorItem.floorPersonCount > 0 }}" class="floor-badge">{{ floorItem.floorPersonCount }}</view>
+            </view>
+            <view wx:if="{{ !item.floors.length }}" class="floor-empty">暂无楼层</view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <scroll-view
+      class="room-panel"
+      scroll-y
+      refresher-enabled
+      refresher-triggered="{{ listRefreshing }}"
+      bindrefresherrefresh="onListRefresh"
+    >
+      <view class="panel-head">
+        <view class="panel-head-left">
+          <text class="panel-title" wx:if="{{ selectedCampus && selectedFloor }}">{{ selectedCampus }} {{ selectedFloor }}</text>
+          <text class="panel-title" wx:else>在馆审核</text>
+          <text class="panel-sub" wx:if="{{ selectedCampus && selectedFloor }}">共 {{ roomPersonTotal }} 人 · 下拉刷新</text>
+          <text class="panel-sub" wx:else>请在左侧选择楼层 · 下拉刷新</text>
+        </view>
+      </view>
+
+      <view wx:if="{{ !selectedCampus || !selectedFloor }}" class="empty-text">请展开「浦东」「浦西」，点选楼层后，右侧按房间聚合展示在馆人员与物理卡映射。</view>
+
+      <block wx:else>
+        <van-empty wx:if="{{ !loading && roomPersonTotal === 0 }}" description="本楼层暂无在馆人员" />
+
+        <view wx:for="{{ currentRoomGroups }}" wx:for-item="rg" wx:key="roomKey" class="room-group">
+          <view class="room-group-head">
+            <text class="room-group-title">{{ rg.roomName }}</text>
+            <text class="room-group-count">{{ rg.persons.length }} 人</text>
+          </view>
+
+          <view wx:for="{{ rg.persons }}" wx:for-item="item" wx:key="userId" class="audit-card">
+            <view class="audit-card-head">
+              <text class="audit-name">{{ item.userName || '未知' }}</text>
+              <text class="audit-id">{{ item.userId }}</text>
+            </view>
+            <view class="audit-row"><text class="k">入场</text><text class="v">{{ item.entryTime }} · {{ item.entryTypeLabel }}</text></view>
+            <view wx:if="{{ item.projectGroupName }}" class="audit-row"><text class="k">课题组</text><text class="v">{{ item.projectGroupName }}</text></view>
+            <view wx:if="{{ item.mappingUserName }}" class="audit-row"><text class="k">映射姓名</text><text class="v">{{ item.mappingUserName }}</text></view>
+            <view class="audit-row"><text class="k">映射</text><text class="v">{{ item.hasMapping ? '已绑定' : '未绑定' }}</text></view>
+            <view wx:if="{{ item.hasMapping }}" class="audit-row">
+              <text class="k">卡号</text><text class="v mono">{{ item.cardNo }}</text>
+            </view>
+            <view wx:if="{{ item.hasMapping }}" class="audit-row">
+              <text class="k">大华序号</text><text class="v mono">{{ item.dahuaSeq || '—' }}</text>
+            </view>
+            <view wx:if="{{ item.hasMapping }}" class="audit-row">
+              <text class="k">卡状态</text><text class="v">{{ item.cardStatus }} · 免冻结 {{ item.freezeExemptFlag === 1 ? '开' : '关' }}<text wx:if="{{ item.exemptStatusText }}" class="exempt-detail"> · {{ item.exemptStatusText }}</text></text>
+            </view>
+            <view wx:if="{{ item.exemptRoomNames }}" class="exempt-rooms">房间: {{ item.exemptRoomNames }}</view>
+
+            <view class="audit-card-ops">
+              <view wx:if="{{ item.hasMapping }}" class="audit-card-ops-row">
+                <view
+                  class="audit-op-pill {{ item.cardStatus === 'FROZEN' ? 'audit-op-pill--blue' : 'audit-op-pill--orange' }}"
+                  data-cardno="{{ item.cardNo }}"
+                  data-status="{{ item.cardStatus === 'FROZEN' ? 'NORMAL' : 'FROZEN' }}"
+                  bindtap="onToggleFreeze"
+                >{{ item.cardStatus === 'FROZEN' ? '已冻结·点解冻' : '未冻结·点冻结' }}</view>
+                <view
+                  wx:if="{{ canGrantExempt }}"
+                  class="audit-op-pill audit-op-pill--gray"
+                  data-cardno="{{ item.cardNo }}"
+                  data-flag="{{ item.freezeExemptFlag === 1 ? 0 : 1 }}"
+                  data-aro-user-id="{{ item.userId }}"
+                  data-username="{{ item.userName }}"
+                  bindtap="onToggleExempt"
+                >{{ item.freezeExemptFlag === 1 ? '取消豁免' : '豁免' }}</view>
+                <view
+                  class="audit-op-pill audit-op-pill--green"
+                  data-userid="{{ item.userId }}"
+                  data-roomid="{{ item.roomId }}"
+                  data-roomname="{{ item.roomName }}"
+                  data-username="{{ item.userName }}"
+                  bindtap="onManualExit"
+                >确认离开</view>
+              </view>
+              <view wx:if="{{ !item.hasMapping }}" class="audit-card-ops-row">
+                <view
+                  class="audit-op-pill audit-op-pill--blue"
+                  data-userid="{{ item.userId }}"
+                  data-username="{{ item.userName }}"
+                  bindtap="onOpenBind"
+                >发卡绑定</view>
+                <view
+                  class="audit-op-pill audit-op-pill--green"
+                  data-userid="{{ item.userId }}"
+                  data-roomid="{{ item.roomId }}"
+                  data-roomname="{{ item.roomName }}"
+                  data-username="{{ item.userName }}"
+                  bindtap="onManualExit"
+                >确认离开</view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+
+  <van-popup show="{{ showBindPopup }}" position="center" round closeable bind:close="onCloseBindPopup" custom-style="width:88%;max-width:640rpx;padding:24rpx;">
+    <view class="popup-title">发卡绑定</view>
+    <view class="bind-hint">人员：{{ bindUserName }}（{{ bindUserId }}）</view>
+    <van-field label="物理卡号" value="{{ bindCardNo }}" placeholder="必填" border="{{ true }}" bind:input="onBindCardNoInput" />
+    <van-field label="大华序号" value="{{ bindDahuaSeq }}" placeholder="必填" border="{{ true }}" bind:input="onBindDahuaInput" />
+    <van-button block type="primary" round custom-class="popup-save" bindtap="onSubmitBind">提交绑定</van-button>
+  </van-popup>
+
+  <exempt-setup-panel
+    show="{{ exemptPanelShow }}"
+    card-no="{{ exemptPanelCardNo }}"
+    user-name="{{ exemptPanelUserName }}"
+    aro-user-id="{{ exemptPanelAroUserId }}"
+    submitting="{{ exemptSubmitting }}"
+    bind:close="onExemptPanelClose"
+    bind:confirm="onExemptPanelConfirm"
+  />
+
+  <custom-tab-bar id="room-audit-tabbar" />
+</view>

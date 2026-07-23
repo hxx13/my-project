@@ -1,0 +1,45 @@
+.hbd-page {
+  min-height: 100vh;
+  padding: 28rpx 32rpx;
+  box-sizing: border-box;
+  background: #f7f3f4;
+}
+
+.hbd-title {
+  display: block;
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #323233;
+  line-height: 1.35;
+  margin-bottom: 12rpx;
+}
+
+.hbd-meta {
+  display: block;
+  font-size: 24rpx;
+  color: #969799;
+  margin-bottom: 8rpx;
+}
+
+.hbd-ver {
+  font-size: 26rpx;
+  color: #646566;
+  margin-bottom: 20rpx;
+}
+
+.hbd-scroll {
+  max-height: calc(100vh - 220rpx);
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  box-sizing: border-box;
+  border: 1rpx solid #ebedf0;
+}
+
+.hbd-muted {
+  font-size: 30rpx;
+  color: #646566;
+  line-height: 1.55;
+  padding: 48rpx 0;
+  text-align: center;
+}

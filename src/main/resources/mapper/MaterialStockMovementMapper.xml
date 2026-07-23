@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.material.mapper.MaterialStockMovementMapper">
+    <insert id="insert">
+        INSERT INTO material_stock_movement (item_id, movement_type, qty, stock_after, request_id, request_line_id, operator_user_id, applicant_user_id, remark)
+        VALUES (#{itemId}, #{movementType}, #{qty}, #{stockAfter}, #{requestId}, #{requestLineId}, #{operatorUserId}, #{applicantUserId}, #{remark})
+    </insert>
+    <select id="selectByItemId" resultType="com.example.demo.modules.material.entity.MaterialStockMovement">
+        SELECT * FROM material_stock_movement WHERE item_id = #{itemId} ORDER BY created_at DESC LIMIT #{offset}, #{size}
+    </select>
+    <select id="countByItemId" resultType="int">
+        SELECT COUNT(1) FROM material_stock_movement WHERE item_id = #{itemId}
+    </select>
+    <select id="selectViewsByItemId" resultType="com.example.demo.modules.material.dto.MaterialStockMovementView">
+        SELECT m.id, m.item_id AS itemId, COALESCE(i.name, '未知物品') AS itemName,
+               m.movement_type AS movementType, m.qty, m.stock_after AS stockAfter,
+               m.request_id AS requestId, m.operator_user_id AS operatorUserId,
+               COALESCE(op.name, op2.display_nickname, op2.username) AS operatorName,
+               m.applicant_user_id AS applicantUserId, m.remark,
+               DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+               COALESCE(r.applicant_name, p.name) AS applicantName,
+               COALESCE(r.applicant_group, p.project_group_name) AS applicantGroup,
+               rl.spec_snapshot AS specSnapshot
+        FROM material_stock_movement m
+        LEFT JOIN material_item i ON m.item_id = i.id
+        LEFT JOIN material_request r ON m.request_id = r.id
+        LEFT JOIN material_request_line rl ON m.request_line_id = rl.id
+        LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
+        LEFT JOIN aro_personnel op ON m.operator_user_id = op.user_id
+        LEFT JOIN sys_user op2 ON m.operator_user_id = op2.id
+        WHERE 1=1
+        <if test="itemId != null and itemId > 0">
+            AND m.item_id = #{itemId}
+        </if>
+        <if test="applicantGroup != null and applicantGroup != ''">
+            AND (r.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup})
+        </if>
+        ORDER BY m.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+    <select id="countViewsByItemId" resultType="int">
+        SELECT COUNT(1) FROM material_stock_movement m
+        LEFT JOIN material_request r ON m.request_id = r.id
+        LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
+        WHERE 1=1
+        <if test="itemId != null and itemId > 0">
+            AND m.item_id = #{itemId}
+        </if>
+        <if test="applicantGroup != null and applicantGroup != ''">
+            AND (r.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup})
+        </if>
+    </select>
+    <select id="statsDailyMovements" resultType="java.util.HashMap">
+        SELECT DATE(m.created_at) AS date, m.movement_type AS movementType,
+               COUNT(*) AS movementCount, COALESCE(SUM(ABS(m.qty)), 0) AS totalQty
+        FROM material_stock_movement m
+        <if test="groupId != null and groupId != ''">
+            LEFT JOIN material_request r ON m.request_id = r.id
+        </if>
+        WHERE DATE(m.created_at) BETWEEN #{from} AND #{to}
+        <if test="groupId != null and groupId != ''">
+            AND m.movement_type = 'OUTBOUND' AND r.applicant_group = #{groupId}
+        </if>
+        GROUP BY DATE(m.created_at), m.movement_type ORDER BY date
+    </select>
+    <select id="statsOutboundHeatmap" resultType="java.util.HashMap">
+        SELECT DAYOFWEEK(m.created_at) AS dayOfWeek, HOUR(m.created_at) AS hour, COUNT(*) AS count
+        FROM material_stock_movement m
+        <if test="groupId != null and groupId != ''">
+            LEFT JOIN material_request r ON m.request_id = r.id
+        </if>
+        WHERE m.movement_type = 'OUTBOUND' AND DATE(m.created_at) BETWEEN #{from} AND #{to}
+        <if test="groupId != null and groupId != ''">AND r.applicant_group = #{groupId}</if>
+        GROUP BY DAYOFWEEK(m.created_at), HOUR(m.created_at)
+    </select>
+
+    <delete id="deleteByItemId">
+        DELETE FROM material_stock_movement WHERE item_id = #{itemId}
+    </delete>
+
+    <delete id="deleteOrphan">
+        DELETE m FROM material_stock_movement m
+        LEFT JOIN material_item i ON m.item_id = i.id
+        WHERE i.id IS NULL
+    </delete>
+</mapper>

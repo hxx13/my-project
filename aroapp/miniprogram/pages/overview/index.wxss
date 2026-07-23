@@ -1,0 +1,284 @@
+page {
+  box-sizing: border-box;
+}
+
+.overview-page {
+  min-height: 100vh;
+  background: #f0f5f1;
+  padding: 20rpx 24rpx 30rpx;
+  /* 为自定义 TabBar 预留底部（程序坞显示时） */
+  padding-bottom: calc(30rpx + 50px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.overview-head {
+  margin-bottom: 14rpx;
+}
+
+.overview-title {
+  display: block;
+  font-size: 38rpx;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.overview-sub {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #64748b;
+}
+
+.overview-body {
+  max-height: calc(100vh - 180rpx);
+}
+
+.data-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.total-grid {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.total-card {
+  flex: 1;
+  min-height: 136rpx;
+  border-radius: 22rpx;
+  border: 1rpx solid rgba(30, 55, 90, 0.1);
+  background: linear-gradient(145deg, #ffffff 0%, #f5f7fa 50%, #eef1f6 100%);
+  box-shadow: 0 6rpx 20rpx rgba(20, 40, 70, 0.07);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 22rpx 20rpx;
+  box-sizing: border-box;
+}
+
+.total-title {
+  font-size: 22rpx;
+  color: #64748b;
+  margin-bottom: 10rpx;
+}
+
+.total-value {
+  font-size: 36rpx;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.block-card {
+  margin-bottom: 16rpx;
+  padding: 22rpx 20rpx;
+  border-radius: 22rpx;
+  border: 1rpx solid rgba(30, 55, 90, 0.1);
+  background: linear-gradient(145deg, #ffffff 0%, #f5f7fa 50%, #eef1f6 100%);
+  box-shadow: 0 6rpx 20rpx rgba(20, 40, 70, 0.07);
+  box-sizing: border-box;
+}
+
+.block-title {
+  font-size: 25rpx;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 12rpx;
+}
+
+.pie-cols {
+  display: flex;
+  gap: 16rpx;
+}
+
+.pie-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.pie-col-title {
+  font-size: 22rpx;
+  color: #64748b;
+  margin-bottom: 8rpx;
+}
+
+.pie-row {
+  margin-bottom: 10rpx;
+}
+
+.pie-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
+  margin-bottom: 4rpx;
+}
+
+.pie-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 21rpx;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pie-val {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #64748b;
+}
+
+.bar-bg {
+  height: 12rpx;
+  border-radius: 999rpx;
+  background: #e8edf4;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 999rpx;
+}
+
+.bar-fill-pd {
+  background: linear-gradient(90deg, #2f80ed, #56ccf2);
+}
+
+.bar-fill-px {
+  background: linear-gradient(90deg, #27ae60, #6fcf97);
+}
+
+.line-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.line-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.line-time {
+  width: 74rpx;
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #64748b;
+}
+
+.line-bars {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3rpx;
+}
+
+.line-bar {
+  height: 8rpx;
+  border-radius: 999rpx;
+}
+
+.line-bar-pd {
+  background: #2f80ed;
+}
+
+.line-bar-px {
+  background: #27ae60;
+}
+
+.line-val {
+  width: 110rpx;
+  text-align: right;
+  font-size: 20rpx;
+  color: #334155;
+  flex-shrink: 0;
+}
+
+.rank-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10rpx;
+}
+
+.rank-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.rank-filters-bottom {
+  margin-top: 8rpx;
+  margin-bottom: 6rpx;
+}
+
+.chip {
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  background: #eef2f7;
+  color: #475569;
+  font-size: 20rpx;
+}
+
+.chip-on {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.rank-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 10rpx 4rpx;
+  border-bottom: 1rpx solid #eef2f7;
+}
+
+.rank-no {
+  width: 34rpx;
+  flex-shrink: 0;
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.rank-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 22rpx;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-val {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #334155;
+}
+
+.mini-empty {
+  font-size: 21rpx;
+  color: #94a3b8;
+  padding: 8rpx 0;
+}
+
+.state {
+  text-align: center;
+  padding: 80rpx 0;
+  color: #94a3b8;
+  font-size: 24rpx;
+}
+
+.state-err {
+  color: #b91c1c;
+}
+

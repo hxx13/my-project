@@ -1,0 +1,481 @@
+/* ═══════════════════════════════════════════════════════════
+   TwinSystem — 语义令牌（Semantic Tokens）
+   表达设计意图。亮色主题默认映射。组件只消费此层。
+   ═══════════════════════════════════════════════════════════ */
+
+@layer base {
+  /* ═══════ 🍱 Bento 暖色主题（默认） ═══════ */
+  :root, .theme-standard {
+    /* ── 表面色 — Bento: warm cream #FFF5E6 ── */
+    --app-color-surface-page:      var(--color-warm-50);    /* #FFF5E6 */
+    --app-color-surface-container: var(--color-white);
+    --app-color-surface-elevated:  var(--color-white);
+    --app-color-surface-hover:     var(--color-warm-100);
+    --app-color-surface-active:    var(--color-peach-100);
+
+    /* ── 文字色 ── */
+    --app-color-text-primary:      var(--color-slate-900);
+    --app-color-text-secondary:    var(--color-slate-600);
+    --app-color-text-tertiary:     var(--color-slate-400);
+    --app-color-text-inverse:      var(--color-white);
+
+    /* ── 交互色 — Bento: peach #FAD4C0 + steel #80A1C1 ── */
+    --app-color-accent:            var(--color-peach-500);
+    --app-color-accent-hover:      var(--color-peach-600);
+    --app-color-accent-active:     var(--color-peach-700);
+    --app-color-accent-soft:       var(--color-peach-100);
+    --app-color-accent-secondary:  var(--color-steel-500);
+
+    /* ── 边框色 ── */
+    --app-color-border-default:    var(--color-warm-200);
+    --app-color-border-strong:     var(--color-peach-400);
+
+    /* ── 反馈色 ── */
+    --app-color-feedback-danger:        var(--color-red-500);
+    --app-color-feedback-danger-soft:   var(--color-red-50);
+    --app-color-feedback-warning:       var(--color-amber-500);
+    --app-color-feedback-warning-soft:  var(--color-amber-50);
+    --app-color-feedback-success:       var(--color-green-500);
+    --app-color-feedback-success-soft:  var(--color-green-50);
+    --app-color-feedback-info:          var(--color-steel-500);
+    --app-color-feedback-info-soft:     var(--color-steel-100);
+
+    /* ── 灵动岛：马卡龙柔色渐变（低饱和，对齐扫码弹窗草莓/薰衣草/薄荷）── */
+    --app-color-notice-announcement-accent:    var(--color-cyan-400);
+    --app-color-notice-announcement-bg:        color-mix(in srgb, var(--color-cyan-100) 82%, var(--color-warm-50));
+    --app-color-notice-announcement-bg-end:    color-mix(in srgb, var(--color-cyan-200) 68%, var(--color-warm-100));
+    --app-color-notice-announcement-border:    color-mix(in srgb, var(--color-cyan-400) 34%, var(--color-warm-200));
+    --app-color-notice-announcement-text:      var(--color-cyan-700);
+    --app-color-notice-announcement-text-soft: var(--color-slate-700);
+    --app-color-notice-announcement-icon-bg:   color-mix(in srgb, var(--color-cyan-200) 72%, var(--color-warm-50));
+    --app-color-notice-announcement-icon-text: var(--color-cyan-600);
+    --app-color-notice-announcement-pill:      color-mix(in srgb, var(--color-cyan-300) 42%, var(--color-warm-50));
+
+    --app-color-notice-violation-accent:    var(--color-red-400);
+    --app-color-notice-violation-bg:        color-mix(in srgb, var(--color-red-50) 78%, var(--color-warm-50));
+    --app-color-notice-violation-bg-end:    color-mix(in srgb, var(--color-red-100) 65%, var(--color-peach-100));
+    --app-color-notice-violation-border:    color-mix(in srgb, var(--color-red-400) 36%, var(--color-warm-200));
+    --app-color-notice-violation-text:      var(--color-red-700);
+    --app-color-notice-violation-text-soft: var(--color-slate-700);
+    --app-color-notice-violation-icon-bg:   color-mix(in srgb, var(--color-red-200) 70%, var(--color-warm-50));
+    --app-color-notice-violation-icon-text: var(--color-red-600);
+    --app-color-notice-violation-pill:      color-mix(in srgb, var(--color-red-300) 38%, var(--color-warm-50));
+
+    --app-color-notice-unbound-accent:    var(--color-amber-400);
+    --app-color-notice-unbound-bg:        color-mix(in srgb, var(--color-amber-50) 80%, var(--color-warm-50));
+    --app-color-notice-unbound-bg-end:    color-mix(in srgb, var(--color-amber-100) 70%, var(--color-peach-100));
+    --app-color-notice-unbound-border:    color-mix(in srgb, var(--color-amber-400) 34%, var(--color-warm-200));
+    --app-color-notice-unbound-text:      var(--color-amber-700);
+    --app-color-notice-unbound-text-soft: var(--color-slate-700);
+    --app-color-notice-unbound-icon-bg:   color-mix(in srgb, var(--color-amber-200) 72%, var(--color-warm-50));
+    --app-color-notice-unbound-icon-text: var(--color-amber-600);
+    --app-color-notice-unbound-pill:      color-mix(in srgb, var(--color-amber-300) 40%, var(--color-warm-50));
+
+    /* ── 笼位处理提示：翠绿色系，与违规红/公告青/未绑定琥珀区分 ── */
+    --app-color-notice-cage-notice-accent:    var(--color-green-400);
+    --app-color-notice-cage-notice-bg:        color-mix(in srgb, var(--color-green-50) 78%, var(--color-warm-50));
+    --app-color-notice-cage-notice-bg-end:    color-mix(in srgb, var(--color-green-100) 65%, var(--color-peach-100));
+    --app-color-notice-cage-notice-border:    color-mix(in srgb, var(--color-green-400) 36%, var(--color-warm-200));
+    --app-color-notice-cage-notice-text:      var(--color-green-700);
+    --app-color-notice-cage-notice-text-soft: var(--color-slate-700);
+    --app-color-notice-cage-notice-icon-bg:   color-mix(in srgb, var(--color-green-200) 70%, var(--color-warm-50));
+    --app-color-notice-cage-notice-icon-text: var(--color-green-600);
+    --app-color-notice-cage-notice-pill:      color-mix(in srgb, var(--color-green-300) 38%, var(--color-warm-50));
+
+    /* ── 扫码弹窗遮罩：钢蓝↔暖桃多段渐变（偏浅柔，与卡片底区分）── */
+    --app-color-scan-backdrop-from:       color-mix(in srgb, var(--color-steel-200) 72%, white);
+    --app-color-scan-backdrop-mid-1:      color-mix(in srgb, var(--color-steel-200) 58%, white);
+    --app-color-scan-backdrop-mid-2:      color-mix(in srgb, var(--color-steel-100) 42%, var(--color-peach-200));
+    --app-color-scan-backdrop-mid-3:      color-mix(in srgb, var(--color-peach-200) 65%, white);
+    --app-color-scan-backdrop-to:         color-mix(in srgb, var(--color-peach-100) 78%, white);
+    --app-color-scan-backdrop-neon:       rgba(128, 161, 193, 0.26);
+    --app-color-scan-backdrop-neon-steel: rgba(128, 161, 193, 0.32);
+    --app-color-scan-backdrop-neon-warm:  rgba(232, 168, 140, 0.26);
+
+    --app-color-scan-profile-bg:          #FFF0ED;
+    --app-color-scan-profile-border:      #FAD4C0;
+    --app-color-scan-profile-accent:      #E8A88C;
+    --app-color-scan-accent-ink:          #B86B4F;
+
+    --app-color-scan-student-bg:          #FFF5F0;
+    --app-color-scan-student-border:      #FAD4C0;
+    --app-color-scan-student-accent:      #E8A88C;
+
+    --app-color-scan-ai-bg:              #FFFAF8;
+    --app-color-scan-ai-border:          #FAD4C0;
+    --app-color-scan-ai-accent:           #80A1C1;
+
+    --app-color-scan-chart-bg:            #1e1816;
+    --app-color-scan-chart-stroke-entry: #E8A88C;
+    --app-color-scan-chart-stroke-exit:  #80A1C1;
+    --app-color-scan-chart-fill:         rgba(250,212,192,0.22);
+
+    --app-color-scan-badge-bg:            #1e1816;
+    --app-color-scan-badge-border:        #FAD4C0;
+    --app-color-scan-badge-text:          #FAD4C0;
+
+    --app-color-scan-exp-track:           #1e1816;
+    --app-color-scan-exp-fill-from:       #FAD4C0;
+    --app-color-scan-exp-fill-to:         #E8A88C;
+
+    --app-color-scan-toggle-selected:     #FAD4C0;
+
+    /* ── 辉光效果 ── */
+    --app-glow-accent:       rgba(250, 212, 192, 0.18); /* peach glow */
+    --app-glow-selected:     rgba(128, 161, 193, 0.12); /* steel glow */
+    --app-row-header-tint:   rgba(250, 212, 192, 0.10); /* peach tint for row headers */
+
+    /* ── 间距语义 ── */
+    --app-space-container-padding: var(--space-6);
+    --app-space-section-gap:       var(--space-8);
+    --app-space-element-gap:       var(--space-3);
+    --app-space-page-padding:      var(--space-6);
+
+    /* ── 圆角语义 ── */
+    --app-radius-container: var(--radius-lg);
+    --app-radius-element:   var(--radius-md);
+    --app-radius-pill:      var(--radius-full);
+
+    /* ── 阴影语义 ── */
+    --app-elevation-card:     var(--elevation-shadow-2);
+    --app-elevation-dropdown: var(--elevation-shadow-3);
+    --app-elevation-modal:    var(--elevation-shadow-5);
+
+    /* ── 动效语义 ── */
+    --app-motion-hover:  var(--motion-duration-fast) var(--motion-easing-default);
+    --app-motion-enter:  var(--motion-duration-base) var(--motion-easing-out);
+    --app-motion-exit:   var(--motion-duration-fast) var(--motion-easing-in);
+    --app-motion-layout: var(--motion-duration-slow) var(--motion-easing-spring);
+
+    /* ── 排版语义 ── */
+    --app-font-display:   var(--font-weight-bold) var(--font-size-4xl) / var(--font-lineheight-4xl) var(--font-family-display);
+    --app-font-heading1:  var(--font-weight-semibold) var(--font-size-3xl) / var(--font-lineheight-3xl) var(--font-family-sans);
+    --app-font-heading2:  var(--font-weight-semibold) var(--font-size-2xl) / var(--font-lineheight-2xl) var(--font-family-sans);
+    --app-font-heading3:  var(--font-weight-medium) var(--font-size-xl) / var(--font-lineheight-xl) var(--font-family-sans);
+    --app-font-body:      var(--font-weight-normal) var(--font-size-base) / var(--font-lineheight-base) var(--font-family-sans);
+    --app-font-caption:   var(--font-weight-normal) var(--font-size-sm) / var(--font-lineheight-sm) var(--font-family-sans);
+    --app-font-small:     var(--font-weight-normal) var(--font-size-xs) / var(--font-lineheight-xs) var(--font-family-sans);
+    --app-font-code:      var(--font-weight-normal) var(--font-size-sm) / var(--font-lineheight-sm) var(--font-family-mono);
+  }
+
+  /* ═══════ 🍱 Bento 暖黑暗色主题 ═══════ */
+  .dark, .theme-standard-dark {
+    /* Surface — Bento warm dark tokens */
+    --app-color-surface-page:      var(--color-bento-dark-50);
+    --app-color-surface-container: var(--color-bento-dark-100);
+    --app-color-surface-elevated:  var(--color-bento-dark-200);
+    --app-color-surface-hover:     var(--color-bento-dark-200);
+    --app-color-surface-active:    var(--color-steel-900);
+
+    /* Text */
+    --app-color-text-primary:      var(--color-warm-50);
+    --app-color-text-secondary:    var(--color-warm-200);
+    --app-color-text-tertiary:     var(--color-warm-300);
+    --app-color-text-inverse:      var(--color-bento-dark-50);
+
+    /* Accent — steel blue */
+    --app-color-accent:            var(--color-steel-400);
+    --app-color-accent-hover:      var(--color-steel-300);
+    --app-color-accent-active:     var(--color-steel-200);
+    --app-color-accent-soft:       var(--color-steel-950);
+    --app-color-accent-secondary:  var(--color-steel-500);
+
+    /* Border */
+    --app-color-border-default:    var(--color-bento-dark-300);
+    --app-color-border-strong:     var(--color-steel-400);
+
+    /* Feedback */
+    --app-color-feedback-danger:        var(--color-red-400);
+    --app-color-feedback-danger-soft:   var(--color-red-950);
+    --app-color-feedback-warning:       var(--color-amber-400);
+    --app-color-feedback-warning-soft:  var(--color-amber-950);
+    --app-color-feedback-success:       var(--color-green-400);
+    --app-color-feedback-success-soft:  var(--color-green-950);
+    --app-color-feedback-info:          var(--color-steel-400);
+    --app-color-feedback-info-soft:     var(--color-steel-950);
+
+    /* ── 灵动岛：暗色马卡龙（低饱和柔 tint，非高饱和 950 纯色）── */
+    --app-color-notice-announcement-accent:    var(--color-cyan-400);
+    --app-color-notice-announcement-bg:        color-mix(in srgb, var(--color-cyan-400) 18%, var(--app-color-surface-container));
+    --app-color-notice-announcement-bg-end:    color-mix(in srgb, var(--color-cyan-400) 26%, var(--app-color-surface-elevated));
+    --app-color-notice-announcement-border:    color-mix(in srgb, var(--color-cyan-400) 40%, var(--app-color-border-default));
+    --app-color-notice-announcement-text:      color-mix(in srgb, var(--color-cyan-300) 88%, var(--color-warm-100));
+    --app-color-notice-announcement-text-soft: var(--color-warm-200);
+    --app-color-notice-announcement-icon-bg:   color-mix(in srgb, var(--color-cyan-400) 24%, var(--app-color-surface-elevated));
+    --app-color-notice-announcement-icon-text: color-mix(in srgb, var(--color-cyan-300) 85%, var(--color-warm-100));
+    --app-color-notice-announcement-pill:      color-mix(in srgb, var(--color-cyan-400) 20%, var(--app-color-surface-container));
+
+    --app-color-notice-violation-accent:    var(--color-red-400);
+    --app-color-notice-violation-bg:        color-mix(in srgb, var(--color-red-400) 18%, var(--app-color-surface-container));
+    --app-color-notice-violation-bg-end:    color-mix(in srgb, var(--color-red-400) 26%, var(--app-color-surface-elevated));
+    --app-color-notice-violation-border:    color-mix(in srgb, var(--color-red-400) 42%, var(--app-color-border-default));
+    --app-color-notice-violation-text:      color-mix(in srgb, var(--color-red-300) 88%, var(--color-warm-100));
+    --app-color-notice-violation-text-soft: var(--color-warm-200);
+    --app-color-notice-violation-icon-bg:   color-mix(in srgb, var(--color-red-400) 24%, var(--app-color-surface-elevated));
+    --app-color-notice-violation-icon-text: color-mix(in srgb, var(--color-red-300) 85%, var(--color-warm-100));
+    --app-color-notice-violation-pill:      color-mix(in srgb, var(--color-red-400) 20%, var(--app-color-surface-container));
+
+    --app-color-notice-unbound-accent:    var(--color-amber-400);
+    --app-color-notice-unbound-bg:        color-mix(in srgb, var(--color-amber-400) 18%, var(--app-color-surface-container));
+    --app-color-notice-unbound-bg-end:    color-mix(in srgb, var(--color-amber-400) 26%, var(--app-color-surface-elevated));
+    --app-color-notice-unbound-border:    color-mix(in srgb, var(--color-amber-400) 40%, var(--app-color-border-default));
+    --app-color-notice-unbound-text:      color-mix(in srgb, var(--color-amber-300) 88%, var(--color-warm-100));
+    --app-color-notice-unbound-text-soft: var(--color-warm-200);
+    --app-color-notice-unbound-icon-bg:   color-mix(in srgb, var(--color-amber-400) 24%, var(--app-color-surface-elevated));
+    --app-color-notice-unbound-icon-text: color-mix(in srgb, var(--color-amber-300) 85%, var(--color-warm-100));
+    --app-color-notice-unbound-pill:      color-mix(in srgb, var(--color-amber-400) 20%, var(--app-color-surface-container));
+
+    --app-color-notice-cage-notice-accent:    var(--color-green-400);
+    --app-color-notice-cage-notice-bg:        color-mix(in srgb, var(--color-green-400) 18%, var(--app-color-surface-container));
+    --app-color-notice-cage-notice-bg-end:    color-mix(in srgb, var(--color-green-400) 26%, var(--app-color-surface-elevated));
+    --app-color-notice-cage-notice-border:    color-mix(in srgb, var(--color-green-400) 40%, var(--app-color-border-default));
+    --app-color-notice-cage-notice-text:      color-mix(in srgb, var(--color-green-300) 88%, var(--color-warm-100));
+    --app-color-notice-cage-notice-text-soft: var(--color-warm-200);
+    --app-color-notice-cage-notice-icon-bg:   color-mix(in srgb, var(--color-green-400) 24%, var(--app-color-surface-elevated));
+    --app-color-notice-cage-notice-icon-text: color-mix(in srgb, var(--color-green-300) 85%, var(--color-warm-100));
+    --app-color-notice-cage-notice-pill:      color-mix(in srgb, var(--color-green-400) 20%, var(--app-color-surface-container));
+
+    /* ── 扫码弹窗暗色遮罩：夜空深蓝 ↔ 黑蓝（渐变段序与亮色一致）── */
+    --app-color-scan-backdrop-from:       oklch(0.16 0.07 258);
+    --app-color-scan-backdrop-mid-1:      oklch(0.13 0.065 256);
+    --app-color-scan-backdrop-mid-2:      color-mix(in srgb, oklch(0.11 0.06 254) 72%, oklch(0.08 0.045 252));
+    --app-color-scan-backdrop-mid-3:      oklch(0.10 0.055 252);
+    --app-color-scan-backdrop-to:         oklch(0.07 0.04 250);
+    --app-color-scan-backdrop-neon:       rgba(72, 118, 196, 0.22);
+    --app-color-scan-backdrop-neon-steel: rgba(88, 132, 210, 0.26);
+    --app-color-scan-backdrop-neon-warm:  rgba(58, 92, 168, 0.16);
+
+    --app-color-scan-profile-bg:          #1e1816;
+    --app-color-scan-profile-border:      color-mix(in srgb, #FAD4C0 30%, transparent);
+    --app-color-scan-profile-accent:      #E8A88C;
+    --app-color-scan-accent-ink:          #FAD4C0;
+
+    --app-color-scan-student-bg:          #1c1816;
+    --app-color-scan-student-border:      color-mix(in srgb, #FAD4C0 24%, transparent);
+    --app-color-scan-student-accent:      #E8A88C;
+
+    --app-color-scan-ai-bg:              #1b1817;
+    --app-color-scan-ai-border:          color-mix(in srgb, #80A1C1 24%, transparent);
+    --app-color-scan-ai-accent:           #80A1C1;
+
+    --app-color-scan-chart-bg:            #1e1816;
+    --app-color-scan-chart-stroke-entry: #E8A88C;
+    --app-color-scan-chart-stroke-exit:  #80A1C1;
+    --app-color-scan-chart-fill:         rgba(250,212,192,0.22);
+
+    --app-color-scan-badge-bg:            #1e1816;
+    --app-color-scan-badge-border:        #FAD4C0;
+    --app-color-scan-badge-text:          #FAD4C0;
+
+    --app-color-scan-exp-track:           #1e1816;
+    --app-color-scan-exp-fill-from:       #FAD4C0;
+    --app-color-scan-exp-fill-to:         #E8A88C;
+
+    --app-color-scan-toggle-selected:     #E8A88C;
+
+    /* Glow — dark mode variants */
+    --app-glow-accent:       rgba(240, 192, 160, 0.12);
+    --app-glow-selected:     rgba(128, 161, 193, 0.15);
+    --app-row-header-tint:   rgba(240, 192, 160, 0.06);
+  }
+
+  /* ═══════ 科幻流光主题映射 ═══════ */
+  .theme-scifi {
+    /* Surface */
+    --app-color-surface-page:      var(--color-slate-950);
+    --app-color-surface-container: oklch(0.17 0.01 260);
+    --app-color-surface-elevated:  oklch(0.21 0.01 260);
+    --app-color-surface-hover:     oklch(0.22 0.02 260);
+    --app-color-surface-active:    oklch(0.25 0.04 240);
+
+    /* Text */
+    --app-color-text-primary:      var(--color-slate-50);
+    --app-color-text-secondary:    var(--color-slate-300);
+    --app-color-text-tertiary:     var(--color-slate-500);
+    --app-color-text-inverse:      var(--color-slate-950);
+
+    /* Accent — cyan neon */
+    --app-color-accent:            var(--color-cyan-400);
+    --app-color-accent-hover:      var(--color-cyan-300);
+    --app-color-accent-active:     var(--color-cyan-200);
+    --app-color-accent-soft:       oklch(0.18 0.04 220);
+    --app-color-accent-secondary:  var(--color-cyan-300);
+
+    /* Border */
+    --app-color-border-default:    oklch(0.25 0.01 260);
+    --app-color-border-strong:     var(--color-cyan-400);
+
+    /* Feedback */
+    --app-color-feedback-danger:        var(--color-red-400);
+    --app-color-feedback-danger-soft:   var(--color-red-950);
+    --app-color-feedback-warning:       var(--color-amber-400);
+    --app-color-feedback-warning-soft:  var(--color-amber-950);
+    --app-color-feedback-success:       var(--color-green-400);
+    --app-color-feedback-success-soft:  var(--color-green-950);
+    --app-color-feedback-info:          var(--color-cyan-400);
+    --app-color-feedback-info-soft:     var(--color-cyan-950);
+
+    /* ── 灵动岛：科幻马卡龙柔 tint ── */
+    --app-color-notice-announcement-accent:    var(--color-cyan-400);
+    --app-color-notice-announcement-bg:        color-mix(in srgb, var(--color-cyan-400) 16%, var(--app-color-surface-container));
+    --app-color-notice-announcement-bg-end:    color-mix(in srgb, var(--color-cyan-400) 24%, var(--app-color-surface-elevated));
+    --app-color-notice-announcement-border:    color-mix(in srgb, var(--color-cyan-400) 38%, var(--app-color-border-default));
+    --app-color-notice-announcement-text:      color-mix(in srgb, var(--color-cyan-300) 88%, var(--color-warm-100));
+    --app-color-notice-announcement-text-soft: var(--color-warm-200);
+    --app-color-notice-announcement-icon-bg:   color-mix(in srgb, var(--color-cyan-400) 22%, var(--app-color-surface-elevated));
+    --app-color-notice-announcement-icon-text: color-mix(in srgb, var(--color-cyan-300) 85%, var(--color-warm-100));
+    --app-color-notice-announcement-pill:      color-mix(in srgb, var(--color-cyan-400) 18%, var(--app-color-surface-container));
+
+    --app-color-notice-violation-accent:    var(--color-red-400);
+    --app-color-notice-violation-bg:        color-mix(in srgb, var(--color-red-400) 16%, var(--app-color-surface-container));
+    --app-color-notice-violation-bg-end:    color-mix(in srgb, var(--color-red-400) 24%, var(--app-color-surface-elevated));
+    --app-color-notice-violation-border:    color-mix(in srgb, var(--color-red-400) 40%, var(--app-color-border-default));
+    --app-color-notice-violation-text:      color-mix(in srgb, var(--color-red-300) 88%, var(--color-warm-100));
+    --app-color-notice-violation-text-soft: var(--color-warm-200);
+    --app-color-notice-violation-icon-bg:   color-mix(in srgb, var(--color-red-400) 22%, var(--app-color-surface-elevated));
+    --app-color-notice-violation-icon-text: color-mix(in srgb, var(--color-red-300) 85%, var(--color-warm-100));
+    --app-color-notice-violation-pill:      color-mix(in srgb, var(--color-red-400) 18%, var(--app-color-surface-container));
+
+    --app-color-notice-unbound-accent:    var(--color-amber-400);
+    --app-color-notice-unbound-bg:        color-mix(in srgb, var(--color-amber-400) 16%, var(--app-color-surface-container));
+    --app-color-notice-unbound-bg-end:    color-mix(in srgb, var(--color-amber-400) 24%, var(--app-color-surface-elevated));
+    --app-color-notice-unbound-border:    color-mix(in srgb, var(--color-amber-400) 38%, var(--app-color-border-default));
+    --app-color-notice-unbound-text:      color-mix(in srgb, var(--color-amber-300) 88%, var(--color-warm-100));
+    --app-color-notice-unbound-text-soft: var(--color-warm-200);
+    --app-color-notice-unbound-icon-bg:   color-mix(in srgb, var(--color-amber-400) 22%, var(--app-color-surface-elevated));
+    --app-color-notice-unbound-icon-text: color-mix(in srgb, var(--color-amber-300) 85%, var(--color-warm-100));
+    --app-color-notice-unbound-pill:      color-mix(in srgb, var(--color-amber-400) 18%, var(--app-color-surface-container));
+
+    /* ── 扫码弹窗科幻变体遮罩：冷钢蓝主导 + 桃色点缀 ── */
+    --app-color-scan-backdrop-from:       var(--color-steel-950);
+    --app-color-scan-backdrop-mid-1:      var(--color-slate-900);
+    --app-color-scan-backdrop-mid-2:      color-mix(in srgb, var(--color-steel-800) 55%, oklch(0.22 0.04 55));
+    --app-color-scan-backdrop-mid-3:      color-mix(in srgb, var(--color-peach-700) 35%, var(--color-steel-900));
+    --app-color-scan-backdrop-to:         oklch(0.18 0.02 250);
+    --app-color-scan-backdrop-neon:       rgba(128, 161, 193, 0.36);
+    --app-color-scan-backdrop-neon-steel: rgba(128, 161, 193, 0.5);
+    --app-color-scan-backdrop-neon-warm:  rgba(250, 212, 192, 0.24);
+    --app-color-scan-profile-bg:          oklch(0.16 0.02 30);
+    --app-color-scan-profile-border:      rgba(250,212,192,0.25);
+    --app-color-scan-profile-accent:      #E8A88C;
+    --app-color-scan-accent-ink:          #FAD4C0;
+    --app-color-scan-student-bg:          oklch(0.15 0.02 30);
+    --app-color-scan-student-border:      rgba(250,212,192,0.20);
+    --app-color-scan-student-accent:      #E8A88C;
+    --app-color-scan-ai-bg:              oklch(0.14 0.02 240);
+    --app-color-scan-ai-border:          rgba(128,161,193,0.25);
+    --app-color-scan-ai-accent:           #80A1C1;
+    --app-color-scan-chart-bg:            oklch(0.10 0.01 260);
+    --app-color-scan-chart-stroke-entry: #E8A88C;
+    --app-color-scan-chart-stroke-exit:  #80A1C1;
+    --app-color-scan-chart-fill:         rgba(250,212,192,0.22);
+    --app-color-scan-badge-bg:            oklch(0.16 0.02 30);
+    --app-color-scan-badge-border:        #FAD4C0;
+    --app-color-scan-badge-text:          #FAD4C0;
+    --app-color-scan-exp-track:           oklch(0.16 0.02 30);
+    --app-color-scan-exp-fill-from:       #FAD4C0;
+    --app-color-scan-exp-fill-to:         #E8A88C;
+    --app-color-scan-toggle-selected:     #80A1C1;
+
+    /* Glow — scifi variants */
+    --app-glow-accent:       rgba(34, 211, 238, 0.08);
+    --app-glow-selected:     rgba(34, 211, 238, 0.12);
+    --app-row-header-tint:   rgba(34, 211, 238, 0.04);
+
+    /* Radius */
+    --app-radius-container: var(--radius-xl);
+    --app-radius-element:   var(--radius-md);
+  }
+
+  /* ═══════ 经典 Slate-Blue 主题（回退） ═══════ */
+  .theme-classic {
+    --app-color-surface-page:      var(--color-slate-50);
+    --app-color-surface-container: var(--color-white);
+    --app-color-surface-elevated:  var(--color-white);
+    --app-color-surface-hover:     var(--color-slate-50);
+    --app-color-surface-active:    var(--color-blue-50);
+
+    --app-color-text-primary:      var(--color-slate-950);
+    --app-color-text-secondary:    var(--color-slate-600);
+    --app-color-text-tertiary:     var(--color-slate-400);
+    --app-color-text-inverse:      var(--color-white);
+
+    --app-color-accent:            var(--color-blue-500);
+    --app-color-accent-hover:      var(--color-blue-600);
+    --app-color-accent-active:     var(--color-blue-700);
+    --app-color-accent-soft:       var(--color-blue-50);
+    --app-color-accent-secondary:  var(--color-blue-400);
+
+    --app-color-border-default:    var(--color-slate-200);
+    --app-color-border-strong:     var(--color-blue-500);
+
+    --app-color-feedback-info:         var(--color-cyan-500);
+    --app-color-feedback-info-soft:    var(--color-cyan-50);
+
+    /* ── 灵动岛：经典主题马卡龙柔色 ── */
+    --app-color-notice-announcement-accent:    var(--color-blue-400);
+    --app-color-notice-announcement-bg:        color-mix(in srgb, var(--color-blue-100) 82%, var(--color-warm-50));
+    --app-color-notice-announcement-bg-end:    color-mix(in srgb, var(--color-blue-200) 68%, var(--color-warm-100));
+    --app-color-notice-announcement-border:    color-mix(in srgb, var(--color-blue-400) 34%, var(--color-warm-200));
+    --app-color-notice-announcement-text:      var(--color-blue-700);
+    --app-color-notice-announcement-text-soft: var(--color-slate-700);
+    --app-color-notice-announcement-icon-bg:   color-mix(in srgb, var(--color-blue-200) 72%, var(--color-warm-50));
+    --app-color-notice-announcement-icon-text: var(--color-blue-600);
+    --app-color-notice-announcement-pill:      color-mix(in srgb, var(--color-blue-300) 42%, var(--color-warm-50));
+
+    --app-color-notice-violation-accent:    var(--color-red-400);
+    --app-color-notice-violation-bg:        color-mix(in srgb, var(--color-red-50) 78%, var(--color-warm-50));
+    --app-color-notice-violation-bg-end:    color-mix(in srgb, var(--color-red-100) 65%, var(--color-peach-100));
+    --app-color-notice-violation-border:    color-mix(in srgb, var(--color-red-400) 36%, var(--color-warm-200));
+    --app-color-notice-violation-text:      var(--color-red-700);
+    --app-color-notice-violation-text-soft: var(--color-slate-700);
+    --app-color-notice-violation-icon-bg:   color-mix(in srgb, var(--color-red-200) 70%, var(--color-warm-50));
+    --app-color-notice-violation-icon-text: var(--color-red-600);
+    --app-color-notice-violation-pill:      color-mix(in srgb, var(--color-red-300) 38%, var(--color-warm-50));
+
+    --app-color-notice-unbound-accent:    var(--color-amber-400);
+    --app-color-notice-unbound-bg:        color-mix(in srgb, var(--color-amber-50) 80%, var(--color-warm-50));
+    --app-color-notice-unbound-bg-end:    color-mix(in srgb, var(--color-amber-100) 70%, var(--color-peach-100));
+    --app-color-notice-unbound-border:    color-mix(in srgb, var(--color-amber-400) 34%, var(--color-warm-200));
+    --app-color-notice-unbound-text:      var(--color-amber-700);
+    --app-color-notice-unbound-text-soft: var(--color-slate-700);
+    --app-color-notice-unbound-icon-bg:   color-mix(in srgb, var(--color-amber-200) 72%, var(--color-warm-50));
+    --app-color-notice-unbound-icon-text: var(--color-amber-600);
+    --app-color-notice-unbound-pill:      color-mix(in srgb, var(--color-amber-300) 40%, var(--color-warm-50));
+
+    /* ── 扫码弹窗经典变体遮罩（与默认亮色同策略：钢蓝↔暖桃偏浅）── */
+    --app-color-scan-backdrop-from:       color-mix(in srgb, var(--color-steel-200) 72%, white);
+    --app-color-scan-backdrop-mid-1:      color-mix(in srgb, var(--color-steel-200) 58%, white);
+    --app-color-scan-backdrop-mid-2:      color-mix(in srgb, var(--color-steel-100) 42%, var(--color-peach-200));
+    --app-color-scan-backdrop-mid-3:      color-mix(in srgb, var(--color-peach-200) 65%, white);
+    --app-color-scan-backdrop-to:         color-mix(in srgb, var(--color-peach-100) 78%, white);
+    --app-color-scan-backdrop-neon:       rgba(128, 161, 193, 0.26);
+    --app-color-scan-backdrop-neon-steel: rgba(128, 161, 193, 0.32);
+    --app-color-scan-backdrop-neon-warm:  rgba(232, 168, 140, 0.26);
+    --app-color-scan-profile-bg:          #FFF0ED;
+    --app-color-scan-profile-border:      #FAD4C0;
+    --app-color-scan-profile-accent:      #E8A88C;
+    --app-color-scan-accent-ink:          #B86B4F;
+    --app-color-scan-student-bg:          #FFF5F0;
+    --app-color-scan-student-border:      #FAD4C0;
+    --app-color-scan-student-accent:      #E8A88C;
+    --app-color-scan-ai-bg:              #FFFAF8;
+    --app-color-scan-ai-border:          #FAD4C0;
+    --app-color-scan-ai-accent:           #80A1C1;
+    --app-color-scan-chart-bg:            #1e1816;
+    --app-color-scan-chart-stroke-entry: #E8A88C;
+    --app-color-scan-chart-stroke-exit:  #80A1C1;
+    --app-color-scan-chart-fill:         rgba(250,212,192,0.22);
+    --app-color-scan-badge-bg:            #1e1816;
+    --app-color-scan-badge-border:        #FAD4C0;
+    --app-color-scan-badge-text:          #FAD4C0;
+    --app-color-scan-exp-track:           #1e1816;
+    --app-color-scan-exp-fill-from:       #FAD4C0;
+    --app-color-scan-exp-fill-to:         #E8A88C;
+    --app-color-scan-toggle-selected:     #FAD4C0;
+
+    --app-glow-accent:       rgba(59, 130, 246, 0.12);
+    --app-glow-selected:     rgba(59, 130, 246, 0.10);
+    --app-row-header-tint:   rgba(59, 130, 246, 0.04);
+  }
+}

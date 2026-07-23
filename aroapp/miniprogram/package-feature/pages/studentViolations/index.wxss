@@ -1,0 +1,276 @@
+.violations-page.page {
+  min-height: 100vh;
+  background: #f5f5f5;
+  padding-bottom: calc(36rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+/* Loading */
+.loading-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 200rpx;
+}
+
+.loading-text {
+  margin-top: 24rpx;
+  font-size: 28rpx;
+  color: #999;
+}
+
+/* Error */
+.error-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 200rpx;
+}
+
+.error-text {
+  margin-top: 24rpx;
+  font-size: 28rpx;
+  color: #ef4444;
+  text-align: center;
+  padding: 0 40rpx;
+}
+
+.retry-btn {
+  margin-top: 32rpx;
+  padding: 16rpx 48rpx;
+  background: #ac1736;
+  color: #fff;
+  border-radius: 8rpx;
+  font-size: 28rpx;
+}
+
+/* Empty */
+.empty-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 200rpx;
+}
+
+.empty-text {
+  margin-top: 24rpx;
+  font-size: 28rpx;
+  color: #999;
+}
+
+/* Content */
+.content-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  box-sizing: border-box;
+}
+
+.page-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #333;
+  padding: 24rpx 32rpx 16rpx;
+  flex-shrink: 0;
+}
+
+/* Scrollable list */
+.list-scroll {
+  flex: 1;
+  padding: 0 24rpx;
+}
+
+/* Date group */
+.date-group {
+  margin-bottom: 32rpx;
+}
+
+/* Date header with dividers */
+.date-header {
+  display: flex;
+  align-items: center;
+  padding: 16rpx 0 20rpx;
+}
+
+.date-divider {
+  flex: 1;
+  height: 2rpx;
+  background: #ddd;
+}
+
+.date-label {
+  margin: 0 20rpx;
+  font-size: 26rpx;
+  color: #888;
+  white-space: nowrap;
+}
+
+/* Violation card */
+.violation-card {
+  margin-bottom: 16rpx;
+}
+
+.violation-card-inner {
+  display: flex;
+  flex-direction: row;
+  background: #fef2f2;
+  border-radius: 12rpx;
+  overflow: hidden;
+}
+
+.vcard-left-border {
+  width: 8rpx;
+  flex-shrink: 0;
+  background: #ef4444;
+  border-radius: 12rpx 0 0 12rpx;
+}
+
+.vcard-body {
+  flex: 1;
+  padding: 20rpx 24rpx;
+  min-width: 0;
+}
+
+/* Card header */
+.vcard-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.vcard-type-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.vcard-warn-icon {
+  font-size: 32rpx;
+  margin-right: 8rpx;
+}
+
+.vcard-type-label {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.vcard-badges {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+/* Status badges */
+.status-badge {
+  font-size: 22rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 20rpx;
+  font-weight: 500;
+}
+
+.status-badge.status-pending {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.status-badge.status-done {
+  background: #dcfce7;
+  color: #166534;
+}
+
+/* Time */
+.vcard-time-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.time-dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: #ac1736;
+  margin-right: 10rpx;
+  flex-shrink: 0;
+}
+
+.vcard-time-value {
+  font-size: 24rpx;
+  color: #666;
+}
+
+/* HTML content */
+.vcard-content {
+  margin-bottom: 12rpx;
+  font-size: 28rpx;
+  color: #444;
+  line-height: 1.6;
+}
+
+/* Extra info (room/door) */
+.vcard-extra {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-bottom: 8rpx;
+}
+
+.vcard-extra-item {
+  font-size: 24rpx;
+  color: #888;
+  margin-right: 24rpx;
+  margin-bottom: 4rpx;
+}
+
+/* Processed info */
+.vcard-processed {
+  border-top: 1rpx solid #fecaca;
+  padding-top: 12rpx;
+  margin-top: 4rpx;
+}
+
+.vcard-processed-by,
+.vcard-processed-time {
+  font-size: 22rpx;
+  color: #999;
+  display: block;
+  margin-bottom: 4rpx;
+}
+
+/* Pagination bar */
+.pagination-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 20rpx 32rpx;
+  background: #fff;
+  border-top: 1rpx solid #eee;
+  flex-shrink: 0;
+}
+
+.pagination-btn {
+  padding: 12rpx 28rpx;
+  background: #ac1736;
+  color: #fff;
+  border-radius: 8rpx;
+  font-size: 26rpx;
+}
+
+.pagination-btn-disabled {
+  background: #ddd;
+  color: #999;
+}
+
+.pagination-info {
+  margin: 0 32rpx;
+  font-size: 28rpx;
+  color: #666;
+}

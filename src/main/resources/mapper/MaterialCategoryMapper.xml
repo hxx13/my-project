@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.material.mapper.MaterialCategoryMapper">
+    <select id="selectEnabled" resultType="com.example.demo.modules.material.entity.MaterialCategory">
+        SELECT * FROM material_category WHERE status = 1 ORDER BY sort_order ASC, id ASC
+    </select>
+    <select id="selectAll" resultType="com.example.demo.modules.material.entity.MaterialCategory">
+        SELECT * FROM material_category ORDER BY sort_order ASC, id ASC
+    </select>
+    <select id="selectByApplicantGroup" resultType="com.example.demo.modules.material.entity.MaterialCategory">
+        SELECT DISTINCT c.* FROM material_category c
+        JOIN material_item i ON c.id = i.category_id AND i.deleted = 0
+        WHERE i.id IN (
+            SELECT DISTINCT l.item_id FROM material_request_line l
+            JOIN material_request r ON l.request_id = r.id
+            WHERE r.deleted = 0 AND r.applicant_group = #{applicantGroup}
+            UNION
+            SELECT DISTINCT m.item_id FROM material_stock_movement m
+            LEFT JOIN material_request r2 ON m.request_id = r2.id
+            LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
+            WHERE r2.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup}
+        )
+        ORDER BY c.sort_order ASC, c.id ASC
+    </select>
+    <select id="selectById" resultType="com.example.demo.modules.material.entity.MaterialCategory">
+        SELECT * FROM material_category WHERE id = #{id}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO material_category (name, sort_order, status) VALUES (#{name}, #{sortOrder}, #{status})
+    </insert>
+    <update id="updateById">
+        UPDATE material_category SET name = #{name}, sort_order = #{sortOrder}, status = #{status} WHERE id = #{id}
+    </update>
+    <delete id="deleteById">
+        DELETE FROM material_category WHERE id = #{id}
+    </delete>
+</mapper>

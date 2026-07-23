@@ -1,0 +1,164 @@
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Calendar, MapPin, Settings } from "lucide-react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
+import { BlacklistManageModal } from "@/components/admin/BlacklistManageModal";
+import { AdminToolbar } from "@/components/admin/AdminToolbar";
+import type { DebugPipelineFilter } from "@/features/twin-debug/debugPipelineFilter";
+import { cn } from "@/lib/utils";
+import { calendarDayKeyBeijing } from "@/utils/beijingTime";
+import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
+
+type Props = {
+  filters: DebugPipelineFilter;
+  onChange: (next: DebugPipelineFilter) => void;
+  onClear: () => void;
+  invalidateKeys?: string[][];
+  className?: string;
+};
+
+export function DebugPipelineFilterBar({ filters, onChange, onClear, invalidateKeys, className }: Props) {
+  const queryClient = useQueryClient();
+  const [isBlacklistOpen, setIsBlacklistOpen] = useState(false);
+
+  const invalidateRelated = () => {
+    for (const key of invalidateKeys ?? []) {
+      queryClient.invalidateQueries({ queryKey: key });
+    }
+  };
+
+  const handleCampusChange = (selectedCampus: string) => {
+    onChange({
+      ...filters,
+      campus: selectedCampus,
+      floor: selectedCampus === "浦东" ? filters.floor : "",
+    });
+  };
+
+  const setToday = () => {
+    const today = calendarDayKeyBeijing(new Date());
+    onChange({ ...filters, startTime: today, endTime: today });
+  };
+
+  return (
+    <>
+      <AdminToolbar
+        data-twin-debug-pipeline-filters
+        className={
+          className ??
+          "shrink-0 flex-col gap-3 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-4 shadow-sm !items-stretch"
+        }
+      >
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+          <div className={cn(DASH_NIGHT_CLASS.panel, "flex items-center gap-2 p-1.5")}>
+            <Calendar className={cn("ml-2 h-4 w-4", DASH_NIGHT_CLASS.textMuted)} />
+            <input
+              type="date"
+              value={filters.startTime}
+              onChange={(e) => onChange({ ...filters, startTime: e.target.value })}
+              className="w-[110px] cursor-pointer bg-transparent text-[13px] font-bold text-[var(--app-color-text-primary)] outline-none"
+            />
+            <span className={DASH_NIGHT_CLASS.textMuted}>-</span>
+            <input
+              type="date"
+              value={filters.endTime}
+              onChange={(e) => onChange({ ...filters, endTime: e.target.value })}
+              className="w-[110px] cursor-pointer bg-transparent text-[13px] font-bold text-[var(--app-color-text-primary)] outline-none"
+            />
+            <button
+              type="button"
+              onClick={setToday}
+              className={cn(DASH_NIGHT_CLASS.btnNormal, "px-2 py-1 text-[10px] font-black")}
+            >
+              今日
+            </button>
+          </div>
+
+          <div className="mx-1 h-6 w-px bg-[var(--app-color-border-default)]" />
+
+          <select
+            value={filters.actionType}
+            onChange={(e) => onChange({ ...filters, actionType: e.target.value as DebugPipelineFilter["actionType"] })}
+            className={cn(DASH_NIGHT_CLASS.panel, "cursor-pointer px-2 py-2 text-[13px] font-bold text-[var(--app-color-text-primary)] outline-none")}
+          >
+            <option value="">全部动作</option>
+            <option value="1">只看进入</option>
+            <option value="2">只看离开</option>
+          </select>
+
+          <div className="mx-1 h-6 w-px bg-[var(--app-color-border-default)]" />
+
+          <div className={cn(DASH_NIGHT_CLASS.panel, "flex items-center gap-1.5 px-2 py-1.5")}>
+            <MapPin className={cn("h-4 w-4", DASH_NIGHT_CLASS.textMuted)} />
+            <select
+              value={filters.campus}
+              onChange={(e) => handleCampusChange(e.target.value)}
+              className="cursor-pointer bg-transparent text-[13px] font-bold text-slate-700 outline-none"
+            >
+              <option value="">全部校区</option>
+              <option value="浦东">浦东校区</option>
+              <option value="浦西">浦西校区</option>
+            </select>
+          </div>
+
+          {filters.campus === "浦东" && (
+            <select
+              value={filters.floor}
+              onChange={(e) => onChange({ ...filters, floor: e.target.value })}
+              className={cn(DASH_NIGHT_CLASS.chipSteel, "cursor-pointer rounded-lg px-2 py-2 text-[13px] font-bold outline-none")}
+            >
+              <option value="">全部楼层</option>
+              <option value="E11A">地下室 E11A 区</option>
+              <option value="E11B">地下室 E11B 区</option>
+              <option value="地下E11C">地下室 E11C 区</option>
+              <option value="1">1F (101等)</option>
+              <option value="2">2F (201等)</option>
+              <option value="3">3F (301等)</option>
+              <option value="4">4F (401等)</option>
+            </select>
+          )}
+
+          <input
+            type="text"
+            placeholder="房号尾数 (如: 01A)"
+            value={filters.roomName}
+            onChange={(e) => onChange({ ...filters, roomName: e.target.value })}
+            className={cn(DASH_NIGHT_CLASS.panel, "w-[130px] px-3 py-2 text-[13px] font-bold text-[var(--app-color-text-primary)] outline-none transition-colors")}
+          />
+
+          <span className="mx-1 h-6 w-px bg-slate-200" />
+
+          <label className={cn(DASH_NIGHT_CLASS.panel, "flex cursor-pointer items-center gap-2 px-3 py-1.5")}>
+            <AdminSwitchScaled
+              size="3.5"
+              checked={filters.excludeBlacklist}
+              onChange={(checked) => onChange({ ...filters, excludeBlacklist: checked })}
+            />
+            <span className={cn("select-none text-xs font-bold", DASH_NIGHT_CLASS.textMuted)}>排除黑名单</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => setIsBlacklistOpen(true)}
+            className={cn(DASH_NIGHT_CLASS.btnNormal, "rounded-md p-1.5", DASH_NIGHT_CLASS.textMuted)}
+            title="管理黑名单"
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-xs font-bold text-slate-400 underline underline-offset-2 hover:text-rose-500"
+          >
+            清除过滤
+          </button>
+        </div>
+      </AdminToolbar>
+
+      <BlacklistManageModal
+        open={isBlacklistOpen}
+        onClose={() => setIsBlacklistOpen(false)}
+        onChanged={invalidateRelated}
+      />
+    </>
+  );
+}

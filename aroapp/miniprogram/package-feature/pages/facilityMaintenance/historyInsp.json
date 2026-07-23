@@ -1,0 +1,11 @@
+{
+  "navigationBarTitleText": "历史巡查记录",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "van-field": "@vant/weapp/field/index",
+    "van-popup": "@vant/weapp/popup/index",
+    "van-empty": "@vant/weapp/empty/index",
+    "van-cell": "@vant/weapp/cell/index",
+    "van-datetime-picker": "@vant/weapp/datetime-picker/index"
+  }
+}

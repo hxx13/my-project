@@ -1,0 +1,28 @@
+<van-tabbar
+  custom-class="aro-tabbar-root"
+  active="{{ active }}"
+  bind:change="onChange"
+  active-color="#1989fa"
+  inactive-color="#646566"
+  fixed="{{ true }}"
+  placeholder="{{ true }}"
+  safe-area-inset-bottom="{{ true }}"
+  z-index="{{ 100003 }}"
+>
+  <van-tabbar-item
+    wx:for="{{ tabList }}"
+    wx:key="path"
+    icon="{{ item.iconSrc ? '' : item.icon }}"
+    dot="{{ item.tabDot }}"
+  >
+    <image
+      wx:if="{{ item.iconSrc }}"
+      slot="icon"
+      class="aro-tabbar-icon-img"
+      src="{{ item.iconSrc }}"
+      mode="aspectFit"
+      show-menu-by-longpress="{{ false }}"
+    />
+    {{ item.text }}
+  </van-tabbar-item>
+</van-tabbar>

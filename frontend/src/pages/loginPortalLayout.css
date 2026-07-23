@@ -1,0 +1,230 @@
+/**
+ * 登录页布局：对齐 130.sjtu.edu.cn 首页 loading-page 结构（logo / loading-page 内 theme-container）
+ * 配色为本系统中国红底；已移除底栏 bg-foot、光效 max_light 与年份横滚。
+ */
+
+.login-home-page {
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  width: 100%;
+  overflow-x: hidden;
+  font-size: 18px;
+  color: #f8efd9;
+}
+
+/* 顶栏左上：对应原站 a.logo */
+.login-sjtu-logo {
+  position: fixed;
+  z-index: 80;
+  top: 1rem;
+  left: 1rem;
+  display: block;
+  /* 相对原门户尺寸放大 50%（原 max 19rem / 图高 5.35rem） */
+  width: min(90vw, 28.5rem);
+  max-width: 28.5rem;
+  opacity: 0.96;
+  transition: opacity 0.2s ease;
+}
+.login-sjtu-logo:hover {
+  opacity: 1;
+}
+.login-sjtu-logo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 8.025rem;
+  object-fit: contain;
+  object-position: left center;
+  /* 与后台侧栏一致：彩色位图压成单色白，便于红底上识别 */
+  filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+@media (min-width: 640px) {
+  .login-sjtu-logo {
+    top: 1.35rem;
+    left: 2rem;
+  }
+  .login-sjtu-logo img {
+    max-height: 9rem;
+  }
+}
+
+/* 右上登录区：独立于 loading-page，与原站顶区功能对应 */
+.login-home-page__topright {
+  position: fixed;
+  z-index: 80;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: flex-start;
+}
+@media (min-width: 640px) {
+  .login-home-page__topright {
+    top: 1.5rem;
+    right: 2rem;
+  }
+}
+
+/* 右上登录模块：背景高斯模糊（毛玻璃），叠在轮播/红底之上 */
+.login-topright-module {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.55rem 0.35rem 0.45rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(245, 215, 106, 0.28);
+  background: rgba(8, 12, 24, 0.38);
+  box-shadow:
+    0 4px 28px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+}
+@media (min-width: 640px) {
+  .login-topright-module {
+    gap: 0.65rem;
+    padding: 0.4rem 0.65rem 0.4rem 0.5rem;
+  }
+}
+
+/* 对应 .loading-page */
+.login-loading-page {
+  position: relative;
+  z-index: 10;
+  min-height: 100dvh;
+  width: 100%;
+  padding-top: 4.75rem;
+  padding-bottom: 0;
+  overflow-x: hidden;
+  background-color: #a30000;
+}
+
+/* 后台配置轮播时：不铺实色，透出 fixed 底图 */
+.login-loading-page.login-loading-page--under-hero {
+  background-color: transparent;
+}
+
+/* theme-container：仅占位，避免底图裁切；文案与按钮分层定位 */
+.login-theme-container {
+  position: relative;
+  z-index: 5;
+  width: 100%;
+  min-height: min(42vh, 22rem);
+  margin: 0 auto;
+  padding: 0 1rem 3rem;
+  pointer-events: none;
+}
+@media (min-width: 640px) {
+  .login-theme-container {
+    padding-left: 1.75rem;
+    padding-right: 1.75rem;
+  }
+}
+
+/* 进入按钮：水平居中；在原先基础上再向下约 30vh */
+.login-theme-enter-wrap {
+  position: fixed;
+  z-index: 36;
+  left: 50%;
+  top: calc(56% + 30vh);
+  transform: translate(-50%, -50%);
+  width: min(calc(100vw - 2rem), 60rem);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.login-theme-enter-wrap .login-more {
+  margin-top: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+/* 对应 .more-btn：整体约 1.5 倍（加大 50%） */
+.login-more-btn {
+  display: inline-flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.675rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(201, 162, 39, 0.55);
+  background: rgba(10, 22, 40, 0.78);
+  padding: 0.825rem 1.875rem;
+  font-size: clamp(1.42rem, 3.3vw, 1.73rem);
+  font-weight: 500;
+  color: #f8efd9;
+  line-height: 1.35;
+  box-shadow: 0 12px 42px rgba(0, 0, 0, 0.38);
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+.login-more-btn:hover {
+  border-color: rgba(240, 213, 106, 0.85);
+  background: rgba(18, 41, 74, 0.88);
+}
+.login-more-btn img {
+  width: 1.875rem;
+  height: 1.875rem;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+.login-more-btn .login-more-btn__icon {
+  width: 1.875rem;
+  height: 1.875rem;
+  flex-shrink: 0;
+}
+
+/* WOW 简版：fadeIn / fadeInLeft / fadeInUp */
+@keyframes login-portal-fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes login-portal-fadeInLeft {
+  from {
+    opacity: 0;
+    transform: translate3d(-14px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes login-portal-fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+.login-portal-wow--fadeInLeft {
+  animation: login-portal-fadeInLeft 0.85s ease-out both;
+  animation-delay: var(--login-wow-delay, 0.2s);
+}
+.login-portal-wow--fadeIn {
+  animation: login-portal-fadeIn 0.9s ease-out both;
+  animation-delay: var(--login-wow-delay, 0.2s);
+}
+.login-portal-wow--fadeInUp {
+  animation: login-portal-fadeInUp 0.85s ease-out both;
+  animation-delay: var(--login-wow-delay, 0.4s);
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-portal-wow--fadeInLeft,
+  .login-portal-wow--fadeIn,
+  .login-portal-wow--fadeInUp {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

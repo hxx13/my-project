@@ -1,0 +1,172 @@
+export interface RoomInfo {
+    id: string;
+    name: string;
+    areaName?: string;
+    floorName?: string;
+    officialRoomId?: string;
+    displayName?: string;
+    regionName?: string;
+    /** 浦东 / 浦西（来自 room_mapping_room） */
+    campusTag?: string;
+    isDisabled?: boolean;
+    disableReason?: string;
+    /** 系统设置按校区禁用进入（不影响离开） */
+    enterBlocked?: boolean;
+    enterBlockReason?: string;
+    /** 非开放时段下该房间是否享有免冻结扫码进入豁免 */
+    scanEntryTimeExempt?: boolean;
+}
+
+export interface DisciplinaryRecord {
+    id: string;
+    createTime: string;
+    operateName: string;
+    record: string;
+}
+
+export interface AnalyzeUserInfo {
+    userId: string;
+    name: string;
+    head: string;
+    group: string;
+    gender?: number | string;
+    mobile_phone?: string;
+    department_name?: string;
+    project_group_name?: string;
+    user_type_names?: string;
+    rpg?: {
+        level: number;
+        exp: number;
+        nextLevelExp: number;
+    };
+}
+
+export interface AnalyzeResponse {
+    message: string;
+    success: boolean;
+    userInfo: AnalyzeUserInfo;
+    currentState: "INSIDE" | "OUTSIDE" | "UNKNOWN";
+    pendingRooms?: RoomInfo[];
+    allowedRooms?: RoomInfo[];
+    globalUserState?: number;
+    disciplinaryRecords?: DisciplinaryRecord[];
+    /** 后端 twin_card_mapping 是否存在该人员；用于指示自带校园卡 / 领用公卡 */
+    hasPhysicalCardMapping?: boolean;
+    /** 是否启用扫码弹窗入口时段限制（仅限制进入，不限制离开） */
+    scanPopupEntryWindowEnabled?: boolean;
+    /** 当前时间是否允许扫码进入（仅进入；离开不受此字段限制） */
+    scanPopupEntryAllowedNow?: boolean;
+    /** 该用户免冻结扫码进入授权房间 ID 列表（与 twin_card_mapping.freeze_exempt_room_ids 一致） */
+    scanPopupExemptRoomIds?: string[];
+    /** 管理员下发的违规通告（扫码弹窗覆盖展示） */
+    studentViolationNotice?: StudentViolationNotice;
+    /** 违规来源：CAGE_STATUS=笼位处理提示 / MANUAL=违规提醒 */
+    studentViolationSource?: string;
+    /** 未绑卡人员扫码提示（全局配置） */
+    unboundCardNotice?: StudentViolationNotice;
+    /** 扫码弹窗公告（多条翻页） */
+    scanPopupAnnouncements?: ScanPopupAnnouncementBundle;
+    /** 违规交互确认短语（顶层透传） */
+    violationInteractiveChallenge?: string | null;
+    /** 自动签退计时器状态；无计时器时为 null */
+    autoSignoutState?: string | null;
+    /** 计划自动签退时刻 */
+    autoSignoutScheduledAt?: string | null;
+    /** 距离自动签退剩余秒数 */
+    autoSignoutSecondsRemaining?: number | null;
+    /** 扫码延迟免冻结总开关 */
+    scanDelayEnabled?: boolean;
+    /** 公用「延迟」载体按钮文案 */
+    scanDelayButtonLabel?: string;
+    /** 按房间分组的延迟二级菜单项 */
+    scanDelayOptionsByRoom?: Record<string, ScanDelayOptionSummary[]>;
+}
+
+export type ScanDelayOptionSummary = {
+    id: number;
+    roomId?: string;
+    carrierId?: number;
+    optionLabel: string;
+    /** 载体按钮文案；未配置时前端回退全局兜底 */
+    buttonLabel?: string;
+    requireApproval: boolean;
+    reviewerUserIds?: string[];
+    exemptMode?: string;
+    durationMinutes?: number | null;
+    extendUntilTime?: string | null;
+    maxCount?: number | null;
+}
+
+export interface ScanPopupAnnouncementItem {
+    id: number;
+    title?: string;
+    contentHtml?: string;
+    /** 公告内容更新时间（服务端用于校验「不再弹出」是否过期） */
+    updatedAt?: string | null;
+    /** 被扫码人员已选择「下次不再自动弹出」 */
+    autoOpenSuppressed?: boolean;
+}
+
+export interface ScanPopupAnnouncementBundle {
+    enabled?: boolean;
+    showNoticeEveryScan?: boolean;
+    total?: number;
+    items?: ScanPopupAnnouncementItem[];
+}
+
+export interface StudentViolationNotice {
+    id: number;
+    violationText?: string;
+    imageUrls?: string[];
+    showNoticeEveryScan?: boolean;
+    enterLocked?: boolean;
+    /** 剩余允许成功进入次数；未配置上限时为 undefined */
+    remainingEnterAllowance?: number | null;
+    /** 交互式确认短语（如 "一人一卡,严禁尾随"）；null 表示普通公告 */
+    interactiveChallenge?: string | null;
+    /** 是否已完成交互拼图并永久解除禁入 */
+    interactiveChallengeVerified?: boolean;
+    /** 违规到期时间（ISO 字符串） */
+    expireAt?: string | null;
+    /** 已超过违规期限且交互验证仍未完成 */
+    pastExpireAwaitingInteractive?: boolean;
+    /** 触发规则名称 */
+    ruleName?: string;
+    /** 解禁方式：自助解禁 / 仅工作人员 */
+    unblockMethod?: string;
+    /** 是否关键记录（达到解禁上限，自助通道已关闭） */
+    critical?: boolean;
+    /** 当前是否允许自助解禁 */
+    canSelfUnblock?: boolean;
+    /** 达到上限时的替换公告文案（null=沿用原违规文案） */
+    criticalNoticeText?: string;
+    /** 被扫码人员已选择「下次不再自动弹出」 */
+    autoOpenSuppressed?: boolean;
+    /** CAGE_STATUS / MANUAL 等来源标识 */
+    source?: string;
+}
+
+export interface ExecutePayload {
+    userId: string;
+    roomId: string;
+    action: "ENTER" | "EXIT";
+    isSharedCard?: boolean;
+    isKeepCard?: boolean;
+    /** 与弹窗「领用公卡」一致 */
+    isBorrowedCard?: boolean;
+}
+
+export interface UserStatusResponse {
+    state: number;
+    userDisciplinaryRecords: DisciplinaryRecord[];
+    /** If the backend ever returns allowed rooms here, the popup can merge them when scan list is empty. */
+    allowedRooms?: RoomInfo[];
+}
+
+export interface RoomCardStatus {
+    roomId: string;
+    roomName: string;
+    maxCapacity: number;
+    currentPeople: number;
+    borrowedCards: number;
+}

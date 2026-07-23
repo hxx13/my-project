@@ -1,0 +1,185 @@
+<view class="page">
+  <view class="hint">在此维护分类与物资：新建或编辑档案、上下架、封面；卡片内还可入库与改库存。分类默认收起，点分类行展开/收起，物资按分类收纳便于查找。</view>
+  <view class="toolbar-row">
+    <input class="inp-inline" placeholder="搜索管理物资（名称/ID/模式）" value="{{ searchKeyword }}" bindinput="onSearchInput" confirm-type="search" />
+    <view class="icon-tool icon-tool--primary" hover-class="icon-tool-hover" bindtap="openCreate">
+      <van-icon name="plus" size="18px" color="#ffffff" />
+    </view>
+    <input class="inp-cat-short" placeholder="新分类" value="{{ newCatName }}" bindinput="onCatName" confirm-type="done" />
+    <view class="icon-tool" hover-class="icon-tool-hover" bindtap="onAddCat">
+      <van-icon name="label-o" size="18px" color="#646566" />
+    </view>
+  </view>
+
+  <view class="sec-head row-between">
+    <text>分类与物资</text>
+    <text class="tools-hint">按分类收纳</text>
+  </view>
+
+  <view wx:for="{{ categoryBlocks }}" wx:key="id" wx:for-item="blk" class="cat-block">
+    <view class="cat-head" hover-class="cat-head-hover" bindtap="onToggleCategory" data-cid="{{ blk.id }}">
+      <text class="cat-chev">{{ blk.expanded ? '▼' : '▶' }}</text>
+      <view class="cat-head-main">
+        <view class="cat-head-line">
+          <text class="cat-name-part">{{ blk.name }}</text>
+          <text class="cat-meta-inline">#{{ blk.id }} · {{ blk.itemCount }}项</text>
+        </view>
+      </view>
+      <view wx:if="{{ !blk.isOrphan }}" class="cat-head-actions">
+        <view class="cat-quick-add" hover-class="cat-quick-add-hover" catchtap="openCreateInCategory" data-cid="{{ blk.id }}">
+          <van-icon name="plus" size="16px" color="#1989fa" />
+        </view>
+        <view class="cat-del-ico" catchtap="onDeleteCat" data-id="{{ blk.id }}">
+          <van-icon name="delete-o" size="16px" color="#ee0a24" />
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{ blk.expanded }}" class="cat-body">
+      <view wx:if="{{ blk.itemCount === 0 }}" class="hint cat-empty">该分类下暂无物资</view>
+      <view wx:for="{{ blk.items }}" wx:for-item="it" wx:key="id" class="item-card">
+        <view class="item-top">
+          <image wx:if="{{ it.coverAbsUrl }}" class="item-thumb" src="{{ it.coverAbsUrl }}" mode="aspectFill" lazy-load />
+          <view wx:else class="item-thumb item-thumb-ph"><text>{{ it.nameInitial }}</text></view>
+          <view class="item-info">
+            <view class="item-title-row">
+              <text class="item-title">{{ it.name }}</text>
+              <text wx:if="{{ it.shelfStatus === 'OFF_SHELF' }}" class="badge-off">下架</text>
+            </view>
+            <view class="item-meta">#{{ it.id }} · {{ it.stockMode }} · 库存 {{ it.stockQty }}</view>
+            <view class="item-actions">
+              <text class="link link-strong" data-id="{{ it.id }}" bindtap="openEdit">编辑</text>
+              <text class="link" data-id="{{ it.id }}" bindtap="toggleInbound">入库</text>
+              <text wx:if="{{ it.stockMode === 'QUANTIFIED' }}" class="link link-warn" data-id="{{ it.id }}" bindtap="toggleStock">改库存</text>
+              <text class="link-danger" data-id="{{ it.id }}" bindtap="onDeleteItem">删除</text>
+            </view>
+          </view>
+        </view>
+
+        <view wx:if="{{ inboundOpenId === it.id }}" class="panel">
+          <view class="panel-tip">{{ it.stockMode === 'FLAG' ? '有无型：确认后标记为有货。' : '数量型：填写本次入库数量。' }}</view>
+          <input wx:if="{{ it.stockMode === 'QUANTIFIED' }}" class="inp-panel" placeholder="数量" value="{{ inboundQtyById[it.id] }}" data-id="{{ it.id }}" bindinput="onInboundQtyFor" type="digit" />
+          <view class="panel-btns">
+            <view
+              class="btn-fill {{ inboundSubmittingId === it.id ? 'btn-fill-disabled' : '' }}"
+              hover-class="{{ inboundSubmittingId === it.id ? '' : 'btn-fill-hover' }}"
+              data-id="{{ it.id }}"
+              data-mode="{{ it.stockMode }}"
+              bindtap="onInboundOne"
+            >{{ inboundSubmittingId === it.id ? '提交中…' : '确认' }}</view>
+            <view class="btn-line" hover-class="btn-line-hover" data-id="{{ it.id }}" bindtap="closeInbound">取消</view>
+          </view>
+        </view>
+
+        <view wx:if="{{ stockOpenId === it.id && it.stockMode === 'QUANTIFIED' }}" class="panel panel-amber">
+          <view class="panel-tip">将库存设为新数值（非增量）</view>
+          <input class="inp-panel" placeholder="新库存" value="{{ stockNewById[it.id] }}" data-id="{{ it.id }}" bindinput="onStockNewFor" type="digit" />
+          <view class="panel-btns">
+            <view class="btn-fill btn-fill-warn" hover-class="btn-fill-hover" data-id="{{ it.id }}" bindtap="onSaveStock">保存</view>
+            <view class="btn-line" hover-class="btn-line-hover" data-id="{{ it.id }}" bindtap="closeStock">取消</view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="sec-head row-between">
+    <text>回收站（7天后自动清空）</text>
+    <view class="mini-ops">
+      <view class="btn-mini" bindtap="onPurgeRecycleSelected">选删</view>
+      <view class="btn-mini btn-mini-danger" bindtap="onPurgeRecycleAll">清空</view>
+    </view>
+  </view>
+  <view wx:if="{{ recycleRows.length === 0 }}" class="hint">回收站为空</view>
+  <view wx:for="{{ recycleRows }}" wx:key="id" class="cell-row">
+    <view class="cell-main">
+      <view>{{ item.name }}</view>
+      <view class="cell-id">#{{ item.id }} · {{ item.stockMode }} / 库存 {{ item.stockQty }}{{ item.purgeAfterText ? ' · 清理 ' + item.purgeAfterText : '' }}</view>
+    </view>
+    <view class="link" data-id="{{ item.id }}" bindtap="onToggleRecycleSelect">{{ recycleSelected[item.id] ? '已选' : '勾选' }}</view>
+    <view class="link" data-id="{{ item.id }}" bindtap="onRestoreRecycleItem">恢复</view>
+    <view class="link-danger" data-id="{{ item.id }}" bindtap="onPurgeRecycleItem">删</view>
+  </view>
+
+  <van-popup
+    show="{{ formShow }}"
+    position="center"
+    round
+    closeable
+    close-icon-position="top-right"
+    bind:close="closeForm"
+    custom-style="width: 86%; max-width: 360px; padding: 0; overflow: hidden;"
+  >
+    <view class="popup-wrap">
+      <view class="popup-head">{{ formMode === 'edit' ? '编辑物资' : '新建物资' }}</view>
+      <view class="popup-body">
+        <view class="form-label">分类</view>
+        <picker mode="selector" range="{{ categoryNames }}" value="{{ createCatIndex }}" bindchange="onPickCat">
+          <view class="form-picker">{{ createCatName }}</view>
+        </picker>
+
+        <view class="form-label">名称 <text class="req">*</text></view>
+        <input class="form-input" placeholder="填写物资名称" value="{{ createName }}" bindinput="onCreateName" maxlength="64" />
+
+        <view class="form-label">库存模式</view>
+        <picker mode="selector" range="{{ modeLabels }}" value="{{ createModeIndex }}" bindchange="onPickMode">
+          <view class="form-picker">{{ modeLabels[createModeIndex] }}</view>
+        </picker>
+
+        <view class="form-label">初始入库数量</view>
+        <input class="form-input" type="digit" placeholder="新建时入库数量（>=0）" value="{{ createStockQty }}" bindinput="onCreateStockQty" />
+
+        <view class="form-label">上架状态</view>
+        <picker mode="selector" range="{{ shelfLabels }}" value="{{ shelfIndex }}" bindchange="onPickShelf">
+          <view class="form-picker">{{ shelfLabels[shelfIndex] }}</view>
+        </picker>
+
+        <view class="form-label">封面图 <text class="opt">选填</text></view>
+        <view class="cover-row">
+          <view wx:if="{{ createCoverPreview }}" class="cover-preview-wrap">
+            <image class="cover-preview" src="{{ createCoverPreview }}" mode="aspectFill" />
+            <view class="cover-remove" bindtap="clearFormCover">×</view>
+          </view>
+          <view wx:else class="cover-add" hover-class="cover-add-hover" bindtap="chooseFormCover">
+            <text class="cover-add-icon">+</text>
+            <text class="cover-add-txt">上传</text>
+          </view>
+          <view class="cover-hint">相册或拍照；编辑时清除封面将保存为空</view>
+        </view>
+
+        <!-- Spec config -->
+        <view class="form-label form-label-section">规格配置 <text class="opt">选填</text></view>
+        <view class="spec-toggle-row">
+          <text class="spec-toggle-label">启用规格</text>
+          <switch checked="{{ specEnabled }}" bindchange="onToggleSpec" color="#1989fa" />
+        </view>
+        <view wx:if="{{ specEnabled }}" class="spec-config">
+          <view wx:for="{{ specDimensions }}" wx:key="index" class="spec-dim-row">
+            <view class="spec-dim-header">
+              <text class="spec-dim-title">维度 {{ index + 1 }}</text>
+              <view class="spec-dim-del" data-index="{{ index }}" bindtap="onRemoveSpecDim">删除</view>
+            </view>
+            <input class="form-input spec-dim-input" placeholder="维度名（如：尺寸）" value="{{ item.dimName }}" data-index="{{ index }}" bindinput="onSpecDimName" maxlength="20" />
+            <input class="form-input spec-dim-input" placeholder="选项，逗号分隔（如：S,M,L）" value="{{ item.optionsStr }}" data-index="{{ index }}" bindinput="onSpecDimOptions" maxlength="200" />
+          </view>
+          <view class="spec-add-dim" bindtap="onAddSpecDim">+ 添加维度</view>
+          <view class="spec-toggle-row spec-required-row">
+            <text class="spec-toggle-label">必须选择规格</text>
+            <switch checked="{{ specRequired }}" bindchange="onToggleSpecRequired" color="#1989fa" />
+          </view>
+        </view>
+
+        <view class="form-label form-label-section">独立下单</view>
+        <view class="spec-toggle-row">
+          <text class="spec-toggle-label">该物资不能与其他物资合并下单</text>
+          <switch checked="{{ independentOrder }}" bindchange="onToggleIndependentOrder" color="#1989fa" />
+        </view>
+      </view>
+      <view class="popup-footer">
+        <view class="popup-footer-inner">
+          <view class="btn-line-wide" hover-class="btn-line-hover" bindtap="closeForm">取消</view>
+          <view class="btn-fill-wide {{ creating ? 'btn-fill-disabled' : '' }}" hover-class="btn-fill-hover" bindtap="submitItemForm">{{ creating ? (formMode === 'edit' ? '保存中…' : '创建中…') : (formMode === 'edit' ? '保存' : '创建') }}</view>
+        </view>
+      </view>
+    </view>
+  </van-popup>
+</view>

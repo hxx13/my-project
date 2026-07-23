@@ -1,0 +1,25 @@
+page {
+  box-sizing: border-box;
+}
+
+.telemetry-page {
+  min-height: 100vh;
+  background: #f0f5f1;
+  padding: 12rpx 12rpx 0;
+  padding-bottom: calc(24rpx + 50px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.state {
+  text-align: center;
+  padding: 80rpx 0;
+  color: #94a3b8;
+  font-size: 24rpx;
+}
+
+.state-err {
+  color: #b91c1c;
+}

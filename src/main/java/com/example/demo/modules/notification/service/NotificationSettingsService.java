@@ -1,0 +1,311 @@
+package com.example.demo.modules.notification.service;
+
+import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.common.component.SocketRoomAssigner;
+import com.example.demo.common.event.CredentialsChangedEvent;
+import com.example.demo.modules.notification.dto.UpdateNotifyRuleRequest;
+import com.example.demo.modules.notification.dto.UpdateNotifyTemplateRequest;
+import com.example.demo.modules.notification.dto.UpdateSystemConfigRequest;
+import com.example.demo.modules.notification.dto.SettingDefinitionView;
+import com.example.demo.modules.notification.entity.NotifyRule;
+import com.example.demo.modules.notification.entity.NotifyTemplate;
+import com.example.demo.modules.notification.entity.SystemConfigDefinition;
+import com.example.demo.modules.notification.entity.SystemConfigItem;
+import com.example.demo.modules.notification.mapper.NotificationSettingsMapper;
+import com.example.demo.modules.telemetry.service.TelemetryFacilityLayoutRulesService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.util.*;
+
+@Service
+public class NotificationSettingsService {
+    private final NotificationSettingsMapper settingsMapper;
+    private final TelemetryFacilityLayoutRulesService telemetryFacilityLayoutRulesService;
+    private final ApplicationEventPublisher eventPublisher;
+
+    @Autowired(required = false)
+    private SocketIOServer socketServer;
+
+    public NotificationSettingsService(NotificationSettingsMapper settingsMapper,
+                                       TelemetryFacilityLayoutRulesService telemetryFacilityLayoutRulesService,
+                                       ApplicationEventPublisher eventPublisher) {
+        this.settingsMapper = settingsMapper;
+        this.telemetryFacilityLayoutRulesService = telemetryFacilityLayoutRulesService;
+        this.eventPublisher = eventPublisher;
+    }
+
+    public List<NotifyRule> listRules() {
+        return settingsMapper.listRules();
+    }
+
+    public List<NotifyTemplate> listTemplates() {
+        return settingsMapper.listTemplates();
+    }
+
+    public List<SystemConfigItem> listConfigs(String module) {
+        List<SystemConfigDefinition> defs = settingsMapper.listConfigDefinitionsByModule(module);
+        List<SystemConfigItem> items = settingsMapper.listConfigsByModule(module);
+        Set<String> existingKeys = new HashSet<>(items.stream().map(SystemConfigItem::getConfigKey).toList());
+        for (SystemConfigDefinition def : defs) {
+            if (existingKeys.contains(def.getConfigKey())) {
+                continue;
+            }
+            SystemConfigItem item = new SystemConfigItem();
+            item.setModule(def.getModule());
+            item.setConfigKey(def.getConfigKey());
+            item.setConfigValue(def.getDefaultValue());
+            item.setValueType(def.getValueType());
+            item.setRemark(def.getDescription());
+            try {
+                settingsMapper.insertConfigItem(item);
+            } catch (Exception ignored) {
+                // Ignore duplicate inserts caused by concurrent requests.
+            }
+        }
+        return settingsMapper.listConfigsByModule(module);
+    }
+
+    /**
+     * 从 sys_system_config 读取单个配置值；DB 无有效值时回退到 fallback。
+     * 自动播种缺少的配置项（根据 sys_system_config_def 默认值）。
+     */
+    public String getEffectiveValue(String module, String configKey, String fallback) {
+        List<SystemConfigItem> items = listConfigs(module);
+        String dbValue = items.stream()
+                .filter(item -> configKey.equals(item.getConfigKey()))
+                .map(SystemConfigItem::getConfigValue)
+                .findFirst()
+                .orElse(null);
+        if (StringUtils.hasText(dbValue)) {
+            return dbValue;
+        }
+        // 环境变量兜底
+        String envName = configKey.replace(".", "_").toUpperCase();
+        String envValue = System.getenv(envName);
+        if (StringUtils.hasText(envValue)) {
+            return envValue;
+        }
+        return fallback;
+    }
+
+    public boolean updateRule(Long id, UpdateNotifyRuleRequest request) {
+        NotifyRule current = settingsMapper.findRuleById(id);
+        if (current == null || request == null) return false;
+        if (request.getEnabled() != null) current.setEnabled(request.getEnabled());
+        if (request.getMinRoleLevel() != null) current.setMinRoleLevel(request.getMinRoleLevel());
+        if (StringUtils.hasText(request.getRecipientMode())) current.setRecipientMode(request.getRecipientMode().trim().toUpperCase());
+        if (StringUtils.hasText(request.getTemplateKey())) current.setTemplateKey(request.getTemplateKey().trim());
+        return settingsMapper.updateRule(current) > 0;
+    }
+
+    public boolean updateTemplate(Long id, UpdateNotifyTemplateRequest request) {
+        if (request == null) return false;
+        List<NotifyTemplate> all = settingsMapper.listTemplates();
+        NotifyTemplate target = all.stream().filter(it -> id.equals(it.getId())).findFirst().orElse(null);
+        if (target == null) return false;
+        if (StringUtils.hasText(request.getTitleTpl())) target.setTitleTpl(request.getTitleTpl().trim());
+        if (StringUtils.hasText(request.getContentTpl())) target.setContentTpl(request.getContentTpl().trim());
+        if (request.getEnabled() != null) target.setEnabled(request.getEnabled());
+        return settingsMapper.updateTemplate(target) > 0;
+    }
+
+    public boolean updateConfig(Long id, UpdateSystemConfigRequest request, String operatorId) {
+        if (request == null) return false;
+        SystemConfigItem item = settingsMapper.findConfigById(id);
+        if (item == null) return false;
+        SystemConfigDefinition def = settingsMapper.listConfigDefinitionsByModule(item.getModule()).stream()
+                .filter(it -> item.getConfigKey().equals(it.getConfigKey()))
+                .findFirst()
+                .orElse(null);
+        String newValue = request.getConfigValue();
+        if (TelemetryFacilityLayoutRulesService.MODULE.equals(item.getModule())
+                && TelemetryFacilityLayoutRulesService.CONFIG_KEY_RULES_JSON.equals(item.getConfigKey())) {
+            if (!telemetryFacilityLayoutRulesService.isValidRulesJson(newValue)) {
+                return false;
+            }
+        }
+        if (def != null && !isValueValid(def, newValue)) {
+            return false;
+        }
+        String oldValue = item.getConfigValue();
+        item.setConfigValue(newValue);
+        item.setRemark(request.getRemark());
+        int updated = settingsMapper.updateConfig(item);
+        if (updated > 0) {
+            settingsMapper.insertConfigAudit(item.getId(), item.getModule(), item.getConfigKey(), oldValue, newValue, operatorId);
+            if (TelemetryFacilityLayoutRulesService.MODULE.equals(item.getModule())
+                    && TelemetryFacilityLayoutRulesService.CONFIG_KEY_RULES_JSON.equals(item.getConfigKey())) {
+                telemetryFacilityLayoutRulesService.refresh();
+            }
+            if ("credentials".equals(item.getModule()) || "integration".equals(item.getModule())) {
+                eventPublisher.publishEvent(new CredentialsChangedEvent(item.getModule(), item.getConfigKey()));
+            }
+            // 公告/法典/惩戒配置变更 → WebSocket 实时广播，前端立即刷新无需等待轮询
+            if (item.getConfigKey() != null && item.getConfigKey().startsWith("dashboard.codex.")) {
+                try {
+                    if (socketServer != null) {
+                        socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("DASHBOARD_CODEX_REFRESH",
+                                java.util.Map.of("key", item.getConfigKey(), "at", java.time.LocalDateTime.now().toString()));
+                    }
+                } catch (Exception ignored) {
+                    // Socket.IO 广播失败不阻塞保存
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    public List<Map<String, String>> listModules() {
+        List<Map<String, String>> base = new ArrayList<>(List.of(
+                module("notification", "通知规则"),
+                module("template", "通知模板"),
+                module("capability", "业务能力策略"),
+                module("turnstile", "Turnstile 人机验证")
+        ));
+        Set<String> exists = new HashSet<>(base.stream().map(it -> it.get("key")).toList());
+        Set<String> hiddenFromSettings = Set.of("twin_dahua_issue");
+        for (String dynamicModule : settingsMapper.listConfigModules()) {
+            if (!StringUtils.hasText(dynamicModule) || exists.contains(dynamicModule) || hiddenFromSettings.contains(dynamicModule)) {
+                continue;
+            }
+            base.add(module(dynamicModule, moduleLabel(dynamicModule)));
+            exists.add(dynamicModule);
+        }
+        return base;
+    }
+
+    public List<SettingDefinitionView> listConfigDefinitions(String module) {
+        List<SystemConfigDefinition> defs = settingsMapper.listConfigDefinitionsByModule(module);
+        return defs.stream().map(this::toView).toList();
+    }
+
+    public Map<String, String> getPublicRuntimeConfig() {
+        Map<String, String> result = new HashMap<>();
+        List<SystemConfigDefinition> defs = settingsMapper.listPublicConfigDefinitions();
+        for (SystemConfigDefinition def : defs) {
+            List<SystemConfigItem> items = settingsMapper.listConfigsByModule(def.getModule());
+            String dbValue = items.stream()
+                    .filter(item -> def.getConfigKey().equals(item.getConfigKey()))
+                    .map(SystemConfigItem::getConfigValue)
+                    .findFirst()
+                    .orElse(null);
+            String value = StringUtils.hasText(dbValue) && isValueValid(def, dbValue)
+                    ? dbValue
+                    : (StringUtils.hasText(System.getenv(toEnvName(def.getConfigKey()))) ? System.getenv(toEnvName(def.getConfigKey())) : def.getDefaultValue());
+            result.put(def.getConfigKey(), value == null ? "" : value);
+        }
+        return result;
+    }
+
+    private Map<String, String> module(String key, String label) {
+        Map<String, String> map = new HashMap<>();
+        map.put("key", key);
+        map.put("label", label);
+        return map;
+    }
+
+    private String moduleLabel(String module) {
+        if ("mini_program".equals(module)) return "小程序推送";
+        if ("frontend_runtime".equals(module)) return "前端运行时";
+        if ("network".equals(module)) return "网络配置";
+        if ("system".equals(module)) return "系统配置";
+        if ("supplies".equals(module)) return "物资领用";
+        if ("material".equals(module)) return "物资申领系统";
+        if ("dashboard_codex".equals(module)) return "主页公告/还卡说明";
+        if ("telemetry_facility".equals(module)) return "动物房设施布局";
+        if ("scanner".equals(module)) return "扫码终端";
+        if ("twin_dahua_issue".equals(module)) return "大华发卡 / 扫码延迟";
+        if ("student_violation".equals(module)) return "学生违规/未绑卡提示";
+        if ("credentials".equals(module)) return "外部系统凭证";
+        if ("integration".equals(module)) return "外部集成配置";
+        if ("llm".equals(module)) return "大模型（DeepSeek）";
+        if ("logging".equals(module)) return "控制台日志管理";
+        if ("face".equals(module)) return "人脸识别";
+        if ("turnstile".equals(module)) return "Turnstile 人机验证";
+        return module;
+    }
+
+    private SettingDefinitionView toView(SystemConfigDefinition def) {
+        SettingDefinitionView view = new SettingDefinitionView();
+        view.setId(def.getId());
+        view.setModule(def.getModule());
+        view.setConfigKey(def.getConfigKey());
+        view.setLabelZh(def.getLabelZh());
+        view.setDescription(def.getDescription());
+        view.setValueType(def.getValueType());
+        view.setDefaultValue(def.getDefaultValue());
+        view.setIsSensitive(def.getIsSensitive());
+        view.setRequiresRestart(def.getRequiresRestart());
+        view.setIsPublic(def.getIsPublic());
+        view.setOptions(parseOptions(def.getOptionsJson()));
+        return view;
+    }
+
+    private List<String> parseOptions(String optionsJson) {
+        if (!StringUtils.hasText(optionsJson)) return List.of();
+        String raw = optionsJson.trim();
+        if (!raw.startsWith("[") || !raw.endsWith("]")) return List.of();
+        String body = raw.substring(1, raw.length() - 1).trim();
+        if (!StringUtils.hasText(body)) return List.of();
+        String[] arr = body.split(",");
+        List<String> out = new ArrayList<>();
+        for (String s : arr) {
+            out.add(s.trim().replace("\"", ""));
+        }
+        return out;
+    }
+
+    private boolean isValueValid(SystemConfigDefinition def, String value) {
+        if (def == null) return true;
+        if (value == null) value = "";
+        if (isNetworkConfig(def.getConfigKey()) && !isNetworkValueValid(def.getConfigKey(), value)) {
+            return false;
+        }
+        String type = def.getValueType() == null ? "STRING" : def.getValueType().toUpperCase();
+        if ("BOOLEAN".equals(type)) {
+            return "true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value);
+        }
+        if ("NUMBER".equals(type)) {
+            try {
+                new java.math.BigDecimal(value);
+            } catch (Exception ex) {
+                return false;
+            }
+        }
+        List<String> options = parseOptions(def.getOptionsJson());
+        return options.isEmpty() || options.contains(value);
+    }
+
+    private boolean isNetworkConfig(String configKey) {
+        return StringUtils.hasText(configKey) && configKey.startsWith("network.");
+    }
+
+    private boolean isNetworkValueValid(String configKey, String value) {
+        if ("network.backend.serverPort".equals(configKey)) {
+            try {
+                int port = Integer.parseInt(value);
+                return port >= 1 && port <= 65535;
+            } catch (Exception ex) {
+                return false;
+            }
+        }
+        if ("network.backend.serverAddress".equals(configKey)) {
+            return !StringUtils.hasText(value) || value.matches("^[a-zA-Z0-9_.:-]+$");
+        }
+        if ("network.backend.contextPath".equals(configKey)
+                || "network.frontend.apiBaseUrl".equals(configKey)
+                || "network.frontend.sseBaseUrl".equals(configKey)
+                || "network.upload.publicBaseUrl".equals(configKey)) {
+            return value.startsWith("/") || value.matches("^https?://[^\\s]+$");
+        }
+        return true;
+    }
+
+    private String toEnvName(String configKey) {
+        return configKey.toUpperCase().replace(".", "_");
+    }
+}

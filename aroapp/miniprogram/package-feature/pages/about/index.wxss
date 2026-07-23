@@ -1,0 +1,127 @@
+.about-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #e8f2ff 0%, #f5f6f7 32%, #f5f6f7 100%);
+  padding: 24rpx 24rpx calc(48rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.about-hero {
+  padding: 48rpx 12rpx 40rpx;
+}
+
+.about-brand {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #191919;
+  display: block;
+  letter-spacing: 1rpx;
+}
+
+.about-sub {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #646566;
+  display: block;
+}
+
+.about-card {
+  margin-top: 8rpx !important;
+  border-radius: 20rpx !important;
+  overflow: hidden;
+  box-shadow: 0 8rpx 32rpx rgba(25, 40, 80, 0.08);
+}
+
+.about-footer-note {
+  display: block;
+  margin-top: 36rpx;
+  padding: 0 16rpx;
+  font-size: 22rpx;
+  color: #969799;
+  line-height: 1.5;
+}
+
+.ver-popup {
+  padding: 8rpx 0 calc(24rpx + env(safe-area-inset-bottom));
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #f7f9fc 0%, #ffffff 22%);
+}
+
+.ver-popup-head {
+  padding: 12rpx 32rpx 20rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
+}
+
+.ver-popup-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #191919;
+  display: block;
+}
+
+.ver-popup-sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #969799;
+  display: block;
+}
+
+.ver-popup-scroll {
+  flex: 1;
+  min-height: 280rpx;
+  max-height: 58vh;
+  padding: 20rpx 24rpx 8rpx;
+  box-sizing: border-box;
+}
+
+.ver-card {
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+  border: 1rpx solid rgba(25, 137, 250, 0.12);
+  box-shadow: 0 8rpx 28rpx rgba(25, 60, 120, 0.06);
+}
+
+.ver-card-top {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 12rpx;
+}
+
+.ver-card-time {
+  font-size: 22rpx;
+  color: #969799;
+  flex-shrink: 0;
+}
+
+.ver-card-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
+  line-height: 1.4;
+  display: block;
+  margin-bottom: 10rpx;
+}
+
+.ver-card-sum {
+  font-size: 26rpx;
+  color: #646566;
+  line-height: 1.55;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.ver-card-body {
+  font-size: 27rpx;
+  color: #323233;
+  line-height: 1.65;
+}
+
+.ver-popup-foot {
+  padding: 16rpx 28rpx 0;
+}

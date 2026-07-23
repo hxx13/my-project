@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessCleanRuleProfileMapper">
+
+    <sql id="profileColumns">
+        id, name, description, debounce_seconds AS debounceSeconds,
+        swing_direction_filter AS swingDirectionFilter,
+        auto_clean_package AS autoCleanPackage,
+        require_mapping AS requireMapping,
+        open_success_only AS openSuccessOnly,
+        default_door_mode AS defaultDoorMode,
+        DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+        DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+    </sql>
+
+    <select id="selectAll" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanRuleProfile">
+        SELECT <include refid="profileColumns"/> FROM access_clean_rule_profile ORDER BY id ASC
+    </select>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanRuleProfile">
+        SELECT <include refid="profileColumns"/> FROM access_clean_rule_profile WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_clean_rule_profile (
+            name, description, debounce_seconds, swing_direction_filter,
+            auto_clean_package, require_mapping, open_success_only, default_door_mode
+        ) VALUES (
+            #{name}, #{description}, #{debounceSeconds}, #{swingDirectionFilter},
+            #{autoCleanPackage}, #{requireMapping}, #{openSuccessOnly}, #{defaultDoorMode}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE access_clean_rule_profile SET
+            name = #{name},
+            description = #{description},
+            debounce_seconds = #{debounceSeconds},
+            swing_direction_filter = #{swingDirectionFilter},
+            auto_clean_package = #{autoCleanPackage},
+            require_mapping = #{requireMapping},
+            open_success_only = #{openSuccessOnly},
+            default_door_mode = #{defaultDoorMode}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">DELETE FROM access_clean_rule_profile WHERE id = #{id}</delete>
+</mapper>

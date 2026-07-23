@@ -1,0 +1,9 @@
+{
+  "navigationBarTitleText": "转移记录",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "van-button": "@vant/weapp/button/index",
+    "van-empty": "@vant/weapp/empty/index"
+  }
+}
+

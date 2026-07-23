@@ -1,0 +1,264 @@
+.page {
+  min-height: 100vh;
+  background: #f2f3f5;
+  padding: 20rpx;
+  padding-bottom: calc(36rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.wo-filter {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+  margin-bottom: 16rpx;
+}
+
+.wo-pill {
+  padding: 10rpx 22rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  color: #646566;
+  background: #fff;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+
+.wo-pill-on {
+  color: #1989fa;
+  font-weight: 600;
+  background: rgba(25, 137, 250, 0.12);
+}
+
+.wo-card {
+  background: #fff;
+  border-radius: 28rpx;
+  padding: 20rpx 22rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 8rpx 28rpx rgba(0, 0, 0, 0.05);
+}
+
+.title {
+  font-size: 28rpx;
+  color: #323233;
+  font-weight: 600;
+}
+
+.sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #646566;
+  line-height: 1.55;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.meta {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #969799;
+  word-break: break-all;
+}
+
+.wo-actions {
+  margin-top: 16rpx;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.wo-act {
+  padding: 12rpx 28rpx;
+  font-size: 24rpx;
+  border-radius: 999rpx;
+  font-weight: 500;
+}
+
+.wo-act:active {
+  opacity: 0.85;
+}
+
+.wo-act-primary {
+  color: #fff;
+  background: linear-gradient(180deg, #5cadff, #1989fa);
+  box-shadow: 0 6rpx 18rpx rgba(25, 137, 250, 0.25);
+}
+
+.wo-act-success {
+  color: #fff;
+  background: linear-gradient(180deg, #4cd964, #07c160);
+  box-shadow: 0 6rpx 18rpx rgba(7, 193, 96, 0.22);
+}
+
+.wo-act-danger-plain {
+  color: #ee0a24;
+  background: rgba(238, 10, 36, 0.08);
+}
+
+.image-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 10rpx;
+}
+
+.image-item {
+  position: relative;
+}
+
+.image-thumb {
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 18rpx;
+  background: #eee;
+}
+
+.image-remove {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 34rpx;
+  text-align: center;
+}
+
+.list-foot {
+  text-align: center;
+  padding-top: 6rpx;
+}
+
+.list-foot-text {
+  color: #969799;
+  font-size: 22rpx;
+}
+
+.popup-body {
+  padding: 28rpx;
+  padding-bottom: calc(28rpx + env(safe-area-inset-bottom));
+}
+
+.popup-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin-bottom: 14rpx;
+}
+
+.popup-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10rpx;
+}
+
+.popup-tip {
+  font-size: 24rpx;
+  color: #969799;
+}
+
+.wo-act-mini {
+  padding: 8rpx 20rpx;
+  font-size: 24rpx;
+  color: #1989fa;
+  border-radius: 999rpx;
+  background: rgba(25, 137, 250, 0.1);
+}
+
+.input {
+  width: 100%;
+  min-height: 88rpx;
+  border: none;
+  border-radius: 20rpx;
+  padding: 14rpx 18rpx;
+  box-sizing: border-box;
+  font-size: 28rpx;
+  background: #f7f8fa;
+  margin-bottom: 14rpx;
+}
+
+.wo-popup-submit {
+  margin-top: 12rpx;
+  height: 80rpx;
+  line-height: 80rpx;
+  text-align: center;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #fff;
+  border-radius: 999rpx;
+}
+
+.wo-popup-submit--ok {
+  background: linear-gradient(180deg, #4cd964, #07c160);
+  box-shadow: 0 8rpx 22rpx rgba(7, 193, 96, 0.28);
+}
+
+.wo-popup-submit:active {
+  opacity: 0.9;
+}
+
+.recycle-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 20rpx 0 10rpx;
+}
+
+.recycle-title {
+  font-size: 24rpx;
+  color: #323233;
+  font-weight: 600;
+}
+
+.recycle-ops {
+  display: flex;
+  gap: 10rpx;
+}
+
+.recycle-op {
+  font-size: 22rpx;
+  color: #646566;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  background: #fff;
+}
+
+.recycle-op-danger {
+  color: #ee0a24;
+  background: rgba(238, 10, 36, 0.08);
+}
+
+.recycle-row {
+  background: #fff;
+  border-radius: 22rpx;
+  padding: 16rpx 18rpx;
+  margin-bottom: 10rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+
+.recycle-main {
+  font-size: 24rpx;
+  color: #323233;
+}
+
+.recycle-line-ops {
+  margin-top: 10rpx;
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+}
+
+.recycle-link {
+  font-size: 22rpx;
+  color: #1989fa;
+}
+
+.recycle-link-danger {
+  color: #ee0a24;
+}

@@ -1,0 +1,79 @@
+<view class="page access-records-page">
+
+  <!-- 加载中 -->
+  <view class="loading-center" wx:if="{{loading}}">
+    <van-loading size="40rpx" color="#ac1736" />
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <!-- 错误 -->
+  <view class="error-center" wx:elif="{{error}}">
+    <text class="error-text">{{error}}</text>
+    <view class="retry-btn" bindtap="onRetry">
+      <text>重试</text>
+    </view>
+  </view>
+
+  <!-- 数据区 -->
+  <block wx:else>
+    <view class="page-title">出入记录</view>
+
+    <!-- 日期筛选栏 -->
+    <view class="date-filter-bar">
+      <picker mode="date" value="{{startDate}}" end="{{endDate}}" bindchange="onStartDateChange">
+        <view class="date-picker-box">
+          <van-icon name="calendar-o" size="32rpx" color="#666" />
+          <text class="date-text">{{startDate || '开始日期'}}</text>
+        </view>
+      </picker>
+      <text class="date-separator">至</text>
+      <picker mode="date" value="{{endDate}}" start="{{startDate}}" bindchange="onEndDateChange">
+        <view class="date-picker-box">
+          <van-icon name="calendar-o" size="32rpx" color="#666" />
+          <text class="date-text">{{endDate || '结束日期'}}</text>
+        </view>
+      </picker>
+    </view>
+
+    <!-- 空态 -->
+    <view class="empty-center" wx:if="{{dateGroups.length === 0}}">
+      <text class="empty-text">暂无出入记录</text>
+    </view>
+
+    <!-- 记录列表 -->
+    <scroll-view scroll-y="true" class="record-scroll" wx:if="{{dateGroups.length > 0}}">
+      <view class="date-group" wx:for="{{dateGroups}}" wx:key="date">
+        <!-- 日期标题 -->
+        <view class="date-header">
+          <view class="date-header-line"></view>
+          <text class="date-header-text">{{item.date}} {{item.dayOfWeek}}</text>
+          <view class="date-header-line"></view>
+        </view>
+
+        <!-- 记录卡片 -->
+        <view class="record-card" wx:for="{{item.records}}" wx:for-item="record" wx:key="id">
+          <view class="record-icon {{record.eventType === '进入' ? 'icon-enter' : 'icon-exit'}}">
+            <text>{{record.eventType === '进入' ? '入' : '出'}}</text>
+          </view>
+          <view class="record-info">
+            <text class="record-type">{{record.eventType}}</text>
+            <text class="record-time">{{record.eventTime.substring(11, 16) || ''}}</text>
+            <text class="record-room">{{record.roomName || ''}}</text>
+          </view>
+          <text class="record-date-right">{{record.eventTime.substring(5, 10) || ''}}</text>
+        </view>
+      </view>
+    </scroll-view>
+
+    <!-- 分页栏 -->
+    <view class="pagination-bar" wx:if="{{totalPages > 1}}">
+      <view class="page-btn {{page <= 1 ? 'page-btn-disabled' : ''}}" bindtap="onPrevPage">
+        <text>上一页</text>
+      </view>
+      <text class="page-info">{{page}} / {{totalPages}}</text>
+      <view class="page-btn {{page >= totalPages ? 'page-btn-disabled' : ''}}" bindtap="onNextPage">
+        <text>下一页</text>
+      </view>
+    </view>
+  </block>
+</view>

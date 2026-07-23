@@ -1,0 +1,570 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper">
+
+    <select id="listTasks" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask">
+        SELECT id,
+               name,
+               enabled,
+               poll_interval_seconds AS pollIntervalSeconds,
+               query_json AS queryJson,
+               activation_rules_json AS activationRulesJson,
+               DATE_FORMAT(last_cursor_time, '%Y-%m-%d %H:%i:%s') AS lastCursorTime,
+               last_status AS lastStatus,
+               last_error AS lastError,
+               DATE_FORMAT(last_run_at, '%Y-%m-%d %H:%i:%s') AS lastRunAt,
+               DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+               DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+        FROM twin_dahua_pull_task
+        ORDER BY updated_at DESC
+    </select>
+
+    <select id="listEnabledTasks" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask">
+        SELECT id,
+               name,
+               enabled,
+               poll_interval_seconds AS pollIntervalSeconds,
+               query_json AS queryJson,
+               activation_rules_json AS activationRulesJson,
+               DATE_FORMAT(last_cursor_time, '%Y-%m-%d %H:%i:%s') AS lastCursorTime,
+               last_status AS lastStatus,
+               last_error AS lastError,
+               DATE_FORMAT(last_run_at, '%Y-%m-%d %H:%i:%s') AS lastRunAt,
+               DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+               DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+        FROM twin_dahua_pull_task
+        WHERE enabled = 1
+        ORDER BY id ASC
+    </select>
+
+    <select id="findTaskById" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask">
+        SELECT id,
+               name,
+               enabled,
+               poll_interval_seconds AS pollIntervalSeconds,
+               query_json AS queryJson,
+               activation_rules_json AS activationRulesJson,
+               DATE_FORMAT(last_cursor_time, '%Y-%m-%d %H:%i:%s') AS lastCursorTime,
+               last_status AS lastStatus,
+               last_error AS lastError,
+               DATE_FORMAT(last_run_at, '%Y-%m-%d %H:%i:%s') AS lastRunAt,
+               DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+               DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+        FROM twin_dahua_pull_task
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insertTask" parameterType="com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_dahua_pull_task (name, enabled, poll_interval_seconds, query_json, activation_rules_json)
+        VALUES (#{name}, #{enabled}, #{pollIntervalSeconds}, #{queryJson}, #{activationRulesJson})
+    </insert>
+
+    <update id="updateTask" parameterType="com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask">
+        UPDATE twin_dahua_pull_task
+        SET name = #{name},
+            enabled = #{enabled},
+            poll_interval_seconds = #{pollIntervalSeconds},
+            query_json = #{queryJson},
+            activation_rules_json = #{activationRulesJson}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateTaskRunState">
+        UPDATE twin_dahua_pull_task
+        SET last_cursor_time = CASE
+                WHEN #{lastCursorTime} IS NULL OR #{lastCursorTime} = '' THEN last_cursor_time
+                ELSE #{lastCursorTime}
+            END,
+            last_status = #{lastStatus},
+            last_error = #{lastError},
+            last_run_at = CASE
+                WHEN #{lastRunAt} IS NULL OR #{lastRunAt} = '' THEN last_run_at
+                ELSE #{lastRunAt}
+            END
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteTask">
+        DELETE FROM twin_dahua_pull_task WHERE id = #{id}
+    </delete>
+
+    <insert id="upsertRecord" parameterType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
+        INSERT INTO twin_dahua_swing_record (
+            task_id, pull_task_type, record_id, card_number, card_status, channel_code, channel_name, open_type,
+            person_code, person_id, person_name, department_id, department_name, audience_type,
+            swing_time, create_time, open_result, enter_or_exit,
+            mapping_user_id, mapping_card_no, mapping_hit, freeze_exempt_flag, raw_json
+        ) VALUES (
+            #{taskId}, #{pullTaskType}, #{recordId}, #{cardNumber}, #{cardStatus}, #{channelCode}, #{channelName}, #{openType},
+            #{personCode}, #{personId}, #{personName}, #{departmentId}, #{departmentName}, #{audienceType},
+            #{swingTime}, #{createTime}, #{openResult}, #{enterOrExit},
+            #{mappingUserId}, #{mappingCardNo}, #{mappingHit}, #{freezeExemptFlag}, #{rawJson}
+        )
+        ON DUPLICATE KEY UPDATE
+            pull_task_type = VALUES(pull_task_type),
+            task_id = VALUES(task_id),
+            card_number = VALUES(card_number),
+            card_status = VALUES(card_status),
+            channel_code = VALUES(channel_code),
+            channel_name = VALUES(channel_name),
+            open_type = VALUES(open_type),
+            person_code = VALUES(person_code),
+            person_id = VALUES(person_id),
+            person_name = VALUES(person_name),
+            department_id = VALUES(department_id),
+            department_name = VALUES(department_name),
+            audience_type = VALUES(audience_type),
+            swing_time = VALUES(swing_time),
+            create_time = VALUES(create_time),
+            open_result = VALUES(open_result),
+            enter_or_exit = VALUES(enter_or_exit),
+            mapping_user_id = VALUES(mapping_user_id),
+            mapping_card_no = VALUES(mapping_card_no),
+            mapping_hit = VALUES(mapping_hit),
+            freeze_exempt_flag = VALUES(freeze_exempt_flag),
+            raw_json = VALUES(raw_json),
+            ingested_at = NOW()
+    </insert>
+
+    <select id="findRecordByTaskIdAndRecordId" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
+        SELECT id,
+               task_id AS taskId,
+               pull_task_type AS pullTaskType,
+               record_id AS recordId,
+               card_number AS cardNumber,
+               card_status AS cardStatus,
+               channel_code AS channelCode,
+               channel_name AS channelName,
+               open_type AS openType,
+               person_code AS personCode,
+               person_id AS personId,
+               person_name AS personName,
+               department_id AS departmentId,
+               department_name AS departmentName,
+               audience_type AS audienceType,
+               DATE_FORMAT(swing_time, '%Y-%m-%d %H:%i:%s') AS swingTime,
+               DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               open_result AS openResult,
+               enter_or_exit AS enterOrExit,
+               mapping_user_id AS mappingUserId,
+               mapping_card_no AS mappingCardNo,
+               mapping_hit AS mappingHit,
+               freeze_exempt_flag AS freezeExemptFlag,
+               raw_json AS rawJson,
+               DATE_FORMAT(ingested_at, '%Y-%m-%d %H:%i:%s') AS ingestedAt
+        FROM twin_dahua_swing_record
+        WHERE task_id = #{taskId}
+          AND record_id = #{recordId}
+        LIMIT 1
+    </select>
+
+    <select id="findRecordByRecordId" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
+        SELECT id,
+               task_id AS taskId,
+               pull_task_type AS pullTaskType,
+               record_id AS recordId,
+               card_number AS cardNumber,
+               card_status AS cardStatus,
+               channel_code AS channelCode,
+               channel_name AS channelName,
+               open_type AS openType,
+               person_code AS personCode,
+               person_id AS personId,
+               person_name AS personName,
+               department_id AS departmentId,
+               department_name AS departmentName,
+               audience_type AS audienceType,
+               DATE_FORMAT(swing_time, '%Y-%m-%d %H:%i:%s') AS swingTime,
+               DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               open_result AS openResult,
+               enter_or_exit AS enterOrExit,
+               mapping_user_id AS mappingUserId,
+               mapping_card_no AS mappingCardNo,
+               mapping_hit AS mappingHit,
+               freeze_exempt_flag AS freezeExemptFlag,
+               raw_json AS rawJson,
+               DATE_FORMAT(ingested_at, '%Y-%m-%d %H:%i:%s') AS ingestedAt
+        FROM twin_dahua_swing_record
+        WHERE record_id = #{recordId}
+        LIMIT 1
+    </select>
+
+    <select id="countActivationByUserAndLastRecordId" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_dahua_activation_state
+        WHERE task_id = #{taskId}
+          AND user_id = #{userId}
+          AND last_record_id = #{recordId}
+    </select>
+
+    <select id="countRecordsMissingEnterExit" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_dahua_swing_record
+        WHERE 1 = 1
+        <if test="taskId != null">AND task_id = #{taskId}</if>
+        <if test="channelCode != null and channelCode != ''">AND channel_code = #{channelCode}</if>
+        <if test="personCode != null and personCode != ''">AND person_code = #{personCode}</if>
+        <if test="personName != null and personName != ''">AND person_name LIKE CONCAT('%', #{personName}, '%')</if>
+        <if test="openType != null">AND open_type = #{openType}</if>
+        <if test="startTime != null and startTime != ''">AND swing_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND swing_time &lt;= #{endTime}</if>
+        AND (enter_or_exit IS NULL OR enter_or_exit = 0)
+    </select>
+
+    <select id="listRecords" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
+        SELECT id,
+               task_id AS taskId,
+               pull_task_type AS pullTaskType,
+               record_id AS recordId,
+               card_number AS cardNumber,
+               card_status AS cardStatus,
+               channel_code AS channelCode,
+               channel_name AS channelName,
+               open_type AS openType,
+               person_code AS personCode,
+               person_id AS personId,
+               person_name AS personName,
+               department_id AS departmentId,
+               department_name AS departmentName,
+               audience_type AS audienceType,
+               DATE_FORMAT(swing_time, '%Y-%m-%d %H:%i:%s') AS swingTime,
+               DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               open_result AS openResult,
+               enter_or_exit AS enterOrExit,
+               mapping_user_id AS mappingUserId,
+               mapping_card_no AS mappingCardNo,
+               mapping_hit AS mappingHit,
+               freeze_exempt_flag AS freezeExemptFlag,
+               raw_json AS rawJson,
+               DATE_FORMAT(ingested_at, '%Y-%m-%d %H:%i:%s') AS ingestedAt
+        FROM twin_dahua_swing_record
+        WHERE 1 = 1
+        <if test="taskId != null">AND task_id = #{taskId}</if>
+        <if test="channelCode != null and channelCode != ''">AND channel_code = #{channelCode}</if>
+        <if test="channelCodes != null and channelCodes.size() > 0">
+            AND channel_code IN
+            <foreach collection="channelCodes" item="c" open="(" separator="," close=")">#{c}</foreach>
+        </if>
+        <if test="personCode != null and personCode != ''">AND person_code = #{personCode}</if>
+        <if test="personName != null and personName != ''">AND person_name LIKE CONCAT('%', #{personName}, '%')</if>
+        <if test="openType != null">AND open_type = #{openType}</if>
+        <if test="enterOrExit != null">AND enter_or_exit = #{enterOrExit}</if>
+        <if test="startTime != null and startTime != ''">AND swing_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND swing_time &lt;= #{endTime}</if>
+        ORDER BY swing_time DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="listRecordsForChannelTasks" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
+        SELECT id,
+               task_id AS taskId,
+               record_id AS recordId,
+               card_number AS cardNumber,
+               card_status AS cardStatus,
+               channel_code AS channelCode,
+               channel_name AS channelName,
+               open_type AS openType,
+               person_code AS personCode,
+               person_id AS personId,
+               person_name AS personName,
+               department_id AS departmentId,
+               department_name AS departmentName,
+               audience_type AS audienceType,
+               DATE_FORMAT(swing_time, '%Y-%m-%d %H:%i:%s') AS swingTime,
+               DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               open_result AS openResult,
+               enter_or_exit AS enterOrExit,
+               mapping_user_id AS mappingUserId,
+               mapping_card_no AS mappingCardNo,
+               mapping_hit AS mappingHit,
+               freeze_exempt_flag AS freezeExemptFlag,
+               raw_json AS rawJson,
+               DATE_FORMAT(ingested_at, '%Y-%m-%d %H:%i:%s') AS ingestedAt
+        FROM twin_dahua_swing_record
+        WHERE channel_code = #{channelCode}
+          AND task_id IN
+          <foreach collection="taskIds" item="tid" open="(" separator="," close=")">#{tid}</foreach>
+        <if test="pullTaskType != null and pullTaskType != ''">AND pull_task_type = #{pullTaskType}</if>
+        <if test="startTime != null and startTime != ''">AND swing_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND swing_time &lt;= #{endTime}</if>
+        <if test="afterSwingTime != null and afterSwingTime != ''">AND swing_time &gt; #{afterSwingTime}</if>
+        <if test="enterOrExit != null">AND enter_or_exit = #{enterOrExit}</if>
+        <choose>
+            <when test="sortAsc">ORDER BY swing_time ASC, id ASC</when>
+            <otherwise>ORDER BY swing_time DESC, id DESC</otherwise>
+        </choose>
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countRecordsForChannelTasks" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_dahua_swing_record
+        WHERE channel_code = #{channelCode}
+          AND task_id IN
+          <foreach collection="taskIds" item="tid" open="(" separator="," close=")">#{tid}</foreach>
+        <if test="pullTaskType != null and pullTaskType != ''">AND pull_task_type = #{pullTaskType}</if>
+        <if test="startTime != null and startTime != ''">AND swing_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND swing_time &lt;= #{endTime}</if>
+        <if test="afterSwingTime != null and afterSwingTime != ''">AND swing_time &gt; #{afterSwingTime}</if>
+        <if test="enterOrExit != null">AND enter_or_exit = #{enterOrExit}</if>
+    </select>
+
+    <select id="listRecordsForRawBackfill" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
+        SELECT id,
+               task_id AS taskId,
+               record_id AS recordId,
+               card_number AS cardNumber,
+               card_status AS cardStatus,
+               channel_code AS channelCode,
+               channel_name AS channelName,
+               open_type AS openType,
+               person_code AS personCode,
+               person_id AS personId,
+               person_name AS personName,
+               department_id AS departmentId,
+               department_name AS departmentName,
+               audience_type AS audienceType,
+               DATE_FORMAT(swing_time, '%Y-%m-%d %H:%i:%s') AS swingTime,
+               DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               open_result AS openResult,
+               enter_or_exit AS enterOrExit,
+               mapping_user_id AS mappingUserId,
+               mapping_card_no AS mappingCardNo,
+               mapping_hit AS mappingHit,
+               freeze_exempt_flag AS freezeExemptFlag,
+               raw_json AS rawJson,
+               DATE_FORMAT(ingested_at, '%Y-%m-%d %H:%i:%s') AS ingestedAt
+        FROM twin_dahua_swing_record
+        WHERE 1 = 1
+        <if test="startTime != null and startTime != ''">AND swing_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND swing_time &lt; #{endTime}</if>
+        ORDER BY swing_time ASC, id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countStatsRecordsByTaskId" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_dahua_swing_record
+        WHERE task_id = #{taskId}
+          AND pull_task_type = 'STATS'
+    </select>
+
+    <sql id="swingRecordFilterWhere">
+        WHERE 1 = 1
+        <if test="f.taskId != null">AND task_id = #{f.taskId}</if>
+        <if test="f.channelCode != null and f.channelCode != ''">AND channel_code = #{f.channelCode}</if>
+        <if test="f.channelName != null and f.channelName != ''">
+            AND (channel_name LIKE CONCAT('%', #{f.channelName}, '%')
+            OR channel_code LIKE CONCAT('%', #{f.channelName}, '%'))
+        </if>
+        <if test="f.personCode != null and f.personCode != ''">AND person_code = #{f.personCode}</if>
+        <if test="f.personName != null and f.personName != ''">AND person_name LIKE CONCAT('%', #{f.personName}, '%')</if>
+        <if test="f.cardNumber != null and f.cardNumber != ''">AND card_number LIKE CONCAT('%', #{f.cardNumber}, '%')</if>
+        <if test="f.departmentName != null and f.departmentName != ''">
+            AND (department_name LIKE CONCAT('%', #{f.departmentName}, '%')
+            OR department_id LIKE CONCAT('%', #{f.departmentName}, '%'))
+        </if>
+        <if test="f.openType != null">AND open_type = #{f.openType}</if>
+        <if test="f.enterOrExit != null">AND enter_or_exit = #{f.enterOrExit}</if>
+        <if test="f.openResult != null">AND open_result = #{f.openResult}</if>
+        <if test="f.audienceType != null and f.audienceType != ''">AND audience_type = #{f.audienceType}</if>
+        <if test="f.mappingHit != null">AND mapping_hit = #{f.mappingHit}</if>
+        <if test="f.requireMapping">AND mapping_hit = 1</if>
+        <if test="f.openSuccessOnly">AND (open_result IS NULL OR open_result = 1)</if>
+        <if test="f.startTime != null and f.startTime != ''">AND swing_time &gt;= #{f.startTime}</if>
+        <if test="f.endTime != null and f.endTime != ''">AND swing_time &lt;= #{f.endTime}</if>
+    </sql>
+
+    <select id="listRecordsByFilter" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
+        SELECT id,
+               task_id AS taskId,
+               pull_task_type AS pullTaskType,
+               record_id AS recordId,
+               card_number AS cardNumber,
+               card_status AS cardStatus,
+               channel_code AS channelCode,
+               channel_name AS channelName,
+               open_type AS openType,
+               person_code AS personCode,
+               person_id AS personId,
+               person_name AS personName,
+               department_id AS departmentId,
+               department_name AS departmentName,
+               audience_type AS audienceType,
+               DATE_FORMAT(swing_time, '%Y-%m-%d %H:%i:%s') AS swingTime,
+               DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               open_result AS openResult,
+               enter_or_exit AS enterOrExit,
+               mapping_user_id AS mappingUserId,
+               mapping_card_no AS mappingCardNo,
+               mapping_hit AS mappingHit,
+               freeze_exempt_flag AS freezeExemptFlag,
+               raw_json AS rawJson,
+               DATE_FORMAT(ingested_at, '%Y-%m-%d %H:%i:%s') AS ingestedAt
+        FROM twin_dahua_swing_record
+        <include refid="swingRecordFilterWhere"/>
+        ORDER BY swing_time DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countRecordsByFilter" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_dahua_swing_record
+        <include refid="swingRecordFilterWhere"/>
+    </select>
+
+    <select id="countRecords" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_dahua_swing_record
+        WHERE 1 = 1
+        <if test="taskId != null">AND task_id = #{taskId}</if>
+        <if test="channelCode != null and channelCode != ''">AND channel_code = #{channelCode}</if>
+        <if test="personCode != null and personCode != ''">AND person_code = #{personCode}</if>
+        <if test="personName != null and personName != ''">AND person_name LIKE CONCAT('%', #{personName}, '%')</if>
+        <if test="openType != null">AND open_type = #{openType}</if>
+        <if test="enterOrExit != null">AND enter_or_exit = #{enterOrExit}</if>
+        <if test="startTime != null and startTime != ''">AND swing_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND swing_time &lt;= #{endTime}</if>
+    </select>
+
+    <select id="findActivationState" resultType="com.example.demo.modules.twin.dahua.entity.DahuaActivationState">
+        SELECT id,
+               task_id AS taskId,
+               user_id AS userId,
+               channel_code AS channelCode,
+               state,
+               counter,
+               DATE_FORMAT(activated_at, '%Y-%m-%d %H:%i:%s') AS activatedAt,
+               DATE_FORMAT(last_swipe_at, '%Y-%m-%d %H:%i:%s') AS lastSwipeAt,
+               DATE_FORMAT(scheduled_exit_at, '%Y-%m-%d %H:%i:%s') AS scheduledExitAt,
+               DATE_FORMAT(debounce_until, '%Y-%m-%d %H:%i:%s') AS debounceUntil,
+               last_record_id AS lastRecordId,
+               DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+        FROM twin_dahua_activation_state
+        WHERE task_id = #{taskId}
+          AND user_id = #{userId}
+          AND channel_code = #{channelCode}
+        LIMIT 1
+    </select>
+
+    <insert id="upsertActivationState" parameterType="com.example.demo.modules.twin.dahua.entity.DahuaActivationState">
+        INSERT INTO twin_dahua_activation_state (
+            task_id, user_id, channel_code, state, counter, activated_at, last_swipe_at,
+            scheduled_exit_at, debounce_until, last_record_id
+        ) VALUES (
+            #{taskId}, #{userId}, #{channelCode}, #{state}, #{counter}, #{activatedAt}, #{lastSwipeAt},
+            #{scheduledExitAt}, #{debounceUntil}, #{lastRecordId}
+        )
+        ON DUPLICATE KEY UPDATE
+            state = VALUES(state),
+            counter = VALUES(counter),
+            activated_at = VALUES(activated_at),
+            last_swipe_at = VALUES(last_swipe_at),
+            scheduled_exit_at = VALUES(scheduled_exit_at),
+            debounce_until = VALUES(debounce_until),
+            last_record_id = VALUES(last_record_id),
+            updated_at = NOW()
+    </insert>
+
+    <select id="listDueActivationStates" resultType="com.example.demo.modules.twin.dahua.entity.DahuaActivationState">
+        SELECT id,
+               task_id AS taskId,
+               user_id AS userId,
+               channel_code AS channelCode,
+               state,
+               counter,
+               DATE_FORMAT(activated_at, '%Y-%m-%d %H:%i:%s') AS activatedAt,
+               DATE_FORMAT(last_swipe_at, '%Y-%m-%d %H:%i:%s') AS lastSwipeAt,
+               DATE_FORMAT(scheduled_exit_at, '%Y-%m-%d %H:%i:%s') AS scheduledExitAt,
+               DATE_FORMAT(debounce_until, '%Y-%m-%d %H:%i:%s') AS debounceUntil,
+               last_record_id AS lastRecordId,
+               DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+        FROM twin_dahua_activation_state
+        WHERE scheduled_exit_at IS NOT NULL
+          AND scheduled_exit_at &lt;= #{nowTime}
+    </select>
+
+    <delete id="deleteActivationState">
+        DELETE FROM twin_dahua_activation_state WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteActivationStatesByUserId">
+        DELETE FROM twin_dahua_activation_state WHERE user_id = #{userId}
+    </delete>
+
+    <delete id="deleteExpiredOrPendingStatesByUserId">
+        DELETE FROM twin_dahua_activation_state
+        WHERE user_id = #{userId}
+          AND state IN ('PENDING_ACTIVATION', 'AUTO_EXIT_SCHEDULED')
+    </delete>
+
+    <delete id="deleteActivationStateByUserTaskAndChannel">
+        DELETE FROM twin_dahua_activation_state
+        WHERE task_id = #{taskId}
+          AND user_id = #{userId}
+          AND channel_code = #{channelCode}
+    </delete>
+
+    <select id="countActivatedStatesForUser" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_dahua_activation_state
+        WHERE task_id = #{taskId}
+          AND user_id = #{userId}
+          AND UPPER(state) = 'ACTIVATED'
+    </select>
+
+    <select id="countAutoExitScheduledForUser" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_dahua_activation_state
+        WHERE task_id = #{taskId}
+          AND user_id = #{userId}
+          AND UPPER(state) = 'AUTO_EXIT_SCHEDULED'
+          AND scheduled_exit_at IS NOT NULL
+    </select>
+
+    <select id="existsPendingActivationForUser" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_dahua_activation_state
+        WHERE task_id = #{taskId}
+          AND user_id = #{userId}
+          AND channel_code = #{pendingChannel}
+          AND UPPER(state) = 'PENDING_ACTIVATION'
+    </select>
+
+    <select id="tryAcquireLock" resultType="int">
+        SELECT GET_LOCK(#{lockName}, #{timeoutSeconds})
+    </select>
+
+    <select id="releaseLock" resultType="int">
+        SELECT RELEASE_LOCK(#{lockName})
+    </select>
+
+    <select id="listActivatedUsers" resultType="map">
+        SELECT DISTINCT das.user_id, ap.name, ap.department_name
+        FROM twin_dahua_activation_state das
+        LEFT JOIN aro_personnel ap ON ap.user_id = das.user_id
+        WHERE das.state = 'ACTIVATED'
+          AND DATE(das.activated_at) = CURDATE()
+    </select>
+
+    <select id="listActivationStatesByUserId" resultType="com.example.demo.modules.twin.dahua.entity.DahuaActivationState">
+        SELECT id,
+               task_id AS taskId,
+               user_id AS userId,
+               channel_code AS channelCode,
+               state,
+               counter,
+               DATE_FORMAT(activated_at, '%Y-%m-%d %H:%i:%s') AS activatedAt,
+               DATE_FORMAT(last_swipe_at, '%Y-%m-%d %H:%i:%s') AS lastSwipeAt,
+               DATE_FORMAT(scheduled_exit_at, '%Y-%m-%d %H:%i:%s') AS scheduledExitAt,
+               DATE_FORMAT(debounce_until, '%Y-%m-%d %H:%i:%s') AS debounceUntil,
+               last_record_id AS lastRecordId,
+               DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+        FROM twin_dahua_activation_state
+        WHERE user_id = #{userId}
+          AND scheduled_exit_at IS NOT NULL
+        ORDER BY scheduled_exit_at ASC
+    </select>
+</mapper>

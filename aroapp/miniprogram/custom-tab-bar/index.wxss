@@ -1,0 +1,31 @@
+/* TabBar 层级与阴影 */
+.aro-tabbar-root.van-tabbar--fixed {
+  box-shadow: 0 -2rpx 20rpx rgba(15, 23, 42, 0.06), 0 -8rpx 32rpx rgba(15, 23, 42, 0.04);
+}
+
+/* 每个 tab 项的过渡动效 */
+.aro-tabbar-root .van-tabbar-item {
+  transition: transform 0.08s ease;
+}
+
+/* 选中项轻微上浮 */
+.aro-tabbar-root .van-tabbar-item--active {
+  transform: translateY(-2rpx);
+}
+
+/* 图标平滑过渡 */
+.aro-tabbar-root .van-tabbar-item__icon {
+  transition: transform 0.08s ease;
+}
+
+/* 选中图标微放大 */
+.aro-tabbar-root .van-tabbar-item--active .van-tabbar-item__icon {
+  transform: scale(1.12);
+}
+
+/* 自定义 PNG 图标（概览 tab） */
+.aro-tabbar-icon-img {
+  width: 44rpx;
+  height: 44rpx;
+  display: block;
+}

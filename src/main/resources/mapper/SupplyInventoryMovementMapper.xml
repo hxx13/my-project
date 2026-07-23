@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.supplies.mapper.SupplyInventoryMovementMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.supplies.entity.SupplyInventoryMovement">
+        <id property="id" column="id"/>
+        <result property="itemId" column="item_id"/>
+        <result property="movementType" column="movement_type"/>
+        <result property="qty" column="qty"/>
+        <result property="stockAfter" column="stock_after"/>
+        <result property="claimId" column="claim_id"/>
+        <result property="claimLineId" column="claim_line_id"/>
+        <result property="operatorUserId" column="operator_user_id"/>
+        <result property="applicantUserId" column="applicant_user_id"/>
+        <result property="remark" column="remark"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO supply_inventory_movement(
+            item_id, movement_type, qty, stock_after, claim_id, claim_line_id,
+            operator_user_id, applicant_user_id, remark, created_at
+        ) VALUES (
+            #{itemId}, #{movementType}, #{qty}, #{stockAfter}, #{claimId}, #{claimLineId},
+            #{operatorUserId}, #{applicantUserId}, #{remark}, #{createdAt}
+        )
+    </insert>
+
+    <select id="countByItemId" resultType="int">
+        SELECT COUNT(1) FROM supply_inventory_movement WHERE item_id = #{itemId}
+    </select>
+
+    <resultMap id="RowView" type="com.example.demo.modules.supplies.dto.SupplyInventoryMovementRowView">
+        <id property="id" column="id"/>
+        <result property="itemId" column="item_id"/>
+        <result property="itemName" column="item_name"/>
+        <result property="itemCategoryId" column="item_category_id"/>
+        <result property="categoryName" column="category_name"/>
+        <result property="movementType" column="movement_type"/>
+        <result property="qty" column="qty"/>
+        <result property="stockAfter" column="stock_after"/>
+        <result property="claimId" column="claim_id"/>
+        <result property="claimLineId" column="claim_line_id"/>
+        <result property="operatorUserId" column="operator_user_id"/>
+        <result property="applicantUserId" column="applicant_user_id"/>
+        <result property="remark" column="remark"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="listRowsByItemId" resultMap="RowView">
+        SELECT m.id, m.item_id, i.name AS item_name, i.category_id AS item_category_id, c.name AS category_name,
+               m.movement_type, m.qty, m.stock_after, m.claim_id, m.claim_line_id,
+               m.operator_user_id, m.applicant_user_id, m.remark,
+               DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+        FROM supply_inventory_movement m
+        INNER JOIN supply_item i ON i.id = m.item_id AND i.deleted = 0
+        LEFT JOIN supply_category c ON c.id = i.category_id
+        WHERE m.item_id = #{itemId}
+        ORDER BY m.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="listByClaimId" resultMap="Base">
+        SELECT * FROM supply_inventory_movement
+        WHERE claim_id = #{claimId}
+        ORDER BY id ASC
+    </select>
+</mapper>

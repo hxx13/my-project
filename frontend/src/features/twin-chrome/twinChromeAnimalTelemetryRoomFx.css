@@ -1,0 +1,279 @@
+/**
+ * 动物房科幻壳：按 data-animal-card-fx 类型做非旋转环境光 / 粒子漂移（无 conic 旋转描边）。
+ * 送排风动感为 SVG 流线（见 AnimalTelemetryWindStreamSvg），与 twinChromeAnimalTelemetrySciFi.css 同挂载条件。
+ */
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-card-fx] {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+}
+
+/* 勿把底层 fiber / 风流线场压成 z-1，否则被标题与读数盖住 */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-card-fx]
+    > *:not(.animal-telemetry-fiber-wave):not(.animal-telemetry-wind-field) {
+    position: relative;
+    z-index: 1;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-card-fx]::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+}
+
+/* 送风 / 排风：极轻环境底色（非反光）；风流线见 .animal-telemetry-wind-field + SVG */
+@keyframes twin-atfx-supply-drift {
+    0%,
+    100% {
+        transform: translateY(12%);
+        opacity: 0.22;
+    }
+    50% {
+        transform: translateY(-10%);
+        opacity: 0.36;
+    }
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-card-fx="supply-air"]::before {
+    inset: -38% -12%;
+    background: radial-gradient(ellipse 100% 58% at 50% 0%, rgba(56, 189, 248, 0.38), transparent 62%);
+    animation: twin-atfx-supply-drift 8s ease-in-out infinite;
+}
+
+@keyframes twin-atfx-exhaust-drift {
+    0%,
+    100% {
+        transform: translateY(-10%);
+        opacity: 0.2;
+    }
+    50% {
+        transform: translateY(10%);
+        opacity: 0.34;
+    }
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-card-fx="exhaust-air"]::before {
+    inset: -32% -10%;
+    background: radial-gradient(ellipse 95% 52% at 50% 100%, rgba(148, 163, 184, 0.36), transparent 60%);
+    animation: twin-atfx-exhaust-drift 8.5s ease-in-out infinite;
+}
+
+/* 动力站 / 冷机：高对比电涌脉冲 */
+@keyframes twin-atfx-power-pulse {
+    0%,
+    100% {
+        opacity: 0.42;
+        filter: brightness(1);
+    }
+    35% {
+        opacity: 0.88;
+        filter: brightness(1.35);
+    }
+    70% {
+        opacity: 0.55;
+        filter: brightness(1.08);
+    }
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-card-fx="power-plant"]::before {
+    inset: 0;
+    background:
+        radial-gradient(circle at 12% 18%, rgba(251, 191, 36, 0.42), transparent 38%),
+        radial-gradient(circle at 86% 82%, rgba(56, 189, 248, 0.32), transparent 42%),
+        radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.12), transparent 55%);
+    animation: twin-atfx-power-pulse 2.4s ease-in-out infinite;
+}
+
+/* 饲养类：暖底色缓慢起伏 + 微粒平移（走马灯式位移，非旋转） */
+@keyframes twin-atfx-breed-warm {
+    from {
+        opacity: 0.38;
+        transform: translateY(5%);
+    }
+    to {
+        opacity: 0.62;
+        transform: translateY(-5%);
+    }
+}
+
+@keyframes twin-atfx-motes-drift {
+    from {
+        background-position: 0 0, 22px 28px;
+    }
+    to {
+        background-position: 56px 108px, 78px 132px;
+    }
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-card-fx^="breed-"]::before {
+    inset: -8% -6%;
+    background: radial-gradient(ellipse 90% 70% at 50% 95%, rgba(251, 191, 36, 0.2), transparent 58%);
+    animation: twin-atfx-breed-warm 9s ease-in-out infinite alternate;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-card-fx^="breed-"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: 0.2;
+    background-image:
+        radial-gradient(circle, rgba(255, 248, 220, 0.95) 1px, transparent 1.65px),
+        radial-gradient(circle, rgba(253, 224, 171, 0.85) 1px, transparent 1.65px);
+    background-size: 52px 56px, 40px 44px;
+    background-position: 0 0, 22px 28px;
+    animation: twin-atfx-motes-drift 16s linear infinite;
+}
+
+/* 默认：极轻青雾呼吸 */
+@keyframes twin-atfx-default-breathe {
+    0%,
+    100% {
+        opacity: 0.45;
+    }
+    50% {
+        opacity: 0.78;
+    }
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-card-fx="default"]::before {
+    inset: -20% -8%;
+    background: radial-gradient(ellipse 120% 85% at 50% -10%, rgba(34, 211, 238, 0.14), transparent 52%);
+    animation: twin-atfx-default-breathe 11s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-card-fx]::before,
+    .twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-card-fx]::after {
+        animation: none !important;
+    }
+
+    .twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+        [data-twin-animal-telemetry-root]
+        [data-animal-card-fx^="breed-"]::after {
+        opacity: 0.12;
+    }
+}
+
+/* 光纤样条纹波动：动物房温湿度页全域（不限科幻主题）；卡片内层见 AnimalRoomTelemetryPage.tsx .animal-telemetry-fiber-wave */
+/* 送排风卡：减弱底纹以免盖住气流光带 */
+[data-twin-animal-telemetry-root] [data-animal-card-fx="supply-air"] .animal-telemetry-fiber-wave,
+[data-twin-animal-telemetry-root] [data-animal-card-fx="exhaust-air"] .animal-telemetry-fiber-wave {
+    opacity: 0.07 !important;
+}
+
+[data-twin-animal-telemetry-root] .animal-telemetry-fiber-wave {
+    opacity: 0.22;
+    background: repeating-linear-gradient(
+        108deg,
+        transparent 0 10px,
+        rgba(14, 165, 233, 0.12) 10px 12px,
+        transparent 12px 28px
+    );
+    background-size: 180% 140%;
+    animation: animal-telemetry-fiber-wave-shift 5.2s ease-in-out infinite;
+}
+
+/* 标准模式：去掉卡片内光纤条纹的左右位移动画与可见底纹（科幻主题仍保留） */
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="standard"] .animal-telemetry-fiber-wave {
+    animation: none !important;
+    transform: none !important;
+    opacity: 0 !important;
+    background: none !important;
+    background-size: auto !important;
+}
+
+@keyframes animal-telemetry-fiber-wave-shift {
+    0%,
+    100% {
+        background-position: 0% 50%;
+        transform: translateX(-4%);
+    }
+    50% {
+        background-position: 100% 50%;
+        transform: translateX(4%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-twin-animal-telemetry-root] .animal-telemetry-fiber-wave {
+        animation: none !important;
+        opacity: 0.12;
+    }
+}
+
+/**
+ * 送风 / 排风：天气预报式风流线（SVG stroke-dashoffset）+ 柔光 filter；
+ * 卡片内虚线环顺/逆时针区分送/排风（见 AnimalTelemetryWindStreamSvg）。
+ */
+@keyframes animal-telemetry-wind-dash {
+    to {
+        stroke-dashoffset: -96;
+    }
+}
+
+@keyframes animal-telemetry-wind-vortex-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+[data-twin-animal-telemetry-root] .animal-telemetry-wind-field {
+    overflow: hidden;
+    z-index: 3;
+    opacity: 0.92;
+}
+
+[data-twin-animal-telemetry-root] .animal-telemetry-wind-stream-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+[data-twin-animal-telemetry-root] .animal-telemetry-wind-vortex-spin {
+    transform-origin: 0 0;
+    transform-box: fill-box;
+    animation: animal-telemetry-wind-vortex-spin 16s linear infinite;
+}
+
+[data-twin-animal-telemetry-root] .animal-telemetry-wind-field--exhaust .animal-telemetry-wind-vortex-spin {
+    animation-direction: reverse;
+}
+
+[data-twin-animal-telemetry-root] .animal-telemetry-wind-path {
+    animation-name: animal-telemetry-wind-dash;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-twin-animal-telemetry-root] .animal-telemetry-wind-path {
+        animation: none !important;
+    }
+
+    [data-twin-animal-telemetry-root] .animal-telemetry-wind-vortex-spin {
+        animation: none !important;
+    }
+}

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.notification.mapper.StudentNotificationMapper">
+
+    <insert id="insert" parameterType="com.example.demo.modules.notification.entity.StudentNotification">
+        INSERT INTO sys_student_notification(id, title, summary, content, type, biz_type, biz_id, recipient_user_id, source_url, is_read, read_time, create_time)
+        VALUES (#{id}, #{title}, #{summary}, #{content}, #{type}, #{bizType}, #{bizId}, #{recipientUserId}, #{sourceUrl}, #{isRead}, #{readTime}, #{createTime})
+    </insert>
+
+    <insert id="insertBatch">
+        INSERT IGNORE INTO sys_student_notification(id, title, summary, content, type, biz_type, biz_id, recipient_user_id, source_url, is_read, read_time, create_time)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.id}, #{item.title}, #{item.summary}, #{item.content}, #{item.type}, #{item.bizType}, #{item.bizId}, #{item.recipientUserId}, #{item.sourceUrl}, #{item.isRead}, #{item.readTime}, #{item.createTime})
+        </foreach>
+    </insert>
+
+    <select id="listForUser" resultType="com.example.demo.modules.notification.entity.StudentNotification">
+        SELECT id, title, summary, content, type, biz_type AS bizType, biz_id AS bizId,
+               recipient_user_id AS recipientUserId, source_url AS sourceUrl,
+               is_read AS isRead, read_time AS readTime, create_time AS createTime
+        FROM sys_student_notification
+        WHERE recipient_user_id = #{userId}
+        <if test="type != null and type != ''">
+            AND type = #{type}
+        </if>
+        <if test="onlyUnread != null and onlyUnread">
+            AND is_read = 0
+        </if>
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countForUser" resultType="int">
+        SELECT COUNT(*) FROM sys_student_notification
+        WHERE recipient_user_id = #{userId}
+        <if test="type != null and type != ''">
+            AND type = #{type}
+        </if>
+        <if test="onlyUnread != null and onlyUnread">
+            AND is_read = 0
+        </if>
+    </select>
+
+    <update id="markRead">
+        UPDATE sys_student_notification
+        SET is_read = 1, read_time = NOW()
+        WHERE id = #{id} AND recipient_user_id = #{userId} AND is_read = 0
+    </update>
+
+    <update id="markAllRead">
+        UPDATE sys_student_notification
+        SET is_read = 1, read_time = NOW()
+        WHERE recipient_user_id = #{userId} AND is_read = 0
+    </update>
+
+    <select id="countUnread" resultType="int">
+        SELECT COUNT(*) FROM sys_student_notification
+        WHERE recipient_user_id = #{userId} AND is_read = 0
+    </select>
+
+    <delete id="deleteExpiredAroNews">
+        DELETE FROM sys_student_notification
+        WHERE type = 'ARO' AND create_time &lt; #{beforeTime}
+    </delete>
+
+</mapper>

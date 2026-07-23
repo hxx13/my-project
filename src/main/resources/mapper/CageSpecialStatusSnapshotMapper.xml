@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper">
+
+    <update id="ensureTable">
+        CREATE TABLE IF NOT EXISTS cage_special_status_snapshot (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            scan_batch_id VARCHAR(64) NOT NULL,
+            shelve_id BIGINT NOT NULL,
+            campus_name VARCHAR(64),
+            room_id BIGINT,
+            room_name VARCHAR(128),
+            position_x INT NOT NULL,
+            position_y INT NOT NULL,
+            position_label VARCHAR(16),
+            status_code VARCHAR(32) NOT NULL,
+            status_label VARCHAR(64),
+            pi_name VARCHAR(128),
+            department_name VARCHAR(256),
+            project_pi_name VARCHAR(128),
+            detail_name VARCHAR(256),
+            detail_description TEXT,
+            cage_box_qr_code VARCHAR(512),
+            animal_cage_type INT,
+            scanned_at DATETIME NOT NULL,
+            INDEX idx_scan_batch (scan_batch_id),
+            INDEX idx_status_code (status_code),
+            INDEX idx_shelve_id (shelve_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    </update>
+
+    <update id="addCampusColumnIfMissing">
+        ALTER TABLE cage_special_status_snapshot
+            ADD COLUMN campus_name VARCHAR(64) AFTER shelve_id
+    </update>
+
+    <update id="addCageBoxJsonColumnIfMissing">
+        ALTER TABLE cage_special_status_snapshot
+            ADD COLUMN cage_box_json TEXT AFTER cage_box_qr_code
+    </update>
+
+    <insert id="batchInsert">
+        INSERT INTO cage_special_status_snapshot (
+            scan_batch_id, shelve_id, campus_name, room_id, room_name,
+            position_x, position_y, position_label,
+            status_code, status_label,
+            pi_name, department_name, project_pi_name,
+            detail_name, detail_description,
+            cage_box_qr_code, cage_box_json, animal_cage_type,
+            scanned_at
+        ) VALUES
+        <foreach collection="list" item="row" separator=",">
+            (
+                #{row.scanBatchId}, #{row.shelveId}, #{row.campusName}, #{row.roomId}, #{row.roomName},
+                #{row.positionX}, #{row.positionY}, #{row.positionLabel},
+                #{row.statusCode}, #{row.statusLabel},
+                #{row.piName}, #{row.departmentName}, #{row.projectPiName},
+                #{row.detailName}, #{row.detailDescription},
+                #{row.cageBoxQrCode}, #{row.cageBoxJson}, #{row.animalCageType},
+                #{row.scannedAt}
+            )
+        </foreach>
+    </insert>
+
+    <delete id="deleteByScanBatchId">
+        DELETE FROM cage_special_status_snapshot
+        WHERE scan_batch_id = #{scanBatchId}
+    </delete>
+
+    <select id="selectLatestBatchInfo" resultType="map">
+        SELECT scan_batch_id AS scanBatchId,
+               MAX(scanned_at) AS scannedAt,
+               COUNT(*) AS totalRows
+        FROM cage_special_status_snapshot
+        GROUP BY scan_batch_id
+        ORDER BY MAX(scanned_at) DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectGroupedByStatus" resultType="map">
+        SELECT status_code AS statusCode,
+               status_label AS statusLabel,
+               COUNT(*) AS count
+        FROM cage_special_status_snapshot
+        WHERE scan_batch_id = #{scanBatchId}
+          AND status_code != 'NORMAL'
+        GROUP BY status_code, status_label
+        ORDER BY COUNT(*) DESC
+    </select>
+
+    <select id="selectByBatchId" resultType="com.example.demo.modules.cageshelf.entity.CageSpecialStatusSnapshot">
+        SELECT id, scan_batch_id AS scanBatchId,
+               shelve_id AS shelveId, campus_name AS campusName,
+               room_id AS roomId, room_name AS roomName,
+               position_x AS positionX, position_y AS positionY,
+               position_label AS positionLabel,
+               status_code AS statusCode, status_label AS statusLabel,
+               pi_name AS piName, department_name AS departmentName,
+               project_pi_name AS projectPiName,
+               detail_name AS detailName, detail_description AS detailDescription,
+               cage_box_qr_code AS cageBoxQrCode,
+               cage_box_json AS cageBoxJson,
+               animal_cage_type AS animalCageType,
+               scanned_at AS scannedAt
+        FROM cage_special_status_snapshot
+        WHERE scan_batch_id = #{scanBatchId}
+        <if test="statusCode != null and statusCode != ''">
+            AND status_code = #{statusCode}
+        </if>
+        ORDER BY room_name, shelve_id, position_y, position_x
+        <if test="limit > 0">
+            LIMIT #{limit} OFFSET #{offset}
+        </if>
+    </select>
+
+    <select id="selectAllByBatchId" resultType="com.example.demo.modules.cageshelf.entity.CageSpecialStatusSnapshot">
+        SELECT id, scan_batch_id AS scanBatchId,
+               shelve_id AS shelveId, campus_name AS campusName,
+               room_id AS roomId, room_name AS roomName,
+               position_x AS positionX, position_y AS positionY,
+               position_label AS positionLabel,
+               status_code AS statusCode, status_label AS statusLabel,
+               pi_name AS piName, department_name AS departmentName,
+               project_pi_name AS projectPiName,
+               detail_name AS detailName, detail_description AS detailDescription,
+               cage_box_qr_code AS cageBoxQrCode,
+               cage_box_json AS cageBoxJson,
+               animal_cage_type AS animalCageType,
+               scanned_at AS scannedAt
+        FROM cage_special_status_snapshot
+        WHERE scan_batch_id = #{scanBatchId}
+        ORDER BY shelve_id, position_y, position_x
+    </select>
+
+    <select id="selectBatchList" resultType="map">
+        SELECT scan_batch_id AS scanBatchId,
+               MAX(scanned_at) AS scannedAt,
+               COUNT(*) AS totalRows,
+               SUM(CASE WHEN status_code != 'NORMAL' THEN 1 ELSE 0 END) AS abnormalRows,
+               COUNT(DISTINCT shelve_id) AS shelfCount
+        FROM cage_special_status_snapshot
+        GROUP BY scan_batch_id
+        ORDER BY MAX(scanned_at) DESC
+        LIMIT 30
+    </select>
+
+    <select id="selectByBatchIdAndShelveId" resultType="com.example.demo.modules.cageshelf.entity.CageSpecialStatusSnapshot">
+        SELECT id, scan_batch_id AS scanBatchId,
+               shelve_id AS shelveId, campus_name AS campusName,
+               room_id AS roomId, room_name AS roomName,
+               position_x AS positionX, position_y AS positionY,
+               position_label AS positionLabel,
+               status_code AS statusCode, status_label AS statusLabel,
+               pi_name AS piName, department_name AS departmentName,
+               project_pi_name AS projectPiName,
+               detail_name AS detailName, detail_description AS detailDescription,
+               cage_box_qr_code AS cageBoxQrCode,
+               cage_box_json AS cageBoxJson,
+               animal_cage_type AS animalCageType,
+               scanned_at AS scannedAt
+        FROM cage_special_status_snapshot
+        WHERE scan_batch_id = #{scanBatchId}
+          AND shelve_id = #{shelveId}
+        ORDER BY position_y, position_x
+    </select>
+
+</mapper>

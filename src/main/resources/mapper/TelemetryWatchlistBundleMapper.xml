@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryWatchlistBundleMapper">
+
+    <resultMap id="BundleMap" type="com.example.demo.modules.telemetry.entity.TelemetryWatchlistBundleRow">
+        <id column="id" property="id"/>
+        <result column="code" property="code"/>
+        <result column="display_name" property="displayName"/>
+        <result column="source_filename" property="sourceFilename"/>
+        <result column="is_active" property="isActive"/>
+        <result column="include_in_wincc_poll" property="includeInWinccPoll"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <select id="selectAllOrderByUpdated" resultMap="BundleMap">
+        SELECT id, code, display_name, source_filename, is_active, include_in_wincc_poll, created_at, updated_at
+        FROM telemetry_watchlist_bundle
+        ORDER BY updated_at DESC, id DESC
+    </select>
+
+    <select id="selectByCode" resultMap="BundleMap">
+        SELECT id, code, display_name, source_filename, is_active, include_in_wincc_poll, created_at, updated_at
+        FROM telemetry_watchlist_bundle
+        WHERE code = #{code}
+    </select>
+
+    <select id="selectActive" resultMap="BundleMap">
+        SELECT id, code, display_name, source_filename, is_active, include_in_wincc_poll, created_at, updated_at
+        FROM telemetry_watchlist_bundle
+        WHERE is_active = 1
+        LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO telemetry_watchlist_bundle (code, display_name, source_filename, is_active, include_in_wincc_poll)
+        VALUES (#{code}, #{displayName}, #{sourceFilename}, #{isActive}, #{includeInWinccPoll})
+    </insert>
+
+    <update id="updateMetaById">
+        UPDATE telemetry_watchlist_bundle
+        SET display_name = #{displayName},
+            source_filename = #{sourceFilename},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateMetaByCode">
+        UPDATE telemetry_watchlist_bundle
+        SET display_name = #{displayName},
+            source_filename = #{sourceFilename},
+            updated_at = NOW()
+        WHERE code = #{code}
+    </update>
+
+    <update id="clearAllActive">
+        UPDATE telemetry_watchlist_bundle SET is_active = 0
+    </update>
+
+    <update id="setActiveByCode">
+        UPDATE telemetry_watchlist_bundle SET is_active = CASE WHEN code = #{code} THEN 1 ELSE 0 END
+    </update>
+
+    <update id="updatePollEnabledByCode">
+        UPDATE telemetry_watchlist_bundle
+        SET include_in_wincc_poll = #{includeInWinccPoll},
+            updated_at = NOW()
+        WHERE code = #{code}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM telemetry_watchlist_bundle WHERE id = #{id}
+    </delete>
+</mapper>

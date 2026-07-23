@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.UserCageColorConfigMapper">
+
+    <update id="ensureTable">
+        CREATE TABLE IF NOT EXISTS user_cage_color_config (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(64) NOT NULL,
+            status_code VARCHAR(32) NOT NULL,
+            bg_color VARCHAR(16) NOT NULL DEFAULT '#a7f3d0',
+            border_color VARCHAR(16) NOT NULL DEFAULT '#10b981',
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_user_status (user_id, status_code)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    </update>
+
+    <select id="selectByUserId" resultType="map">
+        SELECT status_code AS statusCode, bg_color AS bgColor, border_color AS borderColor
+        FROM user_cage_color_config WHERE user_id = #{userId}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO user_cage_color_config (user_id, status_code, bg_color, border_color, updated_at)
+        VALUES (#{userId}, #{statusCode}, #{bgColor}, #{borderColor}, NOW())
+        ON DUPLICATE KEY UPDATE bg_color = VALUES(bg_color), border_color = VALUES(border_color), updated_at = NOW()
+    </insert>
+
+    <delete id="deleteByUserId">
+        DELETE FROM user_cage_color_config WHERE user_id = #{userId}
+    </delete>
+
+    <insert id="batchUpsert">
+        INSERT INTO user_cage_color_config (user_id, status_code, bg_color, border_color, updated_at) VALUES
+        <foreach collection="list" item="row" separator=",">
+            (#{userId}, #{row.statusCode}, #{row.bgColor}, #{row.borderColor}, NOW())
+        </foreach>
+        ON DUPLICATE KEY UPDATE bg_color = VALUES(bg_color), border_color = VALUES(border_color), updated_at = NOW()
+    </insert>
+
+</mapper>

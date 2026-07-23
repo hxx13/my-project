@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessRawEventMapper">
+
+    <insert id="insertIgnore">
+        INSERT INTO access_raw_event (
+            source, record_id, swing_task_id, swing_time, card_number, channel_code, channel_name,
+            person_code, person_name, department_id, department_name,
+            mapping_user_id, dahua_enter_or_exit, open_result, raw_json
+        ) VALUES (
+            #{source}, #{recordId}, #{swingTaskId}, #{swingTime}, #{cardNumber}, #{channelCode}, #{channelName},
+            #{personCode}, #{personName}, #{departmentId}, #{departmentName},
+            #{mappingUserId}, #{dahuaEnterOrExit}, #{openResult}, #{rawJson}
+        )
+        ON DUPLICATE KEY UPDATE
+            swing_time = VALUES(swing_time),
+            card_number = VALUES(card_number),
+            channel_code = VALUES(channel_code),
+            channel_name = VALUES(channel_name),
+            person_code = VALUES(person_code),
+            person_name = VALUES(person_name),
+            department_id = IF(VALUES(department_id) IS NOT NULL AND VALUES(department_id) != '', VALUES(department_id), department_id),
+            department_name = IF(VALUES(department_name) IS NOT NULL AND VALUES(department_name) != '', VALUES(department_name), department_name),
+            mapping_user_id = VALUES(mapping_user_id),
+            dahua_enter_or_exit = VALUES(dahua_enter_or_exit),
+            open_result = VALUES(open_result),
+            raw_json = VALUES(raw_json)
+    </insert>
+
+    <select id="selectForClean" resultType="com.example.demo.modules.accessfusion.entity.AccessRawEvent">
+        SELECT id, source, record_id AS recordId, swing_task_id AS swingTaskId, swing_time AS swingTime,
+               card_number AS cardNumber, channel_code AS channelCode, channel_name AS channelName,
+               person_code AS personCode, person_name AS personName,
+               department_id AS departmentId, department_name AS departmentName,
+               mapping_user_id AS mappingUserId,
+               dahua_enter_or_exit AS dahuaEnterOrExit, open_result AS openResult, raw_json AS rawJson
+        FROM access_raw_event
+        WHERE swing_time &gt;= #{start} AND swing_time &lt; #{end}
+          AND mapping_user_id IS NOT NULL AND mapping_user_id != ''
+          AND (open_result IS NULL OR open_result = 1)
+        ORDER BY mapping_user_id, swing_time
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countForClean" resultType="int">
+        SELECT COUNT(*) FROM access_raw_event
+        WHERE swing_time &gt;= #{start} AND swing_time &lt; #{end}
+          AND mapping_user_id IS NOT NULL AND mapping_user_id != ''
+          AND (open_result IS NULL OR open_result = 1)
+    </select>
+
+    <select id="selectSwingPage" resultType="com.example.demo.modules.accessfusion.entity.AccessRawEvent">
+        SELECT id, source, record_id AS recordId, swing_task_id AS swingTaskId, swing_time AS swingTime,
+               card_number AS cardNumber, channel_code AS channelCode, channel_name AS channelName,
+               person_code AS personCode, person_name AS personName,
+               department_id AS departmentId, department_name AS departmentName,
+               mapping_user_id AS mappingUserId,
+               dahua_enter_or_exit AS dahuaEnterOrExit, open_result AS openResult, raw_json AS rawJson
+        FROM access_raw_event
+        WHERE swing_time &gt;= #{start} AND swing_time &lt; #{end}
+        ORDER BY swing_time
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessfusion.entity.AccessRawEvent">
+        SELECT id, source, record_id AS recordId, swing_task_id AS swingTaskId, swing_time AS swingTime,
+               card_number AS cardNumber, channel_code AS channelCode, channel_name AS channelName,
+               person_code AS personCode, person_name AS personName,
+               department_id AS departmentId, department_name AS departmentName,
+               mapping_user_id AS mappingUserId,
+               dahua_enter_or_exit AS dahuaEnterOrExit, open_result AS openResult, raw_json AS rawJson
+        FROM access_raw_event WHERE id = #{id}
+    </select>
+
+    <sql id="auditWhere">
+        WHERE 1 = 1
+        <if test="taskId != null">AND swing_task_id = #{taskId}</if>
+        <if test="channelCode != null and channelCode != ''">AND channel_code = #{channelCode}</if>
+        <if test="personCode != null and personCode != ''">AND mapping_user_id = #{personCode}</if>
+        <if test="personName != null and personName != ''">AND person_name LIKE CONCAT('%', #{personName}, '%')</if>
+        <if test="startTime != null and startTime != ''">AND swing_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND swing_time &lt;= #{endTime}</if>
+        <if test="requireMapping">AND mapping_user_id IS NOT NULL AND mapping_user_id != ''</if>
+        <if test="openSuccessOnly">AND (open_result IS NULL OR open_result = 1)</if>
+    </sql>
+
+    <select id="listForAudit" resultType="com.example.demo.modules.accessfusion.entity.AccessRawEvent">
+        SELECT id, source, record_id AS recordId, swing_task_id AS swingTaskId, swing_time AS swingTime,
+               card_number AS cardNumber, channel_code AS channelCode, channel_name AS channelName,
+               person_code AS personCode, person_name AS personName,
+               department_id AS departmentId, department_name AS departmentName,
+               mapping_user_id AS mappingUserId,
+               dahua_enter_or_exit AS dahuaEnterOrExit, open_result AS openResult, raw_json AS rawJson
+        FROM access_raw_event
+        <include refid="auditWhere"/>
+        ORDER BY swing_time DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countForAudit" resultType="int">
+        SELECT COUNT(*) FROM access_raw_event
+        <include refid="auditWhere"/>
+    </select>
+
+    <select id="statsForAudit" resultType="map">
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN mapping_user_id IS NOT NULL AND mapping_user_id != '' THEN 1 ELSE 0 END) AS mapped,
+            SUM(CASE WHEN mapping_user_id IS NULL OR mapping_user_id = '' THEN 1 ELSE 0 END) AS unmapped
+        FROM access_raw_event
+        <include refid="auditWhere"/>
+    </select>
+</mapper>

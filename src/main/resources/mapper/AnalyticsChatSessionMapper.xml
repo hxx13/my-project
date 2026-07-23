@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.analytics.mapper.AnalyticsChatSessionMapper">
+
+    <resultMap id="AnalyticsChatSessionMap" type="com.example.demo.modules.analytics.entity.AnalyticsChatSession">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="reportKey" column="report_key"/>
+        <result property="viewId" column="view_id"/>
+        <result property="viewName" column="view_name"/>
+        <result property="title" column="title"/>
+        <result property="contextJson" column="context_json"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO analytics_chat_session (
+            user_id, report_key, view_id, view_name, title, context_json
+        ) VALUES (
+            #{userId}, #{reportKey}, #{viewId}, #{viewName}, #{title}, #{contextJson}
+        )
+    </insert>
+
+    <update id="updateTitle">
+        UPDATE analytics_chat_session
+        SET title = #{title}, updated_at = NOW()
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="updateContext">
+        UPDATE analytics_chat_session
+        SET context_json = #{contextJson}, updated_at = NOW()
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="touchUpdated">
+        UPDATE analytics_chat_session SET updated_at = NOW() WHERE id = #{id}
+    </update>
+
+    <delete id="deleteByIdAndUser">
+        DELETE FROM analytics_chat_session WHERE id = #{id} AND user_id = #{userId}
+    </delete>
+
+    <select id="selectByIdAndUser" resultMap="AnalyticsChatSessionMap">
+        SELECT * FROM analytics_chat_session
+        WHERE id = #{id} AND user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <select id="selectByUserReportView" resultMap="AnalyticsChatSessionMap">
+        SELECT * FROM analytics_chat_session
+        WHERE user_id = #{userId}
+          AND report_key = #{reportKey}
+          AND view_id = #{viewId}
+        ORDER BY updated_at DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

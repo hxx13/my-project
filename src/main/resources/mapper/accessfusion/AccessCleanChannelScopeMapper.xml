@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessCleanChannelScopeMapper">
+
+    <select id="selectByTask" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanChannelScope">
+        SELECT id, stats_task_id AS statsTaskId, channel_code AS channelCode,
+               channel_name AS channelName, enabled
+        FROM access_clean_channel_scope
+        WHERE stats_task_id = #{statsTaskId}
+        ORDER BY channel_code
+    </select>
+
+    <select id="selectEnabledChannelCodes" resultType="string">
+        SELECT channel_code FROM access_clean_channel_scope
+        WHERE stats_task_id = #{statsTaskId} AND enabled = 1
+        ORDER BY channel_code
+    </select>
+
+    <delete id="deleteByTask">DELETE FROM access_clean_channel_scope WHERE stats_task_id = #{statsTaskId}</delete>
+
+    <insert id="insertBatch">
+        INSERT INTO access_clean_channel_scope (stats_task_id, channel_code, channel_name, enabled)
+        VALUES
+        <foreach collection="items" item="it" separator=",">
+            (#{it.statsTaskId}, #{it.channelCode}, #{it.channelName}, #{it.enabled})
+        </foreach>
+    </insert>
+
+    <select id="suggestChannelsFromSwings" resultType="map">
+        SELECT channel_code AS channelCode,
+               MAX(channel_name) AS channelName,
+               COUNT(*) AS recordCount
+        FROM twin_dahua_swing_record
+        WHERE task_id = #{statsTaskId}
+          AND channel_code IS NOT NULL AND channel_code != ''
+        GROUP BY channel_code
+        ORDER BY recordCount DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectDistinctEnabledChannels" resultType="map">
+        SELECT channel_code AS channelCode,
+               MAX(channel_name) AS channelName,
+               COUNT(DISTINCT stats_task_id) AS taskCount
+        FROM access_clean_channel_scope
+        WHERE enabled = 1
+          AND channel_code IS NOT NULL AND channel_code != ''
+        GROUP BY channel_code
+        ORDER BY channel_code
+    </select>
+
+    <select id="selectEnabledTaskIdsForChannel" resultType="long">
+        SELECT DISTINCT stats_task_id
+        FROM access_clean_channel_scope
+        WHERE enabled = 1 AND channel_code = #{channelCode}
+        ORDER BY stats_task_id
+    </select>
+</mapper>

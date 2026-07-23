@@ -1,0 +1,13 @@
+<view class="hbd-page">
+  <view wx:if="{{ loading }}" class="hbd-muted">加载中…</view>
+  <block wx:elif="{{ detail }}">
+    <text class="hbd-title">{{ detail.title }}</text>
+    <text class="hbd-meta">{{ detail.publishedAtText }} · {{ kindLabel }}</text>
+    <view wx:if="{{ detail.versionCode }}" class="hbd-ver">版本 {{ detail.versionCode }}</view>
+    <scroll-view scroll-y class="hbd-scroll">
+      <rich-text wx:if="{{ detail.bodyHtml }}" nodes="{{ detail.bodyHtml }}" type="html" />
+      <text wx:else class="hbd-muted">暂无正文</text>
+    </scroll-view>
+  </block>
+  <view wx:else class="hbd-muted">{{ errorText || '加载失败' }}</view>
+</view>

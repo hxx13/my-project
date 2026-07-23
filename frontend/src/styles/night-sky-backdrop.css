@@ -1,0 +1,172 @@
+/* 夜空遮罩：扫码弹窗暗色 + 首页大屏暗色共用（渐变段序与亮色 scan 遮罩一致） */
+
+@layer components {
+  .night-sky-backdrop,
+  .dark .scan-popup-backdrop,
+  .theme-standard-dark .scan-popup-backdrop,
+  .dashboard-home-root--night-sky,
+  .twin-chrome-debug-root--night-sky,
+  .admin-layout-root--night-sky,
+  .student-layout-root--night-sky {
+    background-color: var(--app-color-scan-backdrop-from);
+    background-image:
+      linear-gradient(
+        142deg,
+        var(--app-color-scan-backdrop-from) 0%,
+        var(--app-color-scan-backdrop-mid-1) 14%,
+        var(--app-color-scan-backdrop-mid-2) 32%,
+        var(--app-color-scan-backdrop-mid-3) 52%,
+        var(--app-color-scan-backdrop-to) 72%,
+        color-mix(in srgb, var(--app-color-scan-backdrop-mid-2) 58%, var(--app-color-scan-backdrop-to)) 86%,
+        var(--app-color-scan-backdrop-from) 100%
+      ),
+      radial-gradient(
+        ellipse 88% 72% at 6% 10%,
+        var(--app-color-scan-backdrop-neon-steel) 0%,
+        transparent 64%
+      ),
+      radial-gradient(
+        ellipse 72% 58% at 94% 14%,
+        var(--app-color-scan-backdrop-neon-warm) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 78% 52% at 48% 108%,
+        color-mix(in srgb, var(--color-steel-700) 22%, transparent) 0%,
+        transparent 68%
+      ),
+      radial-gradient(
+        ellipse 42% 38% at 72% 62%,
+        color-mix(in srgb, var(--color-steel-800) 16%, transparent) 0%,
+        transparent 72%
+      );
+  }
+
+  .scan-popup-backdrop__night {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .scan-popup-backdrop__night-dot {
+    position: absolute;
+    margin: 0;
+    border-radius: 50%;
+    background: color-mix(in srgb, white 94%, transparent);
+    box-shadow: 0 0 7px color-mix(in srgb, white 60%, transparent);
+    animation: scan-popup-night-dot-twinkle var(--night-duration, 3.2s) ease-in-out infinite;
+    animation-delay: var(--night-delay, 0s);
+    will-change: opacity, transform;
+  }
+
+  .scan-popup-backdrop__night-dot--fine {
+    box-shadow: 0 0 6px color-mix(in srgb, white 78%, transparent);
+    animation-name: scan-popup-night-dot-twinkle-fine;
+  }
+
+  .scan-popup-backdrop__night-dot--micro {
+    box-shadow: 0 0 4px color-mix(in srgb, white 70%, transparent);
+    animation-name: scan-popup-night-dot-twinkle-fine;
+    animation-duration: calc(var(--night-duration, 2s) * 0.85);
+  }
+
+  .scan-popup-backdrop__night-star-wrap {
+    position: absolute;
+    color: var(--app-color-feedback-warning);
+    filter:
+      drop-shadow(0 0 10px color-mix(in srgb, var(--app-color-feedback-warning) 75%, transparent))
+      drop-shadow(0 0 3px color-mix(in srgb, white 45%, transparent));
+    animation: scan-popup-night-star-glow 5s ease-in-out infinite;
+    animation-delay: var(--night-delay, 0s);
+    transform-origin: center center;
+  }
+
+  .scan-popup-backdrop__night-star-svg {
+    display: block;
+  }
+
+  .scan-popup-backdrop__night-moon-wrap {
+    position: absolute;
+    color: color-mix(in srgb, var(--app-color-feedback-warning) 62%, white);
+    filter:
+      drop-shadow(0 0 16px color-mix(in srgb, var(--app-color-feedback-warning) 55%, white))
+      drop-shadow(0 0 6px color-mix(in srgb, white 35%, transparent));
+    animation: scan-popup-night-moon-float 14s ease-in-out infinite;
+    animation-delay: var(--night-delay, 0s);
+    transform-origin: center center;
+  }
+
+  .scan-popup-backdrop__night-moon-svg {
+    display: block;
+  }
+
+  @keyframes scan-popup-night-dot-twinkle {
+    0%,
+    100% {
+      opacity: calc(var(--night-opacity, 0.7) * 0.35);
+      transform: scale(0.7);
+    }
+    45% {
+      opacity: var(--night-opacity, 0.7);
+      transform: scale(1.05);
+    }
+    55% {
+      opacity: calc(var(--night-opacity, 0.7) * 0.85);
+      transform: scale(0.92);
+    }
+  }
+
+  @keyframes scan-popup-night-dot-twinkle-fine {
+    0%,
+    100% {
+      opacity: calc(var(--night-opacity, 0.55) * 0.2);
+      transform: scale(0.55);
+    }
+    30% {
+      opacity: calc(var(--night-opacity, 0.55) * 0.65);
+      transform: scale(0.85);
+    }
+    50% {
+      opacity: var(--night-opacity, 0.55);
+      transform: scale(1.15);
+    }
+    70% {
+      opacity: calc(var(--night-opacity, 0.55) * 0.5);
+      transform: scale(0.75);
+    }
+  }
+
+  @keyframes scan-popup-night-star-glow {
+    0%,
+    100% {
+      opacity: calc(var(--night-opacity, 0.85) * 0.72);
+      transform: rotate(var(--night-rotate, 0deg)) scale(0.94);
+    }
+    50% {
+      opacity: var(--night-opacity, 0.85);
+      transform: rotate(var(--night-rotate, 0deg)) scale(1.06);
+    }
+  }
+
+  @keyframes scan-popup-night-moon-float {
+    0%,
+    100% {
+      transform: rotate(var(--night-rotate, 0deg)) translate(0, 0);
+    }
+    50% {
+      transform: rotate(var(--night-rotate, 0deg)) translate(6px, -10px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scan-popup-backdrop__night-dot,
+    .scan-popup-backdrop__night-dot--fine,
+    .scan-popup-backdrop__night-dot--micro,
+    .scan-popup-backdrop__night-star-wrap,
+    .scan-popup-backdrop__night-moon-wrap {
+      animation: none;
+    }
+  }
+}

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.student.mapper.StudentCageShelfPinMapper">
+
+    <select id="selectPinnedShelveIds" resultType="string">
+        SELECT shelve_id
+        FROM student_cage_shelf_pin
+        WHERE user_id = #{userId}
+        ORDER BY created_at ASC
+    </select>
+
+    <insert id="insert">
+        INSERT IGNORE INTO student_cage_shelf_pin (user_id, shelve_id)
+        VALUES (#{userId}, #{shelveId})
+    </insert>
+
+    <delete id="delete">
+        DELETE FROM student_cage_shelf_pin WHERE user_id = #{userId} AND shelve_id = #{shelveId}
+    </delete>
+
+    <select id="exists" resultType="int">
+        SELECT COUNT(*) FROM student_cage_shelf_pin WHERE user_id = #{userId} AND shelve_id = #{shelveId}
+    </select>
+</mapper>

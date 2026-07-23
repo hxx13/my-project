@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.supplies.mapper.SupplyUserCartMapper">
+
+    <select id="findLinesJsonByUserId" resultType="java.lang.String">
+        SELECT lines_json
+        FROM supply_user_cart
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO supply_user_cart (user_id, lines_json)
+        VALUES (#{userId}, #{linesJson})
+        ON DUPLICATE KEY UPDATE lines_json = VALUES(lines_json), updated_at = CURRENT_TIMESTAMP
+    </insert>
+</mapper>

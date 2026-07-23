@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.analytics.mapper.AnalyticsQuerySnapshotMapper">
+
+    <resultMap id="AnalyticsQuerySnapshotMap" type="com.example.demo.modules.analytics.entity.AnalyticsQuerySnapshot">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="viewId" column="view_id"/>
+        <result property="reportKey" column="report_key"/>
+        <result property="periodKey" column="period_key"/>
+        <result property="queryCycle" column="query_cycle"/>
+        <result property="filterJson" column="filter_json"/>
+        <result property="reportJson" column="report_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="selectByViewPeriod" resultMap="AnalyticsQuerySnapshotMap">
+        SELECT id, user_id, view_id, report_key, period_key, query_cycle, filter_json, report_json, created_at
+        FROM analytics_query_snapshot
+        WHERE user_id = #{userId}
+          AND view_id = #{viewId}
+          AND report_key = #{reportKey}
+          AND period_key = #{periodKey}
+        LIMIT 1
+    </select>
+
+    <delete id="deleteByViewPeriod">
+        DELETE FROM analytics_query_snapshot
+        WHERE user_id = #{userId}
+          AND view_id = #{viewId}
+          AND report_key = #{reportKey}
+          AND period_key = #{periodKey}
+    </delete>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO analytics_query_snapshot (
+            user_id, view_id, report_key, period_key, query_cycle, filter_json, report_json
+        ) VALUES (
+            #{userId}, #{viewId}, #{reportKey}, #{periodKey}, #{queryCycle}, #{filterJson}, #{reportJson}
+        )
+    </insert>
+</mapper>

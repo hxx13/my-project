@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessrule.mapper.AccessRuleMapper">
+
+    <insert id="insert" parameterType="com.example.demo.modules.accessrule.entity.AccessRule" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_rule (rule_code, name, enabled)
+        VALUES (#{ruleCode,jdbcType=VARCHAR}, #{name}, #{enabled})
+    </insert>
+
+    <update id="updateRuleCode">
+        UPDATE access_rule SET rule_code = #{ruleCode} WHERE id = #{id}
+    </update>
+
+    <update id="updateMeta">
+        UPDATE access_rule SET name = #{name}, enabled = #{enabled} WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM access_rule WHERE id = #{id}
+    </delete>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessrule.entity.AccessRule">
+        SELECT id, rule_code AS ruleCode, name, enabled, created_at AS createdAt, updated_at AS updatedAt
+        FROM access_rule WHERE id = #{id}
+    </select>
+
+    <sql id="ListWhere">
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND (name LIKE CONCAT('%', #{keyword}, '%') OR IFNULL(rule_code, '') LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+    </sql>
+
+    <select id="countList" resultType="long">
+        SELECT COUNT(*) FROM access_rule
+        <include refid="ListWhere"/>
+    </select>
+
+    <select id="selectPage" resultType="com.example.demo.modules.accessrule.entity.AccessRule">
+        SELECT id, rule_code AS ruleCode, name, enabled, created_at AS createdAt, updated_at AS updatedAt
+        FROM access_rule
+        <include refid="ListWhere"/>
+        ORDER BY id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+</mapper>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.analytics.mapper.StudentActivitySnapshotMapper">
+
+    <insert id="upsertSnapshot">
+        INSERT INTO student_activity_snapshot (snapshot_date, group_name, campus, member_count, total_entries)
+        VALUES (#{snapshotDate}, #{groupName}, #{campus}, #{memberCount}, #{totalEntries})
+        ON DUPLICATE KEY UPDATE
+            campus = VALUES(campus),
+            member_count = VALUES(member_count),
+            total_entries = VALUES(total_entries)
+    </insert>
+
+    <delete id="deleteByDate">
+        DELETE FROM student_activity_snapshot WHERE snapshot_date = #{snapshotDate}
+    </delete>
+
+    <select id="aggregateByDateRange" resultType="map">
+        SELECT group_name AS groupName,
+               MAX(campus) AS campus,
+               MAX(member_count) AS memberCount,
+               SUM(total_entries) AS totalEntries,
+               COUNT(DISTINCT snapshot_date) AS activeDays
+        FROM student_activity_snapshot
+        WHERE snapshot_date BETWEEN #{startDate} AND #{endDate}
+        <if test="keyword != null and keyword != ''">
+            AND group_name LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="campus != null and campus != '' and campus != 'all'">
+            AND campus = #{campus}
+        </if>
+        GROUP BY group_name
+    </select>
+
+    <select id="distinctGroupNamesInRange" resultType="string">
+        SELECT DISTINCT group_name
+        FROM student_activity_snapshot
+        WHERE snapshot_date BETWEEN #{startDate} AND #{endDate}
+    </select>
+
+    <select id="countByDate" resultType="int">
+        SELECT COUNT(*) FROM student_activity_snapshot WHERE snapshot_date = #{snapshotDate}
+    </select>
+
+</mapper>

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.rpg.mapper.RpgMapper">
+
+    <sql id="accessLogCutoff">
+        <if test="cutoffStart != null and cutoffStart != ''">
+            AND create_time &gt;= #{cutoffStart}
+        </if>
+    </sql>
+
+    <select id="getDistinctAccessLogUserIds" resultType="string">
+        SELECT DISTINCT user_id
+        FROM aro_access_log
+        WHERE 1 = 1
+        <include refid="accessLogCutoff"/>
+    </select>
+
+    <select id="getUserLogsForRecalc" resultType="map">
+        SELECT create_time, accessType AS action, feed_source AS feed_source,
+               room_id, room_name, name AS person_name
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+        <include refid="accessLogCutoff"/>
+        ORDER BY create_time ASC
+    </select>
+
+    <update id="resetAllPersonnelTotalExp">
+        UPDATE aro_personnel SET total_exp = 0
+    </update>
+
+    <update id="updatePersonnelTotalExp">
+        UPDATE aro_personnel
+        SET total_exp = #{totalExp}
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="addPersonnelTotalExp">
+        UPDATE aro_personnel
+        SET total_exp = total_exp + #{delta}
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="recalculateAllExpByEntryCount">
+        UPDATE aro_personnel p
+        LEFT JOIN (
+            SELECT name, COUNT(*) * 10 AS total_exp
+            FROM aro_access_log
+            WHERE accessType = 1
+            GROUP BY name
+        ) l ON l.name = p.name
+        SET p.total_exp = COALESCE(l.total_exp, 0)
+    </update>
+
+    <select id="countTodayStrandedViolation" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_automation_log
+        WHERE user_id = #{userId}
+          AND automation_type = 'AUTO_SIGNOUT'
+          AND trigger_type = 'STRANDED_VIOLATION'
+          AND success = 1
+          AND DATE(event_time) = CURDATE()
+        LIMIT 1
+    </select>
+
+    <select id="getDistinctUserIdsByDate" resultType="string">
+        SELECT DISTINCT user_id
+        FROM aro_access_log
+        WHERE create_time >= #{dateStart}
+          AND create_time &lt; #{dateEnd}
+    </select>
+
+    <select id="getUserLogsForDate" resultType="map">
+        SELECT id, create_time, accessType AS action, feed_source AS feed_source,
+               room_id, room_name, name AS person_name
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+          AND create_time >= #{dateStart}
+          AND create_time &lt; #{dateEnd}
+        ORDER BY create_time ASC
+    </select>
+
+    <select id="getDistinctAccessLogDates" resultType="string">
+        SELECT DISTINCT SUBSTRING(create_time, 1, 10) AS log_date
+        FROM aro_access_log
+        WHERE 1 = 1
+        <include refid="accessLogCutoff"/>
+        ORDER BY log_date ASC
+    </select>
+
+    <delete id="deleteAccessLogsBefore">
+        DELETE FROM aro_access_log
+        WHERE create_time &lt; #{cutoffStart}
+    </delete>
+
+</mapper>

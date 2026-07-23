@@ -1,0 +1,107 @@
+<view class="page hub-page">
+  <view class="hub-main-tabs">
+    <view
+      class="hub-main-tab {{ hubTab === 'work' ? 'hub-main-tab--on' : '' }}"
+      data-tab="work"
+      bindtap="onHubTab"
+    >
+      <text class="hub-main-tab__t">通知与待办</text>
+      <view wx:if="{{ badgeWorkText }}" class="hub-main-tab__badge">{{ badgeWorkText }}</view>
+    </view>
+    <view
+      class="hub-main-tab {{ hubTab === 'contacts' ? 'hub-main-tab--on' : '' }}"
+      data-tab="contacts"
+      bindtap="onHubTab"
+    >
+      <text class="hub-main-tab__t">通讯录</text>
+      <view wx:if="{{ badgeContactsText }}" class="hub-main-tab__badge">{{ badgeContactsText }}</view>
+    </view>
+    <view
+      class="hub-main-tab {{ hubTab === 'chats' ? 'hub-main-tab--on' : '' }}"
+      data-tab="chats"
+      bindtap="onHubTab"
+    >
+      <text class="hub-main-tab__t">会话</text>
+      <view wx:if="{{ badgeChatText }}" class="hub-main-tab__badge">{{ badgeChatText }}</view>
+    </view>
+  </view>
+
+  <block wx:if="{{ hubTab === 'work' }}">
+    <staff-work-inbox id="workInbox" embedded="{{ true }}" initial-active-tab="{{ workInitialTab }}" />
+  </block>
+
+  <block wx:elif="{{ hubTab === 'contacts' }}">
+    <view class="search">
+      <van-icon name="search" size="18px" color="#969799" />
+      <input placeholder="搜索教职工" value="{{ contactKeyword }}" bindinput="onContactKeyword" confirm-type="search" bindconfirm="reloadContacts" />
+    </view>
+    <view wx:if="{{ contactLoading && contacts.length === 0 }}" class="placeholder">加载中…</view>
+    <view wx:elif="{{ contacts.length === 0 }}" class="placeholder">无匹配联系人</view>
+    <view wx:else class="conv-list">
+      <view
+        wx:for="{{ contacts }}"
+        wx:key="id"
+        class="contact-item"
+        data-peer-id="{{ item.id }}"
+        data-name="{{ item.displayName || item.displayNickname || item.username }}"
+        bindtap="openChatFromContact"
+      >
+        <view class="conv-main">
+          <view class="contact-name">{{ item.displayName || item.displayNickname || item.username }}</view>
+          <view class="contact-meta">{{ item.username }}</view>
+        </view>
+        <text wx:if="{{ item.unreadFromPeer > 0 }}" class="contact-unread">{{ item.unreadFromPeer }} 条未读</text>
+      </view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view wx:if="{{ convLoading && conversations.length === 0 }}" class="placeholder">加载中…</view>
+    <view wx:elif="{{ conversations.length === 0 }}" class="placeholder">暂无会话，在通讯录中发起聊天</view>
+    <view wx:else class="conv-list">
+      <van-swipe-cell
+        wx:for="{{ conversations }}"
+        wx:key="id"
+        id="conv-swipe-{{ item.id }}"
+        right-width="{{ convSwipeRightWidth }}"
+      >
+        <view
+          class="conv-item"
+          data-id="{{ item.id }}"
+          data-peer="{{ item.peerDisplayNickname || item.peerUsername }}"
+          bindtap="openChatRoom"
+        >
+          <view class="conv-main">
+            <text wx:if="{{ item.pinned }}" class="conv-pin">置顶</text>
+            <text class="conv-title">{{ item.peerDisplayNickname || item.peerUsername || '未知' }}</text>
+            <view class="conv-sub">{{ item.lastMessageAt || '' }}</view>
+          </view>
+          <view class="conv-trail">
+            <view wx:if="{{ item.unreadBadgeText }}" class="conv-dm-badge">{{ item.unreadBadgeText }}</view>
+            <van-icon name="chat-o" size="20px" color="#c8c9cc" />
+          </view>
+        </view>
+        <view slot="right" class="conv-swipe-right">
+          <view
+            class="conv-swipe-btn conv-swipe-btn--pin"
+            data-id="{{ item.id }}"
+            data-action="pin"
+            catchtap="onConvSwipeAction"
+          >{{ item.pinned ? '取消' : '置顶' }}</view>
+          <view
+            class="conv-swipe-btn conv-swipe-btn--read"
+            data-id="{{ item.id }}"
+            data-action="read"
+            catchtap="onConvSwipeAction"
+          >已读</view>
+          <view
+            class="conv-swipe-btn conv-swipe-btn--del"
+            data-id="{{ item.id }}"
+            data-action="delete"
+            catchtap="onConvSwipeAction"
+          >删除</view>
+        </view>
+      </van-swipe-cell>
+    </view>
+  </block>
+</view>

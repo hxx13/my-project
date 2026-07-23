@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.pagepermission.mapper.PagePermissionMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.pagepermission.entity.PagePermissionItem">
+        <id property="id" column="id"/>
+        <result property="platform" column="platform"/>
+        <result property="nodeKey" column="node_key"/>
+        <result property="nodeType" column="node_type"/>
+        <result property="displayName" column="display_name"/>
+        <result property="pathOrRoute" column="path_or_route"/>
+        <result property="entrySource" column="entry_source"/>
+        <result property="minRole" column="min_role"/>
+        <result property="defaultMinRole" column="default_min_role"/>
+        <result property="enabled" column="enabled"/>
+        <result property="parentNodeKey" column="parent_node_key"/>
+        <result property="chainKey" column="chain_key"/>
+        <result property="autoDiscovered" column="auto_discovered"/>
+        <result property="manualOverride" column="manual_override"/>
+        <result property="lastDiscoveredAt" column="last_discovered_at"/>
+        <result property="createdTime" column="created_time"/>
+        <result property="updatedTime" column="updated_time"/>
+    </resultMap>
+
+    <select id="listByPlatform" resultMap="Base">
+        SELECT *
+        FROM page_permission_item
+        WHERE platform = #{platform}
+        ORDER BY node_type, path_or_route, node_key
+    </select>
+
+    <select id="listAll" resultMap="Base">
+        SELECT *
+        FROM page_permission_item
+        ORDER BY platform, node_type, path_or_route, node_key
+    </select>
+
+    <select id="findByNodeKey" resultMap="Base">
+        SELECT *
+        FROM page_permission_item
+        WHERE node_key = #{nodeKey}
+        LIMIT 1
+    </select>
+
+    <select id="listByPlatformAndPath" resultMap="Base">
+        SELECT *
+        FROM page_permission_item
+        WHERE platform = #{platform}
+          AND path_or_route = #{pathOrRoute}
+        ORDER BY
+            CASE
+                WHEN node_type = 'ENTRY' AND entry_source = 'sidebar' THEN 0
+                WHEN node_type = 'ENTRY' THEN 1
+                WHEN node_type = 'PAGE' THEN 2
+                ELSE 3
+            END,
+            node_key
+    </select>
+
+    <insert id="upsertFromScan" parameterType="com.example.demo.modules.pagepermission.entity.PagePermissionItem">
+        INSERT INTO page_permission_item(
+            platform, node_key, node_type, display_name, path_or_route, entry_source,
+            min_role, default_min_role, enabled, parent_node_key, chain_key,
+            auto_discovered, manual_override, last_discovered_at
+        ) VALUES (
+            #{platform}, #{nodeKey}, #{nodeType}, #{displayName}, #{pathOrRoute}, #{entrySource},
+            #{minRole}, #{defaultMinRole}, #{enabled}, #{parentNodeKey}, #{chainKey},
+            1, 0, #{lastDiscoveredAt}
+        )
+        ON DUPLICATE KEY UPDATE
+            node_type = VALUES(node_type),
+            display_name = VALUES(display_name),
+            path_or_route = VALUES(path_or_route),
+            entry_source = VALUES(entry_source),
+            default_min_role = VALUES(default_min_role),
+            min_role = IF(manual_override = 1, min_role, VALUES(min_role)),
+            enabled = IF(manual_override = 1, enabled, VALUES(enabled)),
+            parent_node_key = VALUES(parent_node_key),
+            chain_key = VALUES(chain_key),
+            auto_discovered = 1,
+            last_discovered_at = VALUES(last_discovered_at),
+            updated_time = CURRENT_TIMESTAMP
+    </insert>
+
+    <update id="updateManual">
+        UPDATE page_permission_item
+        SET min_role = #{minRole},
+            enabled = #{enabled},
+            manual_override = 1,
+            updated_time = CURRENT_TIMESTAMP
+        WHERE node_key = #{nodeKey}
+    </update>
+
+    <update id="resetDefaultByPlatform">
+        UPDATE page_permission_item
+        SET min_role = default_min_role,
+            enabled = 1,
+            manual_override = 0,
+            updated_time = CURRENT_TIMESTAMP
+        WHERE platform = #{platform}
+    </update>
+
+    <update id="touchMissingAsUndiscovered">
+        UPDATE page_permission_item
+        SET auto_discovered = 0,
+            updated_time = CURRENT_TIMESTAMP
+        WHERE platform = #{platform}
+          <if test="aliveKeys != null and aliveKeys.size() > 0">
+              AND node_key NOT IN
+              <foreach collection="aliveKeys" item="k" open="(" separator="," close=")">
+                  #{k}
+              </foreach>
+          </if>
+          <if test="aliveKeys == null or aliveKeys.size() == 0">
+              AND 1 = 1
+          </if>
+    </update>
+
+</mapper>
+

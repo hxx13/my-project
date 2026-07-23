@@ -1,0 +1,66 @@
+<view class="rw-page">
+  <scroll-view class="rw-scroll" scroll-y>
+    <view class="rw-hint">
+      <text class="rw-hint-text">选择关注的校区或楼层后，底部「房间」仅在所选范围内仍有在场人员时显示红点；配置保存在当前校内账号下，换设备登录后自动同步。</text>
+    </view>
+
+    <van-cell-group wx:if="{{ loading }}" inset="{{ true }}" border="{{ false }}">
+      <van-cell title="加载中…" border="{{ false }}" />
+    </van-cell-group>
+
+    <block wx:if="{{ !loading }}">
+      <van-cell-group wx:if="{{ !campusBlocks.length }}" inset="{{ true }}" border="{{ false }}">
+        <van-cell title="暂无校区楼层数据" border="{{ false }}" />
+      </van-cell-group>
+
+      <block wx:for="{{ campusBlocks }}" wx:key="campus">
+        <van-cell-group inset="{{ true }}" border="{{ false }}" custom-class="rw-campus-group">
+          <van-cell border="{{ false }}" custom-class="rw-cell-strong">
+            <view slot="title" class="rw-row">
+              <text class="rw-campus-title">{{ item.campus }}</text>
+            </view>
+          </van-cell>
+          <van-cell border="{{ false }}" title="关注整校区">
+            <switch
+              checked="{{ item.wholeCampus }}"
+              color="#1989fa"
+              data-campus="{{ item.campus }}"
+              bindchange="onWholeSwitch"
+            />
+          </van-cell>
+          <van-cell
+            wx:for="{{ item.floors }}"
+            wx:for-item="fl"
+            wx:key="floor"
+            border="{{ false }}"
+            title="{{ fl.floor }} 层"
+          >
+            <switch
+              checked="{{ fl.checked }}"
+              disabled="{{ item.wholeCampus }}"
+              color="#1989fa"
+              data-campus="{{ item.campus }}"
+              data-floor="{{ fl.floor }}"
+              bindchange="onFloorSwitch"
+            />
+          </van-cell>
+          <van-cell wx:if="{{ !item.floors.length }}" border="{{ false }}" title="该校区暂无楼层数据" />
+        </van-cell-group>
+      </block>
+    </block>
+
+    <view class="rw-footer-spacer" />
+  </scroll-view>
+
+  <view class="rw-footer">
+    <van-button
+      type="primary"
+      block
+      round
+      loading="{{ saving }}"
+      disabled="{{ loading }}"
+      custom-class="rw-save-btn"
+      bindtap="onSave"
+    >保存并返回</van-button>
+  </view>
+</view>

@@ -1,0 +1,95 @@
+<view class="page">
+  <view class="wo-filter">
+    <view class="wo-pill {{ statusFilter === 'PENDING' ? 'wo-pill-on' : '' }}" data-status="PENDING" bindtap="onStatusFilter">待处理</view>
+    <view class="wo-pill {{ statusFilter === 'PROCESSING' ? 'wo-pill-on' : '' }}" data-status="PROCESSING" bindtap="onStatusFilter">处理中</view>
+    <view class="wo-pill {{ statusFilter === 'COMPLETED' ? 'wo-pill-on' : '' }}" data-status="COMPLETED" bindtap="onStatusFilter">已完成</view>
+  </view>
+
+  <view wx:if="{{ loading }}" class="meta">加载中…</view>
+  <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无工单" />
+  <view wx:else>
+    <view wx:for="{{ rows }}" wx:key="id" class="wo-card">
+      <view class="title">{{ item.location }} · {{ item.statusText }}</view>
+      <view class="sub">{{ item.content }}</view>
+      <view wx:if="{{ item.requestImages.length }}" class="image-grid">
+        <image
+          wx:for="{{ item.requestImages }}"
+          wx:for-item="imgUrl"
+          wx:key="*this"
+          class="image-thumb"
+          mode="aspectFill"
+          lazy-load="{{true}}"
+          show-menu-by-longpress="{{false}}"
+          src="{{ imgUrl }}"
+          data-url="{{ imgUrl }}"
+          data-urls="{{ item.requestImages }}"
+          bindtap="onPreviewCardImages"
+        />
+      </view>
+      <view class="meta">申请人：{{ item.applicantName || item.applicantId }} · 创建：{{ item.createTimeText }}</view>
+      <view wx:if="{{ item.processorId }}" class="meta">处理人：{{ item.processorId }}</view>
+      <view wx:if="{{ item.resultRemark }}" class="meta">处理结果：{{ item.resultRemark }}</view>
+      <view wx:if="{{ item.resultImages.length }}" class="image-grid">
+        <image
+          wx:for="{{ item.resultImages }}"
+          wx:for-item="imgUrl2"
+          wx:key="*this"
+          class="image-thumb"
+          mode="aspectFill"
+          lazy-load="{{true}}"
+          show-menu-by-longpress="{{false}}"
+          src="{{ imgUrl2 }}"
+          data-url="{{ imgUrl2 }}"
+          data-urls="{{ item.resultImages }}"
+          bindtap="onPreviewCardImages"
+        />
+      </view>
+      <view class="wo-actions">
+        <view wx:if="{{ item.hasUnreadNotice }}" class="wo-act wo-act-read" data-id="{{ item.id }}" catchtap="markOrderRead">已读</view>
+        <view wx:if="{{ item.status === 'PENDING' }}" class="wo-act wo-act-primary" data-id="{{ item.id }}" bindtap="startOrder">接单</view>
+        <view wx:if="{{ item.status === 'PROCESSING' }}" class="wo-act wo-act-success" data-id="{{ item.id }}" bindtap="openCompletePopup">完成</view>
+        <view class="wo-act wo-act-danger-plain" data-id="{{ item.id }}" bindtap="deleteOrder">删除</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="list-foot">
+    <text wx:if="{{ loadingMore }}" class="list-foot-text">加载中…</text>
+    <text wx:elif="{{ !hasMore }}" class="list-foot-text">没有更多了</text>
+  </view>
+
+  <view class="recycle-head">
+    <text class="recycle-title">回收站（7天后自动清空）</text>
+    <view class="recycle-ops">
+      <text class="recycle-op" bindtap="onPurgeRecycleSelected">选删</text>
+      <text class="recycle-op recycle-op-danger" bindtap="onPurgeRecycleAll">清空</text>
+    </view>
+  </view>
+  <view wx:if="{{ recycleRows.length === 0 }}" class="meta">回收站为空</view>
+  <view wx:for="{{ recycleRows }}" wx:key="id" class="recycle-row">
+    <text class="recycle-main">{{ item.location }} · {{ item.statusText }}</text>
+    <view class="recycle-line-ops">
+      <text class="recycle-link" data-id="{{ item.id }}" bindtap="onToggleRecycleSelect">{{ recycleSelected[item.id] ? '已选' : '勾选' }}</text>
+      <text class="recycle-link" data-id="{{ item.id }}" bindtap="onRestoreRecycle">恢复</text>
+      <text class="recycle-link recycle-link-danger" data-id="{{ item.id }}" bindtap="onPurgeRecycleOne">删</text>
+    </view>
+  </view>
+
+  <van-popup show="{{ showComplete }}" position="bottom" round closeable bind:close="closeCompletePopup">
+    <view class="popup-body">
+      <view class="popup-title">完成采购处理</view>
+      <textarea class="input" value="{{ completeRemark }}" bindinput="onCompleteRemarkInput" placeholder="填写处理结论（可选）" />
+      <view class="popup-line">
+        <text class="popup-tip">结果图片（最多 9 张）</text>
+        <view class="wo-act-mini" bindtap="onChooseCompleteImages">添加</view>
+      </view>
+      <view wx:if="{{ completeImages.length }}" class="image-grid">
+        <view wx:for="{{ completeImages }}" wx:key="*this" class="image-item">
+          <image class="image-thumb" mode="aspectFill" lazy-load="{{true}}" show-menu-by-longpress="{{false}}" src="{{ item }}" data-url="{{ item }}" bindtap="onPreviewCompleteImages" />
+          <view class="image-remove" data-idx="{{ index }}" bindtap="onRemoveCompleteImage">×</view>
+        </view>
+      </view>
+      <view class="wo-popup-submit wo-popup-submit--ok" bindtap="completeOrder">确认完成</view>
+    </view>
+  </van-popup>
+</view>

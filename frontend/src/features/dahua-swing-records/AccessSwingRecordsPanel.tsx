@@ -1,0 +1,883 @@
+import { useCallback, useEffect, useState } from "react";
+
+import toast from "react-hot-toast";
+
+import {
+
+  enrichSwingRecords,
+
+  fetchSwingRecordQualitySummary,
+
+  previewSwingForAudit,
+
+  recalculateSwingRecordAudience,
+
+  type AccessSwingRecordViewRow,
+
+} from "@/api/domains/accessAudit.api";
+
+import { listDahuaSwingTasks, type DahuaSwingTask } from "@/api/domains/dahuaSwing.api";
+
+import { listDahuaSwingStatsTasks, type DahuaSwingStatsPullTask } from "@/api/domains/dahuaSwingStats.api";
+
+import { OPEN_TYPE_OPTIONS } from "@/features/access-audit/AccessRecordFilterBar";
+
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
+
+import { AccessSwingRecordTable } from "@/features/dahua-swing-records/AccessSwingRecordTable";
+
+import {
+
+  toAuditFilterQuery,
+
+  type SwingRecordFilters,
+
+} from "@/features/dahua-swing-records/swingRecordFilterState";
+
+import { isHistoricalTask, PERIOD_MODE_LABEL, parsePeriodMode } from "@/features/dahua-swing-stats/statsTaskModel";
+
+import { useSearchParams } from "react-router-dom";
+
+
+
+const toApiDateTime = (v: string) => (v ? `${v.replace("T", " ")}:00` : "");
+
+const todayRange = () => {
+
+  const now = new Date();
+
+  const y = now.getFullYear();
+
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+
+  const d = String(now.getDate()).padStart(2, "0");
+
+  return { start: `${y}-${m}-${d}T00:00`, end: `${y}-${m}-${d}T23:59` };
+
+};
+
+
+
+const filterLabelClass = "flex flex-col gap-1 text-[11px] text-slate-600";
+
+const filterInputClass = "h-9 rounded border px-2 text-xs bg-white";
+
+
+
+function emptyFilters(today: { start: string; end: string }, taskId: string, channelName: string): SwingRecordFilters {
+
+  return {
+
+    taskId,
+
+    channelName,
+
+    personCode: "",
+
+    personName: "",
+
+    cardNumber: "",
+
+    departmentName: "",
+
+    openType: "",
+
+    enterOrExit: "",
+
+    openResult: "",
+
+    audienceType: "",
+
+    mappingHit: "",
+
+    requireMapping: false,
+
+    openSuccessOnly: false,
+
+    startTime: today.start,
+
+    endTime: today.end,
+
+  };
+
+}
+
+
+
+export function AccessSwingRecordsPanel() {
+
+  const today = todayRange();
+
+  const [searchParams] = useSearchParams();
+
+  const initialTaskId = searchParams.get("taskId") || "";
+
+  const initialChannel = searchParams.get("channelCode") || searchParams.get("channelName") || "";
+
+
+
+  const [realtimeTasks, setRealtimeTasks] = useState<DahuaSwingTask[]>([]);
+
+  const [statsTasks, setStatsTasks] = useState<DahuaSwingStatsPullTask[]>([]);
+
+  const [rows, setRows] = useState<AccessSwingRecordViewRow[]>([]);
+
+  const [total, setTotal] = useState(0);
+
+  const [loading, setLoading] = useState(false);
+
+  const [enriching, setEnriching] = useState(false);
+
+  const [recalculatingAudience, setRecalculatingAudience] = useState(false);
+
+  const [page, setPage] = useState(1);
+
+  const pageSize = 100;
+
+  const [quality, setQuality] = useState<{ total: number; missingEnterExit: number } | null>(null);
+
+  const [recordSource, setRecordSource] = useState<"" | "REALTIME" | "STATS">("");
+
+  const [filters, setFilters] = useState<SwingRecordFilters>(() =>
+
+    emptyFilters(today, initialTaskId, initialChannel)
+
+  );
+
+
+
+  const queryParams = useCallback(
+
+    () => toAuditFilterQuery(filters, toApiDateTime),
+
+    [filters]
+
+  );
+
+
+
+  useEffect(() => {
+
+    void (async () => {
+
+      try {
+
+        const [rt, st] = await Promise.all([listDahuaSwingTasks(), listDahuaSwingStatsTasks()]);
+
+        setRealtimeTasks(rt);
+
+        setStatsTasks(st);
+
+      } catch {
+
+        setRealtimeTasks([]);
+
+        setStatsTasks([]);
+
+      }
+
+    })();
+
+  }, []);
+
+
+
+  const load = useCallback(async () => {
+
+    setLoading(true);
+
+    try {
+
+      const res = await previewSwingForAudit({ ...queryParams(), page, pageSize });
+
+      let data = res.data || [];
+
+      if (recordSource) {
+
+        data = data.filter((r) => r.pullTaskType === recordSource);
+
+      }
+
+      setRows(data);
+
+      setTotal(res.total || 0);
+
+      const q = await fetchSwingRecordQualitySummary(queryParams());
+
+      setQuality(q);
+
+    } catch (e) {
+
+      toast.error(e instanceof Error ? e.message : "加载失败");
+
+    } finally {
+
+      setLoading(false);
+
+    }
+
+  }, [queryParams, page, recordSource]);
+
+
+
+  useEffect(() => {
+
+    void load();
+
+  }, [load]);
+
+
+
+  const handleRecalculateAudience = async () => {
+
+    if (
+
+      !window.confirm(
+
+        "将按当前筛选重算受众：部门 ID 或大华部门映射名称含「学生」→ 学生，其余 → 工作人员。已写入清洗总库的数据需清空后重新入库。是否继续？"
+
+      )
+
+    ) {
+
+      return;
+
+    }
+
+    setRecalculatingAudience(true);
+
+    try {
+
+      const res = await recalculateSwingRecordAudience(queryParams());
+
+      toast.success(
+
+        `已扫描 ${res.scanned} 条，更新 ${res.updated} 条（学生 ${res.studentCount} / 工作人员 ${res.staffCount}）${
+
+          res.truncated ? "；已达单次上限，请再次执行以覆盖剩余记录" : ""
+
+        }`
+
+      );
+
+      await load();
+
+    } catch (e) {
+
+      toast.error(e instanceof Error ? e.message : "重算受众失败");
+
+    } finally {
+
+      setRecalculatingAudience(false);
+
+    }
+
+  };
+
+
+
+  const handleEnrich = async () => {
+
+    setEnriching(true);
+
+    try {
+
+      const res = await enrichSwingRecords(queryParams());
+
+      toast.success(`已扫描 ${res.scanned} 条，更新 ${res.updated} 条${res.truncated ? "（已达单次上限，可再次执行）" : ""}`);
+
+      await load();
+
+    } catch (e) {
+
+      toast.error(e instanceof Error ? e.message : "补全失败");
+
+    } finally {
+
+      setEnriching(false);
+
+    }
+
+  };
+
+
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+
+
+  return (
+
+    <div className="space-y-3">
+
+      {quality ? (
+
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+
+          当前筛选共 <strong>{quality.total}</strong> 条 · 缺进出 <strong className="text-amber-700">{quality.missingEnterExit}</strong> 条
+
+          <span className="block mt-1 text-slate-500">
+
+            受众规则：部门 ID 或大华部门映射名含「学生」→ 学生，其余 → 工作人员。纠错后请在「统计清洗」Tab 清空总库并重新入库。
+
+          </span>
+
+        </p>
+
+      ) : null}
+
+
+
+      <div className="flex flex-wrap items-center gap-2">
+
+        <span className="text-[11px] font-semibold text-slate-600">数据源</span>
+
+        {(
+
+          [
+
+            ["", "全部"],
+
+            ["REALTIME", "实时"],
+
+            ["STATS", "审计"],
+
+          ] as const
+
+        ).map(([k, label]) => (
+
+          <button
+
+            key={k || "all"}
+
+            type="button"
+
+            className={`rounded-full px-3 py-1 text-xs border ${
+
+              recordSource === k ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-600"
+
+            }`}
+
+            onClick={() => {
+
+              setRecordSource(k);
+
+              setPage(1);
+
+              setFilters((p) => ({ ...p, taskId: "" }));
+
+            }}
+
+          >
+
+            {label}
+
+          </button>
+
+        ))}
+
+      </div>
+
+
+
+      <div className="rounded-xl border bg-white p-3 space-y-3">
+
+        <div className="flex flex-wrap items-end gap-2">
+
+          <label className={`${filterLabelClass} min-w-[180px]`}>
+
+            拉取任务
+
+            <select
+
+              className={filterInputClass}
+
+              value={filters.taskId}
+
+              onChange={(e) => setFilters((p) => ({ ...p, taskId: e.target.value }))}
+
+            >
+
+              <option value="">全部任务</option>
+
+              {recordSource !== "STATS" ? (
+
+                <optgroup label="实时拉取（孪生轮询）">
+
+                  {realtimeTasks.map((t) => (
+
+                    <option key={`rt-${t.id}`} value={String(t.id)}>
+
+                      {t.name}
+
+                    </option>
+
+                  ))}
+
+                </optgroup>
+
+              ) : null}
+
+              {recordSource !== "REALTIME" ? (
+
+                <>
+
+                  <optgroup label="审计·日批">
+
+                    {statsTasks.filter((t) => !isHistoricalTask(t)).map((t) => (
+
+                      <option key={`st-${t.id}`} value={String(t.id)}>
+
+                        {t.name}（{PERIOD_MODE_LABEL[parsePeriodMode(t.periodMode)]}）
+
+                      </option>
+
+                    ))}
+
+                  </optgroup>
+
+                  <optgroup label="审计·回溯">
+
+                    {statsTasks.filter((t) => isHistoricalTask(t)).map((t) => (
+
+                      <option key={`bf-${t.id}`} value={String(t.id)}>
+
+                        {t.name}
+
+                      </option>
+
+                    ))}
+
+                  </optgroup>
+
+                </>
+
+              ) : null}
+
+            </select>
+
+          </label>
+
+          <label className={`${filterLabelClass} min-w-[140px]`}>
+
+            通道名称
+
+            <input
+
+              className={filterInputClass}
+
+              placeholder="模糊匹配名称或编码"
+
+              value={filters.channelName}
+
+              onChange={(e) => setFilters((p) => ({ ...p, channelName: e.target.value }))}
+
+            />
+
+          </label>
+
+          <label className={`${filterLabelClass} min-w-[100px]`}>
+
+            工号
+
+            <input
+
+              className={filterInputClass}
+
+              value={filters.personCode}
+
+              onChange={(e) => setFilters((p) => ({ ...p, personCode: e.target.value }))}
+
+            />
+
+          </label>
+
+          <label className={`${filterLabelClass} min-w-[100px]`}>
+
+            姓名
+
+            <input
+
+              className={filterInputClass}
+
+              value={filters.personName}
+
+              onChange={(e) => setFilters((p) => ({ ...p, personName: e.target.value }))}
+
+            />
+
+          </label>
+
+          <label className={`${filterLabelClass} min-w-[100px]`}>
+
+            卡号
+
+            <input
+
+              className={filterInputClass}
+
+              value={filters.cardNumber}
+
+              onChange={(e) => setFilters((p) => ({ ...p, cardNumber: e.target.value }))}
+
+            />
+
+          </label>
+
+          <label className={`${filterLabelClass} min-w-[120px]`}>
+
+            部门
+
+            <input
+
+              className={filterInputClass}
+
+              placeholder="名称或部门ID"
+
+              value={filters.departmentName}
+
+              onChange={(e) => setFilters((p) => ({ ...p, departmentName: e.target.value }))}
+
+            />
+
+          </label>
+
+        </div>
+
+
+
+        <div className="flex flex-wrap items-end gap-2">
+
+          <label className={filterLabelClass}>
+
+            开门类型
+
+            <select
+
+              className={filterInputClass}
+
+              value={filters.openType}
+
+              onChange={(e) => setFilters((p) => ({ ...p, openType: e.target.value }))}
+
+            >
+
+              <option value="">全部</option>
+
+              {OPEN_TYPE_OPTIONS.map((o) => (
+
+                <option key={o.code} value={String(o.code)}>
+
+                  {o.name}
+
+                </option>
+
+              ))}
+
+            </select>
+
+          </label>
+
+          <label className={filterLabelClass}>
+
+            刷卡成功
+
+            <select
+
+              className={filterInputClass}
+
+              value={filters.openResult}
+
+              onChange={(e) => setFilters((p) => ({ ...p, openResult: e.target.value }))}
+
+            >
+
+              <option value="">全部</option>
+
+              <option value="1">成功</option>
+
+              <option value="0">失败</option>
+
+            </select>
+
+          </label>
+
+          <label className={filterLabelClass}>
+
+            进出
+
+            <select
+
+              className={filterInputClass}
+
+              value={filters.enterOrExit}
+
+              onChange={(e) => setFilters((p) => ({ ...p, enterOrExit: e.target.value }))}
+
+            >
+
+              <option value="">全部</option>
+
+              <option value="1">进入</option>
+
+              <option value="2">离开</option>
+
+            </select>
+
+          </label>
+
+          <label className={filterLabelClass}>
+
+            受众
+
+            <select
+
+              className={filterInputClass}
+
+              value={filters.audienceType}
+
+              onChange={(e) => setFilters((p) => ({ ...p, audienceType: e.target.value }))}
+
+            >
+
+              <option value="">全部</option>
+
+              <option value="STUDENT">学生</option>
+
+              <option value="STAFF">工作人员</option>
+
+            </select>
+
+          </label>
+
+          <label className={filterLabelClass}>
+
+            映射
+
+            <select
+
+              className={filterInputClass}
+
+              value={filters.mappingHit}
+
+              onChange={(e) => setFilters((p) => ({ ...p, mappingHit: e.target.value }))}
+
+            >
+
+              <option value="">全部</option>
+
+              <option value="1">已映射</option>
+
+              <option value="0">未映射</option>
+
+            </select>
+
+          </label>
+
+          <label className={`${filterLabelClass} min-w-[150px]`}>
+
+            开始时间
+
+            <input
+
+              type="datetime-local"
+
+              className={filterInputClass}
+
+              value={filters.startTime}
+
+              onChange={(e) => setFilters((p) => ({ ...p, startTime: e.target.value }))}
+
+            />
+
+          </label>
+
+          <label className={`${filterLabelClass} min-w-[150px]`}>
+
+            结束时间
+
+            <input
+
+              type="datetime-local"
+
+              className={filterInputClass}
+
+              value={filters.endTime}
+
+              onChange={(e) => setFilters((p) => ({ ...p, endTime: e.target.value }))}
+
+            />
+
+          </label>
+
+        </div>
+
+
+
+        <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-600">
+
+          <label className="inline-flex items-center gap-1.5 cursor-pointer">
+
+            <AdminSwitchScaled
+
+              size="3.5"
+
+              checked={filters.requireMapping}
+
+              onChange={(checked) => setFilters((p) => ({ ...p, requireMapping: checked }))}
+
+            />
+
+            仅已映射用户
+
+          </label>
+
+          <label className="inline-flex items-center gap-1.5 cursor-pointer">
+
+            <AdminSwitchScaled
+
+              size="3.5"
+
+              checked={filters.openSuccessOnly}
+
+              onChange={(checked) => setFilters((p) => ({ ...p, openSuccessOnly: checked }))}
+
+            />
+
+            仅开门成功（含 open_result 为空）
+
+          </label>
+
+        </div>
+
+
+
+        <div className="flex flex-wrap gap-2 pt-1">
+
+          <button
+
+            type="button"
+
+            className="h-9 rounded bg-slate-900 px-3 text-xs text-white"
+
+            onClick={() => {
+
+              setPage(1);
+
+              void load();
+
+            }}
+
+          >
+
+            查询
+
+          </button>
+
+          <button
+
+            type="button"
+
+            className="h-9 rounded border px-3 text-xs text-slate-600"
+
+            onClick={() => {
+
+              setFilters(emptyFilters(todayRange(), "", ""));
+
+              setPage(1);
+
+            }}
+
+          >
+
+            重置筛选
+
+          </button>
+
+          <button
+
+            type="button"
+
+            className="h-9 rounded border px-3 text-xs text-indigo-700 border-indigo-200 disabled:opacity-50"
+
+            disabled={enriching}
+
+            onClick={() => void handleEnrich()}
+
+          >
+
+            {enriching ? "补全中…" : "按筛选补全历史字段"}
+
+          </button>
+
+          <button
+
+            type="button"
+
+            className="h-9 rounded border border-violet-300 bg-violet-50 px-3 text-xs text-violet-900 disabled:opacity-50"
+
+            disabled={recalculatingAudience}
+
+            onClick={() => void handleRecalculateAudience()}
+
+          >
+
+            {recalculatingAudience ? "重算受众中…" : "按筛选重算受众"}
+
+          </button>
+
+        </div>
+
+      </div>
+
+
+
+      <AccessSwingRecordTable rows={rows} loading={loading} />
+
+
+
+      <div className="flex items-center justify-between text-xs text-slate-500">
+
+        <span>共 {total} 条</span>
+
+        <div className="flex gap-2">
+
+          <button type="button" className="underline disabled:opacity-40" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+
+            上一页
+
+          </button>
+
+          <span>
+
+            {page}/{totalPages}
+
+          </span>
+
+          <button
+
+            type="button"
+
+            className="underline disabled:opacity-40"
+
+            disabled={page >= totalPages}
+
+            onClick={() => setPage((p) => p + 1)}
+
+          >
+
+            下一页
+
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  );
+
+}
+
+

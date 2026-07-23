@@ -1,0 +1,53 @@
+<view class="picker-root">
+  <view
+    class="picker-field {{ panelOpen ? 'picker-field-open' : '' }}"
+    hover-class="picker-field-hover"
+    bindtap="togglePanel"
+  >
+    <view class="picker-tags">
+      <block wx:if="{{ selectedTags.length === 0 }}">
+        <text class="picker-placeholder">{{ placeholder }}</text>
+      </block>
+      <view wx:for="{{ selectedTags }}" wx:key="id" class="picker-tag">
+        <text class="picker-tag-text">{{ item.label }}</text>
+        <text class="picker-tag-x" catchtap="removeTag" data-id="{{ item.id }}">×</text>
+      </view>
+    </view>
+    <text class="picker-chev">{{ panelOpen ? '▴' : '▾' }}</text>
+  </view>
+
+  <view wx:if="{{ panelOpen }}" class="picker-panel">
+    <view class="picker-panel-head">
+      <text class="picker-panel-title">选择人员</text>
+      <text class="picker-panel-close" catchtap="closePanel">收起</text>
+    </view>
+    <input
+      class="picker-search"
+      placeholder="搜索姓名或账号"
+      value="{{ search }}"
+      bindinput="onSearchInput"
+      confirm-type="search"
+      adjust-position="{{ true }}"
+    />
+    <scroll-view scroll-y class="picker-list" enhanced show-scrollbar="{{ false }}">
+      <view wx:if="{{ loading }}" class="picker-empty">加载中…</view>
+      <view wx:elif="{{ loadError }}" class="picker-empty picker-empty-err">{{ loadError }}</view>
+      <view wx:elif="{{ filtered.length === 0 }}" class="picker-empty">无匹配人员</view>
+      <view
+        wx:for="{{ filtered }}"
+        wx:key="id"
+        class="picker-row {{ item._selected ? 'picker-row-on' : '' }}"
+        hover-class="picker-row-hover"
+        bindtap="toggleReviewer"
+        data-id="{{ item.id }}"
+      >
+        <text class="picker-name">{{ item.displayNickname || item.username || item.id }}</text>
+        <text class="picker-check">{{ item._selected ? '✓' : '' }}</text>
+      </view>
+    </scroll-view>
+    <view class="picker-foot">
+      <text class="picker-foot-tip">已选 {{ selectedIds.length }} 人</text>
+      <text class="picker-foot-done" catchtap="closePanel">完成</text>
+    </view>
+  </view>
+</view>

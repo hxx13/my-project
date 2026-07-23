@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.notification.mapper.NotificationSettingsMapper">
+
+    <select id="listRules" resultType="com.example.demo.modules.notification.entity.NotifyRule">
+        SELECT id, event_type AS eventType, biz_type AS bizType, enabled, recipient_mode AS recipientMode,
+               min_role_level AS minRoleLevel, template_key AS templateKey, update_time AS updateTime
+        FROM sys_notify_rule
+        ORDER BY biz_type, event_type
+    </select>
+
+    <select id="findRuleById" resultType="com.example.demo.modules.notification.entity.NotifyRule">
+        SELECT id, event_type AS eventType, biz_type AS bizType, enabled, recipient_mode AS recipientMode,
+               min_role_level AS minRoleLevel, template_key AS templateKey, update_time AS updateTime
+        FROM sys_notify_rule
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <update id="updateRule" parameterType="com.example.demo.modules.notification.entity.NotifyRule">
+        UPDATE sys_notify_rule
+        SET enabled = #{enabled},
+            recipient_mode = #{recipientMode},
+            min_role_level = #{minRoleLevel},
+            template_key = #{templateKey},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="findRuleByEventAndBiz" resultType="com.example.demo.modules.notification.entity.NotifyRule">
+        SELECT id, event_type AS eventType, biz_type AS bizType, enabled, recipient_mode AS recipientMode,
+               min_role_level AS minRoleLevel, template_key AS templateKey, update_time AS updateTime
+        FROM sys_notify_rule
+        WHERE event_type = #{eventType}
+          AND biz_type = #{bizType}
+        LIMIT 1
+    </select>
+
+    <select id="listTemplates" resultType="com.example.demo.modules.notification.entity.NotifyTemplate">
+        SELECT id, template_key AS templateKey, title_tpl AS titleTpl, content_tpl AS contentTpl,
+               enabled, update_time AS updateTime
+        FROM sys_notify_template
+        ORDER BY template_key
+    </select>
+
+    <select id="findTemplateByKey" resultType="com.example.demo.modules.notification.entity.NotifyTemplate">
+        SELECT id, template_key AS templateKey, title_tpl AS titleTpl, content_tpl AS contentTpl,
+               enabled, update_time AS updateTime
+        FROM sys_notify_template
+        WHERE template_key = #{templateKey}
+        LIMIT 1
+    </select>
+
+    <update id="updateTemplate" parameterType="com.example.demo.modules.notification.entity.NotifyTemplate">
+        UPDATE sys_notify_template
+        SET title_tpl = #{titleTpl},
+            content_tpl = #{contentTpl},
+            enabled = #{enabled},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="listConfigsByModule" resultType="com.example.demo.modules.notification.entity.SystemConfigItem">
+        SELECT id, module, config_key AS configKey, config_value AS configValue,
+               value_type AS valueType, remark, update_time AS updateTime
+        FROM sys_system_config
+        WHERE module = #{module}
+        ORDER BY config_key
+    </select>
+
+    <select id="listConfigModules" resultType="string">
+        SELECT DISTINCT module FROM sys_system_config
+        UNION
+        SELECT DISTINCT module FROM sys_system_config_def
+        ORDER BY module
+    </select>
+
+    <select id="findConfigById" resultType="com.example.demo.modules.notification.entity.SystemConfigItem">
+        SELECT id, module, config_key AS configKey, config_value AS configValue,
+               value_type AS valueType, remark, update_time AS updateTime
+        FROM sys_system_config
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="listConfigDefinitionsByModule" resultType="com.example.demo.modules.notification.entity.SystemConfigDefinition">
+        SELECT id, module, config_key AS configKey, label_zh AS labelZh, description,
+               value_type AS valueType, options_json AS optionsJson, default_value AS defaultValue,
+               is_sensitive AS isSensitive, requires_restart AS requiresRestart, is_public AS isPublic,
+               update_time AS updateTime
+        FROM sys_system_config_def
+        WHERE module = #{module}
+        ORDER BY config_key
+    </select>
+
+    <select id="listPublicConfigDefinitions" resultType="com.example.demo.modules.notification.entity.SystemConfigDefinition">
+        SELECT id, module, config_key AS configKey, label_zh AS labelZh, description,
+               value_type AS valueType, options_json AS optionsJson, default_value AS defaultValue,
+               is_sensitive AS isSensitive, requires_restart AS requiresRestart, is_public AS isPublic,
+               update_time AS updateTime
+        FROM sys_system_config_def
+        WHERE is_public = 1
+        ORDER BY module, config_key
+    </select>
+
+    <update id="updateConfig" parameterType="com.example.demo.modules.notification.entity.SystemConfigItem">
+        UPDATE sys_system_config
+        SET config_value = #{configValue},
+            remark = #{remark},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <insert id="insertConfigItem" parameterType="com.example.demo.modules.notification.entity.SystemConfigItem">
+        INSERT INTO sys_system_config(module, config_key, config_value, value_type, remark, update_time)
+        VALUES (#{module}, #{configKey}, #{configValue}, #{valueType}, #{remark}, NOW())
+    </insert>
+
+    <insert id="insertConfigAudit">
+        INSERT INTO sys_system_config_audit(config_id, module, config_key, old_value, new_value, operator_id)
+        VALUES (#{configId}, #{module}, #{configKey}, #{oldValue}, #{newValue}, #{operatorId})
+    </insert>
+</mapper>

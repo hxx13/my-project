@@ -1,0 +1,160 @@
+/* 学生端设计令牌 — 对齐后台 Bento Warm 体系，light/dark 双模 */
+/* Primitive 来源：frontend/src/styles/tokens.css（--color-* oklch 色阶） */
+
+/* ══════════════════════════════════════════════════════════════════════
+   Light Mode — Bento Warm（对齐后台 :root / .theme-standard）
+   ══════════════════════════════════════════════════════════════════════ */
+:root {
+  /* === 主色调：桃色系（对齐后台 --app-color-accent） === */
+  --student-primary:          #d97706;   /* peach-600，即 --color-peach-600 */
+  --student-primary-hover:    #c26905;   /* peach-700 */
+  --student-primary-pressed:  #a84e04;   /* peach-800 */
+  --student-primary-soft:     #fef0e3;   /* peach-100 */
+  --student-primary-muted:    #fde8d5;   /* peach-200 */
+  --student-on-primary:       #ffffff;
+
+  /* === 表面分层（三层深度 — 解决纯白平铺问题） === */
+  /* L0 页面底色：暖白，有温度但不抢戏 */
+  --student-canvas:           #FFFBF5;   /* warm-50 */
+  /* L1 面板/卡片底色：纯白，从 canvas 上浮起 */
+  --student-surface:          #ffffff;
+  /* L2 悬浮层底色：纯白 + 更强阴影（dialog/sheet 用） */
+  --student-surface-raised:   #ffffff;
+  /* Canvas 变体（hover / 次级底色） */
+  --student-canvas-soft:      #FEF7EE;   /* warm-100 */
+  --student-canvas-soft-2:    #FDF3E4;   /* warm-200 */
+
+  /* === 文字阶梯（对齐后台 --app-color-text-*） === */
+  --student-ink:              #1e293b;   /* slate-900 → 近黑 */
+  --student-body:             #475569;   /* slate-600 → 正文 */
+  --student-mute:             #94a3b8;   /* slate-400 → 辅助/占位 */
+
+  /* === 分割线 === */
+  --student-hairline:         #F0E4D0;   /* warm-200，暖调分割线 */
+  --student-hairline-strong:  #d4bba0;   /* warm-400 */
+
+  /* === 功能色卡 === */
+  --student-accent-access:        #16a34a;
+  --student-accent-access-soft:   #dcfce7;
+  --student-accent-telemetry:     #0284c7;
+  --student-accent-telemetry-soft:#e0f2fe;
+  --student-accent-alert:         #d97706;
+  --student-accent-alert-soft:    #fef3c7;
+  --student-accent-profile:       #d97706;   /* 对齐 primary */
+  --student-accent-profile-soft:  #fef0e3;
+
+  /* === 语义反馈色 === */
+  --student-success:              #16a34a;   /* green-600 */
+  --student-success-soft:         #dcfce7;   /* green-100 */
+  --student-error:                #dc2626;   /* red-600 */
+  --student-error-soft:           #fee2e2;   /* red-100 */
+  --student-warning:              #d97706;   /* amber-600 */
+  --student-warning-soft:         #fef3c7;   /* amber-100 */
+  --student-danger:               #dc2626;
+  --student-danger-soft:          #fee2e2;
+
+  /* === 映射别名（组件兼容） === */
+  --student-foreground:           var(--student-ink);
+  --student-mute-foreground:      var(--student-mute);
+  --student-border:               var(--student-hairline);
+  --student-card-soft-bg:         var(--student-canvas-soft);
+  --student-destructive:          var(--student-danger);
+  --student-destructive-foreground: #ffffff;
+  --student-primary-foreground:   #ffffff;
+
+  /* === 圆角（不变） === */
+  --student-radius-xs:   6px;
+  --student-radius-sm:   8px;
+  --student-radius-md:   12px;
+  --student-radius-lg:   16px;
+  --student-radius-xl:   24px;
+  --student-radius-pill: 100px;
+  --student-radius-full: 9999px;
+
+  /* === 阴影 === */
+  --student-shadow-card:
+    0 0 0 1px rgba(0,0,0,0.04),
+    0 1px 2px rgba(0,0,0,0.04);
+  --student-shadow-card-hover:
+    0 0 0 1px rgba(0,0,0,0.06),
+    0 2px 8px rgba(0,0,0,0.06);
+  --student-shadow-modal:
+    0 0 0 1px rgba(0,0,0,0.06),
+    0 8px 24px rgba(0,0,0,0.10),
+    0 24px 56px rgba(0,0,0,0.08);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Dark Mode — Bento Warm Dark（对齐后台 .dark / .theme-standard-dark）
+   ══════════════════════════════════════════════════════════════════════ */
+.dark,
+[data-student-theme="dark"] {
+  /* === 主色调：暗色下提亮 === */
+  --student-primary:          #f0c080;   /* peach-400，暗色下亮桃 */
+  --student-primary-hover:    #f5d0a0;   /* peach-300 */
+  --student-primary-pressed:  #e8a86c;   /* peach-500 */
+  --student-primary-soft:     #2a1f14;   /* peach-950，暗色下的 soft */
+  --student-primary-muted:    #3a2a1a;
+  --student-on-primary:       #12100E;   /* 暗底白字 → 暗底深字 */
+
+  /* === 表面分层 === */
+  --student-canvas:           #12100E;   /* bento-dark-50 */
+  --student-surface:          #1A1816;   /* bento-dark-100 */
+  --student-surface-raised:   #22201D;   /* bento-dark-200 */
+  --student-canvas-soft:      #1A1816;
+  --student-canvas-soft-2:    #22201D;
+
+  /* === 文字阶梯 === */
+  --student-ink:              #f5f0e8;   /* warm-50，暖白 */
+  --student-body:             #d4c8b0;   /* warm-200 */
+  --student-mute:             #a09880;   /* warm-400 */
+
+  /* === 分割线 === */
+  --student-hairline:         #2A2723;   /* bento-dark-300 */
+  --student-hairline-strong:  #3a3630;
+
+  /* === 功能色卡（暗色降饱和度） === */
+  --student-accent-access:        #4ade80;   /* green-400 */
+  --student-accent-access-soft:   #052e16;   /* green-950 */
+  --student-accent-telemetry:     #38bdf8;   /* sky-400 */
+  --student-accent-telemetry-soft:#082f49;   /* sky-950 */
+  --student-accent-alert:         #fbbf24;   /* amber-400 */
+  --student-accent-alert-soft:    #451a03;   /* amber-950 */
+  --student-accent-profile:       #f0c080;
+  --student-accent-profile-soft:  #2a1f14;
+
+  /* === 语义反馈色 === */
+  --student-success:              #4ade80;
+  --student-success-soft:         #052e16;
+  --student-error:                #f87171;   /* red-400 */
+  --student-error-soft:           #450a0a;   /* red-950 */
+  --student-warning:              #fbbf24;
+  --student-warning-soft:         #451a03;
+  --student-danger:               #f87171;
+  --student-danger-soft:          #450a0a;
+
+  /* === 阴影（暗色下减弱） === */
+  --student-shadow-card:          0 0 0 1px rgba(255,255,255,0.04);
+  --student-shadow-card-hover:    0 0 0 1px rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.3);
+  --student-shadow-modal:         0 0 0 1px rgba(255,255,255,0.06), 0 16px 48px rgba(0,0,0,0.5);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   主题色变体（仅覆盖 primary 和 primary-soft，保留 Bento Warm 底色）
+   ══════════════════════════════════════════════════════════════════════ */
+[data-student-theme="blue"] {
+  --student-primary: #2563eb;
+  --student-primary-soft: #dbeafe;
+}
+[data-student-theme="green"] {
+  --student-primary: #16a34a;
+  --student-primary-soft: #dcfce7;
+}
+[data-student-theme="indigo"] {
+  --student-primary: #4f46e5;
+  --student-primary-soft: #e0e7ff;
+}
+[data-student-theme="slate"] {
+  --student-primary: #475569;
+  --student-primary-soft: #f1f5f9;
+}

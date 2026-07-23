@@ -1,0 +1,183 @@
+/**
+ * 检查维护模块：统一圆角胶囊按钮、自定义选择条、卡片标题行内操作（禁用整行独占大按钮）
+ */
+
+.fm-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 24rpx 12rpx;
+  background: #fff;
+  border-bottom: 1rpx solid #eef2f7;
+}
+
+.fm-select-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+  flex-wrap: wrap;
+}
+
+.fm-select-label {
+  font-size: 24rpx;
+  color: #646566;
+  flex-shrink: 0;
+}
+
+.fm-select-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56rpx;
+  padding: 10rpx 28rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  border: 1rpx solid rgba(172, 23, 54, 0.28);
+  font-size: 26rpx;
+  color: #323233;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.fm-select-chip--grow {
+  flex: 1;
+  min-width: 200rpx;
+  justify-content: flex-start;
+}
+
+.fm-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10rpx 22rpx;
+  min-height: 56rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.fm-chip-xs {
+  padding: 6rpx 18rpx;
+  min-height: 48rpx;
+  font-size: 22rpx;
+}
+
+.fm-chip-primary {
+  color: #fff;
+  background: linear-gradient(135deg, #c41e3a, #ac1736);
+  box-shadow: 0 4rpx 14rpx rgba(172, 23, 54, 0.22);
+}
+
+.fm-chip-ghost {
+  color: #ac1736;
+  background: rgba(172, 23, 54, 0.08);
+  border: 1rpx solid rgba(172, 23, 54, 0.22);
+}
+
+.fm-chip-danger {
+  color: #c41e3a;
+  background: #fff5f5;
+  border: 1rpx solid rgba(196, 30, 58, 0.28);
+}
+
+.fm-sheet {
+  padding: 20rpx 0 28rpx;
+  max-height: 70vh;
+}
+
+.fm-sheet-title {
+  padding: 0 28rpx 16rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #323233;
+}
+
+.fm-sheet-row {
+  padding: 22rpx 28rpx;
+  font-size: 28rpx;
+  color: #323233;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.fm-sheet-row--on {
+  color: #ac1736;
+  font-weight: 600;
+  background: rgba(172, 23, 54, 0.06);
+}
+
+.fm-fab-round {
+  position: fixed;
+  right: 32rpx;
+  bottom: calc(32rpx + env(safe-area-inset-bottom));
+  z-index: 20;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #c41e3a, #ac1736);
+  box-shadow: 0 12rpx 32rpx rgba(172, 23, 54, 0.35);
+}
+
+.fm-fab-plus {
+  font-size: 64rpx;
+  font-weight: 300;
+  color: #fff;
+  line-height: 1;
+  margin-top: -6rpx;
+}
+
+.card-head-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12rpx;
+  min-height: 48rpx;
+}
+
+.card-title-ellipsis {
+  flex: 1;
+  min-width: 0;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-inline-actions {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 8rpx;
+  flex-shrink: 0;
+  max-width: 52%;
+}
+
+.card-detail-lines {
+  margin-top: 12rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.card-detail-line {
+  font-size: 24rpx;
+  color: #646566;
+  line-height: 1.5;
+  margin-bottom: 6rpx;
+  word-break: break-all;
+}
+
+.popup-actions-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 16rpx;
+  margin-top: 24rpx;
+  flex-wrap: wrap;
+}

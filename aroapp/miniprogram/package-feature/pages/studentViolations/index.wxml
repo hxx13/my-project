@@ -1,0 +1,91 @@
+<view class="page violations-page">
+  <!-- Loading -->
+  <view wx:if="{{ loading }}" class="loading-wrap">
+    <van-loading type="spinner" size="48" color="#ac1736" />
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <!-- Error -->
+  <view wx:elif="{{ error }}" class="error-wrap">
+    <van-icon name="warning-o" size="48" color="#ef4444" />
+    <text class="error-text">{{ error }}</text>
+    <view class="retry-btn" bindtap="onRetry">重试</view>
+  </view>
+
+  <!-- Empty -->
+  <view wx:elif="{{ violations.length === 0 }}" class="empty-wrap">
+    <van-icon name="info-o" size="56" color="#999" />
+    <text class="empty-text">暂无违规记录</text>
+  </view>
+
+  <!-- Data -->
+  <view wx:else class="content-wrap">
+    <view class="page-title">违规记录</view>
+
+    <scroll-view scroll-y="true" class="list-scroll" enhanced="true" show-scrollbar="{{false}}">
+      <view wx:for="{{ dateGroups }}" wx:key="date" class="date-group">
+        <!-- Date header with separators -->
+        <view class="date-header">
+          <view class="date-divider"></view>
+          <text class="date-label">{{ item.date }} 周{{ item.dayOfWeek }}</text>
+          <view class="date-divider"></view>
+        </view>
+
+        <!-- Violation cards for this date -->
+        <view wx:for="{{ item.records }}" wx:for-item="rec" wx:key="id" class="violation-card">
+          <view class="violation-card-inner">
+            <view class="vcard-left-border"></view>
+            <view class="vcard-body">
+              <!-- Header: icon + type + status + time -->
+              <view class="vcard-header">
+                <view class="vcard-type-row">
+                  <text class="vcard-warn-icon">&#x26A0;</text>
+                  <text class="vcard-type-label">{{ rec.type || '违规通告' }}</text>
+                </view>
+                <view class="vcard-badges">
+                  <text class="status-badge status-{{ rec.status === 'processed' ? 'done' : 'pending' }}">
+                    {{ rec.statusLabel }}
+                  </text>
+                </view>
+              </view>
+
+              <!-- Time -->
+              <view class="vcard-time-row" wx:if="{{ rec.displayTime }}">
+                <view class="time-dot"></view>
+                <text class="vcard-time-value">{{ rec.displayTime }}</text>
+              </view>
+
+              <!-- HTML content -->
+              <view class="vcard-content" wx:if="{{ rec.contentHtml }}">
+                <rich-text nodes="{{ rec.contentHtml }}"></rich-text>
+              </view>
+
+              <!-- Room / Door info -->
+              <view class="vcard-extra" wx:if="{{ rec.roomName || rec.doorName }}">
+                <text wx:if="{{ rec.roomName }}" class="vcard-extra-item">房间: {{ rec.roomName }}</text>
+                <text wx:if="{{ rec.doorName }}" class="vcard-extra-item">门: {{ rec.doorName }}</text>
+              </view>
+
+              <!-- Processed info -->
+              <view class="vcard-processed" wx:if="{{ rec.status === 'processed' }}">
+                <text class="vcard-processed-by" wx:if="{{ rec.processedBy }}">处理人: {{ rec.processedBy }}</text>
+                <text class="vcard-processed-time" wx:if="{{ rec.processedTime }}">处理时间: {{ rec.processedTime }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <!-- Pagination bar -->
+    <view class="pagination-bar" wx:if="{{ totalPages > 1 }}">
+      <view class="pagination-btn {{ page <= 1 ? 'pagination-btn-disabled' : '' }}" bindtap="onPrevPage">
+        <text>上一页</text>
+      </view>
+      <text class="pagination-info">{{ page }} / {{ totalPages }}</text>
+      <view class="pagination-btn {{ page >= totalPages ? 'pagination-btn-disabled' : '' }}" bindtap="onNextPage">
+        <text>下一页</text>
+      </view>
+    </view>
+  </view>
+</view>

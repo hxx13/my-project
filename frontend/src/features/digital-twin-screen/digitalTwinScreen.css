@@ -1,0 +1,319 @@
+/* 数字孪生大屏：动效与 reduced-motion（与 themeCssVars 的 --dt-* 配合） */
+
+@keyframes dt-duct-flow {
+  to {
+    stroke-dashoffset: -56;
+  }
+}
+
+@keyframes dt-stream-flow {
+  to {
+    stroke-dashoffset: -88;
+  }
+}
+
+@keyframes dt-scan {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.35;
+  }
+  92% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes dt-grid-pulse {
+  0%,
+  100% {
+    opacity: 0.06;
+  }
+  50% {
+    opacity: 0.12;
+  }
+}
+
+@keyframes dt-room-scan-sweep {
+  0% {
+    transform: translate(-35%, -35%) rotate(-42deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(35%, 35%) rotate(-42deg);
+    opacity: 0;
+  }
+}
+
+.dt-duct-shell-edge {
+  vector-effect: non-scaling-stroke;
+}
+
+.dt-duct-stream-glow {
+  stroke: rgba(34, 211, 238, 0.35);
+  stroke-width: 6px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 4 42;
+  animation: dt-stream-flow var(--dt-duct-cycle) linear infinite;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.dt-duct-stream-core {
+  stroke: var(--dt-duct-bright);
+  stroke-width: 2.75px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 3 14 22 36;
+  animation: dt-stream-flow calc(var(--dt-duct-cycle) * 0.92) linear infinite;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.dt-ambient-scan::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 28%;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(34, 211, 238, 0.07),
+    transparent
+  );
+  animation: dt-scan var(--dt-scan-cycle) ease-in-out infinite;
+}
+
+.dt-ambient-grid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  animation: dt-grid-pulse 10s ease-in-out infinite;
+}
+
+/* 房间外包：斜向扫描高光（pointer-events 由子层处理） */
+.dt-room-scan-wrap {
+  position: relative;
+  overflow: visible;
+}
+
+/* 布局板内：平面盒子在外层，房间朝向在 plate-rot（与 dt-room-25d 内倾角解耦） */
+.dt-room-plate-rot {
+  transform-origin: center center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.dt-room-scan-wrap::before {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+  z-index: 2;
+  border-radius: 10px;
+  opacity: var(--dt-room-scan-intensity, 0.38);
+  background: conic-gradient(
+    from 200deg at 50% 50%,
+    transparent 0deg,
+    rgba(34, 211, 238, 0.06) 40deg,
+    rgba(56, 189, 248, 0.22) 88deg,
+    rgba(34, 211, 238, 0.05) 140deg,
+    transparent 200deg
+  );
+  mask-image: linear-gradient(115deg, transparent 35%, #000 52%, transparent 68%);
+  mask-size: 180% 180%;
+  mask-position: center;
+  animation: dt-room-scan-sweep 4.2s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+
+/* 房间：顶面 + 左墙挤出 + 正面（伪 2.5D） */
+.dt-room-slot {
+  min-height: 0;
+  perspective: 820px;
+  transform-style: preserve-3d;
+}
+
+.dt-room-25d {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  padding-top: min(var(--dt-room-ex-top, 7px), 11%);
+  padding-left: min(var(--dt-room-ex-side, 9px), 13%);
+  transform: rotateZ(-1deg);
+  transform-origin: 60% 100%;
+}
+
+.dt-room-roof {
+  position: absolute;
+  left: calc(var(--dt-room-ex-side, 9px) + 8%);
+  right: 5%;
+  top: 0;
+  height: calc(var(--dt-room-ex-top, 7px) + 2px);
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(34, 211, 238, 0.07));
+  border: 1px solid rgba(34, 211, 238, 0.32);
+  border-bottom: none;
+  transform: skewX(-18deg) rotateX(58deg);
+  transform-origin: 50% 100%;
+  pointer-events: none;
+  box-shadow: 0 -2px 14px rgba(34, 211, 238, 0.14);
+}
+
+.dt-room-side {
+  position: absolute;
+  left: 0;
+  top: calc(var(--dt-room-ex-top, 7px) + 1px);
+  bottom: 2px;
+  width: calc(var(--dt-room-ex-side, 9px) + 2px);
+  border-radius: 4px 0 0 4px;
+  background: linear-gradient(90deg, rgba(1, 4, 12, 0.96), rgba(34, 211, 238, 0.1));
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-right: none;
+  transform: skewY(14deg) scaleX(1.05);
+  transform-origin: 100% 0;
+  pointer-events: none;
+  filter: brightness(0.68);
+}
+
+.dt-room-face {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  min-height: 0;
+  transform: perspective(720px) rotateY(-24deg) rotateX(6deg);
+  transform-origin: right center;
+  transform-style: preserve-3d;
+}
+
+/* roomVisualPreset=flat：压平伪透视，保留读数优先 */
+.dt-room-visual-flat .dt-room-25d {
+  transform: none;
+  transform-origin: center center;
+}
+
+.dt-room-visual-flat .dt-room-face {
+  transform: none;
+  transform-origin: center center;
+}
+
+.dt-room-visual-flat .dt-room-roof,
+.dt-room-visual-flat .dt-room-side {
+  opacity: 0.32;
+}
+
+/* 编辑壳侧栏：主题色细滚动条（Firefox + WebKit），避免系统默认粗灰条 */
+.dt-edit-shell-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.65) rgba(15, 23, 42, 0.45);
+}
+.dt-edit-shell-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.dt-edit-shell-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.35);
+  border-radius: 6px;
+}
+.dt-edit-shell-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(71, 85, 105, 0.85), rgba(51, 65, 85, 0.75));
+  border-radius: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.35);
+}
+.dt-edit-shell-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.95);
+}
+
+/* 右键上下文菜单内滚动条（与侧栏一致） */
+.dt-ctx-menu-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.65) rgba(15, 23, 42, 0.45);
+}
+.dt-ctx-menu-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.dt-ctx-menu-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.35);
+  border-radius: 6px;
+}
+.dt-ctx-menu-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(71, 85, 105, 0.85), rgba(51, 65, 85, 0.75));
+  border-radius: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.35);
+}
+.dt-ctx-menu-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.95);
+}
+
+/* 左侧收纳夹：隐藏默认三角，保持紧凑 */
+.dt-edit-folder > summary {
+  list-style: none;
+}
+.dt-edit-folder > summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-duct-stream-glow,
+  .dt-duct-stream-core {
+    animation: none;
+    stroke-dasharray: none;
+    opacity: 0.85;
+  }
+  .dt-ambient-scan::after {
+    animation: none;
+    opacity: 0.12;
+    transform: none;
+    top: 35%;
+    height: 8%;
+  }
+  .dt-ambient-grid::before {
+    animation: none;
+    opacity: 0.08;
+  }
+  .dt-room-face {
+    transform: none;
+  }
+  .dt-room-roof {
+    transform: skewX(0deg) rotateX(42deg);
+  }
+  .dt-room-25d {
+    transform: none;
+  }
+  .dt-room-scan-wrap::before {
+    animation: none;
+    opacity: calc(var(--dt-room-scan-intensity, 0.38) * 0.35);
+    transform: none;
+    inset: -4%;
+    mask-image: none;
+    background: linear-gradient(
+      135deg,
+      transparent,
+      rgba(34, 211, 238, 0.12),
+      transparent
+    );
+  }
+}

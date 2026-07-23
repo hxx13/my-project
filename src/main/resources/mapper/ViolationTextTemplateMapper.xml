@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.dashboard.mapper.ViolationTextTemplateMapper">
+
+    <resultMap id="ViolationTextTemplateMap" type="com.example.demo.modules.twin.dashboard.entity.ViolationTextTemplate">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="violation_text" property="violationText"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <select id="selectAll" resultMap="ViolationTextTemplateMap">
+        SELECT * FROM twin_violation_text_template ORDER BY sort_order ASC, id DESC
+    </select>
+
+    <select id="selectById" resultMap="ViolationTextTemplateMap">
+        SELECT * FROM twin_violation_text_template WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO twin_violation_text_template (name, violation_text, sort_order)
+        VALUES (#{name}, #{violationText}, #{sortOrder})
+    </insert>
+
+    <update id="update">
+        UPDATE twin_violation_text_template
+        SET name = #{name},
+            violation_text = #{violationText},
+            sort_order = #{sortOrder}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM twin_violation_text_template WHERE id = #{id}
+    </delete>
+</mapper>

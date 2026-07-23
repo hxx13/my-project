@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.material.mapper.MaterialItemMapper">
+    <select id="selectPublished" resultType="com.example.demo.modules.material.entity.MaterialItem">
+        SELECT * FROM material_item WHERE shelf_status = 'PUBLISHED' AND deleted = 0
+        <if test="categoryId != null">AND category_id = #{categoryId}</if>
+        ORDER BY last_inbound_at DESC, id DESC
+    </select>
+    <select id="selectAll" resultType="com.example.demo.modules.material.entity.MaterialItem">
+        SELECT * FROM material_item WHERE deleted = 0
+        <if test="categoryId != null">AND category_id = #{categoryId}</if>
+        ORDER BY id DESC
+    </select>
+    <select id="selectByApplicantGroup" resultType="com.example.demo.modules.material.entity.MaterialItem">
+        SELECT i.* FROM material_item i
+        WHERE i.deleted = 0
+        <if test="categoryId != null">AND i.category_id = #{categoryId}</if>
+        <if test="applicantGroup != null and applicantGroup != ''">
+            AND i.id IN (
+                SELECT DISTINCT l.item_id FROM material_request_line l
+                JOIN material_request r ON l.request_id = r.id
+                WHERE r.deleted = 0 AND r.applicant_group = #{applicantGroup}
+                UNION
+                SELECT DISTINCT m.item_id FROM material_stock_movement m
+                LEFT JOIN material_request r2 ON m.request_id = r2.id
+                LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
+                WHERE r2.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup}
+            )
+        </if>
+        ORDER BY i.id DESC
+    </select>
+    <select id="selectById" resultType="com.example.demo.modules.material.entity.MaterialItem">
+        SELECT * FROM material_item WHERE id = #{id}
+    </select>
+    <select id="selectByIdForUpdate" resultType="com.example.demo.modules.material.entity.MaterialItem">
+        SELECT * FROM material_item WHERE id = #{id} FOR UPDATE
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO material_item (category_id, name, subtitle, cover_url, shelf_status, stock_mode, stock_qty, show_stock_qty, workflow_type, reviewer_ids, second_reviewer_ids, spec_schema, spec_required, independent_order)
+        VALUES (#{categoryId}, #{name}, #{subtitle}, #{coverUrl}, #{shelfStatus}, #{stockMode}, #{stockQty}, #{showStockQty}, #{workflowType}, #{reviewerIds}, #{secondReviewerIds}, #{specSchema}, #{specRequired}, #{independentOrder})
+    </insert>
+    <update id="updateById">
+        UPDATE material_item
+        SET category_id = #{categoryId}, name = #{name}, subtitle = #{subtitle}, cover_url = #{coverUrl},
+            shelf_status = #{shelfStatus}, stock_mode = #{stockMode}, show_stock_qty = #{showStockQty},
+            workflow_type = #{workflowType}, reviewer_ids = #{reviewerIds}, second_reviewer_ids = #{secondReviewerIds}
+            <if test="specSchema != null">, spec_schema = #{specSchema}</if>
+            <if test="specRequired != null">, spec_required = #{specRequired}</if>
+            <if test="independentOrder != null">, independent_order = #{independentOrder}</if>
+        WHERE id = #{id}
+    </update>
+    <update id="softDelete">
+        UPDATE material_item SET deleted = 1, deleted_time = NOW(), deleted_by = #{deletedBy}, purge_after_time = #{purgeAfterTime} WHERE id = #{id}
+    </update>
+    <update id="restore">
+        UPDATE material_item SET deleted = 0, deleted_time = NULL, deleted_by = NULL, purge_after_time = NULL WHERE id = #{id}
+    </update>
+    <delete id="purge">
+        DELETE FROM material_item WHERE id = #{id}
+    </delete>
+    <select id="selectRecycle" resultType="com.example.demo.modules.material.entity.MaterialItem">
+        SELECT * FROM material_item WHERE deleted = 1 ORDER BY deleted_time DESC LIMIT #{offset}, #{size}
+    </select>
+    <select id="countRecycle" resultType="int">
+        SELECT COUNT(1) FROM material_item WHERE deleted = 1
+    </select>
+    <update id="updateStock">
+        UPDATE material_item SET stock_qty = stock_qty + #{qty}, last_inbound_at = IF(#{qty} &gt; 0, NOW(), last_inbound_at) WHERE id = #{id}
+    </update>
+    <update id="lockStock">
+        UPDATE material_item SET locked_qty = COALESCE(locked_qty,0) + #{qty}, stock_qty = stock_qty - #{qty} WHERE id = #{id} AND stock_qty >= #{qty}
+    </update>
+    <update id="releaseLock">
+        UPDATE material_item SET locked_qty = COALESCE(locked_qty,0) - #{qty}, stock_qty = stock_qty + #{qty} WHERE id = #{id}
+    </update>
+    <update id="applyLock">
+        UPDATE material_item SET locked_qty = COALESCE(locked_qty,0) - #{qty} WHERE id = #{id}
+    </update>
+</mapper>

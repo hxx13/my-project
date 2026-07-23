@@ -1,0 +1,22 @@
+.settings-page {
+  min-height: 100vh;
+  background: #f7f8fa;
+  box-sizing: border-box;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+}
+
+.settings-body {
+  padding-top: 8rpx;
+}
+
+.settings-hub-group {
+  margin-top: 24rpx !important;
+}
+
+.settings-env-group {
+  margin-top: 16rpx !important;
+}
+
+.settings-admin-group {
+  margin-top: 16rpx !important;
+}

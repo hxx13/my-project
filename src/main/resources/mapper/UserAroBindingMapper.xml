@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.auth.mapper.UserAroBindingMapper">
+
+    <resultMap id="BaseResultMap" type="com.example.demo.modules.auth.entity.UserAroBinding">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="aro_user_id" property="aroUserId"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="cas_token" property="casToken"/>
+        <result column="cas_token_exp" property="casTokenExp"/>
+        <result column="cas_tgc" property="casTgc"/>
+        <result column="cas_account" property="casAccount"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, aro_user_id, created_at, cas_token, cas_token_exp, cas_tgc, cas_account
+    </sql>
+
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_aro_binding
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <select id="selectByAroUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_aro_binding
+        WHERE aro_user_id = #{aroUserId}
+        LIMIT 1
+    </select>
+
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_aro_binding
+    </select>
+
+    <insert id="insert" parameterType="com.example.demo.modules.auth.entity.UserAroBinding" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_aro_binding (user_id, aro_user_id, created_at)
+        VALUES (#{userId}, #{aroUserId}, NOW())
+    </insert>
+
+    <delete id="deleteByUserId">
+        DELETE FROM user_aro_binding WHERE user_id = #{userId}
+    </delete>
+
+    <delete id="deleteByAroUserId">
+        DELETE FROM user_aro_binding WHERE aro_user_id = #{aroUserId}
+    </delete>
+
+    <update id="updateCasToken">
+        UPDATE user_aro_binding
+        SET cas_token = #{casToken}, cas_token_exp = #{casTokenExp}
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="updateCasTgc">
+        UPDATE user_aro_binding
+        SET cas_tgc = #{casTgc}
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="clearCasCredentials">
+        UPDATE user_aro_binding
+        SET cas_token = NULL, cas_token_exp = NULL, cas_tgc = NULL, cas_account = NULL
+        WHERE user_id = #{userId}
+    </update>
+
+    <insert id="upsertCasBinding">
+        INSERT INTO user_aro_binding (user_id, aro_user_id, cas_token, cas_token_exp, cas_account, created_at)
+        VALUES (#{userId}, #{aroUserId}, #{casToken}, #{casTokenExp}, #{casAccount}, NOW())
+        ON DUPLICATE KEY UPDATE
+            cas_token = VALUES(cas_token),
+            cas_token_exp = VALUES(cas_token_exp),
+            cas_account = VALUES(cas_account)
+    </insert>
+
+</mapper>

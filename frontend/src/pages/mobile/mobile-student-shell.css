@@ -1,0 +1,87 @@
+/**
+ * H5 学生中心壳层 — 固定亮色 student 令牌（hex，Safari 安全）。
+ * 移动端壳层其余区域仍用硬编码浅色；申领/笼架等 Tab 使用 --student-* 时须与此一致，
+ * 且不受 html.dark 全局暗色令牌影响（Safari 上易出现近黑底 + 深色字「全黑」）。
+ */
+.mobile-student-shell {
+  color-scheme: light;
+  color: #1e293b;
+
+  --student-primary: #d97706;
+  --student-primary-hover: #c26905;
+  --student-primary-pressed: #a84e04;
+  --student-primary-soft: #fef0e3;
+  --student-primary-muted: #fde8d5;
+  --student-on-primary: #ffffff;
+
+  --student-canvas: #fffbf5;
+  --student-surface: #ffffff;
+  --student-surface-raised: #ffffff;
+  --student-canvas-soft: #fef7ee;
+  --student-canvas-soft-2: #fdf3e4;
+
+  --student-ink: #1e293b;
+  --student-body: #475569;
+  --student-mute: #94a3b8;
+
+  --student-hairline: #f0e4d0;
+  --student-hairline-strong: #d4bba0;
+
+  --student-accent-access: #16a34a;
+  --student-accent-access-soft: #dcfce7;
+  --student-accent-telemetry: #0284c7;
+  --student-accent-telemetry-soft: #e0f2fe;
+  --student-accent-alert: #d97706;
+  --student-accent-alert-soft: #fef3c7;
+  --student-accent-profile: #d97706;
+  --student-accent-profile-soft: #fef0e3;
+
+  --student-success: #16a34a;
+  --student-success-soft: #dcfce7;
+  --student-error: #dc2626;
+  --student-error-soft: #fee2e2;
+  --student-warning: #d97706;
+  --student-warning-soft: #fef3c7;
+  --student-danger: #dc2626;
+  --student-danger-soft: #fee2e2;
+
+  --student-foreground: #1e293b;
+  --student-mute-foreground: #94a3b8;
+  --student-border: #f0e4d0;
+  --student-card-soft-bg: #fef7ee;
+  --student-destructive: #dc2626;
+  --student-destructive-foreground: #ffffff;
+  --student-primary-foreground: #ffffff;
+
+  --student-radius-xs: 6px;
+  --student-radius-sm: 8px;
+  --student-radius-md: 12px;
+  --student-radius-lg: 16px;
+  --student-radius-xl: 24px;
+  --student-radius-pill: 100px;
+  --student-radius-full: 9999px;
+
+  --student-shadow-card:
+    0 0 0 1px rgba(0, 0, 0, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+  --student-shadow-card-hover:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+  --student-shadow-modal:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.1),
+    0 24px 56px rgba(0, 0, 0, 0.08);
+}
+
+/* Safari：搜索/数字输入勿被系统样式盖成黑字黑底 */
+.mobile-student-shell :where(input, textarea) {
+  -webkit-text-fill-color: currentColor;
+}
+
+@keyframes marquee-scroll {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+.animate-marquee {
+  animation: marquee-scroll 12s linear infinite;
+}

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryMetricKindMapper">
+
+    <resultMap id="KindMap" type="com.example.demo.modules.telemetry.entity.TelemetryMetricKindRow">
+        <id column="id" property="id"/>
+        <result column="code" property="code"/>
+        <result column="label_zh" property="labelZh"/>
+        <result column="kind_role" property="kindRole"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="builtin" property="builtin"/>
+        <result column="active" property="active"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <select id="selectAllOrderBySort" resultMap="KindMap">
+        SELECT id, code, label_zh, kind_role, sort_order, builtin, active, created_at, updated_at
+        FROM telemetry_metric_kind
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectByCode" resultMap="KindMap">
+        SELECT id, code, label_zh, kind_role, sort_order, builtin, active, created_at, updated_at
+        FROM telemetry_metric_kind
+        WHERE code = #{code}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO telemetry_metric_kind (code, label_zh, kind_role, sort_order, builtin, active)
+        VALUES (#{code}, #{labelZh}, #{kindRole}, #{sortOrder}, #{builtin}, #{active})
+    </insert>
+
+    <update id="updateByCode">
+        UPDATE telemetry_metric_kind
+        SET label_zh = #{labelZh},
+            kind_role = #{kindRole},
+            sort_order = #{sortOrder},
+            active = #{active},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE code = #{code}
+    </update>
+
+    <delete id="deleteByCode">
+        DELETE FROM telemetry_metric_kind WHERE code = #{code}
+    </delete>
+</mapper>

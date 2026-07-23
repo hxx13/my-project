@@ -1,0 +1,87 @@
+# ===== Dependencies =====
+node_modules/
+aroapp/miniprogram/node_modules/
+
+# ===== Build outputs =====
+target/
+dist/
+build/
+*.jar
+*.class
+.mvn/wrapper/maven-wrapper.jar
+
+# ===== Environment files (secrets) =====
+.env
+.env.*
+*.local
+
+# ===== Runtime data =====
+data/
+uploads/
+*.log
+*.db
+frontend/public/knowledge-images/
+
+# ===== Dev-only assets (not needed for production build) =====
+frontend/models/
+
+# ===== Frontend build (copied to static) =====
+src/main/resources/static/
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.iws
+*.iml
+*.ipr
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# ===== OS generated files =====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ===== Testing & coverage =====
+coverage/
+.nyc_output/
+*.lcov
+
+# ===== Temp files =====
+temp/
+tmp/
+*.tmp
+.cache/
+*.tsbuildinfo
+
+# ===== Documentation & AI assistant (local only) =====
+docs/
+CLAUDE.md
+PRODUCT.md
+.mcp.json
+.claude/
+.superpowers/
+.cursor/
+.playwright-mcp/
+.github/
+
+# ===== Misc =====
+*.pdf
+*.zip
+*.tar.gz
+*.rar
+*.png
+*.jpg
+*.jpeg
+*.bat

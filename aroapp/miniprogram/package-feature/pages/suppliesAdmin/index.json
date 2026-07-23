@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "物资管理",
+  "usingComponents": {
+    "van-icon": "@vant/weapp/icon/index",
+    "van-button": "@vant/weapp/button/index",
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}

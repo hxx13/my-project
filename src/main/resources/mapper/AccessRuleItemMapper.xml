@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessrule.mapper.AccessRuleItemMapper">
+
+    <insert id="insert" parameterType="com.example.demo.modules.accessrule.entity.AccessRuleItem" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_rule_item (rule_id, room_id, channel_codes_json, door_group_ids_json, sort_order)
+        VALUES (#{ruleId}, #{roomId}, #{channelCodesJson}, #{doorGroupIdsJson}, #{sortOrder})
+    </insert>
+
+    <delete id="deleteByRuleId">
+        DELETE FROM access_rule_item WHERE rule_id = #{ruleId}
+    </delete>
+
+    <select id="selectByRuleId" resultType="com.example.demo.modules.accessrule.entity.AccessRuleItem">
+        SELECT id, rule_id AS ruleId, room_id AS roomId, channel_codes_json AS channelCodesJson,
+               door_group_ids_json AS doorGroupIdsJson, sort_order AS sortOrder
+        FROM access_rule_item WHERE rule_id = #{ruleId} ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectMatchingItem" resultType="com.example.demo.modules.accessrule.entity.AccessRuleItem">
+        SELECT i.id, i.rule_id AS ruleId, i.room_id AS roomId, i.channel_codes_json AS channelCodesJson,
+               i.door_group_ids_json AS doorGroupIdsJson, i.sort_order AS sortOrder
+        FROM access_rule_item i
+        INNER JOIN access_rule r ON r.id = i.rule_id AND r.enabled = 1
+        LEFT JOIN access_rule_item_user um
+            ON um.item_id = i.id
+           AND um.room_id = #{roomId}
+           AND um.aro_user_id = #{aroUserId}
+        WHERE i.room_id = #{roomId}
+          AND (
+            um.id IS NOT NULL
+            OR NOT EXISTS (
+                SELECT 1
+                FROM access_rule_item_user ux
+                WHERE ux.item_id = i.id
+            )
+          )
+        ORDER BY CASE WHEN um.id IS NOT NULL THEN 0 ELSE 1 END,
+                 i.sort_order ASC,
+                 i.id ASC
+        LIMIT 1
+    </select>
+</mapper>

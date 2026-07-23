@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageShelfGridCacheMapper">
+
+    <update id="ensureTable">
+        CREATE TABLE IF NOT EXISTS cage_shelf_grid_cache (
+            shelve_id VARCHAR(32) PRIMARY KEY,
+            grid_json LONGTEXT,
+            shelf_meta_json TEXT,
+            total_cells INT NOT NULL DEFAULT 0,
+            filled_cells INT NOT NULL DEFAULT 0,
+            type1_count INT NOT NULL DEFAULT 0,
+            type2_count INT NOT NULL DEFAULT 0,
+            type3_count INT NOT NULL DEFAULT 0,
+            type4_count INT NOT NULL DEFAULT 0,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    </update>
+
+    <update id="addTypeCountColumns">
+        ALTER TABLE cage_shelf_grid_cache
+            ADD COLUMN type1_count INT NOT NULL DEFAULT 0,
+            ADD COLUMN type2_count INT NOT NULL DEFAULT 0,
+            ADD COLUMN type3_count INT NOT NULL DEFAULT 0,
+            ADD COLUMN type4_count INT NOT NULL DEFAULT 0
+    </update>
+
+    <select id="selectByShelveId" resultType="map">
+        SELECT shelve_id AS shelveId,
+               grid_json AS gridJson,
+               shelf_meta_json AS shelfMetaJson,
+               total_cells AS totalCells,
+               filled_cells AS filledCells,
+               updated_at AS updatedAt
+        FROM cage_shelf_grid_cache
+        WHERE shelve_id = #{shelveId}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO cage_shelf_grid_cache (shelve_id, grid_json, shelf_meta_json, total_cells, filled_cells,
+            type1_count, type2_count, type3_count, type4_count, updated_at)
+        VALUES (#{shelveId}, #{gridJson}, #{shelfMetaJson}, #{totalCells}, #{filledCells},
+            #{type1Count}, #{type2Count}, #{type3Count}, #{type4Count}, NOW())
+        ON DUPLICATE KEY UPDATE
+            grid_json = VALUES(grid_json),
+            shelf_meta_json = VALUES(shelf_meta_json),
+            total_cells = VALUES(total_cells),
+            filled_cells = VALUES(filled_cells),
+            type1_count = VALUES(type1_count),
+            type2_count = VALUES(type2_count),
+            type3_count = VALUES(type3_count),
+            type4_count = VALUES(type4_count),
+            updated_at = NOW()
+    </insert>
+
+    <delete id="deleteOlderThan">
+        DELETE FROM cage_shelf_grid_cache WHERE updated_at &lt; #{cutoff}
+    </delete>
+
+    <update id="updateTypeCounts">
+        UPDATE cage_shelf_grid_cache
+        SET type1_count = #{type1Count},
+            type2_count = #{type2Count},
+            type3_count = #{type3Count},
+            type4_count = #{type4Count}
+        WHERE shelve_id = #{shelveId}
+    </update>
+
+    <select id="selectAllForBackfill" resultType="map">
+        SELECT shelve_id AS shelveId,
+               grid_json AS gridJson
+        FROM cage_shelf_grid_cache
+    </select>
+
+    <select id="selectAllWithFilledCells" resultType="map">
+        SELECT shelve_id AS shelveId,
+               grid_json AS gridJson
+        FROM cage_shelf_grid_cache
+        WHERE filled_cells > 0
+    </select>
+
+</mapper>

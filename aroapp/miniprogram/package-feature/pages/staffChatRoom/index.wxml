@@ -1,0 +1,74 @@
+<view class="page">
+  <scroll-view
+    class="msg-scroll"
+    scroll-y="{{ true }}"
+    scroll-into-view="{{ scrollIntoView }}"
+    scroll-with-animation="{{ true }}"
+  >
+    <view wx:if="{{ loading && messages.length === 0 }}" class="placeholder">加载中…</view>
+    <block wx:else>
+      <view
+        wx:for="{{ messages }}"
+        wx:key="id"
+        id="m-{{ item.id }}"
+        class="msg-row {{ item.self ? 'msg-row--self' : '' }}"
+      >
+        <view class="bubble {{ item.self ? 'bubble--self' : 'bubble--peer' }}">
+          <text>{{ item.body }}</text>
+          <view wx:if="{{ item.attachmentId }}" class="attach-line" data-aid="{{ item.attachmentId }}" data-name="{{ item.attachmentName }}" bindtap="onOpenAttachment">
+            附件：{{ item.attachmentName || '文件' }}
+          </view>
+          <view class="msg-meta">{{ item.timeShort }}</view>
+        </view>
+      </view>
+    </block>
+    <view id="bottom-anchor" style="height:1px" />
+  </scroll-view>
+
+  <view class="bottom-stack">
+    <view wx:if="{{ emojiOpen }}" class="emoji-panel">
+      <scroll-view scroll-x class="emoji-scroll" show-scrollbar="{{ false }}">
+        <view class="emoji-inner">
+          <text
+            wx:for="{{ emojiList }}"
+            wx:key="*this"
+            class="emoji-cell"
+            data-ch="{{ item }}"
+            catchtap="onEmojiTap"
+          >{{ item }}</text>
+        </view>
+      </scroll-view>
+    </view>
+    <view class="bottom">
+      <view class="composer">
+        <view
+          class="composer-icon {{ emojiOpen ? 'composer-icon--on' : '' }}"
+          hover-class="composer-icon--hover"
+          catchtap="onToggleEmoji"
+        >
+          <van-icon name="smile-o" size="26px" color="{{ emojiOpen ? '#ac1736' : '#646566' }}" />
+        </view>
+        <view class="composer-input-wrap">
+          <textarea
+            class="composer-input"
+            auto-height
+            maxlength="4000"
+            placeholder="输入消息…"
+            placeholder-class="composer-ph"
+            value="{{ draft }}"
+            cursor-spacing="24"
+            bindinput="onDraftInput"
+          />
+        </view>
+        <view class="composer-icon composer-icon--attach" hover-class="composer-icon--hover" catchtap="onChooseAttachment">
+          <van-icon name="plus" size="26px" color="#646566" />
+        </view>
+        <view
+          class="composer-send {{ draftHasText ? 'composer-send--on' : '' }}"
+          hover-class="composer-send--hover"
+          catchtap="onSend"
+        >发送</view>
+      </view>
+    </view>
+  </view>
+</view>

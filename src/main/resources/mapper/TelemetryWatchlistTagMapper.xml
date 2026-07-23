@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryWatchlistTagMapper">
+
+    <resultMap id="TagMap" type="com.example.demo.modules.telemetry.entity.TelemetryWatchlistTagRow">
+        <id column="id" property="id"/>
+        <result column="bundle_id" property="bundleId"/>
+        <result column="wincc_variable_name" property="winccVariableName"/>
+        <result column="structure_type" property="structureType"/>
+        <result column="data_type" property="dataType"/>
+        <result column="display_label" property="displayLabel"/>
+        <result column="floor_code" property="floorCode"/>
+        <result column="room_base" property="roomBase"/>
+        <result column="room_canonical" property="roomCanonical"/>
+        <result column="suite_suffix" property="suiteSuffix"/>
+        <result column="metric_kind_code" property="metricKindCode"/>
+        <result column="cached_alarm_min_value" property="cachedAlarmMinValue"/>
+        <result column="cached_alarm_max_value" property="cachedAlarmMaxValue"/>
+        <result column="cached_alarm_limits_at" property="cachedAlarmLimitsAt"/>
+        <result column="alarm_override_min" property="alarmOverrideMin"/>
+        <result column="alarm_override_max" property="alarmOverrideMax"/>
+        <result column="metric_kind_role" property="metricKindRole"/>
+        <result column="metric_kind_label" property="metricKindLabel"/>
+        <result column="enabled" property="enabled"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="bundle_code" property="bundleCode"/>
+        <result column="bundle_display_name" property="bundleDisplayName"/>
+    </resultMap>
+
+    <delete id="deleteByBundleId">
+        DELETE FROM telemetry_watchlist_tag WHERE bundle_id = #{bundleId}
+    </delete>
+
+    <insert id="insertBatch">
+        INSERT INTO telemetry_watchlist_tag (bundle_id, wincc_variable_name, structure_type, data_type, display_label,
+            floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
+            cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
+            alarm_override_min, alarm_override_max,
+            enabled, sort_order)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.bundleId}, #{item.winccVariableName}, #{item.structureType}, #{item.dataType}, #{item.displayLabel},
+            #{item.floorCode}, #{item.roomBase}, #{item.roomCanonical}, #{item.suiteSuffix}, #{item.metricKindCode},
+            #{item.cachedAlarmMinValue}, #{item.cachedAlarmMaxValue}, #{item.cachedAlarmLimitsAt},
+            #{item.alarmOverrideMin}, #{item.alarmOverrideMax},
+            #{item.enabled}, #{item.sortOrder})
+        </foreach>
+    </insert>
+
+    <insert id="upsertOne">
+        INSERT INTO telemetry_watchlist_tag (bundle_id, wincc_variable_name, structure_type, data_type, display_label,
+            floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
+            cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
+            alarm_override_min, alarm_override_max,
+            enabled, sort_order)
+        VALUES (#{bundleId}, #{winccVariableName}, #{structureType}, #{dataType}, #{displayLabel},
+            #{floorCode}, #{roomBase}, #{roomCanonical}, #{suiteSuffix}, #{metricKindCode},
+            #{cachedAlarmMinValue}, #{cachedAlarmMaxValue}, #{cachedAlarmLimitsAt},
+            #{alarmOverrideMin}, #{alarmOverrideMax},
+            #{enabled}, #{sortOrder})
+        ON DUPLICATE KEY UPDATE
+            structure_type = VALUES(structure_type),
+            data_type = VALUES(data_type),
+            display_label = VALUES(display_label),
+            floor_code = VALUES(floor_code),
+            room_base = VALUES(room_base),
+            room_canonical = VALUES(room_canonical),
+            suite_suffix = VALUES(suite_suffix),
+            metric_kind_code = VALUES(metric_kind_code),
+            cached_alarm_min_value = COALESCE(VALUES(cached_alarm_min_value), cached_alarm_min_value),
+            cached_alarm_max_value = COALESCE(VALUES(cached_alarm_max_value), cached_alarm_max_value),
+            cached_alarm_limits_at = COALESCE(VALUES(cached_alarm_limits_at), cached_alarm_limits_at),
+            alarm_override_min = COALESCE(VALUES(alarm_override_min), alarm_override_min),
+            alarm_override_max = COALESCE(VALUES(alarm_override_max), alarm_override_max),
+            enabled = VALUES(enabled),
+            sort_order = VALUES(sort_order)
+    </insert>
+
+    <select id="selectAllEnabledTagsJoinedBundlesOrdered" resultMap="TagMap">
+        SELECT t.id, t.bundle_id, t.wincc_variable_name, t.structure_type, t.data_type, t.display_label,
+               t.floor_code, t.room_base, t.room_canonical, t.suite_suffix, t.metric_kind_code,
+               t.cached_alarm_min_value, t.cached_alarm_max_value, t.cached_alarm_limits_at,
+               t.alarm_override_min, t.alarm_override_max,
+               t.enabled, t.sort_order, t.created_at,
+               b.code AS bundle_code, b.display_name AS bundle_display_name,
+               mk.kind_role AS metric_kind_role,
+               mk.label_zh AS metric_kind_label
+        FROM telemetry_watchlist_tag t
+        INNER JOIN telemetry_watchlist_bundle b ON b.id = t.bundle_id
+        INNER JOIN telemetry_metric_kind mk ON mk.code = t.metric_kind_code AND mk.active = 1
+        WHERE t.enabled = 1
+          AND b.include_in_wincc_poll = 1
+          AND t.floor_code IS NOT NULL AND TRIM(t.floor_code) &lt;&gt; ''
+          AND t.room_canonical IS NOT NULL AND TRIM(t.room_canonical) &lt;&gt; ''
+          AND t.metric_kind_code IS NOT NULL AND TRIM(t.metric_kind_code) &lt;&gt; ''
+          AND (t.display_label IS NULL OR TRIM(t.display_label) = '' OR TRIM(t.display_label) &lt;&gt; '无')
+        ORDER BY b.id ASC, t.sort_order ASC, t.id ASC
+    </select>
+
+    <select id="countByBundleId" resultType="int">
+        SELECT COUNT(1) FROM telemetry_watchlist_tag WHERE bundle_id = #{bundleId}
+    </select>
+
+    <select id="selectPageByBundle" resultMap="TagMap">
+        SELECT id, bundle_id, wincc_variable_name, structure_type, data_type, display_label,
+               floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
+               cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
+               alarm_override_min, alarm_override_max,
+               enabled, sort_order, created_at
+        FROM telemetry_watchlist_tag
+        WHERE bundle_id = #{bundleId}
+        <if test="q != null and q != ''">
+            AND (wincc_variable_name LIKE CONCAT('%', #{q}, '%')
+            OR display_label LIKE CONCAT('%', #{q}, '%')
+            OR floor_code LIKE CONCAT('%', #{q}, '%')
+            OR room_canonical LIKE CONCAT('%', #{q}, '%')
+            OR metric_kind_code LIKE CONCAT('%', #{q}, '%')
+            OR structure_type LIKE CONCAT('%', #{q}, '%')
+            OR data_type LIKE CONCAT('%', #{q}, '%'))
+        </if>
+        ORDER BY sort_order ASC, id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectAllByBundleForWincc" resultMap="TagMap">
+        SELECT id, bundle_id, wincc_variable_name, structure_type, data_type, display_label,
+               floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
+               cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
+               alarm_override_min, alarm_override_max,
+               enabled, sort_order, created_at
+        FROM telemetry_watchlist_tag
+        WHERE bundle_id = #{bundleId} AND enabled = 1
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectAllByBundleForDisplay" resultMap="TagMap">
+        SELECT id, bundle_id, wincc_variable_name, structure_type, data_type, display_label,
+               floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
+               cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
+               alarm_override_min, alarm_override_max,
+               enabled, sort_order, created_at
+        FROM telemetry_watchlist_tag
+        WHERE bundle_id = #{bundleId} AND enabled = 1
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectWinccNamesByBundleId" resultType="java.lang.String">
+        SELECT wincc_variable_name
+        FROM telemetry_watchlist_tag
+        WHERE bundle_id = #{bundleId} AND enabled = 1
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectAllByBundleId" resultMap="TagMap">
+        SELECT id, bundle_id, wincc_variable_name, structure_type, data_type, display_label,
+               floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
+               cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
+               alarm_override_min, alarm_override_max,
+               enabled, sort_order, created_at
+        FROM telemetry_watchlist_tag
+        WHERE bundle_id = #{bundleId}
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectByBundleIdAndVariableName" resultMap="TagMap">
+        SELECT id, bundle_id, wincc_variable_name, structure_type, data_type, display_label,
+               floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
+               cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
+               alarm_override_min, alarm_override_max,
+               enabled, sort_order, created_at
+        FROM telemetry_watchlist_tag
+        WHERE bundle_id = #{bundleId} AND wincc_variable_name = #{variableName}
+        LIMIT 1
+    </select>
+
+    <select id="selectById" resultMap="TagMap">
+        SELECT id, bundle_id, wincc_variable_name, structure_type, data_type, display_label,
+               floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
+               cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
+               alarm_override_min, alarm_override_max,
+               enabled, sort_order, created_at
+        FROM telemetry_watchlist_tag
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <update id="updateAlarmOverridesById">
+        UPDATE telemetry_watchlist_tag
+        SET alarm_override_min = #{min},
+            alarm_override_max = #{max}
+        WHERE id = #{id} AND bundle_id = #{bundleId}
+    </update>
+
+    <update id="mergeCachedAlarmLimitsByVariableName">
+        UPDATE telemetry_watchlist_tag
+        SET cached_alarm_min_value = CASE WHEN #{minVal} IS NOT NULL THEN #{minVal} ELSE cached_alarm_min_value END,
+            cached_alarm_max_value = CASE WHEN #{maxVal} IS NOT NULL THEN #{maxVal} ELSE cached_alarm_max_value END,
+            cached_alarm_limits_at = CASE
+                WHEN #{minVal} IS NOT NULL OR #{maxVal} IS NOT NULL THEN #{at}
+                ELSE cached_alarm_limits_at END
+        WHERE wincc_variable_name = #{parentVar}
+    </update>
+
+    <resultMap id="CachedAlarmOnlyMap" type="com.example.demo.modules.telemetry.entity.TelemetryWatchlistTagRow">
+        <result column="wincc_variable_name" property="winccVariableName"/>
+        <result column="cached_alarm_min_value" property="cachedAlarmMinValue"/>
+        <result column="cached_alarm_max_value" property="cachedAlarmMaxValue"/>
+    </resultMap>
+
+    <select id="selectCachedAlarmLimitsForSnapshotMerge" resultMap="CachedAlarmOnlyMap">
+        SELECT wincc_variable_name, cached_alarm_min_value, cached_alarm_max_value
+        FROM telemetry_watchlist_tag
+        WHERE (cached_alarm_min_value IS NOT NULL AND TRIM(cached_alarm_min_value) &lt;&gt; '')
+           OR (cached_alarm_max_value IS NOT NULL AND TRIM(cached_alarm_max_value) &lt;&gt; '')
+    </select>
+</mapper>

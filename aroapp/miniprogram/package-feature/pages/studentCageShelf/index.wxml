@@ -1,0 +1,389 @@
+<!-- List View -->
+<view wx:if="{{ screen === 'list' }}" class="page">
+  <view wx:if="{{ loading }}" class="center-box">
+    <van-loading size="24px" color="#ac1736" />
+    <text class="loading-text">加载中…</text>
+  </view>
+
+  <view wx:elif="{{ error }}" class="error-box">
+    <text class="error-icon">!</text>
+    <text class="error-text">{{ error }}</text>
+    <view class="retry-btn" bindtap="onRetry">重新加载</view>
+  </view>
+
+  <view wx:elif="{{ shelves.length === 0 }}" class="empty-box">
+    <text class="empty-icon">&#x2302;</text>
+    <text class="empty-text">暂无笼架数据</text>
+    <view class="retry-btn" bindtap="onRefresh">刷新</view>
+  </view>
+
+  <view wx:else class="list-root">
+    <view class="list-sticky-header">
+      <view class="list-count-row">
+        <text class="list-count-text">共 {{ totalCount }} 个笼架</text>
+        <text class="list-count-hint">下拉刷新</text>
+        <view class="list-special-status-btn" bindtap="onOpenSpecialStatus">特殊状态</view>
+      </view>
+      <view class="list-search-bar">
+        <van-icon name="search" size="16px" color="#94a3b8" class="list-search-icon" />
+        <input class="list-search-input" type="text" value="{{ searchQuery }}" placeholder="搜索房间名称…" placeholder-class="list-search-placeholder" bindinput="onSearchInput" confirm-type="search" />
+        <view class="list-collapse-all-btn" bindtap="onToggleAllRooms">{{ allExpanded ? '收起全部' : '展开全部' }}</view>
+      </view>
+    </view>
+
+    <scroll-view class="list-scroll" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{ loading }}" bindrefresherrefresh="onScrollRefresh">
+      <view wx:if="{{ shelfGroups.length === 0 }}" class="no-match-box">
+        <text class="no-match-text">没有匹配的房间</text>
+        <view class="clear-filter-btn" bindtap="onClearFilter">清除筛选</view>
+      </view>
+
+      <view wx:for="{{ shelfGroups }}" wx:key="campusName" class="campus-group">
+        <view class="campus-group-header" data-campus-name="{{ item.campusName }}" bindtap="onToggleCampus">
+          <view class="cgh-arrow">
+            <van-icon name="{{ item._collapsed ? 'arrow' : 'arrow-down' }}" size="32rpx" color="#646566" />
+          </view>
+          <text>{{ item.campusName }}校区</text>
+          <text class="cgh-count">{{ item.rooms.length }}个房间</text>
+        </view>
+        <view wx:if="{{ !item._collapsed }}" wx:for="{{ item.rooms }}" wx:key="roomName" wx:for-item="room" class="room-group">
+          <view class="room-group-header {{ room.hasHighlight ? 'room-group-header--hl' : '' }}" data-room-name="{{ room.roomName }}" bindtap="onToggleRoom">
+            <view class="rgh-arrow">
+              <van-icon name="{{ room.expanded ? 'arrow-down' : 'arrow' }}" size="28rpx" color="{{ room.hasHighlight ? '#ac1736' : '#969799' }}" />
+            </view>
+            <view class="rgh-main">
+              <view class="rgh-top">
+                <text class="rgh-name {{ room.hasHighlight ? 'rgh-name--hl' : '' }}">{{ room.roomName }}</text>
+                <text class="rgh-count">{{ room.shelves.length }}架</text>
+              </view>
+              <view wx:if="{{ room.c1 + room.c2 + room.c3 + room.c4 > 0 }}" class="rgh-bar-wrap">
+                <view class="rgh-bar-legend">
+                  <view wx:if="{{ room.c3 > 0 }}" class="bar-legend-tag"><view class="bar-legend-dot" style="background:#f43f5e;"></view><text>饲养{{ room.c3 }}</text></view>
+                  <view wx:if="{{ room.c1 > 0 }}" class="bar-legend-tag"><view class="bar-legend-dot" style="background:#f59e0b;"></view><text>待{{ room.c1 }}</text></view>
+                  <view wx:if="{{ room.c4 > 0 }}" class="bar-legend-tag"><view class="bar-legend-dot" style="background:#3b82f6;"></view><text>异{{ room.c4 }}</text></view>
+                  <view wx:if="{{ room.c2 > 0 }}" class="bar-legend-tag"><view class="bar-legend-dot" style="background:#10b981;"></view><text>空{{ room.c2 }}</text></view>
+                </view>
+                <view class="rgh-bar">
+                  <view wx:if="{{ room.c3 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c3 }};background:#f43f5e;"></view>
+                  <view wx:if="{{ room.c1 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c1 }};background:#f59e0b;"></view>
+                  <view wx:if="{{ room.c4 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c4 }};background:#3b82f6;"></view>
+                  <view wx:if="{{ room.c2 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c2 }};background:#10b981;"></view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <view wx:if="{{ room.expanded }}" class="room-shelf-grid">
+            <view wx:for="{{ room.shelves }}" wx:key="shelveId" wx:for-item="shelf" class="shelf-card {{ shelf.highlight ? 'shelf-card-highlight' : '' }}" data-shelve-id="{{ shelf.shelveId }}" bindtap="onShelfTap">
+              <view class="shelf-card-icon"><view class="shelf-card-icon-dot"></view></view>
+              <text class="shelf-card-name">{{ shelf.shelveName || shelf.shelveId }}</text>
+              <view wx:if="{{ shelf.c1 + shelf.c2 + shelf.c3 + shelf.c4 > 0 }}" class="shelf-card-bar-wrap">
+                <view class="shelf-card-bar-legend">
+                  <view wx:if="{{ shelf.c3 > 0 }}" class="bar-legend-tag"><view class="bar-legend-dot" style="background:#f43f5e;"></view><text>饲养{{ shelf.c3 }}</text></view>
+                  <view wx:if="{{ shelf.c1 > 0 }}" class="bar-legend-tag"><view class="bar-legend-dot" style="background:#f59e0b;"></view><text>待{{ shelf.c1 }}</text></view>
+                  <view wx:if="{{ shelf.c4 > 0 }}" class="bar-legend-tag"><view class="bar-legend-dot" style="background:#3b82f6;"></view><text>异{{ shelf.c4 }}</text></view>
+                  <view wx:if="{{ shelf.c2 > 0 }}" class="bar-legend-tag"><view class="bar-legend-dot" style="background:#10b981;"></view><text>空{{ shelf.c2 }}</text></view>
+                </view>
+                <view class="shelf-card-bar">
+                  <view wx:if="{{ shelf.c3 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c3 }};background:#f43f5e;"></view>
+                  <view wx:if="{{ shelf.c1 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c1 }};background:#f59e0b;"></view>
+                  <view wx:if="{{ shelf.c4 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c4 }};background:#3b82f6;"></view>
+                  <view wx:if="{{ shelf.c2 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c2 }};background:#10b981;"></view>
+                </view>
+              </view>
+              <view wx:if="{{ shelf.highlight }}" class="shelf-card-highlight-badge"><text>本组</text></view>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="list-pad-bottom" />
+    </scroll-view>
+  </view>
+</view>
+
+<!-- Grid View -->
+<view wx:if="{{ screen === 'grid' }}" class="page grid-page">
+  <view class="grid-topbar">
+    <view class="gt-back" bindtap="onBackToList">
+      <van-icon name="arrow-left" size="36rpx" color="#323233" />
+    </view>
+    <view class="gt-info">
+      <text class="gt-name">{{ gridMeta.shelveName || selectedShelf.shelveName }}</text>
+      <text class="gt-meta">已填{{ filledCount }}/{{ totalCells }} · {{ gridMeta.roomName || '' }}</text>
+    </view>
+    <view class="gt-refresh" bindtap="onRetry">
+      <van-icon name="replay" size="36rpx" color="#969799" />
+    </view>
+  </view>
+
+  <view wx:if="{{ loading }}" class="center-box">
+    <van-loading size="28px" color="#ac1736" />
+  </view>
+
+  <view wx:elif="{{ error }}" class="error-box">
+    <text class="error-icon">!</text>
+    <text class="error-text">{{ error }}</text>
+    <view class="retry-btn" bindtap="onRetry">重新加载</view>
+    <view class="back-link" bindtap="onBackToList">返回列表</view>
+  </view>
+
+  <scroll-view wx:else class="grid-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+    <view class="grid-legend-card">
+      <text class="legend-section-title">特殊状态 → 格子背景</text>
+      <view class="grid-legend grid-legend--status">
+        <view class="legend-item"><view class="legend-dot" style="background:#a7f3d0;border:2rpx solid #10b981;"></view><text class="legend-label">合笼/繁殖</text></view>
+        <view class="legend-item"><view class="legend-dot" style="background:#fecaca;border:2rpx solid #ef4444;"></view><text class="legend-label">特殊饲养</text></view>
+        <view class="legend-item"><view class="legend-dot" style="background:#fef08a;border:2rpx solid #eab308;"></view><text class="legend-label">请分笼</text></view>
+        <view class="legend-item"><view class="legend-dot" style="background:#e9d5ff;border:2rpx solid #a855f7;"></view><text class="legend-label">健康异常</text></view>
+        <view class="legend-item"><view class="legend-dot" style="background:#cffafe;border:2rpx solid #06b6d4;"></view><text class="legend-label">动物转移</text></view>
+        <view class="legend-item"><view class="legend-dot" style="background:#f1f5f9;border:2rpx solid #cbd5e1;"></view><text class="legend-label">正常</text></view>
+      </view>
+
+      <text class="legend-section-title legend-section-title--spaced">笼位状态 → 右上角指示灯</text>
+      <view class="grid-legend grid-legend--cage-type">
+        <view class="legend-item">
+          <view class="legend-cage-dot legend-cage-dot--wait"><text>待</text></view>
+          <text class="legend-label">等待分配</text>
+        </view>
+        <view class="legend-item">
+          <view class="legend-cage-dot legend-cage-dot--empty"><text>空</text></view>
+          <text class="legend-label">已预约(空笼盒)</text>
+        </view>
+        <view class="legend-item">
+          <view class="legend-cage-dot legend-cage-dot--feeding"><text>饲</text></view>
+          <text class="legend-label">已预约(饲养中)</text>
+        </view>
+        <view class="legend-item">
+          <view class="legend-cage-dot legend-cage-dot--abnormal"><text>异</text></view>
+          <text class="legend-label">异常</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="grid-wrapper">
+      <view class="grid-container">
+        <view
+          wx:for="{{ grid }}"
+          wx:key="position"
+          class="grid-cell {{ item.empty ? 'gcell-empty' : (item.visible === false ? 'gcell-hidden' : 'gcell-filled') }}"
+          style="{{ item._cellStyle }}"
+          data-x="{{ item.x }}"
+          data-y="{{ item.y }}"
+          bindtap="onCellTap"
+        >
+          <text class="gcell-pos">{{ item.position }}</text>
+          <block wx:if="{{ !item.empty && item.visible !== false }}">
+            <text class="gcell-pi">{{ item._piShort || '' }}</text>
+            <view wx:if="{{ item._cageTypeDotColor }}" class="gcell-dot" style="background:{{ item._cageTypeDotColor }};">
+              <text>{{ item._cageTypeAbbr }}</text>
+            </view>
+          </block>
+          <text wx:if="{{ item.empty }}" class="gcell-empty-text">空</text>
+          <text wx:elif="{{ item.visible === false }}" class="gcell-hidden-text">***</text>
+        </view>
+      </view>
+      <view class="grid-pad-bottom" />
+    </view>
+  </scroll-view>
+</view>
+
+<!-- Cell Detail Popup（对齐 Web CellDetailPanel / MobileCageCellDetailDialog） -->
+<van-popup show="{{ showCellDetail }}" position="bottom" round closeable bind:close="onCloseCellDetail" custom-style="max-height:88vh;width:100%;box-sizing:border-box;overflow:hidden;">
+  <scroll-view wx:if="{{ selectedCell && cellDetailMeta }}" class="detail-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+    <view class="detail-root">
+      <view class="detail-head">
+        <view class="detail-head-main">
+          <view class="detail-head-title-row">
+            <text class="detail-head-title">笼位详情</text>
+            <view class="detail-head-position-badge"><text>{{ selectedCell.position }}</text></view>
+            <view wx:if="{{ selectedCell._cageTypeDotColor }}" class="detail-head-dot" style="background:{{ selectedCell._cageTypeDotColor }};">
+              <text>{{ selectedCell._cageTypeAbbr }}</text>
+            </view>
+          </view>
+          <text class="detail-head-sub">{{ cellDetailMeta.cageTypeLabel }} · {{ selectedCell.stateLabel || '—' }}</text>
+        </view>
+      </view>
+
+      <view class="detail-section-label"><text>ARO 官方数据</text></view>
+
+      <block wx:if="{{ cellDetailMeta.permitted }}">
+        <view wx:if="{{ cellDetailMeta.specialChips.length }}" class="detail-status-chips">
+          <view wx:for="{{ cellDetailMeta.specialChips }}" wx:key="code" class="detail-status-chip detail-status-chip--{{ item.code }}">
+            <text class="detail-status-chip-abbr">{{ item.abbr }}</text>
+            <text class="detail-status-chip-label">{{ item.label }}</text>
+          </view>
+        </view>
+
+        <view class="detail-field-grid">
+          <view class="detail-field">
+            <text class="detail-field-label">动物类型</text>
+            <text class="detail-field-value">{{ cellDetailMeta.cageTypeLabel }}</text>
+          </view>
+          <view class="detail-field">
+            <text class="detail-field-label">状态</text>
+            <text class="detail-field-value">{{ selectedCell.stateLabel || '—' }}</text>
+          </view>
+          <view class="detail-field">
+            <text class="detail-field-label">课题组</text>
+            <text class="detail-field-value">{{ selectedCell.departmentName || '—' }}</text>
+          </view>
+          <view class="detail-field">
+            <text class="detail-field-label">课题 PI</text>
+            <text class="detail-field-value">{{ selectedCell.projectPiName || '—' }}</text>
+          </view>
+          <view class="detail-field">
+            <text class="detail-field-label">AUP 编号</text>
+            <text class="detail-field-value">{{ selectedCell.aupNumber || '—' }}</text>
+          </view>
+          <view wx:if="{{ cellDetailMeta.showNeedDivide }}" class="detail-field">
+            <text class="detail-field-label">请分笼</text>
+            <text class="detail-field-value detail-field-value--danger">是</text>
+          </view>
+          <view wx:if="{{ cellDetailMeta.showNeedFeeding }}" class="detail-field">
+            <text class="detail-field-label">特殊饲养</text>
+            <text class="detail-field-value detail-field-value--warn">是</text>
+          </view>
+          <view wx:if="{{ cellDetailMeta.showNeedTransfer }}" class="detail-field">
+            <text class="detail-field-label">动物转移</text>
+            <text class="detail-field-value detail-field-value--info">是</text>
+          </view>
+          <view wx:if="{{ cellDetailMeta.showAbnormalHealth }}" class="detail-field">
+            <text class="detail-field-label">健康异常</text>
+            <text class="detail-field-value detail-field-value--health">是</text>
+          </view>
+          <view wx:if="{{ cellDetailMeta.closingDate }}" class="detail-field">
+            <text class="detail-field-label">合笼日期</text>
+            <text class="detail-field-value">{{ cellDetailMeta.closingDate }}</text>
+          </view>
+          <view wx:if="{{ cellDetailMeta.specialBreedingName }}" class="detail-field detail-field--full">
+            <text class="detail-field-label">特殊饲养名称</text>
+            <text class="detail-field-value">{{ cellDetailMeta.specialBreedingName }}</text>
+          </view>
+          <view wx:if="{{ selectedCell.cageBoxQrCode }}" class="detail-field detail-field--full">
+            <text class="detail-field-label">笼盒卡号</text>
+            <text class="detail-field-value detail-field-value--mono">{{ selectedCell.cageBoxQrCode }}</text>
+            <view class="detail-qr-wrap">
+              <image wx:if="{{ detailQrImageSrc }}" class="detail-qr-image" src="{{ detailQrImageSrc }}" mode="aspectFit" />
+              <text wx:else class="detail-qr-loading">二维码生成中…</text>
+            </view>
+          </view>
+          <view wx:if="{{ cellDetailMeta.locationText }}" class="detail-field detail-field--full">
+            <text class="detail-field-label">位置</text>
+            <text class="detail-field-value detail-field-value--location">{{ cellDetailMeta.locationText }}</text>
+          </view>
+        </view>
+
+        <view class="detail-divider" />
+        <view class="detail-section-label"><text>备注与标注</text></view>
+
+        <view wx:if="{{ detailAnnotationLoading }}" class="detail-annotation-loading">
+          <van-loading size="20px" color="#ac1736" />
+          <text>加载标注…</text>
+        </view>
+        <block wx:else>
+          <view class="detail-form-block">
+            <text class="detail-form-label">富文本备注</text>
+            <textarea
+              class="detail-textarea"
+              value="{{ detailRichText }}"
+              placeholder="输入备注信息（支持 HTML）…"
+              maxlength="-1"
+              auto-height
+              bindinput="onDetailRichTextInput"
+            />
+          </view>
+          <view class="detail-form-block">
+            <text class="detail-form-label">图片（每行一个 URL）</text>
+            <textarea
+              class="detail-textarea detail-textarea--mono"
+              value="{{ detailImageUrls }}"
+              placeholder="https://example.com/image1.jpg"
+              maxlength="-1"
+              auto-height
+              bindinput="onDetailImageUrlsInput"
+            />
+          </view>
+          <view wx:if="{{ detailImagePreviewUrls.length }}" class="detail-image-previews">
+            <image
+              wx:for="{{ detailImagePreviewUrls }}"
+              wx:key="*this"
+              class="detail-preview-image"
+              src="{{ item }}"
+              mode="aspectFill"
+              binderror="onDetailImageError"
+              data-url="{{ item }}"
+            />
+          </view>
+          <view class="detail-save-row">
+            <view class="detail-save-btn {{ detailSaving ? 'detail-save-btn--disabled' : '' }}" bindtap="onSaveCellAnnotation">
+              <text>{{ detailSaving ? '保存中…' : '保存标注' }}</text>
+            </view>
+            <text wx:if="{{ detailSaveMsg }}" class="detail-save-msg detail-save-msg--{{ detailSaveMsgType }}">{{ detailSaveMsg }}</text>
+          </view>
+        </block>
+      </block>
+
+      <view wx:else class="detail-no-permission">
+        <text>仅限所属课题组及管理员查看详情</text>
+      </view>
+
+      <view class="detail-close-wrap">
+        <view class="detail-close-btn detail-close-btn--secondary" bindtap="onCloseCellDetail">关闭</view>
+      </view>
+    </view>
+  </scroll-view>
+</van-popup>
+
+<!-- 特殊状态总览弹窗 -->
+<van-popup
+  show="{{ specialStatusOpen }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  root-portal="{{ true }}"
+  z-index="{{ 20000 }}"
+  custom-style="width:90vw;max-width:680rpx;max-height:80vh;box-sizing:border-box;"
+  bind:close="onCloseSpecialStatus"
+>
+  <view class="sp-status-popup">
+    <view class="sp-status-hd">
+      <text class="sp-status-title">特殊状态总览</text>
+      <text wx:if="{{ specialStatusScannedAt }}" class="sp-status-meta">最近扫描：{{ specialStatusScannedAt }}</text>
+    </view>
+    <scroll-view scroll-y class="sp-status-scroll" style="max-height:60vh;">
+      <view wx:if="{{ specialStatusLoading }}" class="sp-status-hint">加载中…</view>
+      <view wx:elif="{{ specialStatusError }}" class="sp-status-hint sp-status-err">{{ specialStatusError }}</view>
+      <view wx:elif="{{ specialStatusGroups.length === 0 }}" class="sp-status-hint">暂无特殊状态笼位</view>
+      <view wx:else>
+        <block wx:for="{{ specialStatusGroups }}" wx:key="code" wx:for-item="grp">
+          <view wx:if="{{ grp.cages.length }}" class="sp-status-group">
+            <view class="sp-status-group-hd" data-code="{{ grp.code }}" bindtap="onToggleSpecialGroup">
+              <view class="sp-status-dot" style="background:{{ grp.dotColor }};border-color:{{ grp.borderColor }};"></view>
+              <text class="sp-status-group-name">{{ grp.label }}</text>
+              <text class="sp-status-group-count">{{ grp.cages.length }} 个笼位</text>
+              <text class="sp-status-group-arrow">{{ grp.expanded ? '▲' : '▼' }}</text>
+            </view>
+            <view wx:if="{{ grp.expanded }}" class="sp-status-group-body">
+              <block wx:for="{{ grp.byCampus }}" wx:key="campusName" wx:for-item="cam">
+                <view class="sp-campus-block">
+                  <text class="sp-campus-name">{{ cam.campusName }}</text>
+                  <block wx:for="{{ cam.byRoom }}" wx:key="roomName" wx:for-item="rm">
+                    <view class="sp-room-block">
+                      <text class="sp-room-name">{{ rm.roomName }}（{{ rm.cages.length }}）</text>
+                      <view wx:for="{{ rm.cages }}" wx:key="key" wx:for-item="cage" class="sp-cage-row">
+                        <text class="sp-cage-pos">{{ cage.position }}</text>
+                        <text class="sp-cage-pi">{{ cage.piName || cage.projectPiName || '-' }}</text>
+                      </view>
+                    </view>
+                  </block>
+                </view>
+              </block>
+            </view>
+          </view>
+        </block>
+      </view>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<canvas canvas-id="cageQrCanvasOffscreen" class="detail-qr-canvas-offscreen" />

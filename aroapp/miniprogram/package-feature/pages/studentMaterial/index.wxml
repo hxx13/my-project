@@ -1,0 +1,365 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page" style="height: {{ pageHeight }}px;">
+  <subpage-nav-bar
+    title="学生申领"
+    show-switch="{{ showSuppliesSwitch }}"
+    switch-label="员工"
+    bind:switch="onSwitchSupplies"
+  />
+
+  <view class="mall-header-fixed" style="top: {{ navBarHeight }}px;">
+    <view class="mall-top-bar">
+      <view class="mall-top-search">
+        <input
+          class="mall-top-search-input"
+          placeholder="搜索物品"
+          value="{{ searchKeyword }}"
+          bindinput="onSearchInput"
+          confirm-type="search"
+        />
+      </view>
+      <view class="mall-top-actions-wrap">
+        <scroll-view class="mall-top-actions-scroll" scroll-x enhanced show-scrollbar="{{ false }}">
+          <view class="mall-top-actions">
+            <view
+              wx:if="{{ canManageItems }}"
+              class="mall-top-pill mall-top-pill-admin"
+              hover-class="mall-top-pill-hover"
+              bindtap="goManage"
+            >物品管理</view>
+            <view class="mall-top-pill mall-top-pill-mine-wrap" hover-class="mall-top-pill-hover" bindtap="goMine">
+              <text>我的记录</text>
+              <view wx:if="{{ mineRecordBadgeText }}" class="mall-top-mini-badge mall-top-mini-badge-mine">{{ mineRecordBadgeText }}</view>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
+  </view>
+
+  <view class="mall-header-placeholder" style="height: {{ headerBodyH }}px;"></view>
+
+  <view class="main-split" style="height: {{ mainScrollH }}px;">
+      <scroll-view class="cat-side" scroll-y style="height: {{ mainScrollH }}px;">
+      <view
+        class="cat-item {{ activeCat === 'all' ? 'cat-item-on' : '' }}"
+        data-id="all"
+        bindtap="onSelectCat"
+      >全部</view>
+      <view
+        wx:for="{{ categories }}"
+        wx:key="id"
+        class="cat-item {{ activeCat === item.id ? 'cat-item-on' : '' }}"
+        data-id="{{ item.id }}"
+        bindtap="onSelectCat"
+      >{{ item.name }}</view>
+    </scroll-view>
+
+    <scroll-view
+      class="content-side"
+      scroll-y
+      style="height: {{ mainScrollH }}px;"
+      refresher-enabled
+      refresher-triggered="{{ listRefreshing }}"
+      bindrefresherrefresh="onListRefresh"
+    >
+      <view wx:if="{{ loading }}" class="content-muted">加载中…</view>
+      <van-empty wx:elif="{{ filteredItems.length === 0 }}" description="暂无上架物品" />
+      <block wx:else>
+        <view wx:for="{{ filteredItems }}" wx:key="id" class="goods-card">
+          <image
+            wx:if="{{ item.coverAbsUrl }}"
+            class="goods-cover-sm"
+            src="{{ item.coverAbsUrl }}"
+            mode="aspectFill"
+            lazy-load
+            data-url="{{ item.coverAbsUrl }}"
+            bindtap="previewItemImage"
+          />
+          <view wx:else class="goods-cover-sm goods-cover-ph">
+            <text class="goods-ph-sm">{{ item.nameInitial }}</text>
+          </view>
+          <view class="goods-main">
+            <view class="name-step-row">
+              <view class="goods-name-wrap">
+                <text class="goods-name">{{ item.name }}</text>
+                <text wx:if="{{ item.subtitle }}" class="goods-sub-inline">{{ item.subtitle }}</text>
+              </view>
+              <view wx:if="{{ !item.hasSpec }}" class="step-inline">
+                <view
+                  class="si-btn {{ (cart[item.id] || 0) <= 0 || item._outOfStock ? 'si-btn-off' : '' }}"
+                  hover-class="si-btn-hover"
+                  data-id="{{ item.id }}"
+                  bindtap="decCart"
+                >−</view>
+                <input
+                  class="si-num-input"
+                  type="number"
+                  value="{{ cart[item.id] != null ? cart[item.id] : 0 }}"
+                  data-id="{{ item.id }}"
+                  bindblur="onQtyInputBlur"
+                  confirm-type="done"
+                  disabled="{{ item._outOfStock }}"
+                />
+                <view
+                  class="si-btn si-btn-plus {{ item._outOfStock ? 'si-btn-off' : '' }}"
+                  hover-class="si-btn-hover"
+                  data-id="{{ item.id }}"
+                  bindtap="addCart"
+                >+</view>
+              </view>
+              <view wx:else class="spec-anchor">
+                <view
+                  id="spec-pick-btn-{{ item.id }}"
+                  class="spec-pick-btn {{ item._outOfStock ? 'spec-pick-btn--disabled' : '' }} {{ specSheetOpen && specSheetItemId === item.id ? 'spec-pick-btn--on' : '' }}"
+                  data-id="{{ item.id }}"
+                  bindtap="openSpecSheet"
+                >
+                  <text>选择规格</text>
+                  <view wx:if="{{ item.itemCartQty > 0 }}" class="spec-pick-badge">{{ item.itemCartQty }}</view>
+                </view>
+              </view>
+            </view>
+            <view class="goods-stock-line">{{ item.stockLineText }}</view>
+          </view>
+        </view>
+      </block>
+      <view class="content-pad-bottom" />
+    </scroll-view>
+  </view>
+
+  <view class="cart-bar">
+    <view class="cart-entry" hover-class="cart-entry-hover" bindtap="openCartSheet">
+      <text class="cart-entry-txt">申领栏</text>
+      <view wx:if="{{ cartCount > 0 }}" class="cart-badge">{{ cartCount }}</view>
+    </view>
+    <view
+      class="cart-submit {{ submitting || cartCount === 0 ? 'cart-submit-disabled' : '' }}"
+      hover-class="cart-submit-hover"
+      bindtap="submitOrder"
+    >{{ submitting ? '提交中…' : '提交申领' }}</view>
+  </view>
+</view>
+
+<van-popup
+  show="{{ specSheetOpen }}"
+  position="center"
+  round
+  closeable
+  bind:close="onSpecSheetClose"
+  custom-style="width:92%;max-width:680rpx;max-height:85vh;padding:0;overflow:hidden;"
+>
+  <view class="spec-picker" wx:if="{{ specSheetItem }}">
+    <view class="spec-picker-head">
+      <text class="spec-picker-title">选择规格</text>
+    </view>
+    <scroll-view scroll-y class="spec-picker-scroll">
+      <view class="spec-item-brief">
+        <image wx:if="{{ specSheetItem.coverAbsUrl }}" class="spec-item-cover" src="{{ specSheetItem.coverAbsUrl }}" mode="aspectFill" />
+        <view wx:else class="spec-item-cover spec-item-cover-ph"><text>{{ specSheetItem.nameInitial }}</text></view>
+        <view class="spec-item-text">
+          <text class="spec-item-name">{{ specSheetItem.name }}</text>
+          <text wx:if="{{ specSheetItem.subtitle }}" class="spec-item-sub">{{ specSheetItem.subtitle }}</text>
+        </view>
+      </view>
+
+      <view wx:if="{{ specSheetDimensions.length }}" class="spec-dim-list">
+        <view wx:for="{{ specSheetDimensions }}" wx:for-item="dim" wx:key="name" class="spec-dim-block">
+          <view class="spec-dim-head" data-dim="{{ dim.name }}" bindtap="toggleSpecDimExpand">
+            <text class="spec-dim-chev">{{ dim.expanded ? '▼' : '▶' }}</text>
+            <text class="spec-dim-title">{{ dim.name }}</text>
+            <text wx:if="{{ dim.summary && !dim.expanded }}" class="spec-dim-summary">{{ dim.summary }}</text>
+          </view>
+          <view wx:if="{{ dim.expanded }}" class="spec-dim-body">
+            <view class="spec-opt-wrap">
+              <view
+                wx:for="{{ dim.options }}"
+                wx:for-item="opt"
+                wx:key="value"
+                class="spec-opt {{ opt.selected ? 'spec-selected' : '' }}"
+                data-dim="{{ dim.name }}"
+                data-opt="{{ opt.value }}"
+                bindtap="onSelectSpecOption"
+              >{{ opt.value }}</view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{ specSheetReady && specSheetActiveCombos.length }}" class="spec-combo-section">
+        <text class="spec-combo-label">已选规格组合</text>
+        <view
+          wx:for="{{ specSheetActiveCombos }}"
+          wx:for-item="combo"
+          wx:key="key"
+          class="spec-combo-row {{ specSheetItem._outOfStock ? 'spec-sku-row--oos' : '' }}"
+        >
+          <text class="spec-sku-label">{{ combo.label }}</text>
+          <view class="step-inline spec-step-inline">
+            <view
+              class="si-btn {{ (cart[specSheetItemId + '::' + combo.key] || 0) <= 0 || specSheetItem._outOfStock ? 'si-btn-off' : '' }}"
+              hover-class="si-btn-hover"
+              data-id="{{ specSheetItemId + '::' + combo.key }}"
+              bindtap="decCart"
+            >−</view>
+            <input
+              class="si-num-input"
+              type="number"
+              value="{{ cart[specSheetItemId + '::' + combo.key] != null ? cart[specSheetItemId + '::' + combo.key] : 0 }}"
+              data-id="{{ specSheetItemId + '::' + combo.key }}"
+              bindblur="onQtyInputBlur"
+              confirm-type="done"
+              disabled="{{ specSheetItem._outOfStock }}"
+            />
+            <view
+              class="si-btn si-btn-plus {{ specSheetItem._outOfStock ? 'si-btn-off' : '' }}"
+              hover-class="si-btn-hover"
+              data-id="{{ specSheetItemId + '::' + combo.key }}"
+              bindtap="addCart"
+            >+</view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{ !specSheetReady && specSheetDimensions.length && !specSheetShowPlain }}" class="spec-hint">
+        展开上方规格分类并选择后，将显示可申领的组合
+      </view>
+
+      <view wx:if="{{ specSheetShowPlain }}" class="spec-skip-row">
+        <text>默认（不选规格）</text>
+        <view class="step-inline spec-step-inline">
+          <view class="si-btn {{ (cart[specSheetItemId] || 0) <= 0 ? 'si-btn-off' : '' }}" data-id="{{ specSheetItemId }}" bindtap="decCart">−</view>
+          <text class="spec-skip-qty">{{ cart[specSheetItemId] || 0 }}</text>
+          <view class="si-btn si-btn-plus" data-id="{{ specSheetItemId }}" bindtap="addCart">+</view>
+        </view>
+      </view>
+
+      <view wx:if="{{ specSheetItem._outOfStock }}" class="spec-oos-hint">该物品已售罄</view>
+    </scroll-view>
+    <view class="spec-picker-foot">
+      <text class="spec-picker-total">已选 <text class="spec-picker-total-num">{{ specSheetItemCartQty }}</text> 件</text>
+      <view class="spec-picker-actions">
+        <view class="spec-picker-cancel" bindtap="closeSpecSheet">取消</view>
+        <view class="spec-picker-done" bindtap="closeSpecSheet">确认</view>
+      </view>
+    </view>
+  </view>
+</van-popup>
+
+<van-popup
+  show="{{ cartSheetShow }}"
+  position="bottom"
+  round
+  closeable
+  bind:close="closeCartSheet"
+  custom-style="padding:0;max-height:70vh;"
+>
+  <view class="sheet-head">申领栏</view>
+  <scroll-view scroll-y class="sheet-scroll">
+    <view wx:for="{{ cartLines }}" wx:key="id" class="sheet-line">
+      <image wx:if="{{ item.coverAbsUrl }}" class="sheet-thumb" src="{{ item.coverAbsUrl }}" mode="aspectFill" />
+      <view wx:else class="sheet-thumb sheet-thumb-ph"><text>{{ item.nameInitial }}</text></view>
+      <view class="sheet-mid">
+        <text class="sheet-name">{{ item.name }}</text>
+        <text wx:if="{{ item.specLabel }}" class="sheet-spec-label">{{ item.specLabel }}</text>
+        <view class="sheet-step-inline">
+          <view
+            class="si-btn sheet-si-btn {{ (cart[item.id] || 0) <= 0 ? 'si-btn-off' : '' }}"
+            hover-class="si-btn-hover"
+            data-id="{{ item.id }}"
+            bindtap="sheetDec"
+          >−</view>
+          <input
+            class="si-num-input sheet-si-num-input"
+            type="number"
+            value="{{ cart[item.id] != null ? cart[item.id] : 0 }}"
+            data-id="{{ item.id }}"
+            bindblur="onQtyInputBlur"
+            confirm-type="done"
+          />
+          <view class="si-btn si-btn-plus sheet-si-btn" hover-class="si-btn-hover" data-id="{{ item.id }}" bindtap="sheetAdd">+</view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+  <view class="sheet-foot">
+    <text class="sheet-total">共 {{ cartCount }} 件</text>
+    <view class="sheet-foot-actions">
+      <view class="sheet-btn" bindtap="closeCartSheet">收起</view>
+      <view class="sheet-btn sheet-btn-primary" bindtap="submitOrder">去提交</view>
+    </view>
+  </view>
+</van-popup>
+
+<van-popup
+  show="{{ confirmOpen }}"
+  position="center"
+  round
+  closeable
+  bind:close="closeConfirm"
+  custom-style="width:92%;max-width:680rpx;max-height:76vh;padding:0;"
+>
+  <view class="pop-root">
+    <view class="pop-top">
+      <text class="pop-title">确认提交申领</text>
+      <text class="pop-sub">请核对以下物品</text>
+      <text wx:if="{{ willSplit || multiIndependent }}" class="pop-split-hint">{{ willSplit ? '含独立下单物资，将拆分为多份申领单' : '多个独立下单物资将分别生成申领单' }}</text>
+    </view>
+    <scroll-view scroll-y class="pop-scroll">
+      <view wx:for="{{ confirmLines }}" wx:key="id" class="confirm-line">
+        <image wx:if="{{ item.coverAbsUrl }}" class="confirm-thumb" src="{{ item.coverAbsUrl }}" mode="aspectFill" />
+        <view wx:else class="confirm-thumb confirm-thumb-ph"><text>{{ item.nameInitial }}</text></view>
+        <view class="confirm-mid">
+          <text class="confirm-name">{{ item.name }}</text>
+          <text wx:if="{{ item.specLabel }}" class="confirm-spec-label">{{ item.specLabel }}</text>
+          <text class="confirm-qty">×{{ item.qty }}</text>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="pop-foot">
+      <view class="pop-btn ghost" bindtap="closeConfirm">取消</view>
+      <view class="pop-btn primary {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="confirmSubmit">
+        {{ submitting ? '提交中…' : '确认提交' }}
+      </view>
+    </view>
+  </view>
+</van-popup>
+
+<van-popup
+  show="{{ mergeDialogShow }}"
+  position="center"
+  round
+  closeable
+  bind:close="closeMergeDialog"
+  custom-style="width:92%;max-width:680rpx;max-height:76vh;padding:0;"
+>
+  <view class="pop-root">
+    <view class="pop-top">
+      <text class="pop-title">您还有待处理的申领单，是否合并？</text>
+      <text class="pop-sub">合并后按审核流程与独立下单规则自动归类</text>
+      <text wx:if="{{ willSplit || multiIndependent }}" class="pop-split-hint">{{ willSplit ? '含独立下单物资，将拆分为多份申领单' : '多个独立下单物资将分别生成申领单' }}</text>
+    </view>
+    <scroll-view scroll-y class="pop-scroll">
+      <view
+        wx:for="{{ mergePendingRequests }}"
+        wx:key="idStr"
+        class="merge-req-row"
+        data-id="{{ item.idStr }}"
+        bindtap="onMergeSelect"
+      >
+        <view class="merge-radio {{ mergeSelectedId === item.idStr ? 'merge-radio-on' : '' }}" />
+        <view class="merge-req-mid">
+          <text class="merge-req-title {{ mergeSelectedId === item.idStr ? 'merge-req-title-on' : '' }}">单号 …{{ item.shortId }}</text>
+          <text class="merge-req-meta">{{ item.metaText }}</text>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="pop-foot">
+      <view class="pop-btn ghost {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="onMergeCreateNew">直接新建</view>
+      <view class="pop-btn primary {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="onMergeConfirm">
+        {{ submitting ? '合并中…' : '合并到选中单' }}
+      </view>
+    </view>
+  </view>
+</van-popup>
+</block>

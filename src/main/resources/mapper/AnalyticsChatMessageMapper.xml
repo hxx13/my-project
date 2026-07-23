@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.analytics.mapper.AnalyticsChatMessageMapper">
+
+    <resultMap id="AnalyticsChatMessageMap" type="com.example.demo.modules.analytics.entity.AnalyticsChatMessage">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="role" column="role"/>
+        <result property="content" column="content"/>
+        <result property="thinkingText" column="thinking_text"/>
+        <result property="model" column="model"/>
+        <result property="promptTokens" column="prompt_tokens"/>
+        <result property="completionTokens" column="completion_tokens"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO analytics_chat_message (
+            session_id, role, content, thinking_text, model, prompt_tokens, completion_tokens
+        ) VALUES (
+            #{sessionId}, #{role}, #{content}, #{thinkingText}, #{model}, #{promptTokens}, #{completionTokens}
+        )
+    </insert>
+
+    <select id="selectBySession" resultMap="AnalyticsChatMessageMap">
+        SELECT * FROM analytics_chat_message
+        WHERE session_id = #{sessionId}
+        ORDER BY id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countBySession" resultType="int">
+        SELECT COUNT(*) FROM analytics_chat_message WHERE session_id = #{sessionId}
+    </select>
+</mapper>

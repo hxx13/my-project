@@ -1,0 +1,119 @@
+.scan-assistant-dock {
+  --scan-assistant-orb-box: 84px;
+  --scan-assistant-bubble-max: 520px;
+  --scan-assistant-bubble-min: 360px;
+  --scan-assistant-bubble-loading-min: 400px;
+  --scan-assistant-bubble-gap: var(--app-space-element-gap, 0.75rem);
+  position: fixed;
+  /* left/top 由 hook 以 px 精确设置，禁止 transform 定位 */
+  width: var(--scan-assistant-orb-box);
+  height: var(--scan-assistant-orb-box);
+  margin: 0;
+  pointer-events: none;
+  touch-action: none;
+  will-change: left, top;
+}
+
+.scan-assistant-dock__stack {
+  position: relative;
+  width: var(--scan-assistant-orb-box);
+  height: var(--scan-assistant-orb-box);
+}
+
+.scan-assistant-dock__orb {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  border-radius: 50%;
+  transition:
+    transform var(--app-motion-hover, 180ms ease-out),
+    box-shadow var(--app-motion-hover, 180ms ease-out);
+}
+
+.scan-assistant-dock__orb--has-hidden-bubble {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--app-color-accent) 28%, transparent),
+    0 0 24px color-mix(in srgb, var(--app-color-accent) 36%, transparent);
+  animation: scan-assistant-orb-pulse 1.8s ease-in-out infinite;
+}
+
+.scan-assistant-dock__orb--bubble-open {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--app-color-accent) 22%, transparent),
+    0 0 16px color-mix(in srgb, var(--app-color-accent) 24%, transparent);
+}
+
+.scan-assistant-dock__orb--speaking {
+  transform: scale(1.06);
+  transform-origin: center center;
+}
+
+.scan-assistant-dock__orb--dragging {
+  cursor: grabbing;
+  transform: scale(1.04);
+  transform-origin: center center;
+  animation: none;
+}
+
+.scan-assistant-dock__orb:focus-visible {
+  outline: 2px solid var(--app-color-accent);
+  outline-offset: 3px;
+}
+
+/* ── Anchor：绝对定位 + 正交对齐 transform（与 orb 84px 含块解耦） ── */
+.scan-assistant-bubble-anchor {
+  position: absolute;
+  z-index: 1;
+  /* 宽度由内部 bubble 撑开，避免 84px stack 压扁 shrink-to-fit */
+  width: max-content;
+  max-width: none;
+  pointer-events: none;
+}
+
+/* transform 由 computeBubblePositionStyle 内联注入（含视口钳制偏移） */
+.scan-assistant-bubble-anchor--top,
+.scan-assistant-bubble-anchor--bottom,
+.scan-assistant-bubble-anchor--left,
+.scan-assistant-bubble-anchor--right {
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-assistant-dock {
+    transition: none !important;
+  }
+
+  .scan-assistant-dock__orb {
+    transition: none;
+    animation: none !important;
+  }
+
+  .scan-assistant-dock__orb--speaking {
+    transform: none;
+  }
+
+  .scan-assistant-dock__orb--has-hidden-bubble {
+    animation: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-color-accent) 35%, transparent);
+  }
+}
+
+@keyframes scan-assistant-orb-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--app-color-accent) 24%, transparent),
+      0 0 18px color-mix(in srgb, var(--app-color-accent) 28%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 5px color-mix(in srgb, var(--app-color-accent) 38%, transparent),
+      0 0 32px color-mix(in srgb, var(--app-color-accent) 48%, transparent);
+  }
+}

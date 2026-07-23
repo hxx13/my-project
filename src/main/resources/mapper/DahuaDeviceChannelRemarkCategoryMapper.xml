@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.dahua.mapper.DahuaDeviceChannelRemarkCategoryMapper">
+
+    <select id="listAll" resultType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory">
+        SELECT id,
+               name,
+               sort_order AS sortOrder,
+               DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+        FROM dahua_device_channel_remark_category
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="findById" resultType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory">
+        SELECT id,
+               name,
+               sort_order AS sortOrder,
+               DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+        FROM dahua_device_channel_remark_category
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insert" parameterType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO dahua_device_channel_remark_category (name, sort_order)
+        VALUES (#{name}, #{sortOrder})
+    </insert>
+
+    <update id="update" parameterType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory">
+        UPDATE dahua_device_channel_remark_category
+        SET name = #{name},
+            sort_order = #{sortOrder}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM dahua_device_channel_remark_category WHERE id = #{id}
+    </delete>
+
+</mapper>

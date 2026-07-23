@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.rpg.mapper.TwinExpRecordMapper">
+
+    <insert id="insert">
+        INSERT INTO twin_exp_record (user_id, user_name, exp_amount, source_type, access_type, room_id, room_name,
+                                     create_time, anomaly_flag, anomaly_types, review_status, feed_source, session_duration_minutes)
+        VALUES (#{userId}, #{userName}, #{expAmount}, #{sourceType}, #{accessType}, #{roomId}, #{roomName},
+                #{createTime}, #{anomalyFlag}, #{anomalyTypes}, #{reviewStatus}, #{feedSource}, #{sessionDurationMinutes})
+    </insert>
+
+    <select id="countTotalExp" resultType="int">
+        SELECT COALESCE(SUM(exp_amount), 0)
+        FROM twin_exp_record
+        WHERE review_status != 2
+    </select>
+
+    <select id="countTodayExp" resultType="int">
+        SELECT COALESCE(SUM(exp_amount), 0)
+        FROM twin_exp_record
+        WHERE DATE(create_time) = CURDATE()
+          AND review_status != 2
+    </select>
+
+    <select id="countActiveUsers" resultType="int">
+        SELECT COUNT(DISTINCT user_id)
+        FROM twin_exp_record
+        WHERE review_status != 2
+    </select>
+
+    <select id="countTodayActiveUsers" resultType="int">
+        SELECT COUNT(DISTINCT user_id)
+        FROM twin_exp_record
+        WHERE DATE(create_time) = CURDATE()
+          AND review_status != 2
+    </select>
+
+    <select id="getTopEarners" resultType="map">
+        SELECT r.user_id AS userId,
+               COALESCE(p.name, MAX(r.user_name), r.user_id) AS userName,
+               COALESCE(SUM(r.exp_amount), 0) AS totalExp,
+               COALESCE(SUM(CASE WHEN DATE(r.create_time) = CURDATE() THEN r.exp_amount ELSE 0 END), 0) AS todayExp,
+               FLOOR(SQRT(GREATEST(COALESCE(SUM(r.exp_amount), 0), 0) / 50)) + 1 AS level
+        FROM twin_exp_record r
+        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
+        WHERE (r.review_status IS NULL OR r.review_status != 2)
+        GROUP BY r.user_id, p.name
+        HAVING todayExp > 0
+        ORDER BY todayExp DESC, totalExp DESC
+        LIMIT #{limit}
+    </select>
+
+    <sql id="pageWhere">
+        <where>
+            <if test="userId != null and userId != ''">
+                AND r.user_id = #{userId}
+            </if>
+            <if test="sourceType != null and sourceType != ''">
+                AND r.source_type = #{sourceType}
+            </if>
+            <if test="startDate != null and startDate != ''">
+                AND r.create_time >= #{startDate}
+            </if>
+            <if test="endDate != null and endDate != ''">
+                AND r.create_time <![CDATA[ <= ]]> #{endDate}
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectPage" resultType="com.example.demo.modules.twin.rpg.entity.TwinExpRecord">
+        SELECT r.id, r.user_id,
+               COALESCE(p.name, r.user_name, r.user_id) AS user_name,
+               r.exp_amount, r.source_type, r.access_type,
+               r.room_id,
+               COALESCE(rm.room_name, r.room_name, r.room_id) AS room_name,
+               r.create_time
+        FROM twin_exp_record r
+        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
+        LEFT JOIN room_mapping_room rm ON rm.room_id = r.room_id
+        <include refid="pageWhere"/>
+        ORDER BY r.create_time DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(1)
+        FROM twin_exp_record r
+        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
+        LEFT JOIN room_mapping_room rm ON rm.room_id = r.room_id
+        <include refid="pageWhere"/>
+    </select>
+
+    <!-- ─────────── 带异常/审核/来源筛选 ─────────── -->
+
+    <sql id="filterWhere">
+        <include refid="pageWhere"/>
+        <if test="anomalyFlag != null">
+            AND r.anomaly_flag = #{anomalyFlag}
+        </if>
+        <if test="reviewStatus != null">
+            AND r.review_status = #{reviewStatus}
+        </if>
+        <if test="feedSource != null and feedSource != ''">
+            AND r.feed_source = #{feedSource}
+        </if>
+    </sql>
+
+    <select id="selectPageWithFilters" resultType="com.example.demo.modules.twin.rpg.entity.TwinExpRecord">
+        SELECT r.id, r.user_id,
+               COALESCE(p.name, r.user_name, r.user_id) AS user_name,
+               r.exp_amount, r.source_type, r.access_type,
+               r.room_id,
+               COALESCE(rm.room_name, r.room_name, r.room_id) AS room_name,
+               r.create_time,
+               r.anomaly_flag, r.anomaly_types, r.review_status,
+               r.reviewed_by, r.reviewed_at, r.review_note,
+               r.feed_source, r.session_duration_minutes
+        FROM twin_exp_record r
+        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
+        LEFT JOIN room_mapping_room rm ON rm.room_id = r.room_id
+        <include refid="filterWhere"/>
+        ORDER BY r.create_time DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <select id="countPageWithFilters" resultType="long">
+        SELECT COUNT(1)
+        FROM twin_exp_record r
+        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
+        LEFT JOIN room_mapping_room rm ON rm.room_id = r.room_id
+        <include refid="filterWhere"/>
+    </select>
+
+    <!-- ─────────── 审核操作 ─────────── -->
+
+    <update id="updateReviewStatus">
+        UPDATE twin_exp_record
+        SET review_status = #{reviewStatus},
+            reviewed_by = #{reviewedBy},
+            reviewed_at = NOW()
+            <if test="reviewNote != null and reviewNote != ''">
+                , review_note = #{reviewNote}
+            </if>
+        WHERE id = #{id}
+    </update>
+
+    <update id="batchUpdateReviewStatus">
+        UPDATE twin_exp_record
+        SET review_status = #{reviewStatus},
+            reviewed_by = #{reviewedBy},
+            reviewed_at = NOW()
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <!-- ─────────── 汇总查询 ─────────── -->
+
+    <select id="sumExpByUserIdExcludeRejected" resultType="long">
+        SELECT COALESCE(SUM(exp_amount), 0)
+        FROM twin_exp_record
+        WHERE user_id = #{userId}
+          AND (review_status IS NULL OR review_status != 2)
+    </select>
+
+    <select id="countAnomaliesByType" resultType="map">
+        SELECT anomaly_types, COUNT(*) AS cnt
+        FROM twin_exp_record
+        WHERE anomaly_flag = 1
+          AND create_time >= #{startDate}
+          AND create_time <![CDATA[ <= ]]> #{endDate}
+        GROUP BY anomaly_types
+    </select>
+
+    <select id="countPendingReview" resultType="int">
+        SELECT COUNT(*)
+        FROM twin_exp_record
+        WHERE review_status = 0
+    </select>
+
+    <delete id="deleteAll">
+        DELETE FROM twin_exp_record
+    </delete>
+
+    <delete id="deleteByEventDate">
+        DELETE FROM twin_exp_record
+        WHERE DATE(create_time) = #{eventDate}
+    </delete>
+
+    <delete id="deleteBeforeCutoff">
+        DELETE FROM twin_exp_record
+        WHERE create_time &lt; #{cutoffStart}
+    </delete>
+
+    <select id="selectMaxEventDate" resultType="string">
+        SELECT DATE_FORMAT(MAX(create_time), '%Y-%m-%d')
+        FROM twin_exp_record
+        WHERE 1 = 1
+        <if test="cutoffStart != null and cutoffStart != ''">
+            AND create_time &gt;= #{cutoffStart}
+        </if>
+    </select>
+
+    <select id="getDistinctEventDates" resultType="string">
+        SELECT DISTINCT DATE_FORMAT(create_time, '%Y-%m-%d') AS event_date
+        FROM twin_exp_record
+        WHERE 1 = 1
+        <if test="cutoffStart != null and cutoffStart != ''">
+            AND create_time &gt;= #{cutoffStart}
+        </if>
+        ORDER BY event_date ASC
+    </select>
+
+</mapper>

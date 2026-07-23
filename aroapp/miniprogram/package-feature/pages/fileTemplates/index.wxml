@@ -1,0 +1,25 @@
+<view class="page tpl-page">
+  <view class="tpl-toolbar">
+    <van-button type="primary" size="small" icon="plus" loading="{{ uploadLoading }}" disabled="{{ uploadLoading }}" bind:click="onChooseUpload">
+      上传文件
+    </van-button>
+    <text class="tpl-toolbar-tip">支持 pdf、xlsx、docx、zip 等（与 Web 一致）</text>
+  </view>
+  <view wx:if="{{ schemaHint }}" class="tpl-hint">{{ schemaHint }}</view>
+  <view wx:if="{{ loading && rows.length === 0 }}" class="tpl-placeholder">加载中…</view>
+  <block wx:elif="{{ !loading && rows.length === 0 }}">
+    <van-empty description="暂无文件，可点击上方上传" />
+  </block>
+  <van-cell-group wx:if="{{ rows.length > 0 }}" border="{{ false }}" inset="{{ false }}">
+    <van-cell
+      wx:for="{{ rows }}"
+      wx:key="id"
+      title="{{ item.originalName }}"
+      label="{{ item.sizeText }} · {{ item.timeText }}"
+      is-link
+      data-id="{{ item.id }}"
+      data-name="{{ item.originalName }}"
+      bind:click="onDownloadRow"
+    />
+  </van-cell-group>
+</view>
