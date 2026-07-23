@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, Package, TrendingUp } from "lucide-react";
+import { ChevronLeft, Package, TrendingUp, type LucideIcon } from "lucide-react";
 import { useMyMaterialStats } from "@/api/hooks/useMaterial";
 import { StudentCard, Skeleton } from "../components/ui";
 
@@ -40,7 +40,7 @@ export default function StudentMaterialStatsPage() {
   );
 }
 
-function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: number }) {
+function StatCard({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: number }) {
   return (
     <StudentCard className="p-3 flex items-center gap-3">
       <div className="size-10 rounded-[var(--student-radius-sm)] bg-[var(--student-primary-soft)] flex items-center justify-center">

@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   User,
   Package,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStudentDashboard } from "../hooks/use-student-dashboard";
@@ -84,7 +85,7 @@ function QuickActionItem({
   label,
   onClick,
 }: {
-  icon: React.ElementType;
+  icon: LucideIcon;
   label: string;
   onClick?: () => void;
 }) {
