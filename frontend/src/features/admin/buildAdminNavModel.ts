@@ -39,6 +39,7 @@ export type AdminSidebarNavSubgroup = {
   id: string;
   title: string;
   items: AdminSidebarNavItem[];
+  badgeText?: string;
 };
 
 export type AdminSidebarNavGroup = {
@@ -46,6 +47,7 @@ export type AdminSidebarNavGroup = {
   title: string;
   items: AdminSidebarNavItem[];
   subgroups?: AdminSidebarNavSubgroup[];
+  badgeText?: string;
 };
 
 export type AdminHomeEntry = {
@@ -203,9 +205,37 @@ function badgeTextFromKey(pending: PendingBadges | null, key?: keyof PendingBadg
   return t || undefined;
 }
 
+/** 从 badgeText 字符串提取数字（"5"→5, "99+"→99, "3条"→3, ""→0） */
+function parseBadgeNumber(text?: string): number {
+  if (!text) return 0;
+  const m = text.match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/** 计算文件夹内所有项目的角标数字总和 */
+function computeGroupBadge(items: AdminSidebarNavItem[]): string | undefined {
+  let total = 0;
+  for (const it of items) {
+    total += parseBadgeNumber(it.badgeText);
+  }
+  return total > 0 ? formatBadgeCount(total) : undefined;
+}
+
 function formatBadgeCount(n: number): string {
   if (n <= 0) return "";
   return n > 99 ? "99+" : String(n);
+}
+
+/** 为所有分组/子分组注入聚合角标 */
+export function injectGroupBadges(groups: AdminSidebarNavGroup[]): AdminSidebarNavGroup[] {
+  return groups.map((g) => {
+    const subgroups: AdminSidebarNavSubgroup[] | undefined = g.subgroups?.map((sg) => ({
+      ...sg,
+      badgeText: computeGroupBadge(sg.items),
+    }));
+    const allItems = [...g.items, ...(subgroups?.flatMap((sg) => sg.items) ?? [])];
+    return { ...g, subgroups, badgeText: computeGroupBadge(allItems) };
+  });
 }
 
 /** 学生审核入口角标：物资待审 + 延迟免冻结待审（与 MaterialReviewPage 两 Tab 各自标题计数同源，相加=侧栏总数） */
@@ -629,7 +659,7 @@ function convertServerConfigToModel(
     }
   }
 
-  return { sidebarGroups, homeSections };
+  return { sidebarGroups: injectGroupBadges(sidebarGroups), homeSections };
 }
 
 export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBadges | null) {
@@ -773,5 +803,5 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
     return [...top, ...nested];
   });
 
-  return { sidebarGroups, homeSections: mergedHome, flatNavigableItems };
+  return { sidebarGroups: injectGroupBadges(sidebarGroups), homeSections: mergedHome, flatNavigableItems };
 }

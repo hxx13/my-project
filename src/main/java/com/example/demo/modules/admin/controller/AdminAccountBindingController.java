@@ -6,6 +6,7 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.aro.client.CasClient;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.dto.CasTokenInfo;
+import com.example.demo.modules.aro.dto.CasUserInfo;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.token.TokenStore;
 import com.example.demo.modules.auth.entity.User;
@@ -177,15 +178,25 @@ public class AdminAccountBindingController {
         if (user == null) return Result.fail(401, "未登录");
 
         String ticket = body.get("ticket");
+        String serviceUrl = body.get("serviceUrl");
         if (ticket == null || ticket.isBlank()) return Result.fail(400, "ticket 不能为空");
+        if (serviceUrl == null || serviceUrl.isBlank()) return Result.fail(400, "serviceUrl 不能为空");
 
-        CasTokenInfo tokenInfo = casClient.exchangeTicket(ticket);
-        if (tokenInfo == null) return Result.fail(400, "CAS 认证失败：ticket 无效或已过期");
+        // Direct CAS serviceValidate — ticket was issued for OUR service URL
+        CasUserInfo casUser = casClient.validateTicket(ticket, serviceUrl);
+        if (casUser == null) return Result.fail(400, "CAS 认证失败：ticket 无效或已过期");
 
+        // Store CAS identity (ARO JWT acquisition via CASTGC flow to be added later)
+        CasTokenInfo tokenInfo = new CasTokenInfo();
+        tokenInfo.setToken(""); // no JWT yet — requires CASTGC flow
+        tokenInfo.setAccount(casUser.getAccount());
+        tokenInfo.setAroUserId(casUser.getId());
+        tokenInfo.setUserKey(casUser.getUsername());
+        tokenInfo.setExp(0L);
         tokenStore.save(user.getId(), tokenInfo);
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("casAccount", tokenInfo.getAccount());
+        data.put("casAccount", casUser.getAccount());
         data.put("bound", true);
         return Result.success(data);
     }

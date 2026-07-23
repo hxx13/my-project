@@ -242,7 +242,8 @@ export default function LoginPage() {
     // R6: try/catch + toast.error
     (async () => {
       try {
-        const data = await loginCas(ticket);
+        const serviceUrl = window.location.origin + "/#/login";
+        const data = await loginCas(ticket, serviceUrl);
         authStorage.setAuth(data.token, data.role, data.userInfo);
 
         const isStudentAccount = data.userInfo?.accountSource === "STUDENT"

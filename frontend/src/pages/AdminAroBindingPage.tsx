@@ -56,7 +56,8 @@ export default function AdminAroBindingPage() {
     const bind = async () => {
       setBinding(true);
       try {
-        await bindCasAccount(ticket);
+        const serviceUrl = window.location.origin + "/#/console/admin/aro-binding";
+        await bindCasAccount(ticket, serviceUrl);
         toast.success("CAS 账号绑定成功");
         window.location.href = window.location.href
           .replace(/[?&]ticket=[^&#]+/, "")

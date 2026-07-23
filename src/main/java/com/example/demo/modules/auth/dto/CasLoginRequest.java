@@ -6,5 +6,7 @@ import lombok.Data;
 @Data
 public class CasLoginRequest {
     @NotBlank
-    private String ticket;  // ST-xxx from CAS callback
+    private String ticket;      // ST-xxx from CAS callback
+    @NotBlank
+    private String serviceUrl;  // the exact service URL used in /cas/login?service=...
 }

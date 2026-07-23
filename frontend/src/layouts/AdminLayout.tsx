@@ -51,6 +51,7 @@ import {
   isAdminAreaPath,
   normalizeAdminPath,
   patchStudentReviewNavBadges,
+  injectGroupBadges,
   toAdminRoutePath,
   type AdminSidebarNavGroup,
   type AdminSidebarNavItem,
@@ -475,7 +476,8 @@ export default function AdminLayout() {
       showFriendsSidebarShortcut,
       friendsNavBadgeText,
     );
-    return patchStudentReviewNavBadges(groups, liveStudentReviewBadgeText);
+    const patched = patchStudentReviewNavBadges(groups, liveStudentReviewBadgeText);
+    return injectGroupBadges(patched);
   }, [baseSidebarGroups, personalBump, showFriendsSidebarShortcut, friendsNavBadgeText, liveStudentReviewBadgeText]);
 
   const { starredItems, recentItems, registryItems } = useMemo(() => {
@@ -778,6 +780,7 @@ export default function AdminLayout() {
                     ) : null
                   ) : null}
                   <span className="min-w-0 flex-1 truncate">{g.title}</span>
+                  {g.badgeText && !collapsed ? <NavPendingBadge text={g.badgeText} /> : null}
                 </button>
                 {open ? (
                   <div className="space-y-1 border-t border-white/[0.06] px-2 pb-2 pt-1">
@@ -799,6 +802,7 @@ export default function AdminLayout() {
                               <ChevronRight className="h-3 w-3 shrink-0" />
                             )}
                             <span className="min-w-0 flex-1 truncate">{sg.title}</span>
+                            {sg.badgeText ? <NavPendingBadge text={sg.badgeText} /> : null}
                           </button>
                           {sgOpen ? (
                             <div className="space-y-0.5 px-1 pb-1.5">
