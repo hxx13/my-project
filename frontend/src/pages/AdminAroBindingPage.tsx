@@ -4,8 +4,9 @@ import { KeyRound, Unlink, RefreshCw, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   fetchCasBindingStatus,
-  bindCasAccount,
   unbindCasAccount,
+  getCasCaptchaUrl,
+  acquireCasToken,
   type CasBindingStatus,
 } from "@/api/domains/admin.api";
 
@@ -13,10 +14,11 @@ export default function AdminAroBindingPage() {
   const [status, setStatus] = useState<CasBindingStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [binding, setBinding] = useState(false);
-
-  // R7: useRef guard for React Strict Mode double-mount
-  const bindingRef = useRef(false);
+  const [acquiring, setAcquiring] = useState(false);
+  const [casUsername, setCasUsername] = useState("");
+  const [casPassword, setCasPassword] = useState("");
+  const [casCaptcha, setCasCaptcha] = useState("");
+  const [captchaTs, setCaptchaTs] = useState(Date.now());
 
   const fetchStatus = useCallback(async () => {
     setLoading(true);
@@ -31,42 +33,29 @@ export default function AdminAroBindingPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
-  // R9: CAS redirect uses ARO's service URL — ticket will be for ARO, validatable by loginAuth
-  const handleCasLogin = () => {
-    const serviceUrl = encodeURIComponent("https://aro.shsmu.edu.cn/#/jtu/api/loginAuth");
-    window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${serviceUrl}`;
+  const refreshCaptcha = () => setCaptchaTs(Date.now());
+
+  const handleCasAcquire = async () => {
+    if (!casUsername.trim() || !casPassword || !casCaptcha.trim()) {
+      toast.error("请填写 CAS 账号、密码和验证码");
+      return;
+    }
+    setAcquiring(true);
+    try {
+      const result = await acquireCasToken(casUsername.trim(), casPassword, casCaptcha.trim());
+      toast.success(`CAS 绑定成功：${result.casAccount}`);
+      setCasUsername(""); setCasPassword(""); setCasCaptcha("");
+      fetchStatus();
+    } catch (e: any) {
+      toast.error(e?.message || "登录失败");
+      refreshCaptcha();
+      setCasCaptcha("");
+    } finally {
+      setAcquiring(false);
+    }
   };
-
-  // R21: useCasBind — extract ticket from URL and call cas-bind
-  useEffect(() => {
-    const ticket =
-      new URLSearchParams(window.location.search).get("ticket") ||
-      window.location.href.match(/[?&]ticket=([^&#]+)/)?.[1];
-    if (!ticket || status?.bound) return;
-    if (bindingRef.current) return;
-    bindingRef.current = true;
-
-    const bind = async () => {
-      setBinding(true);
-      try {
-        await bindCasAccount(ticket);
-        toast.success("CAS 账号绑定成功");
-        // Clean ticket from URL without navigation
-        const cleanUrl = window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "");
-        window.history.replaceState(null, "", cleanUrl);
-        fetchStatus();
-      } catch (e: any) {
-        toast.error(e?.message || "绑定失败");
-      } finally {
-        setBinding(false);
-      }
-    };
-    bind();
-  }, []);
 
   const handleUnbind = async () => {
     if (!confirm("确定要解绑 CAS 账号吗？解绑后需重新绑定才能使用 ARO 功能。"))
@@ -90,7 +79,6 @@ export default function AdminAroBindingPage() {
     return `${m} 分钟`;
   };
 
-  // R20: loading skeleton
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -100,24 +88,17 @@ export default function AdminAroBindingPage() {
     );
   }
 
-  // R20: error state
   if (error) {
     return (
       <div className="p-6">
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600">
           {error}
-          <button
-            onClick={fetchStatus}
-            className="ml-3 underline hover:no-underline"
-          >
-            重试
-          </button>
+          <button onClick={fetchStatus} className="ml-3 underline hover:no-underline">重试</button>
         </div>
       </div>
     );
   }
 
-  // R20: content state — bound or unbound
   return (
     <div className="p-6 max-w-2xl">
       <h1 className="text-xl font-semibold mb-6">ARO 认证管理</h1>
@@ -136,14 +117,6 @@ export default function AdminAroBindingPage() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={handleCasLogin}
-              className={cn(
-                "inline-flex items-center gap-2 rounded px-4 py-2 text-sm border hover:bg-accent"
-              )}
-            >
-              <RefreshCw className="h-4 w-4" /> 续期
-            </button>
-            <button
               onClick={handleUnbind}
               className={cn(
                 "inline-flex items-center gap-2 rounded px-4 py-2 text-sm",
@@ -156,19 +129,70 @@ export default function AdminAroBindingPage() {
         </div>
       ) : (
         <div className="rounded-lg border p-6 space-y-4">
-          <p className="text-muted-foreground">
-            尚未绑定 CAS 统一认证账号
-          </p>
+          <p className="text-sm text-muted-foreground">请通过 CAS 代理登录获取 ARO Token</p>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium">CAS 账号</label>
+              <input
+                type="text"
+                value={casUsername}
+                onChange={(e) => setCasUsername(e.target.value)}
+                placeholder="如 YF0408"
+                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">密码</label>
+              <input
+                type="password"
+                value={casPassword}
+                onChange={(e) => setCasPassword(e.target.value)}
+                placeholder="CAS 密码"
+                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">验证码</label>
+              <div className="mt-1 flex items-center gap-3">
+                <input
+                  type="text"
+                  value={casCaptcha}
+                  onChange={(e) => setCasCaptcha(e.target.value)}
+                  placeholder="验证码"
+                  className="w-24 rounded border px-3 py-2 text-sm"
+                  autoComplete="off"
+                />
+                <img
+                  src={getCasCaptchaUrl() + "&_=" + captchaTs}
+                  alt="验证码"
+                  className="h-10 cursor-pointer border rounded"
+                  onClick={refreshCaptcha}
+                  title="点击刷新验证码"
+                />
+                <button
+                  type="button"
+                  onClick={refreshCaptcha}
+                  className="text-xs text-blue-600 hover:underline shrink-0"
+                >
+                  刷新
+                </button>
+              </div>
+            </div>
+          </div>
+
           <button
-            onClick={handleCasLogin}
-            disabled={binding}
+            onClick={handleCasAcquire}
+            disabled={acquiring}
             className={cn(
               "inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm",
               "text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             )}
           >
             <KeyRound className="h-4 w-4" />
-            {binding ? "绑定中..." : "绑定 CAS 账号"}
+            {acquiring ? "登录中..." : "代理登录获取 Token"}
           </button>
         </div>
       )}

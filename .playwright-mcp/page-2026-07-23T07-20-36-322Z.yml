@@ -1,0 +1,25 @@
+- generic [ref=e1]:
+  - generic [ref=e20]:
+    - generic [ref=e21]: 用户认证中心统一登录
+    - generic [ref=e24]:
+      - textbox "账号" [active] [ref=e26]: YF0408
+      - textbox "密码" [ref=e28]: 520liweiyang..
+      - table [ref=e29]:
+        - rowgroup [ref=e30]:
+          - row [ref=e31]:
+            - cell [ref=e32]:
+              - textbox "请输入验证码" [ref=e33]
+            - cell [ref=e34]:
+              - img "后端必须输入验证" [ref=e35]
+      - generic [ref=e36]:
+        - link "用户注册" [ref=e37] [cursor=pointer]:
+          - /url: https://auth.shsmu.edu.cn
+        - link "隐私安全" [ref=e38] [cursor=pointer]:
+          - /url: https://auth2.shsmu.edu.cn/views/api/privacySecurity.jsp
+        - link "忘记密码" [ref=e39] [cursor=pointer]:
+          - /url: https://auth.shsmu.edu.cn
+        - button "登录" [ref=e41] [cursor=pointer]
+      - paragraph [ref=e43]
+  - generic [ref=e46]:
+    - generic [ref=e47]: Copyright © Shanghai Jiao Tong University School of Medicine
+    - generic [ref=e48]: 上海交通大学医学院 (021)63846590*776295
