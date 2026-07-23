@@ -112,7 +112,7 @@ public class CasClientImpl implements CasClient {
         }
 
         String xmlBody = response.getBody();
-        log.debug("[CAS] serviceValidate 响应: {}", xmlBody);
+        log.warn("[CAS] serviceValidate URL={} 响应: {}", url, xmlBody);
 
         return parseCasXml(xmlBody);
     }
