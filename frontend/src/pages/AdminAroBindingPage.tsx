@@ -46,17 +46,20 @@ export default function AdminAroBindingPage() {
     if (!ticket || status?.bound) return;
     ticketRef.current = true;
 
+    // Clean ticket from URL immediately — CAS tickets are one-time use
+    const cleanUrl = window.location.href
+      .replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "");
+    window.history.replaceState(null, "", cleanUrl);
+
     (async () => {
       setBinding(true);
       try {
         await bindCasAccount(ticket);
         toast.success("CAS 账号绑定成功");
-        const cleanUrl = window.location.href
-          .replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "");
-        window.history.replaceState(null, "", cleanUrl);
         fetchStatus();
       } catch (e: any) {
-        toast.error(e?.message || "绑定失败");
+        toast.error(e?.message || "绑定失败，请重新点击绑定按钮");
+        ticketRef.current = false; // allow retry
       } finally {
         setBinding(false);
       }

@@ -239,13 +239,14 @@ export default function LoginPage() {
     if (!ticket) return;
     casProcessedRef.current = true;
 
+    // Clean ticket from URL immediately — CAS tickets are one-time use
+    const cleanUrl = window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "").replace(/#$/, "");
+    window.history.replaceState(null, "", cleanUrl);
+
     // R6: try/catch + toast.error
     (async () => {
       try {
         const data = await loginCas(ticket);
-        // Clean ticket from URL
-        const cleanUrl = window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "").replace(/#$/, "");
-        window.history.replaceState(null, "", cleanUrl);
         authStorage.setAuth(data.token, data.role, data.userInfo);
 
         const isStudentAccount = data.userInfo?.accountSource === "STUDENT"
@@ -275,7 +276,8 @@ export default function LoginPage() {
         });
         navigate(target, { replace: true });
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "CAS 登录失败");
+        casProcessedRef.current = false; // allow retry after fresh CAS login
+        toast.error(error instanceof Error ? error.message : "CAS 登录失败，请重试");
       }
     })();
   }, []);
