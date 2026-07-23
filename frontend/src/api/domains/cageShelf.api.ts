@@ -496,6 +496,14 @@ export async function fetchSnapshotBatches(): Promise<SnapshotBatch[]> {
   return res.data.data ?? [];
 }
 
+export async function deleteSnapshotBatch(batchId: string): Promise<{ deletedBatch: string; eventsDeleted: number; snapshotsDeleted: number }> {
+  const res = await authHttp.delete<Result<{ deletedBatch: string; eventsDeleted: number; snapshotsDeleted: number }>>(
+    `/v1/cage-shelves/snapshot-batches/${encodeURIComponent(batchId)}`
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "删除快照失败");
+  return res.data.data;
+}
+
 // ---- 笼位特殊状态持续告警 ----
 
 export interface CageAlertConfig {
@@ -526,9 +534,9 @@ export interface PersistedAlert {
   firstDetectedAt: string;
 }
 
-export async function fetchPersistedAlerts(baselineBatchId?: string, mode?: string): Promise<{ alerts: PersistedAlert[]; generatedAt: string; spanDays: number; baselineBatchId?: string; currentBatchId?: string }> {
+export async function fetchPersistedAlerts(baselineBatchId?: string, currentBatchId?: string, mode?: string): Promise<{ alerts: PersistedAlert[]; generatedAt: string; spanDays: number; baselineBatchId?: string; currentBatchId?: string }> {
   const res = await authHttp.get<Result<any>>("/v1/cage-shelves/persisted-alerts", {
-    params: { baselineBatchId: baselineBatchId || "", mode: mode || "auto" },
+    params: { baselineBatchId: baselineBatchId || "", currentBatchId: currentBatchId || "", mode: mode || "auto" },
   });
   if (!res.data?.success) throw new Error(res.data?.message || "加载告警数据失败");
   return res.data.data ?? { alerts: [], generatedAt: "", spanDays: 0 };

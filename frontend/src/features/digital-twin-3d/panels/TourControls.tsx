@@ -1,59 +1,66 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store/useStore';
+import { useShallow } from 'zustand/react/shallow';
 
-const FLY: any = () => (window as any).__dt3d_flyTo;
-
-const ORBIT_WAYPOINTS: [number, number, number][] = [
-  [45, 14, 0], [0, 14, -45], [-45, 14, 0], [0, 14, 45],
-];
-const HERO_WAYPOINTS: [number, number, number][] = [
-  [0, 35, 60], [0, 20, 30], [0, 10, 15],
-];
-const TARGET: [number, number, number] = [0, 8, 0];
+// P2.8: 面板令牌
+const SELECT_STYLE = 'px-3 py-2 rounded-xl text-sm font-bold bg-[var(--app-color-surface-elevated)]/85 backdrop-blur-lg border border-[var(--app-color-border-subtle)]/60 text-[var(--app-color-text-primary)]';
+const BTN_STYLE = 'px-4 py-2 rounded-xl text-sm font-bold transition-colors disabled:opacity-40';
 
 export default function TourControls() {
-  const isTouring = useStore((s) => s.isTouring);
-  const tourStyle = useStore((s) => s.tourStyle);
-  const startTour = useStore((s) => s.startTour);
-  const stopTour = useStore((s) => s.stopTour);
+  const { isTouring, tourStyle, startTour, stopTour, flyTo, killAnimation, globalCenter, globalRadius } =
+    useStore(
+      useShallow((s) => ({
+        isTouring: s.isTouring,
+        tourStyle: s.tourStyle,
+        startTour: s.startTour,
+        stopTour: s.stopTour,
+        flyTo: s._cameraActions.flyTo,
+        killAnimation: s._cameraActions.killAnimation,
+        globalCenter: s.globalCenter,
+        globalRadius: s.globalRadius,
+      })),
+    );
+
   const runningRef = useRef(false);
   const timerIds = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // 组件卸载时清理：停止巡航 + 清除所有定时器
+  const waypoints = useMemo(() => {
+    const dist = globalRadius * 2.0;
+    const cx = globalCenter[0], cy = globalCenter[1], cz = globalCenter[2];
+    if (tourStyle === 'hero') {
+      return [
+        [cx, cy + dist * 1.2, cz + dist * 1.5],
+        [cx, cy + dist * 0.6, cz + dist * 0.7],
+        [cx, cy + dist * 0.2, cz + dist * 0.3],
+      ] as [number, number, number][];
+    }
+    return [
+      [cx + dist, cy + dist * 0.5, cz],
+      [cx, cy + dist * 0.5, cz - dist],
+      [cx - dist, cy + dist * 0.5, cz],
+      [cx, cy + dist * 0.5, cz + dist],
+    ] as [number, number, number][];
+  }, [globalCenter, globalRadius, tourStyle]);
+
   useEffect(() => {
     return () => {
       runningRef.current = false;
       timerIds.current.forEach(clearTimeout);
       timerIds.current = [];
-      // 如果正在巡航中卸载组件，重置 store 状态
-      if (useStore.getState().isTouring) {
-        useStore.getState().stopTour();
-      }
+      if (useStore.getState().isTouring) useStore.getState().stopTour();
+      killAnimation?.();
     };
   }, []);
 
-  const clearTimers = () => {
-    timerIds.current.forEach(clearTimeout);
-    timerIds.current = [];
-  };
+  const clearTimers = () => { timerIds.current.forEach(clearTimeout); timerIds.current = []; };
 
   const runTour = async () => {
-    if (useStore.getState().isTouring) return;
-    startTour();
+    if (!startTour()) return;
     runningRef.current = true;
-    const waypoints = useStore.getState().tourStyle === 'hero' ? HERO_WAYPOINTS : ORBIT_WAYPOINTS;
     for (const wp of waypoints) {
-      if (!useStore.getState().isTouring || !runningRef.current) {
-        clearTimers();
-        if (useStore.getState().isTouring) stopTour();
-        return;
-      }
-      FLY()?.(wp, TARGET, 2.5);
-      await new Promise((r) => {
-        const id = setTimeout(r, 3000);
-        timerIds.current.push(id);
-      });
-      // 清除已完成的定时器 ID 防止累积
+      if (!useStore.getState().isTouring || !runningRef.current) { clearTimers(); if (useStore.getState().isTouring) stopTour(); return; }
+      flyTo?.(wp, globalCenter, 2.5);
+      await new Promise((r) => { const id = setTimeout(r, 3000); timerIds.current.push(id); });
       timerIds.current = timerIds.current.filter((id) => id !== undefined);
     }
     clearTimers();
@@ -61,28 +68,30 @@ export default function TourControls() {
     if (useStore.getState().isTouring) stopTour();
   };
 
-  const handleStop = () => {
-    runningRef.current = false;
-    clearTimers();
-    stopTour();
-  };
+  const handleStop = () => { runningRef.current = false; clearTimers(); killAnimation?.(); stopTour(); };
 
   return (
-    <div className="absolute right-4 bottom-4 z-10 pointer-events-none">
+    <div className="absolute right-4 bottom-4 z-[var(--z-dropdown,200)] pointer-events-none">
       <div className="flex gap-2 pointer-events-auto">
         {!isTouring && (
           <select
             value={tourStyle}
             onChange={(e) => useStore.setState({ tourStyle: e.target.value as 'orbit' | 'hero' })}
-            className="px-3 py-2 rounded-xl text-sm font-bold bg-white/85 backdrop-blur-lg border border-white/60 text-slate-700"
+            className={SELECT_STYLE}
+            aria-label="巡航风格"
           >
             <option value="orbit">环绕</option>
             <option value="hero">推近</option>
           </select>
         )}
-        <button onClick={isTouring ? handleStop : runTour}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${isTouring ? 'bg-red-500 text-white' : 'bg-white/85 backdrop-blur-lg border border-white/60 text-slate-700 hover:bg-white'}`}
-        >{isTouring ? '⏹ 停止' : '🚀 巡航'}</button>
+        <button
+          onClick={isTouring ? handleStop : runTour}
+          disabled={!flyTo}
+          aria-label={isTouring ? '停止巡航' : '启动巡航'}
+          className={`${BTN_STYLE} ${isTouring ? 'bg-red-500 text-white' : 'bg-[var(--app-color-surface-elevated)]/85 backdrop-blur-lg border border-[var(--app-color-border-subtle)]/60 text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-elevated)]'}`}
+        >
+          {isTouring ? '⏹ 停止' : '🚀 巡航'}
+        </button>
       </div>
     </div>
   );

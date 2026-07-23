@@ -1,23 +1,37 @@
-import { Html } from '@react-three/drei';
 import { useStore } from '../store/useStore';
+import { RoomInfoCard } from '../components/InfoCard';
 
+/**
+ * Canvas 外部屏幕浮窗：读取 store.screenProjection（由 CardTracker 每帧更新），
+ * 将卡片定位在 3D 目标物体的屏幕投影位置上方。
+ */
 export default function SceneOverlay() {
   const node = useStore((s) => s.selectedNode);
+  const proj = useStore((s) => s.screenProjection);
   const clear = useStore((s) => s.setSelectedNode);
 
-  if (!node) return null;
+  if (!node || !proj || !proj.visible) return null;
 
   return (
-    <Html key={node.name} position={node.worldPos} center distanceFactor={30} zIndexRange={[100, 0]}>
-      <div className="bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl rounded-xl px-3 py-2 text-xs whitespace-nowrap pointer-events-auto">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <span className="font-bold text-slate-800">{node.name}</span>
-            <span className="ml-2 text-slate-400 text-[10px]">{node.type}</span>
-          </div>
-          <button onClick={() => clear(null)} className="text-slate-400 hover:text-slate-600">✕</button>
-        </div>
+    <div
+      className="fixed z-[var(--z-modal,800)] pointer-events-none"
+      style={{
+        left: proj.x,
+        top: proj.y,
+        transform: 'translate(-50%, calc(-100% - 16px))',
+      }}
+    >
+      <div className="pointer-events-auto">
+        <RoomInfoCard
+          roomName={node.name}
+          roomType={node.type}
+          onClose={() => clear(null)}
+        />
       </div>
-    </Html>
+      {/* 小三角指示器 */}
+      <div className="flex justify-center pointer-events-none">
+        <div className="w-3 h-3 rotate-45 bg-[var(--app-color-surface-elevated)]/95 border-r border-b border-[var(--app-color-border-default)] -mt-[7px]" />
+      </div>
+    </div>
   );
 }

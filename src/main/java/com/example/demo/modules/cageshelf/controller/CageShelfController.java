@@ -6,6 +6,7 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageEventLog;
 import com.example.demo.modules.cageshelf.mapper.CageEventLogMapper;
+import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
 import com.example.demo.modules.cageshelf.mapper.UserCageColorConfigMapper;
 import com.example.demo.modules.cageshelf.service.CageAlertService;
 import com.example.demo.modules.cageshelf.service.CageScanProgressService;
@@ -13,6 +14,7 @@ import com.example.demo.modules.cageshelf.service.CageShelfService;
 import com.example.demo.modules.student.service.StudentCageShelfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
@@ -40,6 +43,7 @@ public class CageShelfController {
     private final UserCageColorConfigMapper colorConfigMapper;
     private final CageEventLogMapper eventLogMapper;
     private final CageAlertService cageAlertService;
+    private final CageSpecialStatusSnapshotMapper snapshotMapper;
 
     public CageShelfController(AuthContextService authContextService,
                                CageShelfService cageShelfService,
@@ -47,7 +51,8 @@ public class CageShelfController {
                                CageScanProgressService cageScanProgressService,
                                UserCageColorConfigMapper colorConfigMapper,
                                CageEventLogMapper eventLogMapper,
-                               CageAlertService cageAlertService) {
+                               CageAlertService cageAlertService,
+                               CageSpecialStatusSnapshotMapper snapshotMapper) {
         this.authContextService = authContextService;
         this.cageShelfService = cageShelfService;
         this.studentCageShelfService = studentCageShelfService;
@@ -55,6 +60,7 @@ public class CageShelfController {
         this.colorConfigMapper = colorConfigMapper;
         this.eventLogMapper = eventLogMapper;
         this.cageAlertService = cageAlertService;
+        this.snapshotMapper = snapshotMapper;
     }
 
     @PostMapping("/import")
@@ -308,12 +314,13 @@ public class CageShelfController {
     @Operation(summary = "基于快照对比查询持续告警")
     public Result<?> persistedAlerts(
             @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) String currentBatchId,
             @RequestParam(required = false) String baselineBatchId,
             @RequestParam(defaultValue = "auto") String mode) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-        return Result.success(cageAlertService.getPersistedAlerts(baselineBatchId, mode));
+        return Result.success(cageAlertService.getPersistedAlerts(currentBatchId, baselineBatchId, mode));
     }
 
     @GetMapping("/alert-config")
@@ -349,6 +356,26 @@ public class CageShelfController {
         }
         cageAlertService.saveConfig(configs, mode);
         return Result.success();
+    }
+
+    // ---- 快照批次管理 ----
+
+    @DeleteMapping("/snapshot-batches/{scanBatchId}")
+    @Operation(summary = "删除指定快照批次及其关联事件日志")
+    @Transactional
+    public Result<?> deleteSnapshotBatch(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable String scanBatchId) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        int eventsDeleted = eventLogMapper.deleteByScanBatchId(scanBatchId);
+        int snapshotsDeleted = snapshotMapper.deleteByScanBatchId(scanBatchId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("deletedBatch", scanBatchId);
+        out.put("eventsDeleted", eventsDeleted);
+        out.put("snapshotsDeleted", snapshotsDeleted);
+        return Result.success(out);
     }
 
     /** 一次性：从 cage_shelf_grid_cache 的 grid_json 解析 animalCageType 回填 cage_shelf_cell_snapshot */

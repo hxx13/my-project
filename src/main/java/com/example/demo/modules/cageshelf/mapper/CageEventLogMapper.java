@@ -52,4 +52,7 @@ public interface CageEventLogMapper {
             @Param("currShelveId") String currShelveId,
             @Param("currPosition") String currPosition,
             @Param("sinceTime") java.time.LocalDateTime sinceTime);
+
+    /** 按扫描批次删除事件日志（配合快照删除）。 */
+    int deleteByScanBatchId(@Param("scanBatchId") String scanBatchId);
 }

@@ -208,29 +208,30 @@ public class AdminNavConfigService {
      */
     @Transactional
     public Map<String, Object> ensureItem(String path, String label, String icon, String groupTitle) {
-        // 1. 检查是否有同路径的 ITEM 已存在
-        List<String> existing = jdbcTemplate.queryForList(
-                "SELECT id FROM admin_nav_config WHERE item_path = ? AND type = 'ITEM'",
-                String.class, path);
-        if (!existing.isEmpty()) {
-            return Map.of("existed", true, "id", existing.get(0));
-        }
-
-        // 2. 找到或创建 GROUP
+        // 找到或创建 GROUP
         String groupId = findOrCreateGroup(groupTitle);
 
-        // 3. 获取当前最大 sort_order
+        // 获取当前最大 sort_order
         Integer maxSort = jdbcTemplate.queryForObject(
                 "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id = ?",
                 Integer.class, groupId);
         int sortOrder = (maxSort != null ? maxSort : -1) + 1;
 
-        // 4. 创建 ITEM
+        // INSERT ... ON DUPLICATE KEY UPDATE —— UNIQUE(item_path) 保证无竞态重复
         String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-        jdbcTemplate.update(
+        int affected = jdbcTemplate.update(
                 "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order, visible) " +
-                "VALUES (?, ?, 'ITEM', ?, ?, ?, ?, 1)",
+                "VALUES (?, ?, 'ITEM', ?, ?, ?, ?, 1) " +
+                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), " +
+                "item_icon = VALUES(item_icon), sort_order = VALUES(sort_order), visible = 1",
                 id, groupId, label, path, icon, sortOrder);
+        if (affected == 0) {
+            // duplicate key hit an existing row but no update needed
+            List<String> existing = jdbcTemplate.queryForList(
+                    "SELECT id FROM admin_nav_config WHERE item_path = ? AND type = 'ITEM'",
+                    String.class, path);
+            if (!existing.isEmpty()) return Map.of("existed", true, "id", existing.get(0));
+        }
         log.info("[admin-nav-config] ensureItem created: path={} label={} group={}", path, label, groupTitle);
         return Map.of("existed", false, "id", id, "created", true);
     }

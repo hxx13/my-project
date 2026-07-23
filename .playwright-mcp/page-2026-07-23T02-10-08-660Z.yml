@@ -1,0 +1,186 @@
+- generic [ref=f1e3]:
+  - generic [ref=f1e5]:
+    - generic [ref=f1e6]:
+      - generic [ref=f1e7]: 实验动物管理系统 (ARO)
+      - generic [ref=f1e9]:
+        - text:  
+        - generic [ref=f1e10]:
+          - generic [ref=f1e11] [cursor=pointer]: 后端
+          - generic [ref=f1e13] [cursor=pointer]: 退出 |
+          - generic [ref=f1e14]: 卢今
+    - menubar [ref=f1e20]:
+      - menuitem "首页" [ref=f1e21] [cursor=pointer]
+      - menuitem "人员进出" [ref=f1e22] [cursor=pointer]
+      - menuitem "代码管理" [ref=f1e23] [cursor=pointer]
+      - menuitem "培训管理" [ref=f1e24] [cursor=pointer]
+      - menuitem "SOP管理" [ref=f1e25] [cursor=pointer]
+      - menuitem "实验动物" [ref=f1e26] [cursor=pointer]
+      - menuitem "笼位管理" [ref=f1e27] [cursor=pointer]
+      - menuitem "药品管理" [ref=f1e28] [cursor=pointer]
+      - menuitem "物品管理" [ref=f1e29] [cursor=pointer]
+      - menuitem "科研管理" [ref=f1e30] [cursor=pointer]
+      - menuitem "审批管理" [ref=f1e31] [cursor=pointer]
+      - menuitem "饲养处理" [ref=f1e32] [cursor=pointer]
+      - menuitem "饲养历史" [ref=f1e33] [cursor=pointer]
+  - generic [ref=f1e36]:
+    - complementary [ref=f1e37]:
+      - generic [ref=f1e38]:
+        - paragraph [ref=f1e39]: 培训管理
+        - menubar [ref=f1e40]:
+          - menuitem "视频管理" [ref=f1e41] [cursor=pointer]
+          - menuitem "PDF文件管理" [ref=f1e42] [cursor=pointer]
+          - menuitem "试题库建设" [ref=f1e43] [cursor=pointer]
+          - menuitem "试卷组卷" [ref=f1e44] [cursor=pointer]
+          - menuitem "成绩查询" [ref=f1e45] [cursor=pointer]
+          - menuitem "培训安排" [ref=f1e46] [cursor=pointer]
+          - menuitem "培训审批与评分" [ref=f1e47] [cursor=pointer]
+          - menuitem "合格证书" [ref=f1e48] [cursor=pointer]
+    - main [ref=f1e49]:
+      - generic [ref=f1e50]:
+        - heading "培训审批与评分" [level=1] [ref=f1e51]
+        - generic [ref=f1e52]:
+          - generic [ref=f1e55]:
+            - generic [ref=f1e57]:
+              - generic [ref=f1e58]: 培训状态
+              - generic [ref=f1e61]:
+                - textbox "请选择" [ref=f1e62] [cursor=pointer]
+                - generic: 
+            - generic [ref=f1e66]:
+              - generic [ref=f1e67]: 培训类型
+              - generic [ref=f1e70]:
+                - textbox "请选择" [ref=f1e71] [cursor=pointer]
+                - generic: 
+            - generic [ref=f1e75]:
+              - generic [ref=f1e76]: 主考官
+              - generic [ref=f1e79]:
+                - textbox "请选择" [ref=f1e80] [cursor=pointer]
+                - generic: 
+            - button "查询" [ref=f1e86] [cursor=pointer]
+          - grid "数据网格" [ref=f1e87]:
+            - row [ref=f1e99]:
+              - columnheader "列 序号" [ref=f1e100]: 序号
+              - columnheader "列 培训编号" [ref=f1e101] [cursor=pointer]: 培训编号
+              - columnheader "列 培训名称" [ref=f1e102] [cursor=pointer]: 培训名称
+              - columnheader "列 培训类型" [ref=f1e103] [cursor=pointer]: 培训类型
+              - columnheader "列 培训时间" [ref=f1e104] [cursor=pointer]: 培训时间
+              - columnheader "列 总人数" [ref=f1e105] [cursor=pointer]: 总人数
+              - columnheader "列 保存时间" [ref=f1e106] [cursor=pointer]: 保存时间
+              - columnheader "列 提交时间" [ref=f1e107] [cursor=pointer]: 提交时间
+              - columnheader "列 录入状态" [ref=f1e108] [cursor=pointer]: 录入状态
+            - generic [ref=f1e109]:
+              - row [ref=f1e120]:
+                - gridcell "1" [ref=f1e121]
+                - gridcell [ref=f1e122]
+                - gridcell "浦东行为室C区" [ref=f1e123]
+                - gridcell "准入培训" [ref=f1e124]
+                - gridcell "2025-12-04 16:58" [ref=f1e125]
+                - gridcell "500" [ref=f1e126]
+                - gridcell [ref=f1e127]
+                - gridcell [ref=f1e128]
+                - gridcell "未考试" [ref=f1e129]
+              - row [ref=f1e130]:
+                - gridcell "2" [ref=f1e131]
+                - gridcell [ref=f1e132]
+                - gridcell "4F测试" [ref=f1e133]
+                - gridcell "准入培训" [ref=f1e134]
+                - gridcell "2025-12-01 09:55" [ref=f1e135]
+                - gridcell "5" [ref=f1e136]
+                - gridcell [ref=f1e137]
+                - gridcell [ref=f1e138]
+                - gridcell "未考试" [ref=f1e139]
+              - row [ref=f1e140]:
+                - gridcell "3" [ref=f1e141]
+                - gridcell [ref=f1e142]
+                - gridcell "周浦3F测试" [ref=f1e143]
+                - gridcell "准入培训" [ref=f1e144]
+                - gridcell "2025-12-01 09:37" [ref=f1e145]
+                - gridcell "2" [ref=f1e146]
+                - gridcell [ref=f1e147]
+                - gridcell [ref=f1e148]
+                - gridcell "未考试" [ref=f1e149]
+              - row [ref=f1e150]:
+                - gridcell "4" [ref=f1e151]
+                - gridcell [ref=f1e152]
+                - gridcell "浦东行为室B区" [ref=f1e153]
+                - gridcell "准入培训" [ref=f1e154]
+                - gridcell "2025-11-28 14:52" [ref=f1e155]
+                - gridcell "500" [ref=f1e156]
+                - gridcell [ref=f1e157]
+                - gridcell [ref=f1e158]
+                - gridcell "未考试" [ref=f1e159]
+              - row [ref=f1e160]:
+                - gridcell "5" [ref=f1e161]
+                - gridcell [ref=f1e162]
+                - gridcell "浦东实验A区" [ref=f1e163]
+                - gridcell "准入培训" [ref=f1e164]
+                - gridcell "2025-11-14 18:36" [ref=f1e165]
+                - gridcell "500" [ref=f1e166]
+                - gridcell [ref=f1e167]
+                - gridcell [ref=f1e168]
+                - gridcell "未考试" [ref=f1e169]
+              - row [ref=f1e170]:
+                - gridcell "6" [ref=f1e171]
+                - gridcell [ref=f1e172]
+                - gridcell "浦东隔离器" [ref=f1e173]
+                - gridcell "准入培训" [ref=f1e174]
+                - gridcell "2025-11-05 10:31" [ref=f1e175]
+                - gridcell "300" [ref=f1e176]
+                - gridcell [ref=f1e177]
+                - gridcell [ref=f1e178]
+                - gridcell "未考试" [ref=f1e179]
+              - row [ref=f1e180]:
+                - gridcell "7" [ref=f1e181]
+                - gridcell [ref=f1e182]
+                - gridcell "辐照间" [ref=f1e183]
+                - gridcell "准入培训" [ref=f1e184]
+                - gridcell "2025-09-23 09:44" [ref=f1e185]
+                - gridcell "100" [ref=f1e186]
+                - gridcell [ref=f1e187]
+                - gridcell [ref=f1e188]
+                - gridcell "未考试" [ref=f1e189]
+              - row [ref=f1e190]:
+                - gridcell "8" [ref=f1e191]
+                - gridcell [ref=f1e192]
+                - gridcell "周浦2F" [ref=f1e193]
+                - gridcell "准入培训" [ref=f1e194]
+                - gridcell "2025-09-23 08:42" [ref=f1e195]
+                - gridcell "800" [ref=f1e196]
+                - gridcell [ref=f1e197]
+                - gridcell [ref=f1e198]
+                - gridcell "未考试" [ref=f1e199]
+              - row [ref=f1e200]:
+                - gridcell "9" [ref=f1e201]
+                - gridcell [ref=f1e202]
+                - gridcell "手术前培训" [ref=f1e203]
+                - gridcell "手术培训" [ref=f1e204]
+                - gridcell "2023-09-01 17:43" [ref=f1e205]
+                - gridcell "100" [ref=f1e206]
+                - gridcell [ref=f1e207]
+                - gridcell [ref=f1e208]
+                - gridcell "未考试" [ref=f1e209]
+              - row [ref=f1e210]:
+                - gridcell "10" [ref=f1e211]
+                - gridcell [ref=f1e212]
+                - gridcell "行为室" [ref=f1e213]
+                - gridcell "准入培训" [ref=f1e214]
+                - gridcell "2023-08-21 14:49" [ref=f1e215]
+                - gridcell "400" [ref=f1e216]
+                - gridcell [ref=f1e217]
+                - gridcell [ref=f1e218]
+                - gridcell "未考试" [ref=f1e219]
+            - generic [ref=f1e220]:
+              - generic [ref=f1e221]:
+                - button "Display 10 items on page" [ref=f1e222]: "10"
+                - button "Display 15 items on page" [ref=f1e223] [cursor=pointer]: "15"
+                - button "Display 20 items on page" [ref=f1e224] [cursor=pointer]: "20"
+                - button "Display 30 items on page" [ref=f1e225] [cursor=pointer]: "30"
+              - generic [ref=f1e226]:
+                - generic [ref=f1e227]: 第1页,共3页 (22 个项目)
+                - button "Previous page" [ref=f1e228]: 
+                - button "Page 1" [ref=f1e229]: "1"
+                - button "Page 2" [ref=f1e230] [cursor=pointer]: "2"
+                - button "Page 3" [ref=f1e231] [cursor=pointer]: "3"
+                - button "Next page" [ref=f1e232] [cursor=pointer]: 
+  - generic [ref=f1e236]:
+    - paragraph [ref=f1e237]: 地址：重庆南路280号 | 邮编：200025 | 电话：021-63846590转776559、776508
+    - paragraph [ref=f1e238]: 版权所有 © 2021 上海交通大学医学院实验动物科学部

@@ -374,7 +374,7 @@ function Inner(){
     if (configMode === "auto") return batchList.length >= 2 ? batchList[1].scanBatchId : (batchList[0]?.scanBatchId || "");
     return localStorage.getItem("cageCompareBaseline") || (batchList.length >= 2 ? batchList[1].scanBatchId : "");
   }, [configMode, batchList]);
-  const{data:alertData}=useQuery({queryKey:["persistedAlerts",alertBaselineId,configMode],queryFn:()=>fetchPersistedAlerts(alertBaselineId||undefined,configMode),refetchInterval:60_000,enabled:configMode!=="off"});
+  const{data:alertData}=useQuery({queryKey:["persistedAlerts",alertBaselineId,selectedBatchId,configMode],queryFn:()=>fetchPersistedAlerts(alertBaselineId||undefined,selectedBatchId||undefined,configMode),refetchInterval:60_000,enabled:configMode!=="off"});
   const alertMap=useMemo(()=>{
     const m=new Map<string,PersistedAlert>();
     if(!alertData?.alerts)return m;
@@ -499,7 +499,7 @@ function Inner(){
               <select
                 className={`rounded-twin-md border px-2 py-1 text-[11px] font-semibold transition ${selectedBatchId ? 'bg-amber-100 border-amber-400 text-amber-900' : 'bg-[var(--twin-canvas)] border-[var(--twin-hairline)] text-[var(--twin-ink)]'}`}
                 value={selectedBatchId}
-                onChange={(e) => { setSelectedBatchId(e.target.value); setConfigMode("off"); localStorage.setItem("cageAlertConfigMode","off"); }}
+                onChange={(e) => { const v = e.target.value; setSelectedBatchId(v); setConfigMode("off"); localStorage.setItem("cageAlertConfigMode","off"); localStorage.setItem("cageCompareCurrent", v); }}
               >
                 {batchList.map((b) => (
                   <option key={b.scanBatchId} value={b.scanBatchId}>

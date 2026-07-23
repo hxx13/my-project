@@ -1,0 +1,17 @@
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: 实验动物管理系统 (ARO)
+      - generic [ref=e10]:
+        - generic [ref=e11] [cursor=pointer]: 登录
+        - generic [ref=e12] [cursor=pointer]: 注册
+    - generic [ref=e13]:
+      - generic:
+        - generic:
+          - menubar
+  - generic [ref=e16]:
+    - button "统一身份认证登录（首选）" [ref=e17] [cursor=pointer]
+    - button "账号密码登录" [ref=e18] [cursor=pointer]
+  - generic [ref=e22]:
+    - paragraph [ref=e23]: 地址：重庆南路280号 | 邮编：200025 | 电话：021-63846590转776559、776508
+    - paragraph [ref=e24]: 版权所有 © 2021 上海交通大学医学院实验动物科学部

@@ -135,14 +135,17 @@ for (const p of adminPages) addPage(p);
 for (const p of twinPages) addPage(p);
 for (const it of registryItems) addPage(it.path, it);
 
-const sidebarEntries = registryItems.map((it) => ({
-  path: it.path,
-  label: it.label,
-  fallbackMinRole: it.fallbackMinRole,
-  groupTitle: it.groupTitle,
-  registryId: it.registryId,
-  entrySource: "sidebar",
-}));
+// 只输出 pages 中未覆盖的 sidebar 条目（pages 已包含所有 registry 路径，避免 nav-manager 重复显示）
+const sidebarEntries = registryItems
+  .filter((it) => !pagePaths.has(it.path))
+  .map((it) => ({
+    path: it.path,
+    label: it.label,
+    fallbackMinRole: it.fallbackMinRole,
+    groupTitle: it.groupTitle,
+    registryId: it.registryId,
+    entrySource: "sidebar",
+  }));
 
 const manifest = {
   version: 1,

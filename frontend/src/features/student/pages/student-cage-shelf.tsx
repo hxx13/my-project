@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
 import CageCellOverlays, { CAGE_TYPE_LABEL, useStatusStyle, getDominantStatusCode } from "@/features/cage-shelf/components/CageCellOverlays";
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
-import { fetchFullTree, fetchCageShelfDetail, fetchBookmarks, toggleBookmarkApi, type CageShelfTreeNode, type BookmarkEntry } from "@/api/domains/cageShelf.api";
-import type { CageShelfCell } from "../api/student.api";
+import { fetchFullTree, type CageShelfTreeNode } from "@/api/domains/cageShelf.api";
+import { fetchStudentCageShelfDetail, fetchPinnedCageShelves, toggleCageShelfPin, type CageShelfCell, type PinnedCageShelfDetail } from "../api/student.api";
 import { CellDetailPanel } from "./cage-shelf-detail-panel";
 import { useQuery } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
@@ -90,18 +90,6 @@ function ShelfGrid({ title, detail, loading, emptyHint, onCellClick, isBookmarke
 /* ================================================================== */
 /*  Bookmark Shelf Grid (copied from AdminCageShelfPage)                 */
 /* ================================================================== */
-
-function BookmarkShelfGrid({ roomId, shelveId, title, campusName, roomName, isBookmarked, onToggleBookmark, onCellClick }: {
-  roomId: string; shelveId: string; title: string; campusName?: string; roomName?: string;
-  isBookmarked?: boolean; onToggleBookmark?: () => void; onCellClick: (c: any) => void;
-}) {
-  const snap = useQuery({ queryKey: ["shelfCells", roomId, shelveId], queryFn: () => fetchCageShelfDetail(shelveId), staleTime: 5 * 60 * 1000 });
-  const detail = snap.data;
-  const loading = snap.isLoading;
-  if (loading) return <div className="text-xs text-[var(--twin-mute)] py-4 text-center">加载笼位…</div>;
-  if (!detail || detail.totalCells === 0) return <div className="text-xs text-[var(--twin-mute)] py-4 text-center">暂无数据</div>;
-  return <ShelfGrid title={title} detail={detail} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBookmarked} onToggleBookmark={onToggleBookmark} onCellClick={onCellClick} />;
-}
 
 /* ================================================================== */
 /*  Tree rendering                                                      */
@@ -215,7 +203,7 @@ export default function StudentCageShelfPage() {
     let cancelled = false; setLoading(true);
     void (async () => {
       try {
-        const results = await Promise.all(shelves.map(s => fetchCageShelfDetail(s.shelveId).catch(() => null)));
+        const results = await Promise.all(shelves.map(s => fetchStudentCageShelfDetail(s.shelveId).catch(() => null)));
         if (cancelled) return;
         setDetails(results.filter((r): r is any => r !== null));
         setLoading(false);
@@ -226,12 +214,11 @@ export default function StudentCageShelfPage() {
 
   // Bookmarks
   const [pinned, setPinned] = useState<Set<string>>(new Set());
-  const [bmList, setBmList] = useState<BookmarkEntry[]>([]);
+  const [bmList, setBmList] = useState<PinnedCageShelfDetail[]>([]);
   const [bmLoading, setBmLoading] = useState(false);
-  const shelfNameMap = useMemo(() => { const m = new Map<string, string>(); for (const r of fullTree) { const sid = String(r.shelveId ?? ""); if (sid) m.set(sid, r.shelveName || sid); } return m; }, [fullTree]);
 
-  const toggleBm = async (sid: string) => { if (!aRid) return; const key = `${aRid}:${sid}`; try { const r = await toggleBookmarkApi(aRid, sid); setPinned(p => { const n = new Set(p); if (r.bookmarked) n.add(key); else n.delete(key); return n; }); if (r.bookmarked) { if (tab === "bookmarks") await loadBm(); } else { setBmList(p => p.filter(b => `${b.roomId}:${b.shelveId}` !== key)); } } catch {/* ignore */} };
-  const loadBm = async () => { setBmLoading(true); try { const list = await fetchBookmarks(); setBmList(list); setPinned(new Set(list.map(b => `${b.roomId}:${b.shelveId}`))); } catch { } finally { setBmLoading(false); } };
+  const toggleBm = async (sid: string) => { try { const r = await toggleCageShelfPin(sid); setPinned(p => { const n = new Set(p); if (r.isPinned) n.add(sid); else n.delete(sid); return n; }); if (r.isPinned) { if (tab === "bookmarks") await loadBm(); } else { setBmList(p => p.filter(b => b.shelfMeta.shelveId !== sid)); } } catch {/* ignore */} };
+  const loadBm = async () => { setBmLoading(true); try { const list = await fetchPinnedCageShelves(); setBmList(list); setPinned(new Set(list.map(b => b.shelfMeta.shelveId))); } catch { } finally { setBmLoading(false); } };
   useEffect(() => { if (tab === "bookmarks") loadBm(); }, [tab]);
 
   // Shelf detail
@@ -239,7 +226,7 @@ export default function StudentCageShelfPage() {
   const [shelfLoading, setShelfLoading] = useState(false);
 
   const onOpenRoom = (roomId: string, roomName: string) => { setARid(roomId); setARname(roomName); setShelfDetail(null); };
-  const onOpenShelf = async (shelveId: string) => { setShelfLoading(true); setShelfDetail(null); try { const d = await fetchCageShelfDetail(shelveId); setShelfDetail(d); } catch { setShelfDetail(null); } finally { setShelfLoading(false); } };
+  const onOpenShelf = async (shelveId: string) => { setShelfLoading(true); setShelfDetail(null); try { const d = await fetchStudentCageShelfDetail(shelveId); setShelfDetail(d); } catch { setShelfDetail(null); } finally { setShelfLoading(false); } };
 
   // Cell detail modal
   const [cellModal, setCellModal] = useState(false);
@@ -258,9 +245,9 @@ export default function StudentCageShelfPage() {
             {tab === "bookmarks" && <>
               {bmLoading && <div className="text-[var(--twin-mute)] py-4 text-center text-[11px]">加载中…</div>}
               {!bmLoading && bmList.length === 0 && <div className="text-[var(--twin-mute)] py-4 text-center text-[11px]">暂无收藏</div>}
-              {!bmLoading && bmList.map(b => <button key={`${b.roomId}-${b.shelveId}`} onClick={() => { setTab("filter"); onOpenRoom(String(b.roomId), b.roomName); }} className="w-full text-left rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-canvas)] px-2 py-1.5 mb-1 hover:border-[var(--student-primary)] transition">
-                <div className="flex items-center gap-1"><Star className="h-2.5 w-2.5 shrink-0 fill-amber-400 text-amber-400" /><span className="truncate text-[11px] font-medium text-[var(--student-ink)]">{b.shelveName || b.shelveId}</span></div>
-                <div className="text-[10px] text-[var(--twin-mute)] mt-0.5">{b.campusName} · {b.roomName}</div>
+              {!bmLoading && bmList.map(b => <button key={b.shelfMeta.shelveId} onClick={() => { setTab("filter"); onOpenRoom(String(b.roomId ?? ""), b.shelfMeta.roomName); }} className="w-full text-left rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-canvas)] px-2 py-1.5 mb-1 hover:border-[var(--student-primary)] transition">
+                <div className="flex items-center gap-1"><Star className="h-2.5 w-2.5 shrink-0 fill-amber-400 text-amber-400" /><span className="truncate text-[11px] font-medium text-[var(--student-ink)]">{b.shelfMeta.shelveName}</span></div>
+                <div className="text-[10px] text-[var(--twin-mute)] mt-0.5">{b.shelfMeta.campusName} · {b.shelfMeta.roomName}</div>
               </button>)}
             </>}
           </div>}
@@ -298,7 +285,7 @@ export default function StudentCageShelfPage() {
                 {loading && <div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
                 {!loading && aRid && details.length === 0 && <div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
                 {details.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d, idx) => {
-                  const sid = String(d.shelfMeta?.shelveId ?? ""), isBm = sid !== "" && pinned.has(`${aRid}:${sid}`);
+                  const sid = String(d.shelfMeta?.shelveId ?? ""), isBm = sid !== "" && pinned.has(sid);
                   return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid !== "" ? () => toggleBm(sid) : undefined} onCellClick={(c: any) => { setCell(c); setShelfId(sid); }} /></div>;
                 })}</div>}
               </>}
@@ -319,7 +306,10 @@ export default function StudentCageShelfPage() {
 
             {tab === "bookmarks" && <>
               {pinned.size === 0 && !bmLoading && <div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--twin-mute)]"><Star className="h-10 w-10 mx-auto mb-3 opacity-20" />暂无收藏的笼架<br /><span className="text-[11px]">在筛选页面将笼架加入收藏后在此处查看</span></div>}
-              {!bmLoading && bmList.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{bmList.map(b => <BookmarkShelfGrid key={`${b.roomId}-${b.shelveId}`} roomId={String(b.roomId)} shelveId={String(b.shelveId)} title={b.shelveName && String(b.shelveName) !== String(b.shelveId) ? b.shelveName : (shelfNameMap.get(String(b.shelveId)) || `笼架 ${b.shelveId}`)} campusName={b.campusName} roomName={b.roomName} isBookmarked={true} onToggleBookmark={() => toggleBookmarkApi(String(b.roomId), String(b.shelveId)).then(r => { if (!r.bookmarked) { setPinned(p => { const n = new Set(p); n.delete(`${b.roomId}:${b.shelveId}`); return n; }); setBmList(l => l.filter(x => `${x.roomId}:${x.shelveId}` !== `${b.roomId}:${b.shelveId}`)); } })} onCellClick={(c: any) => { setCell(c); setShelfId(String(b.shelveId)); }} />)}</div>}
+              {!bmLoading && bmList.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{bmList.map(b => {
+                const sid = b.shelfMeta.shelveId;
+                return <div key={sid}><ShelfGrid title={b.shelfMeta.shelveName || sid} detail={b} loading={false} emptyHint="暂无数据" isBookmarked={true} onToggleBookmark={() => toggleBm(sid)} onCellClick={(c: any) => { setCell(c); setShelfId(sid); }} /></div>;
+              })}</div>}
             </>}
           </div>
         </div>

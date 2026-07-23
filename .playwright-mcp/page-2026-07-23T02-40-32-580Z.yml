@@ -1,0 +1,117 @@
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: 实验动物管理系统 (ARO)
+      - generic [ref=e9]:
+        - text:  
+        - generic [ref=e10]:
+          - generic [ref=e11] [cursor=pointer]: 后端
+          - generic [ref=e13] [cursor=pointer]: 退出 |
+          - generic [ref=e14]: 卢今
+    - menubar [ref=e29]:
+      - menuitem "首页" [ref=e281] [cursor=pointer]
+      - menuitem "人员进出" [ref=e282] [cursor=pointer]
+      - menuitem "代码管理" [ref=e283] [cursor=pointer]
+      - menuitem "培训管理" [ref=e284] [cursor=pointer]
+      - menuitem "SOP管理" [ref=e285] [cursor=pointer]
+      - menuitem "实验动物" [ref=e286] [cursor=pointer]
+      - menuitem "笼位管理" [ref=e287] [cursor=pointer]
+      - menuitem "药品管理" [ref=e288] [cursor=pointer]
+      - menuitem "物品管理" [ref=e289] [cursor=pointer]
+      - menuitem "科研管理" [ref=e290] [cursor=pointer]
+      - menuitem "审批管理" [ref=e291] [cursor=pointer]
+      - menuitem "饲养处理" [ref=e292] [cursor=pointer]
+      - menuitem "饲养历史" [ref=e293] [cursor=pointer]
+  - generic [ref=e295]:
+    - complementary [ref=e296]:
+      - generic [ref=e297]:
+        - paragraph [ref=e298]: 培训管理
+        - menubar [ref=e299]:
+          - menuitem "视频管理" [ref=e300] [cursor=pointer]
+          - menuitem "PDF文件管理" [ref=e301] [cursor=pointer]
+          - menuitem "试题库建设" [ref=e302] [cursor=pointer]
+          - menuitem "试卷组卷" [ref=e303] [cursor=pointer]
+          - menuitem "成绩查询" [ref=e304] [cursor=pointer]
+          - menuitem "培训安排" [ref=e305] [cursor=pointer]
+          - menuitem "培训审批与评分" [ref=e306] [cursor=pointer]
+          - menuitem "合格证书" [ref=e307] [cursor=pointer]
+    - main [ref=e308]:
+      - generic [ref=e309]:
+        - heading "培训审批与评分" [level=1] [ref=e310]
+        - generic [ref=e311]:
+          - generic [ref=e312]:
+            - generic [ref=e315]:
+              - generic [ref=e317]:
+                - generic [ref=e318]: 姓名
+                - textbox [ref=e321]
+              - generic [ref=e323]:
+                - generic [ref=e324]: 课题组
+                - textbox [ref=e327]
+              - generic [ref=e330]:
+                - button "批量删除房间权限" [ref=e331] [cursor=pointer]
+                - button "删除" [ref=e332] [cursor=pointer]
+                - button "查询" [ref=e333] [cursor=pointer]
+                - button "重置" [ref=e334] [cursor=pointer]
+            - grid "数据网格" [ref=e335]:
+              - row [ref=e348]:
+                - columnheader "全选" [ref=e349]:
+                  - checkbox [ref=e350] [cursor=pointer]
+                - columnheader "列 序号" [ref=e353]: 序号
+                - columnheader "列 考生编号" [ref=e354] [cursor=pointer]: 考生编号
+                - columnheader "列 受训人姓名" [ref=e355] [cursor=pointer]: 受训人姓名
+                - columnheader "列 联系方式" [ref=e356] [cursor=pointer]: 联系方式
+                - columnheader "列 所属课题组" [ref=e357] [cursor=pointer]: 所属课题组
+                - columnheader "列 审批" [ref=e358] [cursor=pointer]: 审批
+                - columnheader "列 允许房间" [ref=e359] [cursor=pointer]: 允许房间
+                - columnheader "列 健康报告" [ref=e360] [cursor=pointer]: 健康报告
+                - columnheader "列 评分" [ref=e361] [cursor=pointer]: 评分
+              - generic [ref=e362]:
+                - row [ref=e426]:
+                  - gridcell "选择行" [ref=e375]:
+                    - checkbox [ref=e376] [cursor=pointer]
+                  - gridcell "1" [ref=e379]
+                  - gridcell "YF0300" [ref=e380]
+                  - gridcell "林安顺" [ref=e381]
+                  - gridcell "15962016848" [ref=e382]
+                  - gridcell "卢今的课题组" [ref=e383]
+                  - gridcell "允许" [ref=e384]
+                  - gridcell "1951178410424299521  浦东 3F-301A   确认" [ref=e427]:
+                    - generic [ref=e388]:
+                      - generic [ref=e428]:
+                        - generic [ref=e430]:
+                          - generic [ref=e431]:
+                            - text: "1951178410424299521"
+                            - generic [ref=e432] [cursor=pointer]: 
+                          - generic [ref=e433]:
+                            - text: 浦东 3F-301A
+                            - generic [ref=e434] [cursor=pointer]: 
+                        - generic [ref=e435]:
+                          - textbox [ref=e436] [cursor=pointer]
+                          - generic: 
+                        - text: 
+                      - button "确认" [active] [ref=e439] [cursor=pointer]
+                  - gridcell [ref=e394]:
+                    - button "查看" [ref=e396] [cursor=pointer]
+                  - gridcell "合格" [ref=e397]
+                - row [ref=e399]:
+                  - gridcell "选择行" [ref=e400]:
+                    - checkbox [ref=e401] [cursor=pointer]
+                  - gridcell "2" [ref=e404]
+                  - gridcell "183618" [ref=e405]
+                  - gridcell "卢今" [ref=e406]
+                  - gridcell "15001771038" [ref=e407]
+                  - gridcell "卢今的课题组" [ref=e408]
+                  - gridcell "允许" [ref=e409]
+                  - gridcell "浦东 3F-301A 浦东 3F-301B 修改房间" [ref=e411]:
+                    - generic [ref=e413]:
+                      - generic [ref=e414]: 浦东 3F-301A
+                      - generic [ref=e416]: 浦东 3F-301B
+                      - button "修改房间" [ref=e418] [cursor=pointer]
+                  - gridcell [ref=e419]:
+                    - button "查看" [ref=e421] [cursor=pointer]
+                  - gridcell "合格" [ref=e422]
+            - text: 
+          - button "返回" [ref=e425] [cursor=pointer]
+  - generic [ref=e24]:
+    - paragraph [ref=e25]: 地址：重庆南路280号 | 邮编：200025 | 电话：021-63846590转776559、776508
+    - paragraph [ref=e26]: 版权所有 © 2021 上海交通大学医学院实验动物科学部

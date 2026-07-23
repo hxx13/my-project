@@ -264,6 +264,7 @@ export const router = createHashRouter([
               { path: "telemetry-archive", element: <AdminTelemetryArchivePage /> },
               { path: "telemetry-insights", element: <AdminTelemetryInsightsPage /> },
               { path: "telemetry-insights-config", element: <AdminTelemetryInsightsConfigPage /> },
+              { path: "aro-binding", element: <AdminAroBindingPage /> },
               {
                 element: <AdminGuard />,
                 children: [
@@ -271,7 +272,6 @@ export const router = createHashRouter([
                   { path: "door-group-storage", element: <AdminDoorGroupStoragePage /> },
                   { path: "device-channels", element: <AdminDeviceChannelPage /> },
                   { path: "aro-rooms", element: <AdminRoomMappingPage /> },
-                  { path: "aro-binding", element: <AdminAroBindingPage /> },
                   { path: "room-mapping", element: <Navigate to={`${STAFF_NS}/admin/aro-rooms`} replace /> },
                   { path: "access-rules", element: <AdminAccessRulesPage /> },
                   { path: "department-storage", element: <AdminDepartmentStoragePage /> },

@@ -7,6 +7,7 @@ import {
 } from "@/api/hooks/useMaterial";
 import { createMaterialRequestWithToken } from "@/api/domains/material.api";
 import type { AuthData } from "@/api/domains/auth.api";
+import { checkPinStatus } from "./specialChannel.api";
 import type { MaterialItem } from "@/api/domains/material.api";
 import type { BizItemSlotProps } from "@/components/scanner/BizOverlayShell.types";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
@@ -67,6 +68,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
   const [cart, setCart] = useState<MaterialCart>({});
   const [submitting, setSubmitting] = useState(false);
   const [showKeypad, setShowKeypad] = useState(false);
+  const [keypadMode, setKeypadMode] = useState<"set" | "verify">("verify");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const applicantName = scanUser?.userName?.trim() || userId;
@@ -99,13 +101,19 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
     });
   };
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (cartCount === 0) {
       toast.error("请先选择物资");
       return;
     }
+    try {
+      const hasPin = await checkPinStatus(userId);
+      setKeypadMode(hasPin ? "verify" : "set");
+    } catch {
+      setKeypadMode("set");
+    }
     setShowKeypad(true);
-  }, [cartCount]);
+  }, [cartCount, userId]);
 
   const handlePinSuccess = useCallback(
     async (authData: AuthData) => {
@@ -151,7 +159,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
     <>
       {showKeypad && (
         <NumericKeypad
-          mode="verify"
+          mode={keypadMode}
           userId={userId}
           userName={applicantName}
           onSuccess={handlePinSuccess}

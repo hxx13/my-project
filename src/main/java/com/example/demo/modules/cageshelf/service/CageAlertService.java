@@ -45,10 +45,11 @@ public class CageAlertService {
 
     /**
      * 基于快照对比的持续告警。
+     * @param currentBatchId 当前快照批次（null=自动取最新）
      * @param baselineBatchId 对比基准快照批次（null=用最新自身，跨度0天）
      * @param configMode "auto" | "manual"
      */
-    public Map<String, Object> getPersistedAlerts(String baselineBatchId, String configMode) {
+    public Map<String, Object> getPersistedAlerts(String currentBatchId, String baselineBatchId, String configMode) {
         snapshotMapper.ensureTable();
         String mode = configMode != null ? configMode : "auto";
         seedDefaultsIfEmpty(mode);
@@ -58,13 +59,29 @@ public class CageAlertService {
             return Map.of("alerts", List.of(), "generatedAt", "", "spanDays", 0);
         }
 
-        // 最新快照
-        Map<String, Object> latestInfo = snapshotMapper.selectLatestBatchInfo();
-        if (latestInfo == null || latestInfo.isEmpty()) {
-            return Map.of("alerts", List.of(), "generatedAt", "", "spanDays", 0);
+        // 当前快照：优先使用传入的 currentBatchId，否则取最新
+        LocalDateTime currentTime;
+        if (currentBatchId != null && !currentBatchId.isBlank()) {
+            List<CageSpecialStatusSnapshot> cs = snapshotMapper.selectAllByBatchId(currentBatchId);
+            if (cs.isEmpty()) {
+                log.warn("[cage-alert] currentBatchId={} not found, fallback to latest", currentBatchId);
+                Map<String, Object> latestInfo = snapshotMapper.selectLatestBatchInfo();
+                if (latestInfo == null || latestInfo.isEmpty()) {
+                    return Map.of("alerts", List.of(), "generatedAt", "", "spanDays", 0);
+                }
+                currentBatchId = String.valueOf(latestInfo.getOrDefault("scanBatchId", ""));
+                currentTime = parseDateTime(String.valueOf(latestInfo.getOrDefault("scannedAt", "")));
+            } else {
+                currentTime = parseDateTime(cs.get(0).getScannedAt());
+            }
+        } else {
+            Map<String, Object> latestInfo = snapshotMapper.selectLatestBatchInfo();
+            if (latestInfo == null || latestInfo.isEmpty()) {
+                return Map.of("alerts", List.of(), "generatedAt", "", "spanDays", 0);
+            }
+            currentBatchId = String.valueOf(latestInfo.getOrDefault("scanBatchId", ""));
+            currentTime = parseDateTime(String.valueOf(latestInfo.getOrDefault("scannedAt", "")));
         }
-        String currentBatchId = String.valueOf(latestInfo.getOrDefault("scanBatchId", ""));
-        LocalDateTime currentTime = parseDateTime(String.valueOf(latestInfo.getOrDefault("scannedAt", "")));
 
         // 对比基准
         String baselineId = (baselineBatchId != null && !baselineBatchId.isBlank())
@@ -73,6 +90,7 @@ public class CageAlertService {
         if (!baselineId.equals(currentBatchId)) {
             List<CageSpecialStatusSnapshot> bs = snapshotMapper.selectAllByBatchId(baselineId);
             if (!bs.isEmpty()) baselineTime = parseDateTime(bs.get(0).getScannedAt());
+            else log.warn("[cage-alert] baselineBatchId={} not found, spanDays will be 0", baselineId);
         }
         long spanDays = 0;
         if (baselineTime != null && currentTime != null) {
@@ -163,13 +181,43 @@ public class CageAlertService {
     }
 
     public void saveConfig(List<CageAlertConfig> configs, String mode) {
-        String m = mode != null ? mode : "auto";
+        String m = (mode != null && !"off".equals(mode)) ? mode : "auto";
         configMapper.deleteByMode(m);
         if (configs != null && !configs.isEmpty()) {
             for (CageAlertConfig c : configs) c.setMode(m);
             configMapper.batchInsert(configs);
         }
+        // 同步新增状态码到另一个 mode，避免切换模式后阈值回退到硬编码默认值 7
+        syncNewStatusCodesToOtherMode(configs, m);
         log.info("[cage-alert] saved {} entries mode={}", configs != null ? configs.size() : 0, m);
+    }
+
+    /** 将当前 mode 中新增的状态码同步到另一个 mode，保留其已配置的阈值。 */
+    private void syncNewStatusCodesToOtherMode(List<CageAlertConfig> savedConfigs, String currentMode) {
+        if (savedConfigs == null || savedConfigs.isEmpty()) return;
+        String otherMode = "auto".equals(currentMode) ? "manual" : "auto";
+        seedDefaultsIfEmpty(otherMode);
+        List<CageAlertConfig> otherConfigs = configMapper.selectAll(otherMode);
+        Set<String> otherCodes = new LinkedHashSet<>();
+        for (CageAlertConfig c : otherConfigs) {
+            if (c.getStatusCode() != null) otherCodes.add(c.getStatusCode());
+        }
+        List<CageAlertConfig> toAdd = new ArrayList<>();
+        for (CageAlertConfig c : savedConfigs) {
+            if (c.getStatusCode() != null && !c.getStatusCode().isBlank() && !otherCodes.contains(c.getStatusCode())) {
+                CageAlertConfig clone = new CageAlertConfig();
+                clone.setStatusCode(c.getStatusCode());
+                clone.setStatusLabel(c.getStatusLabel());
+                clone.setThresholdDays(c.getThresholdDays());
+                clone.setEnabled(c.getEnabled());
+                clone.setMode(otherMode);
+                toAdd.add(clone);
+            }
+        }
+        if (!toAdd.isEmpty()) {
+            configMapper.batchInsert(toAdd);
+            log.info("[cage-alert] synced {} new status codes to mode={}", toAdd.size(), otherMode);
+        }
     }
 
     private void seedDefaultsIfEmpty(String mode) {
@@ -183,6 +231,8 @@ public class CageAlertService {
             defs.add(makeCfg("NEED_DIVIDE", "请分笼/密度超标", 7));
             defs.add(makeCfg("HEALTH_ABNORMAL", "动物健康异常", 3));
             defs.add(makeCfg("ANIMAL_TRANSFER", "动物转移", 5));
+            defs.add(makeCfg("SPECIAL_FEEDING", "特殊饲养", 7));
+            defs.add(makeCfg("COHABITATION", "合笼/繁殖", 14));
             for (CageAlertConfig c : defs) c.setMode(mode);
             try { configMapper.batchInsert(defs); }
             catch (Exception e) { log.warn("[cage-alert] seed insert failed (may already exist): {}", e.getMessage()); }

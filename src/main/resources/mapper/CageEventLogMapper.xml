@@ -177,4 +177,8 @@
           AND changed_at &gt; #{sinceTime}
     </select>
 
+    <delete id="deleteByScanBatchId">
+        DELETE FROM cage_event_log WHERE scan_batch_id = #{scanBatchId}
+    </delete>
+
 </mapper>

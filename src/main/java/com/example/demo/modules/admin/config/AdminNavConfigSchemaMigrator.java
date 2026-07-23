@@ -24,32 +24,38 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
             createTable();
             seedIfEmpty();
 
-            // 确保知识库入口始终存在（即使 db 已有数据，seedIfEmpty 跳过了种子）
+            // 确保关键入口始终存在（按 item_path UNIQUE 去重，避免 nav-manager 重复显示）
             jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-knowledge', 'system-security', 'ITEM', '知识库', '/admin/knowledge', 'BookOpen', 9)");
+                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-knowledge', 'system-security', 'ITEM', '知识库', '/admin/knowledge', 'BookOpen', 9) " +
+                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
 
-            // 确保遥测分析入口始终存在（registry 新增项；已有 DB 时 seedIfEmpty 会跳过）
             jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-telemetry-insights', 'access-meta-env', 'ITEM', '遥测历史分析', '/admin/telemetry-insights', 'PieChart', 10)");
+                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-telemetry-insights', 'access-meta-env', 'ITEM', '遥测历史分析', '/admin/telemetry-insights', 'PieChart', 10) " +
+                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
             jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-telemetry-insights-config', 'access-meta-env', 'ITEM', '遥测对比组配置', '/admin/telemetry-insights-config', 'LineChart', 11)");
+                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-telemetry-insights-config', 'access-meta-env', 'ITEM', '遥测对比组配置', '/admin/telemetry-insights-config', 'LineChart', 11) " +
+                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
 
-            // 确保「学生审核」分组与入口始终存在
             jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) " +
-                "VALUES ('material-review', NULL, 'GROUP', '学生审核', 7)");
+                "INSERT INTO admin_nav_config (id, parent_id, type, title, sort_order) " +
+                "VALUES ('material-review', NULL, 'GROUP', '学生审核', 7) " +
+                "ON DUPLICATE KEY UPDATE title = VALUES(title), sort_order = VALUES(sort_order)");
             jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-material-review', 'material-review', 'ITEM', '学生审核', '/admin/material/review', 'ClipboardCheck', 0)");
+                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-material-review', 'material-review', 'ITEM', '学生审核', '/admin/material/review', 'ClipboardCheck', 0) " +
+                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
             jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-material-manage', 'material-review', 'ITEM', '物品管理', '/admin/material/manage', 'Package', 1)");
+                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-material-manage', 'material-review', 'ITEM', '物品管理', '/admin/material/manage', 'Package', 1) " +
+                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
             jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-material-audit-export', 'material-review', 'ITEM', '申领审计导出', '/admin/material/audit-export', 'Download', 2)");
+                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-material-audit-export', 'material-review', 'ITEM', '申领审计导出', '/admin/material/audit-export', 'Download', 2) " +
+                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
+            // 属性更新仍然按 id 精确执行（不受 UNIQUE 影响）
             jdbcTemplate.update(
                 "UPDATE admin_nav_config SET item_badge_key = 'processMaterialText' WHERE id = 'item-material-review'");
             jdbcTemplate.update(
@@ -122,6 +128,20 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                     KEY idx_nav_sort (sort_order)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台侧边栏导航配置'
                 """);
+        // 清理并防止 ITEM 路径重复（root cause of nav-manager duplicates）
+        jdbcTemplate.update("""
+                DELETE t1 FROM admin_nav_config t1
+                INNER JOIN admin_nav_config t2
+                ON t1.item_path = t2.item_path AND t1.type = 'ITEM' AND t2.type = 'ITEM'
+                WHERE t1.id > t2.id
+                """);
+        try {
+            jdbcTemplate.execute(
+                "ALTER TABLE admin_nav_config ADD UNIQUE KEY idx_nav_path (item_path)");
+            log.info("[admin-nav-config] added UNIQUE(item_path)");
+        } catch (Exception e) {
+            log.debug("[admin-nav-config] UNIQUE(item_path) may already exist: {}", e.getMessage());
+        }
     }
 
     private void seedIfEmpty() {
@@ -189,8 +209,7 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         seedItem("asset-ops", 2, "item-cage-shelves", "/admin/cage-shelves", "笼架管理", "LayoutGrid", null);
         seedItem("asset-ops", 3, "item-cage-shelf-indexes", "/admin/cage-shelf-indexes", "笼架落库索引", "TableProperties", null);
         seedItem("asset-ops", 4, "item-cage-special-status", "/admin/cage-shelves/special-status", "笼架特殊状态", "AlertTriangle", null);
-        seedItem("asset-ops", 5, "item-cage-event-log", "/admin/cage-shelves/event-log", "笼位事件日志", "Clock", null);
-        seedItem("asset-ops", 6, "item-facility-maintenance", "/admin/facility-maintenance", "设施维护", "Activity", null);
+        seedItem("asset-ops", 5, "item-facility-maintenance", "/admin/facility-maintenance", "设施维护", "Activity", null);
 
         // 报修与物资领用 (with subgroups)
         seedGroup(null, 5, "repair-supplies", "报修与物资领用");

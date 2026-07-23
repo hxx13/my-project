@@ -238,6 +238,13 @@ export function TwinChromeContextMenu({
         return () => window.removeEventListener("keydown", onKey);
     }, [open, onClose, activeSubPanel]);
 
+    // 10s 无操作自动关闭，防止前台快捷菜单被误触后常驻
+    useEffect(() => {
+        if (!open) return;
+        const timer = setTimeout(() => onClose(), 10_000);
+        return () => clearTimeout(timer);
+    }, [open, onClose]);
+
     if (!open || !payload) return null;
 
     const rootStylePos = rootPos ?? { left: payload.x, top: payload.y };

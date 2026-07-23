@@ -16,6 +16,7 @@ import com.example.demo.modules.auth.mapper.UserMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -42,7 +43,7 @@ public class AdminAccountBindingController {
                                          AuthContextService authContextService,
                                          UserMapper userMapper,
                                          CasClient casClient,
-                                         TokenStore tokenStore) {
+                                         @Qualifier("cachedTokenStore") TokenStore tokenStore) {
         this.userAroBindingMapper = userAroBindingMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.authContextService = authContextService;

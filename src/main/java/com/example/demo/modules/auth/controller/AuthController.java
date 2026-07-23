@@ -34,6 +34,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
@@ -86,7 +87,7 @@ public class AuthController {
                           AroPersonnelMapper aroPersonnelMapper,
                           TurnstileVerificationService turnstileVerificationService,
                           CasClient casClient,
-                          TokenStore tokenStore) {
+                          @Qualifier("cachedTokenStore") TokenStore tokenStore) {
         this.userMapper = userMapper;
         this.authService = authService;
         this.authContextService = authContextService;
