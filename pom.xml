@@ -196,6 +196,7 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<configuration>
+					<outputDirectory>${project.basedir}/deploy</outputDirectory>
 
 					<excludes>
 						<exclude>
