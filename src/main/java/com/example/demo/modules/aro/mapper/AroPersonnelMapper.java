@@ -43,4 +43,16 @@ public interface AroPersonnelMapper {
     /** 按课题组名称模糊匹配，返回该组成员的 userId 列表 */
     @Select("SELECT user_id FROM aro_personnel WHERE project_group_name LIKE CONCAT('%', #{projectGroupName}, '%')")
     List<String> selectUserIdsByProjectGroup(@Param("projectGroupName") String projectGroupName);
+
+    @Select("SELECT * FROM aro_personnel WHERE name = #{name} AND job_number = #{jobNumber}")
+    @Results({
+            @Result(property = "id", column = "user_id")
+    })
+    AroPersonnel findByNameAndJobNumber(@Param("name") String name, @Param("jobNumber") String jobNumber);
+
+    @Select("SELECT * FROM aro_personnel WHERE job_number = #{jobNumber}")
+    @Results({
+            @Result(property = "id", column = "user_id")
+    })
+    AroPersonnel findByJobNumber(@Param("jobNumber") String jobNumber);
 }

@@ -7,7 +7,7 @@ import { fetchLoginBranding, pickLoginHeroUrls, type LoginBranding } from "@/api
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
-import { loginWeb, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr } from "@/api/domains/auth.api";
+import { loginWeb, loginCas, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr } from "@/api/domains/auth.api";
 
 declare global {
   interface Window {
@@ -64,6 +64,7 @@ export default function LoginPage() {
   const [branding, setBranding] = useState<LoginBranding | null>(null);
   const [heroIdx, setHeroIdx] = useState(0);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const casProcessedRef = useRef(false);
   const [sessionUser, setSessionUser] = useState(() => authStorage.getUserInfo());
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
@@ -228,6 +229,53 @@ export default function LoginPage() {
       setTurnstileLoadFailed(false);
     };
   }, [showLogin, forgotMode, effectiveMode]);
+
+  // CAS ticket callback — R1: hash-router, ticket comes before # in URL
+  useEffect(() => {
+    if (casProcessedRef.current) return;
+    const raw = window.location.href;
+    const ticketMatch = raw.match(/[?&]ticket=([^&#]+)/);
+    const ticket = ticketMatch ? decodeURIComponent(ticketMatch[1]) : null;
+    if (!ticket) return;
+    casProcessedRef.current = true;
+
+    // R6: try/catch + toast.error
+    (async () => {
+      try {
+        const data = await loginCas(ticket);
+        authStorage.setAuth(data.token, data.role, data.userInfo);
+
+        const isStudentAccount = data.userInfo?.accountSource === "STUDENT"
+          || (data.userInfo?.accountSource == null && data.role === "MEMBER");
+        if (isStudentAccount) {
+          authStorage.markLoginPortal("student");
+          toast("学生账号已自动跳转至学生中心", { icon: "🎒" });
+          setShowLogin(false);
+          navigate("/student/home", { replace: true });
+          return;
+        }
+
+        authStorage.markLoginPortal("staff");
+        toast.success("CAS 登录成功");
+        setShowLogin(false);
+        syncUserFromStorage();
+
+        const r = data.role;
+        const st = location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null;
+        const from = st?.from?.pathname;
+        const fromFull =
+          from && from !== "/login" ? `${from}${st?.from?.search || ""}${st?.from?.hash || ""}` : null;
+        const target = await resolvePostLoginTarget({
+          role: r,
+          pendingTwin: null,
+          fromFull,
+        });
+        navigate(target, { replace: true });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "CAS 登录失败");
+      }
+    })();
+  }, []);
 
   const headerPrimaryLabel = useMemo(() => {
     const dn = (sessionUser?.displayName || "").trim();
@@ -739,6 +787,19 @@ export default function LoginPage() {
                       {submitting ? "登录中…" : "登 录"}
                     </button>
                   </form>
+                  <div className="mt-6 border-t border-[#f5d76a]/20 pt-5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const origin = window.location.origin;
+                        const serviceUrl = encodeURIComponent(origin + "/#/login");
+                        window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${serviceUrl}`;
+                      }}
+                      className="w-full rounded border border-[#f5d76a]/40 bg-transparent px-4 py-3 text-sm font-medium text-[#e8c547] transition hover:border-[#f5d76a]/70 hover:bg-[#f5d76a]/10"
+                    >
+                      统一认证登录
+                    </button>
+                  </div>
                   <p className="mt-8 text-center text-sm text-[#9a8b72]">
                     教职工首次使用？
                     <Link to="/register" className="ml-1 font-medium text-[#e8c547] hover:text-[#f5e6a8]">

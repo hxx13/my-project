@@ -48,6 +48,14 @@ export async function loginWeb(username: string, password: string, turnstileToke
   return response.data.data;
 }
 
+export async function loginCas(ticket: string): Promise<AuthData> {
+  const response = await axios.post<Result<AuthData>>("/api/auth/login/cas", { ticket });
+  if (!response.data?.success || !response.data?.data?.token) {
+    throw new Error(response.data?.message || "CAS登录失败");
+  }
+  return response.data.data;
+}
+
 export async function registerStaff(username: string, password: string, inviteCode: string): Promise<AuthData> {
   const response = await axios.post<Result<AuthData>>("/api/auth/register/staff", {
     username,

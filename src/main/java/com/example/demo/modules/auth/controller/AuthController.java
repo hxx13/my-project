@@ -4,8 +4,12 @@ import com.example.demo.common.config.JwtTokenService;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.aro.client.CasClient;
 import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.dto.CasTokenInfo;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
+import com.example.demo.modules.aro.token.TokenStore;
+import com.example.demo.modules.auth.dto.CasLoginRequest;
 import com.example.demo.modules.auth.dto.ChangePasswordRequest;
 import com.example.demo.modules.auth.dto.ForgotPasswordResetRequest;
 import com.example.demo.modules.auth.dto.ForgotPasswordVerifyRequest;
@@ -29,6 +33,7 @@ import com.google.zxing.NotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
@@ -68,6 +73,8 @@ public class AuthController {
     private final JwtTokenService jwtTokenService;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final TurnstileVerificationService turnstileVerificationService;
+    private final CasClient casClient;
+    private final TokenStore tokenStore;
 
     public AuthController(UserMapper userMapper,
                           AuthService authService,
@@ -77,7 +84,9 @@ public class AuthController {
                           StaffRegistrationService staffRegistrationService,
                           JwtTokenService jwtTokenService,
                           AroPersonnelMapper aroPersonnelMapper,
-                          TurnstileVerificationService turnstileVerificationService) {
+                          TurnstileVerificationService turnstileVerificationService,
+                          CasClient casClient,
+                          TokenStore tokenStore) {
         this.userMapper = userMapper;
         this.authService = authService;
         this.authContextService = authContextService;
@@ -87,6 +96,8 @@ public class AuthController {
         this.jwtTokenService = jwtTokenService;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.turnstileVerificationService = turnstileVerificationService;
+        this.casClient = casClient;
+        this.tokenStore = tokenStore;
     }
 
     @PostMapping("/login/web")
@@ -161,6 +172,60 @@ public class AuthController {
             user = refreshed;
         }
         user.setRole(authService.normalizeRole(user.getRole()));
+        return authService.generateAuthResult(user);
+    }
+
+    @PostMapping("/login/cas")
+    @Operation(summary = "CAS 统一认证登录")
+    public Result<?> loginCas(@RequestBody @Valid CasLoginRequest request) {
+        // ① Call ARO loginAuth to exchange ticket for ARO JWT
+        CasTokenInfo tokenInfo = casClient.exchangeTicket(request.getTicket());
+        if (tokenInfo == null) {
+            return Result.fail(403, "CAS 认证失败：无法验证 ticket，请重新登录");
+        }
+
+        // ② Cross-match aro_personnel (name + jobNumber dual verification)
+        String casName = tokenInfo.getUserKey();    // 位亚磊
+        String casAccount = tokenInfo.getAccount();  // YF0408
+        AroPersonnel matched = aroPersonnelMapper.findByNameAndJobNumber(casName, casAccount);
+        if (matched == null) {
+            // Fallback: try job number only
+            matched = aroPersonnelMapper.findByJobNumber(casAccount);
+        }
+        if (matched == null) {
+            return Result.fail(403,
+                    "未在人员库中找到匹配记录（账号: " + casAccount +
+                    "，姓名: " + casName +
+                    "）。请联系管理员将您的信息录入人员库。");
+        }
+
+        // ③ Look up sys_user (no auto-create) then save token
+        String matchedUserId = matched.getId();
+        User user = userMapper.findById(matchedUserId);
+        if (user == null) {
+            return Result.fail(403,
+                    "您在人员库中有记录（" + casName + "，" + casAccount +
+                    "），但系统账号尚未开通。请联系管理员开通后再试。");
+        }
+
+        // ④ Save ARO Token to user_aro_binding (keyed by sys_user.id)
+        tokenStore.save(matchedUserId, tokenInfo);
+
+        // ⑤ R12: Check account status
+        if (isDisabled(user)) {
+            return Result.fail(403, "账号已被禁用，请联系管理员");
+        }
+
+        // ⑥ R8: Ensure role is at least STAFF + persist
+        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
+            user.setRole(RoleEnum.STAFF);
+            userMapper.updateRoleById(user.getId(), RoleEnum.STAFF.getCode());
+        }
+
+        // ⑦ R25: Set auth profile to CAS_LOGIN (DB + in-memory)
+        userMapper.updateAuthProfileById(user.getId(), AuthProfileConstants.CAS_LOGIN);
+        user.setAuthProfile(AuthProfileConstants.CAS_LOGIN);
+
         return authService.generateAuthResult(user);
     }
 

@@ -14,6 +14,9 @@ public final class AuthProfileConstants {
     /** Web 账号密码登录体系（或未走微信绑定链路的账号） */
     public static final String WEB_PASSWORD = "WEB_PASSWORD";
 
+    /** CAS 统一认证登录 */
+    public static final String CAS_LOGIN = "CAS_LOGIN";
+
     public static String miniHomeDefaultTab(String authProfile) {
         if (WECHAT_ARO.equalsIgnoreCase(trim(authProfile))) {
             return "news";
