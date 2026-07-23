@@ -2,7 +2,6 @@ package com.example.demo.modules.aro.client;
 
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
-import com.example.demo.modules.aro.dto.CasLoginSession;
 import com.example.demo.modules.aro.dto.CasTokenInfo;
 import com.example.demo.modules.aro.dto.CasUserInfo;
 import org.slf4j.Logger;
@@ -12,7 +11,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
@@ -261,145 +259,5 @@ public class CasClientImpl implements CasClient {
             ticketPart = ticketPart.substring(0, endIdx);
         }
         return ticketPart;
-    }
-
-    // ==================== CASTGC 获取（代理 CAS 登录） ====================
-
-    private static final String CAS_BASE = "https://auth2.shsmu.edu.cn";
-    private static final String CAS_LOGIN_PAGE = CAS_BASE + "/cas/login";
-    private static final String CAS_CAPTCHA = CAS_BASE + "/cas/captcha.jpg";
-
-    @Override
-    public CasLoginSession fetchLoginSession() {
-        try {
-            ResponseEntity<String> resp = casRestTemplate.getForEntity(CAS_LOGIN_PAGE, String.class);
-            String html = resp.getBody();
-            if (html == null) throw new RuntimeException("CAS 登录页返回空");
-
-            CasLoginSession session = new CasLoginSession();
-
-            // Extract JSESSIONID from Set-Cookie
-            String setCookie = resp.getHeaders().getFirst(HttpHeaders.SET_COOKIE);
-            if (setCookie != null) {
-                String jsession = extractCookieValue(setCookie, "JSESSIONID");
-                if (jsession != null) session.setJsessionId(jsession);
-            }
-
-            // Extract execution from hidden input
-            session.setExecution(extractHiddenField(html, "execution"));
-            session.setLt(extractHiddenField(html, "lt"));
-            session.setEventId(extractHiddenField(html, "_eventId"));
-
-            log.info("[CAS] 获取登录页成功, execution={}", session.getExecution());
-            return session;
-        } catch (Exception e) {
-            log.error("[CAS] 获取登录页失败", e);
-            throw new RuntimeException("无法连接 CAS 服务器", e);
-        }
-    }
-
-    @Override
-    public byte[] fetchCaptcha(CasLoginSession session) {
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            if (session.getJsessionId() != null) {
-                headers.set(HttpHeaders.COOKIE, "JSESSIONID=" + session.getJsessionId());
-            }
-            HttpEntity<String> entity = new HttpEntity<>(headers);
-            ResponseEntity<byte[]> resp = casRestTemplate.exchange(CAS_CAPTCHA, HttpMethod.GET, entity, byte[].class);
-            return resp.getBody();
-        } catch (Exception e) {
-            log.error("[CAS] 获取验证码失败", e);
-            throw new RuntimeException("获取 CAS 验证码失败", e);
-        }
-    }
-
-    @Override
-    public String submitLogin(CasLoginSession session, String username, String password,
-                              String captcha, String service) throws CasLoginException {
-        try {
-            // Build form body
-            StringBuilder body = new StringBuilder();
-            appendParam(body, "username", username);
-            appendParam(body, "password", password);
-            appendParam(body, "captcha", captcha);
-            if (session.getExecution() != null) appendParam(body, "execution", session.getExecution());
-            if (session.getLt() != null) appendParam(body, "lt", session.getLt());
-            appendParam(body, "_eventId", session.getEventId() != null ? session.getEventId() : "submit");
-
-            String loginUrl = CAS_LOGIN_PAGE;
-            if (service != null && !service.isBlank()) {
-                loginUrl += "?service=" + URLEncoder.encode(service, StandardCharsets.UTF_8);
-            }
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-            if (session.getJsessionId() != null) {
-                headers.set(HttpHeaders.COOKIE, "JSESSIONID=" + session.getJsessionId());
-            }
-            HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
-
-            // Must NOT follow redirect — need to capture Set-Cookie from 302
-            ResponseEntity<String> resp = casRestTemplate.exchange(loginUrl, HttpMethod.POST, entity, String.class);
-
-            // CAS login success → 302 redirect with Set-Cookie: CASTGC=TGT-xxx
-            if (resp.getStatusCode().is3xxRedirection()) {
-                String setCookie = resp.getHeaders().getFirst(HttpHeaders.SET_COOKIE);
-                if (setCookie != null) {
-                    String tgc = extractCookieValue(setCookie, "CASTGC");
-                    if (tgc != null) {
-                        log.info("[CAS] 成功获取 CASTGC");
-                        return tgc;
-                    }
-                }
-                // Some CAS versions set CASTGC on the page response, not just redirect
-                log.warn("[CAS] 302 重定向但未包含 CASTGC Cookie");
-            }
-
-            // Check if response body indicates error
-            String body2 = resp.getBody();
-            if (body2 != null) {
-                if (body2.contains("验证码")) throw new CasLoginException("验证码输入有误");
-                if (body2.contains("密码") || body2.contains("凭据")) throw new CasLoginException("账号或密码错误");
-                if (body2.contains("锁定") || body2.contains("locked")) throw new CasLoginException("账号已锁定，请稍后重试");
-            }
-            throw new CasLoginException("CAS 登录失败，请重试");
-        } catch (CasLoginException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("[CAS] 提交登录失败", e);
-            throw new CasLoginException("CAS 登录失败: " + e.getMessage(), e);
-        }
-    }
-
-    private void appendParam(StringBuilder sb, String key, String value) {
-        if (value == null) return;
-        if (sb.length() > 0) sb.append("&");
-        sb.append(URLEncoder.encode(key, StandardCharsets.UTF_8))
-          .append("=")
-          .append(URLEncoder.encode(value, StandardCharsets.UTF_8));
-    }
-
-    private static String extractCookieValue(String setCookie, String cookieName) {
-        if (setCookie == null) return null;
-        for (String part : setCookie.split(";")) {
-            String trimmed = part.trim();
-            if (trimmed.startsWith(cookieName + "=")) {
-                return trimmed.substring(cookieName.length() + 1);
-            }
-        }
-        return null;
-    }
-
-    private static String extractHiddenField(String html, String fieldName) {
-        if (html == null) return null;
-        // Match: <input type="hidden" name="execution" value="xxx"/>
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
-            "<input[^>]+name=[\"']" + java.util.regex.Pattern.quote(fieldName)
-            + "[\"'][^>]+value=[\"']([^\"']*)[\"']",
-            java.util.regex.Pattern.CASE_INSENSITIVE
-        );
-        java.util.regex.Matcher m = p.matcher(html);
-        return m.find() ? m.group(1) : null;
     }
 }

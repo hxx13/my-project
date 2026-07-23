@@ -177,23 +177,3 @@ export async function unbindCasAccount(): Promise<void> {
   if (!res.data?.success)
     throw new Error(res.data?.message || "解绑失败");
 }
-
-/** 获取 CAS 验证码（返回图片 URL 用于 <img> 标签） */
-export function getCasCaptchaUrl(): string {
-  // 加时间戳防缓存
-  return `/api/admin/account/binding/cas-captcha?t=${Date.now()}`;
-}
-
-/** 代理 CAS 登录：提交账号密码验证码 */
-export async function acquireCasToken(
-  username: string,
-  password: string,
-  captcha: string
-): Promise<{ casAccount: string; bound: boolean }> {
-  const res = await adminHttp.post<
-    Result<{ casAccount: string; bound: boolean }>
-  >("/account/binding/cas-acquire", { username, password, captcha });
-  if (!res.data?.success)
-    throw new Error(res.data?.message || "CAS 登录失败");
-  return res.data.data;
-}

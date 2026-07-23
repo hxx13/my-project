@@ -16,15 +16,11 @@ import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import com.example.demo.modules.aro.client.CasClient;
-import com.example.demo.modules.aro.client.CasLoginException;
-import com.example.demo.modules.aro.dto.CasLoginSession;
 import com.example.demo.modules.aro.dto.CasTokenInfo;
 import com.example.demo.modules.aro.token.TokenStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -32,7 +28,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -46,7 +41,6 @@ public class AdminAccountBindingController {
     private final UserMapper userMapper;
     private final CasClient casClient;
     private final TokenStore tokenStore;
-    private final ConcurrentHashMap<String, CasLoginSession> casSessionMap = new ConcurrentHashMap<>();
 
     public AdminAccountBindingController(UserAroBindingMapper userAroBindingMapper,
                                          AroPersonnelMapper aroPersonnelMapper,
@@ -239,88 +233,6 @@ public class AdminAccountBindingController {
 
         tokenStore.delete(user.getId());
         return Result.success();
-    }
-
-    // ========== CAS 代理登录（方案 1：后端捕获 CASTGC） ==========
-
-    /**
-     * 获取 CAS 验证码图片。临时存储 CasLoginSession，后续提交时使用。
-     */
-    @GetMapping("/account/binding/cas-captcha")
-    public ResponseEntity<byte[]> getCasCaptcha(HttpServletRequest request) {
-        User user = resolveUser(request);
-        if (user == null) return ResponseEntity.status(401).build();
-
-        try {
-            CasLoginSession session = casClient.fetchLoginSession();
-            byte[] captchaBytes = casClient.fetchCaptcha(session);
-
-            // 用 userId 暂存 session（覆盖旧 session）
-            casSessionMap.put(user.getId(), session);
-
-            return ResponseEntity.ok()
-                    .contentType(MediaType.IMAGE_JPEG)
-                    .body(captchaBytes);
-        } catch (Exception e) {
-            log.error("获取 CAS 验证码失败", e);
-            return ResponseEntity.status(502).build();
-        }
-    }
-
-    /**
-     * 代理 CAS 登录：用用户提供的凭据完成 CAS 认证，捕获 CASTGC，
-     * 然后用 CASTGC 获取 ARO 的 ticket → JWT → 存储。
-     */
-    @PostMapping("/account/binding/cas-acquire")
-    public Result<?> acquireCasToken(@RequestBody Map<String, String> body, HttpServletRequest request) {
-        User user = resolveUser(request);
-        if (user == null) return Result.fail(401, "未登录");
-
-        String username = body.get("username");
-        String password = body.get("password");
-        String captcha = body.get("captcha");
-        if (username == null || username.isBlank()) return Result.fail(400, "请输入 CAS 账号");
-        if (password == null || password.isBlank()) return Result.fail(400, "请输入 CAS 密码");
-        if (captcha == null || captcha.isBlank()) return Result.fail(400, "请输入验证码");
-
-        // 获取之前暂存的 CAS session
-        CasLoginSession session = casSessionMap.remove(user.getId());
-        if (session == null) {
-            // 未获取验证码 → 新开一个 session
-            try {
-                session = casClient.fetchLoginSession();
-            } catch (Exception e) {
-                return Result.fail(502, "无法连接 CAS 服务器");
-            }
-        }
-
-        try {
-            // ① 提交 CAS 登录 → 获取 CASTGC
-            String tgc = casClient.submitLogin(session, username, password, captcha, null);
-            if (tgc == null || tgc.isBlank()) {
-                return Result.fail(400, "CAS 登录失败：无法获取 CASTGC");
-            }
-
-            // ② 用 CASTGC 获取 ARO service ticket → ARO JWT
-            CasTokenInfo tokenInfo = casClient.acquireTokenViaTgc(tgc);
-            if (tokenInfo == null) {
-                return Result.fail(400, "获取 ARO Token 失败：CASTGC 可能已过期");
-            }
-
-            // ③ 保存 Token
-            tokenStore.save(user.getId(), tokenInfo);
-
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("casAccount", tokenInfo.getAccount());
-            data.put("bound", true);
-            log.info("CAS 代理登录成功: userId={}, casAccount={}", user.getId(), tokenInfo.getAccount());
-            return Result.success(data);
-        } catch (CasLoginException e) {
-            return Result.fail(400, e.getMessage());
-        } catch (Exception e) {
-            log.error("CAS 代理登录异常", e);
-            return Result.fail(500, "CAS 登录异常，请重试");
-        }
     }
 
     // ========== 私有工具方法 ==========
