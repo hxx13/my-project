@@ -137,6 +137,11 @@
             <groupId>org.apache.httpcomponents.client5</groupId>
             <artifactId>httpclient5</artifactId>
         </dependency>
+        <!-- Caffeine 本地缓存（CAS token / TGC 缓存） -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
         <!-- ZXing 二维码解码（仅用于小程序 base64 上传路径，Web 端已改用 jsQR） -->
         <dependency>
             <groupId>com.google.zxing</groupId>

@@ -3,6 +3,7 @@ package com.example.demo.common.web;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.aro.exception.AroTokenRequiredException;
 import com.example.demo.modules.knowledge.service.KnowledgeCategoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(TwinBusinessException.class)
     public Result<Void> handleTwinBusiness(TwinBusinessException ex) {
+        return Result.fail(ex.getCode(), ex.getMessage());
+    }
+
+    @ExceptionHandler(AroTokenRequiredException.class)
+    public Result<Void> handleAroTokenRequired(AroTokenRequiredException ex) {
         return Result.fail(ex.getCode(), ex.getMessage());
     }
 

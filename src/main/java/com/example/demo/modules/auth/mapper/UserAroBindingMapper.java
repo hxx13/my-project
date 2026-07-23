@@ -19,4 +19,12 @@ public interface UserAroBindingMapper {
     int deleteByUserId(@Param("userId") String userId);
 
     int deleteByAroUserId(@Param("aroUserId") String aroUserId);
+
+    void updateCasToken(@Param("userId") String userId, @Param("casToken") String casToken, @Param("casTokenExp") Long casTokenExp);
+
+    void updateCasTgc(@Param("userId") String userId, @Param("casTgc") String casTgc);
+
+    void clearCasCredentials(@Param("userId") String userId);
+
+    void upsertCasBinding(@Param("userId") String userId, @Param("aroUserId") String aroUserId, @Param("casToken") String casToken, @Param("casTokenExp") Long casTokenExp, @Param("casAccount") String casAccount);
 }
