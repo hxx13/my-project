@@ -131,7 +131,7 @@ function RoomTable({ rooms, columns, onClick }: {
 }
 
 function SectionHeader({ icon: Icon, label, count, colorClass }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ElementType;
   label: string;
   count: number;
   colorClass: string;
