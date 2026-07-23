@@ -37,7 +37,7 @@ public class AroService {
     @Qualifier("aroRestTemplate")
     private RestTemplate restTemplate;
 
-    private String cachedToken = null;
+    private volatile String cachedToken = null;
     private volatile String lastAroErrorMessage = "";
 
     // @Value 仅作为默认值，运行时优先从系统设置（sys_system_config）读取

@@ -15,12 +15,12 @@ import {
   CircleCheck,
   ClipboardCheck,
   ClipboardList,
-  Clock,
   CreditCard,
   DoorOpen,
   Download,
   FileText,
   GitBranch,
+  KeyRound,
   LayoutGrid,
   LineChart,
   LockKeyhole,
@@ -481,15 +481,6 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelf-indexes", "STAFF"),
       },
       {
-        id: "cage-event-log",
-        path: "/admin/cage-shelves/event-log",
-        label: "笼位事件日志",
-        icon: Clock,
-        homeTone: "from-amber-400 to-orange-500",
-        fallbackMinRole: "STAFF",
-        sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/event-log", "STAFF"),
-      },
-      {
         id: "cage-special-status",
         path: "/admin/cage-shelves/special-status",
         label: "笼架特殊状态",
@@ -497,6 +488,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-amber-400 to-orange-500",
         fallbackMinRole: "STAFF",
         sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/special-status", "STAFF"),
+      },
+      {
+        id: "aro-binding",
+        path: "/admin/aro-binding",
+        label: "ARO 认证",
+        icon: KeyRound,
+        homeTone: "from-blue-400 to-cyan-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => show(ctx, "/admin/aro-binding", "ADMIN"),
       },
     ],
   },
@@ -733,7 +733,7 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p === "/admin/device-channels" ||
     p === "/admin/aro-rooms" ||
     p === "/admin/cage-shelves" ||
-    p === "/admin/cage-shelves/event-log"
+    p === "/admin/cage-shelves/special-status"
   ) {
     return "ARO 房间与联动";
   }

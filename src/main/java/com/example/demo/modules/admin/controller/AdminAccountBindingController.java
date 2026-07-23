@@ -3,8 +3,11 @@ package com.example.demo.modules.admin.controller;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.aro.client.CasClient;
 import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.dto.CasTokenInfo;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
+import com.example.demo.modules.aro.token.TokenStore;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.entity.UserAroBinding;
@@ -31,15 +34,21 @@ public class AdminAccountBindingController {
     private final AroPersonnelMapper aroPersonnelMapper;
     private final AuthContextService authContextService;
     private final UserMapper userMapper;
+    private final CasClient casClient;
+    private final TokenStore tokenStore;
 
     public AdminAccountBindingController(UserAroBindingMapper userAroBindingMapper,
                                          AroPersonnelMapper aroPersonnelMapper,
                                          AuthContextService authContextService,
-                                         UserMapper userMapper) {
+                                         UserMapper userMapper,
+                                         CasClient casClient,
+                                         TokenStore tokenStore) {
         this.userAroBindingMapper = userAroBindingMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.authContextService = authContextService;
         this.userMapper = userMapper;
+        this.casClient = casClient;
+        this.tokenStore = tokenStore;
     }
 
     @GetMapping("/account/binding")
@@ -158,6 +167,69 @@ public class AdminAccountBindingController {
         }
         return Result.success(result);
     }
+
+    // ========== CAS 个人 Token 绑定 ==========
+
+    @PostMapping("/account/binding/cas-bind")
+    public Result<?> bindCas(@RequestBody Map<String, String> body, HttpServletRequest request) {
+        User user = resolveUser(request);
+        if (user == null) return Result.fail(401, "未登录");
+
+        String ticket = body.get("ticket");
+        if (ticket == null || ticket.isBlank()) return Result.fail(400, "ticket 不能为空");
+
+        CasTokenInfo tokenInfo = casClient.exchangeTicket(ticket);
+        if (tokenInfo == null) return Result.fail(400, "CAS 认证失败：ticket 无效或已过期");
+
+        tokenStore.save(user.getId(), tokenInfo);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("casAccount", tokenInfo.getAccount());
+        data.put("bound", true);
+        return Result.success(data);
+    }
+
+    @GetMapping("/account/binding/cas-status")
+    public Result<?> getCasStatus(HttpServletRequest request) {
+        User user = resolveUser(request);
+        if (user == null) return Result.fail(401, "未登录");
+
+        boolean exists = tokenStore.exists(user.getId());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("bound", exists);
+        if (exists) {
+            CasTokenInfo info = tokenStore.load(user.getId());
+            data.put("casAccount", info != null ? info.getAccount() : null);
+            if (info != null && info.getExp() > 0) {
+                data.put("expiresAt", info.getExp());
+                long remainingSec = info.getExp() - System.currentTimeMillis() / 1000;
+                data.put("remainingSeconds", Math.max(0, remainingSec));
+            }
+        }
+        return Result.success(data);
+    }
+
+    @PostMapping("/account/binding/cas-renew")
+    public Result<?> renewCas(HttpServletRequest request) {
+        User user = resolveUser(request);
+        if (user == null) return Result.fail(401, "未登录");
+
+        CasTokenInfo info = tokenStore.load(user.getId());
+        if (info == null) return Result.fail(400, "未绑定 CAS 账号");
+
+        return Result.fail(400, "Token 续期需要重新 CAS 登录。请解绑后重新绑定。");
+    }
+
+    @DeleteMapping("/account/binding/cas-unbind")
+    public Result<?> unbindCas(HttpServletRequest request) {
+        User user = resolveUser(request);
+        if (user == null) return Result.fail(401, "未登录");
+
+        tokenStore.delete(user.getId());
+        return Result.success();
+    }
+
+    // ========== 私有工具方法 ==========
 
     private User resolveUser(HttpServletRequest request) {
         return authContextService.resolveUserFromBearer(request.getHeader("Authorization"));

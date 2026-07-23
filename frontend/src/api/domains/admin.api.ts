@@ -140,3 +140,40 @@ export async function resetPersonnelPassword(
   }
   return res.data.data;
 }
+
+// ========== CAS 个人 Token 绑定 ==========
+
+export interface CasBindingStatus {
+  bound: boolean;
+  casAccount?: string;
+  expiresAt?: number;
+  remainingSeconds?: number;
+}
+
+export async function fetchCasBindingStatus(): Promise<CasBindingStatus> {
+  const res = await adminHttp.get<Result<CasBindingStatus>>(
+    "/account/binding/cas-status"
+  );
+  if (!res.data?.success)
+    throw new Error(res.data?.message || "获取状态失败");
+  return res.data.data;
+}
+
+export async function bindCasAccount(
+  ticket: string
+): Promise<{ casAccount: string; bound: boolean }> {
+  const res = await adminHttp.post<
+    Result<{ casAccount: string; bound: boolean }>
+  >("/account/binding/cas-bind", { ticket });
+  if (!res.data?.success)
+    throw new Error(res.data?.message || "绑定失败");
+  return res.data.data;
+}
+
+export async function unbindCasAccount(): Promise<void> {
+  const res = await adminHttp.delete<Result<null>>(
+    "/account/binding/cas-unbind"
+  );
+  if (!res.data?.success)
+    throw new Error(res.data?.message || "解绑失败");
+}

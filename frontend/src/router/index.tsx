@@ -61,7 +61,7 @@ import AdminDoorControlPage from "@/pages/AdminDoorControlPage";
 import AdminCageShelfPage from "@/pages/AdminCageShelfPage";
 import AdminSpecialStatusOverviewPage from "@/pages/AdminSpecialStatusOverviewPage";
 import AdminCageShelfIndexPage from "@/pages/AdminCageShelfIndexPage";
-import AdminCageEventLogPage from "@/pages/AdminCageEventLogPage";
+import AdminAroBindingPage from "@/pages/AdminAroBindingPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
 import AdminExpStatsPage from "@/pages/AdminExpStatsPage";
 import AnimalRoomTelemetryPage from "@/pages/AnimalRoomTelemetryPage";
@@ -258,7 +258,6 @@ export const router = createHashRouter([
               { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage /> },
               { path: "cage-shelves", element: <AdminCageShelfPage /> },
               { path: "cage-shelves/special-status", element: <AdminSpecialStatusOverviewPage /> },
-              { path: "cage-shelves/event-log", element: <AdminCageEventLogPage /> },
               { path: "cage-shelf-indexes", element: <AdminCageShelfIndexPage /> },
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },
               { path: "telemetry-watchlists", element: <AdminTelemetryWatchlistsPage /> },
@@ -272,6 +271,7 @@ export const router = createHashRouter([
                   { path: "door-group-storage", element: <AdminDoorGroupStoragePage /> },
                   { path: "device-channels", element: <AdminDeviceChannelPage /> },
                   { path: "aro-rooms", element: <AdminRoomMappingPage /> },
+                  { path: "aro-binding", element: <AdminAroBindingPage /> },
                   { path: "room-mapping", element: <Navigate to={`${STAFF_NS}/admin/aro-rooms`} replace /> },
                   { path: "access-rules", element: <AdminAccessRulesPage /> },
                   { path: "department-storage", element: <AdminDepartmentStoragePage /> },
