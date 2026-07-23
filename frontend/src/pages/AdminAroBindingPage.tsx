@@ -39,7 +39,7 @@ export default function AdminAroBindingPage() {
   const handleCasLogin = () => {
     const origin = window.location.origin;
     const serviceUrl = encodeURIComponent(
-      origin + "/#/console/admin/aro-binding"
+      origin + "/"
     );
     window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${serviceUrl}`;
   };
@@ -56,7 +56,7 @@ export default function AdminAroBindingPage() {
     const bind = async () => {
       setBinding(true);
       try {
-        const serviceUrl = window.location.origin + "/#/console/admin/aro-binding";
+        const serviceUrl = window.location.origin + "/";
         await bindCasAccount(ticket, serviceUrl);
         toast.success("CAS 账号绑定成功");
         window.location.href = window.location.href

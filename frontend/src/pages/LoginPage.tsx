@@ -242,7 +242,7 @@ export default function LoginPage() {
     // R6: try/catch + toast.error
     (async () => {
       try {
-        const serviceUrl = window.location.origin + "/#/login";
+        const serviceUrl = window.location.origin + "/";
         const data = await loginCas(ticket, serviceUrl);
         authStorage.setAuth(data.token, data.role, data.userInfo);
 
@@ -793,7 +793,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => {
                         const origin = window.location.origin;
-                        const serviceUrl = encodeURIComponent(origin + "/#/login");
+                        const serviceUrl = encodeURIComponent(origin + "/");
                         window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${serviceUrl}`;
                       }}
                       className="w-full rounded border border-[#f5d76a]/40 bg-transparent px-4 py-3 text-sm font-medium text-[#e8c547] transition hover:border-[#f5d76a]/70 hover:bg-[#f5d76a]/10"
