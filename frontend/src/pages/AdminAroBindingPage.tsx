@@ -14,7 +14,6 @@ export default function AdminAroBindingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [binding, setBinding] = useState(false);
-  const ticketRef = useRef(false);
 
   const fetchStatus = useCallback(async () => {
     setLoading(true);
