@@ -76,6 +76,18 @@ PRODUCT.md
 .playwright-mcp/
 .github/
 
+# ===== Deploy: exclude deprecated/binary directories =====
+deploy/cloud-relay/
+deploy/cosyvoice/
+deploy/frp_*/
+
+# ===== Dev-only config (not needed for production) =====
+aroapp/.cloudbase/
+
+# ===== Root-level npm artifacts (project uses Maven, not npm at root) =====
+/package.json
+/package-lock.json
+
 # ===== Misc =====
 *.pdf
 *.zip

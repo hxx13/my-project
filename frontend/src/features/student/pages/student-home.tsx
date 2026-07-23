@@ -84,7 +84,7 @@ function QuickActionItem({
   label,
   onClick,
 }: {
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   label: string;
   onClick?: () => void;
 }) {

@@ -77,10 +77,11 @@ export default function CameraController() {
   // Step 1.4: fov 同步 — useEffect 单向 + 阈值守卫
   useEffect(() => {
     const storeFov = useStore.getState().fov;
-    if (Math.abs(camera.fov - storeFov) > 0.01) {
-      useStore.setState({ fov: camera.fov });
+    const perspectiveCamera = camera as THREE.PerspectiveCamera;
+    if (Math.abs(perspectiveCamera.fov - storeFov) > 0.01) {
+      useStore.setState({ fov: perspectiveCamera.fov });
     }
-  }, [camera.fov]);
+  }, [camera]);
 
   // GSAP 运镜底层: fly-to。P2.9: reduced-motion → duration=0
   const flyTo = (pos: [number, number, number], target: [number, number, number], duration = 1.2) => {
