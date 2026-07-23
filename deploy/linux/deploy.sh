@@ -22,20 +22,18 @@ echo "=========================================="
 # Step 1/8: git pull
 echo "=== Step 1/8: git pull ==="
 cd "$REPO_DIR"
-git pull origin main
+git pull origin master
 echo "  当前 commit: $(git rev-parse --short HEAD)"
 
 # Step 2/8: DB 备份
 echo "=== Step 2/8: DB 备份 ==="
 mkdir -p "$BACKUP_DIR"
 BACKUP_FILE="$BACKUP_DIR/backup-$(date +%Y%m%d-%H%M%S).sql.gz"
-mysqldump -u root -p"${DB_PASSWORD}" \
-    --single-transaction --no-create-info \
-    twin_system | gzip > "$BACKUP_FILE"
+sudo mysqldump --single-transaction --no-create-info twin_system | gzip > "$BACKUP_FILE"
 echo "  备份完成: $BACKUP_FILE"
 
 # 只保留最近 5 次部署备份
-ls -t "$BACKUP_DIR"/backup-*.sql.gz 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
+sudo ls -t "$BACKUP_DIR"/backup-*.sql.gz 2>/dev/null | tail -n +6 | xargs sudo rm -f 2>/dev/null || true
 
 # Step 3/8: 前端构建
 echo "=== Step 3/8: npm build ==="

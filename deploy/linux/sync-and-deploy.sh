@@ -25,12 +25,11 @@ sed -i 's/utf8mb4_0900_ai_ci/utf8mb4_unicode_ci/g' "$UPLOAD_DIR/twin_system_late
 # 2/7: 备份当前数据库
 echo "=== 2/7 备份当前数据库 ==="
 mkdir -p /opt/twin/backups
-mysqldump -u root -p"${DB_PASSWORD}" --single-transaction \
-    --all-databases | gzip > /opt/twin/backups/before-sync-$(date +%Y%m%d-%H%M).sql.gz
+sudo mysqldump --single-transaction --all-databases | gzip > /opt/twin/backups/before-sync-$(date +%Y%m%d-%H%M).sql.gz
 
 # 3/7: 覆盖数据库
 echo "=== 3/7 覆盖数据库 ==="
-mysql -u root -p"${DB_PASSWORD}" --force twin_system < "$UPLOAD_DIR/twin_system_latest.sql"
+sudo mysql --force twin_system < "$UPLOAD_DIR/twin_system_latest.sql"
 
 # 4/7: 覆盖文件数据
 echo "=== 4/7 覆盖文件数据 ==="
@@ -39,7 +38,7 @@ sudo tar -xzf "$UPLOAD_DIR/twin_data_latest.tar.gz" -C /opt/twin/data/
 # 5/7: git pull 最新代码
 echo "=== 5/7 git pull ==="
 cd "$REPO_DIR"
-git pull origin main
+git pull origin master
 echo "  当前 commit: $(git rev-parse --short HEAD)"
 
 # 6/7: 构建 + 部署
