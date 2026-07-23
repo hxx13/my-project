@@ -61,7 +61,7 @@ if [ -n "$OLD_JAR" ]; then
     echo "  旧版本已备份: demo-previous.jar.bak"
 fi
 rm -f "$APP_DIR"/demo-*.jar
-cp target/demo-*.jar "$APP_DIR/"
+cp deploy/demo-*.jar "$APP_DIR/"
 sudo chown twin:twin "$APP_DIR"/demo-*.jar
 echo "  JAR 已替换"
 
