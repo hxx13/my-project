@@ -7,6 +7,7 @@ import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -60,6 +61,55 @@ public class AroRestTemplateConfig {
   @Bean("aroRestTemplate")
   public RestTemplate aroRestTemplate(CloseableHttpClient aroHttpClient) {
     HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(aroHttpClient);
+    RestTemplate restTemplate = new RestTemplate(factory);
+    restTemplate.setInterceptors(List.of((request, body, execution) -> {
+      request.getHeaders().set(HttpHeaders.USER_AGENT, USER_AGENT);
+      return execution.execute(request, body);
+    }));
+    return restTemplate;
+  }
+
+  /**
+   * CAS 专用 HttpClient：禁用 302 自动跟随，用于拦截 CAS ticket redirect。
+   * 复用与 aroHttpClient 相同的连接池配置。
+   */
+  @Bean("casHttpClient")
+  public CloseableHttpClient casHttpClient(
+      @Value("${app.aro.http.connect-timeout-ms:10000}") int connectTimeoutMs,
+      @Value("${app.aro.http.read-timeout-ms:45000}") int readTimeoutMs,
+      @Value("${app.aro.http.pool.max-total:32}") int maxTotal,
+      @Value("${app.aro.http.pool.max-per-route:16}") int maxPerRoute) {
+    int connectMs = Math.max(1000, connectTimeoutMs);
+    int readMs = Math.max(3000, readTimeoutMs);
+
+    ConnectionConfig connectionConfig = ConnectionConfig.custom()
+        .setConnectTimeout(Timeout.ofMilliseconds(connectMs))
+        .setSocketTimeout(Timeout.ofMilliseconds(readMs))
+        .setTimeToLive(TimeValue.ofMinutes(5))
+        .build();
+
+    PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+    connectionManager.setMaxTotal(Math.max(8, maxTotal));
+    connectionManager.setDefaultMaxPerRoute(Math.max(4, maxPerRoute));
+    connectionManager.setDefaultConnectionConfig(connectionConfig);
+
+    RequestConfig requestConfig = RequestConfig.custom()
+        .setConnectionRequestTimeout(Timeout.ofMilliseconds(connectMs))
+        .setResponseTimeout(Timeout.ofMilliseconds(readMs))
+        .build();
+
+    return HttpClients.custom()
+        .setConnectionManager(connectionManager)
+        .setDefaultRequestConfig(requestConfig)
+        .disableRedirectHandling()
+        .evictExpiredConnections()
+        .evictIdleConnections(TimeValue.ofSeconds(60))
+        .build();
+  }
+
+  @Bean("casRestTemplate")
+  public RestTemplate casRestTemplate(@Qualifier("casHttpClient") CloseableHttpClient casHttpClient) {
+    HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(casHttpClient);
     RestTemplate restTemplate = new RestTemplate(factory);
     restTemplate.setInterceptors(List.of((request, body, execution) -> {
       request.getHeaders().set(HttpHeaders.USER_AGENT, USER_AGENT);
