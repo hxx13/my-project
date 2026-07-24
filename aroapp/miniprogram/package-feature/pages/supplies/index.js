@@ -929,15 +929,30 @@ Page({
     } else {
       sel[dimKey] = optVal;
     }
-    // Re-decorate items + filteredItems to reflect new spec selections
-    var newSpecSelections = { ...this.data.specSelections, [itemId]: sel };
-    var items = decorateSpecFields(this.data.items.slice(), newSpecSelections);
-    var filteredItems = decorateSpecFields(this.data.filteredItems.slice(), newSpecSelections);
-    this.setData({
-      [`specSelections.${itemId}`]: sel,
-      items: items,
-      filteredItems: filteredItems,
-    });
+    // Use targeted path-based setData to avoid re-rendering the entire list,
+    // which would cause the scroll-view to lose its scroll position.
+    const newSpecSelections = { ...this.data.specSelections, [itemId]: sel };
+    const itemsIdx = this.data.items.findIndex(function (x) { return x.id === itemId; });
+    const filteredIdx = this.data.filteredItems.findIndex(function (x) { return x.id === itemId; });
+
+    // Re-decorate only the tapped item in-place (mutate + path-based setData)
+    if (itemsIdx >= 0) {
+      decorateSpecFields([this.data.items[itemsIdx]], newSpecSelections);
+    }
+    if (filteredIdx >= 0) {
+      decorateSpecFields([this.data.filteredItems[filteredIdx]], newSpecSelections);
+    }
+
+    const patch = { [`specSelections.${itemId}`]: sel };
+    if (itemsIdx >= 0) {
+      patch[`items[${itemsIdx}]._specAllSelected`] = this.data.items[itemsIdx]._specAllSelected;
+      patch[`items[${itemsIdx}]._specCartKey`] = this.data.items[itemsIdx]._specCartKey;
+    }
+    if (filteredIdx >= 0) {
+      patch[`filteredItems[${filteredIdx}]._specAllSelected`] = this.data.filteredItems[filteredIdx]._specAllSelected;
+      patch[`filteredItems[${filteredIdx}]._specCartKey`] = this.data.filteredItems[filteredIdx]._specCartKey;
+    }
+    this.setData(patch);
   },
 
   /** Determine if all spec dimensions for an item are selected. */
@@ -964,8 +979,30 @@ Page({
     if (!itemId || !comboJson) return;
     var combo;
     try { combo = JSON.parse(comboJson); } catch (err) { return; }
-    // Set selections to this combo
-    this.setData({ [`specSelections.${itemId}`]: combo });
+
+    // Update selections + decorated fields via targeted paths so the
+    // stepper appears immediately without a full-list re-render.
+    var newSpecSelections = { ...this.data.specSelections, [itemId]: combo };
+    var itemsIdx = this.data.items.findIndex(function (x) { return x.id === itemId; });
+    var filteredIdx = this.data.filteredItems.findIndex(function (x) { return x.id === itemId; });
+
+    if (itemsIdx >= 0) {
+      decorateSpecFields([this.data.items[itemsIdx]], newSpecSelections);
+    }
+    if (filteredIdx >= 0) {
+      decorateSpecFields([this.data.filteredItems[filteredIdx]], newSpecSelections);
+    }
+
+    var patch = { [`specSelections.${itemId}`]: combo };
+    if (itemsIdx >= 0) {
+      patch['items[' + itemsIdx + ']._specAllSelected'] = this.data.items[itemsIdx]._specAllSelected;
+      patch['items[' + itemsIdx + ']._specCartKey'] = this.data.items[itemsIdx]._specCartKey;
+    }
+    if (filteredIdx >= 0) {
+      patch['filteredItems[' + filteredIdx + ']._specAllSelected'] = this.data.filteredItems[filteredIdx]._specAllSelected;
+      patch['filteredItems[' + filteredIdx + ']._specCartKey'] = this.data.filteredItems[filteredIdx]._specCartKey;
+    }
+    this.setData(patch);
     // Then add to cart
     this._addSpecCart(itemId, combo);
   },

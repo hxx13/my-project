@@ -62,8 +62,8 @@ import AdminDoorControlPage from "@/pages/AdminDoorControlPage";
 import AdminCageShelfPage from "@/pages/AdminCageShelfPage";
 import AdminSpecialStatusOverviewPage from "@/pages/AdminSpecialStatusOverviewPage";
 import AdminCageShelfIndexPage from "@/pages/AdminCageShelfIndexPage";
-import AdminAroBindingPage from "@/pages/AdminAroBindingPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
+import AdminAroBindingPage from "@/pages/AdminAroBindingPage";
 import AdminExpStatsPage from "@/pages/AdminExpStatsPage";
 import AnimalRoomTelemetryPage from "@/pages/AnimalRoomTelemetryPage";
 import AnimalRoomCockpitPage from "@/pages/AnimalRoomCockpitPage";
@@ -275,6 +275,7 @@ export const router = createHashRouter([
               { path: "telemetry-insights", element: <AdminTelemetryInsightsPage /> },
               { path: "telemetry-insights-config", element: <AdminTelemetryInsightsConfigPage /> },
               { path: "aro-binding", element: <AdminAroBindingPage /> },
+
               {
                 element: <AdminGuard />,
                 children: [

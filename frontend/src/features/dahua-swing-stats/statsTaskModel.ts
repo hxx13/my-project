@@ -34,16 +34,6 @@ export const DAILY_PERIOD_OPTIONS: { value: StatsPeriodMode; label: string; hint
     label: "昨日日批",
     hint: "每日定时执行时拉取「上一自然日」在下方刷卡时刻范围内的记录；何时执行在「定时管理」配置",
   },
-  {
-    value: "PREVIOUS_WEEK",
-    label: "上周周批",
-    hint: "每次拉取上一自然周（周一至周日）在下方刷卡时刻范围内的记录",
-  },
-  {
-    value: "SINCE_LAST",
-    label: "水位增量",
-    hint: "自上次成功拉取结束时间至今；首次约回溯 24 小时，适合补洞",
-  },
 ];
 
 export const PERIOD_MODE_LABEL: Record<StatsPeriodMode, string> = {

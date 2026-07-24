@@ -70,11 +70,10 @@ const SINGLE_KEYS = new Set([
   "DAHUA_DEPT_REFRESH",
   "ACCESS_CLEAN_PACKAGE_DAILY",
   STATS_PULL_SCHEDULE_JOB.PREVIOUS_DAY,
-  STATS_PULL_SCHEDULE_JOB.PREVIOUS_WEEK,
-  STATS_PULL_SCHEDULE_JOB.SINCE_LAST,
   ...Array.from(FREEZE_KEYS),
   "CAGE_SPECIAL_STATUS_SCAN",
   "EXP_RECONCILE",
+  "ARO_TRAINING_SYNC",
 ]);
 
 const WINCC_POLL_KEYS = TELEMETRY_WINCC_POLL_KEYS;
@@ -184,8 +183,6 @@ export default function AdminScheduleManagerPage() {
         keys: new Set([
           "ACCESS_CLEAN_PACKAGE_DAILY",
           STATS_PULL_SCHEDULE_JOB.PREVIOUS_DAY,
-          STATS_PULL_SCHEDULE_JOB.PREVIOUS_WEEK,
-          STATS_PULL_SCHEDULE_JOB.SINCE_LAST,
         ]),
       },
       {
@@ -194,7 +191,7 @@ export default function AdminScheduleManagerPage() {
       },
       {
         title: "同步与落库",
-        keys: new Set(["ORDER_SYNC", "ORDER_SYNC_FULL", "PERSONNEL_SYNC_ALL", "ROOM_MAPPING_REFRESH"]),
+        keys: new Set(["ORDER_SYNC", "ORDER_SYNC_FULL", "PERSONNEL_SYNC_ALL", "ROOM_MAPPING_REFRESH", "ARO_TRAINING_SYNC"]),
       },
       {
         title: "大华缓存",
@@ -827,7 +824,7 @@ export default function AdminScheduleManagerPage() {
                 <div className="mb-2 text-sm font-semibold text-[var(--twin-body)]">{group.title}</div>
                 {group.title === "门禁统计（每日到点）" ? (
                   <p className="mb-2 text-xs text-[var(--twin-mute)]">
-                    三个审计拉取 Job 互不合并：<strong>昨日日批</strong>、<strong>上周周批</strong>、<strong>水位增量</strong>各配独立到点时刻，仅执行对应 periodMode 且已勾选参与定时的任务；<strong>历史回溯无定时</strong>。
+                    审计拉取 Job：<strong>昨日日批</strong> 在下方 A 区配置到点时刻；结束后联动增量入库与隔离服/笼架订阅统计。<strong>历史回溯无定时</strong>。
                     「昨日日批」到点后还会跑全局增量入库并刷新隔离服/笼架订阅；周批/水位仅拉取+任务级自动清洗。
                     <strong className="ml-1">门禁统计·自动入库</strong>（
                     <code className="text-[10px]">ACCESS_CLEAN_PACKAGE_DAILY</code>）建议时刻晚于昨日日批。

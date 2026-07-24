@@ -1,11 +1,15 @@
 import {
   ArrowLeft,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Clock,
   History,
   Home,
+  KeyRound,
+  Loader2,
   LogIn,
   LogOut,
   Menu,
@@ -13,6 +17,7 @@ import {
   Search,
   Settings,
   Star,
+  Unlink,
   UserRound,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -117,6 +122,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  fetchCasBindingStatus,
+  bindCasAccount,
+  unbindCasAccount,
+  type CasBindingStatus,
+} from "@/api/domains/admin.api";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -172,6 +183,13 @@ export default function AdminLayout() {
   const [aroBinding, setAroBinding] = useState<null | false | { aroUserId: string; name: string; departmentName: string; createdAt: string }>(null);
   const [aroBindDialogOpen, setAroBindDialogOpen] = useState(false);
   const [aroBindUserId, setAroBindUserId] = useState("");
+  // CAS token binding
+  const [casStatus, setCasStatus] = useState<CasBindingStatus | null>(null);
+  const [casDialogOpen, setCasDialogOpen] = useState(false);
+  const [casBinding, setCasBinding] = useState(false);
+  const [casPopupReady, setCasPopupReady] = useState(false);
+  const [casRenewing, setCasRenewing] = useState(false);
+  const casPasteRef = useRef<HTMLTextAreaElement>(null);
   const [aroUnbindDialogOpen, setAroUnbindDialogOpen] = useState(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -262,6 +280,12 @@ export default function AdminLayout() {
       })
       .then((wrapper) => setAroBinding(wrapper?.data || false))
       .catch(() => setAroBinding(false));
+  }, [role]);
+
+  /** Fetch CAS token binding status */
+  useEffect(() => {
+    if (!hasMinRole(role, "STAFF")) return;
+    fetchCasBindingStatus().then(setCasStatus).catch(() => {});
   }, [role]);
 
   const pullPendingBadges = useCallback(() => {
@@ -966,6 +990,41 @@ export default function AdminLayout() {
     );
   };
 
+  // ── CAS token bind handlers ──
+  const handleCasFetch = () => {
+    setCasPopupReady(false);
+    window.open("https://aro.shsmu.edu.cn/jtu/api/loginAuth?loginAuthType=CAS", "aro-cas-fetch", "width=500,height=400");
+    setTimeout(() => setCasPopupReady(true), 1500);
+  };
+  const handleCasPaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData?.getData("text") || "";
+    let token = "";
+    try { const json = JSON.parse(text); token = json?.data?.token || json?.token || ""; } catch { if (text.startsWith("eyJ")) token = text.trim(); }
+    if (token) { e.preventDefault(); doCasBind(token); }
+  };
+  const doCasBind = async (aroToken: string) => {
+    setCasBinding(true);
+    try { await bindCasAccount(aroToken); toast.success("ARO认证绑定成功"); setCasPopupReady(false); setCasDialogOpen(false); fetchCasBindingStatus().then(setCasStatus); }
+    catch (e: any) { toast.error(e?.message || "绑定失败"); }
+    finally { setCasBinding(false); }
+  };
+  const handleCasRenew = async () => {
+    setCasRenewing(true);
+    try {
+      const res = await fetch("/api/admin/account/binding/cas-renew", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + authStorage.getToken() }, body: "{}" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.message || "续期失败");
+      toast.success("Token已续期"); fetchCasBindingStatus().then(setCasStatus);
+    } catch (e: any) { toast.error(e?.message || "续期失败"); }
+    finally { setCasRenewing(false); }
+  };
+  const handleCasUnbind = async () => {
+    if (!confirm("确定解绑ARO个人认证吗？")) return;
+    try { await unbindCasAccount(); toast.success("已解绑"); setCasStatus(null); }
+    catch (e: any) { toast.error(e?.message || "解绑失败"); }
+  };
+  const casRemaining = casStatus?.remainingSeconds;
+  const casExpiring = casRemaining != null && casRemaining < 3 * 86400;
+
   return (
     <div
       className={cn(
@@ -1108,7 +1167,18 @@ export default function AdminLayout() {
                     {avatarLetter}
                   </span>
                   <span className="hidden min-w-0 flex-col text-left sm:flex">
-                    <span className="truncate text-sm font-medium text-[var(--twin-ink)]">{headerPrimaryLabel}</span>
+                    <span className="inline-flex items-center gap-1.5 truncate text-sm font-medium text-[var(--twin-ink)]">
+                      {headerPrimaryLabel}
+                      {hasMinRole(role, "STAFF") && (
+                        <span
+                          className={cn(
+                            "inline-block h-2 w-2 rounded-full shrink-0",
+                            casStatus?.bound ? "bg-emerald-400" : "bg-neutral-300",
+                          )}
+                          title={casStatus?.bound ? `ARO已绑定: ${casStatus.casAccount}` : "ARO未绑定"}
+                        />
+                      )}
+                    </span>
                     {headerUsername ? (
                       <span className="truncate text-[11px] text-[var(--twin-mute)]">@{headerUsername}</span>
                     ) : null}
@@ -1118,7 +1188,12 @@ export default function AdminLayout() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56" data-admin-chrome-ctx-surface>
                 <div className="px-2 py-1.5 sm:hidden">
-                  <div className="truncate text-sm font-medium text-[var(--twin-ink)]">{headerPrimaryLabel}</div>
+                  <div className="inline-flex items-center gap-1.5 truncate text-sm font-medium text-[var(--twin-ink)]">
+                    {headerPrimaryLabel}
+                    {hasMinRole(role, "STAFF") && (
+                      <span className={cn("inline-block h-2 w-2 rounded-full shrink-0", casStatus?.bound ? "bg-emerald-400" : "bg-neutral-300")} />
+                    )}
+                  </div>
                   {headerUsername ? <div className="truncate text-[11px] text-[var(--twin-mute)]">@{headerUsername}</div> : null}
                 </div>
                 <div className="px-2 py-1 text-[10px] text-[var(--twin-mute)] sm:block">当前角色 · {role}</div>
@@ -1174,6 +1249,37 @@ export default function AdminLayout() {
                       <UserRound className="mr-2 h-4 w-4" />
                       解除ARO绑定
                     </DropdownMenuItem>
+                  </>
+                )}
+                {hasMinRole(role, "STAFF") && (
+                  <>
+                    <DropdownMenuSeparator />
+                    {casStatus?.bound ? (
+                      <>
+                        <DropdownMenuItem disabled className="text-[var(--twin-mute)] opacity-70">
+                          <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
+                          ARO认证: {casStatus.casAccount}
+                          {casRemaining != null && casRemaining > 0 && (
+                            <span className={cn("ml-1 text-[10px]", casExpiring && "text-amber-500")}>
+                              ({Math.floor(casRemaining / 86400)}天)
+                            </span>
+                          )}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={handleCasRenew}>
+                          <Clock className="mr-2 h-4 w-4" />
+                          {casRenewing ? "续期中..." : "续期Token"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={handleCasUnbind}>
+                          <Unlink className="mr-2 h-4 w-4" />
+                          解绑认证
+                        </DropdownMenuItem>
+                      </>
+                    ) : (
+                      <DropdownMenuItem onSelect={() => setCasDialogOpen(true)}>
+                        <KeyRound className="mr-2 h-4 w-4" />
+                        绑定ARO认证
+                      </DropdownMenuItem>
+                    )}
                   </>
                 )}
                 {hasMinRole(role, "STAFF") ? (
@@ -1427,6 +1533,48 @@ export default function AdminLayout() {
               解除绑定
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* CAS Token 绑定弹窗 */}
+      <Dialog open={casDialogOpen} onOpenChange={setCasDialogOpen}>
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>绑定 ARO 个人认证</DialogTitle>
+            <DialogDescription>
+              获取你的 ARO Token 以使用需要个人权限的功能。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Button size="default" className="w-full" onClick={handleCasFetch}>
+              <KeyRound className="mr-2 h-4 w-4" />一键获取 Token
+            </Button>
+            {casPopupReady && (
+              <div className="space-y-2">
+                <div className="rounded bg-blue-50 border border-blue-200 p-2.5 text-xs text-blue-700 leading-relaxed">
+                  在弹窗中 <strong>Ctrl+A</strong> 全选 → <strong>Ctrl+C</strong> 复制 →
+                  回到此处 <strong>Ctrl+V</strong> 粘贴
+                </div>
+                <textarea
+                  ref={casPasteRef}
+                  onPaste={handleCasPaste}
+                  placeholder="在此 Ctrl+V 粘贴..."
+                  className="w-full h-16 rounded border px-3 py-2 text-xs font-mono resize-none"
+                  autoFocus
+                />
+                {casBinding && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> 绑定中...
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="text-[10px] text-[var(--twin-mute)]">
+              没有 ARO 会话？
+              <button onClick={() => { const w = window.open("https://auth2.shsmu.edu.cn/cas/logout", "aro-cas-logout", "width=1,height=1"); setTimeout(() => { if (w) w.close(); window.open("https://auth2.shsmu.edu.cn/cas/login?service=https://aro.shsmu.edu.cn", "aro-cas", "width=800,height=600"); }, 800); }}
+                className="text-primary hover:underline ml-1">先完成 CAS 登录</button>
+            </p>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

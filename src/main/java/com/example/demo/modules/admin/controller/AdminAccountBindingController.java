@@ -180,12 +180,14 @@ public class AdminAccountBindingController {
         User user = resolveUser(request);
         if (user == null) return Result.fail(401, "未登录");
 
-        String ticket = body.get("ticket");
-        if (ticket == null || ticket.isBlank()) return Result.fail(400, "ticket 不能为空");
+        String aroToken = body.get("aroToken");
+        if (aroToken == null || aroToken.isBlank()) return Result.fail(400, "aroToken 不能为空");
 
-        // Use ARO loginAuth which validates against its own CAS service URL
-        CasTokenInfo tokenInfo = casClient.exchangeTicket(ticket);
-        if (tokenInfo == null) return Result.fail(400, "CAS 认证失败：ticket 无效或已过期");
+        // 解析 ARO JWT payload 提取用户身份（不验证签名，ARO 用自己的密钥）
+        // ARO 的 loginAuth 端点只能在浏览器上下文工作，后端无法直接调用，
+        // 因此改为由前端从 ARO localStorage 获取 token 后回传。
+        CasTokenInfo tokenInfo = casClient.parseToken(aroToken);
+        if (tokenInfo == null) return Result.fail(400, "ARO Token 解析失败：token 格式无效或已损坏");
 
         tokenStore.save(user.getId(), tokenInfo);
 
@@ -216,14 +218,44 @@ public class AdminAccountBindingController {
     }
 
     @PostMapping("/account/binding/cas-renew")
-    public Result<?> renewCas(HttpServletRequest request) {
+    public Result<?> renewCas(@RequestBody(required = false) Map<String, String> body, HttpServletRequest request) {
         User user = resolveUser(request);
         if (user == null) return Result.fail(401, "未登录");
 
         CasTokenInfo info = tokenStore.load(user.getId());
-        if (info == null) return Result.fail(400, "未绑定 CAS 账号");
+        if (info == null) return Result.fail(400, "未绑定 ARO 认证");
 
-        return Result.fail(400, "Token 续期需要重新 CAS 登录。请解绑后重新绑定。");
+        // 优先：用已有 token 续期（只需 token header + Referer）
+        String oldToken = info.getToken();
+        if (oldToken != null && !oldToken.isBlank()) {
+            CasTokenInfo newToken = casClient.refreshToken(oldToken);
+            if (newToken != null) {
+                tokenStore.save(user.getId(), newToken);
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("casAccount", newToken.getAccount());
+                data.put("bound", true);
+                data.put("renewed", true);
+                data.put("remainingSeconds", Math.max(0, newToken.getExp() - System.currentTimeMillis() / 1000));
+                log.info("[ARO] Token 自动续期成功: userId={}, account={}", user.getId(), newToken.getAccount());
+                return Result.success(data);
+            }
+        }
+
+        // 降级：如果前端传了 JSESSIONID，用 session 方式续期
+        String jsessionid = body != null ? body.get("jsessionid") : null;
+        if (jsessionid != null && !jsessionid.isBlank()) {
+            CasTokenInfo newToken = casClient.getTokenBySession(jsessionid);
+            if (newToken != null) {
+                tokenStore.save(user.getId(), newToken);
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("casAccount", newToken.getAccount());
+                data.put("bound", true);
+                data.put("renewed", true);
+                return Result.success(data);
+            }
+        }
+
+        return Result.fail(400, "自动续期失败。Token 可能已过期，请重新绑定 ARO 认证。");
     }
 
     @DeleteMapping("/account/binding/cas-unbind")

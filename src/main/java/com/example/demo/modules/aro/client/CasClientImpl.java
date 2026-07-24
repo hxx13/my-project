@@ -54,6 +54,155 @@ public class CasClientImpl implements CasClient {
     }
 
     @Override
+    public CasTokenInfo parseToken(String aroJwt) {
+        if (aroJwt == null || aroJwt.isBlank()) {
+            log.error("[CAS] parseToken: token 为空");
+            return null;
+        }
+
+        JSONObject payload = parseJwtPayload(aroJwt);
+        if (payload == null) {
+            log.error("[CAS] parseToken: JWT payload 解析失败");
+            return null;
+        }
+
+        CasTokenInfo info = new CasTokenInfo();
+        info.setToken(aroJwt);
+        info.setAccount(payload.getString("account"));
+        info.setAroUserId(toString(payload, "userId"));
+        info.setUserKey(payload.getString("userKey"));
+        info.setRoleNames(payload.getString("roleNames"));
+        Long exp = payload.getLong("exp");
+        info.setExp(exp != null ? exp : 0);
+
+        log.info("[CAS] parseToken 成功: account={}, userId={}, userKey={}",
+                info.getAccount(), info.getAroUserId(), info.getUserKey());
+        return info;
+    }
+
+    /**
+     * 将 JSON 中的数字/字符串字段统一转为字符串（userId 在 JWT 中可能是数字）。
+     */
+    private String toString(JSONObject payload, String key) {
+        Object val = payload.get(key);
+        if (val == null) return null;
+        return val.toString();
+    }
+
+    @Override
+    public CasTokenInfo refreshToken(String oldToken) {
+        if (oldToken == null || oldToken.isBlank()) {
+            log.error("[CAS] refreshToken: oldToken 为空");
+            return null;
+        }
+
+        String url = ARO_LOGIN_AUTH_URL + "?loginAuthType=CAS";
+        log.info("[CAS] 正在使用旧 Token 换取新 Token...");
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.ACCEPT, "application/json");
+            headers.set(HttpHeaders.REFERER, "https://aro.shsmu.edu.cn/");
+            headers.set("token", oldToken);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<Map> response = aroRestTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
+
+            if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null) {
+                log.error("[CAS] refreshToken 返回异常: status={}", response.getStatusCode());
+                return null;
+            }
+
+            Object dataObj = response.getBody().get("data");
+            if (!(dataObj instanceof Map<?, ?> dataMap)) {
+                log.error("[CAS] refreshToken 返回体缺少 data 字段");
+                return null;
+            }
+
+            Object tokenObj = dataMap.get("token");
+            if (!(tokenObj instanceof String token) || token.isBlank()) {
+                log.error("[CAS] refreshToken 返回体缺少 token");
+                return null;
+            }
+
+            CasTokenInfo info = buildTokenInfo(token);
+            log.info("[CAS] refreshToken 成功: account={}", info != null ? info.getAccount() : "?");
+            return info;
+        } catch (Exception e) {
+            log.error("[CAS] refreshToken 调用失败", e);
+            return null;
+        }
+    }
+
+    @Override
+    public CasTokenInfo getTokenBySession(String jsessionid) {
+        if (jsessionid == null || jsessionid.isBlank()) {
+            log.error("[CAS] getTokenBySession: JSESSIONID 为空");
+            return null;
+        }
+
+        String url = ARO_LOGIN_AUTH_URL + "?loginAuthType=CAS";
+        log.info("[CAS] 正在通过已有会话获取 ARO Token...");
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.ACCEPT, "application/json");
+            headers.set(HttpHeaders.REFERER, "https://aro.shsmu.edu.cn/");
+            headers.set(HttpHeaders.COOKIE, "JSESSIONID=" + jsessionid);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<Map> response = aroRestTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
+
+            if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null) {
+                log.error("[CAS] getTokenBySession 返回异常: status={}", response.getStatusCode());
+                return null;
+            }
+
+            Object dataObj = response.getBody().get("data");
+            // ARO 可能在未认证时返回 CAS 重定向 URL 而不是 token 对象
+            if (dataObj instanceof String redirectUrl) {
+                log.warn("[CAS] getTokenBySession 返回了 CAS 重定向 URL（session 可能已过期）: {}", redirectUrl);
+                return null;
+            }
+            if (!(dataObj instanceof Map<?, ?> dataMap)) {
+                log.error("[CAS] getTokenBySession 返回体缺少 data 字段");
+                return null;
+            }
+
+            Object tokenObj = dataMap.get("token");
+            if (!(tokenObj instanceof String token) || token.isBlank()) {
+                log.error("[CAS] getTokenBySession 返回体缺少 token");
+                return null;
+            }
+
+            return buildTokenInfo(token);
+        } catch (Exception e) {
+            log.error("[CAS] getTokenBySession 调用失败", e);
+            return null;
+        }
+    }
+
+    /** 从 JWT 字符串构建 CasTokenInfo，复用解析逻辑 */
+    private CasTokenInfo buildTokenInfo(String token) {
+        JSONObject payload = parseJwtPayload(token);
+        if (payload == null) return null;
+
+        CasTokenInfo info = new CasTokenInfo();
+        info.setToken(token);
+        info.setAccount(payload.getString("account"));
+        info.setAroUserId(toString(payload, "userId"));
+        info.setUserKey(payload.getString("userKey"));
+        info.setRoleNames(payload.getString("roleNames"));
+        Long exp = payload.getLong("exp");
+        info.setExp(exp != null ? exp : 0);
+
+        log.info("[CAS] Token 解析成功: account={}, userId={}, userKey={}",
+                info.getAccount(), info.getAroUserId(), info.getUserKey());
+        return info;
+    }
+
+    @Override
+    @Deprecated
     public CasTokenInfo exchangeTicket(String ticket) {
         String url = ARO_LOGIN_AUTH_URL + "?ticket=" + URLEncoder.encode(ticket, StandardCharsets.UTF_8);
         log.info("[CAS] 正在用 ticket 换取 ARO JWT Token...");
@@ -77,25 +226,7 @@ public class CasClientImpl implements CasClient {
             return null;
         }
 
-        // 解析 JWT payload（不验证签名，ARO 的 JWT 用自己的密钥签名）
-        JSONObject payload = parseJwtPayload(token);
-        if (payload == null) {
-            log.error("[CAS] 解析 JWT payload 失败");
-            return null;
-        }
-
-        CasTokenInfo info = new CasTokenInfo();
-        info.setToken(token);
-        info.setAccount(payload.getString("account"));
-        info.setAroUserId(payload.getString("userId"));
-        info.setUserKey(payload.getString("userKey"));
-        info.setRoleNames(payload.getString("roleNames"));
-        Long exp = payload.getLong("exp");
-        info.setExp(exp != null ? exp : 0);
-
-        log.info("[CAS] JWT 解析成功: account={}, userId={}, userKey={}",
-                info.getAccount(), info.getAroUserId(), info.getUserKey());
-        return info;
+        return buildTokenInfo(token);
     }
 
     @Override

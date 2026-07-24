@@ -6,6 +6,7 @@ import com.example.demo.modules.dahua.service.DahuaDoorGroupCacheService;
 import com.example.demo.modules.roommapping.service.RoomMappingService;
 import com.example.demo.modules.aro.dto.AroIncrementalSyncResult;
 import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.service.AroTrainingSyncService;
 import com.example.demo.modules.analytics.service.AnalyticsPipelineHook;
 import com.example.demo.modules.aro.task.AroSyncTask;
 import com.example.demo.modules.cageshelf.service.CageSpecialStatusScanService;
@@ -90,6 +91,8 @@ public class JobExecutionRegistry {
     public static final String JOB_EXP_RECONCILE = "EXP_RECONCILE";
     /** 笼架特殊状态违规检测（纯天数模式定时判定） */
     public static final String JOB_CAGE_STATUS_VIOLATION_CHECK = "CAGE_STATUS_VIOLATION_CHECK";
+    /** ARO 培训数据全量同步（每日拉取场次+学员到本地缓存表） */
+    public static final String JOB_ARO_TRAINING_SYNC = "ARO_TRAINING_SYNC";
 
     private static final Set<String> DEPRECATED_JOB_KEYS =
             Set.of(
@@ -139,6 +142,8 @@ public class JobExecutionRegistry {
     private com.example.demo.modules.twin.rpg.service.TwinExpReconcileService twinExpReconcileService;
     @Autowired(required = false)
     private com.example.demo.modules.twin.dashboard.service.CageStatusViolationCheckService cageStatusViolationCheckService;
+    @Autowired(required = false)
+    private AroTrainingSyncService aroTrainingSyncService;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
     public JobExecutionRegistry(
@@ -442,6 +447,13 @@ public class JobExecutionRegistry {
                     Map<String, Object> result = cageStatusViolationCheckService.executePureDaysCheck(triggeredBy);
                     yield JobRunOutcome.ok(jobKey, "笼架违规检测完成 rulesChecked="
                             + result.get("rulesChecked") + " triggered=" + result.get("totalTriggered"), result);
+                }
+                case JOB_ARO_TRAINING_SYNC -> {
+                    if (aroTrainingSyncService == null) {
+                        throw new IllegalStateException("AroTrainingSyncService 未就绪");
+                    }
+                    aroTrainingSyncService.syncAll();
+                    yield JobRunOutcome.ok(jobKey, "ARO 培训数据同步完成");
                 }
                 default -> throw new IllegalArgumentException("不支持的任务: " + jobKey);
             };
