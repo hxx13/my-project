@@ -15,20 +15,18 @@ function mapMediaUrlList(urls) {
 function toProxiedDisplayUrl(url) {
   const u = String(url || '').trim();
   if (!u) return '';
+  // cloud:// 文件 → 走 proxy-image 兜底
   if (u.startsWith('cloud://')) {
     const proxyPath = `/api/upload/proxy-image?url=${encodeURIComponent(u)}`;
     return springAuth.toAbsoluteApiUrl(proxyPath);
   }
+  // 绝对 HTTP(S) URL → 直连，不包 proxy-image
+  if (/^https?:\/\//i.test(u)) {
+    return u;
+  }
+  // 相对路径 → 拼 API 基址
   if (u.startsWith('/api/upload/files/') || u.startsWith('/api/upload/proxy-image')) {
     return springAuth.toAbsoluteApiUrl(u);
-  }
-  // 绝对 HTTP(S) URL：生产域名走代理兜底，其他（localhost/内网）直连
-  if (/^https?:\/\//i.test(u)) {
-    if (u.includes('localhost') || u.includes('127.0.0.1') || u.includes('192.168.') || u.includes('10.') || u.includes('172.')) {
-      return u;
-    }
-    const proxyPath = `/api/upload/proxy-image?url=${encodeURIComponent(u)}`;
-    return springAuth.toAbsoluteApiUrl(proxyPath);
   }
   if (u.startsWith('/api/')) {
     return springAuth.toAbsoluteApiUrl(u);
