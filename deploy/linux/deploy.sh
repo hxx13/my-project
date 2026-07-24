@@ -1,13 +1,19 @@
 #!/bin/bash
 # deploy.sh — 生产环境自动部署脚本
-# 用法: bash deploy.sh
-# 工作目录: /opt/twin/repo/
+# 用法:
+#   bash deploy.sh              # 完整流程（含 git pull + 构建）
+#   bash deploy.sh --skip-build # 跳过构建（已手动 npm + mvn 完成时使用）
 set -e
 
 APP_DIR=/opt/twin/app
 REPO_DIR=/opt/twin/repo
 BACKUP_DIR=/opt/twin/backups/pre-deploy
 ENV_FILE=/opt/twin/config/.env
+
+SKIP_BUILD=false
+if [ "${1:-}" = "--skip-build" ]; then
+    SKIP_BUILD=true
+fi
 
 # 加载环境变量
 if [ -f "$ENV_FILE" ]; then
@@ -17,6 +23,9 @@ fi
 echo "=========================================="
 echo "  Twin System Deploy"
 echo "  $(date '+%Y-%m-%d %H:%M:%S')"
+if $SKIP_BUILD; then
+    echo "  模式: 跳过构建（快速部署）"
+fi
 echo "=========================================="
 
 # Step 1/8: git pull
@@ -29,27 +38,31 @@ echo "  当前 commit: $(git rev-parse --short HEAD)"
 echo "=== Step 2/8: DB 备份 ==="
 mkdir -p "$BACKUP_DIR"
 BACKUP_FILE="$BACKUP_DIR/backup-$(date +%Y%m%d-%H%M%S).sql.gz"
-sudo mysqldump --single-transaction --no-create-info twin_system | gzip > "$BACKUP_FILE"
+sudo mysqldump --single-transaction --no-create-info twin_system 2>/dev/null | gzip > "$BACKUP_FILE" || echo "  备份失败（不阻断部署）"
 echo "  备份完成: $BACKUP_FILE"
 
 # 只保留最近 5 次部署备份
 sudo ls -t "$BACKUP_DIR"/backup-*.sql.gz 2>/dev/null | tail -n +6 | xargs sudo rm -f 2>/dev/null || true
 
-# Step 3/8: 前端构建
-echo "=== Step 3/8: npm build ==="
-cd "$REPO_DIR/frontend"
-npm ci
-npm run build
+if $SKIP_BUILD; then
+    echo "=== Step 3-4/8: 跳过构建（--skip-build） ==="
+else
+    # Step 3/8: 前端构建
+    echo "=== Step 3/8: npm build ==="
+    cd "$REPO_DIR/frontend"
+    npm ci
+    npm run build
 
-# Step 4/8: 后端构建
-echo "=== Step 4/8: mvn package ==="
-cd "$REPO_DIR"
-mvn clean package -DskipTests -Plinux
+    # Step 4/8: 后端构建
+    echo "=== Step 4/8: mvn package ==="
+    cd "$REPO_DIR"
+    mvn clean package -DskipTests -Plinux
+fi
 
 # Step 5/8: 优雅停机
 echo "=== Step 5/8: 停止服务 ==="
 sudo systemctl stop twin
-sleep 5
+sleep 3
 echo "  服务已停止"
 
 # Step 6/8: 替换 JAR
