@@ -1,0 +1,205 @@
+<view class="page" wx:if="{{ pageGateOk }}">
+  <view class="fm-toolbar-row">
+    <view class="fm-chip fm-chip-ghost" bindtap="reloadAll">刷新</view>
+    <view wx:if="{{ subTab === 'sites' }}" class="fm-chip fm-chip-primary" bindtap="openNewSite">＋机房</view>
+    <view wx:if="{{ subTab === 'options' }}" class="fm-chip fm-chip-primary" bindtap="openNewOpt">＋选项集</view>
+    <view wx:if="{{ subTab === 'templates' }}" class="fm-chip fm-chip-primary" bindtap="openNewTpl">＋模板</view>
+    <view wx:if="{{ subTab === 'catalog' }}" class="fm-chip fm-chip-primary" bindtap="openNewCat">＋目录</view>
+    <view wx:if="{{ subTab === 'presets' }}" class="fm-chip fm-chip-primary" bindtap="openNewPreset">＋预设</view>
+  </view>
+  <van-tabs active="{{ subTab }}" bind:change="onSubTabChange" color="#ac1736" line-width="28rpx" lazy-render="{{ false }}">
+    <van-tab title="机房" name="sites">
+      <view class="pad">
+        <block wx:for="{{ sites }}" wx:key="id">
+          <view class="card">
+            <view class="card-head-row">
+              <text class="card-title-ellipsis">{{ item.name }}{{ item.disabled ? '（已停用）' : '' }}</text>
+              <view class="card-inline-actions">
+                <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ item.id }}" catchtap="editSite">编辑</view>
+                <view wx:if="{{ !item.disabled }}" class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ item.id }}" catchtap="disableSite">停用</view>
+                <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ item.id }}" catchtap="permanentDeleteSite">删除</view>
+              </view>
+            </view>
+            <view class="card-sub">编码 {{ item.code || '-' }} · 排序 {{ item.sortOrder != null ? item.sortOrder : item.sort_order }}</view>
+          </view>
+        </block>
+      </view>
+    </van-tab>
+    <van-tab title="选项集" name="options">
+      <view class="pad">
+        <block wx:for="{{ optionSets }}" wx:key="id">
+          <view class="card">
+            <view class="card-head-row">
+              <text class="card-title-ellipsis">{{ item.name }}</text>
+              <view class="card-inline-actions">
+                <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ item.id }}" catchtap="editOpt">编辑</view>
+                <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ item.id }}" catchtap="deleteOpt">删除</view>
+              </view>
+            </view>
+            <view class="card-sub">{{ item._itemPreview }}</view>
+          </view>
+        </block>
+      </view>
+    </van-tab>
+    <van-tab title="模板" name="templates">
+      <view class="pad">
+        <block wx:for="{{ templates }}" wx:key="id">
+          <view class="card">
+            <view class="card-head-row">
+              <text class="card-title-ellipsis">{{ item.name }}</text>
+              <view class="card-inline-actions">
+                <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ item.id }}" catchtap="editTpl">编辑</view>
+                <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ item.id }}" catchtap="deleteTpl">删除</view>
+              </view>
+            </view>
+            <view class="card-sub">项数 {{ item.items ? item.items.length : 0 }} · {{ item._siteLabel }}</view>
+          </view>
+        </block>
+      </view>
+    </van-tab>
+    <van-tab title="耗材目录" name="catalog">
+      <view class="pad">
+        <block wx:for="{{ consumableCatalog }}" wx:key="id">
+          <view class="card">
+            <view class="card-head-row">
+              <text class="card-title-ellipsis">{{ item.name }} × {{ item.unit || '' }}</text>
+              <view class="card-inline-actions">
+                <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ item.id }}" catchtap="editCat">编辑</view>
+                <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ item.id }}" catchtap="deleteCat">删除</view>
+              </view>
+            </view>
+            <view class="card-sub">{{ item.disabled ? '已停用' : '启用' }}</view>
+          </view>
+        </block>
+      </view>
+    </van-tab>
+    <van-tab title="更换预设" name="presets">
+      <view class="pad">
+        <block wx:for="{{ replacementPresets }}" wx:key="id">
+          <view class="card">
+            <view class="card-head-row">
+              <text class="card-title-ellipsis">{{ item.label }}</text>
+              <view class="card-inline-actions">
+                <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ item.id }}" catchtap="editPreset">编辑</view>
+                <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ item.id }}" catchtap="deletePreset">删除</view>
+              </view>
+            </view>
+            <view class="card-sub">{{ item.disabled ? '已停用' : '启用' }}</view>
+          </view>
+        </block>
+      </view>
+    </van-tab>
+  </van-tabs>
+
+  <van-popup show="{{ sitePopup }}" position="bottom" round bind:close="closeSitePopup">
+    <view class="popup-body">
+      <view class="popup-title">{{ siteEditId ? '编辑机房' : '新增机房' }}</view>
+      <van-field label="名称" value="{{ siteName }}" bind:change="onSiteName" />
+      <van-field label="编码" value="{{ siteCode }}" placeholder="新增时空着则自动生成" bind:change="onSiteCode" />
+      <van-field label="排序" type="number" value="{{ siteOrder }}" bind:change="onSiteOrder" />
+      <view class="popup-actions-row">
+        <view class="fm-chip fm-chip-ghost" bindtap="closeSitePopup">取消</view>
+        <view class="fm-chip fm-chip-primary" bindtap="saveSite">保存</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ optPopup }}" position="bottom" round bind:close="closeOptPopup">
+    <view class="popup-body">
+      <view class="popup-title">{{ optEditId ? '编辑选项集' : '新增选项集' }}</view>
+      <van-field label="名称" value="{{ optName }}" bind:change="onOptName" />
+      <van-field label="选项（每行一条）" type="textarea" autosize="{{ true }}" value="{{ optLines }}" bind:change="onOptLines" />
+      <view class="popup-actions-row">
+        <view class="fm-chip fm-chip-ghost" bindtap="closeOptPopup">取消</view>
+        <view class="fm-chip fm-chip-primary" bindtap="saveOpt">保存</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ tplPopup }}" position="bottom" round bind:close="closeTplPopup" custom-style="max-height:88vh;">
+    <view class="popup-body">
+      <view class="popup-title">{{ tplEditId ? '编辑模板' : '新增模板' }}</view>
+      <van-field label="名称" value="{{ tplName }}" bind:change="onTplName" />
+      <view class="fm-tpl-sites-block">
+        <text class="fm-select-label">适用机房（不选=全部启用机房）</text>
+        <checkbox-group class="fm-tpl-site-group" bindchange="onTplSitesChange" value="{{ tplSelectedValues }}">
+          <label wx:for="{{ tplCheckboxSites }}" wx:key="id" class="fm-checkbox-line">
+            <checkbox value="{{ item.id }}" />
+            <text class="fm-checkbox-line-text">{{ item.name }}</text>
+          </label>
+        </checkbox-group>
+      </view>
+      <view class="fm-inline-add">
+        <text class="fm-inline-add-hint">字段</text>
+        <view class="fm-chip fm-chip-xs fm-chip-ghost" bindtap="addTplItemRow">＋添加</view>
+      </view>
+      <block wx:for="{{ tplItemRows }}" wx:for-index="idx" wx:key="idx">
+        <view class="tpl-item">
+          <view class="item-head">
+            <text>字段 {{ idx + 1 }}</text>
+            <text class="item-del" data-i="{{ idx }}" bindtap="removeTplItemRow">删除</text>
+          </view>
+          <van-field label="标签" value="{{ item.label }}" data-i="{{ idx }}" bind:change="onTplItemLabel" />
+          <view class="fm-select-row">
+            <text class="fm-select-label">类型</text>
+            <view class="fm-select-chip fm-select-chip--grow" data-i="{{ idx }}" bindtap="openFieldTypeSheet">{{ fieldTypeLabels[item.fieldTypeIndex] }}</view>
+          </view>
+          <block wx:if="{{ item.fieldType === 'SELECT' }}">
+            <view class="fm-select-row">
+              <text class="fm-select-label">选项集</text>
+              <view class="fm-select-chip fm-select-chip--grow" data-i="{{ idx }}" bindtap="openOptSetSheet">{{ optSetNamesForPicker[item.optionSetPickerIndex] }}</view>
+            </view>
+          </block>
+          <view class="fm-switch-row">
+            <text class="fm-select-label">必填</text>
+            <van-switch checked="{{ item.required }}" data-i="{{ idx }}" bind:change="onTplItemRequired" size="22px" />
+          </view>
+        </view>
+      </block>
+      <view class="popup-actions-row">
+        <view class="fm-chip fm-chip-ghost" bindtap="closeTplPopup">取消</view>
+        <view class="fm-chip fm-chip-primary" bindtap="saveTpl">保存模板</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ catPopup }}" position="bottom" round bind:close="closeCatPopup">
+    <view class="popup-body">
+      <view class="popup-title">{{ catEditId ? '编辑目录' : '新增目录' }}</view>
+      <van-field label="名称" value="{{ catName }}" bind:change="onCatName" />
+      <van-field label="单位" value="{{ catUnit }}" bind:change="onCatUnit" />
+      <view class="popup-actions-row">
+        <view class="fm-chip fm-chip-ghost" bindtap="closeCatPopup">取消</view>
+        <view class="fm-chip fm-chip-primary" bindtap="saveCat">保存</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ presetPopup }}" position="bottom" round bind:close="closePresetPopup">
+    <view class="popup-body">
+      <view class="popup-title">{{ presetEditId ? '编辑预设' : '新增预设' }}</view>
+      <van-field label="标签" value="{{ presetLabel }}" bind:change="onPresetLabel" />
+      <view class="popup-actions-row">
+        <view class="fm-chip fm-chip-ghost" bindtap="closePresetPopup">取消</view>
+        <view class="fm-chip fm-chip-primary" bindtap="savePreset">保存</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ genPick.show }}" position="bottom" round bind:close="closeGenPick">
+    <view class="fm-sheet">
+      <view class="fm-sheet-title">{{ genPick.title }}</view>
+      <scroll-view scroll-y style="max-height:55vh">
+        <view
+          wx:for="{{ genPick.rows }}"
+          wx:key="idx"
+          class="fm-sheet-row {{ genPick.highlightIdx === item.idx ? 'fm-sheet-row--on' : '' }}"
+          data-idx="{{ item.idx }}"
+          bindtap="onGenPickRow"
+        >
+          {{ item.label }}
+        </view>
+      </scroll-view>
+    </view>
+  </van-popup>
+</view>

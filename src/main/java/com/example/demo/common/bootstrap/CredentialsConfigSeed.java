@@ -71,6 +71,7 @@ public class CredentialsConfigSeed implements ApplicationRunner {
         def("credentials", "invite_code_pepper", "邀请码哈希 Pepper",
                 "注册推荐码 SHA-256 加盐值，泄露后需轮换", "STRING", null,
                 "", 1, 0, 0);
+        // @deprecated 2026-07: 小程序已改为直连，云函数代理已停用。
         def("credentials", "mp.proxy_secret", "小程序云函数 Proxy Secret",
                 "与云函数环境变量 PROXY_SHARED_SECRET 一致，留空不校验", "STRING", null,
                 "", 1, 0, 0);

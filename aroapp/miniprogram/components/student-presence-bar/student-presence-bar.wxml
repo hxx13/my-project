@@ -1,0 +1,74 @@
+<view wx:if="{{ visible }}">
+  <view wx:if="{{ loading }}" class="presence-bar presence-bar--loading">
+    <view class="presence-loading-row">
+      <van-loading size="32rpx" color="#64748b" />
+      <text class="presence-loading-text">同步进出状态…</text>
+    </view>
+  </view>
+
+  <view
+    wx:else
+    class="presence-bar"
+    style="background:{{ cardBg }};border:1.5px solid {{ borderColor }};"
+  >
+    <!-- 进出状态主行 -->
+    <view class="presence-main">
+      <view class="presence-icon-circle" style="background:{{ iconBg }};">
+        <van-icon name="{{ iconName }}" size="34rpx" color="{{ accent }}" />
+      </view>
+
+      <view class="presence-content">
+        <view class="presence-head">
+          <text class="presence-phase-badge" style="background:{{ badgeBg }};color:{{ badgeText }};">{{ label }}</text>
+          <text wx:if="{{ showRoomName }}" class="presence-room-name" style="color:{{ roomNameColor }};">{{ roomName }}</text>
+          <text wx:if="{{ phaseOutside }}" class="presence-subhint">当前不在实验区域内</text>
+          <text wx:elif="{{ phaseUnknown }}" class="presence-subhint presence-subhint--warn">等待系统同步，请稍候</text>
+        </view>
+
+        <view wx:if="{{ showDwell || showCountdown }}" class="presence-pills">
+          <text
+            wx:if="{{ showDwell }}"
+            class="presence-pill"
+            style="background:{{ dwellSoft }};border-color:{{ dwellBorder }};color:{{ dwellTextColor }};"
+          >在场 {{ dwellText }}</text>
+          <text
+            wx:if="{{ showCountdown }}"
+            class="presence-pill {{ countdownUrgent ? 'presence-pill--urgent' : '' }}"
+            style="background:{{ countdownSoft }};border-color:{{ countdownBorder }};color:{{ safeCountdownTextColor }};"
+          >{{ countdownLabel }}{{ countdownText }}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 豁免 / 授权行 -->
+    <view
+      wx:if="{{ hasExemptRow }}"
+      class="presence-exempt-row"
+      style="border-top:1px dashed {{ exemptBorder }};"
+    >
+      <van-icon class="presence-exempt-icon" name="{{ exemptIconName }}" size="28rpx" color="{{ exemptAccent }}" />
+      <text class="presence-exempt-badge" style="background:{{ exemptSoft }};color:{{ exemptText }};">{{ exemptBadge }}</text>
+      <text class="presence-exempt-rooms">{{ exemptRoomNames }}</text>
+      <view
+        wx:if="{{ exemptDetailLine1 || exemptDetailLine2 }}"
+        class="presence-exempt-detail-col"
+      >
+        <view
+          wx:if="{{ exemptDetailLine1 }}"
+          class="presence-exempt-detail-line"
+          style="color:{{ exemptText }};"
+        >{{ exemptDetailLine1 }}</view>
+        <view
+          wx:if="{{ exemptDetailLine2 }}"
+          class="presence-exempt-detail-line"
+          style="color:{{ exemptText }};"
+        >{{ exemptDetailLine2 }}</view>
+      </view>
+    </view>
+
+    <view wx:if="{{ wsConnected }}" class="presence-live-dot" aria-hidden="true">
+      <view class="presence-live-dot-core" />
+      <text class="presence-live-dot-text">实时</text>
+    </view>
+  </view>
+</view>

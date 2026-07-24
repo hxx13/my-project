@@ -1,0 +1,219 @@
+<view class="page">
+  <view class="tabs">
+    <view class="tab {{ activeTab === 'pending' ? 'tab-on' : '' }}" data-tab="pending" bindtap="onTabChange">待处理</view>
+    <view class="tab {{ activeTab === 'done' ? 'tab-on' : '' }}" data-tab="done" bindtap="onTabChange">已处理</view>
+    <view class="tab {{ activeTab === 'recycle' ? 'tab-on' : '' }}" data-tab="recycle" bindtap="onTabChange">回收站</view>
+  </view>
+
+  <view wx:if="{{ loading }}" class="hint">加载中…</view>
+
+  <!-- 待处理 -->
+  <block wx:if="{{ !loading && activeTab === 'pending' }}">
+    <view wx:if="{{ pendingRows.length === 0 }}" class="hint">暂无待处理物资单</view>
+    <view wx:for="{{ pendingRows }}" wx:key="id" class="card">
+      <view class="card-head" data-id="{{ item.id }}" bindtap="onCardTap">
+        <view class="row-head">
+          <text class="title truncate"><text>{{ item.applicantDisplay }}</text><text wx:if="{{ item._headerNames }}" class="title-sub">（{{ item._headerNames }}）</text></text>
+          <text class="tag">{{ item.statusText }}</text>
+        </view>
+        <view class="meta-row">
+          <text class="meta">申请：{{ item.createdAtText }}</text>
+          <view class="bar-menu-wrap" catchtap="noop">
+            <view class="bar-menu-btn" data-id="{{ item.id }}" catchtap="onMenuToggle">⋮</view>
+            <view wx:if="{{ menuOpenId === item.id }}" class="menu-drop">
+              <view class="menu-item" data-id="{{ item.id }}" catchtap="onOpenClaimExport">预览/导出页</view>
+              <view class="menu-item" data-id="{{ item.id }}" catchtap="onExportExcel">导出 Excel</view>
+              <view class="menu-item menu-item-danger" data-id="{{ item.id }}" catchtap="onDeleteClaim">删除工单</view>
+            </view>
+            <view wx:if="{{ menuOpenId === item.id }}" class="menu-mask" catchtap="onMenuClose"></view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{ expandedIds[item.id] && detailCache[item.id] }}" class="card-expand">
+        <scroll-view scroll-y class="expand-scroll" enhanced show-scrollbar="{{false}}">
+          <view class="expand-info">
+            <text>申请人：{{ detailCache[item.id].applicantDisplay }} · {{ detailCache[item.id].statusText }} · {{ detailCache[item.id].createdAtText }}</text>
+          </view>
+          <block wx:for="{{ detailCache[item.id]._specGroups }}" wx:for-item="group" wx:key="specKey">
+            <view wx:if="{{ group.specLabel }}" class="expand-spec-header">{{ group.specLabel }}</view>
+            <view wx:for="{{ group.lines }}" wx:for-item="line" wx:key="id" class="expand-line">
+              <view class="expand-line-row">
+                <image wx:if="{{ line._coverAbsUrl }}" class="expand-thumb" src="{{ line._coverAbsUrl }}" mode="aspectFill" />
+                <view wx:else class="expand-thumb expand-thumb-ph"><text>{{ line.snapshotName ? line.snapshotName.charAt(0) : '?' }}</text></view>
+                <view class="expand-line-main">
+                  <text class="expand-name">{{ line.snapshotName }}</text>
+                  <!-- 发放数量 + 备注：常驻显示 -->
+                  <view wx:if="{{ detailCache[item.id].status === 'PENDING' }}" class="expand-qty-row">
+                    <text class="expand-qty-label">发放数量</text>
+                    <input class="expand-qty-input" type="number" value="{{ fulfillQtyByLineCache[item.id][line.id] }}" data-id="{{ line.id }}" data-card-id="{{ item.id }}" data-max="{{ line.qty }}" bindblur="onFulfillQtyBlur" confirm-type="done" />
+                    <text class="expand-qty-cap">/ {{ line.qty }}</text>
+                    <text class="expand-qty-label expand-qty-remark-label">备注</text>
+                    <input class="expand-remark-inline" type="text" placeholder="可选" value="{{ remarkByLineCache[item.id][line.id] || '' }}" data-id="{{ line.id }}" data-card-id="{{ item.id }}" bindblur="onRemarkBlur" confirm-type="done" />
+                  </view>
+                  <view wx:elif="{{ remarkByLineCache[item.id][line.id] }}" class="expand-remark-readonly">
+                    <text class="expand-remark-lbl">备注</text>
+                    <text class="expand-remark-text">{{ remarkByLineCache[item.id][line.id] }}</text>
+                  </view>
+                </view>
+                <checkbox-group wx:if="{{ detailCache[item.id].status === 'PENDING' }}" data-id="{{ line.id }}" data-card-id="{{ item.id }}" bindchange="onLineGrantChange">
+                  <label class="expand-check">
+                    <checkbox value="1" checked="{{ grantMapCache[item.id][line.id] === true }}" />
+                    <text class="expand-check-txt">发</text>
+                  </label>
+                </checkbox-group>
+              </view>
+            </view>
+          </block>
+        </scroll-view>
+        <view class="expand-foot expand-foot-four" wx:if="{{ detailCache[item.id].status === 'PENDING' }}">
+          <view class="expand-btn ghost" data-id="{{ item.id }}" bindtap="toggleAllLines">全选</view>
+          <view class="expand-btn ghost" data-id="{{ item.id }}" bindtap="goReviseInMall">修改</view>
+          <view class="expand-btn ghost" data-id="{{ item.id }}" bindtap="onCollapseCard">收起</view>
+          <view class="expand-btn primary {{ fulfillingIds[item.id] ? 'expand-btn-disabled' : '' }}" data-id="{{ item.id }}" bindtap="confirmFulfill">
+            {{ fulfillingIds[item.id] ? '提交中…' : '出库' }}
+          </view>
+        </view>
+        <view class="expand-foot expand-foot-one" wx:else>
+          <view class="expand-btn primary" data-id="{{ item.id }}" bindtap="onCollapseCard">收起</view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 已处理 -->
+  <block wx:if="{{ !loading && activeTab === 'done' }}">
+    <view wx:if="{{ doneRows.length === 0 }}" class="hint">暂无已处理物资单</view>
+    <view wx:for="{{ doneRows }}" wx:key="id" class="card">
+      <view class="card-head" data-id="{{ item.id }}" bindtap="onCardTap">
+        <view class="row-head">
+          <text class="title truncate"><text>{{ item.applicantDisplay }}</text><text wx:if="{{ item._headerNames }}" class="title-sub">（{{ item._headerNames }}）</text></text>
+          <text class="tag">{{ item.statusText }}</text>
+        </view>
+        <view class="meta-row">
+          <text class="meta">申请：{{ item.createdAtText }} · 完成：{{ item.fulfilledAtText }}</text>
+          <view class="bar-menu-wrap" catchtap="noop">
+            <view class="bar-menu-btn" data-id="{{ item.id }}" catchtap="onMenuToggle">⋮</view>
+            <view wx:if="{{ menuOpenId === item.id }}" class="menu-drop">
+              <view class="menu-item" data-id="{{ item.id }}" catchtap="onOpenClaimExport">预览/导出页</view>
+              <view class="menu-item" data-id="{{ item.id }}" catchtap="onExportExcel">导出 Excel</view>
+              <view class="menu-item menu-item-danger" data-id="{{ item.id }}" catchtap="onDeleteClaim">删除工单</view>
+            </view>
+            <view wx:if="{{ menuOpenId === item.id }}" class="menu-mask" catchtap="onMenuClose"></view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{ expandedIds[item.id] && detailCache[item.id] }}" class="card-expand">
+        <scroll-view scroll-y class="expand-scroll" enhanced show-scrollbar="{{false}}">
+          <view class="expand-info">
+            <text>申请人：{{ detailCache[item.id].applicantDisplay }} · {{ detailCache[item.id].statusText }} · {{ detailCache[item.id].createdAtText }}</text>
+          </view>
+          <block wx:for="{{ detailCache[item.id]._specGroups }}" wx:for-item="group" wx:key="specKey">
+            <view wx:if="{{ group.specLabel }}" class="expand-spec-header">{{ group.specLabel }}</view>
+            <view wx:for="{{ group.lines }}" wx:for-item="line" wx:key="id" class="expand-line">
+              <view class="expand-line-row">
+                <image wx:if="{{ line._coverAbsUrl }}" class="expand-thumb" src="{{ line._coverAbsUrl }}" mode="aspectFill" />
+                <view wx:else class="expand-thumb expand-thumb-ph"><text>{{ line.snapshotName ? line.snapshotName.charAt(0) : '?' }}</text></view>
+                <view class="expand-line-main">
+                  <text class="expand-name">{{ line.snapshotName }}</text>
+                  <view wx:if="{{ remarkByLineCache[item.id][line.id] }}" class="expand-remark-readonly">
+                    <text class="expand-remark-lbl">备注</text>
+                    <text class="expand-remark-text">{{ remarkByLineCache[item.id][line.id] }}</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </block>
+        </scroll-view>
+        <view class="expand-foot expand-foot-one">
+          <view class="expand-btn primary" data-id="{{ item.id }}" bindtap="onCollapseCard">收起</view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 回收站 -->
+  <block wx:if="{{ !loading && activeTab === 'recycle' }}">
+    <view class="hint-bar">申请单回收站（7天后自动清空）</view>
+    <view wx:if="{{ recycleRows.length === 0 }}" class="hint">回收站为空</view>
+    <view wx:for="{{ recycleRows }}" wx:key="id" class="card">
+      <view class="card-head" data-id="{{ item.id }}" bindtap="onCardTap">
+        <view class="row-head">
+          <text class="title truncate"><text>{{ item.recycleTitle }}</text><text wx:if="{{ item._headerNames }}" class="title-sub">（{{ item._headerNames }}）</text></text>
+          <text class="tag">{{ item.statusText }}</text>
+        </view>
+        <view class="meta-row">
+          <view class="meta-line">
+            <label class="recycle-check-label" catchtap="noop">
+              <checkbox value="1" checked="{{ recycleSelected[item.id] === true }}" data-id="{{ item.id }}" bindchange="onRecycleCheckChange" />
+            </label>
+            <text class="meta">申请：{{ item.createdAtText }}{{ item.purgeAfterText ? ' / 清理：' + item.purgeAfterText : '' }}</text>
+          </view>
+          <view class="bar-menu-wrap" catchtap="noop">
+            <view class="bar-menu-btn" data-id="{{ item.id }}" catchtap="onMenuToggle">⋮</view>
+            <view wx:if="{{ menuOpenId === item.id }}" class="menu-drop">
+              <view class="menu-item menu-item-danger" data-id="{{ item.id }}" catchtap="onPurgeRecycleOne">彻底删除</view>
+            </view>
+            <view wx:if="{{ menuOpenId === item.id }}" class="menu-mask" catchtap="onMenuClose"></view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{ expandedIds[item.id] && detailCache[item.id] }}" class="card-expand">
+        <scroll-view scroll-y class="expand-scroll" enhanced show-scrollbar="{{false}}">
+          <view class="expand-info">
+            <text>申请人：{{ detailCache[item.id].applicantDisplay }} · {{ detailCache[item.id].statusText }} · {{ detailCache[item.id].createdAtText }}</text>
+          </view>
+          <block wx:for="{{ detailCache[item.id]._specGroups }}" wx:for-item="group" wx:key="specKey">
+            <view wx:if="{{ group.specLabel }}" class="expand-spec-header">{{ group.specLabel }}</view>
+            <view wx:for="{{ group.lines }}" wx:for-item="line" wx:key="id" class="expand-line">
+              <view class="expand-line-row">
+                <image wx:if="{{ line._coverAbsUrl }}" class="expand-thumb" src="{{ line._coverAbsUrl }}" mode="aspectFill" />
+                <view wx:else class="expand-thumb expand-thumb-ph"><text>{{ line.snapshotName ? line.snapshotName.charAt(0) : '?' }}</text></view>
+                <view class="expand-line-main">
+                  <text class="expand-name">{{ line.snapshotName }}</text>
+                  <view wx:if="{{ remarkByLineCache[item.id][line.id] }}" class="expand-remark-readonly">
+                    <text class="expand-remark-lbl">备注</text>
+                    <text class="expand-remark-text">{{ remarkByLineCache[item.id][line.id] }}</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </block>
+        </scroll-view>
+        <view class="expand-foot expand-foot-two">
+          <view class="expand-btn ghost" data-id="{{ item.id }}" bindtap="onRestoreRecycleCard">恢复</view>
+          <view class="expand-btn primary" data-id="{{ item.id }}" bindtap="onCollapseCard">收起</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{ recycleRows.length > 0 }}" class="batch-bar">
+      <view class="batch-btn" bindtap="onPurgeRecycleSelected">批量彻底删除</view>
+      <view class="batch-btn batch-btn-danger" bindtap="onPurgeRecycleAll">一键清空</view>
+    </view>
+  </block>
+</view>
+
+<!-- 导出菜单弹窗 -->
+<van-popup show="{{ linkPopupShow }}" round position="center" closeable close-icon-position="top-right" bind:close="closeLinkPopup" custom-style="width:92%;max-width:680rpx;max-height:76vh;padding:0;">
+  <view class="pop-root">
+    <view class="pop-top">
+      <text class="pop-title">领用记录导出</text>
+      <text class="pop-sub">{{ linkClaim ? linkClaim.applicantDisplay : '-' }} · {{ linkClaim ? linkClaim.id : '' }}</text>
+    </view>
+    <view class="pop-scroll export-menu-body">
+      <view class="hint">导出为 Excel，或通过预览页查看该单全部物品行。</view>
+      <view class="export-menu-actions">
+        <view class="expand-btn primary {{ exportClaimBusy ? 'expand-btn-disabled' : '' }}" bindtap="onExportClaimExcelFromPopup">
+          {{ exportClaimBusy ? '导出中…' : '导出 Excel' }}
+        </view>
+        <view class="expand-btn ghost" bindtap="openClaimExportMini">打开预览页</view>
+      </view>
+    </view>
+    <view class="pop-foot pop-foot-known">
+      <view class="expand-btn primary" bindtap="closeLinkPopup">关闭</view>
+    </view>
+  </view>
+</van-popup>

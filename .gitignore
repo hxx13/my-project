@@ -1,48 +1,46 @@
 # ===== Dependencies =====
 node_modules/
-aroapp/cloudfunctions/**/node_modules/
-.pnp/
-.pnp.js
+aroapp/miniprogram/node_modules/
 
 # ===== Build outputs =====
+target/
 dist/
 build/
-target/
-deploy/
+*.jar
+*.class
 .mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
 # ===== Environment files (secrets) =====
-.env.local
-.env.*.local
 .env
+.env.*
+*.local
+application-local.properties
+
+# ===== Runtime data =====
+data/
+uploads/
+*.log
+*.db
+frontend/public/knowledge-images/
+
+# ===== Dev-only assets (not needed for production build) =====
+frontend/models/
+
+# ===== Frontend build (copied to static) =====
+src/main/resources/static/
 
 # ===== IDE =====
-# IntelliJ IDEA
 .idea/
+.vscode/
 *.iws
 *.iml
 *.ipr
-# Eclipse / STS
-.apt_generated
 .classpath
 .factorypath
 .project
 .settings
 .springBeans
 .sts4-cache
-# VS Code
-.vscode/
-
-# ===== NetBeans =====
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
 
 # ===== OS generated files =====
 .DS_Store
@@ -56,65 +54,47 @@ Thumbs.db
 *.swo
 *~
 
-# ===== Logs & cache =====
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-.cache/
-*.tsbuildinfo
-
 # ===== Testing & coverage =====
 coverage/
 .nyc_output/
 *.lcov
 
-# ===== Runtime / uploads =====
-uploads/*
-!uploads/.gitkeep
+# ===== Temp files =====
 temp/
 tmp/
+*.tmp
+.cache/
+*.tsbuildinfo
 
-# ===== Local dev config =====
-application-local.properties
-start.bat
-start-public.bat
-build-and-start.bat
-build-and-start-public.bat
-HELP.md
-
-# ===== MkDocs =====
-site/
-
-# ===== Speech / TTS audio & deployment =====
-data/speech/
-deploy/cosyvoice/
-*.mp3
-*.wav
-
-# ===== Local IDE settings =====
-.claude/settings.local.json
-
-# ===== Frontend build output (copied to static for Spring Boot) =====
-src/main/resources/static/
-
-# ===== VitePress build artifacts =====
-docs/.vitepress/cache/
-docs/.vitepress/dist/
-
-# ===== AI assistant session state (brainstorm temp files) =====
+# ===== Documentation & AI assistant (local only) =====
+docs/
+CLAUDE.md
+PRODUCT.md
+.mcp.json
+.claude/
 .superpowers/
+.cursor/
+.playwright-mcp/
+.github/
 
-# ===== IDE temporary plans =====
-.cursor/plans/
+# ===== Deploy: exclude deprecated/binary directories =====
+deploy/cloud-relay/
+deploy/cosyvoice/
+deploy/frp_*/
 
-# ===== Local Claude Code config =====
-.claude/settings.json
+# ===== Dev-only config (not needed for production) =====
+aroapp/.cloudbase/
+
+# ===== Root-level npm artifacts (project uses Maven, not npm at root) =====
+/package.json
+/package-lock.json
 
 # ===== Misc =====
 *.pdf
 *.zip
 *.tar.gz
 *.rar
+*.png
+*.jpg
+*.jpeg
+*.bat

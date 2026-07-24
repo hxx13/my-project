@@ -1,0 +1,480 @@
+<view class="mine-page">
+  <splash-announcement />
+  <view class="mine-header-card">
+    <view class="mine-header-mesh" />
+    <view class="mine-header-badges">
+      <view wx:if="{{ springBound }}" class="mine-chip mine-chip--ok">已绑定</view>
+      <view wx:elif="{{ springPending }}" class="mine-chip mine-chip--warn">待绑定</view>
+      <view wx:else class="mine-chip">未就绪</view>
+      <view
+        wx:if="{{ springBound && springRoleLabelZh }}"
+        class="mine-chip mine-chip--ok mine-chip--role-tap"
+        hover-class="mine-chip--role-tap-hover"
+        bindtap="onRefreshSpringRole"
+      >
+        {{ springRoleLabelZh }}
+      </view>
+      <view
+        wx:if="{{ springBound && canEditDisplayName }}"
+        class="mine-chip mine-chip--ok mine-chip--role-tap"
+        hover-class="mine-chip--role-tap-hover"
+        bindtap="onOpenNicknameEditor"
+      >
+        修改姓名
+      </view>
+    </view>
+    <view class="mine-header-main">
+      <view class="mine-avatar-ring">
+        <view class="mine-avatar-wrap">
+          <image
+            wx:if="{{ profileAvatarUrl && !profileAvatarFailed }}"
+            class="mine-avatar-img"
+            src="{{ profileAvatarUrl }}"
+            mode="aspectFill"
+            binderror="onProfileAvatarError"
+          />
+          <view wx:else class="mine-avatar-fallback">
+            <text class="mine-avatar-char">{{ profileAvatarLetter }}</text>
+          </view>
+        </view>
+      </view>
+      <view class="mine-header-text">
+        <view class="mine-kicker-row">
+          <text class="mine-kicker">个人中心</text>
+          <text class="mine-kicker-dot">·</text>
+          <text class="mine-kicker-sub">PROFILE</text>
+        </view>
+        <view class="mine-name-row">
+          <text class="mine-display-name">{{ headerDisplayName }}</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{ springBound && springUserId }}" class="mine-archive mine-archive--compact">
+      <view class="mine-archive-head">
+        <view class="mine-archive-title-block">
+          <text class="mine-archive-title">个人信息</text>
+          <text class="mine-archive-sub">点击详情查看档案</text>
+        </view>
+        <view class="mine-archive-actions">
+          <view wx:if="{{ canGoAiPortrait }}" class="mine-archive-action mine-archive-action--ghost" bindtap="goAiPortrait">
+            <text class="mine-archive-action-text mine-archive-action-text--ghost">AI画像</text>
+          </view>
+          <view class="mine-archive-action" bindtap="openProfileDetail">
+            <text class="mine-archive-action-text">详情</text>
+            <text class="mine-archive-action-arrow">›</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view wx:elif="{{ springBound }}" class="mine-archive mine-archive--hint">
+      <text class="mine-hint-text">绑定成功后，将在此展示个人信息摘要</text>
+    </view>
+  </view>
+
+  <view class="mine-section">
+    <view class="mine-section-head">
+      <text class="mine-section-title">常用功能</text>
+      <text class="mine-section-tag">MENU</text>
+    </view>
+  </view>
+
+  <view class="mine-menu-group">
+    <text class="mine-menu-group-title">资讯与通知</text>
+    <view class="mine-list-card">
+      <van-cell-group inset="{{ false }}" border="{{ false }}">
+        <van-cell is-link bind:click="goNewsCenter">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="newspaper-o" size="28rpx" color="#6366f1" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">新闻中心</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canGoNotifications }}" is-link bind:click="goNotifications">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="bell" size="28rpx" color="#ea580c" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">消息通知</text>
+            <view wx:if="{{ badgeNotifyText }}" class="mine-menu-badge">{{ badgeNotifyText }}</view>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ !isStudentView && canStaffOps && canGoFileTemplates }}" is-link bind:click="goFileTemplates">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="description" size="28rpx" color="#6d28d9" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">文件模板库</text>
+          </view>
+        </van-cell>
+      </van-cell-group>
+    </view>
+  </view>
+
+  <view wx:if="{{ !isStudentView && canStaffOps && (canGoRepairRequest || canGoPurchaseRequest) }}" class="mine-menu-group">
+    <text class="mine-menu-group-title">申请服务</text>
+    <view class="mine-list-card">
+      <van-cell-group inset="{{ false }}" border="{{ false }}">
+        <van-cell wx:if="{{ canGoRepairRequest }}" is-link bind:click="goRepairRequest">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="service-o" size="28rpx" color="#0284c7" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">报修申请</text>
+            <view wx:if="{{ badgeRepairText }}" class="mine-menu-badge">{{ badgeRepairText }}</view>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canGoPurchaseRequest }}" is-link bind:click="goPurchaseRequest">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="shopping-cart-o" size="28rpx" color="#16a34a" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">采购申请</text>
+            <view wx:if="{{ badgePurchaseText }}" class="mine-menu-badge">{{ badgePurchaseText }}</view>
+          </view>
+        </van-cell>
+      </van-cell-group>
+    </view>
+  </view>
+
+  <view wx:if="{{ !isStudentView && canStaffOps && (canGoAssetRecord || canGoAssetTransferRecord) }}" class="mine-menu-group">
+    <text class="mine-menu-group-title">资产台账</text>
+    <view class="mine-list-card">
+      <van-cell-group inset="{{ false }}" border="{{ false }}">
+        <van-cell wx:if="{{ canGoAssetRecord }}" is-link bind:click="goAssetRecord">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="records" size="28rpx" color="#475569" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">资产记录</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canGoAssetTransferRecord }}" is-link bind:click="goAssetTransferRecord">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="exchange" size="28rpx" color="#9333ea" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">转移记录</text>
+          </view>
+        </van-cell>
+      </van-cell-group>
+    </view>
+  </view>
+
+  <view wx:if="{{ !isStudentView && ((canStaffOps && (canGoSuppliesAudit || canGoStudentReview || canGoFacilityMaintenance)) || (canManagePersonnel && (canGoAdminPersonnel || canGoDahuaIssue || canGoDoorControl))) }}" class="mine-menu-group">
+    <text class="mine-menu-group-title">运维与管理</text>
+    <view class="mine-list-card">
+      <van-cell-group inset="{{ false }}" border="{{ false }}">
+        <van-cell wx:if="{{ canStaffOps && canGoStudentReview }}" is-link bind:click="goStudentReview">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="completed" size="28rpx" color="#ac1736" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">学生审核</text>
+            <view wx:if="{{ badgeStudentReviewText }}" class="mine-menu-badge">{{ badgeStudentReviewText }}</view>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canStaffOps && canGoSuppliesAudit }}" is-link bind:click="goSuppliesAudit">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="bars" size="28rpx" color="#1d4ed8" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">领用审计</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canStaffOps && canGoFacilityMaintenance }}" is-link bind:click="goFacilityMaintenance">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="chart-trending-o" size="28rpx" color="#0d9488" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">检查维护</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canManagePersonnel && canGoAdminPersonnel }}" is-link bind:click="goAdminPersonnel">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="friends-o" size="28rpx" color="#db2777" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">人员授权</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canManagePersonnel && canGoDahuaIssue }}" is-link bind:click="goDahuaIssue">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="credit-pay" size="28rpx" color="#ca8a04" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">校园卡管理</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canManagePersonnel && canGoDoorControl }}" is-link bind:click="goDoorControl">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="wap-home-o" size="28rpx" color="#334155" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">门禁应用</text>
+          </view>
+        </van-cell>
+      </van-cell-group>
+    </view>
+  </view>
+
+  <view class="mine-menu-group mine-menu-group--system">
+    <text class="mine-menu-group-title">系统</text>
+    <view class="mine-list-card">
+      <van-cell-group inset="{{ false }}" border="{{ false }}">
+    <van-cell is-link bind:click="onMenuSettings">
+      <view slot="icon" class="mine-slot-ico"><van-icon name="setting-o" size="28rpx" color="#64748b" /></view>
+      <view slot="title" class="mine-cell-title-wrap">
+        <text class="mine-cell-title-text">设置</text>
+      </view>
+    </van-cell>
+    <van-cell is-link bind:click="onMenuAbout">
+      <view slot="icon" class="mine-slot-ico"><van-icon name="info-o" size="28rpx" color="#0ea5e9" /></view>
+      <view slot="title" class="mine-cell-title-wrap">
+        <text class="mine-cell-title-text">关于我们</text>
+      </view>
+    </van-cell>
+    <van-cell wx:if="{{ !isStudentView && springBound && canStaffOps }}" is-link bind:click="onGenerateRegistrationInvite">
+      <view slot="icon" class="mine-slot-ico"><van-icon name="invitation" size="28rpx" color="#e11d48" /></view>
+      <view slot="title" class="mine-cell-title-wrap">
+        <text class="mine-cell-title-text">生成 Web 注册推荐码</text>
+      </view>
+    </van-cell>
+    <view class="mine-cell-footer">
+      <block wx:if="{{ !springBound }}">
+        <van-button
+          size="normal"
+          type="default"
+          round
+          custom-class="mine-foot-btn mine-foot-btn--login"
+          bindtap="onGoLogin"
+        >账号登录</van-button>
+      </block>
+      <van-button
+        wx:if="{{ springBound }}"
+        size="normal"
+        type="default"
+        round
+        custom-class="mine-foot-btn mine-foot-btn--logout"
+        bindtap="clearSpringBind"
+      >退出登录</van-button>
+    </view>
+  </van-cell-group>
+    </view>
+  </view>
+</view>
+
+<van-popup
+  show="{{ showProfileDetail }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-profile-popup"
+  bind:close="onCloseProfileDetail"
+>
+  <view class="profile-popup-root">
+    <view class="profile-popup-head">
+      <text class="profile-popup-title">个人信息</text>
+    </view>
+    <scroll-view scroll-y enable-flex class="profile-popup-scroll" show-scrollbar="{{ false }}">
+      <view wx:if="{{ archiveLoading }}" class="profile-popup-loading">档案加载中…</view>
+      <view wx:elif="{{ archiveEmpty }}" class="profile-popup-empty">暂无档案数据，请稍后再试或联系管理员</view>
+      <block wx:else>
+      <view wx:if="{{ profileDetailHeadRows.length }}" class="profile-popup-quick">
+        <view
+          wx:for="{{ profileDetailHeadRows }}"
+          wx:for-index="hidx"
+          wx:key="hidx"
+          class="profile-popup-quick-item"
+        >
+          <text class="profile-popup-quick-label">{{ item.label }}</text>
+          <text class="profile-popup-quick-value" user-select>{{ item.value }}</text>
+        </view>
+      </view>
+      <view class="profile-popup-id-card">
+        <view class="profile-popup-id-head">
+          <text class="profile-popup-id-title">身份 ID</text>
+          <text class="profile-popup-id-code" user-select>{{ springUserId }}</text>
+        </view>
+        <image
+          wx:if="{{ profileIdQrImageSrc }}"
+          class="profile-id-qr-image profile-id-qr-canvas--popup"
+          src="{{ profileIdQrImageSrc }}"
+          mode="aspectFit"
+        />
+        <view wx:else class="profile-id-qr-placeholder">二维码生成中…</view>
+      </view>
+      <view wx:if="{{ profileDetailRows.length }}" class="profile-popup-section-label">其它信息</view>
+      <view wx:for="{{ profileDetailRows }}" wx:for-index="idx" wx:key="idx" class="profile-popup-kv">
+        <text class="profile-popup-k">{{ item.label }}</text>
+        <text class="profile-popup-v" user-select>{{ item.value }}</text>
+      </view>
+      <view wx:if="{{ profileDetailRows.length === 0 && profileDetailHeadRows.length === 0 }}" class="profile-popup-empty">暂无更多明细字段</view>
+      </block>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<van-popup
+  show="{{ showNicknameEditor }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-bind-popup"
+  bind:close="onCloseNicknameEditor"
+>
+  <view class="bind-panel bind-panel--center">
+    <view class="bind-title">修改展示姓名</view>
+    <text class="bind-tip">用于报修、采购、物资领用等场景的申请人展示名；留空则使用登录账号。</text>
+    <input
+      class="bind-input bind-input-block"
+      value="{{ nicknameDraft }}"
+      maxlength="32"
+      bindinput="onNicknameDraftInput"
+      placeholder="请输入昵称，最多32字"
+    />
+    <van-button block type="primary" round custom-class="bind-submit" bindtap="submitNicknameDraft">保存</van-button>
+  </view>
+</van-popup>
+
+<van-action-sheet
+  show="{{ showBindTypeSheet }}"
+  actions="{{ bindTypeActions }}"
+  cancel-text="取消"
+  bind:close="onCloseBindTypeSheet"
+  bind:cancel="onCloseBindTypeSheet"
+  bind:select="onSelectBindType"
+/>
+
+<van-popup
+  show="{{ showStudentBind }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-bind-popup"
+  bind:close="onCloseStudentBind"
+>
+  <view class="bind-panel bind-panel--center">
+    <view class="bind-title">学生绑定</view>
+    <text class="bind-tip">请输入学号，或使用右侧「扫一扫/上传二维码」由微信识别后自动填入学号框。</text>
+    <view class="bind-student-row">
+      <input
+        class="bind-input bind-input-grow"
+        value="{{ bindStudentId }}"
+        bindinput="onBindStudentIdInput"
+        placeholder="学号"
+        type="number"
+      />
+      <van-button size="small" type="primary" plain hairline custom-class="bind-scan-btn" bindtap="scanStudentQr">扫一扫/上传二维码</van-button>
+    </view>
+    <van-button block type="primary" round custom-class="bind-submit" bindtap="submitStudentBind">提交绑定</van-button>
+  </view>
+</van-popup>
+
+<van-popup
+  show="{{ showStaffBind }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-bind-popup"
+  bind:close="onCloseStaffBind"
+>
+  <view class="bind-panel bind-panel--center">
+    <view class="bind-title">教职工绑定</view>
+    <text class="bind-tip">请输入与校内系统一致的工号或用户名及密码。</text>
+    <input class="bind-input bind-input-block" value="{{ bindStaffUser }}" bindinput="onBindStaffUserInput" placeholder="工号或用户名" />
+    <input class="bind-input bind-input-block" value="{{ bindStaffPassword }}" bindinput="onBindStaffPasswordInput" placeholder="密码" password="true" />
+    <van-button block type="primary" round custom-class="bind-submit" bindtap="submitStaffBind">提交绑定</van-button>
+  </view>
+</van-popup>
+
+
+<!-- ====== 账号密码登录弹窗 ====== -->
+<van-popup
+  show="{{ showLoginForm }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-bind-popup"
+  bind:close="onCloseLogin"
+>
+  <view class="bind-panel bind-panel--center">
+    <view class="bind-title">账号登录</view>
+    <input
+      class="bind-input bind-input-block"
+      value="{{ loginUsername }}"
+      bindinput="onLoginUsernameInput"
+      placeholder="账号"
+      maxlength="64"
+    />
+    <input
+      class="bind-input bind-input-block"
+      value="{{ loginPassword }}"
+      bindinput="onLoginPasswordInput"
+      placeholder="密码"
+      password="true"
+      maxlength="64"
+    />
+    <van-button block type="primary" round custom-class="bind-submit" bindtap="submitLogin" loading="{{ loginSubmitting }}" disabled="{{ loginSubmitting }}">登录</van-button>
+    <view class="login-register-link" bindtap="onGoRegister">
+      <text class="login-register-text">没有账号？去注册 →</text>
+    </view>
+  </view>
+</van-popup>
+
+<!-- ====== 注册弹窗（H5 对齐） ====== -->
+<van-popup
+  show="{{ showRegisterForm }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-bind-popup"
+  bind:close="onCloseRegister"
+>
+  <view class="bind-panel bind-panel--center">
+    <view class="bind-title">{{ registerType === 'student' ? '学生注册' : '教职工注册' }}</view>
+
+    <!-- ====== 学生注册 ====== -->
+    <block wx:if="{{ registerType === 'student' }}">
+
+      <!-- Step 1: QR 扫码（wx.scanCode 支持拍照+相册选图） -->
+      <view hidden="{{ regStep !== 'qr' }}">
+        <text class="bind-tip">拍照或选择你的身份 QR 码图片进行验证</text>
+        <view class="reg-qr-btn" bindtap="onScanRegQr">
+          <van-icon name="photograph" size="40rpx" color="#fff" />
+          <text class="reg-qr-btn-text">拍照 / 上传 QR 码</text>
+        </view>
+        <view wx:if="{{ regQrScanning }}" class="reg-qr-scanning">
+          <van-loading size="32rpx" color="#ac1736" /><text>正在验证…</text>
+        </view>
+        <view wx:if="{{ regError }}" class="reg-error-text">{{ regError }}</view>
+      </view>
+
+      <!-- Step 2: 身份确认 -->
+      <view hidden="{{ regStep !== 'confirm' }}">
+        <view class="reg-verified-icon">&#x2705;</view>
+        <text class="reg-verified-title">身份验证通过</text>
+        <text class="bind-tip">请确认以下信息是否正确</text>
+        <view wx:if="{{ regVerifiedData }}" class="reg-info-card">
+          <view class="reg-info-row"><text class="reg-info-label">姓名</text><text class="reg-info-value">{{ regVerifiedData.name || '—' }}</text></view>
+          <view class="reg-info-row"><text class="reg-info-label">部门</text><text class="reg-info-value">{{ regVerifiedData.departmentName || '—' }}</text></view>
+          <view class="reg-info-row"><text class="reg-info-label">课题组</text><text class="reg-info-value">{{ regVerifiedData.projectGroupName || '—' }}</text></view>
+        </view>
+        <van-button block type="primary" round custom-class="bind-submit" bindtap="onRegGoCredentials">确认，设置账号</van-button>
+        <view class="login-register-link" bindtap="onRegBackToQr"><text class="login-register-text">重新验证</text></view>
+      </view>
+
+      <!-- Step 3: 凭据设置 -->
+      <view hidden="{{ regStep !== 'credentials' }}">
+        <text class="bind-tip">创建你的登录凭据</text>
+        <input class="bind-input bind-input-block" value="{{ regUsername }}" bindinput="onRegUsernameInput" placeholder="用户名（3-64位）" maxlength="64" />
+        <input class="bind-input bind-input-block" value="{{ regPassword }}" bindinput="onRegPasswordInput" placeholder="密码（至少6位）" password="true" maxlength="64" />
+        <input class="bind-input bind-input-block" value="{{ regPassword2 }}" bindinput="onRegPassword2Input" placeholder="确认密码" password="true" maxlength="64" />
+        <view wx:if="{{ regError }}" class="reg-error-text">{{ regError }}</view>
+        <van-button block type="primary" round custom-class="bind-submit" bindtap="submitRegister" loading="{{ registerSubmitting }}" disabled="{{ registerSubmitting }}">完成注册</van-button>
+      </view>
+    </block>
+
+    <!-- ====== 教职工注册 ====== -->
+    <block wx:else>
+      <input class="bind-input bind-input-block" value="{{ registerStaffInvite }}" bindinput="onRegStaffInviteInput" placeholder="邀请码" maxlength="64" />
+      <input class="bind-input bind-input-block" value="{{ registerStaffUser }}" bindinput="onRegStaffUserInput" placeholder="账号 / 工号" maxlength="64" />
+      <input class="bind-input bind-input-block" value="{{ registerStaffPassword }}" bindinput="onRegStaffPwdInput" placeholder="密码（至少6位）" password="true" maxlength="64" />
+      <input class="bind-input bind-input-block" value="{{ registerStaffPassword2 }}" bindinput="onRegStaffPwd2Input" placeholder="确认密码" password="true" maxlength="64" />
+      <view wx:if="{{ regError }}" class="reg-error-text">{{ regError }}</view>
+      <van-button block type="primary" round custom-class="bind-submit" bindtap="submitRegister" loading="{{ registerSubmitting }}" disabled="{{ registerSubmitting }}">注册</van-button>
+    </block>
+
+    <!-- 底部小字：切换类型 + 去登录 -->
+    <view class="login-register-link" bindtap="onRegToggleType">
+      <text class="login-register-text">切换{{ registerType === 'student' ? '教职工' : '学生' }}注册</text>
+    </view>
+    <view class="login-register-link" bindtap="onBackToLogin">
+      <text class="login-register-text">已有账号？去登录</text>
+    </view>
+  </view>
+</van-popup>
+
+<canvas
+  canvas-id="profileIdQrCanvasOffscreen"
+  class="profile-id-qr-offscreen"
+  width="180"
+  height="180"
+  style="width: 180px; height: 180px;"
+  disable-scroll="{{ true }}"
+/>

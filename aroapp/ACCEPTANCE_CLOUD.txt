@@ -1,0 +1,25 @@
+方案三验收清单（原 plan 第七节 + 运维项）。在真机与云控制台逐项勾选。
+
+小程序与云函数
+  [ ] 真机：未配置 Spring 的 request 合法域名时，静默登录 / 绑定仍成功
+  [ ] 抓包或日志：无 wx.request 直连自建 Spring（仅 callFunction springProxy）
+  [ ] 云函数环境变量 SPRING_BASE_URL 指向当前 ECS 或 Nginx 入口；改 URL 后无需发版小程序即生效
+
+安全（启用密钥时）
+  [ ] Spring app.mp.proxy.secret 与云函数 PROXY_SHARED_SECRET 一致
+  [ ] 故意传错密钥时 Spring 401，小程序有可读错误提示
+
+白名单
+  [ ] 访问未在 ALLOWED_API_PREFIXES 中的 path 时返回 403（可在控制台测错误路径）
+
+阿里云 ECS
+  [ ] 安全组入站已放行 Spring 或 443（见 deploy/ecs/SECURITY_GROUP.txt）
+  [ ] systemd 或容器已配置进程守护（见 deploy/ecs/spring-boot.service.example）
+  [ ] （可选）HTTPS 与云函数 https 基址一致（见 deploy/ecs/nginx-spring-tls.conf.example）
+
+轮询与配额（有实时监控类页面时必测）
+  [ ] onHide / onUnload 已 clearInterval，离页后无后台 callFunction
+  [ ] 弱网下无请求无限堆积（串行闸门）
+
+回滚
+  [ ] 云函数保留上一版本；小程序可回退体验版验证

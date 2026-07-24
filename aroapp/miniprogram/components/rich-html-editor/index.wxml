@@ -1,0 +1,33 @@
+<view class="rhe-root">
+  <van-field
+    label="正文"
+    type="textarea"
+    autosize="{{ { minHeight: 140 } }}"
+    placeholder="下方标签可插入常用 HTML 模板；也可直接编辑。客户端用 rich-text 渲染。"
+    value="{{ value }}"
+    disabled="{{ disabled }}"
+    bind:change="onBodyInput"
+  />
+  <text class="rhe-body-hint">低代码：点下方标签会在正文末尾追加模板，可直接改字。</text>
+  <view class="rhe-section-label">快捷排版</view>
+  <view class="rhe-chip-wrap">
+    <view class="rhe-chip" hover-class="rhe-chip--active" bindtap="appendHtmlSnippet" data-key="p">段落</view>
+    <view class="rhe-chip" hover-class="rhe-chip--active" bindtap="appendHtmlSnippet" data-key="br">换行</view>
+    <view class="rhe-chip" hover-class="rhe-chip--active" bindtap="appendHtmlSnippet" data-key="strong">加粗</view>
+    <view class="rhe-chip" hover-class="rhe-chip--active" bindtap="appendHtmlSnippet" data-key="em">斜体</view>
+    <view class="rhe-chip" hover-class="rhe-chip--active" bindtap="appendHtmlSnippet" data-key="h">小标题</view>
+    <view class="rhe-chip" hover-class="rhe-chip--active" bindtap="appendHtmlSnippet" data-key="ul">无序列表</view>
+    <view class="rhe-chip" hover-class="rhe-chip--active" bindtap="appendHtmlSnippet" data-key="ol">有序列表</view>
+    <view class="rhe-chip" hover-class="rhe-chip--active" bindtap="appendHtmlSnippet" data-key="tip">蓝提示框</view>
+    <view class="rhe-chip" hover-class="rhe-chip--active" bindtap="appendHtmlSnippet" data-key="note">灰色说明</view>
+    <view class="rhe-chip" hover-class="rhe-chip--active" bindtap="appendHtmlSnippet" data-key="hr">分隔线</view>
+    <view class="rhe-chip rhe-chip--primary" hover-class="rhe-chip--active" bindtap="insertImageFromAlbum">插入图片</view>
+  </view>
+  <view class="rhe-preview-wrap">
+    <text class="rhe-preview-label">预览</text>
+    <scroll-view scroll-y class="rhe-preview-scroll">
+      <rich-text wx:if="{{ value }}" nodes="{{ value }}" type="html" />
+      <text wx:else class="rhe-preview-empty">（暂无正文）</text>
+    </scroll-view>
+  </view>
+</view>

@@ -1,0 +1,40 @@
+<view class="mall-top-bar">
+  <view class="mall-top-search">
+    <input
+      class="mall-top-search-input"
+      placeholder="{{ placeholder }}"
+      value="{{ searchKeyword }}"
+      bindinput="onSearchInput"
+      confirm-type="search"
+    />
+  </view>
+  <scroll-view class="mall-top-actions-scroll" scroll-x enhanced show-scrollbar="{{ false }}">
+    <view class="mall-top-actions">
+      <view
+        wx:if="{{ showProcess }}"
+        class="mall-top-pill mall-top-pill-process mall-top-pill-badge-wrap"
+        hover-class="mall-top-pill-hover"
+        bindtap="onTapProcess"
+      >
+        <text>物资处理</text>
+        <view wx:if="{{ processBadge }}" class="mall-top-mini-badge">{{ processBadge }}</view>
+      </view>
+      <view
+        wx:if="{{ showManage }}"
+        class="mall-top-pill mall-top-pill-admin"
+        hover-class="mall-top-pill-hover"
+        bindtap="onTapManage"
+      >物品管理</view>
+      <view class="mall-top-pill mall-top-pill-mine-wrap" hover-class="mall-top-pill-hover" bindtap="onTapMine">
+        <text>我的记录</text>
+        <view wx:if="{{ mineBadge }}" class="mall-top-mini-badge mall-top-mini-badge-mine">{{ mineBadge }}</view>
+      </view>
+      <view
+        wx:if="{{ showAdmin }}"
+        class="mall-top-pill mall-top-pill-admin"
+        hover-class="mall-top-pill-hover"
+        bindtap="onTapAdmin"
+      >管理</view>
+    </view>
+  </scroll-view>
+</view>

@@ -1,0 +1,59 @@
+{
+  "miniprogramRoot": "miniprogram/",
+  "projectname": "aroapp",
+  "description": "aroapp 微信小程序",
+  "appid": "wxd2ffd580134eae13",
+  "compileType": "miniprogram",
+  "libVersion": "3.5.8",
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "packNpmManually": true,
+    "packNpmRelationList": [
+      {
+        "packageJsonPath": "./package.json",
+        "miniprogramNpmDistDir": "./miniprogram/"
+      }
+    ],
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "ignoreDevUnusedFiles": false,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "packOptions": {
+    "ignore": [
+      {
+        "type": "suffix",
+        "value": ".map"
+      },
+      {
+        "type": "folder",
+        "value": "miniprogram_npm/jsqr"
+      },
+      {
+        "type": "file",
+        "value": "miniprogram_npm/@vant/weapp/image/logohs.png"
+      }
+    ],
+    "include": []
+  },
+  "simulatorPluginLibVersion": {},
+  "editorSetting": {},
+  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
+}

@@ -1,0 +1,10 @@
+{
+  "name": "syncToWechat",
+  "version": "1.0.0",
+  "description": "定时轮询后端，同步 Web 上传的文件到微信云存储",
+  "main": "index.js",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "wx-server-sdk": "~3.0.1"
+  }
+}

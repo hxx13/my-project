@@ -104,17 +104,29 @@ public class CasClientImpl implements CasClient {
                 + "&ticket=" + URLEncoder.encode(ticket, StandardCharsets.UTF_8);
         log.info("[CAS] 正在验证 ticket: service={}", serviceUrl);
 
-        ResponseEntity<String> response = casRestTemplate.getForEntity(url, String.class);
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .followRedirects(java.net.http.HttpClient.Redirect.NEVER)
+                    .build();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(url))
+                    .GET()
+                    .build();
+            java.net.http.HttpResponse<String> response = client.send(request,
+                    java.net.http.HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
-        if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null) {
-            log.error("[CAS] serviceValidate 返回异常: status={}", response.getStatusCode());
+            if (response.statusCode() != 200 || response.body() == null) {
+                log.error("[CAS] serviceValidate 返回异常: status={}", response.statusCode());
+                return null;
+            }
+
+            String xmlBody = response.body();
+            log.debug("[CAS] serviceValidate 响应: {}", xmlBody);
+            return parseCasXml(xmlBody);
+        } catch (Exception e) {
+            log.error("[CAS] serviceValidate 调用失败", e);
             return null;
         }
-
-        String xmlBody = response.getBody();
-        log.debug("[CAS] serviceValidate 响应: {}", xmlBody);
-
-        return parseCasXml(xmlBody);
     }
 
     @Override
@@ -206,6 +218,7 @@ public class CasClientImpl implements CasClient {
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
             factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setNamespaceAware(true);
             DocumentBuilder builder = factory.newDocumentBuilder();
             Document doc = builder.parse(new ByteArrayInputStream(xmlBody.getBytes(StandardCharsets.UTF_8)));
 

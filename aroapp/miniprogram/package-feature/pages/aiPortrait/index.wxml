@@ -1,0 +1,136 @@
+<view class="ai-page">
+  <view wx:if="{{ gateDenied }}" class="ai-denied">
+    <text class="ai-denied-text">需先在「我的」完成校内绑定并获得用户 ID</text>
+  </view>
+
+  <block wx:else>
+    <view class="ai-hero">
+      <view class="ai-hero-top">
+        <view class="ai-hero-title">
+          <van-icon name="gem-o" size="22px" color="#2563eb" />
+          <text class="ai-hero-h1">驻留行为预测</text>
+        </view>
+        <view class="ai-hero-actions">
+          <view
+            wx:if="{{ canDebugPortraitRefresh }}"
+            class="ai-refresh-btn ai-refresh-btn--debug {{ debugPortraitBusy ? 'ai-refresh-btn--busy' : '' }}"
+            hover-class="ai-refresh-btn--hover"
+            bindtap="onDebugForceRefresh"
+          >
+            {{ debugPortraitBusy ? '强刷中' : '强刷' }}
+          </view>
+          <view
+            class="ai-refresh-btn {{ manualRefreshBusy || debugPortraitBusy ? 'ai-refresh-btn--busy' : '' }}"
+            hover-class="ai-refresh-btn--hover"
+            bindtap="onManualRefresh"
+          >
+            {{ manualRefreshBusy ? '更新中' : '刷新' }}
+          </view>
+        </view>
+      </view>
+      <text wx:if="{{ cacheUpdatedText }}" class="ai-cache-hint">{{ cacheUpdatedText }}</text>
+    </view>
+
+    <view wx:if="{{ portraitLoading }}" class="ai-state">加载画像中…</view>
+
+    <block wx:else>
+      <view wx:if="{{ hasGlobalWeekly }}" class="ai-week-block ai-week-block--global">
+        <view class="ai-chart-head">
+          <text class="ai-chart-title">周作息在馆时间带（综合）</text>
+          <view class="ai-chart-legend">
+            <text class="ai-lg-in">均值入场</text>
+            <text class="ai-lg-out">均值离场</text>
+          </view>
+        </view>
+        <text class="ai-week-scale">仅统计截止上周日的数据：完整周一至周日的平均入场/离场时刻带状区（纵轴 6h — 22h）</text>
+        <view class="ai-chart-slot">
+          <image
+            wx:if="{{ globalWeekImageSrc }}"
+            class="ai-chart-img"
+            src="{{ globalWeekImageSrc }}"
+            mode="aspectFit"
+            style="width: {{ chartW }}px; height: {{ chartH * 0.92 }}px;"
+          />
+          <view wx:else class="ai-week-cols">
+            <view wx:for="{{ globalWeekColumns }}" wx:for-item="wc" wx:for-index="wi" wx:key="wi" class="ai-week-col">
+              <view class="ai-week-col-inner">
+                <view wx:if="{{ wc.hasBand }}" class="ai-week-band" style="top: {{ wc.top }}%; height: {{ wc.height }}%;" />
+              </view>
+              <text class="ai-week-day">{{ wc.dayLabel }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{ !portraitBlocks.length }}" class="ai-state">{{ portraitEmptyHint }}</view>
+
+      <block wx:else>
+        <view wx:for="{{ portraitBlocks }}" wx:key="roomId" class="ai-card-wrap">
+          <view class="ai-card">
+            <view class="ai-card-head">
+              <text class="ai-room-title">{{ item.roomName }}</text>
+              <text wx:if="{{ item.pred.isColdStart }}" class="ai-cold">冷启动</text>
+            </view>
+
+            <view class="ai-metrics">
+              <view class="ai-metric">
+                <text class="ai-metric-k">中位驻留</text>
+                <text class="ai-metric-v">{{ item.pred.medianText }}</text>
+              </view>
+              <view class="ai-metric">
+                <text class="ai-metric-k">高峰入场</text>
+                <text class="ai-metric-v ai-metric-v--sm">{{ item.pred.peakEntry || '—' }}</text>
+              </view>
+              <view class="ai-metric">
+                <text class="ai-metric-k">超时概率</text>
+                <text class="ai-metric-v {{ item.pred.overtimeHigh ? 'ai-metric-v--risk' : '' }}">{{ item.pred.overtimePct }}</text>
+              </view>
+            </view>
+
+            <view wx:if="{{ item.pred.alertMsg }}" class="ai-alert">{{ item.pred.alertMsg }}</view>
+
+            <view wx:if="{{ item.trajectoryRows.length }}" class="ai-next">
+              <text class="ai-next-title">下一步去向</text>
+              <view wx:for="{{ item.trajectoryRows }}" wx:for-item="tr" wx:for-index="ti" wx:key="ti" class="ai-next-row">
+                <text class="ai-next-name">{{ tr.name }}</text>
+                <text class="ai-next-prob {{ ti === 0 ? 'ai-next-prob--top' : '' }}">{{ tr.prob }}</text>
+              </view>
+            </view>
+
+            <view class="ai-chart-head ai-chart-head--light">
+              <view class="ai-chart-head-text">
+                <text class="ai-chart-title">07:00–19:00 出入条件分布</text>
+                <text class="ai-chart-sub">仅统计当日进+当日离（FIFO 配对）；未离场单条已丢弃</text>
+              </view>
+              <view class="ai-chart-legend">
+                <text class="ai-lg-in">入场</text>
+                <text class="ai-lg-out">离场</text>
+              </view>
+            </view>
+            <view class="ai-chart-slot">
+              <image
+                wx:if="{{ item.chartImageSrc }}"
+                class="ai-chart-img"
+                src="{{ item.chartImageSrc }}"
+                mode="aspectFit"
+                style="width: {{ chartW }}px; height: {{ chartH }}px;"
+              />
+              <view wx:else class="ai-chart-placeholder">生成图表…</view>
+            </view>
+          </view>
+        </view>
+      </block>
+    </block>
+  </block>
+
+  <!-- 离屏：仅用于导出，避免列表内原生 canvas 盖住底部 tabBar -->
+  <canvas
+    wx:if="{{ !gateDenied }}"
+    canvas-id="aiPredExport"
+    class="ai-canvas-offscreen"
+    width="{{ chartW }}"
+    height="{{ chartH }}"
+    style="width: {{ chartW }}px; height: {{ chartH }}px;"
+    disable-scroll="{{ true }}"
+  />
+</view>

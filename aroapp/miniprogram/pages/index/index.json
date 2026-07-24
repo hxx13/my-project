@@ -1,0 +1,15 @@
+{
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "首页",
+  "navigationBarBackgroundColor": "#ffffff",
+  "navigationBarTextStyle": "black",
+  "usingComponents": {
+    "student-presence-bar": "/components/student-presence-bar/student-presence-bar",
+    "splash-announcement": "/components/splash-announcement/splash-announcement",
+    "van-notice-bar": "@vant/weapp/notice-bar/index",
+    "van-icon": "@vant/weapp/icon/index",
+    "van-loading": "@vant/weapp/loading/index",
+    "van-cell": "@vant/weapp/cell/index",
+    "van-cell-group": "@vant/weapp/cell-group/index"
+  }
+}

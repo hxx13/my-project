@@ -1,0 +1,603 @@
+<view class="art-root">
+  <!-- 数值+单位同一 text，避免独立单位盒过小像贴图；见 animal-room-telemetry.js composeDisplayWithUnit -->
+  <template name="artUnitVal">
+    <view class="art-metric-inline-wrap">
+      <text wx:if="{{trend}}" class="art-metric-trend {{trendToneClass}}">{{trend}}</text>
+      <view wx:else class="art-metric-trend art-metric-trend--pill-place"></view>
+      <view class="art-metric-inline {{valClass}} {{bandClass}}">
+        <text class="art-metric-num-unit">{{displayWithUnit}}</text>
+      </view>
+    </view>
+  </template>
+  <view wx:if="{{loading}}" class="art-muted art-pad">加载中…</view>
+  <view wx:elif="{{err}}" class="art-err art-pad">{{err}}</view>
+  <view wx:else class="art-fill">
+    <view class="art-tabs-head {{ embeddedHost ? 'art-tabs-head-embedded' : '' }}">
+      <view class="art-tabs-row">
+        <view
+          wx:for="{{structTabs}}"
+          wx:key="tabKey"
+          wx:for-item="t"
+          wx:for-index="ti"
+          class="art-tab {{activeTabIndex === ti ? 'art-tab-on' : ''}}"
+          data-index="{{ti}}"
+          bindtap="onSidebarTap"
+        >
+          <text class="art-tab-name">{{t.tabLabel}}</text>
+        </view>
+      </view>
+      <view
+        wx:if="{{showRoomOverviewEntry}}"
+        class="art-room-overview-row"
+        hover-class="art-link-hover"
+        bindtap="onRoomOverviewTap"
+      >
+        房间概览
+      </view>
+    </view>
+    <view class="art-tabs-caption">
+      <text class="art-tabs-caption-txt">{{panelMetaLine}}</text>
+    </view>
+    <scroll-view
+      scroll-y
+      enable-flex="{{true}}"
+      class="art-main art-stack-main"
+      show-scrollbar="{{false}}"
+      scroll-top="{{mainScrollTop}}"
+      scroll-with-animation="{{false}}"
+      bindscroll="onTelemetryMainScroll"
+    >
+      <view wx:if="{{!viewChunks.length}}" class="art-muted art-pad">暂无结构化数据（需楼层 / 房间 / 指标类型字段）。</view>
+      <view wx:else class="art-main-inner">
+        <block wx:for="{{viewChunks}}" wx:key="key" wx:for-item="ch">
+          <view wx:if="{{ch.kind === 'zoneBand'}}" class="art-chunk art-chunk-zone-band">
+            <text class="art-zone-band-title">区域 · {{ch.zoneLabel}}</text>
+          </view>
+          <view wx:elif="{{ch.kind === 'suite'}}" class="art-chunk art-chunk-suite {{ ch.suiteSwitchFullRow ? 'art-chunk-suite-switch-full' : (ch.suiteHalfRow ? 'art-chunk-half' : '') }}">
+            <view class="art-suite">
+              <view class="art-suite-hd">
+                <view class="art-suite-hd-left">
+                    <view class="art-suite-title-row art-suite-title-row--suite">
+                      <view class="art-suite-title-press-line {{ ch.prepared.titleSlotCount > 4 ? 'art-suite-title-press-line--dense' : '' }}">
+                        <text class="art-suite-title">{{ch.prepared.suiteTitleDisplay}}</text>
+                        <block wx:for="{{ch.prepared.suitePressureSlots}}" wx:for-item="pm" wx:for-index="pidx" wx:key="pidx">
+                          <view
+                            wx:if="{{pm.isSwitch}}"
+                            class="art-suite-switch-pill {{ pm.switchUnknown ? 'art-suite-switch-pill--unknown' : (pm.switchOn ? 'art-suite-switch-pill--on' : 'art-suite-switch-pill--off') }}"
+                            data-vn="{{pm.item.variableName}}"
+                            data-on="{{pm.switchOn}}"
+                            data-unk="{{pm.switchUnknown}}"
+                            catchtap="onWinccSwitchTap"
+                          >
+                            <text wx:if="{{pm.labIcon}}" class="art-metric-ico art-metric-ico--suite {{pm.icoSizeClass}}">{{pm.labIcon}}</text>
+                            <text class="art-suite-switch-pill-name">{{pm.switchDisplayLabel}}</text>
+                          </view>
+                          <view wx:elif="{{pm.isSetpoint}}" class="art-suite-metric-pill art-metric-val--setpoint-tap" catchtap="onSetpointTap" data-vn="{{pm.item.variableName}}" data-cur="{{pm.item.value}}" data-mkl="{{pm.metricKindLabel}}" data-mkc="{{pm.metricKindCode}}" data-dl="{{pm.item.displayLabel}}">
+                            <text wx:if="{{pm.labIcon}}" class="art-metric-ico art-metric-ico--suite {{pm.icoSizeClass}}">{{pm.labIcon}}</text>
+                            <text wx:if="{{pm.metricKindLabel}}" class="art-suite-metric-name">{{pm.metricKindLabel}}</text>
+                            <template is="artUnitVal" data="{{displayWithUnit: pm.displayWithUnit, bandClass: pm.bandClass, trend: pm.trendChar, trendToneClass: pm.trendToneClass, valClass: 'art-suite-inline-metric art-suite-pill-val'}}" />
+                          </view>
+                          <view wx:else class="art-suite-metric-pill">
+                            <text wx:if="{{pm.labIcon}}" class="art-metric-ico art-metric-ico--suite {{pm.icoSizeClass}}">{{pm.labIcon}}</text>
+                            <text wx:if="{{pm.metricKindLabel}}" class="art-suite-metric-name">{{pm.metricKindLabel}}</text>
+                            <template is="artUnitVal" data="{{displayWithUnit: pm.displayWithUnit, bandClass: pm.bandClass, trend: pm.trendChar, trendToneClass: pm.trendToneClass, valClass: 'art-suite-inline-metric art-suite-pill-val'}}" />
+                          </view>
+                        </block>
+                      </view>
+                      <view wx:if="{{ch.prepared.suiteOtherTitleSlots.length}}" class="art-title-slots art-title-slots-inline art-title-slots-compact {{ ch.prepared.titleSlotCount > 4 ? 'art-title-slots--dense' : '' }}">
+                        <block wx:for="{{ch.prepared.suiteOtherTitleSlots}}" wx:for-index="tsi" wx:key="tsi" wx:for-item="m">
+                          <view
+                            wx:if="{{m.isSwitch}}"
+                            class="art-suite-switch-pill art-suite-switch-pill--slot-row {{ m.switchUnknown ? 'art-suite-switch-pill--unknown' : (m.switchOn ? 'art-suite-switch-pill--on' : 'art-suite-switch-pill--off') }}"
+                            data-vn="{{m.item.variableName}}"
+                            data-on="{{m.switchOn}}"
+                            data-unk="{{m.switchUnknown}}"
+                            catchtap="onWinccSwitchTap"
+                          >
+                            <text wx:if="{{m.labIcon}}" class="art-metric-ico art-metric-ico--suite {{m.icoSizeClass}}">{{m.labIcon}}</text>
+                            <text class="art-suite-switch-pill-name">{{m.switchDisplayLabel}}</text>
+                          </view>
+                          <view wx:elif="{{m.isSetpoint}}" class="art-suite-metric-pill art-suite-metric-pill--slot-row art-metric-val--setpoint-tap" catchtap="onSetpointTap" data-vn="{{m.item.variableName}}" data-cur="{{m.item.value}}" data-mkl="{{m.metricKindLabel}}" data-mkc="{{m.metricKindCode}}" data-dl="{{m.item.displayLabel}}">
+                            <text wx:if="{{m.labIcon}}" class="art-metric-ico art-metric-ico--suite {{m.icoSizeClass}}">{{m.labIcon}}</text>
+                            <text wx:if="{{m.metricKindLabel}}" class="art-suite-metric-name">{{m.metricKindLabel}}</text>
+                            <template is="artUnitVal" data="{{displayWithUnit: m.displayWithUnit, bandClass: m.bandClass, trend: m.trendChar, trendToneClass: m.trendToneClass, valClass: 'art-ts-val art-suite-pill-val'}}" />
+                          </view>
+                          <view wx:else class="art-suite-metric-pill art-suite-metric-pill--slot-row">
+                            <text wx:if="{{m.labIcon}}" class="art-metric-ico art-metric-ico--suite {{m.icoSizeClass}}">{{m.labIcon}}</text>
+                            <text wx:if="{{m.metricKindLabel}}" class="art-suite-metric-name">{{m.metricKindLabel}}</text>
+                            <template is="artUnitVal" data="{{displayWithUnit: m.displayWithUnit, bandClass: m.bandClass, trend: m.trendChar, trendToneClass: m.trendToneClass, valClass: 'art-ts-val art-suite-pill-val'}}" />
+                          </view>
+                        </block>
+                      </view>
+                    </view>
+                </view>
+                <view class="art-suite-hd-right">
+                  <text class="art-suite-ts-compact">{{ch.suiteLatestCompact || ch.suiteLatestText}}</text>
+                </view>
+              </view>
+              <view class="art-suite-rooms {{ ch.prepared.visibleRooms.length >= 4 ? 'art-rooms-many' : (ch.prepared.visibleRooms.length === 3 ? 'art-rooms-row-3' : (ch.prepared.visibleRooms.length === 2 ? 'art-rooms-row-2' : 'art-rooms-row-1')) }}">
+                <view wx:for="{{ch.prepared.visibleRooms}}" wx:key="roomCanonical" wx:for-item="card" class="art-room-wrap">
+                  <view class="art-room-card">
+                    <view class="art-room-hd">
+                      <text class="art-room-title">{{card.displayTitle}}</text>
+                    </view>
+                    <view class="art-room-metrics {{ card.metricFontTier || '' }}">
+                      <block wx:for="{{card.metrics}}" wx:for-index="mxi" wx:key="mxi" wx:for-item="met">
+                        <view wx:if="{{met.isSwitch}}" class="art-metric-row art-metric-row-switch-only">
+                          <view
+                            class="art-metric-switch-card {{ met.switchUnknown ? 'art-metric-switch-card--unknown' : (met.switchOn ? 'art-metric-switch-card--on' : 'art-metric-switch-card--off') }}"
+                            data-vn="{{met.item.variableName}}"
+                            data-on="{{met.switchOn}}"
+                            data-unk="{{met.switchUnknown}}"
+                            catchtap="onWinccSwitchTap"
+                          >
+                            <text wx:if="{{met.labIcon}}" class="art-metric-ico {{met.icoSizeClass}}">{{met.labIcon}}</text>
+                            <text class="art-metric-switch-card-name">{{met.switchDisplayLabel}}</text>
+                          </view>
+                        </view>
+                        <view wx:else class="art-metric-row art-metric-row--roomgrid">
+                          <view class="art-metric-g-ico">
+                            <text wx:if="{{met.labIcon}}" class="art-metric-ico {{met.icoSizeClass}}">{{met.labIcon}}</text>
+                          </view>
+                          <view
+                            class="art-metric-g-lab art-metric-g-lab--tappable"
+                            catchtap="onMetricTap"
+                            data-vn="{{met.item.variableName}}"
+                            data-dl="{{met.item.displayLabel}}"
+                            data-amin="{{met.item.alarmMinValue}}"
+                            data-amax="{{met.item.alarmMaxValue}}"
+                            data-mkl="{{met.metricKindLabel}}"
+                            data-mkc="{{met.metricKindCode}}"
+                          >
+                            <text wx:if="{{met.metricKindLabel}}" class="art-metric-lab">{{met.metricKindLabel}}</text>
+                          </view>
+                          <view class="art-metric-g-trend">
+                            <text wx:if="{{met.trendChar}}" class="art-metric-trend art-metric-trend--cell {{met.trendToneClass}}">{{met.trendChar}}</text>
+                            <view wx:else class="art-metric-trend-place"></view>
+                          </view>
+                          <view class="art-metric-g-val">
+                            <view
+                              wx:if="{{met.isSetpoint}}"
+                              class="art-metric-inline art-metric-val art-metric-val--setpoint-tap {{ met.bandClass }}"
+                              catchtap="onSetpointTap"
+                              data-vn="{{met.item.variableName}}"
+                              data-cur="{{met.item.value}}"
+                              data-mkl="{{met.metricKindLabel}}"
+                              data-mkc="{{met.metricKindCode}}"
+                              data-dl="{{met.item.displayLabel}}"
+                            >
+                              <text class="art-metric-num-unit">{{met.displayWithUnit}}</text>
+                            </view>
+                            <view wx:else class="art-metric-inline art-metric-val {{ met.bandClass }}">
+                              <text class="art-metric-num-unit">{{met.displayWithUnit}}</text>
+                            </view>
+                          </view>
+                        </view>
+                                                </block>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <view wx:elif="{{ch.kind === 'chromeSuiteRow'}}" class="art-chunk art-chrome-row">
+            <view wx:for="{{ch.list}}" wx:for-index="ci" wx:key="ci" wx:for-item="cell" class="art-chrome-cell">
+              <view class="art-suite">
+                <view class="art-suite-hd">
+                  <view class="art-suite-hd-left">
+                    <view class="art-suite-title-row art-suite-title-row--suite">
+                      <view class="art-suite-title-press-line {{ cell.prepared.titleSlotCount > 4 ? 'art-suite-title-press-line--dense' : '' }}">
+                        <text class="art-suite-title">{{cell.prepared.suiteTitleDisplay}}</text>
+                        <block wx:for="{{cell.prepared.suitePressureSlots}}" wx:for-item="pm" wx:for-index="pidx2" wx:key="pidx2">
+                          <view
+                            wx:if="{{pm.isSwitch}}"
+                            class="art-suite-switch-pill {{ pm.switchUnknown ? 'art-suite-switch-pill--unknown' : (pm.switchOn ? 'art-suite-switch-pill--on' : 'art-suite-switch-pill--off') }}"
+                            data-vn="{{pm.item.variableName}}"
+                            data-on="{{pm.switchOn}}"
+                            data-unk="{{pm.switchUnknown}}"
+                            catchtap="onWinccSwitchTap"
+                          >
+                            <text wx:if="{{pm.labIcon}}" class="art-metric-ico art-metric-ico--suite {{pm.icoSizeClass}}">{{pm.labIcon}}</text>
+                            <text class="art-suite-switch-pill-name">{{pm.switchDisplayLabel}}</text>
+                          </view>
+                          <view wx:elif="{{pm.isSetpoint}}" class="art-suite-metric-pill art-metric-val--setpoint-tap" catchtap="onSetpointTap" data-vn="{{pm.item.variableName}}" data-cur="{{pm.item.value}}" data-mkl="{{pm.metricKindLabel}}" data-mkc="{{pm.metricKindCode}}" data-dl="{{pm.item.displayLabel}}">
+                            <text wx:if="{{pm.labIcon}}" class="art-metric-ico art-metric-ico--suite {{pm.icoSizeClass}}">{{pm.labIcon}}</text>
+                            <text wx:if="{{pm.metricKindLabel}}" class="art-suite-metric-name">{{pm.metricKindLabel}}</text>
+                            <template is="artUnitVal" data="{{displayWithUnit: pm.displayWithUnit, bandClass: pm.bandClass, trend: pm.trendChar, trendToneClass: pm.trendToneClass, valClass: 'art-suite-inline-metric art-suite-pill-val'}}" />
+                          </view>
+                          <view wx:else class="art-suite-metric-pill">
+                            <text wx:if="{{pm.labIcon}}" class="art-metric-ico art-metric-ico--suite {{pm.icoSizeClass}}">{{pm.labIcon}}</text>
+                            <text wx:if="{{pm.metricKindLabel}}" class="art-suite-metric-name">{{pm.metricKindLabel}}</text>
+                            <template is="artUnitVal" data="{{displayWithUnit: pm.displayWithUnit, bandClass: pm.bandClass, trend: pm.trendChar, trendToneClass: pm.trendToneClass, valClass: 'art-suite-inline-metric art-suite-pill-val'}}" />
+                          </view>
+                        </block>
+                      </view>
+                      <view wx:if="{{cell.prepared.suiteOtherTitleSlots.length}}" class="art-title-slots art-title-slots-inline art-title-slots-compact {{ cell.prepared.titleSlotCount > 4 ? 'art-title-slots--dense' : '' }}">
+                        <block wx:for="{{cell.prepared.suiteOtherTitleSlots}}" wx:for-index="tsi2" wx:key="tsi2" wx:for-item="m">
+                          <view
+                            wx:if="{{m.isSwitch}}"
+                            class="art-suite-switch-pill art-suite-switch-pill--slot-row {{ m.switchUnknown ? 'art-suite-switch-pill--unknown' : (m.switchOn ? 'art-suite-switch-pill--on' : 'art-suite-switch-pill--off') }}"
+                            data-vn="{{m.item.variableName}}"
+                            data-on="{{m.switchOn}}"
+                            data-unk="{{m.switchUnknown}}"
+                            catchtap="onWinccSwitchTap"
+                          >
+                            <text wx:if="{{m.labIcon}}" class="art-metric-ico art-metric-ico--suite {{m.icoSizeClass}}">{{m.labIcon}}</text>
+                            <text class="art-suite-switch-pill-name">{{m.switchDisplayLabel}}</text>
+                          </view>
+                          <view wx:elif="{{m.isSetpoint}}" class="art-suite-metric-pill art-suite-metric-pill--slot-row art-metric-val--setpoint-tap" catchtap="onSetpointTap" data-vn="{{m.item.variableName}}" data-cur="{{m.item.value}}" data-mkl="{{m.metricKindLabel}}" data-mkc="{{m.metricKindCode}}" data-dl="{{m.item.displayLabel}}">
+                            <text wx:if="{{m.labIcon}}" class="art-metric-ico art-metric-ico--suite {{m.icoSizeClass}}">{{m.labIcon}}</text>
+                            <text wx:if="{{m.metricKindLabel}}" class="art-suite-metric-name">{{m.metricKindLabel}}</text>
+                            <template is="artUnitVal" data="{{displayWithUnit: m.displayWithUnit, bandClass: m.bandClass, trend: m.trendChar, trendToneClass: m.trendToneClass, valClass: 'art-ts-val art-suite-pill-val'}}" />
+                          </view>
+                          <view wx:else class="art-suite-metric-pill art-suite-metric-pill--slot-row">
+                            <text wx:if="{{m.labIcon}}" class="art-metric-ico art-metric-ico--suite {{m.icoSizeClass}}">{{m.labIcon}}</text>
+                            <text wx:if="{{m.metricKindLabel}}" class="art-suite-metric-name">{{m.metricKindLabel}}</text>
+                            <template is="artUnitVal" data="{{displayWithUnit: m.displayWithUnit, bandClass: m.bandClass, trend: m.trendChar, trendToneClass: m.trendToneClass, valClass: 'art-ts-val art-suite-pill-val'}}" />
+                          </view>
+                        </block>
+                      </view>
+                    </view>
+                  </view>
+                  <view class="art-suite-hd-right">
+                    <text class="art-suite-ts-compact">{{cell.suiteLatestCompact || cell.suiteLatestText}}</text>
+                  </view>
+                </view>
+                <view class="art-suite-rooms {{ cell.prepared.visibleRooms.length >= 4 ? 'art-rooms-many' : (cell.prepared.visibleRooms.length === 3 ? 'art-rooms-row-3' : (cell.prepared.visibleRooms.length === 2 ? 'art-rooms-row-2' : 'art-rooms-row-1')) }}">
+                  <view wx:for="{{cell.prepared.visibleRooms}}" wx:key="roomCanonical" wx:for-item="card" class="art-room-wrap">
+                    <view class="art-room-card art-room-fill">
+                      <view class="art-room-hd">
+                        <text class="art-room-title">{{card.displayTitle}}</text>
+                      </view>
+                      <view class="art-room-metrics {{ card.metricFontTier || '' }}">
+                        <block wx:for="{{card.metrics}}" wx:for-index="mxi2" wx:key="mxi2" wx:for-item="met">
+                          <view wx:if="{{met.isSwitch}}" class="art-metric-row art-metric-row-switch-only">
+                            <view
+                              class="art-metric-switch-card {{ met.switchUnknown ? 'art-metric-switch-card--unknown' : (met.switchOn ? 'art-metric-switch-card--on' : 'art-metric-switch-card--off') }}"
+                              data-vn="{{met.item.variableName}}"
+                              data-on="{{met.switchOn}}"
+                              data-unk="{{met.switchUnknown}}"
+                              catchtap="onWinccSwitchTap"
+                            >
+                              <text wx:if="{{met.labIcon}}" class="art-metric-ico {{met.icoSizeClass}}">{{met.labIcon}}</text>
+                              <text class="art-metric-switch-card-name">{{met.switchDisplayLabel}}</text>
+                            </view>
+                          </view>
+                          <view wx:else class="art-metric-row art-metric-row--roomgrid">
+                            <view class="art-metric-g-ico">
+                              <text wx:if="{{met.labIcon}}" class="art-metric-ico {{met.icoSizeClass}}">{{met.labIcon}}</text>
+                            </view>
+                            <view
+                              class="art-metric-g-lab art-metric-g-lab--tappable"
+                              catchtap="onMetricTap"
+                              data-vn="{{met.item.variableName}}"
+                              data-dl="{{met.item.displayLabel}}"
+                              data-amin="{{met.item.alarmMinValue}}"
+                              data-amax="{{met.item.alarmMaxValue}}"
+                              data-mkl="{{met.metricKindLabel}}"
+                              data-mkc="{{met.metricKindCode}}"
+                            >
+                              <text wx:if="{{met.metricKindLabel}}" class="art-metric-lab">{{met.metricKindLabel}}</text>
+                            </view>
+                            <view class="art-metric-g-trend">
+                              <text wx:if="{{met.trendChar}}" class="art-metric-trend art-metric-trend--cell {{met.trendToneClass}}">{{met.trendChar}}</text>
+                              <view wx:else class="art-metric-trend-place"></view>
+                            </view>
+                            <view class="art-metric-g-val">
+                              <view
+                                wx:if="{{met.isSetpoint}}"
+                                class="art-metric-inline art-metric-val art-metric-val--setpoint-tap {{ met.bandClass }}"
+                                catchtap="onSetpointTap"
+                                data-vn="{{met.item.variableName}}"
+                                data-cur="{{met.item.value}}"
+                                data-mkl="{{met.metricKindLabel}}"
+                                data-mkc="{{met.metricKindCode}}"
+                                data-dl="{{met.item.displayLabel}}"
+                              >
+                                <text class="art-metric-num-unit">{{met.displayWithUnit}}</text>
+                              </view>
+                              <view wx:else class="art-metric-inline art-metric-val {{ met.bandClass }}">
+                                <text class="art-metric-num-unit">{{met.displayWithUnit}}</text>
+                              </view>
+                            </view>
+                          </view>
+                        </block>
+                      </view>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <view wx:elif="{{ch.kind === 'solos'}}" class="art-chunk art-solos">
+            <view
+              wx:for="{{ch.partitions}}"
+              wx:key="_partitionKey"
+              wx:for-item="part"
+              wx:for-index="szi"
+              class="art-solo-part art-solo-zone-shell {{ szi % 2 === 0 ? 'art-solo-zone-tone-a' : 'art-solo-zone-tone-b' }}"
+            >
+              <view wx:for="{{part.rows}}" wx:for-item="row" wx:for-index="rix" wx:key="rix" class="art-solo-row {{ row.cards.length === 1 ? 'art-solo-row-single' : '' }}">
+                <view wx:for="{{row.cards}}" wx:key="roomCanonical" wx:for-item="card" class="art-solo-cell">
+                  <view class="art-room-card art-room-fill">
+                    <view class="art-room-hd">
+                      <text class="art-room-title">{{card.displayTitle}}</text>
+                    </view>
+                    <view class="art-room-metrics {{ card.metricFontTier || '' }}">
+                      <block wx:for="{{card.metrics}}" wx:for-index="mxi3" wx:key="mxi3" wx:for-item="met">
+                        <view wx:if="{{met.isSwitch}}" class="art-metric-row art-metric-row-switch-only">
+                          <view
+                            class="art-metric-switch-card {{ met.switchUnknown ? 'art-metric-switch-card--unknown' : (met.switchOn ? 'art-metric-switch-card--on' : 'art-metric-switch-card--off') }}"
+                            data-vn="{{met.item.variableName}}"
+                            data-on="{{met.switchOn}}"
+                            data-unk="{{met.switchUnknown}}"
+                            catchtap="onWinccSwitchTap"
+                          >
+                            <text wx:if="{{met.labIcon}}" class="art-metric-ico {{met.icoSizeClass}}">{{met.labIcon}}</text>
+                            <text class="art-metric-switch-card-name">{{met.switchDisplayLabel}}</text>
+                          </view>
+                        </view>
+                        <view wx:else class="art-metric-row art-metric-row--roomgrid">
+                          <view class="art-metric-g-ico">
+                            <text wx:if="{{met.labIcon}}" class="art-metric-ico {{met.icoSizeClass}}">{{met.labIcon}}</text>
+                          </view>
+                          <view
+                            class="art-metric-g-lab art-metric-g-lab--tappable"
+                            catchtap="onMetricTap"
+                            data-vn="{{met.item.variableName}}"
+                            data-dl="{{met.item.displayLabel}}"
+                            data-amin="{{met.item.alarmMinValue}}"
+                            data-amax="{{met.item.alarmMaxValue}}"
+                            data-mkl="{{met.metricKindLabel}}"
+                            data-mkc="{{met.metricKindCode}}"
+                          >
+                            <text wx:if="{{met.metricKindLabel}}" class="art-metric-lab">{{met.metricKindLabel}}</text>
+                          </view>
+                          <view class="art-metric-g-trend">
+                            <text wx:if="{{met.trendChar}}" class="art-metric-trend art-metric-trend--cell {{met.trendToneClass}}">{{met.trendChar}}</text>
+                            <view wx:else class="art-metric-trend-place"></view>
+                          </view>
+                          <view class="art-metric-g-val">
+                            <view
+                              wx:if="{{met.isSetpoint}}"
+                              class="art-metric-inline art-metric-val art-metric-val--setpoint-tap {{ met.bandClass }}"
+                              catchtap="onSetpointTap"
+                              data-vn="{{met.item.variableName}}"
+                              data-cur="{{met.item.value}}"
+                              data-mkl="{{met.metricKindLabel}}"
+                              data-mkc="{{met.metricKindCode}}"
+                              data-dl="{{met.item.displayLabel}}"
+                            >
+                              <text class="art-metric-num-unit">{{met.displayWithUnit}}</text>
+                            </view>
+                            <view wx:else class="art-metric-inline art-metric-val {{ met.bandClass }}">
+                              <text class="art-metric-num-unit">{{met.displayWithUnit}}</text>
+                            </view>
+                          </view>
+                        </view>
+                                                </block>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+        </block>
+      </view>
+    </scroll-view>
+  </view>
+
+  <van-popup
+    show="{{metricDetailVisible}}"
+    position="center"
+    round
+    closeable
+    close-icon-position="top-right"
+    root-portal="{{ true }}"
+    z-index="{{ 20000 }}"
+    custom-style="width: 86vw; max-width: 680rpx; box-sizing: border-box;"
+    bind:close="onMetricDetailClose"
+  >
+    <scroll-view scroll-y class="art-metric-detail-scroll" style="max-height: 65vh;">
+      <view class="art-metric-detail-inner">
+        <view class="art-metric-detail-hd">
+          <text class="art-metric-detail-title">测点详情</text>
+          <view wx:if="{{metricDetail.metricKindLabel}}" class="art-metric-detail-sub">
+            <text wx:if="{{metricDetail.labIcon}}" class="art-metric-ico">{{metricDetail.labIcon}}</text>
+            <text>{{metricDetail.metricKindLabel}}</text>
+          </view>
+        </view>
+        <view class="art-md-block">
+          <text class="art-md-dt">测点时刻</text>
+          <text class="art-md-dd art-md-mono">{{metricDetail.tsText}}</text>
+        </view>
+        <view wx:if="{{metricDetail.showDisplayLabel}}" class="art-md-block">
+          <text class="art-md-dt">展示名</text>
+          <text class="art-md-dd">{{metricDetail.displayLabel}}</text>
+        </view>
+        <view wx:if="{{metricDetail.archiveSummary}}" class="art-md-block">
+          <text class="art-md-dt">归档摘要</text>
+          <text class="art-md-dd art-md-mono-muted">{{metricDetail.archiveSummary}}</text>
+        </view>
+        <view wx:if="{{metricDetail.archiveChartReady}}" class="art-md-block art-archive-chart-block">
+          <text class="art-md-dt">近6h 趋势</text>
+          <text class="art-archive-hint">虚线对齐本窗折线数据的最低/最高采样点；左侧为对应数值（与 Web 详情图一致）</text>
+          <image
+            wx:if="{{metricDetail.archiveChartImage}}"
+            class="art-archive-chart-img"
+            src="{{metricDetail.archiveChartImage}}"
+            mode="widthFix"
+          />
+          <text wx:elif="{{metricDetail.archiveChartGenFailed}}" class="art-archive-gen-hint art-archive-gen-err">趋势图导出失败，请关闭后重试</text>
+          <text wx:elif="{{metricDetail.archiveChartReady}}" class="art-archive-gen-hint">生成图表…</text>
+        </view>
+        <view class="art-md-block">
+          <text class="art-md-dt">当前值</text>
+          <text wx:if="{{metricDetail.canWriteSetpoint}}" class="art-md-setpoint-hint">点击数值修改（提交至 WinCC）· {{metricDetail.setpointRowLabel}}</text>
+          <view class="art-md-dd">
+            <block wx:if="{{metricDetail.canWriteSetpoint}}">
+              <view wx:if="{{!metricDetail.setpointEditActive}}" class="art-md-setpoint-val-wrap" catchtap="onMetricDetailSetpointTap">
+                <view class="art-metric-inline art-md-mono {{metricDetail.bandClass}}">
+                  <text class="art-metric-num-unit art-md-num-unit art-md-setpoint-val-tap">{{metricDetail.displayWithUnit}}</text>
+                </view>
+              </view>
+              <view wx:else class="art-md-inline-edit art-md-inline-edit--stack">
+                <view wx:if="{{metricDetail.setpointMapHintLine}}" class="art-md-param-name-reminder">
+                  <text class="art-md-param-name-reminder-map art-md-param-name-reminder-map{{metricDetail.setpointMapHintTier}}">{{metricDetail.setpointMapHintLine}}</text>
+                </view>
+                <input
+                  class="art-md-input-compact art-md-input-setpoint"
+                  value="{{metricDetail.setpointDraft}}"
+                  bindinput="onMetricDetailSetpointDraftInput"
+                  placeholder="新数值"
+                />
+                <view class="art-md-inline-edit-btns">
+                  <button class="art-md-btn-inline" type="primary" size="mini" bindtap="onMetricDetailSetpointSubmit">提交</button>
+                  <button class="art-md-btn-inline" size="mini" bindtap="onMetricDetailSetpointCancel">取消</button>
+                </view>
+              </view>
+            </block>
+            <view wx:else class="art-metric-inline art-md-mono {{metricDetail.bandClass}}">
+              <text class="art-metric-num-unit art-md-num-unit">{{metricDetail.displayWithUnit}}</text>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{metricDetail.showAlarm}}" class="art-md-block">
+          <text class="art-md-dt">当前有效报警限</text>
+          <view class="art-md-dd-stack">
+            <view wx:if="{{metricDetail.alarmMin}}" class="art-md-line art-md-limit-row">
+              <text>下限：</text>
+              <text
+                wx:if="{{metricDetail.canSaveOverride}}"
+                class="art-md-limit-val-tap"
+                data-which="min"
+                catchtap="onAlarmLimitTap"
+              >{{metricDetail.alarmMin}}</text>
+              <text wx:else>{{metricDetail.alarmMin}}</text>
+            </view>
+            <view wx:if="{{metricDetail.overrideEditWhich === 'min' && metricDetail.canSaveOverride}}" class="art-md-inline-edit">
+              <input
+                class="art-md-input-compact"
+                value="{{metricDetail.overrideMinDraft}}"
+                bindinput="onOverrideMinInput"
+                placeholder="覆盖下限，空清除"
+              />
+              <button class="art-md-btn-inline" type="primary" size="mini" bindtap="onSaveAlarmOverrides">保存</button>
+              <button class="art-md-btn-inline" size="mini" bindtap="onOverrideEditCancel">取消</button>
+            </view>
+            <view wx:if="{{metricDetail.alarmMax}}" class="art-md-line art-md-limit-row">
+              <text>上限：</text>
+              <text
+                wx:if="{{metricDetail.canSaveOverride}}"
+                class="art-md-limit-val-tap"
+                data-which="max"
+                catchtap="onAlarmLimitTap"
+              >{{metricDetail.alarmMax}}</text>
+              <text wx:else>{{metricDetail.alarmMax}}</text>
+            </view>
+            <view wx:if="{{metricDetail.overrideEditWhich === 'max' && metricDetail.canSaveOverride}}" class="art-md-inline-edit">
+              <input
+                class="art-md-input-compact"
+                value="{{metricDetail.overrideMaxDraft}}"
+                bindinput="onOverrideMaxInput"
+                placeholder="覆盖上限，空清除"
+              />
+              <button class="art-md-btn-inline" type="primary" size="mini" bindtap="onSaveAlarmOverrides">保存</button>
+              <button class="art-md-btn-inline" size="mini" bindtap="onOverrideEditCancel">取消</button>
+            </view>
+            <text wx:if="{{metricDetail.showAminVn}}" class="art-md-line art-md-mono-muted">配对下限变量名：{{metricDetail.alarmMinVn}}</text>
+            <text wx:if="{{metricDetail.showAmaxVn}}" class="art-md-line art-md-mono-muted">配对上限变量名：{{metricDetail.alarmMaxVn}}</text>
+          </view>
+        </view>
+        <view class="art-md-block">
+          <text class="art-md-dt">变量名（调试）</text>
+          <text class="art-md-dd art-md-mono-muted">{{metricDetail.variableName}}</text>
+        </view>
+        <view wx:if="{{metricDetail.showQuality}}" class="art-md-block">
+          <text class="art-md-dt">质量码</text>
+          <text class="art-md-dd art-md-mono">{{metricDetail.qualityCode}}</text>
+        </view>
+        <view wx:if="{{metricDetail.showError}}" class="art-md-block">
+          <text class="art-md-dt art-md-dt-err">错误</text>
+          <text class="art-md-dd art-md-dd-err">{{metricDetail.error}}</text>
+        </view>
+      </view>
+    </scroll-view>
+  </van-popup>
+  <van-popup
+    show="{{setpointSheetVisible}}"
+    position="center"
+    round
+    closeable
+    close-icon-position="top-right"
+    root-portal="{{ true }}"
+    z-index="{{ 21000 }}"
+    custom-style="width: 86vw; max-width: 560rpx; padding: 28rpx 24rpx 32rpx; box-sizing: border-box;"
+    bind:close="onSetpointSheetClose"
+    bind:after-leave="onSetpointSheetAfterLeave"
+  >
+    <view class="art-switch-confirm-toolbar art-setpoint-sheet-toolbar">
+      <text class="art-switch-confirm-fetch">{{setpointSheetLastFetchLine}}</text>
+      <view
+        class="art-switch-confirm-refresh-icon {{setpointSheetRefreshing ? 'art-switch-confirm-refresh-icon--busy' : ''}}"
+        hover-class="art-switch-confirm-refresh-icon--hover"
+        hover-stay-time="70"
+        bindtap="onSetpointSheetRefresh"
+      >
+        <view wx:if="{{setpointSheetRefreshing}}" class="art-switch-confirm-refresh-spinner" />
+        <text wx:else class="art-switch-confirm-refresh-glyph">↻</text>
+      </view>
+    </view>
+    <view class="art-setpoint-sheet-head">
+      <view class="art-setpoint-sheet-line1">修改设定值</view>
+      <view
+        wx:if="{{setpointSheetParamHint}}"
+        class="art-setpoint-sheet-line2 art-setpoint-sheet-param-hint art-setpoint-sheet-param-hint{{setpointSheetParamHintTier}}"
+      >{{setpointSheetParamHint}}</view>
+    </view>
+    <input
+      class="art-md-input-compact art-setpoint-sheet-input"
+      value="{{setpointSheetDraft}}"
+      bindinput="onSetpointSheetInput"
+      placeholder="输入新数值"
+    />
+    <view class="art-setpoint-sheet-btns">
+      <button class="art-md-btn-inline" size="mini" bindtap="onSetpointSheetClose">取消</button>
+      <button class="art-md-btn-inline" type="primary" size="mini" bindtap="onSetpointSheetConfirm">提交</button>
+    </view>
+  </van-popup>
+  <van-popup
+    show="{{switchConfirmVisible}}"
+    position="center"
+    round
+    closeable
+    close-icon-position="top-right"
+    root-portal="{{ true }}"
+    z-index="{{ 21001 }}"
+    custom-style="width: 86vw; max-width: 600rpx; padding: 28rpx 24rpx 32rpx; box-sizing: border-box;"
+    bind:close="onSwitchConfirmSheetClose"
+    bind:after-leave="onSwitchConfirmSheetAfterLeave"
+  >
+    <view class="art-switch-confirm-toolbar">
+      <text class="art-switch-confirm-fetch">{{switchConfirmLastFetchLine}}</text>
+      <view
+        class="art-switch-confirm-refresh-icon {{switchConfirmRefreshing ? 'art-switch-confirm-refresh-icon--busy' : ''}}"
+        hover-class="art-switch-confirm-refresh-icon--hover"
+        hover-stay-time="70"
+        bindtap="onSwitchConfirmSheetRefresh"
+      >
+        <view wx:if="{{switchConfirmRefreshing}}" class="art-switch-confirm-refresh-spinner" />
+        <text wx:else class="art-switch-confirm-refresh-glyph">↻</text>
+      </view>
+    </view>
+    <view class="art-switch-confirm-main">{{switchConfirmMain}}</view>
+    <view class="art-switch-confirm-btns">
+      <button class="art-md-btn-inline" size="mini" bindtap="onSwitchConfirmSheetClose">取消</button>
+      <button class="art-md-btn-inline" type="primary" size="mini" bindtap="onSwitchConfirmSheetConfirm">确认</button>
+    </view>
+  </van-popup>
+  <!-- 离屏绘制归档曲线后导出为图，避免弹窗内原生 canvas 层级压盖 -->
+  <canvas type="2d" id="artArchiveOffscreenCanvas" class="art-archive-offscreen-canvas"></canvas>
+</view>

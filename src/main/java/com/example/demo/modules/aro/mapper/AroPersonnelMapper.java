@@ -31,6 +31,12 @@ public interface AroPersonnelMapper {
     })
     AroPersonnel findByName(@Param("name") String name);
 
+    @Select("SELECT * FROM aro_personnel WHERE name = #{name}")
+    @Results({
+            @Result(property = "id", column = "user_id")
+    })
+    java.util.List<AroPersonnel> findAllByName(@Param("name") String name);
+
     @Select("SELECT personal_pin FROM aro_personnel WHERE user_id = #{userId}")
     String findPersonalPinByUserId(@Param("userId") String userId);
 
@@ -49,6 +55,12 @@ public interface AroPersonnelMapper {
             @Result(property = "id", column = "user_id")
     })
     AroPersonnel findByNameAndJobNumber(@Param("name") String name, @Param("jobNumber") String jobNumber);
+
+    @Select("SELECT * FROM aro_personnel WHERE name = #{name} AND job_number = #{jobNumber}")
+    @Results({
+            @Result(property = "id", column = "user_id")
+    })
+    List<AroPersonnel> findAllByNameAndJobNumber(@Param("name") String name, @Param("jobNumber") String jobNumber);
 
     @Select("SELECT * FROM aro_personnel WHERE job_number = #{jobNumber}")
     @Results({

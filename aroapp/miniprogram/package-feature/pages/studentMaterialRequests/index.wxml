@@ -1,0 +1,82 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <scroll-view scroll-x class="filter-scroll" enhanced show-scrollbar="{{ false }}">
+    <view class="filter-inner">
+      <view
+        wx:for="{{ statusFilters }}"
+        wx:key="value"
+        class="filter-chip {{ activeStatus === item.value ? 'filter-chip-on' : '' }}"
+        data-status="{{ item.value }}"
+        bindtap="onStatusFilter"
+      >{{ item.label }}</view>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{ loading }}" class="muted">加载中…</view>
+  <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无申领记录" />
+  <view wx:else class="list">
+    <view
+      wx:for="{{ rows }}"
+      wx:key="id"
+      class="row-card"
+      data-id="{{ item.id }}"
+      bindtap="openDetail"
+    >
+      <view class="row-head">
+        <text class="row-title">{{ item.displayTitle }}</text>
+        <text class="row-status-tag {{ item.status === 'REJECTED' ? 'row-status-danger' : (item.status === 'PENDING' || item.status === 'FIRST_OK' ? 'row-status-warn' : 'row-status-ok') }}">{{ item.statusText }}</text>
+      </view>
+      <view class="row-sub">{{ item.createdAtText }}</view>
+      <view wx:if="{{ item.lineSummary }}" class="row-extra">{{ item.lineSummary }}</view>
+      <view class="row-hint">点击查看明细</view>
+      <view wx:if="{{ item.canWithdraw || item.canRevoke || item.canReceive }}" class="row-ops">
+        <view wx:if="{{ item.canWithdraw }}" class="btn-pill btn-pill-danger" data-id="{{ item.id }}" catchtap="onWithdraw">撤回</view>
+        <view wx:if="{{ item.canReceive }}" class="btn-pill btn-pill-primary" data-id="{{ item.id }}" catchtap="onReceive">确认领取</view>
+        <view wx:if="{{ item.canRevoke }}" class="btn-pill btn-pill-warn" data-id="{{ item.id }}" catchtap="onRevoke">撤销</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{ total > size }}" class="pager pager-rounded">
+    <view class="pager-btn" bindtap="prevPage">上一页</view>
+    <text class="pager-num">{{ page }} / {{ totalPages }}</text>
+    <view class="pager-btn" bindtap="nextPage">下一页</view>
+  </view>
+</view>
+
+<van-popup show="{{ detailShow }}" position="center" round bind:close="onDetailPopupClose" custom-style="width:88%;max-height:82vh;padding:24rpx;">
+  <view wx:if="{{ detail }}" class="detail-root">
+    <view class="detail-head">
+      <text class="detail-title">申领明细</text>
+      <text class="detail-sub">{{ detail.statusText }} · {{ detail.createdAtText }}</text>
+    </view>
+    <scroll-view scroll-y class="detail-scroll">
+      <view wx:for="{{ detail.lines }}" wx:key="id" class="detail-line">
+        <image
+          wx:if="{{ item.coverAbsUrl }}"
+          class="detail-thumb"
+          src="{{ item.coverAbsUrl }}"
+          mode="aspectFill"
+          lazy-load
+          data-url="{{ item.coverAbsUrl }}"
+          bindtap="previewLineImage"
+        />
+        <view wx:else class="detail-thumb detail-thumb-ph">
+          <text>{{ item.nameInitial }}</text>
+        </view>
+        <view class="detail-mid">
+          <text class="detail-name">{{ item.snapshotName }}</text>
+          <text wx:if="{{ item.specLabel }}" class="spec-tag">{{ item.specLabel }}</text>
+          <text class="detail-qty">申请 {{ item.qty }}<text wx:if="{{ item.fulfilledQty > 0 }}"> · 出库 {{ item.fulfilledQty }}</text></text>
+        </view>
+      </view>
+    </scroll-view>
+    <view wx:if="{{ detail.canWithdraw || detail.canRevoke || detail.canReceive }}" class="detail-actions">
+      <view wx:if="{{ detail.canWithdraw }}" class="btn-pill btn-pill-danger detail-action-btn" data-id="{{ detail.id }}" bindtap="onWithdraw">撤回</view>
+      <view wx:if="{{ detail.canReceive }}" class="btn-pill btn-pill-primary detail-action-btn" data-id="{{ detail.id }}" bindtap="onReceive">确认领取</view>
+      <view wx:if="{{ detail.canRevoke }}" class="btn-pill btn-pill-warn detail-action-btn" data-id="{{ detail.id }}" bindtap="onRevoke">撤销</view>
+    </view>
+    <view class="detail-close detail-close-rounded" bindtap="closeDetail">关闭</view>
+  </view>
+</van-popup>
+</block>

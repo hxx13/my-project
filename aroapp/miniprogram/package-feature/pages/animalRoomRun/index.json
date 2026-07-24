@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "运行概览",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "animal-room-telemetry": "/components/animal-room-telemetry/animal-room-telemetry"
+  }
+}

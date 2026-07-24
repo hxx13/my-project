@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Star, Building2, X, Clock, User, RefreshCw, ShieldCheck, DoorOpen } from "lucide-react";
+import { Star, Building2, X, Clock, User, RefreshCw, ShieldCheck, DoorOpen, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStudentRooms } from "../hooks/use-student-rooms";
 import { getStudentSessionScope, studentQueryKey } from "../utils/studentQueryScope";
@@ -131,7 +131,7 @@ function RoomTable({ rooms, columns, onClick }: {
 }
 
 function SectionHeader({ icon: Icon, label, count, colorClass }: {
-  icon: React.ElementType;
+  icon: LucideIcon;
   label: string;
   count: number;
   colorClass: string;

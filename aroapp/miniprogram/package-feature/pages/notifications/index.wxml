@@ -1,0 +1,121 @@
+<view class="page notifications-page">
+  <staff-work-inbox wx:if="{{ isStaff }}" id="staffInbox" embedded="{{ false }}" initial-active-tab="{{ initialTab }}" />
+
+  <view wx:else class="student-notices">
+    <view wx:if="{{ viewMode === 'messages' && pinnedNotices.length }}" class="sn-pinned-section">
+      <view class="sn-section-head">
+        <text class="sn-section-title">重要提醒</text>
+      </view>
+      <view
+        wx:for="{{ pinnedNotices }}"
+        wx:key="id"
+        class="msg-card msg-card--pinned {{ !item.isRead ? 'msg-card--unread' : '' }}"
+        data-id="{{ item.id }}"
+        data-kind="{{ item.kind }}"
+        bindtap="onAlertTap"
+      >
+        <view class="mc-top">
+          <text class="mc-badge mc-badge--brand">{{ item.badgeLabel }}</text>
+          <text wx:if="{{ item.time }}" class="mc-time">{{ item.time }}</text>
+        </view>
+        <text class="mc-title">{{ item.title }}</text>
+        <view wx:if="{{ item.summaryLine1 || item.summaryLine2 }}" class="mc-summary">
+          <text wx:if="{{ item.summaryLine1 }}" class="mc-summary-line">{{ item.summaryLine1 }}</text>
+          <text wx:if="{{ item.summaryLine2 }}" class="mc-summary-line">{{ item.summaryLine2 }}</text>
+        </view>
+        <text wx:elif="{{ item.preview }}" class="mc-preview">{{ item.preview }}</text>
+        <view class="mc-foot">
+          <view wx:if="{{ !item.isRead }}" class="mc-unread-dot"></view>
+          <text
+            wx:if="{{ item.statusLabel }}"
+            class="mc-status mc-status--{{ item.statusTone }}"
+            style="background:{{ item.statusBg }};color:{{ item.statusColor }};"
+          >{{ item.statusLabel }}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="sn-toolbar">
+      <text class="sn-toolbar-title">{{ pageTitle }}</text>
+      <view wx:if="{{ viewMode === 'messages' }}" class="sn-toolbar-actions">
+        <text wx:if="{{ unreadCount > 0 }}" class="sn-unread-hint">{{ unreadCount }} 条未读</text>
+        <view class="sn-mark-all" bindtap="onMarkAllRead">
+          <van-loading wx:if="{{ markingAll }}" size="28rpx" color="#ac1736" />
+          <text wx:else class="sn-mark-all-text">全部已读</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{ loading }}" class="alerts-center">
+      <van-loading size="40rpx" color="#ac1736" />
+      <text class="alerts-loading-text">加载中…</text>
+    </view>
+
+    <view wx:elif="{{ error }}" class="alerts-center">
+      <text class="alerts-error-text">{{ error }}</text>
+      <view class="alerts-retry-btn" bindtap="loadStudentData">重试</view>
+    </view>
+
+    <scroll-view wx:else scroll-y class="alerts-list">
+      <view wx:if="{{ viewMode === 'messages' && notices.length === 0 && !pinnedNotices.length }}" class="alerts-center alerts-empty">
+        <text class="alerts-empty-title">{{ emptyTitle }}</text>
+        <text class="alerts-empty-text">{{ emptyText }}</text>
+      </view>
+
+      <view wx:if="{{ viewMode === 'bulletins' && bulletins.length === 0 }}" class="alerts-center alerts-empty">
+        <text class="alerts-empty-title">{{ emptyTitle }}</text>
+        <text class="alerts-empty-text">{{ emptyText }}</text>
+      </view>
+
+      <block wx:if="{{ viewMode === 'messages' }}">
+        <view
+          wx:for="{{ notices }}"
+          wx:key="id"
+          class="msg-card {{ !item.isRead ? 'msg-card--unread' : '' }}"
+          data-id="{{ item.id }}"
+          data-kind="{{ item.kind }}"
+          bindtap="onAlertTap"
+        >
+          <view class="mc-top">
+            <text class="mc-badge" style="background:{{ item.badgeBg }};color:{{ item.badgeColor }};">{{ item.badgeLabel }}</text>
+            <text wx:if="{{ item.time }}" class="mc-time">{{ item.time }}</text>
+          </view>
+          <text class="mc-title">{{ item.title }}</text>
+          <view wx:if="{{ item.summaryLine1 || item.summaryLine2 }}" class="mc-summary">
+            <text wx:if="{{ item.summaryLine1 }}" class="mc-summary-line">{{ item.summaryLine1 }}</text>
+            <text wx:if="{{ item.summaryLine2 }}" class="mc-summary-line">{{ item.summaryLine2 }}</text>
+          </view>
+          <text wx:elif="{{ item.preview }}" class="mc-preview">{{ item.preview }}</text>
+          <view class="mc-foot">
+            <view wx:if="{{ !item.isRead }}" class="mc-unread-dot"></view>
+            <text
+              wx:if="{{ item.statusLabel }}"
+              class="mc-status mc-status--{{ item.statusTone }}"
+              style="background:{{ item.statusBg }};color:{{ item.statusColor }};"
+            >{{ item.statusLabel }}</text>
+          </view>
+        </view>
+      </block>
+
+      <block wx:elif="{{ viewMode === 'bulletins' }}">
+        <view
+          wx:for="{{ bulletins }}"
+          wx:key="id"
+          class="msg-card msg-card--bulletin"
+          data-id="{{ item.id }}"
+          data-kind="{{ item.kind }}"
+          bindtap="onAlertTap"
+        >
+          <view class="mc-top">
+            <text class="mc-badge" style="background:{{ item.badgeBg }};color:{{ item.badgeColor }};">{{ item.badgeLabel }}</text>
+            <text wx:if="{{ item.time }}" class="mc-time">{{ item.time }}</text>
+          </view>
+          <text class="mc-title">{{ item.title }}</text>
+          <text wx:if="{{ item.preview }}" class="mc-preview">{{ item.preview }}</text>
+        </view>
+      </block>
+
+      <view class="list-pad-bottom" />
+    </scroll-view>
+  </view>
+</view>

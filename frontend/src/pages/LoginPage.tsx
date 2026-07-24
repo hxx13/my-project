@@ -233,9 +233,14 @@ export default function LoginPage() {
   // CAS ticket auto-extraction — serviceValidate works for any domain
   useEffect(() => {
     if (casProcessedRef.current) return;
-    const ticketMatch = window.location.href.match(/[?&]ticket=([^&#]+)/);
-    const ticket = ticketMatch ? decodeURIComponent(ticketMatch[1]) : null;
+    // Try URL first, then sessionStorage (preserved from RootEntryRedirect)
+    let ticketMatch = window.location.href.match(/[?&]ticket=([^&#]+)/);
+    let ticket = ticketMatch ? decodeURIComponent(ticketMatch[1]) : null;
+    if (!ticket) {
+      ticket = sessionStorage.getItem('cas_pending_ticket');
+    }
     if (!ticket) return;
+    sessionStorage.removeItem('cas_pending_ticket');
     casProcessedRef.current = true;
 
     // Clean ticket from URL immediately

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { dualImageSrc, type DualImageSource } from '@/utils/mediaUrl';
+import { type DualImageSource } from '@/utils/mediaUrl';
 
 interface DualImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   source: DualImageSource;
@@ -9,14 +9,10 @@ interface DualImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>,
 /**
  * 双端图片组件。
  * 浏览器端使用 publicUrl 加载；加载失败时显示 fallback 占位。
- * wechat cloud:// 格式的 fileID 无法在浏览器渲染，自动跳过。
+ * 浏览器端优先 publicUrl 直接加载。
  */
 export default function DualImage({ source, fallback, alt, style, ...rest }: DualImageProps) {
-  const src = dualImageSrc({
-    publicUrl: source.publicUrl,
-    wechatFileId: source.wechatFileId,
-    fallback,
-  });
+  const src = source.publicUrl || fallback;
   const [error, setError] = useState(false);
 
   if (!src || error) {

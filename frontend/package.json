@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "dev:force": "vite --force",
-    "build": "node ../scripts/export-admin-nav-manifest.mjs && tsc -b && vite build",
+    "build": "node ../scripts/export-admin-nav-manifest.mjs && node ../scripts/copy-mini-assets.mjs && tsc -b && vite build",
+    "build:nav": "node ../scripts/export-admin-nav-manifest.mjs",
+    "build:assets": "node ../scripts/copy-mini-assets.mjs",
     "export:nav-manifest": "node ../scripts/export-admin-nav-manifest.mjs",
     "preview": "vite preview"
   },

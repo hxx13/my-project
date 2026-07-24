@@ -1,0 +1,250 @@
+.notifications-page.page {
+  min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  background: #f7f3f4;
+  box-sizing: border-box;
+}
+
+.student-notices {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  padding-bottom: calc(env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.sn-pinned-section {
+  padding: 20rpx 20rpx 0;
+  flex-shrink: 0;
+}
+
+.sn-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+  padding: 0 8rpx;
+}
+
+.sn-section-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #ac1736;
+}
+
+.sn-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 16rpx 24rpx;
+  background: #fff;
+  border-bottom: 1rpx solid rgba(172, 23, 54, 0.08);
+  flex-shrink: 0;
+}
+
+.sn-toolbar-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.sn-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+.sn-unread-hint {
+  font-size: 22rpx;
+  color: #ac1736;
+  font-weight: 600;
+}
+
+.sn-mark-all {
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(172, 23, 54, 0.06);
+}
+
+.sn-mark-all-text {
+  font-size: 22rpx;
+  color: #ac1736;
+  font-weight: 600;
+}
+
+.alerts-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 40rpx;
+  gap: 16rpx;
+}
+
+.alerts-empty {
+  padding-top: 80rpx;
+}
+
+.alerts-empty-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #475569;
+}
+
+.alerts-loading-text {
+  font-size: 26rpx;
+  color: #969799;
+}
+
+.alerts-error-text {
+  font-size: 26rpx;
+  color: #ef4444;
+  text-align: center;
+}
+
+.alerts-empty-text {
+  font-size: 24rpx;
+  color: #94a3b8;
+  text-align: center;
+  line-height: 1.5;
+  max-width: 520rpx;
+}
+
+.alerts-retry-btn {
+  padding: 12rpx 36rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #c41e3a, #ac1736);
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.alerts-list {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 16rpx 20rpx;
+  overflow-x: hidden;
+}
+
+.list-pad-bottom {
+  height: 40rpx;
+}
+
+.msg-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 22rpx 24rpx 20rpx;
+  border-radius: 20rpx;
+  margin-bottom: 14rpx;
+  background: #fff;
+  border: 1rpx solid rgba(30, 55, 90, 0.08);
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.04);
+}
+
+.msg-card--pinned {
+  border-color: rgba(172, 23, 54, 0.22);
+  background: rgba(172, 23, 54, 0.03);
+  box-shadow: 0 4rpx 16rpx rgba(172, 23, 54, 0.08);
+}
+
+.msg-card--unread {
+  border-color: rgba(172, 23, 54, 0.16);
+}
+
+.msg-card--bulletin {
+  border-color: rgba(37, 99, 235, 0.12);
+}
+
+.mc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 10rpx;
+}
+
+.mc-badge {
+  font-size: 20rpx;
+  font-weight: 600;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  flex-shrink: 0;
+}
+
+.mc-badge--brand {
+  background: rgba(172, 23, 54, 0.1);
+  color: #ac1736;
+}
+
+.mc-time {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.mc-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.mc-summary {
+  margin-top: 10rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.mc-summary-line {
+  display: block;
+  font-size: 24rpx;
+  color: #64748b;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.mc-preview {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: #64748b;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.mc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14rpx;
+  min-height: 32rpx;
+}
+
+.mc-unread-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #ac1736;
+}
+
+.mc-status {
+  margin-left: auto;
+  font-size: 22rpx;
+  font-weight: 700;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  line-height: 1.2;
+}

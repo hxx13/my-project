@@ -1,0 +1,542 @@
+/* 首页：瑞幸式大图 Hero + 半透明服务卡（校徽水印可见） */
+page {
+  box-sizing: border-box;
+}
+
+.home {
+  min-height: 100vh;
+  background: #eef0f6;
+  /* 与 mine / telemetry 一致：TabBar 占位计入内容盒，避免底部被遮挡 */
+  padding-bottom: calc(32rpx + 50px + constant(safe-area-inset-bottom));
+  padding-bottom: calc(32rpx + 50px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  position: relative;
+}
+
+.home-watermark {
+  position: fixed;
+  left: 50%;
+  top: 52%;
+  width: 620rpx;
+  height: 620rpx;
+  transform: translate(-50%, -50%);
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* —— Hero 轮播：全宽铺满，无边缘虚化 —— */
+.home-hero-banner {
+  position: relative;
+  width: 100%;
+  height: 520rpx;
+  overflow: hidden;
+  z-index: 1;
+  background: #eef0f6;
+}
+
+.home-hero-banner--dark {
+  background: #eef0f6;
+}
+
+.hero-banner-stage {
+  width: 100%;
+  height: 100%;
+}
+
+.hero-swiper {
+  width: 100%;
+  height: 100%;
+}
+
+.hero-banner-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(172, 23, 54, 0.08), rgba(99, 102, 241, 0.06));
+}
+
+.hero-banner-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.hero-banner-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 透明顶栏：Hero 图透出，仅保留左上角扫码 */
+.hero-nav {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+.hero-nav-status {
+  flex-shrink: 0;
+}
+
+.hero-nav-row {
+  display: flex;
+  align-items: center;
+  padding: 0 24rpx;
+  pointer-events: auto;
+}
+
+.hero-scan-btn {
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1rpx solid rgba(255, 255, 255, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: transform 0.08s ease, opacity 0.08s ease;
+}
+
+.hero-scan-btn--hover {
+  opacity: 0.86;
+  transform: scale(1.05);
+}
+
+/* —— 登录条（瑞幸同款深色窄条） —— */
+.home-login-bar {
+  position: relative;
+  z-index: 2;
+  margin: -48rpx 24rpx 0;
+  padding: 0 4rpx;
+}
+
+.login-bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 20rpx 28rpx;
+  border-radius: 16rpx;
+  background: linear-gradient(
+    135deg,
+    rgba(172, 23, 54, 0.9) 0%,
+    rgba(120, 18, 38, 0.94) 100%
+  );
+  border: 1rpx solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 8rpx 32rpx rgba(172, 23, 54, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.login-greeting {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.login-cta {
+  flex-shrink: 0;
+  padding: 10rpx 28rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: rgb(120, 18, 38);
+  background: linear-gradient(135deg, #fce8d8 0%, #f0c896 100%);
+  box-shadow: 0 4rpx 12rpx rgba(240, 200, 150, 0.4);
+  transition: transform 0.08s ease, opacity 0.08s ease;
+}
+
+.login-cta--bound {
+  color: rgb(172, 23, 54);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 245, 248, 0.96) 100%);
+  box-shadow: 0 4rpx 12rpx rgba(255, 255, 255, 0.28);
+}
+
+.login-cta--hover {
+  transform: scale(1.04);
+  opacity: 0.9;
+}
+
+/* —— 主体内容区 —— */
+.home-body {
+  margin-top: 20rpx;
+  padding: 0 24rpx 16rpx;
+  position: relative;
+  z-index: 1;
+}
+
+/* 服务卡：三宫格 + 四快捷入口，共用原首页透明底板 */
+.service-card {
+  background: rgba(237, 239, 246, 0.05);
+  border-radius: 24rpx;
+  padding: 28rpx 16rpx;
+  box-shadow: 0 8rpx 32rpx rgb(199, 199, 199);
+}
+
+/* 三宫格预留位 */
+.service-primary-row {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+  gap: 8rpx;
+  padding: 0 8rpx;
+}
+
+.service-primary-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10rpx;
+  padding: 8rpx 4rpx;
+  transition: transform 0.08s ease, opacity 0.08s ease;
+}
+
+.service-primary-item--hover {
+  transform: scale(1.03);
+  opacity: 0.88;
+}
+
+.service-primary-icon-wrap {
+  position: relative;
+  width: 112rpx;
+  height: 112rpx;
+}
+
+/* 透明遮罩：拦截 image 原生点击，避免触发「查看图片/尺寸」 */
+.icon-hit-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+}
+
+.service-primary-badge {
+  position: absolute;
+  top: -4rpx;
+  right: -4rpx;
+  z-index: 3;
+  min-width: 30rpx;
+  padding: 2rpx 8rpx;
+  font-size: 20rpx;
+  line-height: 1.25;
+  color: #ffffff;
+  background: #ee0a24;
+  border-radius: 999rpx;
+  text-align: center;
+  font-weight: 700;
+  box-sizing: border-box;
+  box-shadow: 0 2rpx 8rpx rgba(238, 10, 36, 0.35);
+}
+
+.service-primary-icon {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.service-primary-icon--active {
+  background: linear-gradient(180deg, #f4f5ff 0%, #eef0ff 100%);
+  box-shadow: 0 6rpx 18rpx rgba(172, 23, 54, 0.12);
+}
+
+.service-primary-icon--image {
+  background: transparent;
+  box-shadow: none;
+}
+
+.service-primary-icon-img {
+  width: 112rpx;
+  height: 112rpx;
+}
+
+.service-primary-icon--placeholder {
+  background: rgba(244, 245, 255, 0.55);
+  border: 2rpx dashed rgba(172, 23, 54, 0.28);
+}
+
+.service-primary-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #323233;
+  text-align: center;
+}
+
+.service-divider {
+  height: 1rpx;
+  margin: 20rpx 16rpx 16rpx;
+  background: linear-gradient(
+    90deg,
+    rgba(172, 23, 54, 0) 0%,
+    rgba(172, 23, 54, 0.12) 50%,
+    rgba(172, 23, 54, 0) 100%
+  );
+}
+
+/* 四快捷入口：瑞幸式圆形图标 + 下方文字 */
+.quick-row {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+}
+
+.quick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14rpx;
+  padding: 4rpx 12rpx;
+  transition: transform 0.08s ease, opacity 0.08s ease;
+}
+
+.quick-item--hover {
+  transform: scale(1.06);
+  opacity: 0.86;
+}
+
+.quick-icon-wrap {
+  position: relative;
+  width: 80rpx;
+  height: 80rpx;
+}
+
+.quick-badge {
+  position: absolute;
+  top: -4rpx;
+  right: -2rpx;
+  z-index: 3;
+  min-width: 30rpx;
+  padding: 2rpx 8rpx;
+  font-size: 20rpx;
+  line-height: 1.25;
+  color: #ffffff;
+  background: #ee0a24;
+  border-radius: 999rpx;
+  text-align: center;
+  font-weight: 700;
+  box-sizing: border-box;
+  box-shadow: 0 2rpx 8rpx rgba(238, 10, 36, 0.35);
+}
+
+.quick-icon {
+  width: 80rpx;
+  height: 80rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.quick-icon--circle {
+  border-radius: 50%;
+  background: linear-gradient(180deg, #f4f5ff 0%, #eef0ff 100%);
+  box-shadow: 0 6rpx 20rpx rgba(172, 23, 54, 0.1);
+}
+
+.quick-icon--image {
+  background: transparent;
+  box-shadow: none;
+}
+
+.quick-icon-img {
+  width: 80rpx;
+  height: 80rpx;
+  display: block;
+}
+
+.quick-item--hover .quick-icon--image {
+  transform: scale(1.05);
+}
+
+.quick-label {
+  font-size: 24rpx;
+  color: #323233;
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.3;
+}
+
+/* —— 新闻/公告区（保持不变） —— */
+.section {
+  margin-top: 28rpx;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+  padding: 0 8rpx;
+}
+
+.section-head--tabs {
+  align-items: flex-end;
+}
+
+.home-tabs {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.home-tab {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #9ca3af;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+}
+
+.home-tab--on {
+  color: #1f2937;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4rpx 12rpx rgba(15, 23, 42, 0.08);
+}
+
+.home-bulletin-empty {
+  text-align: center;
+  color: #969799;
+  font-size: 26rpx;
+  padding: 36rpx 24rpx;
+}
+
+.section-more {
+  font-size: 24rpx;
+  color: rgb(172, 23, 54);
+}
+
+.news-card {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 24rpx;
+  overflow: hidden;
+  box-shadow: 0 8rpx 28rpx rgba(15, 23, 42, 0.06);
+  border: 1rpx solid rgba(91, 92, 230, 0.08);
+}
+
+.news-card {
+  --cell-vertical-padding: 18rpx;
+  --cell-horizontal-padding: 20rpx;
+  --cell-font-size: 28rpx;
+  --cell-line-height: 40rpx;
+  --cell-label-font-size: 24rpx;
+  --cell-label-line-height: 34rpx;
+}
+
+.van-cell__title {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* 图片全屏预览 */
+.preview-cover {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s ease;
+}
+
+.preview-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.student-service-card {
+  margin-top: 20rpx;
+}
+
+/* ====== 学生视角：H5 同款公告通知列表 ====== */
+.section-title-text {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.announce-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 20rpx 24rpx;
+  transition: background 0.06s ease;
+}
+
+.announce-row--bordered {
+  border-top: 1rpx solid rgba(30, 55, 90, 0.06);
+}
+
+.announce-row--hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.announce-row--important {
+  background: linear-gradient(90deg, rgba(172, 23, 54, 0.06), rgba(172, 23, 54, 0.02));
+  border-left: 6rpx solid #ac1736;
+  padding-left: 18rpx;
+}
+
+.announce-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.announce-head {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12rpx;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.announce-badge {
+  flex-shrink: 0;
+  border-radius: 999rpx;
+  padding: 2rpx 16rpx;
+  font-size: 20rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.announce-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announce-time {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #969799;
+  white-space: nowrap;
+}

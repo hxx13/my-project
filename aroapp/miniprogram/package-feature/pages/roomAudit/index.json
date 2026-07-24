@@ -1,0 +1,11 @@
+{
+  "navigationBarTitleText": "在馆审核",
+  "usingComponents": {
+    "van-button": "@vant/weapp/button/index",
+    "van-popup": "@vant/weapp/popup/index",
+    "van-field": "@vant/weapp/field/index",
+    "van-empty": "@vant/weapp/empty/index",
+    "exempt-setup-panel": "../../components/exempt-setup-panel/index",
+    "custom-tab-bar": "/custom-tab-bar/index"
+  }
+}

@@ -1,0 +1,70 @@
+.page {
+  padding: 24rpx;
+  min-height: 100vh;
+  background: #f7f8fa;
+}
+.card {
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 4rpx 20rpx rgba(15, 23, 42, 0.06);
+}
+.label {
+  display: block;
+  font-size: 22rpx;
+  color: #64748b;
+  margin-bottom: 8rpx;
+}
+.mono {
+  font-size: 26rpx;
+  color: #0f172a;
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+.muted {
+  color: #94a3b8;
+  font-size: 26rpx;
+  padding: 24rpx;
+}
+.table-card .row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f1f5f9;
+  font-size: 26rpx;
+}
+.table-card .row.head {
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 2rpx solid #e2e8f0;
+}
+.c1 {
+  flex: 1;
+  padding-right: 12rpx;
+}
+.c2 {
+  width: 100rpx;
+  text-align: right;
+  color: #334155;
+}
+.actions {
+  margin-top: 32rpx;
+}
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  border-radius: 44rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.btn.primary {
+  background: linear-gradient(135deg, #0d9488, #0ea5e9);
+  color: #fff;
+}
+.btn.disabled {
+  opacity: 0.55;
+}

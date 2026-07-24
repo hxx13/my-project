@@ -1,0 +1,9 @@
+{
+  "name": "getDualImageSrc",
+  "version": "1.0.0",
+  "description": "根据记录 ID 获取小程序端最佳渲染的图片 URL",
+  "main": "index.js",
+  "dependencies": {
+    "axios": "^1.7.9"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "migrateExistingImages",
+  "version": "1.0.0",
+  "description": "一次性存量迁移：把数据库中所有 cloud:// 图片同步到后端",
+  "main": "index.js",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "form-data": "^4.0.0",
+    "wx-server-sdk": "~3.0.1"
+  }
+}

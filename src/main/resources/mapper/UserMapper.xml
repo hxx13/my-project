@@ -56,6 +56,13 @@
         </foreach>
     </select>
 
+    <select id="findByDisplayNickname" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE display_nickname = #{displayNickname}
+        LIMIT 1
+    </select>
+
     <insert id="insertUser" parameterType="com.example.demo.modules.auth.entity.User">
         INSERT INTO sys_user(id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, account_source)
         VALUES (#{id}, #{username}, #{password}, #{openId}, #{role}, #{status}, #{passwordResetRequired}, #{displayNickname}, #{miniBindType}, #{miniPreferencesJson}, #{authProfile}, #{accountSource})

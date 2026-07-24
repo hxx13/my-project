@@ -1,0 +1,217 @@
+<view class="page">
+  <view class="header-row">
+    <view class="page-title">校园卡管理</view>
+    <button size="mini" class="header-issue-btn" bindtap="onOpenIssue">+ 发卡</button>
+  </view>
+
+  <view class="tool-row">
+    <view class="search-input-wrap">
+      <input
+        class="search-input"
+        placeholder="搜人名/卡号/序号"
+        value="{{keyword}}"
+        confirm-type="search"
+        bindinput="onKeywordInput"
+        bindconfirm="onSearchNow"
+      />
+    </view>
+    <button size="mini" class="tool-btn-primary" loading="{{searching}}" bindtap="onSearchNow">搜索</button>
+  </view>
+
+  <view class="filter-pills">
+    <view class="filter-pill {{exemptFilter==='all'?'filter-pill--active':''}}" data-filter="all" bindtap="onExemptFilterTap">全部</view>
+    <view class="filter-pill {{exemptFilter==='exempt'?'filter-pill--active':''}}" data-filter="exempt" bindtap="onExemptFilterTap">已豁免</view>
+    <view class="filter-pill {{exemptFilter==='controlled'?'filter-pill--active':''}}" data-filter="controlled" bindtap="onExemptFilterTap">未豁免</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading">加载中...</view>
+
+  <view wx:for="{{list}}" wx:key="cardNo" class="swipe-wrap">
+    <view class="swipe-action danger" data-row="{{item}}" bindtap="onDelete">删除</view>
+    <view
+      class="swipe-content {{swipeOpenCardNo===item.cardNo ? 'swipe-open' : ''}}"
+      data-cardno="{{item.cardNo}}"
+      bindtouchstart="onCardTouchStart"
+      bindtouchmove="onCardTouchMove"
+      bindtouchend="onCardTouchEnd"
+      bindtap="onCardTap"
+    >
+      <view class="card {{item.cardTintClass}}">
+        <view class="card-row">
+          <view class="text-col">
+            <view class="name">{{item.userName || '（未匹配）'}}</view>
+            <view class="meta">卡号 {{item.cardNo || '-'}} · 序号 {{item.dahuaSeq || '-'}}</view>
+          </view>
+          <view class="btn-row">
+            <button
+              wx:if="{{canGrantExempt}}"
+              size="mini"
+              class="mini exempt-main-btn {{item.freezeExemptFlag===1 ? 'exempt-main-btn--active' : 'exempt-main-btn--off'}}"
+              data-row="{{item}}"
+              bindtap="onToggleExempt"
+            >
+              {{item.freezeExemptFlag===1 ? '已豁免' : '设豁免'}}
+            </button>
+            <view class="info-btn" data-row="{{item}}" bindtap="onOpenDetail">ⓘ</view>
+          </view>
+        </view>
+        <view wx:if="{{item.freezeExemptFlag===1}}" class="exempt-info">
+          <view wx:if="{{item.exemptStatusText}}" class="exempt-info-status">{{item.exemptStatusText}}</view>
+          <view wx:if="{{item.exemptRoomNames}}" class="exempt-info-rooms">房间: {{item.exemptRoomNames}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{detailOpen}}" class="overlay" bindtap="onCloseDetail">
+    <view class="panel" catchtap="noop">
+      <view class="panel-head">
+        <view class="panel-title">映射详情</view>
+        <view class="close-x" bindtap="onCloseDetail">×</view>
+      </view>
+      <view class="detail-line">姓名：{{detail.userName || '-'}}</view>
+      <view class="detail-line">ARO ID：{{detail.aroUserId || '-'}}</view>
+      <view class="detail-line">卡号：{{detail.cardNo || '-'}}</view>
+      <view class="detail-line">大华序号：{{detail.dahuaSeq || '-'}}</view>
+      <view class="detail-line">人员编码：{{detail.dahuaPersonCode || '-'}}</view>
+      <view class="detail-line">课题组：{{detail.projectGroupName || '-'}}</view>
+      <view class="detail-line">{{detail.controlLabel || '-'}} · {{detail.exemptStatusText || '无豁免'}}</view>
+      <view wx:if="{{detail.exemptRoomNames}}" class="detail-line exempt-rooms-detail">房间: {{detail.exemptRoomNames}}</view>
+      <view class="detail-line">更新时间：{{detail.lastModifiedTime || '-'}}</view>
+      <view class="detail-actions">
+        <button
+          size="mini"
+          class="detail-freeze-btn {{detail.cardStatus==='FROZEN' ? 'detail-freeze-btn--frozen' : 'detail-freeze-btn--normal'}}"
+          data-row="{{detail}}"
+          bindtap="onToggleStatus"
+        >{{detail.cardStatus==='FROZEN' ? '解冻卡片' : '冻结卡片'}}</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{issueOpen}}" class="overlay" bindtap="onCloseIssue">
+    <view class="panel issue-panel" catchtap="noop">
+      <view class="panel-head">
+        <view class="panel-title">发卡</view>
+        <view class="close-x" bindtap="onCloseIssue">×</view>
+      </view>
+      <view class="field-label">检索人员</view>
+      <view class="input-line personnel-search-wrap">
+        <input class="field input-grow" placeholder="姓名/工号关键词" value="{{personnelKeyword}}" bindinput="onPersonnelKeywordInput" />
+        <button size="mini" class="line-btn" loading="{{personnelSearching}}" bindtap="onSearchPersonnel">检索</button>
+        <view wx:if="{{showPersonnelDropdown}}" class="personnel-dropdown">
+          <view class="personnel-debug" wx:if="{{personnelDebugText}}">{{personnelDebugText}}</view>
+          <scroll-view scroll-y class="personnel-dropdown-scroll">
+            <view wx:for="{{personnelResults}}" wx:key="pid" class="personnel-option" data-pid="{{item.pid}}" data-pname="{{item.pname}}" bindtap="onPickPersonnel">
+              <text class="personnel-name">{{item.pname}}</text>
+              <text class="personnel-id">{{item.pid}}</text>
+            </view>
+            <view wx:if="{{personnelNoResult}}" class="personnel-empty">未检索到匹配人员</view>
+          </scroll-view>
+          <view class="personnel-dropdown-footer" bindtap="onClosePersonnelDropdown">收起</view>
+        </view>
+      </view>
+
+      <view class="field-label">发卡信息</view>
+      <input class="field readonly-field" data-key="userName" placeholder="姓名（请先检索人员）" value="{{issueForm.userName}}" disabled />
+      <input class="field readonly-field" data-key="aroUserId" placeholder="ARO ID（自动回填）" value="{{issueForm.aroUserId}}" disabled />
+      <input class="field" data-key="cardNo" placeholder="卡号" value="{{issueForm.cardNo}}" bindinput="onIssueFieldInput" />
+
+      <view class="field-label">所属部门</view>
+      <view class="picker-field field">{{selectedDepartmentName || '请选择部门（树级）'}}<text class="picker-id">{{issueForm.departmentId ? (' #' + issueForm.departmentId) : ''}}</text></view>
+      <scroll-view scroll-y class="dept-tree-scroll">
+        <block wx:for="{{departmentTreeRoots}}" wx:key="id">
+          <view class="dept-node">
+            <view class="dept-line">
+              <view class="dept-toggle" data-id="{{item.id}}" bindtap="onToggleDepartmentExpand">
+                {{(departmentChildrenMap[item.id] && departmentChildrenMap[item.id].length>0) ? (departmentExpandedMap[item.id] ? '▾' : '▸') : '·'}}
+              </view>
+              <view class="dept-pick {{issueForm.departmentId==item.id ? 'dept-picked' : ''}}" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="onPickDepartmentNode">
+                {{item.name || ('部门'+item.id)}}
+              </view>
+            </view>
+            <view wx:if="{{departmentExpandedMap[item.id] && departmentChildrenMap[item.id] && departmentChildrenMap[item.id].length>0}}" class="dept-children">
+              <block wx:for="{{departmentChildrenMap[item.id]}}" wx:key="id">
+                <view class="dept-line child-line">
+                  <view class="dept-toggle" data-id="{{item.id}}" bindtap="onToggleDepartmentExpand">
+                    {{(departmentChildrenMap[item.id] && departmentChildrenMap[item.id].length>0) ? (departmentExpandedMap[item.id] ? '▾' : '▸') : '·'}}
+                  </view>
+                  <view class="dept-pick {{issueForm.departmentId==item.id ? 'dept-picked' : ''}}" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="onPickDepartmentNode">
+                    {{item.name || ('部门'+item.id)}}
+                  </view>
+                </view>
+              </block>
+            </view>
+          </view>
+        </block>
+      </scroll-view>
+
+      <view class="sub-title">4. 官方可进房间与门禁规则（自动匹配，勾选合并到通道/门组）</view>
+      <view class="rule-prefill-box" wx:if="{{!issueForm.aroUserId}}">
+        <text class="hint-text">请先检索并选择人员。</text>
+      </view>
+      <view class="rule-prefill-box" wx:elif="{{issuePrefillLoading}}">
+        <text class="hint-text">正在匹配门禁规则…</text>
+      </view>
+      <view class="rule-prefill-box" wx:elif="{{!issueRuleMatches.length}}">
+        <text class="hint-text">未匹配到门禁子项。官方可进房间数：{{issueOfficialRoomCount}}</text>
+      </view>
+      <scroll-view wx:else scroll-y class="rule-match-scroll">
+        <view wx:for="{{issueRuleMatches}}" wx:key="matchKey" class="check-item" data-key="{{item.matchKey}}" bindtap="onToggleIssueRuleMatch">
+          <text>{{issueRuleSelectedKeys.indexOf(item.matchKey) > -1 ? '☑' : '☐'}}</text>
+          <text class="rule-match-text">{{item.ruleName}} · 房间 {{item.roomName || item.roomId}}<text wx:if="{{!item.hasPrivilege}}" class="warn-inline">（无通道/门组）</text></text>
+        </view>
+      </scroll-view>
+
+      <view class="sub-title">通道（可多选）</view>
+      <view class="collapse-head" bindtap="onToggleChannelPanel">
+        <text>单通道选择</text>
+        <text>{{channelPanelOpen ? '收起' : '展开'}}</text>
+      </view>
+      <view wx:if="{{channelPanelOpen}}">
+        <view class="input-line">
+          <input class="field input-grow" placeholder="输入通道名称/编码搜索" value="{{channelKeyword}}" bindinput="onChannelKeywordInput" />
+        </view>
+        <scroll-view scroll-y class="picker-scroll">
+          <view wx:for="{{filteredChannels}}" wx:key="id" class="check-item" data-code="{{item.channelCode}}" bindtap="onToggleChannel">
+            <text>{{issueForm.channelResourceCodes.indexOf(item.channelCode) > -1 ? '☑' : '☐'}}</text>
+            <text>{{item.channelName}} / {{item.channelCode}}</text>
+          </view>
+        </scroll-view>
+      </view>
+
+      <view class="sub-title">门组（可多选）</view>
+      <scroll-view scroll-y class="picker-scroll">
+        <view wx:for="{{doorGroups}}" wx:key="id" class="check-item" data-id="{{item.id}}" bindtap="onToggleDoorGroup">
+          <text>{{issueForm.doorGroupIds.indexOf(item.id) > -1 ? '☑' : '☐'}}</text>
+          <text>{{item.name}} / {{item.id}}</text>
+        </view>
+      </scroll-view>
+
+      <view wx:if="{{issuing}}" class="issuing-box">
+        <view class="issuing-title">发卡进度</view>
+        <block wx:for="{{issuingPhaseLabels}}" wx:key="*this">
+          <view class="issuing-line {{index < issuingPhase ? 'issuing-done' : ''}} {{index == issuingPhase ? 'issuing-current' : ''}}">
+            <text class="issuing-dot">{{index < issuingPhase ? '✓' : (index == issuingPhase ? '·' : '○')}}</text>
+            <text>{{item}}</text>
+          </view>
+        </block>
+      </view>
+
+      <view class="footer-row">
+        <button size="mini" bindtap="onCloseIssue">取消</button>
+        <button size="mini" type="primary" loading="{{saving}}" bindtap="onIssueSubmit">确认发卡</button>
+      </view>
+    </view>
+  </view>
+
+  <exempt-setup-panel
+    show="{{ exemptPanelShow }}"
+    card-no="{{ exemptPanelCardNo }}"
+    user-name="{{ exemptPanelUserName }}"
+    aro-user-id="{{ exemptPanelAroUserId }}"
+    submitting="{{ exemptSubmitting }}"
+    bind:close="onExemptPanelClose"
+    bind:confirm="onExemptPanelConfirm"
+  />
+</view>

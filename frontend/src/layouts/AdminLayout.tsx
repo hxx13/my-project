@@ -1266,9 +1266,10 @@ export default function AdminLayout() {
               className="rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-danger)] px-4 py-2 text-sm font-medium text-[var(--app-color-text-inverse)] transition-colors hover:bg-[var(--app-color-feedback-danger)]/85"
               onClick={() => {
                 authStorage.clear();
-                toast.success("已退出登录");
                 setLogoutDialogOpen(false);
-                navigate("/login", { replace: true });
+                // Redirect browser: CAS clears CASTGC → redirects back to login
+                window.location.href = 'https://auth2.shsmu.edu.cn/cas/logout?service='
+                    + encodeURIComponent(window.location.origin + '/#/login');
               }}
             >
               退出登录

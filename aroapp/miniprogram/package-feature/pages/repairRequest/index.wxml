@@ -1,0 +1,93 @@
+<view class="page">
+  <!-- 新建申请 -->
+  <view class="wo-panel wo-panel--form">
+    <view class="wo-panel-head" bindtap="toggleForm">
+      <view class="wo-panel-title">新建报修申请</view>
+      <view class="wo-head-actions">
+        <view class="wo-toggle {{ form.isPublic ? 'wo-toggle--on' : '' }}" catchtap="togglePublic">{{ form.isPublic ? '公开' : '私密' }}</view>
+        <view class="wo-head-btn wo-head-btn--submit" catchtap="submit">提交</view>
+      </view>
+      <text class="wo-expand-arrow {{ formExpanded ? 'wo-expand-arrow--open' : '' }}">▾</text>
+    </view>
+    <view class="wo-form-body {{ formExpanded ? 'wo-form-body--open' : '' }}">
+      <input class="wo-input" value="{{ form.location }}" bindinput="onLocationInput" placeholder="故障地点（例：浦东A201）" />
+      <view class="wo-desc-box">
+        <textarea class="wo-input wo-textarea" value="{{ form.content }}" bindinput="onContentInput" placeholder="请描述故障现象与紧急程度" auto-height />
+        <view class="wo-desc-bar">
+          <view wx:if="{{ form.requestImages.length }}" class="image-grid image-grid--inline">
+            <view wx:for="{{ form.requestImages }}" wx:key="*this" class="image-item image-item--sm">
+              <image class="image-thumb image-thumb--sm" mode="aspectFill" lazy-load src="{{ item }}" data-url="{{ item }}" bindtap="onPreviewRequestImages" />
+              <view class="image-remove" data-idx="{{ index }}" bindtap="onRemoveRequestImage">×</view>
+            </view>
+          </view>
+          <view wx:if="{{ form.requestImages.length < 9 }}" class="image-add image-add--sm" catchtap="onChooseRequestImages">
+            <text class="image-add-plus">+</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 报修单记录：标题与筛选固定，列表在容器内滚动 -->
+  <view class="wo-panel wo-panel--list">
+    <view class="wo-panel-list-head">
+      <view class="title-row">
+        <view class="wo-panel-title">报修单记录</view>
+        <view wx:if="{{ showProcessLink }}" class="process-link" bindtap="goProcess">处理</view>
+      </view>
+      <view class="pill-list">
+        <view class="pill {{ statusFilter === '' ? 'pill-on' : '' }}" hover-class="pill--hover" data-status="" bindtap="onStatusFilter">全部</view>
+        <view class="pill {{ statusFilter === 'PENDING' ? 'pill-on' : '' }}" hover-class="pill--hover" data-status="PENDING" bindtap="onStatusFilter">待处理</view>
+        <view class="pill {{ statusFilter === 'PROCESSING' ? 'pill-on' : '' }}" hover-class="pill--hover" data-status="PROCESSING" bindtap="onStatusFilter">处理中</view>
+        <view class="pill {{ statusFilter === 'COMPLETED' ? 'pill-on' : '' }}" hover-class="pill--hover" data-status="COMPLETED" bindtap="onStatusFilter">已完成</view>
+      </view>
+    </view>
+
+    <scroll-view
+      scroll-y
+      class="wo-list-scroll"
+      enhanced
+      show-scrollbar="{{ false }}"
+      lower-threshold="120"
+      bindscrolltolower="onListReachBottom"
+    >
+      <view wx:if="{{ loading }}" class="meta">加载中…</view>
+      <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无报修记录" />
+      <view wx:else>
+        <view wx:for="{{ rows }}" wx:key="id" class="wo-row-card wo-card--{{ item.status }}" hover-class="wo-row-card--hover" data-id="{{ item.id }}" bindtap="onCardTap">
+          <view class="item-title">{{ item.location }} · {{ item.statusText }}</view>
+          <view class="item-sub">{{ item.content }}</view>
+          <view wx:if="{{ item.requestImages.length }}" class="image-grid">
+            <image wx:for="{{ item.requestImages }}" wx:for-item="imgUrl" wx:key="*this" class="image-thumb" mode="aspectFill" lazy-load src="{{ imgUrl }}" data-url="{{ imgUrl }}" data-urls="{{ item.requestImages }}" catchtap="onPreviewCardImages" />
+          </view>
+          <view class="meta-row">
+            <text class="meta-text">申请人：{{ item.applicantName || item.applicantId || '-' }} · 创建：{{ item.createTimeText }}</text>
+            <view wx:if="{{ item.canWithdraw }}" class="wo-chip wo-chip-warn wo-chip--inline" data-id="{{ item.id }}" catchtap="withdraw">撤回</view>
+          </view>
+        </view>
+      </view>
+
+      <view class="list-foot">
+        <text wx:if="{{ loadingMore }}" class="list-foot-text">加载中…</text>
+        <text wx:elif="{{ !hasMore && rows.length }}" class="list-foot-text">没有更多了</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <van-popup show="{{ detailShow }}" position="bottom" round bind:close="closeDetail" custom-style="max-height:82vh;">
+    <view class="wo-detail-head" wx:if="{{ detailRow }}">
+      <text class="wo-detail-title">{{ detailRow.location }} · {{ detailRow.statusText }}</text>
+      <text class="wo-detail-time">创建：{{ detailRow.createTimeText }}</text>
+    </view>
+    <scroll-view wx:if="{{ detailRow }}" scroll-y class="wo-detail-scroll">
+      <text class="wo-detail-body" selectable="true">{{ detailRow.content }}</text>
+      <view wx:if="{{ detailRow.requestImages.length }}" class="image-grid wo-detail-images">
+        <image wx:for="{{ detailRow.requestImages }}" wx:for-item="imgUrl" wx:key="*this" class="image-thumb" mode="aspectFill" lazy-load src="{{ imgUrl }}" data-url="{{ imgUrl }}" data-urls="{{ detailRow.requestImages }}" catchtap="onPreviewCardImages" />
+      </view>
+    </scroll-view>
+    <view class="wo-detail-actions" wx:if="{{ detailRow }}">
+      <view class="wo-chip wo-chip-ghost" bindtap="copyDetailBody">复制全文</view>
+      <view wx:for="{{ detailLinkList }}" wx:key="*this" class="wo-chip wo-chip-ghost" data-url="{{ item }}" bindtap="copyDetailLink">复制链接</view>
+    </view>
+  </van-popup>
+</view>

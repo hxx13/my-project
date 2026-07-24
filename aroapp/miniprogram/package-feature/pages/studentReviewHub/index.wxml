@@ -1,0 +1,423 @@
+<view class="page">
+  <view class="intro">审核学生物资申领、延迟免冻结与需求建议</view>
+
+  <scroll-view scroll-x class="tabs-scroll" enhanced show-scrollbar="{{ false }}">
+    <view class="tabs">
+      <view class="tab tab-with-badge {{ activeTab === 'material' ? 'tab-on' : '' }}" data-tab="material" bindtap="onTabChange">
+        <text>{{ tabLabels.material }}</text>
+        <view wx:if="{{ tabBadges.material }}" class="tab-badge">{{ tabBadges.material }}</view>
+      </view>
+      <view class="tab tab-with-badge {{ activeTab === 'scanDelay' ? 'tab-on' : '' }}" data-tab="scanDelay" bindtap="onTabChange">
+        <text>{{ tabLabels.scanDelay }}</text>
+        <view wx:if="{{ tabBadges.scanDelay }}" class="tab-badge">{{ tabBadges.scanDelay }}</view>
+      </view>
+      <view class="tab tab-with-badge {{ activeTab === 'demands' ? 'tab-on' : '' }}" data-tab="demands" bindtap="onTabChange">
+        <text>{{ tabLabels.demands }}</text>
+        <view wx:if="{{ tabBadges.demands }}" class="tab-badge">{{ tabBadges.demands }}</view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{ loading }}" class="hint">加载中…</view>
+
+  <!-- 物资审核：与 Web 合并待审+已审结，按审核人过滤，今天/历史分组 -->
+  <block wx:if="{{ !loading && activeTab === 'material' }}">
+    <view class="switch-row">
+      <text class="switch-label">按人/批量自动审批</text>
+      <view class="op op-ghost" bindtap="onOpenMaterialAutoApprove">自动审批</view>
+    </view>
+    <view wx:if="{{ materialList.length === 0 }}" class="hint empty">暂无你负责审核的物资申领</view>
+    <block wx:else>
+      <view wx:if="{{ materialToday.length }}" class="time-group">
+        <view class="time-group-head" bindtap="toggleMaterialToday">
+          <text class="time-group-arrow {{ materialTodayOpen ? 'open' : '' }}">▶</text>
+          <text>今天 ({{ materialToday.length }})</text>
+        </view>
+        <block wx:if="{{ materialTodayOpen }}">
+          <!-- 与 Web 对齐：全量 item+spec 分组（含 pending + 非 pending） -->
+          <view wx:for="{{ materialGroupedToday }}" wx:key="itemId" wx:for-item="grp" class="spec-item-group">
+            <view class="spec-item-group-head" bindtap="onToggleMaterialItemGroup" data-item-id="{{ grp.itemId }}">
+              <text class="spec-item-arrow {{ grp._collapsed ? '' : 'open' }}">▶</text>
+              <view class="spec-item-dot"></view>
+              <text class="spec-item-group-name">{{ grp.itemName }}</text>
+            </view>
+            <block wx:if="{{ !grp._collapsed }}">
+            <block wx:for="{{ grp.specSubGroups }}" wx:key="specLabel" wx:for-item="sub">
+              <view wx:if="{{ sub.specLabel }}" class="spec-sub-tag">{{ sub.specLabel }}</view>
+              <!-- 待审核卡片 -->
+              <view wx:for="{{ sub._pendingReqs }}" wx:key="id" wx:for-item="item" class="card">
+                <view class="row-head">
+                  <text class="mono">{{ item.id }}</text>
+                  <text class="tag {{ item.statusTagClass }}">{{ item.statusText }}</text>
+                </view>
+                <text class="title">{{ item.applicantName || item.userId }}<text wx:if="{{ item.applicantGroup }}" class="muted">（{{ item.applicantGroup }}）</text></text>
+                <text wx:if="{{ item.lineSummary }}" class="body">{{ item.lineSummary }}</text>
+                <view class="card-footer">
+                  <text wx:if="{{ item.createdAtText }}" class="meta">{{ item.createdAtText }}</text>
+                  <view wx:if="{{ item.canReview || item.canRevoke || canDelete }}" class="ops">
+                    <view wx:if="{{ item.canReview }}" class="op op-primary" data-id="{{ item.id }}" bindtap="onMaterialApprove">{{ item.approveLabel }}</view>
+                    <view wx:if="{{ item.canReview }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialReject">拒绝</view>
+                    <view wx:if="{{ item.canRevoke }}" class="op op-warn" data-id="{{ item.id }}" bindtap="onMaterialRevoke">撤销</view>
+                    <view wx:if="{{ canDelete }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialDelete">删除</view>
+                  </view>
+                </view>
+              </view>
+              <!-- 已审核卡片：有混合时显示折叠头，无混合时直接展示 -->
+              <block wx:if="{{ sub._resolvedReqs.length > 0 }}">
+                <view class="status-sub-head" bindtap="onToggleMaterialResolved" data-item-id="{{ grp.itemId }}" data-spec-label="{{ sub.specLabel }}">
+                  <text class="status-sub-arrow {{ sub._resolvedCollapsed ? '' : 'open' }}">▶</text>
+                  <text class="status-sub-label">已审核 ({{ sub._resolvedReqs.length }})</text>
+                </view>
+                <block wx:if="{{ !sub._resolvedCollapsed }}">
+                  <view wx:for="{{ sub._resolvedReqs }}" wx:key="id" wx:for-item="item" class="card">
+                    <view class="row-head">
+                      <text class="mono">{{ item.id }}</text>
+                      <text class="tag {{ item.statusTagClass }}">{{ item.statusText }}</text>
+                    </view>
+                    <text class="title">{{ item.applicantName || item.userId }}<text wx:if="{{ item.applicantGroup }}" class="muted">（{{ item.applicantGroup }}）</text></text>
+                    <text wx:if="{{ item.lineSummary }}" class="body">{{ item.lineSummary }}</text>
+                    <view class="card-footer">
+                      <text wx:if="{{ item.createdAtText }}" class="meta">{{ item.createdAtText }}</text>
+                      <view wx:if="{{ item.canRevoke || canDelete }}" class="ops">
+                        <view wx:if="{{ item.canRevoke }}" class="op op-warn" data-id="{{ item.id }}" bindtap="onMaterialRevoke">撤销</view>
+                        <view wx:if="{{ canDelete }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialDelete">删除</view>
+                      </view>
+                    </view>
+                  </view>
+                </block>
+              </block>
+            </block>
+            <view
+              wx:if="{{ grp.specSubGroupsOverflow > 0 }}"
+              class="spec-expand-btn"
+              data-item-id="{{ grp.itemId }}"
+              bindtap="onExpandMaterialSpecGroups"
+            >展开全部（还有 {{ grp.specSubGroupsOverflow }} 组规格）</view>
+            </block>
+          </view>
+        </block>
+      </view>
+      <!-- 历史中的待审核项独立分组，避免混入已审结列表被遗漏 -->
+      <view wx:if="{{ materialHistoryPending.length }}" class="time-group">
+        <view class="time-group-head" bindtap="toggleMaterialHistoryPending">
+          <text class="time-group-arrow {{ materialHistoryPendingOpen ? 'open' : '' }}">▶</text>
+          <text>待审核（历史） ({{ materialHistoryPending.length }})</text>
+        </view>
+        <block wx:if="{{ materialHistoryPendingOpen }}">
+          <!-- Spec-grouped pending items -->
+          <block wx:if="{{ materialGroupedHistoryPending.length }}">
+            <view wx:for="{{ materialGroupedHistoryPending }}" wx:key="itemId" wx:for-item="grp" class="spec-item-group">
+              <view class="spec-item-group-head" bindtap="onToggleMaterialItemGroup" data-item-id="{{ grp.itemId }}">
+                <text class="spec-item-arrow {{ grp._collapsed ? '' : 'open' }}">▶</text>
+                <view class="spec-item-dot"></view>
+                <text class="spec-item-group-name">{{ grp.itemName }}</text>
+              </view>
+              <block wx:if="{{ !grp._collapsed }}">
+              <block wx:for="{{ grp.specSubGroups }}" wx:key="specLabel" wx:for-item="sub">
+                <view wx:if="{{ sub.specLabel }}" class="spec-sub-tag">{{ sub.specLabel }}</view>
+                <view wx:for="{{ sub._pendingReqs }}" wx:key="id" wx:for-item="item" class="card">
+                  <view class="row-head">
+                    <text class="mono">{{ item.id }}</text>
+                    <text class="tag tag-warn">{{ item.statusText }}</text>
+                  </view>
+                  <text class="title">{{ item.applicantName || item.userId }}<text wx:if="{{ item.applicantGroup }}" class="muted">（{{ item.applicantGroup }}）</text></text>
+                  <text wx:if="{{ item.lineSummary }}" class="body">{{ item.lineSummary }}</text>
+                  <view class="card-footer">
+                    <view class="card-footer-info">
+                      <text wx:if="{{ item.createdAtText }}" class="meta">{{ item.createdAtText }}</text>
+                      <text wx:if="{{ item.reviewerName }}" class="meta meta-reviewer">处理人：{{ item.reviewerName }}</text>
+                    </view>
+                    <view wx:if="{{ item.canReview || canDelete }}" class="ops">
+                      <view wx:if="{{ item.canReview }}" class="op op-primary" data-id="{{ item.id }}" bindtap="onMaterialApprove">{{ item.approveLabel }}</view>
+                      <view wx:if="{{ item.canReview }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialReject">拒绝</view>
+                      <view wx:if="{{ canDelete }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialDelete">删除</view>
+                    </view>
+                  </view>
+                </view>
+                <block wx:if="{{ sub._resolvedReqs.length > 0 }}">
+                  <view class="status-sub-head" bindtap="onToggleMaterialResolved" data-item-id="{{ grp.itemId }}" data-spec-label="{{ sub.specLabel }}">
+                    <text class="status-sub-arrow {{ sub._resolvedCollapsed ? '' : 'open' }}">▶</text>
+                    <text class="status-sub-label">已审核 ({{ sub._resolvedReqs.length }})</text>
+                  </view>
+                  <block wx:if="{{ !sub._resolvedCollapsed }}">
+                    <view wx:for="{{ sub._resolvedReqs }}" wx:key="id" wx:for-item="item" class="card">
+                      <view class="row-head">
+                        <text class="mono">{{ item.id }}</text>
+                        <text class="tag tag-muted">{{ item.statusText }}</text>
+                      </view>
+                      <text class="title">{{ item.applicantName || item.userId }}<text wx:if="{{ item.applicantGroup }}" class="muted">（{{ item.applicantGroup }}）</text></text>
+                      <text wx:if="{{ item.lineSummary }}" class="body">{{ item.lineSummary }}</text>
+                      <view class="card-footer">
+                        <view class="card-footer-info">
+                          <text wx:if="{{ item.createdAtText }}" class="meta">{{ item.createdAtText }}</text>
+                          <text wx:if="{{ item.reviewerName }}" class="meta meta-reviewer">处理人：{{ item.reviewerName }}</text>
+                        </view>
+                        <view wx:if="{{ item.canRevoke || canDelete }}" class="ops">
+                          <view wx:if="{{ item.canRevoke }}" class="op op-warn" data-id="{{ item.id }}" bindtap="onMaterialRevoke">撤销</view>
+                          <view wx:if="{{ canDelete }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialDelete">删除</view>
+                        </view>
+                      </view>
+                    </view>
+                  </block>
+                </block>
+              </block>
+              <view
+                wx:if="{{ grp.specSubGroupsOverflow > 0 }}"
+                class="spec-expand-btn"
+                data-item-id="{{ grp.itemId }}"
+                bindtap="onExpandMaterialSpecGroups"
+              >展开全部（还有 {{ grp.specSubGroupsOverflow }} 组规格）</view>
+              </block>
+            </view>
+          </block>
+          <!-- Fallback: flat list -->
+          <block wx:else>
+            <view wx:for="{{ materialHistoryPending }}" wx:key="id" class="card">
+              <view class="row-head">
+                <text class="mono">{{ item.id }}</text>
+                <text class="tag tag-warn">{{ item.statusText }}</text>
+              </view>
+              <text class="title">{{ item.applicantName || item.userId }}<text wx:if="{{ item.applicantGroup }}" class="muted">（{{ item.applicantGroup }}）</text></text>
+              <text wx:if="{{ item.lineSummary }}" class="body">{{ item.lineSummary }}</text>
+              <view class="card-footer">
+                <text wx:if="{{ item.createdAtText }}" class="meta">{{ item.createdAtText }}</text>
+                <view wx:if="{{ item.canReview || canDelete }}" class="ops">
+                  <view wx:if="{{ item.canReview }}" class="op op-primary" data-id="{{ item.id }}" bindtap="onMaterialApprove">{{ item.approveLabel }}</view>
+                  <view wx:if="{{ item.canReview }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialReject">拒绝</view>
+                  <view wx:if="{{ canDelete }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialDelete">删除</view>
+                </view>
+              </view>
+            </view>
+          </block>
+        </block>
+      </view>
+      <view wx:if="{{ materialHistoryDone.length }}" class="time-group">
+        <view class="time-group-head" bindtap="toggleMaterialHistoryDone">
+          <text class="time-group-arrow {{ materialHistoryDoneOpen ? 'open' : '' }}">▶</text>
+          <text>历史 ({{ materialHistoryDone.length }})</text>
+        </view>
+        <block wx:if="{{ materialHistoryDoneOpen }}">
+          <!-- 与 Web 对齐：已审历史也按 item+spec 分组 -->
+          <view wx:for="{{ materialGroupedHistoryDone }}" wx:key="itemId" wx:for-item="grp" class="spec-item-group">
+            <view class="spec-item-group-head" bindtap="onToggleMaterialItemGroup" data-item-id="{{ grp.itemId }}">
+              <text class="spec-item-arrow spec-item-arrow-muted {{ grp._collapsed ? '' : 'open' }}">▶</text>
+              <view class="spec-item-dot spec-item-dot-muted"></view>
+              <text class="spec-item-group-name spec-item-group-name-muted">{{ grp.itemName }}</text>
+            </view>
+            <block wx:if="{{ !grp._collapsed }}">
+            <block wx:for="{{ grp.specSubGroups }}" wx:key="specLabel" wx:for-item="sub">
+              <view wx:if="{{ sub.specLabel }}" class="spec-sub-tag spec-sub-tag-muted">{{ sub.specLabel }}</view>
+              <view wx:for="{{ sub._pendingReqs }}" wx:key="id" wx:for-item="item" class="card">
+                <view class="row-head">
+                  <text class="mono">{{ item.id }}</text>
+                  <text class="tag tag-warn">{{ item.statusText }}</text>
+                </view>
+                <text class="title">{{ item.applicantName || item.userId }}<text wx:if="{{ item.applicantGroup }}" class="muted">（{{ item.applicantGroup }}）</text></text>
+                <text wx:if="{{ item.lineSummary }}" class="body">{{ item.lineSummary }}</text>
+                <view class="card-footer">
+                  <view class="card-footer-info">
+                    <text wx:if="{{ item.createdAtText }}" class="meta">{{ item.createdAtText }}</text>
+                    <text wx:if="{{ item.reviewerName }}" class="meta meta-reviewer">处理人：{{ item.reviewerName }}</text>
+                  </view>
+                  <view wx:if="{{ item.canReview || canDelete }}" class="ops">
+                    <view wx:if="{{ item.canReview }}" class="op op-primary" data-id="{{ item.id }}" bindtap="onMaterialApprove">{{ item.approveLabel }}</view>
+                    <view wx:if="{{ item.canReview }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialReject">拒绝</view>
+                    <view wx:if="{{ canDelete }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialDelete">删除</view>
+                  </view>
+                </view>
+              </view>
+              <block wx:if="{{ sub._resolvedReqs.length > 0 }}">
+                <view class="status-sub-head" bindtap="onToggleMaterialResolved" data-item-id="{{ grp.itemId }}" data-spec-label="{{ sub.specLabel }}">
+                  <text class="status-sub-arrow {{ sub._resolvedCollapsed ? '' : 'open' }}">▶</text>
+                  <text class="status-sub-label">已审核 ({{ sub._resolvedReqs.length }})</text>
+                </view>
+                <block wx:if="{{ !sub._resolvedCollapsed }}">
+                  <view wx:for="{{ sub._resolvedReqs }}" wx:key="id" wx:for-item="item" class="card">
+                    <view class="row-head">
+                      <text class="mono">{{ item.id }}</text>
+                      <text class="tag tag-muted">{{ item.statusText }}</text>
+                    </view>
+                    <text class="title">{{ item.applicantName || item.userId }}<text wx:if="{{ item.applicantGroup }}" class="muted">（{{ item.applicantGroup }}）</text></text>
+                    <text wx:if="{{ item.lineSummary }}" class="body">{{ item.lineSummary }}</text>
+                    <view class="card-footer">
+                      <view class="card-footer-info">
+                        <text wx:if="{{ item.createdAtText }}" class="meta">{{ item.createdAtText }}</text>
+                        <text wx:if="{{ item.reviewerName }}" class="meta meta-reviewer">处理人：{{ item.reviewerName }}</text>
+                      </view>
+                      <view wx:if="{{ item.canRevoke || canDelete }}" class="ops">
+                        <view wx:if="{{ item.canRevoke }}" class="op op-warn" data-id="{{ item.id }}" bindtap="onMaterialRevoke">撤销</view>
+                        <view wx:if="{{ canDelete }}" class="op op-danger" data-id="{{ item.id }}" bindtap="onMaterialDelete">删除</view>
+                      </view>
+                    </view>
+                  </view>
+                </block>
+              </block>
+            </block>
+            </block>
+          </view>
+        </block>
+      </view>
+    </block>
+  </block>
+
+  <!-- 延迟免冻结：与 Web 合并待审+历史，按 option 分组 + 审核人过滤 -->
+  <block wx:if="{{ !loading && activeTab === 'scanDelay' }}">
+    <view wx:if="{{ scanDelayPendingCount > 0 }}" class="alert-banner">
+      <text class="alert-title">您有 {{ scanDelayPendingCount }} 条延迟免冻结待审核</text>
+      <text class="alert-desc">请核对姓名、课题组与历史通过次数后审批</text>
+    </view>
+    <view class="switch-row">
+      <text class="switch-label">按人/批量自动审批</text>
+      <view class="op op-ghost" bindtap="onOpenScanDelayAutoApprove">自动审批</view>
+    </view>
+    <view wx:if="{{ scanDelayList.length === 0 }}" class="hint empty">暂无你负责审核的延迟免冻结记录</view>
+    <block wx:else>
+      <view wx:if="{{ scanDelayToday.length }}" class="time-group">
+        <view class="time-group-head" bindtap="toggleScanDelayToday">
+          <text class="time-group-arrow {{ scanDelayTodayOpen ? 'open' : '' }}">▶</text>
+          <text>今天 ({{ scanDelayToday.length }})</text>
+        </view>
+        <block wx:if="{{ scanDelayTodayOpen }}">
+          <view wx:for="{{ scanDelayGroupedToday }}" wx:key="groupKey" wx:for-item="grp" class="option-group">
+            <view class="option-group-head" bindtap="onToggleScanDelayGroup" data-group-key="{{ grp.groupKey }}">
+              <text class="option-group-arrow {{ grp._collapsed ? '' : 'open' }}">▶</text>
+              <view class="option-dot" style="background:{{ grp.color }}"></view>
+              <text class="option-group-label">{{ grp.optionLabel }}</text>
+              <text class="option-group-count">{{ grp.count }} 条</text>
+            </view>
+            <block wx:if="{{ !grp._collapsed }}">
+            <view wx:for="{{ grp._pendingItems }}" wx:key="id" class="card">
+              <view class="row-head">
+                <text class="mono">#{{ item.id }}</text>
+                <text class="tag tag-warn">待审核</text>
+              </view>
+              <text class="title">{{ item.roomName || item.roomId }} · {{ item.optionLabel || '延迟免冻结' }}</text>
+              <text class="body">{{ item.subjectLine }}</text>
+              <view class="card-footer">
+                <view class="card-footer-info">
+                  <text wx:if="{{ item.createdAtText }}" class="meta">申请于 {{ item.createdAtText }}</text>
+                </view>
+                <view class="ops">
+                  <view class="op op-primary" data-id="{{ item.id }}" bindtap="onScanDelayApprove">通过并授予免冻结</view>
+                  <view class="op op-danger" data-id="{{ item.id }}" bindtap="onScanDelayReject">拒绝</view>
+                </view>
+              </view>
+            </view>
+            <!-- 已审核卡片 -->
+            <block wx:if="{{ grp._historyItems.length > 0 }}">
+              <view class="status-sub-head" bindtap="onToggleScanDelayHistory" data-group-key="{{ grp.groupKey }}">
+                <text class="status-sub-arrow {{ grp._historyCollapsed ? '' : 'open' }}">▶</text>
+                <text class="status-sub-label">已审核 ({{ grp._historyItems.length }})</text>
+              </view>
+              <block wx:if="{{ !grp._historyCollapsed }}">
+                <view wx:for="{{ grp._historyItems }}" wx:key="id" class="card">
+                  <view class="row-head">
+                    <text class="mono">#{{ item.id }}</text>
+                    <text class="tag {{ item.isExpired ? 'tag-muted' : (item.isApproved ? 'tag-ok' : 'tag-danger') }}">{{ item.statusText }}</text>
+                  </view>
+                  <text class="title">{{ item.roomName || item.roomId }} · {{ item.optionLabel || '延迟免冻结' }}</text>
+                  <text class="body">{{ item.subjectLine }}</text>
+                  <view class="card-footer">
+                    <view class="card-footer-info">
+                      <text wx:if="{{ item.createdAtText }}" class="meta">申请于 {{ item.createdAtText }}</text>
+                      <text wx:if="{{ item.reviewedAtText }}" class="meta">处理于 {{ item.reviewedAtText }}</text>
+                    </view>
+                  </view>
+                </view>
+              </block>
+            </block>
+            </block>
+          </view>
+        </block>
+      </view>
+      <view wx:if="{{ scanDelayHistory.length }}" class="time-group">
+        <view class="time-group-head" bindtap="toggleScanDelayHistory">
+          <text class="time-group-arrow {{ scanDelayHistoryOpen ? 'open' : '' }}">▶</text>
+          <text>历史 ({{ scanDelayHistory.length }})</text>
+        </view>
+        <block wx:if="{{ scanDelayHistoryOpen }}">
+          <view wx:for="{{ scanDelayGroupedHistory }}" wx:key="groupKey" wx:for-item="grp" class="option-group">
+            <view class="option-group-head" bindtap="onToggleScanDelayGroup" data-group-key="{{ grp.groupKey }}">
+              <text class="option-group-arrow {{ grp._collapsed ? '' : 'open' }}">▶</text>
+              <view class="option-dot" style="background:{{ grp.color }}"></view>
+              <text class="option-group-label">{{ grp.optionLabel }}</text>
+              <text class="option-group-count">{{ grp.count }} 条</text>
+            </view>
+            <block wx:if="{{ !grp._collapsed }}">
+            <view wx:for="{{ grp._pendingItems }}" wx:key="id" class="card">
+              <view class="row-head">
+                <text class="mono">#{{ item.id }}</text>
+                <text class="tag tag-warn">待审核</text>
+              </view>
+              <text class="title">{{ item.roomName || item.roomId }} · {{ item.optionLabel || '延迟免冻结' }}</text>
+              <text class="body">{{ item.subjectLine }}</text>
+              <view class="card-footer">
+                <view class="card-footer-info">
+                  <text wx:if="{{ item.createdAtText }}" class="meta">申请于 {{ item.createdAtText }}</text>
+                </view>
+                <view class="ops">
+                  <view class="op op-primary" data-id="{{ item.id }}" bindtap="onScanDelayApprove">通过并授予免冻结</view>
+                  <view class="op op-danger" data-id="{{ item.id }}" bindtap="onScanDelayReject">拒绝</view>
+                </view>
+              </view>
+            </view>
+            <block wx:if="{{ grp._historyItems.length > 0 }}">
+              <view class="status-sub-head" bindtap="onToggleScanDelayHistory" data-group-key="{{ grp.groupKey }}">
+                <text class="status-sub-arrow {{ grp._historyCollapsed ? '' : 'open' }}">▶</text>
+                <text class="status-sub-label">已审核 ({{ grp._historyItems.length }})</text>
+              </view>
+              <block wx:if="{{ !grp._historyCollapsed }}">
+                <view wx:for="{{ grp._historyItems }}" wx:key="id" class="card">
+                  <view class="row-head">
+                    <text class="mono">#{{ item.id }}</text>
+                    <text class="tag {{ item.isExpired ? 'tag-muted' : (item.isApproved ? 'tag-ok' : 'tag-danger') }}">{{ item.statusText }}</text>
+                  </view>
+                  <text class="title">{{ item.roomName || item.roomId }} · {{ item.optionLabel || '延迟免冻结' }}</text>
+                  <text class="body">{{ item.subjectLine }}</text>
+                  <view class="card-footer">
+                    <view class="card-footer-info">
+                      <text wx:if="{{ item.createdAtText }}" class="meta">申请于 {{ item.createdAtText }}</text>
+                      <text wx:if="{{ item.reviewedAtText }}" class="meta">处理于 {{ item.reviewedAtText }}</text>
+                    </view>
+                  </view>
+                </view>
+              </block>
+            </block>
+            </block>
+          </view>
+        </block>
+      </view>
+    </block>
+  </block>
+
+  <!-- 需求建议 -->
+  <block wx:if="{{ !loading && activeTab === 'demands' }}">
+    <view class="switch-row">
+      <text class="switch-label">学生端需求建议入口</text>
+      <view class="op op-ghost {{ demandEntryVisible ? 'op-on' : '' }}" bindtap="onToggleDemandEntry">
+        {{ demandEntryStatusText }}
+      </view>
+    </view>
+    <view wx:if="{{ demands.length === 0 }}" class="hint empty">暂无需求建议</view>
+    <view wx:for="{{ demands }}" wx:key="id" class="card">
+      <view class="row-head">
+        <text class="title">{{ item.userName || item.userId }}</text>
+        <text class="tag {{ item.open ? 'tag-warn' : 'tag-ok' }}">{{ item.statusText }}</text>
+      </view>
+      <text class="body">{{ item.suggestion }}</text>
+      <view class="card-footer">
+        <text wx:if="{{ item.createdAtText }}" class="meta">{{ item.createdAtText }}</text>
+        <view wx:if="{{ item.open }}" class="ops">
+          <view class="op op-primary" data-id="{{ item.id }}" bindtap="onDemandResolve">标记处理</view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <auto-approve-panel
+    visible="{{ autoApproveVisible }}"
+    kind="{{ autoApproveKind }}"
+    bind:close="onCloseAutoApprove"
+    bind:runsuccess="onAutoApproveRunSuccess"
+  />
+</view>

@@ -1,0 +1,43 @@
+<view class="about-page">
+  <view class="about-hero">
+    <text class="about-brand">实验动物科学部 · 小程序</text>
+    <text class="about-sub">安全、透明、一站式校内服务</text>
+  </view>
+
+  <van-cell-group inset border="{{ false }}" custom-class="about-card">
+    <van-cell title="版本更新" is-link bind:click="openVersionHistory" label="查看历次更新与更新时间" />
+  </van-cell-group>
+
+  <text class="about-footer-note">内容均由平台管理员维护，如有疑问请联系实验动物科学部。</text>
+</view>
+
+<van-popup
+  show="{{ versionPopupShow }}"
+  position="bottom"
+  round
+  closeable
+  bind:close="closeVersionHistory"
+  custom-class="about-version-popup-wrap"
+>
+  <view class="ver-popup">
+    <view class="ver-popup-head">
+      <text class="ver-popup-title">版本更新记录</text>
+      <text class="ver-popup-sub">按发布时间倒序 · 完整历程</text>
+    </view>
+    <scroll-view wx:if="{{ releases.length }}" scroll-y class="ver-popup-scroll" show-scrollbar="{{ true }}">
+      <view wx:for="{{ releases }}" wx:key="id" class="ver-card">
+        <view class="ver-card-top">
+          <van-tag type="primary" plain>{{ item.versionCode }}</van-tag>
+          <text class="ver-card-time">{{ item.publishedAtText }}</text>
+        </view>
+        <text class="ver-card-title">{{ item.title }}</text>
+        <text wx:if="{{ item.summary }}" class="ver-card-sum">{{ item.summary }}</text>
+        <rich-text wx:if="{{ item.bodyHtml }}" class="ver-card-body" nodes="{{ item.bodyHtml }}" type="html" />
+      </view>
+    </scroll-view>
+    <van-empty wx:else description="暂无版本记录" />
+    <view class="ver-popup-foot">
+      <van-button block round type="primary" plain hairline bindtap="closeVersionHistory">关闭</van-button>
+    </view>
+  </view>
+</van-popup>

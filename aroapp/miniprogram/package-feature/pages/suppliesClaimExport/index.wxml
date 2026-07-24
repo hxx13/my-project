@@ -1,0 +1,22 @@
+<view class="page" wx:if="{{ pageGateOk }}">
+  <view class="card">
+    <text class="label">领用单</text>
+    <text class="mono">{{ claimId || '-' }}</text>
+  </view>
+  <view wx:if="{{ loading }}" class="muted">加载中…</view>
+  <view wx:elif="{{ detail }}" class="card table-card">
+    <view class="row head">
+      <text class="c1">物品</text>
+      <text class="c2">申请</text>
+      <text class="c2">实发</text>
+    </view>
+    <view wx:for="{{ detail.lines }}" wx:key="id" class="row">
+      <text class="c1">{{ item.snapshotName }}</text>
+      <text class="c2">{{ item.qty }}</text>
+      <text class="c2">{{ item.fulfilledQty != null ? item.fulfilledQty : 0 }}</text>
+    </view>
+  </view>
+  <view class="actions">
+    <view class="btn primary {{ exportBusy ? 'disabled' : '' }}" bindtap="onExportExcel">{{ exportBusy ? '导出中…' : '导出 Excel' }}</view>
+  </view>
+</view>

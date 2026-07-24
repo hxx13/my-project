@@ -1,0 +1,151 @@
+.hub {
+  height: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f4f4f5;
+  box-sizing: border-box;
+}
+
+.hub-overview-nav {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 20rpx 24rpx;
+  margin: -24rpx -24rpx 16rpx;
+  background: #ffffff;
+  border-bottom: 1rpx solid #e4e4e7;
+  box-sizing: border-box;
+}
+
+.hub-overview-nav-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.hub-overview-nav-action {
+  font-size: 26rpx;
+  color: #0284c7;
+  flex-shrink: 0;
+}
+
+.hub-nav-hover {
+  opacity: 0.88;
+}
+
+.hub-telemetry-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+.hub-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hub-overview {
+  padding: 24rpx;
+  box-sizing: border-box;
+  height: 100%;
+}
+
+.art-pad {
+  padding: 24rpx;
+}
+
+.ov-card {
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  border: 1rpx solid #e4e4e7;
+  box-shadow: 0 4rpx 20rpx rgba(24, 24, 27, 0.06);
+}
+
+.ov-card-hd {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #f4f4f5;
+}
+
+.ov-room-name {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #18181b;
+  flex: 1;
+  min-width: 0;
+}
+
+.ov-campus {
+  font-size: 24rpx;
+  color: #71717a;
+  flex-shrink: 0;
+}
+
+.ov-stats {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 16rpx 24rpx;
+}
+
+.ov-stat {
+  min-width: 140rpx;
+}
+
+.ov-stat-l {
+  display: block;
+  font-size: 22rpx;
+  color: #71717a;
+}
+
+.ov-stat-v {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-meta {
+  margin-top: 20rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx dashed #e4e4e7;
+}
+
+.ov-meta-t {
+  display: block;
+  font-size: 22rpx;
+  color: #a1a1aa;
+}
+
+.ov-meta-v {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  color: #52525b;
+  word-break: break-all;
+}
+
+.hub-ov-err {
+  color: #b91c1c;
+  font-size: 28rpx;
+}
+
+.hub-ov-muted {
+  font-size: 24rpx;
+  color: #71717a;
+  line-height: 1.55;
+}

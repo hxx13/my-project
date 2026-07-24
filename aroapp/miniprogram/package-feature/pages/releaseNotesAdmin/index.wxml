@@ -1,0 +1,34 @@
+<view class="rna-page">
+  <view class="rna-toolbar">
+    <view class="rna-toolbar-text">
+      <text class="rna-toolbar-title">版本公告管理</text>
+      <text class="rna-toolbar-hint">管理小程序版本更新记录与首屏弹窗公告</text>
+    </view>
+    <view class="rna-btn rna-btn--primary" bindtap="openCreate">新建</view>
+  </view>
+
+  <view wx:if="{{ loading && !rows.length }}" class="rna-loading">
+    <van-loading size="40rpx" color="#ac1736" />
+    <text>加载中…</text>
+  </view>
+
+  <view wx:elif="{{ !rows.length }}" class="rna-empty">
+    <text class="rna-empty-title">暂无版本记录</text>
+    <text class="rna-empty-hint">点击右上角「新建」发布第一条版本更新公告</text>
+  </view>
+
+  <view wx:else class="rna-list">
+    <view wx:for="{{ rows }}" wx:key="id" class="rna-card">
+      <view class="rna-card-head">
+        <view class="rna-card-title-wrap">
+          <text class="rna-version">{{ item.versionCode }}</text>
+          <text class="rna-card-title">{{ item.title }}</text>
+          <text class="rna-status rna-status--{{ item.statusTone }}">{{ item.statusText }}</text>
+        </view>
+        <view class="rna-btn rna-btn--ghost" data-id="{{ item.id }}" bindtap="openEdit">编辑</view>
+      </view>
+      <text wx:if="{{ item.summary }}" class="rna-card-summary">{{ item.summary }}</text>
+      <text class="rna-card-meta">{{ item.publishedAtText || '未发布' }}</text>
+    </view>
+  </view>
+</view>

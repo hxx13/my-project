@@ -294,9 +294,9 @@ export function TwinChromeContextMenu({
 
     const handleLogout = () => {
         authStorage.clear();
-        toast.success("已退出登录");
-        navigate("/login");
         onClose();
+        window.location.href = 'https://auth2.shsmu.edu.cn/cas/logout?service='
+            + encodeURIComponent(window.location.origin + '/#/login');
     };
 
     const themeToggleLabel = effectiveMode === "light" ? "切换为暗色" : "切换为亮色";

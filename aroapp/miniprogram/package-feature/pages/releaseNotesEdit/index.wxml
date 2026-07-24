@@ -1,0 +1,69 @@
+<view class="rne-page">
+  <view wx:if="{{ loading }}" class="rne-status-wrap">
+    <van-loading type="spinner" size="48rpx" color="#ac1736" />
+    <text class="rne-status-text">加载中…</text>
+  </view>
+
+  <view wx:elif="{{ errorMessage }}" class="rne-status-wrap">
+    <text class="rne-error-text">{{ errorMessage }}</text>
+    <view class="rne-btn rne-btn--primary" bindtap="retryLoad">重试</view>
+  </view>
+
+  <block wx:else>
+    <scroll-view scroll-y class="rne-scroll" enhanced show-scrollbar="{{ false }}">
+      <view class="rne-section">
+        <text class="rne-section-label">版本信息</text>
+        <van-cell-group inset border="{{ false }}">
+          <van-field
+            label="版本号"
+            required
+            placeholder="如 1.2.0"
+            value="{{ form.versionCode }}"
+            bind:change="onFv"
+            data-k="versionCode"
+          />
+          <van-field label="标题" required placeholder="版本更新标题" value="{{ form.title }}" bind:change="onFv" data-k="title" />
+          <van-field
+            label="摘要"
+            type="textarea"
+            autosize="{{ { minHeight: 60 } }}"
+            placeholder="列表摘要（可选）"
+            value="{{ form.summary }}"
+            bind:change="onFv"
+            data-k="summary"
+          />
+        </van-cell-group>
+      </view>
+
+      <view class="rne-section">
+        <text class="rne-section-label">更新正文</text>
+        <view class="rne-editor-wrap">
+          <md-editor value="{{ form.bodyMd }}" disabled="{{ submitting }}" bind:change="onRichBodyChange" />
+        </view>
+      </view>
+
+      <view class="rne-section">
+        <text class="rne-section-label">展示设置</text>
+        <van-cell-group inset border="{{ false }}">
+          <view class="rne-switch-row">
+            <view class="rne-switch-copy">
+              <text class="rne-switch-label">首屏弹窗展示</text>
+              <text class="rne-switch-hint">开启后用户打开小程序时将弹出此版本公告（同时仅一条生效）</text>
+            </view>
+            <van-switch checked="{{ form.showOnLaunch }}" bind:change="onSplashSwitch" active-color="#ac1736" />
+          </view>
+        </van-cell-group>
+      </view>
+    </scroll-view>
+
+    <view class="rne-foot">
+      <view wx:if="{{ editingId }}" class="rne-foot-row">
+        <view class="rne-btn rne-btn--danger" bindtap="confirmDelete">删除</view>
+      </view>
+      <view class="rne-foot-row rne-foot-row--main">
+        <view class="rne-btn rne-btn--ghost" bindtap="onCancel">取消</view>
+        <view class="rne-btn rne-btn--primary" bindtap="submitForm">{{ submitting ? '提交中…' : submitBtnText }}</view>
+      </view>
+    </view>
+  </block>
+</view>

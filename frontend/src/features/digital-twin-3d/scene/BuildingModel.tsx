@@ -193,8 +193,10 @@ const FloorLayer = forwardRef<THREE.Group, { name: string; y: number }>(
           // 清除上一个选中的 emissive
           const prev = selectedMeshRef.current;
           if (prev && prev !== obj) {
-            prev.material?.emissive?.set?.('#000000');
-            if (prev.material?.emissiveIntensity !== undefined) prev.material.emissiveIntensity = 0;
+            const prevMat = prev.material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[];
+            const mat = Array.isArray(prevMat) ? prevMat[0] : prevMat;
+            mat?.emissive?.set('#000000');
+            if (mat?.emissiveIntensity !== undefined) mat.emissiveIntensity = 0;
           }
 
           if (!type) {

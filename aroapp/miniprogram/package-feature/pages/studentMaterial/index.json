@@ -1,0 +1,9 @@
+{
+  "navigationStyle": "custom",
+  "enablePullDownRefresh": false,
+  "usingComponents": {
+    "subpage-nav-bar": "../../components/subpage-nav-bar/index",
+    "van-empty": "@vant/weapp/empty/index",
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}

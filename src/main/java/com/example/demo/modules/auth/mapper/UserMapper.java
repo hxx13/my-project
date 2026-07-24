@@ -24,6 +24,8 @@ public interface UserMapper {
 
     int updateDisplayNicknameById(@Param("id") String id, @Param("displayNickname") String displayNickname);
 
+    User findByDisplayNickname(@Param("displayNickname") String displayNickname);
+
     int updateMiniPreferencesJsonById(@Param("id") String id, @Param("miniPreferencesJson") String miniPreferencesJson);
 
     int updateAuthProfileById(@Param("id") String id, @Param("authProfile") String authProfile);

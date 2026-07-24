@@ -1,0 +1,448 @@
+/* ===== 页面 ===== */
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  background: #eef0f6;
+  box-sizing: border-box;
+}
+
+/* ===== 搜索栏 ===== */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 20rpx 24rpx;
+  background: #fff;
+  border-bottom: 1rpx solid #eef2f6;
+}
+.search-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: #f1f5f9;
+  border-radius: 16rpx;
+  padding: 0 16rpx;
+  height: 64rpx;
+  min-width: 0;
+  overflow: hidden;
+}
+.search-icon {
+  flex-shrink: 0;
+  margin-right: 12rpx;
+}
+.search-input {
+  flex: 1;
+  font-size: 26rpx;
+  color: #0f172a;
+  line-height: 64rpx;
+  min-height: 64rpx;
+}
+.search-clear {
+  flex-shrink: 0;
+  padding: 8rpx;
+}
+.search-refresh {
+  flex-shrink: 0;
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f1f5f9;
+}
+.search-refresh--disabled {
+  opacity: 0.45;
+}
+.search-refresh-icon {
+  font-size: 32rpx;
+  font-weight: 800;
+  color: #64748b;
+  line-height: 1;
+}
+
+/* ===== 分类 Tab ===== */
+.tab-scroll {
+  white-space: nowrap;
+  background: #fff;
+  padding: 16rpx 24rpx;
+  border-bottom: 1rpx solid #eef2f6;
+}
+.tab-item {
+  display: inline-flex;
+  align-items: center;
+  max-width: 240rpx;
+  padding: 10rpx 24rpx;
+  margin-right: 14rpx;
+  border-radius: 999rpx;
+  background: #f1f5f9;
+  border: 1rpx solid transparent;
+  box-sizing: border-box;
+  vertical-align: top;
+}
+.tab-item--active {
+  background: rgba(172, 23, 54, 0.08);
+  border-color: #ac1736;
+}
+.tab-text {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #64748b;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-scroll--category {
+  border-bottom: none;
+  padding-bottom: 8rpx;
+}
+.tab-scroll--status {
+  padding-top: 0;
+  background: #fff;
+  border-bottom: 1rpx solid #eef2f6;
+}
+
+/* ===== 状态筛选 Tab ===== */
+.status-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 20rpx;
+  margin-right: 12rpx;
+  border-radius: 999rpx;
+  background: #f8fafc;
+  border: 1rpx solid #e2e8f0;
+  box-sizing: border-box;
+  vertical-align: top;
+}
+.status-tab--active {
+  border-color: #ac1736;
+  background: rgba(172, 23, 54, 0.06);
+}
+.status-tab-text {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #64748b;
+}
+.status-tab--active .status-tab-text {
+  color: #ac1736;
+}
+.status-tab-count {
+  font-size: 18rpx;
+  font-weight: 700;
+  color: #94a3b8;
+  min-width: 28rpx;
+  text-align: center;
+}
+.status-tab--active .status-tab-count {
+  color: #ac1736;
+}
+.status-tab--stayopen.status-tab--active {
+  border-color: #16a34a;
+  background: rgba(22, 163, 74, 0.08);
+}
+.status-tab--stayopen.status-tab--active .status-tab-text,
+.status-tab--stayopen.status-tab--active .status-tab-count {
+  color: #16a34a;
+}
+.status-tab--stayclose.status-tab--active {
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
+.status-tab--stayclose.status-tab--active .status-tab-text,
+.status-tab--stayclose.status-tab--active .status-tab-count {
+  color: #dc2626;
+}
+.status-tab--normal.status-tab--active {
+  border-color: #64748b;
+  background: rgba(100, 116, 139, 0.08);
+}
+.status-tab--offline.status-tab--active {
+  border-color: #94a3b8;
+  background: rgba(148, 163, 184, 0.12);
+}
+.tab-item--active .tab-text {
+  color: #ac1736;
+}
+
+/* ===== 主滚动区 ===== */
+.main-scroll {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16rpx 24rpx;
+  overflow-x: hidden;
+}
+
+/* ===== 分组标题 ===== */
+.group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 24rpx 8rpx 10rpx;
+  margin-top: 6rpx;
+  min-width: 0;
+}
+.group-title {
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #0f172a;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-count {
+  font-size: 20rpx;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+/* ===== 通道卡片（基础 + 四种状态底色） ===== */
+.channel-card {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 16rpx;
+  margin-bottom: 14rpx;
+  overflow: hidden;
+  border: 1rpx solid #e2e8f0;
+  box-shadow: 0 2rpx 12rpx rgba(15, 23, 42, 0.04);
+}
+
+/* 常开：淡绿底 + 绿色左边线 */
+.card-stayopen {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  border-left: 6rpx solid #22c55e;
+}
+
+/* 常闭：淡红底 + 红色左边线 */
+.card-stayclose {
+  background: #fef2f2;
+  border-color: #fecaca;
+  border-left: 6rpx solid #ef4444;
+}
+
+/* 普通：白底 */
+.card-normal {
+  background: #fff;
+}
+
+/* 离线：灰底 + 半透明 */
+.card-offline {
+  background: #f8fafc;
+  opacity: 0.65;
+}
+
+/* ===== 内联结果条（卡片顶部横幅） ===== */
+.result-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 20rpx;
+  animation: resultSlideIn 0.25s ease-out;
+}
+.result-strip--ok {
+  background: rgba(16, 185, 129, 0.12);
+}
+.result-strip--fail {
+  background: rgba(239, 68, 68, 0.1);
+}
+.result-strip-text {
+  font-size: 20rpx;
+  color: #475569;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-strip-close {
+  flex-shrink: 0;
+  padding: 4rpx;
+}
+
+@keyframes resultSlideIn {
+  from { opacity: 0; transform: translateY(-4rpx); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== 卡片主体（通道名 + 操作按钮，首行） ===== */
+.card-body {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 20rpx 8rpx;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.card-info {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.channel-name {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-name--offline {
+  color: #94a3b8;
+}
+
+.channel-type {
+  display: block;
+  font-size: 20rpx;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== 图标按钮区 ===== */
+.card-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.card-icon {
+  padding: 4rpx;
+}
+
+/* ===== 卡片底部（状态指示，右下角，点击切换） ===== */
+.card-foot {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 20rpx 14rpx;
+}
+
+/* ===== 模式标签 ===== */
+.mode-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  flex-shrink: 0;
+  max-width: 200rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  font-weight: 700;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.mode-tag--pending {
+  background: rgba(172, 23, 54, 0.06);
+  color: #ac1736;
+  border: 1rpx dashed rgba(172, 23, 54, 0.25);
+}
+.mode-tag--stayopen {
+  background: rgba(22, 163, 74, 0.12);
+  color: #16a34a;
+  border: 1rpx solid rgba(22, 163, 74, 0.3);
+}
+.mode-tag--stayclose {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+  border: 1rpx solid rgba(220, 38, 38, 0.3);
+}
+.mode-tag--normal {
+  background: rgba(148, 163, 184, 0.12);
+  color: #64748b;
+  border: 1rpx solid rgba(148, 163, 184, 0.25);
+}
+.mode-tag--offline {
+  background: rgba(148, 163, 184, 0.08);
+  color: #94a3b8;
+  border: 1rpx solid rgba(148, 163, 184, 0.2);
+}
+.mode-tag-text {
+  display: block;
+  font-size: 20rpx;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mode-tag--hover {
+  opacity: 0.7;
+  transform: scale(0.96);
+}
+
+
+/* ===== 离线分隔线 ===== */
+.offline-sep {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 4rpx 0 14rpx;
+}
+.offline-sep-line {
+  flex: 1;
+  height: 1rpx;
+  background: #e2e8f0;
+}
+.offline-sep-text {
+  font-size: 20rpx;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+/* ===== 底部统计 ===== */
+.footer-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12rpx;
+  padding: 28rpx 0 40rpx;
+}
+.footer-text {
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+.footer-num {
+  font-weight: 700;
+  color: #ac1736;
+}
+.footer-dot {
+  color: #cbd5e1;
+}
+
+/* ===== 加载与空态 ===== */
+.loading,
+.empty {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 26rpx;
+  padding: 48rpx 0;
+}
+.load-hint {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 22rpx;
+  padding: 16rpx 0 8rpx;
+}
+.load-hint--status {
+  color: #ac1736;
+}
+

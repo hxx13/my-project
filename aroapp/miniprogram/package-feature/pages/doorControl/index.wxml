@@ -1,0 +1,181 @@
+<view class="page">
+  <!-- 搜索栏 -->
+  <view class="search-bar">
+    <view class="search-box">
+      <van-icon name="search" size="32rpx" color="#94a3b8" class="search-icon" />
+      <input
+        class="search-input"
+        placeholder="搜索通道名称/编码"
+        value="{{keyword}}"
+        bindinput="onKeywordInput"
+        bindconfirm="onSearchConfirm"
+        confirm-type="search"
+      />
+      <view wx:if="{{keyword}}" class="search-clear" bindtap="onClearKeyword">
+        <van-icon name="clear" size="28rpx" color="#94a3b8" />
+      </view>
+    </view>
+    <view class="search-refresh {{statusRefreshing ? 'search-refresh--disabled' : ''}}" bindtap="onRefreshStatus">
+      <text class="search-refresh-icon">{{statusRefreshing ? '⟳' : '↻'}}</text>
+    </view>
+  </view>
+
+  <!-- 备注分类 Tab -->
+  <scroll-view
+    wx:if="{{categories.length > 0}}"
+    class="tab-scroll tab-scroll--category"
+    scroll-x
+    enable-flex
+    show-scrollbar="{{false}}"
+  >
+    <view
+      class="tab-item {{activeCategoryId===null ? 'tab-item--active' : ''}}"
+      bindtap="onTapCategory"
+      data-id="__all__"
+    >
+      <text class="tab-text">全部</text>
+    </view>
+    <view
+      wx:for="{{categories}}"
+      wx:key="id"
+      class="tab-item {{activeCategoryId==item.id ? 'tab-item--active' : ''}}"
+      bindtap="onTapCategory"
+      data-id="{{item.id}}"
+    >
+      <text class="tab-text">{{item.name}}</text>
+    </view>
+  </scroll-view>
+
+  <!-- 状态筛选 Tab -->
+  <scroll-view class="tab-scroll tab-scroll--status" scroll-x enable-flex show-scrollbar="{{false}}">
+    <view
+      wx:for="{{statusFilters}}"
+      wx:key="key"
+      class="status-tab status-tab--{{item.key || 'all'}} {{activeStatusFilter===item.key ? 'status-tab--active' : ''}}"
+      bindtap="onTapStatusFilter"
+      data-key="{{item.key}}"
+    >
+      <text class="status-tab-text">{{item.label}}</text>
+      <text wx:if="{{item.key===''}}" class="status-tab-count">{{statusCounts.all}}</text>
+      <text wx:elif="{{item.key==='STAY_OPEN'}}" class="status-tab-count">{{statusCounts.STAY_OPEN}}</text>
+      <text wx:elif="{{item.key==='STAY_CLOSE'}}" class="status-tab-count">{{statusCounts.STAY_CLOSE}}</text>
+      <text wx:elif="{{item.key==='NORMAL'}}" class="status-tab-count">{{statusCounts.NORMAL}}</text>
+      <text wx:elif="{{item.key==='OFFLINE'}}" class="status-tab-count">{{statusCounts.OFFLINE}}</text>
+    </view>
+  </scroll-view>
+
+  <!-- 主列表 -->
+  <scroll-view class="main-scroll" scroll-y enable-flex show-scrollbar="{{false}}">
+    <view wx:if="{{loading && list.length===0}}" class="loading">加载通道…</view>
+
+    <block wx:for="{{groupedList}}" wx:key="categoryId" wx:for-item="group">
+      <view wx:if="{{group.onlineChannels.length + group.offlineChannels.length > 0}}" class="group-header">
+        <text class="group-title">{{group.categoryName}}</text>
+        <text class="group-count">{{group.onlineChannels.length + group.offlineChannels.length}} 通道</text>
+      </view>
+
+      <!-- 在线通道 -->
+      <block wx:for="{{group.onlineChannels}}" wx:key="channelCode" wx:for-item="ch">
+        <view class="channel-card {{ch.cardBgClass}}">
+          <view
+            wx:if="{{resultByCode[ch.channelCode] && resultByCode[ch.channelCode].show}}"
+            class="result-strip result-strip--{{resultByCode[ch.channelCode].ok ? 'ok' : 'fail'}}"
+          >
+            <text class="result-strip-text">{{resultByCode[ch.channelCode].message}} · {{resultByCode[ch.channelCode].at}}</text>
+            <view wx:if="{{!resultByCode[ch.channelCode].ok}}" class="result-strip-close" data-code="{{ch.channelCode}}" bindtap="onDismissResult">
+              <van-icon name="cross" size="22rpx" color="#b91c1c" />
+            </view>
+          </view>
+
+          <view class="card-body">
+            <view class="card-info">
+              <text class="channel-name">{{ch.channelName}}</text>
+              <text wx:if="{{ch.channelType}}" class="channel-type">{{ch.channelType}}</text>
+            </view>
+            <view class="card-actions">
+              <van-icon
+                name="unlock"
+                size="32rpx"
+                color="{{ch.isOffline ? '#cbd5e1' : '#059669'}}"
+                class="card-icon"
+                data-mode="OPEN"
+                data-code="{{ch.channelCode}}"
+                bindtap="{{ch.isOffline ? '' : 'onInstantAction'}}"
+              />
+              <van-icon
+                name="lock"
+                size="32rpx"
+                color="{{ch.isOffline ? '#cbd5e1' : '#dc2626'}}"
+                class="card-icon"
+                data-mode="CLOSE"
+                data-code="{{ch.channelCode}}"
+                bindtap="{{ch.isOffline ? '' : 'onInstantAction'}}"
+              />
+            </view>
+          </view>
+
+          <view class="card-foot">
+            <view
+              class="mode-tag mode-tag--{{ch.statusPending ? 'pending' : (ch.activeMode==='STAY_OPEN' ? 'stayopen' : (ch.activeMode==='STAY_CLOSE' ? 'stayclose' : 'normal'))}}"
+              data-code="{{ch.channelCode}}"
+              bindtap="onTapModeTag"
+              hover-class="mode-tag--hover"
+            >
+              <text class="mode-tag-text">{{ch.activeModeLabel}}</text>
+              <van-icon wx:if="{{!ch.isOffline}}" name="arrow-down" size="18rpx" color="currentColor" />
+            </view>
+          </view>
+        </view>
+      </block>
+
+      <!-- 离线通道 -->
+      <block wx:if="{{group.offlineChannels.length > 0}}">
+        <view class="offline-sep">
+          <view class="offline-sep-line"></view>
+          <text class="offline-sep-text">离线 {{group.offlineChannels.length}} 通道</text>
+          <view class="offline-sep-line"></view>
+        </view>
+        <block wx:for="{{group.offlineChannels}}" wx:key="channelCode" wx:for-item="ch">
+          <view class="channel-card {{ch.cardBgClass}}">
+            <view class="card-body">
+              <view class="card-info">
+                <text class="channel-name channel-name--offline">{{ch.channelName}}</text>
+                <text wx:if="{{ch.channelType}}" class="channel-type">{{ch.channelType}}</text>
+              </view>
+              <view class="card-actions">
+                <van-icon name="unlock" size="32rpx" color="#cbd5e1" class="card-icon" />
+                <van-icon name="lock" size="32rpx" color="#cbd5e1" class="card-icon" />
+              </view>
+            </view>
+            <view class="card-foot">
+              <view class="mode-tag mode-tag--offline" data-code="{{ch.channelCode}}" bindtap="onTapModeTag">
+                <text class="mode-tag-text">离线</text>
+              </view>
+            </view>
+          </view>
+        </block>
+      </block>
+    </block>
+
+    <view wx:if="{{!loading && list.length===0}}" class="empty">暂无可控通道</view>
+    <view wx:elif="{{!loading && list.length > 0 && totalOnline + totalOffline === 0}}" class="empty">当前筛选下无匹配通道</view>
+
+    <view wx:if="{{loadingMore}}" class="load-hint">正在加载更多通道…</view>
+    <view wx:elif="{{statusProgressText}}" class="load-hint load-hint--status">{{statusProgressText}}</view>
+
+    <view wx:if="{{list.length > 0}}" class="footer-bar">
+      <text class="footer-text">在线 <text class="footer-num">{{totalOnline}}</text></text>
+      <text class="footer-dot">·</text>
+      <text class="footer-text">离线 <text class="footer-num">{{totalOffline}}</text></text>
+    </view>
+  </scroll-view>
+</view>
+
+<van-action-sheet
+  show="{{ showModeSheet }}"
+  actions="{{ modeSheetActions }}"
+  cancel-text="取消"
+  bind:close="onCloseModeSheet"
+  bind:cancel="onCloseModeSheet"
+  bind:select="onSelectMode"
+/>

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { createHashRouter, Navigate, useParams } from "react-router-dom";
 import { authStorage } from "@/features/auth/authStorage";
 import { resolveRootEntryPath } from "@/features/auth/postLoginNavigation";
@@ -129,6 +130,15 @@ function LegacyRedirect({ to }: { to: string }) {
 
 /** 站点根路径 /：未登录进登录页；已登录按角色进首页（避免一律打 dashboard） */
 function RootEntryRedirect() {
+  // CAS ticket preservation: hash-router strip query params before hash,
+  // save ticket to sessionStorage before Navigate replaces the URL
+  useEffect(() => {
+    const ticket = new URLSearchParams(window.location.search).get('ticket');
+    if (ticket) {
+      sessionStorage.setItem('cas_pending_ticket', ticket);
+    }
+  }, []);
+
   if (!authStorage.hasToken()) {
     return <Navigate to="/login" replace />;
   }

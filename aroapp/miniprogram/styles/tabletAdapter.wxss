@@ -1,0 +1,53 @@
+/*
+ * TABLET_ADAPTER（可逆）
+ * 主修复：app.json 的 resizable；orientation 见 TABLET_ADAPTER_README.md
+ * 回滚步骤：见 ../TABLET_ADAPTER_README.md
+ */
+page {
+  box-sizing: border-box;
+}
+
+/*
+ * 大屏视口变宽后 rpx 物理像素偏大，易出现按钮/文字比例「脱节」。
+ * 以下用 px + media query 收窄常用控件；与 Vant CSS 变量对齐。
+ */
+@media (min-width: 480px) {
+  page {
+    --button-default-font-size: 15px;
+    --button-normal-font-size: 14px;
+    --button-small-font-size: 12px;
+    --button-mini-font-size: 10px;
+    --button-default-height: 42px;
+    --button-large-height: 46px;
+    --button-small-height: 30px;
+    --button-mini-height: 22px;
+    --button-line-height: 20px;
+    --cell-font-size: 14px;
+    --cell-line-height: 24px;
+  }
+
+  button:not(.van-button) {
+    font-size: 15px !important;
+    line-height: 1.35 !important;
+  }
+
+  /* 业务内自定义 pill（如 suppliesMine） */
+  .btn-pill {
+    padding: 8px 16px !important;
+    font-size: 14px !important;
+    line-height: 1.25 !important;
+  }
+
+  /* 物资页顶栏 pill */
+  .top-pill {
+    font-size: 12px !important;
+    padding: 7px 12px !important;
+    line-height: 1 !important;
+  }
+
+  .btn-mini {
+    font-size: 12px !important;
+    padding: 5px 12px !important;
+    line-height: 1.2 !important;
+  }
+}

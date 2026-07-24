@@ -1,0 +1,350 @@
+<view class="home">
+  <splash-announcement />
+  <image
+    class="home-watermark"
+    src="/pages/assets/images/logohs.png"
+    mode="aspectFit"
+  />
+
+  <!-- Hero 轮播：与 Web 登录页轮播同源，亮/暗图按时段切换 -->
+  <view class="home-hero-banner home-hero-banner--{{ heroColorMode }}">
+    <view wx:if="{{ banners.length > 0 }}" class="hero-banner-stage">
+      <swiper
+        class="hero-swiper"
+        indicator-dots="{{ banners.length > 1 }}"
+        indicator-color="rgba(255,255,255,0.35)"
+        indicator-active-color="#ffffff"
+        autoplay="{{ heroCarouselEnabled }}"
+        interval="{{ bannerInterval }}"
+        duration="500"
+        circular="{{ banners.length > 1 }}"
+      >
+        <block wx:for="{{ banners }}" wx:key="*this">
+          <swiper-item>
+            <view class="hero-banner-frame">
+              <image
+                class="hero-banner-image"
+                src="{{ item }}"
+                mode="aspectFill"
+                bindtap="previewImage"
+                data-src="{{ item }}"
+              />
+            </view>
+          </swiper-item>
+        </block>
+      </swiper>
+    </view>
+    <view wx:else class="hero-banner-placeholder" />
+    <view class="hero-nav" style="height: {{ navBarHeight }}px;">
+      <view class="hero-nav-status" style="height: {{ statusBarHeight }}px;" />
+      <view class="hero-nav-row" style="height: {{ navContentHeight }}px;">
+        <view
+          class="hero-scan-btn"
+          style="width: {{ navContentHeight }}px; height: {{ navContentHeight }}px;"
+          hover-class="hero-scan-btn--hover"
+          bindtap="onScanTap"
+        >
+          <van-icon name="scan" size="20px" color="#ffffff" />
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 瑞幸式登录条 -->
+  <view class="home-login-bar">
+    <view class="login-bar-inner">
+      <text class="login-greeting">{{ loginGreeting }}</text>
+      <view
+        wx:if="{{ !springBound }}"
+        class="login-cta"
+        hover-class="login-cta--hover"
+        bindtap="goLoginRegister"
+      >登录/注册</view>
+      <view
+        wx:else
+        class="login-cta login-cta--bound"
+        hover-class="login-cta--hover"
+        bindtap="goMine"
+      >个人中心</view>
+    </view>
+  </view>
+
+  <view class="home-body">
+    <!-- ====== 学生视角布局 ====== -->
+    <block wx:if="{{ isStudentView }}">
+
+      <student-presence-bar
+        visible="{{ isStudentView && springBound }}"
+        loading="{{ presenceLoading }}"
+        ws-connected="{{ presenceWsConnected }}"
+        label="{{ presenceLabel }}"
+        phase-outside="{{ presencePhaseOutside }}"
+        phase-unknown="{{ presencePhaseUnknown }}"
+        show-room-name="{{ presenceShowRoomName }}"
+        room-name="{{ presenceRoomName }}"
+        show-dwell="{{ presenceShowDwell }}"
+        dwell-text="{{ presenceDwellText }}"
+        show-countdown="{{ presenceShowCountdown }}"
+        countdown-label="{{ presenceCountdownLabel }}"
+        countdown-text="{{ presenceCountdownText }}"
+        countdown-urgent="{{ presenceCountdownUrgent }}"
+        accent="{{ presenceAccent }}"
+        accent-soft="{{ presenceAccentSoft }}"
+        border-color="{{ presenceBorder }}"
+        card-bg="{{ presenceCardBg }}"
+        badge-bg="{{ presenceBadgeBg }}"
+        badge-text="{{ presenceBadgeText }}"
+        icon-bg="{{ presenceIconBg }}"
+        room-name-color="{{ presenceRoomNameColor }}"
+        icon-name="{{ presenceIconName }}"
+        dwell-soft="{{ presenceDwellSoft }}"
+        dwell-border="{{ presenceDwellBorder }}"
+        dwell-text-color="{{ presenceDwellTextColor }}"
+        countdown-soft="{{ presenceCountdownSoft }}"
+        countdown-border="{{ presenceCountdownBorder }}"
+        countdown-text-color="{{ presenceCountdownTextColor || '' }}"
+        has-exempt-row="{{ hasExemptRow }}"
+        exempt-badge="{{ exemptBadge }}"
+        exempt-room-names="{{ exemptRoomNames }}"
+        exempt-detail-line1="{{ exemptDetailLine1 }}"
+        exempt-detail-line2="{{ exemptDetailLine2 }}"
+        exempt-accent="{{ exemptAccent }}"
+        exempt-soft="{{ exemptSoft }}"
+        exempt-border="{{ exemptBorder }}"
+        exempt-text="{{ exemptText }}"
+        exempt-icon-name="{{ exemptIconName }}"
+      />
+
+      <!-- 七入口宫格 -->
+      <view class="service-card student-service-card">
+        <!-- 上排三入口 -->
+        <view class="service-primary-row">
+          <view
+            wx:for="{{ studentUpperRow }}"
+            wx:key="id"
+            class="service-primary-item"
+            hover-class="service-primary-item--hover"
+            catchtap="onStudentUpperTap"
+            data-id="{{ item.id }}"
+          >
+            <view class="service-primary-icon-wrap">
+              <view class="service-primary-icon service-primary-icon--image">
+                <image class="service-primary-icon-img" src="{{ item.iconSrc }}" mode="aspectFit" show-menu-by-longpress="{{ false }}" />
+                <view class="icon-hit-mask" />
+              </view>
+            </view>
+            <text class="service-primary-title">{{ item.title }}</text>
+          </view>
+        </view>
+
+        <view class="service-divider" />
+
+        <!-- 下排四入口 -->
+        <view class="quick-row">
+          <view
+            wx:for="{{ studentLowerRow }}"
+            wx:key="id"
+            class="quick-item"
+            hover-class="quick-item--hover"
+            catchtap="onStudentLowerTap"
+            data-id="{{ item.id }}"
+          >
+            <view class="quick-icon-wrap">
+              <view wx:if="{{ item.badge && item.badge.length }}" class="quick-badge">{{ item.badge }}</view>
+              <view class="quick-icon quick-icon--image">
+                <image class="quick-icon-img" src="{{ item.iconSrc }}" mode="aspectFit" show-menu-by-longpress="{{ false }}" />
+                <view class="icon-hit-mask" />
+              </view>
+            </view>
+            <text class="quick-label">{{ item.title }}</text>
+          </view>
+        </view>
+      </view>
+    </block>
+
+    <!-- ====== 教职工视角布局（原有代码，完整保留） ====== -->
+    <block wx:else>
+      <!-- 服务卡：三宫格预留 + 四快捷入口 -->
+      <view class="service-card">
+        <view class="service-primary-row">
+          <view
+            wx:for="{{ primarySlots }}"
+            wx:key="id"
+            class="service-primary-item"
+            hover-class="service-primary-item--hover"
+            catchtap="onPrimarySlotTap"
+            data-id="{{ item.id }}"
+          >
+            <view class="service-primary-icon-wrap">
+              <view wx:if="{{ item.badge }}" class="service-primary-badge">{{ item.badge }}</view>
+              <view wx:if="{{ item.placeholder }}" class="service-primary-icon service-primary-icon--placeholder">
+                <van-icon name="plus" size="36rpx" color="rgba(172, 23, 54, 0.45)" />
+              </view>
+              <view wx:else class="service-primary-icon {{ item.iconSrc ? 'service-primary-icon--image' : 'service-primary-icon--active' }}">
+                <image
+                  wx:if="{{ item.iconSrc }}"
+                  class="service-primary-icon-img"
+                  src="{{ item.iconSrc }}"
+                  mode="aspectFit"
+                  show-menu-by-longpress="{{ false }}"
+                />
+                <van-icon
+                  wx:else
+                  name="{{ item.iconName }}"
+                  size="36rpx"
+                  color="rgb(172, 23, 54)"
+                />
+              </view>
+              <view class="icon-hit-mask" />
+            </view>
+            <text class="service-primary-title">{{ item.title }}</text>
+          </view>
+        </view>
+
+        <view class="service-divider" />
+
+        <view class="quick-row">
+            <view wx:if="{{ canQuickRepairRequest }}" class="quick-item" hover-class="quick-item--hover" catchtap="goRepairRequest">
+              <view class="quick-icon-wrap">
+                <view wx:if="{{ badgeRepairText }}" class="quick-badge">{{ badgeRepairText }}</view>
+                <view class="quick-icon quick-icon--image">
+                  <image class="quick-icon-img" src="{{ iconRepair }}" mode="aspectFit" show-menu-by-longpress="{{ false }}" />
+                </view>
+                <view class="icon-hit-mask" />
+              </view>
+              <text class="quick-label">报修</text>
+            </view>
+            <view wx:if="{{ canQuickPurchaseRequest }}" class="quick-item" hover-class="quick-item--hover" catchtap="goPurchaseRequest">
+              <view class="quick-icon-wrap">
+                <view wx:if="{{ badgePurchaseText }}" class="quick-badge">{{ badgePurchaseText }}</view>
+                <view class="quick-icon quick-icon--image">
+                  <image class="quick-icon-img" src="{{ iconPurchase }}" mode="aspectFit" show-menu-by-longpress="{{ false }}" />
+                </view>
+                <view class="icon-hit-mask" />
+              </view>
+              <text class="quick-label">采购</text>
+            </view>
+            <view wx:if="{{ canQuickNotifications }}" class="quick-item" hover-class="quick-item--hover" catchtap="goNotifications">
+              <view class="quick-icon-wrap">
+                <view wx:if="{{ badgeNotifyText }}" class="quick-badge">{{ badgeNotifyText }}</view>
+                <view class="quick-icon quick-icon--image">
+                  <image class="quick-icon-img" src="{{ iconNotify }}" mode="aspectFit" show-menu-by-longpress="{{ false }}" />
+                </view>
+                <view class="icon-hit-mask" />
+              </view>
+              <text class="quick-label">信息</text>
+            </view>
+            <view wx:if="{{ canQuickSupplies }}" class="quick-item" hover-class="quick-item--hover" catchtap="goSupplies">
+              <view class="quick-icon-wrap">
+                <view wx:if="{{ badgeSuppliesText }}" class="quick-badge">{{ badgeSuppliesText }}</view>
+                <view class="quick-icon quick-icon--image">
+                  <image class="quick-icon-img" src="{{ iconSupplies }}" mode="aspectFit" show-menu-by-longpress="{{ false }}" />
+                </view>
+                <view class="icon-hit-mask" />
+              </view>
+              <text class="quick-label">物资</text>
+            </view>
+        </view>
+      </view>
+    </block>
+
+    <!-- ====== 学生视角：H5 同款「公告通知」列表 ====== -->
+    <view wx:if="{{ isStudentView }}" class="section">
+      <view class="section-head">
+        <text class="section-title-text">公告通知</text>
+        <text wx:if="{{ studentAnnouncements.length }}" class="section-more" bindtap="onStudentOpenAllAnnouncements">查看全部 →</text>
+      </view>
+      <view class="news-card">
+        <view wx:if="{{ studentAnnouncementsLoading }}" class="home-bulletin-empty">加载中…</view>
+        <view wx:elif="{{ !studentAnnouncements.length }}" class="home-bulletin-empty">暂无公告</view>
+        <block wx:else>
+          <view
+            wx:for="{{ studentAnnouncements }}"
+            wx:key="id"
+            class="announce-row {{ index > 0 ? 'announce-row--bordered' : '' }} {{ item.isImportantReminder ? 'announce-row--important' : '' }}"
+            hover-class="announce-row--hover"
+            catchtap="onStudentAnnouncementTap"
+            data-id="{{ item.id }}"
+            data-kind="{{ item.kind }}"
+          >
+            <view class="announce-body">
+              <view class="announce-head">
+                <text class="announce-badge" style="background:{{ item.badgeBg }};color:{{ item.badgeColor }};">{{ item.badgeLabel }}</text>
+                <text class="announce-title">{{ item.title }}</text>
+                <text wx:if="{{ item.subtitle }}" class="announce-time">{{ item.subtitle }}</text>
+              </view>
+            </view>
+            <van-icon name="arrow" size="28rpx" color="#c8c9cc" />
+          </view>
+        </block>
+      </view>
+    </view>
+
+    <!-- ====== 教职工视角：新闻/公告 ====== -->
+    <view wx:else class="section">
+      <view class="section-head section-head--tabs">
+        <view class="home-tabs">
+          <view
+            class="home-tab {{ activeHomeTab === 'news' ? 'home-tab--on' : '' }}"
+            bindtap="onHomeTabTap"
+            data-tab="news"
+          >新闻通知</view>
+          <view
+            class="home-tab {{ activeHomeTab === 'bulletin' ? 'home-tab--on' : '' }}"
+            bindtap="onHomeTabTap"
+            data-tab="bulletin"
+          >公告</view>
+        </view>
+        <text wx:if="{{ activeHomeTab === 'news' }}" class="section-more" bindtap="onHelpTap">更多</text>
+        <text wx:if="{{ activeHomeTab === 'bulletin' && canCreateAnnouncement }}" class="section-more" bindtap="goCreateAnnouncement">+ 新增</text>
+      </view>
+      <!-- 新闻通知 Tab -->
+      <view wx:if="{{ activeHomeTab === 'news' }}" class="news-card">
+        <view wx:if="{{ newsLoading }}" class="home-bulletin-empty">加载中…</view>
+        <view wx:elif="{{ newsLoaded && newsList.length === 0 }}" class="home-bulletin-empty">暂无新闻</view>
+        <view wx:else>
+          <van-cell-group border="{{false}}">
+            <van-cell
+              custom-style="background-color: transparent;"
+              wx:for="{{ newsList }}"
+              wx:key="id"
+              title="{{ item.newsName }}"
+              label="{{ item.createTime }}"
+              is-link
+              bind:click="onNewsTap"
+              data-id="{{ item.id }}"
+              title-line-count="1"
+            />
+          </van-cell-group>
+        </view>
+      </view>
+      <view wx:elif="{{ activeHomeTab === 'bulletin' }}" class="news-card">
+        <van-cell-group border="{{false}}">
+          <van-cell
+            custom-style="background-color: transparent;"
+            wx:for="{{ bulletinList }}"
+            wx:key="id"
+            title="{{ item.title }}"
+            label="{{ item.labelText }}"
+            is-link
+            bind:click="onBulletinTap"
+            data-id="{{ item.id }}"
+            data-kind="{{ item.kind }}"
+            title-line-count="2"
+          />
+        </van-cell-group>
+        <view wx:if="{{ bulletinLoading }}" class="home-bulletin-empty">加载中…</view>
+        <view wx:elif="{{ bulletinLoaded && !bulletinList.length }}" class="home-bulletin-empty">暂无公告</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 轮播图放大预览（网络图片专用，永不黑屏） -->
+  <view class="preview-cover" style="opacity:{{showPreview?1:0}};pointer-events:{{showPreview?'all':'none'}}" bindtap="closePreview">
+    <image
+      src="{{ currentPreviewUrl }}"
+      class="preview-img"
+      mode="aspectFit"
+    />
+  </view>
+</view>

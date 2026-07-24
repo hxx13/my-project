@@ -5,7 +5,7 @@ import type { ImgHTMLAttributes } from "react";
 /**
  * 自动解析图片 URL 的 <img> 替代组件。
  *
- * 自动处理 cloud:// → 走 proxy-image / 相对路径 → 拼接 origin / HTTP → 直连。
+ * 相对路径 → 拼接 origin / HTTP → 直连。
  * 无需在每个页面手动调用 resolveApiMediaUrl()。
  *
  * 用法：全局搜索 <img 替换为 <AutoImage 即可，props 完全兼容。

@@ -1,0 +1,309 @@
+<view class="page" wx:if="{{ pageGateOk }}">
+  <view class="toolbar">
+    <view class="toolbar-row">
+      <view class="fm-select-row toolbar-site-filter">
+        <text class="fm-select-label">机房</text>
+        <view class="fm-select-chip fm-select-chip--grow" bindtap="openSiteFilterSheet">
+          {{ sitePickerIndex > 0 && sites[sitePickerIndex - 1] ? sites[sitePickerIndex - 1].name : '全部' }}
+        </view>
+      </view>
+      <view class="toolbar-links">
+        <text class="text-link" bindtap="goHistory">历史巡查</text>
+        <text class="text-link" bindtap="goSettings">设置</text>
+      </view>
+    </view>
+  </view>
+
+  <van-tabs active="{{ activeTab }}" bind:change="onTabChange" color="#ac1736" line-width="36rpx" lazy-render="{{ false }}">
+    <van-tab title="当日巡查表" name="daily">
+      <view class="daily-pad">
+        <view class="daily-toolbar">
+          <view class="daily-field grow">
+            <view class="fm-select-row" style="margin-bottom:0;">
+              <text class="daily-label">巡查日期</text>
+              <view class="fm-select-chip fm-select-chip--grow" bindtap="openDateSheet">{{ sheetDate }}</view>
+            </view>
+          </view>
+          <view class="daily-field grow">
+            <view class="fm-select-row" style="margin-bottom:0;">
+              <text class="daily-label">巡查模板</text>
+              <view class="fm-select-chip fm-select-chip--grow" bindtap="openTplSheet">{{ tplNames[tplPickerIndex] || '' }}</view>
+            </view>
+          </view>
+        </view>
+        <view class="daily-actions">
+          <view class="fm-pill fm-pill-primary" bindtap="openDailySheet">打开当日巡查表</view>
+          <view class="fm-pill fm-pill-ghost" bindtap="refreshDailySheet">刷新</view>
+          <view class="fm-pill fm-pill-danger" wx:if="{{ sheet.id }}" bindtap="deleteDailySheetTap">删当日表</view>
+        </view>
+        <view wx:if="{{ sheet.id }}" class="sheet-meta">
+          <view class="sheet-meta-row">
+            <text class="meta-text">状态 {{ sheetStatusText }} · v{{ sheet.version }}</text>
+            <view class="meta-btns">
+              <view class="fm-pill fm-pill-sm fm-pill-ghost {{ exportBusy ? 'fm-disabled' : '' }}" bindtap="exportDailyExcel">导出</view>
+              <view class="fm-pill fm-pill-sm fm-pill-info" bindtap="submitDailySheet">登记</view>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{ sheet.id && sheetMatrix.length && sheetItems.length }}" class="matrix-wrap">
+          <scroll-view scroll-x="true" class="matrix-scroll">
+            <view class="matrix">
+              <view class="matrix-row matrix-head">
+                <view class="matrix-cell sticky-col">机房</view>
+                <view wx:for="{{ sheetItems }}" wx:key="rowKey" class="matrix-cell head-cell">{{ item.label }}</view>
+              </view>
+              <view wx:for="{{ sheetMatrix }}" wx:for-item="row" wx:key="siteId" class="matrix-row">
+                <view class="matrix-cell sticky-col site-name">{{ row.siteName }}</view>
+                <view wx:for="{{ row.cells }}" wx:for-item="c" wx:key="key" class="matrix-cell">
+                  <picker wx:if="{{ c.selectMode }}" mode="selector" range="{{ c.optionLabels }}" value="{{ c.selectIndex }}" data-key="{{ c.key }}" bindchange="onMatrixSelectPick">
+                    <view class="cell-input cell-input--picker">{{ c.value }}</view>
+                  </picker>
+                  <input wx:else class="cell-input" value="{{ c.value }}" data-key="{{ c.key }}" bindinput="onMatrixCellInput" />
+                </view>
+              </view>
+            </view>
+          </scroll-view>
+        </view>
+        <view wx:if="{{ sheet.id && sheetItems.length === 0 }}" class="hint-amber">当前模板无巡查项，请在设置中编辑模板。</view>
+        <view wx:if="{{ sheet.id && sheetItems.length && sheetMatrix.length === 0 }}" class="hint-amber">当前模板下没有可填写的机房行（可能全部停用，或未绑定启用机房）。请在设置中检查机房或模板适用机房。</view>
+        <view wx:if="{{ !sheet.id }}" class="hint-muted">选择日期与模板后点击「打开当日巡查表」。若该日已有表，将直接加载协作内容。</view>
+      </view>
+    </van-tab>
+    <van-tab title="耗材" name="cons">
+      <view class="ledger-head">
+        <text class="ledger-title">耗材登记</text>
+        <view class="fm-pill fm-pill-sm fm-pill-ghost {{ exportBusy ? 'fm-disabled' : '' }}" bindtap="exportConsExcel">导出</view>
+      </view>
+      <view class="list-pad">
+        <van-empty wx:if="{{ !loading && consRows.length === 0 }}" description="暂无耗材记录" />
+        <block wx:for="{{ consGroups }}" wx:key="name">
+          <view class="group-card">
+            <view class="group-head" data-name="{{ item.name }}" bindtap="toggleConsGroup">
+              <text class="group-arrow">{{ item.open ? '▼' : '▶' }}</text>
+              <text class="group-title-ellipsis">{{ item.name }}</text>
+              <text class="group-meta">× {{ item.count }} · 最近 {{ item.latestDate }}</text>
+            </view>
+            <view wx:if="{{ item.open }}" class="group-body">
+              <view wx:for="{{ item.rows }}" wx:for-item="r" wx:key="id" class="card card--sub">
+                <view class="card-head-row">
+                  <text class="card-title-ellipsis">{{ r.consumableName }} × {{ r.qty }} {{ r.unit || '' }}</text>
+                  <view class="card-inline-actions">
+                    <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ r.id }}" catchtap="editCons">编辑</view>
+                    <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ r.id }}" catchtap="onDeleteCons">删除</view>
+                  </view>
+                </view>
+                <view class="card-sub">{{ r.occurredAtText }} · {{ r.siteName || '' }}{{ r.note ? ' · ' + r.note : '' }}</view>
+              </view>
+            </view>
+          </view>
+        </block>
+      </view>
+    </van-tab>
+    <van-tab title="更换" name="rep">
+      <view class="ledger-head">
+        <text class="ledger-title">更换记录</text>
+        <view class="fm-pill fm-pill-sm fm-pill-ghost {{ exportBusy ? 'fm-disabled' : '' }}" bindtap="exportRepExcel">导出</view>
+      </view>
+      <scroll-view scroll-x="true" class="preset-scroll" wx:if="{{ presetPickList.length }}">
+        <text class="preset-hint">快速类型：</text>
+        <text
+          wx:for="{{ presetPickList }}"
+          wx:key="id"
+          class="preset-chip {{ addPopup && item.selected ? 'preset-chip--on' : '' }}"
+          data-label="{{ item.label }}"
+          bindtap="tapPreset"
+        >{{ item.label }}</text>
+      </scroll-view>
+      <view class="list-pad">
+        <van-empty wx:if="{{ !loading && repRows.length === 0 }}" description="暂无更换记录" />
+        <block wx:for="{{ repGroups }}" wx:key="name">
+          <view class="group-card">
+            <view class="group-head" data-name="{{ item.name }}" bindtap="toggleRepGroup">
+              <text class="group-arrow">{{ item.open ? '▼' : '▶' }}</text>
+              <text class="group-title-ellipsis">{{ item.name }}</text>
+              <text class="group-meta">× {{ item.count }} · 最近 {{ item.latestDate }}</text>
+            </view>
+            <view wx:if="{{ item.open }}" class="group-body">
+              <view wx:for="{{ item.rows }}" wx:for-item="r" wx:key="id" class="card card--sub">
+                <view class="card-head-row">
+                  <text class="card-title-ellipsis">{{ r.filterType }} · {{ r.replacedAtText }}</text>
+                  <view class="card-inline-actions">
+                    <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ r.id }}" catchtap="editRep">编辑</view>
+                    <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ r.id }}" catchtap="onDeleteRep">删除</view>
+                  </view>
+                </view>
+                <view class="card-sub">{{ r.siteName || '' }} · 距上次 {{ r.daysSincePrevious != null ? r.daysSincePrevious : '-' }} 天</view>
+              </view>
+            </view>
+          </view>
+        </block>
+      </view>
+    </van-tab>
+  </van-tabs>
+
+  <view class="fab" wx:if="{{ activeTab === 'cons' || activeTab === 'rep' }}">
+    <view class="fm-fab-round" bindtap="openAddPopup"><text class="fm-fab-plus">+</text></view>
+  </view>
+
+  <van-popup show="{{ addPopup }}" position="bottom" round bind:close="closeAddPopup" custom-style="max-height:85vh;" lazy-render="{{ false }}">
+    <view class="popup-body">
+      <view class="popup-title">{{ editingId ? '编辑' : '新增' }}</view>
+      <view class="fm-select-row">
+        <text class="fm-select-label">机房</text>
+        <view class="fm-select-chip fm-select-chip--grow" bindtap="openSiteSheetInPopup">
+          {{ popupSiteName || '请选择机房' }}
+        </view>
+      </view>
+      <view wx:if="{{ activeTab === 'cons' }}">
+        <view class="fm-select-row">
+          <text class="fm-select-label">目录</text>
+          <view class="fm-select-chip fm-select-chip--grow" bindtap="openCatalogSheet">{{ catalogNames[catalogPickerIndex] || '手动输入' }}</view>
+        </view>
+        <van-field label="耗材名称" value="{{ formConsName }}" placeholder="名称" bind:change="onConsName" />
+        <van-field label="数量" type="digit" value="{{ formConsQty }}" bind:change="onConsQty" />
+        <van-field label="单位" value="{{ formConsUnit }}" placeholder="件" bind:change="onConsUnit" />
+        <van-cell title="发生时间" value="{{ formConsOccurredAt }}" is-link border="{{ false }}" bind:click="openConsAtPicker" />
+        <van-field label="备注" type="textarea" autosize="{{ true }}" value="{{ formConsNote }}" placeholder="选填" bind:change="onConsNote" />
+      </view>
+      <view wx:else>
+        <view wx:if="{{ presetPickList.length }}">
+          <text class="fm-select-label" style="margin-bottom:12rpx;display:block;">预设类型（可多选，点击切换）</text>
+          <view class="preset-toggle-list">
+            <view
+              wx:for="{{ presetPickList }}"
+              wx:key="id"
+              class="preset-toggle-row {{ item.selected ? 'preset-toggle-row--on' : '' }}"
+              data-label="{{ item.label }}"
+              bindtap="onTogglePresetInPopup"
+              hover-class="preset-toggle-row--hover"
+            >
+              <text class="preset-toggle-checkmark">{{ item.selected ? '✓' : '' }}</text>
+              <text class="preset-toggle-label">{{ item.label }}</text>
+            </view>
+          </view>
+          <view wx:if="{{ repSelectedPresets.length }}" class="preset-selected-hint">
+            <text class="preset-selected-label">已选：{{ repSelectedText }}</text>
+          </view>
+        </view>
+        <van-cell title="更换日期" value="{{ formRepAt }}" is-link border="{{ false }}" bind:click="openRepAtPicker" />
+        <van-field label="备注" type="textarea" autosize="{{ true }}" value="{{ formRepNote }}" placeholder="选填" bind:change="onRepNote" />
+      </view>
+      <view class="popup-actions-row">
+        <view class="fm-chip fm-chip-ghost" bindtap="closeAddPopup">取消</view>
+        <view class="fm-chip fm-chip-primary" bindtap="submitAdd">提交</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ timePickerShow }}" position="bottom" round bind:close="closeTimePicker">
+    <van-datetime-picker
+      type="date"
+      value="{{ timePickerValue }}"
+      min-date="{{ pickerMinTs }}"
+      max-date="{{ pickerMaxTs }}"
+      bind:input="onTimePickerInput"
+      bind:confirm="confirmTimePicker"
+      bind:cancel="closeTimePicker"
+    />
+  </van-popup>
+
+  <van-popup show="{{ siteFilterSheetShow }}" position="bottom" round bind:close="closeSiteFilterSheet">
+    <view class="fm-sheet">
+      <view class="fm-sheet-title">筛选机房</view>
+      <scroll-view scroll-y style="max-height:55vh">
+        <view
+          wx:for="{{ siteNames }}"
+          wx:for-index="idx"
+          wx:key="idx"
+          class="fm-sheet-row {{ sitePickerIndex === idx ? 'fm-sheet-row--on' : '' }}"
+          data-idx="{{ idx }}"
+          bindtap="pickSiteFilter"
+        >
+          {{ item }}
+        </view>
+      </scroll-view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ dateSheetShow }}" position="bottom" round bind:close="closeDateSheet">
+    <view class="fm-sheet">
+      <view class="fm-sheet-title">巡查日期</view>
+      <scroll-view scroll-y style="max-height:55vh">
+        <view
+          wx:for="{{ dateSheetRows }}"
+          wx:key="value"
+          class="fm-sheet-row {{ sheetDate === item.value ? 'fm-sheet-row--on' : '' }}"
+          data-value="{{ item.value }}"
+          bindtap="pickSheetDate"
+        >
+          {{ item.label }}
+        </view>
+      </scroll-view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ tplSheetShow }}" position="bottom" round bind:close="closeTplSheet">
+    <view class="fm-sheet">
+      <view class="fm-sheet-title">巡查模板</view>
+      <scroll-view scroll-y style="max-height:55vh">
+        <view
+          wx:for="{{ tplNames }}"
+          wx:for-index="idx"
+          wx:key="idx"
+          class="fm-sheet-row {{ tplPickerIndex === idx ? 'fm-sheet-row--on' : '' }}"
+          data-idx="{{ idx }}"
+          bindtap="pickTplIndex"
+        >
+          {{ item }}
+        </view>
+      </scroll-view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ catalogSheetShow }}" position="bottom" round bind:close="closeCatalogSheet">
+    <view class="fm-sheet">
+      <view class="fm-sheet-title">耗材目录</view>
+      <scroll-view scroll-y style="max-height:55vh">
+        <view
+          wx:for="{{ catalogNames }}"
+          wx:for-index="idx"
+          wx:key="idx"
+          class="fm-sheet-row {{ catalogPickerIndex === idx ? 'fm-sheet-row--on' : '' }}"
+          data-idx="{{ idx }}"
+          bindtap="pickCatalogIndex"
+        >
+          {{ item }}
+        </view>
+      </scroll-view>
+    </view>
+  </van-popup>
+
+<van-popup show="{{ popupSiteSheetShow }}" position="bottom" round bind:close="closeSiteSheetInPopup">
+    <view class="fm-sheet">
+      <view class="fm-sheet-title">选择机房</view>
+      <scroll-view scroll-y style="max-height:55vh">
+        <view
+          wx:for="{{ sites }}"
+          wx:for-index="idx"
+          wx:key="id"
+          class="fm-sheet-row {{ popupSitePickerIndex === idx ? 'fm-sheet-row--on' : '' }}"
+          data-idx="{{ idx }}"
+          bindtap="pickSiteInPopup"
+        >
+          {{ item.name }}
+        </view>
+      </scroll-view>
+    </view>
+  </van-popup>
+
+  <view wx:if="{{ deleteConfirmShow }}" class="fm-confirm-mask" catchtouchmove="noop">
+    <view class="fm-confirm-box">
+      <text class="fm-confirm-title">{{ deleteConfirmTitle }}</text>
+      <text class="fm-confirm-body">删除后不可恢复</text>
+      <view class="fm-confirm-actions">
+        <view class="fm-pill fm-pill-sm fm-pill-ghost" bindtap="cancelDeleteConfirm">取消</view>
+        <view class="fm-pill fm-pill-sm fm-pill-danger" bindtap="runDeleteConfirm">删除</view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "物资处理",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}

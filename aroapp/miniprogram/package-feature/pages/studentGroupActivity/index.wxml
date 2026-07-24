@@ -1,0 +1,211 @@
+<view class="ga-page">
+  <!-- 顶栏：标题 + 时间筛选 -->
+  <view class="ga-top">
+    <view class="ga-hero">
+      <view class="ga-hero-main">
+        <text class="ga-hero-title">课题组活跃度</text>
+        <text wx:if="{{ groupName }}" class="ga-hero-group">{{ groupName }}</text>
+      </view>
+      <text wx:if="{{ timeLabel }}" class="ga-hero-range">{{ timeLabel }}</text>
+    </view>
+
+    <scroll-view scroll-x class="ga-presets-scroll" enhanced show-scrollbar="{{ false }}">
+      <view class="ga-presets-row">
+        <view
+          wx:for="{{ presets }}"
+          wx:key="key"
+          class="ga-preset {{ timePreset === item.key ? 'ga-preset--on' : '' }}"
+          data-preset="{{ item.key }}"
+          bindtap="onPresetTap"
+          hover-class="ga-preset--hover"
+        >{{ item.label }}</view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- Loading skeleton -->
+  <view wx:if="{{ loading }}" class="ga-body">
+    <view class="ga-kpi-grid">
+      <view wx:for="{{ [1,2,3,4] }}" wx:key="*this" class="ga-kpi-card ga-kpi-card--skeleton">
+        <view class="ga-skeleton-line ga-skeleton-line--sm" />
+        <view class="ga-skeleton-line ga-skeleton-line--lg" />
+      </view>
+    </view>
+    <view class="ga-panel ga-panel--skeleton">
+      <view class="ga-skeleton-line ga-skeleton-line--md" />
+      <view wx:for="{{ [1,2,3] }}" wx:key="*this" class="ga-member-card ga-member-card--skeleton">
+        <view class="ga-skeleton-line ga-skeleton-line--md" />
+        <view class="ga-skeleton-grid">
+          <view class="ga-skeleton-line ga-skeleton-line--sm" />
+          <view class="ga-skeleton-line ga-skeleton-line--sm" />
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- Error -->
+  <view wx:elif="{{ error }}" class="ga-state-box">
+    <van-icon name="warning-o" size="56rpx" color="#ac1736" />
+    <text class="ga-state-text">{{ error }}</text>
+    <view class="ga-retry-btn" bindtap="loadAll" hover-class="ga-retry-btn--hover">重新加载</view>
+  </view>
+
+  <!-- Main content -->
+  <view wx:else class="ga-body">
+    <!-- KPI 2×2 -->
+    <view class="ga-kpi-grid">
+      <view
+        wx:for="{{ kpiCards }}"
+        wx:key="key"
+        class="ga-kpi-card ga-kpi-card--{{ item.tone }}"
+      >
+        <text class="ga-kpi-label">{{ item.label }}</text>
+        <text class="ga-kpi-value">{{ item.value }}</text>
+      </view>
+    </view>
+
+    <!-- 成员列表 -->
+    <view class="ga-panel">
+      <view class="ga-panel-head">
+        <text class="ga-panel-title">课题组成员</text>
+        <text class="ga-panel-meta">共 {{ memberTotal || summary.memberCount || 0 }} 人</text>
+      </view>
+
+      <scroll-view scroll-x class="ga-sort-scroll" enhanced show-scrollbar="{{ false }}">
+        <view class="ga-sort-row">
+          <view
+            wx:for="{{ sortOptions }}"
+            wx:key="key"
+            class="ga-sort-chip {{ memberSortBy === item.key ? 'ga-sort-chip--on' : '' }}"
+            data-sortby="{{ item.key }}"
+            bindtap="onMemberSort"
+            hover-class="ga-sort-chip--hover"
+          >
+            {{ item.label }}
+            <text wx:if="{{ memberSortBy === item.key }}" class="ga-sort-arrow">{{ memberSortOrder === 'desc' ? '↓' : '↑' }}</text>
+          </view>
+        </view>
+      </scroll-view>
+
+      <view wx:if="{{ membersLoading && members.length === 0 }}" class="ga-panel-loading">
+        <van-loading size="36rpx" color="#ac1736" />
+        <text>加载成员数据…</text>
+      </view>
+
+      <view wx:elif="{{ members.length === 0 }}" class="ga-empty">
+        <van-icon name="friends-o" size="64rpx" color="#c8c9cc" />
+        <text>该时段暂无成员数据</text>
+      </view>
+
+      <view wx:else class="ga-member-list">
+        <view
+          wx:for="{{ members }}"
+          wx:key="userId"
+          class="ga-member-card"
+          hover-class="ga-member-card--hover"
+        >
+          <view class="ga-member-head">
+            <view class="ga-member-avatar">{{ item.avatarText }}</view>
+            <view class="ga-member-info">
+              <text class="ga-member-name">{{ item.userName }}</text>
+              <text wx:if="{{ item.experienceLevel }}" class="ga-member-level">Lv.{{ item.experienceLevel }}</text>
+            </view>
+            <text class="ga-member-active ga-member-active--{{ item.activeTone }}">{{ item.activeText }}</text>
+          </view>
+          <view class="ga-member-stats">
+            <view class="ga-stat">
+              <text class="ga-stat-value">{{ item.entryCount }}</text>
+              <text class="ga-stat-label">进出次数</text>
+            </view>
+            <view class="ga-stat">
+              <text class="ga-stat-value">{{ item.durationText }}</text>
+              <text class="ga-stat-label">总时长</text>
+            </view>
+            <view class="ga-stat">
+              <text class="ga-stat-value">{{ item.weeklyAvgFreq }}</text>
+              <text class="ga-stat-label">周均频次</text>
+            </view>
+          </view>
+        </view>
+
+        <view wx:if="{{ membersHasMore }}" class="ga-load-more" bindtap="loadMoreMembers" hover-class="ga-load-more--hover">
+          <van-loading wx:if="{{ membersLoading }}" size="28rpx" color="#ac1736" />
+          <text wx:else>加载更多成员</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 热力图 -->
+    <view class="ga-panel">
+      <view class="ga-panel-head">
+        <text class="ga-panel-title">进出时段热力图</text>
+        <text wx:if="{{ heatmapMax > 0 }}" class="ga-panel-meta">峰值 {{ heatmapMax }} 次</text>
+      </view>
+
+      <view wx:if="{{ heatmapMax > 0 }}" class="ga-heatmap-wrap">
+        <scroll-view scroll-x class="ga-heatmap-scroll" enhanced show-scrollbar="{{ false }}">
+          <view class="ga-heatmap-wide">
+            <view class="ga-heatmap-row ga-heatmap-header">
+              <view class="ga-heatmap-day-label"></view>
+              <view wx:for="{{ heatmapHourLabels }}" wx:key="idx" class="ga-heatmap-hour-label">
+                <text wx:if="{{ item.show }}">{{ item.label }}</text>
+              </view>
+            </view>
+            <view wx:for="{{ heatmapRows }}" wx:key="dayIdx" class="ga-heatmap-row">
+              <text class="ga-heatmap-day-label">{{ item.dayLabel }}</text>
+              <view wx:for="{{ item.cells }}" wx:for-item="cell" wx:key="hourIdx" class="ga-heatmap-cell">
+                <view
+                  class="ga-heatmap-fill"
+                  style="opacity: {{ cell.opacity > 0 ? (0.12 + cell.opacity * 0.88) : 0.06 }};"
+                ></view>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+        <view class="ga-heatmap-legend">
+          <text class="ga-legend-label">低</text>
+          <view class="ga-legend-bar">
+            <view class="ga-legend-step" style="opacity: 0.15;"></view>
+            <view class="ga-legend-step" style="opacity: 0.45;"></view>
+            <view class="ga-legend-step" style="opacity: 0.75;"></view>
+            <view class="ga-legend-step" style="opacity: 1;"></view>
+          </view>
+          <text class="ga-legend-label">高</text>
+        </view>
+      </view>
+
+      <view wx:else class="ga-empty ga-empty--compact">
+        <van-icon name="chart-trending-o" size="56rpx" color="#c8c9cc" />
+        <text>暂无热力数据</text>
+      </view>
+    </view>
+
+    <!-- 房间排行 -->
+    <view class="ga-panel ga-panel--last">
+      <view class="ga-panel-head">
+        <text class="ga-panel-title">喜好进出房间</text>
+        <text wx:if="{{ roomBars.length }}" class="ga-panel-meta">Top {{ roomBars.length }}</text>
+      </view>
+
+      <view wx:if="{{ roomBars.length > 0 }}" class="ga-room-list">
+        <view wx:for="{{ roomBars }}" wx:key="roomName" class="ga-room-item">
+          <view class="ga-room-rank">{{ index + 1 }}</view>
+          <view class="ga-room-body">
+            <view class="ga-room-top">
+              <text class="ga-room-name">{{ item.roomName }}</text>
+              <text class="ga-room-count">{{ item.entryCount }} 次</text>
+            </view>
+            <view class="ga-room-bar-bg">
+              <view class="ga-room-bar-fill" style="width: {{ item.pct }}%;"></view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:else class="ga-empty ga-empty--compact">
+        <van-icon name="location-o" size="56rpx" color="#c8c9cc" />
+        <text>暂无房间数据</text>
+      </view>
+    </view>
+  </view>
+</view>

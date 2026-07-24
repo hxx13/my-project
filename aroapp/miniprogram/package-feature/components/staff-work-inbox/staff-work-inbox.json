@@ -1,0 +1,7 @@
+{
+  "component": true,
+  "usingComponents": {
+    "van-empty": "@vant/weapp/empty/index",
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}

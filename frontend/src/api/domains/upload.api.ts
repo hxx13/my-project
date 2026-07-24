@@ -31,7 +31,7 @@ export function toDualSource(r: UploadResult): DualImageSource {
   return { publicUrl: r.publicUrl };
 }
 
-/** 查询文件记录 — 可同时拿到 publicUrl 和 wechatFileId */
+/** 查询文件记录 */
 export async function fetchFileRecord(recordId: number): Promise<DualImageSource> {
   const res = await authHttp.get<Result<DualImageSource>>(`/upload/records/${recordId}`);
   return res.data.data;

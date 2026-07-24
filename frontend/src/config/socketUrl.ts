@@ -59,7 +59,7 @@ export function resolveSocketUrl(): string {
                 typeof window !== "undefined" ? window.location?.hostname : null;
 
             // HTTPS 页面且 API 主机 ≠ 页面主机 → 跳过，走同域 fallback
-            // 典型场景：API=http://47.101.61.184:8080, 页面=https://aroultra.shsmu.edu.cn
+            // 典型场景：API 与页面在不同主机（如本地开发时 API 在 localhost，页面在 localhost:5173）
             if (isHttpsPage && pageHost && apiUrl.hostname !== pageHost) {
                 // 跳过，不从此推导
             } else {

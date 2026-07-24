@@ -1,0 +1,18 @@
+<view class="subnav" style="padding-top: {{ statusBarHeight }}px;">
+  <view class="subnav-row" style="height: {{ navContentHeight }}px;">
+    <view class="subnav-back" hover-class="subnav-back--hover" bindtap="onBack">
+      <text class="subnav-back-icon">‹</text>
+    </view>
+    <view
+      wx:if="{{ showSwitch }}"
+      class="subnav-switch"
+      hover-class="subnav-switch--hover"
+      bindtap="onSwitch"
+    >
+      <text class="subnav-switch-arrow">⇄</text>
+      <text class="subnav-switch-text">{{ switchLabel }}</text>
+    </view>
+    <text class="subnav-title">{{ title }}</text>
+  </view>
+</view>
+<view class="subnav-placeholder" style="height: {{ navBarHeight }}px;"></view>

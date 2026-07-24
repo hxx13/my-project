@@ -1,0 +1,88 @@
+<view class="overview-page">
+  <view class="overview-head">
+    <text class="overview-title">概览</text>
+    <text class="overview-sub" wx:if="{{ canOverviewAdmin }}">双区饼图 · 时段曲线 · 活跃榜单 · {{ updatedAtText || '--:--' }}</text>
+    <text class="overview-sub" wx:else>时段曲线 · 活跃榜单 · {{ updatedAtText || '--:--' }}</text>
+  </view>
+  <scroll-view scroll-y class="overview-body" show-scrollbar="{{ false }}">
+    <view wx:if="{{ loading }}" class="state">加载中...</view>
+    <block wx:else>
+      <view class="total-grid">
+        <view class="total-card">
+          <text class="total-title">浦东总进出</text>
+          <text class="total-value">{{ pudongTotal }}</text>
+        </view>
+        <view class="total-card">
+          <text class="total-title">浦西总进出</text>
+          <text class="total-value">{{ puxiTotal }}</text>
+        </view>
+      </view>
+
+      <view class="block-card" wx:if="{{ canOverviewAdmin }}">
+        <view class="block-title">双区饼图（Top6）</view>
+        <view class="pie-cols">
+          <view class="pie-col">
+            <view class="pie-col-title">浦东</view>
+            <view wx:for="{{ pudongPieRows }}" wx:key="name" class="pie-row">
+              <view class="pie-row-top">
+                <text class="pie-name">{{ item.name }}</text>
+                <text class="pie-val">{{ item.value }} ({{ item.pct }}%)</text>
+              </view>
+              <view class="bar-bg"><view class="bar-fill bar-fill-pd" style="width: {{ item.widthPct }}%;"></view></view>
+            </view>
+            <view wx:if="{{ !pudongPieRows.length }}" class="mini-empty">暂无数据</view>
+          </view>
+          <view class="pie-col">
+            <view class="pie-col-title">浦西</view>
+            <view wx:for="{{ puxiPieRows }}" wx:key="name" class="pie-row">
+              <view class="pie-row-top">
+                <text class="pie-name">{{ item.name }}</text>
+                <text class="pie-val">{{ item.value }} ({{ item.pct }}%)</text>
+              </view>
+              <view class="bar-bg"><view class="bar-fill bar-fill-px" style="width: {{ item.widthPct }}%;"></view></view>
+            </view>
+            <view wx:if="{{ !puxiPieRows.length }}" class="mini-empty">暂无数据</view>
+          </view>
+        </view>
+      </view>
+
+      <view class="block-card">
+        <view class="block-title">今日时段曲线（07:00-20:30）</view>
+        <view class="line-wrap">
+          <view wx:for="{{ lineRows }}" wx:key="time" class="line-row">
+            <text class="line-time">{{ item.time }}</text>
+            <view class="line-bars">
+              <view class="line-bar line-bar-pd" style="width: {{ lineMax > 0 ? (item.pudong * 100 / lineMax) : 0 }}%;"></view>
+              <view class="line-bar line-bar-px" style="width: {{ lineMax > 0 ? (item.puxi * 100 / lineMax) : 0 }}%;"></view>
+            </view>
+            <text class="line-val">东{{ item.pudong }}/西{{ item.puxi }}</text>
+          </view>
+          <view wx:if="{{ !lineRows.length }}" class="mini-empty">暂无数据</view>
+        </view>
+      </view>
+
+      <view class="block-card">
+        <view class="rank-head">
+          <view class="block-title">进出活跃度</view>
+          <view class="rank-filters">
+            <view class="chip {{ rankTimeType === 'TODAY' ? 'chip-on' : '' }}" data-value="TODAY" bindtap="onRankTimeTap">今日</view>
+            <view class="chip {{ rankTimeType === 'WEEK' ? 'chip-on' : '' }}" data-value="WEEK" bindtap="onRankTimeTap">本周</view>
+            <view class="chip {{ rankTimeType === 'MONTH' ? 'chip-on' : '' }}" data-value="MONTH" bindtap="onRankTimeTap">本月</view>
+          </view>
+        </view>
+        <view class="rank-filters rank-filters-bottom">
+          <view class="chip {{ rankRegion === 'TOTAL' ? 'chip-on' : '' }}" data-value="TOTAL" bindtap="onRankRegionTap">总榜</view>
+          <view class="chip {{ rankRegion === 'PUDONG' ? 'chip-on' : '' }}" data-value="PUDONG" bindtap="onRankRegionTap">浦东</view>
+          <view class="chip {{ rankRegion === 'PUXI' ? 'chip-on' : '' }}" data-value="PUXI" bindtap="onRankRegionTap">浦西</view>
+        </view>
+        <view wx:for="{{ rankRows }}" wx:key="rankNo" class="rank-row">
+          <text class="rank-no">{{ item.rankNo }}</text>
+          <text class="rank-name">{{ item.name }}</text>
+          <text class="rank-val">{{ item.value }}</text>
+        </view>
+        <view wx:if="{{ rankingLoading }}" class="mini-empty">榜单更新中...</view>
+        <view wx:if="{{ !rankRows.length }}" class="mini-empty">暂无排行数据</view>
+      </view>
+    </block>
+  </scroll-view>
+</view>

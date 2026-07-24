@@ -1,0 +1,9 @@
+/** app 全局样式 */
+
+/* TABLET_ADAPTER：回滚见 TABLET_ADAPTER_README.md */
+@import "./styles/tabletAdapter.wxss";
+
+/* Vant Popup：关闭图标默认 z-index 为 1，易被弹层内容盖住导致点击无效 */
+.van-popup__close-icon {
+  z-index: 300 !important;
+}

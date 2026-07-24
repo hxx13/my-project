@@ -1,0 +1,53 @@
+@import './index.wxss';
+
+.hist-list-hint {
+  font-size: 24rpx;
+  color: #969799;
+  padding: 0 24rpx 16rpx;
+  line-height: 1.45;
+}
+
+.card-tappable:active {
+  opacity: 0.92;
+}
+
+.hist-sheet-overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+}
+
+.hist-sheet-nav {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 24rpx;
+  padding-top: calc(16rpx + env(safe-area-inset-top));
+  background: #fff;
+  border-bottom: 1rpx solid #ebedf0;
+}
+
+.hist-sheet-nav-title {
+  flex: 1;
+  text-align: center;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
+  margin: 0 16rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-sheet-scroll {
+  flex: 1;
+  height: 0;
+}
+

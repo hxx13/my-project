@@ -1,0 +1,1645 @@
+.art-root {
+  flex: 1;
+  height: 100%;
+  min-height: 480rpx;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.art-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.art-pad {
+  padding: 12rpx 10rpx;
+}
+
+.art-muted {
+  color: #71717a;
+  font-size: 26rpx;
+}
+
+.art-err {
+  color: #b91c1c;
+  font-size: 26rpx;
+}
+
+/* 楼层分页：横向均分、加大点击区（地下室 B1F-E10 等多 tab） */
+.art-tabs-head {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 4rpx;
+  background: #ffffff;
+  border-bottom: 1rpx solid #e4e4e7;
+}
+
+.art-tabs-head-embedded {
+  padding-left: 2rpx;
+  padding-right: 2rpx;
+}
+
+.art-tabs-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  width: 100%;
+  min-height: 80rpx;
+  box-sizing: border-box;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.art-tab {
+  flex: 0 0 auto;
+  min-width: 100rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx 20rpx 14rpx;
+  border-bottom: 4rpx solid transparent;
+  box-sizing: border-box;
+}
+
+.art-tab-on {
+  border-bottom-color: #0284c7;
+}
+
+.art-tab-name {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #3f3f46;
+  line-height: 1.2;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.art-tab-on .art-tab-name {
+  color: #0f172a;
+}
+
+.art-room-overview-row {
+  align-self: flex-end;
+  padding: 8rpx 10rpx 10rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: #64748b;
+  text-decoration: underline;
+  text-underline-offset: 3rpx;
+}
+
+.art-link-hover {
+  opacity: 0.88;
+}
+
+.art-tabs-caption {
+  flex-shrink: 0;
+  padding: 0 8rpx 6rpx;
+  background: #ffffff;
+  border-bottom: 1rpx solid #e4e4e7;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.art-tabs-caption-txt,
+.art-tabs-caption-dim {
+  font-size: 24rpx;
+  line-height: 1.25;
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.art-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  box-sizing: border-box;
+  background: #f4f4f5;
+}
+
+.art-stack-main {
+  flex: 1;
+  min-height: 0;
+}
+
+.art-main-inner {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 16rpx;
+  padding: 16rpx 10rpx 48rpx;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.art-chunk {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 套间块：显式占满 scroll-view 内容宽，避免真机嵌套 flex 宽度未传递导致小房间纵向独占一行 */
+.art-chunk-suite {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.art-chunk-zone-band {
+  flex: 0 0 100%;
+  width: 100%;
+  margin: 4rpx 0 8rpx;
+  padding: 10rpx 12rpx;
+  background: #f0f9ff;
+  border: 1rpx solid #bae6fd;
+  border-radius: 10rpx;
+  box-sizing: border-box;
+}
+
+.art-zone-band-title {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #0c4a6e;
+  letter-spacing: 0.02em;
+}
+
+.art-chunk-half {
+  width: calc(50% - 4rpx);
+  flex: 0 0 calc(50% - 4rpx);
+  max-width: calc(50% - 4rpx);
+}
+
+/* 含开关类测点的套间独占一行，覆盖 suiteHalfRow 半宽 */
+.art-chunk-suite.art-chunk-suite-switch-full {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* 手机端：多套间纵向排列，每套全宽，避免 Web 端「一行三卡」在窄屏上过挤 */
+.art-chrome-row {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.art-chrome-cell {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.art-suite {
+  width: 100%;
+  min-width: 0;
+  border-radius: 28rpx;
+  border: 1rpx solid rgba(30, 55, 90, 0.12);
+  background: linear-gradient(145deg, #ffffff 0%, #f5f7fa 50%, #eef1f6 100%);
+  box-shadow: 0 8rpx 28rpx rgba(20, 40, 70, 0.09);
+  overflow: hidden;
+  padding: 20rpx 18rpx;
+  box-sizing: border-box;
+}
+
+.art-suite-hd {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12rpx;
+  padding: 2rpx 0 12rpx;
+  margin-bottom: 10rpx;
+  background: transparent;
+  border-bottom: 1rpx solid #e8e8ec;
+}
+
+.art-suite-hd-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.art-suite-hd-right {
+  flex-shrink: 0;
+  max-width: 42%;
+  text-align: right;
+  align-self: center;
+}
+
+/* 与其它标题槽同一横向滚动行，避免单独占一行把时间戳顶下去 */
+.art-title-slots-inline {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6rpx;
+  flex-shrink: 0;
+  margin-top: 0;
+}
+
+.art-suite-ts-compact {
+  display: block;
+  font-size: 22rpx;
+  line-height: 1.2;
+  font-family: ui-monospace, monospace;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.art-suite-title-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6rpx 10rpx;
+  min-width: 0;
+}
+
+/* 套间名与标题行压差同一行可横向滑动，避免名称与数值拆行分离 */
+.art-suite-title-row--suite {
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  overflow-x: visible;
+}
+
+.art-suite-title-press-line {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8rpx 12rpx;
+  min-width: min-content;
+}
+
+/* 套间名后参数合计 >4：收紧标题行内间距（与 Web compactTitleSlots 对齐） */
+.art-suite-title-press-line--dense {
+  gap: 6rpx 8rpx;
+}
+
+/* 套间标题行：图标 + 参数名 + 趋势 + 数值单位，单行高度不超过套间标题字行 */
+.art-suite-metric-pill {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6rpx 8rpx;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  min-height: 44rpx;
+  padding: 6rpx 12rpx 6rpx 8rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid #e4e4e7;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.art-suite-metric-pill--slot-row {
+  margin-top: 0;
+}
+
+/* 套间内小房间为 3 间时：仅图标+数值，见 wxml visibleRooms.length === 3 */
+.art-suite-metric-pill--icons-only {
+  padding-left: 4rpx;
+  padding-right: 6rpx;
+  gap: 2rpx 6rpx;
+}
+
+.art-suite-metric-name {
+  flex-shrink: 0;
+  max-width: 140rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.art-suite-metric-pill .art-metric-inline-wrap {
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  min-width: 0;
+  gap: 4rpx;
+}
+
+/* 设定值：点击数值改 WinCC（需超管） */
+.art-metric-val--setpoint-tap {
+  border-radius: 6rpx;
+  padding: 2rpx 4rpx;
+  margin: -2rpx -4rpx;
+  box-sizing: border-box;
+}
+
+.art-suite-title {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #18181b;
+}
+
+.art-suite-inline-metric,
+.art-metric-inline.art-suite-inline-metric {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #3f3f46;
+  line-height: 1.35;
+}
+
+.art-metric-inline.art-suite-inline-metric .art-metric-num-unit {
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+/* 套间标题 pill 内数值 */
+.art-metric-inline.art-suite-pill-val .art-metric-num-unit,
+.art-metric-inline.art-ts-val.art-suite-pill-val .art-metric-num-unit {
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.art-title-slots-compact .art-metric-inline.art-ts-val.art-suite-pill-val .art-metric-num-unit {
+  font-size: 16rpx;
+}
+
+/* 标题槽 >4：缩短参数名—数值、数值—趋势间距 */
+.art-title-slots--dense.art-title-slots-compact .art-suite-metric-pill {
+  gap: 2rpx 4rpx;
+  padding: 0 6rpx 0 4rpx;
+}
+
+.art-title-slots--dense.art-title-slots-compact .art-suite-metric-pill .art-metric-inline-wrap {
+  gap: 4rpx;
+}
+
+.art-title-slots--dense.art-title-slots-compact .art-suite-switch-pill {
+  padding: 0 8rpx;
+}
+
+/* WinCC 开关：整块色块，绿开 / 红关；仅图标 + 名称 */
+.art-suite-switch-pill {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8rpx;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  min-height: 44rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid transparent;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.art-suite-switch-pill--on {
+  background: #059669;
+  border-color: #047857;
+  color: #ffffff;
+}
+
+.art-suite-switch-pill--off {
+  background: #e11d48;
+  border-color: #be123c;
+  color: #ffffff;
+}
+
+.art-suite-switch-pill--unknown {
+  background: #f4f4f5;
+  border-color: #e4e4e7;
+  color: #71717a;
+}
+
+.art-suite-switch-pill--on .art-metric-ico--suite,
+.art-suite-switch-pill--off .art-metric-ico--suite {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.art-suite-switch-pill-name {
+  max-width: 160rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 房间内开关：整行一条可点卡片 */
+.art-metric-row-switch-only {
+  padding: 4rpx 0;
+  border-bottom: 1rpx solid #f4f4f5;
+}
+
+.art-metric-switch-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8rpx;
+  width: 100%;
+  padding: 10rpx 14rpx;
+  border-radius: 10rpx;
+  border: 1rpx solid transparent;
+  box-sizing: border-box;
+}
+
+.art-metric-switch-card--on {
+  background: #059669;
+  border-color: #047857;
+  color: #ffffff;
+}
+
+.art-metric-switch-card--off {
+  background: #e11d48;
+  border-color: #be123c;
+  color: #ffffff;
+}
+
+.art-metric-switch-card--unknown {
+  background: #f4f4f5;
+  border-color: #e4e4e7;
+  color: #71717a;
+}
+
+.art-metric-switch-card-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.art-metric-switch-card--on .art-metric-ico,
+.art-metric-switch-card--off .art-metric-ico {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* 数值+单位合并为单 text（art-metric-num-unit） */
+.art-metric-inline {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+}
+
+/* 窄数字体，略收紧字距（真机回退系统 mono） */
+.art-metric-num {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 1rpx;
+  text-align: right;
+  font-size: 16rpx;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Menlo", "Roboto Mono", "Consolas", "Noto Sans Mono CJK SC", ui-monospace, monospace;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+  color: inherit;
+}
+
+/* 单位列统一占位：以「%」最窄为基准列宽，Pa/℃ 同宽居中，避免左右参差 */
+.art-metric-u {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22rpx;
+  min-width: 22rpx;
+  max-width: 22rpx;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  font-size: 11rpx;
+  font-weight: 600;
+  color: #71717a;
+  line-height: 1;
+}
+
+.art-metric-u-pa {
+  font-size: 9rpx;
+  letter-spacing: -0.1em;
+}
+
+.art-metric-u-temp,
+.art-metric-u-hum {
+  font-size: 11rpx;
+}
+
+.art-metric-ico {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: 40rpx;
+  height: 40rpx;
+  margin-right: 4rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* 套间标题 pill 内图标与标题行高协调 */
+.art-metric-ico--suite {
+  width: 30rpx;
+  height: 30rpx;
+  font-size: 21rpx;
+  margin-right: 0;
+}
+
+.art-metric-ico--sm {
+  width: 28rpx;
+  height: 28rpx;
+  font-size: 18rpx;
+}
+
+.art-metric-ico--lg {
+  width: 36rpx;
+  height: 36rpx;
+  font-size: 26rpx;
+}
+
+.art-metric-ico--suite.art-metric-ico--sm {
+  width: 26rpx;
+  height: 26rpx;
+  font-size: 17rpx;
+}
+
+.art-metric-ico--suite.art-metric-ico--lg {
+  width: 32rpx;
+  height: 32rpx;
+  font-size: 24rpx;
+}
+
+.art-metric-lab-wrap {
+  flex: 0 1 auto;
+  max-width: 40%;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.art-metric-lab-wrap--icononly {
+  flex: 0 0 auto;
+  max-width: 20%;
+  min-width: 28rpx;
+  margin-right: 4rpx;
+}
+
+.art-ts-lab-row {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  max-width: 100%;
+}
+
+.art-metric-detail-sub {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #52525b;
+}
+
+.art-title-slots {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 10rpx;
+}
+
+.art-title-slots-compact {
+  margin-top: 6rpx;
+  gap: 6rpx;
+}
+
+.art-title-slot {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid #e4e4e7;
+  background: #ffffff;
+}
+
+.art-title-slots-compact .art-title-slot {
+  padding: 2rpx 8rpx;
+}
+
+.art-ts-lab {
+  font-size: 20rpx;
+  color: #71717a;
+}
+
+.art-ts-val,
+.art-metric-inline.art-ts-val {
+  font-size: 22rpx;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  color: #18181b;
+}
+
+.art-metric-inline.art-ts-val .art-metric-num-unit {
+  font-size: 22rpx;
+}
+
+.art-title-slots-compact .art-ts-lab {
+  font-size: 18rpx;
+}
+
+.art-title-slots-compact .art-ts-val,
+.art-title-slots-compact .art-metric-inline.art-ts-val {
+  font-size: 20rpx;
+}
+
+.art-title-slots-compact .art-metric-inline.art-ts-val .art-metric-num-unit {
+  font-size: 20rpx;
+}
+
+.art-lab-muted {
+  display: block;
+  font-size: 20rpx;
+  color: #a1a1aa;
+}
+
+.art-ts-latest {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: #3f3f46;
+  font-family: ui-monospace, monospace;
+}
+
+.art-suite-rooms {
+  padding: 4rpx 2rpx 2rpx;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* 套间内 1 间：单行铺满 */
+.art-rooms-row-1 {
+  display: flex;
+  flex-direction: row;
+  gap: 16rpx;
+}
+
+.art-rooms-row-1 .art-room-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * 套间内 2/3 间：用 Grid 替代 flex row。
+ * 真机上 scroll-view 嵌套 flex 时，子项偶发按「内容最小宽度」撑满一行导致纵向堆叠；Grid + minmax(0,1fr) 可稳定双列/三列。
+ */
+.art-rooms-row-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16rpx;
+  align-items: stretch;
+}
+
+.art-rooms-row-2 .art-room-wrap {
+  min-width: 0;
+}
+
+.art-rooms-row-3 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14rpx;
+  align-items: stretch;
+}
+
+.art-rooms-row-3 .art-room-wrap {
+  min-width: 0;
+}
+
+.art-rooms-row-3 .art-room-wrap:nth-child(3):last-child {
+  grid-column: 1 / -1;
+}
+
+/*
+ * 套间内 ≥4 间：固定两列（与 row-2/3 一致用 Grid）。
+ * 真机上前身为 flex+wrap+calc(50%)，易出现「每行只站一格且仅占半宽、右侧留白」；Grid 双列可避免。
+ */
+.art-rooms-many {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14rpx;
+  align-items: stretch;
+}
+
+.art-rooms-many .art-room-wrap {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* 奇数个最后一格单独一行时铺满宽度 */
+.art-rooms-many .art-room-wrap:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.art-room-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.art-chunk-half .art-room-wrap {
+  flex: 1 1 auto;
+}
+
+.art-room-card {
+  border-radius: 18rpx;
+  border: 1rpx solid rgba(30, 55, 90, 0.1);
+  background: linear-gradient(145deg, #ffffff 0%, #f5f7fa 50%, #eef1f6 100%);
+  padding: 18rpx 16rpx 18rpx;
+  box-shadow: 0 4rpx 14rpx rgba(20, 40, 70, 0.06);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.art-room-fill {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.art-room-hd {
+  padding-bottom: 10rpx;
+  margin-bottom: 8rpx;
+  border-bottom: 1rpx solid #f4f4f5;
+}
+
+.art-room-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #18181b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 小房间内：图标 / 参数名 / 趋势 / 数值+单位 / 详情 列对齐；字号档位见 animal-room-telemetry.js computeCardMetricFontTier */
+.art-room-metrics {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.art-metric-row--roomgrid {
+  display: grid;
+  grid-template-columns: minmax(44rpx, auto) minmax(0, 1fr) 36rpx minmax(140rpx, 1.4fr);
+  align-items: center;
+  column-gap: 8rpx;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.art-metric-g-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32rpx;
+  min-width: 0;
+}
+
+.art-metric-g-lab {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.art-metric-g-trend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.art-metric-trend-place {
+  width: 100%;
+  max-width: 40rpx;
+  min-height: 36rpx;
+}
+
+.art-metric-row--roomgrid .art-metric-trend--cell {
+  width: auto;
+  max-width: 40rpx;
+  min-width: 0;
+  min-height: 36rpx;
+  margin-right: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  -webkit-text-stroke: 0.45rpx currentColor;
+}
+
+/* 与 Web AnimalRoomTelemetryPage ValueTrendMark（emerald/sky/zinc）配色对齐 */
+.art-metric-trend.art-trend-up {
+  color: #059669;
+}
+
+.art-metric-trend.art-trend-down {
+  color: #0284c7;
+}
+
+.art-metric-trend.art-trend-flat {
+  color: #a1a1aa;
+}
+
+/* 套间 pill：无趋势时与有箭头时同宽占位 */
+.art-metric-trend--pill-place {
+  box-sizing: border-box;
+  width: 32rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  flex-shrink: 0;
+}
+
+.art-metric-g-val {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.art-metric-g-val .art-metric-inline.art-metric-val {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  justify-content: center;
+}
+
+.art-metric-g-val .art-metric-num-unit {
+  text-align: center;
+}
+
+/* 标签可点击打开详情：蓝色文字 + 虚线下划线 */
+.art-metric-g-lab--tappable {
+  cursor: pointer;
+}
+
+.art-metric-g-lab--tappable .art-metric-lab {
+  color: #0369a1;
+  border-bottom: 1rpx dashed #7dd3fc;
+  padding-bottom: 2rpx;
+}
+
+/* 同一房间内数值统一略缩小（仅在数值极长或 3+ 列套间时降一档） */
+.art-room-metrics--fs-tight .art-metric-row--roomgrid .art-metric-num-unit,
+.art-room-metrics--fs-tight .art-metric-g-val .art-metric-inline.art-metric-val .art-metric-num-unit {
+  font-size: 24rpx;
+}
+
+.art-room-metrics--fs-tight .art-metric-row--roomgrid .art-metric-lab {
+  font-size: 24rpx;
+}
+
+.art-room-metrics--fs-tight .art-metric-row--roomgrid .art-metric-trend--cell {
+  font-size: 22rpx;
+}
+
+.art-metric-row {
+  padding: 8rpx 0;
+  border-bottom: 1rpx solid #f4f4f5;
+}
+
+.art-metric-row:not(.art-metric-row--roomgrid) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.art-metric-row:last-child {
+  border-bottom: none;
+}
+
+.art-metric-lab {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 26rpx;
+  line-height: 1.25;
+  color: #52525b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.art-metric-inline-wrap {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 8rpx;
+  margin: 0;
+  padding: 0;
+}
+
+.art-metric-inline-wrap .art-metric-inline {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.art-metric-inline-wrap .art-metric-num-unit {
+  text-align: center;
+}
+
+.art-metric-trend {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  font-size: 28rpx;
+  font-weight: 900;
+  color: #71717a;
+  width: 36rpx;
+  min-width: 36rpx;
+  min-height: 36rpx;
+  text-align: center;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-right: 0;
+  letter-spacing: 0;
+  -webkit-text-stroke: 0.45rpx currentColor;
+  text-shadow: 0 0 1rpx rgba(0, 0, 0, 0.12);
+}
+
+.art-metric-high {
+  font-weight: 800;
+  color: #991b1b;
+}
+
+.art-metric-low {
+  font-weight: 800;
+  color: #1e40af;
+}
+
+.art-metric-ok {
+  font-weight: 600;
+  color: #15803d;
+}
+
+/* 越限：仅数字红色/蓝色自发光，不用背景框（用户要求）；三层阴影 + 略强透明度便于真机辨认 */
+@keyframes art-metric-high-glow {
+  0%,
+  100% {
+    text-shadow:
+      0 0 10rpx rgba(239, 68, 68, 0.95),
+      0 0 22rpx rgba(220, 38, 38, 0.65),
+      0 0 36rpx rgba(248, 113, 113, 0.42);
+  }
+  50% {
+    text-shadow:
+      0 0 16rpx rgba(254, 202, 202, 0.98),
+      0 0 30rpx rgba(239, 68, 68, 0.78),
+      0 0 48rpx rgba(220, 38, 38, 0.52);
+  }
+}
+
+@keyframes art-metric-low-glow {
+  0%,
+  100% {
+    text-shadow:
+      0 0 10rpx rgba(96, 165, 250, 0.88),
+      0 0 22rpx rgba(37, 99, 235, 0.58),
+      0 0 36rpx rgba(59, 130, 246, 0.4);
+  }
+  50% {
+    text-shadow:
+      0 0 16rpx rgba(191, 219, 254, 0.95),
+      0 0 30rpx rgba(59, 130, 246, 0.72),
+      0 0 46rpx rgba(37, 99, 235, 0.5);
+  }
+}
+
+.art-metric-inline.art-metric-high .art-metric-num-unit,
+.art-metric-inline.art-metric-low .art-metric-num-unit,
+.art-metric-inline.art-metric-ok .art-metric-num-unit {
+  color: inherit;
+}
+
+.art-metric-inline.art-metric-high .art-metric-num-unit {
+  animation: art-metric-high-glow 1.15s ease-in-out infinite;
+}
+
+.art-metric-inline.art-metric-low .art-metric-num-unit {
+  animation: art-metric-low-glow 1.15s ease-in-out infinite;
+}
+
+.art-archive-chart-block {
+  margin-top: 4rpx;
+}
+
+.art-archive-hint {
+  display: block;
+  font-size: 20rpx;
+  color: #94a3b8;
+  line-height: 1.35;
+  margin-bottom: 8rpx;
+}
+
+.art-archive-gen-hint {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.art-archive-gen-err {
+  color: #b45309;
+}
+
+.art-archive-chart-img {
+  display: block;
+  width: 100%;
+  margin-top: 4rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid #e2e8f0;
+  box-sizing: border-box;
+  background: #fafafa;
+}
+
+.art-archive-offscreen-canvas {
+  position: fixed;
+  left: -2000px;
+  top: 0;
+  width: 342px;
+  height: 176px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.art-md-limit-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4rpx 8rpx;
+}
+
+.art-md-limit-val-tap {
+  font-family: ui-monospace, monospace;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #0284c7;
+  text-decoration: underline;
+  text-underline-offset: 2rpx;
+}
+
+.art-md-setpoint-hint {
+  display: block;
+  font-size: 20rpx;
+  color: #64748b;
+  margin-bottom: 8rpx;
+  line-height: 1.35;
+}
+
+.art-md-param-name-reminder {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  margin-bottom: 12rpx;
+  padding: 12rpx 14rpx;
+  background: #f8fafc;
+  border-radius: 8rpx;
+  border: 1rpx solid #e2e8f0;
+}
+
+.art-md-param-name-reminder-map {
+  font-size: 24rpx;
+  color: #0f172a;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-all;
+}
+
+.art-md-param-name-reminder-map--sm {
+  font-size: 22rpx;
+}
+
+.art-md-param-name-reminder-map--xs {
+  font-size: 20rpx;
+}
+
+.art-md-param-name-reminder-map--xxs {
+  font-size: 18rpx;
+  line-height: 1.38;
+}
+
+.art-md-param-name-reminder-lab {
+  font-size: 24rpx;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.art-md-param-name-reminder-vn {
+  font-size: 22rpx;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.art-md-setpoint-val-wrap {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.art-md-setpoint-val-tap {
+  color: #0284c7;
+  text-decoration: underline;
+  text-underline-offset: 2rpx;
+}
+
+.art-md-inline-edit--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.art-md-input-setpoint {
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.art-md-inline-edit-btns {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+/* 与开关确认条一致：最近拉取 + 圆刷新；为右上角关闭钮留白 */
+.art-setpoint-sheet-toolbar {
+  margin-bottom: 12rpx;
+}
+
+.art-setpoint-sheet-head {
+  margin-bottom: 16rpx;
+}
+
+.art-setpoint-sheet-line1 {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #18181b;
+  line-height: 1.35;
+}
+
+.art-setpoint-sheet-line2 {
+  margin-top: 10rpx;
+}
+
+.art-setpoint-sheet-param-hint {
+  font-size: 24rpx;
+  color: #475569;
+  line-height: 1.45;
+  margin-bottom: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.art-setpoint-sheet-param-hint--sm {
+  font-size: 22rpx;
+}
+
+.art-setpoint-sheet-param-hint--xs {
+  font-size: 20rpx;
+}
+
+.art-setpoint-sheet-param-hint--xxs {
+  font-size: 18rpx;
+  line-height: 1.38;
+}
+
+.art-setpoint-sheet-input {
+  width: 100%;
+  max-width: none;
+  margin-bottom: 20rpx;
+  box-sizing: border-box;
+}
+
+.art-setpoint-sheet-btns {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 16rpx;
+}
+
+/* WinCC 开关确认：最近拉取 + 右上刷新该点 */
+.art-switch-confirm-toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+  padding-right: 48rpx;
+  box-sizing: border-box;
+}
+
+.art-switch-confirm-fetch {
+  flex: 1;
+  min-width: 0;
+  font-size: 22rpx;
+  color: #71717a;
+  line-height: 1.45;
+}
+
+/* 小号蓝色刷新：小于弹层关闭钮、无边框 */
+.art-switch-confirm-refresh-icon {
+  flex-shrink: 0;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.art-switch-confirm-refresh-icon--hover {
+  opacity: 0.85;
+}
+
+.art-switch-confirm-refresh-icon--busy {
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.art-switch-confirm-refresh-glyph {
+  font-size: 26rpx;
+  line-height: 1;
+  color: #2563eb;
+  transform: scaleX(-1);
+}
+
+.art-switch-confirm-refresh-spinner {
+  width: 22rpx;
+  height: 22rpx;
+  border-radius: 50%;
+  border: 2rpx solid rgba(37, 99, 235, 0.22);
+  border-top-color: #2563eb;
+  box-sizing: border-box;
+  animation: art-switch-confirm-spin 0.7s linear infinite;
+}
+
+@keyframes art-switch-confirm-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.art-switch-confirm-main {
+  font-size: 28rpx;
+  color: #18181b;
+  line-height: 1.5;
+  margin-bottom: 28rpx;
+}
+
+.art-switch-confirm-btns {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 16rpx;
+}
+
+.art-md-inline-edit {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8rpx;
+  margin: 6rpx 0 10rpx;
+  padding: 8rpx 10rpx;
+  border-radius: 8rpx;
+  background: #fafafa;
+  border: 1rpx solid #e4e4e7;
+  box-sizing: border-box;
+}
+
+.art-md-input-compact {
+  flex: 1;
+  min-width: 120rpx;
+  max-width: 240rpx;
+  height: 52rpx;
+  padding: 0 10rpx;
+  border: 1rpx solid #d4d4d8;
+  border-radius: 6rpx;
+  font-size: 22rpx;
+  font-family: ui-monospace, monospace;
+  box-sizing: border-box;
+}
+
+.art-md-btn-inline {
+  margin: 0 !important;
+}
+
+.art-metric-val,
+.art-metric-inline.art-metric-val {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  font-weight: 700;
+  font-family: "SF Mono", "Menlo", "Roboto Mono", "Consolas", "Noto Sans Mono CJK SC", ui-monospace, monospace;
+  letter-spacing: -0.04em;
+  color: #18181b;
+  line-height: 1.2;
+}
+
+/* 合并展示：数字与单位同字号、继承报警色 */
+.art-metric-num-unit {
+  display: inline-block;
+  font-size: 26rpx;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Menlo", "Roboto Mono", "Consolas", "Noto Sans Mono CJK SC", ui-monospace, monospace;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.art-metric-inline.art-metric-val .art-metric-num-unit {
+  font-size: 26rpx;
+}
+
+/* 超全局报警限：数字固定深红可读，仅光晕呼吸（与 Web telemetry-alarm-breathe 一致） */
+@keyframes art-metric-oor-breathe {
+  0%,
+  100% {
+    color: #b91c1c;
+    text-shadow:
+      0 0 8rpx rgba(239, 68, 68, 0.72),
+      0 0 18rpx rgba(220, 38, 38, 0.48),
+      0 0 30rpx rgba(248, 113, 113, 0.32);
+  }
+  50% {
+    color: #b91c1c;
+    text-shadow:
+      0 0 14rpx rgba(254, 202, 202, 0.88),
+      0 0 26rpx rgba(239, 68, 68, 0.62),
+      0 0 42rpx rgba(220, 38, 38, 0.42);
+  }
+}
+
+.art-metric-val.art-metric-oor .art-metric-num-unit,
+.art-ts-val.art-metric-oor .art-metric-num-unit,
+.art-suite-inline-metric.art-metric-oor .art-metric-num-unit,
+.art-metric-inline.art-metric-val.art-metric-oor .art-metric-num-unit,
+.art-metric-inline.art-ts-val.art-metric-oor .art-metric-num-unit,
+.art-metric-inline.art-suite-inline-metric.art-metric-oor .art-metric-num-unit {
+  font-weight: 800;
+  color: #b91c1c;
+  animation: art-metric-oor-breathe 1.15s ease-in-out infinite;
+}
+
+/* 详情入口已改为点击标签名，不再使用独立按钮 */
+
+.art-solos {
+  width: 100%;
+}
+
+.art-solo-part {
+  margin-bottom: 14rpx;
+  padding: 10rpx 12rpx;
+  border-radius: 14rpx;
+  border: 1rpx dashed #d4d4d8;
+  background: rgba(250, 250, 250, 0.9);
+}
+
+.art-solo-zone-shell {
+  border-left: 8rpx solid #0284c7;
+  padding-left: 14rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 2rpx 10rpx rgba(15, 23, 42, 0.06);
+}
+
+.art-solo-zone-tone-a {
+  background: rgba(224, 242, 254, 0.55);
+  border-color: #bae6fd;
+}
+
+.art-solo-zone-tone-b {
+  background: rgba(241, 245, 249, 0.95);
+  border-color: #cbd5e1;
+  border-left-color: #0ea5e9;
+}
+
+.art-solo-zone-banner {
+  margin-bottom: 10rpx;
+  padding-bottom: 8rpx;
+  border-bottom: 1rpx solid rgba(148, 163, 184, 0.45);
+}
+
+.art-solo-zone-title {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.02em;
+}
+
+.art-solo-zone-sub {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: #64748b;
+  line-height: 1.3;
+}
+
+.art-solo-label {
+  display: block;
+  margin-bottom: 8rpx;
+  font-size: 20rpx;
+  font-weight: 600;
+  color: #71717a;
+  line-height: 1.25;
+}
+
+.art-solo-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+}
+
+.art-solo-row-single {
+  grid-template-columns: 1fr;
+}
+
+.art-solo-row:last-child {
+  margin-bottom: 0;
+}
+
+.art-solo-cell {
+  min-width: 0;
+}
+
+/* 测点详情面板（对齐 Web MetricDetailFields） */
+.art-metric-detail-scroll {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.art-metric-detail-inner {
+  padding: 28rpx 20rpx 32rpx;
+  padding-right: 44rpx;
+  box-sizing: border-box;
+}
+
+.art-metric-detail-hd {
+  margin-bottom: 20rpx;
+  padding-bottom: 12rpx;
+  border-bottom: 1rpx solid #e4e4e7;
+}
+
+.art-metric-detail-title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #18181b;
+  letter-spacing: 0.02em;
+}
+
+.art-metric-detail-sub {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: #71717a;
+}
+
+.art-md-block {
+  margin-bottom: 22rpx;
+}
+
+.art-md-block:last-child {
+  margin-bottom: 0;
+}
+
+.art-md-dt {
+  display: block;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: #71717a;
+  margin-bottom: 6rpx;
+}
+
+.art-md-dt-err {
+  color: #e11d48;
+}
+
+.art-md-dd {
+  display: block;
+  font-size: 24rpx;
+  line-height: 1.45;
+  color: #27272a;
+  word-break: break-word;
+}
+
+.art-md-dd-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.art-md-line {
+  font-size: 24rpx;
+  line-height: 1.45;
+  color: #27272a;
+  word-break: break-word;
+}
+
+.art-md-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 22rpx;
+  color: #18181b;
+}
+
+.art-md-dd .art-metric-inline.art-md-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 26rpx;
+  color: #18181b;
+}
+
+.art-md-num-unit {
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.art-metric-inline.art-md-mono.art-metric-high .art-md-num-unit,
+.art-metric-inline.art-md-mono.art-metric-low .art-md-num-unit,
+.art-metric-inline.art-md-mono.art-metric-ok .art-md-num-unit {
+  color: inherit;
+}
+
+.art-metric-inline.art-md-mono.art-metric-high .art-md-num-unit {
+  animation: art-metric-high-glow 1.15s ease-in-out infinite;
+}
+
+.art-metric-inline.art-md-mono.art-metric-low .art-md-num-unit {
+  animation: art-metric-low-glow 1.15s ease-in-out infinite;
+}
+
+.art-metric-inline.art-md-mono.art-metric-oor .art-md-num-unit {
+  font-weight: 800;
+  color: #b91c1c;
+  animation: art-metric-oor-breathe 1.15s ease-in-out infinite;
+}
+
+.art-md-mono-muted {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 22rpx;
+  line-height: 1.4;
+  color: #52525c;
+  word-break: break-all;
+}
+
+.art-md-dd-err {
+  color: #9f1239;
+}

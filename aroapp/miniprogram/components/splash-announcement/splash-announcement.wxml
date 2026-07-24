@@ -1,0 +1,34 @@
+<van-popup
+  show="{{ visible }}"
+  position="center"
+  round
+  bind:close="onClose"
+  custom-class="splash-popup"
+  custom-style="width:92%;max-width:680rpx;max-height:76vh;padding:0;overflow:hidden;"
+>
+  <view class="splash-announcement">
+    <view class="splash-announcement__head">
+      <view class="splash-announcement__head-main">
+        <view class="splash-announcement__badge">版本更新</view>
+        <text class="splash-announcement__title">{{ title }}</text>
+        <view wx:if="{{ versionCode || publishedAtText }}" class="splash-announcement__meta">
+          <text wx:if="{{ versionCode }}" class="splash-announcement__ver">v{{ versionCode }}</text>
+          <text wx:if="{{ versionCode && publishedAtText }}" class="splash-announcement__dot">·</text>
+          <text wx:if="{{ publishedAtText }}">{{ publishedAtText }}</text>
+        </view>
+      </view>
+      <view class="splash-announcement__close" hover-class="splash-announcement__close--hover" bindtap="onClose" aria-role="button" aria-label="关闭">
+        <text class="splash-announcement__close-icon">×</text>
+      </view>
+    </view>
+
+    <scroll-view scroll-y class="splash-announcement__body" enhanced show-scrollbar="{{ false }}">
+      <rich-text wx:if="{{ contentHtml }}" nodes="{{ contentHtml }}" type="html" />
+      <text wx:else class="splash-announcement__empty">暂无更新说明</text>
+    </scroll-view>
+
+    <view class="splash-announcement__foot">
+      <view class="splash-announcement__btn" hover-class="splash-announcement__btn--hover" bindtap="onClose">知道了</view>
+    </view>
+  </view>
+</van-popup>

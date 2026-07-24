@@ -1,0 +1,58 @@
+<view class="settings-page">
+  <view class="settings-body">
+    <van-cell-group inset="{{ true }}" border="{{ false }}" custom-class="settings-hub-group">
+      <van-cell
+        wx:if="{{ hasToken }}"
+        title="房间 Tab 红点与关注"
+        label="选择校区/楼层，控制「房间」角标提醒范围"
+        is-link
+        bind:click="goRoomWatch"
+      />
+      <van-cell
+        wx:else
+        title="房间 Tab 红点与关注"
+        label="请先绑定校内账号后再配置"
+        border="{{ false }}"
+      />
+    </van-cell-group>
+
+    <van-cell-group wx:if="{{ showEnvSwitcher }}" inset="{{ true }}" border="{{ false }}" custom-class="settings-env-group">
+      <van-cell
+        title="后端环境"
+        label="当前：{{ currentEnvLabel }}（{{ envVersionLabel }} 版）"
+        value="{{ currentEnvLabel }}"
+        is-link
+        bind:click="openEnvSheet"
+      />
+    </van-cell-group>
+
+    <van-cell-group wx:if="{{ canAnnouncementAdmin || canReleaseAdmin }}" inset="{{ true }}" border="{{ false }}" custom-class="settings-admin-group">
+      <van-cell
+        wx:if="{{ canAnnouncementAdmin }}"
+        title="公告管理"
+        label="管理员及以上：小程序/Web 首页公告栏"
+        is-link
+        bind:click="goAnnouncementAdmin"
+      />
+      <van-cell
+        wx:if="{{ canReleaseAdmin }}"
+        title="版本公告管理"
+        label="平台所有者：首屏与版本记录"
+        is-link
+        bind:click="goReleaseNotesAdmin"
+      />
+    </van-cell-group>
+
+  </view>
+
+  <van-action-sheet
+    show="{{ envSheetVisible }}"
+    title="选择后端环境"
+    description="切换后需完全关闭小程序再打开"
+    actions="{{ envActions }}"
+    cancel-text="取消"
+    bind:select="onEnvSelect"
+    bind:close="closeEnvSheet"
+    bind:cancel="closeEnvSheet"
+  />
+</view>

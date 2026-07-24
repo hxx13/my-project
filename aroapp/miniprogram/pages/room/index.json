@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "房间",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}

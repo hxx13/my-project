@@ -196,7 +196,35 @@ public class AuthController {
                     "）。请联系管理员将您的信息录入人员库。");
         }
 
-        // ③ Look up sys_user (no auto-create)
+        // ③ If same person exists in both student & staff DBs, prefer staff view
+        //    First check by name+jobNumber, then by name alone (staff may have different jobNumber)
+        java.util.List<AroPersonnel> byNameAndJob = aroPersonnelMapper.findAllByNameAndJobNumber(casName, casAccount);
+        if (byNameAndJob.size() > 1) {
+            AroPersonnel best = pickHighestRole(byNameAndJob);
+            if (!best.getId().equals(matched.getId())) {
+                log.info("CAS多记录匹配(name+工号)：定向到教职工视角 account={} name={} from={} to={}",
+                        casAccount, casName, matched.getId(), best.getId());
+                matched = best;
+            }
+        }
+
+        // ③b Also check sys_user.display_nickname for staff account with same display name
+        //     Staff accounts may only exist in sys_user (not aro_personnel)
+        User staffByNickname = userMapper.findByDisplayNickname(casName);
+        if (staffByNickname != null && !staffByNickname.getId().equals(matched.getId())) {
+            User currUser = userMapper.findById(matched.getId());
+            int staffLevel = (staffByNickname.getRole() != null) ? staffByNickname.getRole().getLevel() : 0;
+            int currLevel = (currUser != null && currUser.getRole() != null) ? currUser.getRole().getLevel() : 0;
+            if (staffLevel >= currLevel) {
+                log.info("CAS display_nickname匹配到教职工视角 account={} name={} from={}(level={} id={}) to={}(level={} id={})",
+                        casAccount, casName, matched.getId(), currLevel, matched.getId(),
+                        staffByNickname.getId(), staffLevel);
+                // Direct login as staff sys_user (skip aro_personnel matching)
+                return loginAsUser(staffByNickname);
+            }
+        }
+
+        // ④ Look up sys_user (no auto-create)
         String matchedUserId = matched.getId();
         User user = userMapper.findById(matchedUserId);
         if (user == null) {
@@ -205,22 +233,47 @@ public class AuthController {
                     "），但系统账号尚未开通。请联系管理员开通后再试。");
         }
 
-        // ④ R12: Check account status
+        // ⑤ Check account status
         if (isDisabled(user)) {
             return Result.fail(403, "账号已被禁用，请联系管理员");
         }
 
-        // ⑤ R8: Ensure role is at least STAFF + persist
+        // ⑥ Ensure role is at least STAFF + persist
         if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
             user.setRole(RoleEnum.STAFF);
             userMapper.updateRoleById(user.getId(), RoleEnum.STAFF.getCode());
         }
 
-        // ⑥ R25: Set auth profile to CAS_LOGIN (DB + in-memory)
+        // ⑦ Set auth profile to CAS_LOGIN (DB + in-memory)
         userMapper.updateAuthProfileById(user.getId(), AuthProfileConstants.CAS_LOGIN);
         user.setAuthProfile(AuthProfileConstants.CAS_LOGIN);
 
         return authService.generateAuthResult(user);
+    }
+
+    /** Direct login as a specific sys_user (skip aro_personnel matching) */
+    private Result<?> loginAsUser(User user) {
+        if (isDisabled(user)) {
+            return Result.fail(403, "账号已被禁用，请联系管理员");
+        }
+        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
+            user.setRole(RoleEnum.STAFF);
+            userMapper.updateRoleById(user.getId(), RoleEnum.STAFF.getCode());
+        }
+        userMapper.updateAuthProfileById(user.getId(), AuthProfileConstants.CAS_LOGIN);
+        user.setAuthProfile(AuthProfileConstants.CAS_LOGIN);
+        return authService.generateAuthResult(user);
+    }
+
+    /** Pick the personnel record with the highest sys_user role level */
+    private AroPersonnel pickHighestRole(java.util.List<AroPersonnel> candidates) {
+        return candidates.stream().max((a, b) -> {
+            User ua = userMapper.findById(a.getId());
+            User ub = userMapper.findById(b.getId());
+            int la = (ua != null && ua.getRole() != null) ? ua.getRole().getLevel() : 0;
+            int lb = (ub != null && ub.getRole() != null) ? ub.getRole().getLevel() : 0;
+            return Integer.compare(la, lb);
+        }).orElse(candidates.get(0));
     }
 
     @PostMapping("/register/staff")

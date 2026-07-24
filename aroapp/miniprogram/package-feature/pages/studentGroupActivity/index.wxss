@@ -1,0 +1,581 @@
+/* 课题组活跃度 — 与首页学生视角统一：中国红 + 奶油白卡片 */
+page {
+  background: #eef0f6;
+}
+
+.ga-page {
+  min-height: 100vh;
+  padding-bottom: calc(48rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+/* —— 顶栏 —— */
+.ga-top {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(238, 240, 246, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1rpx solid rgba(172, 23, 54, 0.06);
+}
+
+.ga-hero {
+  padding: 24rpx 28rpx 12rpx;
+}
+
+.ga-hero-main {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+
+.ga-hero-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1f2937;
+  line-height: 1.2;
+}
+
+.ga-hero-group {
+  font-size: 24rpx;
+  color: #64748b;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ga-hero-range {
+  display: block;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.ga-presets-scroll {
+  white-space: nowrap;
+  padding: 8rpx 20rpx 20rpx;
+}
+
+.ga-presets-row {
+  display: inline-flex;
+  gap: 12rpx;
+}
+
+.ga-preset {
+  flex-shrink: 0;
+  padding: 12rpx 28rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 999rpx;
+  border: 1rpx solid rgba(30, 55, 90, 0.08);
+  transition: transform 0.08s ease, opacity 0.08s ease;
+}
+
+.ga-preset--on {
+  color: #fff;
+  background: linear-gradient(135deg, #c41e3a 0%, #ac1736 100%);
+  border-color: transparent;
+  box-shadow: 0 6rpx 20rpx rgba(172, 23, 54, 0.22);
+}
+
+.ga-preset--hover {
+  opacity: 0.88;
+  transform: scale(0.98);
+}
+
+/* —— 主体 —— */
+.ga-body {
+  padding: 8rpx 24rpx 0;
+}
+
+/* KPI 2×2 */
+.ga-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.ga-kpi-card {
+  box-sizing: border-box;
+  padding: 24rpx 22rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1rpx solid rgba(30, 55, 90, 0.06);
+  box-shadow: 0 8rpx 28rpx rgba(15, 23, 42, 0.04);
+}
+
+.ga-kpi-label {
+  display: block;
+  font-size: 22rpx;
+  color: #64748b;
+  line-height: 1.35;
+  margin-bottom: 10rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.ga-kpi-value {
+  display: block;
+  font-size: 44rpx;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ga-kpi-card--violet .ga-kpi-value { color: #7c3aed; }
+.ga-kpi-card--emerald .ga-kpi-value { color: #059669; }
+.ga-kpi-card--blue .ga-kpi-value { color: #2563eb; }
+.ga-kpi-card--amber .ga-kpi-value { color: #d97706; }
+
+/* 面板区块 */
+.ga-panel {
+  margin-bottom: 20rpx;
+  padding: 24rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1rpx solid rgba(30, 55, 90, 0.06);
+  box-shadow: 0 8rpx 28rpx rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.ga-panel--last {
+  margin-bottom: 0;
+}
+
+.ga-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid rgba(30, 55, 90, 0.06);
+}
+
+.ga-panel-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.ga-panel-meta {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+/* 排序胶囊 */
+.ga-sort-scroll {
+  white-space: nowrap;
+  margin: 0 -8rpx 20rpx;
+  padding: 0 8rpx;
+}
+
+.ga-sort-row {
+  display: inline-flex;
+  gap: 10rpx;
+}
+
+.ga-sort-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 10rpx 22rpx;
+  font-size: 22rpx;
+  color: #64748b;
+  background: #f4f5f7;
+  border-radius: 999rpx;
+  border: 1rpx solid rgba(30, 55, 90, 0.06);
+  transition: transform 0.08s ease;
+}
+
+.ga-sort-chip--on {
+  color: #ac1736;
+  background: rgba(172, 23, 54, 0.08);
+  border-color: rgba(172, 23, 54, 0.18);
+  font-weight: 600;
+}
+
+.ga-sort-arrow {
+  font-size: 20rpx;
+}
+
+.ga-sort-chip--hover {
+  opacity: 0.86;
+}
+
+/* 成员卡片 */
+.ga-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.ga-member-card {
+  padding: 20rpx 22rpx;
+  border-radius: 20rpx;
+  background: #fafbfc;
+  border: 1rpx solid rgba(30, 55, 90, 0.05);
+  transition: background 0.08s ease;
+}
+
+.ga-member-card--hover {
+  background: rgba(172, 23, 54, 0.03);
+}
+
+.ga-member-head {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 18rpx;
+}
+
+.ga-member-avatar {
+  flex-shrink: 0;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(172, 23, 54, 0.12), rgba(172, 23, 54, 0.06));
+  color: #ac1736;
+  font-size: 26rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ga-member-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.ga-member-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ga-member-level {
+  font-size: 22rpx;
+  color: #7c3aed;
+  font-weight: 500;
+}
+
+.ga-member-active {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  font-weight: 500;
+}
+
+.ga-member-active--fresh { color: #059669; }
+.ga-member-active--warm { color: #d97706; }
+.ga-member-active--hot { color: #ea580c; }
+.ga-member-active--cold { color: #dc2626; }
+.ga-member-active--none { color: #94a3b8; }
+
+.ga-member-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8rpx;
+}
+
+.ga-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+  padding: 12rpx 8rpx;
+  border-radius: 14rpx;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.ga-stat-value {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+}
+
+.ga-stat-label {
+  font-size: 20rpx;
+  color: #94a3b8;
+}
+
+.ga-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24rpx 0 8rpx;
+  font-size: 24rpx;
+  color: #ac1736;
+  font-weight: 500;
+}
+
+.ga-load-more--hover {
+  opacity: 0.75;
+}
+
+/* 热力图 */
+.ga-heatmap-wrap {
+  margin: 0 -8rpx;
+}
+
+.ga-heatmap-scroll {
+  width: 100%;
+}
+
+.ga-heatmap-wide {
+  min-width: 1100rpx;
+  padding: 0 8rpx 12rpx;
+}
+
+.ga-heatmap-row {
+  display: flex;
+  align-items: center;
+  height: 44rpx;
+}
+
+.ga-heatmap-header {
+  height: 36rpx;
+  margin-bottom: 4rpx;
+}
+
+.ga-heatmap-day-label {
+  flex-shrink: 0;
+  width: 68rpx;
+  font-size: 20rpx;
+  color: #64748b;
+  text-align: right;
+  padding-right: 10rpx;
+}
+
+.ga-heatmap-hour-label {
+  flex-shrink: 0;
+  width: 42rpx;
+  font-size: 18rpx;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.ga-heatmap-cell {
+  flex-shrink: 0;
+  width: 42rpx;
+  height: 40rpx;
+  box-sizing: border-box;
+  padding: 2rpx;
+}
+
+.ga-heatmap-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 6rpx;
+  background: #ac1736;
+}
+
+.ga-heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10rpx;
+  padding: 12rpx 8rpx 0;
+}
+
+.ga-legend-label {
+  font-size: 20rpx;
+  color: #94a3b8;
+}
+
+.ga-legend-bar {
+  display: flex;
+  gap: 4rpx;
+}
+
+.ga-legend-step {
+  width: 28rpx;
+  height: 16rpx;
+  border-radius: 4rpx;
+  background: #ac1736;
+}
+
+/* 房间排行 */
+.ga-room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.ga-room-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+}
+
+.ga-room-rank {
+  flex-shrink: 0;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 12rpx;
+  background: rgba(172, 23, 54, 0.08);
+  color: #ac1736;
+  font-size: 22rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ga-room-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ga-room-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 10rpx;
+}
+
+.ga-room-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  font-weight: 500;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ga-room-count {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.ga-room-bar-bg {
+  height: 12rpx;
+  background: #f1f5f9;
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+
+.ga-room-bar-fill {
+  height: 100%;
+  border-radius: 999rpx;
+  background: linear-gradient(90deg, #ac1736, #d4536a);
+  min-width: 8rpx;
+  transition: width 0.3s ease;
+}
+
+/* 空态 / 加载 / 错误 */
+.ga-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  padding: 56rpx 24rpx;
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+
+.ga-empty--compact {
+  padding: 40rpx 24rpx;
+}
+
+.ga-panel-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  padding: 48rpx 24rpx;
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+
+.ga-state-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 200rpx;
+  gap: 24rpx;
+}
+
+.ga-state-text {
+  font-size: 28rpx;
+  color: #64748b;
+  text-align: center;
+  padding: 0 48rpx;
+}
+
+.ga-retry-btn {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #c41e3a, #ac1736);
+  padding: 16rpx 48rpx;
+  border-radius: 999rpx;
+  box-shadow: 0 6rpx 20rpx rgba(172, 23, 54, 0.22);
+}
+
+.ga-retry-btn--hover {
+  opacity: 0.88;
+}
+
+/* Skeleton */
+@keyframes ga-shimmer {
+  0% { opacity: 0.45; }
+  50% { opacity: 0.85; }
+  100% { opacity: 0.45; }
+}
+
+.ga-skeleton-line {
+  border-radius: 8rpx;
+  background: #e8eaef;
+  animation: ga-shimmer 1.2s ease-in-out infinite;
+}
+
+.ga-skeleton-line--sm { height: 24rpx; width: 60%; }
+.ga-skeleton-line--md { height: 32rpx; width: 45%; margin-bottom: 16rpx; }
+.ga-skeleton-line--lg { height: 48rpx; width: 40%; }
+
+.ga-kpi-card--skeleton {
+  min-height: 120rpx;
+}
+
+.ga-panel--skeleton {
+  padding: 24rpx;
+}
+
+.ga-member-card--skeleton {
+  padding: 20rpx;
+  border-radius: 20rpx;
+  background: #fafbfc;
+  margin-bottom: 16rpx;
+}
+
+.ga-skeleton-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12rpx;
+}

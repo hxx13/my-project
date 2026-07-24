@@ -1,0 +1,219 @@
+.access-records-page.page {
+  min-height: 100vh;
+  background: #f5f5f5;
+  padding: 20rpx 24rpx;
+  padding-bottom: calc(48rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+/* 加载中 */
+.loading-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 0;
+}
+.loading-text {
+  margin-top: 20rpx;
+  font-size: 28rpx;
+  color: #999;
+}
+
+/* 错误 */
+.error-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 0;
+}
+.error-text {
+  font-size: 28rpx;
+  color: #999;
+  margin-bottom: 30rpx;
+}
+.retry-btn {
+  padding: 16rpx 48rpx;
+  border-radius: 40rpx;
+  background: #ac1736;
+}
+.retry-btn text {
+  font-size: 28rpx;
+  color: #fff;
+}
+
+/* 标题 */
+.page-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 24rpx;
+  padding-left: 8rpx;
+}
+
+/* 日期筛选栏 */
+.date-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 30rpx;
+  gap: 12rpx;
+}
+.date-picker-box {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 16rpx 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+.date-text {
+  font-size: 26rpx;
+  color: #333;
+  margin-left: 10rpx;
+  min-width: 140rpx;
+  text-align: center;
+}
+.date-separator {
+  font-size: 26rpx;
+  color: #999;
+  margin: 0 4rpx;
+}
+
+/* 空态 */
+.empty-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 0;
+}
+.empty-text {
+  font-size: 28rpx;
+  color: #999;
+}
+
+/* 滚动列表 */
+.record-scroll {
+  height: calc(100vh - 320rpx);
+}
+
+/* 日期分组 */
+.date-group {
+  margin-bottom: 20rpx;
+}
+
+/* 日期标题 */
+.date-header {
+  display: flex;
+  align-items: center;
+  padding: 12rpx 0;
+  margin-bottom: 12rpx;
+}
+.date-header-line {
+  flex: 1;
+  height: 2rpx;
+  background: #d9d9d9;
+}
+.date-header-text {
+  font-size: 26rpx;
+  color: #666;
+  margin: 0 20rpx;
+  white-space: nowrap;
+}
+
+/* 记录卡片 */
+.record-card {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 10rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+
+/* 左侧图标圆圈 */
+.record-icon {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+}
+.record-icon text {
+  font-size: 24rpx;
+  color: #fff;
+  font-weight: 600;
+}
+.icon-enter {
+  background: #52c41a;
+}
+.icon-exit {
+  background: #faad14;
+}
+
+/* 中间信息 */
+.record-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.record-type {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.record-time {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 4rpx;
+}
+.record-room {
+  font-size: 24rpx;
+  color: #666;
+  margin-top: 2rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 右侧日期 */
+.record-date-right {
+  font-size: 24rpx;
+  color: #bbb;
+  flex-shrink: 0;
+  margin-left: 12rpx;
+}
+
+/* 分页栏 */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28rpx 0 16rpx;
+  gap: 28rpx;
+}
+.page-btn {
+  padding: 14rpx 32rpx;
+  border-radius: 40rpx;
+  background: #ac1736;
+}
+.page-btn text {
+  font-size: 26rpx;
+  color: #fff;
+}
+.page-btn-disabled {
+  background: #e0e0e0;
+}
+.page-btn-disabled text {
+  color: #aaa;
+}
+.page-info {
+  font-size: 26rpx;
+  color: #666;
+}

@@ -1,0 +1,124 @@
+.splash-popup {
+  overflow: hidden;
+}
+
+.splash-announcement {
+  display: flex;
+  flex-direction: column;
+  max-height: 76vh;
+  background: #fff;
+}
+
+.splash-announcement__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  padding: 28rpx 24rpx 20rpx;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+
+.splash-announcement__head-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.splash-announcement__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 600;
+  color: #ac1736;
+  background: rgba(172, 23, 54, 0.08);
+  margin-bottom: 12rpx;
+}
+
+.splash-announcement__title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #323233;
+  line-height: 1.35;
+}
+
+.splash-announcement__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8rpx;
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.splash-announcement__ver {
+  color: #646566;
+  font-weight: 500;
+}
+
+.splash-announcement__dot {
+  color: #dcdee0;
+}
+
+.splash-announcement__close {
+  flex-shrink: 0;
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7f8fa;
+}
+
+.splash-announcement__close--hover {
+  background: #eceef0;
+}
+
+.splash-announcement__close-icon {
+  font-size: 40rpx;
+  line-height: 1;
+  color: #646566;
+  margin-top: -4rpx;
+}
+
+.splash-announcement__body {
+  flex: 1;
+  min-height: 0;
+  max-height: 46vh;
+  padding: 20rpx 24rpx 8rpx;
+  box-sizing: border-box;
+  font-size: 30rpx;
+  color: #323233;
+  line-height: 1.55;
+}
+
+.splash-announcement__empty {
+  display: block;
+  text-align: center;
+  color: #969799;
+  font-size: 26rpx;
+  padding: 32rpx 0;
+}
+
+.splash-announcement__foot {
+  padding: 16rpx 24rpx calc(20rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #f2f3f5;
+}
+
+.splash-announcement__btn {
+  width: 100%;
+  text-align: center;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #fff;
+  border-radius: 999rpx;
+  padding: 20rpx 24rpx;
+  background: linear-gradient(135deg, #c41e3a, #ac1736);
+  box-shadow: 0 8rpx 20rpx rgba(172, 23, 54, 0.22);
+}
+
+.splash-announcement__btn--hover {
+  opacity: 0.92;
+}

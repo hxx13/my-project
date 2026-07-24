@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "学生审核",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "auto-approve-panel": "../../components/auto-approve-panel/index"
+  }
+}

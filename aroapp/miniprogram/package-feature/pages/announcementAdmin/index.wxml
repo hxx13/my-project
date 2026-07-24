@@ -1,0 +1,36 @@
+<view class="aa-page">
+  <view class="aa-toolbar">
+    <view class="aa-toolbar-text">
+      <text class="aa-toolbar-title">首页公告栏</text>
+      <text class="aa-toolbar-hint">管理小程序与 Web 首页展示的公告</text>
+    </view>
+    <view class="aa-btn aa-btn--primary" bindtap="openCreate">新建公告</view>
+  </view>
+
+  <view wx:if="{{ loading && !rows.length }}" class="aa-loading">
+    <van-loading size="40rpx" color="#ac1736" />
+    <text>加载中…</text>
+  </view>
+
+  <view wx:elif="{{ !rows.length }}" class="aa-empty">
+    <text class="aa-empty-title">暂无公告</text>
+    <text class="aa-empty-hint">点击右上角「新建公告」发布第一条内容</text>
+  </view>
+
+  <view wx:else class="aa-list">
+    <view wx:for="{{ rows }}" wx:key="id" class="aa-card">
+      <view class="aa-card-head">
+        <view class="aa-card-title-wrap">
+          <text class="aa-card-title">{{ item.title }}</text>
+          <text class="aa-status aa-status--{{ item.statusTone }}">{{ item.statusText }}</text>
+        </view>
+        <view class="aa-btn aa-btn--ghost" data-id="{{ item.id }}" bindtap="openEdit">编辑</view>
+      </view>
+      <text wx:if="{{ item.summary }}" class="aa-card-summary">{{ item.summary }}</text>
+      <text class="aa-card-meta">
+        {{ item.publishedAtText || '未发布' }}
+        <text wx:if="{{ item.sortOrder != null }}"> · 排序 {{ item.sortOrder }}</text>
+      </text>
+    </view>
+  </view>
+</view>

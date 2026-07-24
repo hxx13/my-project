@@ -1,0 +1,260 @@
+<view class="page">
+  <view class="hint">维护分类与物品：新建或编辑档案、上下架、封面；卡片内还可入库与改库存。分类默认收起，点分类行展开/收起。与 Web「物品管理」同源。</view>
+  <view class="toolbar-row">
+    <input class="inp-inline" placeholder="搜索管理物资（名称/ID/模式）" value="{{ searchKeyword }}" bindinput="onSearchInput" confirm-type="search" />
+    <view class="icon-tool icon-tool--primary" hover-class="icon-tool-hover" bindtap="openCreate">
+      <van-icon name="plus" size="18px" color="#ffffff" />
+    </view>
+    <input class="inp-cat-short" placeholder="新分类" value="{{ newCatName }}" bindinput="onCatName" confirm-type="done" />
+    <view class="icon-tool" hover-class="icon-tool-hover" bindtap="onAddCat">
+      <van-icon name="label-o" size="18px" color="#646566" />
+    </view>
+  </view>
+
+  <view class="sec-head row-between">
+    <text>分类与物资</text>
+    <text class="tools-hint">按分类收纳</text>
+  </view>
+
+  <view wx:for="{{ categoryBlocks }}" wx:key="id" wx:for-item="blk" class="cat-block">
+    <view class="cat-head" hover-class="cat-head-hover" bindtap="onToggleCategory" data-cid="{{ blk.id }}">
+      <text class="cat-chev">{{ blk.expanded ? '▼' : '▶' }}</text>
+      <view class="cat-head-main">
+        <view class="cat-head-line">
+          <text class="cat-name-part">{{ blk.name }}</text>
+          <text class="cat-meta-inline">#{{ blk.id }} · {{ blk.itemCount }}项</text>
+        </view>
+      </view>
+      <view wx:if="{{ !blk.isOrphan }}" class="cat-head-actions">
+        <view class="cat-quick-add" hover-class="cat-quick-add-hover" catchtap="openCreateInCategory" data-cid="{{ blk.id }}">
+          <van-icon name="plus" size="16px" color="#1989fa" />
+        </view>
+        <view class="cat-del-ico" catchtap="onDeleteCat" data-id="{{ blk.id }}">
+          <van-icon name="delete-o" size="16px" color="#ee0a24" />
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{ blk.expanded }}" class="cat-body">
+      <view wx:if="{{ blk.itemCount === 0 }}" class="hint cat-empty">该分类下暂无物资</view>
+      <view wx:for="{{ blk.items }}" wx:for-item="it" wx:key="id" class="item-card">
+        <view class="item-top">
+          <image wx:if="{{ it.coverAbsUrl }}" class="item-thumb" src="{{ it.coverAbsUrl }}" mode="aspectFill" lazy-load />
+          <view wx:else class="item-thumb item-thumb-ph"><text>{{ it.nameInitial }}</text></view>
+          <view class="item-info">
+            <view class="item-title-row">
+              <text class="item-title">{{ it.name }}</text>
+              <view class="item-actions-inline">
+                <view class="pill-btn pill-btn-primary" data-id="{{ it.id }}" bindtap="openEdit">编辑</view>
+                <view class="pill-btn" data-id="{{ it.id }}" bindtap="toggleInbound">入库</view>
+                <view wx:if="{{ it.stockMode === 'QUANTIFIED' }}" class="pill-btn pill-btn-warn" data-id="{{ it.id }}" bindtap="toggleStock">库存</view>
+                <view class="pill-btn pill-btn-danger" data-id="{{ it.id }}" bindtap="onDeleteItem">删除</view>
+              </view>
+            </view>
+            <view class="item-meta-row">
+              <text wx:if="{{ it.shelfStatus === 'DRAFT' }}" class="badge-off">草稿</text>
+              <text class="item-meta">#{{ it.id }} · {{ it.stockMode }} · 库存 {{ it.stockQty }} · {{ it.workflowType || 'SIMPLE' }}</text>
+            </view>
+            <text wx:if="{{ it.subtitle }}" class="item-subtitle">{{ it.subtitle }}</text>
+          </view>
+        </view>
+
+        <view wx:if="{{ inboundOpenId === it.id }}" class="panel">
+          <view class="panel-tip">{{ it.stockMode === 'FLAG' ? '有无型：确认后标记为有货。' : '数量型：填写本次入库数量。' }}</view>
+          <input wx:if="{{ it.stockMode === 'QUANTIFIED' }}" class="inp-panel" placeholder="数量" value="{{ inboundQtyById[it.id] }}" data-id="{{ it.id }}" bindinput="onInboundQtyFor" type="digit" />
+          <view class="panel-btns">
+            <view
+              class="btn-fill {{ inboundSubmittingId === it.id ? 'btn-fill-disabled' : '' }}"
+              hover-class="{{ inboundSubmittingId === it.id ? '' : 'btn-fill-hover' }}"
+              data-id="{{ it.id }}"
+              data-mode="{{ it.stockMode }}"
+              bindtap="onInboundOne"
+            >{{ inboundSubmittingId === it.id ? '提交中…' : '确认' }}</view>
+            <view class="btn-line" hover-class="btn-line-hover" data-id="{{ it.id }}" bindtap="closeInbound">取消</view>
+          </view>
+        </view>
+
+        <view wx:if="{{ stockOpenId === it.id && it.stockMode === 'QUANTIFIED' }}" class="panel panel-amber">
+          <view class="panel-tip">将库存设为新数值（非增量）</view>
+          <input class="inp-panel" placeholder="新库存" value="{{ stockNewById[it.id] }}" data-id="{{ it.id }}" bindinput="onStockNewFor" type="digit" />
+          <view class="panel-btns">
+            <view class="btn-fill btn-fill-warn" hover-class="btn-fill-hover" data-id="{{ it.id }}" bindtap="onSaveStock">保存</view>
+            <view class="btn-line" hover-class="btn-line-hover" data-id="{{ it.id }}" bindtap="closeStock">取消</view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="sec-head row-between">
+    <text>回收站（7天后自动清空）</text>
+    <view class="mini-ops">
+      <view class="btn-mini" bindtap="onPurgeRecycleSelected">选删</view>
+      <view class="btn-mini btn-mini-danger" bindtap="onPurgeRecycleAll">清空</view>
+    </view>
+  </view>
+  <view wx:if="{{ recycleRows.length === 0 }}" class="hint">回收站为空</view>
+  <view wx:for="{{ recycleRows }}" wx:key="id" class="cell-row">
+    <view class="cell-main">
+      <view>{{ item.name }}</view>
+      <view class="cell-id">#{{ item.id }} · {{ item.stockMode }} / 库存 {{ item.stockQty }}{{ item.purgeAfterText ? ' · 清理 ' + item.purgeAfterText : '' }}</view>
+    </view>
+    <view class="link" data-id="{{ item.id }}" bindtap="onToggleRecycleSelect">{{ recycleSelected[item.id] ? '已选' : '勾选' }}</view>
+    <view class="link" data-id="{{ item.id }}" bindtap="onRestoreRecycleItem">恢复</view>
+    <view class="link-danger" data-id="{{ item.id }}" bindtap="onPurgeRecycleItem">删</view>
+  </view>
+
+  <van-popup
+    show="{{ formShow }}"
+    position="center"
+    round
+    closeable
+    close-icon-position="top-right"
+    bind:close="closeForm"
+    custom-style="width: 86%; max-width: 360px; padding: 0; overflow: hidden;"
+  >
+    <view class="popup-wrap">
+      <view class="popup-head">{{ formMode === 'edit' ? '编辑物资' : '新建物资' }}</view>
+      <view class="popup-body">
+        <view class="form-label">分类</view>
+        <picker mode="selector" range="{{ categoryNames }}" value="{{ createCatIndex }}" bindchange="onPickCat">
+          <view class="form-picker">{{ createCatName }}</view>
+        </picker>
+
+        <view class="form-label">名称 <text class="req">*</text></view>
+        <input class="form-input" placeholder="填写物品名称" value="{{ createName }}" bindinput="onCreateName" maxlength="64" />
+
+        <view class="form-label">副标题 <text class="opt">选填</text></view>
+        <input class="form-input" placeholder="副标题说明" value="{{ createSubtitle }}" bindinput="onCreateSubtitle" maxlength="120" />
+
+        <view class="form-label">库存模式</view>
+        <picker mode="selector" range="{{ modeLabels }}" value="{{ createModeIndex }}" bindchange="onPickMode">
+          <view class="form-picker">{{ modeLabels[createModeIndex] }}</view>
+        </picker>
+
+        <view class="form-label">初始入库数量</view>
+        <input class="form-input" type="digit" placeholder="新建时入库数量（>=0）" value="{{ createStockQty }}" bindinput="onCreateStockQty" />
+
+        <view class="form-label">上架状态</view>
+        <picker mode="selector" range="{{ shelfLabels }}" value="{{ shelfIndex }}" bindchange="onPickShelf">
+          <view class="form-picker">{{ shelfLabels[shelfIndex] }}</view>
+        </picker>
+
+        <!-- Spec config section（对齐 Web MaterialManagePage） -->
+        <view class="form-section-divider"></view>
+        <view class="form-switch-row">
+          <view class="form-switch-copy">
+            <text class="form-label-tight">启用规格</text>
+            <text class="form-hint-inline">学生申领时可选择颜色、尺寸等</text>
+          </view>
+          <van-switch checked="{{ specEnabled }}" bind:change="onToggleSpecEnabled" active-color="#ac1736" size="20px" />
+        </view>
+
+        <block wx:if="{{ specEnabled }}">
+          <view class="form-switch-row form-switch-row-sub">
+            <view class="form-switch-copy">
+              <text class="form-label-tight">强制选择规格</text>
+              <text class="form-hint-inline">不允许跳过（不选规格）</text>
+            </view>
+            <van-switch checked="{{ specRequired }}" bind:change="onToggleSpecRequired" active-color="#ac1736" size="20px" />
+          </view>
+
+          <view class="spec-config-list">
+            <view wx:for="{{ specDimensions }}" wx:key="idx" wx:for-index="dIdx" class="spec-dim-config">
+              <view class="spec-dim-header">
+                <text class="spec-dim-label">维度 {{ dIdx + 1 }}</text>
+                <view class="link-danger spec-dim-remove" data-idx="{{ dIdx }}" bindtap="onRemoveDimension">删除</view>
+              </view>
+              <input
+                class="form-input spec-dim-name-input"
+                placeholder="维度名称（如：颜色）"
+                value="{{ item.name }}"
+                data-idx="{{ dIdx }}"
+                bindinput="onDimensionNameChange"
+                maxlength="20"
+              />
+              <view class="spec-opt-tags">
+                <view wx:for="{{ item.options }}" wx:for-item="opt" wx:for-index="oIdx" wx:key="oIdx" class="spec-opt-tag spec-opt-tag-edit">
+                  <input
+                    class="spec-opt-tag-input"
+                    placeholder="选项"
+                    value="{{ opt }}"
+                    data-dim-idx="{{ dIdx }}"
+                    data-opt-idx="{{ oIdx }}"
+                    bindinput="onOptionEdit"
+                    maxlength="30"
+                  />
+                  <view class="spec-opt-tag-remove" data-dim-idx="{{ dIdx }}" data-opt-idx="{{ oIdx }}" bindtap="onRemoveOption">×</view>
+                </view>
+              </view>
+              <view class="spec-opt-add-row">
+                <view class="btn-mini btn-mini-primary" data-idx="{{ dIdx }}" bindtap="onAddOption">+ 选项</view>
+              </view>
+            </view>
+          </view>
+          <view class="form-add-dim" bindtap="onAddDimension">
+            <text class="form-add-dim-icon">+</text>
+            <text>添加规格维度</text>
+          </view>
+        </block>
+        <!-- End spec config section -->
+
+        <view class="form-section-divider"></view>
+        <view class="form-switch-row">
+          <view class="form-switch-copy">
+            <text class="form-label-tight">独立下单</text>
+            <text class="form-hint-inline">该物资不能与其他物资合并下单</text>
+          </view>
+          <van-switch checked="{{ independentOrder }}" bind:change="onToggleIndependentOrder" active-color="#ac1736" size="20px" />
+        </view>
+
+        <view class="form-label">审核流程</view>
+        <picker mode="selector" range="{{ workflowLabels }}" value="{{ workflowIndex }}" bindchange="onPickWorkflow">
+          <view class="form-picker">{{ workflowLabels[workflowIndex] }}</view>
+        </picker>
+
+        <view class="form-label">审核人 <text class="opt">选填，不选则任意教职工可审</text></view>
+        <staff-reviewer-picker
+          value="{{ reviewerIds }}"
+          placeholder="选择审核人…"
+          bind:change="onReviewerIdsChange"
+        />
+
+        <block wx:if="{{ workflowIndex === 1 }}">
+          <view class="form-label">复审人 <text class="opt">复核流程</text></view>
+          <staff-reviewer-picker
+            value="{{ secondReviewerIds }}"
+            placeholder="选择复审人…"
+            bind:change="onSecondReviewerIdsChange"
+          />
+        </block>
+
+        <view class="form-switch-row">
+          <view class="form-switch-copy">
+            <text class="form-label-tight">显示具体库存</text>
+            <text class="form-hint-inline">学生端展示库存数字</text>
+          </view>
+          <van-switch checked="{{ showStockQty }}" bind:change="onToggleShowStockQty" active-color="#ac1736" size="20px" />
+        </view>
+
+        <view class="form-label">封面图 <text class="opt">选填</text></view>
+        <view class="cover-row">
+          <view wx:if="{{ createCoverPreview }}" class="cover-preview-wrap">
+            <image class="cover-preview" src="{{ createCoverPreview }}" mode="aspectFill" />
+            <view class="cover-remove" bindtap="clearFormCover">×</view>
+          </view>
+          <view wx:else class="cover-add" hover-class="cover-add-hover" bindtap="chooseFormCover">
+            <text class="cover-add-icon">+</text>
+            <text class="cover-add-txt">上传</text>
+          </view>
+          <view class="cover-hint">相册或拍照；编辑时清除封面将保存为空</view>
+        </view>
+      </view>
+      <view class="popup-footer">
+        <view class="popup-footer-inner">
+          <view class="btn-line-wide" hover-class="btn-line-hover" bindtap="closeForm">取消</view>
+          <view class="btn-fill-wide {{ creating ? 'btn-fill-disabled' : '' }}" hover-class="btn-fill-hover" bindtap="submitItemForm">{{ creating ? (formMode === 'edit' ? '保存中…' : '创建中…') : (formMode === 'edit' ? '保存' : '创建') }}</view>
+        </view>
+      </view>
+    </view>
+  </van-popup>
+</view>
