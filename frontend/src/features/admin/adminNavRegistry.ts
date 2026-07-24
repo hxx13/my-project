@@ -492,12 +492,13 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
       {
         id: "aro-binding",
         path: "/admin/aro-binding",
-        label: "ARO 认证",
+        label: "培训管理",
         icon: KeyRound,
         homeTone: "from-blue-400 to-cyan-500",
         fallbackMinRole: "STAFF",
         sidebarVisible: (ctx) => show(ctx, "/admin/aro-binding", "STAFF"),
       },
+
     ],
   },
   {

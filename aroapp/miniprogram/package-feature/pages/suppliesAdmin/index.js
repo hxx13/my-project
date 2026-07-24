@@ -194,11 +194,16 @@ Page({
         return name.includes(keyword) || idText.includes(keyword) || mode.includes(keyword);
       });
     }
-    const prevForExpand = keyword ? this.data.categoryBlocks : [];
+    // Always preserve previous expanded state so the user doesn't lose their
+    // place when items are reloaded after edit/inbound/stock-save/deletion.
+    const prevForExpand = this.data.categoryBlocks;
     let categoryBlocks = this.buildCategoryBlocks(this.data.categories, filteredItems, prevForExpand);
     if (keyword) {
       categoryBlocks = categoryBlocks.map((b) => (b.itemCount > 0 ? { ...b, expanded: true } : { ...b, expanded: false }));
     }
+    // inboundOpenId / stockOpenId are reset on purpose: the data underneath
+    // has been refreshed (e.g. stock changed), so keeping the old panel open
+    // would show stale values.
     this.setData({ filteredItems, categoryBlocks, inboundOpenId: null, stockOpenId: null });
   },
 

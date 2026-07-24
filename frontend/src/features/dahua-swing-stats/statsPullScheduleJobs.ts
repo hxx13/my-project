@@ -22,16 +22,4 @@ export const STATS_PULL_SCHEDULE_SECTIONS: {
     title: "昨日日批",
     scheduleHint: "下方 B 区可单独配置到点时刻；结束后联动增量入库与隔离服/笼架订阅统计",
   },
-  {
-    periodMode: "PREVIOUS_WEEK",
-    jobKey: STATS_PULL_SCHEDULE_JOB.PREVIOUS_WEEK,
-    title: "上周周批",
-    scheduleHint: "与昨日日批独立到点，仅执行 periodMode=上周 的已启用任务",
-  },
-  {
-    periodMode: "SINCE_LAST",
-    jobKey: STATS_PULL_SCHEDULE_JOB.SINCE_LAST,
-    title: "水位增量",
-    scheduleHint: "与昨日/上周独立到点，仅执行 periodMode=水位 的已启用任务",
-  },
 ];
