@@ -68,15 +68,24 @@ echo "  服务已停止"
 # Step 6/8: 替换 JAR
 echo "=== Step 6/8: 替换 JAR ==="
 mkdir -p "$APP_DIR"
-OLD_JAR=$(ls "$APP_DIR"/demo-*.jar 2>/dev/null | head -1)
-if [ -n "$OLD_JAR" ]; then
-    cp "$OLD_JAR" "$APP_DIR/demo-previous.jar.bak"
+
+# 找到 deploy 目录里最新的 JAR
+LATEST_JAR=$(ls -t deploy/demo-*.jar 2>/dev/null | head -1)
+if [ -z "$LATEST_JAR" ]; then
+    echo "  ❌ deploy/ 未找到 JAR，请先执行 mvn package"
+    exit 1
+fi
+echo "  最新构建: $LATEST_JAR"
+
+# 备份旧 JAR → 清理 → 只放最新的 → 固定名称 demo.jar
+if ls "$APP_DIR"/demo-*.jar 2>/dev/null | head -1 > /dev/null; then
+    ls "$APP_DIR"/demo-*.jar 2>/dev/null | head -1 | xargs -I{} cp {} "$APP_DIR/demo-previous.jar.bak"
     echo "  旧版本已备份: demo-previous.jar.bak"
 fi
-rm -f "$APP_DIR"/demo-*.jar
-cp deploy/demo-*.jar "$APP_DIR/"
-sudo chown twin:twin "$APP_DIR"/demo-*.jar
-echo "  JAR 已替换"
+rm -f "$APP_DIR"/demo-*.jar "$APP_DIR"/demo.jar
+cp "$LATEST_JAR" "$APP_DIR/demo.jar"
+sudo chown twin:twin "$APP_DIR/demo.jar"
+echo "  JAR 已替换: demo.jar"
 
 # Step 7/8: 启动服务
 echo "=== Step 7/8: 启动服务 ==="
