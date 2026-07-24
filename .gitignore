@@ -94,7 +94,8 @@ aroapp/.cloudbase/
 *.zip
 *.tar.gz
 *.rar
-*.png
-*.jpg
-*.jpeg
 *.bat
+# Root-level temp screenshots only (not project assets)
+/*.png
+/*.jpg
+/*.jpeg
