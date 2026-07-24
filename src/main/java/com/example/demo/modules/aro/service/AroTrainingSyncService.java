@@ -158,7 +158,7 @@ public class AroTrainingSyncService {
                         }
                     }
                     int tt = dm2.get("total") instanceof Number n ? n.intValue() : 0;
-                    if (tp * 100 >= tt) break;
+                    if (tp * 30 >= tt) break;
                     tp++;
                 } catch (Exception e) {
                     log.error("[AroSync] 拉取 session={} 学员第{}页失败: {}", sessionId, tp, e.getMessage());
@@ -206,7 +206,7 @@ public class AroTrainingSyncService {
                     }
                 }
                 int tt = dm.get("total") instanceof Number n ? n.intValue() : 0;
-                if (tp * 100 >= tt) break;
+                if (tp * 30 >= tt) break;
                 tp++;
             } catch (Exception e) {
                 log.error("[AroSync] 刷新 session={} 学员第{}页失败: {}", sessionId, tp, e.getMessage());
