@@ -141,18 +141,11 @@ App({
     splashShownThisSession: false,
   },
   onLaunch() {
-    if (wx.cloud) {
-      wx.cloud.init({
-        env: envConfig.getEffectiveCloudEnvId(),
-        traceUser: true,
-      });
-      springAuth.refreshPublicRuntimeConfig().then((cfg) => {
-        if (cfg) console.log('[app] 已拉取 Spring 公开运行时配置');
-        else console.warn('[app] 未拉取到 runtime-config（检查云函数白名单 /api/public 与 SPRING_BASE_URL）');
-      });
-    } else {
-      console.error('[app] 当前基础库不支持 wx.cloud，请检查基础库版本与 app.json 中 cloud 配置');
-    }
+    // 直连模式：无需 wx.cloud.init，直接从后端拉取运行时配置
+    springAuth.refreshPublicRuntimeConfig().then((cfg) => {
+      if (cfg) console.log('[app] 已拉取 Spring 公开运行时配置 (直连)');
+      else console.warn('[app] 未拉取到 runtime-config，检查后端 /api/public/runtime-config');
+    }).catch((e) => console.warn('[app] runtime-config 拉取失败:', e && e.message));
     // jtu 校园网账号登录（与 Spring 完全独立，勿删）
     this.autoLogin();
     // 并行：微信 code → Spring 静默登录；成功写 spring*，未绑写 springPendingOpenId（不覆盖 jtu 的 token）

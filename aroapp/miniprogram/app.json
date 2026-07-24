@@ -1,5 +1,5 @@
 {
-  "cloud": true,
+  "cloud": false,
   "lazyCodeLoading": "requiredComponents",
   "resizable": true,
   "pages": [

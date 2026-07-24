@@ -395,11 +395,51 @@ Page({
     const level = wx.getStorageSync(springAuth.KEYS.ROLE_LEVEL);
     const userId = token ? twinScan.readSpringUserId() : '';
     const sceneKey = [token, pending, role, level == null ? '' : String(level), userId].join('|');
+
+    // 无论是否跳过完整刷新，始终同步 storage → UI 的轻量状态（无 API 调用）
+    // 解决 app.onLaunch 中 runWechatSilentLoginOnLaunch 异步完成后 UI 不更新的时序竞态
+    this.syncSpringAuthLightweight();
+
     if (!shouldRefreshOnShow(this, { sceneKey, ttlMs: 30000 })) {
       void this.refreshPendingBadges();
       return;
     }
     pagePermission.refreshMiniPermissions().finally(() => this.refreshSpringUiState());
+  },
+
+  /**
+   * 轻量同步 Spring 认证状态（仅读 storage + setData，不走任何 API）。
+   * 供 onShow 每次调用，确保静默登录在后台完成后 UI 及时更新。
+   */
+  syncSpringAuthLightweight() {
+    const token = wx.getStorageSync(springAuth.KEYS.TOKEN);
+    const pending = wx.getStorageSync(springAuth.KEYS.PENDING_OPENID);
+    const springBound = !!token;
+    const springPending = !!pending && !token;
+    const showLoginForm = !springBound && !springPending;
+
+    // 仅当关键状态有变化时才 setData，避免无意义渲染
+    if (
+      this.data.springBound !== springBound ||
+      this.data.springPending !== springPending ||
+      this.data.showLoginForm !== showLoginForm
+    ) {
+      const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
+      const roleLabel = role || '—';
+      const authDisplay = springBound ? displayNameFromSpringSession() : '';
+      const headerDisplayName = springBound
+        ? authDisplay || (roleLabel !== '—' ? roleLabel : '校内用户')
+        : '访客';
+      this.setData({
+        springBound,
+        springPending,
+        showLoginForm,
+        headerDisplayName,
+        springRoleLabel: roleLabel,
+        springRoleLabelZh: springBound ? roleCodeToZh(role) : '',
+        profileAvatarLetter: pickAvatarLetter(headerDisplayName, roleLabel),
+      });
+    }
   },
 
   applyMenuBadgeTexts(c) {
@@ -1184,20 +1224,17 @@ Page({
     if (this.data.loginSubmitting) return;
     this.setData({ loginSubmitting: true });
     wx.showLoading({ title: '登录中…', mask: true });
-    springAuth.springRequest({
-      url: '/api/auth/login/web',
+    // 不走 springRequest（responseType:'json' 在部分 wx.request 版本中卡死 Promise），
+    // 直接用 callSpringDirect + responseType:'text'，与 loginWechat 保持一致
+    springAuth.callSpringDirect({
+      path: '/api/auth/login/web',
       method: 'POST',
       data: { username: u, password: p },
     }).then(function (res) {
       wx.hideLoading();
       var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-      if (res.statusCode === 200 && body && body.success) {
-        var d = body.data;
-        wx.setStorageSync(springAuth.KEYS.TOKEN, d.token || '');
-        wx.setStorageSync(springAuth.KEYS.ROLE, d.role || '');
-        wx.setStorageSync(springAuth.KEYS.ROLE_LEVEL, String(d.roleLevel != null ? d.roleLevel : ''));
-        wx.setStorageSync(springAuth.KEYS.USER_INFO, JSON.stringify(d.userInfo || {}));
-        wx.removeStorageSync(springAuth.KEYS.PENDING_OPENID);
+      if (res.statusCode === 200 && body && body.success && body.data && typeof body.data === 'object') {
+        springAuth.persistSpringSession(body.data);
         self.setData({
           showLoginForm: false,
           loginUsername: '',
@@ -1250,7 +1287,7 @@ Page({
     this.setData({ registerType: next, regStep: next === 'student' ? 'qr' : 'credentials', regError: '' });
   },
 
-  /* ---- QR 扫码/上传（wx.chooseImage 拍照+相册 → base64 → 云端 verify-qr）---- */
+  /* ---- QR 扫码/上传（wx.chooseImage 拍照+相册 → 直传 Spring verify-qr）---- */
   onScanRegQr: function () {
     var self = this;
     self.setData({ regQrScanning: true, regError: '' });
@@ -1261,28 +1298,27 @@ Page({
       success: function (imgRes) {
         var tempPath = imgRes.tempFilePaths[0];
         if (!tempPath) { self.setData({ regQrScanning: false }); return; }
-        wx.getFileSystemManager().readFile({
-          filePath: tempPath, encoding: 'base64',
-          success: function (fileRes) {
-            var b64 = fileRes.data || '';
-            if (!b64) { self.setData({ regQrScanning: false, regError: '读取图片失败' }); return; }
-            springAuth.callSpringProxy({
-              path: '/api/auth/register/student/verify-qr',
-              method: 'POST',
-              data: { __uploadFile: { fileName: 'qr.png', base64: b64 } },
-              authorization: '',
-            }).then(function (proxyRes) {
-              var body = typeof proxyRes.data === 'string' ? JSON.parse(proxyRes.data) : proxyRes.data;
-              if (proxyRes.statusCode === 200 && body && body.success && body.data) {
+        var base = springAuth.getApiPublicBaseUrl().replace(/\/+$/, '') || 'http://localhost:8081';
+        wx.uploadFile({
+          url: `${base}/api/auth/register/student/verify-qr`,
+          filePath: tempPath,
+          name: 'file',
+          header: { 'Content-Type': 'multipart/form-data' },
+          success: function (uploadRes) {
+            try {
+              var body = JSON.parse(uploadRes.data);
+              if (uploadRes.statusCode === 200 && body && body.success && body.data) {
                 self.handleQrVerified(body.data);
               } else {
                 self.setData({ regQrScanning: false, regError: (body && body.message) || 'QR码验证失败' });
               }
-            }).catch(function () {
-              self.setData({ regQrScanning: false, regError: '网络错误' });
-            });
+            } catch (e) {
+              self.setData({ regQrScanning: false, regError: '解析响应失败' });
+            }
           },
-          fail: function () { self.setData({ regQrScanning: false, regError: '读取图片失败' }); },
+          fail: function () {
+            self.setData({ regQrScanning: false, regError: '网络错误' });
+          },
         });
       },
       fail: function () { self.setData({ regQrScanning: false }); },

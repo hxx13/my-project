@@ -17,6 +17,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+/**
+ * @deprecated 2026-07: 云函数 springProxy 配套过滤器。小程序已改为直连，不再需要校验 X-Proxy-Secret。
+ * 当前 app.mp.proxy.secret 为空，Filter 已实际旁路。待确认无云函数流量后移除此类。
+ */
+@Deprecated
 @Component
 @Order(0)
 public class MpCloudProxySecretFilter extends OncePerRequestFilter {

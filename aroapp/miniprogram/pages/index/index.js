@@ -236,11 +236,10 @@ Page({
       heroCarouselEnabled: carouselOn && urls.length > 1,
       heroColorMode: mode,
     });
-    // syncToWechat 异步完成后 cloud-mappings 才有值，延迟重解析一次（与物资列表 onShow 重拉同理）
+    // Phase 2C: cloud:// 映射已移除，无需延迟重解析
     if (
       branding
       && urls.length
-      && urls.every((u) => !String(u).startsWith('cloud://'))
       && !this._heroCloudRetryScheduled
     ) {
       this._heroCloudRetryScheduled = true;

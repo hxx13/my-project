@@ -1,5 +1,4 @@
-import toast from "react-hot-toast";
-import { isCloudFileId, webImageSrc } from "@/utils/mediaUrl";
+import { webImageSrc } from "@/utils/mediaUrl";
 
 type Props = {
   url: string;
@@ -11,7 +10,7 @@ type Props = {
 /**
  * 显示工单/物资图片缩略图。
  * - http(s) 或相对路径：直接渲染 <img>（含 404 兜底）
- * - cloud:// 格式：显示提示 — 可在小程序查看，或等待后台同步完成
+ * - 不支持的格式：显示提示
  */
 export function WorkorderImageThumb({ url, alt, onPreview }: Props) {
   const src = webImageSrc(url);
@@ -34,18 +33,6 @@ export function WorkorderImageThumb({ url, alt, onPreview }: Props) {
         >
           无图片
         </span>
-      </button>
-    );
-  }
-  if (isCloudFileId(url)) {
-    return (
-      <button
-        type="button"
-        onClick={() => toast("云存储图片请在小程序中查看，或等待后台同步完成后刷新", { duration: 4000 })}
-        className="shrink-0 flex h-16 w-16 flex-col items-center justify-center rounded border bg-[var(--app-color-surface-container)] text-[var(--app-color-text-tertiary)] text-[10px] leading-tight"
-      >
-        小程序
-        <span className="text-[9px]">查看</span>
       </button>
     );
   }

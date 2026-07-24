@@ -10,16 +10,23 @@ function mapMediaUrlList(urls) {
 }
 
 /**
- * 小程序 `<image>` 展示用：优先 cloud://，否则走已配置的 API 域名（proxy / files）。
+ * 小程序 `<image>` 展示用：cloud:// 走 proxy-image 兜底，其它走已配置的 API 域名。
  */
 function toProxiedDisplayUrl(url) {
   const u = String(url || '').trim();
   if (!u) return '';
-  if (u.startsWith('cloud://')) return u;
+  if (u.startsWith('cloud://')) {
+    const proxyPath = `/api/upload/proxy-image?url=${encodeURIComponent(u)}`;
+    return springAuth.toAbsoluteApiUrl(proxyPath);
+  }
   if (u.startsWith('/api/upload/files/') || u.startsWith('/api/upload/proxy-image')) {
     return springAuth.toAbsoluteApiUrl(u);
   }
+  // 绝对 HTTP(S) URL：生产域名走代理兜底，其他（localhost/内网）直连
   if (/^https?:\/\//i.test(u)) {
+    if (u.includes('localhost') || u.includes('127.0.0.1') || u.includes('192.168.') || u.includes('10.') || u.includes('172.')) {
+      return u;
+    }
     const proxyPath = `/api/upload/proxy-image?url=${encodeURIComponent(u)}`;
     return springAuth.toAbsoluteApiUrl(proxyPath);
   }
@@ -29,26 +36,15 @@ function toProxiedDisplayUrl(url) {
   return u;
 }
 
-function resolveOneDisplayUrl(url, cloudMappings) {
-  const u = String(url || '').trim();
-  if (!u) return '';
-  if (u.startsWith('cloud://')) return u;
-  const cloud = cloudMappings && cloudMappings[u];
-  if (cloud) return cloud;
-  return toProxiedDisplayUrl(u);
+function resolveOneDisplayUrl(url, _cloudMappings) {
+  return toProxiedDisplayUrl(url);
 }
 
 async function resolveMediaUrlsForDisplay(urls) {
-  const normalized = mapMediaUrlList(urls);
-  if (!normalized.length) return [];
+  if (!Array.isArray(urls) || !urls.length) return [];
+  // 先拉最新 runtime config（uploadPublicBaseUrl / apiPublicBaseUrl），再解析 URL
   await springAuth.refreshPublicRuntimeConfig().catch(() => null);
-  const httpUrls = normalized.filter((u) => u && !u.startsWith('cloud://'));
-  let cloudMappings = {};
-  if (httpUrls.length) {
-    const res = await springAuth.resolveCloudUrls(httpUrls);
-    cloudMappings = (res && res.mappings) || {};
-  }
-  return normalized.map((u) => resolveOneDisplayUrl(u, cloudMappings)).filter(Boolean);
+  return urls.map((u) => toProxiedDisplayUrl(u)).filter(Boolean);
 }
 
 module.exports = {

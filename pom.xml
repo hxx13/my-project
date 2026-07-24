@@ -197,7 +197,6 @@
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<configuration>
 					<outputDirectory>${project.basedir}/deploy</outputDirectory>
-
 					<excludes>
 						<exclude>
 							<groupId>org.projectlombok</groupId>

@@ -462,20 +462,8 @@ Page({
       for (let i = 0; i < files.length; i += 1) {
         const path = files[i];
         if (!path) continue;
-        // 上传至云存储 → 同步到后端 → 拿到 publicUrl 再存入业务表（对齐双端图片互通规范）
-        const fileID = await springAuth.uploadCloudMediaFile(path, 'asset-transfer/after');
-        if (fileID) {
-          let publicUrl = fileID;
-          try {
-            const syncRes = await wx.cloud.callFunction({ name: 'syncToBackend', data: { wechatFileID: fileID, mimeType: 'image/jpeg' } });
-            publicUrl = (syncRes && syncRes.result && syncRes.result.publicUrl)
-              ? String(syncRes.result.publicUrl).trim()
-              : fileID;
-          } catch (_syncErr) {
-            /* 同步失败时仍用 cloud:// 兜底 */
-          }
-          await assetApi.appendTransferAfterPhotos(this.data.continueRecord.id, [publicUrl]);
-        }
+        const publicUrl = await springAuth.uploadFileDirect(path, {});
+        await assetApi.appendTransferAfterPhotos(this.data.continueRecord.id, [publicUrl]);
       }
       await this.loadData();
       wx.showToast({ title: '已保存', icon: 'success' });

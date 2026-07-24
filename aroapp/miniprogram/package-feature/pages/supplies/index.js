@@ -276,23 +276,9 @@ function decorateItems(list) {
   });
 }
 
-async function resolveItemsCloudUrls(items) {
-  if (!items || items.length === 0) return;
-  const httpUrls = items
-    .map((it) => it.coverAbsUrl)
-    .filter((u) => u && !u.startsWith('cloud://'));
-  if (httpUrls.length === 0) return;
-  try {
-    const { mappings } = await springAuth.resolveCloudUrls(httpUrls);
-    let hit = 0;
-    items.forEach((it) => {
-      const cloud = mappings[it.coverAbsUrl];
-      if (cloud) { it.coverAbsUrl = cloud; hit++; }
-    });
-    if (hit < httpUrls.length) springAuth.triggerCloudSync();
-  } catch (_) {
-    springAuth.triggerCloudSync();
-  }
+/** @deprecated Cloud URL resolution no longer needed; all images go through direct HTTP */
+async function resolveItemsCloudUrls(_items) {
+  /* no-op: cloud:// resolution removed in Phase 2C */
 }
 
 function normalizeBool(value, fallback) {

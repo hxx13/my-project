@@ -26,7 +26,7 @@ function normalizeUploadedImageUrl(url) {
   let u = String(url || '').trim();
   if (!u) return u;
   if (/^https?:\/\//i.test(u)) return u;
-  if (u.startsWith('cloud://')) return u;
+  if (u.startsWith('cloud://')) return '';
   if (typeof springAuth.toAbsoluteApiUrl === 'function') {
     const abs = springAuth.toAbsoluteApiUrl(u);
     if (abs && /^https?:\/\//i.test(abs)) return abs;
@@ -74,7 +74,7 @@ Component({
         try {
           let url = await springAuth.uploadSpringFile(tempFilePath, meta);
           url = normalizeUploadedImageUrl(url);
-          if (!url || (!/^https?:\/\//i.test(url) && !String(url).startsWith('cloud://'))) {
+          if (!url || !/^https?:\/\//i.test(url)) {
             throw new Error('上传成功但未得到可访问的图片地址，请在管理端配置上传/接口公网 Base');
           }
           const esc = String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;');

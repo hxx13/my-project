@@ -7,8 +7,6 @@ const {
 
 const MAX_IMAGE_COUNT = 9;
 const PREVIEW_DEBOUNCE_MS = 450;
-/** 压缩目标：云存储直传不再走云函数 base64，略放宽仍控制体积与计费 */
-const MAX_UPLOAD_BASE64_LEN = 1200 * 1024;
 
 let lastPreviewAt = 0;
 
@@ -50,33 +48,11 @@ function compressImage(filePath, quality) {
   });
 }
 
-function getBase64Length(filePath) {
-  return new Promise((resolve, reject) => {
-    wx.getFileSystemManager().readFile({
-      filePath,
-      encoding: 'base64',
-      success: (res) => resolve(String(res.data || '').length),
-      fail: (err) => reject(new Error((err && err.errMsg) || '读取文件失败')),
-    });
-  });
-}
-
 /**
- * 多次压缩直至 base64 长度低于阈值（用作体积代理），便于云上传与预览。
+ * 压缩图片以减少上传体积。
  */
 async function shrinkImageForUpload(filePath) {
-  let quality = 65;
-  let path = filePath;
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    path = await compressImage(path, quality);
-    const len = await getBase64Length(path);
-    if (len <= MAX_UPLOAD_BASE64_LEN) return path;
-    quality -= 12;
-    if (quality < 18) break;
-  }
-  const msg = '图片仍过大，请换一张或裁剪后再试';
-  wx.showModal({ title: '无法上传', content: msg, showCancel: false });
-  throw new Error(msg);
+  return compressImage(filePath, 65);
 }
 
 /** 列表页批量解析报修/采购工单附图，合并一次 cloud-mappings 请求 */
@@ -94,7 +70,7 @@ async function resolveWorkorderRowsMedia(rows) {
   });
   const unique = Array.from(new Set(allUrls.filter(Boolean)));
   let cloudMappings = {};
-  const httpUrls = unique.filter((u) => !u.startsWith('cloud://'));
+  const httpUrls = unique;
   if (httpUrls.length) {
     const res = await springAuth.resolveCloudUrls(httpUrls);
     cloudMappings = (res && res.mappings) || {};
@@ -121,13 +97,8 @@ async function uploadImages(existingUrls, options) {
   for (let i = 0; i < files.length; i += 1) {
     const src = files[i];
     const ready = await shrinkImageForUpload(src);
-    const fileID = await springAuth.uploadCloudMediaFile(ready, cloudDir);
-    next.push(springAuth.toAbsoluteMediaUrl(fileID));
-    // 异步同步到后端（不阻塞上传流程）
-    wx.cloud.callFunction({
-      name: 'syncToBackend',
-      data: { wechatFileID: fileID, originalName: 'workorder-image.jpg', mimeType: 'image/jpeg' },
-    }).catch(() => {});
+    const url = await springAuth.uploadFileDirect(ready, {});
+    next.push(url);
   }
   return next;
 }
@@ -150,7 +121,6 @@ function previewImages(urls, currentUrl, page) {
 
 module.exports = {
   MAX_IMAGE_COUNT,
-  MAX_UPLOAD_BASE64_LEN,
   uploadImages,
   previewImages,
   mapMediaUrlList,

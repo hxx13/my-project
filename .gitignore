@@ -14,6 +14,7 @@ build/
 .env
 .env.*
 *.local
+application-local.properties
 
 # ===== Runtime data =====
 data/

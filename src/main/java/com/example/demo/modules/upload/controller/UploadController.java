@@ -117,10 +117,9 @@ public class UploadController {
     }
 
     /**
-     * 图片代理：把 cloud:// 或相对路径映射到磁盘文件并返回。
-     * Web 端 img src 用此端点；小程序端可兜底用 publicUrl（HTTP 直连）。
-     * 用法：GET /api/upload/proxy-image?url=cloud://xxx 或 ?url=/api/upload/files/...
+     * @deprecated 2026-07: 存量 cloud:// URL 兜底。新数据不再产生 cloud://，此端点将在 DB 迁移完成后移除。
      */
+    @Deprecated
     @GetMapping("/proxy-image")
     @Operation(summary = "图片代理（cloud:// → 磁盘文件）")
     public ResponseEntity<Resource> proxyImage(
@@ -234,9 +233,9 @@ public class UploadController {
     }
 
     /**
-     * 批量解析 HTTP 图片 URL → 微信云 cloud:// fileID。
-     * 小程序加载物资列表后调用，优先使用 CDN 地址展示图片。
+     * @deprecated 2026-07: 云函数 syncToWechat 配套端点。小程序已改为直连上传，不再需要 HTTP→cloud:// 映射。
      */
+    @Deprecated
     @GetMapping("/cloud-mappings")
     @Operation(summary = "批量解析图片URL对应的微信云fileID")
     public Result<Map<String, Object>> resolveCloudMappings(
@@ -363,6 +362,10 @@ public class UploadController {
         return MediaType.APPLICATION_OCTET_STREAM;
     }
 
+    /**
+     * @deprecated 2026-07: 云函数 syncToBackend 配套端点。小程序改为 wx.uploadFile 直连 /api/upload。
+     */
+    @Deprecated
     @PostMapping("/sync/register")
     @Operation(summary = "云函数注册文件（从小程序同步到后端）")
     public Result<?> syncRegister(
@@ -481,9 +484,9 @@ public class UploadController {
     }
 
     /**
-     * 存量迁移：扫描数据库中所有 cloud:// 开头的图片 URL。
-     * 云函数调用此接口获取待迁移列表。
+     * @deprecated 2026-07: 存量迁移工具。DB 迁移完成后移除。
      */
+    @Deprecated
     @GetMapping("/sync/cloud-urls")
     @Operation(summary = "扫描数据库中所有 cloud:// 图片 URL（存量迁移用）")
     public Result<?> scanCloudUrls(
@@ -569,9 +572,9 @@ public class UploadController {
     }
 
     /**
-     * 存量迁移：批量替换数据库中的 cloud:// URL 为公网 URL。
-     * 请求体：{ "replacements": { "cloud://xxx": "http://...", ... } }
+     * @deprecated 2026-07: 存量迁移工具。DB 迁移完成后移除。
      */
+    @Deprecated
     @PostMapping("/sync/replace-urls")
     @Operation(summary = "批量替换数据库中的 cloud:// URL（存量迁移用）")
     public Result<?> replaceUrls(
@@ -652,9 +655,9 @@ public class UploadController {
     }
 
     /**
-     * 一键替换：根据 upload_file_record 表中已有的记录，自动替换数据库中所有
-     * cloud:// URL 为对应的 publicUrl。用于存量迁移的批量更新步骤。
+     * @deprecated 2026-07: 存量迁移工具。DB 迁移完成后移除。
      */
+    @Deprecated
     @PostMapping("/sync/auto-replace")
     @Operation(summary = "根据已有 upload_file_record 自动替换数据库中的 cloud:// URL")
     public Result<?> autoReplace(

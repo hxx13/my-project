@@ -95,11 +95,10 @@ async function searchPersonnel(keyword) {
   // 第一跳：对齐 web 端风格，query 直连且不附带 Authorization
   let rows = [];
   try {
-    const direct = await springAuth.callSpringProxy({
+    const direct = await springAuth.callSpringDirect({
       path: `/api/v1/twin/dashboard/personnel/search?keyword=${encodeURIComponent(keyword)}&limit=20&_t=${Date.now()}`,
       method: 'GET',
       data: {},
-      authorization: '',
     });
     debug.directStatus = direct && typeof direct.statusCode === 'number' ? direct.statusCode : null;
     rows = parseRows(direct);

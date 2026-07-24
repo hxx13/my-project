@@ -1,7 +1,6 @@
 /**
  * 与 Web 登录页 / admin/login-branding 同源：按时段切换亮/暗色轮播图。
- * 小程序展示与 package-feature/utils/workorderMedia.js 完全一致：
- * mapMediaUrlList → cloud-mappings → cloud:// 优先。
+ * 小程序展示走 resolveMediaUrlsForDisplay → proxy-image 兜底。
  */
 const springAuth = require('./springAuth.js');
 const { resolveMediaUrlsForDisplay } = require('./mpDisplayMedia.js');
@@ -51,11 +50,10 @@ function msUntilNextScheduleBoundary(now) {
   return Math.max(1000, next - d.getTime());
 }
 
-/** 与物资/报修存库格式一致：cloud:// 或 /api/upload/files/... */
+/** 与物资/报修存库格式一致：/api/upload/files/... 或合法 HTTP 上传地址；cloud:// 不再视为有效上传地址。 */
 function isUploadMediaUrl(raw) {
   const u = String(raw || '').trim();
   if (!u) return false;
-  if (u.startsWith('cloud://')) return true;
   if (u.startsWith('/api/upload/files/')) return true;
   return /^https?:\/\//i.test(u) && u.includes('/api/upload/files/');
 }
@@ -92,22 +90,21 @@ async function resolveHeroBannerUrlsForDisplay(branding, mode) {
   const rawList = listHeroUrlsRaw(branding, mode);
   if (!rawList.length) return [];
   const urls = await resolveMediaUrlsForDisplay(rawList);
-  if (rawList.some((u) => u && !u.startsWith('cloud://'))) {
-    springAuth.triggerCloudSync();
-  }
   return urls;
 }
 
 async function fetchLoginBranding() {
-  const res = await springAuth.callSpringProxy({
+  const res = await springAuth.callSpringDirect({
     path: '/api/public/login-branding',
     method: 'GET',
     data: {},
-    authorization: '',
   });
-  const body = res.data && typeof res.data === 'object' ? res.data : {};
-  if (res.statusCode === 200 && body.success === true && body.data) return body.data;
-  throw new Error(body.message || body.msg || '加载轮播配置失败');
+  let body = res.data;
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch (e) { body = {}; }
+  }
+  if (res.statusCode === 200 && body && body.success === true && body.data) return body.data;
+  throw new Error((body && body.message) || (body && body.msg) || '加载轮播配置失败');
 }
 
 module.exports = {

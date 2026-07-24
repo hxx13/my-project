@@ -938,19 +938,8 @@ Page({
         arr.push({ tempPath: path, url: '' });
         this.setData({ addPhotoUrls: arr });
         try {
-          const fileID = await springAuth.uploadCloudMediaFile(path, 'asset/photos');
-          if (fileID) {
-            try {
-              const syncRes = await wx.cloud.callFunction({ name: 'syncToBackend', data: { wechatFileID: fileID, mimeType: 'image/jpeg' } });
-              const publicUrl = (syncRes && syncRes.result && syncRes.result.publicUrl) ? String(syncRes.result.publicUrl).trim() : '';
-              arr[arr.length - 1] = { tempPath: '', url: publicUrl || fileID };
-            } catch (_syncErr) {
-              arr[arr.length - 1] = { tempPath: '', url: fileID };
-            }
-          } else {
-            arr.pop();
-            failCount += 1;
-          }
+          const url = await springAuth.uploadFileDirect(path, {});
+          arr[arr.length - 1] = { tempPath: '', url };
         } catch (singleErr) {
           arr.pop();
           failCount += 1;
@@ -1152,19 +1141,8 @@ Page({
         arr.push({ tempPath: path, url: '' });
         this.setData({ detailPhotoUrls: arr });
         try {
-          const fileID = await springAuth.uploadCloudMediaFile(path, 'asset/photos');
-          if (fileID) {
-            try {
-              const syncRes = await wx.cloud.callFunction({ name: 'syncToBackend', data: { wechatFileID: fileID, mimeType: 'image/jpeg' } });
-              const publicUrl = (syncRes && syncRes.result && syncRes.result.publicUrl) ? String(syncRes.result.publicUrl).trim() : '';
-              arr[arr.length - 1] = { tempPath: '', url: publicUrl || fileID };
-            } catch (_syncErr) {
-              arr[arr.length - 1] = { tempPath: '', url: fileID };
-            }
-          } else {
-            arr.pop();
-            failCount += 1;
-          }
+          const url = await springAuth.uploadFileDirect(path, {});
+          arr[arr.length - 1] = { tempPath: '', url };
         } catch (singleErr) {
           arr.pop();
           failCount += 1;
@@ -1405,21 +1383,8 @@ Page({
         arr.push({ tempPath: path, url: '' });
         this.setData({ [key]: arr });
         try {
-          // 上传到云存储 → 同步到后端 → 拿到 publicUrl 存入业务表（对齐双端图片互通规范）
-          const fileID = await springAuth.uploadCloudMediaFile(path, `asset-transfer/${slot}`);
-          if (fileID) {
-            try {
-              const syncRes = await wx.cloud.callFunction({ name: 'syncToBackend', data: { wechatFileID: fileID, mimeType: 'image/jpeg' } });
-              const publicUrl = (syncRes && syncRes.result && syncRes.result.publicUrl) ? String(syncRes.result.publicUrl).trim() : '';
-              arr[idx] = { tempPath: '', url: publicUrl || fileID };
-            } catch (_syncErr) {
-              // 同步失败时保留 cloud:// 兜底（proxy-image 仍可尝试解析）
-              arr[idx] = { tempPath: '', url: fileID };
-            }
-          } else {
-            arr.splice(idx, 1);
-            failCount += 1;
-          }
+          const url = await springAuth.uploadFileDirect(path, {});
+          arr[idx] = { tempPath: '', url };
         } catch (singleErr) {
           arr.splice(idx, 1);
           failCount += 1;

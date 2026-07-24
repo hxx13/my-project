@@ -205,7 +205,7 @@ async function patchAssetRecord(assetId, payload) {
 async function exportAssetExcel(params) {
   const token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
   const authorization = token ? `Bearer ${token}` : '';
-  const res = await springAuth.callSpringProxy({
+  const res = await springAuth.callSpringDirect({
     path: '/api/v1/assets/export',
     method: 'GET',
     data: params || {},

@@ -1,5 +1,6 @@
 /**
  * 小程序云开发 fileID；浏览器无法直接用于 <img src>。
+ * @deprecated cloud:// 已不再支持，浏览器端无法渲染。
  */
 export function isCloudFileId(url: string | null | undefined): boolean {
   const u = (url != null && String(url).trim()) || "";
@@ -29,17 +30,13 @@ function withApiOrigin(apiPath: string): string {
 
 /**
  * 浏览器端可用的图片地址（上传文件、帮助富文本、物资封面等共用）。
- * - cloud:// → /api/upload/proxy-image
+ * - cloud:// → 不支持（浏览器端无法渲染）
  * - /api/... → 按部署环境补全 origin（或保持相对路径）
  * - 开发环境误存的 localhost 绝对地址 → 规范为 /api/... 路径
  */
 export function resolveApiMediaUrl(url: string | null | undefined): string | undefined {
   const u = (url != null && String(url).trim()) || "";
   if (!u) return undefined;
-
-  if (isCloudFileId(u)) {
-    return withApiOrigin(`/api/upload/proxy-image?url=${encodeURIComponent(u)}`);
-  }
 
   if (/^https?:\/\//i.test(u)) {
     try {
@@ -77,15 +74,9 @@ export function dualImageSrc(params: {
   wechatFileId?: string;
   fallback?: string;
 }): string | undefined {
-  const { publicUrl, wechatFileId, fallback } = params;
-  // 浏览器端：publicUrl 可直接访问
-  if (publicUrl) return publicUrl;
-  // 如果只有 wechatFileId（非 cloud:// 格式方可渲染）
-  if (wechatFileId && !isCloudFileId(wechatFileId)) return wechatFileId;
-  return fallback;
+  return params.publicUrl || params.fallback;
 }
 
 export type DualImageSource = {
   publicUrl?: string;
-  wechatFileId?: string;
 };

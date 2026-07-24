@@ -25,11 +25,10 @@ function roleAllowed(currentRole, minRole) {
 
 async function refreshMiniPermissions() {
   try {
-    const res = await springAuth.callSpringProxy({
+    const res = await springAuth.callSpringDirect({
       path: '/api/public/page-permissions',
       method: 'GET',
       data: { platform: 'MINI' },
-      authorization: '',
     });
     const body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
     if (res.statusCode === 200 && body && body.success === true && Array.isArray(body.data)) {
