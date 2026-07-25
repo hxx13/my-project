@@ -1358,13 +1358,22 @@ export default function AdminLayout() {
                     <DropdownMenuSeparator />
                     {currentEmail ? (
                       <DropdownMenuItem onSelect={() => {
-                        setEmailDraft(currentEmail);
-                        setEmailCode(""); setEmailCodeCooldown(0);
-                        if (emailCooldownRef.current) { clearInterval(emailCooldownRef.current); emailCooldownRef.current = null; }
-                        setEmailDialogOpen(true);
+                        if (window.confirm(`已绑定邮箱 ${currentEmail}，是否取消绑定？`)) {
+                          const token = authStorage.getToken();
+                          const userId = sessionUser?.id;
+                          if (!userId) return;
+                          fetch(`/api/admin/personnel/${encodeURIComponent(userId)}/contact-email`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                            body: JSON.stringify({ email: "" }),
+                          }).then((r) => {
+                            if (r.ok) { setCurrentEmail(null); toast.success("已取消邮箱绑定"); }
+                            else toast.error("取消失败");
+                          }).catch(() => toast.error("取消失败"));
+                        }
                       }}>
                         <Mail className="mr-2 h-4 w-4 text-emerald-500" />
-                        邮箱: {currentEmail}
+                        邮箱: 已绑定
                       </DropdownMenuItem>
                     ) : (
                       <DropdownMenuItem onSelect={() => {
