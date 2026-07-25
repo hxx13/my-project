@@ -2,7 +2,7 @@
 import "./mobile-student-shell.css";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { Loader2, WifiOff, X } from "lucide-react";
+import { Loader2, WifiOff, X, Mail, MessageCircle } from "lucide-react";
 import {
   fetchMobileCenter,
   fetchMobileAlerts,
@@ -343,7 +343,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
               border: "1px solid rgba(255,255,255,0.2)",
             }}
           >
-            {currentEmail ? "邮箱已绑定" : "邮箱未绑定"}
+            <Mail className="size-3 mr-1 inline" />{currentEmail ? "邮箱已绑定" : "邮箱未绑定"}
           </div>
           <div
             className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
@@ -353,7 +353,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
               border: "1px solid rgba(255,255,255,0.2)",
             }}
           >
-            {currentSendKey ? "微信已绑定" : "微信未绑定"}
+            <MessageCircle className="size-3 mr-1 inline" />{currentSendKey ? "微信已绑定" : "微信未绑定"}
           </div>
         </div>
       )}
