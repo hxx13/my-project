@@ -226,10 +226,16 @@ export default function LoginPage() {
       }
       try {
         if (turnstileWidgetId.current) {
-          window.turnstile.remove(turnstileWidgetId.current);
+          try { window.turnstile.remove(turnstileWidgetId.current); } catch { /* already removed */ }
         }
-        container.innerHTML = "";
-        turnstileWidgetId.current = window.turnstile.render(container, {
+        // Use a dedicated child div so Turnstile owns its own DOM subtree
+        let widgetDiv = container.querySelector('.turnstile-widget') as HTMLDivElement;
+        if (!widgetDiv) {
+          widgetDiv = document.createElement('div');
+          widgetDiv.className = 'turnstile-widget';
+          container.appendChild(widgetDiv);
+        }
+        turnstileWidgetId.current = window.turnstile.render(widgetDiv, {
           sitekey: turnstileSiteKey,
           theme: effectiveMode === "dark" ? "dark" : "light",
           size: "normal",
@@ -248,6 +254,13 @@ export default function LoginPage() {
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      if (turnstileWidgetId.current) {
+        try { window.turnstile?.remove(turnstileWidgetId.current); } catch { /* ignore */ }
+        turnstileWidgetId.current = null;
+      }
+      // Remove Turnstile's child div so React can cleanly reconcile the container
+      const widgetDiv = container?.querySelector('.turnstile-widget');
+      if (widgetDiv) widgetDiv.remove();
       setTurnstileToken("");
       setTurnstileLoadFailed(false);
       setTurnstileLoading(false);

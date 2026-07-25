@@ -48,9 +48,16 @@ export default function MobileLoginPage() {
       if (cancelled) return;
       if (!window.turnstile) { if (++polls < 12) setTimeout(tryRender, 300); else { setTurnstileLoadFailed(true); setTurnstileLoading(false); } return; }
       try {
-        if (turnstileId.current) window.turnstile.remove(turnstileId.current);
-        container.innerHTML = "";
-        turnstileId.current = window.turnstile.render(container, {
+        if (turnstileId.current) {
+          try { window.turnstile.remove(turnstileId.current); } catch { /* already removed */ }
+        }
+        let widgetDiv = container.querySelector('.turnstile-widget') as HTMLDivElement;
+        if (!widgetDiv) {
+          widgetDiv = document.createElement('div');
+          widgetDiv.className = 'turnstile-widget';
+          container.appendChild(widgetDiv);
+        }
+        turnstileId.current = window.turnstile.render(widgetDiv, {
           sitekey: turnstileSiteKey,
           theme: "light",
           size: "normal",
@@ -62,7 +69,16 @@ export default function MobileLoginPage() {
       } catch { setTurnstileLoadFailed(true); setTurnstileLoading(false); }
     };
     setTimeout(tryRender, 100);
-    return () => { cancelled = true; setTurnstileToken(""); setTurnstileLoadFailed(false); setTurnstileLoading(false); };
+    return () => {
+      cancelled = true;
+      if (turnstileId.current) {
+        try { window.turnstile?.remove(turnstileId.current); } catch { /* ignore */ }
+        turnstileId.current = null;
+      }
+      const wd = container?.querySelector('.turnstile-widget');
+      if (wd) wd.remove();
+      setTurnstileToken(""); setTurnstileLoadFailed(false); setTurnstileLoading(false);
+    };
   }, [turnstileSiteKey]);
 
   // Forgot password state
