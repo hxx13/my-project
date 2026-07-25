@@ -21,7 +21,7 @@ const PRESETS = {
   dev: {
     id: 'dev',
     label: '开发',
-    apiBaseUrl: 'http://localhost:8081',
+    apiBaseUrl: 'http://localhost:8080',
     hint: '本地开发机',
     jtuAccount: '15001771038',
     jtuPassword: '88888888',
