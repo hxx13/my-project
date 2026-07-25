@@ -1,6 +1,6 @@
 package com.example.demo.modules.notification.push.admin;
 
-import com.example.demo.common.config.ApiAuthInterceptor;
+import com.example.demo.common.config.AdminAuthInterceptor;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
@@ -36,8 +36,9 @@ public class AdminNotifySourceController {
     }
 
     private Result<?> requireSuperAdmin(HttpServletRequest request) {
-        User user = (User) request.getAttribute(ApiAuthInterceptor.CURRENT_USER_ATTR);
-        if (user == null || user.getRole() != RoleEnum.SUPER_ADMIN) return Result.error("仅超级管理员可操作");
+        Object attr = request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
+        if (!(attr instanceof User user)) return Result.error("当前登录信息无效");
+        if (user.getRole().getLevel() < RoleEnum.SUPER_ADMIN.getLevel()) return Result.error("无权限访问");
         return null;
     }
 
