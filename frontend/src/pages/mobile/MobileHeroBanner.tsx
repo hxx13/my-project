@@ -197,9 +197,8 @@ export default function HeroBanner({
           </div>
         </div>
 
-        {/* 第二行：邮箱 + 微信通知绑定状态 */}
-        <div className="flex items-center gap-2">
-          <div
+        {/* 第二行：邮箱绑定状态 */}
+        <div
             className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
             style={{
               background: currentEmail ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
@@ -219,9 +218,8 @@ export default function HeroBanner({
           >
             {currentSendKey ? "微信已绑定" : "微信未绑定"}
           </div>
-        </div>
 
-        {/* 第二行：二维码 + 链接 + 操作（仅直链模式且展开时显示） */}
+        {/* 二维码 + 链接 + 操作（仅直链模式且展开时显示） */}
         {!jwtMode && (
           <div
             className="flex items-start gap-2.5 overflow-hidden transition-all duration-300 ease-out"
