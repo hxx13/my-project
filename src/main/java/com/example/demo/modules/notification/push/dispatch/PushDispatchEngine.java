@@ -77,11 +77,15 @@ public class PushDispatchEngine {
             return;
         }
 
-        // Batch preload users and display names
+        // Batch preload users, display names, emails, and sendKeys
         List<String> idList = new ArrayList<>(allRecipientIds);
         Map<String, User> userCache = userMapper.findByIds(idList).stream()
                 .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
         Map<String, String> nameMap = displayNameService.resolveDisplayNames(idList);
+        Map<String, String> emailMap = personnelMapper.findContactEmailsByUserIds(idList);
+        if (emailMap == null) emailMap = Map.of();
+        Map<String, String> sendKeyMap = personnelMapper.findSendKeysByUserIds(idList);
+        if (sendKeyMap == null) sendKeyMap = Map.of();
 
         for (NotifySourceChannel channelCfg : channelConfigs) {
             if (channelCfg.getEnabled() == null || channelCfg.getEnabled() != 1) {
@@ -101,10 +105,10 @@ public class PushDispatchEngine {
             String content = render(channelCfg.getContentTpl(), variables);
 
             for (String userId : allRecipientIds) {
-                // Get target based on channel
+                // Batch-preloaded maps (C2 fix)
                 String target = PushConstants.CHANNEL_EMAIL.equals(channel.getCode())
-                        ? personnelMapper.findContactEmailByUserId(userId)
-                        : personnelMapper.findSendKeyByUserId(userId);
+                        ? emailMap.get(userId)
+                        : sendKeyMap.get(userId);
                 if (target == null || target.isBlank()) continue;
 
                 int limitSec = channelCfg.getRateLimitSeconds() != null ? channelCfg.getRateLimitSeconds() : 300;
