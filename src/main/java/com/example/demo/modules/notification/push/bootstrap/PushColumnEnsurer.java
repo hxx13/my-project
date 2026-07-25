@@ -36,14 +36,21 @@ public class PushColumnEnsurer implements InitializingBean {
 
     private void addColumnIfMissing(String table, String column, String definition) {
         try {
-            // MySQL: 列不存在时执行 ALTER，存在则跳过
             jdbc.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
+            log.info("[Push] 新增列 {}.{}", table, column);
         } catch (Exception e) {
+            // 列已存在 → 幂等跳过（覆盖各种 MySQL 版本的报错措辞）
             String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-            if (msg.contains("duplicate column") || msg.contains("already exists")) {
-                return; // 幂等
+            Throwable cause = e.getCause();
+            String causeMsg = cause != null && cause.getMessage() != null
+                    ? cause.getMessage().toLowerCase() : "";
+            if (msg.contains("duplicate") || msg.contains("already exists")
+                    || causeMsg.contains("duplicate") || causeMsg.contains("already exists")
+                    || (msg.contains("bad sql") && causeMsg.contains("duplicate"))) {
+                log.debug("[Push] 列已存在，跳过: {}.{}", table, column);
+                return;
             }
-            log.warn("[Push] 无法确保列 {}.{}: {}", table, column, e.getMessage());
+            log.warn("[Push] 无法确保列 {}.{}: {}", table, column, msg);
         }
     }
 }
