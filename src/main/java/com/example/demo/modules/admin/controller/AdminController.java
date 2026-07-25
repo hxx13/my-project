@@ -10,6 +10,7 @@ import com.example.demo.modules.admin.service.AdminService;
 import com.example.demo.modules.auth.dto.UpdateDisplayNicknameRequest;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.service.SpecialChannelService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,13 +27,16 @@ public class AdminController {
     private final AdminService adminService;
     private final SpecialChannelService specialChannelService;
     private final UserMapper userMapper;
+    private final AroPersonnelMapper aroPersonnelMapper;
 
     public AdminController(AdminService adminService,
                           SpecialChannelService specialChannelService,
-                          UserMapper userMapper) {
+                          UserMapper userMapper,
+                          AroPersonnelMapper aroPersonnelMapper) {
         this.adminService = adminService;
         this.specialChannelService = specialChannelService;
         this.userMapper = userMapper;
+        this.aroPersonnelMapper = aroPersonnelMapper;
     }
 
     @GetMapping("/personnel")
@@ -210,6 +214,41 @@ public class AdminController {
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    @PutMapping("/personnel/{userId}/contact-email")
+    @Operation(summary = "更新人员的联系邮箱（本地管理，不被ARO同步覆盖）")
+    public Result<Void> updateContactEmail(@PathVariable String userId, @RequestBody Map<String, String> body) {
+        String email = body != null ? body.get("email") : null;
+        if (email == null || email.isBlank()) return Result.error("邮箱不能为空");
+        aroPersonnelMapper.updateContactEmail(userId, email.trim());
+        return Result.success();
+    }
+
+    @GetMapping("/personnel/{userId}/contact-email")
+    @Operation(summary = "获取人员的联系邮箱")
+    public Result<Map<String, Object>> getContactEmail(@PathVariable String userId) {
+        String email = aroPersonnelMapper.findContactEmailByUserId(userId);
+        return Result.success(Map.of("email", email != null ? email : ""));
+    }
+
+    @PutMapping("/personnel/{userId}/send-key")
+    @Operation(summary = "更新人员的Server酱SendKey")
+    public Result<Void> updateSendKey(@PathVariable String userId, @RequestBody Map<String, String> body) {
+        String sendKey = body != null ? body.get("sendKey") : null;
+        if (sendKey == null || sendKey.isBlank()) return Result.error("SendKey不能为空");
+        aroPersonnelMapper.updateSendKey(userId, sendKey.trim());
+        return Result.success();
+    }
+
+    @GetMapping("/personnel/{userId}/send-key")
+    @Operation(summary = "获取人员的SendKey（脱敏）")
+    public Result<Map<String, Object>> getSendKey(@PathVariable String userId) {
+        String sendKey = aroPersonnelMapper.findSendKeyByUserId(userId);
+        String masked = sendKey != null && sendKey.length() > 10
+                ? sendKey.substring(0, 4) + "****" + sendKey.substring(sendKey.length() - 4)
+                : (sendKey != null ? "****" : "");
+        return Result.success(Map.of("sendKey", masked, "hasSendKey", sendKey != null && !sendKey.isBlank()));
     }
 
     private Result<?> requireSuperAdmin(HttpServletRequest request) {

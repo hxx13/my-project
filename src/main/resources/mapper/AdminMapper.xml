@@ -17,7 +17,9 @@
             su.open_id AS openId,
             su.status,
             ap.personal_pin AS personalPin,
-            ap.pin_updated_at AS pinUpdatedAt
+            ap.pin_updated_at AS pinUpdatedAt,
+            ap.contact_email AS contactEmail,
+            ap.send_key AS sendKey
         FROM aro_personnel ap
         LEFT JOIN sys_user su ON su.id = ap.user_id
         <where>
