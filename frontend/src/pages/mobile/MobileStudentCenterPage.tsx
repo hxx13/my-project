@@ -1,7 +1,7 @@
 /** 手机版学生中心 — 壳组件：数据加载、Tab 切换、底部导航、WebSocket、实时提醒 */
 import "./mobile-student-shell.css";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Loader2, WifiOff, X, Mail, MessageCircle } from "lucide-react";
 import {
   fetchMobileCenter,
@@ -110,6 +110,35 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
 
   // Fetch email & SendKey binding status for header chips
   const userIdForBind = authStorage.getUserInfo()?.id || data?.userId || "";
+  const navigate = useNavigate();
+
+  const handleEmailChip = () => {
+    if (!userIdForBind) return;
+    if (currentEmail) {
+      if (!window.confirm(`已绑定 ${currentEmail}，是否取消绑定？`)) return;
+      const t = authStorage.getToken();
+      fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/contact-email`, {
+        method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+        body: JSON.stringify({ email: "" }),
+      }).then((r) => { if (r.ok) setCurrentEmail(""); });
+    } else {
+      setActiveTab("mine");
+    }
+  };
+
+  const handleSendKeyChip = () => {
+    if (!userIdForBind) return;
+    if (currentSendKey) {
+      if (!window.confirm("已绑定微信通知，是否取消绑定？")) return;
+      const t = authStorage.getToken();
+      fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, {
+        method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+        body: JSON.stringify({ sendKey: "" }),
+      }).then((r) => { if (r.ok) setCurrentSendKey(false); });
+    } else {
+      setActiveTab("mine");
+    }
+  };
   useEffect(() => {
     if (!userIdForBind) return;
     const t = authStorage.getToken();
@@ -335,8 +364,10 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
           className="fixed left-4 z-30 flex flex-col items-start gap-2"
           style={{ top: "calc(env(safe-area-inset-top, 0px) + 52px)" }}
         >
-          <div
-            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
+          <button
+            type="button"
+            onClick={handleEmailChip}
+            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
             style={{
               background: currentEmail ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
               backdropFilter: "blur(8px)",
@@ -344,9 +375,11 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             }}
           >
             <Mail className="size-3 mr-1 inline" />{currentEmail ? "邮箱已绑定" : "邮箱未绑定"}
-          </div>
-          <div
-            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
+          </button>
+          <button
+            type="button"
+            onClick={handleSendKeyChip}
+            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
             style={{
               background: currentSendKey ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
               backdropFilter: "blur(8px)",
@@ -354,7 +387,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             }}
           >
             <MessageCircle className="size-3 mr-1 inline" />{currentSendKey ? "微信已绑定" : "微信未绑定"}
-          </div>
+          </button>
         </div>
       )}
       <WatermarkLogo />
