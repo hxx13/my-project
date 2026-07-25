@@ -81,7 +81,7 @@ import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
 import AdminNavManager from "@/features/admin/AdminNavManager";
 import AdminConversationArchivePage from "@/pages/AdminConversationArchivePage";
 import AdminPushConfigPage from "@/pages/AdminPushConfigPage";
-
+import AdminNotificationDigestPage from "@/pages/AdminNotificationDigestPage";
 import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
@@ -348,6 +348,7 @@ export const router = createHashRouter([
                   { path: "nav-manager", element: <AdminNavManager /> },
                   { path: "conversation-archive", element: <AdminConversationArchivePage /> },
                   { path: "push-config", element: <AdminPushConfigPage /> },
+                  { path: "notification-digest", element: <AdminNotificationDigestPage /> },
                 ],
               },
             ],

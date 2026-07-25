@@ -105,6 +105,25 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [feedbacks, setFeedbacks] = useState<MobileAlertItem[]>([]);
   const [html5PrivilegeBypass, setHtml5PrivilegeBypass] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
+  const [currentEmail, setCurrentEmail] = useState("");
+  const [currentSendKey, setCurrentSendKey] = useState(false);
+
+  // Fetch email & SendKey binding status for header chips
+  const userIdForBind = authStorage.getUserInfo()?.id || data?.userId || "";
+  useEffect(() => {
+    if (!userIdForBind) return;
+    const t = authStorage.getToken();
+    if (!t) return;
+    const h = { Authorization: "Bearer " + t };
+    fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/contact-email`, { headers: h })
+      .then((r) => r.json().catch(() => ({})))
+      .then((b) => setCurrentEmail(b?.data?.email || ""))
+      .catch(() => {});
+    fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, { headers: h })
+      .then((r) => r.json().catch(() => ({})))
+      .then((b) => setCurrentSendKey(!!b?.data?.sendKey))
+      .catch(() => {});
+  }, [userIdForBind]);
   const [showFeedback, setShowFeedback] = useState(false);
   const [announcementFocusKey, setAnnouncementFocusKey] = useState<string | null>(null);
   const jwtMode = !token;
@@ -310,6 +329,34 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         showBack={!isHome}
         onBack={handleTopNavBack}
       />
+      {/* Email / SendKey binding status chips — top-left of home page */}
+      {isHome && userIdForBind && (
+        <div
+          className="fixed left-2 z-50 flex items-center gap-1.5"
+          style={{ top: "calc(env(safe-area-inset-top, 0px) + 8px)" }}
+        >
+          <span
+            className="text-[10px] font-semibold px-2 py-0.5 rounded-full border"
+            style={{
+              color: currentEmail ? "#059669" : "#ea580c",
+              background: currentEmail ? "rgba(16,185,129,0.1)" : "rgba(249,115,22,0.1)",
+              borderColor: currentEmail ? "rgba(16,185,129,0.25)" : "rgba(249,115,22,0.25)",
+            }}
+          >
+            {currentEmail ? "邮" : "未绑"}
+          </span>
+          <span
+            className="text-[10px] font-semibold px-2 py-0.5 rounded-full border"
+            style={{
+              color: currentSendKey ? "#059669" : "#ea580c",
+              background: currentSendKey ? "rgba(16,185,129,0.1)" : "rgba(249,115,22,0.1)",
+              borderColor: currentSendKey ? "rgba(16,185,129,0.25)" : "rgba(249,115,22,0.25)",
+            }}
+          >
+            {currentSendKey ? "微" : "未通"}
+          </span>
+        </div>
+      )}
       <WatermarkLogo />
       {showLiveAlert && liveAlertTitle && (
         <div

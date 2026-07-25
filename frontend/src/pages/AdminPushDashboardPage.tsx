@@ -1,6 +1,6 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminFormCard, AdminPageShell, AdminFillScrollRegion } from "@/components/admin/AdminPageShell";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
@@ -28,6 +28,10 @@ interface PushDashboardOverview {
     channelCode: string; channelName: string; enabled: boolean;
     status: string; failed10min: number;
   }>;
+  digestEnabledSources?: number;
+  nightModeSources?: number;
+  pendingDigestUsers?: number;
+  pendingDigestItems?: number;
 }
 
 interface PushLogEntry {
@@ -90,6 +94,7 @@ const channelIconMap: Record<string, React.ReactNode> = {
 export default function AdminPushDashboardPage() {
   const location = useLocation();
   const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
+  const queryClient = useQueryClient();
 
   /* ---- overview ---- */
   const { data: overview, isLoading, error, refetch } = useQuery<PushDashboardOverview>({
@@ -99,6 +104,7 @@ export default function AdminPushDashboardPage() {
   });
 
   /* ---- log filters ---- */
+  const [logKeyword, setLogKeyword] = useState("");
   const [logSource, setLogSource] = useState("");
   const [logChannel, setLogChannel] = useState("");
   const [logStatus, setLogStatus] = useState("");
@@ -108,9 +114,10 @@ export default function AdminPushDashboardPage() {
   const logSize = 20;
 
   const { data: logData, isLoading: logLoading } = useQuery<{ data: PushLogEntry[]; total: number }>({
-    queryKey: ["push-log", logSource, logChannel, logStatus, logStartDate, logEndDate, logPage],
+    queryKey: ["push-log", logKeyword, logSource, logChannel, logStatus, logStartDate, logEndDate, logPage],
     queryFn: () => authHttp.get("/admin/push-log/list", {
       params: {
+        keyword: logKeyword || undefined,
         sourceCode: logSource || undefined,
         channelCode: logChannel || undefined,
         status: logStatus || undefined,
@@ -131,7 +138,7 @@ export default function AdminPushDashboardPage() {
   const totalPages = logData ? Math.max(1, Math.ceil(logData.total / logSize)) : 1;
 
   const resetLogFilters = () => {
-    setLogSource(""); setLogChannel(""); setLogStatus("");
+    setLogKeyword(""); setLogSource(""); setLogChannel(""); setLogStatus("");
     setLogStartDate(""); setLogEndDate(""); setLogPage(1);
   };
 
@@ -146,7 +153,11 @@ export default function AdminPushDashboardPage() {
             <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">
               {pageLabel}
             </h2>
-            <AdminButton type="button" tone="ghost" onClick={() => refetch()}>
+            <AdminButton type="button" tone="ghost" onClick={() => {
+              refetch();
+              queryClient.invalidateQueries({ queryKey: ["digest-pending"] });
+              queryClient.invalidateQueries({ queryKey: ["push-log"] });
+            }}>
               <RefreshCw className="h-4 w-4" aria-hidden /> 刷新
             </AdminButton>
           </div>
@@ -205,12 +216,16 @@ export default function AdminPushDashboardPage() {
                   </div>
                 </AdminFormCard>
 
+                {/* Pending digest items */}
+                <DigestPendingSection />
+
                 {/* ================================================ */}
                 {/*  Push Log Section                                  */}
                 {/* ================================================ */}
                 <AdminFormCard title="推送日志">
                   {/* Filters */}
                   <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <input type="text" className={cn(adminInputClass, "w-[140px] text-xs py-1.5")} placeholder="搜索标题/接收人/源…" value={logKeyword} onChange={(e) => { setLogKeyword(e.target.value); setLogPage(1); }} />
                     <select className={cn(adminInputClass, "w-auto min-w-[120px] text-xs py-1.5")} value={logChannel} onChange={(e) => { setLogChannel(e.target.value); setLogPage(1); }}>
                       {CHANNEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
@@ -250,7 +265,12 @@ export default function AdminPushDashboardPage() {
                           logData.data.map((row) => (
                             <tr key={row.id} className="hover:bg-[var(--app-color-surface-hover)] cursor-pointer transition-colors" onClick={() => setDetailId(row.id)}>
                               <td className="px-3 py-2 text-[var(--app-color-text-tertiary)] whitespace-nowrap font-mono">{fmtTime(row.create_time)}</td>
-                              <td className="px-3 py-2 text-[var(--app-color-text-primary)] max-w-[120px] truncate">{row.source_name || row.source_code || "-"}</td>
+                              <td className="px-3 py-2 text-[var(--app-color-text-primary)] max-w-[120px] truncate">
+                                {row.source_name || row.source_code || "-"}
+                                {(row.template_key || "").startsWith("DIGEST:") && (
+                                  <span className="ml-1 inline-block rounded-full bg-[var(--app-color-accent)]/10 px-1.5 py-0.5 text-[9px] font-medium text-[var(--app-color-accent)]">聚合</span>
+                                )}
+                              </td>
                               <td className="px-3 py-2">{row.channel_name || row.channel || "-"}</td>
                               <td className="px-3 py-2 text-[var(--app-color-text-primary)] max-w-[100px] truncate">{row.recipient_name || row.recipient_user_id || "-"}</td>
                               <td className="px-3 py-2 text-[var(--app-color-text-primary)] max-w-[180px] truncate">{row.title || "-"}</td>
@@ -300,6 +320,104 @@ export default function AdminPushDashboardPage() {
 /* ------------------------------------------------------------------ */
 /*  StatCard                                                            */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/*  DigestPendingSection                                                */
+/* ------------------------------------------------------------------ */
+
+interface DigestPendingItem {
+  id: number; user_id: string; source_code: string; channel_code: string;
+  title: string; content: string; create_time: string; user_name: string;
+  schedule_times?: string; digest_mode?: string;
+  hourly_interval?: number; minutely_interval?: number;
+}
+
+/** 绝对时钟计算下一次发送的倒计时秒数（与 DigestScheduler 逻辑一致） */
+function computeNextSendSeconds(it: DigestPendingItem): number | null {
+  const mode = it.digest_mode;
+  if (!mode || mode === "INSTANT") return null;
+  const now = new Date();
+  const nowTotalSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  if (mode === "MINUTELY") {
+    const interval = (it.minutely_interval || 5) * 60; // 转为秒
+    if (interval <= 0) return null;
+    const nextSlot = (Math.floor(nowTotalSeconds / interval) + 1) * interval;
+    return nextSlot - nowTotalSeconds;
+  }
+  if (mode === "HOURLY") {
+    const interval = (it.hourly_interval || 1) * 3600;
+    const nextSlot = (Math.floor(nowTotalSeconds / interval) + 1) * interval;
+    return nextSlot - nowTotalSeconds;
+  }
+  // SCHEDULED
+  const times = (it.schedule_times || "").split(",").map(t => t.trim()).filter(Boolean);
+  if (times.length === 0) return null;
+  let minDiff = Infinity;
+  for (const t of times) {
+    const [h, m] = t.split(":").map(Number);
+    const target = h * 3600 + m * 60;
+    let diff = target - nowTotalSeconds;
+    if (diff <= 0) diff += 86400;
+    if (diff < minDiff) minDiff = diff;
+  }
+  return minDiff === Infinity ? null : minDiff;
+}
+
+function CountdownCell({ seconds }: { seconds: number | null }) {
+  const [tick, setTick] = useState(seconds ?? 0);
+  useEffect(() => {
+    if (seconds == null) return;
+    setTick(seconds);
+    const id = setInterval(() => setTick((prev) => Math.max(0, prev - 1)), 1000);
+    return () => clearInterval(id);
+  }, [seconds]);
+  if (seconds == null) return <span className="text-right text-[var(--app-color-text-tertiary)]">—</span>;
+  if (tick <= 0) return <span className="text-[var(--app-color-feedback-warning)] text-right font-medium">即将发送</span>;
+  const m = Math.floor(tick / 60), s = tick % 60;
+  const urgent = tick < 300;
+  return <span className={cn("text-right whitespace-nowrap", urgent ? "text-[var(--app-color-feedback-warning)] font-medium" : "text-[var(--app-color-text-tertiary)]")}>{m > 0 ? `${m}分${s}秒` : `${s}秒`}</span>;
+}
+
+function DigestPendingSection() {
+  const { data: items = [], isLoading } = useQuery<DigestPendingItem[]>({
+    queryKey: ["digest-pending"],
+    queryFn: () => authHttp.get("/admin/push-dashboard/digest-pending").then((r) => r.data.data),
+    refetchInterval: 30000,
+  });
+
+  return (
+    <AdminFormCard title={`聚合缓冲 · ${items.length} 条待发`}>
+      <div className="max-h-[320px] overflow-auto mt-2">
+        {isLoading ? (
+          <p className="text-xs text-[var(--app-color-text-tertiary)] text-center py-4">加载中…</p>
+        ) : items.length === 0 ? (
+          <p className="text-xs text-[var(--app-color-text-tertiary)] text-center py-4">暂无待发缓冲</p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[var(--app-color-text-tertiary)] border-b border-[var(--app-color-border-default)]">
+                <th className="py-1.5 pr-2 font-medium">信息源</th>
+                <th className="py-1.5 pr-2 font-medium">接收人</th>
+                <th className="py-1.5 pr-2 font-medium">标题</th>
+                <th className="py-1.5 font-medium w-[80px] text-right">倒计时</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--app-color-border-default)]">
+              {items.map((it) => (
+                <tr key={it.id} className="hover:bg-[var(--app-color-surface-hover)]">
+                  <td className="py-1.5 pr-2 text-[var(--app-color-accent)] font-medium max-w-[100px] truncate" title={it.source_code}>{it.source_code}</td>
+                  <td className="py-1.5 pr-2 max-w-[70px] truncate" title={it.user_name}>{it.user_name}</td>
+                  <td className="py-1.5 pr-2 max-w-[180px] truncate" title={it.title}>{it.title.replace(/<[^>]+>/g, "").trim()}</td>
+                  <td className="py-1.5 text-right"><CountdownCell seconds={computeNextSendSeconds(it)} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </AdminFormCard>
+  );
+}
 
 function StatCard({ icon, label, value, tone, sub }: {
   icon: React.ReactNode; label: string; value: number; tone: "accent" | "success" | "error"; sub?: string;
