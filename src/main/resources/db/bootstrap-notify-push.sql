@@ -41,5 +41,4 @@ ALTER TABLE sys_notify_delivery_log ADD COLUMN title VARCHAR(256) DEFAULT NULL;
 ALTER TABLE sys_notify_delivery_log ADD COLUMN content TEXT DEFAULT NULL;
 ALTER TABLE sys_notify_delivery_log ADD COLUMN max_retries INT DEFAULT 3;
 
-ALTER TABLE aro_personnel ADD COLUMN contact_email VARCHAR(256) DEFAULT NULL COMMENT '联系邮箱（本地管理，不被ARO同步覆盖）';
-ALTER TABLE aro_personnel ADD COLUMN send_key VARCHAR(512) DEFAULT NULL COMMENT 'Server酱SendKey（本地管理）';
+-- aro_personnel 的 contact_email / send_key 列由 PushColumnEnsurer 启动时确保，不在此处 ALTER
