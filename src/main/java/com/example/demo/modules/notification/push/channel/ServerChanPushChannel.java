@@ -5,7 +5,6 @@ import com.example.demo.modules.notification.push.PushConstants;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
@@ -23,7 +22,7 @@ public class ServerChanPushChannel implements PushChannel {
     private final RestTemplate restTemplate;
     private final NotificationSettingsMapper settingsMapper;
 
-    public ServerChanPushChannel(@Qualifier("aroRestTemplate") RestTemplate restTemplate,
+    public ServerChanPushChannel(RestTemplate restTemplate,
                                   NotificationSettingsMapper settingsMapper) {
         this.restTemplate = restTemplate;
         this.settingsMapper = settingsMapper;
