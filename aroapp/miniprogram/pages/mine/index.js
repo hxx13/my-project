@@ -1450,8 +1450,43 @@ Page({
   onOpenEmailEditor() {
     const id = this.data.springUserId;
     if (!id) { wx.showToast({ title: '请先完成校内绑定', icon: 'none' }); return; }
-    this.setData({ showEmailEditor: true, emailDraft: this.data.currentEmail || '', emailSaving: false });
-    this.fetchCurrentEmail();
+    // 已绑定：确认是否解绑
+    if (this.data.currentEmail) {
+      wx.showModal({
+        title: '取消绑定',
+        content: `当前已绑定 ${this.data.currentEmail}，是否取消绑定？`,
+        confirmText: '取消绑定',
+        cancelText: '暂不',
+        success: (res) => {
+          if (res.confirm) this.doUnbindEmail();
+        },
+      });
+      return;
+    }
+    this.setData({ showEmailEditor: true, emailDraft: '', emailSaving: false });
+  },
+
+  doUnbindEmail() {
+    const id = this.data.springUserId;
+    if (!id) return;
+    wx.showLoading({ title: '解绑中…', mask: true });
+    springAuth.springRequest({
+      url: `/api/admin/personnel/${encodeURIComponent(id)}/contact-email`,
+      method: 'PUT',
+      data: { email: '' },
+    }).then((res) => {
+      wx.hideLoading();
+      const body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (res && res.statusCode === 200 && body && body.success === true) {
+        wx.showToast({ title: '已取消绑定', icon: 'success' });
+        this.setData({ currentEmail: '' });
+      } else {
+        wx.showToast({ title: (body && body.message) || '操作失败', icon: 'none' });
+      }
+    }).catch(() => {
+      wx.hideLoading();
+      wx.showToast({ title: '网络错误', icon: 'none' });
+    });
   },
 
   onCloseEmailEditor() {
