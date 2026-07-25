@@ -510,40 +510,18 @@
   position="center"
   round
   closeable
-  custom-class="mine-email-popup"
+  custom-class="mine-bind-popup"
   bind:close="onCloseEmailEditor"
 >
-  <view class="mine-email-popup-body">
-    <view class="mine-email-title">绑定邮箱</view>
-    <view class="mine-email-hint">设置用于接收通知的联系邮箱</view>
-    <input
-      class="mine-email-input"
-      type="text"
-      value="{{ emailDraft }}"
-      maxlength="{{ 128 }}"
-      placeholder="请输入邮箱地址"
-      placeholder-class="ap-toolbar-ph"
-      bindinput="onEmailInput"
-    />
+  <view class="bind-panel bind-panel--center">
+    <view class="bind-title">绑定邮箱</view>
+    <text class="bind-tip">设置用于接收通知的联系邮箱</text>
+    <input class="bind-input bind-input-block" type="text" value="{{ emailDraft }}" maxlength="128" placeholder="请输入邮箱地址" bindinput="onEmailInput" />
     <view class="mine-email-code-row">
-      <input
-        class="mine-email-input mine-email-input--code"
-        type="text"
-        value="{{ emailCode }}"
-        maxlength="{{ 6 }}"
-        placeholder="验证码"
-        placeholder-class="ap-toolbar-ph"
-        bindinput="onEmailCodeInput"
-      />
-      <view
-        class="ap-modal-btn ap-modal-btn--ghost mine-email-send-btn {{ emailCodeCooldown > 0 || emailCodeSending ? 'ap-modal-btn--disabled' : '' }}"
-        hover-class="ap-tool-btn--hover"
-        catchtap="onSendEmailBindCode"
-      >
-        {{ emailCodeCooldown > 0 ? emailCodeCooldown + 's' : (emailCodeSending ? '发送中…' : '发送验证码') }}
-      </view>
+      <input class="bind-input" style="flex:1" type="text" value="{{ emailCode }}" maxlength="6" placeholder="验证码" bindinput="onEmailCodeInput" />
+      <van-button size="small" type="primary" plain hairline custom-class="bind-scan-btn" bindtap="onSendEmailBindCode" loading="{{ emailCodeSending }}" disabled="{{ emailCodeCooldown > 0 || emailCodeSending }}">{{ emailCodeCooldown > 0 ? emailCodeCooldown + 's' : (emailCodeSending ? '发送中…' : '发送验证码') }}</van-button>
     </view>
-    <view wx:if="{{ currentEmail }}" class="bind-submit bind-submit--danger" bindtap="doUnbindEmail">取消绑定</view>
+    <view wx:if="{{ currentEmail }}" class="bind-submit--danger" bindtap="doUnbindEmail">取消绑定</view>
     <view style="display:flex;gap:16rpx;margin-top:24rpx;">
       <van-button block type="default" round custom-class="bind-submit--ghost" bindtap="onCloseEmailEditor">取消</van-button>
       <van-button block type="primary" round custom-class="bind-submit" bindtap="onSubmitEmail" loading="{{ emailSaving }}" disabled="{{ emailSaving }}">{{ emailSaving ? '保存中…' : (currentEmail ? '更换邮箱' : '保存') }}</van-button>
@@ -557,24 +535,16 @@
   position="center"
   round
   closeable
-  custom-class="mine-email-popup"
+  custom-class="mine-bind-popup"
   bind:close="onCloseSendKeyEditor"
 >
-  <view class="mine-email-popup-body">
-    <view class="mine-email-title">绑定微信通知</view>
-    <view class="mine-email-hint">输入 Server酱 SendKey 以启用微信消息推送</view>
+  <view class="bind-panel bind-panel--center">
+    <view class="bind-title">绑定微信通知</view>
+    <text class="bind-tip">输入 Server酱 SendKey 以启用微信消息推送</text>
     <view class="sendkey-link-hint" bindtap="copySendKeyUrl">
       <text class="sendkey-link-text">还没有 SendKey？点此复制链接，转到浏览器打开 →</text>
     </view>
-    <input
-      class="mine-email-input"
-      type="text"
-      value="{{ sendKeyDraft }}"
-      maxlength="{{ 256 }}"
-      placeholder="请输入 SendKey"
-      placeholder-class="ap-toolbar-ph"
-      bindinput="onSendKeyInput"
-    />
+    <input class="bind-input bind-input-block" type="text" value="{{ sendKeyDraft }}" maxlength="256" placeholder="请输入 SendKey" bindinput="onSendKeyInput" />
     <view style="display:flex;gap:16rpx;margin-top:24rpx;">
       <van-button block type="default" round custom-class="bind-submit--ghost" bindtap="onCloseSendKeyEditor">取消</van-button>
       <van-button block type="primary" round custom-class="bind-submit" bindtap="onSubmitSendKey" loading="{{ sendKeySaving }}" disabled="{{ sendKeySaving }}">{{ sendKeySaving ? '保存中…' : '保存' }}</van-button>
