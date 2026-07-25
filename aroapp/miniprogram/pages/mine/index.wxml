@@ -35,7 +35,7 @@
         hover-class="mine-chip--role-tap-hover"
         bindtap="onOpenSendKeyEditor"
       >
-        {{ currentSendKey ? '微信通知: 已绑定' : '绑定微信通知' }}
+        {{ currentSendKey ? '微信通知' : '绑定通知' }}
       </view>
     </view>
     <view class="mine-header-main">
