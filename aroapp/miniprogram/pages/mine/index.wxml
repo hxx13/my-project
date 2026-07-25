@@ -29,6 +29,14 @@
       >
         {{ currentEmail ? '已绑定邮箱' : '绑定邮箱' }}
       </view>
+      <view
+        wx:if="{{ springBound }}"
+        class="mine-chip mine-chip--ok mine-chip--role-tap"
+        hover-class="mine-chip--role-tap-hover"
+        bindtap="onOpenSendKeyEditor"
+      >
+        {{ currentSendKey ? '微信通知: 已绑定' : '绑定微信通知' }}
+      </view>
     </view>
     <view class="mine-header-main">
       <view class="mine-avatar-ring">
@@ -537,6 +545,34 @@
     <view class="mine-email-btns">
       <view class="ap-modal-btn ap-modal-btn--ghost" hover-class="ap-tool-btn--hover" catchtap="onCloseEmailEditor">取消</view>
       <view class="ap-modal-btn ap-modal-btn--primary {{ emailSaving ? 'ap-modal-btn--disabled' : '' }}" hover-class="ap-tool-btn--hover" catchtap="onSubmitEmail">{{ emailSaving ? '保存中…' : '保存' }}</view>
+    </view>
+  </view>
+</van-popup>
+
+<!-- ====== 微信通知绑定弹窗 ====== -->
+<van-popup
+  show="{{ showSendKeyEditor }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-email-popup"
+  bind:close="onCloseSendKeyEditor"
+>
+  <view class="mine-email-popup-body">
+    <view class="mine-email-title">绑定微信通知</view>
+    <view class="mine-email-hint">输入 Server酱 SendKey 以启用微信消息推送</view>
+    <input
+      class="mine-email-input"
+      type="text"
+      value="{{ sendKeyDraft }}"
+      maxlength="{{ 256 }}"
+      placeholder="请输入 SendKey"
+      placeholder-class="ap-toolbar-ph"
+      bindinput="onSendKeyInput"
+    />
+    <view class="mine-email-btns">
+      <view class="ap-modal-btn ap-modal-btn--ghost" hover-class="ap-tool-btn--hover" catchtap="onCloseSendKeyEditor">取消</view>
+      <view class="ap-modal-btn ap-modal-btn--primary {{ sendKeySaving ? 'ap-modal-btn--disabled' : '' }}" hover-class="ap-tool-btn--hover" catchtap="onSubmitSendKey">{{ sendKeySaving ? '保存中…' : '保存' }}</view>
     </view>
   </view>
 </van-popup>
