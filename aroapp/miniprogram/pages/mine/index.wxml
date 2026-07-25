@@ -21,21 +21,22 @@
       >
         修改姓名
       </view>
-      <view
-        wx:if="{{ springBound }}"
-        class="mine-chip mine-chip--ok mine-chip--role-tap"
-        hover-class="mine-chip--role-tap-hover"
-        bindtap="onOpenEmailEditor"
-      >
-        {{ currentEmail ? '已绑定邮箱' : '绑定邮箱' }}
-      </view>
-      <view
-        wx:if="{{ springBound }}"
-        class="mine-chip mine-chip--ok mine-chip--role-tap"
-        hover-class="mine-chip--role-tap-hover"
-        bindtap="onOpenSendKeyEditor"
-      >
-        {{ currentSendKey ? '微信通知' : '绑定通知' }}
+      <view class="mine-chip-row">
+        <view
+          class="mine-chip mine-chip--ok mine-chip--role-tap"
+          hover-class="mine-chip--role-tap-hover"
+          bindtap="onOpenEmailEditor"
+        >
+          {{ currentEmail ? '已绑定邮箱' : '绑定邮箱' }}
+        </view>
+        <view
+          wx:if="{{ springBound }}"
+          class="mine-chip mine-chip--ok mine-chip--role-tap"
+          hover-class="mine-chip--role-tap-hover"
+          bindtap="onOpenSendKeyEditor"
+        >
+          {{ currentSendKey ? '微信通知' : '绑定通知' }}
+        </view>
       </view>
     </view>
     <view class="mine-header-main">
