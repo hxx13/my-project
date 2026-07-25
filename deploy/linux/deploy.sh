@@ -59,6 +59,7 @@ else
     echo "=== Step 3/8: npm build ==="
     cd "$REPO_DIR/frontend"
     npm ci
+    sudo chown -R aroadmin:aroadmin "$REPO_DIR/frontend/node_modules"
     npm run build
 
     # Step 4/8: 后端构建
@@ -97,6 +98,9 @@ echo "  JAR 已替换: demo.jar"
 
 # Step 7/8: 启动服务
 echo "=== Step 7/8: 启动服务 ==="
+# 确保运行时权限正确
+sudo chown -R twin:twin /var/log/twin
+sudo chown aroadmin:aroadmin "$ENV_FILE" 2>/dev/null || true
 sudo systemctl start twin
 echo "  等待 25 秒..."
 sleep 25
