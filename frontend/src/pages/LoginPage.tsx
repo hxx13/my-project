@@ -252,7 +252,7 @@ export default function LoginPage() {
       setTurnstileLoadFailed(false);
       setTurnstileLoading(false);
     };
-  }, [showLogin, forgotMode, effectiveMode]);
+  }, [showLogin, forgotMode, effectiveMode, turnstileSiteKey]);
 
   // CAS ticket auto-extraction — serviceValidate works for any domain
   useEffect(() => {
