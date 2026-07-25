@@ -56,10 +56,12 @@ page {
   right: 28rpx;
   z-index: 3;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
   gap: 12rpx;
-  max-width: 46%;
+  max-width: 70%;
 }
 
 .mine-header-badges .mine-chip {
