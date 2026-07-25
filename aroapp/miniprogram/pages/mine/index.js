@@ -1466,7 +1466,10 @@ Page({
   },
 
   copySendKeyUrl() {
-    wx.navigateTo({ url: '/pages/common/webview/index?url=' + encodeURIComponent('https://sct.ftqq.com/') });
+    wx.setClipboardData({
+      data: 'https://sct.ftqq.com/',
+      success: () => wx.showToast({ title: '链接已复制，请在浏览器中打开', icon: 'none', duration: 2500 }),
+    });
   },
 
   onOpenSendKeyEditor() {

@@ -7,8 +7,7 @@
     "pages/room/index",
     "pages/overview/index",
     "pages/telemetry/index",
-    "pages/mine/index",
-    "pages/common/webview/index"
+    "pages/mine/index"
   ],
   "subPackages": [
     {
