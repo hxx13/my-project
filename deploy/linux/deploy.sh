@@ -8,7 +8,7 @@ set -e
 APP_DIR=/opt/twin/app
 REPO_DIR=/opt/twin/repo
 BACKUP_DIR=/opt/twin/backups/pre-deploy
-ENV_FILE=/opt/twin/config/.env
+ENV_FILE=/opt/twin/.env
 
 SKIP_BUILD=false
 if [ "${1:-}" = "--skip-build" ]; then
@@ -27,6 +27,14 @@ if $SKIP_BUILD; then
     echo "  模式: 跳过构建（快速部署）"
 fi
 echo "=========================================="
+
+# 环境变量检查（缺 DB_PASSWORD 提前终止）
+if [ -z "${DB_PASSWORD:-}" ]; then
+    echo "  ❌ DB_PASSWORD 未设置，请在 $ENV_FILE 中配置"
+    echo "     示例: echo 'DB_PASSWORD=你的密码' | sudo tee $ENV_FILE"
+    exit 1
+fi
+echo "  ✅ DB_PASSWORD 已配置"
 
 # Step 1/8: git pull
 echo "=== Step 1/8: git pull ==="
