@@ -66,6 +66,9 @@ export default function AdminPersonnelPage() {
   const [passwordLoading, setPasswordLoading] = useState<Record<string, boolean>>({});
   const [resetAccountOpen, setResetAccountOpen] = useState<string | null>(null);
   const [resetAccountDraft, setResetAccountDraft] = useState("");
+  const [emailEditOpen, setEmailEditOpen] = useState<string | null>(null);
+  const [emailEditDraft, setEmailEditDraft] = useState("");
+  const [emailEditSaving, setEmailEditSaving] = useState(false);
 
   const {
     data: personnelData,
@@ -493,6 +496,12 @@ export default function AdminPersonnelPage() {
               {activeTab === "personnel" ? (
                 <th className="px-2 py-2 text-center font-medium w-[72px]">手机直达</th>
               ) : null}
+              {activeTab === "personnel" ? (
+                <th className="px-2 py-2 text-left font-medium">邮箱</th>
+              ) : null}
+              {activeTab === "personnel" ? (
+                <th className="px-2 py-2 text-left font-medium">微信通知</th>
+              ) : null}
               <th className="px-2 py-2 text-left font-medium">
                 <span className="block">角色</span>
                 {activeTab === "personnel" ? (
@@ -510,7 +519,7 @@ export default function AdminPersonnelPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={activeTab === "personnel" ? (isSuperAdmin ? 6 : 5) : activeTab === "system" && isSuperAdmin ? 6 : 5}>
+                <td className="px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={activeTab === "personnel" ? (isSuperAdmin ? 8 : 7) : activeTab === "system" && isSuperAdmin ? 6 : 5}>
                   加载中…
                 </td>
               </tr>
@@ -592,6 +601,40 @@ export default function AdminPersonnelPage() {
                     userName={row.name || row.username}
                     role={row.role}
                   />
+                  <td className="px-2 py-1.5 align-middle">
+                    {row.contactEmail ? (
+                      <button
+                        type="button"
+                        className="max-w-[12rem] truncate text-[11px] font-medium text-[var(--twin-link)] underline decoration-[var(--twin-link)]/30 underline-offset-2 hover:text-[var(--twin-link-deep)]"
+                        onClick={() => {
+                          setEmailEditOpen(row.id);
+                          setEmailEditDraft(row.contactEmail ?? "");
+                        }}
+                      >
+                        {row.contactEmail}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-[11px] text-[var(--twin-mute)] hover:text-[var(--twin-link)]"
+                        onClick={() => {
+                          setEmailEditOpen(row.id);
+                          setEmailEditDraft("");
+                        }}
+                      >
+                        未绑定
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 align-middle">
+                    {row.sendKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                        已绑定
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-[var(--twin-mute)]">未绑定</span>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5 align-middle">
                     <select
                       disabled={row.id === BUILTIN_SUPER_ADMIN_ID}
@@ -909,6 +952,74 @@ export default function AdminPersonnelPage() {
                 }}
               >
                 {resetPersonnelAccountMut.isPending ? "提交中…" : "确认"}
+              </button>
+            </div>
+          </div>
+        </div></Portal> : null}
+
+      {emailEditOpen ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+          <div className="w-full max-w-sm rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-4">
+            <div className="text-sm font-semibold text-[var(--twin-ink)]">修改联系邮箱</div>
+            <p className="mt-1 text-xs text-[var(--twin-mute)]">
+              为 <strong>{(() => { const r = personnelRows.find((p) => p.id === emailEditOpen); return r ? (r.name || r.username || emailEditOpen) : emailEditOpen; })()}</strong> 设置邮箱
+            </p>
+            <input
+              type="email"
+              value={emailEditDraft}
+              onChange={(e) => setEmailEditDraft(e.target.value)}
+              maxLength={128}
+              className="mt-3 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+              placeholder="请输入邮箱地址"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && emailEditDraft.trim()) {
+                  e.preventDefault();
+                  const btn = document.getElementById("personnel-email-submit-btn") as HTMLButtonElement | null;
+                  btn?.click();
+                }
+              }}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+                onClick={() => { setEmailEditOpen(null); setEmailEditDraft(""); }}
+              >
+                取消
+              </button>
+              <button
+                id="personnel-email-submit-btn"
+                type="button"
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-700 disabled:opacity-50"
+                disabled={emailEditSaving || !emailEditOpen || !emailEditDraft.trim()}
+                onClick={async () => {
+                  if (!emailEditOpen || !emailEditDraft.trim()) return;
+                  setEmailEditSaving(true);
+                  try {
+                    const token = authStorage.getToken();
+                    const res = await fetch(`/api/admin/personnel/${encodeURIComponent(emailEditOpen)}/contact-email`, {
+                      method: "PUT",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Bearer " + token,
+                      },
+                      body: JSON.stringify({ email: emailEditDraft.trim() }),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error((errData as any).message || "保存失败");
+                    }
+                    toast.success("邮箱已更新");
+                    setEmailEditOpen(null);
+                    setEmailEditDraft("");
+                    refetchPersonnel();
+                  } catch (e: any) {
+                    toast.error(e?.message || "保存失败");
+                  } finally {
+                    setEmailEditSaving(false);
+                  }
+                }}
+              >
+                {emailEditSaving ? "提交中…" : "保存"}
               </button>
             </div>
           </div>

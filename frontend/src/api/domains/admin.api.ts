@@ -13,6 +13,8 @@ export interface PersonnelAuthRecord {
   status?: number;
   personalPin?: string | null;
   pinUpdatedAt?: string | null;
+  contactEmail?: string;
+  sendKey?: string;
 }
 
 export interface SystemUserRecord {
