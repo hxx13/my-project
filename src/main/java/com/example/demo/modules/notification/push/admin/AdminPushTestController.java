@@ -109,6 +109,12 @@ public class AdminPushTestController {
             case "SCAN_DELAY_REVIEWED" -> new LinkedHashMap<>(Map.of("roomName","A203","optionLabel","延迟30分钟","auditResult","已通过","rejectReason",""));
             case "VIOLATION_CREATED" -> new LinkedHashMap<>(Map.of("title","违规提醒","source","MANUAL","summary","测试违规——请分笼/密度超标","enterLocked","false"));
             case "SCAN_DELAY_MANUAL" -> new LinkedHashMap<>(Map.of("roomName","A203","optionLabel","手动免冻结","operatorName","测试管理员"));
+            case "PURCHASE_REQUESTED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","location","实验室A","content","试剂耗材一批","bizId","PO-TEST","createdAt",now()));
+            case "PURCHASE_COMPLETED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","location","实验室A","summary","已采购完成","bizId","PO-TEST","processorName","测试管理员"));
+            case "REPAIR_REQUESTED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","location","机房B","content","空调故障维修","bizId","RO-TEST","createdAt",now()));
+            case "REPAIR_COMPLETED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","location","机房B","summary","已修复","bizId","RO-TEST","processorName","测试管理员"));
+            case "SUPPLIES_REQUESTED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","summary","共 3 项物资","bizId","SC-TEST","createdAt",now()));
+            case "SUPPLIES_COMPLETED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","summary","已出库：A4纸、记号笔、手套","bizId","SC-TEST"));
             default -> null;
         };
     }

@@ -8,6 +8,7 @@ import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,9 @@ public class EmailVerificationCodeService {
     private final UserMapper userMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final JavaMailSender mailSender;
+
+    @Value("${spring.mail.properties.mail.from:}")
+    private String fromAddress;
 
     public EmailVerificationCodeService(VerificationCodeMapper verificationCodeMapper,
                                          UserMapper userMapper,
@@ -214,6 +218,9 @@ public class EmailVerificationCodeService {
             MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
             helper.setTo(to);
             helper.setSubject(subject);
+            if (fromAddress != null && !fromAddress.isEmpty()) {
+                helper.setFrom(fromAddress);
+            }
             helper.setText(html, true);
             mailSender.send(mime);
             log.info("Verification code sent to {}", to);
