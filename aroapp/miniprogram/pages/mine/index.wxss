@@ -935,3 +935,173 @@ page {
   color: #fff !important;
   box-shadow: 0 10rpx 28rpx rgba(172, 23, 54, 0.28) !important;
 }
+
+/* 邮箱绑定弹窗 */
+.mine-email-popup {
+  width: 86vw !important;
+  max-width: 600rpx !important;
+  padding: 0 !important;
+}
+
+.mine-email-popup-body {
+  padding: 28rpx 28rpx 24rpx;
+}
+
+.mine-email-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #0f172a;
+  text-align: center;
+  margin-bottom: 8rpx;
+}
+
+.mine-email-hint {
+  font-size: 22rpx;
+  color: #64748b;
+  text-align: center;
+  margin-bottom: 20rpx;
+}
+
+.mine-email-input {
+  width: 100%;
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 20rpx;
+  box-sizing: border-box;
+  font-size: 26rpx;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1rpx solid #e2e8f0;
+  border-radius: 12rpx;
+}
+
+.mine-email-btns {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 24rpx;
+  margin-top: 20rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid #f1f5f9;
+}
+
+/* ====== 邮箱绑定验证码 ====== */
+.mine-email-code-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 8rpx;
+}
+
+.mine-email-input--code {
+  flex: 1;
+  min-width: 0;
+}
+
+.mine-email-send-btn {
+  flex-shrink: 0;
+  font-size: 22rpx !important;
+  padding: 0 16rpx !important;
+  white-space: nowrap;
+  min-width: 140rpx;
+  text-align: center;
+}
+
+/* ====== 忘记密码 ====== */
+.forgot-method-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 24rpx;
+  padding: 28rpx 24rpx;
+  margin-bottom: 16rpx;
+  border-radius: 20rpx;
+  background: #f8fafc;
+  border: 1rpx solid #e2e8f0;
+  box-shadow: 0 4rpx 14rpx rgba(15, 23, 42, 0.04);
+  transition: background 0.06s ease;
+}
+
+.forgot-method-btn:active {
+  background: rgba(99, 102, 241, 0.06);
+  border-color: rgba(99, 102, 241, 0.25);
+}
+
+.forgot-method-icon {
+  flex-shrink: 0;
+  font-size: 48rpx;
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16rpx;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(45, 212, 191, 0.1));
+}
+
+.forgot-method-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.forgot-method-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.forgot-method-desc {
+  font-size: 22rpx;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+/* QR upload row */
+.forgot-qr-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.forgot-qr-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx 28rpx;
+  border-radius: 12rpx;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.9), rgba(79, 70, 229, 0.94));
+}
+
+.forgot-qr-btn-text {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #fff;
+}
+
+.forgot-qr-hint {
+  font-size: 22rpx;
+  color: #6366f1;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Email send row */
+.forgot-email-send-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}

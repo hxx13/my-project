@@ -380,6 +380,41 @@ Page({
     registerStaffInvite: '',
     registerSubmitting: false,
     regError: '',
+
+    // Email
+    showEmailEditor: false,
+    emailDraft: '',
+    emailSaving: false,
+    currentEmail: '',
+
+    // Password Change
+    showPwdChange: false,
+    pwdOld: '',
+    pwdNew: '',
+    pwdConfirm: '',
+    pwdSubmitting: false,
+
+    // Forgot Password
+    showForgotPwd: false,
+    forgotStep: 'method',
+    forgotUserId: '',
+    forgotPhone: '',
+    forgotQrUploading: false,
+    forgotQrResult: null,
+    forgotEmail: '',
+    forgotEmailCode: '',
+    forgotEmailCooldown: 0,
+    forgotEmailSending: false,
+    forgotResetToken: '',
+    forgotNewPwd: '',
+    forgotNewPwd2: '',
+    forgotSubmitting: false,
+    forgotError: '',
+
+    // Email Bind (upgraded)
+    emailCode: '',
+    emailCodeSending: false,
+    emailCodeCooldown: 0,
   },
 
   onLoad() {},
@@ -1392,6 +1427,371 @@ Page({
     }).catch(function () {
       wx.hideLoading(); self.setData({ registerSubmitting: false });
       wx.showToast({ title: '网络错误', icon: 'none' });
+    });
+  },
+
+  // ═══ 邮箱绑定 ═══
+  onOpenEmailEditor() {
+    const id = this.data.springUserId;
+    if (!id) { wx.showToast({ title: '请先完成校内绑定', icon: 'none' }); return; }
+    this.setData({ showEmailEditor: true, emailDraft: this.data.currentEmail || '', emailSaving: false });
+    // 异步拉取最新邮箱
+    if (!this._emailFetched) {
+      this._emailFetched = true;
+      springAuth.springRequest({
+        url: `/api/admin/personnel/${encodeURIComponent(id)}/contact-email`,
+        method: 'GET',
+        data: {},
+      }).then((res) => {
+        const body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+        const email = (body && body.data && body.data.email) || '';
+        this.setData({ currentEmail: email, emailDraft: email || this.data.emailDraft });
+      }).catch(() => {});
+    }
+  },
+
+  onCloseEmailEditor() {
+    if (this._emailCooldownTimer) { clearInterval(this._emailCooldownTimer); this._emailCooldownTimer = null; }
+    this.setData({ showEmailEditor: false, emailDraft: '', emailCode: '', emailCodeCooldown: 0, emailSaving: false });
+  },
+
+  onEmailInput(e) {
+    this.setData({ emailDraft: e.detail && e.detail.value != null ? String(e.detail.value) : '' });
+  },
+
+  async onSubmitEmail() {
+    const email = (this.data.emailDraft || '').trim();
+    const code = (this.data.emailCode || '').trim();
+    if (!email || !code || this.data.emailSaving) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      wx.showToast({ title: '邮箱格式不正确', icon: 'none' });
+      return;
+    }
+    this.setData({ emailSaving: true });
+    wx.showLoading({ title: '绑定中…', mask: true });
+    try {
+      const res = await springAuth.springRequest({
+        url: '/api/auth/bind/email',
+        method: 'POST',
+        data: { email, code },
+      });
+      const body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (!(res && res.statusCode === 200 && body && body.success === true)) {
+        throw new Error((body && body.message) || '绑定失败');
+      }
+      wx.showToast({ title: '邮箱已绑定', icon: 'success' });
+      this.setData({ currentEmail: email, showEmailEditor: false, emailDraft: '', emailCode: '', emailSaving: false });
+    } catch (e) {
+      wx.showToast({ title: e && e.message ? String(e.message).slice(0, 20) : '失败', icon: 'none' });
+      this.setData({ emailSaving: false });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  async onSendEmailBindCode() {
+    const email = (this.data.emailDraft || '').trim();
+    if (!email) { wx.showToast({ title: '请先输入邮箱', icon: 'none' }); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      wx.showToast({ title: '邮箱格式不正确', icon: 'none' });
+      return;
+    }
+    if (this.data.emailCodeCooldown > 0 || this.data.emailCodeSending) return;
+    this.setData({ emailCodeSending: true });
+    try {
+      await springAuth.springRequest({
+        url: '/api/auth/send-verification-code',
+        method: 'POST',
+        data: { email, scene: 'BIND_EMAIL' },
+      });
+      wx.showToast({ title: '验证码已发送', icon: 'success' });
+      this.setData({ emailCodeCooldown: 60 });
+      if (this._emailCooldownTimer) clearInterval(this._emailCooldownTimer);
+      this._emailCooldownTimer = setInterval(() => {
+        var next = this.data.emailCodeCooldown - 1;
+        if (next <= 0) {
+          clearInterval(this._emailCooldownTimer);
+          this._emailCooldownTimer = null;
+        }
+        this.setData({ emailCodeCooldown: next <= 0 ? 0 : next });
+      }, 1000);
+    } catch (e) {
+      wx.showToast({ title: e && e.message ? String(e.message).slice(0, 20) : '发送失败', icon: 'none' });
+    } finally {
+      this.setData({ emailCodeSending: false });
+    }
+  },
+
+  onEmailCodeInput(e) {
+    this.setData({ emailCode: e.detail && e.detail.value != null ? String(e.detail.value) : '' });
+  },
+
+  // ═══ 修改密码 ═══
+  onOpenPwdChange() {
+    this.setData({ showPwdChange: true, pwdOld: '', pwdNew: '', pwdConfirm: '', pwdSubmitting: false });
+  },
+
+  onClosePwdChange() {
+    this.setData({ showPwdChange: false });
+  },
+
+  onPwdOldInput(e) { this.setData({ pwdOld: e.detail.value }); },
+  onPwdNewInput(e) { this.setData({ pwdNew: e.detail.value }); },
+  onPwdConfirmInput(e) { this.setData({ pwdConfirm: e.detail.value }); },
+
+  async submitPwdChange() {
+    var self = this;
+    var oldPwd = self.data.pwdOld || '';
+    var newPwd = self.data.pwdNew || '';
+    var confirm = self.data.pwdConfirm || '';
+    if (!oldPwd || !newPwd || !confirm) {
+      wx.showToast({ title: '请填写完整信息', icon: 'none' });
+      return;
+    }
+    if (newPwd.length < 6) {
+      wx.showToast({ title: '新密码至少6位', icon: 'none' });
+      return;
+    }
+    if (newPwd !== confirm) {
+      wx.showToast({ title: '两次密码不一致', icon: 'none' });
+      return;
+    }
+    if (self.data.pwdSubmitting) return;
+    self.setData({ pwdSubmitting: true });
+    wx.showLoading({ title: '修改中…', mask: true });
+    try {
+      var res = await springAuth.springRequest({
+        url: '/api/auth/password/change',
+        method: 'POST',
+        data: { oldPassword: oldPwd, newPassword: newPwd },
+      });
+      wx.hideLoading();
+      var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (res && res.statusCode === 200 && body && body.success === true) {
+        wx.showToast({ title: '密码已修改', icon: 'success' });
+        self.setData({ showPwdChange: false, pwdOld: '', pwdNew: '', pwdConfirm: '', pwdSubmitting: false });
+      } else {
+        self.setData({ pwdSubmitting: false });
+        var msg = (body && body.message) || '修改失败';
+        wx.showToast({ title: msg.length > 18 ? msg.slice(0, 18) + '…' : msg, icon: 'none', duration: 3000 });
+      }
+    } catch (e) {
+      wx.hideLoading();
+      self.setData({ pwdSubmitting: false });
+      wx.showToast({ title: '网络错误', icon: 'none' });
+    }
+  },
+
+  // ═══ 忘记密码 ═══
+  onOpenForgotPwd() {
+    this.setData({
+      showLoginForm: false,
+      showForgotPwd: true,
+      forgotStep: 'method',
+      forgotUserId: '',
+      forgotPhone: '',
+      forgotQrUploading: false,
+      forgotQrResult: null,
+      forgotEmail: '',
+      forgotEmailCode: '',
+      forgotEmailCooldown: 0,
+      forgotEmailSending: false,
+      forgotResetToken: '',
+      forgotNewPwd: '',
+      forgotNewPwd2: '',
+      forgotSubmitting: false,
+      forgotError: '',
+    });
+  },
+
+  onCloseForgotPwd() {
+    if (this._forgotCooldownTimer) { clearInterval(this._forgotCooldownTimer); this._forgotCooldownTimer = null; }
+    this.setData({ showForgotPwd: false });
+  },
+
+  onForgotBackToLogin() {
+    this.setData({ showForgotPwd: false, showLoginForm: true });
+  },
+
+  onForgotSelectQr() {
+    this.setData({ forgotStep: 'qrInput', forgotError: '' });
+  },
+
+  onForgotSelectEmail() {
+    this.setData({ forgotStep: 'emailInput', forgotError: '' });
+  },
+
+  onForgotBackToMethod() {
+    if (this._forgotCooldownTimer) { clearInterval(this._forgotCooldownTimer); this._forgotCooldownTimer = null; }
+    this.setData({ forgotStep: 'method', forgotError: '', forgotEmailCooldown: 0, forgotEmailSending: false });
+  },
+
+  onForgotUserIdInput(e) { this.setData({ forgotUserId: e.detail.value }); },
+  onForgotPhoneInput(e) { this.setData({ forgotPhone: e.detail.value }); },
+
+  onForgotUploadQr() {
+    var self = this;
+    self.setData({ forgotQrUploading: true, forgotError: '' });
+    wx.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['camera', 'album'],
+      success: function (imgRes) {
+        var tempPath = imgRes.tempFilePaths[0];
+        if (!tempPath) { self.setData({ forgotQrUploading: false }); return; }
+        var base = springAuth.getApiPublicBaseUrl().replace(/\/+$/, '') || 'http://localhost:8081';
+        wx.uploadFile({
+          url: base + '/api/auth/forgot-password/decode-qr',
+          filePath: tempPath,
+          name: 'file',
+          header: { 'Content-Type': 'multipart/form-data' },
+          success: function (uploadRes) {
+            try {
+              var body = JSON.parse(uploadRes.data);
+              if (uploadRes.statusCode === 200 && body && body.success && body.data) {
+                var userId = (body.data.userId || body.data.id || '').toString();
+                self.setData({ forgotQrUploading: false, forgotQrResult: body.data, forgotUserId: userId, forgotError: '' });
+                wx.showToast({ title: 'QR码识别成功', icon: 'success' });
+              } else {
+                self.setData({ forgotQrUploading: false, forgotError: (body && body.message) || 'QR码识别失败' });
+              }
+            } catch (e) {
+              self.setData({ forgotQrUploading: false, forgotError: '解析响应失败' });
+            }
+          },
+          fail: function () {
+            self.setData({ forgotQrUploading: false, forgotError: '网络错误' });
+          },
+        });
+      },
+      fail: function () { self.setData({ forgotQrUploading: false }); },
+    });
+  },
+
+  async onForgotQrVerify() {
+    var self = this;
+    var userId = (self.data.forgotUserId || '').trim();
+    var phone = (self.data.forgotPhone || '').trim();
+    if (!userId) { wx.showToast({ title: '请输入用户ID', icon: 'none' }); return; }
+    if (!phone) { wx.showToast({ title: '请输入手机号', icon: 'none' }); return; }
+    if (self.data.forgotSubmitting) return;
+    self.setData({ forgotSubmitting: true, forgotError: '' });
+    wx.showLoading({ title: '验证中…', mask: true });
+    springAuth.callSpringDirect({
+      path: '/api/auth/forgot-password/verify',
+      method: 'POST',
+      data: { userId: userId, phoneNumber: phone },
+    }).then(function (res) {
+      wx.hideLoading();
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (res.statusCode === 200 && body && body.success) {
+        self.setData({ forgotStep: 'qrReset', forgotSubmitting: false, forgotNewPwd: '', forgotNewPwd2: '' });
+      } else {
+        self.setData({ forgotSubmitting: false, forgotError: (body && body.message) || '验证失败' });
+      }
+    }).catch(function () {
+      wx.hideLoading();
+      self.setData({ forgotSubmitting: false, forgotError: '网络错误' });
+    });
+  },
+
+  onForgotEmailInput(e) { this.setData({ forgotEmail: e.detail.value }); },
+
+  async onForgotSendEmailCode() {
+    var self = this;
+    var email = (self.data.forgotEmail || '').trim();
+    if (!email) { wx.showToast({ title: '请输入邮箱', icon: 'none' }); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      wx.showToast({ title: '邮箱格式不正确', icon: 'none' });
+      return;
+    }
+    if (self.data.forgotEmailCooldown > 0 || self.data.forgotEmailSending) return;
+    self.setData({ forgotEmailSending: true, forgotError: '' });
+    springAuth.callSpringDirect({
+      path: '/api/auth/send-verification-code',
+      method: 'POST',
+      data: { email: email, scene: 'FORGOT_PASSWORD' },
+    }).then(function () {
+      wx.showToast({ title: '验证码已发送', icon: 'success' });
+      self.setData({ forgotEmailCooldown: 60, forgotEmailSending: false });
+      if (self._forgotCooldownTimer) clearInterval(self._forgotCooldownTimer);
+      self._forgotCooldownTimer = setInterval(function () {
+        var next = self.data.forgotEmailCooldown - 1;
+        if (next <= 0) {
+          clearInterval(self._forgotCooldownTimer);
+          self._forgotCooldownTimer = null;
+        }
+        self.setData({ forgotEmailCooldown: next <= 0 ? 0 : next });
+      }, 1000);
+    }).catch(function (e) {
+      self.setData({ forgotEmailSending: false, forgotError: (e && e.message) || '发送失败' });
+    });
+  },
+
+  onForgotEmailCodeInput(e) { this.setData({ forgotEmailCode: e.detail.value }); },
+
+  async onForgotEmailVerify() {
+    var self = this;
+    var email = (self.data.forgotEmail || '').trim();
+    var code = (self.data.forgotEmailCode || '').trim();
+    if (!email || !code) { wx.showToast({ title: '请填写邮箱和验证码', icon: 'none' }); return; }
+    if (self.data.forgotSubmitting) return;
+    self.setData({ forgotSubmitting: true, forgotError: '' });
+    wx.showLoading({ title: '验证中…', mask: true });
+    springAuth.callSpringDirect({
+      path: '/api/auth/forgot-password/by-email/verify',
+      method: 'POST',
+      data: { email: email, code: code },
+    }).then(function (res) {
+      wx.hideLoading();
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (res.statusCode === 200 && body && body.success && body.data) {
+        var resetToken = (body.data.resetToken || body.data.token || '').toString();
+        self.setData({ forgotStep: 'emailReset', forgotResetToken: resetToken, forgotSubmitting: false, forgotNewPwd: '', forgotNewPwd2: '' });
+      } else {
+        self.setData({ forgotSubmitting: false, forgotError: (body && body.message) || '验证失败' });
+      }
+    }).catch(function () {
+      wx.hideLoading();
+      self.setData({ forgotSubmitting: false, forgotError: '网络错误' });
+    });
+  },
+
+  onForgotNewPwdInput(e) { this.setData({ forgotNewPwd: e.detail.value }); },
+  onForgotNewPwd2Input(e) { this.setData({ forgotNewPwd2: e.detail.value }); },
+
+  async submitForgotReset() {
+    var self = this;
+    var newPwd = self.data.forgotNewPwd || '';
+    var newPwd2 = self.data.forgotNewPwd2 || '';
+    if (!newPwd || newPwd.length < 6) { wx.showToast({ title: '新密码至少6位', icon: 'none' }); return; }
+    if (newPwd !== newPwd2) { wx.showToast({ title: '两次密码不一致', icon: 'none' }); return; }
+    if (self.data.forgotSubmitting) return;
+
+    var url, data;
+    if (self.data.forgotStep === 'qrReset') {
+      url = '/api/auth/forgot-password/reset';
+      data = { userId: self.data.forgotUserId, newPassword: newPwd };
+    } else {
+      url = '/api/auth/forgot-password/by-email/reset';
+      data = { resetToken: self.data.forgotResetToken, newPassword: newPwd };
+    }
+
+    self.setData({ forgotSubmitting: true, forgotError: '' });
+    wx.showLoading({ title: '重置中…', mask: true });
+    springAuth.callSpringDirect({ path: url, method: 'POST', data: data }).then(function (res) {
+      wx.hideLoading();
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (res.statusCode === 200 && body && body.success) {
+        wx.showToast({ title: '密码已重置，请登录', icon: 'success' });
+        if (self._forgotCooldownTimer) { clearInterval(self._forgotCooldownTimer); self._forgotCooldownTimer = null; }
+        self.setData({ showForgotPwd: false, showLoginForm: true, forgotSubmitting: false });
+      } else {
+        self.setData({ forgotSubmitting: false, forgotError: (body && body.message) || '重置失败' });
+      }
+    }).catch(function () {
+      wx.hideLoading();
+      self.setData({ forgotSubmitting: false, forgotError: '网络错误' });
     });
   },
 });

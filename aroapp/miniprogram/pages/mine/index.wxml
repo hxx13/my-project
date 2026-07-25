@@ -22,6 +22,14 @@
       >
         修改姓名
       </view>
+      <view
+        wx:if="{{ springBound }}"
+        class="mine-chip mine-chip--ok mine-chip--role-tap"
+        hover-class="mine-chip--role-tap-hover"
+        bindtap="onOpenEmailEditor"
+      >
+        {{ currentEmail ? '邮箱: ' + currentEmail : '绑定邮箱' }}
+      </view>
     </view>
     <view class="mine-header-main">
       <view class="mine-avatar-ring">
@@ -215,6 +223,12 @@
         <text class="mine-cell-title-text">生成 Web 注册推荐码</text>
       </view>
     </van-cell>
+    <van-cell wx:if="{{ springBound }}" is-link bind:click="onOpenPwdChange">
+      <view slot="icon" class="mine-slot-ico"><van-icon name="lock" size="28rpx" color="#6366f1" /></view>
+      <view slot="title" class="mine-cell-title-wrap">
+        <text class="mine-cell-title-text">修改密码</text>
+      </view>
+    </van-cell>
     <view class="mine-cell-footer">
       <block wx:if="{{ !springBound }}">
         <van-button
@@ -394,6 +408,9 @@
     <view class="login-register-link" bindtap="onGoRegister">
       <text class="login-register-text">没有账号？去注册 →</text>
     </view>
+    <view class="login-register-link" bindtap="onOpenForgotPwd">
+      <text class="login-register-text">忘记密码？</text>
+    </view>
   </view>
 </van-popup>
 
@@ -478,3 +495,169 @@
   style="width: 180px; height: 180px;"
   disable-scroll="{{ true }}"
 />
+
+<!-- 邮箱绑定弹窗 -->
+<van-popup
+  show="{{ showEmailEditor }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-email-popup"
+  bind:close="onCloseEmailEditor"
+>
+  <view class="mine-email-popup-body">
+    <view class="mine-email-title">绑定邮箱</view>
+    <view class="mine-email-hint">设置用于接收通知的联系邮箱</view>
+    <input
+      class="mine-email-input"
+      type="text"
+      value="{{ emailDraft }}"
+      maxlength="{{ 128 }}"
+      placeholder="请输入邮箱地址"
+      placeholder-class="ap-toolbar-ph"
+      bindinput="onEmailInput"
+    />
+    <view class="mine-email-code-row">
+      <input
+        class="mine-email-input mine-email-input--code"
+        type="text"
+        value="{{ emailCode }}"
+        maxlength="{{ 6 }}"
+        placeholder="验证码"
+        placeholder-class="ap-toolbar-ph"
+        bindinput="onEmailCodeInput"
+      />
+      <view
+        class="ap-modal-btn ap-modal-btn--ghost mine-email-send-btn {{ emailCodeCooldown > 0 || emailCodeSending ? 'ap-modal-btn--disabled' : '' }}"
+        hover-class="ap-tool-btn--hover"
+        catchtap="onSendEmailBindCode"
+      >
+        {{ emailCodeCooldown > 0 ? emailCodeCooldown + 's' : (emailCodeSending ? '发送中…' : '发送验证码') }}
+      </view>
+    </view>
+    <view class="mine-email-btns">
+      <view class="ap-modal-btn ap-modal-btn--ghost" hover-class="ap-tool-btn--hover" catchtap="onCloseEmailEditor">取消</view>
+      <view class="ap-modal-btn ap-modal-btn--primary {{ emailSaving ? 'ap-modal-btn--disabled' : '' }}" hover-class="ap-tool-btn--hover" catchtap="onSubmitEmail">{{ emailSaving ? '保存中…' : '保存' }}</view>
+    </view>
+  </view>
+</van-popup>
+
+<!-- ====== 修改密码弹窗 ====== -->
+<van-popup
+  show="{{ showPwdChange }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-bind-popup"
+  bind:close="onClosePwdChange"
+>
+  <view class="bind-panel bind-panel--center">
+    <view class="bind-title">修改密码</view>
+    <text class="bind-tip">请输入当前密码和要设置的新密码</text>
+    <input class="bind-input bind-input-block" value="{{ pwdOld }}" bindinput="onPwdOldInput" placeholder="当前密码" password="true" maxlength="64" />
+    <input class="bind-input bind-input-block" value="{{ pwdNew }}" bindinput="onPwdNewInput" placeholder="新密码（至少6位）" password="true" maxlength="64" />
+    <input class="bind-input bind-input-block" value="{{ pwdConfirm }}" bindinput="onPwdConfirmInput" placeholder="确认新密码" password="true" maxlength="64" />
+    <van-button block type="primary" round custom-class="bind-submit" bindtap="submitPwdChange" loading="{{ pwdSubmitting }}" disabled="{{ pwdSubmitting }}">确认修改</van-button>
+  </view>
+</van-popup>
+
+<!-- ====== 忘记密码弹窗 ====== -->
+<van-popup
+  show="{{ showForgotPwd }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-bind-popup"
+  bind:close="onCloseForgotPwd"
+>
+  <view class="bind-panel bind-panel--center">
+    <!-- Step: 选择方式 -->
+    <view hidden="{{ forgotStep !== 'method' }}">
+      <view class="bind-title">找回密码</view>
+      <text class="bind-tip">请选择一种方式验证您的身份</text>
+      <view class="forgot-method-btn" bindtap="onForgotSelectQr">
+        <view class="forgot-method-icon">&#x1F4F7;</view>
+        <view class="forgot-method-text">
+          <text class="forgot-method-title">人员二维码 + 手机号</text>
+          <text class="forgot-method-desc">上传您的身份二维码并输入绑定手机号</text>
+        </view>
+      </view>
+      <view class="forgot-method-btn" bindtap="onForgotSelectEmail">
+        <view class="forgot-method-icon">&#x1F4E7;</view>
+        <view class="forgot-method-text">
+          <text class="forgot-method-title">绑定邮箱 + 验证码</text>
+          <text class="forgot-method-desc">向您已绑定的邮箱发送验证码</text>
+        </view>
+      </view>
+      <view class="login-register-link" bindtap="onForgotBackToLogin">
+        <text class="login-register-text">返回登录</text>
+      </view>
+    </view>
+
+    <!-- QR+Phone: Step 1 -->
+    <view hidden="{{ forgotStep !== 'qrInput' }}">
+      <view class="bind-title">身份验证</view>
+      <text class="bind-tip">上传您的人员二维码以识别用户ID，并输入绑定手机号验证身份</text>
+      <input class="bind-input bind-input-block" value="{{ forgotUserId }}" bindinput="onForgotUserIdInput" placeholder="用户ID（上传QR码自动填入）" maxlength="64" />
+      <view class="forgot-qr-row">
+        <view class="forgot-qr-btn" bindtap="onForgotUploadQr">
+          <text class="forgot-qr-btn-text">{{ forgotQrUploading ? '识别中…' : '上传QR码' }}</text>
+        </view>
+        <text wx:if="{{ forgotUserId }}" class="forgot-qr-hint">已识别: {{ forgotUserId }}</text>
+      </view>
+      <input class="bind-input bind-input-block" value="{{ forgotPhone }}" bindinput="onForgotPhoneInput" placeholder="绑定手机号" type="number" maxlength="20" />
+      <view wx:if="{{ forgotError }}" class="reg-error-text">{{ forgotError }}</view>
+      <van-button block type="primary" round custom-class="bind-submit" bindtap="onForgotQrVerify" loading="{{ forgotSubmitting }}" disabled="{{ forgotSubmitting }}">验证身份</van-button>
+      <view class="login-register-link" bindtap="onForgotBackToMethod">
+        <text class="login-register-text">选择其他方式</text>
+      </view>
+    </view>
+
+    <!-- QR+Phone: Step 2 — 设置新密码 -->
+    <view hidden="{{ forgotStep !== 'qrReset' }}">
+      <view class="bind-title">设置新密码</view>
+      <text class="bind-tip">身份验证通过，请设置您的新密码</text>
+      <input class="bind-input bind-input-block" value="{{ forgotNewPwd }}" bindinput="onForgotNewPwdInput" placeholder="新密码（至少6位）" password="true" maxlength="64" />
+      <input class="bind-input bind-input-block" value="{{ forgotNewPwd2 }}" bindinput="onForgotNewPwd2Input" placeholder="确认新密码" password="true" maxlength="64" />
+      <view wx:if="{{ forgotError }}" class="reg-error-text">{{ forgotError }}</view>
+      <van-button block type="primary" round custom-class="bind-submit" bindtap="submitForgotReset" loading="{{ forgotSubmitting }}" disabled="{{ forgotSubmitting }}">重置密码</van-button>
+    </view>
+
+    <!-- Email: Step 1 — 输入邮箱 -->
+    <view hidden="{{ forgotStep !== 'emailInput' }}">
+      <view class="bind-title">邮箱验证</view>
+      <text class="bind-tip">输入您已绑定的邮箱，点击发送验证码</text>
+      <input class="bind-input bind-input-block" value="{{ forgotEmail }}" bindinput="onForgotEmailInput" placeholder="绑定邮箱" maxlength="128" />
+      <view class="forgot-email-send-row">
+        <view class="bind-input bind-input-block" style="flex:1;margin-bottom:0;">
+          <input style="width:100%;height:80rpx;border:none;background:transparent;padding:0 24rpx;font-size:28rpx;box-sizing:border-box;" value="{{ forgotEmailCode }}" bindinput="onForgotEmailCodeInput" placeholder="验证码" maxlength="6" />
+        </view>
+        <van-button
+          size="small"
+          type="primary"
+          plain
+          hairline
+          custom-class="bind-scan-btn"
+          bindtap="onForgotSendEmailCode"
+          loading="{{ forgotEmailSending }}"
+          disabled="{{ forgotEmailCooldown > 0 || forgotEmailSending }}"
+        >{{ forgotEmailCooldown > 0 ? forgotEmailCooldown + 's' : '发送验证码' }}</van-button>
+      </view>
+      <view wx:if="{{ forgotError }}" class="reg-error-text">{{ forgotError }}</view>
+      <van-button block type="primary" round custom-class="bind-submit" bindtap="onForgotEmailVerify" loading="{{ forgotSubmitting }}" disabled="{{ forgotSubmitting }}">验证邮箱</van-button>
+      <view class="login-register-link" bindtap="onForgotBackToMethod">
+        <text class="login-register-text">选择其他方式</text>
+      </view>
+    </view>
+
+    <!-- Email: Step 2 — 设置新密码 -->
+    <view hidden="{{ forgotStep !== 'emailReset' }}">
+      <view class="bind-title">设置新密码</view>
+      <text class="bind-tip">邮箱验证通过，请设置您的新密码</text>
+      <input class="bind-input bind-input-block" value="{{ forgotNewPwd }}" bindinput="onForgotNewPwdInput" placeholder="新密码（至少6位）" password="true" maxlength="64" />
+      <input class="bind-input bind-input-block" value="{{ forgotNewPwd2 }}" bindinput="onForgotNewPwd2Input" placeholder="确认新密码" password="true" maxlength="64" />
+      <view wx:if="{{ forgotError }}" class="reg-error-text">{{ forgotError }}</view>
+      <van-button block type="primary" round custom-class="bind-submit" bindtap="submitForgotReset" loading="{{ forgotSubmitting }}" disabled="{{ forgotSubmitting }}">重置密码</van-button>
+    </view>
+  </view>
+</van-popup>
