@@ -28,7 +28,7 @@
         hover-class="mine-chip--role-tap-hover"
         bindtap="onOpenEmailEditor"
       >
-        {{ currentEmail ? '邮箱: ' + currentEmail : '绑定邮箱' }}
+        {{ currentEmail ? '已绑定邮箱' : '绑定邮箱' }}
       </view>
     </view>
     <view class="mine-header-main">
@@ -444,7 +444,7 @@
 
       <!-- Step 2: 身份确认 -->
       <view hidden="{{ regStep !== 'confirm' }}">
-        <view class="reg-verified-icon">&#x2705;</view>
+        <van-icon name="checked" size="48rpx" color="#16a34a" custom-class="reg-verified-icon" />
         <text class="reg-verified-title">身份验证通过</text>
         <text class="bind-tip">请确认以下信息是否正确</text>
         <view wx:if="{{ regVerifiedData }}" class="reg-info-card">
@@ -576,14 +576,14 @@
       <view class="bind-title">找回密码</view>
       <text class="bind-tip">请选择一种方式验证您的身份</text>
       <view class="forgot-method-btn" bindtap="onForgotSelectQr">
-        <view class="forgot-method-icon">&#x1F4F7;</view>
+        <van-icon name="photograph" size="40rpx" color="#6366f1" class="forgot-method-icon" />
         <view class="forgot-method-text">
           <text class="forgot-method-title">人员二维码 + 手机号</text>
           <text class="forgot-method-desc">上传您的身份二维码并输入绑定手机号</text>
         </view>
       </view>
       <view class="forgot-method-btn" bindtap="onForgotSelectEmail">
-        <view class="forgot-method-icon">&#x1F4E7;</view>
+        <van-icon name="chat-o" size="40rpx" color="#0ea5e9" class="forgot-method-icon" />
         <view class="forgot-method-text">
           <text class="forgot-method-title">绑定邮箱 + 验证码</text>
           <text class="forgot-method-desc">向您已绑定的邮箱发送验证码</text>
