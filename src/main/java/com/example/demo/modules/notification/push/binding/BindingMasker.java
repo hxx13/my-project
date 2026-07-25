@@ -5,7 +5,7 @@ import com.example.demo.modules.notification.push.PushConstants;
 public final class BindingMasker {
     private BindingMasker() {}
 
-    static String mask(String channelCode, String target) {
+    public static String mask(String channelCode, String target) {
         if (target == null) return null;
         if (PushConstants.CHANNEL_EMAIL.equals(channelCode)) {
             int at = target.indexOf('@');

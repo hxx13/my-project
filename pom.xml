@@ -142,6 +142,11 @@
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
         </dependency>
+        <!-- Spring Boot Mail（外部推送邮件渠道） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
         <!-- ZXing 二维码解码（仅用于小程序 base64 上传路径，Web 端已改用 jsQR） -->
         <dependency>
             <groupId>com.google.zxing</groupId>

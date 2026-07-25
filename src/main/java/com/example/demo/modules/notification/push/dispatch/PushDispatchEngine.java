@@ -61,7 +61,7 @@ public class PushDispatchEngine {
     }
 
     public void dispatch(String sourceCode, Map<String, String> variables, Set<String> dynamicUserIds) {
-        NotifySource source = sourceService.getBySource(sourceCode);
+        NotifySource source = sourceService.getByCode(sourceCode);
         if (source.getEnabled() == null || source.getEnabled() != 1) {
             log.debug("[Push] 通知源已禁用: {}", sourceCode);
             return;
