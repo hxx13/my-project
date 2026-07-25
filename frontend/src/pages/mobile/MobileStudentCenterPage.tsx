@@ -112,6 +112,16 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const userIdForBind = authStorage.getUserInfo()?.id || data?.userId || "";
   const navigate = useNavigate();
 
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [showSendKeyDialog, setShowSendKeyDialog] = useState(false);
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailCodeSending, setEmailCodeSending] = useState(false);
+  const [emailCodeCooldown, setEmailCodeCooldown] = useState(0);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [sendKeyDraft, setSendKeyDraft] = useState("");
+  const [sendKeySaving, setSendKeySaving] = useState(false);
+
   const handleEmailChip = () => {
     if (!userIdForBind) return;
     if (currentEmail) {
@@ -122,7 +132,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         body: JSON.stringify({ email: "" }),
       }).then((r) => { if (r.ok) setCurrentEmail(""); });
     } else {
-      setActiveTab("mine");
+      setEmailDraft(""); setEmailCode(""); setEmailCodeCooldown(0);
+      setShowEmailDialog(true);
     }
   };
 
@@ -136,7 +147,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         body: JSON.stringify({ sendKey: "" }),
       }).then((r) => { if (r.ok) setCurrentSendKey(false); });
     } else {
-      setActiveTab("mine");
+      setSendKeyDraft("");
+      setShowSendKeyDialog(true);
     }
   };
   useEffect(() => {
@@ -358,10 +370,10 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         showBack={!isHome}
         onBack={handleTopNavBack}
       />
-      {/* Email / SendKey status chips — HeroBanner style, always visible */}
+      {/* Email / SendKey status chips — top-right, always visible */}
       {userIdForBind && (
         <div
-          className="fixed left-4 z-30 flex flex-col items-start gap-2"
+          className="fixed right-4 z-30 flex flex-col items-end gap-2"
           style={{ top: "calc(env(safe-area-inset-top, 0px) + 52px)" }}
         >
           <button
@@ -390,6 +402,94 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
           </button>
         </div>
       )}
+
+      {/* Email bind dialog */}
+      {showEmailDialog && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowEmailDialog(false)}>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-gray-900">绑定邮箱</h3>
+            <p className="mt-1 text-xs text-gray-500">设置用于接收通知的联系邮箱</p>
+            <input type="email" value={emailDraft} onChange={(e) => setEmailDraft(e.target.value)} placeholder="请输入邮箱地址"
+              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#ac1736]" />
+            <div className="flex items-center gap-2 mt-2">
+              <input type="text" inputMode="numeric" maxLength={6} value={emailCode}
+                onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="验证码" className="flex-1 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-center tracking-[0.3em] outline-none" />
+              <button type="button" disabled={!emailDraft.trim() || emailCodeSending || emailCodeCooldown > 0}
+                onClick={async () => {
+                  if (!emailDraft.trim()) return;
+                  setEmailCodeSending(true);
+                  try {
+                    const { sendVerificationCode } = await import("@/api/domains/auth.api");
+                    const r = await sendVerificationCode(emailDraft.trim(), "BIND_EMAIL");
+                    setEmailCodeCooldown(r.cooldownSeconds || 60);
+                    const timer = setInterval(() => setEmailCodeCooldown((p: number) => { if (p <= 1) { clearInterval(timer); return 0; } return p - 1; }), 1000);
+                  } catch { /* ignore */ }
+                  finally { setEmailCodeSending(false); }
+                }}
+                className="shrink-0 rounded-lg border border-[#ac1736] px-3 py-2.5 text-xs font-medium text-[#ac1736] disabled:opacity-50">
+                {emailCodeCooldown > 0 ? `${emailCodeCooldown}s` : emailCodeSending ? "发送中" : "发送验证码"}
+              </button>
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setShowEmailDialog(false)} className="flex-1 rounded-full py-2.5 text-sm font-medium border border-gray-200 text-gray-600 active:bg-gray-50">取消</button>
+              <button type="button" disabled={!emailDraft.trim() || emailCode.length !== 6 || emailSaving}
+                onClick={async () => {
+                  setEmailSaving(true);
+                  try {
+                    const { bindEmailWithCode } = await import("@/api/domains/auth.api");
+                    await bindEmailWithCode(emailDraft.trim(), emailCode.trim());
+                    setCurrentEmail(emailDraft.trim());
+                    setShowEmailDialog(false);
+                  } catch (e: any) { alert(e?.message || "绑定失败"); }
+                  finally { setEmailSaving(false); }
+                }}
+                className="flex-1 rounded-full py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #ac1736, #8B1229)" }}>
+                {emailSaving ? "绑定中…" : "确认绑定"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SendKey bind dialog */}
+      {showSendKeyDialog && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowSendKeyDialog(false)}>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-gray-900">绑定微信通知</h3>
+            <p className="mt-1 text-xs text-gray-500">通过 Server酱 SendKey 接收微信推送通知</p>
+            <p className="mt-1 text-[11px] text-[#d97706] underline cursor-pointer"
+              onClick={() => { navigator.clipboard.writeText("https://sct.ftqq.com/"); alert("链接已复制，请在浏览器中打开"); }}>
+              还没有 SendKey？点此复制链接 →
+            </p>
+            <input value={sendKeyDraft} onChange={(e) => setSendKeyDraft(e.target.value)} placeholder="粘贴 SendKey"
+              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#ac1736]" />
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setShowSendKeyDialog(false)} className="flex-1 rounded-full py-2.5 text-sm font-medium border border-gray-200 text-gray-600 active:bg-gray-50">取消</button>
+              <button type="button" disabled={!sendKeyDraft.trim() || sendKeySaving}
+                onClick={async () => {
+                  setSendKeySaving(true);
+                  try {
+                    const t = authStorage.getToken();
+                    const r = await fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, {
+                      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+                      body: JSON.stringify({ sendKey: sendKeyDraft.trim() }),
+                    });
+                    if (!r.ok) throw new Error("保存失败");
+                    setCurrentSendKey(true); setShowSendKeyDialog(false);
+                  } catch (e: any) { alert(e?.message || "保存失败"); }
+                  finally { setSendKeySaving(false); }
+                }}
+                className="flex-1 rounded-full py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #ac1736, #8B1229)" }}>
+                {sendKeySaving ? "保存中…" : "保存"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <WatermarkLogo />
       {showLiveAlert && liveAlertTitle && (
         <div
