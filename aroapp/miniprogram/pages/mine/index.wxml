@@ -3,9 +3,8 @@
   <view class="mine-header-card">
     <view class="mine-header-mesh" />
     <view class="mine-header-badges">
-      <view wx:if="{{ springBound }}" class="mine-chip mine-chip--ok">已绑定</view>
-      <view wx:elif="{{ springPending }}" class="mine-chip mine-chip--warn">待绑定</view>
-      <view wx:else class="mine-chip">未就绪</view>
+      <view wx:if="{{ !springBound && springPending }}" class="mine-chip mine-chip--warn">待绑定</view>
+      <view wx:elif="{{ !springBound && !springPending }}" class="mine-chip">未就绪</view>
       <view
         wx:if="{{ springBound && springRoleLabelZh }}"
         class="mine-chip mine-chip--ok mine-chip--role-tap"
