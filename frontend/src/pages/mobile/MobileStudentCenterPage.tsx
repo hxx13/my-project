@@ -374,7 +374,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
       {/* Email / SendKey status chips — top-right, always visible */}
       {userIdForBind && (
         <div
-          className="fixed left-4 z-30 flex flex-col items-start gap-2"
+          className="fixed left-4 z-50 flex flex-col items-start gap-2"
           style={{ top: "calc(env(safe-area-inset-top, 0px) + 52px)" }}
         >
           <button
