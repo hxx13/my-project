@@ -229,6 +229,18 @@
         WHERE id = #{id}
     </update>
 
+    <select id="findEnabledByRole" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE role = #{role} AND status = 1
+    </select>
+
+    <select id="listEnabledStaffUsers" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE role != 'MEMBER' AND status = 1
+    </select>
+
     <update id="clearLoginFailCount">
         UPDATE sys_user
         SET login_fail_count = 0,
