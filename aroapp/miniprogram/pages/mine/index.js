@@ -437,6 +437,7 @@ Page({
 
     if (!shouldRefreshOnShow(this, { sceneKey, ttlMs: 30000 })) {
       void this.refreshPendingBadges();
+      if (token) this.fetchCurrentEmail();
       return;
     }
     pagePermission.refreshMiniPermissions().finally(() => this.refreshSpringUiState());
@@ -653,6 +654,7 @@ Page({
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
     if (tabBar && typeof tabBar.refreshTabs === 'function') tabBar.refreshTabs();
     void this.refreshPendingBadges();
+    if (springBound) this.fetchCurrentEmail();
   },
 
   onProfileAvatarError() {
@@ -1431,23 +1433,25 @@ Page({
   },
 
   // ═══ 邮箱绑定 ═══
+  fetchCurrentEmail() {
+    const id = this.data.springUserId;
+    if (!id) return;
+    springAuth.springRequest({
+      url: `/api/admin/personnel/${encodeURIComponent(id)}/contact-email`,
+      method: 'GET',
+      data: {},
+    }).then((res) => {
+      const body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      const email = (body && body.data && body.data.email) || '';
+      this.setData({ currentEmail: email });
+    }).catch(() => {});
+  },
+
   onOpenEmailEditor() {
     const id = this.data.springUserId;
     if (!id) { wx.showToast({ title: '请先完成校内绑定', icon: 'none' }); return; }
     this.setData({ showEmailEditor: true, emailDraft: this.data.currentEmail || '', emailSaving: false });
-    // 异步拉取最新邮箱
-    if (!this._emailFetched) {
-      this._emailFetched = true;
-      springAuth.springRequest({
-        url: `/api/admin/personnel/${encodeURIComponent(id)}/contact-email`,
-        method: 'GET',
-        data: {},
-      }).then((res) => {
-        const body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
-        const email = (body && body.data && body.data.email) || '';
-        this.setData({ currentEmail: email, emailDraft: email || this.data.emailDraft });
-      }).catch(() => {});
-    }
+    this.fetchCurrentEmail();
   },
 
   onCloseEmailEditor() {
