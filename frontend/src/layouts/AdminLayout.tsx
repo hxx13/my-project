@@ -21,6 +21,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { CasBindingContext } from "@/features/auth/CasBindingContext";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PageTransition } from "@/components/animation/PageTransition";
@@ -113,6 +114,7 @@ import {
   scrollAdminContentTo,
 } from "@/features/admin/adminTelemetryNav";
 import { Button } from "@/components/ui/button";
+import { AdminButton } from "@/components/admin/AdminButton";
 import {
   Dialog,
   DialogContent,
@@ -990,6 +992,12 @@ export default function AdminLayout() {
     );
   };
 
+  // ── CAS binding context for child pages ──
+  const casContextValue = useMemo(
+    () => ({ casStatus, openCasDialog: () => setCasDialogOpen(true) }),
+    [casStatus],
+  );
+
   // ── CAS token bind handlers ──
   const handleCasFetch = () => {
     setCasPopupReady(false);
@@ -1326,7 +1334,9 @@ export default function AdminLayout() {
                 duration={0.3}
                 className="flex h-full min-h-0 flex-col"
               >
+              <CasBindingContext.Provider value={casContextValue}>
                 <Outlet />
+              </CasBindingContext.Provider>
               </PageTransition>
             ) : null}
           </div>
@@ -1546,9 +1556,18 @@ export default function AdminLayout() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <Button size="default" className="w-full" onClick={handleCasFetch}>
+            <AdminButton type="button" tone="secondary" size="default" className="w-full" onClick={() => {
+              const w = window.open("https://auth2.shsmu.edu.cn/cas/logout", "aro-cas-logout", "width=1,height=1");
+              setTimeout(() => {
+                if (w) w.close();
+                window.open("https://auth2.shsmu.edu.cn/cas/login?service=https://aro.shsmu.edu.cn", "aro-cas", "width=800,height=600");
+              }, 800);
+            }}>
+              统一认证登录
+            </AdminButton>
+            <AdminButton type="button" tone="primary" size="default" className="w-full" onClick={handleCasFetch}>
               <KeyRound className="mr-2 h-4 w-4" />一键获取 Token
-            </Button>
+            </AdminButton>
             {casPopupReady && (
               <div className="space-y-2">
                 <div className="rounded bg-blue-50 border border-blue-200 p-2.5 text-xs text-blue-700 leading-relaxed">
@@ -1569,11 +1588,6 @@ export default function AdminLayout() {
                 )}
               </div>
             )}
-            <p className="text-[10px] text-[var(--twin-mute)]">
-              没有 ARO 会话？
-              <button onClick={() => { const w = window.open("https://auth2.shsmu.edu.cn/cas/logout", "aro-cas-logout", "width=1,height=1"); setTimeout(() => { if (w) w.close(); window.open("https://auth2.shsmu.edu.cn/cas/login?service=https://aro.shsmu.edu.cn", "aro-cas", "width=800,height=600"); }, 800); }}
-                className="text-primary hover:underline ml-1">先完成 CAS 登录</button>
-            </p>
           </div>
         </DialogContent>
       </Dialog>

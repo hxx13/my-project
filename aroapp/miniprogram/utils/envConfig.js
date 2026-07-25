@@ -15,12 +15,16 @@ const PRESETS = {
     label: '正式',
     apiBaseUrl: 'https://aroultra.shsmu.edu.cn',
     hint: '生产环境',
+    jtuAccount: '',
+    jtuPassword: '',
   },
   dev: {
     id: 'dev',
     label: '开发',
     apiBaseUrl: 'http://localhost:8081',
     hint: '本地开发机',
+    jtuAccount: '15001771038',
+    jtuPassword: '88888888',
   },
 };
 

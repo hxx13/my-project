@@ -1,6 +1,6 @@
 const springAuth = require('../../../utils/springAuth.js');
 const { hasMinRole } = require('../../../utils/roleAccess.js');
-const { htmlToMd } = require('../../../utils/markdown.js');
+const { htmlToMd } = require('../../utils/markdown.js');
 
 function parseResponse(res) {
   const statusCode = res.statusCode;

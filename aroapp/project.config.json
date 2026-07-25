@@ -29,7 +29,7 @@
     "condition": false,
     "swc": false,
     "disableSWC": true,
-    "ignoreDevUnusedFiles": false,
+    "ignoreDevUnusedFiles": true,
     "babelSetting": {
       "ignore": [],
       "disablePlugins": [],

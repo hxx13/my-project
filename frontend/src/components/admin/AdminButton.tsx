@@ -8,25 +8,25 @@ import type { VariantProps } from "class-variance-authority";
 export type AdminButtonTone = "primary" | "secondary" | "ghost" | "destructive";
 
 const toneToVariant: Record<AdminButtonTone, VariantProps<typeof buttonVariants>["variant"]> = {
-  primary: "outline",
-  secondary: "outline",
-  ghost: "outline",
-  destructive: "outline",
+  primary: "default",
+  secondary: "default",
+  ghost: "ghost",
+  destructive: "default",
 };
 
-/** 管理端按钮统一：实色填充，一眼可辨为可点击 */
+/** 管理端按钮统一：实色填充，一眼可辨为可点击。disabled 由 toneClassNames 自行控制透明度 */
 const adminButtonShell =
-  "rounded-[length:var(--admin-radius-md,0.375rem)] font-medium transition-colors";
+  "rounded-[length:var(--admin-radius-md,0.375rem)] font-medium transition-colors disabled:opacity-100";
 
 const toneClassNames: Record<AdminButtonTone, string> = {
   primary:
-    "bg-[var(--app-color-accent)] text-white hover:opacity-90",
+    "bg-[var(--app-color-accent)] text-white hover:bg-[var(--app-color-accent)]/90 focus-visible:ring-2 focus-visible:ring-[var(--app-color-accent)]/40 focus-visible:ring-offset-2 disabled:bg-[var(--app-color-accent)]/60",
   secondary:
-    "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-border-default)]",
+    "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-border-default)] focus-visible:ring-2 focus-visible:ring-[var(--app-color-border-default)]/60 focus-visible:ring-offset-2 disabled:bg-[var(--app-color-surface-container)] disabled:text-[var(--app-color-text-tertiary)]",
   ghost:
-    "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]",
+    "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--app-color-border-default)]/40 focus-visible:ring-offset-2 disabled:text-[var(--app-color-text-tertiary)]",
   destructive:
-    "bg-red-500 text-white hover:bg-red-600",
+    "bg-red-500 text-white hover:bg-red-600 focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 disabled:bg-red-500/60",
 };
 
 export type AdminButtonProps = Omit<React.ComponentProps<typeof Button>, "variant"> & {

@@ -2,12 +2,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { ChevronDown, ChevronLeft, Users, Clock, MapPin, Loader2, Check, X, RefreshCw, Search, Pencil, ShieldCheck, ShieldX, CheckCircle2, XCircle } from "lucide-react";
+import { ChevronDown, ChevronLeft, Users, Clock, MapPin, Loader2, Check, X, RefreshCw, Search, Pencil, ShieldCheck, ShieldX, CheckCircle2, XCircle, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { adminHttp } from "@/api/core/adminHttp";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
+import { useCasBinding } from "@/features/auth/CasBindingContext";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface TrainingSession { id: string; title: string; testContent: string; address: string; startTime: string; endTime: string; signNumber: number; signed: number; totalNumber: number; examinerName: string; examinerNumber: string; examState: number; examCertType: number; state: number; }
 interface Trainee { examSignId: string; name: string; jobNumber: string; mobilePhone: string; projectGroupName: string; testYn: number; testFraction: number; userId: string; userJoinRooms: { areaName: string; floorName: string; name: string; id: string }[]; }
@@ -44,6 +53,14 @@ export default function AdminAroBindingPage() {
   const [roomPickers, setRoomPickers] = useState<Record<string, Set<string>>>({});
   const [roomNav, setRoomNav] = useState<{ area: string; floor: string } | null>(null);
   const [batchRoom, setBatchRoom] = useState(false);
+  const { casStatus, openCasDialog } = useCasBinding();
+  const [bindPromptOpen, setBindPromptOpen] = useState(false);
+
+  const ensureCasBinding = (): boolean => {
+    if (casStatus?.bound) return true;
+    setBindPromptOpen(true);
+    return false;
+  };
 
   useEffect(() => { adminHttp.get("/aro-training/last-sync").then(r => { const d = r.data?.data; setLastSync(d?.lastSuccess || d?.lastRun || ""); }).catch(() => {}); }, []);
   useEffect(() => {
@@ -78,14 +95,14 @@ export default function AdminAroBindingPage() {
   const pgs = useMemo(() => { const s = new Set<string>(); trainees.forEach(t => { if (t.projectGroupName) s.add(t.projectGroupName); }); return [...s].sort(); }, [trainees]);
 
   const doPost = async (url: string, body: object, ok: string) => { try { await adminHttp.post(url, body); toast.success(ok); qc.invalidateQueries(); } catch (e: any) { toast.error(e?.response?.data?.message || e?.message || "失败"); } };
-  const handleAudit = (eid: string, st: 1 | 2) => { if (!confirm(st === 1 ? "确定通过？" : "确定拒绝？")) return; doPost("/aro-training/audit", { examSignId: eid, state: st }, st === 1 ? "已通过" : "已拒绝"); };
-  const handleScore = (eid: string, yn: 1 | 2) => { if (!confirm(yn === 1 ? "评分合格？" : "评分不合格？")) return; doPost("/aro-training/score", { examSignId: eid, state: yn }, yn === 1 ? "合格" : "不合格"); };
+  const handleAudit = (eid: string, st: 1 | 2) => { if (!ensureCasBinding()) return; if (!confirm(st === 1 ? "确定通过？" : "确定拒绝？")) return; doPost("/aro-training/audit", { examSignId: eid, state: st }, st === 1 ? "已通过" : "已拒绝"); };
+  const handleScore = (eid: string, yn: 1 | 2) => { if (!ensureCasBinding()) return; if (!confirm(yn === 1 ? "评分合格？" : "评分不合格？")) return; doPost("/aro-training/score", { examSignId: eid, state: yn }, yn === 1 ? "合格" : "不合格"); };
   const toggleSel = (uid: string) => setSelTrainees(p => { const n = new Set(p); n.has(uid) ? n.delete(uid) : n.add(uid); return n; });
   const toggleRoom = (uid: string, cur: string[]) => { if (expanded === uid) { setExpanded(null); return; } setExpanded(uid); setRoomPickers(p => ({ ...p, [uid]: new Set(cur) })); };
   const toggleRoomPick = (uid: string, rid: string) => setRoomPickers(p => { const s = new Set(p[uid] || []); s.has(rid) ? s.delete(rid) : s.add(rid); return { ...p, [uid]: s }; });
-  const saveRooms = async (eid: string, uid: string) => { try { await adminHttp.post("/aro-training/update-rooms", { examSignId: eid, userId: uid, roomIds: [...(roomPickers[uid] || [])] }); toast.success("已更新"); setExpanded(null); qc.invalidateQueries(); } catch (e: any) { toast.error(e?.message || "失败"); } };
+  const saveRooms = async (eid: string, uid: string) => { if (!ensureCasBinding()) return; try { await adminHttp.post("/aro-training/update-rooms", { examSignId: eid, userId: uid, roomIds: [...(roomPickers[uid] || [])] }); toast.success("已更新"); setExpanded(null); qc.invalidateQueries(); } catch (e: any) { toast.error(e?.message || "失败"); } };
   const openBatch = () => { if (selTrainees.size === 0) { toast.error("请勾选"); return; } setBatchRoom(true); setExpanded("__batch__"); setRoomNav(null); };
-  const batchSave = async () => { const uids = [...selTrainees]; const ids = [...(roomPickers["__batch__"] || [])]; if (ids.length === 0) { toast.error("请选择房间"); return; } let ok = 0; for (const uid of uids) { try { await adminHttp.post("/aro-training/update-rooms", { examSignId: selected?.id, userId: uid, roomIds: ids }); ok++; } catch {} } toast.success(`${ok}/${uids.length} 完成`); setBatchRoom(false); setExpanded(null); setSelTrainees(new Set()); qc.invalidateQueries(); };
+  const batchSave = async () => { if (!ensureCasBinding()) return; const uids = [...selTrainees]; const ids = [...(roomPickers["__batch__"] || [])]; if (ids.length === 0) { toast.error("请选择房间"); return; } let ok = 0; for (const uid of uids) { try { await adminHttp.post("/aro-training/update-rooms", { examSignId: selected?.id, userId: uid, roomIds: ids }); ok++; } catch {} } toast.success(`${ok}/${uids.length} 完成`); setBatchRoom(false); setExpanded(null); setSelTrainees(new Set()); qc.invalidateQueries(); };
 
   const roomDropdown = (uid: string, eid: string) => {
     const groups: Record<string, Record<string, { id: string; name: string }[]>> = {};
@@ -238,5 +255,31 @@ export default function AdminAroBindingPage() {
     </div>
   );
 
-  return <AdminPageShell><div key={selected ? "detail" : "list"}>{selected ? tdetail : slist}</div></AdminPageShell>;
+  return (
+    <AdminPageShell>
+      <div key={selected ? "detail" : "list"}>{selected ? tdetail : slist}</div>
+      <Dialog open={bindPromptOpen} onOpenChange={setBindPromptOpen}>
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>需要 ARO 个人认证</DialogTitle>
+            <DialogDescription>
+              您暂未绑定 ARO 个人认证 Token，无法进行修改操作。请在右上角头像菜单中绑定后再试。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <AdminButton type="button" tone="secondary" size="default" onClick={() => setBindPromptOpen(false)}>
+              取消
+            </AdminButton>
+            <AdminButton type="button" tone="primary" size="default" onClick={() => {
+              setBindPromptOpen(false);
+              openCasDialog();
+            }}>
+              <KeyRound className="mr-2 h-4 w-4" />
+              去绑定
+            </AdminButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </AdminPageShell>
+  );
 }

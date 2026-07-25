@@ -153,10 +153,15 @@ App({
     pagePermission.refreshMiniPermissions();
   },
 
-  // 自动登录方法（请把账号密码改为安全配置，勿长期硬编码在客户端）
+  // JTU 校园网自动登录：账号密码从 envConfig PRESETS 读取，不硬编码
   autoLogin() {
-    const account = '15001771038';
-    const password = '88888888';
+    const preset = envConfig.PRESETS[envConfig.getEffectivePresetId()] || {};
+    const account = preset.jtuAccount || '';
+    const password = preset.jtuPassword || '';
+    if (!account || !password) {
+      console.log('[autoLogin] 未配置 JTU 账号密码，跳过自动登录');
+      return;
+    }
 
     wx.request({
       url: 'https://aro.shsmu.edu.cn/jtu/api/login',
