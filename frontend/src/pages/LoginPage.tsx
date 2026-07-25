@@ -213,7 +213,7 @@ export default function LoginPage() {
       if (cancelled) return;
       if (!window.turnstile) {
         turnstilePollCount.current++;
-        if (turnstilePollCount.current > 50) { // ~15 秒超时
+        if (turnstilePollCount.current > 12) { // ~3.6 秒超时（Cloudflare CDN 在国内慢）
           console.warn("Turnstile CDN 加载超时，降级跳过");
           setTurnstileLoadFailed(true);
           return;
@@ -314,7 +314,7 @@ export default function LoginPage() {
     try {
       setSubmitting(true);
       // Turnstile 未配置时允许空 token 降级登录
-      const data = await loginWeb(username.trim(), password, turnstileToken || undefined);
+      const data = await loginWeb(username.trim(), password, turnstileToken || undefined, turnstileLoadFailed);
       authStorage.setAuth(data.token, data.role, data.userInfo);
 
       // 学生库账号（或 MEMBER 角色）不能进入教职工视角 → 自动跳转学生中心
@@ -342,7 +342,7 @@ export default function LoginPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [username, password, syncUserFromStorage]);
+  }, [username, password, turnstileToken, turnstileLoadFailed, syncUserFromStorage]);
 
   const openLoginPanel = useCallback(() => {
     setShowLogin(true);
@@ -954,7 +954,7 @@ export default function LoginPage() {
                           }
                         }}
                         className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
-                        placeholder="请输入账号"
+                        placeholder="账号/邮箱"
                         autoComplete="username"
                         spellCheck={false}
                       />
@@ -990,7 +990,7 @@ export default function LoginPage() {
                     </div>
                     <button
                       type="button"
-                      disabled={submitting}
+                      disabled={submitting || (!!turnstileSiteKey && !turnstileToken && !turnstileLoadFailed)}
                       onClick={() => void doLogin()}
                       className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
                     >

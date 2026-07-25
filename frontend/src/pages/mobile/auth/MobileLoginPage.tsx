@@ -26,6 +26,7 @@ export default function MobileLoginPage() {
   // Turnstile
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
+  const [turnstileLoadFailed, setTurnstileLoadFailed] = useState(false);
   const turnstileRef = useRef<HTMLDivElement>(null);
   const turnstileId = useRef<string | null>(null);
 
@@ -43,7 +44,7 @@ export default function MobileLoginPage() {
     let polls = 0;
     const tryRender = () => {
       if (cancelled) return;
-      if (!window.turnstile) { if (++polls < 50) setTimeout(tryRender, 300); return; }
+      if (!window.turnstile) { if (++polls < 12) setTimeout(tryRender, 300); else setTurnstileLoadFailed(true); return; }
       try {
         if (turnstileId.current) window.turnstile.remove(turnstileId.current);
         container.innerHTML = "";
@@ -51,14 +52,14 @@ export default function MobileLoginPage() {
           sitekey: turnstileSiteKey,
           theme: "light",
           size: "normal",
-          callback: (token: string) => setTurnstileToken(token),
+          callback: (token: string) => { setTurnstileToken(token); setTurnstileLoadFailed(false); },
           "expired-callback": () => setTurnstileToken(""),
-          "error-callback": () => setTurnstileToken(""),
+          "error-callback": () => { setTurnstileToken(""); setTurnstileLoadFailed(true); },
         });
-      } catch { /* ignore */ }
+      } catch { setTurnstileLoadFailed(true); }
     };
     setTimeout(tryRender, 100);
-    return () => { cancelled = true; setTurnstileToken(""); };
+    return () => { cancelled = true; setTurnstileToken(""); setTurnstileLoadFailed(false); };
   }, [turnstileSiteKey]);
 
   // Forgot password state
@@ -101,7 +102,7 @@ export default function MobileLoginPage() {
     try {
       setSubmitting(true);
       setError(null);
-      const data = await loginWeb(username.trim(), password, turnstileToken || undefined);
+      const data = await loginWeb(username.trim(), password, turnstileToken || undefined, turnstileLoadFailed);
       authStorage.setAuth(data.token, data.role, data.userInfo);
       authStorage.markLoginPortal("mobile");
       navigate("/m/home", { replace: true });
@@ -110,7 +111,7 @@ export default function MobileLoginPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [username, password, navigate]);
+  }, [username, password, turnstileToken, turnstileLoadFailed, navigate]);
 
   const handleUsernameKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") { e.preventDefault(); passwordRef.current?.focus(); }
@@ -493,7 +494,7 @@ export default function MobileLoginPage() {
               <div>
                 <label className="mb-1.5 block text-sm font-medium" style={{ color: primary }}>用户名</label>
                 <input value={username} onChange={(e) => { setUsername(e.target.value); setError(null); }}
-                  onKeyDown={handleUsernameKeyDown} placeholder="请输入用户名" autoComplete="username"
+                  onKeyDown={handleUsernameKeyDown} placeholder="账号/邮箱" autoComplete="username"
                   className="w-full rounded-[var(--app-radius-element)] border px-3 py-2.5 text-base outline-none transition-colors"
                   style={{ background: bg, borderColor: border, color: primary }} />
               </div>
@@ -510,7 +511,7 @@ export default function MobileLoginPage() {
                 <p className="text-sm text-center rounded-[var(--app-radius-element)] px-3 py-2"
                   style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>{error}</p>
               )}
-              <button onClick={doLogin} disabled={submitting}
+              <button onClick={doLogin} disabled={submitting || (!!turnstileSiteKey && !turnstileToken && !turnstileLoadFailed)}
                 className="w-full rounded-[var(--app-radius-element)] py-3 text-base font-medium text-white transition active:scale-[0.98] disabled:opacity-60"
                 style={{ background: `linear-gradient(135deg, ${accent}, ${accent})` }}>
                 {submitting ? "登录中..." : "登 录"}
