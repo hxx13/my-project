@@ -5,6 +5,7 @@ import com.example.demo.modules.notification.push.PushConstants;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,9 @@ public class EmailPushChannel implements PushChannel {
     private static final Logger log = LoggerFactory.getLogger(EmailPushChannel.class);
     private final JavaMailSender mailSender;
     private final NotificationSettingsMapper settingsMapper;
+
+    @Value("${spring.mail.properties.mail.from:}")
+    private String fromAddress;
 
     public EmailPushChannel(JavaMailSender mailSender, NotificationSettingsMapper settingsMapper) {
         this.mailSender = mailSender;
@@ -44,6 +48,9 @@ public class EmailPushChannel implements PushChannel {
             MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
             helper.setTo(target);
             helper.setSubject(title);
+            if (StringUtils.hasText(fromAddress)) {
+                helper.setFrom(fromAddress);
+            }
             String html = "<html><body>" + (content != null ? content.replace("\n", "<br>") : "")
                     + "<hr><p style='color:#999;font-size:12px'>"
                     + "此邮件由 ARO 系统自动发送。如需退订，请登录系统在个人设置中关闭通知绑定。"
