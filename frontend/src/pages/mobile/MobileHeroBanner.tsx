@@ -197,28 +197,6 @@ export default function HeroBanner({
           </div>
         </div>
 
-        {/* 第二行：邮箱绑定状态 */}
-        <div
-            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
-            style={{
-              background: currentEmail ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
-              backdropFilter: "blur(8px)",
-              border: "1px solid rgba(255,255,255,0.2)",
-            }}
-          >
-            {currentEmail ? "邮箱已绑定" : "邮箱未绑定"}
-          </div>
-          <div
-            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
-            style={{
-              background: currentSendKey ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
-              backdropFilter: "blur(8px)",
-              border: "1px solid rgba(255,255,255,0.2)",
-            }}
-          >
-            {currentSendKey ? "微信已绑定" : "微信未绑定"}
-          </div>
-
         {/* 二维码 + 链接 + 操作（仅直链模式且展开时显示） */}
         {!jwtMode && (
           <div

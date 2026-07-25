@@ -329,6 +329,34 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         showBack={!isHome}
         onBack={handleTopNavBack}
       />
+      {/* Email / SendKey status chips — HeroBanner style, always visible */}
+      {userIdForBind && (
+        <div
+          className="fixed left-4 z-30 flex flex-col items-start gap-2"
+          style={{ top: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+        >
+          <div
+            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
+            style={{
+              background: currentEmail ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
+              backdropFilter: "blur(8px)",
+              border: "1px solid rgba(255,255,255,0.2)",
+            }}
+          >
+            {currentEmail ? "邮箱已绑定" : "邮箱未绑定"}
+          </div>
+          <div
+            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
+            style={{
+              background: currentSendKey ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
+              backdropFilter: "blur(8px)",
+              border: "1px solid rgba(255,255,255,0.2)",
+            }}
+          >
+            {currentSendKey ? "微信已绑定" : "微信未绑定"}
+          </div>
+        </div>
+      )}
       <WatermarkLogo />
       {showLiveAlert && liveAlertTitle && (
         <div
