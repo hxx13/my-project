@@ -113,20 +113,23 @@ export default function AdminPushDashboardPage() {
   const [logPage, setLogPage] = useState(1);
   const logSize = 20;
 
-  const { data: logData, isLoading: logLoading } = useQuery<{ data: PushLogEntry[]; total: number }>({
+  const { data: logData, isLoading: logLoading } = useQuery({
     queryKey: ["push-log", logKeyword, logSource, logChannel, logStatus, logStartDate, logEndDate, logPage],
-    queryFn: () => authHttp.get("/admin/push-log/list", {
-      params: {
-        keyword: logKeyword || undefined,
-        sourceCode: logSource || undefined,
-        channelCode: logChannel || undefined,
-        status: logStatus || undefined,
-        startDate: logStartDate || undefined,
-        endDate: logEndDate || undefined,
-        page: logPage,
-        size: logSize,
-      },
-    }).then((r) => r.data.data),
+    queryFn: async () => {
+      const r: any = await authHttp.get("/admin/push-log/list", {
+        params: {
+          keyword: logKeyword || undefined,
+          sourceCode: logSource || undefined,
+          channelCode: logChannel || undefined,
+          status: logStatus || undefined,
+          startDate: logStartDate || undefined,
+          endDate: logEndDate || undefined,
+          page: logPage,
+          size: logSize,
+        },
+      });
+      return r.data.data as { data: PushLogEntry[]; total: number };
+    },
     refetchInterval: 30_000,
   });
 
@@ -257,12 +260,12 @@ export default function AdminPushDashboardPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--app-color-border-default)]">
-                        {logLoading && (!logData || logData.data.length === 0) ? (
+                        {logLoading && (!logData || !(logData as any).data || (logData as any).data.length === 0) ? (
                           <tr><td colSpan={6} className="text-center py-8 text-[var(--app-color-text-tertiary)]">加载中…</td></tr>
-                        ) : !logData || logData.data.length === 0 ? (
+                        ) : !logData || !(logData as any).data || (logData as any).data.length === 0 ? (
                           <tr><td colSpan={6} className="text-center py-8 text-[var(--app-color-text-tertiary)]">暂无推送记录</td></tr>
                         ) : (
-                          logData.data.map((row) => (
+                          (logData as any).data.map((row: any) => (
                             <tr key={row.id} className="hover:bg-[var(--app-color-surface-hover)] cursor-pointer transition-colors" onClick={() => setDetailId(row.id)}>
                               <td className="px-3 py-2 text-[var(--app-color-text-tertiary)] whitespace-nowrap font-mono">{fmtTime(row.create_time)}</td>
                               <td className="px-3 py-2 text-[var(--app-color-text-primary)] max-w-[120px] truncate">
@@ -474,9 +477,9 @@ function LogDetailModal({ id, onClose }: { id: number; onClose: () => void }) {
             <DetailRow label="标题" value={String(data.title ?? "-")} />
             <DetailRow label="内容" value={<pre className="whitespace-pre-wrap font-sans text-[var(--app-color-text-primary)] max-h-[200px] overflow-auto">{String(data.content ?? "-")}</pre>} />
             <DetailRow label="发送时间" value={fmtTime(String(data.create_time ?? ""))} />
-            {data.error_code && <DetailRow label="错误码" value={String(data.error_code)} />}
-            {data.error_msg && <DetailRow label="错误信息" value={<span className="text-[var(--app-color-feedback-error)]">{String(data.error_msg)}</span>} />}
-            {data.provider_msg_id && <DetailRow label="平台消息ID" value={<span className="font-mono text-[10px]">{String(data.provider_msg_id)}</span>} />}
+            {(data as any).error_code && <DetailRow label="错误码" value={String((data as any).error_code)} />}
+            {(data as any).error_msg && <DetailRow label="错误信息" value={<span className="text-[var(--app-color-feedback-error)]">{String((data as any).error_msg)}</span>} />}
+            {(data as any).provider_msg_id && <DetailRow label="平台消息ID" value={<span className="font-mono text-[10px]">{String((data as any).provider_msg_id)}</span>} />}
             <DetailRow label="重试" value={`${data.retry_count ?? 0} / ${data.max_retries ?? 3}`} />
           </dl>
         )}

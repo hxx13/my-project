@@ -13,8 +13,11 @@ import com.example.demo.modules.repair.enums.RepairOrderStatusEnum;
 import com.example.demo.modules.repair.mapper.RepairOrderMapper;
 import com.example.demo.modules.repair.service.RepairOrderService;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.example.demo.modules.notification.service.NotificationService;
 import com.example.demo.modules.policy.BizDomains;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
 import com.example.demo.modules.upload.service.UploadFileService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,16 +36,19 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/repair/orders")
 @Tag(name = "报修工单", description = "报修申请与处理闭环接口")
 public class RepairOrderController {
+    private static final Logger log = LoggerFactory.getLogger(RepairOrderController.class);
     private final AuthContextService authContextService;
     private final RepairOrderService repairOrderService;
     private final RepairOrderMapper repairOrderMapper;
@@ -50,6 +56,7 @@ public class RepairOrderController {
     private final NotificationService notificationService;
     private final UserDisplayNameService userDisplayNameService;
     private final CapabilityPolicyService capabilityPolicyService;
+    private final PushService pushService;
 
     public RepairOrderController(AuthContextService authContextService,
                                  RepairOrderService repairOrderService,
@@ -57,7 +64,8 @@ public class RepairOrderController {
                                  UploadFileService uploadFileService,
                                  NotificationService notificationService,
                                  UserDisplayNameService userDisplayNameService,
-                                 CapabilityPolicyService capabilityPolicyService) {
+                                 CapabilityPolicyService capabilityPolicyService,
+                                 PushService pushService) {
         this.authContextService = authContextService;
         this.repairOrderService = repairOrderService;
         this.repairOrderMapper = repairOrderMapper;
@@ -65,6 +73,7 @@ public class RepairOrderController {
         this.notificationService = notificationService;
         this.userDisplayNameService = userDisplayNameService;
         this.capabilityPolicyService = capabilityPolicyService;
+        this.pushService = pushService;
     }
 
     @PostMapping
@@ -95,6 +104,7 @@ public class RepairOrderController {
                 "applicantName", order.getApplicantName(),
                 "location", order.getLocation()
         ));
+        try { pushService.send("REPAIR_REQUESTED", Map.of("applicantName", order.getApplicantName(), "location", order.getLocation(), "content", order.getContent(), "bizId", order.getId(), "createdAt", order.getCreateTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))); } catch (Exception e) { log.warn("[Push] REPAIR_REQUESTED failed: {}", e.getMessage()); }
         return Result.success(repairOrderService.toView(order));
     }
 
@@ -202,6 +212,7 @@ public class RepairOrderController {
         }
         String summary = buildCompletionSummary(order.getLocation(), order.getContent());
         publishEvent("COMPLETED", user, order, Map.of("summary", summary));
+        try { pushService.send("REPAIR_COMPLETED", Map.of("applicantName", order.getApplicantName(), "location", order.getLocation(), "summary", summary, "bizId", order.getId(), "processorName", StringUtils.hasText(user.getUsername()) ? user.getUsername() : user.getId()), Set.of(order.getApplicantId())); } catch (Exception e) { log.warn("[Push] REPAIR_COMPLETED failed: {}", e.getMessage()); }
         return Result.success();
     }
 

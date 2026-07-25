@@ -12,6 +12,7 @@ import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
 import com.example.demo.modules.notification.entity.SystemConfigItem;
 import com.example.demo.modules.notification.mapper.NotificationSettingsMapper;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.example.demo.modules.notification.service.NotificationService;
 import com.example.demo.modules.supplies.dto.*;
 import com.example.demo.modules.supplies.entity.*;
@@ -27,6 +28,8 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import com.example.demo.modules.upload.service.UploadFileService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +52,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class SuppliesService {
+    private static final Logger log = LoggerFactory.getLogger(SuppliesService.class);
     private static final String SHELF_ON = "ON_SHELF";
     private static final String MODE_QUANTIFIED = "QUANTIFIED";
     private static final String MODE_FLAG = "FLAG";
@@ -78,6 +82,7 @@ public class SuppliesService {
     private final UserDisplayNameService userDisplayNameService;
     private final ObjectMapper objectMapper;
     private final CapabilityPolicyService capabilityPolicyService;
+    private final PushService pushService;
     @Value("${app.public-base-url:}")
     private String appPublicBaseUrl;
     @Value("${app.pdf.font-path:}")
@@ -99,7 +104,8 @@ public class SuppliesService {
                            UserMapper userMapper,
                            UserDisplayNameService userDisplayNameService,
                            ObjectMapper objectMapper,
-                           CapabilityPolicyService capabilityPolicyService) {
+                           CapabilityPolicyService capabilityPolicyService,
+                           PushService pushService) {
         this.categoryMapper = categoryMapper;
         this.itemMapper = itemMapper;
         this.claimOrderMapper = claimOrderMapper;
@@ -117,6 +123,7 @@ public class SuppliesService {
         this.userDisplayNameService = userDisplayNameService;
         this.objectMapper = objectMapper;
         this.capabilityPolicyService = capabilityPolicyService;
+        this.pushService = pushService;
     }
 
     public boolean isAdmin(User user) {
@@ -1719,6 +1726,7 @@ public class SuppliesService {
         vars.put("summary", "共 " + lineCount + " 项物资");
         event.setVariables(vars);
         notificationService.publish(event);
+        try { pushService.send("SUPPLIES_REQUESTED", Map.of("applicantName", resolveDisplayName(applicantUserId), "summary", "共 " + lineCount + " 项物资", "bizId", orderId, "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))); } catch (Exception e) { log.warn("[Push] SUPPLIES_REQUESTED failed: {}", e.getMessage()); }
     }
 
     /** 出库完成 → 申请人站内回执（与报修/采购办结同源：COMPLETED + SUPPLIES_CLAIM） */
@@ -1747,6 +1755,7 @@ public class SuppliesService {
         }
         event.setVariables(vars);
         notificationService.publish(event);
+        try { pushService.send("SUPPLIES_COMPLETED", Map.of("applicantName", resolveDisplayName(order.getUserId()), "summary", vars.get("summary"), "bizId", order.getId()), Set.of(order.getUserId())); } catch (Exception e) { log.warn("[Push] SUPPLIES_COMPLETED failed: {}", e.getMessage()); }
     }
 
     /**

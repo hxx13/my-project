@@ -14,6 +14,10 @@ import com.example.demo.modules.notification.push.config.NotifySourceChannel;
 import com.example.demo.modules.notification.push.config.NotifySourceChannelService;
 import com.example.demo.modules.notification.push.recipient.NotifySourceRecipient;
 import com.example.demo.modules.notification.push.recipient.NotifySourceRecipientService;
+import com.example.demo.modules.notification.push.digest.DigestResolutionService;
+import com.example.demo.modules.notification.push.digest.NotifyDigestItem;
+import com.example.demo.modules.notification.push.digest.NotifyDigestItemMapper;
+import com.example.demo.modules.notification.push.digest.ResolvedDigestConfig;
 import com.example.demo.modules.notification.push.source.NotifySource;
 import com.example.demo.modules.notification.push.source.NotifySourceService;
 import org.slf4j.Logger;
@@ -38,6 +42,8 @@ public class PushDispatchEngine {
     private final NotificationMiniProgramMapper deliveryLogMapper;
     private final PushRateLimiter rateLimiter;
     private final List<PushChannel> channels;
+    private final DigestResolutionService digestResolutionService;
+    private final NotifyDigestItemMapper digestItemMapper;
 
     public PushDispatchEngine(NotifySourceService sourceService,
                               NotifySourceChannelService channelConfigService,
@@ -47,7 +53,9 @@ public class PushDispatchEngine {
                               UserDisplayNameService displayNameService,
                               NotificationMiniProgramMapper deliveryLogMapper,
                               PushRateLimiter rateLimiter,
-                              List<PushChannel> channels) {
+                              List<PushChannel> channels,
+                              DigestResolutionService digestResolutionService,
+                              NotifyDigestItemMapper digestItemMapper) {
         this.sourceService = sourceService;
         this.channelConfigService = channelConfigService;
         this.recipientService = recipientService;
@@ -57,6 +65,8 @@ public class PushDispatchEngine {
         this.deliveryLogMapper = deliveryLogMapper;
         this.rateLimiter = rateLimiter;
         this.channels = channels;
+        this.digestResolutionService = digestResolutionService;
+        this.digestItemMapper = digestItemMapper;
     }
 
     public Map<String, Object> dispatch(String sourceCode, Map<String, String> variables, Set<String> dynamicUserIds) {
@@ -96,6 +106,66 @@ public class PushDispatchEngine {
             return report;
         }
         diag.add("recipient count: " + allRecipientIds.size());
+
+        // ── 夜间模式分叉：夜间时段 → 全部强制缓冲（覆盖一切即时通知） ──
+        Set<String> nightUsers = new LinkedHashSet<>();
+        Set<String> digestUsers = new LinkedHashSet<>();
+        for (String uid : allRecipientIds) {
+            ResolvedDigestConfig cfg = digestResolutionService.resolve(uid, source.getSourceCode());
+            if (cfg != null) {
+                // 夜间模式：在夜间时段内 → 强制缓冲
+                if (Boolean.TRUE.equals(cfg.getNightModeActive())
+                        && DigestResolutionService.isNightTime(cfg.getNightStart(), cfg.getNightEnd())) {
+                    nightUsers.add(uid);
+                } else {
+                    digestUsers.add(uid);
+                }
+            }
+        }
+        // 缓冲夜间用户（每用户仅一条，纯文本化存储，发送时按渠道适配格式）
+        if (!nightUsers.isEmpty()) {
+            for (String uid : nightUsers) {
+                NotifySourceChannel firstEnabled = channelConfigs.stream()
+                        .filter(c -> Boolean.TRUE.equals(c.getEnabled())).findFirst().orElse(null);
+                String title = firstEnabled != null ? plainText(render(firstEnabled.getTitleTpl(), variables)) : "";
+                String content = firstEnabled != null ? plainText(render(firstEnabled.getContentTpl(), variables)) : "";
+                NotifyDigestItem item = new NotifyDigestItem();
+                item.setUserId(uid);
+                item.setSourceCode(source.getSourceCode());
+                item.setChannelCode("ALL");
+                item.setTitle(title);
+                item.setContent(content);
+                digestItemMapper.insert(item);
+            }
+            allRecipientIds.removeAll(nightUsers);
+            diag.add("night buffered: " + nightUsers.size() + " users");
+        }
+        if (!digestUsers.isEmpty()) {
+            NotifySourceChannel firstEnabled = channelConfigs.stream()
+                    .filter(c -> Boolean.TRUE.equals(c.getEnabled())).findFirst().orElse(null);
+            for (String uid : digestUsers) {
+                String title = firstEnabled != null ? plainText(render(firstEnabled.getTitleTpl(), variables)) : "";
+                String content = firstEnabled != null ? plainText(render(firstEnabled.getContentTpl(), variables)) : "";
+                NotifyDigestItem item = new NotifyDigestItem();
+                item.setUserId(uid);
+                item.setSourceCode(source.getSourceCode());
+                item.setChannelCode("ALL");
+                item.setTitle(title);
+                item.setContent(content);
+                digestItemMapper.insert(item);
+            }
+            allRecipientIds.removeAll(digestUsers);
+            diag.add("digest buffered: " + digestUsers.size() + " users");
+        }
+
+        // 全部用户已缓冲 → 无需即时发送
+        if (allRecipientIds.isEmpty()) {
+            report.put("sent", 0);
+            report.put("failed", 0);
+            report.put("skipped", 0);
+            report.put("diagnosis", diag);
+            return report;
+        }
 
         // Batch preload users, display names, emails, and sendKeys
         List<String> idList = new ArrayList<>(allRecipientIds);
@@ -315,5 +385,14 @@ public class PushDispatchEngine {
     private static String truncate(String s, int maxLen) {
         if (s == null) return null;
         return s.length() <= maxLen ? s : s.substring(0, maxLen - 3) + "...";
+    }
+
+    /** 去除 HTML 标签和 Markdown 语法，保留纯文本 */
+    private static String plainText(String s) {
+        if (s == null) return "";
+        return s.replaceAll("<[^>]+>", " ")  // HTML 标签
+                .replaceAll("[*#>`_~]", "")    // Markdown 语法
+                .replaceAll("\\s+", " ")       // 合并空白
+                .trim();
     }
 }

@@ -44,7 +44,25 @@ public class NotifySourceRegistry implements ApplicationRunner {
         register("SCAN_DELAY_MANUAL", "手动免冻结通知", "管理员手动给予免冻结",
                 Map.of("roomName", "房间名称", "optionLabel", "免冻结选项", "operatorName", "操作管理员", "targetUserId", "被授权学生ID（自动索引）"));
 
-        log.info("[Push] 通知源注册完成（8个源）");
+        // 采购
+        register("PURCHASE_REQUESTED", "采购申请-新申请", "学生/教职工提交采购申请",
+                Map.of("applicantName", "申请人姓名", "location", "采购地点", "content", "采购内容", "createdAt", "申请时间", "targetUserId", "申请人ID（仅回显，不推送）"));
+        register("PURCHASE_COMPLETED", "采购申请-办结回执", "采购处理完毕通知提交人",
+                Map.of("applicantName", "申请人姓名", "location", "采购地点", "summary", "处理摘要", "processorName", "处理人姓名", "targetUserId", "申请人ID（自动索引）"));
+
+        // 报修
+        register("REPAIR_REQUESTED", "报修申请-新申请", "学生/教职工提交报修申请",
+                Map.of("applicantName", "申请人姓名", "location", "报修地点", "content", "报修内容", "createdAt", "申请时间", "targetUserId", "申请人ID（仅回显，不推送）"));
+        register("REPAIR_COMPLETED", "报修申请-办结回执", "报修处理完毕通知提交人",
+                Map.of("applicantName", "申请人姓名", "location", "报修地点", "summary", "处理摘要", "processorName", "处理人姓名", "targetUserId", "申请人ID（自动索引）"));
+
+        // 物资领用
+        register("SUPPLIES_REQUESTED", "物资领用-新申请", "教职工提交物资领用申请",
+                Map.of("applicantName", "领用人姓名", "summary", "物品摘要", "createdAt", "申请时间", "targetUserId", "领用人ID（仅回显，不推送）"));
+        register("SUPPLIES_COMPLETED", "物资领用-办结回执", "物资出库完毕通知领用人",
+                Map.of("applicantName", "领用人姓名", "summary", "出库摘要", "targetUserId", "领用人ID（自动索引）"));
+
+        log.info("[Push] 通知源注册完成（14个源）");
     }
 
     private void register(String code, String name, String desc, Map<String, String> variables) {

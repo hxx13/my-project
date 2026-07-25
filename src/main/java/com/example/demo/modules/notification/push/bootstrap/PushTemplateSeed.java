@@ -41,19 +41,27 @@ public class PushTemplateSeed implements ApplicationRunner {
         }
         for (NotifySource src : sources) {
             for (String ch : List.of("EMAIL", "SERVER_CHAN")) {
-                NotifySourceChannel exist = channelMapper.findBySourceAndChannel(src.getId(), ch);
-                if (exist != null) continue;
                 Template t = TEMPLATES.get(src.getSourceCode());
                 if (t == null) continue;
-                NotifySourceChannel cfg = new NotifySourceChannel();
-                cfg.setSourceId(src.getId());
-                cfg.setChannelCode(ch);
-                cfg.setEnabled(true);
-                cfg.setTitleTpl(t.title);
-                cfg.setContentTpl("EMAIL".equals(ch) ? t.contentEmail : t.contentWechat);
-                cfg.setRateLimitSeconds(300);
-                channelMapper.insert(cfg);
-                log.info("[Push] 种子模板 {}/{} -> {}", src.getSourceCode(), ch, t.title);
+                NotifySourceChannel exist = channelMapper.findBySourceAndChannel(src.getId(), ch);
+                String content = "EMAIL".equals(ch) ? t.contentEmail : t.contentWechat;
+                if (exist != null) {
+                    // 已有记录 → 更新模板（保留 enable/quiet/rateLimit 等已有设置）
+                    exist.setTitleTpl(t.title);
+                    exist.setContentTpl(content);
+                    channelMapper.update(exist);
+                    log.info("[Push] 更新模板 {}/{} -> {}", src.getSourceCode(), ch, t.title);
+                } else {
+                    NotifySourceChannel cfg = new NotifySourceChannel();
+                    cfg.setSourceId(src.getId());
+                    cfg.setChannelCode(ch);
+                    cfg.setEnabled(true);
+                    cfg.setTitleTpl(t.title);
+                    cfg.setContentTpl(content);
+                    cfg.setRateLimitSeconds(300);
+                    channelMapper.insert(cfg);
+                    log.info("[Push] 种子模板 {}/{} -> {}", src.getSourceCode(), ch, t.title);
+                }
             }
         }
     }
@@ -117,6 +125,56 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p>操作人：{operatorName}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
                 "## 免冻结已授权\n房间：{roomName}\n详情：{optionLabel}\n操作人：{operatorName}\n> ARO 系统自动推送"
+        ));
+
+        // ========== 采购 ==========
+        TEMPLATES.put("PURCHASE_REQUESTED", new Template(
+                "采购申请 — {applicantName}",
+                "<h3>新采购申请</h3><p><b>{applicantName}</b> 提交了采购申请。</p>"
+                        + "<p>地点：{location}</p><p>时间：{createdAt}</p>"
+                        + "<p>内容：{content}</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "## 新采购申请\n**{applicantName}**\n地点：{location}\n时间：{createdAt}\n内容：{content}\n> ARO 系统自动推送"
+        ));
+        TEMPLATES.put("PURCHASE_COMPLETED", new Template(
+                "采购办结 — {location}",
+                "<h3>采购已办结</h3><p><b>{applicantName}</b> 的采购申请已处理完毕。</p>"
+                        + "<p>{summary}</p><p>处理人：{processorName}</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "## 采购已办结\n**{applicantName}** 的采购申请已处理完毕\n{summary}\n处理人：{processorName}\n> ARO 系统自动推送"
+        ));
+
+        // ========== 报修 ==========
+        TEMPLATES.put("REPAIR_REQUESTED", new Template(
+                "报修申请 — {applicantName}",
+                "<h3>新报修申请</h3><p><b>{applicantName}</b> 提交了报修申请。</p>"
+                        + "<p>地点：{location}</p><p>时间：{createdAt}</p>"
+                        + "<p>内容：{content}</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "## 新报修申请\n**{applicantName}**\n地点：{location}\n时间：{createdAt}\n内容：{content}\n> ARO 系统自动推送"
+        ));
+        TEMPLATES.put("REPAIR_COMPLETED", new Template(
+                "报修办结 — {location}",
+                "<h3>报修已办结</h3><p><b>{applicantName}</b> 的报修申请已处理完毕。</p>"
+                        + "<p>{summary}</p><p>处理人：{processorName}</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "## 报修已办结\n**{applicantName}** 的报修申请已处理完毕\n{summary}\n处理人：{processorName}\n> ARO 系统自动推送"
+        ));
+
+        // ========== 物资领用 ==========
+        TEMPLATES.put("SUPPLIES_REQUESTED", new Template(
+                "物资领用 — {applicantName}",
+                "<h3>新物资领用申请</h3><p><b>{applicantName}</b> 提交了物资领用申请。</p>"
+                        + "<p>{summary}</p><p>时间：{createdAt}</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "## 新物资领用申请\n**{applicantName}**\n{summary}\n时间：{createdAt}\n> ARO 系统自动推送"
+        ));
+        TEMPLATES.put("SUPPLIES_COMPLETED", new Template(
+                "物资已出库",
+                "<h3>物资已出库</h3><p><b>{applicantName}</b>，您的领用物资已出库：</p>"
+                        + "<p>{summary}</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "## 物资已出库\n**{applicantName}**，您的领用物资已出库：\n{summary}\n> ARO 系统自动推送"
         ));
     }
 }

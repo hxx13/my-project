@@ -46,6 +46,7 @@ public interface NotificationMiniProgramMapper {
                                            @Param("status") String status,
                                            @Param("startTime") LocalDateTime startTime,
                                            @Param("endTime") LocalDateTime endTime,
+                                           @Param("keyword") String keyword,
                                            @Param("offset") int offset,
                                            @Param("limit") int limit);
 
@@ -54,7 +55,8 @@ public interface NotificationMiniProgramMapper {
                        @Param("channelCode") String channelCode,
                        @Param("status") String status,
                        @Param("startTime") LocalDateTime startTime,
-                       @Param("endTime") LocalDateTime endTime);
+                       @Param("endTime") LocalDateTime endTime,
+                       @Param("keyword") String keyword);
 
     /** 推送统计概览 */
     Map<String, Object> getPushStats(@Param("startTime") LocalDateTime startTime);

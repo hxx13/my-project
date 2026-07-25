@@ -38,6 +38,7 @@ public class AdminPushLogController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             HttpServletRequest request) {
@@ -46,10 +47,10 @@ public class AdminPushLogController {
         LocalDateTime startTime = startDate != null ? startDate.atStartOfDay() : null;
         LocalDateTime endTime = endDate != null ? endDate.atTime(LocalTime.MAX) : null;
 
-        long total = logMapper.countPushLogs(sourceCode, channelCode, status, startTime, endTime);
+        long total = logMapper.countPushLogs(sourceCode, channelCode, status, startTime, endTime, keyword);
         int offset = (page - 1) * size;
         List<Map<String, Object>> rows = total > 0
-                ? logMapper.listPushLogs(sourceCode, channelCode, status, startTime, endTime, offset, size)
+                ? logMapper.listPushLogs(sourceCode, channelCode, status, startTime, endTime, keyword, offset, size)
                 : List.of();
 
         Map<String, Object> data = new LinkedHashMap<>();

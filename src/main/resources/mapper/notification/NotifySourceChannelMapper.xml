@@ -11,16 +11,17 @@
     <result column="quiet_start" property="quietStart"/>
     <result column="quiet_end" property="quietEnd"/>
     <result column="rate_limit_seconds" property="rateLimitSeconds"/>
+    <result column="digest_mode" property="digestMode"/>
   </resultMap>
   <select id="findBySourceId" resultMap="BaseResultMap">SELECT * FROM notify_source_channel WHERE source_id = #{sourceId}</select>
   <select id="findBySourceAndChannel" resultMap="BaseResultMap">SELECT * FROM notify_source_channel WHERE source_id = #{sourceId} AND channel_code = #{channelCode}</select>
   <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-    INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, quiet_start, quiet_end, rate_limit_seconds)
-    VALUES (#{sourceId}, #{channelCode}, #{enabled}, #{titleTpl}, #{contentTpl}, #{quietStart}, #{quietEnd}, #{rateLimitSeconds})
+    INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, quiet_start, quiet_end, rate_limit_seconds, digest_mode)
+    VALUES (#{sourceId}, #{channelCode}, #{enabled}, #{titleTpl}, #{contentTpl}, #{quietStart}, #{quietEnd}, #{rateLimitSeconds}, #{digestMode})
   </insert>
   <update id="update">
     UPDATE notify_source_channel SET enabled=#{enabled}, title_tpl=#{titleTpl}, content_tpl=#{contentTpl},
-    quiet_start=#{quietStart}, quiet_end=#{quietEnd}, rate_limit_seconds=#{rateLimitSeconds} WHERE id=#{id}
+    quiet_start=#{quietStart}, quiet_end=#{quietEnd}, rate_limit_seconds=#{rateLimitSeconds}, digest_mode=#{digestMode} WHERE id=#{id}
   </update>
   <update id="updateEnabled">UPDATE notify_source_channel SET enabled=#{enabled} WHERE id=#{id}</update>
 </mapper>

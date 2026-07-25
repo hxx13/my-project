@@ -15,16 +15,18 @@ import { Clock, Settings, Save, X, RotateCw, Plus, Undo2, ChevronDown, ChevronUp
 /* ------------------------------------------------------------------ */
 
 interface DefaultConfig {
-  id: number; sourceCode: string; digestMode: string; scheduleTimes: string;
+  id?: number; sourceCode: string; digestMode: string; scheduleTimes: string;
   overflowStrategy: string; scheduleDays?: string; hourlyInterval?: number;
   nightModeEnabled?: number; nightStart?: string; nightEnd?: string;
-  minutelyInterval?: number; enabled: number;
+  minutelyInterval?: number; overflowCutoffTime?: string;
+  digestTitleTpl?: string; digestContentTpl?: string; enabled: number;
 }
 
 interface Preference {
   id: number; userId: string; sourceCode: string; digestMode?: string;
   scheduleTimes?: string; overflowStrategy?: string; scheduleDays?: string; hourlyInterval?: number;
-  nightModeEnabled?: number; nightStart?: string; nightEnd?: string; minutelyInterval?: number; enabled?: number;
+  nightModeEnabled?: number; nightStart?: string; nightEnd?: string;
+  minutelyInterval?: number; overflowCutoffTime?: string; enabled?: number;
 }
 
 interface SourceDigestRow {
@@ -136,7 +138,7 @@ export default function AdminNotificationDigestPage() {
     return { groups: gs, instantSources: instants };
   }, [enabledSources, mode]);
 
-  const saveGroup = (group: DigestConfigGroup, newMode: string, newSchedule: string, newOverflow: string, newDays: string, newInterval: number, nightEnabled: boolean, nightStart: string, nightEnd: string, overflowCutoff: string, selectedCodes: string[]) => {
+  const saveGroup = (group: DigestConfigGroup, newMode: string, newSchedule: string, newOverflow: string, newDays: string, newInterval: number, nightEnabled: boolean, nightStart: string, nightEnd: string, overflowCutoff: string, selectedCodes: string[], _dTitle?: string, _dContent?: string) => {
     const oldCodes = new Set(group.sources.map(s => s.sourceCode));
     const newCodes = new Set(selectedCodes);
     const removed = group.sources.filter(s => !newCodes.has(s.sourceCode));
@@ -184,8 +186,9 @@ export default function AdminNotificationDigestPage() {
       });
       for (const s of removed) cfgs.push({
         id: s.defaultConfig?.id, sourceCode: s.sourceCode,
-        digestMode: "INSTANT", enabled: 0,
-      });
+        digestMode: "INSTANT", scheduleTimes: "", overflowStrategy: "ROLL_OVER",
+        enabled: 0,
+      } as DefaultConfig);
       saveDefaultBatchMutation.mutate(cfgs);
     }
   };
@@ -428,7 +431,7 @@ function DayPicker({ value, onChange }: { value: string; onChange: (s: string) =
 
 function GroupEditModal({ group, allSources, isPersonal, onClose, onSave, saving }: {
   group: DigestConfigGroup; allSources: SourceDigestRow[]; isPersonal: boolean;
-  onClose: () => void; onSave: (g: DigestConfigGroup, mode: string, schedule: string, overflow: string, days: string, interval: number, nightEnabled: boolean, nightStart: string, nightEnd: string, cutoff: string, srcs: string[]) => void; saving: boolean;
+  onClose: () => void; onSave: (g: DigestConfigGroup, mode: string, schedule: string, overflow: string, days: string, interval: number, nightEnabled: boolean, nightStart: string, nightEnd: string, cutoff: string, srcs: string[], dTitle: string, dContent: string) => void; saving: boolean;
 }) {
   const [editMode, setEditMode] = useState(group.mode);
   const [schedule, setSchedule] = useState(group.schedule);
@@ -611,7 +614,7 @@ function GroupEditModal({ group, allSources, isPersonal, onClose, onSave, saving
 
 function CreateGroupModal({ allSources, onClose, onSave, saving }: {
   allSources: SourceDigestRow[]; onClose: () => void;
-  onSave: (mode: string, schedule: string, overflow: string, days: string, interval: number, nightEnabled: boolean, nightStart: string, nightEnd: string, srcs: string[]) => void; saving: boolean;
+  onSave: (mode: string, schedule: string, overflow: string, days: string, interval: number, nightEnabled: boolean, nightStart: string, nightEnd: string, cutoff: string, srcs: string[]) => void; saving: boolean;
 }) {
   const [editMode, setEditMode] = useState("SCHEDULED");
   const [schedule, setSchedule] = useState("09:00,18:00");

@@ -1070,7 +1070,7 @@ export default function AdminPersonnelPage() {
           <div className="w-full max-w-sm rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-4">
             <div className="text-sm font-semibold text-[var(--twin-ink)]">修改联系邮箱</div>
             <p className="mt-1 text-xs text-[var(--twin-mute)]">
-              为 <strong>{(() => { const r = personnelRows.find((p: any) => p.id === emailEditOpen) ?? systemRows.find((s: any) => s.id === emailEditOpen); return r ? (r.name || r.username || emailEditOpen) : emailEditOpen; })()}</strong> 设置邮箱
+              为 <strong>{(() => { const r: any = personnelRows.find((p: any) => p.id === emailEditOpen) ?? systemRows.find((s: any) => s.id === emailEditOpen); return r ? (r.name || r.username || emailEditOpen) : emailEditOpen; })()}</strong> 设置邮箱
             </p>
             <input
               type="email"

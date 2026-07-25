@@ -14,4 +14,5 @@ public class NotifySourceChannel {
     private LocalTime quietStart;
     private LocalTime quietEnd;
     private Integer rateLimitSeconds;
+    private String digestMode;
 }
