@@ -13,6 +13,8 @@ interface HeroBannerProps {
   wsConnected?: boolean;
   /** true = 通用模式（JWT 登录），false = 直链模式（token 直达） */
   jwtMode?: boolean;
+  currentEmail?: string;
+  currentSendKey?: boolean;
 }
 
 function buildLoginUrl() {
@@ -24,6 +26,8 @@ export default function HeroBanner({
   expiresAt,
   wsConnected = false,
   jwtMode = true,
+  currentEmail = "",
+  currentSendKey = false,
 }: HeroBannerProps) {
   const urls = pickLoginHeroUrls(branding, "light");
   const enabled = branding?.heroCarouselEnabled !== false && urls.length > 0;
@@ -190,6 +194,30 @@ export default function HeroBanner({
               style={{ background: wsConnected ? "#4ade80" : "#f87171" }}
             />
             <span className="text-[9px] font-medium text-white/80">实时</span>
+          </div>
+
+          {/* 邮箱绑定状态 */}
+          <div
+            className="rounded-full px-2 py-1 text-[10px] font-semibold text-white"
+            style={{
+              background: currentEmail ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
+              backdropFilter: "blur(8px)",
+              border: "1px solid rgba(255,255,255,0.2)",
+            }}
+          >
+            {currentEmail ? "邮箱" : "未绑"}
+          </div>
+
+          {/* 微信通知绑定状态 */}
+          <div
+            className="rounded-full px-2 py-1 text-[10px] font-semibold text-white"
+            style={{
+              background: currentSendKey ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
+              backdropFilter: "blur(8px)",
+              border: "1px solid rgba(255,255,255,0.2)",
+            }}
+          >
+            {currentSendKey ? "通知" : "未通"}
           </div>
         </div>
 

@@ -329,34 +329,6 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         showBack={!isHome}
         onBack={handleTopNavBack}
       />
-      {/* Email / SendKey binding status chips — top-left of home page */}
-      {isHome && userIdForBind && (
-        <div
-          className="fixed left-2 z-50 flex items-center gap-1.5"
-          style={{ top: "calc(env(safe-area-inset-top, 0px) + 8px)" }}
-        >
-          <span
-            className="text-[10px] font-semibold px-2 py-0.5 rounded-full border"
-            style={{
-              color: currentEmail ? "#059669" : "#ea580c",
-              background: currentEmail ? "rgba(16,185,129,0.1)" : "rgba(249,115,22,0.1)",
-              borderColor: currentEmail ? "rgba(16,185,129,0.25)" : "rgba(249,115,22,0.25)",
-            }}
-          >
-            {currentEmail ? "邮" : "未绑"}
-          </span>
-          <span
-            className="text-[10px] font-semibold px-2 py-0.5 rounded-full border"
-            style={{
-              color: currentSendKey ? "#059669" : "#ea580c",
-              background: currentSendKey ? "rgba(16,185,129,0.1)" : "rgba(249,115,22,0.1)",
-              borderColor: currentSendKey ? "rgba(16,185,129,0.25)" : "rgba(249,115,22,0.25)",
-            }}
-          >
-            {currentSendKey ? "微" : "未通"}
-          </span>
-        </div>
-      )}
       <WatermarkLogo />
       {showLiveAlert && liveAlertTitle && (
         <div
@@ -420,6 +392,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             html5PrivilegeBypass={
               data.html5PrivilegeBypass === true || html5PrivilegeBypass
             }
+            currentEmail={currentEmail}
+            currentSendKey={currentSendKey}
             onNav={setActiveTab}
             onOpenAnnouncements={openAnnouncements}
             onOpenFeedback={openFeedback}

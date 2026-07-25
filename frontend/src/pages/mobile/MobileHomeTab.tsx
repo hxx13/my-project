@@ -30,6 +30,8 @@ interface MobileHomeTabProps {
   presenceRefresh?: number;
   /** 首页 Tab 是否当前可见（切走时暂停本地 tick） */
   homeActive?: boolean;
+  currentEmail?: string;
+  currentSendKey?: boolean;
   onNav: (tab: TabKey) => void;
   /** 首页下方「公告通知」、具体公告条目 */
   onOpenAnnouncements: (highlightKey?: string) => void;
@@ -46,6 +48,8 @@ export default function MobileHomeTab({
   jwtMode,
   presenceRefresh = 0,
   homeActive = true,
+  currentEmail = "",
+  currentSendKey = false,
   announcements,
   feedbackCount = 0,
   html5PrivilegeBypass = false,
@@ -60,7 +64,7 @@ export default function MobileHomeTab({
     <div className="h-full min-h-0 overflow-y-auto flex flex-col" style={{ background: "transparent" }}>
       {/* Hero 固定高度，禁止 flex 压缩 */}
       <div className="shrink-0 relative z-[1]">
-        <HeroBanner branding={branding} expiresAt={!jwtMode ? expiresAt : undefined} wsConnected={wsConnected} jwtMode={jwtMode} />
+        <HeroBanner branding={branding} expiresAt={!jwtMode ? expiresAt : undefined} wsConnected={wsConnected} jwtMode={jwtMode} currentEmail={currentEmail} currentSendKey={currentSendKey} />
       </div>
 
       <div className="relative z-10 -mt-6 mx-4 shrink-0">
