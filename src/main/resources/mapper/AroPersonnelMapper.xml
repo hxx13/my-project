@@ -60,4 +60,56 @@
         WHERE user_id = #{userId}
     </update>
 
+    <update id="updateContactEmail">
+        UPDATE aro_personnel SET contact_email = #{contactEmail} WHERE user_id = #{userId}
+    </update>
+
+    <update id="updateSendKey">
+        UPDATE aro_personnel SET send_key = #{sendKey} WHERE user_id = #{userId}
+    </update>
+
+    <select id="findContactEmailByUserId" resultType="string">
+        SELECT contact_email FROM aro_personnel WHERE user_id = #{userId}
+    </select>
+
+    <select id="findSendKeyByUserId" resultType="string">
+        SELECT send_key FROM aro_personnel WHERE user_id = #{userId}
+    </select>
+
+    <select id="findContactEmailsByUserIds" resultType="java.util.HashMap">
+        SELECT user_id, contact_email FROM aro_personnel
+        WHERE user_id IN <foreach collection="userIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        AND contact_email IS NOT NULL AND contact_email != ''
+    </select>
+
+    <select id="findSendKeysByUserIds" resultType="java.util.HashMap">
+        SELECT user_id, send_key FROM aro_personnel
+        WHERE user_id IN <foreach collection="userIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        AND send_key IS NOT NULL AND send_key != ''
+    </select>
+
+    <insert id="ensureRowExists">
+        INSERT IGNORE INTO aro_personnel (user_id, name) VALUES (#{userId}, #{userId})
+    </insert>
+
+    <select id="findUserIdByContactEmail" resultType="string">
+        SELECT user_id FROM aro_personnel
+        WHERE contact_email = #{contactEmail}
+        LIMIT 1
+    </select>
+
+    <update id="updateOpenId">
+        UPDATE aro_personnel
+        SET open_id = #{openId},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="clearOpenId">
+        UPDATE aro_personnel
+        SET open_id = NULL,
+            update_time = NOW()
+        WHERE user_id = #{userId}
+    </update>
+
 </mapper>

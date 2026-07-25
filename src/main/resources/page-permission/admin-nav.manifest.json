@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-24T15:11:04.184Z",
+  "generatedAt": "2026-07-25T19:23:55.381Z",
   "pages": [
     {
       "path": "/admin",
@@ -227,6 +227,13 @@
       "registryId": "nav-manager"
     },
     {
+      "path": "/admin/notification-digest",
+      "label": "通知聚合",
+      "fallbackMinRole": "STAFF",
+      "groupTitle": "系统与安全",
+      "registryId": "notification-digest"
+    },
+    {
       "path": "/admin/notifications",
       "label": "消息通知",
       "fallbackMinRole": "STAFF",
@@ -260,6 +267,20 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "报修与物资领用",
       "registryId": "purchase-req"
+    },
+    {
+      "path": "/admin/push-config",
+      "label": "推送配置",
+      "fallbackMinRole": "SUPER_ADMIN",
+      "groupTitle": "系统与安全",
+      "registryId": "push-config"
+    },
+    {
+      "path": "/admin/push-dashboard",
+      "label": "推送仪表盘",
+      "fallbackMinRole": "SUPER_ADMIN",
+      "groupTitle": "系统与安全",
+      "registryId": "push-dashboard"
     },
     {
       "path": "/admin/registration-invites",

@@ -66,6 +66,15 @@ export default function AdminPersonnelPage() {
   const [passwordLoading, setPasswordLoading] = useState<Record<string, boolean>>({});
   const [resetAccountOpen, setResetAccountOpen] = useState<string | null>(null);
   const [resetAccountDraft, setResetAccountDraft] = useState("");
+  const [emailEditOpen, setEmailEditOpen] = useState<string | null>(null);
+  const [emailEditDraft, setEmailEditDraft] = useState("");
+  const [emailEditSaving, setEmailEditSaving] = useState(false);
+  const [sendKeyEditOpen, setSendKeyEditOpen] = useState<string | null>(null);
+  const [sendKeyEditDraft, setSendKeyEditDraft] = useState("");
+  const [sendKeyEditSaving, setSendKeyEditSaving] = useState(false);
+  const [detailRowId, setDetailRowId] = useState("");
+  const [detailPasswordPlaintext, setDetailPasswordPlaintext] = useState<string | null>(null);
+  const [detailPasswordLoading, setDetailPasswordLoading] = useState(false);
 
   const {
     data: personnelData,
@@ -125,6 +134,24 @@ export default function AdminPersonnelPage() {
       refreshAroBindings();
     }
   }, [activeTab, isSuperAdmin]);
+
+  // 自动捕获 Server酱 回调中的 sendkey 参数
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const sendkey = params.get("sendkey");
+    const bindUserId = params.get("bindUserId");
+    if (sendkey && bindUserId) {
+      setSendKeyEditOpen(bindUserId);
+      setSendKeyEditDraft(sendkey);
+      // 清理 URL 参数
+      const cleaned = new URLSearchParams(location.search);
+      cleaned.delete("sendkey");
+      cleaned.delete("bindUserId");
+      const newSearch = cleaned.toString();
+      const hashPath = location.pathname + (newSearch ? `?${newSearch}` : "");
+      window.history.replaceState(null, "", `/#${hashPath}`);
+    }
+  }, []); // 仅首次加载
 
   const handleUnbindAro = async (userId: string) => {
     if (!window.confirm("确认解除该用户的 ARO 绑定吗？")) return;
@@ -342,8 +369,25 @@ export default function AdminPersonnelPage() {
   const inkBtn =
     "inline-flex shrink-0 items-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)] disabled:cursor-not-allowed disabled:opacity-40";
 
-  const openPersonnelDetail = (row: PersonnelAuthRecord) => {
+  const openPersonnelDetail = async (row: PersonnelAuthRecord) => {
     setDetailTitle(row.name || row.username || row.id || "详情");
+    setDetailRowId(row.id);
+    setDetailPasswordPlaintext(null);
+    setDetailOpen(true);
+
+    // 异步加载明文密码
+    if (row.id !== BUILTIN_SUPER_ADMIN_ID) {
+      setDetailPasswordLoading(true);
+      try {
+        const result = await viewUserPassword(row.id);
+        setDetailPasswordPlaintext(result.password ?? null);
+      } catch {
+        setDetailPasswordPlaintext(null);
+      } finally {
+        setDetailPasswordLoading(false);
+      }
+    }
+
     setDetailLines([
       { k: "用户 ID", v: row.id || "—" },
       { k: "姓名", v: row.name || "—" },
@@ -355,19 +399,30 @@ export default function AdminPersonnelPage() {
       { k: "状态", v: row.status === 0 ? "禁用" : "启用" },
       {
         k: "密码",
-        v:
-          row.id === BUILTIN_SUPER_ADMIN_ID
-            ? "******（受保护）"
-            : row.password != null
-              ? String(row.password)
-              : "—",
+        v: row.id === BUILTIN_SUPER_ADMIN_ID ? "******（受保护）" : "加载中…",
       },
     ]);
-    setDetailOpen(true);
   };
 
-  const openSystemDetail = (row: SystemUserRecord) => {
+  const openSystemDetail = async (row: SystemUserRecord) => {
     setDetailTitle(row.username || row.id || "详情");
+    setDetailRowId(row.id);
+    setDetailPasswordPlaintext(null);
+    setDetailOpen(true);
+
+    // 异步加载明文密码
+    if (row.id !== BUILTIN_SUPER_ADMIN_ID) {
+      setDetailPasswordLoading(true);
+      try {
+        const result = await viewUserPassword(row.id);
+        setDetailPasswordPlaintext(result.password ?? null);
+      } catch {
+        setDetailPasswordPlaintext(null);
+      } finally {
+        setDetailPasswordLoading(false);
+      }
+    }
+
     setDetailLines([
       { k: "用户 ID", v: row.id || "—" },
       { k: "登录账号", v: row.username || "—" },
@@ -377,15 +432,9 @@ export default function AdminPersonnelPage() {
       { k: "状态", v: row.status === 0 ? "禁用" : "启用" },
       {
         k: "密码",
-        v:
-          row.id === BUILTIN_SUPER_ADMIN_ID
-            ? "******（受保护）"
-            : row.password != null
-              ? String(row.password)
-              : "—",
+        v: row.id === BUILTIN_SUPER_ADMIN_ID ? "******（受保护）" : "加载中…",
       },
     ]);
-    setDetailOpen(true);
   };
 
   const openNickDialog = (row: SystemUserRecord) => {
@@ -493,14 +542,9 @@ export default function AdminPersonnelPage() {
               {activeTab === "personnel" ? (
                 <th className="px-2 py-2 text-center font-medium w-[72px]">手机直达</th>
               ) : null}
-              <th className="px-2 py-2 text-left font-medium">
-                <span className="block">角色</span>
-                {activeTab === "personnel" ? (
-                  <span className="block text-[10px] font-normal text-[var(--twin-mute)] leading-tight mt-0.5">
-                    {ROLE_LABEL_MAP[MOBILE_HTML5_PRIVILEGE_MIN_ROLE]}及以上：笼架详情免课题组过滤
-                  </span>
-                ) : null}
-              </th>
+              <th className="px-2 py-2 text-left font-medium">邮箱</th>
+              <th className="px-2 py-2 text-left font-medium">微信通知</th>
+              <th className="px-2 py-2 text-left font-medium">角色</th>
               <th className="px-2 py-2 text-left font-medium">密码</th>
               {isSuperAdmin ? (
                 <th className="px-2 py-2 text-left font-medium">个人密码</th>
@@ -510,7 +554,7 @@ export default function AdminPersonnelPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={activeTab === "personnel" ? (isSuperAdmin ? 6 : 5) : activeTab === "system" && isSuperAdmin ? 6 : 5}>
+                <td className="px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={activeTab === "personnel" ? (isSuperAdmin ? 8 : 7) : activeTab === "system" && isSuperAdmin ? 6 : 5}>
                   加载中…
                 </td>
               </tr>
@@ -520,7 +564,7 @@ export default function AdminPersonnelPage() {
                   <td className="max-w-[8rem] truncate px-2 py-1.5 font-mono text-[11px] text-[var(--twin-body)]">{row.id}</td>
                   <td className="px-2 py-1.5">
                     <div className="flex min-w-0 max-w-[28rem] flex-nowrap items-center gap-1">
-                      <span className="min-w-0 shrink truncate font-medium text-[var(--twin-ink)]">
+                      <span className="inline-block w-[6rem] shrink-0 truncate font-medium text-[var(--twin-ink)]">
                         {row.name || row.username || "-"}
                       </span>
                       {row.id === BUILTIN_SUPER_ADMIN_ID ? (
@@ -593,6 +637,56 @@ export default function AdminPersonnelPage() {
                     role={row.role}
                   />
                   <td className="px-2 py-1.5 align-middle">
+                    {row.contactEmail ? (
+                      <button
+                        type="button"
+                        className="max-w-[12rem] truncate text-[11px] font-medium text-[var(--twin-link)] underline decoration-[var(--twin-link)]/30 underline-offset-2 hover:text-[var(--twin-link-deep)]"
+                        onClick={() => {
+                          setEmailEditOpen(row.id);
+                          setEmailEditDraft(row.contactEmail ?? "");
+                        }}
+                      >
+                        {row.contactEmail}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-[11px] text-[var(--twin-mute)] hover:text-[var(--twin-link)]"
+                        onClick={() => {
+                          setEmailEditOpen(row.id);
+                          setEmailEditDraft("");
+                        }}
+                      >
+                        未绑定
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 align-middle">
+                    {row.sendKey ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100"
+                        onClick={() => {
+                          setSendKeyEditOpen(row.id);
+                          setSendKeyEditDraft(row.sendKey ?? "");
+                        }}
+                      >
+                        已绑定
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-[11px] text-[var(--twin-mute)] hover:text-[var(--twin-link)]"
+                        onClick={() => {
+                          setSendKeyEditOpen(row.id);
+                          setSendKeyEditDraft("");
+                        }}
+                      >
+                        未绑定
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 align-middle">
                     <select
                       disabled={row.id === BUILTIN_SUPER_ADMIN_ID}
                       value={row.role || "MEMBER"}
@@ -647,7 +741,7 @@ export default function AdminPersonnelPage() {
                   <td className="max-w-[8rem] truncate px-2 py-1.5 font-mono text-[11px] text-[var(--twin-body)]">{row.id}</td>
                   <td className="px-2 py-1.5">
                     <div className="flex min-w-0 max-w-[28rem] flex-nowrap items-center gap-1">
-                      <span className="min-w-0 shrink truncate font-medium text-[var(--twin-ink)]">
+                      <span className="inline-block w-[6rem] shrink-0 truncate font-medium text-[var(--twin-ink)]">
                         {row.username || "-"}
                       </span>
                       {row.id === BUILTIN_SUPER_ADMIN_ID ? (
@@ -766,6 +860,46 @@ export default function AdminPersonnelPage() {
                       })()}
                     </td>
                   ) : null}
+                  {/* Email */}
+                  <td className="px-2 py-1.5 align-middle">
+                    {row.contactEmail ? (
+                      <button type="button" className="max-w-[12rem] truncate text-[11px] text-[var(--twin-link)] underline decoration-[var(--twin-link)]/30 underline-offset-2 hover:text-[var(--twin-link-deep)]"
+                        onClick={() => { setEmailEditOpen(row.id); setEmailEditDraft(row.contactEmail ?? ""); }}>
+                        {row.contactEmail}
+                      </button>
+                    ) : (
+                      <button type="button" className="text-[11px] text-[var(--twin-mute)] hover:text-[var(--twin-link)]"
+                        onClick={() => { setEmailEditOpen(row.id); setEmailEditDraft(""); }}>
+                        未设置
+                      </button>
+                    )}
+                  </td>
+                  {/* SendKey */}
+                  <td className="px-2 py-1.5 align-middle">
+                    {row.sendKey ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100"
+                        onClick={() => {
+                          setSendKeyEditOpen(row.id);
+                          setSendKeyEditDraft(row.sendKey ?? "");
+                        }}
+                      >
+                        已绑定
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-[11px] text-[var(--twin-mute)] hover:text-[var(--twin-link)]"
+                        onClick={() => {
+                          setSendKeyEditOpen(row.id);
+                          setSendKeyEditDraft("");
+                        }}
+                      >
+                        未绑定
+                      </button>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5 align-middle">
                     <select
                       disabled={row.id === BUILTIN_SUPER_ADMIN_ID}
@@ -853,7 +987,25 @@ export default function AdminPersonnelPage() {
           <div className="max-h-[80vh] w-full max-w-md overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-4">
             <div className="border-b border-[var(--twin-hairline)] px-4 py-3 text-sm font-semibold text-[var(--twin-ink)]">{detailTitle}</div>
             <div className="max-h-[60vh] space-y-3 overflow-y-auto p-4 text-xs">
-              {detailLines.map((line) => (<div key={line.k}><div className="text-[11px] text-[var(--twin-mute)]">{line.k}</div><div className="mt-0.5 break-all text-[var(--twin-ink)]">{line.v}</div></div>))}
+              {detailLines.map((line) => {
+                const isPwdLine = line.k === "密码";
+                let displayValue = line.v;
+                if (isPwdLine && detailRowId !== BUILTIN_SUPER_ADMIN_ID) {
+                  if (detailPasswordLoading) {
+                    displayValue = "加载中…";
+                  } else if (detailPasswordPlaintext !== null) {
+                    displayValue = detailPasswordPlaintext || "（暂不可查看）";
+                  } else {
+                    displayValue = "******";
+                  }
+                }
+                return (
+                  <div key={line.k}>
+                    <div className="text-[11px] text-[var(--twin-mute)]">{line.k}</div>
+                    <div className={`mt-0.5 break-all text-[var(--twin-ink)] ${isPwdLine && detailPasswordPlaintext ? "font-mono select-all" : ""}`}>{displayValue}</div>
+                  </div>
+                );
+              })}
             </div>
             <div className="flex justify-end border-t border-[var(--twin-hairline)] px-4 py-2">
               <button type="button" className="rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => setDetailOpen(false)}>关闭</button>
@@ -909,6 +1061,149 @@ export default function AdminPersonnelPage() {
                 }}
               >
                 {resetPersonnelAccountMut.isPending ? "提交中…" : "确认"}
+              </button>
+            </div>
+          </div>
+        </div></Portal> : null}
+
+      {emailEditOpen ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+          <div className="w-full max-w-sm rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-4">
+            <div className="text-sm font-semibold text-[var(--twin-ink)]">修改联系邮箱</div>
+            <p className="mt-1 text-xs text-[var(--twin-mute)]">
+              为 <strong>{(() => { const r: any = personnelRows.find((p: any) => p.id === emailEditOpen) ?? systemRows.find((s: any) => s.id === emailEditOpen); return r ? (r.name || r.username || emailEditOpen) : emailEditOpen; })()}</strong> 设置邮箱
+            </p>
+            <input
+              type="email"
+              value={emailEditDraft}
+              onChange={(e) => setEmailEditDraft(e.target.value)}
+              maxLength={128}
+              className="mt-3 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+              placeholder="请输入邮箱地址"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && emailEditDraft.trim()) {
+                  e.preventDefault();
+                  const btn = document.getElementById("personnel-email-submit-btn") as HTMLButtonElement | null;
+                  btn?.click();
+                }
+              }}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+                onClick={() => { setEmailEditOpen(null); setEmailEditDraft(""); }}
+              >
+                取消
+              </button>
+              <button
+                id="personnel-email-submit-btn"
+                type="button"
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-700 disabled:opacity-50"
+                disabled={emailEditSaving || !emailEditOpen || !emailEditDraft.trim()}
+                onClick={async () => {
+                  if (!emailEditOpen || !emailEditDraft.trim()) return;
+                  setEmailEditSaving(true);
+                  try {
+                    const token = authStorage.getToken();
+                    const res = await fetch(`/api/admin/personnel/${encodeURIComponent(emailEditOpen)}/contact-email`, {
+                      method: "PUT",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Bearer " + token,
+                      },
+                      body: JSON.stringify({ email: emailEditDraft.trim() }),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error((errData as any).message || "保存失败");
+                    }
+                    toast.success("邮箱已更新");
+                    setEmailEditOpen(null);
+                    setEmailEditDraft("");
+                    refetchPersonnel();
+                    refetchSystem();
+                  } catch (e: any) {
+                    toast.error(e?.message || "保存失败");
+                  } finally {
+                    setEmailEditSaving(false);
+                  }
+                }}
+              >
+                {emailEditSaving ? "提交中…" : "保存"}
+              </button>
+            </div>
+          </div>
+        </div></Portal> : null}
+
+      {sendKeyEditOpen ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+          <div className="w-full max-w-sm rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-4">
+            <div className="text-sm font-semibold text-[var(--twin-ink)]">设置微信通知 SendKey</div>
+            <p className="mt-1 text-xs text-[var(--twin-mute)]">
+              为 <strong>{(() => { const r = personnelRows.find((p) => p.id === sendKeyEditOpen); return r ? (r.name || r.username || sendKeyEditOpen) : sendKeyEditOpen; })()}</strong> 设置 Server酱 SendKey
+            </p>
+            <a
+              href={`https://sct.ftqq.com/appkey/create/forward?name=ARO&url=${encodeURIComponent(`${window.location.origin}/#/console/admin/personnel?sendkey={key}&bindUserId=${encodeURIComponent(sendKeyEditOpen)}`)}`}
+              className="mt-2 inline-flex items-center gap-1 text-[11px] text-[var(--twin-link)] underline underline-offset-2 hover:text-[var(--twin-link-deep)]"
+            >
+              还没有 SendKey？点此前往 Server酱 创建 →
+            </a>
+            <input
+              type="text"
+              value={sendKeyEditDraft}
+              onChange={(e) => setSendKeyEditDraft(e.target.value)}
+              maxLength={256}
+              className="mt-3 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+              placeholder="请输入 SendKey"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && sendKeyEditDraft.trim()) {
+                  e.preventDefault();
+                  const btn = document.getElementById("personnel-sendkey-submit-btn") as HTMLButtonElement | null;
+                  btn?.click();
+                }
+              }}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+                onClick={() => { setSendKeyEditOpen(null); setSendKeyEditDraft(""); }}
+              >
+                取消
+              </button>
+              <button
+                id="personnel-sendkey-submit-btn"
+                type="button"
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-700 disabled:opacity-50"
+                disabled={sendKeyEditSaving || !sendKeyEditOpen || !sendKeyEditDraft.trim()}
+                onClick={async () => {
+                  if (!sendKeyEditOpen || !sendKeyEditDraft.trim()) return;
+                  setSendKeyEditSaving(true);
+                  try {
+                    const token = authStorage.getToken();
+                    const res = await fetch(`/api/admin/personnel/${encodeURIComponent(sendKeyEditOpen)}/send-key`, {
+                      method: "PUT",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Bearer " + token,
+                      },
+                      body: JSON.stringify({ sendKey: sendKeyEditDraft.trim() }),
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error((errData as any).message || "保存失败");
+                    }
+                    toast.success("SendKey 已更新");
+                    setSendKeyEditOpen(null);
+                    setSendKeyEditDraft("");
+                    refetchPersonnel();
+                  } catch (e: any) {
+                    toast.error(e?.message || "保存失败");
+                  } finally {
+                    setSendKeyEditSaving(false);
+                  }
+                }}
+              >
+                {sendKeyEditSaving ? "提交中…" : "保存"}
               </button>
             </div>
           </div>

@@ -80,6 +80,9 @@ import AdminKnowledgeHomePage from "@/pages/AdminKnowledgeHomePage";
 import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
 import AdminNavManager from "@/features/admin/AdminNavManager";
 import AdminConversationArchivePage from "@/pages/AdminConversationArchivePage";
+import AdminPushConfigPage from "@/pages/AdminPushConfigPage";
+import AdminNotificationDigestPage from "@/pages/AdminNotificationDigestPage";
+import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
 import AppearanceSettings from "@/features/admin/settings/AppearanceSettings";
@@ -290,6 +293,7 @@ export const router = createHashRouter([
                   { path: "face-debug", element: <FaceDebugPage /> },
                   { path: "door-control", element: <AdminDoorControlPage /> },
                   { path: "registration-invites", element: <AdminInviteCodesPage /> },
+                  { path: "push-dashboard", element: <AdminPushDashboardPage /> },
                   { path: "dahua-swing-tasks", element: <AdminDahuaSwingTasksPage /> },
                   { path: "dahua-swing-stats-tasks", element: <AdminDahuaSwingStatsDailyPage /> },
                   { path: "dahua-swing-stats-backfill", element: <AdminDahuaSwingStatsBackfillPage /> },
@@ -343,6 +347,8 @@ export const router = createHashRouter([
                   { path: "supplies/process", element: <AdminSuppliesProcessPage /> },
                   { path: "nav-manager", element: <AdminNavManager /> },
                   { path: "conversation-archive", element: <AdminConversationArchivePage /> },
+                  { path: "push-config", element: <AdminPushConfigPage /> },
+                  { path: "notification-digest", element: <AdminNotificationDigestPage /> },
                 ],
               },
             ],

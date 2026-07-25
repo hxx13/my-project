@@ -19,4 +19,12 @@ public class NotifyDeliveryLog {
     private LocalDateTime nextRetryTime;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+    // 外部推送扩展字段
+    private String sourceCode;
+    private String sourceName;
+    private String channelName;
+    private String recipientName;
+    private String title;
+    private String content;
+    private Integer maxRetries;
 }

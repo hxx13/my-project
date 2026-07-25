@@ -5,7 +5,7 @@ const { refreshPendingBadges } = require('../../../utils/badgeSnapshotStore.js')
 const { formatBadgeText } = require('../../../utils/pendingBadgeCounts.js');
 const api = require('../../utils/studentReviewApi.js');
 const mat = require('../../utils/materialStudentApi.js');
-const { formatBeijingDateTimeFull, parseToTimestamp } = require('../../../utils/beijingTime.js');
+const { formatBeijingDateTimeFull, parseToTimestamp } = require('../../utils/beijingTime.js');
 
 /** 与 Web studentReviewPoll.ts 同源 */
 const PENDING_POLL_MS = 15000;

@@ -67,4 +67,30 @@ public interface AroPersonnelMapper {
             @Result(property = "id", column = "user_id")
     })
     AroPersonnel findByJobNumber(@Param("jobNumber") String jobNumber);
+
+    int updateContactEmail(@Param("userId") String userId, @Param("contactEmail") String contactEmail);
+    int updateSendKey(@Param("userId") String userId, @Param("sendKey") String sendKey);
+
+    /** 系统用户无ARO记录时创建占位行，确保contact_email/send_key可写入 */
+    int ensureRowExists(@Param("userId") String userId);
+    String findContactEmailByUserId(@Param("userId") String userId);
+    String findSendKeyByUserId(@Param("userId") String userId);
+
+    /** 批量查邮箱，返回 userId→email 列表 */
+    java.util.List<java.util.Map<String, String>> findContactEmailsByUserIds(@Param("userIds") List<String> userIds);
+
+    /** 批量查SendKey，返回 userId→sendKey 列表 */
+    java.util.List<java.util.Map<String, String>> findSendKeysByUserIds(@Param("userIds") List<String> userIds);
+
+    String findUserIdByContactEmail(@Param("contactEmail") String contactEmail);
+
+    /** 按 openId 查人员库用户 ID（学生 openId 主存储） */
+    @Select("SELECT user_id FROM aro_personnel WHERE open_id = #{openId} LIMIT 1")
+    String findUserIdByOpenId(@Param("openId") String openId);
+
+    /** 写入 openId */
+    int updateOpenId(@Param("userId") String userId, @Param("openId") String openId);
+
+    /** 清除 openId */
+    int clearOpenId(@Param("userId") String userId);
 }

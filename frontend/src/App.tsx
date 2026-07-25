@@ -194,11 +194,11 @@ function GlobalSocketListener() {
             recoveryInProgressRef.current = true;
             recoveryAttemptRef.current += 1;
 
-            // 安全阀：连续多次刷新均失败 → 强制登出
+            // 安全阀：连续多次刷新均失败 → 停刷，交给 Socket.IO 内置重连
+            // 不强制登出——WebSocket-only 无法区分「认证被拒」和「服务器不可达」，
+            // 网络恢复后 Socket.IO 自然重连成功，reconnect_attempt 钩子会同步最新 token
             if (recoveryAttemptRef.current > MAX_RECOVERY_ATTEMPTS) {
-                console.error("[数字孪生基站] Token 恢复已达上限，触发强制登出");
-                socket.disconnect();
-                window.dispatchEvent(new Event("AUTH_FORCE_LOGOUT"));
+                console.warn("[数字孪生基站] Token 恢复已达上限，停止主动刷新，等待 Socket.IO 原生重连");
                 recoveryInProgressRef.current = false;
                 return;
             }
@@ -209,7 +209,7 @@ function GlobalSocketListener() {
                 if (!socketRef.current) return; // 组件已卸载
                 if (newToken) {
                     console.log("[数字孪生基站] Token 已刷新，更新重连参数");
-                    recoveryAttemptRef.current = 0;
+                    // 注意：不在此重置 recoveryAttemptRef——成功连接时 connect/reconnect 事件会重置
                     (socket as any).io.opts.query = {
                         token: newToken,
                         v: APP_BUILD_ID,

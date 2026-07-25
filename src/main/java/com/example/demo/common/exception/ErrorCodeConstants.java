@@ -77,4 +77,13 @@ public final class ErrorCodeConstants {
     public static final int MATERIAL_SPEC_REQUIRED = 1_006_001;
     public static final int MATERIAL_SPEC_INVALID_JSON = 1_006_002;
     public static final int MATERIAL_MERGE_STATUS_CONFLICT = 1_006_003;  // "申领单状态已变更，合并失败"
+
+    /** 外部推送 notify-push 1-011-xxx */
+    public static final int NOTIFY_SOURCE_NOT_FOUND    = 1_011_001;
+    public static final int NOTIFY_CHANNEL_DISABLED    = 1_011_002;
+    public static final int NOTIFY_BINDING_NOT_FOUND   = 1_011_003;
+    public static final int NOTIFY_BINDING_UNVERIFIED  = 1_011_004;
+    public static final int NOTIFY_SEND_FAILED         = 1_011_005;
+    public static final int NOTIFY_VERIFY_CODE_INVALID = 1_011_006;
+    public static final int NOTIFY_BINDING_DUPLICATE   = 1_011_007;
 }

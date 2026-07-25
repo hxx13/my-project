@@ -24,37 +24,30 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
             createTable();
             seedIfEmpty();
 
-            // 确保关键入口始终存在（按 item_path UNIQUE 去重，避免 nav-manager 重复显示）
+            // 确保关键入口始终存在（INSERT IGNORE：首次部署写入默认值，后续启动不覆盖用户自定义的 parent_id 等结构）
             jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-knowledge', 'system-security', 'ITEM', '知识库', '/admin/knowledge', 'BookOpen', 9) " +
-                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-knowledge', 'system-security', 'ITEM', '知识库', '/admin/knowledge', 'BookOpen', 9)");
 
             jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-telemetry-insights', 'access-meta-env', 'ITEM', '遥测历史分析', '/admin/telemetry-insights', 'PieChart', 10) " +
-                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-telemetry-insights', 'access-meta-env', 'ITEM', '遥测历史分析', '/admin/telemetry-insights', 'PieChart', 10)");
             jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-telemetry-insights-config', 'access-meta-env', 'ITEM', '遥测对比组配置', '/admin/telemetry-insights-config', 'LineChart', 11) " +
-                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-telemetry-insights-config', 'access-meta-env', 'ITEM', '遥测对比组配置', '/admin/telemetry-insights-config', 'LineChart', 11)");
 
             jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, title, sort_order) " +
-                "VALUES ('material-review', NULL, 'GROUP', '学生审核', 7) " +
-                "ON DUPLICATE KEY UPDATE title = VALUES(title), sort_order = VALUES(sort_order)");
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) " +
+                "VALUES ('material-review', NULL, 'GROUP', '学生审核', 7)");
             jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-material-review', 'material-review', 'ITEM', '学生审核', '/admin/material/review', 'ClipboardCheck', 0) " +
-                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-material-review', 'material-review', 'ITEM', '学生审核', '/admin/material/review', 'ClipboardCheck', 0)");
             jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-material-manage', 'material-review', 'ITEM', '物品管理', '/admin/material/manage', 'Package', 1) " +
-                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-material-manage', 'material-review', 'ITEM', '物品管理', '/admin/material/manage', 'Package', 1)");
             jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-material-audit-export', 'material-review', 'ITEM', '申领审计导出', '/admin/material/audit-export', 'Download', 2) " +
-                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), sort_order = VALUES(sort_order)");
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-material-audit-export', 'material-review', 'ITEM', '申领审计导出', '/admin/material/audit-export', 'Download', 2)");
             // 属性更新仍然按 id 精确执行（不受 UNIQUE 影响）
             jdbcTemplate.update(
                 "UPDATE admin_nav_config SET item_badge_key = 'processMaterialText' WHERE id = 'item-material-review'");

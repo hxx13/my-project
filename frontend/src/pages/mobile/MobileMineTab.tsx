@@ -1,7 +1,9 @@
 /** 手机版 — 我的 Tab */
+import { useState, useEffect } from "react";
 import {
   Phone,
   Mail,
+  MessageCircle,
   MapPin,
   Star,
   ShieldCheck,
@@ -17,7 +19,9 @@ import {
 import { useNavigate } from "react-router-dom";
 import { type MobileCenterData } from "@/api/domains/mobileStudent.api";
 import { authStorage } from "@/features/auth/authStorage";
+import { sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
+import { toast } from "react-hot-toast";
 import RingAvatar from "./MobileRingAvatar";
 
 /* ================================================================== */
@@ -42,6 +46,52 @@ export default function MobileMineTab({
   const navigate = useNavigate();
   const { profile } = data.dashboard;
   const lv = levelFromExp(profile.totalExp ?? 0);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailCodeSending, setEmailCodeSending] = useState(false);
+  const [emailCodeCooldown, setEmailCodeCooldown] = useState(0);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [currentEmail, setCurrentEmail] = useState("");
+  const [sendKeyOpen, setSendKeyOpen] = useState(false);
+  const [sendKeyDraft, setSendKeyDraft] = useState("");
+  const [sendKeySaving, setSendKeySaving] = useState(false);
+  const [currentSendKey, setCurrentSendKey] = useState(false);
+  const personnelId = data.userId || "";
+
+  // 读取本地管理的 contact_email
+  useEffect(() => {
+    if (!personnelId) return;
+    const token = authStorage.getToken();
+    fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/contact-email`, {
+      headers: { Authorization: "Bearer " + token },
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((body) => setCurrentEmail(body?.data?.email || ""))
+      .catch(() => setCurrentEmail(""));
+  }, [personnelId]);
+
+  // 读取 sendKey + URL 自动捕获
+  useEffect(() => {
+    if (!personnelId) return;
+    const token = authStorage.getToken();
+    const headers = { Authorization: "Bearer " + token };
+    fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/send-key`, { headers })
+      .then((r) => r.json().catch(() => ({})))
+      .then((body) => setCurrentSendKey(!!body?.data?.sendKey))
+      .catch(() => {});
+    // URL 自动捕获
+    const params = new URLSearchParams(window.location.search);
+    const sk = params.get("sendkey");
+    if (sk && params.get("bindUserId") === personnelId) {
+      setSendKeyDraft(sk);
+      setSendKeyOpen(true);
+      const cleaned = new URLSearchParams(window.location.search);
+      cleaned.delete("sendkey"); cleaned.delete("bindUserId");
+      const qs = cleaned.toString();
+      window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash);
+    }
+  }, [personnelId]);
 
   const handleLogout = () => {
     authStorage.clear();
@@ -136,17 +186,48 @@ export default function MobileMineTab({
                 {profile.mobilePhone}
               </span>
             )}
-            {profile.email && (
-              <span
-                className="inline-flex items-center gap-1 text-[11px]"
-                style={{ color: "#64748b" }}
-              >
-                <Mail className="size-3" />
-                <span className="truncate max-w-[120px]">
-                  {profile.email}
-                </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (!personnelId) { toast.error("无法获取人员ID"); return; }
+                setEmailDraft(currentEmail);
+                setEmailOpen(true);
+              }}
+              className="inline-flex items-center gap-1 text-[11px] active:opacity-70"
+              style={{ color: currentEmail ? "#6366f1" : "#64748b" }}
+            >
+              <Mail className="size-3" />
+              <span className="truncate max-w-[120px]">
+                {currentEmail || "绑定邮箱"}
               </span>
-            )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!personnelId) { toast.error("无法获取人员ID"); return; }
+                if (currentSendKey) {
+                  if (!window.confirm("已绑定微信通知，是否取消绑定？")) return;
+                  const token = authStorage.getToken();
+                  fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/send-key`, {
+                    method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                    body: JSON.stringify({ sendKey: "" }),
+                  }).then((r) => {
+                    if (r.ok) { setCurrentSendKey(false); toast.success("已取消微信通知绑定"); }
+                    else toast.error("取消失败");
+                  }).catch(() => toast.error("取消失败"));
+                  return;
+                }
+                setSendKeyDraft("");
+                setSendKeyOpen(true);
+              }}
+              className="inline-flex items-center gap-1 text-[11px] active:opacity-70"
+              style={{ color: currentSendKey ? "#059669" : "#64748b" }}
+            >
+              <MessageCircle className="size-3" />
+              <span className="truncate max-w-[120px]">
+                {currentSendKey ? "微信已绑定" : "微信通知"}
+              </span>
+            </button>
             {profile.projectGroupName && (
               <span
                 className="inline-flex items-center gap-1 text-[11px]"
@@ -268,6 +349,128 @@ export default function MobileMineTab({
           上海交通大学医学院·实验动物科学部
         </p>
       </div>
+
+      {/* Email edit dialog */}
+      {emailOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-5 shadow-xl dark:shadow-gray-900/50">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">绑定邮箱</h3>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">设置用于接收通知的联系邮箱</p>
+            <input
+              type="email"
+              value={emailDraft}
+              onChange={(e) => { setEmailDraft(e.target.value); setEmailCode(""); }}
+              maxLength={128}
+              className="mt-3 w-full rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800"
+              placeholder="请输入邮箱地址"
+            />
+            <div className="mt-3 flex gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={emailCode}
+                onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                maxLength={6}
+                className="flex-1 rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800"
+                placeholder="6位验证码"
+              />
+              <button
+                type="button"
+                disabled={!emailDraft.trim() || emailCodeSending || emailCodeCooldown > 0}
+                className="shrink-0 rounded-xl bg-indigo-50 dark:bg-indigo-900/40 px-3 py-2.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 disabled:opacity-40"
+                onClick={async () => {
+                  if (!emailDraft.trim()) return;
+                  setEmailCodeSending(true);
+                  try {
+                    const r = await sendVerificationCode(emailDraft.trim(), "BIND_EMAIL");
+                    toast.success(r.message || "验证码已发送");
+                    setEmailCodeCooldown(r.cooldownSeconds || 60);
+                  } catch (e: any) {
+                    toast.error(e?.message || "发送失败");
+                  } finally {
+                    setEmailCodeSending(false);
+                  }
+                }}
+              >
+                {emailCodeCooldown > 0 ? `${emailCodeCooldown}s` : emailCodeSending ? "发送中" : "获取验证码"}
+              </button>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm text-gray-600 dark:text-gray-300"
+                onClick={() => { setEmailOpen(false); setEmailCode(""); setEmailCodeCooldown(0); }}
+              >取消</button>
+              <button
+                type="button"
+                disabled={!emailDraft.trim() || emailCode.length !== 6 || emailSaving}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+                onClick={async () => {
+                  setEmailSaving(true);
+                  try {
+                    await bindEmailWithCode(emailDraft.trim(), emailCode.trim());
+                    toast.success("邮箱已绑定");
+                    setCurrentEmail(emailDraft.trim());
+                    setEmailOpen(false);
+                    setEmailCode("");
+                    setEmailCodeCooldown(0);
+                  } catch (e: any) {
+                    toast.error(e?.message || "保存失败");
+                  } finally {
+                    setEmailSaving(false);
+                  }
+                }}
+              >{emailSaving ? "绑定中…" : "确认绑定"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SendKey binding dialog */}
+      {sendKeyOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-5 shadow-xl dark:shadow-gray-900/50">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">绑定微信通知</h3>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">通过 Server酱 SendKey 接收微信推送通知</p>
+            <a
+              href={`https://sct.ftqq.com/appkey/create/forward?name=ARO&url=${encodeURIComponent(`${window.location.origin}/#/m/home?sendkey={key}&bindUserId=${encodeURIComponent(personnelId)}`)}`}
+              className="mt-2 inline-flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 underline underline-offset-2 hover:text-indigo-800 dark:hover:text-indigo-300"
+            >
+              还没有 SendKey？点此前往 Server酱 创建 →
+            </a>
+            <input
+              type="text"
+              value={sendKeyDraft}
+              onChange={(e) => setSendKeyDraft(e.target.value)}
+              maxLength={256}
+              className="mt-3 w-full rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800"
+              placeholder="粘贴 SendKey"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm text-gray-600 dark:text-gray-300"
+                onClick={() => setSendKeyOpen(false)}>取消</button>
+              <button type="button" disabled={!sendKeyDraft.trim() || sendKeySaving}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+                onClick={async () => {
+                  setSendKeySaving(true);
+                  try {
+                    const token = authStorage.getToken();
+                    const res = await fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/send-key`, {
+                      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                      body: JSON.stringify({ sendKey: sendKeyDraft.trim() }),
+                    });
+                    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || "保存失败");
+                    toast.success("微信通知已绑定");
+                    setCurrentSendKey(true);
+                    setSendKeyOpen(false);
+                  } catch (e: any) { toast.error(e?.message || "保存失败"); }
+                  finally { setSendKeySaving(false); }
+                }}
+              >{sendKeySaving ? "保存中…" : "保存"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

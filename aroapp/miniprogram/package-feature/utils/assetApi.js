@@ -1,5 +1,15 @@
 const springAuth = require('../../utils/springAuth.js');
 
+/** 过滤 undefined 值，防止 wx.request 序列化为字符串 "undefined" */
+function cleanParams(params) {
+  if (!params || typeof params !== 'object') return {};
+  const out = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null) out[k] = v;
+  }
+  return out;
+}
+
 function parseResponse(res) {
   const { statusCode, data } = res || {};
   let body = data;
@@ -20,7 +30,7 @@ async function fetchAssetRecords(params) {
   const res = await springAuth.springRequest({
     url: '/api/v1/assets',
     method: 'GET',
-    data: params || {},
+    data: cleanParams(params),
   });
   const parsed = parseResponse(res);
   if (!parsed.ok) throw new Error(parsed.message);
@@ -31,7 +41,7 @@ async function searchAssets(keyword, limit) {
   const res = await springAuth.springRequest({
     url: '/api/v1/assets/search',
     method: 'GET',
-    data: { keyword, limit: limit || 20 },
+    data: cleanParams({ keyword, limit: limit || 20 }),
   });
   const parsed = parseResponse(res);
   if (!parsed.ok) throw new Error(parsed.message);
@@ -118,7 +128,7 @@ async function fetchTransferRecords(params) {
   const res = await springAuth.springRequest({
     url: '/api/v1/asset-transfer-records',
     method: 'GET',
-    data: params || {},
+    data: cleanParams(params),
   });
   const parsed = parseResponse(res);
   if (!parsed.ok) throw new Error(parsed.message);
@@ -151,7 +161,7 @@ async function fetchAssetFacets(params) {
   const res = await springAuth.springRequest({
     url: '/api/v1/assets/facets',
     method: 'GET',
-    data: params || {},
+    data: cleanParams(params),
   });
   const parsed = parseResponse(res);
   if (!parsed.ok) throw new Error(parsed.message);

@@ -36,8 +36,10 @@
     </select>
 
     <insert id="insertDeliveryLog" parameterType="com.example.demo.modules.notification.entity.NotifyDeliveryLog" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO sys_notify_delivery_log(notification_id, recipient_user_id, channel, template_key, status, create_time, update_time)
-        VALUES (#{notificationId}, #{recipientUserId}, #{channel}, #{templateKey}, #{status}, NOW(), NOW())
+        INSERT INTO sys_notify_delivery_log(notification_id, recipient_user_id, channel, template_key, status,
+            source_code, source_name, channel_name, recipient_name, title, content, max_retries, create_time, update_time)
+        VALUES (#{notificationId}, #{recipientUserId}, #{channel}, #{templateKey}, #{status},
+            #{sourceCode}, #{sourceName}, #{channelName}, #{recipientName}, #{title}, #{content}, #{maxRetries}, NOW(), NOW())
     </insert>
 
     <update id="markDeliverySuccess">
@@ -60,4 +62,102 @@
             update_time = NOW()
         WHERE id = #{id}
     </update>
+
+    <select id="findPendingRetry" resultType="com.example.demo.modules.notification.entity.NotifyDeliveryLog">
+        SELECT * FROM sys_notify_delivery_log
+        WHERE status = #{status}
+          AND retry_count &lt; #{maxRetries}
+          AND next_retry_time &lt;= #{now}
+        ORDER BY next_retry_time ASC
+        LIMIT 100
+    </select>
+
+    <select id="countRecentFailed" resultType="long">
+        SELECT COUNT(*) FROM sys_notify_delivery_log
+        WHERE channel = #{channel}
+          AND status = 'FAILED'
+          AND update_time >= DATE_SUB(NOW(), INTERVAL #{minutes} MINUTE)
+    </select>
+
+    <update id="markRetryAttempt">
+        UPDATE sys_notify_delivery_log
+        SET retry_count = retry_count + 1,
+            next_retry_time = #{nextRetryTime},
+            error_code = #{errorCode},
+            error_msg = #{errorMsg},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- ── 推送日志查询 ── -->
+
+    <sql id="pushLogFilters">
+        <if test="sourceCode != null and sourceCode != ''">
+            AND source_code = #{sourceCode}
+        </if>
+        <if test="channelCode != null and channelCode != ''">
+            AND channel = #{channelCode}
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="startTime != null">
+            AND create_time >= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (title LIKE CONCAT('%', #{keyword}, '%') OR recipient_name LIKE CONCAT('%', #{keyword}, '%') OR source_name LIKE CONCAT('%', #{keyword}, '%') OR source_code LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <select id="listPushLogs" resultType="java.util.HashMap">
+        SELECT id, notification_id, recipient_user_id, channel, template_key, status,
+               source_code, source_name, channel_name, recipient_name,
+               title, content, error_code, error_msg,
+               retry_count, max_retries, create_time, update_time
+        FROM sys_notify_delivery_log
+        WHERE 1=1
+        <include refid="pushLogFilters"/>
+        ORDER BY create_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countPushLogs" resultType="long">
+        SELECT COUNT(*) FROM sys_notify_delivery_log
+        WHERE 1=1
+        <include refid="pushLogFilters"/>
+    </select>
+
+    <select id="getPushStats" resultType="java.util.HashMap">
+        SELECT
+            COUNT(*) AS sent24h,
+            SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) AS success24h,
+            SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed24h,
+            SUM(CASE WHEN status = 'SKIPPED_QUIET' THEN 1 ELSE 0 END) AS skippedQuiet24h,
+            SUM(CASE WHEN status = 'SKIPPED_RATE_LIMIT' THEN 1 ELSE 0 END) AS skippedRate24h
+        FROM sys_notify_delivery_log
+        WHERE create_time >= #{startTime}
+    </select>
+
+    <select id="getPushLogDetail" resultType="java.util.HashMap">
+        SELECT id, notification_id, recipient_user_id, channel, template_key, status,
+               source_code, source_name, channel_name, recipient_name,
+               title, content, error_code, error_msg, provider_msg_id,
+               retry_count, max_retries, next_retry_time,
+               create_time, update_time
+        FROM sys_notify_delivery_log
+        WHERE id = #{id}
+    </select>
+
+    <select id="getChannelHealth" resultType="java.util.HashMap">
+        SELECT channel,
+               COUNT(*) AS total,
+               SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) AS success,
+               SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed
+        FROM sys_notify_delivery_log
+        WHERE create_time >= DATE_SUB(NOW(), INTERVAL #{minutes} MINUTE)
+        GROUP BY channel
+    </select>
 </mapper>

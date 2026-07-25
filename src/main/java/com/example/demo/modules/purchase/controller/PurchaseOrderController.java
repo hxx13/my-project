@@ -13,8 +13,11 @@ import com.example.demo.modules.purchase.enums.PurchaseOrderStatusEnum;
 import com.example.demo.modules.purchase.mapper.PurchaseOrderMapper;
 import com.example.demo.modules.purchase.service.PurchaseOrderService;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.example.demo.modules.notification.service.NotificationService;
 import com.example.demo.modules.policy.BizDomains;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
 import com.example.demo.modules.upload.service.UploadFileService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,16 +36,19 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/purchase/orders")
 @Tag(name = "采购工单", description = "采购申请与处理闭环接口")
 public class PurchaseOrderController {
+    private static final Logger log = LoggerFactory.getLogger(PurchaseOrderController.class);
     private final AuthContextService authContextService;
     private final PurchaseOrderService purchaseOrderService;
     private final PurchaseOrderMapper purchaseOrderMapper;
@@ -50,6 +56,7 @@ public class PurchaseOrderController {
     private final NotificationService notificationService;
     private final UserDisplayNameService userDisplayNameService;
     private final CapabilityPolicyService capabilityPolicyService;
+    private final PushService pushService;
 
     public PurchaseOrderController(AuthContextService authContextService,
                                    PurchaseOrderService purchaseOrderService,
@@ -57,7 +64,8 @@ public class PurchaseOrderController {
                                    UploadFileService uploadFileService,
                                    NotificationService notificationService,
                                    UserDisplayNameService userDisplayNameService,
-                                   CapabilityPolicyService capabilityPolicyService) {
+                                   CapabilityPolicyService capabilityPolicyService,
+                                   PushService pushService) {
         this.authContextService = authContextService;
         this.purchaseOrderService = purchaseOrderService;
         this.purchaseOrderMapper = purchaseOrderMapper;
@@ -65,6 +73,7 @@ public class PurchaseOrderController {
         this.notificationService = notificationService;
         this.userDisplayNameService = userDisplayNameService;
         this.capabilityPolicyService = capabilityPolicyService;
+        this.pushService = pushService;
     }
 
     @PostMapping
@@ -93,6 +102,7 @@ public class PurchaseOrderController {
                 "applicantName", order.getApplicantName(),
                 "location", order.getLocation()
         ));
+        try { pushService.send("PURCHASE_REQUESTED", Map.of("applicantName", order.getApplicantName(), "location", order.getLocation(), "content", order.getContent(), "bizId", order.getId(), "createdAt", order.getCreateTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))); } catch (Exception e) { log.warn("[Push] PURCHASE_REQUESTED failed: {}", e.getMessage()); }
         return Result.success(purchaseOrderService.toView(order));
     }
 
@@ -171,6 +181,7 @@ public class PurchaseOrderController {
         if (updated < 1) return Result.error("完成处理失败，请刷新后重试");
         String summary = buildCompletionSummary(order.getLocation(), order.getContent());
         publishEvent("COMPLETED", user, order, Map.of("summary", summary));
+        try { pushService.send("PURCHASE_COMPLETED", Map.of("applicantName", order.getApplicantName(), "location", order.getLocation(), "summary", summary, "bizId", order.getId(), "processorName", StringUtils.hasText(user.getUsername()) ? user.getUsername() : user.getId()), Set.of(order.getApplicantId())); } catch (Exception e) { log.warn("[Push] PURCHASE_COMPLETED failed: {}", e.getMessage()); }
         return Result.success();
     }
 

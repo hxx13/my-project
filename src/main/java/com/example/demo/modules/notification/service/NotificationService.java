@@ -142,7 +142,7 @@ public class NotificationService {
                     "content", content != null ? content : "",
                     "summary", variables.getOrDefault("summary", title != null ? title : "")
             ));
-            miniProgramNotificationService.dispatchAfterPersisted(notification.getId(), staffRecipients, template, variables);
+            // miniProgram 模板消息已废弃，统一由 push 系统（Server酱/邮件）处理外部推送
         }
 
         // 写入学生独立通知表

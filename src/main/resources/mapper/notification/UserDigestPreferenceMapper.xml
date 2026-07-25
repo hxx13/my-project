@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.notification.push.digest.UserDigestPreferenceMapper">
+  <resultMap id="BaseResultMap" type="com.example.demo.modules.notification.push.digest.UserDigestPreference">
+    <id column="id" property="id"/>
+    <result column="user_id" property="userId"/>
+    <result column="source_code" property="sourceCode"/>
+    <result column="digest_mode" property="digestMode"/>
+    <result column="schedule_times" property="scheduleTimes"/>
+    <result column="overflow_strategy" property="overflowStrategy"/>
+    <result column="schedule_days" property="scheduleDays"/>
+    <result column="hourly_interval" property="hourlyInterval"/>
+    <result column="night_mode_enabled" property="nightModeEnabled"/>
+    <result column="night_start" property="nightStart"/>
+    <result column="night_end" property="nightEnd"/>
+    <result column="minutely_interval" property="minutelyInterval"/>
+    <result column="overflow_cutoff_time" property="overflowCutoffTime"/>
+    <result column="enabled" property="enabled"/>
+    <result column="create_time" property="createTime"/>
+    <result column="update_time" property="updateTime"/>
+  </resultMap>
+  <select id="findByUserAndSource" resultMap="BaseResultMap">
+    SELECT * FROM user_digest_preference WHERE user_id = #{userId} AND source_code = #{sourceCode}
+  </select>
+  <select id="findByUserId" resultMap="BaseResultMap">
+    SELECT * FROM user_digest_preference WHERE user_id = #{userId} ORDER BY source_code
+  </select>
+  <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    INSERT INTO user_digest_preference (user_id, source_code, digest_mode, schedule_times, overflow_strategy, schedule_days, hourly_interval, night_mode_enabled, night_start, night_end, minutely_interval, overflow_cutoff_time, enabled)
+    VALUES (#{userId}, #{sourceCode}, #{digestMode}, #{scheduleTimes}, #{overflowStrategy}, #{scheduleDays}, #{hourlyInterval}, #{nightModeEnabled}, #{nightStart}, #{nightEnd}, COALESCE(#{minutelyInterval}, 5), #{overflowCutoffTime}, #{enabled})
+  </insert>
+  <update id="update">
+    UPDATE user_digest_preference SET digest_mode=#{digestMode}, schedule_times=#{scheduleTimes},
+    overflow_strategy=#{overflowStrategy}, schedule_days=#{scheduleDays}, hourly_interval=#{hourlyInterval},
+    night_mode_enabled=#{nightModeEnabled}, night_start=#{nightStart}, night_end=#{nightEnd},
+    minutely_interval=COALESCE(#{minutelyInterval}, 5), overflow_cutoff_time=#{overflowCutoffTime}, enabled=#{enabled} WHERE id=#{id}
+  </update>
+  <delete id="delete">DELETE FROM user_digest_preference WHERE id=#{id}</delete>
+  <insert id="upsert">
+    INSERT INTO user_digest_preference (user_id, source_code, digest_mode, schedule_times, overflow_strategy, schedule_days, hourly_interval, night_mode_enabled, night_start, night_end, minutely_interval, overflow_cutoff_time, enabled)
+    VALUES (#{userId}, #{sourceCode}, #{digestMode}, #{scheduleTimes}, #{overflowStrategy}, #{scheduleDays}, #{hourlyInterval}, #{nightModeEnabled}, #{nightStart}, #{nightEnd}, COALESCE(#{minutelyInterval}, 5), #{overflowCutoffTime}, #{enabled})
+    ON DUPLICATE KEY UPDATE digest_mode=VALUES(digest_mode), schedule_times=VALUES(schedule_times),
+    overflow_strategy=VALUES(overflow_strategy), schedule_days=VALUES(schedule_days),
+    hourly_interval=VALUES(hourly_interval), night_mode_enabled=VALUES(night_mode_enabled),
+    night_start=VALUES(night_start), night_end=VALUES(night_end),
+    minutely_interval=VALUES(minutely_interval), overflow_cutoff_time=VALUES(overflow_cutoff_time), enabled=VALUES(enabled)
+  </insert>
+</mapper>

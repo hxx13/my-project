@@ -1,8 +1,8 @@
 /** 手机版学生中心 — 壳组件：数据加载、Tab 切换、底部导航、WebSocket、实时提醒 */
 import "./mobile-student-shell.css";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams } from "react-router-dom";
-import { Loader2, WifiOff, X } from "lucide-react";
+import { useParams, useNavigate } from "react-router-dom";
+import { Loader2, WifiOff, X, Mail, MessageCircle } from "lucide-react";
 import {
   fetchMobileCenter,
   fetchMobileAlerts,
@@ -15,6 +15,7 @@ import { fetchLoginBranding, type LoginBranding } from "@/api/domains/publicSite
 import * as studentMobileApi from "@/api/domains/studentMobile.api";
 import { hasMobileHtml5Privilege } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
+import { sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
 import { useMobileSocket, mergeMobileUserNotify } from "./useMobileSocket";
 import { isFeedbackKind } from "./mobileAlertSplit";
 import { sortMobileAnnouncementsForDisplay } from "./mobileExemptAlertHelpers";
@@ -105,6 +106,66 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [feedbacks, setFeedbacks] = useState<MobileAlertItem[]>([]);
   const [html5PrivilegeBypass, setHtml5PrivilegeBypass] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
+  const [currentEmail, setCurrentEmail] = useState("");
+  const [currentSendKey, setCurrentSendKey] = useState(false);
+
+  // Fetch email & SendKey binding status for header chips
+  const userIdForBind = authStorage.getUserInfo()?.id || data?.userId || "";
+  const navigate = useNavigate();
+
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [showSendKeyDialog, setShowSendKeyDialog] = useState(false);
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailCodeSending, setEmailCodeSending] = useState(false);
+  const [emailCodeCooldown, setEmailCodeCooldown] = useState(0);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [sendKeyDraft, setSendKeyDraft] = useState("");
+  const [sendKeySaving, setSendKeySaving] = useState(false);
+
+  const handleEmailChip = () => {
+    if (!userIdForBind) return;
+    if (currentEmail) {
+      if (!window.confirm(`已绑定 ${currentEmail}，是否取消绑定？`)) return;
+      const t = authStorage.getToken();
+      fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/contact-email`, {
+        method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+        body: JSON.stringify({ email: "" }),
+      }).then((r) => { if (r.ok) setCurrentEmail(""); });
+    } else {
+      setEmailDraft(""); setEmailCode(""); setEmailCodeCooldown(0);
+      setShowEmailDialog(true);
+    }
+  };
+
+  const handleSendKeyChip = () => {
+    if (!userIdForBind) return;
+    if (currentSendKey) {
+      if (!window.confirm("已绑定微信通知，是否取消绑定？")) return;
+      const t = authStorage.getToken();
+      fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, {
+        method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+        body: JSON.stringify({ sendKey: "" }),
+      }).then((r) => { if (r.ok) setCurrentSendKey(false); });
+    } else {
+      setSendKeyDraft("");
+      setShowSendKeyDialog(true);
+    }
+  };
+  useEffect(() => {
+    if (!userIdForBind) return;
+    const t = authStorage.getToken();
+    if (!t) return;
+    const h = { Authorization: "Bearer " + t };
+    fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/contact-email`, { headers: h })
+      .then((r) => r.json().catch(() => ({})))
+      .then((b) => setCurrentEmail(b?.data?.email || ""))
+      .catch(() => {});
+    fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, { headers: h })
+      .then((r) => r.json().catch(() => ({})))
+      .then((b) => setCurrentSendKey(!!b?.data?.sendKey))
+      .catch(() => {});
+  }, [userIdForBind]);
   const [showFeedback, setShowFeedback] = useState(false);
   const [announcementFocusKey, setAnnouncementFocusKey] = useState<string | null>(null);
   const jwtMode = !token;
@@ -310,6 +371,127 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         showBack={!isHome}
         onBack={handleTopNavBack}
       />
+      {/* Email / SendKey status chips — top-right, always visible */}
+      {userIdForBind && (
+        <div
+          className="fixed left-4 z-50 flex flex-col items-start gap-2"
+          style={{ top: "calc(env(safe-area-inset-top, 0px) + 52px)" }}
+        >
+          <button
+            type="button"
+            onClick={handleEmailChip}
+            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
+            style={{
+              background: currentEmail ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
+              backdropFilter: "blur(8px)",
+              border: "1px solid rgba(255,255,255,0.2)",
+            }}
+          >
+            <Mail className="size-3 mr-1 inline" />{currentEmail ? "邮箱已绑定" : "邮箱未绑定"}
+          </button>
+          <button
+            type="button"
+            onClick={handleSendKeyChip}
+            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
+            style={{
+              background: currentSendKey ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
+              backdropFilter: "blur(8px)",
+              border: "1px solid rgba(255,255,255,0.2)",
+            }}
+          >
+            <MessageCircle className="size-3 mr-1 inline" />{currentSendKey ? "微信已绑定" : "微信未绑定"}
+          </button>
+        </div>
+      )}
+
+      {/* Email bind dialog */}
+      {showEmailDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowEmailDialog(false)}>
+          <div className="bg-white rounded-2xl w-[85%] max-w-xs p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-gray-900">绑定邮箱</h3>
+            <p className="mt-1 text-xs text-gray-500">设置用于接收通知的联系邮箱</p>
+            <input type="email" value={emailDraft} onChange={(e) => setEmailDraft(e.target.value)} placeholder="请输入邮箱地址"
+              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#ac1736]" />
+            <div className="flex items-center gap-2 mt-2">
+              <input type="text" inputMode="numeric" maxLength={6} value={emailCode}
+                onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="验证码" className="flex-1 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-center tracking-[0.3em] outline-none" />
+              <button type="button" disabled={!emailDraft.trim() || emailCodeSending || emailCodeCooldown > 0}
+                onClick={async () => {
+                  if (!emailDraft.trim()) return;
+                  setEmailCodeSending(true);
+                  try {
+                    const r = await sendVerificationCode(emailDraft.trim(), "BIND_EMAIL");
+                    setEmailCodeCooldown(r.cooldownSeconds || 60);
+                    const timer = setInterval(() => setEmailCodeCooldown((p: number) => { if (p <= 1) { clearInterval(timer); return 0; } return p - 1; }), 1000);
+                  } catch { /* ignore */ }
+                  finally { setEmailCodeSending(false); }
+                }}
+                className="shrink-0 rounded-lg border border-[#ac1736] px-3 py-2.5 text-xs font-medium text-[#ac1736] disabled:opacity-50">
+                {emailCodeCooldown > 0 ? `${emailCodeCooldown}s` : emailCodeSending ? "发送中" : "发送验证码"}
+              </button>
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setShowEmailDialog(false)} className="flex-1 rounded-full py-2.5 text-sm font-medium border border-gray-200 text-gray-600 active:bg-gray-50">取消</button>
+              <button type="button" disabled={!emailDraft.trim() || emailCode.length !== 6 || emailSaving}
+                onClick={async () => {
+                  setEmailSaving(true);
+                  try {
+                    await bindEmailWithCode(emailDraft.trim(), emailCode.trim());
+                    setCurrentEmail(emailDraft.trim());
+                    setShowEmailDialog(false);
+                  } catch (e: any) { alert(e?.message || "绑定失败"); }
+                  finally { setEmailSaving(false); }
+                }}
+                className="flex-1 rounded-full py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #ac1736, #8B1229)" }}>
+                {emailSaving ? "绑定中…" : "确认绑定"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SendKey bind dialog */}
+      {showSendKeyDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowSendKeyDialog(false)}>
+          <div className="bg-white rounded-2xl w-[85%] max-w-xs p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-gray-900">绑定微信通知</h3>
+            <p className="mt-1 text-xs text-gray-500">通过 Server酱 SendKey 接收微信推送通知</p>
+            <a
+              href={`https://sct.ftqq.com/appkey/create/forward?name=ARO&url=${encodeURIComponent(`${window.location.origin}/#/m/home?sendkey={key}&bindUserId=${encodeURIComponent(userIdForBind)}`)}`}
+              target="_blank" rel="noopener noreferrer"
+              className="mt-1 inline-block text-[11px] text-[#d97706] underline"
+            >
+              还没有 SendKey？点此前往 Server酱 创建 →
+            </a>
+            <input value={sendKeyDraft} onChange={(e) => setSendKeyDraft(e.target.value)} placeholder="粘贴 SendKey"
+              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#ac1736]" />
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setShowSendKeyDialog(false)} className="flex-1 rounded-full py-2.5 text-sm font-medium border border-gray-200 text-gray-600 active:bg-gray-50">取消</button>
+              <button type="button" disabled={!sendKeyDraft.trim() || sendKeySaving}
+                onClick={async () => {
+                  setSendKeySaving(true);
+                  try {
+                    const t = authStorage.getToken();
+                    const r = await fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, {
+                      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+                      body: JSON.stringify({ sendKey: sendKeyDraft.trim() }),
+                    });
+                    if (!r.ok) throw new Error("保存失败");
+                    setCurrentSendKey(true); setShowSendKeyDialog(false);
+                  } catch (e: any) { alert(e?.message || "保存失败"); }
+                  finally { setSendKeySaving(false); }
+                }}
+                className="flex-1 rounded-full py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #ac1736, #8B1229)" }}>
+                {sendKeySaving ? "保存中…" : "保存"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <WatermarkLogo />
       {showLiveAlert && liveAlertTitle && (
         <div
@@ -373,6 +555,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             html5PrivilegeBypass={
               data.html5PrivilegeBypass === true || html5PrivilegeBypass
             }
+            currentEmail={currentEmail}
+            currentSendKey={currentSendKey}
             onNav={setActiveTab}
             onOpenAnnouncements={openAnnouncements}
             onOpenFeedback={openFeedback}

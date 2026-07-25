@@ -66,9 +66,27 @@ public interface UserMapper {
 
     List<User> searchByKeyword(@Param("keyword") String keyword);
 
+    List<User> findEnabledByRole(@Param("role") String role);
+
+    List<User> listEnabledStaffUsers();
+
     int incrementLoginFailCount(@Param("id") String id);
 
     int lockUserUntil(@Param("id") String id, @Param("lockedUntil") String lockedUntil);
 
     int clearLoginFailCount(@Param("id") String id);
+
+    /** 批量查询 sys_user 的 contact_email（补 aro_personnel 不覆盖的 staff_* / SYS_SUPER_ROOT） */
+    java.util.List<java.util.Map<String, String>> findContactEmailsByIds(@Param("ids") List<String> ids);
+
+    /** 批量查询 sys_user 的 send_key */
+    java.util.List<java.util.Map<String, String>> findSendKeysByIds(@Param("ids") List<String> ids);
+
+    int updateContactEmail(@Param("id") String id, @Param("contactEmail") String contactEmail);
+    int updateSendKey(@Param("id") String id, @Param("sendKey") String sendKey);
+
+    String findContactEmailById(@Param("id") String id);
+    String findSendKeyById(@Param("id") String id);
+
+    User findByContactEmail(@Param("contactEmail") String contactEmail);
 }

@@ -9,10 +9,7 @@ import com.example.demo.modules.auth.dto.AuthUserInfo;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import org.springframework.stereotype.Service;
-import org.springframework.util.DigestUtils;
 import org.springframework.util.StringUtils;
-
-import java.nio.charset.StandardCharsets;
 
 @Service
 public class AuthService {
@@ -20,11 +17,14 @@ public class AuthService {
     private final UserMapper userMapper;
     private final UserDisplayNameService userDisplayNameService;
     private final JwtTokenService jwtTokenService;
+    private final WechatApiService wechatApiService;
 
-    public AuthService(UserMapper userMapper, UserDisplayNameService userDisplayNameService, JwtTokenService jwtTokenService) {
+    public AuthService(UserMapper userMapper, UserDisplayNameService userDisplayNameService, JwtTokenService jwtTokenService,
+                       WechatApiService wechatApiService) {
         this.userMapper = userMapper;
         this.userDisplayNameService = userDisplayNameService;
         this.jwtTokenService = jwtTokenService;
+        this.wechatApiService = wechatApiService;
     }
 
     public Result<AuthData> generateAuthResult(User user) {
@@ -72,13 +72,11 @@ public class AuthService {
     }
 
     /**
-     * 开发占位：用 jsCode 派生伪 openId，故每次 wx.login 码不同则「openId」会变。
-     * 生产请改为微信 jscode2session，使同一用户 openId 稳定。
+     * 调用微信 jscode2session 换取真实 openId。
+     * 未配置 app-id/app-secret 或调用失败时返回 null，调用方自行回退处理。
      */
     public String exchangeJsCodeForOpenId(String jsCode) {
-        String normalized = StringUtils.hasText(jsCode) ? jsCode.trim() : "empty";
-        String digest = DigestUtils.md5DigestAsHex(normalized.getBytes(StandardCharsets.UTF_8));
-        return "wx_openid_" + digest.substring(0, 16);
+        return wechatApiService.exchangeJsCodeForOpenId(jsCode);
     }
 
     public RoleEnum normalizeRole(RoleEnum role) {

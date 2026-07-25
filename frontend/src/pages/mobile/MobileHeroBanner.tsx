@@ -13,6 +13,8 @@ interface HeroBannerProps {
   wsConnected?: boolean;
   /** true = 通用模式（JWT 登录），false = 直链模式（token 直达） */
   jwtMode?: boolean;
+  currentEmail?: string;
+  currentSendKey?: boolean;
 }
 
 function buildLoginUrl() {
@@ -24,6 +26,8 @@ export default function HeroBanner({
   expiresAt,
   wsConnected = false,
   jwtMode = true,
+  currentEmail = "",
+  currentSendKey = false,
 }: HeroBannerProps) {
   const urls = pickLoginHeroUrls(branding, "light");
   const enabled = branding?.heroCarouselEnabled !== false && urls.length > 0;
@@ -193,7 +197,7 @@ export default function HeroBanner({
           </div>
         </div>
 
-        {/* 第二行：二维码 + 链接 + 操作（仅直链模式且展开时显示） */}
+        {/* 二维码 + 链接 + 操作（仅直链模式且展开时显示） */}
         {!jwtMode && (
           <div
             className="flex items-start gap-2.5 overflow-hidden transition-all duration-300 ease-out"

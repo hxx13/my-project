@@ -16,7 +16,11 @@ import java.util.TimeZone;
         "com.example.demo.modules.*.mapper",
         "com.example.demo.modules.twin.*.mapper",
         "com.example.demo.modules.twin.*.*.mapper",
-        "com.example.demo.modules.accessfusion.mapper"
+        "com.example.demo.modules.accessfusion.mapper",
+        "com.example.demo.modules.notification.push.source",
+        "com.example.demo.modules.notification.push.config",
+        "com.example.demo.modules.notification.push.recipient",
+        "com.example.demo.modules.notification.push.digest"
 })
 @EnableScheduling
 @EnableAsync

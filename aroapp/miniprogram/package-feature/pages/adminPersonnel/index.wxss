@@ -182,6 +182,16 @@
   white-space: nowrap;
 }
 
+.ap-actions {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8rpx;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .ap-sub {
   font-size: 22rpx;
   color: #64748b;
@@ -556,4 +566,44 @@
   flex-direction: column;
   gap: 16rpx;
   padding: 16rpx 32rpx 8rpx;
+}
+
+/* 已绑定账号/通知状态徽章 */
+.ap-bind-chip {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  font-weight: 500;
+  border: 1rpx solid #a7f3d0;
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.ap-bind-chip--on {
+  color: #047857;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+/* 可点击链接文字 */
+.ap-link {
+  font-size: 24rpx;
+  color: #4f46e5;
+  text-decoration: underline;
+  text-underline-offset: 4rpx;
+}
+
+/* PIN 已设置文字 */
+.ap-pin-on {
+  font-size: 24rpx;
+  color: #047857;
+  font-weight: 500;
+}
+
+/* 操作按钮 - 警告/琥珀色 */
+.ap-ic--warn {
+  color: #b45309;
+  border-color: #fde68a;
+  background: #fffbeb;
 }

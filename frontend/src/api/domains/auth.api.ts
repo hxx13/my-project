@@ -34,11 +34,12 @@ interface Result<T> {
   data: T;
 }
 
-export async function loginWeb(username: string, password: string, turnstileToken?: string): Promise<AuthData> {
+export async function loginWeb(username: string, password: string, turnstileToken?: string, turnstileLoadFailed = false): Promise<AuthData> {
   const response = await axios.post<Result<AuthData>>("/api/auth/login/web", {
     username,
     password,
     turnstileToken: turnstileToken || "",
+    turnstileLoadFailed,
   });
 
   if (!response.data?.success || !response.data?.data?.token) {
@@ -175,6 +176,75 @@ export async function forgotPasswordReset(
   );
   if (!response.data?.success) {
     throw new Error(response.data?.message || "重置失败");
+  }
+  return response.data.data;
+}
+
+// ──────────── Email Verification ────────────
+
+export interface SendVerificationCodeResult {
+  message: string;
+  cooldownSeconds: number;
+}
+
+/** Send email verification code. Uses authHttp for both scenes (FORGOT_PASSWORD doesn't require login server-side) */
+export async function sendVerificationCode(
+  email: string,
+  scene: "BIND_EMAIL" | "FORGOT_PASSWORD"
+): Promise<SendVerificationCodeResult> {
+  const response = await authHttp.post<Result<SendVerificationCodeResult>>(
+    "/auth/send-verification-code",
+    { email, scene }
+  );
+  if (!response.data?.success || !response.data?.data) {
+    throw new Error(response.data?.message || "发送失败");
+  }
+  return response.data.data;
+}
+
+export interface ForgotPasswordByEmailVerifyResult {
+  resetToken: string;
+}
+
+export async function forgotPasswordByEmailVerify(
+  email: string,
+  code: string
+): Promise<ForgotPasswordByEmailVerifyResult> {
+  const response = await axios.post<Result<ForgotPasswordByEmailVerifyResult>>(
+    "/api/auth/forgot-password/by-email/verify",
+    { email, code }
+  );
+  if (!response.data?.success || !response.data?.data) {
+    throw new Error(response.data?.message || "验证失败");
+  }
+  return response.data.data;
+}
+
+export async function forgotPasswordByEmailReset(
+  resetToken: string,
+  newPassword: string,
+  newUsername?: string
+): Promise<{ message: string }> {
+  const response = await axios.post<Result<{ message: string }>>(
+    "/api/auth/forgot-password/by-email/reset",
+    { resetToken, newPassword, newUsername }
+  );
+  if (!response.data?.success) {
+    throw new Error(response.data?.message || "重置失败");
+  }
+  return response.data.data;
+}
+
+export async function bindEmailWithCode(
+  email: string,
+  code: string
+): Promise<{ message: string }> {
+  const response = await authHttp.post<Result<{ message: string }>>(
+    "/auth/bind/email",
+    { email, code }
+  );
+  if (!response.data?.success) {
+    throw new Error(response.data?.message || "绑定失败");
   }
   return response.data.data;
 }

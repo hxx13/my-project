@@ -12,7 +12,9 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  Mail,
   Menu,
+  MessageCircle,
   MessagesSquare,
   Search,
   Settings,
@@ -21,6 +23,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { CasBindingContext } from "@/features/auth/CasBindingContext";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PageTransition } from "@/components/animation/PageTransition";
@@ -38,7 +41,7 @@ import { fetchPendingMaterialRequests } from "@/api/domains/material.api";
 import { fetchPendingScanDelayRequests } from "@/api/domains/scanDelay.api";
 import { materialQueryKeys } from "@/api/hooks/queryKeys";
 import { studentReviewPendingQueryOptions } from "@/features/student-review/studentReviewPoll";
-import { refreshAuthSession } from "@/api/domains/auth.api";
+import { refreshAuthSession, sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
 import {
   ADMIN_NOTIFICATION_SSE_PUSH_EVENT,
   ADMIN_PENDING_BADGES_REFRESH_EVENT,
@@ -113,6 +116,7 @@ import {
   scrollAdminContentTo,
 } from "@/features/admin/adminTelemetryNav";
 import { Button } from "@/components/ui/button";
+import { AdminButton } from "@/components/admin/AdminButton";
 import {
   Dialog,
   DialogContent,
@@ -191,6 +195,27 @@ export default function AdminLayout() {
   const [casRenewing, setCasRenewing] = useState(false);
   const casPasteRef = useRef<HTMLTextAreaElement>(null);
   const [aroUnbindDialogOpen, setAroUnbindDialogOpen] = useState(false);
+
+  /** Email / SendKey binding */
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [currentEmail, setCurrentEmail] = useState<string | null>(null);
+  const [sendKeyDialogOpen, setSendKeyDialogOpen] = useState(false);
+  const [sendKeyDraft, setSendKeyDraft] = useState("");
+  const [sendKeySaving, setSendKeySaving] = useState(false);
+  const [currentSendKey, setCurrentSendKey] = useState<string | null>(null);
+
+  /** Verification-code states for email binding */
+  const [emailCode, setEmailCode] = useState("");
+  const [emailCodeSending, setEmailCodeSending] = useState(false);
+  const [emailCodeCooldown, setEmailCodeCooldown] = useState(0);
+  const emailCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Cleanup cooldown timer on unmount
+  useEffect(() => {
+    return () => { if (emailCooldownRef.current) clearInterval(emailCooldownRef.current); };
+  }, []);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
@@ -287,6 +312,22 @@ export default function AdminLayout() {
     if (!hasMinRole(role, "STAFF")) return;
     fetchCasBindingStatus().then(setCasStatus).catch(() => {});
   }, [role]);
+
+  /** Fetch current email and SendKey */
+  useEffect(() => {
+    if (!hasMinRole(role, "STAFF") || !sessionUser?.id) return;
+    const token = authStorage.getToken();
+    if (!token) return;
+    const headers = { Authorization: "Bearer " + token };
+    fetch(`/api/admin/personnel/${encodeURIComponent(sessionUser.id)}/contact-email`, { headers })
+      .then((res) => res.json())
+      .then((wrapper) => setCurrentEmail(wrapper?.data?.email ?? null))
+      .catch(() => setCurrentEmail(null));
+    fetch(`/api/admin/personnel/${encodeURIComponent(sessionUser.id)}/send-key`, { headers })
+      .then((res) => res.json())
+      .then((wrapper) => setCurrentSendKey(wrapper?.data?.sendKey ?? null))
+      .catch(() => setCurrentSendKey(null));
+  }, [role, sessionUser?.id]);
 
   const pullPendingBadges = useCallback(() => {
     fetchPendingBadges()
@@ -990,6 +1031,12 @@ export default function AdminLayout() {
     );
   };
 
+  // ── CAS binding context for child pages ──
+  const casContextValue = useMemo(
+    () => ({ casStatus, openCasDialog: () => setCasDialogOpen(true) }),
+    [casStatus],
+  );
+
   // ── CAS token bind handlers ──
   const handleCasFetch = () => {
     setCasPopupReady(false);
@@ -1024,6 +1071,30 @@ export default function AdminLayout() {
   };
   const casRemaining = casStatus?.remainingSeconds;
   const casExpiring = casRemaining != null && casRemaining < 3 * 86400;
+
+  const handleSendBindCode = async () => {
+    if (!emailDraft.trim()) { toast.error("请输入邮箱地址"); return; }
+    setEmailCodeSending(true);
+    try {
+      const result = await sendVerificationCode(emailDraft.trim(), "BIND_EMAIL");
+      toast.success(result.message || "验证码已发送");
+      setEmailCodeCooldown(result.cooldownSeconds || 60);
+      if (emailCooldownRef.current) clearInterval(emailCooldownRef.current);
+      emailCooldownRef.current = setInterval(() => {
+        setEmailCodeCooldown((prev) => {
+          if (prev <= 1) {
+            if (emailCooldownRef.current) { clearInterval(emailCooldownRef.current); emailCooldownRef.current = null; }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (err: any) {
+      toast.error(err?.message || "发送失败");
+    } finally {
+      setEmailCodeSending(false);
+    }
+  };
 
   return (
     <div
@@ -1283,6 +1354,69 @@ export default function AdminLayout() {
                   </>
                 )}
                 {hasMinRole(role, "STAFF") ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    {currentEmail ? (
+                      <DropdownMenuItem onSelect={() => {
+                        if (window.confirm(`已绑定邮箱 ${currentEmail}，是否取消绑定？`)) {
+                          const token = authStorage.getToken();
+                          const userId = sessionUser?.id;
+                          if (!userId) return;
+                          fetch(`/api/admin/personnel/${encodeURIComponent(userId)}/contact-email`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                            body: JSON.stringify({ email: "" }),
+                          }).then((r) => {
+                            if (r.ok) { setCurrentEmail(null); toast.success("已取消邮箱绑定"); }
+                            else toast.error("取消失败");
+                          }).catch(() => toast.error("取消失败"));
+                        }
+                      }}>
+                        <Mail className="mr-2 h-4 w-4 text-emerald-500" />
+                        邮箱: 已绑定
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onSelect={() => {
+                        setEmailDraft("");
+                        setEmailCode(""); setEmailCodeCooldown(0);
+                        if (emailCooldownRef.current) { clearInterval(emailCooldownRef.current); emailCooldownRef.current = null; }
+                        setEmailDialogOpen(true);
+                      }}>
+                        <Mail className="mr-2 h-4 w-4" />
+                        绑定邮箱
+                      </DropdownMenuItem>
+                    )}
+                    {currentSendKey ? (
+                      <DropdownMenuItem onSelect={() => {
+                        if (window.confirm("已绑定微信通知，是否取消绑定？")) {
+                          const token = authStorage.getToken();
+                          const userId = sessionUser?.id;
+                          if (!userId) return;
+                          fetch(`/api/admin/personnel/${encodeURIComponent(userId)}/send-key`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                            body: JSON.stringify({ sendKey: "" }),
+                          }).then((r) => {
+                            if (r.ok) { setCurrentSendKey(null); toast.success("已取消微信通知绑定"); }
+                            else toast.error("取消失败");
+                          }).catch(() => toast.error("取消失败"));
+                        }
+                      }}>
+                        <MessageCircle className="mr-2 h-4 w-4 text-emerald-500" />
+                        微信通知: 已绑定
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onSelect={() => {
+                        setSendKeyDraft("");
+                        setSendKeyDialogOpen(true);
+                      }}>
+                        <MessageCircle className="mr-2 h-4 w-4" />
+                        绑定微信通知
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                ) : null}
+                {hasMinRole(role, "STAFF") ? (
                   <DropdownMenuItem
                     onSelect={() => {
                       setMobileNavOpen(false);
@@ -1326,7 +1460,9 @@ export default function AdminLayout() {
                 duration={0.3}
                 className="flex h-full min-h-0 flex-col"
               >
+              <CasBindingContext.Provider value={casContextValue}>
                 <Outlet />
+              </CasBindingContext.Provider>
               </PageTransition>
             ) : null}
           </div>
@@ -1546,9 +1682,18 @@ export default function AdminLayout() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <Button size="default" className="w-full" onClick={handleCasFetch}>
+            <AdminButton type="button" tone="secondary" size="default" className="w-full" onClick={() => {
+              const w = window.open("https://auth2.shsmu.edu.cn/cas/logout", "aro-cas-logout", "width=1,height=1");
+              setTimeout(() => {
+                if (w) w.close();
+                window.open("https://auth2.shsmu.edu.cn/cas/login?service=https://aro.shsmu.edu.cn", "aro-cas", "width=800,height=600");
+              }, 800);
+            }}>
+              统一认证登录
+            </AdminButton>
+            <AdminButton type="button" tone="primary" size="default" className="w-full" onClick={handleCasFetch}>
               <KeyRound className="mr-2 h-4 w-4" />一键获取 Token
-            </Button>
+            </AdminButton>
             {casPopupReady && (
               <div className="space-y-2">
                 <div className="rounded bg-blue-50 border border-blue-200 p-2.5 text-xs text-blue-700 leading-relaxed">
@@ -1569,12 +1714,159 @@ export default function AdminLayout() {
                 )}
               </div>
             )}
-            <p className="text-[10px] text-[var(--twin-mute)]">
-              没有 ARO 会话？
-              <button onClick={() => { const w = window.open("https://auth2.shsmu.edu.cn/cas/logout", "aro-cas-logout", "width=1,height=1"); setTimeout(() => { if (w) w.close(); window.open("https://auth2.shsmu.edu.cn/cas/login?service=https://aro.shsmu.edu.cn", "aro-cas", "width=800,height=600"); }, 800); }}
-                className="text-primary hover:underline ml-1">先完成 CAS 登录</button>
-            </p>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 邮箱绑定弹窗 */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>绑定邮箱</DialogTitle>
+            <DialogDescription>
+              设置用于接收通知的联系邮箱地址。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <input
+              className={`${adminInputClass} w-full`}
+              type="email"
+              placeholder="请输入邮箱地址"
+              value={emailDraft}
+              onChange={(e) => setEmailDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && emailDraft.trim()) {
+                  e.preventDefault();
+                  const btn = document.getElementById("email-bind-submit-btn") as HTMLButtonElement | null;
+                  btn?.click();
+                }
+              }}
+            />
+            <div className="flex items-center gap-2">
+              <input
+                className={`${adminInputClass} flex-1`}
+                type="text" inputMode="numeric" maxLength={6}
+                placeholder="6位验证码"
+                value={emailCode}
+                onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+              <Button variant="outline" size="default"
+                disabled={!emailDraft.trim() || emailCodeSending || emailCodeCooldown > 0}
+                onClick={() => void handleSendBindCode()}
+                className="whitespace-nowrap"
+              >
+                {emailCodeSending ? "发送中..." : emailCodeCooldown > 0 ? `${emailCodeCooldown}s` : "发送验证码"}
+              </Button>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              size="default"
+              onClick={() => setEmailDialogOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              id="email-bind-submit-btn"
+              size="default"
+              disabled={!emailDraft.trim() || emailCode.trim().length !== 6 || emailSaving}
+              onClick={async () => {
+                setEmailSaving(true);
+                try {
+                  await bindEmailWithCode(emailDraft.trim(), emailCode.trim());
+                  toast.success("邮箱绑定成功");
+                  setCurrentEmail(emailDraft.trim());
+                  setEmailDialogOpen(false);
+                  setEmailCode(""); setEmailCodeCooldown(0);
+                  if (emailCooldownRef.current) { clearInterval(emailCooldownRef.current); emailCooldownRef.current = null; }
+                } catch (e: any) {
+                  toast.error(e?.message || "保存失败");
+                } finally {
+                  setEmailSaving(false);
+                }
+              }}
+            >
+              {emailSaving ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 微信通知绑定弹窗 */}
+      <Dialog open={sendKeyDialogOpen} onOpenChange={setSendKeyDialogOpen}>
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>绑定微信通知</DialogTitle>
+            <DialogDescription>
+              设置 SendKey 以启用微信消息通知推送。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <a
+              href={`https://sct.ftqq.com/appkey/create/forward?name=ARO&url=${encodeURIComponent(`${window.location.origin}/#/console/admin/personnel?sendkey={key}&bindUserId=${encodeURIComponent(sessionUser?.id || "")}`)}`}
+              className="inline-flex items-center gap-1 text-[11px] text-[var(--twin-link)] underline underline-offset-2 hover:text-[var(--twin-link-deep)]"
+            >
+              还没有 SendKey？点此前往 Server酱 创建 →
+            </a>
+            <input
+              className={`${adminInputClass} w-full`}
+              type="text"
+              placeholder="请输入 SendKey"
+              value={sendKeyDraft}
+              onChange={(e) => setSendKeyDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && sendKeyDraft.trim()) {
+                  e.preventDefault();
+                  const btn = document.getElementById("sendkey-bind-submit-btn") as HTMLButtonElement | null;
+                  btn?.click();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              size="default"
+              onClick={() => setSendKeyDialogOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              id="sendkey-bind-submit-btn"
+              size="default"
+              disabled={!sendKeyDraft.trim() || sendKeySaving}
+              onClick={async () => {
+                const token = authStorage.getToken();
+                const userId = sessionUser?.id;
+                if (!userId) return;
+                setSendKeySaving(true);
+                try {
+                  const res = await fetch(`/api/admin/personnel/${encodeURIComponent(userId)}/send-key`, {
+                    method: "PUT",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: "Bearer " + token,
+                    },
+                    body: JSON.stringify({ sendKey: sendKeyDraft.trim() }),
+                  });
+                  if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error((errData as any).message || "保存失败");
+                  }
+                  toast.success("SendKey 绑定成功");
+                  setCurrentSendKey(sendKeyDraft.trim());
+                  setSendKeyDialogOpen(false);
+                } catch (e: any) {
+                  toast.error(e?.message || "保存失败");
+                } finally {
+                  setSendKeySaving(false);
+                }
+              }}
+            >
+              {sendKeySaving ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

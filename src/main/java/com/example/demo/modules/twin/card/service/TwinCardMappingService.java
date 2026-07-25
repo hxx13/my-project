@@ -449,8 +449,10 @@ public class TwinCardMappingService {
         } else {
             writeExemptLedger(false, before, ctx, null);
         }
+        String aroUserId = cacheItem != null ? cacheItem.getAroUserId() : null;
         Map<String, Object> out = new HashMap<>();
         out.put("cardNo", dbCardNo);
+        out.put("aroUserId", aroUserId != null ? aroUserId.trim() : null);
         out.put("freezeExemptFlag", flag);
         out.put("freezeExemptExpireAt", expireAt);
         out.put("freezeExemptMode", flag == 1 ? mode : null);

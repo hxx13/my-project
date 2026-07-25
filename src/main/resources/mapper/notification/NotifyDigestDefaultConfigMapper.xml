@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.notification.push.digest.NotifyDigestDefaultConfigMapper">
+  <resultMap id="BaseResultMap" type="com.example.demo.modules.notification.push.digest.NotifyDigestDefaultConfig">
+    <id column="id" property="id"/>
+    <result column="source_code" property="sourceCode"/>
+    <result column="digest_mode" property="digestMode"/>
+    <result column="schedule_times" property="scheduleTimes"/>
+    <result column="overflow_strategy" property="overflowStrategy"/>
+    <result column="schedule_days" property="scheduleDays"/>
+    <result column="hourly_interval" property="hourlyInterval"/>
+    <result column="night_mode_enabled" property="nightModeEnabled"/>
+    <result column="night_start" property="nightStart"/>
+    <result column="night_end" property="nightEnd"/>
+    <result column="minutely_interval" property="minutelyInterval"/>
+    <result column="overflow_cutoff_time" property="overflowCutoffTime"/>
+    <result column="digest_title_tpl" property="digestTitleTpl"/>
+    <result column="digest_content_tpl" property="digestContentTpl"/>
+    <result column="enabled" property="enabled"/>
+    <result column="create_time" property="createTime"/>
+    <result column="update_time" property="updateTime"/>
+  </resultMap>
+  <select id="findBySourceCode" resultMap="BaseResultMap">SELECT * FROM notify_digest_default_config WHERE source_code = #{sourceCode}</select>
+  <select id="findAll" resultMap="BaseResultMap">SELECT * FROM notify_digest_default_config ORDER BY source_code</select>
+  <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    INSERT INTO notify_digest_default_config (source_code, digest_mode, schedule_times, overflow_strategy, schedule_days, hourly_interval, night_mode_enabled, night_start, night_end, minutely_interval, overflow_cutoff_time, digest_title_tpl, digest_content_tpl, enabled)
+    VALUES (#{sourceCode}, #{digestMode}, #{scheduleTimes}, #{overflowStrategy}, #{scheduleDays}, #{hourlyInterval}, #{nightModeEnabled}, #{nightStart}, #{nightEnd}, COALESCE(#{minutelyInterval}, 5), #{overflowCutoffTime}, #{digestTitleTpl}, #{digestContentTpl}, #{enabled})
+  </insert>
+  <update id="update">
+    UPDATE notify_digest_default_config SET digest_mode=#{digestMode}, schedule_times=#{scheduleTimes},
+    overflow_strategy=#{overflowStrategy}, schedule_days=#{scheduleDays}, hourly_interval=#{hourlyInterval},
+    night_mode_enabled=#{nightModeEnabled}, night_start=#{nightStart}, night_end=#{nightEnd},
+    minutely_interval=COALESCE(#{minutelyInterval}, 5), overflow_cutoff_time=#{overflowCutoffTime}, digest_title_tpl=#{digestTitleTpl}, digest_content_tpl=#{digestContentTpl},
+    enabled=#{enabled} WHERE id=#{id}
+  </update>
+  <delete id="delete">DELETE FROM notify_digest_default_config WHERE id=#{id}</delete>
+</mapper>

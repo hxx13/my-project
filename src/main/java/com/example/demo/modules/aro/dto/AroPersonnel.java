@@ -26,6 +26,10 @@ public class AroPersonnel {
     @JsonAlias({"mobilePhone", "mobile_phone"})
     private String mobilePhone;
     private String email;
+    /** 本地管理的联系邮箱（不被ARO同步覆盖） */
+    private String contactEmail;
+    /** Server酱 SendKey */
+    private String sendKey;
 
     // 3. 组织与权限
     @JsonAlias({"departmentName", "department_name"})

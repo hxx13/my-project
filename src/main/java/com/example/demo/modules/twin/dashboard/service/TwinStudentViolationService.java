@@ -2,6 +2,7 @@ package com.example.demo.modules.twin.dashboard.service;
 
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.notification.entity.StudentNotification;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.example.demo.modules.notification.mapper.StudentNotificationMapper;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.component.SocketRoomAssigner;
@@ -76,6 +77,7 @@ public class TwinStudentViolationService {
     private final StudentNotificationMapper studentNotificationMapper;
     private final TwinCageStatusViolationMapper cageStatusViolationMapper;
     private final SocketIOServer socketServer;
+    private final PushService pushService;
 
     /** 检测到表不存在后短路，避免每次扫码/列表都打库抛错（执行 DDL 后需重启应用或等后续扩展热恢复） */
     private final AtomicBoolean violationTableAbsent = new AtomicBoolean(false);
@@ -88,7 +90,8 @@ public class TwinStudentViolationService {
                                        MobileUserSocketPushService mobileUserSocketPushService,
                                        StudentNotificationMapper studentNotificationMapper,
                                        TwinCageStatusViolationMapper cageStatusViolationMapper,
-                                       @org.springframework.beans.factory.annotation.Autowired(required = false) SocketIOServer socketServer) {
+                                       @org.springframework.beans.factory.annotation.Autowired(required = false) SocketIOServer socketServer,
+                                       PushService pushService) {
         this.violationMapper = violationMapper;
         this.objectMapper = objectMapper;
         this.userDisplayNameService = userDisplayNameService;
@@ -98,6 +101,7 @@ public class TwinStudentViolationService {
         this.studentNotificationMapper = studentNotificationMapper;
         this.cageStatusViolationMapper = cageStatusViolationMapper;
         this.socketServer = socketServer;
+        this.pushService = pushService;
     }
 
     private static boolean isTwinStudentViolationTableMissing(Throwable e) {
@@ -804,6 +808,7 @@ public class TwinStudentViolationService {
         }
         // 同步写入 sys_student_notification，确保 /student/notifications 消息中心可见
         persistStudentNotification(row);
+        try { pushService.send("VIOLATION_CREATED", Map.of("title", "CAGE_STATUS".equals(row.getSource()) ? resolveCageNoticeTitle(row) : "违规提醒", "source", row.getSource() != null ? row.getSource() : "MANUAL", "summary", row.getViolationText() != null ? row.getViolationText().replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim() : "", "enterLocked", String.valueOf(row.getForbidEnter() != null && row.getForbidEnter() == 1)), Set.of(row.getTargetUserId())); } catch (Exception e) { log.warn("[Push] VIOLATION_CREATED failed: {}", e.getMessage()); }
         return row;
     }
 
