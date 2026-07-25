@@ -458,10 +458,13 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
           <div className="bg-white rounded-2xl w-[85%] max-w-xs p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-gray-900">绑定微信通知</h3>
             <p className="mt-1 text-xs text-gray-500">通过 Server酱 SendKey 接收微信推送通知</p>
-            <p className="mt-1 text-[11px] text-[#d97706] underline cursor-pointer"
-              onClick={() => { navigator.clipboard.writeText("https://sct.ftqq.com/"); alert("链接已复制，请在浏览器中打开"); }}>
-              还没有 SendKey？点此复制链接 →
-            </p>
+            <a
+              href={`https://sct.ftqq.com/appkey/create/forward?name=ARO&url=${encodeURIComponent(`${window.location.origin}/#/m/home?sendkey={key}&bindUserId=${encodeURIComponent(userIdForBind)}`)}`}
+              target="_blank" rel="noopener noreferrer"
+              className="mt-1 inline-block text-[11px] text-[#d97706] underline"
+            >
+              还没有 SendKey？点此前往 Server酱 创建 →
+            </a>
             <input value={sendKeyDraft} onChange={(e) => setSendKeyDraft(e.target.value)} placeholder="粘贴 SendKey"
               className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#ac1736]" />
             <div className="flex gap-3 mt-4">
