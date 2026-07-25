@@ -284,16 +284,6 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         alias: ["推送配置", "通知源", "push", "config", "channel"],
         sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/push-config", "SUPER_ADMIN"),
       },
-      {
-        id: "push-log",
-        path: "/admin/push-log",
-        label: "推送日志",
-        icon: FileText,
-        homeTone: "from-slate-400 to-zinc-500",
-        fallbackMinRole: "SUPER_ADMIN",
-        alias: ["推送日志", "发送记录", "push", "log", "delivery"],
-        sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/push-log", "SUPER_ADMIN"),
-      },
     ],
   },
   {

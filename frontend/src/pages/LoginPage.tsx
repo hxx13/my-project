@@ -198,6 +198,7 @@ export default function LoginPage() {
 
   // Turnstile widget: 登录抽屉打开 + 非忘记密码模式时渲染
   const [turnstileLoadFailed, setTurnstileLoadFailed] = useState(false);
+  const [turnstileLoading, setTurnstileLoading] = useState(false);
   const turnstilePollCount = useRef(0);
 
   useEffect(() => {
@@ -207,6 +208,7 @@ export default function LoginPage() {
 
     turnstilePollCount.current = 0;
     setTurnstileLoadFailed(false);
+    setTurnstileLoading(true);
     let cancelled = false;
 
     const tryRender = () => {
@@ -216,6 +218,7 @@ export default function LoginPage() {
         if (turnstilePollCount.current > 12) { // ~3.6 秒超时（Cloudflare CDN 在国内慢）
           console.warn("Turnstile CDN 加载超时，降级跳过");
           setTurnstileLoadFailed(true);
+          setTurnstileLoading(false);
           return;
         }
         setTimeout(tryRender, 300);
@@ -230,12 +233,14 @@ export default function LoginPage() {
           sitekey: turnstileSiteKey,
           theme: effectiveMode === "dark" ? "dark" : "light",
           size: "normal",
-          callback: (token: string) => setTurnstileToken(token),
+          callback: (token: string) => { setTurnstileToken(token); setTurnstileLoading(false); },
           "expired-callback": () => setTurnstileToken(""),
-          "error-callback": () => setTurnstileToken(""),
+          "error-callback": () => { setTurnstileToken(""); setTurnstileLoadFailed(true); setTurnstileLoading(false); },
         });
+        setTurnstileLoading(false);
       } catch {
         setTurnstileLoadFailed(true);
+        setTurnstileLoading(false);
       }
     };
 
@@ -245,6 +250,7 @@ export default function LoginPage() {
       clearTimeout(timer);
       setTurnstileToken("");
       setTurnstileLoadFailed(false);
+      setTurnstileLoading(false);
     };
   }, [showLogin, forgotMode, effectiveMode]);
 
@@ -981,11 +987,22 @@ export default function LoginPage() {
                         autoComplete="current-password"
                       />
                     </div>
-                    <div ref={turnstileContainerRef} className="flex justify-center">
-                      {turnstileLoadFailed && (
-                        <p className="text-xs text-amber-400/80">
-                          安全组件加载失败，请刷新页面或检查网络后重试
-                        </p>
+                    <div ref={turnstileContainerRef} className="flex min-h-[65px] items-center justify-center">
+                      {turnstileLoading && !turnstileLoadFailed && (
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#f5d76a]/40 border-t-[#f5d76a]" />
+                          <p className="text-xs text-[#b8a88c]">人机验证加载中…</p>
+                          <button
+                            type="button"
+                            onClick={() => { setTurnstileLoadFailed(true); setTurnstileLoading(false); }}
+                            className="text-xs text-[#e8c547] hover:text-[#f5e6a8] underline mt-1"
+                          >
+                            跳过验证
+                          </button>
+                        </div>
+                      )}
+                      {turnstileLoadFailed && !turnstileLoading && (
+                        <p className="text-xs text-amber-400/80">已跳过人机验证</p>
                       )}
                     </div>
                     <button

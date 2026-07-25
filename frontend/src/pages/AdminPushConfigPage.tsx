@@ -223,7 +223,11 @@ export default function AdminPushConfigPage() {
       sourceId: number;
       channelCode: string;
       body: ChannelDraft;
-    }) => authHttp.put(`/admin/notify-source/${sourceId}/channels/${channelCode}`, body),
+    }) => authHttp.put(`/admin/notify-source/${sourceId}/channels/${channelCode}`, {
+        ...body,
+        quietStart: body.quietStart || null,
+        quietEnd: body.quietEnd || null,
+      }),
     onMutate: ({ sourceId, channelCode }) =>
       setSavingChannels((p) => new Set(p).add(`${sourceId}:${channelCode}`)),
     onSettled: (_d, _e, { sourceId, channelCode }) => {

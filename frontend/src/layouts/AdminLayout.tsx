@@ -1379,8 +1379,19 @@ export default function AdminLayout() {
                     )}
                     {currentSendKey ? (
                       <DropdownMenuItem onSelect={() => {
-                        setSendKeyDraft(currentSendKey);
-                        setSendKeyDialogOpen(true);
+                        if (window.confirm("已绑定微信通知，是否取消绑定？")) {
+                          const token = authStorage.getToken();
+                          const userId = sessionUser?.id;
+                          if (!userId) return;
+                          fetch(`/api/admin/personnel/${encodeURIComponent(userId)}/send-key`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                            body: JSON.stringify({ sendKey: "" }),
+                          }).then((r) => {
+                            if (r.ok) { setCurrentSendKey(null); toast.success("已取消微信通知绑定"); }
+                            else toast.error("取消失败");
+                          }).catch(() => toast.error("取消失败"));
+                        }
                       }}>
                         <MessageCircle className="mr-2 h-4 w-4 text-emerald-500" />
                         微信通知: 已绑定
@@ -1783,6 +1794,12 @@ export default function AdminLayout() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-2 space-y-2">
+            <a
+              href={`https://sct.ftqq.com/appkey/create/forward?name=ARO&url=${encodeURIComponent(`${window.location.origin}/#/console/admin/personnel?sendkey={key}&bindUserId=${encodeURIComponent(sessionUser?.id || "")}`)}`}
+              className="inline-flex items-center gap-1 text-[11px] text-[var(--twin-link)] underline underline-offset-2 hover:text-[var(--twin-link-deep)]"
+            >
+              还没有 SendKey？点此前往 Server酱 创建 →
+            </a>
             <input
               className={`${adminInputClass} w-full`}
               type="text"

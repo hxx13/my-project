@@ -27,6 +27,7 @@ export default function MobileLoginPage() {
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
   const [turnstileLoadFailed, setTurnstileLoadFailed] = useState(false);
+  const [turnstileLoading, setTurnstileLoading] = useState(false);
   const turnstileRef = useRef<HTMLDivElement>(null);
   const turnstileId = useRef<string | null>(null);
 
@@ -42,9 +43,10 @@ export default function MobileLoginPage() {
     if (!container) return;
     let cancelled = false;
     let polls = 0;
+    setTurnstileLoading(true);
     const tryRender = () => {
       if (cancelled) return;
-      if (!window.turnstile) { if (++polls < 12) setTimeout(tryRender, 300); else setTurnstileLoadFailed(true); return; }
+      if (!window.turnstile) { if (++polls < 12) setTimeout(tryRender, 300); else { setTurnstileLoadFailed(true); setTurnstileLoading(false); } return; }
       try {
         if (turnstileId.current) window.turnstile.remove(turnstileId.current);
         container.innerHTML = "";
@@ -52,14 +54,15 @@ export default function MobileLoginPage() {
           sitekey: turnstileSiteKey,
           theme: "light",
           size: "normal",
-          callback: (token: string) => { setTurnstileToken(token); setTurnstileLoadFailed(false); },
+          callback: (token: string) => { setTurnstileToken(token); setTurnstileLoadFailed(false); setTurnstileLoading(false); },
           "expired-callback": () => setTurnstileToken(""),
-          "error-callback": () => { setTurnstileToken(""); setTurnstileLoadFailed(true); },
+          "error-callback": () => { setTurnstileToken(""); setTurnstileLoadFailed(true); setTurnstileLoading(false); },
         });
-      } catch { setTurnstileLoadFailed(true); }
+        setTurnstileLoading(false);
+      } catch { setTurnstileLoadFailed(true); setTurnstileLoading(false); }
     };
     setTimeout(tryRender, 100);
-    return () => { cancelled = true; setTurnstileToken(""); setTurnstileLoadFailed(false); };
+    return () => { cancelled = true; setTurnstileToken(""); setTurnstileLoadFailed(false); setTurnstileLoading(false); };
   }, [turnstileSiteKey]);
 
   // Forgot password state
@@ -506,7 +509,22 @@ export default function MobileLoginPage() {
                   className="w-full rounded-[var(--app-radius-element)] border px-3 py-2.5 text-base outline-none transition-colors"
                   style={{ background: bg, borderColor: border, color: primary }} />
               </div>
-              <div ref={turnstileRef} className="flex justify-center w-full min-h-[65px]" />
+              <div ref={turnstileRef} className="flex justify-center items-center w-full min-h-[65px]">
+                {turnstileLoading && !turnstileLoadFailed && (
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-[var(--app-color-accent)]" />
+                    <p className="text-xs" style={{ color: secondary }}>人机验证加载中…</p>
+                    <button type="button"
+                      onClick={() => { setTurnstileLoadFailed(true); setTurnstileLoading(false); }}
+                      className="text-xs underline mt-1" style={{ color: accent }}>
+                      跳过验证
+                    </button>
+                  </div>
+                )}
+                {turnstileLoadFailed && !turnstileLoading && (
+                  <p className="text-xs" style={{ color: secondary }}>已跳过人机验证</p>
+                )}
+              </div>
               {error && (
                 <p className="text-sm text-center rounded-[var(--app-radius-element)] px-3 py-2"
                   style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>{error}</p>
