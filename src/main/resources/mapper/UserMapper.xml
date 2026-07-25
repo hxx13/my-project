@@ -180,7 +180,7 @@
     <select id="existsPersonnelById" resultType="int">
         SELECT COUNT(1)
         FROM aro_personnel
-        WHERE user_id = #{id}
+        WHERE user_id = #{id} AND job_number IS NOT NULL
     </select>
 
     <delete id="deleteById">
@@ -248,5 +248,39 @@
             update_time = NOW()
         WHERE id = #{id}
     </update>
+
+    <select id="findContactEmailsByIds" resultType="java.util.HashMap">
+        SELECT id, contact_email FROM sys_user
+        WHERE id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        AND contact_email IS NOT NULL AND contact_email != ''
+    </select>
+
+    <select id="findSendKeysByIds" resultType="java.util.HashMap">
+        SELECT id, send_key FROM sys_user
+        WHERE id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        AND send_key IS NOT NULL AND send_key != ''
+    </select>
+
+    <update id="updateContactEmail">
+        UPDATE sys_user SET contact_email = #{contactEmail} WHERE id = #{id}
+    </update>
+
+    <update id="updateSendKey">
+        UPDATE sys_user SET send_key = #{sendKey} WHERE id = #{id}
+    </update>
+
+    <select id="findContactEmailById" resultType="string">
+        SELECT contact_email FROM sys_user WHERE id = #{id}
+    </select>
+
+    <select id="findSendKeyById" resultType="string">
+        SELECT send_key FROM sys_user WHERE id = #{id}
+    </select>
+
+    <select id="findByContactEmail" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/> FROM sys_user
+        WHERE contact_email = #{contactEmail} AND status = 1
+        LIMIT 1
+    </select>
 
 </mapper>

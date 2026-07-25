@@ -88,4 +88,14 @@
         AND send_key IS NOT NULL AND send_key != ''
     </select>
 
+    <insert id="ensureRowExists">
+        INSERT IGNORE INTO aro_personnel (user_id, name) VALUES (#{userId}, #{userId})
+    </insert>
+
+    <select id="findUserIdByContactEmail" resultType="string">
+        SELECT user_id FROM aro_personnel
+        WHERE contact_email = #{contactEmail}
+        LIMIT 1
+    </select>
+
 </mapper>

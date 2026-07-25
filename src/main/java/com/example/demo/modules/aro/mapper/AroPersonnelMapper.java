@@ -70,6 +70,9 @@ public interface AroPersonnelMapper {
 
     int updateContactEmail(@Param("userId") String userId, @Param("contactEmail") String contactEmail);
     int updateSendKey(@Param("userId") String userId, @Param("sendKey") String sendKey);
+
+    /** 系统用户无ARO记录时创建占位行，确保contact_email/send_key可写入 */
+    int ensureRowExists(@Param("userId") String userId);
     String findContactEmailByUserId(@Param("userId") String userId);
     String findSendKeyByUserId(@Param("userId") String userId);
 
@@ -78,4 +81,6 @@ public interface AroPersonnelMapper {
 
     /** 批量查SendKey，返回 userId→sendKey 映射 */
     java.util.Map<String, String> findSendKeysByUserIds(@Param("userIds") List<String> userIds);
+
+    String findUserIdByContactEmail(@Param("contactEmail") String contactEmail);
 }
