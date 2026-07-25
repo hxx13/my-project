@@ -6,9 +6,8 @@ import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.notification.entity.NotifyDeliveryLog;
 import com.example.demo.modules.notification.mapper.NotificationMiniProgramMapper;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.notification.push.PushConstants;
-import com.example.demo.modules.notification.push.binding.UserPushBinding;
-import com.example.demo.modules.notification.push.binding.UserPushBindingMapper;
 import com.example.demo.modules.notification.push.channel.PushChannel;
 import com.example.demo.modules.notification.push.channel.PushResult;
 import com.example.demo.modules.notification.push.config.NotifySourceChannel;
@@ -33,7 +32,7 @@ public class PushDispatchEngine {
     private final NotifySourceService sourceService;
     private final NotifySourceChannelService channelConfigService;
     private final NotifySourceRecipientService recipientService;
-    private final UserPushBindingMapper bindingMapper;
+    private final AroPersonnelMapper personnelMapper;
     private final UserMapper userMapper;
     private final UserDisplayNameService displayNameService;
     private final NotificationMiniProgramMapper deliveryLogMapper;
@@ -43,7 +42,7 @@ public class PushDispatchEngine {
     public PushDispatchEngine(NotifySourceService sourceService,
                               NotifySourceChannelService channelConfigService,
                               NotifySourceRecipientService recipientService,
-                              UserPushBindingMapper bindingMapper,
+                              AroPersonnelMapper personnelMapper,
                               UserMapper userMapper,
                               UserDisplayNameService displayNameService,
                               NotificationMiniProgramMapper deliveryLogMapper,
@@ -52,7 +51,7 @@ public class PushDispatchEngine {
         this.sourceService = sourceService;
         this.channelConfigService = channelConfigService;
         this.recipientService = recipientService;
-        this.bindingMapper = bindingMapper;
+        this.personnelMapper = personnelMapper;
         this.userMapper = userMapper;
         this.displayNameService = displayNameService;
         this.deliveryLogMapper = deliveryLogMapper;
@@ -101,15 +100,12 @@ public class PushDispatchEngine {
             String title = render(channelCfg.getTitleTpl(), variables);
             String content = render(channelCfg.getContentTpl(), variables);
 
-            List<UserPushBinding> bindings = bindingMapper.findByUserIdsAndChannel(idList, channel.getCode());
-            Map<String, UserPushBinding> bindingByUser = bindings.stream()
-                    .collect(Collectors.toMap(UserPushBinding::getUserId, b -> b, (a, b) -> a));
-
             for (String userId : allRecipientIds) {
-                UserPushBinding binding = bindingByUser.get(userId);
-                if (binding == null || binding.getIsVerified() == null || binding.getIsVerified() != 1) {
-                    continue;
-                }
+                // Get target based on channel
+                String target = PushConstants.CHANNEL_EMAIL.equals(channel.getCode())
+                        ? personnelMapper.findContactEmailByUserId(userId)
+                        : personnelMapper.findSendKeyByUserId(userId);
+                if (target == null || target.isBlank()) continue;
 
                 int limitSec = channelCfg.getRateLimitSeconds() != null ? channelCfg.getRateLimitSeconds() : 300;
                 if (rateLimiter.isRateLimited(sourceCode, userId, channel.getCode(), limitSec)) {
@@ -136,7 +132,7 @@ public class PushDispatchEngine {
 
                 try {
                     deliveryLogMapper.insertDeliveryLog(logEntry);
-                    PushResult result = channel.send(binding.getTarget(), title, content);
+                    PushResult result = channel.send(target, title, content);
                     if (result.isSuccess()) {
                         deliveryLogMapper.markDeliverySuccess(logEntry.getId(), result.getProviderMsgId());
                     } else {

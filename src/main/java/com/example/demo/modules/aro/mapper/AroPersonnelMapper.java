@@ -67,4 +67,9 @@ public interface AroPersonnelMapper {
             @Result(property = "id", column = "user_id")
     })
     AroPersonnel findByJobNumber(@Param("jobNumber") String jobNumber);
+
+    int updateContactEmail(@Param("userId") String userId, @Param("contactEmail") String contactEmail);
+    int updateSendKey(@Param("userId") String userId, @Param("sendKey") String sendKey);
+    String findContactEmailByUserId(@Param("userId") String userId);
+    String findSendKeyByUserId(@Param("userId") String userId);
 }

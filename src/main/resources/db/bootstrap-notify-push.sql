@@ -32,19 +32,6 @@ CREATE TABLE IF NOT EXISTS notify_source_recipient (
     UNIQUE KEY uk_src_psp_scope (source_id, perspective, scope_type, scope_value)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS user_push_binding (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    user_id VARCHAR(64) NOT NULL,
-    channel_code VARCHAR(32) NOT NULL,
-    target VARCHAR(512) NOT NULL,
-    is_verified TINYINT DEFAULT 0,
-    verify_code VARCHAR(16) DEFAULT NULL,
-    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_user_channel (user_id, channel_code),
-    KEY idx_channel_verified (channel_code, is_verified)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 -- Extend sys_notify_delivery_log (NO next_retry_at — reuse existing next_retry_time)
 ALTER TABLE sys_notify_delivery_log ADD COLUMN source_code VARCHAR(64) DEFAULT NULL;
 ALTER TABLE sys_notify_delivery_log ADD COLUMN source_name VARCHAR(128) DEFAULT NULL;
@@ -53,3 +40,6 @@ ALTER TABLE sys_notify_delivery_log ADD COLUMN recipient_name VARCHAR(64) DEFAUL
 ALTER TABLE sys_notify_delivery_log ADD COLUMN title VARCHAR(256) DEFAULT NULL;
 ALTER TABLE sys_notify_delivery_log ADD COLUMN content TEXT DEFAULT NULL;
 ALTER TABLE sys_notify_delivery_log ADD COLUMN max_retries INT DEFAULT 3;
+
+ALTER TABLE aro_personnel ADD COLUMN contact_email VARCHAR(256) DEFAULT NULL COMMENT '联系邮箱（本地管理，不被ARO同步覆盖）';
+ALTER TABLE aro_personnel ADD COLUMN send_key VARCHAR(512) DEFAULT NULL COMMENT 'Server酱SendKey（本地管理）';

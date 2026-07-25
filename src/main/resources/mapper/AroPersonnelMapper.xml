@@ -60,4 +60,20 @@
         WHERE user_id = #{userId}
     </update>
 
+    <update id="updateContactEmail">
+        UPDATE aro_personnel SET contact_email = #{contactEmail} WHERE user_id = #{userId}
+    </update>
+
+    <update id="updateSendKey">
+        UPDATE aro_personnel SET send_key = #{sendKey} WHERE user_id = #{userId}
+    </update>
+
+    <select id="findContactEmailByUserId" resultType="string">
+        SELECT contact_email FROM aro_personnel WHERE user_id = #{userId}
+    </select>
+
+    <select id="findSendKeyByUserId" resultType="string">
+        SELECT send_key FROM aro_personnel WHERE user_id = #{userId}
+    </select>
+
 </mapper>

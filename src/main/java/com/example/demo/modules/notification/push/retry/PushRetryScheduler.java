@@ -1,11 +1,10 @@
 package com.example.demo.modules.notification.push.retry;
 
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.notification.entity.NotifyDeliveryLog;
 import com.example.demo.modules.notification.mapper.NotificationMiniProgramMapper;
 import com.example.demo.modules.notification.mapper.NotificationSettingsMapper;
 import com.example.demo.modules.notification.push.PushConstants;
-import com.example.demo.modules.notification.push.binding.UserPushBinding;
-import com.example.demo.modules.notification.push.binding.UserPushBindingMapper;
 import com.example.demo.modules.notification.push.channel.PushChannel;
 import com.example.demo.modules.notification.push.channel.PushResult;
 import org.slf4j.Logger;
@@ -25,16 +24,16 @@ public class PushRetryScheduler {
 
     private final NotificationMiniProgramMapper logMapper;
     private final NotificationSettingsMapper settingsMapper;
-    private final UserPushBindingMapper bindingMapper;
+    private final AroPersonnelMapper personnelMapper;
     private final List<PushChannel> channels;
 
     public PushRetryScheduler(NotificationMiniProgramMapper logMapper,
                                NotificationSettingsMapper settingsMapper,
-                               UserPushBindingMapper bindingMapper,
+                               AroPersonnelMapper personnelMapper,
                                List<PushChannel> channels) {
         this.logMapper = logMapper;
         this.settingsMapper = settingsMapper;
-        this.bindingMapper = bindingMapper;
+        this.personnelMapper = personnelMapper;
         this.channels = channels;
     }
 
@@ -46,11 +45,12 @@ public class PushRetryScheduler {
             PushChannel channel = findChannel(entry.getChannel());
             if (channel == null || !channel.isEnabled()) continue;
 
-            UserPushBinding binding = bindingMapper.findByUserAndChannel(
-                    entry.getRecipientUserId(), entry.getChannel());
-            if (binding == null || binding.getIsVerified() == null || binding.getIsVerified() != 1) continue;
+            String target = PushConstants.CHANNEL_EMAIL.equals(channel.getCode())
+                    ? personnelMapper.findContactEmailByUserId(entry.getRecipientUserId())
+                    : personnelMapper.findSendKeyByUserId(entry.getRecipientUserId());
+            if (target == null || target.isBlank()) continue;
 
-            PushResult result = channel.send(binding.getTarget(),
+            PushResult result = channel.send(target,
                     entry.getTitle() != null ? entry.getTitle() : "",
                     entry.getContent() != null ? entry.getContent() : "");
             if (result.isSuccess()) {
