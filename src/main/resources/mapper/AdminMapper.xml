@@ -62,10 +62,12 @@
             su.status,
             su.create_time AS createTime,
             su.display_nickname AS displayNickname,
-            su.mini_bind_type AS miniBindType
+            su.mini_bind_type AS miniBindType,
+            su.contact_email AS contactEmail,
+            su.send_key AS sendKey
         FROM sys_user su
         WHERE NOT EXISTS (
-            SELECT 1 FROM aro_personnel ap WHERE ap.user_id = su.id
+            SELECT 1 FROM aro_personnel ap WHERE ap.user_id = su.id AND ap.job_number IS NOT NULL
         )
         <if test="keyword != null and keyword != ''">
             AND (
@@ -82,7 +84,7 @@
         SELECT COUNT(1)
         FROM sys_user su
         WHERE NOT EXISTS (
-            SELECT 1 FROM aro_personnel ap WHERE ap.user_id = su.id
+            SELECT 1 FROM aro_personnel ap WHERE ap.user_id = su.id AND ap.job_number IS NOT NULL
         )
         <if test="keyword != null and keyword != ''">
             AND (

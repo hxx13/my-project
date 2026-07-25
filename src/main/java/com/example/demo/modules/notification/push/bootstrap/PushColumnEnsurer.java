@@ -31,7 +31,12 @@ public class PushColumnEnsurer implements InitializingBean {
                 "VARCHAR(256) DEFAULT NULL COMMENT '联系邮箱（本地管理，不被ARO同步覆盖）'");
         addColumnIfMissing("aro_personnel", "send_key",
                 "VARCHAR(512) DEFAULT NULL COMMENT 'Server酱SendKey（本地管理）'");
-        log.info("[Push] aro_personnel 扩展列已确认");
+        addColumnIfMissing("sys_user", "contact_email",
+                "VARCHAR(256) DEFAULT NULL COMMENT '联系邮箱（本地管理，用于推送通知）'");
+        addColumnIfMissing("sys_user", "send_key",
+                "VARCHAR(256) DEFAULT NULL COMMENT 'Server酱SendKey（用于微信推送通知）'");
+        ensureRecipientScopeValueWidth();
+        log.info("[Push] aro_personnel + sys_user 扩展列已确认");
     }
 
     private void addColumnIfMissing(String table, String column, String definition) {
@@ -51,6 +56,24 @@ public class PushColumnEnsurer implements InitializingBean {
                 return;
             }
             log.warn("[Push] 无法确保列 {}.{}: {}", table, column, msg);
+        }
+    }
+
+    /** 扩宽 notify_source_recipient.scope_value 以容纳逗号分隔的多用户ID */
+    private void ensureRecipientScopeValueWidth() {
+        // 1. 尝试删除含 scope_value 的唯一键（VARCHAR(2000) 超索引长度）
+        try {
+            jdbc.execute("ALTER TABLE notify_source_recipient DROP INDEX uk_src_psp_scope");
+            log.info("[Push] 已移除 notify_source_recipient 唯一键 uk_src_psp_scope");
+        } catch (Exception e) {
+            log.debug("[Push] 唯一键 uk_src_psp_scope 不存在或已移除: {}", e.getMessage());
+        }
+        // 2. 扩宽列
+        try {
+            jdbc.execute("ALTER TABLE notify_source_recipient MODIFY COLUMN scope_value VARCHAR(128) COMMENT '单用户ID（每人一行）'");
+            log.info("[Push] notify_source_recipient.scope_value 已更新为 VARCHAR(128)");
+        } catch (Exception e) {
+            log.debug("[Push] scope_value 列修改跳过: {}", e.getMessage());
         }
     }
 }

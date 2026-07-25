@@ -212,6 +212,11 @@ export default function AdminLayout() {
   const [emailCodeCooldown, setEmailCodeCooldown] = useState(0);
   const emailCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Cleanup cooldown timer on unmount
+  useEffect(() => {
+    return () => { if (emailCooldownRef.current) clearInterval(emailCooldownRef.current); };
+  }, []);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
@@ -1077,7 +1082,10 @@ export default function AdminLayout() {
       if (emailCooldownRef.current) clearInterval(emailCooldownRef.current);
       emailCooldownRef.current = setInterval(() => {
         setEmailCodeCooldown((prev) => {
-          if (prev <= 1) { emailCooldownRef.current = null; return 0; }
+          if (prev <= 1) {
+            if (emailCooldownRef.current) { clearInterval(emailCooldownRef.current); emailCooldownRef.current = null; }
+            return 0;
+          }
           return prev - 1;
         });
       }, 1000);

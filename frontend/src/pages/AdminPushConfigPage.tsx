@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminButton } from "@/components/admin/AdminButton";
@@ -8,6 +8,7 @@ import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/adm
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 import { authHttp } from "@/api/core/authHttp";
+import { adminHttp } from "@/api/core/adminHttp";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import {
   ChevronDown,
@@ -21,6 +22,11 @@ import {
   Clock,
   Variable,
   AlertCircle,
+  Search,
+  X,
+  Check,
+  UserPlus,
+  Send,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -44,6 +50,8 @@ interface NotifyRecipient {
   perspective: string;
   scopeType: string;
   scopeValue: string;
+  /** 服务端解析的显示名 */
+  scopeLabel?: string;
 }
 
 interface NotifySourceConfig {
@@ -79,6 +87,8 @@ interface RecipientDraft {
   perspective: string;
   scopeType: string;
   scopeValue: string;
+  /** 服务端解析的显示名（只读，不传回后端） */
+  scopeLabel?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -101,6 +111,7 @@ function toRecipientDraft(r: NotifyRecipient): RecipientDraft {
     perspective: r.perspective ?? "",
     scopeType: r.scopeType ?? "",
     scopeValue: r.scopeValue ?? "",
+    scopeLabel: r.scopeLabel,
   };
 }
 
@@ -148,6 +159,7 @@ export default function AdminPushConfigPage() {
   const [savingChannels, setSavingChannels] = useState<Set<string>>(new Set());
   const [savingRecipients, setSavingRecipients] = useState<Set<number>>(new Set());
   const [savingToggles, setSavingToggles] = useState<Set<number>>(new Set());
+  const [testSource, setTestSource] = useState<string | null>(null);
 
   /* ---- initialise drafts from fetched data ---- */
   const initDrafts = useCallback((list: NotifySourceConfig[]) => {
@@ -164,7 +176,7 @@ export default function AdminPushConfigPage() {
     setRecipientDrafts(rd);
   }, []);
 
-  useMemo(() => {
+  useEffect(() => {
     if (sources) initDrafts(sources);
   }, [sources, initDrafts]);
 
@@ -316,12 +328,12 @@ export default function AdminPushConfigPage() {
     });
   };
 
-  const addRecipientDraft = (sourceId: number) => {
+  const addRecipientDraft = (sourceId: number, rec?: RecipientDraft) => {
     setRecipientDrafts((prev) => ({
       ...prev,
       [sourceId]: [
         ...(prev[sourceId] ?? []),
-        { perspective: "STUDENT", scopeType: "ALL", scopeValue: "" },
+        rec ?? { perspective: "STUDENT", scopeType: "ALL", scopeValue: "" },
       ],
     }));
   };
@@ -513,6 +525,11 @@ export default function AdminPushConfigPage() {
                           {source.sourceEnabled ? "已启用" : "已禁用"}
                         </span>
 
+                        <AdminButton type="button" tone="ghost" size="sm"
+                          onClick={() => setTestSource(source.sourceCode)}>
+                          <Send className="h-3.5 w-3.5" aria-hidden /> 测试
+                        </AdminButton>
+
                         <AdminSwitchScaled
                           size="sm"
                           checked={source.sourceEnabled}
@@ -539,287 +556,32 @@ export default function AdminPushConfigPage() {
                     {/* ================================================ */}
                     {expanded && (
                       <div className="mt-4 space-y-4 border-t border-[var(--app-color-border-default)] pt-4">
-                        {/* ---- Channel configs ---- */}
-                        <div>
-                          <h4 className="text-xs font-semibold text-[var(--app-color-text-primary)] mb-2 flex items-center gap-1.5">
-                            <Bell className="h-3.5 w-3.5 text-[var(--app-color-accent)]" />
-                            渠道配置
-                          </h4>
-                          <div className="space-y-3">
-                            {source.channels.map((ch) => {
-                              const draft = channelDrafts[source.sourceId]?.[ch.id];
-                              if (!draft) return null;
-                              const saveKey = `${source.sourceId}:${ch.channelCode}`;
-                              const isSaving = savingChannels.has(saveKey);
-
-                              return (
-                                <div
-                                  key={ch.id}
-                                  className="rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] p-3"
-                                >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-semibold text-[var(--app-color-text-primary)] flex items-center gap-1.5">
-                                      {channelIconMap[ch.channelCode] ?? null}
-                                      {ch.channelName}
-                                    </span>
-                                    <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
-                                      <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
-                                        {draft.enabled ? "启用" : "停用"}
-                                      </span>
-                                      <AdminSwitchScaled
-                                        size="3"
-                                        checked={draft.enabled}
-                                        onChange={(v) =>
-                                          updateChannelDraft(source.sourceId, ch.id, {
-                                            enabled: v,
-                                          })
-                                        }
-                                      />
-                                    </label>
-                                  </div>
-
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {/* Title template */}
-                                    <div>
-                                      <label className={adminLabelClass}>标题模板</label>
-                                      <input
-                                        className={cn(adminInputClass, "mt-1")}
-                                        value={draft.titleTpl}
-                                        placeholder="通知标题，支持变量"
-                                        onChange={(e) =>
-                                          updateChannelDraft(source.sourceId, ch.id, {
-                                            titleTpl: e.target.value,
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    {/* Content template */}
-                                    <div>
-                                      <label className={adminLabelClass}>内容模板</label>
-                                      <input
-                                        className={cn(adminInputClass, "mt-1")}
-                                        value={draft.contentTpl}
-                                        placeholder="通知正文，支持变量"
-                                        onChange={(e) =>
-                                          updateChannelDraft(source.sourceId, ch.id, {
-                                            contentTpl: e.target.value,
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    {/* Quiet start */}
-                                    <div>
-                                      <label className={adminLabelClass}>
-                                        <Clock className="h-3 w-3 inline mr-1" />
-                                        静默开始
-                                      </label>
-                                      <input
-                                        className={cn(adminInputClass, "mt-1")}
-                                        type="time"
-                                        value={draft.quietStart}
-                                        onChange={(e) =>
-                                          updateChannelDraft(source.sourceId, ch.id, {
-                                            quietStart: e.target.value,
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    {/* Quiet end */}
-                                    <div>
-                                      <label className={adminLabelClass}>
-                                        <Clock className="h-3 w-3 inline mr-1" />
-                                        静默结束
-                                      </label>
-                                      <input
-                                        className={cn(adminInputClass, "mt-1")}
-                                        type="time"
-                                        value={draft.quietEnd}
-                                        onChange={(e) =>
-                                          updateChannelDraft(source.sourceId, ch.id, {
-                                            quietEnd: e.target.value,
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    {/* Rate limit */}
-                                    <div>
-                                      <label className={adminLabelClass}>频率限制（秒）</label>
-                                      <input
-                                        className={cn(adminInputClass, "mt-1")}
-                                        type="number"
-                                        min={0}
-                                        value={draft.rateLimitSeconds}
-                                        onChange={(e) =>
-                                          updateChannelDraft(source.sourceId, ch.id, {
-                                            rateLimitSeconds: Number(e.target.value),
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 flex items-center justify-end">
-                                    <AdminButton
-                                      type="button"
-                                      tone="primary"
-                                      size="sm"
-                                      loading={isSaving}
-                                      onClick={() =>
-                                        saveChannelMutation.mutate({
-                                          sourceId: source.sourceId,
-                                          channelCode: ch.channelCode,
-                                          body: draft,
-                                        })
-                                      }
-                                    >
-                                      <Save className="h-3.5 w-3.5" aria-hidden /> 保存渠道
-                                    </AdminButton>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* ---- Variable hints ---- */}
-                        {varKeys.length > 0 && (
-                          <div className="rounded-lg border border-dashed border-[var(--app-color-accent)]/30 bg-[var(--app-color-accent-soft)] p-3">
-                            <p className="text-xs font-medium text-[var(--app-color-text-primary)] mb-1 flex items-center gap-1">
-                              <Variable className="h-3.5 w-3.5 text-[var(--app-color-accent)]" />
-                              可用变量
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {varKeys.map((k) => (
-                                <code
-                                  key={k}
-                                  className="inline-block rounded bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] px-1.5 py-0.5 text-[11px] font-mono text-[var(--app-color-accent)]"
-                                >
-                                  {`{${k}}`}
-                                </code>
-                              ))}
-                            </div>
-                            {Object.keys(variables).length > 0 && (
-                              <p className="mt-1.5 text-[11px] text-[var(--app-color-text-tertiary)]">
-                                {Object.entries(variables)
-                                  .map(([k, v]) => `${k}: ${v}`)
-                                  .join("；")}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
                         {/* ---- Recipients ---- */}
-                        <div>
-                          <h4 className="text-xs font-semibold text-[var(--app-color-text-primary)] mb-2 flex items-center gap-1.5">
-                            <Users className="h-3.5 w-3.5 text-[var(--app-color-accent)]" />
-                            接收人
-                          </h4>
+                        <RecipientSection
+                          source={source}
+                          drafts={recipientDrafts[source.sourceId] ?? []}
+                          saving={savingRecipients.has(source.sourceId)}
+                          onAdd={(rec) => addRecipientDraft(source.sourceId, rec)}
+                          onRemove={(idx) => removeRecipientDraft(source.sourceId, idx)}
+                          onUpdate={(idx, patch) => updateRecipientDraft(source.sourceId, idx, patch)}
+                          onSave={(list) =>
+                            saveRecipientsMutation.mutate({
+                              sourceId: source.sourceId,
+                              recipients: list,
+                            })
+                          }
+                        />
 
-                          <div className="space-y-2">
-                            {(recipientDrafts[source.sourceId] ?? []).map(
-                              (rec, idx) => (
-                                <div
-                                  key={idx}
-                                  className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2"
-                                >
-                                  {/* Perspective */}
-                                  <select
-                                    className={cn(
-                                      "rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 text-xs text-[var(--app-color-text-primary)] outline-none",
-                                    )}
-                                    value={rec.perspective}
-                                    onChange={(e) =>
-                                      updateRecipientDraft(source.sourceId, idx, {
-                                        perspective: e.target.value,
-                                      })
-                                    }
-                                  >
-                                    <option value="STUDENT">学生</option>
-                                    <option value="STAFF">教职工</option>
-                                  </select>
-
-                                  {/* Scope type */}
-                                  <select
-                                    className={cn(
-                                      "rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 text-xs text-[var(--app-color-text-primary)] outline-none",
-                                    )}
-                                    value={rec.scopeType}
-                                    onChange={(e) =>
-                                      updateRecipientDraft(source.sourceId, idx, {
-                                        scopeType: e.target.value,
-                                      })
-                                    }
-                                  >
-                                    <option value="ALL">全部</option>
-                                    <option value="ROLE">指定角色</option>
-                                    <option value="DEPARTMENT">指定部门</option>
-                                    <option value="SPECIFIC">指定人员</option>
-                                  </select>
-
-                                  {/* Scope value */}
-                                  {rec.scopeType !== "ALL" && (
-                                    <input
-                                      className={cn(
-                                        "flex-1 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 text-xs text-[var(--app-color-text-primary)] outline-none",
-                                        "min-w-[120px]",
-                                      )}
-                                      placeholder={
-                                        rec.scopeType === "ROLE"
-                                          ? "角色标识"
-                                          : rec.scopeType === "DEPARTMENT"
-                                            ? "部门ID"
-                                            : "用户ID"
-                                      }
-                                      value={rec.scopeValue}
-                                      onChange={(e) =>
-                                        updateRecipientDraft(source.sourceId, idx, {
-                                          scopeValue: e.target.value,
-                                        })
-                                      }
-                                    />
-                                  )}
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      removeRecipientDraft(source.sourceId, idx)
-                                    }
-                                    className="ml-auto rounded p-1 text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-feedback-error)] transition-colors"
-                                    title="移除"
-                                  >
-                                    <AlertCircle className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              ),
-                            )}
-                          </div>
-
-                          <div className="mt-2 flex items-center justify-between">
-                            <AdminButton
-                              type="button"
-                              tone="ghost"
-                              size="sm"
-                              onClick={() => addRecipientDraft(source.sourceId)}
-                            >
-                              + 添加接收人
-                            </AdminButton>
-                            <AdminButton
-                              type="button"
-                              tone="secondary"
-                              size="sm"
-                              loading={savingRecipients.has(source.sourceId)}
-                              onClick={() =>
-                                saveRecipientsMutation.mutate({
-                                  sourceId: source.sourceId,
-                                  recipients:
-                                    recipientDrafts[source.sourceId] ?? [],
-                                })
-                              }
-                            >
-                              <Save className="h-3.5 w-3.5" aria-hidden /> 保存接收人
-                            </AdminButton>
-                          </div>
-                        </div>
+                        {/* ---- Channel configs (collapsed by default) ---- */}
+                        <ChannelConfigSection
+                          source={source}
+                          drafts={channelDrafts[source.sourceId] ?? {}}
+                          savingChannels={savingChannels}
+                          onUpdate={updateChannelDraft}
+                          onSave={(sourceId, channelCode, body) =>
+                            saveChannelMutation.mutate({ sourceId, channelCode, body })
+                          }
+                        />
                       </div>
                     )}
                   </AdminFormCard>
@@ -829,6 +591,561 @@ export default function AdminPushConfigPage() {
           </div>
         </AdminFillScrollRegion>
       </div>
+      {/* Test-send modal */}
+      {testSource && (
+        <TestSendModal sourceCode={testSource} onClose={() => setTestSource(null)} />
+      )}
     </AdminPageShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  TestSendModal                                                       */
+/* ------------------------------------------------------------------ */
+
+function TestSendModal({ sourceCode, onClose }: { sourceCode: string; onClose: () => void }) {
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [testNames, setTestNames] = useState<string[]>([]);
+  const [testIds, setTestIds] = useState<string[]>([]);
+
+  const doSend = async () => {
+    setSending(true);
+    setResult(null);
+    try {
+      const body: Record<string, unknown> = { sourceCode };
+      if (testIds.length > 0) body.targetUserIds = testIds;
+      const res = await authHttp.post("/admin/push-test/send", body);
+      const data = res.data?.data ?? {};
+      const sent = (data.sent as number) ?? 0;
+      const failed = (data.failed as number) ?? 0;
+      const skipped = (data.skipped as number) ?? 0;
+      const diagnosis = data.diagnosis as string[] | undefined;
+      const names = testNames.length > 0 ? testNames.join("、") : "后台配置的接收人 + 渠道绑定用户";
+
+      const parts: string[] = [];
+      if (sent > 0) parts.push(`✅ 成功 ${sent} 条`);
+      if (failed > 0) parts.push(`❌ 失败 ${failed} 条`);
+      if (skipped > 0) parts.push(`⏭️ 跳过 ${skipped} 条`);
+      if (parts.length === 0) parts.push("⚠️ 未发送任何消息");
+
+      let msg = parts.join("，");
+      if (diagnosis?.length) msg += "\n诊断: " + diagnosis.join(" → ");
+      setResult(msg);
+    } catch (e: unknown) {
+      setResult(`发送失败 — ${e instanceof Error ? e.message : "未知错误"}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const recipientText = testNames.length > 0
+    ? `接收人为: ${testNames.join("、")}`
+    : "接收人为后台配置的接收人 + 渠道绑定用户";
+
+  return (
+    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-[var(--app-color-text-primary)]">测试发送</h3>
+          <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]">
+            <X className="h-4 w-4 text-[var(--app-color-text-tertiary)]" />
+          </button>
+        </div>
+        <p className="text-xs text-[var(--app-color-text-secondary)] mb-4">
+          将使用模拟数据发送 <code className="text-[11px] bg-[var(--app-color-surface-hover)] px-1 rounded">{sourceCode}</code> 通知。
+          {recipientText}
+        </p>
+
+        {/* Selected test recipients as name chips */}
+        {testNames.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            {testNames.map((name, i) => (
+              <span key={testIds[i]} className="inline-flex items-center gap-1 rounded-md bg-[var(--app-color-accent)]/15 border border-[var(--app-color-accent)]/25 px-2 py-1 text-xs font-medium text-[var(--app-color-accent)] max-w-[180px]">
+                <span className="truncate">{name}</span>
+                <button type="button" onClick={() => {
+                  setTestIds(prev => prev.filter((_, j) => j !== i));
+                  setTestNames(prev => prev.filter((_, j) => j !== i));
+                }} className="rounded-sm p-0.5 hover:bg-[var(--app-color-accent)]/20 transition-colors shrink-0">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-2">
+          <AdminButton type="button" tone="secondary" size="sm" onClick={() => setPickerOpen(true)}>
+            <Search className="h-3.5 w-3.5" /> 选择测试接收人
+          </AdminButton>
+          <div className="flex items-center gap-2">
+            <AdminButton type="button" tone="ghost" size="sm" onClick={onClose}>取消</AdminButton>
+            <AdminButton type="button" tone="primary" size="sm" loading={sending} onClick={doSend}>
+              <Send className="h-3.5 w-3.5" /> 发送
+            </AdminButton>
+          </div>
+        </div>
+
+        {result && (
+          <p className="mt-3 text-xs text-[var(--app-color-text-secondary)] bg-[var(--app-color-surface-elevated)] rounded-lg p-2 whitespace-pre-wrap">{result}</p>
+        )}
+
+        {pickerOpen && (
+          <PersonnelPicker
+            onClose={() => setPickerOpen(false)}
+            onConfirm={(ids, names) => {
+              setTestIds(ids);
+              setTestNames(names);
+              setPickerOpen(false);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  ChannelConfigSection — modal popup                                 */
+/* ------------------------------------------------------------------ */
+
+function ChannelConfigSection({
+  source,
+  drafts,
+  savingChannels,
+  onUpdate,
+  onSave,
+}: {
+  source: NotifySourceConfig;
+  drafts: Record<number, ChannelDraft>;
+  savingChannels: Set<string>;
+  onUpdate: (sourceId: number, channelId: number, patch: Partial<ChannelDraft>) => void;
+  onSave: (sourceId: number, channelCode: string, body: ChannelDraft) => void;
+}) {
+  const [openChannel, setOpenChannel] = useState<string | null>(null);
+
+  const channelDefs: Array<{ code: string; name: string; icon: React.ReactNode; formatHint: string }> = [
+    { code: "EMAIL", name: "邮件通知", icon: <Mail className="h-3.5 w-3.5" />, formatHint: "邮件支持 HTML 格式。" },
+    { code: "SERVER_CHAN", name: "Server酱", icon: <MessageSquareText className="h-3.5 w-3.5" />, formatHint: "Server酱支持 Markdown（含表格、图片）。图片语法：![img](https://example.com/a.png)，需公网 URL，不支持 base64。" },
+  ];
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-[var(--app-color-text-primary)] mb-2 flex items-center gap-1.5">
+        <Bell className="h-3.5 w-3.5 text-[var(--app-color-accent)]" />
+        渠道与模板
+      </h4>
+      <div className="flex flex-wrap gap-2">
+        {channelDefs.map((def) => {
+          const ch = source.channels.find(c => c.channelCode === def.code);
+          const draft = ch ? drafts[ch.id] : null;
+          const enabled = draft?.enabled ?? false;
+          return (
+            <div key={def.code} className="inline-flex items-center gap-0.5">
+              <AdminButton type="button" tone={enabled ? "secondary" : "ghost"} size="sm"
+                onClick={() => setOpenChannel(def.code)}>
+                {def.icon}
+                {def.name}
+              </AdminButton>
+              <AdminSwitchScaled size="sm" checked={enabled}
+                onChange={(v) => { const c = source.channels.find(x => x.channelCode === def.code); if (c) onUpdate(source.sourceId, c.id, { enabled: v }); }} />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Per-channel modal */}
+      {openChannel && (() => {
+        const ch = source.channels.find(c => c.channelCode === openChannel);
+        if (!ch) return null;
+        const draft = drafts[ch.id];
+        if (!draft) return null;
+        const def = channelDefs.find(d => d.code === openChannel)!;
+        const saveKey = `${source.sourceId}:${ch.channelCode}`;
+        const isSaving = savingChannels.has(saveKey);
+
+        return (
+          <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={() => setOpenChannel(null)}>
+            <div className="w-full max-w-lg max-h-[85vh] overflow-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-[var(--app-color-text-primary)] flex items-center gap-2">
+                  {def.icon} {def.name} — {source.sourceName}
+                </h3>
+                <button onClick={() => setOpenChannel(null)} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]">
+                  <X className="h-4 w-4 text-[var(--app-color-text-tertiary)]" />
+                </button>
+              </div>
+
+              {/* Variables */}
+              {Object.keys(source.variables ?? {}).length > 0 && (
+                <div className="rounded-lg border border-dashed border-[var(--app-color-accent)]/30 bg-[var(--app-color-accent-soft)] p-2 mb-3">
+                  <p className="text-[11px] font-medium text-[var(--app-color-text-primary)] mb-1 flex items-center gap-1">
+                    <Variable className="h-3 w-3 text-[var(--app-color-accent)]" /> 可用变量
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(source.variables ?? {}).map(([k, v]) => (
+                      <code key={k} className="inline-block rounded bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--app-color-accent)] cursor-pointer hover:bg-[var(--app-color-accent)]/10"
+                        onClick={() => onUpdate(source.sourceId, ch.id, { titleTpl: draft.titleTpl + `{${k}}` })} title={`${k}: ${v}`}>
+                        {`{${k}}`}
+                      </code>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-[10px] text-[var(--app-color-text-tertiary)]">
+                    {Object.entries(source.variables ?? {}).map(([k, v]) => `${k}: ${v}`).join("；")}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className={adminLabelClass}>标题模板</label>
+                  <input className={cn(adminInputClass, "mt-1")} value={draft.titleTpl}
+                    onChange={(e) => onUpdate(source.sourceId, ch.id, { titleTpl: e.target.value })} />
+                </div>
+                <div>
+                  <label className={adminLabelClass}>内容模板</label>
+                  <textarea className={cn(adminInputClass, "mt-1 min-h-[120px] resize-y")} value={draft.contentTpl}
+                    placeholder={def.formatHint}
+                    onChange={(e) => onUpdate(source.sourceId, ch.id, { contentTpl: e.target.value })} />
+                  <p className="mt-1 text-[10px] text-[var(--app-color-text-tertiary)]">{def.formatHint}</p>
+                </div>
+                <p className="text-[11px] font-medium text-[var(--app-color-text-secondary)] mt-3 mb-1 flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> 通知时间段
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className={adminLabelClass}>开始</label>
+                    <input className={cn(adminInputClass, "mt-1")} type="time" value={draft.quietStart}
+                      onChange={(e) => onUpdate(source.sourceId, ch.id, { quietStart: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className={adminLabelClass}>结束</label>
+                    <input className={cn(adminInputClass, "mt-1")} type="time" value={draft.quietEnd}
+                      onChange={(e) => onUpdate(source.sourceId, ch.id, { quietEnd: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className={adminLabelClass}>频率限制(秒)</label>
+                    <input className={cn(adminInputClass, "mt-1")} type="number" min={0} value={draft.rateLimitSeconds}
+                      onChange={(e) => onUpdate(source.sourceId, ch.id, { rateLimitSeconds: Number(e.target.value) })} />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end">
+                  <AdminButton type="button" tone="primary" size="sm" loading={isSaving}
+                    onClick={() => onSave(source.sourceId, ch.channelCode, draft)}>
+                    <Save className="h-3.5 w-3.5" /> 保存
+                  </AdminButton>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  RecipientSection sub-component                                     */
+/* ------------------------------------------------------------------ */
+
+interface PersonnelRow {
+  id: string;
+  name: string;
+  jobNumber: string;
+  role: string;
+  departmentName: string;
+  contactEmail: string;
+  sendKey: string;
+}
+
+function RecipientSection({
+  source,
+  drafts,
+  onAdd,
+  onRemove,
+  onUpdate,
+  onSave,
+}: {
+  source: NotifySourceConfig;
+  drafts: RecipientDraft[];
+  saving: boolean;
+  onAdd: (rec?: RecipientDraft) => void;
+  onRemove: (idx: number) => void;
+  onUpdate: (idx: number, patch: Partial<RecipientDraft>) => void;
+  onSave: (list: RecipientDraft[]) => void;
+}) {
+  const hasAutoResolve = "targetUserId" in (source.variables ?? {});
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Each draft holds ONE user ID; display name comes from server-resolved scopeLabel
+  const selectedPeople = useMemo(() => {
+    return drafts
+      .filter(r => r.scopeType === "USER" && r.scopeValue)
+      .map((r, idx) => ({
+        id: r.scopeValue,
+        name: r.scopeLabel || r.scopeValue,
+        draftIdx: idx,
+      }));
+  }, [drafts]);
+
+  const removePerson = (_id: string, draftIdx: number) => {
+    const newList = drafts.filter((_, i) => i !== draftIdx);
+    if (newList.length === 0) {
+      onRemove(draftIdx);
+      onSave([]);
+    } else {
+      onRemove(draftIdx);
+      onSave(newList);
+    }
+  };
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-[var(--app-color-text-primary)] mb-2 flex items-center gap-1.5">
+        <Users className="h-3.5 w-3.5 text-[var(--app-color-accent)]" />
+        接收人
+        {hasAutoResolve && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--app-color-accent)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--app-color-accent)]">
+            <UserPlus className="h-3 w-3" />
+            自动索引
+          </span>
+        )}
+      </h4>
+
+      {hasAutoResolve && (
+        <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-2 leading-relaxed">
+          此消息源包含 <code className="text-[10px] bg-[var(--app-color-surface-hover)] px-1 rounded">targetUserId</code>，
+          系统自动查找该人员的 contact_email / send_key 推送。以下额外接收人将同时收到通知。
+        </p>
+      )}
+
+      {selectedPeople.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          {selectedPeople.map(({ id, name, draftIdx }) => (
+            <span
+              key={id}
+              className="inline-flex items-center gap-1 rounded-md bg-[var(--app-color-accent)]/15 border border-[var(--app-color-accent)]/25 px-2 py-1 text-xs font-medium text-[var(--app-color-accent)] max-w-[200px]"
+              title={id}
+            >
+              <span className="truncate">{name}</span>
+              <button
+                type="button"
+                onClick={() => removePerson(id, draftIdx)}
+                className="rounded-sm p-0.5 hover:bg-[var(--app-color-accent)]/20 transition-colors shrink-0"
+                title="移除"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <AdminButton
+          type="button" tone="primary" size="sm"
+          onClick={() => setPickerOpen(true)}
+        >
+          <Search className="h-3.5 w-3.5" aria-hidden /> {hasAutoResolve ? "添加额外人员" : "添加人员"}
+        </AdminButton>
+        {selectedPeople.length > 0 && (
+          <AdminButton
+            type="button" tone="secondary" size="sm"
+            onClick={() => onSave(drafts)}
+          >
+            <Save className="h-3.5 w-3.5" /> 保存
+          </AdminButton>
+        )}
+      </div>
+
+      {pickerOpen && (
+        <PersonnelPicker
+          onClose={() => setPickerOpen(false)}
+          onConfirm={(ids, names) => {
+            const newRecs: RecipientDraft[] = ids.map((id, i) => ({
+              perspective: "ALL", scopeType: "USER", scopeValue: id,
+              scopeLabel: names[i] ?? id,
+            }));
+            for (const rec of newRecs) onAdd(rec);
+            onSave([...drafts, ...newRecs]);
+            setPickerOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  PersonnelPicker — modal with student/staff tabs + search + multi   */
+/* ------------------------------------------------------------------ */
+
+function PersonnelPicker({
+  initialIds,
+  onClose,
+  onConfirm,
+}: {
+  perspective?: string;
+  initialIds?: string[];
+  onClose: () => void;
+  onConfirm: (ids: string[], names: string[]) => void;
+}) {
+  const [tab, setTab] = useState<"STUDENT" | "STAFF">("STUDENT");
+  const [keyword, setKeyword] = useState("");
+  const [debouncedKeyword, setDebouncedKeyword] = useState("");
+  const [selected, setSelected] = useState<Map<string, PersonnelRow>>(new Map());
+  const [allRows, setAllRows] = useState<PersonnelRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [systemRows, setSystemRows] = useState<PersonnelRow[]>([]);
+  const [sysLoading, setSysLoading] = useState(false);
+  const PAGE_SIZE = 50;
+
+  // Debounce keyword input to avoid firing API on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedKeyword(keyword.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [keyword]);
+
+  const fetchPage = useCallback(async (kw: string, pg: number, reset: boolean) => {
+    setLoading(true);
+    try {
+      const res = await authHttp.get("/admin/personnel", { params: { keyword: kw || undefined, page: pg, size: PAGE_SIZE } });
+      const paged: any = res.data?.data;
+      const rows: PersonnelRow[] = Array.isArray(paged?.data) ? paged.data : (Array.isArray(paged) ? paged : []);
+      setAllRows(prev => {
+        const merged = reset ? rows : [...prev, ...rows];
+        const seen = new Set<string>();
+        return merged.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; });
+      });
+      setTotal(paged?.total ?? rows.length);
+    } catch { if (reset) setAllRows([]); }
+    finally { setLoading(false); }
+  }, []);
+
+  // Fetch personnel when on STUDENT tab and debounced keyword changes
+  useEffect(() => {
+    if (tab !== "STUDENT") return;
+    fetchPage(debouncedKeyword, 1, true);
+  }, [fetchPage, debouncedKeyword, tab]);
+
+  // Fetch system-only users (staff accounts not in personnel library) via backend search
+  useEffect(() => {
+    if (tab !== "STAFF") return;
+    let cancelled = false;
+    (async () => {
+      setSysLoading(true);
+      try {
+        const res = await authHttp.get("/admin/system-users", {
+          params: { keyword: debouncedKeyword || undefined, page: 1, size: 200 },
+        });
+        if (cancelled) return;
+        const paged: any = res.data?.data;
+        const rows: any[] = Array.isArray(paged?.data) ? paged.data : (Array.isArray(paged) ? paged : []);
+        const mapped: PersonnelRow[] = rows.map((r: any) => ({
+          id: r.id,
+          name: r.displayNickname || r.username || "",
+          jobNumber: r.username || "",
+          role: r.role || "STAFF",
+          departmentName: "",
+          contactEmail: "",
+          sendKey: "",
+        }));
+        setSystemRows(mapped);
+      } catch { if (!cancelled) setSystemRows([]); }
+      finally { if (!cancelled) setSysLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [debouncedKeyword, tab]);
+
+  const nextPage = Math.floor(allRows.length / PAGE_SIZE) + 1;
+  const hasMore = tab === "STUDENT" && allRows.length < total;
+
+  const filtered = useMemo(() => {
+    if (tab === "STUDENT") {
+      // All aro_personnel records are students (see bootstrap-add-account-source.sql).
+      return allRows;
+    }
+    // STAFF tab: system-only users (staff accounts without personnel records)
+    return systemRows;
+  }, [allRows, systemRows, tab]);
+
+  const toggle = (row: PersonnelRow) => {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(row.id)) next.delete(row.id);
+      else next.set(row.id, row);
+      return next;
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-sm font-bold text-[var(--app-color-text-primary)] mb-3">从人员库选择</h3>
+
+        <div className="flex gap-1 mb-3 rounded-lg bg-[var(--app-color-surface-hover)] p-0.5">
+          {(["STUDENT", "STAFF"] as const).map((t) => (
+            <button key={t} type="button" onClick={() => setTab(t)}
+              className={cn("flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                tab === t ? "bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-sm"
+                          : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]")}>
+              {t === "STUDENT" ? "学生" : "教职工"}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative mb-3">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--app-color-text-tertiary)]" />
+          <input className={cn(adminInputClass, "pl-8")} placeholder="搜索姓名或工号"
+            value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+        </div>
+
+        <div className="max-h-[300px] overflow-auto space-y-1 mb-3">
+          {(loading || sysLoading) && filtered.length === 0 ? (
+            <p className="text-xs text-[var(--app-color-text-tertiary)] text-center py-8">搜索中…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-xs text-[var(--app-color-text-tertiary)] text-center py-8">无结果</p>
+          ) : (
+            <>
+              {filtered.map((row) => {
+                const checked = selected.has(row.id);
+                return (
+                  <label key={row.id} className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer transition-colors text-xs",
+                    checked ? "bg-[var(--app-color-accent)]/10" : "hover:bg-[var(--app-color-surface-hover)]")}>
+                    <input type="checkbox" checked={checked} onChange={() => toggle(row)}
+                      className="h-3.5 w-3.5 rounded accent-[var(--app-color-accent)]" />
+                    <span className="font-medium min-w-[60px]">{row.name}</span>
+                    <span className="text-[var(--app-color-text-tertiary)]">{row.jobNumber}</span>
+                    <span className="text-[var(--app-color-text-tertiary)] truncate">{row.departmentName}</span>
+                    {row.contactEmail && <Mail className="h-3 w-3 text-[var(--app-color-feedback-success)] shrink-0" />}
+                    {row.sendKey && <MessageSquareText className="h-3 w-3 text-[var(--app-color-feedback-success)] shrink-0" />}
+                  </label>
+                );
+              })}
+              {hasMore && (
+                <button type="button" onClick={() => fetchPage(debouncedKeyword, nextPage, false)} disabled={loading}
+                  className="w-full py-1.5 text-xs text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)] rounded transition-colors">
+                  {loading ? "加载中…" : `加载更多 (${allRows.length}/${total})`}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-[var(--app-color-border-default)] pt-3">
+          <span className="text-xs text-[var(--app-color-text-tertiary)]">已选 {selected.size} 人</span>
+          <div className="flex gap-2">
+            <AdminButton type="button" tone="ghost" size="sm" onClick={onClose}>取消</AdminButton>
+            <AdminButton type="button" tone="primary" size="sm"
+              onClick={() => onConfirm(Array.from(selected.keys()), Array.from(selected.values()).map(r => r.name))}>
+              <Check className="h-3.5 w-3.5" /> 确定
+            </AdminButton>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

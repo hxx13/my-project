@@ -59,60 +59,135 @@ public class PushDispatchEngine {
         this.channels = channels;
     }
 
-    public void dispatch(String sourceCode, Map<String, String> variables, Set<String> dynamicUserIds) {
+    public Map<String, Object> dispatch(String sourceCode, Map<String, String> variables, Set<String> dynamicUserIds) {
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("sourceCode", sourceCode);
+        int totalSent = 0;
+        int totalFailed = 0;
+        int totalSkipped = 0;
+        List<String> diag = new ArrayList<>();
+
         NotifySource source = sourceService.getByCode(sourceCode);
         if (source.getEnabled() == null || source.getEnabled() != 1) {
-            log.debug("[Push] 通知源已禁用: {}", sourceCode);
-            return;
+            log.info("[Push] 通知源已禁用: {}", sourceCode);
+            report.put("error", "通知源已禁用");
+            diag.add("source disabled");
+            report.put("diagnosis", diag);
+            return report;
         }
+        diag.add("source found: " + source.getSourceName());
 
         List<NotifySourceChannel> channelConfigs = channelConfigService.listBySourceId(source.getId());
         if (channelConfigs.isEmpty()) {
-            return;
+            log.info("[Push] 无渠道配置: {}", sourceCode);
+            report.put("error", "通知源未配置任何渠道（notify_source_channel 为空）");
+            diag.add("no channel configs");
+            report.put("diagnosis", diag);
+            return report;
         }
+        diag.add("channel configs: " + channelConfigs.stream().map(c -> c.getChannelCode() + "=" + (c.getEnabled() == 1 ? "on" : "off")).toList());
 
         Set<String> allRecipientIds = resolveRecipients(source.getId(), dynamicUserIds);
         if (allRecipientIds.isEmpty()) {
-            log.debug("[Push] 无接收人: {}", sourceCode);
-            return;
+            log.info("[Push] 无接收人: {}", sourceCode);
+            report.put("error", "无接收人（notify_source_recipient 为空且未传 targetUserIds）");
+            diag.add("no recipients");
+            report.put("diagnosis", diag);
+            return report;
         }
+        diag.add("recipient count: " + allRecipientIds.size());
 
         // Batch preload users, display names, emails, and sendKeys
         List<String> idList = new ArrayList<>(allRecipientIds);
         Map<String, User> userCache = userMapper.findByIds(idList).stream()
                 .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
         Map<String, String> nameMap = displayNameService.resolveDisplayNames(idList);
-        Map<String, String> emailMap = personnelMapper.findContactEmailsByUserIds(idList);
-        if (emailMap == null) emailMap = Map.of();
-        Map<String, String> sendKeyMap = personnelMapper.findSendKeysByUserIds(idList);
-        if (sendKeyMap == null) sendKeyMap = Map.of();
+        // 分表查询：STAFF_* / SYS_SUPER_ROOT → sys_user；其余 → aro_personnel
+        List<String> staffIds = idList.stream().filter(id -> id.toUpperCase().startsWith("STAFF_") || "SYS_SUPER_ROOT".equals(id)).toList();
+        List<String> aroIds = idList.stream().filter(id -> !staffIds.contains(id)).toList();
+
+        Map<String, String> emailMap = new HashMap<>();
+        Map<String, String> sendKeyMap = new HashMap<>();
+        if (!aroIds.isEmpty()) {
+            List<Map<String, String>> aroEmails = personnelMapper.findContactEmailsByUserIds(aroIds);
+            if (aroEmails != null) {
+                for (Map<String, String> row : aroEmails) {
+                    String uid = row.get("user_id");
+                    String email = row.get("contact_email");
+                    if (uid != null && email != null && !email.isBlank()) emailMap.put(uid, email);
+                }
+            }
+            List<Map<String, String>> aroKeys = personnelMapper.findSendKeysByUserIds(aroIds);
+            if (aroKeys != null) {
+                for (Map<String, String> row : aroKeys) {
+                    String uid = row.get("user_id");
+                    String sk = row.get("send_key");
+                    if (uid != null && sk != null && !sk.isBlank()) sendKeyMap.put(uid, sk);
+                }
+            }
+        }
+        if (!staffIds.isEmpty()) {
+            List<Map<String, String>> userEmails = userMapper.findContactEmailsByIds(staffIds);
+            if (userEmails != null) {
+                for (Map<String, String> row : userEmails) {
+                    String uid = row.get("id");
+                    String email = row.get("contact_email");
+                    if (uid != null && email != null && !email.isBlank()) emailMap.put(uid, email);
+                }
+            }
+            List<Map<String, String>> userKeys = userMapper.findSendKeysByIds(staffIds);
+            if (userKeys != null) {
+                for (Map<String, String> row : userKeys) {
+                    String uid = row.get("id");
+                    String sk = row.get("send_key");
+                    if (uid != null && sk != null && !sk.isBlank()) sendKeyMap.put(uid, sk);
+                }
+            }
+        }
+        diag.add("email bindings: " + emailMap.size() + ", sendKey bindings: " + sendKeyMap.size());
+        diag.add("registered channels: " + channels.stream().map(PushChannel::getCode).toList());
 
         for (NotifySourceChannel channelCfg : channelConfigs) {
             if (channelCfg.getEnabled() == null || channelCfg.getEnabled() != 1) {
+                diag.add("channel " + channelCfg.getChannelCode() + " config disabled");
                 continue;
             }
             PushChannel channel = findChannel(channelCfg.getChannelCode());
-            if (channel == null || !channel.isEnabled()) {
+            if (channel == null) {
+                log.info("[Push] 渠道未注册: {}", channelCfg.getChannelCode());
+                diag.add("channel " + channelCfg.getChannelCode() + " not registered as bean");
+                continue;
+            }
+            if (!channel.isEnabled()) {
+                log.info("[Push] 渠道已停用: {}", channelCfg.getChannelCode());
+                diag.add("channel " + channelCfg.getChannelCode() + " system-disabled");
                 continue;
             }
 
             if (rateLimiter.isQuietTime(channelCfg)) {
-                log.debug("[Push] 静默时段: {}/{}", sourceCode, channel.getCode());
+                log.info("[Push] 静默时段跳过: {}/{}", sourceCode, channel.getCode());
+                diag.add("channel " + channel.getCode() + " in quiet time");
                 continue;
             }
 
             String title = render(channelCfg.getTitleTpl(), variables);
             String content = render(channelCfg.getContentTpl(), variables);
 
+            int chSent = 0, chFailed = 0, chSkipped = 0;
             for (String userId : allRecipientIds) {
                 // Batch-preloaded maps (C2 fix)
                 String target = PushConstants.CHANNEL_EMAIL.equals(channel.getCode())
                         ? emailMap.get(userId)
                         : sendKeyMap.get(userId);
-                if (target == null || target.isBlank()) continue;
+                if (target == null || target.isBlank()) {
+                    chSkipped++;
+                    diag.add("user " + userId + " has no binding for " + channel.getCode());
+                    continue;
+                }
 
                 int limitSec = channelCfg.getRateLimitSeconds() != null ? channelCfg.getRateLimitSeconds() : 300;
                 if (rateLimiter.isRateLimited(sourceCode, userId, channel.getCode(), limitSec)) {
+                    chSkipped++;
                     continue;
                 }
 
@@ -139,10 +214,16 @@ public class PushDispatchEngine {
                     PushResult result = channel.send(target, title, content);
                     if (result.isSuccess()) {
                         deliveryLogMapper.markDeliverySuccess(logEntry.getId(), result.getProviderMsgId());
+                        chSent++;
+                        log.info("[Push] 发送成功: {} -> {} via {}", sourceCode, recipientName, channel.getCode());
                     } else {
                         deliveryLogMapper.markDeliveryFailed(logEntry.getId(), result.getErrorCode(), result.getErrorMsg());
+                        chFailed++;
+                        log.warn("[Push] 发送失败: {} -> {} via {}: {} {}", sourceCode, recipientName, channel.getCode(),
+                                result.getErrorCode(), result.getErrorMsg());
                     }
                 } catch (Exception e) {
+                    chFailed++;
                     log.error("[Push] 单用户推送异常: {} {} {}", sourceCode, userId, channel.getCode(), e);
                     try {
                         deliveryLogMapper.markDeliveryFailed(logEntry.getId(), "INTERNAL_ERROR", e.getMessage());
@@ -151,7 +232,18 @@ public class PushDispatchEngine {
                     }
                 }
             }
+            totalSent += chSent;
+            totalFailed += chFailed;
+            totalSkipped += chSkipped;
         }
+
+        report.put("sent", totalSent);
+        report.put("failed", totalFailed);
+        report.put("skipped", totalSkipped);
+        report.put("diagnosis", diag);
+        log.info("[Push] dispatch 完成: {} sent={} failed={} skipped={} diag={}",
+                sourceCode, totalSent, totalFailed, totalSkipped, diag);
+        return report;
     }
 
     private Set<String> resolveRecipients(Long sourceId, Set<String> dynamicUserIds) {
@@ -178,7 +270,7 @@ public class PushDispatchEngine {
                         log.warn("[Push] 未知角色: {}", rc.getScopeValue());
                     }
                 } else if (PushConstants.SCOPE_USER.equals(rc.getScopeType()) && rc.getScopeValue() != null) {
-                    result.add(rc.getScopeValue());
+                    result.add(rc.getScopeValue().trim());
                 }
             } else if (PushConstants.PERSPECTIVE_STAFF.equals(rc.getPerspective())) {
                 if (PushConstants.SCOPE_ALL.equals(rc.getScopeType())) {
@@ -200,7 +292,7 @@ public class PushDispatchEngine {
                 log.warn("[Push] 未知角色: {}", rc.getScopeValue());
             }
         } else if (PushConstants.SCOPE_USER.equals(rc.getScopeType()) && rc.getScopeValue() != null) {
-            result.add(rc.getScopeValue());
+            result.add(rc.getScopeValue().trim());
         }
     }
 

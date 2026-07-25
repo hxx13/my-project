@@ -1,6 +1,7 @@
 package com.example.demo.modules.twin.dahua.service;
 
 import com.example.demo.modules.dahua.mapper.DahuaDeviceChannelCacheMapper;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.example.demo.modules.twin.dahua.entity.DahuaActivationState;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
@@ -51,6 +52,8 @@ public class DahuaSwingRuleEngineService {
     private final DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper;
     private final MobilePresenceNotifyService mobilePresenceNotifyService;
 
+    private final PushService pushService;
+
     public DahuaSwingRuleEngineService(
             DahuaSwingMapper dahuaSwingMapper,
             DahuaAutoSignoutService dahuaAutoSignoutService,
@@ -58,7 +61,8 @@ public class DahuaSwingRuleEngineService {
             TwinCardMappingService twinCardMappingService,
             TwinAutomationLogService twinAutomationLogService,
             DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper,
-            MobilePresenceNotifyService mobilePresenceNotifyService
+            MobilePresenceNotifyService mobilePresenceNotifyService,
+            PushService pushService
     ) {
         this.dahuaSwingMapper = dahuaSwingMapper;
         this.dahuaAutoSignoutService = dahuaAutoSignoutService;
@@ -67,6 +71,7 @@ public class DahuaSwingRuleEngineService {
         this.twinAutomationLogService = twinAutomationLogService;
         this.dahuaDeviceChannelCacheMapper = dahuaDeviceChannelCacheMapper;
         this.mobilePresenceNotifyService = mobilePresenceNotifyService;
+        this.pushService = pushService;
     }
 
     private void notifyMobilePresence(String userId, String reason) {
@@ -299,6 +304,7 @@ public class DahuaSwingRuleEngineService {
                             + (doorLabelEx.isBlank() ? "channel=" + channelCode : doorLabelEx),
                     "dahua-swing-record"
             );
+            try { pushService.send("SIGNOUT_COUNTDOWN", Map.of("countdownSeconds", String.valueOf(exitDelay), "scheduledExitAt", fmt(now.plusSeconds(exitDelay)), "doorLabel", doorLabelEx, "triggerReason", "EXIT_DELAY"), Set.of(userId)); } catch (Exception e) { log.warn("[Push] SIGNOUT_COUNTDOWN failed: {}", e.getMessage()); }
             notifyMobilePresence(userId, "auto_exit_scheduled");
             return;
         }
@@ -357,9 +363,11 @@ public class DahuaSwingRuleEngineService {
         state.setLastSwipeAt(fmt(now));
         state.setLastRecordId(record.getRecordId());
         state.setDebounceUntil(fmt(now.plusSeconds(debounceSeconds)));
-        if (alreadyActivated) {
+        // 已激活（当前门或任意其他门）→ 跳过，防止换门重复通知
+        if (alreadyActivated || userActivatedElsewhere) {
             dahuaSwingMapper.upsertActivationState(state);
-            log.debug("[swing-rule] skip-duplicate-activation-audit userId={} channel={}", userId, channelCode);
+            log.debug("[swing-rule] skip-duplicate-activation-audit userId={} channel={} alreadyActivated={} elsewhere={}",
+                    userId, channelCode, alreadyActivated, userActivatedElsewhere);
             return;
         }
         state.setState("ACTIVATED");
@@ -381,6 +389,7 @@ public class DahuaSwingRuleEngineService {
                 "dahua-swing-record"
         );
         notifyMobilePresence(userId, "activated");
+        try { pushService.send("ACTIVATION_SUCCESS", Map.of("doorLabel", doorLabel, "channelCode", channelCode, "swingTime", fmt(now)), Set.of(userId)); } catch (Exception e) { log.warn("[Push] ACTIVATION_SUCCESS failed: {}", e.getMessage()); }
     }
 
     /**

@@ -15,9 +15,10 @@ import com.example.demo.modules.auth.service.SpecialChannelService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -28,15 +29,18 @@ public class AdminController {
     private final SpecialChannelService specialChannelService;
     private final UserMapper userMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     public AdminController(AdminService adminService,
                           SpecialChannelService specialChannelService,
                           UserMapper userMapper,
-                          AroPersonnelMapper aroPersonnelMapper) {
+                          AroPersonnelMapper aroPersonnelMapper,
+                          JdbcTemplate jdbcTemplate) {
         this.adminService = adminService;
         this.specialChannelService = specialChannelService;
         this.userMapper = userMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @GetMapping("/personnel")
@@ -216,19 +220,67 @@ public class AdminController {
         }
     }
 
+    @PostMapping("/cleanup-personnel-placeholders")
+    @Operation(summary = "一次性清理 aro_personnel 占位行：迁移 contact_email/send_key 到 sys_user，再删除占位行")
+    public Result<Map<String, Object>> cleanupPersonnelPlaceholders(HttpServletRequest request) {
+        Result<?> denied = requireSuperAdmin(request);
+        if (denied != null) return (Result<Map<String, Object>>) (Object) denied;
+
+        // 1. 查出所有占位行 (job_number IS NULL AND name = user_id)
+        List<Map<String, Object>> placeholders = jdbcTemplate.queryForList(
+            "SELECT user_id, contact_email, send_key FROM aro_personnel WHERE job_number IS NULL AND name = user_id");
+        int migratedEmail = 0;
+        int migratedSendKey = 0;
+
+        for (Map<String, Object> row : placeholders) {
+            String uid = (String) row.get("user_id");
+            String email = (String) row.get("contact_email");
+            String sk = (String) row.get("send_key");
+            if (email != null && !email.isBlank()) {
+                jdbcTemplate.update("UPDATE sys_user SET contact_email = ? WHERE id = ?", email, uid);
+                migratedEmail++;
+            }
+            if (sk != null && !sk.isBlank()) {
+                jdbcTemplate.update("UPDATE sys_user SET send_key = ? WHERE id = ?", sk, uid);
+                migratedSendKey++;
+            }
+        }
+
+        // 2. 删除占位行
+        int deleted = jdbcTemplate.update(
+            "DELETE FROM aro_personnel WHERE job_number IS NULL AND name = user_id");
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("placeholderRows", placeholders.size());
+        result.put("migratedContactEmail", migratedEmail);
+        result.put("migratedSendKey", migratedSendKey);
+        result.put("deletedPlaceholders", deleted);
+        result.put("affectedUserIds", placeholders.stream().map(r -> r.get("user_id")).toList());
+        return Result.success(result);
+    }
+
+    private boolean isStaffId(String userId) {
+        return userId != null && (userId.toUpperCase().startsWith("STAFF_") || "SYS_SUPER_ROOT".equals(userId));
+    }
+
     @PutMapping("/personnel/{userId}/contact-email")
     @Operation(summary = "更新人员的联系邮箱（本地管理，不被ARO同步覆盖）")
     public Result<Void> updateContactEmail(@PathVariable String userId, @RequestBody Map<String, String> body) {
         String email = body != null ? body.get("email") : null;
         if (email == null || email.isBlank()) return Result.error("邮箱不能为空");
-        aroPersonnelMapper.updateContactEmail(userId, email.trim());
+        if (isStaffId(userId)) {
+            userMapper.updateContactEmail(userId, email.trim());
+        } else {
+            aroPersonnelMapper.ensureRowExists(userId);
+            aroPersonnelMapper.updateContactEmail(userId, email.trim());
+        }
         return Result.success();
     }
 
     @GetMapping("/personnel/{userId}/contact-email")
     @Operation(summary = "获取人员的联系邮箱")
     public Result<Map<String, Object>> getContactEmail(@PathVariable String userId) {
-        String email = aroPersonnelMapper.findContactEmailByUserId(userId);
+        String email = isStaffId(userId) ? userMapper.findContactEmailById(userId) : aroPersonnelMapper.findContactEmailByUserId(userId);
         return Result.success(Map.of("email", email != null ? email : ""));
     }
 
@@ -237,14 +289,19 @@ public class AdminController {
     public Result<Void> updateSendKey(@PathVariable String userId, @RequestBody Map<String, String> body) {
         String sendKey = body != null ? body.get("sendKey") : null;
         if (sendKey == null || sendKey.isBlank()) return Result.error("SendKey不能为空");
-        aroPersonnelMapper.updateSendKey(userId, sendKey.trim());
+        if (isStaffId(userId)) {
+            userMapper.updateSendKey(userId, sendKey.trim());
+        } else {
+            aroPersonnelMapper.ensureRowExists(userId);
+            aroPersonnelMapper.updateSendKey(userId, sendKey.trim());
+        }
         return Result.success();
     }
 
     @GetMapping("/personnel/{userId}/send-key")
     @Operation(summary = "获取人员的SendKey（脱敏）")
     public Result<Map<String, Object>> getSendKey(@PathVariable String userId) {
-        String sendKey = aroPersonnelMapper.findSendKeyByUserId(userId);
+        String sendKey = isStaffId(userId) ? userMapper.findSendKeyById(userId) : aroPersonnelMapper.findSendKeyByUserId(userId);
         String masked = sendKey != null && sendKey.length() > 10
                 ? sendKey.substring(0, 4) + "****" + sendKey.substring(sendKey.length() - 4)
                 : (sendKey != null ? "****" : "");

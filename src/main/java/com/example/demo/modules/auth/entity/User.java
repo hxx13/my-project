@@ -64,4 +64,10 @@ public class User {
      * 账号锁定截止时间（NULL 表示未锁定）。
      */
     private String loginLockedUntil;
+
+    /** 联系邮箱（本地管理，用于推送通知） */
+    private String contactEmail;
+
+    /** Server酱 SendKey（用于微信推送通知） */
+    private String sendKey;
 }

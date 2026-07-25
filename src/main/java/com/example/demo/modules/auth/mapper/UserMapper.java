@@ -77,10 +77,10 @@ public interface UserMapper {
     int clearLoginFailCount(@Param("id") String id);
 
     /** 批量查询 sys_user 的 contact_email（补 aro_personnel 不覆盖的 staff_* / SYS_SUPER_ROOT） */
-    java.util.Map<String, String> findContactEmailsByIds(@Param("ids") List<String> ids);
+    java.util.List<java.util.Map<String, String>> findContactEmailsByIds(@Param("ids") List<String> ids);
 
     /** 批量查询 sys_user 的 send_key */
-    java.util.Map<String, String> findSendKeysByIds(@Param("ids") List<String> ids);
+    java.util.List<java.util.Map<String, String>> findSendKeysByIds(@Param("ids") List<String> ids);
 
     int updateContactEmail(@Param("id") String id, @Param("contactEmail") String contactEmail);
     int updateSendKey(@Param("id") String id, @Param("sendKey") String sendKey);

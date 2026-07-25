@@ -15,15 +15,15 @@ public class PushService {
         this.engine = engine;
     }
 
-    public void send(String sourceCode, Map<String, String> variables) {
-        engine.dispatch(sourceCode, variables, null);
+    public Map<String, Object> send(String sourceCode, Map<String, String> variables) {
+        return engine.dispatch(sourceCode, variables, null);
     }
 
-    public void send(String sourceCode, Map<String, String> variables, Set<String> targetUserIds) {
-        engine.dispatch(sourceCode, variables, targetUserIds);
+    public Map<String, Object> send(String sourceCode, Map<String, String> variables, Set<String> targetUserIds) {
+        return engine.dispatch(sourceCode, variables, targetUserIds);
     }
 
-    public void send(PushRequest request) {
-        engine.dispatch(request.getSourceCode(), request.getVariables(), request.getTargetUserIds());
+    public Map<String, Object> send(PushRequest request) {
+        return engine.dispatch(request.getSourceCode(), request.getVariables(), request.getTargetUserIds());
     }
 }

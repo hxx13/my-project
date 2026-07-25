@@ -54,6 +54,7 @@
           <view class="ap-card-head-main">
             <view class="ap-name-row">
               <text class="ap-title">{{ item.displayName }}</text>
+              <view class="ap-actions">
               <view
                 wx:if="{{ item.id !== builtinSuperId }}"
                 class="ap-chip ap-chip--tap {{ item.status === 0 ? 'ap-chip--off' : 'ap-chip--on' }}"
@@ -70,25 +71,22 @@
                 catchtap="onResetOpenId"
               >重置绑定</text>
               <text
-                wx:if="{{ activeTab === 'system' && item.id !== builtinSuperId }}"
+                wx:if="{{ item.id !== builtinSuperId && activeTab === 'personnel' }}"
                 class="ap-ic"
                 data-id="{{ item.id }}"
-                catchtap="onResetPassword"
-              >改密</text>
+                catchtap="onResetPersonnelAccount"
+              >重置账号</text>
               <text
-                wx:if="{{ activeTab === 'system' && item.id !== builtinSuperId && item.id !== myUserId && item.username }}"
-                class="ap-ic ap-ic--danger"
+                wx:if="{{ item.id !== builtinSuperId }}"
+                class="ap-ic"
                 data-id="{{ item.id }}"
-                catchtap="onDeleteStaffStep1"
-              >删除</text>
+                catchtap="{{ activeTab === 'personnel' ? 'onResetPersonnelPassword' : 'onResetPassword' }}"
+              >改密</text>
+              <!-- 删除按钮已隐藏 -->
+              </view>
             </view>
-            <text class="ap-sub mono">{{ item.idListText }}</text>
           </view>
         </view>
-
-        <van-cell-group wx:if="{{ activeTab === 'personnel' && item.username }}" inset border="{{ false }}" custom-class="ap-cell-group">
-          <van-cell title="登录账号" value="{{ item.usernameListText }}" title-class="ap-cell-title" value-class="ap-cell-value mono" />
-        </van-cell-group>
 
         <view wx:if="{{ activeTab === 'system' }}" class="ap-nick-line">
           <text class="ap-kv-label">昵称</text>
@@ -140,15 +138,17 @@
         <view class="ap-kv-row">
           <text class="ap-kv-label">密码</text>
           <view class="ap-pwd-inline">
-            <text class="mono ap-pwd-mask">{{ item._pwdVisible ? (item.password || '—') : '••••••' }}</text>
+            <text class="mono ap-pwd-mask">{{ item._pwdVisible ? (item._pwdPlaintext || item.password || '—') : '••••••' }}</text>
             <text
               wx:if="{{ item.id !== builtinSuperId }}"
               class="ap-ic"
               data-id="{{ item.id }}"
               catchtap="onTogglePwd"
             >{{ item._pwdVisible ? '隐' : '显' }}</text>
+            <text wx:else class="ap-muted">受保护</text>
           </view>
         </view>
+
       </view>
 
       <view class="ap-footer">
@@ -172,7 +172,7 @@
     <scroll-view scroll-y class="ap-detail-scroll" enable-flex>
       <view wx:for="{{ detailLines }}" wx:for-index="didx" wx:key="didx" class="ap-detail-line">
         <text class="ap-detail-k">{{ item.k }}</text>
-        <text class="ap-detail-v" selectable="true">{{ item.v }}</text>
+        <text class="ap-detail-v {{ item.k === '密码' ? 'mono' : '' }}" selectable="true">{{ item.v }}</text>
       </view>
     </scroll-view>
   </van-popup>
@@ -307,6 +307,44 @@
     <view class="ap-sheet-actions">
       <van-button block round plain hairline type="primary" bind:click="onCloseDeleteSheet">取消</van-button>
       <van-button block round type="danger" loading="{{ deleteSubmitting }}" bind:click="onSubmitDeleteStaff">确认删除</van-button>
+    </view>
+  </van-popup>
+
+  <!-- 邮箱编辑弹窗 -->
+  <van-popup
+    show="{{ showEmailPopup }}"
+    position="center"
+    round
+    closeable
+    custom-class="ap-modal-shell"
+    bind:close="onCloseEmailPopup"
+  >
+    <view class="ap-modal-title">修改联系邮箱</view>
+    <view class="ap-modal-body">
+      <view class="ap-modal-field">
+        <text class="ap-modal-label">邮箱地址</text>
+        <input
+          class="ap-modal-input"
+          type="text"
+          value="{{ emailEditValue }}"
+          maxlength="{{ 128 }}"
+          placeholder="请输入邮箱地址"
+          placeholder-class="ap-toolbar-ph"
+          bindinput="onEmailInput"
+        />
+      </view>
+    </view>
+    <view class="ap-modal-footer">
+      <view
+        class="ap-modal-btn ap-modal-btn--ghost {{ emailSubmitting ? 'ap-modal-btn--disabled' : '' }}"
+        hover-class="ap-tool-btn--hover"
+        catchtap="onCloseEmailPopup"
+      >取消</view>
+      <view
+        class="ap-modal-btn ap-modal-btn--primary {{ emailSubmitting ? 'ap-modal-btn--disabled' : '' }}"
+        hover-class="ap-tool-btn--hover"
+        catchtap="onSubmitEmail"
+      >{{ emailSubmitting ? '保存中…' : '保存' }}</view>
     </view>
   </van-popup>
 </view>

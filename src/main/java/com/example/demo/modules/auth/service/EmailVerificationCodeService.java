@@ -100,7 +100,7 @@ public class EmailVerificationCodeService {
 
         boolean sent = sendEmail(email, subject, bodyTemplate);
         if (!sent) {
-            log.info("=== [DEV] 验证码 for {} scene={}: {} ===", email, scene, code);
+            log.warn("SMTP send failed for {} scene={} — check MAIL_HOST configuration", email, scene);
         }
         return SendResult.ok("验证码已发送", COOLDOWN_SECONDS);
     }

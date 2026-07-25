@@ -1,6 +1,7 @@
 package com.example.demo.modules.notification.push.retry;
 
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
+import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.notification.entity.NotifyDeliveryLog;
 import com.example.demo.modules.notification.mapper.NotificationMiniProgramMapper;
 import com.example.demo.modules.notification.mapper.NotificationSettingsMapper;
@@ -25,15 +26,18 @@ public class PushRetryScheduler {
     private final NotificationMiniProgramMapper logMapper;
     private final NotificationSettingsMapper settingsMapper;
     private final AroPersonnelMapper personnelMapper;
+    private final UserMapper userMapper;
     private final List<PushChannel> channels;
 
     public PushRetryScheduler(NotificationMiniProgramMapper logMapper,
                                NotificationSettingsMapper settingsMapper,
                                AroPersonnelMapper personnelMapper,
+                               UserMapper userMapper,
                                List<PushChannel> channels) {
         this.logMapper = logMapper;
         this.settingsMapper = settingsMapper;
         this.personnelMapper = personnelMapper;
+        this.userMapper = userMapper;
         this.channels = channels;
     }
 
@@ -45,9 +49,11 @@ public class PushRetryScheduler {
             PushChannel channel = findChannel(entry.getChannel());
             if (channel == null || !channel.isEnabled()) continue;
 
+            String userId = entry.getRecipientUserId();
+            boolean isStaff = userId != null && (userId.startsWith("staff_") || "SYS_SUPER_ROOT".equals(userId));
             String target = PushConstants.CHANNEL_EMAIL.equals(channel.getCode())
-                    ? personnelMapper.findContactEmailByUserId(entry.getRecipientUserId())
-                    : personnelMapper.findSendKeyByUserId(entry.getRecipientUserId());
+                    ? (isStaff ? userMapper.findContactEmailById(userId) : personnelMapper.findContactEmailByUserId(userId))
+                    : (isStaff ? userMapper.findSendKeyById(userId) : personnelMapper.findSendKeyByUserId(userId));
             if (target == null || target.isBlank()) continue;
 
             PushResult result = channel.send(target,

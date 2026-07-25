@@ -180,7 +180,7 @@
     <select id="existsPersonnelById" resultType="int">
         SELECT COUNT(1)
         FROM aro_personnel
-        WHERE user_id = #{id} AND job_number IS NOT NULL
+        WHERE user_id = #{id}
     </select>
 
     <delete id="deleteById">

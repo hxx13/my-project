@@ -7,6 +7,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.example.demo.modules.notification.service.NotificationService;
 import com.example.demo.modules.student.service.MobilePresenceNotifyService;
 import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
@@ -86,6 +87,9 @@ public class ScanDelayRequestService {
     @Autowired
     private MobilePresenceNotifyService mobilePresenceNotifyService;
 
+    @Autowired
+    private PushService pushService;
+
     @Transactional
     public Map<String, Object> submitRequest(
             String subjectUserId,
@@ -157,6 +161,7 @@ public class ScanDelayRequestService {
         // 免审直批：无申请单据，requestId 传 null，操作人记申请提交人
         Map<String, Object> granted = grantExempt(cardNo, opt, roomId.trim(), "DIRECT", operatorUserId, null);
         granted.put("optionLabel", opt.getOptionLabel());
+        try { pushService.send("SCAN_DELAY_MANUAL", Map.of("roomName", resolveRoomDisplayName(roomId.trim(), opt), "optionLabel", opt.getOptionLabel(), "operatorName", operatorUserId), Set.of(subjectUserId)); } catch (Exception e) { log.warn("[Push] SCAN_DELAY_MANUAL failed: {}", e.getMessage()); }
         if (mobilePresenceNotifyService != null) {
             mobilePresenceNotifyService.notifyPresenceChanged(subjectUserId.trim(), "scan_delay_granted");
         }
@@ -692,6 +697,7 @@ public class ScanDelayRequestService {
         } catch (Exception e) {
             log.warn("[scan-delay] notify subject failed: {}", e.getMessage());
         }
+        try { pushService.send("SCAN_DELAY_REVIEWED", Map.of("roomName", resolveRoomDisplayName(req.getRoomId(), opt), "optionLabel", opt != null ? opt.getOptionLabel() : "延迟免冻结", "auditResult", approve ? "已通过" : "已拒绝", "rejectReason", rejectReason != null ? rejectReason : ""), Set.of(req.getSubjectUserId())); } catch (Exception e) { log.warn("[Push] SCAN_DELAY_REVIEWED failed: {}", e.getMessage()); }
     }
 
     private void notifyConfiguredReviewers(TwinScanDelayRequest req, TwinScanDelayOption opt, List<String> reviewerIds) {
@@ -722,6 +728,7 @@ public class ScanDelayRequestService {
                     + roomLabel + " · " + opt.getOptionLabel());
             event.setVariables(vars);
             notificationService.publish(event);
+            try { pushService.send("SCAN_DELAY_REQUESTED", Map.of("subjectName", subjectName, "subjectGroup", subjectGroup, "roomName", resolveRoomDisplayName(req.getRoomId(), opt), "optionLabel", opt.getOptionLabel(), "requestId", String.valueOf(req.getId())), new HashSet<>(reviewerIds)); } catch (Exception ex) { log.warn("[Push] SCAN_DELAY_REQUESTED failed: {}", ex.getMessage()); }
         } catch (Exception e) {
             log.warn("[scan-delay] notify reviewers failed: {}", e.getMessage());
         }

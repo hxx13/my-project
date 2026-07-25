@@ -28,9 +28,10 @@ CREATE TABLE IF NOT EXISTS notify_source_recipient (
     source_id BIGINT NOT NULL,
     perspective VARCHAR(16) NOT NULL COMMENT 'STUDENT | STAFF | ALL',
     scope_type VARCHAR(16) DEFAULT 'ALL' COMMENT 'ALL | ROLE | USER',
-    scope_value VARCHAR(64),
-    UNIQUE KEY uk_src_psp_scope (source_id, perspective, scope_type, scope_value)
+    scope_value VARCHAR(128) COMMENT '单用户ID（每人一行）'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- scope_value 宽度修复由 PushColumnEnsurer 在启动时幂等执行
 
 -- Extend sys_notify_delivery_log (NO next_retry_at — reuse existing next_retry_time)
 ALTER TABLE sys_notify_delivery_log ADD COLUMN source_code VARCHAR(64) DEFAULT NULL;

@@ -34,5 +34,7 @@ public class NotifySourceConfigDTO {
         private String perspective;
         private String scopeType;
         private String scopeValue;
+        /** 人员显示名（由服务端解析 scopeValue → 姓名） */
+        private String scopeLabel;
     }
 }

@@ -3,6 +3,7 @@ package com.example.demo.modules.material.service;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.entity.User;
@@ -51,6 +52,8 @@ public class MaterialService {
     @Lazy
     private MaterialAutoApproveService autoApproveService;
 
+    private final PushService pushService;
+
     public MaterialService(MaterialCategoryMapper categoryMapper, MaterialItemMapper itemMapper,
                            MaterialCartMapper cartMapper, MaterialRequestMapper requestMapper,
                            MaterialRequestLineMapper requestLineMapper,
@@ -59,7 +62,8 @@ public class MaterialService {
                            NotificationService notificationService,
                            UserDisplayNameService userDisplayNameService,
                            AroPersonnelMapper aroPersonnelMapper,
-                           UserMapper userMapper) {
+                           UserMapper userMapper,
+                           PushService pushService) {
         this.categoryMapper = categoryMapper;
         this.itemMapper = itemMapper;
         this.cartMapper = cartMapper;
@@ -71,6 +75,7 @@ public class MaterialService {
         this.userDisplayNameService = userDisplayNameService;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.userMapper = userMapper;
+        this.pushService = pushService;
     }
 
     // ==================== 分类 ====================
@@ -685,6 +690,7 @@ public class MaterialService {
 
             logOp("REQUEST", id, "SUBMIT", Map.of("lines", groupLines.size(), "workflow", workflowType, "reviewerGroup", groupKey));
             publishMaterialEvent("CREATED", id, user.getId(), user.getId(), "共 " + groupLines.size() + " 项物资");
+        try { pushService.send("MATERIAL_REQUESTED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(user.getId()), "applicantGroup", resolveApplicantGroup(user.getId(), null), "summary", "共 " + groupLines.size() + " 项物资", "bizId", String.valueOf(id), "createdAt", LocalDateTime.now().toString()), resolveReviewerUserIdsForRequest(requestMapper.selectById(id))); } catch (Exception e) { log.warn("[Push] MATERIAL_REQUESTED failed: {}", e.getMessage()); }
             if ("PENDING".equals(requestMapper.selectById(id).getStatus())) {
                 try {
                     autoApproveService.tryTrustOnSubmit(id);
@@ -1164,6 +1170,7 @@ public class MaterialService {
         logOp("REQUEST", requestId, "FULFILL", detail);
         publishMaterialEvent("COMPLETED", requestId, operator != null ? operator.getId() : null, request.getUserId(),
                 buildFulfillSummary(itemNames));
+        try { pushService.send("MATERIAL_REVIEWED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(request.getUserId()), "auditResult", "已通过", "summary", buildFulfillSummary(itemNames), "bizId", String.valueOf(requestId)), Set.of(request.getUserId())); } catch (Exception e) { log.warn("[Push] MATERIAL_REVIEWED failed: {}", e.getMessage()); }
     }
 
     @Transactional
@@ -1182,6 +1189,7 @@ public class MaterialService {
         }
         logOp("REQUEST", id, "REJECT", Map.of("reviewer", reviewer.getId()));
         publishMaterialEvent("COMPLETED", id, reviewer.getId(), request.getUserId(), "审核已拒绝");
+        try { pushService.send("MATERIAL_REVIEWED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(request.getUserId()), "auditResult", "已拒绝", "summary", "审核已拒绝", "bizId", String.valueOf(id)), Set.of(request.getUserId())); } catch (Exception e) { log.warn("[Push] MATERIAL_REVIEWED failed: {}", e.getMessage()); }
         return Result.success(null);
     }
 

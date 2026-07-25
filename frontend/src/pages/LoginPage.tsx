@@ -423,7 +423,10 @@ export default function LoginPage() {
       if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
       cooldownTimerRef.current = setInterval(() => {
         setForgotEmailCooldown((prev) => {
-          if (prev <= 1) { cooldownTimerRef.current = null; return 0; }
+          if (prev <= 1) {
+            if (cooldownTimerRef.current) { clearInterval(cooldownTimerRef.current); cooldownTimerRef.current = null; }
+            return 0;
+          }
           return prev - 1;
         });
       }, 1000);
@@ -472,6 +475,7 @@ export default function LoginPage() {
     setForgotVerified(false);
     setForgotUserId(""); setForgotPhone("");
     setForgotPersonnelName(""); setQrDecoded(false);
+    setForgotExistingUsername(""); setForgotNewUsername(""); setForgotNewPassword("");
     setForgotEmail(""); setForgotEmailCode("");
     setForgotEmailSending(false); setForgotEmailCooldown(0);
     setForgotEmailStep("email"); setForgotEmailResetToken("");

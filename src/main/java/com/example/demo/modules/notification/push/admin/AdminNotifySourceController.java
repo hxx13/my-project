@@ -9,6 +9,7 @@ import com.example.demo.modules.notification.push.config.NotifySourceChannelServ
 import com.example.demo.modules.notification.push.dto.NotifySourceConfigDTO;
 import com.example.demo.modules.notification.push.recipient.NotifySourceRecipient;
 import com.example.demo.modules.notification.push.recipient.NotifySourceRecipientService;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.notification.push.source.NotifySource;
 import com.example.demo.modules.notification.push.source.NotifySourceService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -25,14 +26,17 @@ public class AdminNotifySourceController {
     private final NotifySourceService sourceService;
     private final NotifySourceChannelService channelConfigService;
     private final NotifySourceRecipientService recipientService;
+    private final UserDisplayNameService displayNameService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AdminNotifySourceController(NotifySourceService sourceService,
                                         NotifySourceChannelService channelConfigService,
-                                        NotifySourceRecipientService recipientService) {
+                                        NotifySourceRecipientService recipientService,
+                                        UserDisplayNameService displayNameService) {
         this.sourceService = sourceService;
         this.channelConfigService = channelConfigService;
         this.recipientService = recipientService;
+        this.displayNameService = displayNameService;
     }
 
     private Result<?> requireSuperAdmin(HttpServletRequest request) {
@@ -105,11 +109,21 @@ public class AdminNotifySourceController {
         }
         dto.setChannels(channels);
 
+        List<NotifySourceRecipient> rawRecipients = recipientService.listBySourceId(src.getId());
+        // Resolve scopeValue → display name in batch
+        List<String> scopeUserIds = rawRecipients.stream()
+                .filter(r -> "USER".equals(r.getScopeType()) && r.getScopeValue() != null)
+                .map(NotifySourceRecipient::getScopeValue)
+                .distinct().toList();
+        Map<String, String> nameMap = scopeUserIds.isEmpty() ? Map.of()
+                : displayNameService.resolveDisplayNames(scopeUserIds);
+
         List<NotifySourceConfigDTO.RecipientConfig> recipients = new ArrayList<>();
-        for (NotifySourceRecipient r : recipientService.listBySourceId(src.getId())) {
+        for (NotifySourceRecipient r : rawRecipients) {
             NotifySourceConfigDTO.RecipientConfig rc = new NotifySourceConfigDTO.RecipientConfig();
             rc.setId(r.getId()); rc.setPerspective(r.getPerspective());
             rc.setScopeType(r.getScopeType()); rc.setScopeValue(r.getScopeValue());
+            rc.setScopeLabel("USER".equals(r.getScopeType()) ? nameMap.getOrDefault(r.getScopeValue(), r.getScopeValue()) : null);
             recipients.add(rc);
         }
         dto.setRecipients(recipients);

@@ -28,6 +28,8 @@ export interface SystemUserRecord {
   /** 与小程序自助修改同一字段 */
   displayNickname?: string | null;
   miniBindType?: string | null;
+  contactEmail?: string | null;
+  sendKey?: string | null;
 }
 
 interface Result<T> {
@@ -43,16 +45,18 @@ interface PagedResult<T> {
 }
 
 export async function fetchAdminPersonnel(page = 1, size = 20, keyword = "") {
-  const res = await adminHttp.get<Result<PagedResult<PersonnelAuthRecord>>>("/personnel", {
-    params: { page, size, keyword },
-  });
+  const params: Record<string, unknown> = { page, size };
+  const kw = keyword?.trim();
+  if (kw) params.keyword = kw;
+  const res = await adminHttp.get<Result<PagedResult<PersonnelAuthRecord>>>("/personnel", { params });
   return res.data.data;
 }
 
 export async function fetchSystemOnlyUsers(page = 1, size = 20, keyword = "") {
-  const res = await adminHttp.get<Result<PagedResult<SystemUserRecord>>>("/system-users", {
-    params: { page, size, keyword },
-  });
+  const params: Record<string, unknown> = { page, size };
+  const kw = keyword?.trim();
+  if (kw) params.keyword = kw;
+  const res = await adminHttp.get<Result<PagedResult<SystemUserRecord>>>("/system-users", { params });
   return res.data.data;
 }
 

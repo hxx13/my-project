@@ -8,8 +8,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.URLEncoder;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
@@ -43,10 +44,16 @@ public class ServerChanPushChannel implements PushChannel {
             return PushResult.fail("INVALID_TARGET", "SendKey为空");
         }
         try {
-            String url = String.format(API_URL, target)
-                    + "?title=" + URLEncoder.encode(title != null ? title : "", StandardCharsets.UTF_8)
-                    + "&desp=" + URLEncoder.encode(content != null ? content : "", StandardCharsets.UTF_8);
-            String response = restTemplate.getForObject(url, String.class);
+            URI uri = UriComponentsBuilder
+                    .fromHttpUrl(String.format(API_URL, target))
+                    .queryParam("title", title != null ? title : "")
+                    .queryParam("desp", content != null ? content : "")
+                    .encode(StandardCharsets.UTF_8)
+                    .build()
+                    .toUri();
+            log.info("[ServerChan] calling: title={}, despLen={}",
+                    title, content != null ? content.length() : 0);
+            String response = restTemplate.getForObject(uri, String.class);
             if (response != null) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> map = objectMapper.readValue(response, Map.class);

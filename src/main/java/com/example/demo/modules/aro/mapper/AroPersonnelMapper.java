@@ -76,11 +76,11 @@ public interface AroPersonnelMapper {
     String findContactEmailByUserId(@Param("userId") String userId);
     String findSendKeyByUserId(@Param("userId") String userId);
 
-    /** 批量查邮箱，返回 userId→email 映射 */
-    java.util.Map<String, String> findContactEmailsByUserIds(@Param("userIds") List<String> userIds);
+    /** 批量查邮箱，返回 userId→email 列表 */
+    java.util.List<java.util.Map<String, String>> findContactEmailsByUserIds(@Param("userIds") List<String> userIds);
 
-    /** 批量查SendKey，返回 userId→sendKey 映射 */
-    java.util.Map<String, String> findSendKeysByUserIds(@Param("userIds") List<String> userIds);
+    /** 批量查SendKey，返回 userId→sendKey 列表 */
+    java.util.List<java.util.Map<String, String>> findSendKeysByUserIds(@Param("userIds") List<String> userIds);
 
     String findUserIdByContactEmail(@Param("contactEmail") String contactEmail);
 }
