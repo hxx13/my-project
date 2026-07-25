@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.notification.push.source.NotifySourceMapper">
+  <resultMap id="BaseResultMap" type="com.example.demo.modules.notification.push.source.NotifySource">
+    <id column="id" property="id"/>
+    <result column="source_code" property="sourceCode"/>
+    <result column="source_name" property="sourceName"/>
+    <result column="description" property="description"/>
+    <result column="variables" property="variables"/>
+    <result column="enabled" property="enabled"/>
+    <result column="create_time" property="createTime"/>
+    <result column="update_time" property="updateTime"/>
+  </resultMap>
+  <select id="findByCode" resultMap="BaseResultMap">SELECT * FROM notify_source WHERE source_code = #{sourceCode}</select>
+  <select id="findById" resultMap="BaseResultMap">SELECT * FROM notify_source WHERE id = #{id}</select>
+  <select id="findAll" resultMap="BaseResultMap">SELECT * FROM notify_source ORDER BY id</select>
+  <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    INSERT INTO notify_source (source_code, source_name, description, variables, enabled)
+    VALUES (#{sourceCode}, #{sourceName}, #{description}, #{variables}, #{enabled})
+  </insert>
+  <insert id="insertOrIgnore">
+    INSERT IGNORE INTO notify_source (source_code, source_name, description, variables, enabled)
+    VALUES (#{sourceCode}, #{sourceName}, #{description}, #{variables}, #{enabled})
+  </insert>
+  <update id="updateEnabled">UPDATE notify_source SET enabled = #{enabled} WHERE id = #{id}</update>
+</mapper>
