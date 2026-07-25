@@ -407,8 +407,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
       {/* Email bind dialog */}
       {showEmailDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowEmailDialog(false)}>
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-semibold text-gray-900">绑定邮箱</h3>
+          <div className="bg-white rounded-2xl w-[85%] max-w-xs p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-gray-900">绑定邮箱</h3>
             <p className="mt-1 text-xs text-gray-500">设置用于接收通知的联系邮箱</p>
             <input type="email" value={emailDraft} onChange={(e) => setEmailDraft(e.target.value)} placeholder="请输入邮箱地址"
               className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#ac1736]" />
@@ -455,8 +455,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
       {/* SendKey bind dialog */}
       {showSendKeyDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowSendKeyDialog(false)}>
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-semibold text-gray-900">绑定微信通知</h3>
+          <div className="bg-white rounded-2xl w-[85%] max-w-xs p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-gray-900">绑定微信通知</h3>
             <p className="mt-1 text-xs text-gray-500">通过 Server酱 SendKey 接收微信推送通知</p>
             <p className="mt-1 text-[11px] text-[#d97706] underline cursor-pointer"
               onClick={() => { navigator.clipboard.writeText("https://sct.ftqq.com/"); alert("链接已复制，请在浏览器中打开"); }}>
