@@ -45,7 +45,13 @@ CREATE TABLE IF NOT EXISTS notify_digest_item (
     INDEX idx_status_time (status, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 4. notify_source_channel 加 digest_mode
-ALTER TABLE notify_source_channel
-    ADD COLUMN IF NOT EXISTS digest_mode VARCHAR(32) NOT NULL DEFAULT 'INSTANT'
-    COMMENT 'INSTANT | HOURLY | TWICE_DAILY | DAILY';
+-- 4. notify_source_channel 加 digest_mode（MySQL 兼容写法）
+-- ALTER TABLE notify_source_channel ADD COLUMN digest_mode ... （如已存在则跳过）
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notify_source_channel' AND COLUMN_NAME = 'digest_mode');
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE notify_source_channel ADD COLUMN digest_mode VARCHAR(32) NOT NULL DEFAULT ''INSTANT'' COMMENT ''INSTANT | HOURLY | TWICE_DAILY | DAILY''',
+    'SELECT ''column digest_mode already exists''');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

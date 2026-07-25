@@ -59,6 +59,7 @@ public class PushTemplateSeed implements ApplicationRunner {
                     cfg.setTitleTpl(t.title);
                     cfg.setContentTpl(content);
                     cfg.setRateLimitSeconds(300);
+                    cfg.setDigestMode("INSTANT");
                     channelMapper.insert(cfg);
                     log.info("[Push] 种子模板 {}/{} -> {}", src.getSourceCode(), ch, t.title);
                 }
