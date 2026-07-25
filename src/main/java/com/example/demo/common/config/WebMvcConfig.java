@@ -39,7 +39,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/v1/**", "/api/me/**", "/api/chat/**",
                         "/api/upload/**", "/api/notifications/**", "/api/supplies/**",
                         "/api/repair/**", "/api/purchase/**", "/api/mp/**",
-                        "/api/face/**", "/api/scan/**")
+                        "/api/face/**", "/api/scan/**", "/api/user/push-bindings/**")
                 .excludePathPatterns("/api/auth/**", "/api/public/**",
                         "/api/event/**", "/api/upload/files/**",
                         "/api/upload/sync/**", "/api/upload/records/*",
