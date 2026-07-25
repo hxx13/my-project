@@ -42,7 +42,7 @@ export default function AdminPushDashboardPage() {
     refetch,
   } = useQuery<PushDashboardOverview>({
     queryKey: ["push-dashboard-overview"],
-    queryFn: () => authHttp.get("/api/admin/push-dashboard/overview").then((r) => r.data.data),
+    queryFn: () => authHttp.get("/admin/push-dashboard/overview").then((r) => r.data.data),
     refetchInterval: 60_000,
   });
 

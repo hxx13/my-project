@@ -126,7 +126,7 @@ export default function AdminPushConfigPage() {
     refetch: refetchSources,
   } = useQuery<NotifySourceConfig[]>({
     queryKey: ["notify-sources"],
-    queryFn: () => authHttp.get("/api/admin/notify-source").then((r) => r.data.data),
+    queryFn: () => authHttp.get("/admin/notify-source").then((r) => r.data.data),
   });
 
   const { data: overview } = useQuery<PushDashboardOverview>({
