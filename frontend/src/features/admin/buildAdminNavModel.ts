@@ -671,7 +671,17 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
 
   if (serverConfig.length > 0) {
     const model = convertServerConfigToModel(serverConfig, pendingBadges, ctx);
-    sidebarGroups = model.sidebarGroups;
+    // 过滤掉 registry 中已不存在的条目（如被删除的 push-log）
+    const registryPathSet = new Set(
+      ADMIN_NAV_REGISTRY.flatMap(g => collectRegistryGroupItems(g).map(it => normalizeAdminPath(it.path)))
+    );
+    const filterStale = (items: AdminSidebarNavItem[]) =>
+      items.filter(it => registryPathSet.has(normalizeAdminPath(it.to)));
+    sidebarGroups = model.sidebarGroups.map(g => ({
+      ...g,
+      items: filterStale(g.items),
+      subgroups: g.subgroups?.map(sg => ({ ...sg, items: filterStale(sg.items) })).filter(sg => sg.items.length > 0),
+    })).filter(g => g.items.length > 0 || (g.subgroups?.length ?? 0) > 0);
     homeSections = model.homeSections;
   } else {
     // Fallback to hardcoded registry

@@ -4,6 +4,8 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.example.demo.modules.twin.scan.dto.DahuaIssueCardRequest;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.scan.service.DahuaIssueException;
@@ -23,9 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -43,6 +43,8 @@ public class TwinMappingController {
     private final DahuaIssueCardOrchestratorService dahuaIssueCardOrchestratorService;
     private final JobSchedulerService jobSchedulerService;
     private final TwinAutomationLogService automationLogService;
+    private final PushService pushService;
+    private final UserDisplayNameService displayNameService;
 
     public TwinMappingController(
             TwinCardMappingService mappingService,
@@ -52,7 +54,9 @@ public class TwinMappingController {
             AuthContextService authContextService,
             DahuaIssueCardOrchestratorService dahuaIssueCardOrchestratorService,
             JobSchedulerService jobSchedulerService,
-            TwinAutomationLogService automationLogService) {
+            TwinAutomationLogService automationLogService,
+            PushService pushService,
+            UserDisplayNameService displayNameService) {
         this.mappingService = mappingService;
         this.freezeConfigService = freezeConfigService;
         this.accessRuleScanConfigService = accessRuleScanConfigService;
@@ -61,6 +65,8 @@ public class TwinMappingController {
         this.dahuaIssueCardOrchestratorService = dahuaIssueCardOrchestratorService;
         this.jobSchedulerService = jobSchedulerService;
         this.automationLogService = automationLogService;
+        this.pushService = pushService;
+        this.displayNameService = displayNameService;
     }
 
     @GetMapping
@@ -303,6 +309,27 @@ public class TwinMappingController {
                     ExemptChangeContext.manualAdmin(user.getId(), client));
             log.info("[twin] exempt cardNo={} flag={} mode={} maxCount={} by userId={}",
                     cardNo, flag, mode, maxCount, user.getId());
+            // 授予豁免时异步推送通知给学生（不阻塞API响应）
+            if (flag == 1 && updated != null) {
+                String subjectUserId = (String) updated.get("aroUserId");
+                if (subjectUserId != null && !subjectUserId.isBlank()) {
+                    String roomDisplay = extractRoomNames(roomIds);
+                    String optionDesc = describeExemptMode(mode, durationMinutes, maxCount, extendUntilTime);
+                    String operatorName = displayNameService.resolveDisplayName(user.getId());
+                    java.util.concurrent.CompletableFuture.runAsync(() -> {
+                        try {
+                            pushService.send("SCAN_DELAY_MANUAL",
+                                    Map.of("roomName", roomDisplay,
+                                           "optionLabel", optionDesc,
+                                           "operatorName", operatorName),
+                                    Set.of(subjectUserId.trim()));
+                            log.info("[Push] SCAN_DELAY_MANUAL sent via exempt controller: userId={}", subjectUserId);
+                        } catch (Exception e) {
+                            log.warn("[Push] SCAN_DELAY_MANUAL failed in exempt controller: {}", e.getMessage());
+                        }
+                    });
+                }
+            }
             return Result.success(updated);
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
@@ -469,5 +496,51 @@ public class TwinMappingController {
             return Result.error("无权限访问");
         }
         return null;
+    }
+
+    /** 从 JSON roomIds 提取人类可读的房间名，如 [{"roomId":"...","roomName":"302A"}] → "302A" */
+    private static String extractRoomNames(String roomIds) {
+        if (roomIds == null || roomIds.isBlank()) return "指定房间";
+        // 尝试解析 JSON 数组提取 roomName
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            var list = om.readValue(roomIds, java.util.List.class);
+            if (list.isEmpty()) return "指定房间";
+            StringBuilder sb = new StringBuilder();
+            for (var item : list) {
+                if (item instanceof java.util.Map<?, ?> m) {
+                    Object name = m.get("roomName");
+                    if (name != null && !name.toString().isBlank()) {
+                        if (!sb.isEmpty()) sb.append("、");
+                        sb.append(name);
+                    }
+                }
+            }
+            return sb.isEmpty() ? "指定房间" : sb.toString();
+        } catch (Exception e) {
+            // 非 JSON → 原样返回（如逗号分隔的纯 roomId 列表）
+            return roomIds.replaceAll("[\\[\\]\"]", "").trim();
+        }
+    }
+
+    private static String describeExemptMode(String mode, Integer durationMinutes, Integer maxCount, String extendUntilTime) {
+        if ("COUNT".equals(mode)) {
+            return "次数限制 · 可用 " + (maxCount != null ? maxCount : "?") + " 次";
+        } else if ("TIME".equals(mode)) {
+            String until = extendUntilTime != null && !extendUntilTime.isBlank()
+                    ? "至 " + extendUntilTime
+                    : (durationMinutes != null && durationMinutes > 0
+                        ? durationMinutes + " 分钟"
+                        : "已授权");
+            return "时长限制 · " + until;
+        } else if ("BOTH".equals(mode)) {
+            String until = extendUntilTime != null && !extendUntilTime.isBlank()
+                    ? "至 " + extendUntilTime
+                    : (durationMinutes != null && durationMinutes > 0
+                        ? durationMinutes + " 分钟"
+                        : "已授权");
+            return "时长+次数限制 · " + until + " · 可用 " + (maxCount != null ? maxCount : "?") + " 次";
+        }
+        return "已授权";
     }
 }

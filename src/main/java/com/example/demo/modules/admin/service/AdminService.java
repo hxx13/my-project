@@ -3,6 +3,7 @@ package com.example.demo.modules.admin.service;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.admin.dto.CreateSystemStaffRequest;
 import com.example.demo.modules.admin.mapper.AdminMapper;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.PasswordCredentialService;
@@ -21,13 +22,16 @@ public class AdminService {
     private final AdminMapper adminMapper;
     private final UserMapper userMapper;
     private final PasswordCredentialService passwordCredentialService;
+    private final AroPersonnelMapper aroPersonnelMapper;
 
     public AdminService(AdminMapper adminMapper,
                         UserMapper userMapper,
-                        PasswordCredentialService passwordCredentialService) {
+                        PasswordCredentialService passwordCredentialService,
+                        AroPersonnelMapper aroPersonnelMapper) {
         this.adminMapper = adminMapper;
         this.userMapper = userMapper;
         this.passwordCredentialService = passwordCredentialService;
+        this.aroPersonnelMapper = aroPersonnelMapper;
     }
 
     public Map<String, Object> listPersonnel(int page, int size, String keyword) {
@@ -319,10 +323,8 @@ public class AdminService {
     }
 
     public void resetOpenId(String id) {
-        User target = userMapper.findById(id);
-        if (target == null) {
-            throw new IllegalArgumentException("用户不存在");
-        }
+        // 学生 openId 存在 aro_personnel，教职工 openId 存在 sys_user；两条都执行，各清各的
+        aroPersonnelMapper.clearOpenId(id);
         userMapper.clearOpenIdById(id);
     }
 }

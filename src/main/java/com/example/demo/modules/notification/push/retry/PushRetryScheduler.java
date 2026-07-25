@@ -4,7 +4,6 @@ import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.notification.entity.NotifyDeliveryLog;
 import com.example.demo.modules.notification.mapper.NotificationMiniProgramMapper;
-import com.example.demo.modules.notification.mapper.NotificationSettingsMapper;
 import com.example.demo.modules.notification.push.PushConstants;
 import com.example.demo.modules.notification.push.channel.PushChannel;
 import com.example.demo.modules.notification.push.channel.PushResult;
@@ -21,21 +20,17 @@ public class PushRetryScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(PushRetryScheduler.class);
     private static final int MAX_RETRIES = 3;
-    private static final int HEALTH_THRESHOLD = 50;
 
     private final NotificationMiniProgramMapper logMapper;
-    private final NotificationSettingsMapper settingsMapper;
     private final AroPersonnelMapper personnelMapper;
     private final UserMapper userMapper;
     private final List<PushChannel> channels;
 
     public PushRetryScheduler(NotificationMiniProgramMapper logMapper,
-                               NotificationSettingsMapper settingsMapper,
                                AroPersonnelMapper personnelMapper,
                                UserMapper userMapper,
                                List<PushChannel> channels) {
         this.logMapper = logMapper;
-        this.settingsMapper = settingsMapper;
         this.personnelMapper = personnelMapper;
         this.userMapper = userMapper;
         this.channels = channels;
@@ -67,23 +62,6 @@ public class PushRetryScheduler {
                 logMapper.markRetryAttempt(entry.getId(),
                         LocalDateTime.now().plusMinutes(delayMinutes),
                         result.getErrorCode(), result.getErrorMsg());
-            }
-        }
-        checkChannelHealth();
-    }
-
-    private void checkChannelHealth() {
-        for (PushChannel ch : channels) {
-            long failed = logMapper.countRecentFailed(ch.getCode(), 10);
-            if (failed > HEALTH_THRESHOLD) {
-                log.warn("[Push] 渠道 {} 10分钟失败{}条，自动暂停", ch.getCode(), failed);
-                var configs = settingsMapper.listConfigsByModule(PushConstants.CONFIG_MODULE);
-                for (var item : configs) {
-                    if ((ch.getCode() + ".enabled").equals(item.getConfigKey())) {
-                        item.setConfigValue("false");
-                        settingsMapper.updateConfig(item);
-                    }
-                }
             }
         }
     }

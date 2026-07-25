@@ -544,8 +544,9 @@
       </view>
     </view>
     <view class="mine-email-btns">
+      <view wx:if="{{ currentEmail }}" class="ap-modal-btn ap-modal-btn--danger" hover-class="ap-tool-btn--hover" catchtap="doUnbindEmail">取消绑定</view>
       <view class="ap-modal-btn ap-modal-btn--ghost" hover-class="ap-tool-btn--hover" catchtap="onCloseEmailEditor">取消</view>
-      <view class="ap-modal-btn ap-modal-btn--primary {{ emailSaving ? 'ap-modal-btn--disabled' : '' }}" hover-class="ap-tool-btn--hover" catchtap="onSubmitEmail">{{ emailSaving ? '保存中…' : '保存' }}</view>
+      <view class="ap-modal-btn ap-modal-btn--primary {{ emailSaving ? 'ap-modal-btn--disabled' : '' }}" hover-class="ap-tool-btn--hover" catchtap="onSubmitEmail">{{ emailSaving ? '保存中…' : (currentEmail ? '更换邮箱' : '保存') }}</view>
     </view>
   </view>
 </van-popup>

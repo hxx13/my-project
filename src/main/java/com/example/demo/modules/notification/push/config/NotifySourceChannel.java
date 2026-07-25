@@ -8,7 +8,7 @@ public class NotifySourceChannel {
     private Long id;
     private Long sourceId;
     private String channelCode;
-    private Integer enabled;
+    private Boolean enabled;
     private String titleTpl;
     private String contentTpl;
     private LocalTime quietStart;

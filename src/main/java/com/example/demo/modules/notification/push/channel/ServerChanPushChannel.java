@@ -7,11 +7,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 @Component
@@ -44,16 +46,18 @@ public class ServerChanPushChannel implements PushChannel {
             return PushResult.fail("INVALID_TARGET", "SendKey为空");
         }
         try {
-            URI uri = UriComponentsBuilder
-                    .fromHttpUrl(String.format(API_URL, target))
-                    .queryParam("title", title != null ? title : "")
-                    .queryParam("desp", content != null ? content : "")
-                    .encode(StandardCharsets.UTF_8)
-                    .build()
-                    .toUri();
+            // POST form-urlencoded 避免 GET URI 编码问题
+            String url = String.format(API_URL, target);
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("title", title != null ? title : "");
+            form.add("desp", content != null ? content : "");
+            form.add("short", title != null ? title : "");
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            HttpEntity<MultiValueMap<String, String>> req = new HttpEntity<>(form, headers);
             log.info("[ServerChan] calling: title={}, despLen={}",
                     title, content != null ? content.length() : 0);
-            String response = restTemplate.getForObject(uri, String.class);
+            String response = restTemplate.postForObject(url, req, String.class);
             if (response != null) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> map = objectMapper.readValue(response, Map.class);

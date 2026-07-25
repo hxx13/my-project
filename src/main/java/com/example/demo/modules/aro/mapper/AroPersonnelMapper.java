@@ -83,4 +83,14 @@ public interface AroPersonnelMapper {
     java.util.List<java.util.Map<String, String>> findSendKeysByUserIds(@Param("userIds") List<String> userIds);
 
     String findUserIdByContactEmail(@Param("contactEmail") String contactEmail);
+
+    /** 按 openId 查人员库用户 ID（学生 openId 主存储） */
+    @Select("SELECT user_id FROM aro_personnel WHERE open_id = #{openId} LIMIT 1")
+    String findUserIdByOpenId(@Param("openId") String openId);
+
+    /** 写入 openId */
+    int updateOpenId(@Param("userId") String userId, @Param("openId") String openId);
+
+    /** 清除 openId */
+    int clearOpenId(@Param("userId") String userId);
 }

@@ -267,12 +267,13 @@ public class AdminController {
     @Operation(summary = "更新人员的联系邮箱（本地管理，不被ARO同步覆盖）")
     public Result<Void> updateContactEmail(@PathVariable String userId, @RequestBody Map<String, String> body) {
         String email = body != null ? body.get("email") : null;
-        if (email == null || email.isBlank()) return Result.error("邮箱不能为空");
+        // 空值 = 取消绑定
+        String trimmed = (email != null && !email.isBlank()) ? email.trim() : null;
         if (isStaffId(userId)) {
-            userMapper.updateContactEmail(userId, email.trim());
+            userMapper.updateContactEmail(userId, trimmed);
         } else {
             aroPersonnelMapper.ensureRowExists(userId);
-            aroPersonnelMapper.updateContactEmail(userId, email.trim());
+            aroPersonnelMapper.updateContactEmail(userId, trimmed);
         }
         return Result.success();
     }
@@ -288,12 +289,12 @@ public class AdminController {
     @Operation(summary = "更新人员的Server酱SendKey")
     public Result<Void> updateSendKey(@PathVariable String userId, @RequestBody Map<String, String> body) {
         String sendKey = body != null ? body.get("sendKey") : null;
-        if (sendKey == null || sendKey.isBlank()) return Result.error("SendKey不能为空");
+        String trimmed = (sendKey != null && !sendKey.isBlank()) ? sendKey.trim() : null;
         if (isStaffId(userId)) {
-            userMapper.updateSendKey(userId, sendKey.trim());
+            userMapper.updateSendKey(userId, trimmed);
         } else {
             aroPersonnelMapper.ensureRowExists(userId);
-            aroPersonnelMapper.updateSendKey(userId, sendKey.trim());
+            aroPersonnelMapper.updateSendKey(userId, trimmed);
         }
         return Result.success();
     }

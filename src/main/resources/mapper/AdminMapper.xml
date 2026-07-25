@@ -14,7 +14,7 @@
             su.username,
             su.password,
             su.role,
-            su.open_id AS openId,
+            COALESCE(ap.open_id, su.open_id) AS openId,
             su.status,
             ap.personal_pin AS personalPin,
             ap.pin_updated_at AS pinUpdatedAt,

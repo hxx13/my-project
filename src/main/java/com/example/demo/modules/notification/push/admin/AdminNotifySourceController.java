@@ -100,7 +100,7 @@ public class AdminNotifySourceController {
             NotifySourceConfigDTO.ChannelConfig cc = new NotifySourceConfigDTO.ChannelConfig();
             cc.setId(ch.getId()); cc.setChannelCode(ch.getChannelCode());
             cc.setChannelName("EMAIL".equals(ch.getChannelCode()) ? "邮件通知" : "Server酱微信通知");
-            cc.setEnabled(ch.getEnabled() == 1);
+            cc.setEnabled(Boolean.TRUE.equals(ch.getEnabled()));
             cc.setTitleTpl(ch.getTitleTpl()); cc.setContentTpl(ch.getContentTpl());
             cc.setQuietStart(ch.getQuietStart() != null ? ch.getQuietStart().toString() : null);
             cc.setQuietEnd(ch.getQuietEnd() != null ? ch.getQuietEnd().toString() : null);

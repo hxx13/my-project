@@ -85,7 +85,7 @@ public class PushDispatchEngine {
             report.put("diagnosis", diag);
             return report;
         }
-        diag.add("channel configs: " + channelConfigs.stream().map(c -> c.getChannelCode() + "=" + (c.getEnabled() == 1 ? "on" : "off")).toList());
+        diag.add("channel configs: " + channelConfigs.stream().map(c -> c.getChannelCode() + "=" + (Boolean.TRUE.equals(c.getEnabled()) ? "on" : "off")).toList());
 
         Set<String> allRecipientIds = resolveRecipients(source.getId(), dynamicUserIds);
         if (allRecipientIds.isEmpty()) {
@@ -148,7 +148,7 @@ public class PushDispatchEngine {
         diag.add("registered channels: " + channels.stream().map(PushChannel::getCode).toList());
 
         for (NotifySourceChannel channelCfg : channelConfigs) {
-            if (channelCfg.getEnabled() == null || channelCfg.getEnabled() != 1) {
+            if (!Boolean.TRUE.equals(channelCfg.getEnabled())) {
                 diag.add("channel " + channelCfg.getChannelCode() + " config disabled");
                 continue;
             }
@@ -217,7 +217,9 @@ public class PushDispatchEngine {
                         chSent++;
                         log.info("[Push] 发送成功: {} -> {} via {}", sourceCode, recipientName, channel.getCode());
                     } else {
-                        deliveryLogMapper.markDeliveryFailed(logEntry.getId(), result.getErrorCode(), result.getErrorMsg());
+                        deliveryLogMapper.markDeliveryFailed(logEntry.getId(),
+                                truncate(result.getErrorCode(), 64),
+                                truncate(result.getErrorMsg(), 500));
                         chFailed++;
                         log.warn("[Push] 发送失败: {} -> {} via {}: {} {}", sourceCode, recipientName, channel.getCode(),
                                 result.getErrorCode(), result.getErrorMsg());
@@ -226,7 +228,8 @@ public class PushDispatchEngine {
                     chFailed++;
                     log.error("[Push] 单用户推送异常: {} {} {}", sourceCode, userId, channel.getCode(), e);
                     try {
-                        deliveryLogMapper.markDeliveryFailed(logEntry.getId(), "INTERNAL_ERROR", e.getMessage());
+                        deliveryLogMapper.markDeliveryFailed(logEntry.getId(),
+                                "INTERNAL_ERROR", truncate(e.getMessage(), 500));
                     } catch (Exception ignored) {
                         // best-effort
                     }
@@ -307,5 +310,10 @@ public class PushDispatchEngine {
             result = result.replace("{" + e.getKey() + "}", e.getValue() != null ? e.getValue() : "");
         }
         return result;
+    }
+
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return null;
+        return s.length() <= maxLen ? s : s.substring(0, maxLen - 3) + "...";
     }
 }

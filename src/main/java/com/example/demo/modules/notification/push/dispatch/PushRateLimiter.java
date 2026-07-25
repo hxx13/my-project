@@ -30,12 +30,16 @@ public class PushRateLimiter {
     public boolean isRateLimited(String sourceCode, String userId, String channelCode, int limitSeconds) {
         String key = sourceCode + "|" + userId + "|" + channelCode;
         long now = System.currentTimeMillis();
-        Long last = lastSendCache.get(key);
-        if (last != null && (now - last) < limitSeconds * 1000L) {
-            return true;
-        }
-        lastSendCache.put(key, now);
-        return false;
+        // 使用 compute 原子操作，防止并发重复点击跳过限流
+        boolean[] blocked = {false};
+        lastSendCache.compute(key, (k, v) -> {
+            if (v != null && (now - v) < limitSeconds * 1000L) {
+                blocked[0] = true; // 在限流窗口内，保持旧时间戳
+                return v;
+            }
+            return now; // 不在窗口内或首次，更新时间戳
+        });
+        return blocked[0];
     }
 
     public void clear() {

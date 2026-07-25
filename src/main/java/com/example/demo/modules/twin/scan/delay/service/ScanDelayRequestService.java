@@ -161,7 +161,7 @@ public class ScanDelayRequestService {
         // 免审直批：无申请单据，requestId 传 null，操作人记申请提交人
         Map<String, Object> granted = grantExempt(cardNo, opt, roomId.trim(), "DIRECT", operatorUserId, null);
         granted.put("optionLabel", opt.getOptionLabel());
-        try { pushService.send("SCAN_DELAY_MANUAL", Map.of("roomName", resolveRoomDisplayName(roomId.trim(), opt), "optionLabel", opt.getOptionLabel(), "operatorName", operatorUserId), Set.of(subjectUserId)); } catch (Exception e) { log.warn("[Push] SCAN_DELAY_MANUAL failed: {}", e.getMessage()); }
+        try { pushService.send("SCAN_DELAY_MANUAL", Map.of("roomName", resolveRoomDisplayName(roomId.trim(), opt), "optionLabel", opt.getOptionLabel(), "operatorName", userDisplayNameService.resolveDisplayName(operatorUserId)), Set.of(subjectUserId)); } catch (Exception e) { log.warn("[Push] SCAN_DELAY_MANUAL failed: {}", e.getMessage()); }
         if (mobilePresenceNotifyService != null) {
             mobilePresenceNotifyService.notifyPresenceChanged(subjectUserId.trim(), "scan_delay_granted");
         }

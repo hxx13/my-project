@@ -48,7 +48,7 @@ public class PushTemplateSeed implements ApplicationRunner {
                 NotifySourceChannel cfg = new NotifySourceChannel();
                 cfg.setSourceId(src.getId());
                 cfg.setChannelCode(ch);
-                cfg.setEnabled(1);
+                cfg.setEnabled(true);
                 cfg.setTitleTpl(t.title);
                 cfg.setContentTpl("EMAIL".equals(ch) ? t.contentEmail : t.contentWechat);
                 cfg.setRateLimitSeconds(300);
@@ -73,14 +73,14 @@ public class PushTemplateSeed implements ApplicationRunner {
                 "<h3>签退倒计时</h3><p>{doorLabel} 已启动 <b>{countdownSeconds} 秒</b> 签退倒计时。</p>"
                         + "<p>计划签退时间：{scheduledExitAt}</p><p>触发原因：{triggerReason}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 签退倒计时\n{doorLabel} 已启动 **{countdownSeconds} 秒** 签退倒计时\n计划签退：{scheduledExitAt}\n> ARO 系统自动推送"
+                "## 签退倒计时\n{doorLabel} 已启动 **{countdownSeconds} 秒** 签退倒计时\n计划签退：{scheduledExitAt}\n原因：{triggerReason}\n> ARO 系统自动推送"
         ));
         TEMPLATES.put("MATERIAL_REQUESTED", new Template(
                 "物资申领 — {applicantName}",
                 "<h3>新物资申领</h3><p><b>{applicantName}</b>（{applicantGroup}）提交了物资申领：{summary}</p>"
                         + "<p>单号：{bizId} | 时间：{createdAt}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 新物资申领\n**{applicantName}**（{applicantGroup}）\n{summary}\n单号：{bizId}\n> ARO 系统自动推送"
+                "## 新物资申领\n**{applicantName}**（{applicantGroup}）\n{summary}\n单号：{bizId}\n时间：{createdAt}\n> ARO 系统自动推送"
         ));
         TEMPLATES.put("MATERIAL_REVIEWED", new Template(
                 "物资申领结果 — {auditResult}",
@@ -94,14 +94,14 @@ public class PushTemplateSeed implements ApplicationRunner {
                 "<h3>新延迟免冻结申请</h3><p><b>{subjectName}</b>（{subjectGroup}）在 {roomName} 申请 <b>{optionLabel}</b>。</p>"
                         + "<p>申请ID：{requestId}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 新延迟免冻结申请\n**{subjectName}**（{subjectGroup}）\n{roomName} · {optionLabel}\n> ARO 系统自动推送"
+                "## 新延迟免冻结申请\n**{subjectName}**（{subjectGroup}）\n{roomName} · {optionLabel}\n申请编号：{requestId}\n> ARO 系统自动推送"
         ));
         TEMPLATES.put("SCAN_DELAY_REVIEWED", new Template(
                 "延迟免冻结结果 — {auditResult}",
                 "<h3>延迟免冻结{auditResult}</h3><p>{roomName} · {optionLabel}：<b>{auditResult}</b></p>"
-                        + "<p>{rejectReason}</p>"
+                        + "{rejectReason}"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 延迟免冻结{auditResult}\n{roomName} · {optionLabel}\n> ARO 系统自动推送"
+                "## 延迟免冻结{auditResult}\n{roomName} · {optionLabel}\n审核结果：{auditResult}\n> ARO 系统自动推送"
         ));
         TEMPLATES.put("VIOLATION_CREATED", new Template(
                 "违规提醒 — {title}",
@@ -111,11 +111,12 @@ public class PushTemplateSeed implements ApplicationRunner {
                 "## {title}\n来源：{source}\n{summary}\n门禁状态：{enterLocked}\n> ARO 系统自动推送"
         ));
         TEMPLATES.put("SCAN_DELAY_MANUAL", new Template(
-                "手动免冻结 — {roomName}",
-                "<h3>手动免冻结</h3><p>{roomName} · {optionLabel}</p>"
+                "免冻结授权 — {roomName}",
+                "<h3>免冻结已授权</h3><p>房间：{roomName}</p>"
+                        + "<p>详情：{optionLabel}</p>"
                         + "<p>操作人：{operatorName}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 手动免冻结\n{roomName} · {optionLabel}\n操作人：{operatorName}\n> ARO 系统自动推送"
+                "## 免冻结已授权\n房间：{roomName}\n详情：{optionLabel}\n操作人：{operatorName}\n> ARO 系统自动推送"
         ));
     }
 }

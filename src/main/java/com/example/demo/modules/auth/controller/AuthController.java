@@ -115,9 +115,23 @@ public class AuthController {
         String username = request.getUsername().trim();
         User user = userMapper.findByUsername(username);
 
+        // 账号不存在时，尝试按邮箱查找（支持邮箱+密码登录）
+        if (user == null && username.contains("@")) {
+            user = userMapper.findByContactEmail(username);
+            if (user == null) {
+                String userId = aroPersonnelMapper.findUserIdByContactEmail(username);
+                if (userId != null) {
+                    user = userMapper.findById(userId);
+                }
+            }
+        }
+
         // ---- 1. Turnstile 人机验证 ----
-        if (!turnstileVerificationService.verify(request.getTurnstileToken())) {
-            return Result.error("人机验证未通过，请刷新页面重试");
+        if (!turnstileVerificationService.verify(request.getTurnstileToken(), request.isTurnstileLoadFailed())) {
+            if (request.isTurnstileLoadFailed()) {
+                return Result.error("安全组件加载失败，请刷新页面或检查网络后重试");
+            }
+            return Result.error("请先完成人机验证");
         }
 
         // ---- 2. 账号锁定检查 ----
@@ -318,7 +332,30 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new WechatUnboundResponse(""));
         }
         String openId = authService.exchangeJsCodeForOpenId(request.getJsCode());
+        if (openId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new WechatUnboundResponse(""));
+        }
+        // ① 先查 sys_user.open_id（教职工 STAFF_xxx）
         User user = userMapper.findByOpenId(openId);
+        if (user == null) {
+            // ② 再查 aro_personnel.open_id（学生 19 位数字）
+            String studentUserId = aroPersonnelMapper.findUserIdByOpenId(openId);
+            if (studentUserId != null) {
+                user = userMapper.findById(studentUserId);
+                if (user == null) {
+                    // aro_personnel 有 openId 但 sys_user 无账号 → 自动创建
+                    user = new User();
+                    user.setId(studentUserId);
+                    user.setUsername(studentUserId);
+                    user.setRole(RoleEnum.MEMBER);
+                    user.setAuthProfile(AuthProfileConstants.WECHAT_ARO);
+                    user.setAccountSource("STUDENT");
+                    userMapper.insertUser(user);
+                }
+                // 学生 openId 主存储是 aro_personnel，回填到 User 对象供 generateAuthResult 响应
+                user.setOpenId(openId);
+            }
+        }
         if (user == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new WechatUnboundResponse(openId));
         }
@@ -381,6 +418,10 @@ public class AuthController {
                 || !StringUtils.hasText(request.getIdentifier())
                 || !StringUtils.hasText(request.getOpenId())) {
             return Result.error("绑定参数不合法");
+        }
+
+        if (request.getOpenId().startsWith("wx_openid_")) {
+            return Result.error("当前为开发环境 Mock openId，不可绑定。请配置微信 AppID/AppSecret 后再试。");
         }
 
         String bindType = request.getBindType().trim().toUpperCase(Locale.ROOT);
@@ -781,19 +822,20 @@ public class AuthController {
             return Result.error("学号不存在于人员库，请联系管理员处理");
         }
 
+        // 学生 openId 写入 aro_personnel（学生的家）
+        aroPersonnelMapper.updateOpenId(id, request.getOpenId());
+
         User user = userMapper.findById(id);
         if (user == null) {
             user = new User();
             user.setId(id);
             user.setUsername(id);
             user.setRole(RoleEnum.MEMBER);
-            user.setOpenId(request.getOpenId());
             user.setMiniBindType("STUDENT");
             user.setAuthProfile(AuthProfileConstants.WECHAT_ARO);
             user.setAccountSource("STUDENT");
             userMapper.insertUser(user);
         } else {
-            userMapper.updateOpenIdById(id, request.getOpenId(), "STUDENT");
             userMapper.updateAuthProfileById(id, AuthProfileConstants.WECHAT_ARO);
             user = userMapper.findById(id);
         }
@@ -837,8 +879,14 @@ public class AuthController {
     }
 
     private Result<?> validateOpenIdNotOccupied(String openId, String currentUserId) {
+        // 检查 sys_user（教职工）
         User existing = userMapper.findByOpenId(openId);
         if (existing != null && !existing.getId().equals(currentUserId)) {
+            return Result.error("该微信已绑定其他账号");
+        }
+        // 检查 aro_personnel（学生）
+        String existingStudent = aroPersonnelMapper.findUserIdByOpenId(openId);
+        if (existingStudent != null && !existingStudent.equals(currentUserId)) {
             return Result.error("该微信已绑定其他账号");
         }
         return null;

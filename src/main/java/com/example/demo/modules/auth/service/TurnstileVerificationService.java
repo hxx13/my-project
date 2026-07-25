@@ -42,6 +42,14 @@ public class TurnstileVerificationService {
      * @return true 表示验证通过或 Turnstile 未启用
      */
     public boolean verify(String token) {
+        return verify(token, false);
+    }
+
+    /**
+     * @param token 前端 Turnstile widget 返回的 token
+     * @param loadFailed 前端标记 widget 是否加载失败（CDN 超时）
+     */
+    public boolean verify(String token, boolean loadFailed) {
         // 紧急关闭：环境变量 TURNSTILE_ENABLED=false 可强制禁用（无需登录管理页，无需重启）
         String emergencyDisable = System.getenv("TURNSTILE_ENABLED");
         if ("false".equalsIgnoreCase(emergencyDisable)) {
@@ -63,10 +71,14 @@ public class TurnstileVerificationService {
             return false;
         }
         if (token == null || token.isBlank()) {
-            // 前端 widget 加载失败时降级放行，避免 Turnstile CDN 故障 → 全员无法登录的死锁。
-            // 此时仅依赖账号锁定做防暴力破解兜底。
-            log.warn("Turnstile 已启用但前端未提供 token（widget 可能加载失败），降级放行");
-            return true;
+            if (loadFailed) {
+                // CDN 挂了，降级放行
+                log.warn("Turnstile widget 加载失败（前端超时），降级放行");
+                return true;
+            }
+            // widget 正常加载但用户未完成验证
+            log.warn("Turnstile 未提供 token —— 拒绝登录");
+            return false;
         }
 
         try {
