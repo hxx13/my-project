@@ -55,6 +55,11 @@
         WHERE email = #{email} AND scene = #{scene} AND created_at > #{since}
     </select>
 
+    <select id="countHourly" resultType="int">
+        SELECT COUNT(*) FROM sys_verification_code
+        WHERE email = #{email} AND scene = #{scene} AND created_at > #{since}
+    </select>
+
     <update id="invalidateAllForEmail">
         UPDATE sys_verification_code SET used = 2
         WHERE email = #{email} AND scene = #{scene} AND used IN (0, 1) AND expires_at > NOW()

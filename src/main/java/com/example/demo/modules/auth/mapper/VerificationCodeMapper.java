@@ -30,6 +30,11 @@ public interface VerificationCodeMapper {
                     @Param("scene") String scene,
                     @Param("since") String since);
 
+    /** Count codes sent in the last hour for rate limiting */
+    int countHourly(@Param("email") String email,
+                    @Param("scene") String scene,
+                    @Param("since") String since);
+
     /** After successful reset, invalidate all unconsumed codes for this email */
     int invalidateAllForEmail(@Param("email") String email,
                               @Param("scene") String scene);
