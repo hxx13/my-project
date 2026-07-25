@@ -14,6 +14,10 @@ import com.example.demo.modules.auth.dto.ForgotPasswordResetRequest;
 import com.example.demo.modules.auth.dto.ForgotPasswordVerifyRequest;
 import com.example.demo.modules.auth.dto.RegisterStaffRequest;
 import com.example.demo.modules.auth.dto.UpdateDisplayNicknameRequest;
+import com.example.demo.modules.auth.dto.SendVerificationCodeRequest;
+import com.example.demo.modules.auth.dto.BindEmailRequest;
+import com.example.demo.modules.auth.dto.ForgotPasswordByEmailVerifyRequest;
+import com.example.demo.modules.auth.dto.ForgotPasswordByEmailResetRequest;
 import com.example.demo.modules.auth.AuthProfileConstants;
 import com.example.demo.modules.auth.dto.WechatBindRequest;
 import com.example.demo.modules.auth.dto.WechatLoginRequest;
@@ -26,6 +30,7 @@ import com.example.demo.modules.auth.service.PasswordCredentialService;
 import com.example.demo.modules.auth.service.PasswordPolicyValidator;
 import com.example.demo.modules.auth.service.StaffRegistrationService;
 import com.example.demo.modules.auth.service.TurnstileVerificationService;
+import com.example.demo.modules.auth.service.EmailVerificationCodeService;
 import com.example.demo.modules.invite.RegistrationInviteService;
 import com.example.demo.common.util.QrCodeUtils;
 import com.google.zxing.NotFoundException;
@@ -73,6 +78,8 @@ public class AuthController {
     private final AroPersonnelMapper aroPersonnelMapper;
     private final TurnstileVerificationService turnstileVerificationService;
     private final CasClient casClient;
+    private final EmailVerificationCodeService emailVerificationCodeService;
+    private final Object sendCodeLock = new Object();
 
     public AuthController(UserMapper userMapper,
                           AuthService authService,
@@ -83,7 +90,8 @@ public class AuthController {
                           JwtTokenService jwtTokenService,
                           AroPersonnelMapper aroPersonnelMapper,
                           TurnstileVerificationService turnstileVerificationService,
-                          CasClient casClient) {
+                          CasClient casClient,
+                          EmailVerificationCodeService emailVerificationCodeService) {
         this.userMapper = userMapper;
         this.authService = authService;
         this.authContextService = authContextService;
@@ -94,6 +102,7 @@ public class AuthController {
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.turnstileVerificationService = turnstileVerificationService;
         this.casClient = casClient;
+        this.emailVerificationCodeService = emailVerificationCodeService;
     }
 
     @PostMapping("/login/web")
@@ -580,6 +589,176 @@ public class AuthController {
         Map<String, Object> data = new HashMap<>();
         data.put("message", "密码重置成功，请返回登录");
         return Result.success(data);
+    }
+
+    @PostMapping("/send-verification-code")
+    @Operation(summary = "发送邮箱验证码（BIND_EMAIL需登录，FORGOT_PASSWORD无需）")
+    public Result<?> sendVerificationCode(@RequestBody SendVerificationCodeRequest request,
+                                           HttpServletRequest httpRequest) {
+        if (request == null || !StringUtils.hasText(request.getEmail())
+                || !StringUtils.hasText(request.getScene())) {
+            return Result.error("参数不合法");
+        }
+        String scene = request.getScene().trim();
+
+        if ("BIND_EMAIL".equals(scene)) {
+            User current = authContextService.resolveUserFromBearer(
+                    httpRequest.getHeader("Authorization"));
+            if (current == null) return Result.error("请先登录");
+        }
+
+        EmailVerificationCodeService.SendResult sr;
+        synchronized (sendCodeLock) {
+            sr = emailVerificationCodeService.sendCode(request.getEmail().trim(), scene);
+        }
+        if (!sr.isSuccess()) return Result.error(sr.getMessage());
+        Map<String, Object> data = new HashMap<>();
+        data.put("message", sr.getMessage());
+        data.put("cooldownSeconds", sr.getCooldownSeconds());
+        return Result.success(data);
+    }
+
+    @PostMapping("/bind/email")
+    @Operation(summary = "自服务绑定邮箱（需登录+验证码，不可绑定已被他人绑定的邮箱）")
+    public Result<?> bindEmail(@RequestBody BindEmailRequest request,
+                                HttpServletRequest httpRequest) {
+        if (request == null || !StringUtils.hasText(request.getEmail())
+                || !StringUtils.hasText(request.getCode())) {
+            return Result.error("参数不合法");
+        }
+        User current = authContextService.resolveUserFromBearer(
+                httpRequest.getHeader("Authorization"));
+        if (current == null) return Result.error("请先登录");
+
+        String email = request.getEmail().trim();
+        String code = request.getCode().trim();
+
+        // Uniqueness check: email must not be bound to another account
+        com.example.demo.modules.auth.entity.User existingByEmail = userMapper.findByContactEmail(email);
+        if (existingByEmail != null && !existingByEmail.getId().equals(current.getId())) {
+            return Result.error("该邮箱已被其他账号绑定");
+        }
+        String aroUserId = aroPersonnelMapper.findUserIdByContactEmail(email);
+        if (aroUserId != null && !aroUserId.equals(current.getId())) {
+            return Result.error("该邮箱已被其他账号绑定");
+        }
+
+        EmailVerificationCodeService.VerifyResult vr =
+                emailVerificationCodeService.verifyForBinding(email, code);
+        if (!vr.isSuccess()) return Result.error(vr.getMessage());
+
+        String userId = current.getId();
+        if (isStaffId(userId)) {
+            userMapper.updateContactEmail(userId, email);
+        } else {
+            aroPersonnelMapper.ensureRowExists(userId);
+            aroPersonnelMapper.updateContactEmail(userId, email);
+        }
+        return Result.success(Map.of("message", "邮箱绑定成功"));
+    }
+
+    @PostMapping("/forgot-password/by-email/verify")
+    @Operation(summary = "忘记密码：验证邮箱+验证码（无需登录）")
+    public Result<?> forgotPasswordByEmailVerify(
+            @RequestBody ForgotPasswordByEmailVerifyRequest request) {
+        if (request == null || !StringUtils.hasText(request.getEmail())
+                || !StringUtils.hasText(request.getCode())) {
+            return Result.error("参数不合法");
+        }
+        EmailVerificationCodeService.VerifyResult vr =
+                emailVerificationCodeService.verifyForForgotPassword(
+                        request.getEmail().trim(), request.getCode().trim());
+        if (!vr.isSuccess()) return Result.error(vr.getMessage());
+        Map<String, Object> data = new HashMap<>();
+        data.put("resetToken", vr.getResetToken());
+        return Result.success(data);
+    }
+
+    @PostMapping("/forgot-password/by-email/reset")
+    @Operation(summary = "忘记密码：邮箱验证通过后重置密码（无需登录）")
+    public Result<?> forgotPasswordByEmailReset(
+            @RequestBody ForgotPasswordByEmailResetRequest request) {
+        if (request == null || !StringUtils.hasText(request.getResetToken())
+                || !StringUtils.hasText(request.getNewPassword())) {
+            return Result.error("参数不合法");
+        }
+        String newPassword = request.getNewPassword().trim();
+        String pwError = PasswordPolicyValidator.validate(newPassword);
+        if (pwError != null) return Result.error(pwError);
+
+        // Verify token validity first
+        EmailVerificationCodeService.VerifyTokenResult vtr =
+                emailVerificationCodeService.verifyToken(request.getResetToken());
+        if (!vtr.isSuccess()) return Result.error(vtr.getMessage());
+
+        String email = vtr.getEmail();
+        Long recordId = vtr.getRecordId();
+
+        // Resolve user by email
+        User user = userMapper.findByContactEmail(email);
+        String userId;
+        if (user != null) {
+            userId = user.getId();
+        } else {
+            userId = aroPersonnelMapper.findUserIdByContactEmail(email);
+            if (userId == null) {
+                return Result.error("该邮箱未绑定任何账号");
+            }
+            user = userMapper.findById(userId);
+        }
+
+        String hash = passwordCredentialService.encodeForStorage(newPassword);
+        String encryptedPlain = passwordCredentialService.encryptPlaintext(newPassword);
+
+        // Handle username (consistent with QR flow)
+        String newUsername = StringUtils.hasText(request.getNewUsername())
+                ? request.getNewUsername().trim() : null;
+
+        if (user == null) {
+            String username = newUsername != null ? newUsername : userId;
+            if (username.length() < 2 || username.length() > 64) {
+                return Result.error("账号长度须在 2～64 字符");
+            }
+            User existingByUsername = userMapper.findByUsername(username);
+            if (existingByUsername != null) {
+                return Result.error("该登录账号已被占用");
+            }
+            User newUser = new User();
+            newUser.setId(userId);
+            newUser.setUsername(username);
+            newUser.setPassword(hash);
+            newUser.setRole(RoleEnum.MEMBER);
+            newUser.setStatus(1);
+            newUser.setPasswordResetRequired(0);
+            newUser.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
+            newUser.setAccountSource("STUDENT");
+            try {
+                userMapper.insertUser(newUser);
+            } catch (org.springframework.dao.DuplicateKeyException e) {
+                log.info("User {} already created by concurrent reset, proceeding to update", userId);
+            }
+            userMapper.updatePasswordWithPlainById(userId, hash, encryptedPlain, 0);
+        } else {
+            if (newUsername != null) {
+                if (newUsername.length() < 2 || newUsername.length() > 64) {
+                    return Result.error("账号长度须在 2～64 字符");
+                }
+                User existingByUsername = userMapper.findByUsername(newUsername);
+                if (existingByUsername != null && !existingByUsername.getId().equals(userId)) {
+                    return Result.error("该登录账号已被占用");
+                }
+                userMapper.updateUsernameById(userId, newUsername);
+            }
+            userMapper.updatePasswordWithPlainById(userId, hash, encryptedPlain, 0);
+        }
+
+        // Consume token AFTER password write succeeds
+        emailVerificationCodeService.consumeResetToken(recordId, email);
+        return Result.success(Map.of("message", "密码重置成功，请返回登录"));
+    }
+
+    private boolean isStaffId(String userId) {
+        return userId != null && (userId.toUpperCase().startsWith("STAFF_") || "SYS_SUPER_ROOT".equals(userId));
     }
 
     private Result<?> bindStudent(WechatBindRequest request, HttpServletRequest httpRequest) {
