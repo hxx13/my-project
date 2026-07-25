@@ -12,3 +12,5 @@ CREATE TABLE IF NOT EXISTS sys_verification_code (
     INDEX idx_reset_token (reset_token),
     INDEX idx_expires_at (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='邮箱验证码';
+
+ALTER TABLE sys_verification_code ADD COLUMN IF NOT EXISTS user_id VARCHAR(64) NULL COMMENT '绑定的userId（防TOCTOU）' AFTER scene;

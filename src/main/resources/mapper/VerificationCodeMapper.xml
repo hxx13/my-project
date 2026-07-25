@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.auth.mapper.VerificationCodeMapper">
+
+    <resultMap id="BaseResultMap" type="com.example.demo.modules.auth.entity.VerificationCode">
+        <id column="id" property="id"/>
+        <result column="email" property="email"/>
+        <result column="code" property="code"/>
+        <result column="scene" property="scene"/>
+        <result column="user_id" property="userId"/>
+        <result column="used" property="used"/>
+        <result column="fail_count" property="failCount"/>
+        <result column="reset_token" property="resetToken"/>
+        <result column="expires_at" property="expiresAt"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_verification_code (email, code, scene, used, fail_count, expires_at, created_at)
+        VALUES (#{email}, #{code}, #{scene}, 0, 0, #{expiresAt}, NOW())
+    </insert>
+
+    <select id="findLatestValid" resultMap="BaseResultMap">
+        SELECT * FROM sys_verification_code
+        WHERE email = #{email} AND scene = #{scene} AND used = 0 AND expires_at > NOW()
+        ORDER BY id DESC LIMIT 1
+    </select>
+
+    <update id="incrementFailCount">
+        UPDATE sys_verification_code SET fail_count = fail_count + 1 WHERE id = #{id}
+    </update>
+
+    <update id="markUsed">
+        UPDATE sys_verification_code SET used = #{used} WHERE id = #{id}
+    </update>
+
+    <update id="setResetToken">
+        UPDATE sys_verification_code SET reset_token = #{resetToken} WHERE id = #{id}
+    </update>
+
+    <update id="setResetTokenAndUserId">
+        UPDATE sys_verification_code SET reset_token = #{resetToken}, user_id = #{userId} WHERE id = #{id}
+    </update>
+
+    <select id="findByResetToken" resultMap="BaseResultMap">
+        SELECT * FROM sys_verification_code
+        WHERE reset_token = #{resetToken} AND used = 1 AND expires_at > NOW()
+        LIMIT 1
+    </select>
+
+    <select id="countRecent" resultType="int">
+        SELECT COUNT(*) FROM sys_verification_code
+        WHERE email = #{email} AND scene = #{scene} AND created_at > #{since}
+    </select>
+
+    <update id="invalidateAllForEmail">
+        UPDATE sys_verification_code SET used = 2
+        WHERE email = #{email} AND scene = #{scene} AND used IN (0, 1) AND expires_at > NOW()
+    </update>
+</mapper>

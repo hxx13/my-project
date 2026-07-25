@@ -8,6 +8,7 @@ public class VerificationCode {
     private String email;
     private String code;
     private String scene;
+    private String userId;
     private Integer used;
     private Integer failCount;
     private String resetToken;
