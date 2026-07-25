@@ -23,7 +23,7 @@
       </view>
       <view class="mine-chip-row">
         <view
-          class="mine-chip mine-chip--ok mine-chip--role-tap"
+          class="mine-chip {{ currentEmail ? 'mine-chip--ok' : 'mine-chip--warn' }} mine-chip--role-tap"
           hover-class="mine-chip--role-tap-hover"
           bindtap="onOpenEmailEditor"
         >
@@ -31,7 +31,7 @@
         </view>
         <view
           wx:if="{{ springBound }}"
-          class="mine-chip mine-chip--ok mine-chip--role-tap"
+          class="mine-chip {{ currentSendKey ? 'mine-chip--ok' : 'mine-chip--warn' }} mine-chip--role-tap"
           hover-class="mine-chip--role-tap-hover"
           bindtap="onOpenSendKeyEditor"
         >
