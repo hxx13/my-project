@@ -333,7 +333,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
       {userIdForBind && (
         <div
           className="fixed left-4 z-30 flex flex-col items-start gap-2"
-          style={{ top: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+          style={{ top: "calc(env(safe-area-inset-top, 0px) + 52px)" }}
         >
           <div
             className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
