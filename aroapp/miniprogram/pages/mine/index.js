@@ -1264,7 +1264,7 @@ Page({
     springAuth.callSpringDirect({
       path: '/api/auth/login/web',
       method: 'POST',
-      data: { username: u, password: p },
+      data: { username: u, password: p, turnstileLoadFailed: true },
     }).then(function (res) {
       wx.hideLoading();
       var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
