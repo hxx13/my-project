@@ -65,7 +65,7 @@ public class AdminPersonnelPushBindingController {
         binding.setIsVerified(0);
         binding.setVerifyCode(code);
         bindingMapper.upsert(binding);
-        return Result.success(Map.of("message", "验证码已生成", "code", code));
+        return Result.success(Map.of("message", "验证码已生成，请告知用户查收邮箱完成验证"));
     }
 
     @PostMapping("/bind-serverchan")

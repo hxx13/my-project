@@ -36,8 +36,10 @@
     </select>
 
     <insert id="insertDeliveryLog" parameterType="com.example.demo.modules.notification.entity.NotifyDeliveryLog" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO sys_notify_delivery_log(notification_id, recipient_user_id, channel, template_key, status, create_time, update_time)
-        VALUES (#{notificationId}, #{recipientUserId}, #{channel}, #{templateKey}, #{status}, NOW(), NOW())
+        INSERT INTO sys_notify_delivery_log(notification_id, recipient_user_id, channel, template_key, status,
+            source_code, source_name, channel_name, recipient_name, title, content, max_retries, create_time, update_time)
+        VALUES (#{notificationId}, #{recipientUserId}, #{channel}, #{templateKey}, #{status},
+            #{sourceCode}, #{sourceName}, #{channelName}, #{recipientName}, #{title}, #{content}, #{maxRetries}, NOW(), NOW())
     </insert>
 
     <update id="markDeliverySuccess">
@@ -57,6 +59,32 @@
             error_msg = #{errorMsg},
             retry_count = retry_count + 1,
             next_retry_time = DATE_ADD(NOW(), INTERVAL 5 MINUTE),
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="findPendingRetry" resultType="com.example.demo.modules.notification.entity.NotifyDeliveryLog">
+        SELECT * FROM sys_notify_delivery_log
+        WHERE status = #{status}
+          AND retry_count &lt; #{maxRetries}
+          AND next_retry_time &lt;= #{now}
+        ORDER BY next_retry_time ASC
+        LIMIT 100
+    </select>
+
+    <select id="countRecentFailed" resultType="long">
+        SELECT COUNT(*) FROM sys_notify_delivery_log
+        WHERE channel = #{channel}
+          AND status = 'FAILED'
+          AND update_time >= DATE_SUB(NOW(), INTERVAL #{minutes} MINUTE)
+    </select>
+
+    <update id="markRetryAttempt">
+        UPDATE sys_notify_delivery_log
+        SET retry_count = retry_count + 1,
+            next_retry_time = #{nextRetryTime},
+            error_code = #{errorCode},
+            error_msg = #{errorMsg},
             update_time = NOW()
         WHERE id = #{id}
     </update>

@@ -116,6 +116,8 @@ public class PushDispatchEngine {
                     continue;
                 }
 
+                String recipientName = nameMap.getOrDefault(userId, userId);
+
                 NotifyDeliveryLog logEntry = new NotifyDeliveryLog();
                 logEntry.setNotificationId("PUSH_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16));
                 logEntry.setRecipientUserId(userId);
@@ -123,7 +125,14 @@ public class PushDispatchEngine {
                 logEntry.setTemplateKey(source.getSourceCode());
                 logEntry.setStatus(PushConstants.STATUS_PENDING);
                 logEntry.setRetryCount(0);
+                logEntry.setMaxRetries(3);
                 logEntry.setCreateTime(LocalDateTime.now());
+                logEntry.setSourceCode(source.getSourceCode());
+                logEntry.setSourceName(source.getSourceName());
+                logEntry.setChannelName(channel.getDisplayName());
+                logEntry.setRecipientName(recipientName);
+                logEntry.setTitle(title);
+                logEntry.setContent(content);
 
                 try {
                     deliveryLogMapper.insertDeliveryLog(logEntry);
