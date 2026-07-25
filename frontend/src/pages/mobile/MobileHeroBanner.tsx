@@ -195,8 +195,10 @@ export default function HeroBanner({
             />
             <span className="text-[9px] font-medium text-white/80">实时</span>
           </div>
+        </div>
 
-          {/* 邮箱绑定状态 */}
+        {/* 第二行：邮箱 + 微信通知绑定状态 */}
+        <div className="flex items-center gap-2">
           <div
             className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
             style={{
@@ -207,8 +209,6 @@ export default function HeroBanner({
           >
             {currentEmail ? "邮箱已绑定" : "邮箱未绑定"}
           </div>
-
-          {/* 微信通知绑定状态 */}
           <div
             className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
             style={{
