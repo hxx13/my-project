@@ -15,6 +15,7 @@ import { fetchLoginBranding, type LoginBranding } from "@/api/domains/publicSite
 import * as studentMobileApi from "@/api/domains/studentMobile.api";
 import { hasMobileHtml5Privilege } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
+import { sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
 import { useMobileSocket, mergeMobileUserNotify } from "./useMobileSocket";
 import { isFeedbackKind } from "./mobileAlertSplit";
 import { sortMobileAnnouncementsForDisplay } from "./mobileExemptAlertHelpers";
@@ -373,7 +374,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
       {/* Email / SendKey status chips — top-right, always visible */}
       {userIdForBind && (
         <div
-          className="fixed right-4 z-30 flex flex-col items-end gap-2"
+          className="fixed left-4 z-30 flex flex-col items-start gap-2"
           style={{ top: "calc(env(safe-area-inset-top, 0px) + 52px)" }}
         >
           <button
@@ -420,7 +421,6 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
                   if (!emailDraft.trim()) return;
                   setEmailCodeSending(true);
                   try {
-                    const { sendVerificationCode } = await import("@/api/domains/auth.api");
                     const r = await sendVerificationCode(emailDraft.trim(), "BIND_EMAIL");
                     setEmailCodeCooldown(r.cooldownSeconds || 60);
                     const timer = setInterval(() => setEmailCodeCooldown((p: number) => { if (p <= 1) { clearInterval(timer); return 0; } return p - 1; }), 1000);
@@ -437,7 +437,6 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
                 onClick={async () => {
                   setEmailSaving(true);
                   try {
-                    const { bindEmailWithCode } = await import("@/api/domains/auth.api");
                     await bindEmailWithCode(emailDraft.trim(), emailCode.trim());
                     setCurrentEmail(emailDraft.trim());
                     setShowEmailDialog(false);
