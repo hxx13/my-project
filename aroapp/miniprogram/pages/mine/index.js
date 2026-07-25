@@ -1465,6 +1465,13 @@ Page({
     }).catch(() => {});
   },
 
+  copySendKeyUrl() {
+    wx.setClipboardData({
+      data: 'https://sct.ftqq.com/',
+      success: () => wx.showToast({ title: '链接已复制，请在浏览器中打开', icon: 'none', duration: 2500 }),
+    });
+  },
+
   onOpenSendKeyEditor() {
     const id = this.data.springUserId;
     if (!id) { wx.showToast({ title: '请先完成校内绑定', icon: 'none' }); return; }

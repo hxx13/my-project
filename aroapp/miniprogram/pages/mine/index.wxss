@@ -1006,6 +1006,15 @@ page {
   min-width: 0;
 }
 
+.sendkey-link-hint {
+  margin-bottom: 16rpx;
+}
+.sendkey-link-text {
+  font-size: 22rpx;
+  color: var(--app-color-accent, #d97706);
+  text-decoration: underline;
+}
+
 .mine-email-send-btn {
   flex-shrink: 0;
   font-size: 22rpx !important;
