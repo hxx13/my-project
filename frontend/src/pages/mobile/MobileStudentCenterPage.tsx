@@ -406,7 +406,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
 
       {/* Email bind dialog */}
       {showEmailDialog && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowEmailDialog(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowEmailDialog(false)}>
           <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold text-gray-900">绑定邮箱</h3>
             <p className="mt-1 text-xs text-gray-500">设置用于接收通知的联系邮箱</p>
@@ -454,7 +454,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
 
       {/* SendKey bind dialog */}
       {showSendKeyDialog && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowSendKeyDialog(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowSendKeyDialog(false)}>
           <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold text-gray-900">绑定微信通知</h3>
             <p className="mt-1 text-xs text-gray-500">通过 Server酱 SendKey 接收微信推送通知</p>
