@@ -564,7 +564,7 @@
     <view class="mine-email-title">绑定微信通知</view>
     <view class="mine-email-hint">输入 Server酱 SendKey 以启用微信消息推送</view>
     <view class="sendkey-link-hint" bindtap="copySendKeyUrl">
-      <text class="sendkey-link-text">还没有 SendKey？点此复制链接，在浏览器中打开创建 →</text>
+      <text class="sendkey-link-text">还没有 SendKey？点此前往 Server酱 创建 →</text>
     </view>
     <input
       class="mine-email-input"
