@@ -131,7 +131,7 @@ export default function AdminPushConfigPage() {
 
   const { data: overview } = useQuery<PushDashboardOverview>({
     queryKey: ["push-dashboard-overview"],
-    queryFn: () => authHttp.get("/api/admin/push-dashboard/overview").then((r) => r.data.data),
+    queryFn: () => authHttp.get("/admin/push-dashboard/overview").then((r) => r.data.data),
   });
 
   /* ---- local expand & draft state ---- */
@@ -183,7 +183,7 @@ export default function AdminPushConfigPage() {
   /** Toggle source enable */
   const toggleSourceMutation = useMutation({
     mutationFn: ({ sourceId, enabled }: { sourceId: number; enabled: boolean }) =>
-      authHttp.put(`/api/admin/notify-source/${sourceId}/enabled?enabled=${enabled}`),
+      authHttp.put(`/admin/notify-source/${sourceId}/enabled?enabled=${enabled}`),
     onMutate: ({ sourceId }) => setSavingToggles((p) => new Set(p).add(sourceId)),
     onSettled: (_d, _e, { sourceId }) => {
       setSavingToggles((p) => {
@@ -211,7 +211,7 @@ export default function AdminPushConfigPage() {
       sourceId: number;
       channelCode: string;
       body: ChannelDraft;
-    }) => authHttp.put(`/api/admin/notify-source/${sourceId}/channels/${channelCode}`, body),
+    }) => authHttp.put(`/admin/notify-source/${sourceId}/channels/${channelCode}`, body),
     onMutate: ({ sourceId, channelCode }) =>
       setSavingChannels((p) => new Set(p).add(`${sourceId}:${channelCode}`)),
     onSettled: (_d, _e, { sourceId, channelCode }) => {
@@ -238,7 +238,7 @@ export default function AdminPushConfigPage() {
       sourceId: number;
       recipients: RecipientDraft[];
     }) =>
-      authHttp.put(`/api/admin/notify-source/${sourceId}/recipients`, recipients),
+      authHttp.put(`/admin/notify-source/${sourceId}/recipients`, recipients),
     onMutate: ({ sourceId }) => setSavingRecipients((p) => new Set(p).add(sourceId)),
     onSettled: (_d, _e, { sourceId }) => {
       setSavingRecipients((p) => {
