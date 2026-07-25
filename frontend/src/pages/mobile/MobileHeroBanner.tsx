@@ -198,26 +198,26 @@ export default function HeroBanner({
 
           {/* 邮箱绑定状态 */}
           <div
-            className="rounded-full px-2 py-1 text-[10px] font-semibold text-white"
+            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
             style={{
               background: currentEmail ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
               backdropFilter: "blur(8px)",
               border: "1px solid rgba(255,255,255,0.2)",
             }}
           >
-            {currentEmail ? "邮箱" : "未绑"}
+            {currentEmail ? "邮箱已绑定" : "邮箱未绑定"}
           </div>
 
           {/* 微信通知绑定状态 */}
           <div
-            className="rounded-full px-2 py-1 text-[10px] font-semibold text-white"
+            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
             style={{
               background: currentSendKey ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
               backdropFilter: "blur(8px)",
               border: "1px solid rgba(255,255,255,0.2)",
             }}
           >
-            {currentSendKey ? "通知" : "未通"}
+            {currentSendKey ? "微信已绑定" : "微信未绑定"}
           </div>
         </div>
 
