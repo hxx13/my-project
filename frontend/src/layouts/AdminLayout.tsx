@@ -41,7 +41,7 @@ import { fetchPendingMaterialRequests } from "@/api/domains/material.api";
 import { fetchPendingScanDelayRequests } from "@/api/domains/scanDelay.api";
 import { materialQueryKeys } from "@/api/hooks/queryKeys";
 import { studentReviewPendingQueryOptions } from "@/features/student-review/studentReviewPoll";
-import { refreshAuthSession } from "@/api/domains/auth.api";
+import { refreshAuthSession, sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
 import {
   ADMIN_NOTIFICATION_SSE_PUSH_EVENT,
   ADMIN_PENDING_BADGES_REFRESH_EVENT,
@@ -205,6 +205,12 @@ export default function AdminLayout() {
   const [sendKeyDraft, setSendKeyDraft] = useState("");
   const [sendKeySaving, setSendKeySaving] = useState(false);
   const [currentSendKey, setCurrentSendKey] = useState<string | null>(null);
+
+  /** Verification-code states for email binding */
+  const [emailCode, setEmailCode] = useState("");
+  const [emailCodeSending, setEmailCodeSending] = useState(false);
+  const [emailCodeCooldown, setEmailCodeCooldown] = useState(0);
+  const emailCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
@@ -1061,6 +1067,27 @@ export default function AdminLayout() {
   const casRemaining = casStatus?.remainingSeconds;
   const casExpiring = casRemaining != null && casRemaining < 3 * 86400;
 
+  const handleSendBindCode = async () => {
+    if (!emailDraft.trim()) { toast.error("请输入邮箱地址"); return; }
+    setEmailCodeSending(true);
+    try {
+      const result = await sendVerificationCode(emailDraft.trim(), "BIND_EMAIL");
+      toast.success(result.message || "验证码已发送");
+      setEmailCodeCooldown(result.cooldownSeconds || 60);
+      if (emailCooldownRef.current) clearInterval(emailCooldownRef.current);
+      emailCooldownRef.current = setInterval(() => {
+        setEmailCodeCooldown((prev) => {
+          if (prev <= 1) { emailCooldownRef.current = null; return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (err: any) {
+      toast.error(err?.message || "发送失败");
+    } finally {
+      setEmailCodeSending(false);
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -1321,20 +1348,44 @@ export default function AdminLayout() {
                 {hasMinRole(role, "STAFF") ? (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => {
-                      setEmailDraft(currentEmail ?? "");
-                      setEmailDialogOpen(true);
-                    }}>
-                      <Mail className="mr-2 h-4 w-4" />
-                      绑定邮箱
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => {
-                      setSendKeyDraft(currentSendKey ?? "");
-                      setSendKeyDialogOpen(true);
-                    }}>
-                      <MessageCircle className="mr-2 h-4 w-4" />
-                      绑定微信通知
-                    </DropdownMenuItem>
+                    {currentEmail ? (
+                      <DropdownMenuItem onSelect={() => {
+                        setEmailDraft(currentEmail);
+                        setEmailCode(""); setEmailCodeCooldown(0);
+                        if (emailCooldownRef.current) { clearInterval(emailCooldownRef.current); emailCooldownRef.current = null; }
+                        setEmailDialogOpen(true);
+                      }}>
+                        <Mail className="mr-2 h-4 w-4 text-emerald-500" />
+                        邮箱: {currentEmail}
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onSelect={() => {
+                        setEmailDraft("");
+                        setEmailCode(""); setEmailCodeCooldown(0);
+                        if (emailCooldownRef.current) { clearInterval(emailCooldownRef.current); emailCooldownRef.current = null; }
+                        setEmailDialogOpen(true);
+                      }}>
+                        <Mail className="mr-2 h-4 w-4" />
+                        绑定邮箱
+                      </DropdownMenuItem>
+                    )}
+                    {currentSendKey ? (
+                      <DropdownMenuItem onSelect={() => {
+                        setSendKeyDraft(currentSendKey);
+                        setSendKeyDialogOpen(true);
+                      }}>
+                        <MessageCircle className="mr-2 h-4 w-4 text-emerald-500" />
+                        微信通知: 已绑定
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onSelect={() => {
+                        setSendKeyDraft("");
+                        setSendKeyDialogOpen(true);
+                      }}>
+                        <MessageCircle className="mr-2 h-4 w-4" />
+                        绑定微信通知
+                      </DropdownMenuItem>
+                    )}
                   </>
                 ) : null}
                 {hasMinRole(role, "STAFF") ? (
@@ -1663,6 +1714,22 @@ export default function AdminLayout() {
                 }
               }}
             />
+            <div className="flex items-center gap-2">
+              <input
+                className={`${adminInputClass} flex-1`}
+                type="text" inputMode="numeric" maxLength={6}
+                placeholder="6位验证码"
+                value={emailCode}
+                onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+              <Button variant="outline" size="default"
+                disabled={!emailDraft.trim() || emailCodeSending || emailCodeCooldown > 0}
+                onClick={() => void handleSendBindCode()}
+                className="whitespace-nowrap"
+              >
+                {emailCodeSending ? "发送中..." : emailCodeCooldown > 0 ? `${emailCodeCooldown}s` : "发送验证码"}
+              </Button>
+            </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
@@ -1675,28 +1742,16 @@ export default function AdminLayout() {
             <Button
               id="email-bind-submit-btn"
               size="default"
-              disabled={!emailDraft.trim() || emailSaving}
+              disabled={!emailDraft.trim() || emailCode.trim().length !== 6 || emailSaving}
               onClick={async () => {
-                const token = authStorage.getToken();
-                const userId = sessionUser?.id;
-                if (!userId) return;
                 setEmailSaving(true);
                 try {
-                  const res = await fetch(`/api/admin/personnel/${encodeURIComponent(userId)}/contact-email`, {
-                    method: "PUT",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: "Bearer " + token,
-                    },
-                    body: JSON.stringify({ email: emailDraft.trim() }),
-                  });
-                  if (!res.ok) {
-                    const errData = await res.json().catch(() => ({}));
-                    throw new Error((errData as any).message || "保存失败");
-                  }
+                  await bindEmailWithCode(emailDraft.trim(), emailCode.trim());
                   toast.success("邮箱绑定成功");
                   setCurrentEmail(emailDraft.trim());
                   setEmailDialogOpen(false);
+                  setEmailCode(""); setEmailCodeCooldown(0);
+                  if (emailCooldownRef.current) { clearInterval(emailCooldownRef.current); emailCooldownRef.current = null; }
                 } catch (e: any) {
                   toast.error(e?.message || "保存失败");
                 } finally {
