@@ -107,6 +107,12 @@ public class PushDispatchEngine {
         }
         diag.add("recipient count: " + allRecipientIds.size());
 
+        // 遥测报警源由 TelemetryAlarmCheckScheduler 自行管理缓冲队列，不经过 PushDispatchEngine 的 digest/夜间分支
+        boolean isTelemetrySource = "TELEMETRY_ALARM".equals(source.getSourceCode())
+                || "TELEMETRY_RECOVERY".equals(source.getSourceCode());
+
+        if (!isTelemetrySource) {
+
         // ── 夜间模式分叉：夜间时段 → 全部强制缓冲（覆盖一切即时通知） ──
         Set<String> nightUsers = new LinkedHashSet<>();
         Set<String> digestUsers = new LinkedHashSet<>();
@@ -122,13 +128,16 @@ public class PushDispatchEngine {
                 }
             }
         }
-        // 缓冲夜间用户（每用户仅一条，纯文本化存储，发送时按渠道适配格式）
+        // 缓冲存储用 Markdown 渠道模板（SERVER_CHAN / WXPUSHER），避免 HTML 被 plainText 压缩
+        NotifySourceChannel mdChannel = channelConfigs.stream()
+                .filter(c -> Boolean.TRUE.equals(c.getEnabled()) && !"EMAIL".equals(c.getChannelCode()))
+                .findFirst()
+                .orElse(channelConfigs.stream().filter(c -> Boolean.TRUE.equals(c.getEnabled())).findFirst().orElse(null));
+
         if (!nightUsers.isEmpty()) {
             for (String uid : nightUsers) {
-                NotifySourceChannel firstEnabled = channelConfigs.stream()
-                        .filter(c -> Boolean.TRUE.equals(c.getEnabled())).findFirst().orElse(null);
-                String title = firstEnabled != null ? plainText(render(firstEnabled.getTitleTpl(), variables)) : "";
-                String content = firstEnabled != null ? plainText(render(firstEnabled.getContentTpl(), variables)) : "";
+                String title = mdChannel != null ? render(mdChannel.getTitleTpl(), variables) : "";
+                String content = mdChannel != null ? render(mdChannel.getContentTpl(), variables) : "";
                 NotifyDigestItem item = new NotifyDigestItem();
                 item.setUserId(uid);
                 item.setSourceCode(source.getSourceCode());
@@ -141,11 +150,9 @@ public class PushDispatchEngine {
             diag.add("night buffered: " + nightUsers.size() + " users");
         }
         if (!digestUsers.isEmpty()) {
-            NotifySourceChannel firstEnabled = channelConfigs.stream()
-                    .filter(c -> Boolean.TRUE.equals(c.getEnabled())).findFirst().orElse(null);
             for (String uid : digestUsers) {
-                String title = firstEnabled != null ? plainText(render(firstEnabled.getTitleTpl(), variables)) : "";
-                String content = firstEnabled != null ? plainText(render(firstEnabled.getContentTpl(), variables)) : "";
+                String title = mdChannel != null ? render(mdChannel.getTitleTpl(), variables) : "";
+                String content = mdChannel != null ? render(mdChannel.getContentTpl(), variables) : "";
                 NotifyDigestItem item = new NotifyDigestItem();
                 item.setUserId(uid);
                 item.setSourceCode(source.getSourceCode());
@@ -158,7 +165,9 @@ public class PushDispatchEngine {
             diag.add("digest buffered: " + digestUsers.size() + " users");
         }
 
-        // 全部用户已缓冲 → 无需即时发送
+        } // end if (!isTelemetrySource)
+
+        // 全部用户已缓冲 → 无需即时发送（遥测源跳过缓冲，直接走即时通道）
         if (allRecipientIds.isEmpty()) {
             report.put("sent", 0);
             report.put("failed", 0);
@@ -243,7 +252,8 @@ public class PushDispatchEngine {
                 continue;
             }
 
-            if (rateLimiter.isQuietTime(channelCfg)) {
+            // 遥测报警源自带调度器冷却去重，不应用渠道静默时段和频率限制
+            if (!isTelemetrySource && rateLimiter.isQuietTime(channelCfg)) {
                 log.info("[Push] 静默时段跳过: {}/{}", sourceCode, channel.getCode());
                 diag.add("channel " + channel.getCode() + " in quiet time");
                 continue;
@@ -270,7 +280,7 @@ public class PushDispatchEngine {
                 }
 
                 int limitSec = channelCfg.getRateLimitSeconds() != null ? channelCfg.getRateLimitSeconds() : 300;
-                if (rateLimiter.isRateLimited(sourceCode, userId, channel.getCode(), limitSec)) {
+                if (!isTelemetrySource && rateLimiter.isRateLimited(sourceCode, userId, channel.getCode(), limitSec)) {
                     chSkipped++;
                     continue;
                 }

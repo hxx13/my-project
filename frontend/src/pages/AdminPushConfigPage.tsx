@@ -1265,13 +1265,13 @@ function FloorSuiteAlarmPanel() {
   const [savingSuite, setSavingSuite] = useState(false);
   const [togglingTag, setTogglingTag] = useState<number | null>(null);
 
-  const [floorDrafts, setFloorDrafts] = useState<Record<string, { cooldown: number; notifyRecovery: boolean }>>({});
+  const [floorDrafts, setFloorDrafts] = useState<Record<string, { resetMin: number; notifyRecovery: boolean }>>({});
 
   useEffect(() => {
     if (!treeQ.data) return;
-    const d: Record<string, { cooldown: number; notifyRecovery: boolean }> = {};
+    const d: Record<string, { resetMin: number; notifyRecovery: boolean }> = {};
     for (const f of treeQ.data.floors) {
-      d[f.floorCode] = { cooldown: f.cooldownMinutes, notifyRecovery: f.notifyOnRecovery };
+      d[f.floorCode] = { resetMin: f.cooldownMinutes, notifyRecovery: f.notifyOnRecovery };
     }
     setFloorDrafts((prev) => ({ ...d, ...prev }));
   }, [treeQ.data]);
@@ -1298,7 +1298,7 @@ function FloorSuiteAlarmPanel() {
     const floor = treeQ.data?.floors.find((f) => f.floorCode === fc);
     setSavingFloor(fc);
     try {
-      await saveFloorConfig({ id: floor?.configId ?? undefined, floorCode: fc, enabled, cooldownMinutes: d.cooldown, notifyOnRecovery: d.notifyRecovery });
+      await saveFloorConfig({ id: floor?.configId ?? undefined, floorCode: fc, enabled, cooldownMinutes: d.resetMin, notifyOnRecovery: d.notifyRecovery });
       toast.success(`${fc} 已保存`);
       queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "保存失败"); }
@@ -1357,7 +1357,7 @@ function FloorSuiteAlarmPanel() {
         <div className="space-y-2">
           {tree.floors.map((floor) => {
             const fexp = expandedFloors.has(floor.floorCode);
-            const draft = floorDrafts[floor.floorCode] ?? { cooldown: floor.cooldownMinutes, notifyRecovery: floor.notifyOnRecovery };
+            const draft = floorDrafts[floor.floorCode] ?? { resetMin: floor.cooldownMinutes, notifyRecovery: floor.notifyOnRecovery };
             const isSaving = savingFloor === floor.floorCode;
 
             return (
@@ -1375,9 +1375,9 @@ function FloorSuiteAlarmPanel() {
                   </button>
                   <div className="flex items-center gap-2 shrink-0">
                     {fexp && (<>
-                      <label className="text-[11px] text-[var(--app-color-text-secondary)]">冷却<input type="number" min={1} max={1440}
+                      <label className="text-[11px] text-[var(--app-color-text-secondary)]">重置<input type="number" min={5} max={1440}
                         className="w-[3.5rem] ml-1 rounded border border-[var(--app-color-border-default)] px-1 py-0.5 text-xs font-mono text-center"
-                        value={draft.cooldown} onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, cooldown: Math.max(1, Number(e.target.value) || 30) } }))} />min</label>
+                        value={draft.resetMin} onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, resetMin: Math.max(5, Number(e.target.value) || 60) } }))} />min</label>
                       <label className="inline-flex items-center gap-1 text-[11px] text-[var(--app-color-text-secondary)] cursor-pointer select-none">
                         <input type="checkbox" className="h-3 w-3 rounded accent-[var(--app-color-accent)]" checked={draft.notifyRecovery}
                           onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, notifyRecovery: e.target.checked } }))} />恢复通知</label>
