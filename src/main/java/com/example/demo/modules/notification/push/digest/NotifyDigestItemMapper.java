@@ -12,4 +12,5 @@ public interface NotifyDigestItemMapper {
     List<NotifyDigestItem> findPendingByUser(@Param("userId") String userId);
     List<String> findDistinctPendingUsers();
     int markSent(@Param("ids") List<Long> ids, @Param("sendTime") LocalDateTime sendTime);
+    int deletePendingBySource(@Param("sourceCode") String sourceCode);
 }

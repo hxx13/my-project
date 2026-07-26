@@ -32,4 +32,7 @@
     UPDATE notify_digest_item SET status = 'SENT', send_time = #{sendTime}
     WHERE id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
   </update>
+  <delete id="deletePendingBySource">
+    DELETE FROM notify_digest_item WHERE source_code = #{sourceCode} AND status = 'PENDING'
+  </delete>
 </mapper>

@@ -983,15 +983,8 @@ Page({
   },
 
   openBindFlow() {
-    const token = wx.getStorageSync(springAuth.KEYS.TOKEN);
-    if (token) {
-      wx.showModal({
-        title: '已绑定校内系统',
-        content: '如需换绑请先使用底部「退出登录」清除本机校内登录后再操作。',
-        showCancel: false,
-      });
-      return;
-    }
+    // 不检查 token —— 用户可能已用账号密码登录但 openId 尚未绑定
+    // 如果 openId 已绑定，loginWechat 会直接返回 token（bound=true），届时提示即可
     let pending = wx.getStorageSync(springAuth.KEYS.PENDING_OPENID);
     if (!pending) {
       wx.showLoading({ title: '获取微信身份…', mask: true });

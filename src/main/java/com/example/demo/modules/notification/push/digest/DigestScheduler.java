@@ -143,17 +143,17 @@ public class DigestScheduler {
                 } catch (Exception e) {
                     sourceNames.add(sc);
                 }
-                // 按信息源分组，每个源下面列出该源的通知
-                body.append("【").append(sourceNames.get(sourceNames.size() - 1)).append("】\n\n");
+                // 按信息源分组，直接拼接该源已渲染好的渠道模板内容
+                String srcLabel = sourceNames.get(sourceNames.size() - 1);
+                body.append("## ").append(srcLabel).append("\n\n");
                 for (NotifyDigestItem it : entry.getValue()) {
-                    body.append("· ").append(plainText(it.getTitle())).append("\n");
                     if (it.getContent() != null && !it.getContent().isBlank()) {
-                        String c = plainText(it.getContent());
-                        if (c.length() > 200) c = c.substring(0, 200) + "…";
-                        body.append("  ").append(c).append("\n");
+                        body.append("- ").append(it.getContent()).append("\n");
+                    } else if (it.getTitle() != null && !it.getTitle().isBlank()) {
+                        body.append("- ").append(it.getTitle()).append("\n");
                     }
-                    body.append("\n");
                 }
+                body.append("---\n\n");
             }
 
             String templateTitle = null, templateContent = null;
@@ -164,12 +164,43 @@ public class DigestScheduler {
                     templateContent = def.getDigestContentTpl();
                 }
             } catch (Exception ignored) {}
-            String title = renderDigestTitle(templateTitle, userName, matchedItems.size(), dateTimeStr);
-            String content = renderDigestContent(templateContent, userName, matchedItems.size(), dateTimeStr, body.toString());
 
-            // 通过该用户绑定的渠道发送摘要
+            // ── 超长拆分：每 ~2000 字符一批，标记序号 ──
+            final int MAX_CHUNK = 2000;
+            List<String> chunks = new ArrayList<>();
+            if (body.length() <= MAX_CHUNK) {
+                chunks.add(body.toString());
+            } else {
+                StringBuilder buf = new StringBuilder();
+                String srcLabel = "";
+                for (var entry : grouped.entrySet()) {
+                    srcLabel = sourceNames.get(grouped.keySet().stream().toList().indexOf(entry.getKey()));
+                    for (NotifyDigestItem it : entry.getValue()) {
+                        String line = it.getContent() != null && !it.getContent().isBlank()
+                                ? it.getContent() : it.getTitle();
+                        String block = "- " + line + "\n";
+                        if (buf.length() + block.length() > MAX_CHUNK && buf.length() > 0) {
+                            chunks.add(buf.toString().trim());
+                            buf.setLength(0);
+                            buf.append("## ").append(srcLabel).append("\n\n");
+                        }
+                        buf.append(block);
+                    }
+                }
+                if (buf.length() > 0) chunks.add(buf.toString().trim());
+            }
+
+            if (chunks.isEmpty()) chunks.add(body.toString());
+            int totalPages = chunks.size();
             int sent = 0;
-            for (NotifyDigestItem sample : matchedItems) {
+
+            for (int pi = 0; pi < totalPages; pi++) {
+                String pageSuffix = totalPages > 1 ? "（" + (pi + 1) + "/" + totalPages + "）" : "";
+                String title = renderDigestTitle(templateTitle, userName, matchedItems.size(), dateTimeStr) + pageSuffix;
+                String content = renderDigestContent(templateContent, userName, matchedItems.size(), dateTimeStr, chunks.get(pi)) + pageSuffix;
+
+                // 通过该用户绑定的渠道发送摘要
+                for (NotifyDigestItem sample : matchedItems) {
                 try {
                     NotifySource src = sourceService.getByCode(sample.getSourceCode());
                     for (NotifySourceChannel chCfg : channelConfigService.listBySourceId(src.getId())) {
@@ -204,11 +235,12 @@ public class DigestScheduler {
                 }
                 break; // 只取一个 sample 获取 source/channel 信息即可
             }
+            } // end chunk loop
 
-            // 标记已发送
+            // 标记已发送（所有分片共用一个 mark）
             List<Long> ids = matchedItems.stream().map(NotifyDigestItem::getId).toList();
             digestItemMapper.markSent(ids, LocalDateTime.now());
-            log.info("[Digest] sent to {}: {} items, {} channels hit", userName, matchedItems.size(), sent);
+            log.info("[Digest] sent to {}: {} items, {} pages, {} channels hit", userName, matchedItems.size(), totalPages, sent);
         }
     }
 
@@ -238,16 +270,15 @@ public class DigestScheduler {
         for (var entry : grouped.entrySet()) {
             String sourceName = entry.getKey();
             try { sourceName = sourceService.getByCode(entry.getKey()).getSourceName(); } catch (Exception ignored) {}
-            body.append("【").append(sourceName).append("】\n\n");
+            body.append("## ").append(sourceName).append("\n\n");
             for (NotifyDigestItem it : entry.getValue()) {
-                body.append("· ").append(plainText(it.getTitle())).append("\n");
                 if (it.getContent() != null && !it.getContent().isBlank()) {
-                    String c = plainText(it.getContent());
-                    if (c.length() > 200) c = c.substring(0, 200) + "…";
-                    body.append("  ").append(c).append("\n");
+                    body.append("- ").append(it.getContent()).append("\n");
+                } else if (it.getTitle() != null && !it.getTitle().isBlank()) {
+                    body.append("- ").append(it.getTitle()).append("\n");
                 }
-                body.append("\n");
             }
+            body.append("\n");
         }
         String dateTimeStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String tTitle = null, tContent = null;
@@ -314,7 +345,7 @@ public class DigestScheduler {
 
     /** 渲染摘要标题模板 */
     private String renderDigestTitle(String tpl, String userName, int count, String time) {
-        String def = (tpl != null && !tpl.isBlank()) ? tpl : "ARO 通知摘要 · {time}";
+        String def = (tpl != null && !tpl.isBlank()) ? tpl : "ARO 环境监测 · {time}";
         return def.replace("{userName}", userName != null ? userName : "")
                 .replace("{count}", String.valueOf(count))
                 .replace("{time}", time != null ? time : "");
@@ -323,7 +354,7 @@ public class DigestScheduler {
     /** 渲染摘要正文模板 */
     private String renderDigestContent(String tpl, String userName, int count, String time, String itemsText) {
         String def = (tpl != null && !tpl.isBlank()) ? tpl
-                : "{userName}，您有 {count} 条新通知：\n\n{items}\n\n> {time} · ARO 系统自动推送";
+                : "{userName}，{count} 条新通知\n\n{items}\n{time} · ARO 环境监测";
         return def.replace("{userName}", userName != null ? userName : "")
                 .replace("{count}", String.valueOf(count))
                 .replace("{time}", time != null ? time : "")

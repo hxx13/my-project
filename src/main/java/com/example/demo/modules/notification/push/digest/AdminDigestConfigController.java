@@ -57,6 +57,8 @@ public class AdminDigestConfigController {
                                                      HttpServletRequest request) {
         Result<?> denied = requireSuperAdmin(request);
         if (denied != null) return Result.error(denied.getMessage());
+        Result<?> iv = validateMinInterval(config);
+        if (iv != null) return Result.error(iv.getMessage());
         defaultConfigMapper.insert(config);
         return Result.success(config);
     }
@@ -66,9 +68,24 @@ public class AdminDigestConfigController {
                                 HttpServletRequest request) {
         Result<?> denied = requireSuperAdmin(request);
         if (denied != null) return Result.error(denied.getMessage());
+        Result<?> iv = validateMinInterval(config);
+        if (iv != null) return Result.error(iv.getMessage());
         config.setId(id);
         defaultConfigMapper.update(config);
         return Result.success();
+    }
+
+    /** 遥测报警源聚合轮询间隔必须 ≥ 内置冷却 5 分钟，防止聚合刷新短于预缓存 flush 周期 */
+    private static Result<?> validateMinInterval(NotifyDigestDefaultConfig config) {
+        if (config == null) return null;
+        String sc = config.getSourceCode();
+        if (!"TELEMETRY_ALARM".equals(sc) && !"TELEMETRY_RECOVERY".equals(sc)) return null;
+        if (!"MINUTELY".equalsIgnoreCase(config.getDigestMode())) return null;
+        int interval = config.getMinutelyInterval() != null ? config.getMinutelyInterval() : 5;
+        if (interval < 5) {
+            return Result.error("遥测报警源的聚合轮询间隔不能低于 5 分钟（内置冷却时间），当前 " + interval + " 分钟");
+        }
+        return null;
     }
 
     @DeleteMapping("/{id}")
@@ -110,12 +127,15 @@ public class AdminDigestConfigController {
                 Map<String, String> vars = parseVariables(src.getVariables());
                 Map<String, String> mockVars = buildMockVars(vars, src.getSourceName());
 
-                // 用信息源自己的渠道模板渲染内容
+                // 用信息源自己的渠道模板渲染标题+内容（与 DigestScheduler 一致）
+                String itemTitle = tpl != null ? render(tpl.getTitleTpl(), mockVars) : src.getSourceName();
                 String itemContent = tpl != null ? render(tpl.getContentTpl(), mockVars)
-                        : src.getSourceName() + " — 测试通知内容";
+                        : "测试通知内容";
 
-                items.append("【").append(src.getSourceName()).append("】\n");
-                items.append("  · ").append(itemContent.replace("\n", "\n    ")).append("\n\n");
+                items.append("## ").append(src.getSourceName()).append("\n\n");
+                if (!itemTitle.isBlank()) items.append(itemTitle).append("\n\n");
+                items.append(itemContent).append("\n\n");
+                items.append("---\n\n");
             } catch (Exception e) {
                 items.append("【").append(code).append("】\n  测试通知项\n\n");
             }
