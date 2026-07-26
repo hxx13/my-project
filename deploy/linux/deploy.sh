@@ -39,6 +39,8 @@ echo "  ✅ DB_PASSWORD 已配置"
 # Step 1/8: git pull
 echo "=== Step 1/8: git pull ==="
 cd "$REPO_DIR"
+# 丢弃 npm build 自动生成文件的本地改动，避免冲突
+git checkout -- src/main/resources/page-permission/admin-nav.manifest.json 2>/dev/null || true
 git pull origin master
 echo "  当前 commit: $(git rev-parse --short HEAD)"
 
