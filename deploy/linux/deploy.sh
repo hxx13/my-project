@@ -73,7 +73,13 @@ fi
 # Step 5/8: 优雅停机
 echo "=== Step 5/8: 停止服务 ==="
 sudo systemctl stop twin
-sleep 3
+sleep 5
+# 确保端口已释放（systemctl stop 不保证旧进程完全退出）
+if ss -tln | grep -q ':9092 '; then
+    echo "  ⚠ 端口 9092 仍被占用，强制释放..."
+    sudo fuser -k 9092/tcp 2>/dev/null || true
+    sleep 2
+fi
 echo "  服务已停止"
 
 # Step 6/8: 替换 JAR
