@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Clock,
   LogOut,
+  Smartphone,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { type MobileCenterData } from "@/api/domains/mobileStudent.api";
@@ -57,6 +58,10 @@ export default function MobileMineTab({
   const [sendKeyDraft, setSendKeyDraft] = useState("");
   const [sendKeySaving, setSendKeySaving] = useState(false);
   const [currentSendKey, setCurrentSendKey] = useState(false);
+  const [wxPusherOpen, setWxPusherOpen] = useState(false);
+  const [wxPusherDraft, setWxPusherDraft] = useState("");
+  const [wxPusherSaving, setWxPusherSaving] = useState(false);
+  const [currentWxPusher, setCurrentWxPusher] = useState(false);
   const personnelId = data.userId || "";
 
   // 读取本地管理的 contact_email
@@ -79,6 +84,10 @@ export default function MobileMineTab({
     fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/send-key`, { headers })
       .then((r) => r.json().catch(() => ({})))
       .then((body) => setCurrentSendKey(!!body?.data?.sendKey))
+      .catch(() => {});
+    fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/wx-pusher-uid`, { headers })
+      .then((r) => r.json().catch(() => ({})))
+      .then((body) => setCurrentWxPusher(!!body?.data?.hasWxPusherUid))
       .catch(() => {});
     // URL 自动捕获
     const params = new URLSearchParams(window.location.search);
@@ -226,6 +235,33 @@ export default function MobileMineTab({
               <MessageCircle className="size-3" />
               <span className="truncate max-w-[120px]">
                 {currentSendKey ? "微信已绑定" : "微信通知"}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!personnelId) { toast.error("无法获取人员ID"); return; }
+                if (currentWxPusher) {
+                  if (!window.confirm("已绑定 WxPusher 推送，是否取消绑定？")) return;
+                  const token = authStorage.getToken();
+                  fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/wx-pusher-uid`, {
+                    method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                    body: JSON.stringify({ wxPusherUid: "" }),
+                  }).then((r) => {
+                    if (r.ok) { setCurrentWxPusher(false); toast.success("已取消 WxPusher 推送绑定"); }
+                    else toast.error("取消失败");
+                  }).catch(() => toast.error("取消失败"));
+                  return;
+                }
+                setWxPusherDraft("");
+                setWxPusherOpen(true);
+              }}
+              className="inline-flex items-center gap-1 text-[11px] active:opacity-70"
+              style={{ color: currentWxPusher ? "#059669" : "#64748b" }}
+            >
+              <Smartphone className="size-3" />
+              <span className="truncate max-w-[120px]">
+                {currentWxPusher ? "WxPusher已绑定" : "WxPusher推送"}
               </span>
             </button>
             {profile.projectGroupName && (
@@ -467,6 +503,49 @@ export default function MobileMineTab({
                   finally { setSendKeySaving(false); }
                 }}
               >{sendKeySaving ? "保存中…" : "保存"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WxPusher binding dialog */}
+      {wxPusherOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-5 shadow-xl dark:shadow-gray-900/50">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">绑定 WxPusher 推送</h3>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">关注公众号「WxPusher」→ 菜单「我的UID」→ 复制后填入下方</p>
+            <p className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400">
+              关注公众号 <b>WxPusher</b>（新消息服务）→ 我的 → 我的UID
+            </p>
+            <input
+              type="text"
+              value={wxPusherDraft}
+              onChange={(e) => setWxPusherDraft(e.target.value)}
+              maxLength={128}
+              className="mt-3 w-full rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800"
+              placeholder="粘贴 WxPusher UID（如 UID_xxxx）"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm text-gray-600 dark:text-gray-300"
+                onClick={() => setWxPusherOpen(false)}>取消</button>
+              <button type="button" disabled={!wxPusherDraft.trim() || wxPusherSaving}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+                onClick={async () => {
+                  setWxPusherSaving(true);
+                  try {
+                    const token = authStorage.getToken();
+                    const res = await fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/wx-pusher-uid`, {
+                      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                      body: JSON.stringify({ wxPusherUid: wxPusherDraft.trim() }),
+                    });
+                    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || "保存失败");
+                    toast.success("WxPusher 推送已绑定");
+                    setCurrentWxPusher(true);
+                    setWxPusherOpen(false);
+                  } catch (e: any) { toast.error(e?.message || "保存失败"); }
+                  finally { setWxPusherSaving(false); }
+                }}
+              >{wxPusherSaving ? "保存中…" : "保存"}</button>
             </div>
           </div>
         </div>

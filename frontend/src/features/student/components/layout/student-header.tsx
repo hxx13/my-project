@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, Bell, ChevronDown, LogOut, Mail, Menu, MessageCircle, UserRound } from "lucide-react";
+import { ArrowLeft, Bell, ChevronDown, LogOut, Mail, Menu, MessageCircle, Smartphone, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authStorage } from "@/features/auth/authStorage";
 import { getImpersonationState, returnToStaffView, fullLogout } from "@/features/auth/impersonation";
@@ -62,8 +62,13 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
   const [sendKeyDraft, setSendKeyDraft] = useState("");
   const [sendKeySaving, setSendKeySaving] = useState(false);
   const [currentSendKey, setCurrentSendKey] = useState(false);
+  // WxPusher binding
+  const [wxPusherOpen, setWxPusherOpen] = useState(false);
+  const [wxPusherDraft, setWxPusherDraft] = useState("");
+  const [wxPusherSaving, setWxPusherSaving] = useState(false);
+  const [currentWxPusher, setCurrentWxPusher] = useState(false);
 
-  // 读取 email + sendKey
+  // 读取 email + sendKey + wxPusher
   useEffect(() => {
     if (!personnelId) return;
     const token = authStorage.getToken();
@@ -75,6 +80,10 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
     fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/send-key`, { headers })
       .then((r) => r.json().catch(() => ({})))
       .then((body) => setCurrentSendKey(!!body?.data?.sendKey))
+      .catch(() => {});
+    fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/wx-pusher-uid`, { headers })
+      .then((r) => r.json().catch(() => ({})))
+      .then((body) => setCurrentWxPusher(!!body?.data?.hasWxPusherUid))
       .catch(() => {});
     // URL 自动捕获 sendkey
     const params = new URLSearchParams(window.location.search);
@@ -275,6 +284,28 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
               {currentSendKey ? "微信通知: 已绑定" : "绑定微信通知"}
             </DropdownMenuItem>
 
+            {/* WxPusher */}
+            <DropdownMenuItem onSelect={() => {
+              if (!personnelId) { toast.error("无法获取人员ID"); return; }
+              if (currentWxPusher) {
+                if (!window.confirm("已绑定 WxPusher 推送，是否取消绑定？")) return;
+                const token = authStorage.getToken();
+                fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/wx-pusher-uid`, {
+                  method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                  body: JSON.stringify({ wxPusherUid: "" }),
+                }).then((r) => {
+                  if (r.ok) { setCurrentWxPusher(false); toast.success("已取消 WxPusher 推送绑定"); }
+                  else toast.error("取消失败");
+                }).catch(() => toast.error("取消失败"));
+                return;
+              }
+              setWxPusherDraft("");
+              setWxPusherOpen(true);
+            }}>
+              <Smartphone className="mr-2 h-4 w-4" />
+              {currentWxPusher ? "WxPusher推送: 已绑定" : "绑定WxPusher推送"}
+            </DropdownMenuItem>
+
             {showLogout ? (
               <>
                 <DropdownMenuSeparator />
@@ -396,6 +427,44 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
                   finally { setSendKeySaving(false); }
                 }}
               >{sendKeySaving ? "保存中…" : "保存"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WxPusher binding dialog */}
+      {wxPusherOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+          <div className="w-full max-w-sm rounded-2xl bg-[var(--student-canvas)] dark:bg-gray-900 p-5 shadow-xl">
+            <h3 className="text-base font-semibold text-[var(--student-ink)] dark:text-gray-100">绑定 WxPusher 推送</h3>
+            <p className="mt-1 text-xs text-[var(--student-mute)] dark:text-gray-400">通过 WxPusher App 接收推送通知。关注公众号「WxPusher」→ 菜单「我的UID」→ 复制后填入下方。</p>
+            <p className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400">
+              关注公众号 <b>WxPusher</b>（新消息服务）→ 我的 → 我的UID
+            </p>
+            <input type="text" value={wxPusherDraft} onChange={(e) => setWxPusherDraft(e.target.value)} maxLength={128}
+              className="mt-3 w-full rounded-xl border border-[var(--student-hairline)] dark:border-gray-700 px-3 py-2.5 text-sm text-[var(--student-ink)] dark:text-gray-100 bg-[var(--student-canvas-soft)] dark:bg-gray-800"
+              placeholder="粘贴 WxPusher UID（如 UID_xxxx）" />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="rounded-xl border border-[var(--student-hairline)] dark:border-gray-700 px-4 py-2 text-sm text-[var(--student-body)] dark:text-gray-300"
+                onClick={() => setWxPusherOpen(false)}>取消</button>
+              <button type="button" disabled={!wxPusherDraft.trim() || wxPusherSaving}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+                onClick={async () => {
+                  setWxPusherSaving(true);
+                  try {
+                    const token = authStorage.getToken();
+                    const res = await fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/wx-pusher-uid`, {
+                      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                      body: JSON.stringify({ wxPusherUid: wxPusherDraft.trim() }),
+                    });
+                    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || "保存失败");
+                    toast.success("WxPusher 推送已绑定");
+                    setCurrentWxPusher(true);
+                    setWxPusherOpen(false);
+                  } catch (e: any) { toast.error(e?.message || "保存失败"); }
+                  finally { setWxPusherSaving(false); }
+                }}
+              >{wxPusherSaving ? "保存中…" : "保存"}</button>
             </div>
           </div>
         </div>

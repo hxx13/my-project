@@ -24,12 +24,12 @@
   <select id="findAll" resultMap="BaseResultMap">SELECT * FROM notify_digest_default_config ORDER BY source_code</select>
   <insert id="insert" useGeneratedKeys="true" keyProperty="id">
     INSERT INTO notify_digest_default_config (source_code, digest_mode, schedule_times, overflow_strategy, schedule_days, hourly_interval, night_mode_enabled, night_start, night_end, minutely_interval, overflow_cutoff_time, digest_title_tpl, digest_content_tpl, enabled)
-    VALUES (#{sourceCode}, #{digestMode}, #{scheduleTimes}, #{overflowStrategy}, #{scheduleDays}, #{hourlyInterval}, #{nightModeEnabled}, #{nightStart}, #{nightEnd}, COALESCE(#{minutelyInterval}, 5), #{overflowCutoffTime}, #{digestTitleTpl}, #{digestContentTpl}, #{enabled})
+    VALUES (#{sourceCode}, #{digestMode}, #{scheduleTimes}, #{overflowStrategy}, #{scheduleDays}, COALESCE(#{hourlyInterval}, 1), COALESCE(#{nightModeEnabled}, 0), #{nightStart}, #{nightEnd}, COALESCE(#{minutelyInterval}, 5), #{overflowCutoffTime}, #{digestTitleTpl}, #{digestContentTpl}, #{enabled})
   </insert>
   <update id="update">
     UPDATE notify_digest_default_config SET digest_mode=#{digestMode}, schedule_times=#{scheduleTimes},
-    overflow_strategy=#{overflowStrategy}, schedule_days=#{scheduleDays}, hourly_interval=#{hourlyInterval},
-    night_mode_enabled=#{nightModeEnabled}, night_start=#{nightStart}, night_end=#{nightEnd},
+    overflow_strategy=#{overflowStrategy}, schedule_days=#{scheduleDays}, hourly_interval=COALESCE(#{hourlyInterval}, 1),
+    night_mode_enabled=COALESCE(#{nightModeEnabled}, 0), night_start=#{nightStart}, night_end=#{nightEnd},
     minutely_interval=COALESCE(#{minutelyInterval}, 5), overflow_cutoff_time=#{overflowCutoffTime}, digest_title_tpl=#{digestTitleTpl}, digest_content_tpl=#{digestContentTpl},
     enabled=#{enabled} WHERE id=#{id}
   </update>

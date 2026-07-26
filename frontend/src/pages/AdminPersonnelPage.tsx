@@ -1322,7 +1322,7 @@ export default function AdminPersonnelPage() {
                     toast.success("WxPusher UID 已保存");
                     setWxEditOpen(null);
                     setWxEditDraft("");
-                    refresh();
+                    refetchPersonnel();
                   } catch (e: unknown) {
                     const msg = e instanceof Error ? e.message : "未知错误";
                     toast.error("保存失败: " + msg);

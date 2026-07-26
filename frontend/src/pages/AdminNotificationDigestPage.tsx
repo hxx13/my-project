@@ -4,11 +4,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminFillScrollRegion } from "@/components/admin/AdminPageShell";
 import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
+import { PersonnelPicker } from "@/components/admin/PersonnelPicker";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 import { authHttp } from "@/api/core/authHttp";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
-import { Clock, Settings, Save, X, RotateCw, Plus, Undo2, ChevronDown, ChevronUp } from "lucide-react";
+import { Clock, Settings, Save, X, RotateCw, Plus, Undo2, ChevronDown, ChevronUp, Trash2, Send, UserPlus } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -218,6 +219,37 @@ export default function AdminNotificationDigestPage() {
 
   const hasPersonalConfigs = enabledSources.some((s) => s.hasPreference);
 
+  const deleteGroupMutation = useMutation({
+    mutationFn: async (group: DigestConfigGroup) => {
+      if (mode === "personal") {
+        const prefs: Preference[] = group.sources.map((s) => ({
+          id: s.preference?.id ?? 0, userId: "", sourceCode: s.sourceCode,
+          digestMode: "INSTANT", enabled: 0,
+        }));
+        await Promise.all(prefs.map((p) => authHttp.put("/user/digest-preference", p)));
+      } else {
+        await Promise.all(group.sources.map((s) =>
+          s.defaultConfig?.id ? authHttp.delete(`/admin/digest-config/${s.defaultConfig.id}`) : Promise.resolve()
+        ));
+      }
+    },
+    onSuccess: () => {
+      toast.success("聚合配置已删除，恢复即时通知");
+      queryClient.invalidateQueries({ queryKey: ["digest-sources"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "删除失败"),
+  });
+
+  const testDigestMutation = useMutation({
+    mutationFn: (params: { digestTitle: string; digestContent: string; sourceCodes: string[] }) =>
+      authHttp.post("/admin/digest-config/test", params),
+    onSuccess: (res: any) => {
+      const d = res.data?.data;
+      toast.success(`测试摘要已发送${d?.sent != null ? `（成功 ${d.sent} 条）` : ""}`);
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "测试发送失败"),
+  });
+
   return (
     <AdminPageShell>
       <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
@@ -276,6 +308,8 @@ export default function AdminNotificationDigestPage() {
                   group={g}
                   isPersonal={mode === "personal"}
                   onEdit={(group) => setEditingGroup(group)}
+                  onDelete={(group) => deleteGroupMutation.mutate(group)}
+                  deleting={deleteGroupMutation.isPending}
                 />
               ))}
 
@@ -319,7 +353,13 @@ export default function AdminNotificationDigestPage() {
             isPersonal={mode === "personal"}
             onClose={() => setEditingGroup(null)}
             onSave={(g, m, s, o, d, i, ne, ns, nn, oc, sc) => saveGroup(g, m, s, o, d, i, ne, ns, nn, oc, sc)}
+            onTest={(dTitle, dContent, srcs, ids) => testDigestMutation.mutate({
+              digestTitle: dTitle, digestContent: dContent,
+              sourceCodes: Array.from(srcs),
+              targetUserIds: ids.length > 0 ? ids : undefined,
+            } as any)}
             saving={savePrefBatchMutation.isPending || saveDefaultBatchMutation.isPending}
+            testing={testDigestMutation.isPending}
           />
         )}
 
@@ -349,8 +389,10 @@ function formatGroupLabel(g: DigestConfigGroup): string {
   return `${MODE_LABELS[g.mode] || g.mode} · ${dayStr} · ${g.schedule || "—"}${nightTag}`;
 }
 
-function ConfigGroupCard({ group, isPersonal, onEdit }: {
+function ConfigGroupCard({ group, isPersonal, onEdit, onDelete, deleting }: {
   group: DigestConfigGroup; isPersonal: boolean; onEdit: (g: DigestConfigGroup) => void;
+  onDelete: (g: DigestConfigGroup) => void;
+  deleting: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
   return (
@@ -367,6 +409,10 @@ function ConfigGroupCard({ group, isPersonal, onEdit }: {
             {group.sources.length} 个信息源 · {OVERFLOW_LABELS[group.overflow] || group.overflow}
           </span>
           <AdminButton type="button" tone="secondary" size="sm" onClick={() => onEdit(group)}>编辑</AdminButton>
+          <AdminButton type="button" tone="ghost" size="sm" loading={deleting}
+            onClick={() => { if (confirm("将此聚合配置中的所有信息源恢复为即时通知？")) onDelete(group); }}>
+            <Trash2 className="h-3.5 w-3.5 text-[var(--app-color-feedback-error)]" />
+          </AdminButton>
         </div>
       </div>
       {expanded && (
@@ -429,9 +475,10 @@ function DayPicker({ value, onChange }: { value: string; onChange: (s: string) =
   );
 }
 
-function GroupEditModal({ group, allSources, isPersonal, onClose, onSave, saving }: {
+function GroupEditModal({ group, allSources, isPersonal, onClose, onSave, onTest, saving, testing }: {
   group: DigestConfigGroup; allSources: SourceDigestRow[]; isPersonal: boolean;
-  onClose: () => void; onSave: (g: DigestConfigGroup, mode: string, schedule: string, overflow: string, days: string, interval: number, nightEnabled: boolean, nightStart: string, nightEnd: string, cutoff: string, srcs: string[], dTitle: string, dContent: string) => void; saving: boolean;
+  onClose: () => void; onSave: (g: DigestConfigGroup, mode: string, schedule: string, overflow: string, days: string, interval: number, nightEnabled: boolean, nightStart: string, nightEnd: string, cutoff: string, srcs: string[], dTitle: string, dContent: string) => void;
+  onTest: (dTitle: string, dContent: string, srcs: Set<string>, targetUserIds: string[]) => void; saving: boolean; testing: boolean;
 }) {
   const [editMode, setEditMode] = useState(group.mode);
   const [schedule, setSchedule] = useState(group.schedule);
@@ -446,6 +493,10 @@ function GroupEditModal({ group, allSources, isPersonal, onClose, onSave, saving
   const [digestContent, setDigestContent] = useState(group.sources[0]?.defaultConfig?.digestContentTpl || "{userName}，您有 {count} 条新通知：\n\n{items}\n\n> ARO 系统自动推送");
   const groupSourceCodes = new Set(group.sources.map(s => s.sourceCode));
   const [selected, setSelected] = useState<Set<string>>(new Set(groupSourceCodes));
+  const [testPickerOpen, setTestPickerOpen] = useState(false);
+  const [testPickerOpen2, setTestPickerOpen2] = useState(false);
+  const [testNames, setTestNames] = useState<string[]>([]);
+  const [testIds, setTestIds] = useState<string[]>([]);
 
   const toggleSource = (code: string) => {
     setSelected((prev) => { const n = new Set(prev); if (n.has(code)) n.delete(code); else n.add(code); return n; });
@@ -570,7 +621,13 @@ function GroupEditModal({ group, allSources, isPersonal, onClose, onSave, saving
             placeholder="正文模板，如：{userName}，您有 {count} 条新通知：&#10;{items}&#10;> ARO 系统自动推送"
             value={digestContent} onChange={(e) => setDigestContent(e.target.value)} />
           <div className="mt-2 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] p-3 text-xs">
-            <p className="text-[10px] font-semibold text-[var(--app-color-text-tertiary)] mb-1">预览（示例数据）</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[10px] font-semibold text-[var(--app-color-text-tertiary)]">预览（示例数据）</p>
+              <AdminButton type="button" tone="primary" size="sm"
+                onClick={() => setTestPickerOpen(true)}>
+                <Send className="h-3 w-3" /> 测试发送
+              </AdminButton>
+            </div>
             <div className="text-[var(--app-color-text-primary)] whitespace-pre-wrap font-mono text-[11px]">
               {renderDigestPreview(digestTitle, digestContent, allSources.filter(s => selected.has(s.sourceCode)))}
             </div>
@@ -603,6 +660,56 @@ function GroupEditModal({ group, allSources, isPersonal, onClose, onSave, saving
           </AdminButton>
           </div>
         </div>
+
+        {/* 测试发送子弹窗 */}
+        {testPickerOpen && (
+          <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-center justify-center p-4" onClick={() => setTestPickerOpen(false)}>
+            <div className="w-full max-w-sm rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs font-bold text-[var(--app-color-text-primary)]">测试发送聚合通知</h4>
+                <button onClick={() => setTestPickerOpen(false)} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]"><X className="h-3.5 w-3.5 text-[var(--app-color-text-tertiary)]" /></button>
+              </div>
+              <p className="text-[11px] text-[var(--app-color-text-secondary)] mb-3">
+                将使用当前聚合模板 + {selected.size} 个信息源的渠道模板，mock 数据拼接后发送。
+              </p>
+              {testNames.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1 mb-3">
+                  {testNames.map((name, i) => (
+                    <span key={testIds[i]} className="inline-flex items-center gap-1 rounded-md bg-[var(--app-color-accent)]/15 border border-[var(--app-color-accent)]/25 px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-accent)] max-w-[160px]">
+                      <span className="truncate">{name}</span>
+                      <button type="button" onClick={() => { setTestIds(p => p.filter((_, j) => j !== i)); setTestNames(p => p.filter((_, j) => j !== i)); }} className="rounded-sm p-0.5 hover:bg-[var(--app-color-accent)]/20 shrink-0"><X className="h-3 w-3" /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-2 mb-3">
+                <AdminButton type="button" tone="secondary" size="sm" onClick={() => setTestPickerOpen2(true)}>
+                  <UserPlus className="h-3.5 w-3.5" /> 从人员库选择
+                </AdminButton>
+              </div>
+              {testPickerOpen2 && (
+                <PersonnelPicker
+                  onClose={() => setTestPickerOpen2(false)}
+                  onConfirm={(ids, names) => {
+                    setTestIds(prev => [...prev, ...ids]);
+                    setTestNames(prev => [...prev, ...names]);
+                    setTestPickerOpen2(false);
+                  }}
+                />
+              )}
+              <p className="text-[10px] text-[var(--app-color-text-tertiary)] mb-3">
+                {testNames.length > 0 ? `已指定 ${testNames.length} 人，仅发送给指定用户。` : "未指定接收人时将发送给后台配置的接收人 + 渠道绑定用户。"}
+              </p>
+              <div className="flex justify-end gap-2">
+                <AdminButton type="button" tone="ghost" size="sm" onClick={() => { setTestPickerOpen(false); setTestIds([]); setTestNames([]); }}>取消</AdminButton>
+                <AdminButton type="button" tone="primary" size="sm" loading={testing}
+                  onClick={() => { setTestPickerOpen(false); onTest(digestTitle, digestContent, selected, testIds); }}>
+                  <Send className="h-3.5 w-3.5" /> 发送
+                </AdminButton>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

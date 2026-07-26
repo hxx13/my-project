@@ -35,6 +35,7 @@ public class TelemetryWatchlistTagRow {
     /** JOIN telemetry_metric_kind.label_zh，非表列 */
     private String metricKindLabel;
     private Integer enabled;
+    private Integer alarmEnabled;
     private Integer sortOrder;
     private LocalDateTime createdAt;
 }

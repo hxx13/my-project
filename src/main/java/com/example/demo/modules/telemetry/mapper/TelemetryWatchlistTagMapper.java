@@ -53,4 +53,5 @@ public interface TelemetryWatchlistTagMapper {
                                              @Param("at") LocalDateTime at);
 
     List<TelemetryWatchlistTagRow> selectCachedAlarmLimitsForSnapshotMerge();
+    int updateAlarmEnabled(@Param("id") Long id, @Param("alarmEnabled") Integer alarmEnabled);
 }

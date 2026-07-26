@@ -1726,7 +1726,7 @@ public class SuppliesService {
         vars.put("summary", "共 " + lineCount + " 项物资");
         event.setVariables(vars);
         notificationService.publish(event);
-        try { pushService.send("SUPPLIES_REQUESTED", Map.of("applicantName", resolveDisplayName(applicantUserId), "summary", "共 " + lineCount + " 项物资", "bizId", orderId, "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))); } catch (Exception e) { log.warn("[Push] SUPPLIES_REQUESTED failed: {}", e.getMessage()); }
+        try { String itemDetail = claimLineMapper.listByOrderId(orderId).stream().map(l -> (l.getSnapshotName() != null ? l.getSnapshotName() : "物品") + " ×" + l.getQty()).collect(Collectors.joining("、")); pushService.send("SUPPLIES_REQUESTED", Map.of("applicantName", resolveDisplayName(applicantUserId), "summary", itemDetail, "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))); } catch (Exception e) { log.warn("[Push] SUPPLIES_REQUESTED failed: {}", e.getMessage()); }
     }
 
     /** 出库完成 → 申请人站内回执（与报修/采购办结同源：COMPLETED + SUPPLIES_CLAIM） */

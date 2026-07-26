@@ -2,7 +2,7 @@
 import "./mobile-student-shell.css";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Loader2, WifiOff, X, Mail, MessageCircle } from "lucide-react";
+import { Loader2, WifiOff, X, Mail, MessageCircle, Smartphone } from "lucide-react";
 import {
   fetchMobileCenter,
   fetchMobileAlerts,
@@ -108,8 +108,9 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [currentEmail, setCurrentEmail] = useState("");
   const [currentSendKey, setCurrentSendKey] = useState(false);
+  const [currentWxPusher, setCurrentWxPusher] = useState(false);
 
-  // Fetch email & SendKey binding status for header chips
+  // Fetch email & SendKey & WxPusher binding status for header chips
   const userIdForBind = authStorage.getUserInfo()?.id || data?.userId || "";
   const navigate = useNavigate();
 
@@ -122,6 +123,9 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [emailSaving, setEmailSaving] = useState(false);
   const [sendKeyDraft, setSendKeyDraft] = useState("");
   const [sendKeySaving, setSendKeySaving] = useState(false);
+  const [showWxPusherDialog, setShowWxPusherDialog] = useState(false);
+  const [wxPusherDraft, setWxPusherDraft] = useState("");
+  const [wxPusherSaving, setWxPusherSaving] = useState(false);
 
   const handleEmailChip = () => {
     if (!userIdForBind) return;
@@ -152,6 +156,21 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
       setShowSendKeyDialog(true);
     }
   };
+
+  const handleWxPusherChip = () => {
+    if (!userIdForBind) return;
+    if (currentWxPusher) {
+      if (!window.confirm("已绑定 WxPusher 推送，是否取消绑定？")) return;
+      const t = authStorage.getToken();
+      fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/wx-pusher-uid`, {
+        method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+        body: JSON.stringify({ wxPusherUid: "" }),
+      }).then((r) => { if (r.ok) setCurrentWxPusher(false); });
+    } else {
+      setWxPusherDraft("");
+      setShowWxPusherDialog(true);
+    }
+  };
   useEffect(() => {
     if (!userIdForBind) return;
     const t = authStorage.getToken();
@@ -164,6 +183,10 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
     fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, { headers: h })
       .then((r) => r.json().catch(() => ({})))
       .then((b) => setCurrentSendKey(!!b?.data?.sendKey))
+      .catch(() => {});
+    fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/wx-pusher-uid`, { headers: h })
+      .then((r) => r.json().catch(() => ({})))
+      .then((b) => setCurrentWxPusher(!!b?.data?.hasWxPusherUid))
       .catch(() => {});
   }, [userIdForBind]);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -401,6 +424,18 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
           >
             <MessageCircle className="size-3 mr-1 inline" />{currentSendKey ? "微信已绑定" : "微信未绑定"}
           </button>
+          <button
+            type="button"
+            onClick={handleWxPusherChip}
+            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
+            style={{
+              background: currentWxPusher ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
+              backdropFilter: "blur(8px)",
+              border: "1px solid rgba(255,255,255,0.2)",
+            }}
+          >
+            <Smartphone className="size-3 mr-1 inline" />{currentWxPusher ? "WxPusher已绑定" : "WxPusher未绑定"}
+          </button>
         </div>
       )}
 
@@ -486,6 +521,40 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
                 className="flex-1 rounded-full py-2.5 text-sm font-medium text-white disabled:opacity-50"
                 style={{ background: "linear-gradient(135deg, #ac1736, #8B1229)" }}>
                 {sendKeySaving ? "保存中…" : "保存"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WxPusher bind dialog */}
+      {showWxPusherDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowWxPusherDialog(false)}>
+          <div className="bg-white rounded-2xl w-[85%] max-w-xs p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-gray-900">绑定 WxPusher 推送</h3>
+            <p className="mt-1 text-xs text-gray-500">关注公众号「WxPusher」→ 菜单「我的UID」→ 复制后填入下方</p>
+            <p className="mt-1 text-[11px] text-[#d97706]">关注公众号 <b>WxPusher</b>（新消息服务）→ 我的 → 我的UID</p>
+            <input value={wxPusherDraft} onChange={(e) => setWxPusherDraft(e.target.value)} placeholder="粘贴 WxPusher UID（如 UID_xxxx）"
+              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#ac1736]" />
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setShowWxPusherDialog(false)} className="flex-1 rounded-full py-2.5 text-sm font-medium border border-gray-200 text-gray-600 active:bg-gray-50">取消</button>
+              <button type="button" disabled={!wxPusherDraft.trim() || wxPusherSaving}
+                onClick={async () => {
+                  setWxPusherSaving(true);
+                  try {
+                    const t = authStorage.getToken();
+                    const r = await fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/wx-pusher-uid`, {
+                      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+                      body: JSON.stringify({ wxPusherUid: wxPusherDraft.trim() }),
+                    });
+                    if (!r.ok) throw new Error("保存失败");
+                    setCurrentWxPusher(true); setShowWxPusherDialog(false);
+                  } catch (e: any) { alert(e?.message || "保存失败"); }
+                  finally { setWxPusherSaving(false); }
+                }}
+                className="flex-1 rounded-full py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #ac1736, #8B1229)" }}>
+                {wxPusherSaving ? "保存中…" : "保存"}
               </button>
             </div>
           </div>

@@ -51,7 +51,10 @@ public class AdminNotifySourceController {
         Result<?> denied = requireSuperAdmin(request); if (denied != null) return Result.error(denied.getMessage());
         List<NotifySource> sources = sourceService.listAll();
         List<NotifySourceConfigDTO> result = new ArrayList<>();
-        for (NotifySource src : sources) result.add(buildDTO(src));
+        for (NotifySource src : sources) {
+            if ("DIGEST_TEST".equals(src.getSourceCode())) continue; // 内部测试源，不对外展示
+            result.add(buildDTO(src));
+        }
         return Result.success(result);
     }
 
@@ -99,7 +102,7 @@ public class AdminNotifySourceController {
         for (NotifySourceChannel ch : channelConfigService.listBySourceId(src.getId())) {
             NotifySourceConfigDTO.ChannelConfig cc = new NotifySourceConfigDTO.ChannelConfig();
             cc.setId(ch.getId()); cc.setChannelCode(ch.getChannelCode());
-            cc.setChannelName("EMAIL".equals(ch.getChannelCode()) ? "邮件通知" : "Server酱微信通知");
+            cc.setChannelName(channelDisplayName(ch.getChannelCode()));
             cc.setEnabled(Boolean.TRUE.equals(ch.getEnabled()));
             cc.setTitleTpl(ch.getTitleTpl()); cc.setContentTpl(ch.getContentTpl());
             cc.setQuietStart(ch.getQuietStart() != null ? ch.getQuietStart().toString() : null);
@@ -128,5 +131,14 @@ public class AdminNotifySourceController {
         }
         dto.setRecipients(recipients);
         return dto;
+    }
+
+    private String channelDisplayName(String code) {
+        return switch (code) {
+            case "EMAIL" -> "邮件通知";
+            case "SERVER_CHAN" -> "Server酱微信通知";
+            case "WXPUSHER" -> "WxPusher推送";
+            default -> code;
+        };
     }
 }

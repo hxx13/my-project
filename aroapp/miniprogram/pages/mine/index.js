@@ -390,6 +390,10 @@ Page({
     showSendKeyEditor: false,
     sendKeyDraft: '',
     sendKeySaving: false,
+    currentWxPusher: false,
+    showWxPusherEditor: false,
+    wxPusherDraft: '',
+    wxPusherSaving: false,
 
     // Password Change
     showPwdChange: false,
@@ -441,7 +445,7 @@ Page({
 
     if (!shouldRefreshOnShow(this, { sceneKey, ttlMs: 30000 })) {
       void this.refreshPendingBadges();
-      if (token) { this.fetchCurrentEmail(); this.fetchCurrentSendKey(); }
+      if (token) { this.fetchCurrentEmail(); this.fetchCurrentSendKey(); this.fetchCurrentWxPusher(); }
       return;
     }
     pagePermission.refreshMiniPermissions().finally(() => this.refreshSpringUiState());
@@ -658,7 +662,7 @@ Page({
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
     if (tabBar && typeof tabBar.refreshTabs === 'function') tabBar.refreshTabs();
     void this.refreshPendingBadges();
-    if (springBound) { this.fetchCurrentEmail(); this.fetchCurrentSendKey(); }
+    if (springBound) { this.fetchCurrentEmail(); this.fetchCurrentSendKey(); this.fetchCurrentWxPusher(); }
   },
 
   onProfileAvatarError() {
@@ -1542,6 +1546,95 @@ Page({
     } catch (e) {
       wx.showToast({ title: e && e.message ? String(e.message).slice(0, 20) : '失败', icon: 'none' });
       this.setData({ sendKeySaving: false });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  fetchCurrentWxPusher() {
+    const id = this.data.springUserId;
+    if (!id) return;
+    springAuth.springRequest({
+      url: `/api/admin/personnel/${encodeURIComponent(id)}/wx-pusher-uid`,
+      method: 'GET',
+      data: {},
+    }).then((res) => {
+      const body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      const has = !!(body && body.data && body.data.hasWxPusherUid);
+      this.setData({ currentWxPusher: has });
+    }).catch(() => {});
+  },
+
+  onOpenWxPusherEditor() {
+    const id = this.data.springUserId;
+    if (!id) { wx.showToast({ title: '请先完成校内绑定', icon: 'none' }); return; }
+    if (this.data.currentWxPusher) {
+      wx.showModal({
+        title: '取消 WxPusher 推送',
+        content: '已绑定 WxPusher 推送，是否取消绑定？',
+        confirmText: '取消绑定',
+        cancelText: '暂不',
+        success: (res) => {
+          if (res.confirm) this.doUnbindWxPusher();
+        },
+      });
+      return;
+    }
+    this.setData({ showWxPusherEditor: true, wxPusherDraft: '', wxPusherSaving: false });
+  },
+
+  onCloseWxPusherEditor() {
+    this.setData({ showWxPusherEditor: false, wxPusherDraft: '', wxPusherSaving: false });
+  },
+
+  onWxPusherInput(e) {
+    this.setData({ wxPusherDraft: e.detail && e.detail.value != null ? String(e.detail.value) : '' });
+  },
+
+  doUnbindWxPusher() {
+    const id = this.data.springUserId;
+    if (!id) return;
+    wx.showLoading({ title: '解绑中…', mask: true });
+    springAuth.springRequest({
+      url: `/api/admin/personnel/${encodeURIComponent(id)}/wx-pusher-uid`,
+      method: 'PUT',
+      data: { wxPusherUid: '' },
+    }).then((res) => {
+      wx.hideLoading();
+      const body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (res && res.statusCode === 200 && body && body.success === true) {
+        wx.showToast({ title: '已取消绑定', icon: 'success' });
+        this.setData({ currentWxPusher: false });
+      } else {
+        wx.showToast({ title: (body && body.message) || '操作失败', icon: 'none' });
+      }
+    }).catch(() => {
+      wx.hideLoading();
+      wx.showToast({ title: '网络错误', icon: 'none' });
+    });
+  },
+
+  async onSubmitWxPusher() {
+    const id = this.data.springUserId;
+    const uid = (this.data.wxPusherDraft || '').trim();
+    if (!id || !uid || this.data.wxPusherSaving) return;
+    this.setData({ wxPusherSaving: true });
+    wx.showLoading({ title: '保存中…', mask: true });
+    try {
+      const res = await springAuth.springRequest({
+        url: `/api/admin/personnel/${encodeURIComponent(id)}/wx-pusher-uid`,
+        method: 'PUT',
+        data: { wxPusherUid: uid },
+      });
+      const body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (!(res && res.statusCode === 200 && body && body.success === true)) {
+        throw new Error((body && body.message) || '保存失败');
+      }
+      wx.showToast({ title: 'WxPusher 推送已绑定', icon: 'success' });
+      this.setData({ currentWxPusher: true, showWxPusherEditor: false, wxPusherDraft: '', wxPusherSaving: false });
+    } catch (e) {
+      wx.showToast({ title: e && e.message ? String(e.message).slice(0, 20) : '失败', icon: 'none' });
+      this.setData({ wxPusherSaving: false });
     } finally {
       wx.hideLoading();
     }

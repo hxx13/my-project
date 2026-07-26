@@ -22,6 +22,7 @@
         <result column="metric_kind_role" property="metricKindRole"/>
         <result column="metric_kind_label" property="metricKindLabel"/>
         <result column="enabled" property="enabled"/>
+        <result column="alarm_enabled" property="alarmEnabled"/>
         <result column="sort_order" property="sortOrder"/>
         <result column="created_at" property="createdAt"/>
         <result column="bundle_code" property="bundleCode"/>
@@ -214,4 +215,8 @@
         WHERE (cached_alarm_min_value IS NOT NULL AND TRIM(cached_alarm_min_value) &lt;&gt; '')
            OR (cached_alarm_max_value IS NOT NULL AND TRIM(cached_alarm_max_value) &lt;&gt; '')
     </select>
+
+    <update id="updateAlarmEnabled">
+        UPDATE telemetry_watchlist_tag SET alarm_enabled = #{alarmEnabled} WHERE id = #{id}
+    </update>
 </mapper>
