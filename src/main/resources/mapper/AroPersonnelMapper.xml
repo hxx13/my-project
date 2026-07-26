@@ -68,12 +68,20 @@
         UPDATE aro_personnel SET send_key = #{sendKey} WHERE user_id = #{userId}
     </update>
 
+    <update id="updateWxPusherUid">
+        UPDATE aro_personnel SET wx_pusher_uid = #{wxPusherUid} WHERE user_id = #{userId}
+    </update>
+
     <select id="findContactEmailByUserId" resultType="string">
         SELECT contact_email FROM aro_personnel WHERE user_id = #{userId}
     </select>
 
     <select id="findSendKeyByUserId" resultType="string">
         SELECT send_key FROM aro_personnel WHERE user_id = #{userId}
+    </select>
+
+    <select id="findWxPusherUidByUserId" resultType="string">
+        SELECT wx_pusher_uid FROM aro_personnel WHERE user_id = #{userId}
     </select>
 
     <select id="findContactEmailsByUserIds" resultType="java.util.HashMap">

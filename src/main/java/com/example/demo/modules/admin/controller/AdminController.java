@@ -309,6 +309,30 @@ public class AdminController {
         return Result.success(Map.of("sendKey", masked, "hasSendKey", sendKey != null && !sendKey.isBlank()));
     }
 
+    @PutMapping("/personnel/{userId}/wx-pusher-uid")
+    @Operation(summary = "更新人员的WxPusher UID")
+    public Result<Void> updateWxPusherUid(@PathVariable String userId, @RequestBody Map<String, String> body) {
+        String wxPusherUid = body != null ? body.get("wxPusherUid") : null;
+        String trimmed = (wxPusherUid != null && !wxPusherUid.isBlank()) ? wxPusherUid.trim() : null;
+        if (isStaffId(userId)) {
+            userMapper.updateWxPusherUid(userId, trimmed);
+        } else {
+            aroPersonnelMapper.ensureRowExists(userId);
+            aroPersonnelMapper.updateWxPusherUid(userId, trimmed);
+        }
+        return Result.success();
+    }
+
+    @GetMapping("/personnel/{userId}/wx-pusher-uid")
+    @Operation(summary = "获取人员的WxPusher UID（脱敏）")
+    public Result<Map<String, Object>> getWxPusherUid(@PathVariable String userId) {
+        String wxPusherUid = isStaffId(userId) ? userMapper.findWxPusherUidById(userId) : aroPersonnelMapper.findWxPusherUidByUserId(userId);
+        String masked = wxPusherUid != null && wxPusherUid.length() > 10
+                ? wxPusherUid.substring(0, 4) + "****" + wxPusherUid.substring(wxPusherUid.length() - 4)
+                : (wxPusherUid != null ? "****" : "");
+        return Result.success(Map.of("wxPusherUid", masked, "hasWxPusherUid", wxPusherUid != null && !wxPusherUid.isBlank()));
+    }
+
     private Result<?> requireSuperAdmin(HttpServletRequest request) {
         return requireMinRole(request, RoleEnum.SUPER_ADMIN);
     }

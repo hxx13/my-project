@@ -88,5 +88,9 @@ public interface UserMapper {
     String findContactEmailById(@Param("id") String id);
     String findSendKeyById(@Param("id") String id);
 
+    int updateWxPusherUid(@Param("id") String id, @Param("wxPusherUid") String wxPusherUid);
+    String findWxPusherUidById(@Param("id") String id);
+    java.util.List<java.util.Map<String, String>> findWxPusherUidsByIds(@Param("ids") List<String> ids);
+
     User findByContactEmail(@Param("contactEmail") String contactEmail);
 }

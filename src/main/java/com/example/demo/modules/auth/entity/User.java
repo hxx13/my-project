@@ -70,4 +70,7 @@ public class User {
 
     /** Server酱 SendKey（用于微信推送通知） */
     private String sendKey;
+
+    /** WxPusher UID（用于微信App推送通知） */
+    private String wxPusherUid;
 }

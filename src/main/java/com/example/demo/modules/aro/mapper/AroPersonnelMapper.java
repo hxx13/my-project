@@ -70,11 +70,13 @@ public interface AroPersonnelMapper {
 
     int updateContactEmail(@Param("userId") String userId, @Param("contactEmail") String contactEmail);
     int updateSendKey(@Param("userId") String userId, @Param("sendKey") String sendKey);
+    int updateWxPusherUid(@Param("userId") String userId, @Param("wxPusherUid") String wxPusherUid);
 
-    /** 系统用户无ARO记录时创建占位行，确保contact_email/send_key可写入 */
+    /** 系统用户无ARO记录时创建占位行，确保contact_email/send_key/wx_pusher_uid可写入 */
     int ensureRowExists(@Param("userId") String userId);
     String findContactEmailByUserId(@Param("userId") String userId);
     String findSendKeyByUserId(@Param("userId") String userId);
+    String findWxPusherUidByUserId(@Param("userId") String userId);
 
     /** 批量查邮箱，返回 userId→email 列表 */
     java.util.List<java.util.Map<String, String>> findContactEmailsByUserIds(@Param("userIds") List<String> userIds);

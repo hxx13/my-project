@@ -4,6 +4,7 @@ public final class PushConstants {
     private PushConstants() {}
     public static final String CHANNEL_EMAIL = "EMAIL";
     public static final String CHANNEL_SERVER_CHAN = "SERVER_CHAN";
+    public static final String CHANNEL_WXPUSHER = "WXPUSHER";
     public static final String PERSPECTIVE_STUDENT = "STUDENT";
     public static final String PERSPECTIVE_STAFF = "STAFF";
     public static final String PERSPECTIVE_ALL = "ALL";

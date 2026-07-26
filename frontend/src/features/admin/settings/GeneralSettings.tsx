@@ -15,6 +15,7 @@ const GENERAL_MODULES = [
   { key: "logging",          label: "日志控制",     desc: "运行时控制台日志级别管理，修改即时生效，重启恢复默认" },
   { key: "scanner",          label: "扫码器配置",   desc: "扫码器相关系统配置" },
   { key: "material",         label: "素材审核配置", desc: "学生物资申领系统配置，控制需求建议入口开关等参数" },
+  { key: "push_channel",     label: "推送渠道配置", desc: "邮件/Server酱/WxPusher 渠道开关与凭证（appToken等）" },
 ];
 
 function useModuleConfigs(moduleKey: string) {
