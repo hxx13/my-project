@@ -178,6 +178,7 @@ public class PushDispatchEngine {
 
         Map<String, String> emailMap = new HashMap<>();
         Map<String, String> sendKeyMap = new HashMap<>();
+        Map<String, String> wxPusherUidMap = new HashMap<>();
         if (!aroIds.isEmpty()) {
             List<Map<String, String>> aroEmails = personnelMapper.findContactEmailsByUserIds(aroIds);
             if (aroEmails != null) {
@@ -213,8 +214,16 @@ public class PushDispatchEngine {
                     if (uid != null && sk != null && !sk.isBlank()) sendKeyMap.put(uid, sk);
                 }
             }
+            List<Map<String, String>> userWuids = userMapper.findWxPusherUidsByIds(staffIds);
+            if (userWuids != null) {
+                for (Map<String, String> row : userWuids) {
+                    String uid = row.get("id");
+                    String wuid = row.get("wx_pusher_uid");
+                    if (uid != null && wuid != null && !wuid.isBlank()) wxPusherUidMap.put(uid, wuid);
+                }
+            }
         }
-        diag.add("email bindings: " + emailMap.size() + ", sendKey bindings: " + sendKeyMap.size());
+        diag.add("email bindings: " + emailMap.size() + ", sendKey bindings: " + sendKeyMap.size() + ", wxPusher bindings: " + wxPusherUidMap.size());
         diag.add("registered channels: " + channels.stream().map(PushChannel::getCode).toList());
 
         for (NotifySourceChannel channelCfg : channelConfigs) {
@@ -246,9 +255,14 @@ public class PushDispatchEngine {
             int chSent = 0, chFailed = 0, chSkipped = 0;
             for (String userId : allRecipientIds) {
                 // Batch-preloaded maps (C2 fix)
-                String target = PushConstants.CHANNEL_EMAIL.equals(channel.getCode())
-                        ? emailMap.get(userId)
-                        : sendKeyMap.get(userId);
+                String target;
+                if (PushConstants.CHANNEL_EMAIL.equals(channel.getCode())) {
+                    target = emailMap.get(userId);
+                } else if (PushConstants.CHANNEL_WXPUSHER.equals(channel.getCode())) {
+                    target = wxPusherUidMap.get(userId);
+                } else {
+                    target = sendKeyMap.get(userId);
+                }
                 if (target == null || target.isBlank()) {
                     chSkipped++;
                     diag.add("user " + userId + " has no binding for " + channel.getCode());

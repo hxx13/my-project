@@ -15,6 +15,7 @@ export interface PersonnelAuthRecord {
   pinUpdatedAt?: string | null;
   contactEmail?: string;
   sendKey?: string;
+  wxPusherUid?: string;
 }
 
 export interface SystemUserRecord {
@@ -30,6 +31,7 @@ export interface SystemUserRecord {
   miniBindType?: string | null;
   contactEmail?: string | null;
   sendKey?: string | null;
+  wxPusherUid?: string | null;
 }
 
 interface Result<T> {

@@ -24,6 +24,8 @@ public class PushChannelConfigSeed implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         ensureConfig("push_channel", "EMAIL.enabled", "true", "BOOLEAN", "邮件渠道总开关");
         ensureConfig("push_channel", "SERVER_CHAN.enabled", "true", "BOOLEAN", "Server酱渠道总开关");
+        ensureConfig("push_channel", "WXPUSHER.enabled", "true", "BOOLEAN", "WxPusher渠道总开关");
+        ensureConfig("push_channel", "WXPUSHER.appToken", "", "STRING", "WxPusher应用appToken（从管理后台获取）");
         log.info("[Push] 渠道总控种子数据已确认");
     }
 
