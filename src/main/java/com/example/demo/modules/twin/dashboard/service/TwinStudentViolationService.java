@@ -808,7 +808,7 @@ public class TwinStudentViolationService {
         }
         // 同步写入 sys_student_notification，确保 /student/notifications 消息中心可见
         persistStudentNotification(row);
-        try { pushService.send("VIOLATION_CREATED", Map.of("title", "CAGE_STATUS".equals(row.getSource()) ? resolveCageNoticeTitle(row) : "违规提醒", "source", row.getSource() != null ? row.getSource() : "MANUAL", "summary", row.getViolationText() != null ? row.getViolationText().replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim() : "", "enterLocked", String.valueOf(row.getForbidEnter() != null && row.getForbidEnter() == 1)), Set.of(row.getTargetUserId())); } catch (Exception e) { log.warn("[Push] VIOLATION_CREATED failed: {}", e.getMessage()); }
+        try { String srcLabel = "CAGE_STATUS".equals(row.getSource()) ? "笼位状态异常" : row.getSource() != null ? row.getSource() : "管理员记录"; String enterLabel = row.getForbidEnter() != null && row.getForbidEnter() == 1 ? "已限制进入" : "未限制"; pushService.send("VIOLATION_CREATED", Map.of("title", "CAGE_STATUS".equals(row.getSource()) ? resolveCageNoticeTitle(row) : "违规提醒", "source", srcLabel, "summary", row.getViolationText() != null ? row.getViolationText().replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim() : "", "enterLocked", enterLabel), Set.of(row.getTargetUserId())); } catch (Exception e) { log.warn("[Push] VIOLATION_CREATED failed: {}", e.getMessage()); }
         return row;
     }
 

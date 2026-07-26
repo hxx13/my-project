@@ -62,7 +62,25 @@ public class NotifySourceRegistry implements ApplicationRunner {
         register("SUPPLIES_COMPLETED", "物资领用-办结回执", "物资出库完毕通知领用人",
                 Map.of("applicantName", "领用人姓名", "summary", "出库摘要", "targetUserId", "领用人ID（自动索引）"));
 
-        log.info("[Push] 通知源注册完成（14个源）");
+        // 聚合通知测试专用源
+        register("DIGEST_TEST", "聚合通知测试", "仅用于聚合配置页面测试发送",
+                Map.of("title", "标题", "content", "正文", "sourceName", "来源名称"));
+
+        // ========== 动物房环境遥测 ==========
+        register("TELEMETRY_ALARM", "动物房环境报警",
+                "温湿度/压强超出阈值",
+                Map.of("floorCode", "楼层编号", "roomName", "房间名称",
+                        "metricKind", "指标类型（温度/湿度/压强）",
+                        "alarmDirection", "报警方向（偏高/偏低）",
+                        "currentValue", "当前读数", "limitValue", "报警阈值",
+                        "sentAt", "报警时间"));
+        register("TELEMETRY_RECOVERY", "动物房环境恢复",
+                "越限指标恢复正常",
+                Map.of("floorCode", "楼层编号", "roomName", "房间名称",
+                        "metricKind", "指标类型", "currentValue", "当前读数",
+                        "recoveryAt", "恢复时间"));
+
+        log.info("[Push] 通知源注册完成（17个源）");
     }
 
     private void register(String code, String name, String desc, Map<String, String> variables) {

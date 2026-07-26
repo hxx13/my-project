@@ -61,7 +61,7 @@ public class WxPusherPushChannel implements PushChannel {
             body.put("appToken", appToken);
             body.put("content", content != null ? content : "");
             body.put("summary", title != null ? title : "");
-            body.put("contentType", 1); // 1=文字
+            body.put("contentType", 3); // 3=Markdown
             body.put("uids", Collections.singletonList(target));
 
             HttpHeaders headers = new HttpHeaders();

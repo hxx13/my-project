@@ -11,7 +11,7 @@ import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import {
   TrendingUp, CheckCircle2, XCircle, Mail, MessageSquareText,
   RefreshCw, Activity, Search, RotateCw, ChevronLeft, ChevronRight,
-  FileText, X, Clock, AlertCircle,
+  FileText, X, Clock, AlertCircle, Smartphone,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -59,6 +59,7 @@ const CHANNEL_OPTIONS = [
   { value: "", label: "全部渠道" },
   { value: "EMAIL", label: "邮件" },
   { value: "SERVER_CHAN", label: "Server酱" },
+  { value: "WXPUSHER", label: "WxPusher" },
 ];
 
 const STATUS_OPTIONS = [
@@ -85,6 +86,7 @@ const STATUS_LABEL: Record<string, string> = {
 const channelIconMap: Record<string, React.ReactNode> = {
   EMAIL: <Mail className="h-4 w-4" aria-hidden />,
   SERVER_CHAN: <MessageSquareText className="h-4 w-4" aria-hidden />,
+  WXPUSHER: <Smartphone className="h-4 w-4" aria-hidden />,
 };
 
 /* ------------------------------------------------------------------ */

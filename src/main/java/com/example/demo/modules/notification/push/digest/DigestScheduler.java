@@ -295,7 +295,7 @@ public class DigestScheduler {
         entry.setCreateTime(LocalDateTime.now());
         entry.setSourceCode(sourceCode);
         entry.setSourceName("聚合:" + (srcName != null ? srcName : sourceCode));
-        entry.setChannelName("EMAIL".equals(channelCode) ? "邮件通知" : "Server酱");
+        entry.setChannelName(channelDisplayName(channelCode));
         entry.setRecipientName(userName != null ? userName : userId);
         entry.setTitle(title);
         entry.setContent(content);
@@ -355,12 +355,28 @@ public class DigestScheduler {
         return false;
     }
 
+    private String channelDisplayName(String code) {
+        return switch (code) {
+            case "EMAIL" -> "邮件通知";
+            case "SERVER_CHAN" -> "Server酱微信通知";
+            case "WXPUSHER" -> "WxPusher推送";
+            default -> code;
+        };
+    }
+
     private String resolveTarget(String userId, String channelCode) {
         if ("EMAIL".equals(channelCode)) {
             List<Map<String, String>> emails = userMapper.findContactEmailsByIds(List.of(userId));
             if (emails != null && !emails.isEmpty()) {
                 String email = emails.get(0).get("contact_email");
                 if (email != null && !email.isBlank()) return email;
+            }
+        }
+        if ("WXPUSHER".equals(channelCode)) {
+            List<Map<String, String>> wuids = userMapper.findWxPusherUidsByIds(List.of(userId));
+            if (wuids != null && !wuids.isEmpty()) {
+                String wuid = wuids.get(0).get("wx_pusher_uid");
+                if (wuid != null && !wuid.isBlank()) return wuid;
             }
         }
         List<Map<String, String>> keys = userMapper.findSendKeysByIds(List.of(userId));

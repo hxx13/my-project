@@ -691,7 +691,7 @@ public class MaterialService {
 
             logOp("REQUEST", id, "SUBMIT", Map.of("lines", groupLines.size(), "workflow", workflowType, "reviewerGroup", groupKey));
             publishMaterialEvent("CREATED", id, user.getId(), user.getId(), "共 " + groupLines.size() + " 项物资");
-        try { pushService.send("MATERIAL_REQUESTED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(user.getId()), "applicantGroup", resolveApplicantGroup(user.getId(), null), "summary", "共 " + groupLines.size() + " 项物资", "bizId", String.valueOf(id), "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))), resolveReviewerUserIdsForRequest(requestMapper.selectById(id))); } catch (Exception e) { log.warn("[Push] MATERIAL_REQUESTED failed: {}", e.getMessage()); }
+        try { String itemDetail = groupLines.stream().map(lr -> { MaterialItem it = itemMapper.selectById(lr.getItemId()); return (it != null ? it.getName() : "物品") + " ×" + lr.getQty(); }).collect(Collectors.joining("、")); pushService.send("MATERIAL_REQUESTED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(user.getId()), "applicantGroup", resolveApplicantGroup(user.getId(), null), "summary", itemDetail, "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))), resolveReviewerUserIdsForRequest(requestMapper.selectById(id))); } catch (Exception e) { log.warn("[Push] MATERIAL_REQUESTED failed: {}", e.getMessage()); }
             if ("PENDING".equals(requestMapper.selectById(id).getStatus())) {
                 try {
                     autoApproveService.tryTrustOnSubmit(id);

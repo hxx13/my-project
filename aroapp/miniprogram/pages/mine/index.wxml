@@ -37,6 +37,14 @@
         >
           {{ currentSendKey ? '微信通知' : '绑定通知' }}
         </view>
+        <view
+          wx:if="{{ springBound }}"
+          class="mine-chip {{ currentWxPusher ? 'mine-chip--ok' : 'mine-chip--warn' }} mine-chip--role-tap"
+          hover-class="mine-chip--role-tap-hover"
+          bindtap="onOpenWxPusherEditor"
+        >
+          {{ currentWxPusher ? 'WxPusher推送' : '绑定WxPusher' }}
+        </view>
       </view>
     </view>
     <view class="mine-header-main">
@@ -545,6 +553,23 @@
     </view>
     <input class="bind-input bind-input-block" type="text" value="{{ sendKeyDraft }}" maxlength="256" placeholder="请输入 SendKey" bindinput="onSendKeyInput" />
     <van-button block type="primary" round custom-class="bind-submit" bindtap="onSubmitSendKey" loading="{{ sendKeySaving }}" disabled="{{ sendKeySaving }}">{{ sendKeySaving ? '保存中…' : '保存' }}</van-button>
+  </view>
+</van-popup>
+
+<!-- ====== WxPusher 推送绑定弹窗 ====== -->
+<van-popup
+  show="{{ showWxPusherEditor }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-bind-popup"
+  bind:close="onCloseWxPusherEditor"
+>
+  <view class="bind-panel bind-panel--center">
+    <view class="bind-title">绑定 WxPusher 推送</view>
+    <text class="bind-tip">关注公众号「WxPusher」（新消息服务）→ 我的 → 我的UID → 复制后填入下方</text>
+    <input class="bind-input bind-input-block" type="text" value="{{ wxPusherDraft }}" maxlength="128" placeholder="粘贴 WxPusher UID（如 UID_xxxx）" bindinput="onWxPusherInput" />
+    <van-button block type="primary" round custom-class="bind-submit" bindtap="onSubmitWxPusher" loading="{{ wxPusherSaving }}" disabled="{{ wxPusherSaving }}">{{ wxPusherSaving ? '保存中…' : '保存' }}</van-button>
   </view>
 </van-popup>
 

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetrySuiteAlarmConfigMapper">
+  <resultMap id="BaseResultMap" type="com.example.demo.modules.telemetry.entity.TelemetrySuiteAlarmConfig">
+    <id column="id" property="id"/>
+    <result column="floor_code" property="floorCode"/>
+    <result column="suite_norm" property="suiteNorm"/>
+    <result column="enabled" property="enabled"/>
+    <result column="temp_min" property="tempMin"/>
+    <result column="temp_max" property="tempMax"/>
+    <result column="hum_min" property="humMin"/>
+    <result column="hum_max" property="humMax"/>
+    <result column="pressure_min" property="pressureMin"/>
+    <result column="pressure_max" property="pressureMax"/>
+    <result column="create_time" property="createTime"/>
+    <result column="update_time" property="updateTime"/>
+  </resultMap>
+  <select id="findByFloorCode" resultMap="BaseResultMap">SELECT * FROM telemetry_suite_alarm_config WHERE floor_code = #{floorCode} ORDER BY suite_norm</select>
+  <select id="findBySuiteNorm" resultMap="BaseResultMap">SELECT * FROM telemetry_suite_alarm_config WHERE suite_norm = #{suiteNorm}</select>
+  <insert id="insertOrUpdate">
+    INSERT INTO telemetry_suite_alarm_config (floor_code, suite_norm, enabled, temp_min, temp_max, hum_min, hum_max, pressure_min, pressure_max)
+    VALUES (#{floorCode}, #{suiteNorm}, #{enabled}, #{tempMin}, #{tempMax}, #{humMin}, #{humMax}, #{pressureMin}, #{pressureMax})
+    ON DUPLICATE KEY UPDATE
+      floor_code = VALUES(floor_code),
+      enabled = VALUES(enabled),
+      temp_min = VALUES(temp_min), temp_max = VALUES(temp_max),
+      hum_min = VALUES(hum_min), hum_max = VALUES(hum_max),
+      pressure_min = VALUES(pressure_min), pressure_max = VALUES(pressure_max)
+  </insert>
+  <update id="updateEnabled">UPDATE telemetry_suite_alarm_config SET enabled = #{enabled} WHERE id = #{id}</update>
+</mapper>

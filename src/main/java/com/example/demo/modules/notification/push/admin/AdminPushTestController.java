@@ -57,6 +57,15 @@ public class AdminPushTestController {
                         "summary", "测试违规记录——请分笼/密度超标", "enterLocked", "false")));
         sources.add(source("SCAN_DELAY_MANUAL", "手动免冻结通知",
                 Map.of("roomName", "A203", "optionLabel", "手动免冻结", "operatorName", "测试管理员")));
+        sources.add(source("TELEMETRY_ALARM", "动物房环境报警",
+                Map.of("floorCode", "1F", "roomName", "201",
+                        "metricKind", "温度", "alarmDirection", "偏高",
+                        "currentValue", "28.5℃", "limitValue", "26.0℃",
+                        "sentAt", now())));
+        sources.add(source("TELEMETRY_RECOVERY", "动物房环境恢复",
+                Map.of("floorCode", "1F", "roomName", "201",
+                        "metricKind", "温度", "currentValue", "24.0℃",
+                        "recoveryAt", now())));
         return Result.success(sources);
     }
 
@@ -115,6 +124,8 @@ public class AdminPushTestController {
             case "REPAIR_COMPLETED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","location","机房B","summary","已修复","bizId","RO-TEST","processorName","测试管理员"));
             case "SUPPLIES_REQUESTED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","summary","共 3 项物资","bizId","SC-TEST","createdAt",now()));
             case "SUPPLIES_COMPLETED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","summary","已出库：A4纸、记号笔、手套","bizId","SC-TEST"));
+            case "TELEMETRY_ALARM" -> new LinkedHashMap<>(Map.of("floorCode","1F","roomName","201","metricKind","温度","alarmDirection","偏高","currentValue","28.5℃","limitValue","26.0℃","sentAt",now()));
+            case "TELEMETRY_RECOVERY" -> new LinkedHashMap<>(Map.of("floorCode","1F","roomName","201","metricKind","温度","currentValue","24.0℃","recoveryAt",now()));
             default -> null;
         };
     }

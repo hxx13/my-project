@@ -19,7 +19,8 @@
             ap.personal_pin AS personalPin,
             ap.pin_updated_at AS pinUpdatedAt,
             ap.contact_email AS contactEmail,
-            ap.send_key AS sendKey
+            ap.send_key AS sendKey,
+            COALESCE(su.wx_pusher_uid, ap.wx_pusher_uid) AS wxPusherUid
         FROM aro_personnel ap
         LEFT JOIN sys_user su ON su.id = ap.user_id
         <where>
@@ -64,7 +65,8 @@
             su.display_nickname AS displayNickname,
             su.mini_bind_type AS miniBindType,
             su.contact_email AS contactEmail,
-            su.send_key AS sendKey
+            su.send_key AS sendKey,
+            su.wx_pusher_uid AS wxPusherUid
         FROM sys_user su
         WHERE NOT EXISTS (
             SELECT 1 FROM aro_personnel ap WHERE ap.user_id = su.id AND ap.job_number IS NOT NULL

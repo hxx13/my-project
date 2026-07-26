@@ -3,7 +3,9 @@ import { useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
-import { AdminFormCard, AdminPageShell, AdminFillScrollRegion } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
+import { AdminPageTabs, AdminTabPanel } from "@/components/admin/AdminPageTabs";
+import { PersonnelPicker, type PersonnelRow } from "@/components/admin/PersonnelPicker";
 import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -11,8 +13,25 @@ import { authHttp } from "@/api/core/authHttp";
 import { adminHttp } from "@/api/core/adminHttp";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import {
+  getTelemetryGlobalAlarmLimits,
+  putTelemetryGlobalAlarmLimits,
+  type TelemetryGlobalAlarmLimits,
+} from "@/api/domains/telemetryWatchlistAdmin.api";
+import {
+  fetchAlarmConfigTree,
+  saveFloorConfig,
+  saveSuiteConfig,
+  setTagAlarmEnabled,
+  type AlarmConfigTree,
+  type FloorNode,
+  type SuiteNode,
+} from "@/api/domains/telemetryAlarmConfig.api";
+import {
+  Building2,
   ChevronDown,
   ChevronUp,
+  Droplets,
+  Gauge,
   Save,
   RotateCw,
   Mail,
@@ -27,6 +46,9 @@ import {
   Check,
   UserPlus,
   Send,
+  Smartphone,
+  SlidersHorizontal,
+  Thermometer,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -118,6 +140,7 @@ function toRecipientDraft(r: NotifyRecipient): RecipientDraft {
 const channelIconMap: Record<string, React.ReactNode> = {
   EMAIL: <Mail className="h-4 w-4" aria-hidden />,
   SERVER_CHAN: <MessageSquareText className="h-4 w-4" aria-hidden />,
+  WXPUSHER: <Smartphone className="h-4 w-4" aria-hidden />,
 };
 
 /* ------------------------------------------------------------------ */
@@ -144,6 +167,9 @@ export default function AdminPushConfigPage() {
     queryKey: ["push-dashboard-overview"],
     queryFn: () => authHttp.get("/admin/push-dashboard/overview").then((r) => r.data.data),
   });
+
+  /* ---- tab navigation ---- */
+  const [pushTab, setPushTab] = useState<"sources" | "animal-alarm">("sources");
 
   /* ---- local expand & draft state ---- */
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -281,20 +307,30 @@ export default function AdminPushConfigPage() {
     };
   }, [sources]);
 
+  /* ---- telemetry-only sources for animal-room alarm tab ---- */
+  const telemetrySources = useMemo(() => {
+    if (!sources) return [];
+    return sources.filter((s) =>
+      s.sourceCode === "TELEMETRY_ALARM" || s.sourceCode === "TELEMETRY_RECOVERY"
+    );
+  }, [sources]);
+
   /* ---- channel master switch state (local-only; persisted via existing settings API) ---- */
   const [masterSwitches, setMasterSwitches] = useState<
     Record<string, boolean>
   >({
     EMAIL: true,
     SERVER_CHAN: true,
+    WXPUSHER: true,
   });
 
   const toggleMasterSwitch = (code: string) => {
     setMasterSwitches((prev) => {
       const next = { ...prev, [code]: !prev[code] };
-      toast.success(`${code === "EMAIL" ? "邮件" : "Server酱"} 已${next[code] ? "开启" : "关闭"}`);
       return next;
     });
+    const name = code === "EMAIL" ? "邮件" : code === "SERVER_CHAN" ? "Server酱" : "WxPusher";
+    toast.success(`${name} 已${!masterSwitches[code] ? "开启" : "关闭"}`);
   };
 
   /* ---- draft updaters ---- */
@@ -385,8 +421,8 @@ export default function AdminPushConfigPage() {
             <span className="text-xs font-semibold text-[var(--app-color-text-secondary)]">
               渠道总控
             </span>
-            {(["EMAIL", "SERVER_CHAN"] as const).map((code) => {
-              const label = code === "EMAIL" ? "邮件" : "Server酱";
+            {(["EMAIL", "SERVER_CHAN", "WXPUSHER"] as const).map((code) => {
+              const label = code === "EMAIL" ? "邮件" : code === "SERVER_CHAN" ? "Server酱" : "WxPusher";
               const checked = masterSwitches[code] ?? false;
               return (
                 <label
@@ -443,11 +479,26 @@ export default function AdminPushConfigPage() {
         </AdminFormCard>
 
         {/* ================================================================ */}
-        {/*  Source cards — scrollable                                        */}
+        {/*  Page tabs                                                        */}
         {/* ================================================================ */}
-        <AdminFillScrollRegion>
-          <div className="space-y-3">
-            {isSourcesLoading ? (
+        <AdminPageTabs
+          tabs={[
+            { id: "sources", label: "信息源配置" },
+            { id: "animal-alarm", label: "动物房环境报警" },
+          ]}
+          value={pushTab}
+          onChange={(id) => setPushTab(id as "sources" | "animal-alarm")}
+          className="shrink-0 mb-0"
+        />
+
+        {/* ================================================================ */}
+        {/*  Tab panels — scrollable content area                             */}
+        {/* ================================================================ */}
+        <div className="flex-1 min-h-0 flex flex-col rounded-b-xl border border-t-0 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-auto">
+            <AdminTabPanel tabId="sources" activeTab={pushTab} id="admin-tab-panel-sources">
+              <div className="space-y-3 p-3">
+                {isSourcesLoading ? (
               <div
                 role="status"
                 aria-busy="true"
@@ -500,22 +551,26 @@ export default function AdminPushConfigPage() {
                       </button>
 
                       <div className="flex items-center gap-3 shrink-0">
-                        {/* Channel badges */}
+                        {/* Channel badges — read from local draft so toggle changes reflect instantly */}
                         <span className="hidden sm:flex items-center gap-2">
-                          {source.channels.map((ch) => (
-                            <span
-                              key={ch.id}
-                              className={cn(
-                                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                                ch.enabled
-                                  ? "border-[var(--app-color-feedback-success)]/30 bg-[var(--app-color-feedback-success)]/10 text-[var(--app-color-feedback-success)]"
-                                  : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]",
-                              )}
-                            >
-                              {channelIconMap[ch.channelCode] ?? <Bell className="h-3 w-3" />}
-                              {ch.channelName}
-                            </span>
-                          ))}
+                          {source.channels.map((ch) => {
+                            const draft = channelDrafts[source.sourceId]?.[ch.id];
+                            const enabled = draft ? draft.enabled : ch.enabled;
+                            return (
+                              <span
+                                key={ch.id}
+                                className={cn(
+                                  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                                  enabled
+                                    ? "border-[var(--app-color-feedback-success)]/30 bg-[var(--app-color-feedback-success)]/10 text-[var(--app-color-feedback-success)]"
+                                    : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]",
+                                )}
+                              >
+                                {channelIconMap[ch.channelCode] ?? <Bell className="h-3 w-3" />}
+                                {ch.channelName}
+                              </span>
+                            );
+                          })}
                         </span>
 
                         <span
@@ -592,8 +647,19 @@ export default function AdminPushConfigPage() {
                 );
               })
             )}
+              </div>
+            </AdminTabPanel>
+
+            <AdminTabPanel tabId="animal-alarm" activeTab={pushTab} id="admin-tab-panel-animal-alarm">
+              <div className="p-3">
+                <AnimalRoomAlarmTab
+                  telemetrySources={telemetrySources}
+                  sourcesLoading={sourcesLoading}
+                />
+              </div>
+            </AdminTabPanel>
           </div>
-        </AdminFillScrollRegion>
+        </div>
       </div>
       {/* Test-send modal */}
       {testSource && (
@@ -732,6 +798,7 @@ function ChannelConfigSection({
   const channelDefs: Array<{ code: string; name: string; icon: React.ReactNode; formatHint: string }> = [
     { code: "EMAIL", name: "邮件通知", icon: <Mail className="h-3.5 w-3.5" />, formatHint: "邮件支持 HTML 格式。" },
     { code: "SERVER_CHAN", name: "Server酱", icon: <MessageSquareText className="h-3.5 w-3.5" />, formatHint: "Server酱支持 Markdown（含表格、图片）。图片语法：![img](https://example.com/a.png)，需公网 URL，不支持 base64。" },
+    { code: "WXPUSHER", name: "WxPusher", icon: <Smartphone className="h-3.5 w-3.5" />, formatHint: "WxPusher 支持文字消息。用户需安装 WxPusher App 并关注应用，消息通过厂商推送到达。" },
   ];
 
   return (
@@ -761,11 +828,16 @@ function ChannelConfigSection({
 
       {/* Per-channel modal */}
       {openChannel && (() => {
-        const ch = source.channels.find(c => c.channelCode === openChannel);
-        if (!ch) return null;
-        const draft = drafts[ch.id];
-        if (!draft) return null;
         const def = channelDefs.find(d => d.code === openChannel)!;
+        let ch = source.channels.find(c => c.channelCode === openChannel);
+        // 渠道尚未在 DB 创建（如首次配置 WXPUSHER）→ 合成默认对象
+        if (!ch) {
+          ch = { id: 0, channelCode: openChannel, channelName: def.name, enabled: false, titleTpl: "", contentTpl: "", quietStart: "", quietEnd: "", rateLimitSeconds: 300 };
+        }
+        let draft = drafts[ch.id];
+        if (!draft) {
+          draft = { titleTpl: ch.titleTpl ?? "", contentTpl: ch.contentTpl ?? "", enabled: ch.enabled ?? true, quietStart: ch.quietStart ?? "", quietEnd: ch.quietEnd ?? "", rateLimitSeconds: ch.rateLimitSeconds ?? 300 };
+        }
         const saveKey = `${source.sourceId}:${ch.channelCode}`;
         const isSaving = savingChannels.has(saveKey);
 
@@ -852,16 +924,6 @@ function ChannelConfigSection({
 /* ------------------------------------------------------------------ */
 /*  RecipientSection sub-component                                     */
 /* ------------------------------------------------------------------ */
-
-interface PersonnelRow {
-  id: string;
-  name: string;
-  jobNumber: string;
-  role: string;
-  departmentName: string;
-  contactEmail: string;
-  sendKey: string;
-}
 
 function RecipientSection({
   source,
@@ -982,172 +1044,535 @@ function RecipientSection({
 }
 
 /* ------------------------------------------------------------------ */
-/*  PersonnelPicker — modal with student/staff tabs + search + multi   */
+/*  AnimalRoomAlarmTab — 动物房环境报警配置子页面                         */
 /* ------------------------------------------------------------------ */
 
-function PersonnelPicker({
-  initialIds,
-  onClose,
-  onConfirm,
+function AnimalRoomAlarmTab({
+  telemetrySources,
+  sourcesLoading,
 }: {
-  perspective?: string;
-  initialIds?: string[];
-  onClose: () => void;
-  onConfirm: (ids: string[], names: string[]) => void;
+  telemetrySources: NotifySourceConfig[];
+  sourcesLoading: boolean;
 }) {
-  const [tab, setTab] = useState<"STUDENT" | "STAFF">("STUDENT");
-  const [keyword, setKeyword] = useState("");
-  const [debouncedKeyword, setDebouncedKeyword] = useState("");
-  const [selected, setSelected] = useState<Map<string, PersonnelRow>>(new Map());
-  const [allRows, setAllRows] = useState<PersonnelRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [systemRows, setSystemRows] = useState<PersonnelRow[]>([]);
-  const [sysLoading, setSysLoading] = useState(false);
-  const PAGE_SIZE = 50;
+  const [limitsDraft, setLimitsDraft] = useState<TelemetryGlobalAlarmLimits | null>(null);
+  const [savingLimits, setSavingLimits] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
-  // Debounce keyword input to avoid firing API on every keystroke
+  const limitsQ = useQuery({
+    queryKey: ["telemetry-global-alarm-limits"],
+    queryFn: getTelemetryGlobalAlarmLimits,
+    staleTime: 30_000,
+  });
+
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedKeyword(keyword.trim()), 250);
-    return () => clearTimeout(timer);
-  }, [keyword]);
+    if (!limitsQ.data || limitsDraft) return;
+    setLimitsDraft({
+      tempMin: limitsQ.data.tempMin ?? "",
+      tempMax: limitsQ.data.tempMax ?? "",
+      humMin: limitsQ.data.humMin ?? "",
+      humMax: limitsQ.data.humMax ?? "",
+      pressureMin: limitsQ.data.pressureMin ?? "",
+      pressureMax: limitsQ.data.pressureMax ?? "",
+    });
+  }, [limitsQ.data, limitsDraft]);
 
-  const fetchPage = useCallback(async (kw: string, pg: number, reset: boolean) => {
-    setLoading(true);
+  const saveLimits = async () => {
+    if (!limitsDraft) return;
+    setSavingLimits(true);
     try {
-      const res = await authHttp.get("/admin/personnel", { params: { keyword: kw || undefined, page: pg, size: PAGE_SIZE } });
-      const paged: any = res.data?.data;
-      const rows: PersonnelRow[] = Array.isArray(paged?.data) ? paged.data : (Array.isArray(paged) ? paged : []);
-      setAllRows(prev => {
-        const merged = reset ? rows : [...prev, ...rows];
-        const seen = new Set<string>();
-        return merged.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; });
-      });
-      setTotal(paged?.total ?? rows.length);
-    } catch { if (reset) setAllRows([]); }
-    finally { setLoading(false); }
-  }, []);
-
-  // Fetch personnel when on STUDENT tab and debounced keyword changes
-  useEffect(() => {
-    if (tab !== "STUDENT") return;
-    fetchPage(debouncedKeyword, 1, true);
-  }, [fetchPage, debouncedKeyword, tab]);
-
-  // Fetch system-only users (staff accounts not in personnel library) via backend search
-  useEffect(() => {
-    if (tab !== "STAFF") return;
-    let cancelled = false;
-    (async () => {
-      setSysLoading(true);
-      try {
-        const res = await authHttp.get("/admin/system-users", {
-          params: { keyword: debouncedKeyword || undefined, page: 1, size: 200 },
-        });
-        if (cancelled) return;
-        const paged: any = res.data?.data;
-        const rows: any[] = Array.isArray(paged?.data) ? paged.data : (Array.isArray(paged) ? paged : []);
-        const mapped: PersonnelRow[] = rows.map((r: any) => ({
-          id: r.id,
-          name: r.displayNickname || r.username || "",
-          jobNumber: r.username || "",
-          role: r.role || "STAFF",
-          departmentName: "",
-          contactEmail: "",
-          sendKey: "",
-        }));
-        setSystemRows(mapped);
-      } catch { if (!cancelled) setSystemRows([]); }
-      finally { if (!cancelled) setSysLoading(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [debouncedKeyword, tab]);
-
-  const nextPage = Math.floor(allRows.length / PAGE_SIZE) + 1;
-  const hasMore = tab === "STUDENT" && allRows.length < total;
-
-  const filtered = useMemo(() => {
-    if (tab === "STUDENT") {
-      // All aro_personnel records are students (see bootstrap-add-account-source.sql).
-      return allRows;
+      await putTelemetryGlobalAlarmLimits(limitsDraft);
+      toast.success("全局报警限已保存，下次告警检测生效");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSavingLimits(false);
     }
-    // STAFF tab: system-only users (staff accounts without personnel records)
-    return systemRows;
-  }, [allRows, systemRows, tab]);
+  };
 
-  const toggle = (row: PersonnelRow) => {
-    setSelected((prev) => {
-      const next = new Map(prev);
-      if (next.has(row.id)) next.delete(row.id);
-      else next.set(row.id, row);
+  const limitRow = (
+    icon: React.ReactNode,
+    label: string,
+    loKey: keyof TelemetryGlobalAlarmLimits,
+    hiKey: keyof TelemetryGlobalAlarmLimits,
+    unit: string,
+  ) => {
+    if (!limitsDraft) return null;
+    return (
+      <div className="flex items-center gap-3 py-1.5">
+        <span className="inline-flex items-center gap-1.5 w-[80px] shrink-0 text-xs font-medium text-[var(--app-color-text-secondary)]">
+          {icon}
+          {label}
+        </span>
+        <input
+          type="text"
+          inputMode="decimal"
+          className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+          placeholder="下限"
+          value={limitsDraft[loKey] ?? ""}
+          onChange={(e) => setLimitsDraft((p) => p ? { ...p, [loKey]: e.target.value } : null)}
+        />
+        <span className="text-[11px] text-[var(--app-color-text-tertiary)]">~</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+          placeholder="上限"
+          value={limitsDraft[hiKey] ?? ""}
+          onChange={(e) => setLimitsDraft((p) => p ? { ...p, [hiKey]: e.target.value } : null)}
+        />
+        <span className="text-[11px] text-[var(--app-color-text-tertiary)] w-[1.5rem] text-right">{unit}</span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* ── 全局报警限配置 ── */}
+      <AdminFormCard>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)] flex items-center gap-2">
+            <Thermometer className="h-4 w-4 text-[var(--app-color-accent)]" />
+            全局环境报警限
+          </h3>
+          <AdminButton type="button" tone="primary" size="sm" loading={savingLimits} onClick={saveLimits}>
+            <Save className="h-3.5 w-3.5" /> 保存
+          </AdminButton>
+        </div>
+        <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-2">
+          各楼层套间无自定义阈值时使用此全局值。每个测点可在动物房温湿度监测页面逐点覆盖。
+        </p>
+        {limitsQ.isLoading ? (
+          <p className="text-xs text-[var(--app-color-text-tertiary)] py-4">加载中…</p>
+        ) : limitsQ.isError ? (
+          <p className="text-xs text-[var(--app-color-feedback-error)] py-2">
+            加载失败：{(limitsQ.error as Error)?.message ?? "未知错误"}
+          </p>
+        ) : (
+          <div className="space-y-0.5">
+            {limitRow(<Thermometer className="h-3.5 w-3.5 text-orange-500" />, "温度", "tempMin", "tempMax", "℃")}
+            {limitRow(<Droplets className="h-3.5 w-3.5 text-blue-500" />, "湿度", "humMin", "humMax", "%")}
+            {limitRow(<Gauge className="h-3.5 w-3.5 text-emerald-500" />, "压强", "pressureMin", "pressureMax", "Pa")}
+          </div>
+        )}
+      </AdminFormCard>
+
+      {/* ── 已注册推送源 ── */}
+      <AdminFormCard>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-2 text-sm font-semibold text-[var(--app-color-text-primary)] hover:opacity-80 transition-opacity w-full text-left"
+        >
+          <Bell className="h-4 w-4 text-[var(--app-color-accent)]" />
+          推送源绑定
+          <span className="text-[11px] font-normal text-[var(--app-color-text-tertiary)]">
+            （{telemetrySources.length} 个已注册）
+          </span>
+          {expanded ? (
+            <ChevronUp className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)] ml-auto" />
+          ) : (
+            <ChevronDown className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)] ml-auto" />
+          )}
+        </button>
+        <p className="text-[11px] text-[var(--app-color-text-tertiary)] mt-1">
+          以下信息源在「信息源配置」Tab 中统一管理渠道和接收人。此处仅展示与动物房环境报警相关的源。
+        </p>
+
+        {expanded && (
+          <div className="mt-3 space-y-2 border-t border-[var(--app-color-border-default)] pt-3">
+            {sourcesLoading ? (
+              <p className="text-xs text-[var(--app-color-text-tertiary)]">加载中…</p>
+            ) : telemetrySources.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-4 text-center text-xs text-[var(--app-color-text-tertiary)]">
+                <p>尚未注册动物房环境报警信息源</p>
+                <p className="mt-1">请确保 NotifySourceRegistry 中已注册 TELEMETRY_ALARM 与 TELEMETRY_RECOVERY</p>
+              </div>
+            ) : (
+              telemetrySources.map((src) => {
+                const variables = src.variables ?? {};
+                return (
+                  <div
+                    key={src.sourceId}
+                    className="rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className={cn(
+                          "inline-block h-2 w-2 rounded-full shrink-0",
+                          src.sourceCode === "TELEMETRY_ALARM"
+                            ? "bg-[var(--app-color-feedback-error)]"
+                            : "bg-[var(--app-color-feedback-success)]",
+                        )}
+                      />
+                      <span className="text-xs font-semibold text-[var(--app-color-text-primary)]">
+                        {src.sourceName}
+                      </span>
+                      <code className="text-[10px] bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 rounded font-mono text-[var(--app-color-text-tertiary)]">
+                        {src.sourceCode}
+                      </code>
+                      <span className="text-[11px] text-[var(--app-color-text-tertiary)] ml-auto">
+                        {src.sourceEnabled ? "已启用" : "已禁用"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-1.5">
+                      {src.description}
+                    </p>
+                    {Object.keys(variables).length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {Object.entries(variables).map(([k, v]) => (
+                          <code
+                            key={k}
+                            className="inline-flex items-center gap-1 rounded bg-[var(--app-color-accent)]/10 border border-[var(--app-color-accent)]/20 px-1.5 py-0.5 text-[10px] font-mono text-[var(--app-color-accent)]"
+                            title={`${k}: ${v}`}
+                          >
+                            {`{${k}}`}
+                            <span className="text-[var(--app-color-text-tertiary)]">— {v}</span>
+                          </code>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </AdminFormCard>
+
+      {/* ── 楼层/套间管控 ── */}
+      <FloorSuiteAlarmPanel />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  FloorSuiteAlarmPanel — 楼层→套间→房间→变量 四级管控树               */
+/* ------------------------------------------------------------------ */
+
+function FloorSuiteAlarmPanel() {
+  const queryClient = useQueryClient();
+
+  const treeQ = useQuery({
+    queryKey: ["telemetry-alarm-config-tree"],
+    queryFn: fetchAlarmConfigTree,
+    staleTime: 15_000,
+  });
+
+  const [expandedFloors, setExpandedFloors] = useState<Set<string>>(new Set());
+  const [expandedSuites, setExpandedSuites] = useState<Set<string>>(new Set());
+  const [editingSuite, setEditingSuite] = useState<SuiteNode | null>(null);
+  const [savingFloor, setSavingFloor] = useState<string | null>(null);
+  const [savingSuite, setSavingSuite] = useState(false);
+  const [togglingTag, setTogglingTag] = useState<number | null>(null);
+
+  const [floorDrafts, setFloorDrafts] = useState<Record<string, { cooldown: number; notifyRecovery: boolean }>>({});
+
+  useEffect(() => {
+    if (!treeQ.data) return;
+    const d: Record<string, { cooldown: number; notifyRecovery: boolean }> = {};
+    for (const f of treeQ.data.floors) {
+      d[f.floorCode] = { cooldown: f.cooldownMinutes, notifyRecovery: f.notifyOnRecovery };
+    }
+    setFloorDrafts((prev) => ({ ...d, ...prev }));
+  }, [treeQ.data]);
+
+  const toggleFloor = (fc: string) => {
+    setExpandedFloors((prev) => {
+      const next = new Set(prev);
+      if (next.has(fc)) next.delete(fc); else next.add(fc);
       return next;
     });
   };
 
+  const toggleSuite = (key: string) => {
+    setExpandedSuites((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const handleSaveFloor = async (fc: string, enabled: boolean) => {
+    const d = floorDrafts[fc];
+    if (!d) return;
+    const floor = treeQ.data?.floors.find((f) => f.floorCode === fc);
+    setSavingFloor(fc);
+    try {
+      await saveFloorConfig({ id: floor?.configId ?? undefined, floorCode: fc, enabled, cooldownMinutes: d.cooldown, notifyOnRecovery: d.notifyRecovery });
+      toast.success(`${fc} 已保存`);
+      queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "保存失败"); }
+    finally { setSavingFloor(null); }
+  };
+
+  const handleToggleTag = async (tagId: number, currentEnabled: boolean | null) => {
+    setTogglingTag(tagId);
+    const next = currentEnabled === false ? null : false; // cycle: false→null(inherit), null/true→false
+    try {
+      await setTagAlarmEnabled(tagId, next);
+      queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "切换失败"); }
+    finally { setTogglingTag(null); }
+  };
+
+  if (treeQ.isLoading) return <AdminFormCard><p className="text-xs text-[var(--app-color-text-tertiary)] py-4">加载楼层套间数据…</p></AdminFormCard>;
+  if (treeQ.isError) return <AdminFormCard><p className="text-xs text-[var(--app-color-feedback-error)] py-2">加载失败：{(treeQ.error as Error)?.message}</p></AdminFormCard>;
+
+  const tree = treeQ.data;
+  if (!tree || tree.floors.length === 0) {
+    return (
+      <AdminFormCard>
+        <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)] flex items-center gap-2 mb-2">
+          <Building2 className="h-4 w-4 text-[var(--app-color-accent)]" />楼层与套间管控
+        </h3>
+        <div className="rounded-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-4 text-center text-xs text-[var(--app-color-text-tertiary)]">
+          <p>尚未导入 WinCC 变量清单，或清单中无可监控的变量。</p>
+        </div>
+      </AdminFormCard>
+    );
+  }
+
+  const metricKindBadge = (code: string, label?: string | null) => {
+    const c = code.toUpperCase();
+    const colors: Record<string, string> = { TEMP: "bg-orange-100 text-orange-700", HUM: "bg-blue-100 text-blue-700", RH: "bg-blue-100 text-blue-700", PRESSURE: "bg-emerald-100 text-emerald-700" };
+    const names: Record<string, string> = { TEMP: "温", HUM: "湿", PRESSURE: "压" };
+    return (
+      <span className={cn("inline-flex items-center rounded px-1 py-0 text-[10px] font-medium shrink-0", colors[c] ?? "bg-zinc-100 text-zinc-600")}>
+        {names[c] ?? (label ?? c)}
+      </span>
+    );
+  };
+
+  return (
+    <>
+      <AdminFormCard>
+        <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)] flex items-center gap-2 mb-3">
+          <Building2 className="h-4 w-4 text-[var(--app-color-accent)]" />
+          楼层与套间管控
+          <span className="text-[11px] font-normal text-[var(--app-color-text-tertiary)]">
+            （{tree.totalFloors} 层 · {tree.totalSuites} 套间 · {tree.totalRooms} 房间 · {tree.totalVariables} 变量）
+          </span>
+        </h3>
+
+        <div className="space-y-2">
+          {tree.floors.map((floor) => {
+            const fexp = expandedFloors.has(floor.floorCode);
+            const draft = floorDrafts[floor.floorCode] ?? { cooldown: floor.cooldownMinutes, notifyRecovery: floor.notifyOnRecovery };
+            const isSaving = savingFloor === floor.floorCode;
+
+            return (
+              <div key={floor.floorCode} className={cn("rounded-lg border transition-all",
+                fexp ? "border-[var(--app-color-accent)]/40 bg-[var(--app-color-surface-elevated)] ring-1 ring-[var(--app-color-accent)]/15"
+                      : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]")}>
+                {/* Floor header */}
+                <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <button type="button" onClick={() => toggleFloor(floor.floorCode)}
+                    className="flex items-center gap-2 min-w-0 text-left hover:opacity-80">
+                    <Building2 className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)]" />
+                    <span className="text-sm font-semibold">{floor.floorCode}</span>
+                    <span className="text-[11px] text-[var(--app-color-text-tertiary)]">{floor.suiteCount}套间 · {floor.variableCount}变量</span>
+                    {fexp ? <ChevronUp className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)]" /> : <ChevronDown className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)]" />}
+                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {fexp && (<>
+                      <label className="text-[11px] text-[var(--app-color-text-secondary)]">冷却<input type="number" min={1} max={1440}
+                        className="w-[3.5rem] ml-1 rounded border border-[var(--app-color-border-default)] px-1 py-0.5 text-xs font-mono text-center"
+                        value={draft.cooldown} onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, cooldown: Math.max(1, Number(e.target.value) || 30) } }))} />min</label>
+                      <label className="inline-flex items-center gap-1 text-[11px] text-[var(--app-color-text-secondary)] cursor-pointer select-none">
+                        <input type="checkbox" className="h-3 w-3 rounded accent-[var(--app-color-accent)]" checked={draft.notifyRecovery}
+                          onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, notifyRecovery: e.target.checked } }))} />恢复通知</label>
+                    </>)}
+                    <AdminSwitchScaled size="sm" checked={floor.enabled} onChange={() => handleSaveFloor(floor.floorCode, !floor.enabled)} />
+                    {fexp && <AdminButton type="button" tone="primary" size="sm" loading={isSaving} onClick={() => handleSaveFloor(floor.floorCode, floor.enabled)}><Save className="h-3.5 w-3.5" />保存</AdminButton>}
+                  </div>
+                </div>
+
+                {/* Suites (expanded) */}
+                {fexp && (
+                  <div className="border-t border-[var(--app-color-border-default)] px-3 py-2 space-y-1.5">
+                    {floor.suites.length === 0 ? (
+                      <p className="text-[11px] text-[var(--app-color-text-tertiary)] py-2 text-center">此楼层暂无套间</p>
+                    ) : floor.suites.map((suite) => {
+                      const seKey = `${floor.floorCode}/${suite.suiteNorm}`;
+                      const sexp = expandedSuites.has(seKey);
+                      const alarmVars = suite.rooms.flatMap(r => r.tags).filter(t => t.isAlarmMetric);
+                      const refVars = suite.rooms.flatMap(r => r.tags).filter(t => !t.isAlarmMetric);
+                      return (
+                        <div key={suite.suiteNorm} className="rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]">
+                          <div className="flex items-center gap-3 px-2.5 py-1.5">
+                            <button type="button" onClick={() => toggleSuite(seKey)}
+                              className="flex items-center gap-1.5 min-w-0 text-left hover:opacity-80">
+                              <span className="text-xs font-medium">{suite.suiteNorm}</span>
+                              <span className="text-[10px] text-[var(--app-color-text-tertiary)]">{suite.roomCount}间 · {suite.variableCount}变量</span>
+                              {alarmVars.length > 0 && <span className="text-[10px] text-[var(--app-color-text-tertiary)]">({alarmVars.length}报警{refVars.length > 0 ? `+${refVars.length}参考` : ""})</span>}
+                              {sexp ? <ChevronUp className="h-3 w-3 text-[var(--app-color-text-tertiary)]" /> : <ChevronDown className="h-3 w-3 text-[var(--app-color-text-tertiary)]" />}
+                            </button>
+                            {suite.hasCustomThresholds && <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--app-color-accent)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--app-color-accent)]"><SlidersHorizontal className="h-3 w-3" />自定义</span>}
+                            <div className="flex-1" />
+                            <button type="button" className="inline-flex items-center gap-1 rounded-md border border-[var(--app-color-border-default)] px-2 py-1 text-[11px] font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
+                              onClick={() => setEditingSuite({ ...suite })}><SlidersHorizontal className="h-3 w-3" />阈值</button>
+                            <AdminSwitchScaled size="sm" checked={suite.enabled !== false}
+                              onChange={async () => {
+                                const next = suite.enabled === false ? null : false;
+                                try {
+                                  await saveSuiteConfig({ id: suite.configId ?? undefined, floorCode: suite.floorCode, suiteNorm: suite.suiteNorm, enabled: next, tempMin: suite.tempMin, tempMax: suite.tempMax, humMin: suite.humMin, humMax: suite.humMax, pressureMin: suite.pressureMin, pressureMax: suite.pressureMax });
+                                  queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
+                                } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "切换失败"); }
+                              }} />
+                          </div>
+
+                          {/* Rooms (expanded under suite) */}
+                          {sexp && (
+                            <div className="border-t border-[var(--app-color-border-default)] px-2.5 py-1.5 space-y-1">
+                              {suite.rooms.map((room) => (
+                                <div key={room.roomCanonical} className="rounded border border-[var(--app-color-border-default)]/60 bg-[var(--app-color-surface-elevated)]/50 px-2 py-1">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="text-[11px] font-medium text-[var(--app-color-text-primary)]">{room.roomDisplay}</span>
+                                    <span className="text-[10px] text-[var(--app-color-text-tertiary)]">{room.variableCount}变量</span>
+                                    {room.hasAlarmMetrics && <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--app-color-feedback-error)]" title="含报警指标" />}
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    {room.tags.map((tag) => {
+                                      const isRef = !tag.isAlarmMetric;
+                                      const alarmOn = tag.alarmEnabled;
+                                      const isToggling = togglingTag === tag.tagId;
+                                      const statusColors: Record<string, string> = { SETPOINT: "bg-purple-100 text-purple-700", SWITCH: "bg-amber-100 text-amber-700" };
+                                      return (
+                                        <div key={tag.tagId ?? tag.variableName} className={cn("flex items-center gap-1.5 text-[10px] py-0.5", isRef && "opacity-70")}>
+                                          {metricKindBadge(tag.metricKindCode, tag.metricKindLabel)}
+                                          {tag.kindRole === "SETPOINT" && <span className={cn("rounded px-1 py-0 text-[9px] font-medium", statusColors.SETPOINT)}>设定值</span>}
+                                          {tag.kindRole === "SWITCH" && <span className={cn("rounded px-1 py-0 text-[9px] font-medium", statusColors.SWITCH)}>开关</span>}
+                                          <span className="font-medium text-[var(--app-color-text-primary)] truncate max-w-[200px]" title={tag.variableName}>{tag.displayLabel}</span>
+                                          {isRef && <span className="text-[var(--app-color-text-tertiary)] italic">参考</span>}
+                                          {!isRef && tag.effectiveMinValue && tag.effectiveMaxValue && (
+                                            <span className="text-[var(--app-color-text-tertiary)] ml-auto">{tag.effectiveMinValue}~{tag.effectiveMaxValue}</span>
+                                          )}
+                                          {tag.alarmOverrideMin || tag.alarmOverrideMax ? <span className="text-[var(--app-color-accent)] ml-auto text-[9px]">已覆盖</span> : null}
+                                          {tag.isAlarmMetric && (
+                                            <button type="button" disabled={isToggling}
+                                              className={cn("ml-1 rounded px-1.5 py-0 text-[9px] font-medium border transition-colors",
+                                                alarmOn === false ? "border-red-200 bg-red-50 text-red-600" : "border-emerald-200 bg-emerald-50 text-emerald-600")}
+                                              onClick={() => handleToggleTag(tag.tagId, alarmOn)}>
+                                              {isToggling ? "..." : alarmOn === false ? "已禁用" : "启用"}
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </AdminFormCard>
+
+      {editingSuite && (
+        <SuiteThresholdModal suite={editingSuite} saving={savingSuite} onChange={setEditingSuite}
+          onSave={async () => {
+            if (!editingSuite) return;
+            setSavingSuite(true);
+            try {
+              await saveSuiteConfig({
+                id: editingSuite.configId ?? undefined, floorCode: editingSuite.floorCode, suiteNorm: editingSuite.suiteNorm,
+                enabled: editingSuite.enabled, tempMin: editingSuite.tempMin, tempMax: editingSuite.tempMax,
+                humMin: editingSuite.humMin, humMax: editingSuite.humMax, pressureMin: editingSuite.pressureMin, pressureMax: editingSuite.pressureMax,
+              });
+              toast.success(`${editingSuite.suiteNorm} 已保存`);
+              setEditingSuite(null);
+              queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
+            } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "保存失败"); }
+            finally { setSavingSuite(false); }
+          }}
+          onClose={() => setEditingSuite(null)} />
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  SuiteThresholdModal — 套间阈值编辑弹窗（含房间变量预览）              */
+/* ------------------------------------------------------------------ */
+
+function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
+  suite: SuiteNode; saving: boolean; onChange: (s: SuiteNode) => void; onSave: () => void; onClose: () => void;
+}) {
+  const metrics: Array<{ key: string; label: string; icon: React.ReactNode; unit: string; minKey: keyof SuiteNode; maxKey: keyof SuiteNode }> = [
+    { key: "temp", label: "温度", icon: <Thermometer className="h-3.5 w-3.5 text-orange-500" />, unit: "℃", minKey: "tempMin", maxKey: "tempMax" },
+    { key: "hum", label: "湿度", icon: <Droplets className="h-3.5 w-3.5 text-blue-500" />, unit: "%", minKey: "humMin", maxKey: "humMax" },
+    { key: "pressure", label: "压强", icon: <Gauge className="h-3.5 w-3.5 text-emerald-500" />, unit: "Pa", minKey: "pressureMin", maxKey: "pressureMax" },
+  ];
+
   return (
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-bold text-[var(--app-color-text-primary)] mb-3">从人员库选择</h3>
+      <div className="w-full max-w-lg max-h-[85vh] overflow-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-[var(--app-color-accent)]" />套间 · {suite.suiteNorm}</h3>
+          <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]"><X className="h-4 w-4 text-[var(--app-color-text-tertiary)]" /></button>
+        </div>
+        <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-3">楼层：{suite.floorCode} · {suite.roomCount} 房间 · {suite.variableCount} 变量</p>
 
-        <div className="flex gap-1 mb-3 rounded-lg bg-[var(--app-color-surface-hover)] p-0.5">
-          {(["STUDENT", "STAFF"] as const).map((t) => (
-            <button key={t} type="button" onClick={() => setTab(t)}
-              className={cn("flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                tab === t ? "bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-sm"
-                          : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]")}>
-              {t === "STUDENT" ? "学生" : "教职工"}
-            </button>
+        {/* Suite enable */}
+        <div className="flex items-center gap-3 mb-4 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2">
+          <span className="text-xs font-medium">套间报警</span>
+          <div className="flex-1" />
+          <select className="rounded border border-[var(--app-color-border-default)] px-2 py-1 text-xs"
+            value={suite.enabled === null ? "inherit" : suite.enabled ? "on" : "off"}
+            onChange={(e) => onChange({ ...suite, enabled: e.target.value === "inherit" ? null : e.target.value === "on" })}>
+            <option value="inherit">继承楼层</option>
+            <option value="on">强制启用</option>
+            <option value="off">强制禁用</option>
+          </select>
+        </div>
+
+        {/* Thresholds */}
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center justify-between"><span className="text-xs font-semibold">自定义阈值</span><span className="text-[10px] text-[var(--app-color-text-tertiary)]">留空=继承全局</span></div>
+          {metrics.map((m) => (
+            <div key={m.key} className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium text-[var(--app-color-text-secondary)]">{m.icon}{m.label}</span>
+              <input type="text" inputMode="decimal" className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20" placeholder="下限"
+                value={(suite[m.minKey] as string) ?? ""} onChange={(e) => onChange({ ...suite, [m.minKey]: e.target.value || null })} />
+              <span className="text-[11px] text-[var(--app-color-text-tertiary)]">~</span>
+              <input type="text" inputMode="decimal" className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20" placeholder="上限"
+                value={(suite[m.maxKey] as string) ?? ""} onChange={(e) => onChange({ ...suite, [m.maxKey]: e.target.value || null })} />
+              <span className="text-[10px] text-[var(--app-color-text-tertiary)] w-[1.25rem] text-right">{m.unit}</span>
+            </div>
           ))}
         </div>
 
-        <div className="relative mb-3">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--app-color-text-tertiary)]" />
-          <input className={cn(adminInputClass, "pl-8")} placeholder="搜索姓名或工号"
-            value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+        {/* Room/variable preview */}
+        <div className="rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2 max-h-[240px] overflow-auto">
+          <p className="text-[10px] font-semibold text-[var(--app-color-text-secondary)] mb-1.5">本套间房间与变量</p>
+          {suite.rooms.map((room) => (
+            <div key={room.roomCanonical} className="mb-1 last:mb-0">
+              <p className="text-[10px] font-medium text-[var(--app-color-text-primary)]">{room.roomDisplay} <span className="font-normal text-[var(--app-color-text-tertiary)]">({room.variableCount}变量)</span></p>
+              <div className="ml-2 space-y-0.5">
+                {room.tags.map((tag) => (
+                  <div key={tag.tagId ?? tag.variableName} className="flex items-center gap-1.5 text-[10px]">
+                    <span className={cn("inline-block h-1.5 w-1.5 rounded-full shrink-0",
+                      tag.metricKindCode === "TEMP" ? "bg-orange-500" : tag.metricKindCode === "HUM" ? "bg-blue-500" : tag.metricKindCode === "PRESSURE" ? "bg-emerald-500" : "bg-purple-400")} />
+                    <span className="font-medium truncate max-w-[160px]" title={tag.variableName}>{tag.displayLabel}</span>
+                    {!tag.isAlarmMetric && <span className="text-[var(--app-color-text-tertiary)] italic text-[9px]">{tag.kindRole === "SETPOINT" ? "设定值" : tag.kindRole}</span>}
+                    {tag.isAlarmMetric && tag.effectiveMinValue && <span className="text-[var(--app-color-text-tertiary)] ml-auto">{tag.effectiveMinValue}~{tag.effectiveMaxValue}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
-        <div className="max-h-[300px] overflow-auto space-y-1 mb-3">
-          {(loading || sysLoading) && filtered.length === 0 ? (
-            <p className="text-xs text-[var(--app-color-text-tertiary)] text-center py-8">搜索中…</p>
-          ) : filtered.length === 0 ? (
-            <p className="text-xs text-[var(--app-color-text-tertiary)] text-center py-8">无结果</p>
-          ) : (
-            <>
-              {filtered.map((row) => {
-                const checked = selected.has(row.id);
-                return (
-                  <label key={row.id} className={cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer transition-colors text-xs",
-                    checked ? "bg-[var(--app-color-accent)]/10" : "hover:bg-[var(--app-color-surface-hover)]")}>
-                    <input type="checkbox" checked={checked} onChange={() => toggle(row)}
-                      className="h-3.5 w-3.5 rounded accent-[var(--app-color-accent)]" />
-                    <span className="font-medium min-w-[60px]">{row.name}</span>
-                    <span className="text-[var(--app-color-text-tertiary)]">{row.jobNumber}</span>
-                    <span className="text-[var(--app-color-text-tertiary)] truncate">{row.departmentName}</span>
-                    {row.contactEmail && <Mail className="h-3 w-3 text-[var(--app-color-feedback-success)] shrink-0" />}
-                    {row.sendKey && <MessageSquareText className="h-3 w-3 text-[var(--app-color-feedback-success)] shrink-0" />}
-                  </label>
-                );
-              })}
-              {hasMore && (
-                <button type="button" onClick={() => fetchPage(debouncedKeyword, nextPage, false)} disabled={loading}
-                  className="w-full py-1.5 text-xs text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)] rounded transition-colors">
-                  {loading ? "加载中…" : `加载更多 (${allRows.length}/${total})`}
-                </button>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between border-t border-[var(--app-color-border-default)] pt-3">
-          <span className="text-xs text-[var(--app-color-text-tertiary)]">已选 {selected.size} 人</span>
-          <div className="flex gap-2">
-            <AdminButton type="button" tone="ghost" size="sm" onClick={onClose}>取消</AdminButton>
-            <AdminButton type="button" tone="primary" size="sm"
-              onClick={() => onConfirm(Array.from(selected.keys()), Array.from(selected.values()).map(r => r.name))}>
-              <Check className="h-3.5 w-3.5" /> 确定
-            </AdminButton>
-          </div>
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--app-color-border-default)] pt-3 mt-3">
+          <AdminButton type="button" tone="ghost" size="sm" onClick={onClose}>取消</AdminButton>
+          <AdminButton type="button" tone="primary" size="sm" loading={saving} onClick={onSave}><Save className="h-3.5 w-3.5" />保存套间配置</AdminButton>
         </div>
       </div>
     </div>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryAlarmLogMapper">
+  <resultMap id="BaseResultMap" type="com.example.demo.modules.telemetry.entity.TelemetryAlarmLog">
+    <id column="id" property="id"/>
+    <result column="variable_name" property="variableName"/>
+    <result column="floor_code" property="floorCode"/>
+    <result column="room_canonical" property="roomCanonical"/>
+    <result column="suite_norm" property="suiteNorm"/>
+    <result column="metric_kind" property="metricKind"/>
+    <result column="alarm_band" property="alarmBand"/>
+    <result column="current_value" property="currentValue"/>
+    <result column="limit_value" property="limitValue"/>
+    <result column="sent_at" property="sentAt"/>
+  </resultMap>
+  <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    INSERT INTO telemetry_alarm_log (variable_name, floor_code, room_canonical, suite_norm, metric_kind, alarm_band, current_value, limit_value, sent_at)
+    VALUES (#{variableName}, #{floorCode}, #{roomCanonical}, #{suiteNorm}, #{metricKind}, #{alarmBand}, #{currentValue}, #{limitValue}, #{sentAt})
+  </insert>
+  <select id="findLastByVariableAndBand" resultMap="BaseResultMap">
+    SELECT * FROM telemetry_alarm_log WHERE variable_name = #{variableName} AND alarm_band = #{alarmBand} ORDER BY sent_at DESC LIMIT 1
+  </select>
+  <select id="findLastByVariable" resultMap="BaseResultMap">
+    SELECT * FROM telemetry_alarm_log WHERE variable_name = #{variableName} ORDER BY sent_at DESC LIMIT 1
+  </select>
+  <delete id="deleteOlderThan">DELETE FROM telemetry_alarm_log WHERE sent_at &lt; #{before}</delete>
+</mapper>

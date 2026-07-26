@@ -9,6 +9,7 @@ import { AdminFormCard } from "@/components/admin/AdminPageShell";
 import { LlmSettingsPanel } from "@/features/admin/settings/LlmSettingsPanel";
 import { CredentialsTestPanel } from "@/features/admin/settings/CredentialsTestPanel";
 import { TurnstileInlineSection } from "@/features/admin/settings/TurnstileInlineSection";
+import { SystemConfigsPanel } from "@/features/admin/settings/SystemConfigsPanel";
 
 /**
  * 「集成与凭证」设置子页面（AdminSettingsLayout 路由）。
@@ -22,6 +23,7 @@ import { TurnstileInlineSection } from "@/features/admin/settings/TurnstileInlin
  *  2. 外部系统凭证（大华 / ARO）
  *  3. Turnstile 人机验证
  *  4. 集成与语音播报 (WinCC / CosyVoice)
+ *  5. 推送渠道 (邮件 / Server酱 / WxPusher)
  */
 export default function IntegrationsSettings() {
   const [llmConfigs, setLlmConfigs] = useState<SystemConfigRecord[]>([]);
@@ -33,15 +35,20 @@ export default function IntegrationsSettings() {
   const [intConfigs, setIntConfigs] = useState<SystemConfigRecord[]>([]);
   const [intDefs, setIntDefs] = useState<SettingDefinitionRecord[]>([]);
 
+  const [pushConfigs, setPushConfigs] = useState<SystemConfigRecord[]>([]);
+  const [pushDefs, setPushDefs] = useState<SettingDefinitionRecord[]>([]);
+
   useEffect(() => {
     void (async () => {
-      const [llmCfg, llmDf, credCfg, credDf, intCfg, intDf] = await Promise.all([
+      const [llmCfg, llmDf, credCfg, credDf, intCfg, intDf, pushCfg, pushDf] = await Promise.all([
         fetchSystemConfigs("llm"),
         fetchConfigDefinitions("llm"),
         fetchSystemConfigs("credentials"),
         fetchConfigDefinitions("credentials"),
         fetchSystemConfigs("integration"),
         fetchConfigDefinitions("integration"),
+        fetchSystemConfigs("push_channel"),
+        fetchConfigDefinitions("push_channel"),
       ]);
       setLlmConfigs(llmCfg);
       setLlmDefs(llmDf);
@@ -49,6 +56,8 @@ export default function IntegrationsSettings() {
       setCredDefs(credDf);
       setIntConfigs(intCfg);
       setIntDefs(intDf);
+      setPushConfigs(pushCfg);
+      setPushDefs(pushDf);
     })();
   }, []);
 
@@ -89,6 +98,19 @@ export default function IntegrationsSettings() {
           configs={intConfigs}
           configDefs={intDefs}
           onConfigsChange={setIntConfigs}
+        />
+      </AdminFormCard>
+
+      <AdminFormCard
+        title="推送渠道"
+        description="邮件 / Server酱 / WxPusher 渠道开关与凭证（WxPusher appToken 等）。"
+      >
+        <SystemConfigsPanel
+          moduleKey="push_channel"
+          configs={pushConfigs}
+          configDefs={pushDefs}
+          onConfigsChange={setPushConfigs}
+          hideSearch
         />
       </AdminFormCard>
     </div>
