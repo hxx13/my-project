@@ -273,17 +273,18 @@ public class PushDispatchEngine {
                 UserNotifyMute mute = notifySettingService.getMute(userId, source.getSourceCode());
                 if (mute != null && mute.getEnabled() != null && mute.getEnabled() == 0) {
                     chSkipped++;
+                    diag.add("user " + userId + " muted source " + source.getSourceCode());
                     continue;
                 }
                 if (mute != null) {
                     if (PushConstants.CHANNEL_EMAIL.equals(channel.getCode()) && mute.getMuteEmail() != null && mute.getMuteEmail() == 1) {
-                        chSkipped++; continue;
+                        chSkipped++; diag.add("user " + userId + " muted EMAIL"); continue;
                     }
                     if (PushConstants.CHANNEL_SERVER_CHAN.equals(channel.getCode()) && mute.getMuteServerChan() != null && mute.getMuteServerChan() == 1) {
-                        chSkipped++; continue;
+                        chSkipped++; diag.add("user " + userId + " muted SERVER_CHAN"); continue;
                     }
                     if (PushConstants.CHANNEL_WXPUSHER.equals(channel.getCode()) && mute.getMuteWxpusher() != null && mute.getMuteWxpusher() == 1) {
-                        chSkipped++; continue;
+                        chSkipped++; diag.add("user " + userId + " muted WXPUSHER"); continue;
                     }
                 }
 
@@ -305,6 +306,7 @@ public class PushDispatchEngine {
                 int limitSec = channelCfg.getRateLimitSeconds() != null ? channelCfg.getRateLimitSeconds() : 300;
                 if (!isTelemetrySource && rateLimiter.isRateLimited(sourceCode, userId, channel.getCode(), limitSec)) {
                     chSkipped++;
+                    diag.add("user " + userId + " rate-limited for " + channel.getCode() + " (" + limitSec + "s)");
                     continue;
                 }
 

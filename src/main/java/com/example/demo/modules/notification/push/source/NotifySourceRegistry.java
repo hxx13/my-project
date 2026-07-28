@@ -81,12 +81,12 @@ public class NotifySourceRegistry implements ApplicationRunner {
                         "recoveryAt", "恢复时间"));
 
         register("SWIPE_FAILURE_ALERT", "刷卡失败告警",
-                "同一通道在时间窗口内累计非法刷卡达到阈值时触发",
+                "同一通道在时间窗口内累计刷卡事件达到阈值时触发",
                 Map.of("channelName", "通道名称", "personName", "人员姓名",
                         "deptName", "部门/课题组", "phone", "联系电话",
                         "count", "累计次数", "windowMin", "时间窗口（分钟）",
-                        "threshold", "阈值次数", "openTypeLabel", "失败类型",
-                        "swingTime", "刷卡时间"));
+                        "threshold", "阈值次数", "openTypeLabel", "事件类型",
+                        "enterOrExitLabel", "进出方向", "swingTime", "刷卡时间"));
 
         log.info("[Push] 通知源注册完成（18个源）");
     }

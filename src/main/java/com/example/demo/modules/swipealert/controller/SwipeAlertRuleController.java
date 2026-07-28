@@ -46,6 +46,7 @@ public class SwipeAlertRuleController {
         if (denied != null) return denied;
         try {
             mapper.insert(rule);
+            if (rule.getNotifyUserIds() != null) mapper.updateNotifyUserIds(rule.getId(), rule.getNotifyUserIds());
             SwipeAlertRule created = mapper.findById(rule.getId());
             return Result.success(created);
         } catch (Exception e) {
@@ -65,6 +66,7 @@ public class SwipeAlertRuleController {
             if (existing == null) return Result.error("规则不存在: " + id);
             input.setId(id);
             mapper.update(input);
+            if (input.getNotifyUserIds() != null) mapper.updateNotifyUserIds(id, input.getNotifyUserIds());
             SwipeAlertRule updated = mapper.findById(id);
             return Result.success(updated);
         } catch (Exception e) {

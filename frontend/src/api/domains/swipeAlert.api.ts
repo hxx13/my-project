@@ -23,6 +23,8 @@ export interface SwipeAlertRuleRow {
   cooldownSec: number;
   notifySite: boolean;
   notifyPush: boolean;
+  notifyUserIds: string | null;
+  notifyCardholder: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -42,6 +44,8 @@ export interface SwipeAlertRuleUpsert {
   cooldownSec: number;
   notifySite: boolean;
   notifyPush: boolean;
+  notifyUserIds: string | null;
+  notifyCardholder: boolean;
 }
 
 export async function listSwipeAlertRules(): Promise<SwipeAlertRuleRow[]> {

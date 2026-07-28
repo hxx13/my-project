@@ -8,6 +8,7 @@ import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 import { useStudentProfile } from "../../hooks/use-student-profile";
 import { toast } from "react-hot-toast";
 import { sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
+import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,8 +65,6 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
   const [currentSendKey, setCurrentSendKey] = useState(false);
   // WxPusher binding
   const [wxPusherOpen, setWxPusherOpen] = useState(false);
-  const [wxPusherDraft, setWxPusherDraft] = useState("");
-  const [wxPusherSaving, setWxPusherSaving] = useState(false);
   const [currentWxPusher, setCurrentWxPusher] = useState(false);
 
   // 读取 email + sendKey + wxPusher
@@ -299,7 +298,6 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
                 }).catch(() => toast.error("取消失败"));
                 return;
               }
-              setWxPusherDraft("");
               setWxPusherOpen(true);
             }}>
               <Smartphone className="mr-2 h-4 w-4" />
@@ -433,42 +431,13 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
       )}
 
       {/* WxPusher binding dialog */}
-      {wxPusherOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
-          <div className="w-full max-w-sm rounded-2xl bg-[var(--student-canvas)] dark:bg-gray-900 p-5 shadow-xl">
-            <h3 className="text-base font-semibold text-[var(--student-ink)] dark:text-gray-100">绑定 WxPusher 推送</h3>
-            <p className="mt-1 text-xs text-[var(--student-mute)] dark:text-gray-400">通过 WxPusher App 接收推送通知。关注公众号「WxPusher」→ 菜单「我的UID」→ 复制后填入下方。</p>
-            <p className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400">
-              关注公众号 <b>WxPusher</b>（新消息服务）→ 我的 → 我的UID
-            </p>
-            <input type="text" value={wxPusherDraft} onChange={(e) => setWxPusherDraft(e.target.value)} maxLength={128}
-              className="mt-3 w-full rounded-xl border border-[var(--student-hairline)] dark:border-gray-700 px-3 py-2.5 text-sm text-[var(--student-ink)] dark:text-gray-100 bg-[var(--student-canvas-soft)] dark:bg-gray-800"
-              placeholder="粘贴 WxPusher UID（如 UID_xxxx）" />
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="rounded-xl border border-[var(--student-hairline)] dark:border-gray-700 px-4 py-2 text-sm text-[var(--student-body)] dark:text-gray-300"
-                onClick={() => setWxPusherOpen(false)}>取消</button>
-              <button type="button" disabled={!wxPusherDraft.trim() || wxPusherSaving}
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50"
-                onClick={async () => {
-                  setWxPusherSaving(true);
-                  try {
-                    const token = authStorage.getToken();
-                    const res = await fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/wx-pusher-uid`, {
-                      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-                      body: JSON.stringify({ wxPusherUid: wxPusherDraft.trim() }),
-                    });
-                    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || "保存失败");
-                    toast.success("WxPusher 推送已绑定");
-                    setCurrentWxPusher(true);
-                    setWxPusherOpen(false);
-                  } catch (e: any) { toast.error(e?.message || "保存失败"); }
-                  finally { setWxPusherSaving(false); }
-                }}
-              >{wxPusherSaving ? "保存中…" : "保存"}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <WxPusherBindModal
+        open={wxPusherOpen}
+        onClose={() => setWxPusherOpen(false)}
+        personnelId={personnelId}
+        authToken={authStorage.getToken()}
+        onSaved={() => setCurrentWxPusher(true)}
+      />
     </header>
   );
 }

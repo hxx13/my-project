@@ -13,6 +13,7 @@ import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { ROLE_LEVEL_MAP } from "@/features/auth/roleAccess";
 import { DepartmentMultiSelect } from "@/features/swipe-alert/DepartmentMultiSelect";
 import { ChannelMultiSelect } from "@/features/swipe-alert/ChannelMultiSelect";
+import { PersonnelPicker, type PersonnelRow } from "@/components/admin/PersonnelPicker";
 
 interface Props {
   editing: SwipeAlertRuleRow | null;
@@ -35,29 +36,39 @@ function parseJsonArray(raw: string | null): string[] {
 export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
   const [name, setName] = useState("");
   const [enabled, setEnabled] = useState(true);
-  const [openTypes] = useState("52"); // always 52
+  const [openTypes, setOpenTypes] = useState("52");
   const [notifySite, setNotifySite] = useState(true);
   const [notifyPush, setNotifyPush] = useState(false);
+  const [notifyCardholder, setNotifyCardholder] = useState(false);
   const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [thresholdCount, setThresholdCount] = useState("3");
   const [thresholdWindowSec, setThresholdWindowSec] = useState("300");
   const [bannerDurationSec, setBannerDurationSec] = useState("10");
   const [cooldownSec, setCooldownSec] = useState("60");
+  const [notifyUserIds, setNotifyUserIds] = useState<PersonnelRow[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (editing) {
       setName(editing.name);
       setEnabled(editing.enabled);
+      setOpenTypes(editing.openTypes || "52");
       setNotifySite(editing.notifySite ?? true);
       setNotifyPush(editing.notifyPush ?? false);
+      setNotifyCardholder(editing.notifyCardholder ?? false);
       setSelectedDepts(parseJsonArray(editing.departments));
       setSelectedChannels(parseJsonArray(editing.channels));
       setThresholdCount(String(editing.thresholdCount));
       setThresholdWindowSec(String(editing.thresholdWindowSec));
       setBannerDurationSec(String(editing.bannerDurationSec));
       setCooldownSec(String(editing.cooldownSec));
+      // parse notifyUserIds → PersonnelRow[]
+      try {
+        const raw = editing.notifyUserIds ? JSON.parse(editing.notifyUserIds) as any[] : [];
+        setNotifyUserIds(raw.map((i: any) => typeof i === 'string' ? { id: i, name: i } as PersonnelRow : { id: i.id, name: i.name || i.id } as PersonnelRow));
+      } catch { setNotifyUserIds([]); }
     } else {
       setName(""); setEnabled(true); setNotifySite(true); setNotifyPush(false);
       setSelectedDepts([]); setSelectedChannels([]);
@@ -70,6 +81,7 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
     name: name.trim(), enabled, openTypes: "52",
     channels: selectedChannels.length > 0 ? JSON.stringify(selectedChannels) : null,
     departments: selectedDepts.length > 0 ? JSON.stringify(selectedDepts) : null,
+    openTypes,
     titleTemplate: "🚨 刷卡失败告警",
     bodyTemplate: "",
     thresholdCount: Math.max(1, Number(thresholdCount) || 3),
@@ -77,6 +89,8 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
     bannerDurationSec: Math.max(0, Number(bannerDurationSec) || 10),
     minRoleLevel: 4, cooldownSec: Math.max(0, Number(cooldownSec) || 60),
     notifySite, notifyPush,
+    notifyCardholder,
+    notifyUserIds: notifyUserIds.length > 0 ? JSON.stringify(notifyUserIds.map(r => ({id: r.id, name: r.name}))) : null,
   });
 
   const save = async () => {
@@ -110,6 +124,27 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
           </label>
         </div>
 
+        {/* 开门类型 */}
+        <div>
+          <label className={labelClass}>开门类型</label>
+          <div className="mt-1 flex gap-2">
+            {[{v:"52",l:"非法刷卡"},{v:"51",l:"合法刷卡"},{v:"48",l:"远程开门"}].map(o => {
+              const checked = openTypes.includes(o.v);
+              return (
+                <label key={o.v} className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs cursor-pointer ${checked ? "border-red-300 bg-red-50 text-red-900" : "border-neutral-200 bg-white"}`}>
+                  <input type="checkbox" className="h-3 w-3 rounded accent-red-500" checked={checked}
+                    onChange={e => {
+                      const set = new Set(openTypes.split(",").filter(Boolean));
+                      e.target.checked ? set.add(o.v) : set.delete(o.v);
+                      setOpenTypes(Array.from(set).join(",") || "52");
+                    }} />
+                  {o.l}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
         {/* 通知开关 */}
         <div className={sectionClass}>
           <p className="text-xs font-semibold text-neutral-700">通知方式</p>
@@ -121,6 +156,10 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
             <label className="flex items-center gap-2">
               <AdminSwitchScaled size="sm" checked={notifyPush} onChange={setNotifyPush} />
               <span className="text-xs text-neutral-600">站外推送（邮件/微信）</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <AdminSwitchScaled size="sm" checked={notifyCardholder} onChange={setNotifyCardholder} />
+              <span className="text-xs text-neutral-600">抄送刷卡人本人</span>
             </label>
           </div>
         </div>
@@ -160,6 +199,20 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
           </div>
         </div>
 
+        {/* 推送目标 */}
+        <div>
+          <label className={labelClass}>推送目标（留空=所有接收人）</label>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {notifyUserIds.map(r => (
+              <span key={r.id} className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] text-blue-700">
+                {r.name || r.id}
+                <button type="button" onClick={() => setNotifyUserIds(prev => prev.filter(x => x.id !== r.id))} className="text-blue-400 hover:text-red-500">&times;</button>
+              </span>
+            ))}
+            <button type="button" className="text-[11px] text-blue-600 hover:underline" onClick={() => setPickerOpen(true)}>+ 添加人员</button>
+          </div>
+        </div>
+
         {/* 操作 */}
         <div className="flex gap-2 border-t border-neutral-100 pt-4">
           <AdminButton type="button" tone="primary" loading={saving} onClick={() => void save()}>
@@ -168,6 +221,20 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
           {editing && <AdminButton type="button" tone="secondary" onClick={onCancel}>取消</AdminButton>}
         </div>
       </div>
+
+      {pickerOpen && (
+        <PersonnelPicker
+          onClose={() => setPickerOpen(false)}
+          onConfirm={(ids, names) => {
+            const rows = ids.map((id, i) => ({ id, name: names[i] || id } as PersonnelRow));
+            setNotifyUserIds(prev => {
+              const existing = new Set(prev.map(r => r.id));
+              return [...prev, ...rows.filter(r => !existing.has(r.id))];
+            });
+            setPickerOpen(false);
+          }}
+        />
+      )}
     </AdminFormCard>
   );
 }

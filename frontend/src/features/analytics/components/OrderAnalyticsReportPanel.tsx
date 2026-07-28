@@ -573,7 +573,7 @@ function DrilldownCard() {
       <div className="h-full flex flex-col">
 
       {/* breadcrumb — sticky, no background, underline style */}
-      <div className="flex items-center gap-1 text-xs shrink-0 sticky top-0 z-10 bg-[var(--app-color-surface-container)] pt-2 mb-2 pb-2 border-b-2 border-[var(--app-color-accent-soft)]">
+      <div className="flex items-center gap-1 text-xs shrink-0 sticky top-16 z-10 bg-[var(--app-color-surface-container)] pt-2 mb-2 pb-2 border-b-2 border-[var(--app-color-accent-soft)]">
         <button
           onClick={() => { setDrillSupplier(""); setDrillStrain(""); }}
           className={cn(
@@ -742,7 +742,7 @@ function HeatmapCard() {
   return (
     <CellCard title={title} actions={headerActions}>
       {filterOpen && (
-        <div className="shrink-0 sticky top-0 z-[15] flex flex-wrap items-center gap-1 px-5 py-1.5 bg-[var(--app-color-surface-container)] border-b border-[var(--app-color-border-default)]">
+        <div className="shrink-0 sticky top-16 z-[15] flex flex-wrap items-center gap-1 px-5 py-1.5 bg-[var(--app-color-surface-container)] border-b border-[var(--app-color-border-default)]">
           <FilterLabel>日期</FilterLabel>
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-[110px] px-1.5 py-0.5 text-[10px] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)]" />
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-[110px] px-1.5 py-0.5 text-[10px] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)]" />

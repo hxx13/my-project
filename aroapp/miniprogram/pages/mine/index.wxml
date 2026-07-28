@@ -568,6 +568,17 @@
   <view class="bind-panel bind-panel--center">
     <view class="bind-title">绑定 WxPusher 推送</view>
     <text class="bind-tip">关注公众号「WxPusher」（新消息服务）→ 我的 → 我的UID → 复制后填入下方</text>
+    <!-- 双二维码区 -->
+    <view class="wxpusher-qr-row">
+      <view class="wxpusher-qr-item">
+        <canvas canvas-id="wxpusherFollowQr" class="wxpusher-qr-canvas" />
+        <text class="wxpusher-qr-label">扫码关注公众号</text>
+      </view>
+      <view class="wxpusher-qr-item">
+        <canvas canvas-id="wxpusherDownloadQr" class="wxpusher-qr-canvas" />
+        <text class="wxpusher-qr-label">扫码下载 App</text>
+      </view>
+    </view>
     <input class="bind-input bind-input-block" type="text" value="{{ wxPusherDraft }}" maxlength="128" placeholder="粘贴 WxPusher UID（如 UID_xxxx）" bindinput="onWxPusherInput" />
     <van-button block type="primary" round custom-class="bind-submit" bindtap="onSubmitWxPusher" loading="{{ wxPusherSaving }}" disabled="{{ wxPusherSaving }}">{{ wxPusherSaving ? '保存中…' : '保存' }}</van-button>
   </view>

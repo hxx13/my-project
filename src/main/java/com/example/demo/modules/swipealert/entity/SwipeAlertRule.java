@@ -22,6 +22,8 @@ public class SwipeAlertRule {
     private Integer cooldownSec;
     private Boolean notifySite;
     private Boolean notifyPush;
+    private String notifyUserIds;
+    private Boolean notifyCardholder;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

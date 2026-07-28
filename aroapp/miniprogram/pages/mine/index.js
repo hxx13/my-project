@@ -1592,10 +1592,49 @@ Page({
       return;
     }
     this.setData({ showWxPusherEditor: true, wxPusherDraft: '', wxPusherSaving: false });
+    // 延迟绘制二维码（等待 canvas 渲染）
+    setTimeout(() => { this.drawWxPusherQrCodes(); }, 300);
   },
 
   onCloseWxPusherEditor() {
     this.setData({ showWxPusherEditor: false, wxPusherDraft: '', wxPusherSaving: false });
+  },
+
+  drawWxPusherQrCodes() {
+    try {
+      var drawQrcode = require('../../libs/weapp-qrcode.js');
+      var dpr = Math.min(3, Math.max(1, (wx.getSystemInfoSync() && wx.getSystemInfoSync().pixelRatio) || 2));
+      var followUrl = 'https://wxpusher.zjiecode.com/app/#/follow?type=1&id=133073';
+      var downloadUrl = 'https://wxpusher.zjiecode.com/download/app-download.html';
+      // 关注二维码
+      drawQrcode({
+        width: 140,
+        height: 140,
+        canvasId: 'wxpusherFollowQr',
+        text: followUrl,
+        _this: this,
+        correctLevel: 1,
+        typeNumber: -1,
+        pdground: true,
+        background: '#ffffff',
+        foreground: '#1a1a1a',
+      });
+      // 下载二维码
+      drawQrcode({
+        width: 140,
+        height: 140,
+        canvasId: 'wxpusherDownloadQr',
+        text: downloadUrl,
+        _this: this,
+        correctLevel: 1,
+        typeNumber: -1,
+        pdground: true,
+        background: '#ffffff',
+        foreground: '#1a1a1a',
+      });
+    } catch (e) {
+      console.warn('[mine] wxpusher qrcode', e);
+    }
   },
 
   onWxPusherInput(e) {

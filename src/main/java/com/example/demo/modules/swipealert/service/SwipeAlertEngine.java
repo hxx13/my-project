@@ -150,12 +150,11 @@ public class SwipeAlertEngine {
 
     /**
      * Called after each swing record is persisted.
-     * Only processes illegal opens ({@code openType == 52}).
+     * Processes openType 48 (remote open) and 52 (illegal open).
      */
     public void onSwingRecord(DahuaRecordDTO record) {
         if (record == null) return;
 
-        // 定时重载规则（30秒），确保 UI 修改后生效
         long nowMs = System.currentTimeMillis();
         if (nowMs - lastReloadTime > RELOAD_INTERVAL_MS) {
             reloadRules();
@@ -163,9 +162,9 @@ public class SwipeAlertEngine {
         }
 
         Integer openType = record.getOpenType();
-        if (openType == null || openType != 52) return;
+        if (openType == null || (openType != 48 && openType != 51 && openType != 52)) return;
 
-        // Record-level dedup: skip if this exact record was already processed
+        log.info("[swipe-alert] received: openType={} person={} channel={}", openType, record.getPersonName(), record.getChannelName());
         String recordId = record.getId();
         if (recordId != null && !recordId.isBlank()) {
             Long lastSeen = processedRecords.putIfAbsent(recordId, System.currentTimeMillis());
@@ -241,11 +240,12 @@ public class SwipeAlertEngine {
     // =========================================================================
 
     private boolean matchesRule(SwipeAlertRule rule, DahuaRecordDTO record) {
-        // --- openTypes filter (type 52 = illegal open) ---
+        // --- openTypes filter (48=远程开门, 51=合法刷卡, 52=非法刷卡) ---
         String openTypes = rule.getOpenTypes();
         if (openTypes != null && !openTypes.isBlank()) {
             Set<String> allowed = new HashSet<>(Arrays.asList(openTypes.split(",")));
-            if (!allowed.contains("52")) return false;
+            boolean matched = allowed.contains("48") || allowed.contains("51") || allowed.contains("52");
+            if (!matched) return false;
         }
 
         // --- channels filter (JSON array of channel codes) ---
@@ -305,9 +305,12 @@ public class SwipeAlertEngine {
         snap.put("personName", person);
         snap.put("channelName", channel);
         snap.put("channelCode", channelCode);
-        snap.put("openTypeLabel",
-                record.getOpenType() != null && record.getOpenType() == 52
-                        ? "非法刷卡开门" : "刷卡失败");
+        snap.put("openTypeLabel", switch (record.getOpenType() != null ? record.getOpenType() : 0) {
+            case 48 -> "远程开门";
+            case 51 -> "合法刷卡";
+            case 52 -> "非法刷卡";
+            default -> "刷卡";
+        });
         snap.put("swingTime", Objects.toString(record.getSwingTime(), ""));
         snap.put("enterOrExit", record.getEnterOrExit());  // 1=进入, 2=离开
 
@@ -385,7 +388,6 @@ public class SwipeAlertEngine {
 
     private void firePushAlert(SwipeAlertRule rule, int count, Map<String, Object> alert) {
         try {
-            // 从 matchedRecords 列表中取出第一条记录的快照
             Map<String, Object> snap = Map.of();
             Object mr = alert.get("matchedRecords");
             if (mr instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> m) {
@@ -401,17 +403,48 @@ public class SwipeAlertEngine {
             String swingTime = Objects.toString(snap.get("swingTime"), "");
             String winMin = String.valueOf(rule.getThresholdWindowSec() != null ? rule.getThresholdWindowSec() / 60 : 0);
 
-            pushService.send("SWIPE_FAILURE_ALERT", Map.of(
-                    "channelName", channel,
-                    "personName", person,
-                    "deptName", dept,
-                    "phone", phone,
-                    "count", String.valueOf(count),
-                    "windowMin", winMin,
-                    "threshold", String.valueOf(rule.getThresholdCount()),
-                    "openTypeLabel", openLabel,
-                    "swingTime", swingTime));
-            log.info("[swipe-alert] push alert fired ruleId={} count={}", rule.getId(), count);
+            Map<String, String> vars = new LinkedHashMap<>();
+            vars.put("channelName", channel);
+            vars.put("personName", person);
+            vars.put("deptName", dept);
+            vars.put("phone", phone);
+            vars.put("count", String.valueOf(count));
+            vars.put("windowMin", winMin);
+            vars.put("threshold", String.valueOf(rule.getThresholdCount()));
+            vars.put("openTypeLabel", openLabel);
+            vars.put("enterOrExitLabel", Objects.toString(snap.get("enterOrExitLabel"), ""));
+            vars.put("swingTime", swingTime);
+
+            // 解析规则配置的推送目标用户（列不存在时回退为空，不影响主流程）
+            Set<String> targetUserIds = new LinkedHashSet<>();
+            try {
+                String userIdsJson = mapper.findNotifyUserIdsById(rule.getId());
+                if (userIdsJson != null && !userIdsJson.isBlank()) {
+                    try {
+                        // 格式: ["id1","id2"] 或 [{"id":"x","name":"y"},...]
+                        List<Object> raw = objectMapper.readValue(userIdsJson, new TypeReference<List<Object>>() {});
+                        for (Object item : raw) {
+                            if (item instanceof String s) targetUserIds.add(s);
+                            else if (item instanceof Map<?, ?> m && m.get("id") instanceof String s) targetUserIds.add(s);
+                        }
+                    } catch (Exception e2) { log.debug("[swipe-alert] parse notifyUserIds: {}", e2.getMessage()); }
+                }
+            } catch (Exception e) {
+                log.debug("[swipe-alert] notifyUserIds lookup failed (column not ready): {}", e.getMessage());
+            }
+
+            // 连带通知刷卡人本人
+            if (Boolean.TRUE.equals(rule.getNotifyCardholder())) {
+                String cardholderId = Objects.toString(snap.get("aroUserId"), "");
+                if (!cardholderId.isBlank()) targetUserIds.add(cardholderId);
+            }
+
+            if (targetUserIds.isEmpty()) {
+                pushService.send("SWIPE_FAILURE_ALERT", vars);
+            } else {
+                pushService.send("SWIPE_FAILURE_ALERT", vars, targetUserIds);
+            }
+            log.info("[swipe-alert] push alert fired ruleId={} count={} targets={}", rule.getId(), count, targetUserIds.size());
         } catch (Exception e) {
             log.warn("[swipe-alert] push failed: {}", e.getMessage());
         }

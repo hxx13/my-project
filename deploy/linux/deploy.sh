@@ -36,6 +36,23 @@ if [ -z "${DB_PASSWORD:-}" ]; then
 fi
 echo "  ✅ DB_PASSWORD 已配置"
 
+# 微信小程序凭证检查（缺少则静默登录 + 自动绑定 + OpenID 自动登录全部不可用）
+WECHAT_MISSING=false
+if [ -z "${WECHAT_APP_ID:-}" ]; then
+    WECHAT_MISSING=true
+fi
+if [ -z "${WECHAT_APP_SECRET:-}" ]; then
+    WECHAT_MISSING=true
+fi
+if $WECHAT_MISSING; then
+    echo "  ⚠ WECHAT_APP_ID 或 WECHAT_APP_SECRET 未配置"
+    echo "     小程序静默登录、OpenID 绑定、自动登录功能将不可用（回退为 Mock OpenID）"
+    echo "     获取方式：https://mp.weixin.qq.com → 开发管理 → 开发设置"
+    echo "     配置方式：echo 'WECHAT_APP_ID=wx***' | sudo tee -a $ENV_FILE"
+else
+    echo "  ✅ WECHAT_APP_ID + WECHAT_APP_SECRET 已配置"
+fi
+
 # Step 1/8: git pull
 echo "=== Step 1/8: git pull ==="
 cd "$REPO_DIR"
