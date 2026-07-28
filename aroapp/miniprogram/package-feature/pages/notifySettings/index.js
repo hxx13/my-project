@@ -14,7 +14,7 @@ Page({
     var that = this;
     that.setData({ loading: true });
     springAuth.springRequest({
-      url: '/user/notify-settings',
+      url: '/api/user/notify-settings',
       method: 'GET',
       success: function (res) {
         var list = (res.data && res.data.data) ? res.data.data : [];
@@ -33,7 +33,7 @@ Page({
     var code = e.currentTarget.dataset.code;
     var enabled = e.currentTarget.dataset.enabled;
     springAuth.springRequest({
-      url: '/user/notify-settings/' + code,
+      url: '/api/user/notify-settings/' + code,
       method: 'PUT',
       data: { enabled: !enabled },
       success: function () {
@@ -57,7 +57,7 @@ Page({
     var body = {};
     body[key] = !muted;
     springAuth.springRequest({
-      url: '/user/notify-settings/' + code,
+      url: '/api/user/notify-settings/' + code,
       method: 'PUT',
       data: body,
       success: function () {
