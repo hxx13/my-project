@@ -1,0 +1,95 @@
+package com.example.demo.modules.notification.push.preference;
+
+import com.example.demo.modules.notification.push.PushConstants;
+import com.example.demo.modules.notification.push.source.NotifySource;
+import com.example.demo.modules.notification.push.source.NotifySourceMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * 个人通知偏好服务。
+ * 自动同步 notify_source 表的所有源，合并用户的 user_notify_mute 设置。
+ */
+@Service
+public class UserNotifySettingService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserNotifySettingService.class);
+    private final NotifySourceMapper sourceMapper;
+    private final UserNotifyMuteMapper muteMapper;
+
+    public UserNotifySettingService(NotifySourceMapper sourceMapper, UserNotifyMuteMapper muteMapper) {
+        this.sourceMapper = sourceMapper;
+        this.muteMapper = muteMapper;
+    }
+
+    /** 单源 + 用户偏好 */
+    public record SourceSetting(String sourceCode, String sourceName, String description,
+                                boolean sourceEnabled, boolean myEnabled,
+                                boolean muteEmail, boolean muteServerChan, boolean muteWxpusher) {}
+
+    /** 全部信息源 + 当前用户的静默设置（已按角色视角过滤可见性） */
+    public List<SourceSetting> listForUser(String userId, String userRole) {
+        List<NotifySource> sources = sourceMapper.findAll();
+        String perspective = resolvePerspective(userRole);
+        if (sources == null || sources.isEmpty()) return List.of();
+
+        Map<String, UserNotifyMute> muteMap = new LinkedHashMap<>();
+        try {
+            for (UserNotifyMute m : muteMapper.findByUserId(userId)) {
+                if (m != null && StringUtils.hasText(m.getSourceCode())) {
+                    muteMap.put(m.getSourceCode().trim(), m);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[NotifyPref] 加载用户 {} 静默设置失败: {}", userId, e.getMessage());
+        }
+
+        List<SourceSetting> list = new ArrayList<>();
+        for (NotifySource src : sources) {
+            // 视角过滤：visible_to=ALL 或 匹配当前用户角色
+            String vt = src.getVisibleTo() != null ? src.getVisibleTo().trim().toUpperCase() : "ALL";
+            if (!"ALL".equals(vt) && !perspective.equals(vt)) continue;
+
+            UserNotifyMute m = muteMap.get(src.getSourceCode());
+            boolean myEnabled = m == null || m.getEnabled() == null || m.getEnabled() != 0;
+            list.add(new SourceSetting(
+                    src.getSourceCode(), src.getSourceName(), src.getDescription(),
+                    src.getEnabled() != null && src.getEnabled() == 1,
+                    myEnabled,
+                    m != null && m.getMuteEmail() != null && m.getMuteEmail() == 1,
+                    m != null && m.getMuteServerChan() != null && m.getMuteServerChan() == 1,
+                    m != null && m.getMuteWxpusher() != null && m.getMuteWxpusher() == 1));
+        }
+        return list;
+    }
+
+    /** 保存用户对单个源的偏好 */
+    public void save(String userId, String sourceCode, UserNotifyMute body) {
+        body.setUserId(userId);
+        body.setSourceCode(sourceCode);
+        muteMapper.insertOrUpdate(body);
+    }
+
+    /** role to perspective: STAFF prefix -> STAFF, MEMBER -> STUDENT, other -> ALL */
+    static String resolvePerspective(String roleCode) {
+        if (roleCode == null) return "ALL";
+        String u = roleCode.trim().toUpperCase();
+        if (u.startsWith("STAFF_") || u.startsWith("ADMIN") || u.startsWith("SUPER") || u.contains("SYS")) return "STAFF";
+        if ("MEMBER".equals(u) || "STUDENT".equals(u)) return "STUDENT";
+        return "ALL";
+    }
+
+    /** 查询用户对特定源的静默状态（供 PushDispatchEngine 使用） */
+    public UserNotifyMute getMute(String userId, String sourceCode) {
+        try {
+            return muteMapper.findByUserAndSource(userId, sourceCode);
+        } catch (Exception e) {
+            return null; // 出错视为无静默
+        }
+    }
+}

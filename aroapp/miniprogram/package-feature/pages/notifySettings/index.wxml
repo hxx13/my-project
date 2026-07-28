@@ -1,0 +1,55 @@
+<view class="page">
+  <view class="hint">仅影响你自己的通知接收，不影响他人。</view>
+
+  <view wx:if="{{ loading }}" class="loading">加载中…</view>
+
+  <block wx:elif="{{ settings.length === 0 }}">
+    <view class="empty">暂无可用通知</view>
+  </block>
+
+  <block wx:else>
+    <view class="list">
+      <view class="card" wx:for="{{ settings }}" wx:key="sourceCode">
+        <!-- 源开关 -->
+        <view class="card-row">
+          <view class="card-info">
+            <view class="card-name">{{ item.sourceName }}</view>
+            <view class="card-desc">{{ item.description }}</view>
+          </view>
+          <switch
+            checked="{{ item.myEnabled }}"
+            data-code="{{ item.sourceCode }}"
+            data-enabled="{{ item.myEnabled }}"
+            bindchange="toggleSource"
+            color="#10b981"
+          />
+        </view>
+
+        <!-- 渠道开关 -->
+        <view class="channels" wx:if="{{ item.myEnabled }}">
+          <view
+            class="channel {{ item.muteEmail ? 'channel--off' : 'channel--on' }}"
+            data-code="{{ item.sourceCode }}"
+            data-key="muteEmail"
+            data-muted="{{ item.muteEmail }}"
+            bindtap="toggleChannel"
+          >邮件</view>
+          <view
+            class="channel {{ item.muteServerChan ? 'channel--off' : 'channel--on' }}"
+            data-code="{{ item.sourceCode }}"
+            data-key="muteServerChan"
+            data-muted="{{ item.muteServerChan }}"
+            bindtap="toggleChannel"
+          >Server酱</view>
+          <view
+            class="channel {{ item.muteWxpusher ? 'channel--off' : 'channel--on' }}"
+            data-code="{{ item.sourceCode }}"
+            data-key="muteWxpusher"
+            data-muted="{{ item.muteWxpusher }}"
+            bindtap="toggleChannel"
+          >WxPusher</view>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

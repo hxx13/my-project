@@ -34,19 +34,22 @@ public class CageShelfService {
     private final CageCellAnnotationMapper annotationMapper;
     private final CageShelfCellSnapshotMapper cellSnapshotMapper;
     private final AroService aroService;
+    private final CageShelfRealtimeCooldown cooldown;
 
     public CageShelfService(CageShelfMapper cageShelfMapper,
                             CageSpecialStatusSnapshotMapper specialStatusSnapshotMapper,
                             CageShelfGridCacheMapper gridCacheMapper,
                             CageCellAnnotationMapper annotationMapper,
                             CageShelfCellSnapshotMapper cellSnapshotMapper,
-                            AroService aroService) {
+                            AroService aroService,
+                            CageShelfRealtimeCooldown cooldown) {
         this.cageShelfMapper = cageShelfMapper;
         this.specialStatusSnapshotMapper = specialStatusSnapshotMapper;
         this.gridCacheMapper = gridCacheMapper;
         this.annotationMapper = annotationMapper;
         this.cellSnapshotMapper = cellSnapshotMapper;
         this.aroService = aroService;
+        this.cooldown = cooldown;
     }
 
     @PostConstruct
@@ -168,11 +171,85 @@ public class CageShelfService {
     }
 
     /**
-     * 获取笼架详情：仅返回缓存快照。缓存未命中时返回空 grid（不自动拉取 ARO）。
-     * 需要最新数据时由前端调用 refresh 接口手动触发。
+     * 获取笼架详情：默认 snapshot-first。扫码模式下传 realtime=true 直读 grid cache。
      */
     public Map<String, Object> fetchShelfDetail(String shelveId) {
-        return fetchShelfDetail(shelveId, null);
+        return fetchShelfDetail(shelveId, false);
+    }
+
+    /** @param realtime true=跳过快照直读缓存（扫码模式用实时数据） */
+    public Map<String, Object> fetchShelfDetail(String shelveId, boolean realtime) {
+        // 1) 非实时模式：优先从最新扫描快照重建
+        if (!realtime) {
+            specialStatusSnapshotMapper.ensureTable();
+            cellSnapshotMapper.ensureTable();
+            Map<String, Object> latestInfo = specialStatusSnapshotMapper.selectLatestBatchInfo();
+            if (latestInfo != null && !latestInfo.isEmpty()) {
+                String latestBatchId = String.valueOf(latestInfo.getOrDefault("scanBatchId", ""));
+                if (!latestBatchId.isBlank()) {
+                    return buildShelfDetailFromSnapshot(shelveId, latestBatchId);
+                }
+            }
+        }
+        // 2) 快照不存在 → 回退到 grid cache（存量兼容），规范化数据对齐 snapshot 格式
+        Map<String, Object> cached = gridCacheMapper.selectByShelveId(shelveId);
+        if (cached != null && !cached.isEmpty()) {
+            try {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> rawGrid = (List<Map<String, Object>>) (List<?>) JSON.parseArray(
+                        String.valueOf(cached.getOrDefault("gridJson", "[]")), Map.class);
+                @SuppressWarnings("unchecked")
+                Map<String, Object> shelfMeta = (Map<String, Object>) JSON.parseObject(
+                        String.valueOf(cached.getOrDefault("shelfMetaJson", "{}")), Map.class);
+                // 规范化：grid_cache 中存的已是 simplifyCell 输出（有 stateLabel 字段），
+                // 直接复用避免重复 simplify 导致 cageBoxVo 丢失 → 文字/配色全部清空。
+                // 仅对旧格式（含 cageBoxVo 的原始 ARO 数据）才走 simplifyCell。
+                CageShelfIndex idx = cageShelfMapper.findByShelveId(shelveId);
+                List<Map<String, Object>> grid = new ArrayList<>();
+                int filled = 0;
+                for (Map<String, Object> raw : rawGrid) {
+                    int x = toIntObj(raw.get("x")) != null ? toIntObj(raw.get("x")) : 0;
+                    int y = toIntObj(raw.get("y")) != null ? toIntObj(raw.get("y")) : 0;
+                    // 已简化（有 stateLabel 或 cageBoxInfo 且无 cageBoxVo）→ 直接复用
+                    boolean alreadySimplified = raw.containsKey("stateLabel")
+                            || (raw.containsKey("cageBoxInfo") && !raw.containsKey("cageBoxVo"));
+                    Map<String, Object> cell = alreadySimplified ? raw : simplifyCell(raw, x, y, idx);
+                    grid.add(cell);
+                    if (!Boolean.TRUE.equals(cell.get("empty"))) filled++;
+                }
+                Map<String, Object> out = new LinkedHashMap<>();
+                out.put("shelfMeta", shelfMeta);
+                out.put("grid", grid);
+                out.put("totalCells", grid.size());
+                out.put("filledCells", filled);
+                out.put("fromCache", true);
+                out.put("cachedAt", cached.getOrDefault("updatedAt", ""));
+                return out;
+            } catch (Exception e) {
+                // 缓存解析失败 → 返回空 grid
+            }
+        }
+        // 3) 缓存也未命中 → 从索引表获取元信息，返回空 grid
+        CageShelfIndex idx = cageShelfMapper.findByShelveId(shelveId);
+        Map<String, Object> shelfMeta = new LinkedHashMap<>();
+        if (idx != null) {
+            shelfMeta.put("campusName", idx.getCampusName() != null ? idx.getCampusName() : "");
+            shelfMeta.put("areaName", idx.getAreaName() != null ? idx.getAreaName() : "");
+            shelfMeta.put("floorName", idx.getFloorName() != null ? idx.getFloorName() : "");
+            shelfMeta.put("roomName", idx.getRoomName() != null ? idx.getRoomName() : "");
+            shelfMeta.put("shelveId", idx.getShelveId() != null ? String.valueOf(idx.getShelveId()) : shelveId);
+            shelfMeta.put("shelveName", idx.getShelveName() != null ? idx.getShelveName() : shelveId);
+        } else {
+            shelfMeta.put("shelveId", shelveId);
+            shelfMeta.put("shelveName", shelveId);
+        }
+        Map<String, Object> empty = new LinkedHashMap<>();
+        empty.put("shelfMeta", shelfMeta);
+        empty.put("grid", List.of());
+        empty.put("totalCells", 80);
+        empty.put("filledCells", 0);
+        empty.put("fromCache", false);
+        return empty;
     }
 
     /**
@@ -182,16 +259,11 @@ public class CageShelfService {
         if (shelveId == null || shelveId.isBlank()) {
             throw new IllegalArgumentException("shelveId 不能为空");
         }
-        // 历史快照模式：若 batchId 等于最新批次 → 直接用缓存（和"最新数据"完全一致）
+        // 快照模式：指定 batchId 时统一走 snapshot 表（数据已规范化，键名一致）
         if (batchId != null && !batchId.isBlank()) {
-            Map<String, Object> latestInfo = specialStatusSnapshotMapper.selectLatestBatchInfo();
-            String latestBatchId = latestInfo != null ? String.valueOf(latestInfo.getOrDefault("scanBatchId", "")) : "";
-            if (!batchId.equals(latestBatchId)) {
-                return buildShelfDetailFromSnapshot(shelveId, batchId);
-            }
-            // batchId == 最新批次 → fall through 走缓存
+            return buildShelfDetailFromSnapshot(shelveId, batchId);
         }
-        // 缓存模式（最新数据）
+        // 缓存模式（无 batchId 时走 grid_cache）
         Map<String, Object> cached = gridCacheMapper.selectByShelveId(shelveId);
         if (cached != null && !cached.isEmpty()) {
             try {
@@ -213,7 +285,7 @@ public class CageShelfService {
                 // 缓存解析失败 → 返回空 grid
             }
         }
-        // 缓存未命中 → 从索引表获取元信息，返回空 grid（不调用 ARO）
+        // 缓存未命中 → 从索引表获取元信息，返回空 grid
         CageShelfIndex idx = cageShelfMapper.findByShelveId(shelveId);
         Map<String, Object> shelfMeta = new LinkedHashMap<>();
         if (idx != null) {
@@ -292,6 +364,13 @@ public class CageShelfService {
                 catch (Exception ignored) { /* keep empty */ }
             }
             cell.put("cageBoxInfo", cbi);
+            // 从 QR URL 提取 cageBoxCode 方便前端扫码匹配
+            String qr = s.getCageBoxQrCode();
+            if (qr != null && !qr.isBlank()) {
+                int ls = qr.lastIndexOf('/');
+                int qi = qr.indexOf("_qrcode");
+                if (ls >= 0 && qi > ls) cell.put("cageBoxCode", qr.substring(ls + 1, qi));
+            }
             // projectGroup 来自 cageBoxVo.projectName
             Object pn = cbi.get("projectName");
             cell.put("projectGroup", pn instanceof String ps && !ps.isBlank() ? ps : "");
@@ -594,6 +673,7 @@ public class CageShelfService {
         d.put("ProjectPiName", decodeDisplayText(firstNonNull(cageBoxVo, "projectPiName")));
         d.put("MobilePhone", decodeDisplayText(firstNonNull(cageBoxVo, "mobilePhone")));
         d.put("AupNumber", decodeDisplayText(firstNonNull(cageBoxVo, "aupNumber")));
+        d.put("cageBoxCode", decodeDisplayText(firstNonNull(cageBoxVo, "cageBoxCode")));
         d.put("CageBoxQrCode", decodeDisplayText(firstNonNullOr(cageBoxVo, "cageBoxQrCode", firstNonNull(cageBoxVo, "cageBoxCode"))));
         d.put("createAdmin", decodeDisplayText(firstNonNullOr(cageBoxVo, "createAdmin", firstNonNull(cageBoxVo, "createAdminName"))));
         d.put("CreateTime", decodeDisplayText(firstNonNull(cageBoxVo, cage, "createTime")));
@@ -1156,5 +1236,130 @@ public class CageShelfService {
         if (updated > 0) {
             // Logger not available in @PostConstruct static context — fine
         }
+    }
+
+    // ==========================================================================
+    // 🔧 实时数据源 + 分配后强制刷新（2026-07-27 新增）
+    // ==========================================================================
+
+    /**
+     * 实时刷新房间笼架数据（含 5min 冷却）。
+     * 全房间模式：并行拉取所有 shelve → 聚合返回。
+     * 单笼架模式：直接调用 refreshShelfDetail。
+     *
+     * @param roomId   房间 ID
+     * @param shelveId 单笼架模式时传入，全房间时为 null
+     * @return { shelves, roomMeta, fromRealtime, cachedAt, cooldownRemainingMs }
+     */
+    public Map<String, Object> refreshRoomRealtime(Long roomId, String shelveId) {
+        boolean isRoomMode = (shelveId == null || shelveId.isBlank());
+        String cooldownKey = isRoomMode ? (roomId + ":*") : (roomId + ":" + shelveId);
+
+        boolean inCooldown = cooldown.isInCooldown(cooldownKey);
+        long remainingMs = cooldown.remainingCooldownMs(cooldownKey);
+
+        List<Map<String, Object>> shelves = new ArrayList<>();
+        Map<String, Object> roomMeta = new LinkedHashMap<>();
+        roomMeta.put("roomId", String.valueOf(roomId));
+
+        if (isRoomMode) {
+            // 全房间模式：查该房间所有 shelveId
+            List<String> shelveIdList = cageShelfMapper.listShelveIdsByRoomIds(List.of(String.valueOf(roomId)));
+            roomMeta.put("shelfCount", shelveIdList.size());
+
+            if (inCooldown) {
+                // 冷却期内：解析 grid_cache 原始行 → CageShelfDetail 形状
+                for (String sid : shelveIdList) {
+                    Map<String, Object> cached = gridCacheMapper.selectByShelveId(sid);
+                    if (cached != null) {
+                        Map<String, Object> parsed = new LinkedHashMap<>();
+                        String gridJson = (String) cached.get("gridJson");
+                        String shelfMetaJson = (String) cached.get("shelfMetaJson");
+                        if (gridJson != null) parsed.put("grid", JSON.parseArray(gridJson));
+                        else parsed.put("grid", List.of());
+                        if (shelfMetaJson != null) parsed.put("shelfMeta", JSON.parseObject(shelfMetaJson));
+                        else parsed.put("shelfMeta", Map.of());
+                        parsed.put("totalCells", cached.getOrDefault("totalCells", 0));
+                        parsed.put("filledCells", cached.getOrDefault("filledCells", 0));
+                        parsed.put("fromCache", true);
+                        parsed.put("cachedAt", cached.getOrDefault("updatedAt", ""));
+                        shelves.add(parsed);
+                    }
+                }
+            } else {
+                // 不在冷却 → 并行拉取
+                java.util.concurrent.CompletableFuture<?>[] futures = shelveIdList.stream()
+                    .map(sid -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                        try {
+                            Map<String, Object> detail = refreshShelfDetail(sid);
+                            if (detail != null && !detail.isEmpty()) {
+                                synchronized (shelves) { shelves.add(detail); }
+                            }
+                        } catch (Exception e) {
+                            // 单个笼架失败不影响其他
+                        }
+                    }))
+                    .toArray(java.util.concurrent.CompletableFuture[]::new);
+                java.util.concurrent.CompletableFuture.allOf(futures).join();
+            }
+        } else {
+            // 单笼架模式
+            roomMeta.put("shelfCount", 1);
+            if (inCooldown) {
+                Map<String, Object> cached = gridCacheMapper.selectByShelveId(shelveId);
+                if (cached != null) {
+                    Map<String, Object> parsed = new LinkedHashMap<>();
+                    String gridJson = (String) cached.get("gridJson");
+                    String shelfMetaJson = (String) cached.get("shelfMetaJson");
+                    parsed.put("grid", gridJson != null ? JSON.parseArray(gridJson) : List.of());
+                    parsed.put("shelfMeta", shelfMetaJson != null ? JSON.parseObject(shelfMetaJson) : Map.of());
+                    parsed.put("totalCells", cached.getOrDefault("totalCells", 0));
+                    parsed.put("filledCells", cached.getOrDefault("filledCells", 0));
+                    parsed.put("fromCache", true);
+                    parsed.put("cachedAt", cached.getOrDefault("updatedAt", ""));
+                    shelves.add(parsed);
+                }
+            } else {
+                try {
+                    Map<String, Object> detail = refreshShelfDetail(shelveId);
+                    if (detail != null && !detail.isEmpty()) shelves.add(detail);
+                } catch (Exception e) {
+                    // ignore
+                }
+            }
+        }
+
+        if (!inCooldown) {
+            cooldown.markFetched(cooldownKey);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("shelves", shelves);
+        out.put("roomMeta", roomMeta);
+        out.put("fromRealtime", !inCooldown);
+        out.put("cachedAt", java.time.LocalDateTime.now().toString());
+        out.put("cooldownRemainingMs", remainingMs);
+        return out;
+    }
+
+    /**
+     * 分配/取消后强制刷新（绕过冷却）。
+     */
+    public Map<String, Object> forceRefreshAfterMutation(Long roomId) {
+        cooldown.forceRefreshRoom(roomId);
+        return refreshRoomRealtime(roomId, null);
+    }
+
+    /** 获取最新快照扫描时间（供前端列表页展示数据源时间戳）。 */
+    public String getLatestSnapshotScannedAt() {
+        try {
+            specialStatusSnapshotMapper.ensureTable();
+            Map<String, Object> info = specialStatusSnapshotMapper.selectLatestBatchInfo();
+            if (info != null && !info.isEmpty()) {
+                Object at = info.get("scannedAt");
+                return at != null ? String.valueOf(at) : "";
+            }
+        } catch (Exception ignored) { /* 非关键路径 */ }
+        return "";
     }
 }

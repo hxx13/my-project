@@ -52,16 +52,15 @@ public class StudentCageShelfController {
     }
 
     @GetMapping("/{shelveId}/detail")
-    @Operation(summary = "获取笼架网格详情（缓存快照）")
+    @Operation(summary = "获取笼架网格详情。realtime=true 时跳过快照直读缓存")
     public Result<Map<String, Object>> getShelfDetail(
             @PathVariable String shelveId,
+            @RequestParam(required = false) boolean realtime,
             HttpServletRequest request) {
         User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
-        if (user == null) {
-            return Result.fail(401, "未登录或登录已过期");
-        }
+        if (user == null) return Result.fail(401, "未登录");
         try {
-            Map<String, Object> data = studentCageShelfService.getShelfDetail(user, shelveId);
+            Map<String, Object> data = studentCageShelfService.getShelfDetail(user, shelveId, realtime);
             return Result.success(data);
         } catch (IllegalArgumentException e) {
             return Result.fail(400, e.getMessage());

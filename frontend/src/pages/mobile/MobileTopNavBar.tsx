@@ -9,6 +9,8 @@ interface MobileTopNavBarProps {
   title?: string;
   showBack?: boolean;
   onBack?: () => void;
+  /** 右侧操作按钮（图标 + 回调），仅 home 透明模式传扫码等 */
+  rightAction?: React.ReactNode;
 }
 
 export default function MobileTopNavBar({
@@ -16,6 +18,7 @@ export default function MobileTopNavBar({
   title = "",
   showBack = false,
   onBack,
+  rightAction,
 }: MobileTopNavBarProps) {
   const isSolid = mode === "solid";
 
@@ -66,6 +69,11 @@ export default function MobileTopNavBar({
         ) : (
           <div className="flex-1" />
         )}
+
+        {/* 右侧操作按钮（扫码等） */}
+        <div className="absolute right-1 top-0 bottom-0 flex items-center z-10" style={{ pointerEvents: 'auto' }}>
+          {rightAction ?? <div className="w-10" />}
+        </div>
       </div>
     </header>
   );

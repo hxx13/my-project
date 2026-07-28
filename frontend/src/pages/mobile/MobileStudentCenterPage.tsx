@@ -2,7 +2,7 @@
 import "./mobile-student-shell.css";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Loader2, WifiOff, X, Mail, MessageCircle, Smartphone } from "lucide-react";
+import { Loader2, WifiOff, X, Mail, MessageCircle, Smartphone, Scan } from "lucide-react";
 import {
   fetchMobileCenter,
   fetchMobileAlerts,
@@ -32,6 +32,7 @@ import { mobileNoticeItemKey } from "./MobileNoticesPanel";
 import MobileFeedbackPanel from "./MobileFeedbackPanel";
 import MobileTopNavBar from "./MobileTopNavBar";
 import MobileBottomTabBar from "./MobileBottomTabBar";
+import MobileScanDialog from "./MobileScanDialog";
 import {
   MOBILE_NAV_BAR_H,
   MOBILE_SUBPAGE_TABS,
@@ -126,6 +127,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [showWxPusherDialog, setShowWxPusherDialog] = useState(false);
   const [wxPusherDraft, setWxPusherDraft] = useState("");
   const [wxPusherSaving, setWxPusherSaving] = useState(false);
+  const [showScanDialog, setShowScanDialog] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
 
   const handleEmailChip = () => {
     if (!userIdForBind) return;
@@ -393,9 +396,25 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         title={navTitle}
         showBack={!isHome}
         onBack={handleTopNavBack}
+        rightAction={isHome ? (
+          <button
+            type="button"
+            onClick={() => setShowScanDialog(true)}
+            className="flex items-center justify-center rounded-full active:scale-95 transition-transform"
+            style={{
+              width: 36, height: 36,
+              background: "rgba(0,0,0,0.28)",
+              border: "1px solid rgba(255,255,255,0.38)",
+              backdropFilter: "blur(8px)",
+            }}
+            aria-label="扫码"
+          >
+            <Scan className="size-5 text-white" strokeWidth={1.5} />
+          </button>
+        ) : null}
       />
-      {/* Email / SendKey status chips — top-right, always visible */}
-      {userIdForBind && (
+      {/* Email / SendKey status chips — top-left, home tab only */}
+      {isHome && userIdForBind && (
         <div
           className="fixed left-4 z-50 flex flex-col items-start gap-2"
           style={{ top: "calc(env(safe-area-inset-top, 0px) + 52px)" }}
@@ -697,6 +716,16 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
           onChange={(k: MobileTabBarKey) => setActiveTab(k)}
         />
       )}
+
+      <MobileScanDialog
+        open={showScanDialog}
+        onClose={() => setShowScanDialog(false)}
+        onResult={(text) => {
+          setScanResult(text);
+          console.log("[mobile-scan] result:", text);
+          // TODO: 根据扫码内容路由（URL/房间/笼架二维码等）
+        }}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, memo } from "react";
 import { LayoutGrid, Star, Search, ChevronDown, ChevronRight, PanelLeft, PanelLeftClose, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
+import { CageColorProvider, DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import CageCellOverlays, { CAGE_TYPE_LABEL, useStatusStyle, getDominantStatusCode } from "@/features/cage-shelf/components/CageCellOverlays";
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
 import { fetchFullTree, type CageShelfTreeNode } from "@/api/domains/cageShelf.api";
@@ -50,19 +50,74 @@ function buildTree(rows: CageShelfTreeNode[]): TreeNode[] {
 /*  CellButton + ShelfGrid (copied from AdminCageShelfPage)              */
 /* ================================================================== */
 
+function displayPosition(pos: string): string {
+  const m = pos.match(/^([A-H])-(\d+)$/);
+  if (!m) return pos;
+  return `${m[1]}-${11 - parseInt(m[2])}`;
+}
+
+function resolveCageType(cell: any): number | undefined {
+  let ct = cell.animalCageType;
+  // 从 cageBoxInfo 回退（state 在 ARO 中不等于 animalCageType，仅作参考）
+  if ((ct == null || ct === 0) && cell.cageBoxInfo) {
+    const cbi = cell.cageBoxInfo as Record<string, unknown>;
+    const raw = cbi.AnimalCageType ?? cbi.animalCageType;
+    if (raw != null && raw !== '' && Number(raw) !== 0) ct = Number(raw);
+  }
+  // 从 specialStatuses 推断：COHABITATION=合笼 → 饲养中
+  if ((ct == null || ct === 0 || isNaN(ct)) && Array.isArray(cell.specialStatuses)) {
+    const codes = cell.specialStatuses.map((s: any) => s.code);
+    if (codes.includes('COHABITATION') || codes.includes('SPECIAL_FEEDING')) ct = 3;
+  }
+  // 从 stateLabel 文本推断
+  if ((ct == null || ct === 0 || isNaN(ct)) && cell.stateLabel) {
+    const sl = String(cell.stateLabel);
+    if (sl.includes('等待分配')) ct = 1;
+    else if (sl.includes('空笼盒')) ct = 2;
+    else if (sl.includes('饲养')) ct = 3;
+    else if (sl.includes('异常')) ct = 4;
+  }
+  // 有 PI 或 cageBoxCode → 至少已预约，非等待分配
+  if ((ct == null || ct === 0 || isNaN(ct)) && !cell.empty) {
+    const cbi = cell.cageBoxInfo as Record<string, unknown> | undefined;
+    if (cell.projectPiName || cbi?.cageBoxCode || cbi?.CageBoxQrCode) ct = 3;
+    else ct = 1;
+  }
+  return (ct != null && ct !== 0 && !isNaN(ct)) ? ct : undefined;
+}
+
 const CellButton = memo(function CellButton({ cell, onClick }: { cell: any; onClick: (c: any) => void }) {
   const dominant = getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
-  const style = useStatusStyle(dominant);
+  const singleStyle = useStatusStyle(dominant);
+  const safeStyle = singleStyle ?? { backgroundColor: DEFAULT_COLORS.NORMAL.bg, borderColor: DEFAULT_COLORS.NORMAL.border, borderWidth: 2 } as React.CSSProperties;
+
+  // 多状态分色
+  const allBgColors: string[] = [];
+  (cell.specialStatuses ?? [])
+    .filter((s: any) => s.code !== "NORMAL")
+    .forEach((s: any) => {
+      const c = DEFAULT_COLORS[s.code as keyof typeof DEFAULT_COLORS];
+      if (c) allBgColors.push(c.bg);
+    });
+  const combinedBg = allBgColors.length >= 2
+    ? `linear-gradient(to bottom, ${allBgColors.map((bg: string, i: number) => {
+        const pct = Math.round((i / allBgColors.length) * 100);
+        const pctNext = Math.round(((i + 1) / allBgColors.length) * 100);
+        return `${bg} ${pct}%, ${bg} ${pctNext}%`;
+      }).join(", ")})`
+    : allBgColors.length === 1 ? allBgColors[0] : null;
+  const style = combinedBg ? { ...safeStyle, background: combinedBg } : safeStyle;
+
+  const resolvedType = resolveCageType(cell);
   const cls = cell.empty ? "relative min-h-[82px] rounded-twin-md text-[10px] leading-tight border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]"
     : "relative min-h-[82px] rounded-twin-md text-[10px] leading-tight border-2 text-slate-900 hover:brightness-95";
   return <button type="button" className={cls} style={style} onClick={() => !cell.empty && onClick(cell)} disabled={cell.empty}>
-    {!cell.empty && <CageCellOverlays animalCageType={cell.animalCageType} compact />}
-    <div className="flex min-h-[76px] flex-col items-center justify-center gap-0.5 px-1 py-1 text-center">
-      <div className="w-full font-bold">{cell.position}</div>
+    {!cell.empty && <CageCellOverlays animalCageType={resolvedType} compact />}
+    <div className="flex min-h-[76px] flex-col items-center justify-center gap-0 px-1 py-0.5 text-center">
+      <div className="w-full font-bold text-[12px] leading-tight">{displayPosition(cell.position)}</div>
       {cell.empty ? <div className="text-[9px] text-[var(--twin-mute)]">空位</div> : <>
-        {cell.projectGroup && <div className="w-full truncate">{cell.projectGroup}</div>}
-        {(cell.projectPiName || cell.piName) && <div className="w-full truncate text-[11px] font-semibold text-[var(--twin-ink)]">{cell.projectPiName || cell.piName}</div>}
-        <div className="w-full text-[9px] text-[var(--twin-mute)]">{CAGE_TYPE_LABEL[cell.animalCageType ?? 0] || cell.stateLabel}</div>
+        {(cell.projectPiName || cell.piName) && <div className="w-full truncate text-[11px] leading-tight font-semibold text-[var(--twin-ink)]">{cell.projectPiName || cell.piName}</div>}
+        <div className="w-full text-[9px] leading-tight text-[var(--twin-mute)]">{CAGE_TYPE_LABEL[resolvedType ?? 0] || cell.stateLabel}</div>
       </>}
     </div>
   </button>;

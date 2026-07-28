@@ -2,14 +2,16 @@ import { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AdminFormCard, AdminPageShell, AdminFillScrollRegion } from "@/components/admin/AdminPageShell";
+import { AdminPageTabs, AdminTabPanel } from "@/components/admin/AdminPageTabs";
 import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import { PersonnelPicker } from "@/components/admin/PersonnelPicker";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 import { authHttp } from "@/api/core/authHttp";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
-import { Clock, Settings, Save, X, RotateCw, Plus, Undo2, ChevronDown, ChevronUp, Trash2, Send, UserPlus } from "lucide-react";
+import { Bell, Clock, Settings, Save, X, RotateCw, Plus, Undo2, ChevronDown, ChevronUp, Trash2, Send, UserPlus } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -58,6 +60,7 @@ export default function AdminNotificationDigestPage() {
   const location = useLocation();
   const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
   const queryClient = useQueryClient();
+  const [pageTab, setPageTab] = useState<"digest" | "notify-pref">("digest");
   const [mode, setMode] = useState<"default" | "personal">("default");
   const [editingGroup, setEditingGroup] = useState<DigestConfigGroup | null>(null);
   const [creating, setCreating] = useState(false);
@@ -253,8 +256,21 @@ export default function AdminNotificationDigestPage() {
   return (
     <AdminPageShell>
       <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+        <AdminPageTabs
+          tabs={[
+            { id: "digest", label: "聚合配置" },
+            { id: "notify-pref", label: "个人通知偏好" },
+          ]}
+          value={pageTab}
+          onChange={(id) => setPageTab(id as "digest" | "notify-pref")}
+          className="shrink-0 mb-0"
+        />
+        <div className="flex-1 min-h-0 flex flex-col rounded-b-xl border border-t-0 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-auto">
+        <AdminTabPanel tabId="digest" activeTab={pageTab} id="digest-tab">
+        <div className="p-3 space-y-3">
         {/* Top bar */}
-        <AdminFormCard className="shrink-0 mb-3">
+        <AdminFormCard>
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
             <h2 className="text-base font-bold text-[var(--app-color-text-primary)] flex items-center gap-2">
               <Clock className="h-4 w-4 text-[var(--app-color-accent)]" />{pageLabel}
@@ -372,8 +388,94 @@ export default function AdminNotificationDigestPage() {
             saving={savePrefBatchMutation.isPending || saveDefaultBatchMutation.isPending}
           />
         )}
+        </div>
+        </AdminTabPanel>
+        <AdminTabPanel tabId="notify-pref" activeTab={pageTab} id="notify-pref-tab">
+          <div className="p-3">
+            <NotifyPreferencePanel />
+          </div>
+        </AdminTabPanel>
+          </div>
+        </div>
       </div>
     </AdminPageShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  NotifyPreferencePanel — 个人通知偏好                                */
+/* ------------------------------------------------------------------ */
+
+function NotifyPreferencePanel() {
+  const queryClient = useQueryClient();
+
+  interface SourceSetting {
+    sourceCode: string; sourceName: string; description: string;
+    sourceEnabled: boolean; myEnabled: boolean;
+    muteEmail: boolean; muteServerChan: boolean; muteWxpusher: boolean;
+  }
+
+  const { data: settings, isLoading } = useQuery<SourceSetting[]>({
+    queryKey: ["user-notify-settings"],
+    queryFn: () => authHttp.get("/user/notify-settings").then(r => r.data.data),
+    staleTime: 10_000,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: ({ code, body }: { code: string; body: Record<string, unknown> }) =>
+      authHttp.put(`/user/notify-settings/${code}`, body),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["user-notify-settings"] }); },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "保存失败"),
+  });
+
+  if (isLoading) return <AdminFormCard><p className="text-xs text-[var(--app-color-text-tertiary)] py-4">加载中…</p></AdminFormCard>;
+
+  const activeSettings = (settings ?? []).filter(s => s.sourceEnabled);
+
+  return (
+    <AdminFormCard>
+      <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)] flex items-center gap-2 mb-1">
+        <Bell className="h-4 w-4 text-[var(--app-color-accent)]" />
+        个人通知偏好
+      </h3>
+      <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-3">
+        仅影响你自己的通知接收。新增信息源自动出现。
+      </p>
+      <div className="space-y-2">
+        {activeSettings.map(s => (
+          <div key={s.sourceCode} className={cn(
+            "rounded-lg border px-3 py-2 transition-opacity",
+            s.myEnabled ? "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]" : "border-orange-200 bg-orange-50/60 opacity-70"
+          )}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-xs font-medium text-[var(--app-color-text-primary)]">{s.sourceName}</span>
+                <span className="text-[10px] text-[var(--app-color-text-tertiary)] ml-2 truncate hidden sm:inline">{s.description}</span>
+              </div>
+              <AdminSwitchScaled size="sm" checked={s.myEnabled}
+                onChange={() => saveMutation.mutate({ code: s.sourceCode, body: { enabled: !s.myEnabled } })} />
+            </div>
+            {s.myEnabled && (
+              <div className="mt-1.5 flex items-center gap-3 pt-1.5 border-t border-[var(--app-color-border-default)]">
+                {(["EMAIL","SERVER_CHAN","WXPUSHER"] as const).map(ch => {
+                  const key = ch === "EMAIL" ? "muteEmail" : ch === "SERVER_CHAN" ? "muteServerChan" : "muteWxpusher";
+                  const label = ch === "EMAIL" ? "邮件" : ch === "SERVER_CHAN" ? "Server酱" : "WxPusher";
+                  const muted = (s as any)[key] as boolean;
+                  return (
+                    <label key={ch} className="flex items-center gap-1 text-[10px] text-[var(--app-color-text-secondary)] cursor-pointer select-none">
+                      <input type="checkbox" className="h-3 w-3 rounded accent-[var(--app-color-accent)]" checked={!muted}
+                        onChange={() => saveMutation.mutate({ code: s.sourceCode, body: { [key]: !muted } })} />{label}</label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+        {activeSettings.length === 0 && (
+          <p className="text-xs text-[var(--app-color-text-tertiary)] py-4 text-center">暂无可用信息源</p>
+        )}
+      </div>
+    </AdminFormCard>
   );
 }
 

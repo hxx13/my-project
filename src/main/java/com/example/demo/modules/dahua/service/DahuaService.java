@@ -1,11 +1,18 @@
 package com.example.demo.modules.dahua.service;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import com.alibaba.fastjson2.JSON;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.dto.UniversalEvent;
+import com.example.demo.modules.twin.card.entity.TwinCardMapping;
+import com.example.demo.modules.twin.card.service.TwinCardMappingService;
+import com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord;
+import com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper;
+import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleEngineService;
+import com.example.demo.modules.twin.dahua.support.DahuaSwingDepartmentSupport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -27,11 +34,34 @@ public class DahuaService {
     @Autowired(required = false)
     private com.example.demo.modules.swipealert.service.SwipeAlertEngine swipeAlertEngine;
 
-    private final String myCallbackUrl = "http://172.22.161.252:8080/api/event";
+    // ---- Webhook → DB 入库依赖 ----
+    @Autowired
+    private DahuaSwingMapper dahuaSwingMapper;
+    @Autowired
+    private TwinCardMappingService twinCardMappingService;
+    @Autowired(required = false)
+    private DahuaSwingRuleEngineService dahuaSwingRuleEngineService;
+    @Autowired(required = false)
+    private com.example.demo.modules.accessfusion.service.AccessRawEventIngestService accessRawEventIngestService;
+    @Autowired
+    private DahuaSwingDepartmentSupport departmentSupport;
+    @Autowired
+    private com.example.demo.modules.dahua.mapper.DahuaDeviceChannelCacheMapper deviceChannelCacheMapper;
+
+    @Value("${app.dahua.callback-url:http://172.22.161.252:8080/api/event}")
+    private String myCallbackUrl;
 
     private static final Set<String> ALLOWED_OPEN_TYPES = new HashSet<>(Arrays.asList("48", "49", "51", "52"));
     private static final Map<String, String> TYPE_NAMES = Map.of(
             "48", "远程开门", "49", "按钮/密码", "51", "合法刷卡", "52", "非法刷卡"
+    );
+
+    /** 工作人员（非部门26）允许入库的4个门禁通道编码 */
+    private static final Set<String> STAFF_ALLOWED_CHANNELS = Set.of(
+            "1000145$7$0$3",  // 换鞋室（E11B-B102）-外侧-东门-B1F-RD6-MK01
+            "1000057$7$0$0",  // 换鞋室(221)-(出)-北门-2F-RD1-MK07
+            "1000141$7$0$3",  // 更衣室（E11C-B101）-外侧-B1F-RD1-MK03
+            "1000163$7$0$0"   // 退缓（E11A-B104）-外侧-B1F-SY-RD1-MK11
     );
 
     // =========================================================================
@@ -42,6 +72,25 @@ public class DahuaService {
         try {
             Map<String, Object> payload = JSON.parseObject(rawPayload, Map.class);
             if (payload == null) return;
+
+            // 过滤监控设备事件（orgName=监控设备 的不处理）
+            Map<String, Object> info = (Map<String, Object>) payload.get("info");
+            if (info != null && "监控设备".equals(info.get("orgName"))) {
+                return;
+            }
+
+            // ──────────────────────────────────────────────
+            // 🆕 ICC 事件订阅格式：{ category, method, info: { extend: {...} } }
+            // 门禁记录通过 info.extend 中的 openType/swingTime 识别，直接落库
+            // ──────────────────────────────────────────────
+            if (info != null) {
+                Map<String, Object> extend = (Map<String, Object>) info.get("extend");
+                if (extend != null && extend.get("openType") != null) {
+                    ingestSwingRecordFromWebhook(payload, info, extend);
+                }
+                // 无论是否为门禁事件，info 存在说明是 ICC 订阅格式，不走下面的旧解析逻辑
+                return;
+            }
 
             // 大华 Webhook 可能包裹在 data / events 下，也可能直接就是单条事件
             List<Map<String, Object>> events = new ArrayList<>();
@@ -85,6 +134,133 @@ public class DahuaService {
         } catch (Exception e) {
             log.warn("[dahua-webhook] 解析 Webhook 失败: {}", e.getMessage());
         }
+    }
+
+    // =========================================================================
+    // 🆕 ICC 事件订阅门禁记录 → twin_dahua_swing_record 入库（仅 51/52 + 部门26）
+    // =========================================================================
+    @SuppressWarnings("unchecked")
+    private void ingestSwingRecordFromWebhook(Map<String, Object> payload, Map<String, Object> info, Map<String, Object> extend) {
+        try {
+            // ── 步骤0：过滤条件 ──
+            Integer openType = intvObj(extend.get("openType"));
+            if (openType == null || (openType != 51 && openType != 52)) {
+                System.out.printf("[dahua-webhook] 跳过非51/52开门类型: openType=%s%n", openType);
+                return;
+            }
+
+            DahuaSwingRecord r = new DahuaSwingRecord();
+            r.setTaskId(0L);                       // webhook 无对应拉取任务
+            r.setPullTaskType("REALTIME");
+            r.setRecordId(str(info.get("alarmCode")));
+            r.setCardNumber(str(extend.get("cardNumber")));
+            r.setChannelCode(str(extend.get("acsChannelCode")));
+            // 通道名称：优先从 device-channels 缓存映射，回退到 extend.deviceName
+            r.setChannelName(resolveChannelName(str(extend.get("acsChannelCode")), str(extend.get("deviceName"))));
+            r.setOpenType(openType);
+            r.setPersonCode(str(extend.get("personCode")));
+            r.setPersonName(str(extend.get("personName")));
+            r.setSwingTime(str(extend.get("swingTime")));
+            // openFailedCode=0 表示开门成功，映射为 open_result=1
+            r.setOpenResult("0".equals(str(extend.get("openFailedCode"))) ? 1 : 0);
+            r.setEnterOrExit(intvObj(extend.get("enterOrExit")));
+            r.setRawJson(JSON.toJSONString(payload));
+
+            // ---- 卡号 ↔ 用户映射 ----
+            enrichMapping(r);
+
+            // ---- 部门信息补全（deptId 在 extend 里！） ----
+            try {
+                departmentSupport.applyToRecord(r, extend);
+            } catch (Exception e) {
+                System.out.printf("[dahua-webhook] 部门信息补全失败: %s%n", e.getMessage());
+            }
+
+            // ---- enterOrExit 归一化（与轮询路径一致，非1/2的值回退到raw_json查找） ----
+            com.example.demo.modules.twin.dahua.support.DahuaSwingEnterExitSupport.applyResolved(r);
+
+            // ── 步骤1：两路分流 ──
+            // 路A：部门26（学生）→ 直通入库
+            // 路B：非部门26（工作人员）→ 只放行指定5个通道
+            boolean isDept26 = "26".equals(r.getDepartmentId());
+            boolean isAllowedChannel = isDept26 || STAFF_ALLOWED_CHANNELS.contains(r.getChannelCode());
+
+            if (!isAllowedChannel) {
+                System.out.printf("[dahua-webhook] 跳过: deptId=%s channelCode=%s (非26部门且不在放行通道)%n",
+                        r.getDepartmentId(), r.getChannelCode());
+                return;
+            }
+            if (!isDept26) {
+                System.out.printf("[dahua-webhook] 非26部门走通道放行: deptId=%s deptName=%s channelCode=%s channelName=%s%n",
+                        r.getDepartmentId(), r.getDepartmentName(), r.getChannelCode(), r.getChannelName());
+            }
+
+            // ---- upsert 入库（uk_dahua_record_id 保证不重复） ----
+            dahuaSwingMapper.upsertRecord(r);
+
+            // ---- 馈入 access_raw_event 清洗管道 ----
+            if (accessRawEventIngestService != null) {
+                try {
+                    accessRawEventIngestService.ingestFromSwing(r, "DAHUA_WEBHOOK");
+                } catch (Exception e) {
+                    System.out.printf("[dahua-webhook] access_raw_event馈入失败: %s%n", e.getMessage());
+                }
+            }
+
+            // ---- 馈入告警引擎 ----
+            feedSwipeAlertEngine(r.getRecordId(), r.getPersonName(), r.getChannelName(),
+                    r.getChannelCode(), r.getOpenType(), r.getEnterOrExit(), r.getOpenResult(), r.getSwingTime());
+
+            // ---- 门禁联动（激活/签退） ----
+            if (Integer.valueOf(1).equals(r.getMappingHit())
+                    && Integer.valueOf(1).equals(r.getOpenResult())
+                    && dahuaSwingRuleEngineService != null) {
+                try {
+                    dahuaSwingRuleEngineService.onRecordIngested(r);
+                } catch (Exception e) {
+                    System.out.printf("[dahua-webhook] 联动规则处理失败: %s%n", e.getMessage());
+                }
+            }
+
+            System.out.printf("[dahua-webhook] ✅入库: recordId=%s person=%s channel=%s openType=%s result=%s deptId=%s%n",
+                    r.getRecordId(), r.getPersonName(), r.getChannelName(), r.getOpenType(), r.getOpenResult(), r.getDepartmentId());
+        } catch (Exception e) {
+            System.out.printf("[dahua-webhook] ❌入库失败: %s%n", e.getMessage());
+        }
+    }
+
+    /** 从设备通道缓存表查找通道名称（优先缓存映射，回退到设备名） */
+    private String resolveChannelName(String channelCode, String deviceName) {
+        if (channelCode.isBlank()) return deviceName;
+        try {
+            List<Map<String, Object>> rows = deviceChannelCacheMapper.selectChannelNamesByCodes(List.of(channelCode));
+            if (rows != null && !rows.isEmpty()) {
+                Object name = rows.get(0).get("channelName");
+                if (name != null && !String.valueOf(name).isBlank()) {
+                    return String.valueOf(name);
+                }
+            }
+        } catch (Exception e) {
+            System.out.printf("[dahua-webhook] 通道名查找失败 code=%s: %s%n", channelCode, e.getMessage());
+        }
+        return deviceName; // 回退
+    }
+
+    /** 卡号 ↔ 用户映射（与 DahuaSwingPullService.enrichMapping 逻辑一致） */
+    private void enrichMapping(DahuaSwingRecord r) {
+        TwinCardMapping mapping = null;
+        if (!str(r.getPersonCode()).isBlank())
+            mapping = twinCardMappingService.getByDahuaPersonCode(r.getPersonCode());
+        if (mapping == null && !str(r.getCardNumber()).isBlank())
+            mapping = twinCardMappingService.getByCardNo(r.getCardNumber());
+        if (mapping == null) {
+            r.setMappingHit(0);
+            return;
+        }
+        r.setMappingHit(1);
+        r.setMappingUserId(mapping.getAroUserId());
+        r.setMappingCardNo(mapping.getCardNo());
+        r.setFreezeExemptFlag(mapping.getFreezeExemptFlag());
     }
 
     private static String str(Object o) {
@@ -181,10 +357,34 @@ public class DahuaService {
             HttpHeaders headers = new HttpHeaders();
             headers.set("Authorization", "bearer " + token);
             headers.setContentType(MediaType.APPLICATION_JSON);
+
+            // ====== DEBUG: 打印请求信息 ======
+            log.info("══════════════════════════════════════════════");
+            log.info("[大华订阅] ▶ 请求URL: {}", subUrl);
+            log.info("[大华订阅] ▶ 订阅者名称: {}", subName);
+            log.info("[大华订阅] ▶ 回调地址: {}", myCallbackUrl);
+            log.info("[大华订阅] ▶ 请求体: {}", JSON.toJSONString(payload));
+            log.info("══════════════════════════════════════════════");
+
             Map<String, Object> res = authService.getRestTemplate().postForObject(subUrl, new HttpEntity<>(payload, headers), Map.class);
-            return res != null && (Boolean.TRUE.equals(res.get("success")) || "0".equals(String.valueOf(res.get("code"))));
+
+            // ====== DEBUG: 打印响应信息 ======
+            String responseJson = JSON.toJSONString(res);
+            log.info("══════════════════════════════════════════════");
+            log.info("[大华订阅] ◀ 响应结果: {}", responseJson);
+            if (res != null) {
+                log.info("[大华订阅] ◀ success={}, code={}, errMsg={}",
+                        res.get("success"), res.get("code"), res.get("errMsg"));
+            }
+            log.info("══════════════════════════════════════════════");
+
+            boolean ok = res != null && (Boolean.TRUE.equals(res.get("success")) || "0".equals(String.valueOf(res.get("code"))));
+            log.info("[大华订阅] 最终判断: {}", ok ? "✅ 订阅成功" : "❌ 订阅失败");
+            return ok;
         } catch (Exception e) {
-            log.error("订阅失败：{}", e.getMessage());
+            log.error("══════════════════════════════════════════════");
+            log.error("[大华订阅] ❌ 订阅异常: {}", e.getMessage(), e);
+            log.error("══════════════════════════════════════════════");
             return false;
         }
     }
@@ -195,9 +395,83 @@ public class DahuaService {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.set("Authorization", "bearer " + token);
-            authService.getRestTemplate().exchange(url, HttpMethod.DELETE, new HttpEntity<>(headers), Map.class);
+            log.info("[大华取消订阅] ▶ DELETE {}", url);
+            ResponseEntity<Map> resp = authService.getRestTemplate().exchange(url, HttpMethod.DELETE, new HttpEntity<>(headers), Map.class);
+            log.info("[大华取消订阅] ◀ 响应: {}", JSON.toJSONString(resp.getBody()));
             return true;
-        } catch (Exception e) { return false; }
+        } catch (Exception e) {
+            log.warn("[大华取消订阅] ⚠ 取消失败 (可能不存在): {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 🔧 诊断用：手动执行订阅并返回完整请求/响应信息
+     */
+    public Map<String, Object> subscribeDiagnostic() {
+        Map<String, Object> diagnostic = new LinkedHashMap<>();
+        diagnostic.put("timestamp", LocalDateTime.now().toString());
+
+        String token = authService.getValidToken();
+        String magic;
+        try {
+            java.net.URI uri = new java.net.URI(myCallbackUrl);
+            magic = uri.getHost() + "_" + uri.getPort();
+        } catch (Exception e) {
+            magic = "127.0.0.1_8080";
+        }
+
+        String subName = "My_Fixed_Java_Client_V2026";
+        String subUrl = authService.getBaseUrl() + "/evo-apigw/evo-event/1.0.0/subscribe/mqinfo";
+
+        // 构建请求体（与 subscribe() 完全一致）
+        Map<String, Object> payload = new HashMap<>();
+        Map<String, Object> param = new HashMap<>();
+        Map<String, Object> monitor = new HashMap<>();
+        monitor.put("monitor", myCallbackUrl);
+        monitor.put("monitorType", "url");
+        List<Map<String, Object>> events = new ArrayList<>();
+        Map<String, Object> alarmEvent = new HashMap<>();
+        alarmEvent.put("category", "alarm");
+        alarmEvent.put("subscribeAll", 1);
+        alarmEvent.put("domainSubscribe", 2);
+        alarmEvent.put("authorities", Collections.singletonList(new HashMap<>()));
+        events.add(alarmEvent);
+        Map<String, Object> businessEvent = new HashMap<>();
+        businessEvent.put("category", "business");
+        businessEvent.put("subscribeAll", 1);
+        businessEvent.put("domainSubscribe", 2);
+        businessEvent.put("authorities", Collections.singletonList(new HashMap<>()));
+        events.add(businessEvent);
+        monitor.put("events", events);
+        param.put("monitors", Collections.singletonList(monitor));
+        Map<String, Object> subsystem = new HashMap<>();
+        subsystem.put("subsystemType", 0);
+        subsystem.put("name", subName);
+        subsystem.put("magic", magic);
+        param.put("subsystem", subsystem);
+        payload.put("param", param);
+
+        diagnostic.put("requestUrl", subUrl);
+        diagnostic.put("subscriberName", subName);
+        diagnostic.put("callbackUrl", myCallbackUrl);
+        diagnostic.put("requestBody", payload);
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "bearer " + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            Map<String, Object> res = authService.getRestTemplate().postForObject(subUrl, new HttpEntity<>(payload, headers), Map.class);
+            diagnostic.put("responseBody", res);
+            boolean ok = res != null && (Boolean.TRUE.equals(res.get("success")) || "0".equals(String.valueOf(res.get("code"))));
+            diagnostic.put("subscribed", ok);
+            diagnostic.put("error", null);
+        } catch (Exception e) {
+            diagnostic.put("responseBody", null);
+            diagnostic.put("subscribed", false);
+            diagnostic.put("error", e.getMessage());
+        }
+        return diagnostic;
     }
 
     @Async("coreTaskExecutor")

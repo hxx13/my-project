@@ -19,8 +19,7 @@ export type AdminFriendRowContextMenuTarget = {
   contactGroupId: string;
 };
 
-const STAFF_NAV_HREF_SEGMENT =
-  "(?:admin[^?#]*|animal-room-telemetry|animal-room-cockpit|digital-twin-screen)";
+const STAFF_NAV_HREF_SEGMENT = "admin[^?#]*";
 
 function parseAdminPathFromHref(href: string): string | null {
   const trimmed = (href || "").trim();

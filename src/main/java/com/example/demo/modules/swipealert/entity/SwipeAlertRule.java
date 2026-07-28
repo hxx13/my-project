@@ -20,6 +20,8 @@ public class SwipeAlertRule {
     private Integer bannerDurationSec;
     private Integer minRoleLevel;
     private Integer cooldownSec;
+    private Boolean notifySite;
+    private Boolean notifyPush;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

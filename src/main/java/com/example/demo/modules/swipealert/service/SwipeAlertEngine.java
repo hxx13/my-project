@@ -5,6 +5,7 @@ import com.example.demo.modules.swipealert.mapper.SwipeAlertRuleMapper;
 import com.example.demo.modules.dahua.dto.DahuaRecordDTO;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.component.SocketRoomAssigner;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -81,11 +82,17 @@ public class SwipeAlertEngine {
 
     /** Cached active rules, reloaded via {@link #reloadRules()}. */
     private volatile List<SwipeAlertRule> activeRules = List.of();
+    private volatile long lastReloadTime = 0;
+    private static final long RELOAD_INTERVAL_MS = 30_000; // 30秒重载一次
+
+    private final PushService pushService;
 
     public SwipeAlertEngine(SwipeAlertRuleMapper mapper,
-                            @Autowired(required = false) SocketIOServer socketServer) {
+                            @Autowired(required = false) SocketIOServer socketServer,
+                            PushService pushService) {
         this.mapper = mapper;
         this.socketServer = socketServer;
+        this.pushService = pushService;
     }
 
     @PostConstruct
@@ -93,6 +100,10 @@ public class SwipeAlertEngine {
         try {
             activeRules = mapper.findByEnabledTrue();
             log.info("[swipe-alert] rules reloaded, count={}", activeRules.size());
+            for (SwipeAlertRule r : activeRules) {
+                log.info("[swipe-alert]   rule id={} name={} notifySite={} notifyPush={}",
+                        r.getId(), r.getName(), r.getNotifySite(), r.getNotifyPush());
+            }
         } catch (Exception e) {
             log.warn("[swipe-alert] unable to load rules (table may not exist yet): {}",
                     e.getMessage());
@@ -139,21 +150,20 @@ public class SwipeAlertEngine {
 
     /**
      * Called after each swing record is persisted.
-     * Only processes failures ({@code openResult == 0}) and illegal opens
-     * ({@code openType == 52}).
+     * Only processes illegal opens ({@code openType == 52}).
      */
     public void onSwingRecord(DahuaRecordDTO record) {
         if (record == null) return;
 
-        Integer openResult = record.getOpenResult();
+        // 定时重载规则（30秒），确保 UI 修改后生效
+        long nowMs = System.currentTimeMillis();
+        if (nowMs - lastReloadTime > RELOAD_INTERVAL_MS) {
+            reloadRules();
+            lastReloadTime = nowMs;
+        }
+
         Integer openType = record.getOpenType();
-
-        if (openResult == null && openType == null) return;
-
-        boolean isFailure = openResult != null && openResult == 0;
-        boolean isIllegal = openType != null && openType == 52;
-
-        if (!isFailure && !isIllegal) return;
+        if (openType == null || openType != 52) return;
 
         // Record-level dedup: skip if this exact record was already processed
         String recordId = record.getId();
@@ -173,7 +183,7 @@ public class SwipeAlertEngine {
 
         for (SwipeAlertRule rule : activeRules) {
             if (!Boolean.TRUE.equals(rule.getEnabled())) continue;
-            if (!matchesRule(rule, record, isFailure, isIllegal)) continue;
+            if (!matchesRule(rule, record)) continue;
 
             Integer windowSec = rule.getThresholdWindowSec();
             Integer thresholdCount = rule.getThresholdCount();
@@ -210,7 +220,18 @@ public class SwipeAlertEngine {
                 lastFireMap.put(ruleId, now);
 
                 Map<String, Object> alert = buildAlert(rule, w.count, record);
-                fireAlert(alert);
+                // 站内通知（灵动岛横幅）
+                if (Boolean.TRUE.equals(rule.getNotifySite())) {
+                    fireSiteAlert(alert);
+                } else {
+                    log.info("[swipe-alert] notifySite disabled for rule={}, skip site alert", rule.getId());
+                }
+                // 站外推送（邮件/微信/WxPusher）
+                if (Boolean.TRUE.equals(rule.getNotifyPush())) {
+                    firePushAlert(rule, w.count, alert);
+                } else {
+                    log.info("[swipe-alert] notifyPush disabled for rule={}, skip push alert", rule.getId());
+                }
             }
         }
     }
@@ -219,16 +240,12 @@ public class SwipeAlertEngine {
     // Rule matching
     // =========================================================================
 
-    private boolean matchesRule(SwipeAlertRule rule, DahuaRecordDTO record,
-                                 boolean isFailure, boolean isIllegal) {
-        // --- openTypes filter ---
+    private boolean matchesRule(SwipeAlertRule rule, DahuaRecordDTO record) {
+        // --- openTypes filter (type 52 = illegal open) ---
         String openTypes = rule.getOpenTypes();
         if (openTypes != null && !openTypes.isBlank()) {
             Set<String> allowed = new HashSet<>(Arrays.asList(openTypes.split(",")));
-            boolean matched = false;
-            if (isIllegal && allowed.contains("52")) matched = true;
-            if (isFailure && allowed.contains("0")) matched = true;
-            if (!matched) return false;
+            if (!allowed.contains("52")) return false;
         }
 
         // --- channels filter (JSON array of channel codes) ---
@@ -354,6 +371,52 @@ public class SwipeAlertEngine {
         return snap;
     }
 
+    private void fireSiteAlert(Map<String, Object> alert) {
+        if (socketServer != null) {
+            try {
+                socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE)
+                        .sendEvent("SWIPE_FAILURE_ALERT", alert);
+                log.info("[swipe-alert] site alert fired alertId={} ruleId={}", alert.get("alertId"), alert.get("ruleId"));
+            } catch (Exception e) {
+                log.error("[swipe-alert] site broadcast failed", e);
+            }
+        }
+    }
+
+    private void firePushAlert(SwipeAlertRule rule, int count, Map<String, Object> alert) {
+        try {
+            // 从 matchedRecords 列表中取出第一条记录的快照
+            Map<String, Object> snap = Map.of();
+            Object mr = alert.get("matchedRecords");
+            if (mr instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> m) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> casted = (Map<String, Object>) m;
+                snap = casted;
+            }
+            String dept = Objects.toString(snap.get("departmentName"), "");
+            String channel = Objects.toString(snap.get("channelName"), "");
+            String person = Objects.toString(snap.get("personName"), "");
+            String phone = Objects.toString(snap.get("mobilePhone"), "");
+            String openLabel = Objects.toString(snap.get("openTypeLabel"), "非法刷卡开门");
+            String swingTime = Objects.toString(snap.get("swingTime"), "");
+            String winMin = String.valueOf(rule.getThresholdWindowSec() != null ? rule.getThresholdWindowSec() / 60 : 0);
+
+            pushService.send("SWIPE_FAILURE_ALERT", Map.of(
+                    "channelName", channel,
+                    "personName", person,
+                    "deptName", dept,
+                    "phone", phone,
+                    "count", String.valueOf(count),
+                    "windowMin", winMin,
+                    "threshold", String.valueOf(rule.getThresholdCount()),
+                    "openTypeLabel", openLabel,
+                    "swingTime", swingTime));
+            log.info("[swipe-alert] push alert fired ruleId={} count={}", rule.getId(), count);
+        } catch (Exception e) {
+            log.warn("[swipe-alert] push failed: {}", e.getMessage());
+        }
+    }
+
     private Map<String, Object> buildAlert(SwipeAlertRule rule, int count,
                                             DahuaRecordDTO record) {
         String channel = Objects.toString(record.getChannelName(), "");
@@ -424,20 +487,4 @@ public class SwipeAlertEngine {
     // Broadcast
     // =========================================================================
 
-    private void fireAlert(Map<String, Object> alert) {
-        if (socketServer != null) {
-            try {
-                socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("SWIPE_FAILURE_ALERT", alert);
-                log.info("[swipe-alert] fired alertId={} ruleId={} ruleName={} count={}",
-                        alert.get("alertId"), alert.get("ruleId"),
-                        alert.get("ruleName"), alert.get("count"));
-            } catch (Exception e) {
-                log.error("[swipe-alert] broadcast failed alertId={} ruleId={}",
-                        alert.get("alertId"), alert.get("ruleId"), e);
-            }
-        } else {
-            log.warn("[swipe-alert] socketServer not wired — alert dropped alertId={} ruleId={}",
-                    alert.get("alertId"), alert.get("ruleId"));
-        }
-    }
 }

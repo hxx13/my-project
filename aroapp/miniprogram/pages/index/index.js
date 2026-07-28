@@ -274,9 +274,23 @@ Page({
     }
   },
 
-  /** 预留：左上角扫码（后续接 wx.scanCode 或业务路由） */
+  /** 左上角扫码：调用微信扫码工具 */
   onScanTap() {
-    wx.showToast({ title: '扫码功能即将上线', icon: 'none' });
+    var self = this;
+    wx.scanCode({
+      onlyFromCamera: true,
+      scanType: ['qrCode', 'barCode', 'datamatrix', 'pdf417'],
+      success: function (res) {
+        console.log('[index] scan result:', res.result);
+        // TODO: 根据扫码内容路由
+      },
+      fail: function (err) {
+        // 用户取消不提示
+        if (err && err.errMsg && err.errMsg.indexOf('cancel') === -1) {
+          wx.showToast({ title: '扫码失败', icon: 'none' });
+        }
+      }
+    });
   },
 
   async getNewsList() {

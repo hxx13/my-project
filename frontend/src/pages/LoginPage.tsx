@@ -45,8 +45,8 @@ const SJTU_ASSETS = {
   arrowRight: `${SJTU_ORIGIN}/assets/images/icon-arrow-right.svg`,
 } as const;
 
-/** 轮播关闭时叠层/底色（门户为深蓝，本系统为中国红） */
-const LOGIN_PAGE_RED = "#a30000";
+/** 轮播未加载时的过渡底色（深灰，避免红色闪烁） */
+const LOGIN_FALLBACK_BG = "#1a1a1a";
 
 function loginPortalWowDelay(delay: string): CSSProperties {
   return { "--login-wow-delay": delay } as CSSProperties;
@@ -99,16 +99,20 @@ export default function LoginPage() {
     return () => { if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current); };
   }, []);
 
-  // Turnstile — site key 从后端运行时配置下发，不硬编码
+  // Turnstile — 同时读取 enabled 开关和 site-key，缺一不可
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
+  const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const turnstileWidgetId = useRef<string | null>(null);
   const turnstileContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!showLogin) return;
     fetchPublicRuntimeConfig()
-      .then((cfg) => setTurnstileSiteKey(cfg["turnstile.site-key"] || ""))
+      .then((cfg) => {
+        setTurnstileSiteKey(cfg["turnstile.site-key"] || "");
+        setTurnstileEnabled(cfg["turnstile.enabled"] === "true");
+      })
       .catch(() => setTurnstileSiteKey(""));
   }, [showLogin]);
   const [qrDecoded, setQrDecoded] = useState(false);
@@ -159,12 +163,27 @@ export default function LoginPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [showLogin]);
 
+  // 立即从缓存恢复 branding，避免每次刷新都等 API 导致闪烁
+  const BRANDING_CACHE_KEY = "aro_login_branding_v1";
   useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem(BRANDING_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as LoginBranding;
+        if (parsed && (parsed.heroImageUrls?.length || parsed.heroImageUrlsLight?.length)) {
+          setBranding(parsed);
+        }
+      }
+    } catch { /* ignore */ }
+
     let cancelled = false;
     (async () => {
       try {
         const b = await fetchLoginBranding();
-        if (!cancelled) setBranding(b);
+        if (!cancelled) {
+          setBranding(b);
+          try { sessionStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify(b)); } catch { /* ignore */ }
+        }
       } catch {
         if (!cancelled) {
           setBranding({ heroImageUrls: [], intervalSec: 8, heroCarouselEnabled: false });
@@ -202,7 +221,7 @@ export default function LoginPage() {
   const turnstilePollCount = useRef(0);
 
   useEffect(() => {
-    if (!showLogin || forgotMode || !turnstileSiteKey) return;
+    if (!showLogin || forgotMode || !turnstileSiteKey || !turnstileEnabled) return;
     const container = turnstileContainerRef.current;
     if (!container) return;
 
@@ -265,7 +284,7 @@ export default function LoginPage() {
       setTurnstileLoadFailed(false);
       setTurnstileLoading(false);
     };
-  }, [showLogin, forgotMode, effectiveMode, turnstileSiteKey]);
+  }, [showLogin, forgotMode, effectiveMode, turnstileSiteKey, turnstileEnabled]);
 
   // CAS ticket auto-extraction — serviceValidate works for any domain
   useEffect(() => {
@@ -531,15 +550,16 @@ export default function LoginPage() {
 
   return (
     <div className="login-home-page fnt18">
-      {/* 轮播底图：在 loading-page 之下，portal 红底之上 */}
+      {/* 轮播底图：fallback 底色 + 首图淡入，避免 loading 闪烁 */}
       <div className="pointer-events-none fixed inset-0 z-0" aria-hidden key={`hero-${effectiveMode}-${heroUrlKey}`}>
-        {heroCarouselOn ? (
+        <div className="absolute inset-0 z-0 transition-colors duration-500" style={{ backgroundColor: heroCarouselOn ? "transparent" : LOGIN_FALLBACK_BG }} />
+        {heroCarouselOn && (
           <>
             {heroUrls.map((url, i) => (
               <div
                 key={`${effectiveMode}-${i}-${url}`}
                 className={cn(
-                  "absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-opacity duration-700 ease-out",
+                  "absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-opacity duration-1000",
                   i === heroIdx ? "opacity-100" : "opacity-0"
                 )}
                 style={{ backgroundImage: `url(${url})` }}
@@ -547,8 +567,6 @@ export default function LoginPage() {
             ))}
             <div className="absolute inset-0 z-[1] bg-gradient-to-b from-[#6b0408]/78 via-[#a30000]/65 to-[#3d0204]/85" />
           </>
-        ) : (
-          <div className="absolute inset-0 z-0" style={{ backgroundColor: LOGIN_PAGE_RED }} />
         )}
       </div>
 
@@ -1020,7 +1038,7 @@ export default function LoginPage() {
                     </div>
                     <button
                       type="button"
-                      disabled={submitting || (!!turnstileSiteKey && !turnstileToken && !turnstileLoadFailed)}
+                      disabled={submitting || (turnstileEnabled && !!turnstileSiteKey && !turnstileToken && !turnstileLoadFailed)}
                       onClick={() => void doLogin()}
                       className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
                     >

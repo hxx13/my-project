@@ -2,7 +2,6 @@ import { isDahuaSwingHubMergedPath } from "@/features/admin/dahuaSwingHubPaths";
 
 /** 已从侧栏移除的废弃/重定向路由（配置已合并至其他页面或纯跳转） */
 export const HIDDEN_ADMIN_SIDEBAR_PATHS = new Set([
-  "/admin/scan-delay-config",       // 已废弃
   "/admin/schedule-manager",        // → /admin/settings/scheduler
   "/admin/external-comm-config",    // → /admin/settings/access-control
   "/admin/page-permissions",        // → /admin/settings/permissions
@@ -22,6 +21,7 @@ export const HIDDEN_ADMIN_SIDEBAR_PATHS = new Set([
   "/admin/settings/integrations",
   "/admin/settings/permissions",
   "/admin/settings/danger-zone",
+  "/admin/settings/dashboard-preview",
 ]);
 
 export function isHiddenAdminSidebarPath(path: string): boolean {

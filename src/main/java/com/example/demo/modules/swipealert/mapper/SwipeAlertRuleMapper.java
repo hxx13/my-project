@@ -1,13 +1,7 @@
 package com.example.demo.modules.swipealert.mapper;
 
 import com.example.demo.modules.swipealert.entity.SwipeAlertRule;
-import org.apache.ibatis.annotations.Delete;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Options;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
@@ -25,6 +19,8 @@ public interface SwipeAlertRuleMapper {
                    banner_duration_sec AS bannerDurationSec,
                    min_role_level AS minRoleLevel,
                    cooldown_sec AS cooldownSec,
+                   notify_site AS notifySite,
+                   notify_push AS notifyPush,
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM swipe_alert_rule
@@ -43,6 +39,8 @@ public interface SwipeAlertRuleMapper {
                    banner_duration_sec AS bannerDurationSec,
                    min_role_level AS minRoleLevel,
                    cooldown_sec AS cooldownSec,
+                   notify_site AS notifySite,
+                   notify_push AS notifyPush,
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM swipe_alert_rule
@@ -55,12 +53,14 @@ public interface SwipeAlertRuleMapper {
                 (name, enabled, channels, departments,
                  open_types, title_template, body_template,
                  threshold_count, threshold_window_sec,
-                 banner_duration_sec, min_role_level, cooldown_sec)
+                 banner_duration_sec, min_role_level, cooldown_sec,
+                 notify_site, notify_push)
             VALUES
                 (#{name}, #{enabled}, #{channels}, #{departments},
                  #{openTypes}, #{titleTemplate}, #{bodyTemplate},
                  #{thresholdCount}, #{thresholdWindowSec},
-                 #{bannerDurationSec}, #{minRoleLevel}, #{cooldownSec})
+                 #{bannerDurationSec}, #{minRoleLevel}, #{cooldownSec},
+                 #{notifySite}, #{notifyPush})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(SwipeAlertRule rule);
@@ -78,7 +78,9 @@ public interface SwipeAlertRuleMapper {
                 threshold_window_sec = #{thresholdWindowSec},
                 banner_duration_sec = #{bannerDurationSec},
                 min_role_level = #{minRoleLevel},
-                cooldown_sec = #{cooldownSec}
+                cooldown_sec = #{cooldownSec},
+                notify_site = #{notifySite},
+                notify_push = #{notifyPush}
             WHERE id = #{id}
             """)
     int update(SwipeAlertRule rule);

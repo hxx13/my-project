@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-26T18:31:28.063Z",
+  "generatedAt": "2026-07-28T11:33:53.565Z",
   "pages": [
     {
       "path": "/admin",
@@ -96,7 +96,7 @@
     {
       "path": "/admin/conversation-archive",
       "label": "用户对话存档",
-      "fallbackMinRole": "SUPER_ADMIN",
+      "fallbackMinRole": "ADMIN",
       "groupTitle": "AI 实验室",
       "registryId": "conversation-archive"
     },
@@ -159,7 +159,7 @@
     {
       "path": "/admin/face-debug",
       "label": "人脸识别调试",
-      "fallbackMinRole": "ADMIN",
+      "fallbackMinRole": "SUPER_ADMIN",
       "groupTitle": "门禁、元数据与环境",
       "registryId": "face-debug"
     },
@@ -194,21 +194,21 @@
     {
       "path": "/admin/material/audit-export",
       "label": "申领审计导出",
-      "fallbackMinRole": "STAFF",
+      "fallbackMinRole": "ADMIN",
       "groupTitle": "学生审核",
       "registryId": "material-audit-export"
     },
     {
       "path": "/admin/material/manage",
       "label": "物品管理",
-      "fallbackMinRole": "STAFF",
+      "fallbackMinRole": "ADMIN",
       "groupTitle": "学生审核",
       "registryId": "material-manage"
     },
     {
       "path": "/admin/material/review",
       "label": "学生审核",
-      "fallbackMinRole": "STAFF",
+      "fallbackMinRole": "ADMIN",
       "groupTitle": "学生审核",
       "registryId": "material-review-pending"
     },
@@ -320,7 +320,7 @@
     {
       "path": "/admin/settings",
       "label": "系统设置",
-      "fallbackMinRole": "ADMIN",
+      "fallbackMinRole": "SUPER_ADMIN",
       "groupTitle": "系统与安全",
       "registryId": "settings"
     },
@@ -355,7 +355,7 @@
     {
       "path": "/admin/telemetry-archive",
       "label": "温湿度数据归档",
-      "fallbackMinRole": "ADMIN",
+      "fallbackMinRole": "SUPER_ADMIN",
       "groupTitle": "门禁、元数据与环境",
       "registryId": "telemetry-arch"
     },
@@ -376,7 +376,7 @@
     {
       "path": "/admin/telemetry-watchlists",
       "label": "WinCC 变量导入",
-      "fallbackMinRole": "ADMIN",
+      "fallbackMinRole": "SUPER_ADMIN",
       "groupTitle": "门禁、元数据与环境",
       "registryId": "telemetry-wl"
     },

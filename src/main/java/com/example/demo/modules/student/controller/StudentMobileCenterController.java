@@ -540,6 +540,12 @@ public class StudentMobileCenterController {
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("shelves", allShelves);
         resp.put("totalCount", allShelves.size());
+        try {
+            String scannedAt = cageShelfService.getLatestSnapshotScannedAt();
+            if (scannedAt != null && !scannedAt.isBlank()) {
+                resp.put("scannedAt", scannedAt);
+            }
+        } catch (Exception ignored) { /* 非关键 */ }
         return Result.success(resp);
     }
 

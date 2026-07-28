@@ -29,6 +29,7 @@ export interface CageShelfFilterOptions {
 }
 
 export interface CageShelfCell {
+  id?: string | number;
   x: number;
   y: number;
   position: string;
@@ -555,4 +556,207 @@ export async function saveAlertConfig(configs: CageAlertConfig[], mode?: string)
     params: { mode: mode || "auto" },
   });
   if (!res.data?.success) throw new Error(res.data?.message || "保存告警配置失败");
+}
+
+// ==========================================================================
+// 🔧 实时数据源 + 笼位分配（2026-07-27 新增）
+// ==========================================================================
+
+export interface RealtimeRefreshResponse {
+  shelves: CageShelfDetail[];
+  roomMeta: { roomId: string; roomName?: string; shelfCount: number };
+  fromRealtime: boolean;
+  cachedAt: string;
+  cooldownRemainingMs: number;
+}
+
+export interface AupItem {
+  id: string;
+  projectPiName: string;
+  registerNumber: string;
+  projectName?: string;
+}
+
+export interface CooldownStatus {
+  cooldownRemainingMs: number;
+  inCooldown: boolean;
+}
+
+/** 实时拉取笼架数据（含 5min 冷却） */
+export async function fetchRealtimeRefresh(roomId: string, shelveId?: string): Promise<RealtimeRefreshResponse> {
+  const res = await authHttp.post<Result<RealtimeRefreshResponse>>("/v1/cage-shelves/realtime/refresh", {
+    roomId, shelveId: shelveId || undefined,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "实时刷新失败");
+  return res.data.data!;
+}
+
+/** 查询冷却剩余时间 */
+export async function fetchCooldownRemaining(roomId: string, shelveId?: string): Promise<CooldownStatus> {
+  const res = await authHttp.get<Result<CooldownStatus>>("/v1/cage-shelves/realtime/cooldown", {
+    params: { roomId, shelveId: shelveId || undefined },
+  });
+  return res.data?.data ?? { cooldownRemainingMs: 0, inCooldown: false };
+}
+
+/** 查分配用 AUP 列表 */
+export async function fetchAllocationAups(): Promise<AupItem[]> {
+  const res = await authHttp.get<Result<AupItem[]>>("/v1/cage-shelves/allocation/aups");
+  return res.data?.data ?? [];
+}
+
+/** 执行笼位分配 */
+export async function assignCages(
+  roomId: string, shelveId: string, cageIds: string[], aupId: string,
+): Promise<{ ok: boolean }> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>("/v1/cage-shelves/allocation/assign", {
+    roomId, shelveId, cageIds, aupId,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "分配失败");
+  return res.data.data ?? { ok: false };
+}
+
+/** 取消笼位分配 */
+export async function cancelCageAssignment(cageIds: string[], roomId?: string): Promise<{ ok: boolean }> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>("/v1/cage-shelves/allocation/cancel", {
+    cageIds, roomId: roomId || undefined,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "取消分配失败");
+  return res.data.data ?? { ok: false };
+}
+
+// ── 笼盒扫码操作 ──
+
+export type CageBoxAction = "DIVIDE" | "SPECIAL_BREEDING" | "HEALTH_CHECK";
+
+export interface CageBoxActionRequest {
+  roomId: string;
+  shelveId: string;
+  cageBoxCode: string;
+  action: CageBoxAction;
+  specialBreedingName?: string;
+  specialBreedingDescription?: string;
+  animalHealthDegree?: number;
+  healthDetail?: string;
+  itching?: number;
+  reportUserName?: string;
+  observeDate?: string;
+}
+
+export interface CageBoxActionResult {
+  success: boolean;
+  cageBoxCode: string;
+  cageBoxId: string;
+  animalCageId: string;
+  action: string;
+}
+
+export async function executeCageBoxAction(req: CageBoxActionRequest): Promise<CageBoxActionResult> {
+  const res = await authHttp.post<Result<CageBoxActionResult>>("/aro/cage-box/action", req);
+  if (!res.data?.success) throw new Error(res.data?.message || "操作失败");
+  return res.data.data!;
+}
+
+// ── 笼位预约管理（2026-07-28） ──
+
+export interface BookingRoom {
+  roomId: string;
+  name: string;
+  description: string;
+  shelveNumber: number;
+  animalCageNumber: number;
+  rentAnimalCageNumber: number;
+  usedAnimalCageNumber: number;
+  lastRentNumber: number;
+  memo: string;
+}
+
+export interface BookingAup {
+  id: string;
+  roomId: string;
+  name: string;
+  piName: string;
+  registerNumber: string;
+  aupId: string;
+  rentNumber: number;
+  usedAnimalCageNumber: number;
+  memo: string;
+  beginTime: string;
+  endTime: string;
+}
+
+export interface BookingRoomsResponse {
+  data: {
+    list: BookingRoom[];
+    total: number;
+    pageNum: number;
+    pageSize: number;
+    page: number;
+  };
+  status: number;
+}
+
+export interface BookingAupsResponse {
+  data: BookingAup[];
+  status: number;
+}
+
+/** 房间预约汇总列表 */
+export async function fetchBookingRooms(pageNum = 1, pageSize = 30): Promise<BookingRoomsResponse> {
+  const res = await authHttp.get<Result<BookingRoomsResponse>>("/v1/cage-shelves/booking/rooms", {
+    params: { pageNum, pageSize },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载房间预约列表失败");
+  return res.data.data!;
+}
+
+/** 房间内 AUP 分配明细 */
+export async function fetchBookingRoomAups(roomId: string, pageNum = 1, pageSize = 30): Promise<BookingAupsResponse> {
+  const res = await authHttp.get<Result<BookingAupsResponse>>(
+    `/v1/cage-shelves/booking/rooms/${encodeURIComponent(roomId)}/aups`,
+    { params: { pageNum, pageSize } }
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "加载AUP分配失败");
+  return res.data.data!;
+}
+
+/** 新增/编辑 AUP 分配 */
+export async function saveBookingAup(roomId: string, body: Record<string, unknown>): Promise<void> {
+  const res = await authHttp.post<Result<unknown>>(
+    `/v1/cage-shelves/booking/rooms/${encodeURIComponent(roomId)}/aups`,
+    body
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "保存AUP分配失败");
+}
+
+/** 删除 AUP 分配 */
+export async function deleteBookingAup(id: string): Promise<void> {
+  const res = await authHttp.post<Result<unknown>>(
+    `/v1/cage-shelves/booking/aups/${encodeURIComponent(id)}/delete`
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "删除AUP分配失败");
+}
+
+/** AUP 下拉字典 */
+export async function fetchAupDict(): Promise<{ id: string; title: string; registerNumber: string; projectPiName: string }[]> {
+  const res = await authHttp.get<Result<{ id: string; title: string; registerNumber: string; projectPiName: string }[]>>(
+    "/v1/cage-shelves/booking/aups/dict"
+  );
+  return res.data?.data ?? [];
+}
+
+/** AUP 跨房间搜索 */
+export interface AupSearchHit {
+  roomId: string;
+  roomName: string;
+  piName: string;
+  registerNumber: string;
+  aupId: string;
+  rentNumber: number;
+}
+export async function searchAupsAcrossRooms(keyword: string): Promise<AupSearchHit[]> {
+  const res = await authHttp.get<Result<AupSearchHit[]>>("/v1/cage-shelves/booking/aups/search", {
+    params: { keyword },
+  });
+  return res.data?.data ?? [];
 }

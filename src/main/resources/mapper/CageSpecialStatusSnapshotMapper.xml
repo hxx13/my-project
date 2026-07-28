@@ -167,4 +167,40 @@
         ORDER BY position_y, position_x
     </select>
 
+    <select id="selectCageTypeCountsByBatch" resultType="map">
+        SELECT shelve_id AS shelveId,
+               animal_cage_type AS animalCageType,
+               COUNT(*) AS cnt
+        FROM cage_special_status_snapshot
+        WHERE scan_batch_id = #{scanBatchId}
+          AND status_code = 'NORMAL'
+          AND shelve_id IN
+          <foreach collection="shelveIds" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        GROUP BY shelve_id, animal_cage_type
+    </select>
+
+    <select id="selectDistinctShelvesByGroups" resultType="map">
+        SELECT DISTINCT
+               shelve_id AS shelveId,
+               shelve_id AS shelveName,
+               campus_name AS campusName,
+               room_name AS roomName,
+               CAST(room_id AS CHAR) AS roomId
+        FROM cage_special_status_snapshot
+        WHERE scan_batch_id = #{scanBatchId}
+          AND (
+          <foreach collection="groupNames" item="g" separator=" OR ">
+              department_name = #{g}
+              OR project_pi_name = #{g}
+              OR (project_pi_name != '' AND #{g} LIKE CONCAT('%', project_pi_name, '%'))
+              OR (department_name != '' AND #{g} LIKE CONCAT('%', department_name, '%'))
+              OR (project_pi_name != '' AND project_pi_name = SUBSTRING_INDEX(#{g}, '的', 1))
+              OR (project_pi_name != '' AND project_pi_name LIKE CONCAT(SUBSTRING_INDEX(#{g}, '的', 1), '%'))
+          </foreach>
+          )
+        ORDER BY campus_name, room_name, shelve_id
+    </select>
+
 </mapper>

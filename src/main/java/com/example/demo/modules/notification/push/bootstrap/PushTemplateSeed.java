@@ -44,7 +44,8 @@ public class PushTemplateSeed implements ApplicationRunner {
                 Template t = TEMPLATES.get(src.getSourceCode());
                 if (t == null) continue;
                 NotifySourceChannel exist = channelMapper.findBySourceAndChannel(src.getId(), ch);
-                String content = "EMAIL".equals(ch) ? t.contentEmail : t.contentWechat;
+                String content = "EMAIL".equals(ch) ? t.contentEmail
+                        : "WXPUSHER".equals(ch) ? t.contentWxpusher() : t.contentWechat();
                 if (exist != null) {
                     // 已有记录 → 更新模板（保留 enable/quiet/rateLimit 等已有设置）
                     exist.setTitleTpl(t.title);
@@ -67,7 +68,11 @@ public class PushTemplateSeed implements ApplicationRunner {
         }
     }
 
-    private record Template(String title, String contentEmail, String contentWechat) {}
+    private record Template(String title, String contentEmail, String contentWechat, String contentWxpusher) {
+        Template(String title, String contentEmail, String contentWechat) {
+            this(title, contentEmail, contentWechat, contentWechat);
+        }
+    }
 
     private static final Map<String, Template> TEMPLATES = new LinkedHashMap<>();
     static {
@@ -196,10 +201,14 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p style='font-size:14px;color:#475569;margin:0 0 2px'>当前 <b style='color:#dc2626'>{currentValue}</b> / 阈值 {limitValue}</p>"
                         + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{sentAt}</p></div>"
                         + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 动物房环境监测</p>",
+                "## ⚠️ ARO 环境报警\n\n"
+                        + "📍 {floorCode} {roomName}\n\n"
+                        + "🌡️ {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n\n"
+                        + "🕐 {sentAt}",
                 "## ⚠️ ARO 环境报警\n"
-                        + "- 位置：**{floorCode} {roomName}**\n"
-                        + "- {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n"
-                        + "- {sentAt}"
+                        + "📍 {floorCode} {roomName}\n"
+                        + "🌡️ {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n"
+                        + "🕐 {sentAt}"
         ));
         TEMPLATES.put("TELEMETRY_RECOVERY", new Template(
                 "✓ {floorCode} {roomName} {metricKind}已恢复",
@@ -209,10 +218,37 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p style='font-size:14px;color:#475569;margin:0 0 2px'>当前 {currentValue}</p>"
                         + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{recoveryAt}</p></div>"
                         + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 动物房环境监测</p>",
+                "## ✅ ARO 环境恢复\n\n"
+                        + "📍 **{floorCode} {roomName}**\n\n"
+                        + "🌡️ {metricKind}已恢复正常：**{currentValue}**\n\n"
+                        + "🕐 {recoveryAt}",
                 "## ✅ ARO 环境恢复\n"
-                        + "- 位置：**{floorCode} {roomName}**\n"
-                        + "- {metricKind}已恢复正常：**{currentValue}**\n"
-                        + "- {recoveryAt}"
+                        + "📍 **{floorCode} {roomName}**\n"
+                        + "🌡️ {metricKind}已恢复正常：**{currentValue}**\n"
+                        + "🕐 {recoveryAt}"
+        ));
+
+        // ========== 刷卡失败告警 ==========
+        TEMPLATES.put("SWIPE_FAILURE_ALERT", new Template(
+                "⚠ 刷卡失败 — {channelName}",
+                "<div style='border-left:4px solid #f59e0b;padding-left:14px;margin:8px 0'>"
+                        + "<p style='font-size:15px;font-weight:700;color:#1e293b;margin:0 0 6px'>{channelName} · {personName}</p>"
+                        + "<p style='font-size:17px;font-weight:700;color:#d97706;margin:0 0 4px'>{windowMin}分钟内 {count}/{threshold} 次{openTypeLabel}</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>电话：{phone}</p>"
+                        + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{swingTime}</p></div>"
+                        + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 门禁监测</p>",
+                "⚠️ ARO 刷卡失败告警\n\n"
+                        + "🚪 {channelName}\n\n"
+                        + "👤 {personName}\n\n"
+                        + "📞 {phone}\n\n"
+                        + "📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel}\n\n"
+                        + "🕐 {swingTime}",
+                "⚠️ ARO 刷卡失败告警\n"
+                        + "🚪 {channelName}\n"
+                        + "👤 {personName}\n"
+                        + "📞 {phone}\n"
+                        + "📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel}\n"
+                        + "🕐 {swingTime}"
         ));
     }
 }

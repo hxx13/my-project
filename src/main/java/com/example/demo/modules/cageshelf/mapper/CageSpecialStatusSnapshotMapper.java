@@ -48,4 +48,14 @@ public interface CageSpecialStatusSnapshotMapper {
     List<CageSpecialStatusSnapshot> selectByBatchIdAndShelveId(
             @Param("scanBatchId") String scanBatchId,
             @Param("shelveId") Long shelveId);
+
+    /** Get cage type counts (animalCageType → count) per shelveId for the latest scan batch. */
+    List<Map<String, Object>> selectCageTypeCountsByBatch(
+            @Param("scanBatchId") String scanBatchId,
+            @Param("shelveIds") List<String> shelveIds);
+
+    /** Get distinct shelf summaries whose cells match given group names in the latest scan batch. */
+    List<Map<String, Object>> selectDistinctShelvesByGroups(
+            @Param("scanBatchId") String scanBatchId,
+            @Param("groupNames") List<String> groupNames);
 }

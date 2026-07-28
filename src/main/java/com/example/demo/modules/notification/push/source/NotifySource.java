@@ -11,6 +11,7 @@ public class NotifySource {
     private String description;
     private String variables;
     private Integer enabled;
+    private String visibleTo;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

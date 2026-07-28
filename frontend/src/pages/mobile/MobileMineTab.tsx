@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Clock,
   LogOut,
+  Settings,
   Smartphone,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -322,11 +323,12 @@ export default function MobileMineTab({
           { label: "出入记录", color: "#10b981", icon: FileText, action: undefined },
           { label: "数据统计", color: "#f59e0b", icon: BarChart3, action: undefined },
           { label: "通知公告", color: "#ef4444", icon: Bell, action: onOpenAnnouncements },
+          { label: "设置", color: "#8b5cf6", icon: Settings, path: "/m/settings" },
         ].map((item, idx) => (
           <button
             key={item.label}
             type="button"
-            onClick={() => item.action?.()}
+            onClick={() => item.path ? navigate(item.path) : item.action?.()}
             className="flex items-center gap-3 px-4 py-3.5 w-full text-left active:bg-gray-50/50 transition-colors"
             style={
               idx ? { borderTop: "1px solid rgba(30,55,90,0.04)" } : undefined

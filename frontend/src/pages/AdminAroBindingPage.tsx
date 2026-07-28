@@ -8,6 +8,7 @@ import { adminHttp } from "@/api/core/adminHttp";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
+import { Portal } from "@/components/Portal";
 import { useCasBinding } from "@/features/auth/CasBindingContext";
 import {
   Dialog,
@@ -98,10 +99,11 @@ export default function AdminAroBindingPage() {
   const handleAudit = (eid: string, st: 1 | 2) => { if (!ensureCasBinding()) return; if (!confirm(st === 1 ? "确定通过？" : "确定拒绝？")) return; doPost("/aro-training/audit", { examSignId: eid, state: st }, st === 1 ? "已通过" : "已拒绝"); };
   const handleScore = (eid: string, yn: 1 | 2) => { if (!ensureCasBinding()) return; if (!confirm(yn === 1 ? "评分合格？" : "评分不合格？")) return; doPost("/aro-training/score", { examSignId: eid, state: yn }, yn === 1 ? "合格" : "不合格"); };
   const toggleSel = (uid: string) => setSelTrainees(p => { const n = new Set(p); n.has(uid) ? n.delete(uid) : n.add(uid); return n; });
-  const toggleRoom = (uid: string, cur: string[]) => { if (expanded === uid) { setExpanded(null); return; } setExpanded(uid); setRoomPickers(p => ({ ...p, [uid]: new Set(cur) })); };
+  const ddAnchorRef = useRef<DOMRect | null>(null);
+  const toggleRoom = (uid: string, cur: string[], e?: React.MouseEvent) => { if (expanded === uid) { setExpanded(null); return; } const btn = (e?.currentTarget as HTMLElement); ddAnchorRef.current = btn?.getBoundingClientRect() ?? null; setExpanded(uid); setRoomPickers(p => ({ ...p, [uid]: new Set(cur) })); const groups: Record<string, string[]> = {}; allRooms?.forEach(r => { const a = r.areaName || '其他'; const f = r.floorName || '其他'; if (!groups[a]) groups[a] = []; if (!groups[a].includes(f)) groups[a].push(f); }); const defArea = groups["浦东"] ? "浦东" : Object.keys(groups)[0] || ''; const defFloor = defArea ? (groups[defArea]?.[0] || '') : ''; setRoomNav(defArea ? { area: defArea, floor: defFloor } : null); };
   const toggleRoomPick = (uid: string, rid: string) => setRoomPickers(p => { const s = new Set(p[uid] || []); s.has(rid) ? s.delete(rid) : s.add(rid); return { ...p, [uid]: s }; });
   const saveRooms = async (eid: string, uid: string) => { if (!ensureCasBinding()) return; try { await adminHttp.post("/aro-training/update-rooms", { examSignId: eid, userId: uid, roomIds: [...(roomPickers[uid] || [])] }); toast.success("已更新"); setExpanded(null); qc.invalidateQueries(); } catch (e: any) { toast.error(e?.message || "失败"); } };
-  const openBatch = () => { if (selTrainees.size === 0) { toast.error("请勾选"); return; } setBatchRoom(true); setExpanded("__batch__"); setRoomNav(null); };
+  const openBatch = (e: React.MouseEvent) => { if (selTrainees.size === 0) { toast.error("请勾选"); return; } const btn = (e.currentTarget as HTMLElement); ddAnchorRef.current = btn?.getBoundingClientRect() ?? null; setBatchRoom(true); setExpanded("__batch__"); const groups: Record<string, string[]> = {}; allRooms?.forEach(r => { const a = r.areaName || '其他'; const f = r.floorName || '其他'; if (!groups[a]) groups[a] = []; if (!groups[a].includes(f)) groups[a].push(f); }); const defArea = groups["浦东"] ? "浦东" : Object.keys(groups)[0] || ''; const defFloor = defArea ? (groups[defArea]?.[0] || '') : ''; setRoomNav(defArea ? { area: defArea, floor: defFloor } : null); };
   const batchSave = async () => { if (!ensureCasBinding()) return; const uids = [...selTrainees]; const ids = [...(roomPickers["__batch__"] || [])]; if (ids.length === 0) { toast.error("请选择房间"); return; } let ok = 0; for (const uid of uids) { try { await adminHttp.post("/aro-training/update-rooms", { examSignId: selected?.id, userId: uid, roomIds: ids }); ok++; } catch {} } toast.success(`${ok}/${uids.length} 完成`); setBatchRoom(false); setExpanded(null); setSelTrainees(new Set()); qc.invalidateQueries(); };
 
   const roomDropdown = (uid: string, eid: string) => {
@@ -110,25 +112,33 @@ export default function AdminAroBindingPage() {
     const areas = Object.keys(groups); const sa = roomNav?.area || ''; const floors = sa && groups[sa] ? Object.keys(groups[sa]) : [];
     const sf = sa ? (roomNav?.floor && floors.includes(roomNav.floor) ? roomNav.floor : floors[0] || '') : ''; const rooms = sa && sf ? groups[sa]?.[sf] || [] : [];
     const pick = roomPickers[uid] || new Set<string>();
+    const anchor = ddAnchorRef.current;
+    const w = 416; // w-[26rem]
+    const top = anchor ? Math.min(anchor.bottom + 4, window.innerHeight - 400 - 16) : window.innerHeight * 0.15;
+    const left = anchor ? Math.max(32, Math.min(anchor.left, window.innerWidth - w - 32)) : (window.innerWidth - w) / 2;
     return (
-      <div data-dd className="absolute left-0 top-full mt-1 z-50 w-[26rem] rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-xl">
-        <div className="p-2 border-b text-[10px] text-[var(--twin-mute)] flex items-center justify-between"><span>选择房间 · 已选 {pick.size}</span><button onClick={() => setExpanded(null)}>✕</button></div>
-        <div className="flex h-64">
-          <div className="w-40 shrink-0 border-r overflow-y-auto">
-            {areas.map(a => (<div key={a}>
-              <button onClick={() => setRoomNav(sa === a ? null : { area: a, floor: Object.keys(groups[a])[0] || '' })} className={cn("w-full text-left px-3 py-2 text-xs font-semibold flex justify-between", sa === a ? "bg-[var(--app-color-surface-hover)]" : "hover:bg-[var(--app-color-surface-hover)]")}>{a}<ChevronDown className={cn("h-3 w-3 transition-transform", sa === a && "rotate-180")} /></button>
-              {sa === a && Object.keys(groups[a]).map(f => (<button key={f} onClick={() => setRoomNav(p => p ? { ...p, floor: f } : null)} className={cn("w-full text-left pl-6 pr-2 py-1.5 text-[11px]", sf === f ? "bg-blue-50/60 text-blue-700 font-medium border-l-2 border-blue-400" : "text-[var(--twin-mute)] border-l-2 border-transparent hover:bg-[var(--app-color-surface-hover)]")}>{f}</button>))}
-            </div>))}
-          </div>
-          <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
-            {rooms.map(r => { const ck = pick.has(r.id); return (<button key={r.id} onClick={() => toggleRoomPick(uid, r.id)} className={cn("w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-md text-sm", ck ? "bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200/50" : "hover:bg-[var(--app-color-surface-hover)]")}><span className={cn("shrink-0 w-4 h-4 rounded flex items-center justify-center", ck ? "bg-blue-500 text-white" : "border")}>{ck && <Check className="h-2.5 w-2.5" />}</span>{r.name}</button>); })}
+      <Portal>
+        <div className="fixed inset-0 z-50" onClick={() => setExpanded(null)}>
+          <div data-dd className="absolute w-[26rem] max-w-[calc(100vw-4rem)]max-h-[75vh] flex flex-col rounded-xl shadow-xl overflow-hidden" style={{ top, left }} onClick={e => e.stopPropagation()}>
+            <div className="px-3 py-2 text-[11px] font-medium bg-slate-100 text-[var(--app-color-text-secondary)] flex items-center justify-between shrink-0"><span>选择房间 · 已选 {pick.size}</span><button onClick={() => setExpanded(null)} className="text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]">✕</button></div>
+            <div className="flex h-80 max-h-[60vh] bg-white">
+              <div className="w-40 shrink-0 overflow-y-auto bg-slate-50 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {areas.map(a => (<div key={a}>
+                  <button onClick={() => setRoomNav(sa === a ? null : { area: a, floor: Object.keys(groups[a])[0] || '' })} className={cn("w-full text-left px-3 py-2 text-xs font-semibold flex justify-between", sa === a ? "bg-white" : "hover:bg-white")}>{a}<ChevronDown className={cn("h-3 w-3 transition-transform", sa === a && "rotate-180")} /></button>
+                  {sa === a && Object.keys(groups[a]).map(f => (<button key={f} onClick={() => setRoomNav(p => p ? { ...p, floor: f } : null)} className={cn("w-full text-left pl-6 pr-2 py-1.5 text-[11px]", sf === f ? "bg-blue-50/60 text-blue-700 font-medium border-l-2 border-blue-400" : "text-[var(--twin-mute)] border-l-2 border-transparent hover:bg-white")}>{f}</button>))}
+                </div>))}
+              </div>
+              <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5 bg-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {rooms.map(r => { const ck = pick.has(r.id); return (<button key={r.id} onClick={() => toggleRoomPick(uid, r.id)} className={cn("w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-md text-sm", ck ? "bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200/50" : "hover:bg-slate-50")}><span className={cn("shrink-0 w-4 h-4 rounded flex items-center justify-center", ck ? "bg-blue-500 text-white" : "border")}>{ck && <Check className="h-2.5 w-2.5" />}</span>{r.name}</button>); })}
+              </div>
+            </div>
+            <div className="flex gap-2 px-3 py-2 shrink-0 bg-slate-50">
+              <AdminButton type="button" tone="secondary" size="sm" className="flex-1" onClick={() => setExpanded(null)}>取消</AdminButton>
+              <AdminButton type="button" tone="primary" size="sm" className="flex-1" onClick={() => saveRooms(eid, uid)}>保存</AdminButton>
+            </div>
           </div>
         </div>
-        <div className="flex gap-2 p-2 border-t">
-          <AdminButton type="button" tone="secondary" size="sm" className="flex-1" onClick={() => setExpanded(null)}>取消</AdminButton>
-          <AdminButton type="button" tone="primary" size="sm" className="flex-1" onClick={() => saveRooms(eid, uid)}>保存</AdminButton>
-        </div>
-      </div>
+      </Portal>
     );
   };
 
@@ -188,7 +198,7 @@ export default function AdminAroBindingPage() {
             <AdminButton type="button" tone="secondary" size="default" onClick={goBack}><ChevronLeft className="h-4 w-4 mr-1" />返回</AdminButton>
             <div className="min-w-0"><h2 className="text-base font-bold text-[var(--app-color-text-primary)] truncate">{selected?.title}</h2><p className="text-xs text-[var(--twin-mute)]">{selected?.examinerName} · {selected?.signNumber} 人 · {selected?.startTime}</p></div>
           </div>
-          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <div className="flex items-center gap-2 shrink-0 h-10 overflow-x-auto">
             <select value={tf.pg} onChange={e => { setTf(p => ({ ...p, pg: e.target.value })); setTPage(1); }} className="h-9 rounded border border-[var(--app-color-border-default)] bg-violet-50/50 px-3 text-sm min-w-[140px]"><option value="">全部课题组</option>{pgs.map(g => <option key={g} value={g}>{g}</option>)}</select>
             <select value={tf.audit} onChange={e => setTf(p => ({ ...p, audit: e.target.value }))} className="h-9 rounded border border-[var(--app-color-border-default)] bg-amber-50/50 px-3 text-sm min-w-[130px]"><option value="">全部审批</option><option value="1">已通过</option><option value="0">待审核/已拒绝</option></select>
             <select value={tf.score} onChange={e => setTf(p => ({ ...p, score: e.target.value }))} className="h-9 rounded border border-[var(--app-color-border-default)] bg-emerald-50/50 px-3 text-sm min-w-[130px]"><option value="">全部评分</option><option value="1">合格</option><option value="0">未评分/不合格</option></select>
@@ -200,7 +210,7 @@ export default function AdminAroBindingPage() {
                 {tf.search && <button onClick={() => { setTf(p => ({ ...p, search: '' })); setSelNames([]); }} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"><X className="h-3.5 w-3.5" /></button>}
               </div>
             </div>
-            {selTrainees.size > 0 && (<div className="relative" data-dt><AdminButton type="button" tone="primary" size="default" className="text-sm" onClick={openBatch}><Pencil className="h-4 w-4 mr-1" />房间权限({selTrainees.size})</AdminButton>
+            {selTrainees.size > 0 && (<div className="relative" data-dt><AdminButton type="button" tone="primary" size="default" className="text-sm" onClick={(e: any) => openBatch(e)}><Pencil className="h-4 w-4 mr-1" />房间权限({selTrainees.size})</AdminButton>
               {batchRoom && expanded === "__batch__" && roomDropdown("__batch__", "")}
             </div>)}
             <AdminButton type="button" tone={refreshing.has(selected?.id || "") ? "destructive" : "secondary"} size="sm" onClick={doRefresh}>
@@ -208,7 +218,6 @@ export default function AdminAroBindingPage() {
             </AdminButton>
           </div>
         </div>
-        {selTrainees.size > 0 && <div className="flex flex-wrap gap-1 mt-2">{trainees.filter(t => selTrainees.has(t.userId)).map(t => <span key={t.userId} className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full flex items-center gap-1">{t.name}<button onClick={() => toggleSel(t.userId)} className="hover:text-blue-900 font-bold">×</button></span>)}</div>}
       </AdminFormCard>
       <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
         <div className="flex-1 min-h-0 overflow-auto">
@@ -230,7 +239,7 @@ export default function AdminAroBindingPage() {
                       <div className="flex flex-wrap items-center gap-1">
                         {t.userJoinRooms?.length === 0 && <span className="text-[11px] text-[var(--twin-mute)]">无</span>}
                         {t.userJoinRooms?.map((r, i) => <span key={i} className="text-xs bg-[var(--app-color-surface-hover)] px-2 py-0.5 rounded whitespace-nowrap">{r.areaName} {r.name}</span>)}
-                        <button data-dt onClick={() => { if (!t.userId) return; toggleRoom(t.userId, t.userJoinRooms?.map(r => r.id) || []); }} className={cn("shrink-0 text-[10px] px-1.5 py-0.5 rounded transition-colors", expanded === t.userId ? "bg-blue-100 text-blue-700 font-medium" : "text-[var(--twin-mute)] hover:bg-[var(--app-color-surface-hover)]")}>{expanded === t.userId ? "选择中" : "修改"}</button>
+                        <button data-dt onClick={(e) => { if (!t.userId) return; toggleRoom(t.userId, t.userJoinRooms?.map(r => r.id) || [], e); }} className={cn("shrink-0 text-[10px] px-1.5 py-0.5 rounded transition-colors", expanded === t.userId ? "bg-blue-100 text-blue-700 font-medium" : "text-[var(--twin-mute)] hover:bg-[var(--app-color-surface-hover)]")}>{expanded === t.userId ? "选择中" : "修改"}</button>
                       </div>
                       {t.userId && expanded === t.userId && roomDropdown(t.userId, t.examSignId)}
                     </td>
