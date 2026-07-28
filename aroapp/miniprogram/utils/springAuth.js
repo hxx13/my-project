@@ -424,12 +424,6 @@ async function uploadFileTemplate(tempFilePath, meta) {
 }
 
 function runWechatSilentLoginOnLaunch() {
-  // 开发环境跳过微信静默登录，直接用账号密码登录即可
-  if (envConfig.getEffectivePresetId() === 'dev') {
-    wx.removeStorageSync(KEYS.PENDING_OPENID);
-    console.log('[springAuth] 开发环境，跳过微信静默登录');
-    return;
-  }
   wx.login({
     timeout: 10000,
     success(res) {
