@@ -421,7 +421,8 @@ public class AuthController {
         }
 
         if (request.getOpenId().startsWith("wx_openid_")) {
-            return Result.error("当前为开发环境 Mock openId，不可绑定。请配置微信 AppID/AppSecret 后再试。");
+            return Result.error("当前后端未配置微信 AppID/AppSecret（回退为 Mock openId），不可绑定。"
+                    + "请设置环境变量 WECHAT_APP_ID / WECHAT_APP_SECRET 后重启服务。");
         }
 
         String bindType = request.getBindType().trim().toUpperCase(Locale.ROOT);
