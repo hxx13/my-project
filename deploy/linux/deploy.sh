@@ -111,12 +111,11 @@ if [ -z "$LATEST_JAR" ]; then
 fi
 echo "  最新构建: $LATEST_JAR"
 
-# 备份旧 JAR → 清理 → 只放最新的 → 固定名称 demo.jar
-if ls "$APP_DIR"/demo-*.jar 2>/dev/null | head -1 > /dev/null; then
-    ls "$APP_DIR"/demo-*.jar 2>/dev/null | head -1 | xargs -I{} cp {} "$APP_DIR/demo-previous.jar.bak"
+# 备份当前 demo.jar → 复制新构建 → 固定名称 demo.jar
+if [ -f "$APP_DIR/demo.jar" ]; then
+    cp "$APP_DIR/demo.jar" "$APP_DIR/demo-previous.jar.bak"
     echo "  旧版本已备份: demo-previous.jar.bak"
 fi
-rm -f "$APP_DIR"/demo-*.jar "$APP_DIR"/demo.jar
 cp "$LATEST_JAR" "$APP_DIR/demo.jar"
 sudo chown twin:twin "$APP_DIR/demo.jar"
 echo "  JAR 已替换: demo.jar"
