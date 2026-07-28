@@ -78,7 +78,7 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
   }, [editing]);
 
   const buildBody = (): SwipeAlertRuleUpsert => ({
-    name: name.trim(), enabled, openTypes: "52",
+    name: name.trim(), enabled,
     channels: selectedChannels.length > 0 ? JSON.stringify(selectedChannels) : null,
     departments: selectedDepts.length > 0 ? JSON.stringify(selectedDepts) : null,
     openTypes,
