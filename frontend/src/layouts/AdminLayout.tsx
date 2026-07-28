@@ -118,6 +118,7 @@ import {
 } from "@/features/admin/adminTelemetryNav";
 import { Button } from "@/components/ui/button";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
 import {
   Dialog,
   DialogContent,
@@ -208,8 +209,6 @@ export default function AdminLayout() {
   const [currentSendKey, setCurrentSendKey] = useState<string | null>(null);
   /** WxPusher binding */
   const [wxPusherDialogOpen, setWxPusherDialogOpen] = useState(false);
-  const [wxPusherDraft, setWxPusherDraft] = useState("");
-  const [wxPusherSaving, setWxPusherSaving] = useState(false);
   const [currentWxPusher, setCurrentWxPusher] = useState<string | null>(null);
 
   /** Verification-code states for email binding */
@@ -1446,7 +1445,6 @@ export default function AdminLayout() {
                       </DropdownMenuItem>
                     ) : (
                       <DropdownMenuItem onSelect={() => {
-                        setWxPusherDraft("");
                         setWxPusherDialogOpen(true);
                       }}>
                         <Smartphone className="mr-2 h-4 w-4" />
@@ -1910,78 +1908,16 @@ export default function AdminLayout() {
       </Dialog>
 
       {/* WxPusher 绑定弹窗 */}
-      <Dialog open={wxPusherDialogOpen} onOpenChange={setWxPusherDialogOpen}>
-        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>绑定 WxPusher 推送</DialogTitle>
-            <DialogDescription>
-              关注公众号「WxPusher」→ 菜单「我的UID」→ 复制后填入下方。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-2 space-y-2">
-            <p className="text-[11px] text-[var(--twin-link)]">
-              关注公众号 <b>WxPusher</b>（新消息服务）→ 我的 → 我的UID
-            </p>
-            <input
-              className={`${adminInputClass} w-full`}
-              type="text"
-              placeholder="粘贴 WxPusher UID（如 UID_xxxx）"
-              value={wxPusherDraft}
-              onChange={(e) => setWxPusherDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && wxPusherDraft.trim()) {
-                  e.preventDefault();
-                  const btn = document.getElementById("wxpusher-bind-submit-btn") as HTMLButtonElement | null;
-                  btn?.click();
-                }
-              }}
-            />
-          </div>
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button
-              variant="outline"
-              size="default"
-              onClick={() => setWxPusherDialogOpen(false)}
-            >
-              取消
-            </Button>
-            <Button
-              id="wxpusher-bind-submit-btn"
-              size="default"
-              disabled={!wxPusherDraft.trim() || wxPusherSaving}
-              onClick={async () => {
-                const token = authStorage.getToken();
-                const userId = sessionUser?.id;
-                if (!userId) return;
-                setWxPusherSaving(true);
-                try {
-                  const res = await fetch(`/api/admin/personnel/${encodeURIComponent(userId)}/wx-pusher-uid`, {
-                    method: "PUT",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: "Bearer " + token,
-                    },
-                    body: JSON.stringify({ wxPusherUid: wxPusherDraft.trim() }),
-                  });
-                  if (!res.ok) {
-                    const errData = await res.json().catch(() => ({}));
-                    throw new Error((errData as any).message || "保存失败");
-                  }
-                  toast.success("WxPusher 推送已绑定");
-                  setCurrentWxPusher(wxPusherDraft.trim());
-                  setWxPusherDialogOpen(false);
-                } catch (e: any) {
-                  toast.error(e?.message || "保存失败");
-                } finally {
-                  setWxPusherSaving(false);
-                }
-              }}
-            >
-              {wxPusherSaving ? "保存中..." : "保存"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <WxPusherBindModal
+        open={wxPusherDialogOpen}
+        onClose={() => setWxPusherDialogOpen(false)}
+        personnelId={sessionUser?.id ?? ""}
+        authToken={authStorage.getToken()}
+        onSaved={(uid) => {
+          setCurrentWxPusher(uid);
+          setWxPusherDialogOpen(false);
+        }}
+      />
     </div>
   );
 }

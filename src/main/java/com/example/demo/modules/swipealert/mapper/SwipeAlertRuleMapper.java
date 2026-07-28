@@ -21,6 +21,8 @@ public interface SwipeAlertRuleMapper {
                    cooldown_sec AS cooldownSec,
                    notify_site AS notifySite,
                    notify_push AS notifyPush,
+                   notify_user_ids AS notifyUserIds,
+                   notify_cardholder AS notifyCardholder,
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM swipe_alert_rule
@@ -41,6 +43,8 @@ public interface SwipeAlertRuleMapper {
                    cooldown_sec AS cooldownSec,
                    notify_site AS notifySite,
                    notify_push AS notifyPush,
+                   notify_user_ids AS notifyUserIds,
+                   notify_cardholder AS notifyCardholder,
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM swipe_alert_rule
@@ -54,13 +58,13 @@ public interface SwipeAlertRuleMapper {
                  open_types, title_template, body_template,
                  threshold_count, threshold_window_sec,
                  banner_duration_sec, min_role_level, cooldown_sec,
-                 notify_site, notify_push)
+                 notify_site, notify_push, notify_cardholder)
             VALUES
                 (#{name}, #{enabled}, #{channels}, #{departments},
                  #{openTypes}, #{titleTemplate}, #{bodyTemplate},
                  #{thresholdCount}, #{thresholdWindowSec},
                  #{bannerDurationSec}, #{minRoleLevel}, #{cooldownSec},
-                 #{notifySite}, #{notifyPush})
+                 #{notifySite}, #{notifyPush}, #{notifyCardholder})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(SwipeAlertRule rule);
@@ -80,11 +84,18 @@ public interface SwipeAlertRuleMapper {
                 min_role_level = #{minRoleLevel},
                 cooldown_sec = #{cooldownSec},
                 notify_site = #{notifySite},
-                notify_push = #{notifyPush}
+                notify_push = #{notifyPush},
+                notify_cardholder = #{notifyCardholder}
             WHERE id = #{id}
             """)
     int update(SwipeAlertRule rule);
 
     @Delete("DELETE FROM swipe_alert_rule WHERE id = #{id}")
     int deleteById(@Param("id") Long id);
+
+    @Select("SELECT notify_user_ids FROM swipe_alert_rule WHERE id = #{id}")
+    String findNotifyUserIdsById(@Param("id") Long id);
+
+    @Update("UPDATE swipe_alert_rule SET notify_user_ids = #{userIds} WHERE id = #{id}")
+    int updateNotifyUserIds(@Param("id") Long id, @Param("userIds") String userIds);
 }

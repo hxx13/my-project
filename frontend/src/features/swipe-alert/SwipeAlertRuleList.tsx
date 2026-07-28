@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Beaker, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Beaker, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import {
   listSwipeAlertRules,
   deleteSwipeAlertRule,
@@ -13,10 +13,13 @@ import { useSwipeAlertStore } from "@/store/useSwipeAlertStore";
 
 interface Props {
   onEdit: (rule: SwipeAlertRuleRow) => void;
+  onAdd: () => void;
+  onClose: () => void;
+  formOpen: boolean;
   refreshKey: number;
 }
 
-export function SwipeAlertRuleList({ onEdit, refreshKey }: Props) {
+export function SwipeAlertRuleList({ onEdit, onAdd, onClose, formOpen, refreshKey }: Props) {
   const [rows, setRows] = useState<SwipeAlertRuleRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -53,7 +56,10 @@ export function SwipeAlertRuleList({ onEdit, refreshKey }: Props) {
     <AdminFormCard title="告警规则"
       actions={
         <div className="flex gap-2">
-          <AdminButton type="button" tone="primary" className="gap-1.5 border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+          <AdminButton type="button" tone={formOpen ? "secondary" : "primary"} onClick={formOpen ? onClose : onAdd}>
+            {formOpen ? "关闭" : "+ 新增规则"}
+          </AdminButton>
+          <AdminButton type="button" className="gap-1.5 border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
             onClick={() => {
               useSwipeAlertStore.getState().showAlert({
                 alertId: `test-${Date.now()}`, ruleId: 0, ruleName: "模拟测试",

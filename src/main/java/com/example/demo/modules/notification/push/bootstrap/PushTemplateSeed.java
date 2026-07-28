@@ -47,9 +47,10 @@ public class PushTemplateSeed implements ApplicationRunner {
                 String content = "EMAIL".equals(ch) ? t.contentEmail
                         : "WXPUSHER".equals(ch) ? t.contentWxpusher() : t.contentWechat();
                 if (exist != null) {
-                    // 已有记录 → 更新模板（保留 enable/quiet/rateLimit 等已有设置）
+                    // 已有记录 → 更新模板（保留 enable/quiet 等已有设置）
                     exist.setTitleTpl(t.title);
                     exist.setContentTpl(content);
+                    if ("SWIPE_FAILURE_ALERT".equals(src.getSourceCode())) exist.setRateLimitSeconds(0);
                     channelMapper.update(exist);
                     log.info("[Push] 更新模板 {}/{} -> {}", src.getSourceCode(), ch, t.title);
                 } else {
@@ -59,7 +60,7 @@ public class PushTemplateSeed implements ApplicationRunner {
                     cfg.setEnabled(true);
                     cfg.setTitleTpl(t.title);
                     cfg.setContentTpl(content);
-                    cfg.setRateLimitSeconds(300);
+                    cfg.setRateLimitSeconds("SWIPE_FAILURE_ALERT".equals(src.getSourceCode()) ? 0 : 300);
                     cfg.setDigestMode("INSTANT");
                     channelMapper.insert(cfg);
                     log.info("[Push] 种子模板 {}/{} -> {}", src.getSourceCode(), ch, t.title);
@@ -230,24 +231,24 @@ public class PushTemplateSeed implements ApplicationRunner {
 
         // ========== 刷卡失败告警 ==========
         TEMPLATES.put("SWIPE_FAILURE_ALERT", new Template(
-                "⚠ 刷卡失败 — {channelName}",
+                "⚠ 刷卡告警 — {channelName}",
                 "<div style='border-left:4px solid #f59e0b;padding-left:14px;margin:8px 0'>"
                         + "<p style='font-size:15px;font-weight:700;color:#1e293b;margin:0 0 6px'>{channelName} · {personName}</p>"
-                        + "<p style='font-size:17px;font-weight:700;color:#d97706;margin:0 0 4px'>{windowMin}分钟内 {count}/{threshold} 次{openTypeLabel}</p>"
+                        + "<p style='font-size:17px;font-weight:700;color:#d97706;margin:0 0 4px'>{windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}</p>"
                         + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>电话：{phone}</p>"
                         + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{swingTime}</p></div>"
                         + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 门禁监测</p>",
-                "⚠️ ARO 刷卡失败告警\n\n"
+                "⚠️ ARO 刷卡告警\n\n"
                         + "🚪 {channelName}\n\n"
                         + "👤 {personName}\n\n"
                         + "📞 {phone}\n\n"
-                        + "📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel}\n\n"
+                        + "📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}\n\n"
                         + "🕐 {swingTime}",
-                "⚠️ ARO 刷卡失败告警\n"
+                "⚠️ ARO 刷卡告警\n"
                         + "🚪 {channelName}\n"
                         + "👤 {personName}\n"
                         + "📞 {phone}\n"
-                        + "📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel}\n"
+                        + "📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}\n"
                         + "🕐 {swingTime}"
         ));
     }

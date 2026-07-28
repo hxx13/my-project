@@ -1,0 +1,1 @@
+ALTER TABLE swipe_alert_rule ADD COLUMN notify_site TINYINT NOT NULL DEFAULT 1;

@@ -132,7 +132,7 @@ public class AdminPushTestController {
             case "SUPPLIES_COMPLETED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","summary","已出库：A4纸、记号笔、手套","bizId","SC-TEST"));
             case "TELEMETRY_ALARM" -> new LinkedHashMap<>(Map.of("floorCode","1F","roomName","201","metricKind","温度","alarmDirection","偏高","currentValue","28.5℃","limitValue","26.0℃","sentAt",now()));
             case "TELEMETRY_RECOVERY" -> new LinkedHashMap<>(Map.of("floorCode","1F","roomName","201","metricKind","温度","currentValue","24.0℃","recoveryAt",now()));
-            case "SWIPE_FAILURE_ALERT" -> new LinkedHashMap<>(Map.of("channelName","A区主门禁","personName","测试学生","deptName","测试课题组","phone","13800138000","count","5","windowMin","5","threshold","3","openTypeLabel","非法刷卡开门","swingTime",now()));
+            case "SWIPE_FAILURE_ALERT" -> new LinkedHashMap<>(Map.of("channelName","A区主门禁","personName","测试学生","deptName","测试课题组","phone","13800138000","count","5","windowMin","5","threshold","3","openTypeLabel","非法刷卡","enterOrExitLabel","进入","swingTime",now()));
             default -> null;
         };
     }

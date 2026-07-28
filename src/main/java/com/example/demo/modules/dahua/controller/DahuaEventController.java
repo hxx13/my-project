@@ -30,7 +30,7 @@ public class DahuaEventController {
     /**
      * 🚀 纯粹的流处理入口：接收 Webhook，瞬间返回，绝不阻塞！
      */
-    @PostMapping(produces = "application/json")
+    @PostMapping
     @Operation(summary = "接收大华设备事件推送")
     public Map<String, Object> handleDahuaEvent(@RequestBody String rawPayload, HttpServletRequest request) {
         logIncoming("POST", rawPayload, request);
@@ -58,8 +58,7 @@ public class DahuaEventController {
             requestLog.add(0, entry);
             if (requestLog.size() > MAX_LOG) requestLog.remove(requestLog.size() - 1);
         }
-        log.debug("[事件回调] {} {} from {} body={}", method, request.getRequestURI(), request.getRemoteAddr(),
-                entry.get("bodyPreview"));
+        log.debug("[事件回调] {} from {}", method, request.getRemoteAddr());
     }
 
     /**

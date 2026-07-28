@@ -67,9 +67,6 @@ import { isRichTextEmpty, richTextPlainPreview } from "@/utils/announcementHtml"
 import { Portal } from "@/components/Portal";
 import { cn } from "@/lib/utils";
 import { ScanPopupAnnouncementSection } from "@/features/admin/ScanPopupAnnouncementSection";
-import type { SwipeAlertRuleRow } from "@/api/domains/swipeAlert.api";
-import { SwipeAlertRuleList } from "@/features/swipe-alert/SwipeAlertRuleList";
-import { SwipeAlertRuleForm } from "@/features/swipe-alert/SwipeAlertRuleForm";
 import { DepartmentMultiSelect } from "@/features/swipe-alert/DepartmentMultiSelect";
 import { ViolationRuleManager } from "@/features/admin/ViolationRuleManager";
 import { CageLinkageTab } from "@/features/admin/CageLinkageTab";
@@ -86,7 +83,7 @@ import { fetchSystemConfigs, fetchConfigDefinitions, updateSystemConfig, type Sy
 
 type PickUser = { userId: string; name: string };
 type LockMode = "single" | "batch";
-type PageTabId = "unbound" | "announcement" | "create" | "records" | "swipe-alert" | "cage-linkage" | "homepage-content";
+type PageTabId = "unbound" | "announcement" | "create" | "records" | "cage-linkage" | "homepage-content";
 
 const ANNOUNCE_SUB_PANELS = [
   { id: "create", label: "✏️ 新建公告" },
@@ -99,7 +96,6 @@ const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
   { id: "announcement", label: "扫码弹窗公告", icon: <Bell className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "create", label: "新建违规", icon: <UserPlus className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "records", label: "违规记录", icon: <ShieldAlert className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
-  { id: "swipe-alert", label: "刷卡失败告警", icon: <AlertTriangle className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "cage-linkage", label: "笼架联动", icon: <AlertTriangle className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "homepage-content", label: "主页文案", icon: <FileText className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
 ];
@@ -266,7 +262,7 @@ function ViolationTemplateQuickSelect({
 }
 
 function parsePageTab(raw: string | null): PageTabId {
-  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert" || raw === "cage-linkage" || raw === "homepage-content") return raw;
+  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "cage-linkage" || raw === "homepage-content") return raw;
   return "unbound";
 }
 
@@ -472,9 +468,6 @@ export default function AdminStudentViolationsPage() {
   const [unboundUrls, setUnboundUrls] = useState<string[]>([]);
   const [unboundUploading, setUnboundUploading] = useState(false);
   const [unboundSaving, setUnboundSaving] = useState(false);
-  const [swipeAlertRefreshKey, setSwipeAlertRefreshKey] = useState(0);
-  const [editingSwipeRule, setEditingSwipeRule] = useState<SwipeAlertRuleRow | null>(null);
-
   // Stranded violation config state
   const [strandedAutoSignout, setStrandedAutoSignout] = useState(true);
   const [strandedViolationTpl, setStrandedViolationTpl] = useState("");
@@ -1208,7 +1201,7 @@ export default function AdminStudentViolationsPage() {
       <div className="flex flex-col">
 
         {/* ═══ 第一层：标题 + 标签卡片（sticky 固定顶部） ═══ */}
-        <AdminFormCard className="sticky top-0 z-[--z-sticky] shrink-0 mb-3">
+        <AdminFormCard className="sticky top-16 z-[--z-sticky] shrink-0 mb-3">
           {/* 第一行：标签栏（左） + 操作按钮（右），下方有分隔线 */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
             <AdminPageTabs
@@ -2203,7 +2196,7 @@ export default function AdminStudentViolationsPage() {
             <div>
             <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
               <thead className="border-b-2 border-[var(--app-color-border-strong)]">
-                <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
+                <tr className="sticky top-16 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                   <th className="whitespace-nowrap px-3 py-2">ID</th>
                   <th className="px-3 py-2">人员</th>
                   <th className="whitespace-nowrap px-3 py-2">规则</th>
@@ -2479,25 +2472,7 @@ export default function AdminStudentViolationsPage() {
           )}
         </AdminTabPanel>
 
-        <AdminTabPanel
-          id="violation-page-panel-swipe-alert"
-          tabId="swipe-alert"
-          activeTab={activeTab}
-          className="admin-violations-tab-panel"
-        >
-          <SwipeAlertRuleList
-            onEdit={setEditingSwipeRule}
-            refreshKey={swipeAlertRefreshKey}
-          />
-          <SwipeAlertRuleForm
-            editing={editingSwipeRule}
-            onSaved={() => {
-              setEditingSwipeRule(null);
-              setSwipeAlertRefreshKey((k) => k + 1);
-            }}
-            onCancel={() => setEditingSwipeRule(null)}
-          />
-        </AdminTabPanel>
+
 
         <AdminTabPanel
           id="violation-page-panel-cage-linkage"

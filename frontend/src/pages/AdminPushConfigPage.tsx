@@ -26,6 +26,9 @@ import {
   type FloorNode,
   type SuiteNode,
 } from "@/api/domains/telemetryAlarmConfig.api";
+import { SwipeAlertRuleList } from "@/features/swipe-alert/SwipeAlertRuleList";
+import { SwipeAlertRuleForm } from "@/features/swipe-alert/SwipeAlertRuleForm";
+import type { SwipeAlertRuleRow } from "@/api/domains/swipeAlert.api";
 import {
   Building2,
   ChevronDown,
@@ -170,7 +173,7 @@ export default function AdminPushConfigPage() {
   });
 
   /* ---- tab navigation ---- */
-  const [pushTab, setPushTab] = useState<"sources" | "animal-alarm">("sources");
+  const [pushTab, setPushTab] = useState<"sources" | "animal-alarm" | "swipe-alarm">("sources");
 
   /* ---- local expand & draft state ---- */
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -486,9 +489,10 @@ export default function AdminPushConfigPage() {
           tabs={[
             { id: "sources", label: "信息源配置" },
             { id: "animal-alarm", label: "动物房环境报警" },
+            { id: "swipe-alarm", label: "刷卡失败报警" },
           ]}
           value={pushTab}
-          onChange={(id) => setPushTab(id as "sources" | "animal-alarm")}
+          onChange={(id) => setPushTab(id as "sources" | "animal-alarm" | "swipe-alarm")}
           className="shrink-0 mb-0"
         />
 
@@ -672,6 +676,12 @@ export default function AdminPushConfigPage() {
                   telemetrySources={telemetrySources}
                   sourcesLoading={sourcesLoading}
                 />
+              </div>
+            </AdminTabPanel>
+
+            <AdminTabPanel tabId="swipe-alarm" activeTab={pushTab} id="admin-tab-panel-swipe-alarm">
+              <div className="p-3">
+                <SwipeAlarmTab />
               </div>
             </AdminTabPanel>
           </div>
@@ -1591,6 +1601,37 @@ function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
           <AdminButton type="button" tone="primary" size="sm" loading={saving} onClick={onSave}><Save className="h-3.5 w-3.5" />保存套间配置</AdminButton>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  SwipeAlarmTab — 刷卡失败报警配置                                     */
+/* ------------------------------------------------------------------ */
+
+function SwipeAlarmTab() {
+  const [editingSwipeRule, setEditingSwipeRule] = useState<SwipeAlertRuleRow | null | undefined>(undefined);
+  const [swipeRefreshKey, setSwipeRefreshKey] = useState(0);
+
+  return (
+    <div className="space-y-3">
+      <SwipeAlertRuleList
+        onEdit={setEditingSwipeRule}
+        onAdd={() => setEditingSwipeRule(null)}
+        onClose={() => setEditingSwipeRule(undefined)}
+        formOpen={editingSwipeRule !== undefined}
+        refreshKey={swipeRefreshKey}
+      />
+      {editingSwipeRule !== undefined && (
+        <SwipeAlertRuleForm
+          editing={editingSwipeRule}
+          onSaved={() => {
+            setEditingSwipeRule(undefined);
+            setSwipeRefreshKey(k => k + 1);
+          }}
+          onCancel={() => setEditingSwipeRule(undefined)}
+        />
+      )}
     </div>
   );
 }

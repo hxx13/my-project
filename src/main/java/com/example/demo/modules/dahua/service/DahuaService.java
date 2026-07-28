@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -30,6 +31,10 @@ public class DahuaService {
 
     @Autowired
     private DahuaAuthService authService; // 💥 引入新基建
+
+    /** ICC 事件去重：alarmCode → 处理时间 */
+    private final java.util.concurrent.ConcurrentHashMap<String, Long> processedIccEvents = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile long lastIccCleanup = System.currentTimeMillis();
 
     @Autowired(required = false)
     private com.example.demo.modules.swipealert.service.SwipeAlertEngine swipeAlertEngine;
@@ -48,8 +53,11 @@ public class DahuaService {
     @Autowired
     private com.example.demo.modules.dahua.mapper.DahuaDeviceChannelCacheMapper deviceChannelCacheMapper;
 
-    @Value("${app.dahua.callback-url:http://172.22.161.252:8080/api/event}")
+    @Value("${app.dahua.callback-url:http://172.22.161.252:18082/api/event}")
     private String myCallbackUrl;
+
+    @Value("${app.dahua.buffer-url:}")
+    private String bufferUrl;
 
     private static final Set<String> ALLOWED_OPEN_TYPES = new HashSet<>(Arrays.asList("48", "49", "51", "52"));
     private static final Map<String, String> TYPE_NAMES = Map.of(
@@ -86,9 +94,13 @@ public class DahuaService {
             if (info != null) {
                 Map<String, Object> extend = (Map<String, Object>) info.get("extend");
                 if (extend != null && extend.get("openType") != null) {
+                    // 有 extend.openType → 刷卡事件（51/52等）
                     ingestSwingRecordFromWebhook(payload, info, extend);
+                } else {
+                    // 无 extend.openType → 远程开门(48)等：openType 在 info.alarmType
+                    ingestFromInfoOnly(payload, info);
                 }
-                // 无论是否为门禁事件，info 存在说明是 ICC 订阅格式，不走下面的旧解析逻辑
+                postToBuffer(rawPayload);
                 return;
             }
 
@@ -122,7 +134,7 @@ public class DahuaService {
                     Integer openType = intvObj(evt.get("openType"));
                     Integer enterOrExit = intvObj(evt.get("enterOrExit"));
                     Integer openResult = intvObj(evt.get("openResult"));
-                    String swingTime = str(evt.get("swingTime"));
+                    String swingTime = adjustSwingTime9Min(evt.get("swingTime"));
 
                     // ---- 实时馈入告警引擎（Webhook 路径，零延迟） ----
                     feedSwipeAlertEngine(recordId, personName, channelName, channelCode,
@@ -142,13 +154,23 @@ public class DahuaService {
     @SuppressWarnings("unchecked")
     private void ingestSwingRecordFromWebhook(Map<String, Object> payload, Map<String, Object> info, Map<String, Object> extend) {
         try {
-            // ── 步骤0：过滤条件 ──
-            Integer openType = intvObj(extend.get("openType"));
-            if (openType == null || (openType != 51 && openType != 52)) {
-                System.out.printf("[dahua-webhook] 跳过非51/52开门类型: openType=%s%n", openType);
+            // ── 步骤0：ICC 事件去重（同一 alarmCode 只处理一次）──
+            String alarmCode = str(info.get("alarmCode"));
+            if (!alarmCode.isBlank() && processedIccEvents.putIfAbsent(alarmCode, System.currentTimeMillis()) != null) {
                 return;
             }
+            // 定期清理（10分钟以上的记录）
+            long now = System.currentTimeMillis();
+            if (now - lastIccCleanup > 600_000) {
+                processedIccEvents.values().removeIf(t -> now - t > 600_000);
+                lastIccCleanup = now;
+            }
 
+            // ── 步骤1：过滤条件 ──
+            Integer openType = intvObj(extend.get("openType"));
+            if (openType == null || (openType != 48 && openType != 51 && openType != 52)) {
+                return;
+            }
             DahuaSwingRecord r = new DahuaSwingRecord();
             r.setTaskId(0L);                       // webhook 无对应拉取任务
             r.setPullTaskType("REALTIME");
@@ -160,7 +182,7 @@ public class DahuaService {
             r.setOpenType(openType);
             r.setPersonCode(str(extend.get("personCode")));
             r.setPersonName(str(extend.get("personName")));
-            r.setSwingTime(str(extend.get("swingTime")));
+            r.setSwingTime(adjustSwingTime9Min(extend.get("swingTime")));
             // openFailedCode=0 表示开门成功，映射为 open_result=1
             r.setOpenResult("0".equals(str(extend.get("openFailedCode"))) ? 1 : 0);
             r.setEnterOrExit(intvObj(extend.get("enterOrExit")));
@@ -173,7 +195,7 @@ public class DahuaService {
             try {
                 departmentSupport.applyToRecord(r, extend);
             } catch (Exception e) {
-                System.out.printf("[dahua-webhook] 部门信息补全失败: %s%n", e.getMessage());
+                log.debug("[dahua-webhook] 部门信息补全失败: {}", e.getMessage());
             }
 
             // ---- enterOrExit 归一化（与轮询路径一致，非1/2的值回退到raw_json查找） ----
@@ -184,14 +206,14 @@ public class DahuaService {
             // 路B：非部门26（工作人员）→ 只放行指定5个通道
             boolean isDept26 = "26".equals(r.getDepartmentId());
             boolean isAllowedChannel = isDept26 || STAFF_ALLOWED_CHANNELS.contains(r.getChannelCode());
+            boolean isRemoteOpen = Integer.valueOf(48).equals(openType);
 
-            if (!isAllowedChannel) {
-                System.out.printf("[dahua-webhook] 跳过: deptId=%s channelCode=%s (非26部门且不在放行通道)%n",
-                        r.getDepartmentId(), r.getChannelCode());
+            if (!isAllowedChannel && !isRemoteOpen) {
+                log.debug("[dahua-webhook] 跳过: deptId={} channelCode={}", r.getDepartmentId(), r.getChannelCode());
                 return;
             }
             if (!isDept26) {
-                System.out.printf("[dahua-webhook] 非26部门走通道放行: deptId=%s deptName=%s channelCode=%s channelName=%s%n",
+                log.debug("[dahua-webhook] 非26部门走通道放行: deptId={} deptName={} channelCode={} channelName={}",
                         r.getDepartmentId(), r.getDepartmentName(), r.getChannelCode(), r.getChannelName());
             }
 
@@ -203,7 +225,7 @@ public class DahuaService {
                 try {
                     accessRawEventIngestService.ingestFromSwing(r, "DAHUA_WEBHOOK");
                 } catch (Exception e) {
-                    System.out.printf("[dahua-webhook] access_raw_event馈入失败: %s%n", e.getMessage());
+                    log.debug("[dahua-webhook] access_raw_event馈入失败: {}", e.getMessage());
                 }
             }
 
@@ -218,14 +240,59 @@ public class DahuaService {
                 try {
                     dahuaSwingRuleEngineService.onRecordIngested(r);
                 } catch (Exception e) {
-                    System.out.printf("[dahua-webhook] 联动规则处理失败: %s%n", e.getMessage());
+                    log.debug("[dahua-webhook] 联动规则处理失败: {}", e.getMessage());
                 }
             }
 
-            System.out.printf("[dahua-webhook] ✅入库: recordId=%s person=%s channel=%s openType=%s result=%s deptId=%s%n",
+            log.debug("[dahua-webhook] ✅入库: recordId={} person={} channel={} openType={} result={} deptId={}",
                     r.getRecordId(), r.getPersonName(), r.getChannelName(), r.getOpenType(), r.getOpenResult(), r.getDepartmentId());
         } catch (Exception e) {
-            System.out.printf("[dahua-webhook] ❌入库失败: %s%n", e.getMessage());
+            log.debug("[dahua-webhook] ❌入库失败: {}", e.getMessage());
+        }
+    }
+
+    /** 无 extend.openType 的事件（远程开门48等），从 info 提取字段入库 */
+    @SuppressWarnings("unchecked")
+    private void ingestFromInfoOnly(Map<String, Object> payload, Map<String, Object> info) {
+        try {
+            Object alarmTypeObj = info.get("alarmType");
+            Integer openType = intvObj(alarmTypeObj);
+            if (openType == null || (openType != 48 && openType != 51 && openType != 52)) return;
+
+            DahuaSwingRecord r = new DahuaSwingRecord();
+            r.setTaskId(0L);
+            r.setPullTaskType("REALTIME");
+            r.setRecordId(str(info.get("alarmCode")));
+            r.setChannelCode(str(info.get("nodeCode")));
+            r.setChannelName(resolveChannelName(str(info.get("nodeCode")), str(info.get("deviceName"))));
+            r.setOpenType(openType);
+            r.setDepartmentName(str(info.get("orgName")));
+            r.setDepartmentId(str(info.get("orgCode")));
+            // alarmDate 是 epoch 秒
+            Object alarmDate = info.get("alarmDate");
+            if (alarmDate != null) {
+                try {
+                    long epoch = Long.parseLong(String.valueOf(alarmDate)) - 540; // -9min
+                    r.setSwingTime(java.time.LocalDateTime.ofEpochSecond(epoch, 0, java.time.ZoneOffset.ofHours(8))
+                            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+                } catch (Exception ignored) {}
+            }
+            r.setOpenResult(1); // 远程开门默认成功
+            r.setRawJson(JSON.toJSONString(payload));
+
+            try { departmentSupport.applyToRecord(r, info); } catch (Exception ignored) {}
+
+            // 部门过滤：26直通，非26走通道白名单
+            boolean isDept26 = "26".equals(r.getDepartmentId());
+            if (!isDept26 && !STAFF_ALLOWED_CHANNELS.contains(r.getChannelCode())) return;
+
+            dahuaSwingMapper.upsertRecord(r);
+            feedSwipeAlertEngine(r.getRecordId(), r.getPersonName(), r.getChannelName(),
+                    r.getChannelCode(), r.getOpenType(), r.getEnterOrExit(), r.getOpenResult(), r.getSwingTime());
+            log.debug("[dahua-webhook] ✅入库(infoOnly): recordId={} channel={} openType={} deptId={}",
+                    r.getRecordId(), r.getChannelName(), r.getOpenType(), r.getDepartmentId());
+        } catch (Exception e) {
+            log.debug("[dahua-webhook] ❌入库失败(infoOnly): {}", e.getMessage());
         }
     }
 
@@ -241,9 +308,18 @@ public class DahuaService {
                 }
             }
         } catch (Exception e) {
-            System.out.printf("[dahua-webhook] 通道名查找失败 code=%s: %s%n", channelCode, e.getMessage());
+            log.debug("[dahua-webhook] 通道名查找失败 code={}: {}", channelCode, e.getMessage());
         }
         return deviceName; // 回退
+    }
+
+    private void postToBuffer(String rawPayload) {
+        if (bufferUrl == null || bufferUrl.isBlank()) return;
+        try {
+            new RestTemplate().postForObject(bufferUrl, rawPayload, String.class);
+        } catch (Exception ignored) {
+            // 缓冲器不可用时静默丢弃，不阻塞主流程
+        }
     }
 
     /** 卡号 ↔ 用户映射（与 DahuaSwingPullService.enrichMapping 逻辑一致） */
@@ -265,6 +341,27 @@ public class DahuaService {
 
     private static String str(Object o) {
         return o == null ? "" : String.valueOf(o);
+    }
+
+    /** 大华时间快9分钟，所有入库 swingTime 统一减9分钟 */
+    private static String adjustSwingTime9Min(Object raw) {
+        if (raw == null) return "";
+        String s = String.valueOf(raw).trim();
+        if (s.isEmpty()) return s;
+        try {
+            // epoch seconds (10-digit numeric)
+            if (s.matches("^\\d{10}$")) {
+                long epoch = Long.parseLong(s) - 540;
+                return java.time.LocalDateTime.ofEpochSecond(epoch, 0, java.time.ZoneOffset.ofHours(8))
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            }
+            // datetime string
+            java.time.LocalDateTime dt = java.time.LocalDateTime.parse(s,
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            return dt.minusMinutes(9).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        } catch (Exception e) {
+            return s; // fallback: return original
+        }
     }
 
     private static Integer intvObj(Object o) {
