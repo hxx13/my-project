@@ -1272,6 +1272,8 @@ Page({
       wx.hideLoading();
       var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
       if (res.statusCode === 200 && body && body.success && body.data && typeof body.data === 'object') {
+        // 保存 pending openId（persistSpringSession 会清掉它）
+        var pendingOpenId = wx.getStorageSync(springAuth.KEYS.PENDING_OPENID);
         springAuth.persistSpringSession(body.data);
         self.setData({
           showLoginForm: false,
@@ -1283,6 +1285,22 @@ Page({
         var tabBar = typeof self.getTabBar === 'function' && self.getTabBar();
         if (tabBar && typeof tabBar.refreshTabs === 'function') tabBar.refreshTabs();
         wx.showToast({ title: '登录成功', icon: 'success' });
+        // 账号密码登录成功后自动绑定 openId（免去用户手动点击"校内绑定"）
+        if (pendingOpenId) {
+          wx.setStorageSync(springAuth.KEYS.PENDING_OPENID, pendingOpenId);
+          var ui = body.data.userInfo || {};
+          var bindPayload = ui.accountSource === 'STAFF'
+            ? { bindType: 'STAFF', identifier: u, password: p }
+            : { bindType: 'STUDENT', identifier: ui.id };
+          springAuth.bindWechat(bindPayload)
+            .then(function () {
+              console.log('[mine] openId 已自动绑定');
+              self.refreshSpringUiState();
+            })
+            .catch(function (err) {
+              console.warn('[mine] openId 自动绑定失败:', err && err.message);
+            });
+        }
       } else {
         self.setData({ loginSubmitting: false });
         var msg = (body && body.message) || '登录失败';

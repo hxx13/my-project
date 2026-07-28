@@ -835,4 +835,619 @@ public class AroService {
         }
     }
 
+    // ==========================================================================
+    // 🔧 笼位分配（2026-07-27 新增）
+    // ==========================================================================
+
+    /**
+     * 获取分配用的 AUP 列表。
+     * GET /jtu/api/admin/cageBox/aups
+     *
+     * @return [{ id, projectPiName, registerNumber, projectName }]
+     */
+    /**
+     * 获取已批准的 AUP 列表（扁平，含完整名称/编号/课题组长）。
+     * GET /jtu/api/admin/aup/audited — 返回 [{id, projectName, projectPiId, projectPiName, registerNumber, title}]
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> fetchAuditedAups(String token) {
+        if (token == null || token.isBlank()) return Collections.emptyList();
+        return fetchAuditedAupsInternal(token);
+    }
+
+    /**
+     * 使用全局 Token 拉取已批准 AUP（降级方案）。
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> fetchAuditedAupsGlobal() {
+        if (this.cachedToken == null && !login()) return Collections.emptyList();
+        return fetchAuditedAupsInternal(this.cachedToken);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> fetchAuditedAupsInternal(String token) {
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/aup/audited";
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Token", token);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object data = response.getBody().get("data");
+                if (data instanceof List) return (List<Map<String, Object>>) data;
+            }
+        } catch (Exception e) {
+            log.warn("[aro] 已批准AUP列表拉取失败 err={}", e.getMessage());
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * 使用全局 Token 拉取房间预约列表（降级方案）。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> fetchRoomRentListGlobal(int pageNum, int pageSize) {
+        if (this.cachedToken == null && !login()) return Map.of();
+        return fetchRoomRentList(pageNum, pageSize, this.cachedToken);
+    }
+
+    /**
+     * 使用全局 Token 拉取房间 AUP 明细（降级方案）。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> fetchRoomRentAupsGlobal(String roomId, int pageNum, int pageSize) {
+        if (this.cachedToken == null && !login()) return Map.of();
+        return fetchRoomRentAups(roomId, pageNum, pageSize, this.cachedToken);
+    }
+
+    /**
+     * 使用全局 Token 跨房间搜索 AUP（降级方案）。
+     */
+    public List<Map<String, Object>> searchAupsAcrossRoomsGlobal(String keyword) {
+        if (this.cachedToken == null && !login()) return Collections.emptyList();
+        return searchAupsAcrossRooms(keyword, this.cachedToken);
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> fetchAupListForAllocation() {
+        if (this.cachedToken == null && !login()) return Collections.emptyList();
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/cageBox/aups";
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpEntity<String> entity = new HttpEntity<>(null, getAuthHeaders());
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object data = response.getBody().get("data");
+                if (data instanceof List) return (List<Map<String, Object>>) data;
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                this.cachedToken = null;
+                if (login()) return fetchAupListForAllocation();
+            }
+            log.warn("[aro] AUP 列表请求失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] AUP 列表网络异常 err={}", e.getMessage());
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * 执行笼位分配（租用）。
+     * POST /jtu/api/admin/book
+     */
+    public boolean bookCages(Long roomId, Long shelveId, List<Long> cageIds, Long aupId) {
+        if (this.cachedToken == null && !login()) return false;
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/book";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("roomId", roomId);
+        body.put("shelveId", shelveId);
+        body.put("animalCageIds", cageIds);
+        body.put("aupId", aupId);
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = getAuthHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object status = response.getBody().get("status");
+                if (Integer.valueOf(0).equals(status)) {
+                    log.info("[aro] 笼位分配成功 roomId={} shelveId={} count={}", roomId, shelveId, cageIds.size());
+                    return true;
+                }
+                log.warn("[aro] 笼位分配被拒绝: {}", response.getBody().get("message"));
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                this.cachedToken = null;
+                if (login()) return bookCages(roomId, shelveId, cageIds, aupId);
+            }
+            log.warn("[aro] 笼位分配请求失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] 笼位分配网络异常 err={}", e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 取消笼位预约。
+     * POST /jtu/api/admin/book/cancel
+     */
+    public boolean cancelBookCages(List<Long> cageIds) {
+        if (this.cachedToken == null && !login()) return false;
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/book/cancel";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("animalCageIdList", cageIds);
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = getAuthHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object status = response.getBody().get("status");
+                if (Integer.valueOf(0).equals(status)) {
+                    log.info("[aro] 取消笼位分配成功 count={}", cageIds.size());
+                    return true;
+                }
+                log.warn("[aro] 取消分配被拒绝: {}", response.getBody().get("message"));
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                this.cachedToken = null;
+                if (login()) return cancelBookCages(cageIds);
+            }
+            log.warn("[aro] 取消分配请求失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] 取消分配网络异常 err={}", e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 使用个人 Token 执行笼位分配（租用）。
+     * 与 {@link #bookCages} 相同逻辑，但使用调用者传入的个人 Token 而非全局缓存 Token。
+     * 401 时抛出 AroTokenRequiredException 由上层处理，不尝试用全局账号重新登录。
+     */
+    public boolean bookCagesWithToken(Long roomId, Long shelveId, List<Long> cageIds, Long aupId, String token) {
+        if (token == null || token.isBlank()) return false;
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/book";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("roomId", roomId);
+        body.put("shelveId", shelveId);
+        body.put("animalCageIds", cageIds);
+        body.put("aupId", aupId);
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Token", token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object status = response.getBody().get("status");
+                if (Integer.valueOf(0).equals(status)) {
+                    log.info("[aro] 笼位分配成功(个人Token) roomId={} shelveId={} count={}", roomId, shelveId, cageIds.size());
+                    return true;
+                }
+                log.warn("[aro] 笼位分配被拒绝(个人Token): {}", response.getBody().get("message"));
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new com.example.demo.modules.aro.exception.AroTokenRequiredException("ARO Token失效，请重新CAS登录");
+            }
+            log.warn("[aro] 笼位分配请求失败(个人Token) err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] 笼位分配网络异常(个人Token) err={}", e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 使用个人 Token 取消笼位预约。
+     * 与 {@link #cancelBookCages} 相同逻辑，但使用调用者传入的个人 Token。
+     */
+    public boolean cancelBookCagesWithToken(List<Long> cageIds, String token) {
+        if (token == null || token.isBlank()) return false;
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/book/cancel";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("animalCageIdList", cageIds);
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Token", token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object status = response.getBody().get("status");
+                if (Integer.valueOf(0).equals(status)) {
+                    log.info("[aro] 取消笼位分配成功(个人Token) count={}", cageIds.size());
+                    return true;
+                }
+                log.warn("[aro] 取消分配被拒绝(个人Token): {}", response.getBody().get("message"));
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new com.example.demo.modules.aro.exception.AroTokenRequiredException("ARO Token失效，请重新CAS登录");
+            }
+            log.warn("[aro] 取消分配请求失败(个人Token) err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] 取消分配网络异常(个人Token) err={}", e.getMessage());
+        }
+        return false;
+    }
+
+    // ==========================================================================
+    // 🔧 饲养处理业务 API（2026-07-27）
+    // ==========================================================================
+
+    /**
+     * 从指定房间笼架 back 接口解析 cageBoxCode → cageBoxId + animalCageId。
+     * 扫码枪扫描笼盒二维码后调用此方法获取内部 ID。
+     *
+     * @return Map.of("cageBoxId", Long, "animalCageId", Long) 或空 Map
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Long> resolveCageBoxIds(Long roomId, Long shelveId, String cageBoxCode) {
+        if (roomId == null || shelveId == null || cageBoxCode == null || cageBoxCode.isBlank()) {
+            return Map.of();
+        }
+        Map<String, Object> raw = fetchAnimalCagesByRoomAndShelve(roomId, shelveId);
+        if (raw == null || raw.isEmpty()) return Map.of();
+        Object dataObj = raw.get("data");
+        if (!(dataObj instanceof List<?> list)) return Map.of();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> m)) continue;
+            Map<String, Object> cage = (Map<String, Object>) m;
+            Map<String, Object> cageBoxVo = castMap(cage.get("cageBoxVo"));
+            if (cageBoxVo == null) continue;
+            String code = trim(cageBoxVo.get("cageBoxCode"));
+            if (cageBoxCode.equals(code)) {
+                Long cageBoxId = toLongSafe(trim(cageBoxVo.get("id")));
+                Long animalCageId = toLongSafe(trim(cage.get("id")));
+                if (cageBoxId != null && animalCageId != null) {
+                    log.info("[aro] cageBoxCode={} → cageBoxId={} animalCageId={}", cageBoxCode, cageBoxId, animalCageId);
+                    return Map.of("cageBoxId", cageBoxId, "animalCageId", animalCageId);
+                }
+            }
+        }
+        log.warn("[aro] cageBoxCode={} 未在 roomId={} shelveId={} 中找到", cageBoxCode, roomId, shelveId);
+        return Map.of();
+    }
+
+    /**
+     * 请分笼 / 给药 / 手术 / 采样 / 安乐死 — 统一饲养处理。
+     * POST /jtu/api/admin/animalCageBoxPart/save
+     */
+    public boolean saveAnimalCageBoxPart(Long animalCageId, Long cageBoxId) {
+        if (animalCageId == null || cageBoxId == null) return false;
+        if (this.cachedToken == null && !login()) return false;
+        String url = "https://aro.shsmu.edu.cn/jtu/api/admin/animalCageBoxPart/save";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("animalCageId", animalCageId);
+        body.put("cageBoxId", cageBoxId);
+        try {
+            java.net.URI uri = java.net.URI.create(url);
+            HttpHeaders headers = getAuthHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                if (Integer.valueOf(0).equals(response.getBody().get("status"))) {
+                    log.info("[aro] 饲养处理成功 animalCageId={} cageBoxId={}", animalCageId, cageBoxId);
+                    return true;
+                }
+                log.warn("[aro] 饲养处理被拒: {}", response.getBody().get("message"));
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                this.cachedToken = null;
+                if (login()) return saveAnimalCageBoxPart(animalCageId, cageBoxId);
+            }
+            log.warn("[aro] 饲养处理请求失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] 饲养处理网络异常 err={}", e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 特殊饲养 — 标记笼盒为特殊饲养状态。
+     * POST /jtu/api/admin/specialBreeding/save
+     */
+    public boolean saveSpecialBreeding(Long cageBoxId, String name, String description) {
+        if (cageBoxId == null) return false;
+        if (this.cachedToken == null && !login()) return false;
+        String url = "https://aro.shsmu.edu.cn/jtu/api/admin/specialBreeding/save";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("cageBoxId", cageBoxId);
+        if (name != null && !name.isBlank()) body.put("specialBreedingName", name);
+        if (description != null && !description.isBlank()) body.put("specialBreedingDescription", description);
+        try {
+            java.net.URI uri = java.net.URI.create(url);
+            HttpHeaders headers = getAuthHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                if (Integer.valueOf(0).equals(response.getBody().get("status"))) {
+                    log.info("[aro] 特殊饲养设置成功 cageBoxId={}", cageBoxId);
+                    return true;
+                }
+                log.warn("[aro] 特殊饲养设置被拒: {}", response.getBody().get("message"));
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                this.cachedToken = null;
+                if (login()) return saveSpecialBreeding(cageBoxId, name, description);
+            }
+            log.warn("[aro] 特殊饲养请求失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] 特殊饲养网络异常 err={}", e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 健康检查 — 创建实验动物健康检查单。
+     * POST /jtu/api/admin/animalHealth/save
+     *
+     * @param healthDegree 1-轻微 2-中度 3-严重
+     * @param itching      1-瘙痒 0-不瘙痒
+     */
+    public boolean saveAnimalHealth(Long cageBoxId, Integer healthDegree, String healthDetail,
+                                    Integer itching, String reportUserName, String observeDate) {
+        if (cageBoxId == null) return false;
+        if (this.cachedToken == null && !login()) return false;
+        String url = "https://aro.shsmu.edu.cn/jtu/api/admin/animalHealth/save";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("cageBoxId", cageBoxId);
+        if (healthDegree != null) body.put("animalHealthDegree", healthDegree);
+        if (healthDetail != null && !healthDetail.isBlank()) body.put("healthDetail", healthDetail);
+        if (itching != null) body.put("itching", itching);
+        if (reportUserName != null && !reportUserName.isBlank()) body.put("reportUserName", reportUserName);
+        if (observeDate != null && !observeDate.isBlank()) body.put("observeDate", observeDate);
+        try {
+            java.net.URI uri = java.net.URI.create(url);
+            HttpHeaders headers = getAuthHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                if (Integer.valueOf(0).equals(response.getBody().get("status"))) {
+                    log.info("[aro] 健康检查创建成功 cageBoxId={}", cageBoxId);
+                    return true;
+                }
+                log.warn("[aro] 健康检查创建被拒: {}", response.getBody().get("message"));
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                this.cachedToken = null;
+                if (login()) return saveAnimalHealth(cageBoxId, healthDegree, healthDetail, itching, reportUserName, observeDate);
+            }
+            log.warn("[aro] 健康检查请求失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] 健康检查网络异常 err={}", e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 全局检索：遍历所有已知 (roomId, shelveId) 查找 cageBoxCode。
+     * 扫码枪传入笼盒编号 → 逐个笼架调 /back → 返回匹配的内部 ID。
+     *
+     * @param shelfList 从 cage_shelf_index 获取的全部 [{roomId, shelveId}]
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Long> findCageBoxByCode(String cageBoxCode, List<Map<String, Object>> shelfList) {
+        if (cageBoxCode == null || cageBoxCode.isBlank() || shelfList == null || shelfList.isEmpty()) {
+            return Map.of();
+        }
+        for (Map<String, Object> shelf : shelfList) {
+            Long roomId = toLongSafe(trim(shelf.get("roomId")));
+            Long shelveId = toLongSafe(trim(shelf.get("shelveId")));
+            if (roomId == null || shelveId == null) continue;
+            Map<String, Long> found = resolveCageBoxIds(roomId, shelveId, cageBoxCode);
+            if (!found.isEmpty()) return found;
+        }
+        log.warn("[aro] 全局检索 cageBoxCode={} 未在任何笼架中找到", cageBoxCode);
+        return Map.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object o) {
+        if (o instanceof Map<?, ?> m) return (Map<String, Object>) m;
+        return null;
+    }
+
+    private static String trim(Object v) {
+        return v == null ? "" : String.valueOf(v).trim();
+    }
+
+    private static Long toLongSafe(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number n) return n.longValue();
+        try { return Long.parseLong(String.valueOf(v).trim()); } catch (NumberFormatException e) { return null; }
+    }
+
+    // ==========================================================================
+    // 🔧 笼位预约管理 API（2026-07-28，使用个人 Token）
+    // ==========================================================================
+
+    /**
+     * 跨房间搜索 AUP 分配。
+     * 先拉房间列表，再逐个查 AUP 明细，匹配 keyword（AUP编号/课题组长）。
+     * 匹配到 1 个以上房间即停止。
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> searchAupsAcrossRooms(String keyword, String token) {
+        if (token == null || token.isBlank() || keyword == null || keyword.isBlank()) {
+            return Collections.emptyList();
+        }
+        String kw = keyword.trim().toLowerCase();
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        // 先拿到全量房间列表
+        Map<String, Object> roomListRaw = fetchRoomRentList(1, 200, token);
+        Object dataObj = roomListRaw.get("data");
+        if (!(dataObj instanceof Map<?, ?> dm)) return results;
+        Object listObj = ((Map<String, Object>) dm).get("list");
+        if (!(listObj instanceof List<?> roomList)) return results;
+
+        for (Object roomObj : roomList) {
+            if (!(roomObj instanceof Map<?, ?> rm)) continue;
+            String roomId = trim(((Map<String, Object>) rm).get("roomId"));
+            String roomName = trim(((Map<String, Object>) rm).get("name"));
+            if (roomId.isEmpty()) continue;
+
+            Map<String, Object> aupRaw = fetchRoomRentAups(roomId, 1, 100, token);
+            Object aupData = aupRaw.get("data");
+            List<?> aupList = null;
+            if (aupData instanceof List<?> al) {
+                aupList = al;
+            } else if (aupData instanceof Map<?, ?> adm) {
+                Object nested = ((Map<String, Object>) adm).get("data");
+                if (nested instanceof List<?> nl) aupList = nl;
+            }
+
+            if (aupList == null) continue;
+            for (Object aupObj : aupList) {
+                if (!(aupObj instanceof Map<?, ?> am)) continue;
+                String regNum = trim(((Map<String, Object>) am).get("registerNumber")).toLowerCase();
+                String piName = trim(((Map<String, Object>) am).get("piName")).toLowerCase();
+                if (regNum.contains(kw) || piName.contains(kw)) {
+                    Map<String, Object> hit = new LinkedHashMap<>();
+                    hit.put("roomId", roomId);
+                    hit.put("roomName", roomName);
+                    hit.put("piName", trim(((Map<String, Object>) am).get("piName")));
+                    hit.put("registerNumber", trim(((Map<String, Object>) am).get("registerNumber")));
+                    hit.put("aupId", trim(((Map<String, Object>) am).get("aupId")));
+                    hit.put("rentNumber", ((Map<String, Object>) am).get("rentNumber"));
+                    results.add(hit);
+                    break; // 每个房间只记录一次
+                }
+            }
+            // 限制：找到 10 个匹配房间后停止，避免请求过多
+            if (results.size() >= 10) break;
+        }
+        return results;
+    }
+
+    /**
+     * 房间预约汇总列表。
+     * GET /jtu/api/admin/room/rent/list?pageSize=&pageNum=
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> fetchRoomRentList(int pageNum, int pageSize, String token) {
+        if (token == null || token.isBlank()) return Map.of();
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/room/rent/list?pageSize=" + pageSize + "&pageNum=" + pageNum;
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Token", token);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return (Map<String, Object>) response.getBody();
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new com.example.demo.modules.aro.exception.AroTokenRequiredException("ARO Token失效，请重新CAS登录");
+            }
+            log.warn("[aro] 房间预约列表查询失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] 房间预约列表网络异常 err={}", e.getMessage());
+        }
+        return Map.of();
+    }
+
+    /**
+     * 房间内 AUP 分配明细。
+     * GET /jtu/api/admin/room/rent/prepare/aups?roomId=X&pageSize=&pageNum=
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> fetchRoomRentAups(String roomId, int pageNum, int pageSize, String token) {
+        if (token == null || token.isBlank() || roomId == null || roomId.isBlank()) return Map.of();
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/room/rent/prepare/aups?roomId=" + roomId + "&pageSize=" + pageSize + "&pageNum=" + pageNum;
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Token", token);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return (Map<String, Object>) response.getBody();
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new com.example.demo.modules.aro.exception.AroTokenRequiredException("ARO Token失效，请重新CAS登录");
+            }
+            log.warn("[aro] AUP分配明细查询失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] AUP分配明细网络异常 err={}", e.getMessage());
+        }
+        return Map.of();
+    }
+
+    /**
+     * 新增/编辑 AUP 分配。
+     * POST /jtu/api/admin/room/rent/prepare
+     * Body: { aupId, roomId, rentNumber, memo, id? }
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> saveRoomRentPrepare(Map<String, Object> body, String token) {
+        if (token == null || token.isBlank()) return Map.of();
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/room/rent/prepare";
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Token", token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return (Map<String, Object>) response.getBody();
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new com.example.demo.modules.aro.exception.AroTokenRequiredException("ARO Token失效，请重新CAS登录");
+            }
+            log.warn("[aro] AUP分配保存失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] AUP分配保存网络异常 err={}", e.getMessage());
+        }
+        return Map.of();
+    }
+
+    /**
+     * 删除 AUP 分配。
+     * POST /jtu/api/admin/room/rent/prepare/delete
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> deleteRoomRentPrepare(Map<String, Object> body, String token) {
+        if (token == null || token.isBlank()) return Map.of();
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/room/rent/prepare/delete";
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Token", token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return (Map<String, Object>) response.getBody();
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new com.example.demo.modules.aro.exception.AroTokenRequiredException("ARO Token失效，请重新CAS登录");
+            }
+            log.warn("[aro] AUP分配删除失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] AUP分配删除网络异常 err={}", e.getMessage());
+        }
+        return Map.of();
+    }
 }

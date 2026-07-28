@@ -1,6 +1,6 @@
 /** 手机版笼位详情弹窗（与 Web 管理端 cageBoxInfo 字段及标注编辑对齐） */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, ImagePlus, Save, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ImagePlus, Save, X, Check, X as XIcon } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { CageShelfCell } from "@/features/student/api/student.api";
 import { STATUS_COLOR, STATUS_ABBR } from "@/features/cage-shelf/components/CageCellOverlays";
@@ -20,8 +20,15 @@ import {
   fetchStudentMobileCageCellAnnotation,
   saveStudentMobileCageCellAnnotation,
 } from "@/api/domains/studentMobile.api";
+import type { CageBoxAction } from "@/api/domains/cageShelf.api";
 
 const BRAND = "#ac1736";
+
+function displayPosition(pos: string): string {
+  const m = pos.match(/^([A-H])-(\d+)$/);
+  if (!m) return pos;
+  return `${m[1]}-${11 - parseInt(m[2])}`;
+}
 
 const HIGHLIGHT_COLOR: Record<string, string> = {
   danger: "#ee0a24",
@@ -118,6 +125,12 @@ export default function MobileCageCellDetailDialog({
   cell,
   gridMeta,
   onClose,
+  staffView,
+  editMode,
+  roomId,
+  cachedActions,
+  initialCachedActions,
+  onCacheUpdate,
 }: {
   token: string;
   jwtMode?: boolean;
@@ -131,6 +144,13 @@ export default function MobileCageCellDetailDialog({
     shelveName?: string;
   } | null;
   onClose: () => void;
+  staffView?: boolean;
+  editMode?: boolean;
+  roomId?: string;
+  cachedActions?: Set<CageBoxAction>;
+  /** 缓存条目的初始快照（首次创建缓存时的 cageBoxInfo 状态），用于 diff 三态显示 */
+  initialCachedActions?: Set<CageBoxAction>;
+  onCacheUpdate?: (actions: Set<CageBoxAction>) => void;
 }) {
   const [richText, setRichText] = useState("");
   const [imageUrls, setImageUrls] = useState("");
@@ -138,6 +158,46 @@ export default function MobileCageCellDetailDialog({
   const [uploading, setUploading] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── 教职工动作选择：initialCachedActions（缓存快照）> cageBoxInfo 预选 ──
+  const initialActions = useMemo(() => {
+    // 缓存快照优先（保证 diff 基准不变）
+    if (initialCachedActions && initialCachedActions.size > 0) return new Set(initialCachedActions);
+    const cbi = cell.cageBoxInfo as Record<string, any> | undefined;
+    if (!cbi) return new Set<CageBoxAction>();
+    // 兼容嵌套 cageBoxVo 结构（对齐小程序：同时检查扁平和嵌套字段）
+    const cvo = cbi.cageBoxVo ?? cbi['cageBoxVo'] ?? {};
+    const s = new Set<CageBoxAction>();
+    if (cbi.NeedDivideYn === 1 || cbi.NeedDivideYn === "1" || cvo.needDivideYn === 1 || cvo.needDivideYn === "1")
+      s.add("DIVIDE");
+    if (cbi.NeedFeedingYn === 1 || cbi.NeedFeedingYn === "1" || cvo.needFeedingYn === 1 || cvo.needFeedingYn === "1"
+        || (typeof cbi.specialBreedingName === "string" && (cbi.specialBreedingName as string).trim())
+        || (typeof cvo.specialBreedingName === "string" && cvo.specialBreedingName.trim()))
+      s.add("SPECIAL_BREEDING");
+    if (cbi.AbnormalHealthYn === 1 || cbi.AbnormalHealthYn === "1" || cvo.abnormalHealthYn === 1 || cvo.abnormalHealthYn === "1"
+        || cbi.animalHealthEntity != null || cvo.animalHealthEntity != null)
+      s.add("HEALTH_CHECK");
+    return s;
+  }, [cell, cachedActions]);
+
+  const [localActions, setLocalActions] = useState<Set<CageBoxAction>>(initialActions);
+
+  // 记录初始状态，用于判断反选（对齐小程序：统一由页面顶栏提交）
+  const isDeselect = useCallback((a: CageBoxAction) => initialActions.has(a) && !localActions.has(a), [initialActions, localActions]);
+  const isNewSelect = useCallback((a: CageBoxAction) => !initialActions.has(a) && localActions.has(a), [initialActions, localActions]);
+
+  const toggleLocalAction = (a: CageBoxAction) => {
+    setLocalActions((prev) => { const n = new Set(prev); if (n.has(a)) n.delete(a); else n.add(a); return n; });
+  };
+
+  // 延迟同步到父级 scanCache（避免 setState-in-render 警告）
+  useEffect(() => {
+    onCacheUpdate?.(localActions);
+  }, [localActions, onCacheUpdate]);
+
+  const handleClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
 
   const detailSections = useMemo(
     () => buildCageDetailSections(cell, gridMeta),
@@ -252,17 +312,48 @@ export default function MobileCageCellDetailDialog({
                 className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
                 style={{ background: "#f7f8fa", color: "#646566" }}
               >
-                {cell.position}
+                {displayPosition(cell.position)}
               </span>
             </div>
             <div className="text-[11px] mt-0.5" style={{ color: "#969799" }}>
               {cageTypeLabel}
             </div>
           </div>
-          <button type="button" onClick={onClose} className="p-1 rounded-lg shrink-0">
-            <X className="size-5" style={{ color: "#94a3b8" }} />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button type="button" onClick={handleClose} className="p-1 rounded-lg shrink-0">
+              <X className="size-5" style={{ color: "#94a3b8" }} />
+            </button>
+          </div>
         </div>
+
+        {/* 教职工动作选择（特殊状态 chips 下方） */}
+        {staffView && editMode && isPermitted && (
+          <div className="shrink-0 px-4 pb-1">
+            <div className="flex flex-wrap gap-1.5">
+              {(["DIVIDE", "SPECIAL_BREEDING", "HEALTH_CHECK"] as const).map((key) => {
+                const active = localActions.has(key);
+                const wasExisting = initialActions.has(key);
+                const lb = key === "DIVIDE" ? "请分笼" : key === "SPECIAL_BREEDING" ? "特殊饲养" : "健康检查";
+                // 已有且保留=绿，新增=红，已有但取消=灰（不显示选中状态）
+                const accent = active ? (wasExisting ? "#10b981" : BRAND) : "#cbd5e1";
+                const bg = active ? (wasExisting ? "rgba(16,185,129,0.12)" : "rgba(172,23,54,0.08)") : "transparent";
+                return (
+                  <button key={key} type="button" onClick={() => toggleLocalAction(key)}
+                    className="rounded-full px-3 py-1.5 text-[11px] font-semibold active:scale-95 transition"
+                    style={{
+                      color: active ? (wasExisting ? "#059669" : BRAND) : "#94a3b8",
+                      background: bg,
+                      border: `1.5px solid ${accent}`,
+                    }}>
+                    {active && <Check className="size-3 inline mr-0.5" strokeWidth={3} />}
+                    {!active && wasExisting && <XIcon className="size-3 inline mr-0.5" strokeWidth={2} />}
+                    {lb}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-4">
           {isPermitted ? (

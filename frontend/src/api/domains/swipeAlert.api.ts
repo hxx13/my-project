@@ -21,6 +21,8 @@ export interface SwipeAlertRuleRow {
   bannerDurationSec: number;
   minRoleLevel: number;
   cooldownSec: number;
+  notifySite: boolean;
+  notifyPush: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -38,6 +40,8 @@ export interface SwipeAlertRuleUpsert {
   bannerDurationSec: number;
   minRoleLevel: number;
   cooldownSec: number;
+  notifySite: boolean;
+  notifyPush: boolean;
 }
 
 export async function listSwipeAlertRules(): Promise<SwipeAlertRuleRow[]> {

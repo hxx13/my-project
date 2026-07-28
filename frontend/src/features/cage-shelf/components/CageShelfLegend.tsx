@@ -47,9 +47,9 @@ export default function CageShelfLegend({ collapsed }: Props) {
                       onChange={(e) => setColor(item.code, c.bg, e.target.value)} />
                     <span className="sr-only">边框</span>
                   </label>
-                  <span className="text-[var(--twin-body)] group-hover:hidden">{item.label}</span>
-                  <button type="button" className="text-[var(--twin-mute)] hover:text-red-500 hidden group-hover:inline text-[10px]"
-                    onClick={() => resetColor(item.code)} title="恢复默认">↺</button>
+                  <span className="text-[var(--twin-body)]">{item.label}</span>
+                  <button type="button" className="text-[var(--twin-mute)] hover:text-red-500 hidden group-hover:inline text-[10px] shrink-0"
+                    onClick={() => resetColor(item.code)} aria-label="恢复默认">↺</button>
                 </div>
               );
             })}

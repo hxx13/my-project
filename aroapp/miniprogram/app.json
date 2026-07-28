@@ -25,6 +25,7 @@
         "pages/homeBulletinDetail/index",
         "pages/settings/index",
         "pages/settingsRoomWatch/index",
+        "pages/notifySettings/index",
         "pages/notifications/index",
         "pages/staffChatHub/index",
         "pages/staffChatRoom/index",

@@ -8,6 +8,7 @@
     <result column="description" property="description"/>
     <result column="variables" property="variables"/>
     <result column="enabled" property="enabled"/>
+    <result column="visible_to" property="visibleTo"/>
     <result column="create_time" property="createTime"/>
     <result column="update_time" property="updateTime"/>
   </resultMap>
@@ -23,4 +24,5 @@
     VALUES (#{sourceCode}, #{sourceName}, #{description}, #{variables}, #{enabled})
   </insert>
   <update id="updateEnabled">UPDATE notify_source SET enabled = #{enabled} WHERE id = #{id}</update>
+  <update id="updateVisibleTo">UPDATE notify_source SET visible_to = #{visibleTo} WHERE id = #{id}</update>
 </mapper>

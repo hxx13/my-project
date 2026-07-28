@@ -38,4 +38,8 @@ public class NotifySourceService {
     public void setEnabled(Long id, boolean enabled) {
         sourceMapper.updateEnabled(id, enabled ? 1 : 0);
     }
+
+    public void setVisibleTo(Long id, String visibleTo) {
+        sourceMapper.updateVisibleTo(id, visibleTo);
+    }
 }

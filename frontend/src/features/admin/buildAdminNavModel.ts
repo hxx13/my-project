@@ -560,13 +560,28 @@ function resolveIconByName(name: string | null | undefined): LucideIcon {
   return ICON_MAP[name] ?? FileText;
 }
 
+/** Registry 路径 → AdminNavRegistryItem 查找表，供 server config 模型校验侧栏可见性 */
+function buildRegistryItemByPath(): Map<string, AdminNavRegistryItem> {
+  const map = new Map<string, AdminNavRegistryItem>();
+  for (const g of ADMIN_NAV_REGISTRY) {
+    for (const it of collectRegistryGroupItems(g)) {
+      map.set(normalizeAdminPath(it.path), it);
+    }
+  }
+  return map;
+}
+
 function nodeToSidebarItem(
   node: AdminNavConfigNode,
   pendingBadges: PendingBadges | null,
   ctx: AdminNavContext,
+  registryByPath: Map<string, AdminNavRegistryItem>,
 ): AdminSidebarNavItem | null {
   if (node.type !== "ITEM" || !node.itemPath) return null;
   if (shouldHideAdminSidebarPath(node.itemPath)) return null;
+  // 若 Registry 有对应条目，以 Registry 的 sidebarVisible 为准（防止 DB config 绕过）
+  const regItem = registryByPath.get(normalizeAdminPath(node.itemPath));
+  if (regItem && !regItem.sidebarVisible(ctx)) return null;
   const effectiveMinRole = resolveEntryMinRole(ctx.permNodes, node.itemPath, "STAFF");
   const roleOk = hasMinRole(ctx.role, effectiveMinRole);
   const permOk = canShowWebEntry(ctx.permNodes, node.itemPath, "sidebar", ctx.role, effectiveMinRole);
@@ -591,6 +606,7 @@ function convertServerConfigToModel(
 } {
   const sidebarGroups: AdminSidebarNavGroup[] = [];
   const homeSections: AdminHomeSection[] = [];
+  const registryByPath = buildRegistryItemByPath();
 
   for (const node of nodes) {
     if (node.type !== "GROUP" || !node.visible) continue;
@@ -601,13 +617,13 @@ function convertServerConfigToModel(
 
     for (const child of node.children ?? []) {
       if (child.type === "ITEM" && child.visible) {
-        const si = nodeToSidebarItem(child, pendingBadges, ctx);
+        const si = nodeToSidebarItem(child, pendingBadges, ctx, registryByPath);
         if (si) items.push(si);
       } else if (child.type === "SUBGROUP" && child.visible) {
         const sgItems: AdminSidebarNavItem[] = [];
         for (const sgChild of child.children ?? []) {
           if (sgChild.type === "ITEM" && sgChild.visible) {
-            const si = nodeToSidebarItem(sgChild, pendingBadges, ctx);
+            const si = nodeToSidebarItem(sgChild, pendingBadges, ctx, registryByPath);
             if (si) sgItems.push(si);
           }
         }

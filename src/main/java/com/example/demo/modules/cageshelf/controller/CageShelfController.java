@@ -44,6 +44,9 @@ public class CageShelfController {
     private final CageEventLogMapper eventLogMapper;
     private final CageAlertService cageAlertService;
     private final CageSpecialStatusSnapshotMapper snapshotMapper;
+    private final com.example.demo.modules.aro.service.AroService aroService;
+    private final com.example.demo.modules.aro.AroPersonalTokenClient aroPersonalTokenClient;
+    private final com.example.demo.modules.cageshelf.service.CageShelfRealtimeCooldown cooldown;
 
     public CageShelfController(AuthContextService authContextService,
                                CageShelfService cageShelfService,
@@ -52,7 +55,10 @@ public class CageShelfController {
                                UserCageColorConfigMapper colorConfigMapper,
                                CageEventLogMapper eventLogMapper,
                                CageAlertService cageAlertService,
-                               CageSpecialStatusSnapshotMapper snapshotMapper) {
+                               CageSpecialStatusSnapshotMapper snapshotMapper,
+                               com.example.demo.modules.aro.service.AroService aroService,
+                               com.example.demo.modules.aro.AroPersonalTokenClient aroPersonalTokenClient,
+                               com.example.demo.modules.cageshelf.service.CageShelfRealtimeCooldown cooldown) {
         this.authContextService = authContextService;
         this.cageShelfService = cageShelfService;
         this.studentCageShelfService = studentCageShelfService;
@@ -61,6 +67,9 @@ public class CageShelfController {
         this.eventLogMapper = eventLogMapper;
         this.cageAlertService = cageAlertService;
         this.snapshotMapper = snapshotMapper;
+        this.aroService = aroService;
+        this.aroPersonalTokenClient = aroPersonalTokenClient;
+        this.cooldown = cooldown;
     }
 
     @PostMapping("/import")
@@ -383,5 +392,107 @@ public class CageShelfController {
     @Operation(summary = "从 grid_cache 回填 cell_snapshot（一次性）")
     public Result<?> seedCellSnapshot() {
         return Result.success(cageShelfService.seedCellSnapshotFromGridCache());
+    }
+
+    // ==========================================================================
+    // 🔧 实时数据源 + 笼位分配（2026-07-27 新增）
+    // ==========================================================================
+
+    @PostMapping("/realtime/refresh")
+    @Operation(summary = "实时拉取笼架数据（含 5min 冷却）")
+    public Result<?> refreshRealtime(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                      @RequestBody Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        Long roomId = toLong(body.get("roomId"));
+        if (roomId == null) return Result.error("请提供 roomId");
+        String shelveId = body.get("shelveId") != null ? String.valueOf(body.get("shelveId")) : null;
+        return Result.success(cageShelfService.refreshRoomRealtime(roomId, shelveId));
+    }
+
+    @GetMapping("/realtime/cooldown")
+    @Operation(summary = "查询冷却剩余时间")
+    public Result<?> cooldownRemaining(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                        @RequestParam("roomId") Long roomId,
+                                        @RequestParam(value = "shelveId", required = false) String shelveId) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        String key = (shelveId == null || shelveId.isBlank()) ? (roomId + ":*") : (roomId + ":" + shelveId);
+        long remainingMs = cooldown.remainingCooldownMs(key);
+        return Result.success(Map.of("cooldownRemainingMs", remainingMs, "inCooldown", remainingMs > 0));
+    }
+
+    @GetMapping("/allocation/aups")
+    @Operation(summary = "查分配用 AUP 列表")
+    public Result<?> allocationAups(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        return Result.success(aroService.fetchAupListForAllocation());
+    }
+
+    @SuppressWarnings("unchecked")
+    @PostMapping("/allocation/assign")
+    @Operation(summary = "执行笼位分配")
+    public Result<?> allocationAssign(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @RequestBody Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        Long roomId = toLong(body.get("roomId"));
+        Long shelveId = toLong(body.get("shelveId"));
+        Long aupId = toLong(body.get("aupId"));
+        List<Long> cageIds = new ArrayList<>();
+        Object idsObj = body.get("cageIds");
+        if (idsObj instanceof List<?> list) {
+            for (Object item : list) cageIds.add(toLong(item));
+        }
+        if (roomId == null || aupId == null || cageIds.isEmpty()) {
+            return Result.error("roomId/aupId/cageIds 不能为空");
+        }
+        boolean ok = aroPersonalTokenClient.execute(token ->
+            aroService.bookCagesWithToken(roomId, shelveId, cageIds, aupId, token));
+        if (ok) {
+            // 分配成功后强制刷新（绕过冷却）
+            cageShelfService.forceRefreshAfterMutation(roomId);
+            return Result.success(Map.of("ok", true));
+        }
+        return Result.error("ARO 分配失败，请查看日志");
+    }
+
+    @SuppressWarnings("unchecked")
+    @PostMapping("/allocation/cancel")
+    @Operation(summary = "取消笼位分配")
+    public Result<?> allocationCancel(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @RequestBody Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        List<Long> cageIds = new ArrayList<>();
+        Object idsObj = body.get("cageIds");
+        if (idsObj instanceof List<?> list) {
+            for (Object item : list) cageIds.add(toLong(item));
+        }
+        if (cageIds.isEmpty()) {
+            return Result.error("cageIds 不能为空");
+        }
+        boolean ok = aroPersonalTokenClient.execute(token ->
+            aroService.cancelBookCagesWithToken(cageIds, token));
+        if (ok) {
+            Long cancelRoomId = toLong(body.get("roomId"));
+            if (cancelRoomId != null) {
+                cageShelfService.forceRefreshAfterMutation(cancelRoomId);
+            }
+            return Result.success(Map.of("ok", true));
+        }
+        return Result.error("ARO 取消分配失败，请查看日志");
+    }
+
+    private static Long toLong(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number n) return n.longValue();
+        try { return Long.parseLong(String.valueOf(v)); } catch (NumberFormatException e) { return null; }
     }
 }

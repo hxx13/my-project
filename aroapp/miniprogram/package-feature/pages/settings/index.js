@@ -105,6 +105,14 @@ Page({
     });
   },
 
+  goNotifySettings: function () {
+    if (!wx.getStorageSync(springAuth.KEYS.TOKEN)) {
+      wx.showToast({ title: '请先绑定校内账号', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/notifySettings/index' });
+  },
+
   goRoomWatch: function () {
     if (!wx.getStorageSync(springAuth.KEYS.TOKEN)) {
       wx.showToast({ title: '请先绑定校内账号', icon: 'none' });

@@ -15,6 +15,11 @@ CREATE TABLE IF NOT EXISTS swipe_alert_rule (
   banner_duration_sec   INT NOT NULL DEFAULT 10 COMMENT '横幅显示时长（秒），0=不自动消失',
   min_role_level        INT NOT NULL DEFAULT 4 COMMENT '最低通知角色级别，4=ADMIN',
   cooldown_sec          INT NOT NULL DEFAULT 60 COMMENT '同一规则两次告警最小间隔（秒）',
+  notify_site           TINYINT NOT NULL DEFAULT 1 COMMENT '站内通知（灵动岛横幅）',
+  notify_push           TINYINT NOT NULL DEFAULT 0 COMMENT '站外推送（邮件/微信）',
   created_at            DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at            DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='刷卡失败灵动岛告警规则';
+
+ALTER TABLE swipe_alert_rule ADD COLUMN notify_site TINYINT NOT NULL DEFAULT 1;
+ALTER TABLE swipe_alert_rule ADD COLUMN notify_push TINYINT NOT NULL DEFAULT 0;

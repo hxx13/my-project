@@ -64,6 +64,14 @@ public class AdminNotifySourceController {
         return Result.success(buildDTO(sourceService.getById(id)));
     }
 
+    @PutMapping("/{id}/visible-to")
+    public Result<Void> setVisibleTo(@PathVariable Long id, @RequestBody Map<String, String> body, HttpServletRequest request) {
+        Result<?> denied = requireSuperAdmin(request); if (denied != null) return Result.error(denied.getMessage());
+        String vt = body.get("visibleTo");
+        sourceService.setVisibleTo(id, vt != null ? vt : "ALL");
+        return Result.success();
+    }
+
     @PutMapping("/{id}/enabled")
     public Result<Void> setSourceEnabled(@PathVariable Long id, @RequestParam boolean enabled, HttpServletRequest request) {
         Result<?> denied = requireSuperAdmin(request); if (denied != null) return Result.error(denied.getMessage());
@@ -93,6 +101,7 @@ public class AdminNotifySourceController {
         NotifySourceConfigDTO dto = new NotifySourceConfigDTO();
         dto.setSourceId(src.getId()); dto.setSourceCode(src.getSourceCode());
         dto.setSourceName(src.getSourceName()); dto.setDescription(src.getDescription());
+        dto.setVisibleTo(src.getVisibleTo() != null ? src.getVisibleTo() : "ALL");
         dto.setSourceEnabled(src.getEnabled() == 1);
         try {
             if (src.getVariables() != null) dto.setVariables(objectMapper.readValue(src.getVariables(), new TypeReference<Map<String, String>>() {}));

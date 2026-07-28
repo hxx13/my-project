@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,6 +54,23 @@ public class PagePermissionService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /**
+     * 服务启动时重置全部权限默认值 + 扫描双端，确保代码中的 fallbackMinRole
+     * 与数据库 page_permission_item 完全一致，无需手工操作。
+     */
+    @PostConstruct
+    public void autoScanOnStartup() {
+        try {
+            // 先重置所有平台：清掉 manual_override，min_role = default_min_role
+            mapper.resetDefaultByPlatform("WEB");
+            mapper.resetDefaultByPlatform("MINI");
+            // 再用当前代码重新扫描，写入最新的 default_min_role 和 min_role
+            scanAll();
+        } catch (Exception ignored) {
+            // DB 未就绪时静默跳过
+        }
+    }
+
     public List<PagePermissionItem> listByPlatform(String platform) {
         String normalized = normalizePlatform(platform);
         if (normalized == null) return List.of();
@@ -70,6 +88,7 @@ public class PagePermissionService {
     @Transactional
     public Map<String, Object> scanAll() {
         adminNavManifestLoader.invalidateCache();
+        invalidatePublicCache();
         int web = scanPlatform("WEB");
         int mini = scanPlatform("MINI");
         return Map.of("web", web, "mini", mini);
@@ -108,11 +127,32 @@ public class PagePermissionService {
         return mapper.resetDefaultByPlatform(normalized);
     }
 
+    /** 公开端点缓存：纯 DB 读取，不触发文件扫描 */
+    private volatile List<Map<String, Object>> cachedPublicWeb;
+    private volatile long cachedPublicWebAt;
+    private static final long PUBLIC_CACHE_MS = 120_000; // 2 分钟
+
     public List<Map<String, Object>> listPublicForPlatform(String platform) {
         String normalized = normalizePlatform(platform);
         if (normalized == null) return List.of();
-        List<PagePermissionItem> rows = mapper.listByPlatform(normalized);
-        return rows.stream().map(this::toPublicView).toList();
+        if ("WEB".equals(normalized)) {
+            long now = System.currentTimeMillis();
+            if (cachedPublicWeb != null && (now - cachedPublicWebAt) < PUBLIC_CACHE_MS) {
+                return cachedPublicWeb;
+            }
+            List<Map<String, Object>> rows = mapper.listByPlatform(normalized).stream()
+                    .map(this::toPublicView).toList();
+            cachedPublicWeb = rows;
+            cachedPublicWebAt = now;
+            return rows;
+        }
+        // MINI 端量少，直接查
+        return mapper.listByPlatform(normalized).stream().map(this::toPublicView).toList();
+    }
+
+    /** 管理端手动重新扫描时同步刷新缓存 */
+    public void invalidatePublicCache() {
+        cachedPublicWeb = null;
     }
 
     /**
@@ -571,18 +611,31 @@ public class PagePermissionService {
 
     private String inferWebMinRole(String path) {
         if (!StringUtils.hasText(path)) return "MEMBER";
+        // ── SUPER_ADMIN ──
         if (path.startsWith("/admin/personnel")
                 || path.startsWith("/admin/settings")
                 || path.startsWith("/admin/external-comm-config")
                 || path.startsWith("/admin/api-docs")
-                || path.startsWith("/admin/page-permissions")) {
+                || path.startsWith("/admin/page-permissions")
+                || path.startsWith("/admin/logging-console")
+                || path.startsWith("/admin/nav-manager")
+                || path.startsWith("/admin/push-dashboard")
+                || path.startsWith("/admin/push-config")
+                || path.startsWith("/admin/door-control")
+                || path.startsWith("/admin/face-debug")
+                || path.startsWith("/admin/telemetry-watchlists")
+                || path.startsWith("/admin/telemetry-archive")) {
             return "SUPER_ADMIN";
         }
         if (path.startsWith("/admin/supplies/manage") || path.startsWith("/admin/supplies/process")) {
             return "SUPER_ADMIN";
         }
+        if (path.startsWith("/admin/repair-process") || path.startsWith("/admin/purchase-process")) {
+            return "SUPER_ADMIN";
+        }
+        // ── ADMIN ──
         if (path.startsWith("/admin/supplies/audit-export")) {
-            return "STAFF";
+            return "STAFF"; // supplies/audit-export stays STAFF per registry
         }
         if (path.startsWith("/admin/supplies")) {
             return "ADMIN";
@@ -590,8 +643,12 @@ public class PagePermissionService {
         if (path.startsWith("/admin/content-hub")) {
             return "ADMIN";
         }
-        if (path.startsWith("/admin/repair-process") || path.startsWith("/admin/purchase-process")) {
-            return "SUPER_ADMIN";
+        if (path.startsWith("/admin/student-violations")
+                || path.startsWith("/admin/monitor")
+                || path.startsWith("/admin/registration-invites")
+                || path.startsWith("/admin/report-form")
+                || path.startsWith("/admin/analytics")) {
+            return "ADMIN";
         }
         if (path.startsWith("/admin/door-group-storage")
                 || path.startsWith("/admin/device-channels")
@@ -603,9 +660,23 @@ public class PagePermissionService {
                 || path.startsWith("/admin/dahua-swing-rules")
                 || path.startsWith("/admin/dahua-swing-records")
                 || path.startsWith("/admin/access-audit-source")
-                || path.startsWith("/admin/access-fusion")) {
+                || path.startsWith("/admin/access-fusion")
+                || path.startsWith("/admin/access-clean-rule-profiles")
+                || path.startsWith("/admin/telemetry-insights")
+                || path.startsWith("/admin/telemetry-insights-config")
+                || path.startsWith("/animal-room-telemetry")
+                || path.startsWith("/animal-room-cockpit")
+                || path.startsWith("/digital-twin-screen")
+                || path.startsWith("/digital-twin-3d")
+                || path.startsWith("/admin/material/review")
+                || path.startsWith("/admin/material/manage")
+                || path.startsWith("/admin/material/audit-export")
+                || path.startsWith("/admin/conversation-archive")
+                || path.startsWith("/admin/file-templates")
+                || path.startsWith("/admin/exp-stats")) {
             return "ADMIN";
         }
+        // ── STAFF (generic admin catch-all) ──
         if (path.startsWith("/admin")) return "STAFF";
         return "MEMBER";
     }

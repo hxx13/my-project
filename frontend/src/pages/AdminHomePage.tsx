@@ -270,7 +270,7 @@ export default function AdminHomePage() {
     <AdminFullWidthPage>
       <div
         className={cn(
-          "min-h-full space-y-6 bg-transparent p-4 sm:p-6",
+          "min-h-full space-y-1.5 bg-transparent p-4 sm:p-6",
           !scrollContentVisible && "invisible",
         )}
         aria-hidden={!scrollContentVisible}
@@ -289,10 +289,10 @@ export default function AdminHomePage() {
 
         {starred.length > 0 && (
           <section>
-            <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--app-color-text-tertiary)]">
-              <Star className="h-3 w-3 fill-[var(--app-color-accent)] text-[var(--app-color-accent)]" />收藏
+            <h2 className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-[var(--app-color-text-secondary)]">
+              <Star className="h-3.5 w-3.5 fill-[var(--app-color-accent)] text-[var(--app-color-accent)]" />收藏
             </h2>
-            <HomeCardGrid>
+            <HomeCardGrid className="![grid-template-columns:repeat(auto-fill,minmax(7rem,7rem))] gap-2">
               {starred.map(e => (
                 <HomeCard
                   key={`starred:${e.path}`}
@@ -310,7 +310,7 @@ export default function AdminHomePage() {
 
         {recent.length > 0 && (
           <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--app-color-text-tertiary)]">最近访问</h2>
+            <h2 className="mb-2 text-[13px] font-bold text-[var(--app-color-text-secondary)]">最近访问</h2>
             <HomeCardGrid>
               {recent.map(e => (
                 <HomeCard
@@ -331,17 +331,20 @@ export default function AdminHomePage() {
           if (enabled.length === 0) return null;
           const isCollapsed = collapsed.has(title);
           return (
-            <section key={title}>
+            <section key={title} className="rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)]">
+              <div className="rounded-t-2xl bg-[#fef7e6] px-4 py-2">
               <button
                 type="button"
                 onClick={() => toggleGroup(title)}
-                className="mb-2 flex w-full items-center gap-1 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-secondary)]"
+                className="flex w-full items-center gap-2 text-[14px] font-bold text-[var(--app-color-text-primary)] hover:opacity-80 transition-opacity"
               >
-                {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 {title}
-                <span className="ml-1 text-[10px] opacity-50">({enabled.length})</span>
+                <span className="ml-auto text-[11px] font-normal text-[var(--app-color-text-tertiary)]">{enabled.length} 个入口</span>
               </button>
+              </div>
               {!isCollapsed && (
+              <div className="p-3 pt-2">
                 <HomeCardGrid>
                   {enabled.map(e => (
                     <HomeCard
@@ -355,6 +358,7 @@ export default function AdminHomePage() {
                     />
                   ))}
                 </HomeCardGrid>
+              </div>
               )}
             </section>
           );
@@ -364,8 +368,8 @@ export default function AdminHomePage() {
   );
 }
 
-function HomeCardGrid({ children }: { children: ReactNode }) {
-  return <div className={HOME_CARD_GRID_CLASS}>{children}</div>;
+function HomeCardGrid({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn(HOME_CARD_GRID_CLASS, className)}>{children}</div>;
 }
 
 function HomePendingBadge({ text }: { text?: string }) {
@@ -413,7 +417,8 @@ function HomeCard({
       }}
       disabled={!entry.enabled}
       className={cn(
-        "admin-home-entry-card group relative box-border flex h-[6.25rem] w-[5.75rem] shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl border p-2 text-center transition-all duration-200",
+        "admin-home-entry-card group relative box-border flex h-[6.25rem] shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl border p-2 text-center transition-all duration-200",
+        starred ? "w-[7rem]" : "w-[5.75rem]",
         highlighted && "admin-home-entry-card--highlight",
         entry.enabled
           ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"

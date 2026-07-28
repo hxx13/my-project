@@ -444,11 +444,14 @@ export interface MobileCageShelfSummary {
   campusName?: string;
   /** 本课题组 PI 匹配的笼架，前端高亮 */
   highlight?: boolean;
+  /** 笼位类型计数（从快照聚合，key: "1"|"2"|"3"|"4" → count） */
+  cageTypeCounts?: Record<string, number>;
 }
 
 export interface MobileCageShelvesAllData {
   shelves: MobileCageShelfSummary[];
   totalCount: number;
+  scannedAt?: string;
 }
 
 /** 课题组全部笼架列表（公开 token 接口） */
@@ -467,6 +470,7 @@ export async function fetchMobileCageShelvesAll(token: string): Promise<MobileCa
   return {
     shelves: Array.isArray(data?.shelves) ? data.shelves : [],
     totalCount: data?.totalCount ?? 0,
+    scannedAt: data?.scannedAt,
   };
 }
 

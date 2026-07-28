@@ -3,6 +3,8 @@ package com.example.demo.modules.notification.push.dispatch;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
+import com.example.demo.modules.notification.push.preference.UserNotifyMute;
+import com.example.demo.modules.notification.push.preference.UserNotifySettingService;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.notification.entity.NotifyDeliveryLog;
 import com.example.demo.modules.notification.mapper.NotificationMiniProgramMapper;
@@ -44,6 +46,7 @@ public class PushDispatchEngine {
     private final List<PushChannel> channels;
     private final DigestResolutionService digestResolutionService;
     private final NotifyDigestItemMapper digestItemMapper;
+    private final UserNotifySettingService notifySettingService;
 
     public PushDispatchEngine(NotifySourceService sourceService,
                               NotifySourceChannelService channelConfigService,
@@ -55,7 +58,8 @@ public class PushDispatchEngine {
                               PushRateLimiter rateLimiter,
                               List<PushChannel> channels,
                               DigestResolutionService digestResolutionService,
-                              NotifyDigestItemMapper digestItemMapper) {
+                              NotifyDigestItemMapper digestItemMapper,
+                              UserNotifySettingService notifySettingService) {
         this.sourceService = sourceService;
         this.channelConfigService = channelConfigService;
         this.recipientService = recipientService;
@@ -67,6 +71,7 @@ public class PushDispatchEngine {
         this.channels = channels;
         this.digestResolutionService = digestResolutionService;
         this.digestItemMapper = digestItemMapper;
+        this.notifySettingService = notifySettingService;
     }
 
     public Map<String, Object> dispatch(String sourceCode, Map<String, String> variables, Set<String> dynamicUserIds) {
@@ -264,6 +269,24 @@ public class PushDispatchEngine {
 
             int chSent = 0, chFailed = 0, chSkipped = 0;
             for (String userId : allRecipientIds) {
+                // ★ 个人静默：用户关闭了该源或该渠道
+                UserNotifyMute mute = notifySettingService.getMute(userId, source.getSourceCode());
+                if (mute != null && mute.getEnabled() != null && mute.getEnabled() == 0) {
+                    chSkipped++;
+                    continue;
+                }
+                if (mute != null) {
+                    if (PushConstants.CHANNEL_EMAIL.equals(channel.getCode()) && mute.getMuteEmail() != null && mute.getMuteEmail() == 1) {
+                        chSkipped++; continue;
+                    }
+                    if (PushConstants.CHANNEL_SERVER_CHAN.equals(channel.getCode()) && mute.getMuteServerChan() != null && mute.getMuteServerChan() == 1) {
+                        chSkipped++; continue;
+                    }
+                    if (PushConstants.CHANNEL_WXPUSHER.equals(channel.getCode()) && mute.getMuteWxpusher() != null && mute.getMuteWxpusher() == 1) {
+                        chSkipped++; continue;
+                    }
+                }
+
                 // Batch-preloaded maps (C2 fix)
                 String target;
                 if (PushConstants.CHANNEL_EMAIL.equals(channel.getCode())) {

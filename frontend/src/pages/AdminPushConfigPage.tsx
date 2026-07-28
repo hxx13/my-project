@@ -82,6 +82,7 @@ interface NotifySourceConfig {
   sourceName: string;
   description: string;
   variables: Record<string, string>;
+  visibleTo: string;
   sourceEnabled: boolean;
   channels: NotifyChannelConfig[];
   recipients: NotifyRecipient[];
@@ -588,6 +589,21 @@ export default function AdminPushConfigPage() {
                           onClick={() => setTestSource(source.sourceCode)}>
                           <Send className="h-3.5 w-3.5" aria-hidden /> 测试
                         </AdminButton>
+
+                        <select
+                          className="rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1.5 py-1 text-[10px] text-[var(--app-color-text-primary)]"
+                          value={source.visibleTo ?? "ALL"}
+                          onChange={async (e) => {
+                            try {
+                              await authHttp.put(`/admin/notify-source/${source.sourceId}/visible-to`, { visibleTo: e.target.value });
+                              queryClient.invalidateQueries({ queryKey: ["notify-sources"] });
+                            } catch (err: any) { toast.error(err?.message || "保存失败"); }
+                          }}
+                        >
+                          <option value="ALL">全部可见</option>
+                          <option value="STAFF">仅教职工</option>
+                          <option value="STUDENT">仅学生</option>
+                        </select>
 
                         <AdminSwitchScaled
                           size="sm"

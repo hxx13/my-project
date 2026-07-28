@@ -116,6 +116,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-wx-pusher-uid.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-telemetry-alarm-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-digest-telemetry-config.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-user-notify-mute.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aro-personnel-open-id.sql", ctx)) success++;
 
         if (ctx == null) {

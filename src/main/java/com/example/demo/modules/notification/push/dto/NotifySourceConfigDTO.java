@@ -11,6 +11,7 @@ public class NotifySourceConfigDTO {
     private String sourceName;
     private String description;
     private Map<String, String> variables;
+    private String visibleTo;
     private Boolean sourceEnabled;
     private List<ChannelConfig> channels;
     private List<RecipientConfig> recipients;

@@ -1,19 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { loginWeb, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
-import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { toast } from "react-hot-toast";
-
-declare global {
-  interface Window {
-    turnstile?: {
-      render: (container: HTMLElement, options: Record<string, unknown>) => string;
-      reset: (widgetId: string) => void;
-      remove: (widgetId: string) => void;
-    };
-  }
-}
 
 export default function MobileLoginPage() {
   const navigate = useNavigate();
@@ -23,65 +12,9 @@ export default function MobileLoginPage() {
   const [error, setError] = useState<string | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
-  // Turnstile
-  const [turnstileToken, setTurnstileToken] = useState("");
-  const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
-  const [turnstileLoadFailed, setTurnstileLoadFailed] = useState(false);
-  const [turnstileLoading, setTurnstileLoading] = useState(false);
-  const turnstileRef = useRef<HTMLDivElement>(null);
-  const turnstileId = useRef<string | null>(null);
-
   useEffect(() => {
-    fetchPublicRuntimeConfig()
-      .then((cfg) => setTurnstileSiteKey(cfg["turnstile.site-key"] || ""))
-      .catch(() => {});
+    return () => { if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current); };
   }, []);
-
-  useEffect(() => {
-    if (!turnstileSiteKey) return;
-    const container = turnstileRef.current;
-    if (!container) return;
-    let cancelled = false;
-    let polls = 0;
-    setTurnstileLoading(true);
-    const tryRender = () => {
-      if (cancelled) return;
-      if (!window.turnstile) { if (++polls < 12) setTimeout(tryRender, 300); else { setTurnstileLoadFailed(true); setTurnstileLoading(false); } return; }
-      try {
-        if (turnstileId.current) {
-          try { window.turnstile.remove(turnstileId.current); } catch { /* already removed */ }
-        }
-        let widgetDiv = container.querySelector('.turnstile-widget') as HTMLDivElement;
-        if (!widgetDiv) {
-          widgetDiv = document.createElement('div');
-          widgetDiv.className = 'turnstile-widget';
-          container.appendChild(widgetDiv);
-        }
-        turnstileId.current = window.turnstile.render(widgetDiv, {
-          sitekey: turnstileSiteKey,
-          theme: "light",
-          size: "normal",
-          callback: (token: string) => { setTurnstileToken(token); setTurnstileLoadFailed(false); setTurnstileLoading(false); },
-          "expired-callback": () => setTurnstileToken(""),
-          "error-callback": () => { setTurnstileToken(""); setTurnstileLoadFailed(true); setTurnstileLoading(false); },
-        });
-        setTurnstileLoading(false);
-      } catch { setTurnstileLoadFailed(true); setTurnstileLoading(false); }
-    };
-    setTimeout(tryRender, 100);
-    return () => {
-      cancelled = true;
-      if (turnstileId.current) {
-        try { window.turnstile?.remove(turnstileId.current); } catch { /* ignore */ }
-        turnstileId.current = null;
-      }
-      const wd = container?.querySelector('.turnstile-widget');
-      if (wd) wd.remove();
-      setTurnstileToken(""); setTurnstileLoadFailed(false); setTurnstileLoading(false);
-    };
-  }, [turnstileSiteKey]);
-
-  // Forgot password state
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotUserId, setForgotUserId] = useState("");
   const [forgotPhone, setForgotPhone] = useState("");
@@ -121,7 +54,8 @@ export default function MobileLoginPage() {
     try {
       setSubmitting(true);
       setError(null);
-      const data = await loginWeb(username.trim(), password, turnstileToken || undefined, turnstileLoadFailed);
+      // H5 移动端跳过 Turnstile 人机验证（Cloudflare CDN 在移动网络下易超时卡住）
+      const data = await loginWeb(username.trim(), password, undefined, true);
       authStorage.setAuth(data.token, data.role, data.userInfo);
       authStorage.markLoginPortal("mobile");
       navigate("/m/home", { replace: true });
@@ -130,7 +64,7 @@ export default function MobileLoginPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [username, password, turnstileToken, turnstileLoadFailed, navigate]);
+  }, [username, password, navigate]);
 
   const handleUsernameKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") { e.preventDefault(); passwordRef.current?.focus(); }
@@ -525,27 +459,11 @@ export default function MobileLoginPage() {
                   className="w-full rounded-[var(--app-radius-element)] border px-3 py-2.5 text-base outline-none transition-colors"
                   style={{ background: bg, borderColor: border, color: primary }} />
               </div>
-              <div ref={turnstileRef} className="flex justify-center items-center w-full min-h-[65px]">
-                {turnstileLoading && !turnstileLoadFailed && (
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-[var(--app-color-accent)]" />
-                    <p className="text-xs" style={{ color: secondary }}>人机验证加载中…</p>
-                    <button type="button"
-                      onClick={() => { setTurnstileLoadFailed(true); setTurnstileLoading(false); }}
-                      className="text-xs underline mt-1" style={{ color: accent }}>
-                      跳过验证
-                    </button>
-                  </div>
-                )}
-                {turnstileLoadFailed && !turnstileLoading && (
-                  <p className="text-xs" style={{ color: secondary }}>已跳过人机验证</p>
-                )}
-              </div>
               {error && (
                 <p className="text-sm text-center rounded-[var(--app-radius-element)] px-3 py-2"
                   style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>{error}</p>
               )}
-              <button onClick={doLogin} disabled={submitting || (!!turnstileSiteKey && !turnstileToken && !turnstileLoadFailed)}
+              <button onClick={doLogin} disabled={submitting}
                 className="w-full rounded-[var(--app-radius-element)] py-3 text-base font-medium text-white transition active:scale-[0.98] disabled:opacity-60"
                 style={{ background: `linear-gradient(135deg, ${accent}, ${accent})` }}>
                 {submitting ? "登录中..." : "登 录"}

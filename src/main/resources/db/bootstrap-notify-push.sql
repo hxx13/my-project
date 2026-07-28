@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS notify_source (
     UNIQUE KEY uk_source_code (source_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- notify_source 增加 visible_to（ALL | STAFF | STUDENT），控制个人偏好页的可见性
+ALTER TABLE notify_source ADD COLUMN visible_to VARCHAR(16) DEFAULT 'ALL' COMMENT 'ALL | STAFF | STUDENT';
+
 CREATE TABLE IF NOT EXISTS notify_source_channel (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     source_id BIGINT NOT NULL,

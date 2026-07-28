@@ -345,16 +345,23 @@ public class StudentMobileController {
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("shelves", allShelves);
         resp.put("totalCount", allShelves.size());
+        try {
+            String scannedAt = cageShelfService.getLatestSnapshotScannedAt();
+            if (scannedAt != null && !scannedAt.isBlank()) {
+                resp.put("scannedAt", scannedAt);
+            }
+        } catch (Exception ignored) { /* 快照时间戳非关键，忽略异常 */ }
         return Result.success(resp);
     }
 
     @GetMapping("/cage-shelves/{shelveId}/detail")
-    @Operation(summary = "笼架网格详情（JWT）")
+    @Operation(summary = "笼架网格详情。realtime=true 时跳过快照直读缓存")
     public Result<Map<String, Object>> getCageShelfDetail(@PathVariable String shelveId,
+                                                           @RequestParam(required = false) boolean realtime,
                                                            HttpServletRequest request) {
         User user = requireCurrentUser(request);
         boolean html5Privilege = StudentMobileHtml5Privilege.isPrivileged(user);
-        return Result.success(cageShelfService.getShelfDetail(user, shelveId, html5Privilege));
+        return Result.success(cageShelfService.getShelfDetail(user, shelveId, html5Privilege, realtime));
     }
 
     @GetMapping("/cage-shelves/{shelveId}/cells/{x}/{y}/annotation")

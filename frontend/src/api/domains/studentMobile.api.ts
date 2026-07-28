@@ -176,18 +176,21 @@ export async function fetchStudentMobileCageShelvesAll(): Promise<MobileCageShel
   return {
     shelves: Array.isArray(data?.shelves) ? data.shelves : [],
     totalCount: data?.totalCount ?? 0,
+    scannedAt: data?.scannedAt,
   };
 }
 
 export async function fetchStudentMobileCageShelfDetail(
-  shelveId: string
+  shelveId: string,
+  realtime?: boolean
 ): Promise<CageShelfDetail> {
+  const params = realtime ? { realtime: true } : {};
   const resp = await authHttp.get<{
     code: number;
     success: boolean;
     message: string;
     data: Record<string, unknown>;
-  }>(`/student/mobile/cage-shelves/${encodeURIComponent(shelveId)}/detail`);
+  }>(`/student/mobile/cage-shelves/${encodeURIComponent(shelveId)}/detail`, { params });
   if (!resp.data.success) throw new Error(resp.data.message || "加载笼架详情失败");
   return normalizeMobileCageShelfDetail(resp.data.data ?? {});
 }
