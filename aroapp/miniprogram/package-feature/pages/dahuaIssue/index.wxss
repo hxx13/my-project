@@ -531,3 +531,108 @@
   color: #b45309;
   font-weight: 600;
 }
+
+/* ── 人员卡片 + 卡号并排 ── */
+.person-card {
+  margin-bottom: 16rpx;
+}
+
+.card-numbers-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 8rpx;
+  padding-top: 8rpx;
+  border-top: 1rpx solid #eef2f7;
+}
+
+.card-chip-text {
+  display: inline-block;
+  padding: 4rpx 16rpx;
+  border-radius: 14rpx;
+  font-size: 22rpx;
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.chip-normal-text {
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1rpx solid #c7d2fe;
+}
+
+.chip-frozen-text {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1rpx solid #fecaca;
+}
+
+/* 详情中卡片列表 */
+.detail-section-title {
+  font-weight: 700;
+  color: #0f172a;
+  margin-top: 8rpx;
+  padding-top: 8rpx;
+  border-top: 1rpx solid #e2e8f0;
+}
+
+.detail-card-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 8rpx 0;
+  border-bottom: 1rpx solid #f1f5f9;
+}
+
+.detail-cardno {
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 26rpx;
+  color: #4338ca;
+  flex: 1;
+}
+
+.detail-cardno-frozen {
+  color: #dc2626;
+  text-decoration: line-through;
+}
+
+.detail-card-status {
+  font-size: 22rpx;
+  color: #64748b;
+}
+
+.detail-card-del-btn {
+  margin: 0 !important;
+  padding: 0 16rpx !important;
+  font-size: 22rpx !important;
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+  border-radius: 10rpx !important;
+}
+
+/* 详情操作按钮 */
+.addcard-panel {
+  width: 90vw;
+  max-width: 620rpx;
+}
+
+.readonly-text {
+  padding: 12rpx 16rpx;
+  font-size: 26rpx;
+  color: #334155;
+  background: #f8fafc;
+  border-radius: 12rpx;
+  margin-bottom: 12rpx;
+  border: 1rpx solid #e2e8f0;
+}
+
+/* 详情操作按钮 */
+.detail-add-btn {
+  margin: 0 !important;
+  margin-right: 12rpx !important;
+  padding: 0 16rpx !important;
+  font-size: 24rpx !important;
+  background: #e0f2fe !important;
+  color: #0369a1 !important;
+}

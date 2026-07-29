@@ -339,6 +339,75 @@ public class DahuaOpenApiService {
         return rawExchange(path, HttpMethod.GET, null);
     }
 
+    /**
+     * 按人员编码查询大华人员信息，用于获取 departmentId 等字段。
+     * 先尝试 person/page 分页接口，失败则尝试 GET /person/{personId}。
+     */
+    public Map<String, Object> queryPersonByCode(String personCode, Long personId) {
+        // 策略A：POST /evo-apigw/evo-brm/1.2.0/person/page（按 code 过滤）
+        Map<String, Object> body = new HashMap<>();
+        body.put("pageNum", 1);
+        body.put("pageSize", 1);
+        body.put("code", personCode);
+        Map<String, Object> resp = postRaw("/evo-apigw/evo-brm/1.2.0/person/page", body);
+        if (isSuccess(resp)) {
+            Map<String, Object> data = asMap(resp.get("data"));
+            List<Map<String, Object>> pageData = asListOfMap(data.get("pageData"));
+            if (!pageData.isEmpty()) {
+                log.info("[dahua-openapi] person/page 找到人员 code={}", personCode);
+                return pageData.get(0);
+            }
+        }
+        log.warn("[dahua-openapi] person/page 未找到人员 code={} resp={}", personCode, resp);
+
+        // 策略B：GET /evo-apigw/evo-brm/1.2.0/person/{personId}
+        if (personId != null && personId > 0) {
+            Map<String, Object> resp2 = getRaw("/evo-apigw/evo-brm/1.2.0/person/" + personId);
+            if (isSuccess(resp2)) {
+                Map<String, Object> data = asMap(resp2.get("data"));
+                if (data != null && data.get("id") != null) {
+                    log.info("[dahua-openapi] GET /person/{} 找到人员", personId);
+                    return data;
+                }
+            }
+            log.warn("[dahua-openapi] GET /person/{} 未找到人员 resp={}", personId, resp2);
+        }
+
+        return null;
+    }
+
+    /** 查询卡片获取 Dahua 内部 ID（用于后续删除等操作） */
+    public Map<String, Object> queryCardByNumber(String cardNumber) {
+        String path = "/evo-apigw/evo-brm/1.0.0/card/"
+                + org.springframework.web.util.UriUtils.encodePathSegment(cardNumber.trim(), java.nio.charset.StandardCharsets.UTF_8);
+        return getRaw(path);
+    }
+
+    /** 批量退卡（激活→空白），返回后可删除 */
+    public Map<String, Object> returnCardById(Long cardId) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("cardIds", java.util.List.of(cardId));
+        return rawExchange("/evo-apigw/evo-brm/1.0.0/card/return", HttpMethod.PUT, body);
+    }
+
+    public Map<String, Object> deleteCardByNumber(String cardNumber) {
+        // 先查卡片获取 ID
+        Map<String, Object> cardResp = queryCardByNumber(cardNumber);
+        Map<String, Object> body = new HashMap<>();
+        if (isSuccess(cardResp)) {
+            Map<String, Object> cardData = asMap(cardResp.get("data"));
+            Object cardId = cardData != null ? cardData.get("id") : null;
+            if (cardId != null) {
+                body.put("cardIds", java.util.List.of(parseLong(cardId)));
+            }
+        }
+        // 回退：用卡号删除
+        if (!body.containsKey("cardIds")) {
+            body.put("cardNumbers", java.util.List.of(cardNumber));
+        }
+        return rawExchange("/evo-apigw/evo-brm/1.0.0/card/delete", HttpMethod.DELETE, body);
+    }
+
     public boolean isSuccess(Map<String, Object> resp) {
         if (resp == null) return false;
         Object success = resp.get("success");

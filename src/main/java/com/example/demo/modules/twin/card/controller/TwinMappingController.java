@@ -446,6 +446,58 @@ public class TwinMappingController {
         }
     }
 
+    @PostMapping("/dahua-issue/add-card")
+    @Operation(summary = "为已有大华人员追加一张新卡（不创建人员）")
+    public Result<?> dahuaIssueAddCard(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, Object> body) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        Result<?> denied = requireSenior(user);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            String personIdStr = String.valueOf(body.get("personId"));
+            String personCode = String.valueOf(body.get("personCode"));
+            String cardNo = String.valueOf(body.get("cardNo"));
+            String aroUserId = body.get("aroUserId") != null ? String.valueOf(body.get("aroUserId")) : null;
+            Long personId = Long.parseLong(personIdStr.trim());
+            log.info("[twin] add-card personId={} cardNo={} by userId={}", personId, cardNo, user.getId());
+            return Result.success(dahuaIssueCardOrchestratorService.addCardToExistingPerson(
+                    personId, personCode, cardNo, aroUserId));
+        } catch (DahuaIssueException e) {
+            return Result.success(e.getResponse());
+        } catch (NumberFormatException e) {
+            return Result.error("personId 格式错误，须为数字");
+        } catch (Exception e) {
+            log.error("[twin] add-card 失败: {}", e.getMessage(), e);
+            return Result.error("追加卡片失败: " + e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/{cardNo}/dahua-card")
+    @Operation(summary = "删除大华侧卡片并清除本地映射（不删人员）")
+    public Result<?> deleteDahuaCard(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable String cardNo) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        Result<?> denied = requireSenior(user);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            log.info("[twin] delete-dahua-card cardNo={} by userId={}", cardNo, user.getId());
+            Map<String, Object> result = dahuaIssueCardOrchestratorService.deleteCardFromDahua(cardNo);
+            if (Boolean.TRUE.equals(result.get("success"))) {
+                return Result.success(result.get("message"));
+            }
+            return Result.error(String.valueOf(result.get("message")));
+        } catch (Exception e) {
+            log.error("[twin] delete-dahua-card 失败 cardNo={}: {}", cardNo, e.getMessage(), e);
+            return Result.error("删除大华卡片失败: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/debug/run-reaper")
     @Operation(summary = "手动执行冻结跑批")
     public Result<?> runReaperTask(@RequestHeader(value = "Authorization", required = false) String authorization) {

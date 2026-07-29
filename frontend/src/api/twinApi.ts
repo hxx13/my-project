@@ -638,6 +638,12 @@ export const deleteCardMapping = async (cardNo: string) => {
     return res.data;
 };
 
+/** 删除大华侧卡片并清除本地映射（不删人员） */
+export const deleteDahuaCard = async (cardNo: string) => {
+    const res = await authHttp.delete(`/v1/twin/mappings/${encodeURIComponent(cardNo)}/dahua-card`);
+    return res.data;
+};
+
 export const runManualReaper = async () => {
     const res = await authHttp.post(`/v1/twin/mappings/debug/run-reaper`);
     return res.data;
@@ -911,6 +917,29 @@ export const issueDahuaCard = async (payload: {
     return asData<{
         success?: boolean;
         failStep?: string;
+        steps?: Array<{
+            stepName?: string;
+            success?: boolean;
+            upstreamCode?: string;
+            upstreamErrMsg?: string;
+            message?: string;
+        }>;
+    }>(res.data, {});
+};
+
+/** 为已有大华人员追加一张新卡 */
+export const addCardToExistingDahuaPerson = async (payload: {
+    personId: string;
+    personCode: string;
+    cardNo: string;
+    aroUserId?: string;
+}) => {
+    const res = await authHttp.post('/v1/twin/mappings/dahua-issue/add-card', payload);
+    return asData<{
+        success?: boolean;
+        failStep?: string;
+        personId?: number;
+        personCode?: string;
         steps?: Array<{
             stepName?: string;
             success?: boolean;

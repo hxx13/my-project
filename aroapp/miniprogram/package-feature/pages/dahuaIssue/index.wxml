@@ -26,39 +26,33 @@
 
   <view wx:if="{{loading}}" class="loading">加载中...</view>
 
-  <view wx:for="{{list}}" wx:key="cardNo" class="swipe-wrap">
-    <view class="swipe-action danger" data-row="{{item}}" bindtap="onDelete">删除</view>
-    <view
-      class="swipe-content {{swipeOpenCardNo===item.cardNo ? 'swipe-open' : ''}}"
-      data-cardno="{{item.cardNo}}"
-      bindtouchstart="onCardTouchStart"
-      bindtouchmove="onCardTouchMove"
-      bindtouchend="onCardTouchEnd"
-      bindtap="onCardTap"
-    >
-      <view class="card {{item.cardTintClass}}">
-        <view class="card-row">
-          <view class="text-col">
-            <view class="name">{{item.userName || '（未匹配）'}}</view>
-            <view class="meta">卡号 {{item.cardNo || '-'}} · 序号 {{item.dahuaSeq || '-'}}</view>
-          </view>
-          <view class="btn-row">
-            <button
-              wx:if="{{canGrantExempt}}"
-              size="mini"
-              class="mini exempt-main-btn {{item.freezeExemptFlag===1 ? 'exempt-main-btn--active' : 'exempt-main-btn--off'}}"
-              data-row="{{item}}"
-              bindtap="onToggleExempt"
-            >
-              {{item.freezeExemptFlag===1 ? '已豁免' : '设豁免'}}
-            </button>
-            <view class="info-btn" data-row="{{item}}" bindtap="onOpenDetail">ⓘ</view>
-          </view>
+  <view wx:for="{{groupedList}}" wx:key="gid" wx:for-item="group" class="person-card">
+    <view class="card {{group.info.cardTintClass}}">
+      <view class="card-row">
+        <view class="text-col">
+          <view class="name">{{group.info.userName || '（未匹配）'}}</view>
+          <view class="meta">序号 {{group.info.dahuaSeq || '-'}} · {{group.cards.length}}张卡</view>
         </view>
-        <view wx:if="{{item.freezeExemptFlag===1}}" class="exempt-info">
-          <view wx:if="{{item.exemptStatusText}}" class="exempt-info-status">{{item.exemptStatusText}}</view>
-          <view wx:if="{{item.exemptRoomNames}}" class="exempt-info-rooms">房间: {{item.exemptRoomNames}}</view>
+        <view class="btn-row">
+          <button
+            wx:if="{{canGrantExempt}}"
+            size="mini"
+            class="mini exempt-main-btn {{group.info.freezeExemptFlag===1 ? 'exempt-main-btn--active' : 'exempt-main-btn--off'}}"
+            data-row="{{group.info}}"
+            bindtap="onToggleExempt"
+          >
+            {{group.info.freezeExemptFlag===1 ? '已豁免' : '设豁免'}}
+          </button>
+          <view class="info-btn" data-row="{{group.info}}" bindtap="onOpenDetail">ⓘ</view>
         </view>
+      </view>
+      <!-- 卡片列表：并排纯显示 -->
+      <view wx:if="{{group.cards.length > 1}}" class="card-numbers-row">
+        <text wx:for="{{group.cards}}" wx:for-item="card" wx:key="cardNo" class="card-chip-text {{card.cardStatus==='FROZEN' ? 'chip-frozen-text' : 'chip-normal-text'}}">{{card.cardNo}}</text>
+      </view>
+      <view wx:if="{{group.info.freezeExemptFlag===1}}" class="exempt-info">
+        <view wx:if="{{group.info.exemptStatusText}}" class="exempt-info-status">{{group.info.exemptStatusText}}</view>
+        <view wx:if="{{group.info.exemptRoomNames}}" class="exempt-info-rooms">房间: {{group.info.exemptRoomNames}}</view>
       </view>
     </view>
   </view>
@@ -71,14 +65,22 @@
       </view>
       <view class="detail-line">姓名：{{detail.userName || '-'}}</view>
       <view class="detail-line">ARO ID：{{detail.aroUserId || '-'}}</view>
-      <view class="detail-line">卡号：{{detail.cardNo || '-'}}</view>
       <view class="detail-line">大华序号：{{detail.dahuaSeq || '-'}}</view>
       <view class="detail-line">人员编码：{{detail.dahuaPersonCode || '-'}}</view>
       <view class="detail-line">课题组：{{detail.projectGroupName || '-'}}</view>
       <view class="detail-line">{{detail.controlLabel || '-'}} · {{detail.exemptStatusText || '无豁免'}}</view>
       <view wx:if="{{detail.exemptRoomNames}}" class="detail-line exempt-rooms-detail">房间: {{detail.exemptRoomNames}}</view>
       <view class="detail-line">更新时间：{{detail.lastModifiedTime || '-'}}</view>
+      <!-- 卡片列表 -->
+      <view class="detail-line detail-section-title">卡片列表</view>
+      <view wx:for="{{detailCards}}" wx:key="cardNo" class="detail-card-row">
+        <text class="detail-cardno {{item.cardStatus==='FROZEN' ? 'detail-cardno-frozen' : ''}}">{{item.cardNo}}</text>
+        <text class="detail-card-status">{{item.cardStatus==='FROZEN' ? '冻结' : '正常'}}</text>
+        <button size="mini" class="detail-card-del-btn" data-cardno="{{item.cardNo}}" data-username="{{detail.userName}}" bindtap="onDeleteCard">删卡</button>
+      </view>
+      <view wx:if="{{!detailCards || detailCards.length===0}}" class="detail-line">暂无卡片</view>
       <view class="detail-actions">
+        <button size="mini" class="detail-add-btn" data-info="{{detail}}" bindtap="onOpenAddCard">+ 追加卡片</button>
         <button
           size="mini"
           class="detail-freeze-btn {{detail.cardStatus==='FROZEN' ? 'detail-freeze-btn--frozen' : 'detail-freeze-btn--normal'}}"
@@ -214,4 +216,24 @@
     bind:close="onExemptPanelClose"
     bind:confirm="onExemptPanelConfirm"
   />
+
+  <!-- 追加卡片弹窗 -->
+  <view wx:if="{{addCardOpen}}" class="overlay" bindtap="onCloseAddCard">
+    <view class="panel addcard-panel" catchtap="noop">
+      <view class="panel-head">
+        <view class="panel-title">追加卡片</view>
+        <view class="close-x" bindtap="onCloseAddCard">×</view>
+      </view>
+      <view class="field-label">人员</view>
+      <view class="readonly-text">{{addCardTarget.userName || '-'}} ({{addCardTarget.aroUserId || '-'}})</view>
+      <view class="field-label">大华序号</view>
+      <view class="readonly-text">{{addCardTarget.dahuaSeq || '-'}} · 编码 {{addCardTarget.dahuaPersonCode || '-'}}</view>
+      <view class="field-label">新卡号</view>
+      <input class="field" placeholder="刷卡或手动输入" value="{{addCardNo}}" bindinput="onAddCardNoInput" />
+      <view class="footer-row">
+        <button size="mini" bindtap="onCloseAddCard">取消</button>
+        <button size="mini" type="primary" loading="{{addCardSubmitting}}" bindtap="onAddCardSubmit">确认追加</button>
+      </view>
+    </view>
+  </view>
 </view>
