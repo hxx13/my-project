@@ -52,9 +52,7 @@ public class EmailPushChannel implements PushChannel {
                 helper.setFrom(fromAddress);
             }
             String html = "<html><body>" + (content != null ? content.replace("\n", "<br>") : "")
-                    + "<hr><p style='color:#999;font-size:12px'>"
-                    + "此邮件由 ARO 系统自动发送。如需退订，请登录系统在个人设置中关闭通知绑定。"
-                    + "</p></body></html>";
+                    + "</body></html>";
             helper.setText(html, true);
             mailSender.send(mime);
             log.info("[EmailPush] sent to {}: {}", target, title);

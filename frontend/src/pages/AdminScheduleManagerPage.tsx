@@ -55,6 +55,7 @@ const DEPRECATED_JOB_KEYS = new Set([
 
 const PLATFORM_POLL_KEYS = new Set(["ARO_PENETRATION_POLL"]);
 const RANKING_POLL_KEYS = new Set(["DASHBOARD_RANKING_ACTIVITY", "DASHBOARD_RANKING_ANIMAL"]);
+const AGV_POLL_KEYS = new Set(["AGV_MASTER", "AGV_ROBOT_16", "AGV_ROBOT_18", "AGV_ROBOT_20", "AGV_ROBOT_22"]);
 const ALL_POLL_KEYS = new Set([...PLATFORM_POLL_KEYS, ...RANKING_POLL_KEYS]);
 const FREEZE_KEYS = new Set(["RUN_REAPER", "RUN_REAPER_SECOND", "DAILY_EXEMPT_RESET", "STRANDED_VIOLATION_CHECK", "STRANDED_SIGNOUT_CHECK"]);
 const DAILY_EXEMPT_RESET_KEY = "DAILY_EXEMPT_RESET";
@@ -246,6 +247,10 @@ export default function AdminScheduleManagerPage() {
   const rangeGroupedRows = useMemo(
     () =>
       [
+        {
+          title: "AGV 小车采集（窗口 + 轮询秒）",
+          rows: rangeRows.filter((r) => AGV_POLL_KEYS.has(r.jobKey)),
+        },
         {
           title: "动物房 WinCC（窗口 + 轮询秒）",
           rows: rangeRows.filter((r) => WINCC_POLL_KEYS.has(r.jobKey)),

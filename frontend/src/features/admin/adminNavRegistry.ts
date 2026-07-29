@@ -42,6 +42,7 @@ import {
   Thermometer,
   Ticket,
   ScanFace,
+  Truck,
   Users,
   Wrench,
 } from "lucide-react";
@@ -209,6 +210,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-emerald-400 to-green-500",
         fallbackMinRole: "SUPER_ADMIN",
         sidebarVisible: (ctx) => ctx.flags.canViewSettings && hasMinRole(ctx.role, "SUPER_ADMIN") && show(ctx, "/admin/logging-console", "SUPER_ADMIN"),
+      },
+      {
+        id: "agv-tracker",
+        path: "/admin/agv-tracker",
+        label: "AGV 小车",
+        icon: Truck,
+        homeTone: "from-blue-400 to-cyan-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canViewSettings && hasMinRole(ctx.role, "ADMIN") && show(ctx, "/admin/agv-tracker", "ADMIN"),
       },
       {
         id: "monitor",

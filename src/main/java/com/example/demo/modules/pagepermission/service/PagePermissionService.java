@@ -643,7 +643,8 @@ public class PagePermissionService {
         if (path.startsWith("/admin/content-hub")) {
             return "ADMIN";
         }
-        if (path.startsWith("/admin/student-violations")
+        if (path.startsWith("/admin/agv-tracker")
+                || path.startsWith("/admin/student-violations")
                 || path.startsWith("/admin/monitor")
                 || path.startsWith("/admin/registration-invites")
                 || path.startsWith("/admin/report-form")

@@ -93,6 +93,16 @@ public class JobExecutionRegistry {
     public static final String JOB_CAGE_STATUS_VIOLATION_CHECK = "CAGE_STATUS_VIOLATION_CHECK";
     /** ARO 培训数据全量同步（每日拉取场次+学员到本地缓存表） */
     public static final String JOB_ARO_TRAINING_SYNC = "ARO_TRAINING_SYNC";
+    /** AGV 采集·总闸（控制轮询窗口 + 频率） */
+    public static final String AGV_MASTER = "AGV_MASTER";
+    /** AGV 采集·172.22.159.16 开关 */
+    public static final String AGV_ROBOT_16 = "AGV_ROBOT_16";
+    /** AGV 采集·172.22.159.18 开关 */
+    public static final String AGV_ROBOT_18 = "AGV_ROBOT_18";
+    /** AGV 采集·172.22.159.20 开关 */
+    public static final String AGV_ROBOT_20 = "AGV_ROBOT_20";
+    /** AGV 采集·172.22.159.22 开关 */
+    public static final String AGV_ROBOT_22 = "AGV_ROBOT_22";
 
     private static final Set<String> DEPRECATED_JOB_KEYS =
             Set.of(
@@ -144,6 +154,8 @@ public class JobExecutionRegistry {
     private com.example.demo.modules.twin.dashboard.service.CageStatusViolationCheckService cageStatusViolationCheckService;
     @Autowired(required = false)
     private AroTrainingSyncService aroTrainingSyncService;
+    @Autowired(required = false)
+    private com.example.demo.modules.agv.service.AgvCollectorService agvCollectorService;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
     public JobExecutionRegistry(
@@ -233,6 +245,11 @@ public class JobExecutionRegistry {
         jobs.put(JOB_DASHBOARD_RANKING_ANIMAL, "大屏·动物消耗排行榜刷新");
         jobs.put(JOB_EXP_RECONCILE, "经验值·每日流水对账重算");
         jobs.put(JOB_CAGE_STATUS_VIOLATION_CHECK, "笼架特殊状态违规检测");
+        jobs.put(AGV_MASTER, "AGV采集·总闸（窗口+频率控制）");
+        jobs.put(AGV_ROBOT_16, "AGV采集·172.22.159.16 开关");
+        jobs.put(AGV_ROBOT_18, "AGV采集·172.22.159.18 开关");
+        jobs.put(AGV_ROBOT_20, "AGV采集·172.22.159.20 开关");
+        jobs.put(AGV_ROBOT_22, "AGV采集·172.22.159.22 开关");
         return jobs;
     }
 
@@ -454,6 +471,21 @@ public class JobExecutionRegistry {
                     }
                     aroTrainingSyncService.syncAll();
                     yield JobRunOutcome.ok(jobKey, "ARO 培训数据同步完成");
+                }
+                case AGV_MASTER -> {
+                    if (agvCollectorService == null) {
+                        throw new IllegalStateException("AgvCollectorService 未就绪");
+                    }
+                    String msg = agvCollectorService.runImmediatePoll();
+                    yield JobRunOutcome.ok(jobKey, msg);
+                }
+                case AGV_ROBOT_16, AGV_ROBOT_18, AGV_ROBOT_20, AGV_ROBOT_22 -> {
+                    if (agvCollectorService == null) {
+                        throw new IllegalStateException("AgvCollectorService 未就绪");
+                    }
+                    String ip = "172.22.159." + jobKey.substring(jobKey.lastIndexOf('_') + 1);
+                    String msg = agvCollectorService.pollRobotNow(ip);
+                    yield JobRunOutcome.ok(jobKey, msg);
                 }
                 default -> throw new IllegalArgumentException("不支持的任务: " + jobKey);
             };

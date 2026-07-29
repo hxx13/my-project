@@ -86,4 +86,15 @@ public final class ErrorCodeConstants {
     public static final int NOTIFY_SEND_FAILED         = 1_011_005;
     public static final int NOTIFY_VERIFY_CODE_INVALID = 1_011_006;
     public static final int NOTIFY_BINDING_DUPLICATE   = 1_011_007;
+
+    // ============ AGV 模块 ============
+    public static final int AGV_ROBOT_UNREACHABLE    = 1_012_001; // 单台小车不可达
+    public static final int AGV_SERVER_UNREACHABLE   = 1_012_002; // 上位机不可达
+    public static final int AGV_TRAJECTORY_NOT_FOUND = 1_012_003; // 轨迹数据未找到
+
+    /** AGV 分析 agv-analysis 1-012-xxx */
+    public static final int AGV_ZONE_NOT_FOUND = 1_012_004;
+    public static final int AGV_RULE_NOT_FOUND = 1_012_005;
+    public static final int AGV_SEGMENT_NOT_FOUND = 1_012_006;
+    public static final int AGV_ANALYSIS_NO_DATA = 1_012_007;
 }

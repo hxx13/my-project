@@ -466,12 +466,22 @@ public class SwipeAlertEngine {
                 if (!cardholderId.isBlank()) targetUserIds.add(cardholderId);
             }
 
+            Map<String, Object> report;
             if (targetUserIds.isEmpty()) {
-                pushService.send("SWIPE_FAILURE_ALERT", vars);
+                report = pushService.send("SWIPE_FAILURE_ALERT", vars);
             } else {
-                pushService.send("SWIPE_FAILURE_ALERT", vars, targetUserIds);
+                report = pushService.send("SWIPE_FAILURE_ALERT", vars, targetUserIds);
             }
-            log.info("[swipe-alert] push alert fired ruleId={} count={} targets={}", rule.getId(), count, targetUserIds.size());
+            Object sent = report.getOrDefault("sent", 0);
+            Object failed = report.getOrDefault("failed", 0);
+            Object skipped = report.getOrDefault("skipped", 0);
+            if (((Number) sent).intValue() == 0 && ((Number) failed).intValue() == 0) {
+                log.warn("[swipe-alert] push dispatch ZERO deliveries: ruleId={} count={} targets={} sent=0 failed=0 skipped={} diag={}",
+                        rule.getId(), count, targetUserIds.size(), skipped, report.get("diagnosis"));
+            } else {
+                log.info("[swipe-alert] push alert fired ruleId={} count={} targets={} sent={} failed={} skipped={}",
+                        rule.getId(), count, targetUserIds.size(), sent, failed, skipped);
+            }
         } catch (Exception e) {
             log.warn("[swipe-alert] push failed: {}", e.getMessage());
         }
