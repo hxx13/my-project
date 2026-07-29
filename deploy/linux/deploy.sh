@@ -113,10 +113,10 @@ echo "  最新构建: $LATEST_JAR"
 
 # 备份当前 demo.jar → 复制新构建 → 固定名称 demo.jar
 if [ -f "$APP_DIR/demo.jar" ]; then
-    cp "$APP_DIR/demo.jar" "$APP_DIR/demo-previous.jar.bak"
+    sudo cp "$APP_DIR/demo.jar" "$APP_DIR/demo-previous.jar.bak"
     echo "  旧版本已备份: demo-previous.jar.bak"
 fi
-cp "$LATEST_JAR" "$APP_DIR/demo.jar"
+sudo cp "$LATEST_JAR" "$APP_DIR/demo.jar"
 sudo chown twin:twin "$APP_DIR/demo.jar"
 echo "  JAR 已替换: demo.jar"
 
