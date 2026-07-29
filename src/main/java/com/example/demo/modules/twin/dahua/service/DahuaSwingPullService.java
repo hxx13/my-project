@@ -2,6 +2,7 @@ package com.example.demo.modules.twin.dahua.service;
 
 import com.alibaba.fastjson2.JSON;
 import com.example.demo.modules.dahua.service.DahuaOpenApiService;
+import com.example.demo.modules.dahua.service.DahuaService;
 import com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask;
 import com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
@@ -214,6 +215,11 @@ public class DahuaSwingPullService {
                     boolean alreadyLinkageEligible =
                             existing != null && Integer.valueOf(1).equals(existing.getMappingHit());
                     boolean isNewRecord = existing == null;
+                    if (!isNewRecord) {
+                        continue;
+                    }
+                    // 修正 pull 时间戳（大华时间快9分钟）
+                    record.setSwingTime(DahuaService.adjustSwingTime9Min(record.getSwingTime()));
                     dahuaSwingMapper.upsertRecord(record);
                     accessRawEventIngestService.ingestFromSwing(record, "DAHUA_PULL");
                     // Feed failures to SwipeAlertEngine ONLY for first-time records;
@@ -226,6 +232,7 @@ public class DahuaSwingPullService {
                             dto.setPersonName(record.getPersonName());
                             dto.setChannelName(record.getChannelName());
                             dto.setChannelCode(record.getChannelCode());
+                            dto.setCardNumber(record.getCardNumber());
                             dto.setOpenType(record.getOpenType());
                             dto.setEnterOrExit(record.getEnterOrExit());
                             dto.setOpenResult(record.getOpenResult());

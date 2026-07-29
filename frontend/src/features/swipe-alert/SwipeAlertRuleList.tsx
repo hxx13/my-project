@@ -63,8 +63,8 @@ export function SwipeAlertRuleList({ onEdit, onAdd, onClose, formOpen, refreshKe
             onClick={() => {
               useSwipeAlertStore.getState().showAlert({
                 alertId: `test-${Date.now()}`, ruleId: 0, ruleName: "模拟测试",
-                title: "🚨 刷卡失败告警 · 物理学院",
-                body: "过去 5 分钟内 3 次非法刷卡", count: 3, windowSec: 300, bannerDurationSec: 0,
+                title: "🚨 北门-3号通道 刷卡告警 · 3次/5分钟",
+                body: "赵强 · 物理学院 · 过去 5 分钟 3 次（阈值 3 次）", count: 3, windowSec: 300, bannerDurationSec: 0,
                 matchedRecords: [{
                   personName: "赵强", personCode: "2023056", departmentName: "物理学院",
                   channelName: "北门-3号通道", channelCode: "CH-N-03", openTypeLabel: "非法刷卡开门",

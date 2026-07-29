@@ -23,8 +23,8 @@
     VALUES (#{userId}, #{sourceCode}, #{enabled}, #{muteEmail}, #{muteServerChan}, #{muteWxpusher})
     ON DUPLICATE KEY UPDATE
       enabled = VALUES(enabled),
-      mute_email = VALUES(muteEmail),
-      mute_server_chan = VALUES(muteServerChan),
-      mute_wxpusher = VALUES(muteWxpusher)
+      mute_email = VALUES(mute_email),
+      mute_server_chan = VALUES(mute_server_chan),
+      mute_wxpusher = VALUES(mute_wxpusher)
   </insert>
 </mapper>

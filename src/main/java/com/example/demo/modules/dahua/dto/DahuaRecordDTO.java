@@ -13,6 +13,7 @@ public class DahuaRecordDTO {
     private String personName;
     private String channelName;
     private String channelCode;
+    private String cardNumber;
     private Integer openType;
     private Integer enterOrExit;
     private Integer openResult;
@@ -30,6 +31,9 @@ public class DahuaRecordDTO {
 
     public String getChannelCode() { return channelCode; }
     public void setChannelCode(String channelCode) { this.channelCode = channelCode; }
+
+    public String getCardNumber() { return cardNumber; }
+    public void setCardNumber(String cardNumber) { this.cardNumber = cardNumber; }
 
     public Integer getOpenType() { return openType; }
     public void setOpenType(Integer openType) { this.openType = openType; }

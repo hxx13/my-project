@@ -309,11 +309,15 @@ export default function AdminPersonnelPage() {
     }
   };
 
+  const switchTab = (tab: "personnel" | "system") => {
+    setActiveTab(tab);
+    setPage(1);
+  };
+
   const jumpToPersonnelPinReset = (personnelUserId: string, name?: string) => {
     const uid = personnelUserId.trim();
     if (!uid) return;
-    setActiveTab("personnel");
-    setPage(1);
+    switchTab("personnel");
     setKeyword(uid);
     toast(`已在人员库 Tab 筛选学号 ${name?.trim() ? `${name.trim()} · ${uid}` : uid}，请在 PIN 列操作`, { icon: "ℹ️" });
   };
@@ -481,7 +485,7 @@ export default function AdminPersonnelPage() {
             <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--twin-canvas-soft-2)] p-0.5">
               <button
                 type="button"
-                onClick={() => setActiveTab("personnel")}
+                onClick={() => switchTab("personnel")}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium ${
                   activeTab === "personnel" ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
                 }`}
@@ -490,7 +494,7 @@ export default function AdminPersonnelPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab("system")}
+                onClick={() => switchTab("system")}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium ${
                   activeTab === "system" ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
                 }`}
@@ -1261,13 +1265,21 @@ export default function AdminPersonnelPage() {
         </div></Portal> : null}
 
       <WxPusherBindModal
+        key={wxEditOpen ?? "new"}
         open={wxEditOpen !== null}
         onClose={() => setWxEditOpen(null)}
         personnelId={wxEditOpen ?? ""}
         personName={(() => {
           if (!wxEditOpen) return undefined;
-          const r = personnelRows.find((p) => p.id === wxEditOpen);
-          return r ? (r.name || r.username || wxEditOpen) : wxEditOpen;
+          const r = personnelRows.find((p) => p.id === wxEditOpen)
+            || systemRows.find((s) => s.id === wxEditOpen);
+          return r ? ((r as any).name || (r as any).username || wxEditOpen) : wxEditOpen;
+        })()}
+        initialValue={(() => {
+          if (!wxEditOpen) return undefined;
+          const r = personnelRows.find((p) => p.id === wxEditOpen)
+            || systemRows.find((s) => s.id === wxEditOpen);
+          return (r as any)?.wxPusherUid || undefined;
         })()}
         authToken={authStorage.getToken()}
         onSaved={() => {

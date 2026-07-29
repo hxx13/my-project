@@ -56,14 +56,14 @@ public class UserNotifySettingService {
             if (!"ALL".equals(vt) && !perspective.equals(vt)) continue;
 
             UserNotifyMute m = muteMap.get(src.getSourceCode());
-            boolean myEnabled = m == null || m.getEnabled() == null || m.getEnabled() != 0;
+            boolean myEnabled = m == null || m.getEnabled() == null || Boolean.TRUE.equals(m.getEnabled());
             list.add(new SourceSetting(
                     src.getSourceCode(), src.getSourceName(), src.getDescription(),
                     src.getEnabled() != null && src.getEnabled() == 1,
                     myEnabled,
-                    m != null && m.getMuteEmail() != null && m.getMuteEmail() == 1,
-                    m != null && m.getMuteServerChan() != null && m.getMuteServerChan() == 1,
-                    m != null && m.getMuteWxpusher() != null && m.getMuteWxpusher() == 1));
+                    m != null && Boolean.TRUE.equals(m.getMuteEmail()),
+                    m != null && Boolean.TRUE.equals(m.getMuteServerChan()),
+                    m != null && Boolean.TRUE.equals(m.getMuteWxpusher())));
         }
         return list;
     }
@@ -72,6 +72,16 @@ public class UserNotifySettingService {
     public void save(String userId, String sourceCode, UserNotifyMute body) {
         body.setUserId(userId);
         body.setSourceCode(sourceCode);
+        // 合并已有设置：未传的字段保留原值
+        UserNotifyMute existing = muteMapper.findByUserAndSource(userId, sourceCode);
+        if (existing != null) {
+            if (body.getEnabled() == null) body.setEnabled(existing.getEnabled());
+            if (body.getMuteEmail() == null) body.setMuteEmail(existing.getMuteEmail());
+            if (body.getMuteServerChan() == null) body.setMuteServerChan(existing.getMuteServerChan());
+            if (body.getMuteWxpusher() == null) body.setMuteWxpusher(existing.getMuteWxpusher());
+        } else {
+            if (body.getEnabled() == null) body.setEnabled(true);
+        }
         muteMapper.insertOrUpdate(body);
     }
 

@@ -3,6 +3,7 @@ package com.example.demo.modules.notification.push.dispatch;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
+import com.example.demo.modules.notification.push.config.PushChannelMasterMapper;
 import com.example.demo.modules.notification.push.preference.UserNotifyMute;
 import com.example.demo.modules.notification.push.preference.UserNotifySettingService;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
@@ -47,6 +48,7 @@ public class PushDispatchEngine {
     private final DigestResolutionService digestResolutionService;
     private final NotifyDigestItemMapper digestItemMapper;
     private final UserNotifySettingService notifySettingService;
+    private final PushChannelMasterMapper channelMasterMapper;
 
     public PushDispatchEngine(NotifySourceService sourceService,
                               NotifySourceChannelService channelConfigService,
@@ -59,7 +61,8 @@ public class PushDispatchEngine {
                               List<PushChannel> channels,
                               DigestResolutionService digestResolutionService,
                               NotifyDigestItemMapper digestItemMapper,
-                              UserNotifySettingService notifySettingService) {
+                              UserNotifySettingService notifySettingService,
+                              PushChannelMasterMapper channelMasterMapper) {
         this.sourceService = sourceService;
         this.channelConfigService = channelConfigService;
         this.recipientService = recipientService;
@@ -72,6 +75,7 @@ public class PushDispatchEngine {
         this.digestResolutionService = digestResolutionService;
         this.digestItemMapper = digestItemMapper;
         this.notifySettingService = notifySettingService;
+        this.channelMasterMapper = channelMasterMapper;
     }
 
     public Map<String, Object> dispatch(String sourceCode, Map<String, String> variables, Set<String> dynamicUserIds) {
@@ -114,7 +118,8 @@ public class PushDispatchEngine {
 
         // 遥测报警源由 TelemetryAlarmCheckScheduler 自行管理缓冲队列，不经过 PushDispatchEngine 的 digest/夜间分支
         boolean isTelemetrySource = "TELEMETRY_ALARM".equals(source.getSourceCode())
-                || "TELEMETRY_RECOVERY".equals(source.getSourceCode());
+                || "TELEMETRY_RECOVERY".equals(source.getSourceCode())
+                || "SWIPE_FAILURE_ALERT".equals(source.getSourceCode());
 
         if (!isTelemetrySource) {
 
@@ -210,6 +215,14 @@ public class PushDispatchEngine {
                     if (uid != null && sk != null && !sk.isBlank()) sendKeyMap.put(uid, sk);
                 }
             }
+            List<Map<String, String>> aroWuids = personnelMapper.findWxPusherUidsByUserIds(aroIds);
+            if (aroWuids != null) {
+                for (Map<String, String> row : aroWuids) {
+                    String uid = row.get("user_id");
+                    String wuid = row.get("wx_pusher_uid");
+                    if (uid != null && wuid != null && !wuid.isBlank()) wxPusherUidMap.put(uid, wuid);
+                }
+            }
         }
         if (!staffIds.isEmpty()) {
             List<Map<String, String>> userEmails = userMapper.findContactEmailsByIds(staffIds);
@@ -256,6 +269,12 @@ public class PushDispatchEngine {
                 diag.add("channel " + channelCfg.getChannelCode() + " system-disabled");
                 continue;
             }
+            // 全局渠道总控
+            Integer masterOn = channelMasterMapper.findEnabledByCode(channelCfg.getChannelCode());
+            if (masterOn != null && masterOn == 0) {
+                diag.add("channel " + channelCfg.getChannelCode() + " master-disabled");
+                continue;
+            }
 
             // 遥测报警源自带调度器冷却去重，不应用渠道静默时段和频率限制
             if (!isTelemetrySource && rateLimiter.isQuietTime(channelCfg)) {
@@ -271,19 +290,19 @@ public class PushDispatchEngine {
             for (String userId : allRecipientIds) {
                 // ★ 个人静默：用户关闭了该源或该渠道
                 UserNotifyMute mute = notifySettingService.getMute(userId, source.getSourceCode());
-                if (mute != null && mute.getEnabled() != null && mute.getEnabled() == 0) {
+                if (mute != null && Boolean.FALSE.equals(mute.getEnabled())) {
                     chSkipped++;
                     diag.add("user " + userId + " muted source " + source.getSourceCode());
                     continue;
                 }
                 if (mute != null) {
-                    if (PushConstants.CHANNEL_EMAIL.equals(channel.getCode()) && mute.getMuteEmail() != null && mute.getMuteEmail() == 1) {
+                    if (PushConstants.CHANNEL_EMAIL.equals(channel.getCode()) && Boolean.TRUE.equals(mute.getMuteEmail())) {
                         chSkipped++; diag.add("user " + userId + " muted EMAIL"); continue;
                     }
-                    if (PushConstants.CHANNEL_SERVER_CHAN.equals(channel.getCode()) && mute.getMuteServerChan() != null && mute.getMuteServerChan() == 1) {
+                    if (PushConstants.CHANNEL_SERVER_CHAN.equals(channel.getCode()) && Boolean.TRUE.equals(mute.getMuteServerChan())) {
                         chSkipped++; diag.add("user " + userId + " muted SERVER_CHAN"); continue;
                     }
-                    if (PushConstants.CHANNEL_WXPUSHER.equals(channel.getCode()) && mute.getMuteWxpusher() != null && mute.getMuteWxpusher() == 1) {
+                    if (PushConstants.CHANNEL_WXPUSHER.equals(channel.getCode()) && Boolean.TRUE.equals(mute.getMuteWxpusher())) {
                         chSkipped++; diag.add("user " + userId + " muted WXPUSHER"); continue;
                     }
                 }

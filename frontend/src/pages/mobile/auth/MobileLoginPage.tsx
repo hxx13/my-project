@@ -469,7 +469,19 @@ export default function MobileLoginPage() {
                 {submitting ? "登录中..." : "登 录"}
               </button>
             </div>
-            <div className="mt-6 flex flex-col items-center gap-2 text-sm">
+            <div className="mt-4 border-t pt-4" style={{ borderColor: "rgba(30,55,90,0.1)" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${encodeURIComponent(window.location.origin)}`;
+                }}
+                className="w-full rounded-[var(--app-radius-element)] border px-4 py-3 text-sm font-medium transition"
+                style={{ borderColor: accent, color: accent, background: "transparent" }}
+              >
+                统一认证登录
+              </button>
+            </div>
+            <div className="mt-4 flex flex-col items-center gap-2 text-sm">
               <p style={{ color: secondary }}>
                 还没有账号？
                 <Link to="/m/register" className="ml-1 font-medium hover:underline" style={{ color: accent }}>立即注册</Link>

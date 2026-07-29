@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS user_notify_mute (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id VARCHAR(64) NOT NULL COMMENT '用户ID',
     source_code VARCHAR(64) NOT NULL COMMENT '对应 notify_source.source_code',
-    enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1=接收 0=拒收',
+    enabled TINYINT DEFAULT 1 COMMENT '1=接收 0=拒收',
     mute_email TINYINT DEFAULT 0 COMMENT '0=不静默 1=拒收邮件',
     mute_server_chan TINYINT DEFAULT 0 COMMENT '0=不静默 1=拒收Server酱',
     mute_wxpusher TINYINT DEFAULT 0 COMMENT '0=不静默 1=拒收WxPusher',
@@ -15,3 +15,5 @@ CREATE TABLE IF NOT EXISTS user_notify_mute (
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_user_source (user_id, source_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE user_notify_mute MODIFY COLUMN enabled TINYINT DEFAULT 1;

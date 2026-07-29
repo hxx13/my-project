@@ -84,6 +84,9 @@ public interface AroPersonnelMapper {
     /** 批量查SendKey，返回 userId→sendKey 列表 */
     java.util.List<java.util.Map<String, String>> findSendKeysByUserIds(@Param("userIds") List<String> userIds);
 
+    /** 批量查WxPusherUid，返回 userId→wxPusherUid 列表 */
+    java.util.List<java.util.Map<String, String>> findWxPusherUidsByUserIds(@Param("userIds") List<String> userIds);
+
     String findUserIdByContactEmail(@Param("contactEmail") String contactEmail);
 
     /** 按 openId 查人员库用户 ID（学生 openId 主存储） */

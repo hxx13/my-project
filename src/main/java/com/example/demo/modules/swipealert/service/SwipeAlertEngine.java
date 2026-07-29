@@ -53,6 +53,10 @@ public class SwipeAlertEngine {
     @Autowired(required = false)
     private com.example.demo.modules.twin.common.mapper.TwinDashboardMapper personnelMapper;
 
+    /** Card mapping lookup — 用卡号精确匹配系统用户 ID（dahua_card_mapping 表） */
+    @Autowired(required = false)
+    private com.example.demo.modules.twin.card.mapper.TwinCardMappingMapper cardMappingMapper;
+
     /** Activation state lookup — checks if user has been activated for any toggle door */
     @Autowired(required = false)
     private com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper dahuaSwingMapper;
@@ -240,12 +244,11 @@ public class SwipeAlertEngine {
     // =========================================================================
 
     private boolean matchesRule(SwipeAlertRule rule, DahuaRecordDTO record) {
-        // --- openTypes filter (48=远程开门, 51=合法刷卡, 52=非法刷卡) ---
+        // --- openTypes filter：记录的 openType 必须在规则允许集合内 ---
         String openTypes = rule.getOpenTypes();
-        if (openTypes != null && !openTypes.isBlank()) {
+        if (openTypes != null && !openTypes.isBlank() && record.getOpenType() != null) {
             Set<String> allowed = new HashSet<>(Arrays.asList(openTypes.split(",")));
-            boolean matched = allowed.contains("48") || allowed.contains("51") || allowed.contains("52");
-            if (!matched) return false;
+            if (!allowed.contains(String.valueOf(record.getOpenType()))) return false;
         }
 
         // --- channels filter (JSON array of channel codes) ---
@@ -322,14 +325,34 @@ public class SwipeAlertEngine {
             snap.put("enterOrExitLabel", "");
         }
 
-        // Try local personnel lookup by name for phone/department/userId
+        // ── 人员身份解析：卡号精确匹配 → 姓名模糊匹配（兜底） ──
         String mobilePhone = "";
         String departmentName = "";
         String personCode = "";
         String userId = "";
         String aroStatus = "UNKNOWN";
 
-        if (personnelMapper != null && !person.isBlank()) {
+        String cardNo = record.getCardNumber();
+        // ① 优先用卡号从 dahua_card_mapping 表精确匹配（19位 aroUserId）
+        if (cardMappingMapper != null && cardNo != null && !cardNo.isBlank()) {
+            try {
+                var mapping = cardMappingMapper.findByCardNo(cardNo.trim());
+                if (mapping != null && mapping.getAroUserId() != null && !mapping.getAroUserId().isBlank()) {
+                    userId = mapping.getAroUserId();
+                    departmentName = Objects.toString(mapping.getProjectGroupName(), "");
+                    personCode = Objects.toString(mapping.getJobNumber(), "");
+                    log.info("[swipe-alert] cardholder found by cardNo={}: userId={} name={} dept={}",
+                            cardNo, userId, mapping.getUserName(), departmentName);
+                } else {
+                    log.info("[swipe-alert] cardNo={} not found in dahua_card_mapping", cardNo);
+                }
+            } catch (Exception e) {
+                log.debug("[swipe-alert] card mapping lookup failed for cardNo={}: {}", cardNo, e.getMessage());
+            }
+        }
+
+        // ② 兜底：姓名模糊匹配 aro_personnel（卡号为空或卡号未匹配到时使用）
+        if (userId.isBlank() && personnelMapper != null && !person.isBlank()) {
             try {
                 List<Map<String, Object>> hits = personnelMapper.searchPersonnel(person, 3);
                 if (hits != null && !hits.isEmpty()) {
@@ -338,30 +361,32 @@ public class SwipeAlertEngine {
                     departmentName = Objects.toString(p.get("department_name"), "");
                     personCode = Objects.toString(p.get("job_number"), "");
                     userId = Objects.toString(p.get("user_id"), "");
-
-                    // Barrier status: check if user has activated any toggle door
-                    // Enter + activated → inside barrier; Enter + not activated → outside; Exit → always outside
-                    if (dahuaSwingMapper != null && !userId.isBlank()) {
-                        try {
-                            Integer enterOrExit = record.getEnterOrExit();
-                            if (enterOrExit != null && enterOrExit == 2) {
-                                // Leaving → always outside barrier
-                                aroStatus = "OUTSIDE";
-                            } else {
-                                // Entering → check activation state
-                                int activatedCount = dahuaSwingMapper.countActivatedStatesForUser(0L, userId);
-                                aroStatus = activatedCount > 0 ? "INSIDE" : "OUTSIDE";
-                            }
-                        } catch (Exception e) {
-                            log.debug("[swipe-alert] activation lookup failed for userId={}: {}",
-                                    userId, e.getMessage());
-                            aroStatus = "UNKNOWN";
-                        }
-                    }
+                    log.info("[swipe-alert] cardholder found by name fallback: person={} userId={} dept={}",
+                            person, userId, departmentName);
+                } else {
+                    log.info("[swipe-alert] cardholder NOT found: person='{}' cardNo={}", person,
+                            cardNo != null ? cardNo : "N/A");
                 }
             } catch (Exception e) {
                 log.debug("[swipe-alert] personnel lookup failed for '{}': {}",
                         person, e.getMessage());
+            }
+        } else if (userId.isBlank() && !person.isBlank()) {
+            log.info("[swipe-alert] personnelMapper not wired — cardholder name lookup skipped for '{}'", person);
+        }
+
+        // ③ 屏障内外状态（仅当已解析到 userId 时查询）
+        if (!userId.isBlank() && dahuaSwingMapper != null) {
+            try {
+                Integer enterOrExitRec = record.getEnterOrExit();
+                if (enterOrExitRec != null && enterOrExitRec == 2) {
+                    aroStatus = "OUTSIDE";
+                } else {
+                    int activatedCount = dahuaSwingMapper.countActivatedStatesForUser(0L, userId);
+                    aroStatus = activatedCount > 0 ? "INSIDE" : "OUTSIDE";
+                }
+            } catch (Exception e) {
+                log.debug("[swipe-alert] activation lookup failed for userId={}: {}", userId, e.getMessage());
             }
         }
 
@@ -436,6 +461,8 @@ public class SwipeAlertEngine {
             // 连带通知刷卡人本人
             if (Boolean.TRUE.equals(rule.getNotifyCardholder())) {
                 String cardholderId = Objects.toString(snap.get("aroUserId"), "");
+                log.info("[swipe-alert] notifyCardholder: person={} aroUserId={} snap={}",
+                        person, cardholderId, snap.keySet());
                 if (!cardholderId.isBlank()) targetUserIds.add(cardholderId);
             }
 
@@ -466,6 +493,10 @@ public class SwipeAlertEngine {
         String threshold = String.valueOf(rule.getThresholdCount() != null
                 ? rule.getThresholdCount() : 0);
 
+        String openTypeLabel = Objects.toString(recordSnap.get("openTypeLabel"), "");
+        String enterOrExitLabel = Objects.toString(recordSnap.get("enterOrExitLabel"), "");
+        String swingTime = Objects.toString(recordSnap.get("swingTime"), "");
+
         String title = (rule.getTitleTemplate() != null ? rule.getTitleTemplate() : "")
                 .replace("${dept}", dept)
                 .replace("${channel}", channel)
@@ -473,7 +504,10 @@ public class SwipeAlertEngine {
                 .replace("${windowMin}", winMin)
                 .replace("${windowSec}", winSec)
                 .replace("${threshold}", threshold)
-                .replace("${persons}", person);
+                .replace("${persons}", person)
+                .replace("${openTypeLabel}", openTypeLabel)
+                .replace("${enterOrExitLabel}", enterOrExitLabel)
+                .replace("${swingTime}", swingTime);
 
         String body = (rule.getBodyTemplate() != null ? rule.getBodyTemplate() : "")
                 .replace("${dept}", dept)
@@ -482,7 +516,10 @@ public class SwipeAlertEngine {
                 .replace("${windowMin}", winMin)
                 .replace("${windowSec}", winSec)
                 .replace("${threshold}", threshold)
-                .replace("${persons}", person);
+                .replace("${persons}", person)
+                .replace("${openTypeLabel}", openTypeLabel)
+                .replace("${enterOrExitLabel}", enterOrExitLabel)
+                .replace("${swingTime}", swingTime);
 
         Map<String, Object> alert = new LinkedHashMap<>();
         alert.put("alertId", UUID.randomUUID().toString());
