@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-29T04:08:17.789Z",
+  "generatedAt": "2026-07-29T14:41:54.616Z",
   "pages": [
     {
       "path": "/admin",
@@ -15,6 +15,13 @@
       "fallbackMinRole": "ADMIN",
       "groupTitle": "门禁、元数据与环境",
       "registryId": "access-rules"
+    },
+    {
+      "path": "/admin/agv-tracker",
+      "label": "AGV 小车",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "系统与安全",
+      "registryId": "agv-tracker"
     },
     {
       "path": "/admin/analytics",

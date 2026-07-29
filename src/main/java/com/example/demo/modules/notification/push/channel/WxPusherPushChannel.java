@@ -89,7 +89,8 @@ public class WxPusherPushChannel implements PushChannel {
                 log.warn("[WxPusher] API error: code={}, msg={}", code, errMsg);
                 return PushResult.fail("API_ERROR", errMsg);
             }
-            return PushResult.ok("WP_" + System.currentTimeMillis());
+            log.warn("[WxPusher] null response from API");
+            return PushResult.fail("NULL_RESPONSE", "WxPusher API 返回空响应");
         } catch (Exception e) {
             log.error("[WxPusher] failed to UID={}: {}", target, e.getMessage());
             return PushResult.fail("SEND_ERROR", e.getMessage());

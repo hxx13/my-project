@@ -70,7 +70,8 @@ public class ServerChanPushChannel implements PushChannel {
                 log.warn("[ServerChan] API error: {}", errMsg);
                 return PushResult.fail("API_ERROR", errMsg);
             }
-            return PushResult.ok("SC_" + System.currentTimeMillis());
+            log.warn("[ServerChan] null response from API");
+            return PushResult.fail("NULL_RESPONSE", "Server酱 API 返回空响应");
         } catch (Exception e) {
             log.error("[ServerChan] failed: {}", e.getMessage());
             return PushResult.fail("SEND_ERROR", e.getMessage());

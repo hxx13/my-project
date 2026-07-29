@@ -134,7 +134,7 @@ public class AdminDigestConfigController {
 
                 items.append("## ").append(src.getSourceName()).append("\n\n");
                 if (!itemTitle.isBlank()) items.append(itemTitle).append("\n\n");
-                items.append(itemContent).append("\n\n");
+                items.append(cleanItemForDigest(itemContent)).append("\n\n");
                 items.append("---\n\n");
             } catch (Exception e) {
                 items.append("【").append(code).append("】\n  测试通知项\n\n");
@@ -211,5 +211,19 @@ public class AdminDigestConfigController {
             result = result.replace("{" + entry.getKey() + "}", entry.getValue() != null ? entry.getValue() : "");
         }
         return result;
+    }
+
+    /** 清理聚合条目中的尾注/标题头，保证跨源格式统一（与 DigestScheduler.stripItemForDigest 逻辑一致） */
+    private static String cleanItemForDigest(String raw) {
+        if (raw == null) return "";
+        String s = raw.strip();
+        s = s.replaceAll("(?m)^> ARO 系统自动推送.*$", "");
+        s = s.replaceAll("(?m)^> ARO 动物房环境监测.*$", "");
+        s = s.replaceAll("(?m)^ARO 门禁监测.*$", "");
+        s = s.replaceAll("(?m)^##\\s+.*$", "");
+        s = s.replaceAll("\\n{3,}", "\n\n");
+        s = s.replaceAll("^---+\\s*", "");
+        s = s.replaceAll("\\s*---+$", "");
+        return s.strip();
     }
 }

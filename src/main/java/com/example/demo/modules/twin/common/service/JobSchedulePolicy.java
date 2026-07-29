@@ -33,6 +33,9 @@ public final class JobSchedulePolicy {
     }
 
     public static int defaultPollIntervalSeconds(String jobKey) {
+        if (jobKey != null && jobKey.startsWith("AGV_")) {
+            return 1;
+        }
         if (JobExecutionRegistry.JOB_ARO_PENETRATION_POLL.equals(jobKey)) {
             return 60;
         }
@@ -47,6 +50,9 @@ public final class JobSchedulePolicy {
 
     public static int clampPollInterval(String jobKey, Integer seconds) {
         int raw = seconds == null ? defaultPollIntervalSeconds(jobKey) : seconds;
+        if (jobKey != null && jobKey.startsWith("AGV_")) {
+            return Math.max(1, Math.min(60, raw));
+        }
         int max = isPollInWindow(jobKey) ? 86400 : 3600;
         return Math.max(10, Math.min(max, raw));
     }

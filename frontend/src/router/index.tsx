@@ -31,6 +31,9 @@ import AdminNotificationPage from "@/pages/AdminNotificationPage";
 import AdminApiDocsPage from "@/pages/AdminApiDocsPage";
 import AdminLoggingConsolePage from "@/pages/AdminLoggingConsolePage";
 import { MonitorDashboardPage } from "@/features/admin/monitor/MonitorDashboardPage";
+import AgvTrackerPage from "@/pages/AgvTrackerPage";
+import AgvLogPage from "@/pages/AgvLogPage";
+import AgvAnalyticsPage from "@/pages/AgvAnalyticsPage";
 import AdminDoorGroupStoragePage from "@/pages/AdminDoorGroupStoragePage";
 import AdminDepartmentStoragePage from "@/pages/AdminDepartmentStoragePage";
 import AdminDeviceChannelPage from "@/pages/AdminDeviceChannelPage";
@@ -285,6 +288,9 @@ export const router = createHashRouter([
                 element: <AdminGuard />,
                 children: [
                   { path: "monitor", element: <MonitorDashboardPage /> },
+                  { path: "agv-tracker", element: <AgvTrackerPage /> },
+                  { path: "agv-tracker/logs", element: <AgvLogPage /> },
+                  { path: "agv-tracker/analytics", element: <AgvAnalyticsPage /> },
                   { path: "door-group-storage", element: <AdminDoorGroupStoragePage /> },
                   { path: "device-channels", element: <AdminDeviceChannelPage /> },
                   { path: "aro-rooms", element: <AdminRoomMappingPage /> },

@@ -205,11 +205,13 @@ public class PushTemplateSeed implements ApplicationRunner {
                 "## ⚠️ ARO 环境报警\n\n"
                         + "📍 {floorCode} {roomName}\n\n"
                         + "🌡️ {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n\n"
-                        + "🕐 {sentAt}",
+                        + "🕐 {sentAt}\n\n"
+                        + "> ARO 系统自动推送",
                 "## ⚠️ ARO 环境报警\n"
                         + "📍 {floorCode} {roomName}\n"
                         + "🌡️ {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n"
-                        + "🕐 {sentAt}"
+                        + "🕐 {sentAt}\n"
+                        + "> ARO 系统自动推送"
         ));
         TEMPLATES.put("TELEMETRY_RECOVERY", new Template(
                 "✓ {floorCode} {roomName} {metricKind}已恢复",
@@ -222,11 +224,13 @@ public class PushTemplateSeed implements ApplicationRunner {
                 "## ✅ ARO 环境恢复\n\n"
                         + "📍 **{floorCode} {roomName}**\n\n"
                         + "🌡️ {metricKind}已恢复正常：**{currentValue}**\n\n"
-                        + "🕐 {recoveryAt}",
+                        + "🕐 {recoveryAt}\n\n"
+                        + "> ARO 系统自动推送",
                 "## ✅ ARO 环境恢复\n"
                         + "📍 **{floorCode} {roomName}**\n"
                         + "🌡️ {metricKind}已恢复正常：**{currentValue}**\n"
-                        + "🕐 {recoveryAt}"
+                        + "🕐 {recoveryAt}\n"
+                        + "> ARO 系统自动推送"
         ));
 
         // ========== 刷卡失败告警 ==========
@@ -243,13 +247,15 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "👤 {personName}\n\n"
                         + "📞 {phone}\n\n"
                         + "📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}\n\n"
-                        + "🕐 {swingTime}",
+                        + "🕐 {swingTime}\n\n"
+                        + "> ARO 系统自动推送",
                 "⚠️ ARO 刷卡告警\n"
                         + "🚪 {channelName}\n"
                         + "👤 {personName}\n"
                         + "📞 {phone}\n"
                         + "📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}\n"
-                        + "🕐 {swingTime}"
+                        + "🕐 {swingTime}\n"
+                        + "> ARO 系统自动推送"
         ));
     }
 }

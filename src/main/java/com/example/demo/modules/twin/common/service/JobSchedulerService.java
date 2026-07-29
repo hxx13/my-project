@@ -260,7 +260,8 @@ public class JobSchedulerService {
             return true;
         }
         return JobExecutionRegistry.JOB_TELEMETRY_WINCC_UI.equals(cfg.getJobKey())
-                || JobExecutionRegistry.JOB_TELEMETRY_WINCC_LIMITS_UI.equals(cfg.getJobKey());
+                || JobExecutionRegistry.JOB_TELEMETRY_WINCC_LIMITS_UI.equals(cfg.getJobKey())
+                || (cfg.getJobKey() != null && cfg.getJobKey().startsWith("AGV_"));
     }
 
     /**
@@ -518,6 +519,10 @@ public class JobSchedulerService {
             row.setScheduleType("DAILY");
             row.setScheduleTime("02:00");
             if (isSingleTimeJob(e.getKey())) {
+                row.setScheduleStartTime("00:00");
+                row.setScheduleEndTime("23:59");
+            } else if (e.getKey() != null && e.getKey().startsWith("AGV_")) {
+                // AGV 默认 24h 窗口，管理员可按需限制
                 row.setScheduleStartTime("00:00");
                 row.setScheduleEndTime("23:59");
             } else {
