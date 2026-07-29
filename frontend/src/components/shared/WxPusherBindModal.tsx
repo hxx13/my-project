@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Smartphone, Download, QrCode } from "lucide-react";
 import toast from "react-hot-toast";
@@ -24,6 +24,8 @@ export interface WxPusherBindModalProps {
   personnelId: string;
   /** 人员显示名（可选，用于 admin 代填场景提示） */
   personName?: string;
+  /** 当前已绑定的 UID（用于回显，编辑已有绑定时传入） */
+  initialValue?: string;
   /** 保存成功后的回调 */
   onSaved?: (uid: string) => void;
   /** 保存 API 的 auth token（如果调用方没有 authStorage 依赖） */
@@ -91,11 +93,12 @@ export function WxPusherBindModal({
   onClose,
   personnelId,
   personName,
+  initialValue,
   onSaved,
   authToken,
   apiBase = "/api/admin/personnel",
 }: WxPusherBindModalProps) {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialValue || "");
   const [saving, setSaving] = useState(false);
 
   if (!open) return null;

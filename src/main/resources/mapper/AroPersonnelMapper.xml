@@ -96,6 +96,12 @@
         AND send_key IS NOT NULL AND send_key != ''
     </select>
 
+    <select id="findWxPusherUidsByUserIds" resultType="java.util.HashMap">
+        SELECT user_id, wx_pusher_uid FROM aro_personnel
+        WHERE user_id IN <foreach collection="userIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        AND wx_pusher_uid IS NOT NULL AND wx_pusher_uid != ''
+    </select>
+
     <insert id="ensureRowExists">
         INSERT IGNORE INTO aro_personnel (user_id, name) VALUES (#{userId}, #{userId})
     </insert>

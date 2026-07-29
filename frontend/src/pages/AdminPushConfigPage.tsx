@@ -320,22 +320,18 @@ export default function AdminPushConfigPage() {
   }, [sources]);
 
   /* ---- channel master switch state (local-only; persisted via existing settings API) ---- */
-  const [masterSwitches, setMasterSwitches] = useState<
-    Record<string, boolean>
-  >({
-    EMAIL: true,
-    SERVER_CHAN: true,
-    WXPUSHER: true,
+  /* ---- channel master switches ---- */
+  const { data: channelMasters } = useQuery<{ channel_code: string; enabled: number }[]>({
+    queryKey: ["channel-masters"],
+    queryFn: () => authHttp.get("/admin/notify-source/channel-masters").then(r => r.data.data),
+    staleTime: 30_000,
   });
 
-  const toggleMasterSwitch = (code: string) => {
-    setMasterSwitches((prev) => {
-      const next = { ...prev, [code]: !prev[code] };
-      return next;
-    });
-    const name = code === "EMAIL" ? "邮件" : code === "SERVER_CHAN" ? "Server酱" : "WxPusher";
-    toast.success(`${name} 已${!masterSwitches[code] ? "开启" : "关闭"}`);
-  };
+  const toggleChannelMasterMutation = useMutation({
+    mutationFn: ({ code, enabled }: { code: string; enabled: boolean }) =>
+      authHttp.put(`/admin/notify-source/channel-masters/${code}?enabled=${enabled}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["channel-masters"] }),
+  });
 
   /* ---- draft updaters ---- */
   const updateChannelDraft = (
@@ -422,31 +418,17 @@ export default function AdminPushConfigPage() {
 
           {/* Channel master switches */}
           <div className="flex flex-wrap items-center gap-6 mb-3">
-            <span className="text-xs font-semibold text-[var(--app-color-text-secondary)]">
-              渠道总控
-            </span>
+            <span className="text-xs font-semibold text-[var(--app-color-text-secondary)]">渠道总控</span>
             {(["EMAIL", "SERVER_CHAN", "WXPUSHER"] as const).map((code) => {
               const label = code === "EMAIL" ? "邮件" : code === "SERVER_CHAN" ? "Server酱" : "WxPusher";
-              const checked = masterSwitches[code] ?? false;
+              const master = (channelMasters ?? []).find(c => c.channel_code === code);
+              const checked = master ? master.enabled === 1 : true;
               return (
-                <label
-                  key={code}
-                  className="inline-flex items-center gap-2 cursor-pointer select-none"
-                >
-                  <AdminSwitchScaled
-                    size="sm"
-                    checked={checked}
-                    onChange={() => toggleMasterSwitch(code)}
-                  />
+                <label key={code} className="inline-flex items-center gap-2 cursor-pointer select-none">
+                  <AdminSwitchScaled size="sm" checked={checked}
+                    onChange={() => toggleChannelMasterMutation.mutate({ code, enabled: !checked })} />
                   <span className="text-sm text-[var(--app-color-text-primary)]">{label}</span>
-                  <span
-                    className={cn(
-                      "text-xs font-medium",
-                      checked
-                        ? "text-[var(--app-color-feedback-success)]"
-                        : "text-[var(--app-color-text-tertiary)]",
-                    )}
-                  >
+                  <span className={cn("text-xs font-medium", checked ? "text-[var(--app-color-feedback-success)]" : "text-[var(--app-color-text-tertiary)]")}>
                     {checked ? "已开启" : "已关闭"}
                   </span>
                 </label>
@@ -681,7 +663,7 @@ export default function AdminPushConfigPage() {
 
             <AdminTabPanel tabId="swipe-alarm" activeTab={pushTab} id="admin-tab-panel-swipe-alarm">
               <div className="p-3">
-                <SwipeAlarmTab />
+                <SwipeAlarmTab sourceEnabled={sources?.find(s => s.sourceCode === "SWIPE_FAILURE_ALERT")?.sourceEnabled} />
               </div>
             </AdminTabPanel>
           </div>
@@ -1609,12 +1591,17 @@ function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
 /*  SwipeAlarmTab — 刷卡失败报警配置                                     */
 /* ------------------------------------------------------------------ */
 
-function SwipeAlarmTab() {
+function SwipeAlarmTab({ sourceEnabled }: { sourceEnabled?: boolean }) {
   const [editingSwipeRule, setEditingSwipeRule] = useState<SwipeAlertRuleRow | null | undefined>(undefined);
   const [swipeRefreshKey, setSwipeRefreshKey] = useState(0);
 
   return (
     <div className="space-y-3">
+      {sourceEnabled === false && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          ⚠️ SWIPE_FAILURE_ALERT 信息源已关闭。规则即使配置了站外推送也不会生效，请在「信息源配置」Tab 中启用该源。
+        </div>
+      )}
       <SwipeAlertRuleList
         onEdit={setEditingSwipeRule}
         onAdd={() => setEditingSwipeRule(null)}

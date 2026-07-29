@@ -137,7 +137,7 @@ public class DahuaService {
                     String swingTime = adjustSwingTime9Min(evt.get("swingTime"));
 
                     // ---- 实时馈入告警引擎（Webhook 路径，零延迟） ----
-                    feedSwipeAlertEngine(recordId, personName, channelName, channelCode,
+                    feedSwipeAlertEngine(recordId, personName, channelName, channelCode, null,
                             openType, enterOrExit, openResult, swingTime);
                 } catch (Exception e) {
                     log.debug("[dahua-webhook] 单条事件处理失败: {}", e.getMessage());
@@ -174,7 +174,7 @@ public class DahuaService {
             DahuaSwingRecord r = new DahuaSwingRecord();
             r.setTaskId(0L);                       // webhook 无对应拉取任务
             r.setPullTaskType("REALTIME");
-            r.setRecordId(str(info.get("alarmCode")));
+            r.setRecordId(str(extend.get("id")));   // 与 pull 路径的 id 一致，跨路径去重
             r.setCardNumber(str(extend.get("cardNumber")));
             r.setChannelCode(str(extend.get("acsChannelCode")));
             // 通道名称：优先从 device-channels 缓存映射，回退到 extend.deviceName
@@ -217,7 +217,10 @@ public class DahuaService {
                         r.getDepartmentId(), r.getDepartmentName(), r.getChannelCode(), r.getChannelName());
             }
 
-            // ---- upsert 入库（uk_dahua_record_id 保证不重复） ----
+            // ---- 入库（先到先得，已有 recordId 则跳过） ----
+            if (dahuaSwingMapper.findRecordByRecordId(r.getRecordId()) != null) {
+                return;
+            }
             dahuaSwingMapper.upsertRecord(r);
 
             // ---- 馈入 access_raw_event 清洗管道 ----
@@ -231,7 +234,7 @@ public class DahuaService {
 
             // ---- 馈入告警引擎 ----
             feedSwipeAlertEngine(r.getRecordId(), r.getPersonName(), r.getChannelName(),
-                    r.getChannelCode(), r.getOpenType(), r.getEnterOrExit(), r.getOpenResult(), r.getSwingTime());
+                    r.getChannelCode(), r.getCardNumber(), r.getOpenType(), r.getEnterOrExit(), r.getOpenResult(), r.getSwingTime());
 
             // ---- 门禁联动（激活/签退） ----
             if (Integer.valueOf(1).equals(r.getMappingHit())
@@ -262,7 +265,7 @@ public class DahuaService {
             DahuaSwingRecord r = new DahuaSwingRecord();
             r.setTaskId(0L);
             r.setPullTaskType("REALTIME");
-            r.setRecordId(str(info.get("alarmCode")));
+            r.setRecordId(str(info.get("alarmCode")));   // infoOnly 路径：用 alarmCode 作 recordId（无 extend.id）
             r.setChannelCode(str(info.get("nodeCode")));
             r.setChannelName(resolveChannelName(str(info.get("nodeCode")), str(info.get("deviceName"))));
             r.setOpenType(openType);
@@ -286,9 +289,10 @@ public class DahuaService {
             boolean isDept26 = "26".equals(r.getDepartmentId());
             if (!isDept26 && !STAFF_ALLOWED_CHANNELS.contains(r.getChannelCode())) return;
 
+            if (dahuaSwingMapper.findRecordByRecordId(r.getRecordId()) != null) return;
             dahuaSwingMapper.upsertRecord(r);
             feedSwipeAlertEngine(r.getRecordId(), r.getPersonName(), r.getChannelName(),
-                    r.getChannelCode(), r.getOpenType(), r.getEnterOrExit(), r.getOpenResult(), r.getSwingTime());
+                    r.getChannelCode(), r.getCardNumber(), r.getOpenType(), r.getEnterOrExit(), r.getOpenResult(), r.getSwingTime());
             log.debug("[dahua-webhook] ✅入库(infoOnly): recordId={} channel={} openType={} deptId={}",
                     r.getRecordId(), r.getChannelName(), r.getOpenType(), r.getDepartmentId());
         } catch (Exception e) {
@@ -344,7 +348,7 @@ public class DahuaService {
     }
 
     /** 大华时间快9分钟，所有入库 swingTime 统一减9分钟 */
-    private static String adjustSwingTime9Min(Object raw) {
+    public static String adjustSwingTime9Min(Object raw) {
         if (raw == null) return "";
         String s = String.valueOf(raw).trim();
         if (s.isEmpty()) return s;
@@ -374,7 +378,8 @@ public class DahuaService {
 
     /** 将 Webhook 路径的刷卡记录喂给告警引擎（与定时拉取路径共享同一引擎） */
     private void feedSwipeAlertEngine(String recordId, String personName, String channelName,
-                                       String channelCode, Integer openType, Integer enterOrExit,
+                                       String channelCode, String cardNumber,
+                                       Integer openType, Integer enterOrExit,
                                        Integer openResult, String swingTime) {
         if (swipeAlertEngine == null) return;
         try {
@@ -384,6 +389,7 @@ public class DahuaService {
             dto.setPersonName(personName);
             dto.setChannelName(channelName);
             dto.setChannelCode(channelCode);
+            dto.setCardNumber(cardNumber);
             dto.setOpenType(openType);
             dto.setEnterOrExit(enterOrExit);
             dto.setOpenResult(openResult);

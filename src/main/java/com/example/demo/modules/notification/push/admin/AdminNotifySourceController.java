@@ -6,6 +6,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.notification.push.config.NotifySourceChannel;
 import com.example.demo.modules.notification.push.config.NotifySourceChannelService;
+import com.example.demo.modules.notification.push.config.PushChannelMasterMapper;
 import com.example.demo.modules.notification.push.dto.NotifySourceConfigDTO;
 import com.example.demo.modules.notification.push.recipient.NotifySourceRecipient;
 import com.example.demo.modules.notification.push.recipient.NotifySourceRecipientService;
@@ -27,16 +28,19 @@ public class AdminNotifySourceController {
     private final NotifySourceChannelService channelConfigService;
     private final NotifySourceRecipientService recipientService;
     private final UserDisplayNameService displayNameService;
+    private final PushChannelMasterMapper channelMasterMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AdminNotifySourceController(NotifySourceService sourceService,
                                         NotifySourceChannelService channelConfigService,
                                         NotifySourceRecipientService recipientService,
-                                        UserDisplayNameService displayNameService) {
+                                        UserDisplayNameService displayNameService,
+                                        PushChannelMasterMapper channelMasterMapper) {
         this.sourceService = sourceService;
         this.channelConfigService = channelConfigService;
         this.recipientService = recipientService;
         this.displayNameService = displayNameService;
+        this.channelMasterMapper = channelMasterMapper;
     }
 
     private Result<?> requireSuperAdmin(HttpServletRequest request) {
@@ -140,6 +144,17 @@ public class AdminNotifySourceController {
         }
         dto.setRecipients(recipients);
         return dto;
+    }
+
+    @GetMapping("/channel-masters")
+    public Result<List<Map<String, Object>>> channelMasters() {
+        return Result.success(channelMasterMapper.findAll());
+    }
+
+    @PutMapping("/channel-masters/{channelCode}")
+    public Result<Void> toggleChannelMaster(@PathVariable String channelCode, @RequestParam boolean enabled) {
+        channelMasterMapper.upsert(channelCode, enabled ? 1 : 0);
+        return Result.success();
     }
 
     private String channelDisplayName(String code) {

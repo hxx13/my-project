@@ -8,6 +8,8 @@ import com.example.demo.modules.swipealert.entity.SwipeAlertRule;
 import com.example.demo.modules.swipealert.mapper.SwipeAlertRuleMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,6 +19,7 @@ import java.util.List;
 @Tag(name = "刷卡预警规则", description = "刷卡预警规则的增删改查与启禁用管理")
 public class SwipeAlertRuleController {
 
+    private static final Logger log = LoggerFactory.getLogger(SwipeAlertRuleController.class);
     private final SwipeAlertRuleMapper mapper;
     private final AuthContextService authContextService;
 
@@ -46,7 +49,7 @@ public class SwipeAlertRuleController {
         if (denied != null) return denied;
         try {
             mapper.insert(rule);
-            if (rule.getNotifyUserIds() != null) mapper.updateNotifyUserIds(rule.getId(), rule.getNotifyUserIds());
+            try { if (rule.getNotifyUserIds() != null) mapper.updateNotifyUserIds(rule.getId(), rule.getNotifyUserIds()); } catch (Exception e) { log.warn("notifyUserIds save failed: {}", e.getMessage()); }
             SwipeAlertRule created = mapper.findById(rule.getId());
             return Result.success(created);
         } catch (Exception e) {

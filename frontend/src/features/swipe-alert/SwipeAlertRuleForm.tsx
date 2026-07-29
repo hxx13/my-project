@@ -49,6 +49,8 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
   const [notifyUserIds, setNotifyUserIds] = useState<PersonnelRow[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [titleTemplate, setTitleTemplate] = useState("🚨 ${channel} 刷卡告警 · ${count}次/${windowMin}分钟");
+  const [bodyTemplate, setBodyTemplate] = useState("${persons} · ${dept} · 过去 ${windowMin} 分钟 ${count} 次（阈值 ${threshold} 次）");
 
   useEffect(() => {
     if (editing) {
@@ -64,6 +66,8 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
       setThresholdWindowSec(String(editing.thresholdWindowSec));
       setBannerDurationSec(String(editing.bannerDurationSec));
       setCooldownSec(String(editing.cooldownSec));
+      setTitleTemplate(editing.titleTemplate || "🚨 ${channel} 刷卡告警 · ${count}次/${windowMin}分钟");
+      setBodyTemplate(editing.bodyTemplate || "${persons} · ${dept} · 过去 ${windowMin} 分钟 ${count} 次（阈值 ${threshold} 次）");
       // parse notifyUserIds → PersonnelRow[]
       try {
         const raw = editing.notifyUserIds ? JSON.parse(editing.notifyUserIds) as any[] : [];
@@ -74,6 +78,8 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
       setSelectedDepts([]); setSelectedChannels([]);
       setThresholdCount("3"); setThresholdWindowSec("300");
       setBannerDurationSec("10"); setCooldownSec("60");
+      setTitleTemplate("🚨 ${channel} 刷卡告警 · ${count}次/${windowMin}分钟");
+      setBodyTemplate("${persons} · ${dept} · 过去 ${windowMin} 分钟 ${count} 次（阈值 ${threshold} 次）");
     }
   }, [editing]);
 
@@ -82,15 +88,15 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
     channels: selectedChannels.length > 0 ? JSON.stringify(selectedChannels) : null,
     departments: selectedDepts.length > 0 ? JSON.stringify(selectedDepts) : null,
     openTypes,
-    titleTemplate: "🚨 刷卡失败告警",
-    bodyTemplate: "",
+    titleTemplate: titleTemplate.trim() || "🚨 ${channel} 刷卡告警 · ${count}次/${windowMin}分钟",
+    bodyTemplate: bodyTemplate.trim() || "${persons} · ${dept} · 过去 ${windowMin} 分钟 ${count} 次（阈值 ${threshold} 次）",
     thresholdCount: Math.max(1, Number(thresholdCount) || 3),
     thresholdWindowSec: Math.max(10, Number(thresholdWindowSec) || 300),
     bannerDurationSec: Math.max(0, Number(bannerDurationSec) || 10),
     minRoleLevel: 4, cooldownSec: Math.max(0, Number(cooldownSec) || 60),
     notifySite, notifyPush,
     notifyCardholder,
-    notifyUserIds: notifyUserIds.length > 0 ? JSON.stringify(notifyUserIds.map(r => ({id: r.id, name: r.name}))) : null,
+    notifyUserIds: JSON.stringify(notifyUserIds.map(r => ({id: r.id, name: r.name}))),
   });
 
   const save = async () => {
@@ -164,6 +170,43 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
           </div>
         </div>
 
+        {/* 站内通知文案模板（仅当站内横幅开启时显示） */}
+        {notifySite && (
+          <div className={sectionClass}>
+            <p className="text-xs font-semibold text-neutral-700 mb-2">站内横幅文案</p>
+            <div className="space-y-3">
+              <div>
+                <label className={labelClass}>标题模板</label>
+                <input className={`${inputBase} mt-1`} value={titleTemplate}
+                  onChange={e => setTitleTemplate(e.target.value)}
+                  placeholder="🚨 ${channel} 刷卡告警 · ${count}次/${windowMin}分钟" />
+              </div>
+              <div>
+                <label className={labelClass}>正文模板</label>
+                <textarea className={`${inputBase} mt-1 min-h-[60px] resize-y`} value={bodyTemplate}
+                  onChange={e => setBodyTemplate(e.target.value)}
+                  placeholder="${persons} · ${dept} · 过去 ${windowMin} 分钟 ${count} 次（阈值 ${threshold} 次）" />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-[10px] text-neutral-400">可用变量：</span>
+                {[
+                  {k:"${channel}",v:"通道名称"},{k:"${persons}",v:"人员姓名"},
+                  {k:"${dept}",v:"部门/课题组"},{k:"${count}",v:"累计次数"},
+                  {k:"${windowMin}",v:"窗口(分钟)"},{k:"${windowSec}",v:"窗口(秒)"},
+                  {k:"${threshold}",v:"阈值次数"},{k:"${openTypeLabel}",v:"开门类型"},
+                  {k:"${enterOrExitLabel}",v:"进出方向"},{k:"${swingTime}",v:"刷卡时间"},
+                ].map(({k,v}) => (
+                  <button key={k} type="button"
+                    className="rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-neutral-500 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-colors"
+                    title={`插入 ${k}（${v}）`}
+                    onClick={() => setTitleTemplate(p => p.includes(k) ? p : `${p} ${k}`.trim())}
+                  >{k}<span className="ml-0.5 text-neutral-400"> {v}</span></button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 触发条件 */}
         <div className={sectionClass}>
           <p className="text-xs font-semibold text-neutral-700">触发条件</p>
@@ -206,7 +249,9 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
             {notifyUserIds.map(r => (
               <span key={r.id} className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] text-blue-700">
                 {r.name || r.id}
-                <button type="button" onClick={() => setNotifyUserIds(prev => prev.filter(x => x.id !== r.id))} className="text-blue-400 hover:text-red-500">&times;</button>
+                <button type="button" title="移除"
+                  onClick={(e) => { e.stopPropagation(); setNotifyUserIds(prev => prev.filter(x => x.id !== r.id)); }}
+                  className="ml-0.5 rounded-full w-4 h-4 inline-flex items-center justify-center text-blue-400 hover:bg-red-100 hover:text-red-500 text-xs font-bold leading-none">×</button>
               </span>
             ))}
             <button type="button" className="text-[11px] text-blue-600 hover:underline" onClick={() => setPickerOpen(true)}>+ 添加人员</button>
