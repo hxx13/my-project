@@ -417,4 +417,319 @@ public class DahuaIssueCardOrchestratorService {
         }
         return err.contains("已激活") || err.contains("无需激活") || err.contains("重复激活");
     }
+
+    /**
+     * 为已有人员追加一张新卡。跳过人员创建，仅执行：查部门 → 生成卡片ID → 加卡 → 激活 → 本地映射。
+     * @param personId   大华人员主键（即 twin_card_mapping.dahua_seq）
+     * @param personCode 大华人员编码（即 twin_card_mapping.dahua_person_code）
+     * @param cardNo     新物理卡号
+     * @param aroUserId  ARO 人员 ID（用于本地映射）
+     */
+    public DahuaIssueCardResponse addCardToExistingPerson(Long personId, String personCode,
+                                                          String cardNo, String aroUserId) {
+        DahuaIssueCardResponse response = new DahuaIssueCardResponse();
+        response.setPersonId(personId);
+        response.setPersonCode(personCode);
+
+        log.info("[dahua-add-card] start personId={} personCode={} cardNo={}", personId, personCode, cardNo);
+
+        // 1. 查询部门信息
+        Long departmentId = resolveDepartmentId(personCode, personId, response);
+        if (response.getFailStep() != null) return response;
+
+        // 2. 预检卡号
+        executePreflightCardNumberAvailable(cardNo, response);
+        if (response.getFailStep() != null) return response;
+
+        // 3. 生成卡片 ID
+        Long cardId = executeGenerateCardId(response);
+        if (response.getFailStep() != null) return response;
+
+        // 4. 添加卡片
+        boolean cardAdded = executeAddCardWithParams(cardId, cardNo, personId, departmentId, response);
+        if (response.getFailStep() != null) return response;
+
+        // 5. 激活卡片
+        executeCardActivationWithParams(cardNo, cardId, personId, departmentId, response, cardAdded);
+        if (response.getFailStep() != null) return response;
+
+        // 6. 本地映射落库
+        executeLocalMappingForExisting(cardNo, aroUserId, personId, personCode, response);
+
+        response.setSuccess(true);
+        log.info("[dahua-add-card] success personId={} cardNo={}", personId, cardNo);
+        return response;
+    }
+
+    private Long resolveDepartmentId(String personCode, Long personId, DahuaIssueCardResponse response) {
+        Map<String, Object> person = dahuaOpenApiService.queryPersonByCode(personCode, personId);
+        if (person == null) {
+            DahuaIssueStepResult r = new DahuaIssueStepResult();
+            r.setStepName("resolve-department");
+            r.setSuccess(false);
+            r.setMessage("无法通过大华人员编码查询到人员信息，请确认人员存在");
+            response.getSteps().add(r);
+            response.setFailStep("resolve-department");
+            return null;
+        }
+        // 优先取顶层 departmentId
+        Long deptId = DahuaOpenApiService.parseLong(person.get("departmentId"));
+        // 回退：从 departmentList[0].departmentId 取
+        if (deptId == null) {
+            List<Map<String, Object>> deptList = DahuaOpenApiService.asListOfMap(person.get("departmentList"));
+            if (!deptList.isEmpty()) {
+                deptId = DahuaOpenApiService.parseLong(deptList.get(0).get("departmentId"));
+            }
+        }
+        if (deptId == null) {
+            DahuaIssueStepResult r = new DahuaIssueStepResult();
+            r.setStepName("resolve-department");
+            r.setSuccess(false);
+            r.setMessage("人员信息中缺少 departmentId，请确认大华侧人员已分配部门");
+            response.getSteps().add(r);
+            response.setFailStep("resolve-department");
+            return null;
+        }
+        DahuaIssueStepResult r = new DahuaIssueStepResult();
+        r.setStepName("resolve-department");
+        r.setSuccess(true);
+        r.setMessage("已获取人员部门ID: " + deptId);
+        response.getSteps().add(r);
+        return deptId;
+    }
+
+    /** 预检卡号（复用逻辑，但不依赖 DahuaIssueCardRequest） */
+    private void executePreflightCardNumberAvailable(String cardNo, DahuaIssueCardResponse response) {
+        String step = "preflight-card-query";
+        String path = "/evo-apigw/evo-brm/1.0.0/card/" + org.springframework.web.util.UriUtils.encodePathSegment(cardNo.trim(), java.nio.charset.StandardCharsets.UTF_8);
+        log.info("[dahua-add-card][{}] GET {}", step, path);
+        Map<String, Object> resp = dahuaOpenApiService.getRaw(path);
+        if (dahuaOpenApiService.isSuccess(resp)) {
+            Map<String, Object> data = DahuaOpenApiService.asMap(resp.get("data"));
+            if (data != null && data.get("id") != null) {
+                DahuaIssueStepResult r = new DahuaIssueStepResult();
+                r.setStepName(step);
+                r.setSuccess(false);
+                r.setMessage("该物理卡号已在大华平台登记，请换卡或先解绑");
+                response.getSteps().add(r);
+                response.setFailStep(step);
+                response.setSuccess(false);
+                return;
+            }
+            addSuccessStep(response, step, resp, "卡号查询：平台无此记录，可继续");
+            return;
+        }
+        String code = String.valueOf(resp.getOrDefault("code", ""));
+        String err = extractErrMsg(resp);
+        if ("28140001".equals(code) || err.contains("卡号不存在") || err.contains("不存在")) {
+            addSuccessStep(response, step, resp, "卡号未在大华登记，可继续");
+            return;
+        }
+        DahuaIssueStepResult r = new DahuaIssueStepResult();
+        r.setStepName(step);
+        r.setSuccess(false);
+        r.setMessage("无法确认卡号状态: " + err);
+        response.getSteps().add(r);
+        response.setFailStep(step);
+        response.setSuccess(false);
+    }
+
+    /** 添加卡片（参数化版本） */
+    private boolean executeAddCardWithParams(Long cardId, String cardNo, Long personId, Long departmentId,
+                                             DahuaIssueCardResponse response) {
+        String step = "card-add";
+        log.info("[dahua-add-card][{}] cardId={} cardNo={} personId={} deptId={}", step, cardId, cardNo, personId, departmentId);
+        java.time.LocalDateTime start = java.time.LocalDateTime.of(java.time.LocalDate.now(), java.time.LocalTime.MIN);
+        java.time.LocalDateTime end = java.time.LocalDateTime.of(java.time.LocalDate.now().plusYears(10), java.time.LocalTime.of(23, 59, 59));
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("id", cardId);
+        body.put("cardNumber", cardNo);
+        body.put("category", "0");
+        body.put("cardType", "0");
+        body.put("startDate", DahuaOpenApiService.formatDateTime(start));
+        body.put("endDate", DahuaOpenApiService.formatDateTime(end));
+        body.put("personId", personId);
+        body.put("departmentId", departmentId);
+        body.put("availableTimes", null);
+
+        Map<String, Object> resp = dahuaOpenApiService.postRaw("/evo-apigw/evo-brm/1.0.0/card/add", body);
+        if (!dahuaOpenApiService.isSuccess(resp)) {
+            if (isCardAlreadyExistsError(resp)) {
+                addSuccessStep(response, step, resp, "卡片已存在，跳过新增继续激活");
+                return false;
+            }
+            String code = String.valueOf(resp.getOrDefault("code", ""));
+            String errMsg = String.valueOf(resp.getOrDefault("errMsg", ""));
+            DahuaIssueStepResult r = new DahuaIssueStepResult();
+            r.setStepName(step);
+            r.setSuccess(false);
+            r.setUpstreamCode(code);
+            r.setUpstreamErrMsg(errMsg);
+            r.setMessage("卡片新增失败: " + errMsg + " (code=" + code + ")");
+            r.setRawSnippet(String.valueOf(resp));
+            response.getSteps().add(r);
+            response.setFailStep(step);
+            response.setSuccess(false);
+            return false;
+        }
+        addSuccessStep(response, step, resp, "卡片新增成功");
+        return true;
+    }
+
+    /** 激活卡片（参数化版本） */
+    private void executeCardActivationWithParams(String cardNo, Long cardId, Long personId, Long departmentId,
+                                                  DahuaIssueCardResponse response, boolean cardAdded) {
+        String step = "card-active";
+        log.info("[dahua-add-card][{}] cardNo={} personId={} cardId={}", step, cardNo, personId, cardId);
+        java.time.LocalDateTime start = java.time.LocalDateTime.of(java.time.LocalDate.now(), java.time.LocalTime.MIN);
+        java.time.LocalDateTime end = java.time.LocalDateTime.of(java.time.LocalDate.now().plusYears(10), java.time.LocalTime.of(23, 59, 59));
+
+        Map<String, Object> body = new HashMap<>();
+        if (cardAdded && cardId != null) {
+            body.put("id", cardId);
+        }
+        body.put("cardNumber", cardNo);
+        body.put("personId", personId);
+        body.put("departmentId", departmentId);
+        body.put("cardPassword", null);
+        body.put("passwordKey", null);
+        body.put("startDate", DahuaOpenApiService.formatDateTime(start));
+        body.put("endDate", DahuaOpenApiService.formatDateTime(end));
+        body.put("availableTimes", null);
+        body.put("category", "0");
+
+        if (cardAdded) {
+            try { Thread.sleep(400); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
+
+        Map<String, Object> lastResp = null;
+        for (int attempt = 1; attempt <= CARD_ACTIVE_RETRY_TIMES; attempt++) {
+            lastResp = dahuaOpenApiService.putRaw("/evo-apigw/evo-brm/1.0.0/card/active", body);
+            if (dahuaOpenApiService.isSuccess(lastResp)) {
+                addSuccessStep(response, step, lastResp, attempt == 1 ? "卡片激活成功" : "卡片激活成功(第" + attempt + "次重试)");
+                return;
+            }
+            if (isCardActivationSkippableUpstreamError(lastResp)) {
+                addSuccessStep(response, step, lastResp, "跳过激活：卡片已处于可用状态");
+                return;
+            }
+            if (attempt < CARD_ACTIVE_RETRY_TIMES) {
+                try { Thread.sleep(CARD_ACTIVE_RETRY_BASE_MS * attempt); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            }
+        }
+        // 兼容回退
+        if (cardAdded && cardId != null && body.containsKey("id")) {
+            Map<String, Object> bodyWithoutId = new HashMap<>(body);
+            bodyWithoutId.remove("id");
+            Map<String, Object> respFallback = dahuaOpenApiService.putRaw("/evo-apigw/evo-brm/1.0.0/card/active", bodyWithoutId);
+            if (dahuaOpenApiService.isSuccess(respFallback)) {
+                addSuccessStep(response, step, respFallback, "卡片激活成功(兼容模式)");
+                return;
+            }
+            if (isCardActivationSkippableUpstreamError(respFallback)) {
+                addSuccessStep(response, step, respFallback, "跳过激活：卡片已处于可用状态");
+                return;
+            }
+        }
+        DahuaIssueStepResult r = new DahuaIssueStepResult();
+        r.setStepName(step);
+        r.setSuccess(false);
+        r.setMessage("卡片激活失败");
+        response.getSteps().add(r);
+        response.setFailStep(step);
+        response.setSuccess(false);
+    }
+
+    /** 本地映射落库（已有人员，只新增卡号映射） */
+    private void executeLocalMappingForExisting(String cardNo, String aroUserId, Long personId,
+                                                String personCode, DahuaIssueCardResponse response) {
+        String step = "local-save";
+        log.info("[dahua-add-card][{}] cardNo={} personId={}", step, cardNo, personId);
+        TwinCardMapping mapping = new TwinCardMapping();
+        mapping.setCardNo(cardNo);
+        mapping.setDahuaSeq(String.valueOf(personId));
+        mapping.setDahuaPersonCode(personCode);
+        mapping.setAroUserId(aroUserId);
+        mapping.setCardStatus("NORMAL");
+        mapping.setFreezeExemptFlag(0);
+        mappingService.addMapping(mapping);
+        addSuccessStep(response, step, null, "本地映射落库成功");
+    }
+
+    /**
+     * 删除大华侧卡片，并同步清除本地映射。不删除人员。
+     * @param cardNo 物理卡号
+     * @return 操作结果
+     */
+    public Map<String, Object> deleteCardFromDahua(String cardNo) {
+        Map<String, Object> result = new HashMap<>();
+        log.info("[dahua-delete-card] start cardNo={}", cardNo);
+
+        // 1. 查询卡片获取 Dahua ID
+        Map<String, Object> cardResp = dahuaOpenApiService.queryCardByNumber(cardNo);
+        Long dahuaCardId = null;
+        if (dahuaOpenApiService.isSuccess(cardResp)) {
+            Map<String, Object> cardData = DahuaOpenApiService.asMap(cardResp.get("data"));
+            dahuaCardId = DahuaOpenApiService.parseLong(cardData != null ? cardData.get("id") : null);
+        }
+
+        // 2. 退卡（激活→空白），需要 cardId
+        boolean returned = false;
+        if (dahuaCardId != null) {
+            Map<String, Object> returnResp = dahuaOpenApiService.returnCardById(dahuaCardId);
+            if (dahuaOpenApiService.isSuccess(returnResp)) {
+                returned = true;
+                log.info("[dahua-delete-card] 退卡成功 cardNo={} cardId={}", cardNo, dahuaCardId);
+            } else {
+                log.warn("[dahua-delete-card] 退卡失败 cardNo={} cardId={} resp={}", cardNo, dahuaCardId, returnResp);
+            }
+        }
+
+        // 3. 删除卡片（退卡后状态为空白，可删除）
+        boolean dahuaDeleted = false;
+        String dahuaErrCode = "";
+        String dahuaErrMsg = "";
+        if (returned || dahuaCardId == null) {
+            Map<String, Object> delResp = dahuaOpenApiService.deleteCardByNumber(cardNo);
+            if (dahuaOpenApiService.isSuccess(delResp)) {
+                Map<String, Object> data = DahuaOpenApiService.asMap(delResp.get("data"));
+                int successNum = DahuaOpenApiService.parseInt(data.get("successNum"), 0);
+                int failNum = DahuaOpenApiService.parseInt(data.get("failNum"), 0);
+                dahuaDeleted = successNum > 0;
+                if (!dahuaDeleted) dahuaErrCode = String.valueOf(delResp.getOrDefault("code", ""));
+            } else {
+                dahuaErrCode = String.valueOf(delResp.getOrDefault("code", ""));
+                dahuaErrMsg = String.valueOf(delResp.getOrDefault("errMsg", ""));
+            }
+        } else {
+            dahuaErrMsg = "退卡未成功，跳过删除";
+        }
+
+        // 4. 删除本地映射（无论大华是否成功）
+        boolean localDeleted = false;
+        try {
+            mappingService.deleteMapping(cardNo,
+                    com.example.demo.modules.twin.card.support.ExemptChangeContext.mappingDeleted(null));
+            localDeleted = true;
+            log.info("[dahua-delete-card] 本地映射已清除 cardNo={}", cardNo);
+        } catch (Exception e) {
+            log.warn("[dahua-delete-card] 本地映射删除失败 cardNo={}: {}", cardNo, e.getMessage());
+        }
+
+        // 5. 返回结果
+        if (dahuaDeleted && localDeleted) {
+            result.put("success", true);
+            result.put("message", "退卡+删除成功，本地映射已清除");
+        } else if (localDeleted) {
+            result.put("success", true);
+            result.put("message", "本地映射已清除（大华:" + dahuaErrMsg + " code=" + dahuaErrCode + "，请手动处理）");
+        } else {
+            result.put("success", false);
+            result.put("message", "删除失败: " + dahuaErrMsg + " (code=" + dahuaErrCode + ")");
+        }
+        log.info("[dahua-delete-card] done cardNo={} returned={} deleted={} local={}",
+                cardNo, returned, dahuaDeleted, localDeleted);
+        return result;
+    }
 }

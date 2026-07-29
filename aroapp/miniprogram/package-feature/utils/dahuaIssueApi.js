@@ -60,6 +60,26 @@ async function deleteMapping(cardNo) {
   return unwrap(res.data);
 }
 
+/** 删除大华侧卡片并清除本地映射 */
+async function deleteDahuaCard(cardNo) {
+  const res = await springAuth.springRequest({
+    url: `/api/v1/twin/mappings/${encodeURIComponent(cardNo)}/dahua-card`,
+    method: 'DELETE',
+    data: {},
+  });
+  return unwrap(res.data);
+}
+
+/** 为已有人员追加一张新卡 */
+async function addCardToExistingPerson(personId, personCode, cardNo, aroUserId) {
+  const res = await springAuth.springRequest({
+    url: '/api/v1/twin/mappings/dahua-issue/add-card',
+    method: 'POST',
+    data: { personId, personCode, cardNo, aroUserId },
+  });
+  return unwrap(res.data) || {};
+}
+
 async function searchPersonnel(keyword) {
   const debug = {
     directStatus: null,
@@ -176,6 +196,8 @@ module.exports = {
   updateCardStatus,
   updateExempt,
   deleteMapping,
+  deleteDahuaCard,
+  addCardToExistingPerson,
   searchPersonnel,
   fetchDepartments,
   fetchDoorGroups,

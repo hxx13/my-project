@@ -94,6 +94,13 @@ Page({
     exemptSubmitting: false,
     exemptFilter: 'all',
     searching: false,
+    // 追加卡片弹窗
+    addCardOpen: false,
+    addCardTarget: null,
+    addCardNo: '',
+    addCardSubmitting: false,
+    groupedList: [],
+    detailCards: [],
   },
 
   onUnload() {
@@ -210,8 +217,32 @@ Page({
           return filter === 'exempt' ? item.freezeExemptFlag === 1 : item.freezeExemptFlag !== 1;
         });
       }
+      // 按人员聚合：同一人的多张卡合并
+      const groupMap = new Map();
+      for (var i = 0; i < filteredList.length; i++) {
+        var row = filteredList[i];
+        var key = row.aroUserId || row.dahuaSeq || row.cardNo;
+        var existing = groupMap.get(key);
+        if (existing) {
+          existing.cards.push(row);
+          if (row.lastModifiedTime && (!existing.info.lastModifiedTime || row.lastModifiedTime > existing.info.lastModifiedTime)) {
+            existing.info.lastModifiedTime = row.lastModifiedTime;
+          }
+          if (row.freezeExemptFlag === 1) {
+            existing.info.freezeExemptFlag = 1;
+            existing.info.freezeExemptExpireAt = row.freezeExemptExpireAt;
+          }
+        } else {
+          groupMap.set(key, { info: Object.assign({}, row), cards: [row] });
+        }
+      }
+      var grouped = [];
+      var gid = 0;
+      groupMap.forEach(function (g) { gid++; g.gid = 'g' + gid; grouped.push(g); });
+
       this.setData({
         list: filteredList,
+        groupedList: grouped,
         total: Number(listData.total || 0),
       });
     } catch (e) {
@@ -353,22 +384,35 @@ Page({
       return;
     }
     const row = e.currentTarget.dataset.row;
-    if (!row || !row.cardNo) return;
-    const isActive = exemptUtil.isExemptActive(row);
+    if (!row) return;
+    // 从 groupedList 找到该人员，取豁免卡或第一张卡
+    const grouped = this.data.groupedList || [];
+    let cards = [row];
+    for (var i = 0; i < grouped.length; i++) {
+      var g = grouped[i];
+      if ((g.info.aroUserId && g.info.aroUserId === row.aroUserId)
+          || (g.info.dahuaSeq && g.info.dahuaSeq === row.dahuaSeq)) {
+        cards = g.cards;
+        break;
+      }
+    }
+    const exemptCard = cards.find(function (c) { return c.freezeExemptFlag === 1; });
+    const primaryCard = exemptCard || cards[0] || row;
+    const isActive = exemptUtil.isExemptActive(primaryCard);
     if (isActive) {
       const ok = await new Promise((resolve) => {
         wx.showModal({
           title: '取消豁免',
-          content: `卡号 ${row.cardNo}`,
+          content: `卡号 ${primaryCard.cardNo}`,
           success: (res) => resolve(!!res.confirm),
           fail: () => resolve(false),
         });
       });
       if (!ok) return;
       try {
-        const updated = await api.updateExempt(row.cardNo, 0);
+        const updated = await api.updateExempt(primaryCard.cardNo, 0);
         wx.showToast({ title: '已取消豁免', icon: 'none' });
-        this.patchRowByCardNo(row.cardNo, {
+        this.patchRowByCardNo(primaryCard.cardNo, {
           freezeExemptFlag: 0,
           freezeExemptExpireAt: null,
           freezeExemptMode: null,
@@ -384,7 +428,7 @@ Page({
     }
     this.setData({
       exemptPanelShow: true,
-      exemptPanelCardNo: row.cardNo,
+      exemptPanelCardNo: primaryCard.cardNo,
       exemptPanelUserName: row.userName || '',
       exemptPanelAroUserId: row.aroUserId || '',
     });
@@ -432,16 +476,16 @@ Page({
     if (!row || !row.cardNo) return;
     const ok = await new Promise((resolve) => {
       wx.showModal({
-        title: '确认删除',
-        content: `删除映射：${row.userName || '-'} / ${row.cardNo}`,
+        title: '删除人员与卡片信息',
+        content: `将删除大华卡片 [${row.cardNo}] 并清除 ${row.userName || '-'} 映射`,
         success: (res) => resolve(!!res.confirm),
         fail: () => resolve(false),
       });
     });
     if (!ok) return;
     try {
-      await api.deleteMapping(row.cardNo);
-      wx.showToast({ title: '删除成功', icon: 'none' });
+      await api.deleteDahuaCard(row.cardNo);
+      wx.showToast({ title: '已删除', icon: 'none' });
       this.removeRowByCardNo(row.cardNo);
       this.setData({ swipeOpenCardNo: '' });
     } catch (err) {
@@ -449,14 +493,96 @@ Page({
     }
   },
 
+  /** 点击卡号 → 删除该卡片 */
+  async onDeleteCard(e) {
+    const cardNo = String(e.currentTarget.dataset.cardno || '');
+    const userName = String(e.currentTarget.dataset.username || '');
+    if (!cardNo) return;
+    const ok = await new Promise((resolve) => {
+      wx.showModal({
+        title: '删除卡片',
+        content: `将从大华删除卡号 [${cardNo}]，人员不受影响`,
+        success: (res) => resolve(!!res.confirm),
+        fail: () => resolve(false),
+      });
+    });
+    if (!ok) return;
+    try {
+      await api.deleteDahuaCard(cardNo);
+      wx.showToast({ title: '卡片已删除', icon: 'none' });
+      this.removeRowByCardNo(cardNo);
+    } catch (err) {
+      wx.showToast({ title: err.message || '删除失败', icon: 'none' });
+    }
+  },
+
+  /** 打开追加卡片弹窗 */
+  onOpenAddCard(e) {
+    const info = e.currentTarget.dataset.info;
+    if (!info || !info.dahuaSeq || !info.dahuaPersonCode) return;
+    this.setData({
+      addCardOpen: true,
+      addCardTarget: info,
+      addCardNo: '',
+    });
+  },
+
+  onCloseAddCard() {
+    this.setData({ addCardOpen: false, addCardTarget: null, addCardNo: '' });
+  },
+
+  onAddCardNoInput(e) {
+    this.setData({ addCardNo: e.detail.value || '' });
+  },
+
+  async onAddCardSubmit() {
+    var target = this.data.addCardTarget;
+    var cardNo = String(this.data.addCardNo || '').trim();
+    if (!target || !cardNo) {
+      wx.showToast({ title: '请刷卡输入卡号', icon: 'none' });
+      return;
+    }
+    this.setData({ addCardSubmitting: true });
+    try {
+      await api.addCardToExistingPerson(
+        String(target.dahuaSeq),
+        String(target.dahuaPersonCode),
+        cardNo,
+        String(target.aroUserId || '')
+      );
+      wx.showToast({ title: '卡片追加成功', icon: 'none' });
+      this.setData({ addCardOpen: false });
+      this.loadList({ silent: true });
+    } catch (e) {
+      wx.showToast({ title: e.message || '追加失败', icon: 'none' });
+    } finally {
+      this.setData({ addCardSubmitting: false });
+    }
+  },
+
   onOpenDetail(e) {
     const row = e.currentTarget.dataset.row;
     if (!row) return;
-    this.setData({ detailOpen: true, detail: decorateMappingRow(row) });
+    // 从 groupedList 中找到该人员，获取其全部卡片
+    const grouped = this.data.groupedList || [];
+    let cards = [row];
+    for (var i = 0; i < grouped.length; i++) {
+      var g = grouped[i];
+      if ((g.info.aroUserId && g.info.aroUserId === row.aroUserId)
+          || (g.info.dahuaSeq && g.info.dahuaSeq === row.dahuaSeq)) {
+        cards = g.cards.map(function (c) { return decorateMappingRow(c); });
+        break;
+      }
+    }
+    this.setData({
+      detailOpen: true,
+      detail: decorateMappingRow(row),
+      detailCards: cards,
+    });
   },
 
   onCloseDetail() {
-    this.setData({ detailOpen: false, detail: null });
+    this.setData({ detailOpen: false, detail: null, detailCards: [] });
   },
 
   async onOpenIssue() {

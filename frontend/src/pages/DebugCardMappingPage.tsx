@@ -6,11 +6,12 @@ import { motion } from "framer-motion";
 import { Portal } from "@/components/Portal";
 import {
     fetchCardMappings, searchCardMappings, updateExemptFlag, updateCardStatus, searchPersonnel,
-    deleteCardMapping, runManualReaper, issueDahuaCard, fetchDahuaDepartments, refreshDahuaDepartments,
+    deleteCardMapping, deleteDahuaCard, runManualReaper, issueDahuaCard, fetchDahuaDepartments, refreshDahuaDepartments,
     fetchDahuaDoorGroups, refreshDahuaDoorGroups, fetchFreezeConfig, saveFreezeConfig,
     fetchAccessRuleScanLinkageConfig, saveAccessRuleScanLinkageConfig,
     fetchDahuaIssueAccessPrefill,
     type DahuaIssueAccessPrefill,
+    addCardToExistingDahuaPerson,
     fetchDahuaDeviceChannels, fetchDahuaDeviceChannelRemarkCategories,
     fetchExemptHistory, type ExemptHistoryEntry,
     type DahuaDepartmentRow, type DahuaDoorGroupRow,
@@ -170,6 +171,15 @@ export default function DebugCardMappingPage() {
     /** 扫码门禁联动：离开时是否冻结；为 false 时不自动勾选门禁规则通道 */
     const [scanExitFreezeEnabled, setScanExitFreezeEnabled] = useState(true);
 
+    /** 追加卡片弹窗 */
+    const [addCardModalOpen, setAddCardModalOpen] = useState(false);
+    const [addCardTarget, setAddCardTarget] = useState<CardMappingRow | null>(null);
+    const [addCardNo, setAddCardNo] = useState("");
+    const addCardScanBufferRef = useRef("");
+    const addCardScanResetTimer = useRef<number | null>(null);
+    const addCardComposingRef = useRef(false);
+    const addCardInputRef = useRef<HTMLInputElement | null>(null);
+
     const issuingPhaseLabels = [
         "正在生成人员全局ID...",
         "正在下发人员信息...",
@@ -206,7 +216,37 @@ export default function DebugCardMappingPage() {
         }
     });
 
-    // 💥 物理映射解除引擎
+    // 为已有人员追加卡片 Mutation
+    const addCardMutation = useMutation({
+        mutationFn: addCardToExistingDahuaPerson,
+        onSuccess: (result) => {
+            if (result?.success) {
+                toast.success("卡片追加成功");
+                closeAddCardModal();
+                refetch();
+                return;
+            }
+            const failStep = result?.failStep || "unknown";
+            const last = (result?.steps || []).find((it) => it.success === false);
+            const reason = last?.upstreamErrMsg || last?.message || "未知错误";
+            toast.error(`追加卡片失败（${failStep}）：${reason}`);
+        },
+        onError: (err: unknown) => {
+            toast.error(err instanceof Error ? err.message : "追加卡片失败");
+        }
+    });
+
+    // 删除大华卡片 + 本地映射
+    const deleteDahuaCardMutation = useMutation({
+        mutationFn: (cardNo: string) => deleteDahuaCard(cardNo),
+        onSuccess: () => {
+            toast.success("卡片已从大华删除，本地映射已清除");
+            refetch();
+        },
+        onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "删除大华卡片失败"),
+    });
+
+    // 💥 物理映射解除引擎（仅本地，保留兼容）
     const deleteMappingMutation = useMutation({
         mutationFn: (cardNo: string) => deleteCardMapping(cardNo),
         onSuccess: () => {
@@ -525,6 +565,69 @@ export default function DebugCardMappingPage() {
 
     const sanitizeCardNo = (value: string) => value.replace(/[^0-9A-Za-z]/g, "");
 
+    // ── 追加卡片弹窗 ──
+    const openAddCardModal = (row: CardMappingRow) => {
+        setAddCardTarget(row);
+        setAddCardNo("");
+        addCardScanBufferRef.current = "";
+        setAddCardModalOpen(true);
+    };
+    const closeAddCardModal = () => {
+        setAddCardModalOpen(false);
+        setAddCardTarget(null);
+        setAddCardNo("");
+        addCardScanBufferRef.current = "";
+        if (addCardScanResetTimer.current) {
+            window.clearTimeout(addCardScanResetTimer.current);
+            addCardScanResetTimer.current = null;
+        }
+    };
+
+    const updateAddCardNoWithBuffer = (nextValue: string) => {
+        addCardScanBufferRef.current = nextValue;
+        setAddCardNo(nextValue);
+        if (addCardScanResetTimer.current) {
+            window.clearTimeout(addCardScanResetTimer.current);
+        }
+        addCardScanResetTimer.current = window.setTimeout(() => {
+            addCardScanBufferRef.current = "";
+            addCardScanResetTimer.current = null;
+        }, 1200);
+    };
+
+    // 追加卡片弹窗的读卡器扫码捕获
+    useEffect(() => {
+        if (!addCardModalOpen) return;
+        const onWinKeyDown = (e: KeyboardEvent) => {
+            const el = addCardInputRef.current;
+            if (!el || document.activeElement !== el) return;
+            if (e.isComposing || e.key === "Process" || (e as KeyboardEvent & { keyCode?: number }).keyCode === 229) return;
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            const key = e.key;
+            if (key === "Tab") return;
+            if (key === "Enter") { e.preventDefault(); return; }
+            if (key === "Backspace") { e.preventDefault(); updateAddCardNoWithBuffer(addCardScanBufferRef.current.slice(0, -1)); return; }
+            if (key.length !== 1) { e.preventDefault(); return; }
+            if (!/[0-9A-Za-z]/.test(key)) { e.preventDefault(); return; }
+            e.preventDefault();
+            updateAddCardNoWithBuffer(`${addCardScanBufferRef.current}${key}`);
+        };
+        window.addEventListener("keydown", onWinKeyDown, true);
+        return () => window.removeEventListener("keydown", onWinKeyDown, true);
+    }, [addCardModalOpen]);
+
+    // 追加卡片弹窗打开时自动聚焦扫码输入框
+    useEffect(() => {
+        if (!addCardModalOpen) return;
+        addCardScanBufferRef.current = "";
+        if (addCardScanResetTimer.current) {
+            window.clearTimeout(addCardScanResetTimer.current);
+            addCardScanResetTimer.current = null;
+        }
+        const timer = window.setTimeout(() => addCardInputRef.current?.focus(), 0);
+        return () => window.clearTimeout(timer);
+    }, [addCardModalOpen]);
+
     const updateCardNoWithBuffer = (nextValue: string) => {
         cardScanBufferRef.current = nextValue;
         setBindForm((prev) => ({ ...prev, cardNo: nextValue }));
@@ -779,6 +882,30 @@ export default function DebugCardMappingPage() {
         });
     })();
 
+    /** 按人员聚合：同一人的多张卡合并为一行 */
+    const groupedData = useMemo(() => {
+        const groups = new Map<string, { info: CardMappingRow; cards: CardMappingRow[] }>();
+        for (const row of displayData) {
+            const key = row.aroUserId || row.dahuaSeq || row.cardNo;
+            const existing = groups.get(key);
+            if (existing) {
+                existing.cards.push(row);
+                // 保留最新修改时间
+                if (row.lastModifiedTime && (!existing.info.lastModifiedTime || row.lastModifiedTime > existing.info.lastModifiedTime)) {
+                    existing.info.lastModifiedTime = row.lastModifiedTime;
+                }
+                // 如果任一张卡已豁免，聚合行显示已豁免
+                if (row.freezeExemptFlag === 1) {
+                    existing.info.freezeExemptFlag = 1;
+                    existing.info.freezeExemptExpireAt = row.freezeExemptExpireAt;
+                }
+            } else {
+                groups.set(key, { info: { ...row }, cards: [row] });
+            }
+        }
+        return Array.from(groups.values());
+    }, [displayData]);
+
     const timeOptionsWithCurrent = (current: string) => {
         if (current && !FREEZE_TIME_OPTIONS.includes(current)) {
             return [current, ...FREEZE_TIME_OPTIONS];
@@ -913,7 +1040,7 @@ export default function DebugCardMappingPage() {
                             <div className="flex min-h-[200px] items-center justify-center gap-3 text-xl font-bold text-[var(--app-color-text-tertiary)]">
                                 <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" /> 正在加载映射矩阵...
                             </div>
-                        ) : displayData.length === 0 ? (
+                        ) : groupedData.length === 0 ? (
                             <div className="flex min-h-[160px] items-center justify-center text-sm font-bold text-[var(--app-color-text-tertiary)]">
                                 {isSearching ? '未在映射矩阵中找到关联记录...' : '暂无映射记录'}
                             </div>
@@ -922,146 +1049,180 @@ export default function DebugCardMappingPage() {
                     <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
                         <thead className="border-b-2 border-[var(--app-color-border-strong)]">
                         <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
-                            <th className="p-3 w-16 text-center">状态</th>
                             <th className="p-3 w-16 text-center">照片</th>
                             <th className="p-3">绑定人员 (ARO)</th>
                             <th className="p-3">课题组</th>
                             <th className="p-3">物理卡号 (扫描头输入)</th>
                             <th className="p-3">大华通道序号 (下发指令用)</th>
-                            <th className="p-3 text-center">系统特权 (豁免自动冻结)</th>
-                            <th className="p-3 text-right">上次修改时间</th>
-                            <th className="p-3 text-center w-20">操作</th>
+                            <th className="p-3 text-center">系统特权</th>
+                            <th className="p-3 text-right">上次修改</th>
+                            <th className="p-3 text-center w-10">操作</th>
                         </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--app-color-border-default)]">
-                        {displayData.map((row, idx: number) => {
-                            const isFrozen = row.cardStatus === 'FROZEN';
-                            const isExempt =
-                                row.freezeExemptFlag === 1 &&
-                                (!row.freezeExemptExpireAt ||
-                                    Date.parse(String(row.freezeExemptExpireAt).replace(/-/g, "/")) > Date.now());
-                            const exemptRemain = isExempt ? formatExemptRemaining(row.freezeExemptExpireAt) : "";
-                            const rowKey = row.cardNo || row.aroUserId || `row-${idx}`;
+                        {groupedData.map((group, gIdx: number) => {
+                            const info = group.info;
+                            const cards = group.cards;
+                            const rowKey = info.aroUserId || info.dahuaSeq || `group-${gIdx}`;
 
                             return (
                                 <tr key={rowKey} className="hover:bg-indigo-50/50 transition-colors">
-                                    <td className="p-3 text-center">
-                                        <button
-                                            onClick={() => toggleStatusMutation.mutate({ cardNo: row.cardNo, status: isFrozen ? 'NORMAL' : 'FROZEN' })}
-                                            disabled={toggleStatusMutation.isPending}
-                                            className={`w-10 h-10 rounded-full mx-auto flex items-center justify-center transition-all ${isFrozen ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200'}`}
-                                            title={isFrozen ? '点击解冻' : '点击冻结'}
-                                        >
-                                            {isFrozen ? <Ban className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
-                                        </button>
-                                    </td>
+                                    {/* 照片 */}
                                     <td className="p-3 text-center">
                                         <FacePhotoCell
-                                            aroUserId={row.aroUserId}
-                                            headUrl={row.head}
+                                            aroUserId={info.aroUserId}
+                                            headUrl={info.head}
                                             onUpdated={() => refetch()}
                                         />
                                     </td>
+                                    {/* 人员信息 */}
                                     <td className="p-3">
-                                        <div className="font-black text-[var(--app-color-text-primary)] text-base">{row.userName || '（人员库未匹配）'}</div>
-                                        <div className="font-mono text-xs text-[var(--app-color-text-tertiary)] mt-1">ARO ID：{row.aroUserId || '—'}</div>
-                                        <div className="font-mono text-xs text-[var(--app-color-text-tertiary)] mt-0.5">工号：{row.jobNumber || '—'}</div>
+                                        <div className="font-black text-[var(--app-color-text-primary)] text-base">{info.userName || '（人员库未匹配）'}</div>
+                                        <div className="font-mono text-xs text-[var(--app-color-text-tertiary)] mt-1">ARO ID：{info.aroUserId || '—'}</div>
+                                        <div className="font-mono text-xs text-[var(--app-color-text-tertiary)] mt-0.5">工号：{info.jobNumber || '—'}</div>
                                     </td>
-                                    <td className="p-3 text-sm text-[var(--app-color-text-secondary)] max-w-[200px] whitespace-normal">
-                                        {row.projectGroupName || '—'}
+                                    {/* 课题组 */}
+                                    <td className="p-3 text-sm text-[var(--app-color-text-secondary)] max-w-[160px] whitespace-normal">
+                                        {info.projectGroupName || '—'}
                                     </td>
-                                    <td className="p-3 font-mono font-bold text-indigo-600">
-                                        {row.cardNo}
+                                    {/* 卡片列表：每张卡一行 */}
+                                    <td className="p-2">
+                                        <div className="flex flex-col gap-1.5">
+                                            {cards.map((card, cIdx) => {
+                                                const isFrozen = card.cardStatus === 'FROZEN';
+                                                return (
+                                                    <div key={card.cardNo || cIdx} className="flex items-center gap-2 bg-[var(--app-color-surface-page)] rounded-lg px-2.5 py-1.5 border border-[var(--app-color-border-default)]">
+                                                        {/* 冻结/解冻 */}
+                                                        <button
+                                                            onClick={() => toggleStatusMutation.mutate({ cardNo: card.cardNo, status: isFrozen ? 'NORMAL' : 'FROZEN' })}
+                                                            disabled={toggleStatusMutation.isPending}
+                                                            className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-all ${isFrozen ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200'}`}
+                                                            title={isFrozen ? '解冻' : '冻结'}
+                                                        >
+                                                            {isFrozen ? <Ban className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                                                        </button>
+                                                        {/* 卡号即删卡按钮 */}
+                                                        <button
+                                                            onClick={() => {
+                                                                if (window.confirm(`🗑 删除卡片\n\n将从大华平台删除卡号 [${card.cardNo}]。\n人员 [${info.userName || info.aroUserId}] 不受影响。\n\n确定继续？`)) {
+                                                                    deleteDahuaCardMutation.mutate(card.cardNo);
+                                                                }
+                                                            }}
+                                                            disabled={deleteDahuaCardMutation.isPending}
+                                                            className="font-mono font-bold text-indigo-600 text-sm hover:text-red-600 hover:line-through hover:bg-red-50 rounded px-1.5 py-0.5 transition-all cursor-pointer min-w-[80px]"
+                                                            title={`点击删除卡片 ${card.cardNo}`}
+                                                        >
+                                                            {deleteDahuaCardMutation.isPending && deleteDahuaCardMutation.variables === card.cardNo ? (
+                                                                <Loader2 className="w-4 h-4 animate-spin text-red-500 inline" />
+                                                            ) : (
+                                                                card.cardNo
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </td>
+                                    {/* 大华信息 */}
                                     <td className="p-3">
                                         <div className="flex items-center gap-2 bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] px-2 py-1 rounded w-fit font-mono text-xs border border-[var(--app-color-border-default)]">
                                             <Link className="w-3 h-3" />
-                                            {row.dahuaSeq}
+                                            {info.dahuaSeq || '—'}
                                         </div>
                                         <div className="font-mono text-xs text-[var(--app-color-text-tertiary)] mt-1">
-                                            大华人员编码：{row.dahuaPersonCode || '—'}
+                                            编码：{info.dahuaPersonCode || '—'}
                                         </div>
                                     </td>
+                                    {/* 豁免状态（聚合：任一卡豁免即显示） */}
                                     <td className="p-3 text-center">
-                                        {canGrantExempt ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                if (isExempt) {
-                                                    if (window.confirm(`取消卡号 ${row.cardNo} 的豁免？`)) {
-                                                        toggleExemptMutation.mutate({ cardNo: row.cardNo, flag: 0 });
-                                                    }
-                                                    return;
-                                                }
-                                                setExemptModal({ cardNo: row.cardNo, userName: row.userName, aroUserId: row.aroUserId });
-                                                setExemptUntilTime(DEFAULT_EXEMPT_UNTIL_TIME);
-                                                setExemptMode("TIME");
-                                                setExemptMaxCount("");
-                                                setExemptRoomOptions([]);
-                                                if (row.aroUserId) loadExemptRoomOptions(row.aroUserId);
-                                            }}
-                                            disabled={toggleExemptMutation.isPending}
-                                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${isExempt ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] border border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)]'}`}
-                                        >
-                                            {isExempt ? '👑 已豁免' : '受控'}
-                                        </button>
-                                        ) : (
-                                            <span className="text-xs text-[var(--app-color-text-tertiary)]">{isExempt ? '已豁免' : '受控'}</span>
-                                        )}
                                         {(() => {
-                                            const statusText = formatExemptStatus(row);
-                                            return statusText ? (
-                                                <div className="mt-1 text-[10px] text-amber-600 font-mono">{statusText}</div>
-                                            ) : null;
+                                            const exemptCard = cards.find(c => c.freezeExemptFlag === 1);
+                                            const isExempt = !!exemptCard;
+                                            const primaryCard = exemptCard || cards[0];
+                                            return (
+                                                <>
+                                                    {canGrantExempt ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (isExempt && exemptCard) {
+                                                                if (window.confirm(`取消卡号 ${exemptCard.cardNo} 的豁免？`)) {
+                                                                    toggleExemptMutation.mutate({ cardNo: exemptCard.cardNo, flag: 0 });
+                                                                }
+                                                                return;
+                                                            }
+                                                            setExemptModal({ cardNo: primaryCard.cardNo, userName: info.userName, aroUserId: info.aroUserId });
+                                                            setExemptUntilTime(DEFAULT_EXEMPT_UNTIL_TIME);
+                                                            setExemptMode("TIME");
+                                                            setExemptMaxCount("");
+                                                            setExemptRoomOptions([]);
+                                                            if (info.aroUserId) loadExemptRoomOptions(info.aroUserId);
+                                                        }}
+                                                        disabled={toggleExemptMutation.isPending}
+                                                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${isExempt ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] border border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)]'}`}
+                                                    >
+                                                        {isExempt ? '👑 已豁免' : '受控'}
+                                                    </button>
+                                                    ) : (
+                                                        <span className="text-xs text-[var(--app-color-text-tertiary)]">{isExempt ? '已豁免' : '受控'}</span>
+                                                    )}
+                                                    {exemptCard && formatExemptStatus(exemptCard) ? (
+                                                        <div className="mt-1 text-[10px] text-amber-600 font-mono">{formatExemptStatus(exemptCard)}</div>
+                                                    ) : null}
+                                                    {exemptCard && parseExemptRoomNames(exemptCard.freezeExemptRoomIds).length > 0 ? (
+                                                        <div className="mt-0.5 text-[10px] text-[var(--app-color-accent)] font-medium leading-tight">
+                                                            房间: {parseExemptRoomNames(exemptCard.freezeExemptRoomIds).join(', ')}
+                                                        </div>
+                                                    ) : null}
+                                                    {exemptCard && exemptCard.freezeExemptExpireAt ? (
+                                                        <div className="mt-0.5 text-[10px] text-[var(--app-color-text-tertiary)] font-mono">
+                                                            至 {formatExemptExpireAt(exemptCard.freezeExemptExpireAt)}
+                                                        </div>
+                                                    ) : null}
+                                                    {canGrantExempt ? (
+                                                        <div className="mt-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setExemptHistoryModal({ cardNo: primaryCard.cardNo, userName: info.userName })}
+                                                                className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-accent)] transition-colors"
+                                                            >
+                                                                <History className="w-3 h-3" /> 轨迹
+                                                            </button>
+                                                        </div>
+                                                    ) : null}
+                                                </>
+                                            );
                                         })()}
-                                        {isExempt && (() => {
-                                            const roomNames = parseExemptRoomNames(row.freezeExemptRoomIds);
-                                            return roomNames.length > 0 ? (
-                                                <div className="mt-0.5 text-[10px] text-[var(--app-color-accent)] font-medium leading-tight">
-                                                    房间: {roomNames.join(', ')}
-                                                </div>
-                                            ) : null;
-                                        })()}
-                                        {isExempt && row.freezeExemptExpireAt ? (
-                                            <div className="mt-0.5 text-[10px] text-[var(--app-color-text-tertiary)] font-mono">
-                                                至 {formatExemptExpireAt(row.freezeExemptExpireAt)}
-                                            </div>
-                                        ) : null}
-                                        {canGrantExempt ? (
-                                            <div className="mt-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setExemptHistoryModal({ cardNo: row.cardNo, userName: row.userName })}
-                                                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-accent)] transition-colors"
-                                                    title="查看该人员豁免授予/收回轨迹"
-                                                >
-                                                    <History className="w-3 h-3" aria-hidden /> 轨迹
-                                                </button>
-                                            </div>
-                                        ) : null}
                                     </td>
                                     <td className="p-3 text-right font-mono text-xs text-[var(--app-color-text-tertiary)]">
-                                        {row.lastModifiedTime || '-'}
+                                        {info.lastModifiedTime || '-'}
                                     </td>
-                                    {/* 💥 新增：删除操作单元格 */}
+                                    {/* 操作：追加新卡 + 删除人员 */}
                                     <td className="p-3 text-center">
-                                        <button
-                                            onClick={() => {
-                                                // 🚨 强警告阻断：防止管理员手抖误触
-                                                if (window.confirm(`🚨 危险操作确认\n\n您即将永久销毁物理卡号 [${row.cardNo}] 与人员 [${row.userName || row.aroUserId}] 的绑定关系。\n\n解除后该卡将彻底失效，是否继续？`)) {
-                                                    deleteMappingMutation.mutate(row.cardNo);
-                                                }
-                                            }}
-                                            disabled={deleteMappingMutation.isPending}
-                                            className="p-2 text-[var(--app-color-text-tertiary)] hover:text-red-600 hover:bg-red-50 rounded-lg transition-all active:scale-95 disabled:opacity-50"
-                                            title="解除物理映射"
-                                        >
-                                            {deleteMappingMutation.isPending && deleteMappingMutation.variables === row.cardNo ? (
-                                                <Loader2 className="w-5 h-5 animate-spin text-red-500" />
-                                            ) : (
+                                        <div className="flex items-center justify-center gap-1">
+                                            {canCardIssue && info.dahuaSeq && info.dahuaPersonCode ? (
+                                                <button
+                                                    onClick={() => openAddCardModal(info)}
+                                                    className="p-2 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-accent-soft)] rounded-lg transition-all active:scale-95"
+                                                    title="为此人追加一张新卡"
+                                                >
+                                                    <Plus className="w-5 h-5" />
+                                                </button>
+                                            ) : null}
+                                            <button
+                                                onClick={() => {
+                                                    const cardList = cards.map(c => c.cardNo).join('、');
+                                                    if (window.confirm(`🚨 删除人员与卡片信息\n\n将删除 [${info.userName || info.aroUserId}] 的全部卡片（${cardList}）并从大华平台清除。\n\n确定继续？`)) {
+                                                        cards.forEach(card => deleteDahuaCardMutation.mutate(card.cardNo));
+                                                    }
+                                                }}
+                                                disabled={deleteDahuaCardMutation.isPending}
+                                                className="p-2 text-[var(--app-color-text-tertiary)] hover:text-red-600 hover:bg-red-50 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                                                title="删除人员与卡片信息"
+                                            >
                                                 <Trash2 className="w-5 h-5" />
-                                            )}
-                                        </button>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             );
@@ -2036,6 +2197,125 @@ export default function DebugCardMappingPage() {
                         </div>
                     </div>
                 </div></Portal>}
+
+            {/* ═══ 追加卡片弹窗（为已有人员加卡） ═══ */}
+            {addCardModalOpen && addCardTarget && <Portal><div
+                    className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
+                    onClick={closeAddCardModal}
+                    role="presentation"
+                >
+                    <div
+                        className="relative flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-[var(--app-color-surface-container)] shadow-xl ring-1 ring-black/[0.06]"
+                        onClick={(e) => e.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                    >
+                        <div className="flex shrink-0 items-center justify-between border-b border-neutral-100 px-5 py-3">
+                            <h3 className="text-base font-semibold text-neutral-900 flex items-center gap-2">
+                                <Plus className="w-4 h-4 text-[var(--app-color-accent)]" />
+                                追加卡片
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={closeAddCardModal}
+                                className="rounded-lg p-1.5 text-neutral-500 transition hover:bg-neutral-100"
+                                aria-label="关闭"
+                            >
+                                <X className="h-5 w-5" aria-hidden />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 space-y-3 overflow-y-auto overscroll-y-contain px-5 py-4">
+                            {/* 人员信息 */}
+                            <div className="rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-3">
+                                <div className="text-xs text-[var(--app-color-text-tertiary)] mb-1">绑定人员</div>
+                                <div className="font-bold text-[var(--app-color-text-primary)]">{addCardTarget.userName || "—"}</div>
+                                <div className="text-xs text-[var(--app-color-text-secondary)] mt-0.5">
+                                    大华序号：<span className="font-mono">{addCardTarget.dahuaSeq}</span>
+                                    {addCardTarget.dahuaPersonCode ? <span className="ml-2">编码：<span className="font-mono">{addCardTarget.dahuaPersonCode}</span></span> : null}
+                                </div>
+                                <div className="text-xs text-[var(--app-color-text-secondary)] mt-0.5">
+                                    现有卡号：<span className="font-mono font-bold text-indigo-600">{addCardTarget.cardNo}</span>
+                                </div>
+                            </div>
+
+                            {/* 扫描卡号 */}
+                            <div>
+                                <label className="text-xs font-bold text-[var(--app-color-text-secondary)] mb-1.5 block">新物理卡号（读卡器输入）</label>
+                                <input
+                                    ref={addCardInputRef}
+                                    type="text"
+                                    lang="en"
+                                    inputMode="text"
+                                    autoComplete="off"
+                                    autoCorrect="off"
+                                    autoCapitalize="off"
+                                    spellCheck={false}
+                                    value={addCardNo}
+                                    onPaste={(e) => {
+                                        e.preventDefault();
+                                        const pasted = sanitizeCardNo(e.clipboardData.getData("text"));
+                                        updateAddCardNoWithBuffer(pasted);
+                                    }}
+                                    onChange={(e) => {
+                                        if (addCardComposingRef.current) return;
+                                        const clean = sanitizeCardNo(e.target.value);
+                                        updateAddCardNoWithBuffer(clean);
+                                    }}
+                                    onCompositionStart={() => { addCardComposingRef.current = true; }}
+                                    onCompositionEnd={(e) => {
+                                        addCardComposingRef.current = false;
+                                        const clean = sanitizeCardNo((e.target as HTMLInputElement).value);
+                                        updateAddCardNoWithBuffer(clean);
+                                    }}
+                                    className="w-full rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2.5 font-mono font-semibold text-[var(--app-color-accent)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/30"
+                                    placeholder="等待读卡器输入..."
+                                />
+                                <p className="mt-1 text-[11px] text-[var(--app-color-text-tertiary)]">焦点置于输入框后刷卡，或手动粘贴卡号</p>
+                            </div>
+
+                            {/* 步骤回显 */}
+                            {addCardMutation.data?.steps && addCardMutation.data.steps.length > 0 && (
+                                <div className="rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-3">
+                                    <div className="text-xs font-bold text-[var(--app-color-text-secondary)] mb-2">执行步骤</div>
+                                    <div className="space-y-1 max-h-[120px] overflow-auto">
+                                        {addCardMutation.data.steps.map((step, idx) => (
+                                            <div key={`${step.stepName}-${idx}`} className={`text-xs ${step.success ? "text-emerald-700" : "text-rose-700"}`}>
+                                                [{step.success ? "成功" : "失败"}] {step.stepName} {step.message || ""}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex shrink-0 justify-end gap-2 border-t border-neutral-100 px-5 py-3">
+                            <AdminButton type="button" tone="secondary" size="sm" onClick={closeAddCardModal}>
+                                取消
+                            </AdminButton>
+                            <AdminButton
+                                type="button"
+                                tone="primary"
+                                size="sm"
+                                className="gap-1.5"
+                                disabled={!addCardNo.trim() || addCardMutation.isPending}
+                                onClick={() => {
+                                    if (!addCardTarget?.dahuaSeq || !addCardTarget?.dahuaPersonCode) return;
+                                    addCardMutation.mutate({
+                                        personId: addCardTarget.dahuaSeq,
+                                        personCode: addCardTarget.dahuaPersonCode,
+                                        cardNo: addCardNo.trim(),
+                                        aroUserId: addCardTarget.aroUserId || "",
+                                    });
+                                }}
+                            >
+                                {addCardMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
+                                确认追加
+                            </AdminButton>
+                        </div>
+                    </div>
+                </div></Portal>}
+
         </AdminPageShell>
     );
 }
