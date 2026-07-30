@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { ChevronDown, ChevronLeft, Users, Clock, MapPin, Loader2, Check, X, RefreshCw, Search, Pencil, ShieldCheck, ShieldX, CheckCircle2, XCircle, KeyRound } from "lucide-react";
+import { ChevronDown, ChevronLeft, Users, Clock, MapPin, Loader2, Check, X, RefreshCw, Search, Pencil, ShieldCheck, ShieldX, CheckCircle2, XCircle, KeyRound, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { adminHttp } from "@/api/core/adminHttp";
+import { fetchAroFavorites, starAroSession, unstarAroSession } from "@/api/domains/aro-training.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
@@ -81,7 +82,50 @@ export default function AdminAroBindingPage() {
   const { data: td, isLoading: tl } = useQuery({ queryKey: ["aro-trainees", selected?.id, tPage, tf], enabled: !!selected?.id, queryFn: async () => { const p: Record<string, string | number> = { pageNum: tPage, pageSize: PAGE_SIZE }; if (tf.search) p.username = tf.search; if (tf.pg) p.projectGroupName = tf.pg; const r = await adminHttp.get(`/aro-training/sessions/${selected!.id}/trainees`, { params: p }); return (r.data?.data || { list: [], total: 0 }) as { list: Trainee[]; total: number }; }, placeholderData: (prev) => prev });
   const { data: allRooms } = useQuery({ queryKey: ["aro-rooms"], queryFn: async () => { const r = await adminHttp.get("/aro-training/rooms"); const d: any = r.data?.data; return (d?.list || d || []) as { id: string; name: string; areaName: string; floorName: string }[]; }, staleTime: 5 * 60_000 });
 
+  // ── 收藏状态 ──
+  const { data: favorites = [] } = useQuery({ queryKey: ["aro-favorites"], queryFn: fetchAroFavorites, staleTime: 30_000 });
+  const favSet = useMemo(() => new Set(favorites), [favorites]);
+
+  const starMutation = useMutation({
+    mutationFn: starAroSession,
+    onMutate: async (sid: string) => {
+      await qc.cancelQueries({ queryKey: ["aro-favorites"] });
+      const prev = qc.getQueryData<string[]>(["aro-favorites"]) ?? [];
+      qc.setQueryData<string[]>(["aro-favorites"], [...prev, sid]);
+      return { prev };
+    },
+    onError: (_err, _sid, ctx) => {
+      if (ctx?.prev) qc.setQueryData<string[]>(["aro-favorites"], ctx.prev);
+    },
+    onSettled: () => { qc.invalidateQueries({ queryKey: ["aro-favorites"] }); },
+  });
+
+  const unstarMutation = useMutation({
+    mutationFn: unstarAroSession,
+    onMutate: async (sid: string) => {
+      await qc.cancelQueries({ queryKey: ["aro-favorites"] });
+      const prev = qc.getQueryData<string[]>(["aro-favorites"]) ?? [];
+      qc.setQueryData<string[]>(["aro-favorites"], prev.filter((id) => id !== sid));
+      return { prev };
+    },
+    onError: (_err, _sid, ctx) => {
+      if (ctx?.prev) qc.setQueryData<string[]>(["aro-favorites"], ctx.prev);
+    },
+    onSettled: () => { qc.invalidateQueries({ queryKey: ["aro-favorites"] }); },
+  });
+
   const sessions = sd?.list ?? []; const sTotal = sd?.total ?? 0; const sPages = Math.max(1, Math.ceil(sTotal / PAGE_SIZE));
+  // 收藏置顶排序
+  const sortedSessions = useMemo(() => {
+    const fav: TrainingSession[] = [];
+    const non: TrainingSession[] = [];
+    for (const s of sessions) {
+      if (favSet.has(s.id)) fav.push(s); else non.push(s);
+    }
+    return [...fav, ...non];
+  }, [sessions, favSet]);
+  const hasFav = sortedSessions.some((s) => favSet.has(s.id));
+  const lastFavIdx = hasFav ? sortedSessions.reduce((last, s, i) => favSet.has(s.id) ? i : last, -1) : -1;
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   useEffect(() => {
     let list = [...(td?.list ?? [])].map(t => ({ ...t, examSignId: String(t.examSignId ?? ''), userId: String(t.userId ?? '') }));
@@ -169,11 +213,36 @@ export default function AdminAroBindingPage() {
           {sl ? <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>
             : <table className="w-full min-w-max text-left text-sm border-collapse">
               <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
-                <th className="px-3 py-2">培训名称</th><th className="px-3 py-2">地点</th><th className="px-3 py-2">类型</th><th className="px-3 py-2">时间</th><th className="px-3 py-2">考官</th><th className="px-3 py-2">合格/总人数</th><th className="px-3 py-2">状态</th>
+                <th className="px-0 py-2 w-10"></th><th className="px-3 py-2">培训名称</th><th className="px-3 py-2">地点</th><th className="px-3 py-2">类型</th><th className="px-3 py-2">时间</th><th className="px-3 py-2">考官</th><th className="px-3 py-2">合格/总人数</th><th className="px-3 py-2">状态</th>
               </tr></thead>
               <tbody>
-                {sessions.length === 0 && !sl ? <tr><td colSpan={7} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无培训场次</td></tr>
-                  : sessions.map(s => (<tr key={s.id} className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors">
+                {sortedSessions.length === 0 && !sl ? <tr><td colSpan={8} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无培训场次</td></tr>
+                  : sortedSessions.map((s, idx) => (<>
+                    {/* 收藏/非收藏分隔线 */}
+                    {idx === lastFavIdx + 1 && lastFavIdx >= 0 && (
+                      <tr key="fav-sep" className="border-b border-[var(--app-color-border-default)]">
+                        <td colSpan={8} className="px-3 py-1.5">
+                          <div className="flex items-center gap-2">
+                            <hr className="flex-1 border-t border-[var(--app-color-border-default)]" />
+                            <span className="text-[10px] text-[var(--twin-mute)] shrink-0">未收藏</span>
+                            <hr className="flex-1 border-t border-[var(--app-color-border-default)]" />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    <tr key={s.id} className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors">
+                    <td className="px-0 py-2.5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => favSet.has(s.id) ? unstarMutation.mutate(s.id) : starMutation.mutate(s.id)}
+                        className="inline-flex items-center justify-center w-8 h-8 rounded transition-colors hover:bg-[var(--twin-canvas-soft-2)]"
+                        title={favSet.has(s.id) ? "取消收藏" : "收藏"}
+                      >
+                        <Star
+                          className={cn("h-4 w-4 transition-colors", favSet.has(s.id) ? "fill-[var(--app-color-feedback-warning)] text-[var(--app-color-feedback-warning)]" : "text-[var(--twin-mute)] hover:text-[var(--app-color-feedback-warning)]")}
+                        />
+                      </button>
+                    </td>
                     <td className="px-3 py-2.5 cursor-pointer" onClick={() => goDetail(s)}><div className="font-medium text-[var(--app-color-text-primary)]">{s.title}</div><div className="text-[11px] text-[var(--twin-mute)] mt-0.5 line-clamp-1">{s.testContent}</div></td>
                     <td className="px-3 py-2.5 text-[var(--twin-mute)] whitespace-nowrap"><MapPin className="h-3 w-3 inline mr-1" />{s.address || "—"}</td>
                     <td className="px-3 py-2.5 text-[var(--twin-mute)]">{s.examCertType === 2 ? "手术培训" : "准入培训"}</td>
@@ -181,7 +250,7 @@ export default function AdminAroBindingPage() {
                     <td className="px-3 py-2.5 text-[var(--twin-mute)]">{s.examinerName || s.examinerNumber || "—"}</td>
                     <td className="px-3 py-2.5"><SessionCount examId={s.id} total={s.signNumber} /></td>
                     <td className="px-3 py-2.5">{stateBadge(s.examState)}</td>
-                  </tr>))}
+                  </tr></>))}
               </tbody>
             </table>}
         </div>

@@ -44,6 +44,9 @@ public class AgvPrimitiveDetector {
         TrajectoryFrame prev = null;
         int creepCount = 0;           // consecutive frames with 0.05 < speed < 0.2
         List<Double> turnAngles = new ArrayList<>(); // accumulating angle changes at low speed
+        List<Double> spinAngles = new ArrayList<>(); // accumulating angle changes at near-zero speed (SPIN)
+        TrajectoryFrame idleStartFrame = null;      // frame where robot stopped (IDLE detection)
+        LocalDateTime idleStartTime = null;          // time when idle began
 
         for (int i = 0; i < frames.size(); i++) {
             TrajectoryFrame cur = frames.get(i);
@@ -104,6 +107,25 @@ public class AgvPrimitiveDetector {
                 turnAngles.clear();
             }
 
+            // SPIN (原地旋转): speed < 0.05 and sustained angle change rate > 0.2 rad/s over 3+ frames
+            if (speed < 0.05 && prev != null) {
+                if (prev.angle != null && cur.angle != null) {
+                    double da = Math.abs(Math.atan2(Math.sin(cur.angle - prev.angle), Math.cos(cur.angle - prev.angle)));
+                    spinAngles.add(da);
+                    if (spinAngles.size() > 5) spinAngles.remove(0);
+                    double avgRate = spinAngles.stream().mapToDouble(Double::doubleValue).average().orElse(0);
+                    if (spinAngles.size() >= 3 && avgRate > 0.2) {
+                        PrimitiveEvent e = pr(cur, "SPIN", cur.robotIp, cur.x, cur.y);
+                        if (events.stream().noneMatch(ev -> "SPIN".equals(ev.getType()) &&
+                                Math.abs(java.time.Duration.between(ev.getTimestamp(), e.getTimestamp()).toMillis()) < 2000)) {
+                            events.add(e);
+                        }
+                    }
+                }
+            } else {
+                spinAngles.clear();
+            }
+
             // CREEP: 0.05 < speed < 0.2 sustained > 5 frames
             if (speed > 0.05 && speed < 0.2) {
                 creepCount++;
@@ -112,6 +134,34 @@ public class AgvPrimitiveDetector {
                 }
             } else {
                 creepCount = 0;
+            }
+
+            // IDLE (原地等待): speed < 0.05 sustained > 30s, emit IDLE_START/IDLE_END
+            if (speed < 0.05 && cur.x != null && cur.y != null) {
+                if (idleStartFrame == null) {
+                    idleStartFrame = cur;
+                    idleStartTime = cur.recordedAt;
+                }
+            } else {
+                // Robot started moving — check if idle was long enough
+                if (idleStartFrame != null && idleStartTime != null) {
+                    long idleSec = java.time.Duration.between(idleStartTime, cur.recordedAt).getSeconds();
+                    if (idleSec > 30) {
+                        events.add(pr(idleStartFrame, "IDLE_START", cur.robotIp, idleStartFrame.x, idleStartFrame.y));
+                        events.add(pr(cur, "IDLE_END", cur.robotIp, cur.x, cur.y));
+                    }
+                    idleStartFrame = null;
+                    idleStartTime = null;
+                }
+            }
+
+            // If last frame is still idle and long enough, emit an open-ended IDLE
+            if (i == frames.size() - 1 && idleStartFrame != null && idleStartTime != null) {
+                long idleSec = java.time.Duration.between(idleStartTime, cur.recordedAt).getSeconds();
+                if (idleSec > 30) {
+                    events.add(pr(idleStartFrame, "IDLE_START", cur.robotIp, idleStartFrame.x, idleStartFrame.y));
+                    events.add(pr(cur, "IDLE_END", cur.robotIp, cur.x, cur.y));
+                }
             }
 
             // MAP_CHANGE
@@ -135,11 +185,11 @@ public class AgvPrimitiveDetector {
                     events.add(pr(cur, "EMERGENCY_OFF", cur.robotIp, cur.x, cur.y));
             }
 
-            // FORK_RAISE / FORK_LOWER (threshold 0.02m to filter sensor noise)
+            // FORK_RAISE / FORK_LOWER (threshold 0.001m, fork steps: 0→0.033→0.065→0.067, min step=0.002)
             if (prev != null && prev.forkHeight != null && cur.forkHeight != null) {
                 double df = cur.forkHeight - prev.forkHeight;
-                if (df > 0.02) events.add(pe(cur, "FORK_RAISE", cur.robotIp, cur.x, cur.y, df));
-                if (df < -0.02) events.add(pe(cur, "FORK_LOWER", cur.robotIp, cur.x, cur.y, -df));
+                if (df > 0.001) events.add(pe(cur, "FORK_RAISE", cur.robotIp, cur.x, cur.y, df));
+                if (df < -0.001) events.add(pe(cur, "FORK_LOWER", cur.robotIp, cur.x, cur.y, -df));
             }
 
             // JACK_CHANGE

@@ -5,6 +5,11 @@ import {
   fetchCageShelfDetail,
   fetchCageShelfIndexes,
   importCageShelfCsv,
+  updateAnimalCage,
+  bindCageBox,
+  cancelCageBoxColor,
+  type AnimalCageUpdatePayload,
+  type CancelColor,
 } from "@/api/domains/cageShelf.api";
 import { toast } from "react-hot-toast";
 
@@ -53,5 +58,44 @@ export function useImportCageShelfCsv() {
       toast.success(`导入完成：新增 ${data.created}，更新 ${data.updated}`);
     },
     onError: (e: Error) => toast.error(e.message || "导入失败"),
+  });
+}
+
+export function useUpdateAnimalCage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: AnimalCageUpdatePayload) => updateAnimalCage(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.cageShelf.all });
+      toast.success("笼位更新成功");
+    },
+    onError: (e: Error) => toast.error(e.message || "笼位更新失败"),
+  });
+}
+
+export function useBindCageBox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ animalCageId, cageBoxCode }: { animalCageId: string; cageBoxCode: string }) =>
+      bindCageBox(animalCageId, cageBoxCode),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.cageShelf.all });
+      toast.success("笼盒关联成功");
+    },
+    onError: (e: Error) => toast.error(e.message || "笼盒关联失败"),
+  });
+}
+
+export function useCancelCageBoxColor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ roomId, shelveId, cageBoxCode, color }:
+      { roomId: string; shelveId: string; cageBoxCode: string; color: CancelColor }) =>
+      cancelCageBoxColor(roomId, shelveId, cageBoxCode, color),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.cageShelf.all });
+      toast.success("已取消状态标记");
+    },
+    onError: (e: Error) => toast.error(e.message || "取消状态失败"),
   });
 }

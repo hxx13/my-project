@@ -1,5 +1,5 @@
 <view class="page">
-  <view class="intro">审核学生物资申领、延迟免冻结与需求建议</view>
+  <view class="intro">审核学生物资申领、延迟免冻结与培训签到</view>
 
   <scroll-view scroll-x class="tabs-scroll" enhanced show-scrollbar="{{ false }}">
     <view class="tabs">
@@ -11,9 +11,9 @@
         <text>{{ tabLabels.scanDelay }}</text>
         <view wx:if="{{ tabBadges.scanDelay }}" class="tab-badge">{{ tabBadges.scanDelay }}</view>
       </view>
-      <view class="tab tab-with-badge {{ activeTab === 'demands' ? 'tab-on' : '' }}" data-tab="demands" bindtap="onTabChange">
-        <text>{{ tabLabels.demands }}</text>
-        <view wx:if="{{ tabBadges.demands }}" class="tab-badge">{{ tabBadges.demands }}</view>
+      <view class="tab tab-with-badge {{ activeTab === 'aroTraining' ? 'tab-on' : '' }}" data-tab="aroTraining" bindtap="onTabChange">
+        <text>{{ tabLabels.aroTraining }}</text>
+        <view wx:if="{{ tabBadges.aroTraining }}" class="tab-badge">{{ tabBadges.aroTraining }}</view>
       </view>
     </view>
   </scroll-view>
@@ -390,28 +390,199 @@
     </block>
   </block>
 
-  <!-- 需求建议 -->
-  <block wx:if="{{ !loading && activeTab === 'demands' }}">
-    <view class="switch-row">
-      <text class="switch-label">学生端需求建议入口</text>
-      <view class="op op-ghost {{ demandEntryVisible ? 'op-on' : '' }}" bindtap="onToggleDemandEntry">
-        {{ demandEntryStatusText }}
-      </view>
-    </view>
-    <view wx:if="{{ demands.length === 0 }}" class="hint empty">暂无需求建议</view>
-    <view wx:for="{{ demands }}" wx:key="id" class="card">
-      <view class="row-head">
-        <text class="title">{{ item.userName || item.userId }}</text>
-        <text class="tag {{ item.open ? 'tag-warn' : 'tag-ok' }}">{{ item.statusText }}</text>
-      </view>
-      <text class="body">{{ item.suggestion }}</text>
-      <view class="card-footer">
-        <text wx:if="{{ item.createdAtText }}" class="meta">{{ item.createdAtText }}</text>
-        <view wx:if="{{ item.open }}" class="ops">
-          <view class="op op-primary" data-id="{{ item.id }}" bindtap="onDemandResolve">标记处理</view>
+  <!-- 培训审核 -->
+  <block wx:if="{{ !loading && activeTab === 'aroTraining' }}">
+    <view wx:if="{{ aroTrainingList.length === 0 }}" class="hint empty">暂无待审核的培训学员</view>
+    <block wx:else>
+      <view wx:if="{{ aroTrainingToday.length }}" class="time-group">
+        <view class="time-group-head" bindtap="onToggleAroTrainingToday">
+          <text class="time-group-arrow {{ aroTrainingTodayOpen ? 'open' : '' }}">▶</text>
+          <text>今天 ({{ aroTrainingToday.length }})</text>
         </view>
+        <block wx:if="{{ aroTrainingTodayOpen }}">
+          <view wx:for="{{ aroTrainingGroupedToday }}" wx:key="sessionId" wx:for-item="grp" class="session-group">
+            <view class="session-header" bindtap="onToggleAroTrainingSession" data-session-id="{{ grp.sessionId }}">
+              <text class="session-arrow {{ grp._collapsed ? '' : 'open' }}">▶</text>
+              <text class="session-title">{{ grp.title }}</text>
+              <text wx:if="{{ grp.address }}" class="session-meta">{{ grp.address }}</text>
+              <text class="session-count">{{ grp.trainees.length }} 人</text>
+            </view>
+            <block wx:if="{{ !grp._collapsed }}">
+              <!-- 待审核学员卡片 -->
+              <view wx:for="{{ grp._pendingTrainees }}" wx:key="examSignId" wx:for-item="t" class="aro-card">
+                <view class="aro-card-header">
+                  <text class="aro-card-name">{{ t.name || '-' }}</text>
+                  <text wx:if="{{ t.projectGroup }}" class="aro-card-group">{{ t.projectGroup }}</text>
+                  <text class="aro-card-status aro-audit-tag {{ t.auditTagClass }}">{{ t.auditStateText }}</text>
+                  <text class="aro-card-status aro-score-tag {{ t.scoreTagClass }}">{{ t.scoreStateText }}</text>
+                </view>
+                <view class="aro-card-body">
+                  <text wx:if="{{ t.jobNumber }}" class="aro-card-meta">工号 {{ t.jobNumber }}</text>
+                  <text wx:if="{{ t.mobilePhone }}" class="aro-card-meta">{{ t.mobilePhone }}</text>
+                </view>
+                <view class="aro-card-footer">
+                  <view wx:if="{{ t.isAuditPending }}" class="aro-split-btn">
+                    <view class="op op-primary aro-split-main" data-exam-sign-id="{{ t.examSignId }}" data-state="1" bindtap="onAroAudit">通过</view>
+                    <view class="aro-split-arrow" data-exam-sign-id="{{ t.examSignId }}" bindtap="onToggleAroMore">▼</view>
+                  </view>
+                  <view wx:if="{{ t.isScorePending }}" class="aro-split-btn">
+                    <view class="op op-primary aro-split-main" data-exam-sign-id="{{ t.examSignId }}" data-state="1" bindtap="onAroScore">合格</view>
+                    <view class="aro-split-arrow" data-exam-sign-id="{{ t.examSignId }}" bindtap="onToggleAroMore">▼</view>
+                  </view>
+                  <text wx:if="{{ !t.isAuditPending && !t.isScorePending }}" class="aro-card-done">已处理</text>
+                </view>
+                <view wx:if="{{ t._expandMore }}" class="aro-more-dropdown">
+                  <view wx:if="{{ t.isAuditPending }}" class="op op-danger" data-exam-sign-id="{{ t.examSignId }}" data-state="2" bindtap="onAroAudit">拒绝</view>
+                  <view wx:if="{{ t.isScorePending }}" class="op op-danger" data-exam-sign-id="{{ t.examSignId }}" data-state="2" bindtap="onAroScore">不合格</view>
+                </view>
+              </view>
+              <!-- 已处理学员（可折叠） -->
+              <block wx:if="{{ grp._doneTrainees.length > 0 }}">
+                <view class="status-sub-head" bindtap="onToggleAroTrainingDone" data-session-id="{{ grp.sessionId }}">
+                  <text class="status-sub-arrow {{ grp._doneCollapsed ? '' : 'open' }}">▶</text>
+                  <text class="status-sub-label">已审核 ({{ grp._doneTrainees.length }})</text>
+                </view>
+                <block wx:if="{{ !grp._doneCollapsed }}">
+                  <view wx:for="{{ grp._doneTrainees }}" wx:key="examSignId" wx:for-item="t" class="aro-card aro-card-done-card">
+                    <view class="aro-card-header">
+                      <text class="aro-card-name">{{ t.name || '-' }}</text>
+                      <text wx:if="{{ t.projectGroup }}" class="aro-card-group">{{ t.projectGroup }}</text>
+                      <text class="aro-card-status aro-audit-tag {{ t.auditTagClass }}">{{ t.auditStateText }}</text>
+                      <text class="aro-card-status aro-score-tag {{ t.scoreTagClass }}">{{ t.scoreStateText }}</text>
+                    </view>
+                    <view class="aro-card-body">
+                      <text wx:if="{{ t.jobNumber }}" class="aro-card-meta">工号 {{ t.jobNumber }}</text>
+                      <text wx:if="{{ t.mobilePhone }}" class="aro-card-meta">{{ t.mobilePhone }}</text>
+                    </view>
+                    <view wx:if="{{ t.createdAtText }}" class="aro-card-time">{{ t.createdAtText }}</view>
+                  </view>
+                </block>
+              </block>
+            </block>
+          </view>
+        </block>
       </view>
-    </view>
+      <!-- 历史待审核区 -->
+      <view wx:if="{{ aroTrainingHistoryPending.length }}" class="time-group">
+        <view class="time-group-head" bindtap="onToggleAroTrainingHistoryPending">
+          <text class="time-group-arrow {{ aroTrainingHistoryPendingOpen ? 'open' : '' }}">▶</text>
+          <text>待审核（历史） ({{ aroTrainingHistoryPending.length }})</text>
+        </view>
+        <block wx:if="{{ aroTrainingHistoryPendingOpen }}">
+          <view wx:for="{{ aroTrainingGroupedHistoryPending }}" wx:key="sessionId" wx:for-item="grp" class="session-group">
+            <view class="session-header" bindtap="onToggleAroTrainingSession" data-session-id="{{ grp.sessionId }}">
+              <text class="session-arrow {{ grp._collapsed ? '' : 'open' }}">▶</text>
+              <text class="session-title">{{ grp.title }}</text>
+              <text wx:if="{{ grp.address }}" class="session-meta">{{ grp.address }}</text>
+              <text class="session-count">{{ grp.trainees.length }} 人</text>
+            </view>
+            <block wx:if="{{ !grp._collapsed }}">
+              <view wx:for="{{ grp._pendingTrainees }}" wx:key="examSignId" wx:for-item="t" class="aro-card">
+                <view class="aro-card-header">
+                  <text class="aro-card-name">{{ t.name || '-' }}</text>
+                  <text wx:if="{{ t.projectGroup }}" class="aro-card-group">{{ t.projectGroup }}</text>
+                  <text class="aro-card-status aro-audit-tag {{ t.auditTagClass }}">{{ t.auditStateText }}</text>
+                  <text class="aro-card-status aro-score-tag {{ t.scoreTagClass }}">{{ t.scoreStateText }}</text>
+                </view>
+                <view class="aro-card-body">
+                  <text wx:if="{{ t.jobNumber }}" class="aro-card-meta">工号 {{ t.jobNumber }}</text>
+                  <text wx:if="{{ t.mobilePhone }}" class="aro-card-meta">{{ t.mobilePhone }}</text>
+                </view>
+                <view class="aro-card-footer">
+                  <view wx:if="{{ t.isAuditPending }}" class="aro-split-btn">
+                    <view class="op op-primary aro-split-main" data-exam-sign-id="{{ t.examSignId }}" data-state="1" bindtap="onAroAudit">通过</view>
+                    <view class="aro-split-arrow" data-exam-sign-id="{{ t.examSignId }}" bindtap="onToggleAroMore">▼</view>
+                  </view>
+                  <view wx:if="{{ t.isScorePending }}" class="aro-split-btn">
+                    <view class="op op-primary aro-split-main" data-exam-sign-id="{{ t.examSignId }}" data-state="1" bindtap="onAroScore">合格</view>
+                    <view class="aro-split-arrow" data-exam-sign-id="{{ t.examSignId }}" bindtap="onToggleAroMore">▼</view>
+                  </view>
+                  <text wx:if="{{ !t.isAuditPending && !t.isScorePending }}" class="aro-card-done">已处理</text>
+                </view>
+                <view wx:if="{{ t._expandMore }}" class="aro-more-dropdown">
+                  <view wx:if="{{ t.isAuditPending }}" class="op op-danger" data-exam-sign-id="{{ t.examSignId }}" data-state="2" bindtap="onAroAudit">拒绝</view>
+                  <view wx:if="{{ t.isScorePending }}" class="op op-danger" data-exam-sign-id="{{ t.examSignId }}" data-state="2" bindtap="onAroScore">不合格</view>
+                </view>
+              </view>
+              <block wx:if="{{ grp._doneTrainees.length > 0 }}">
+                <view class="status-sub-head" bindtap="onToggleAroTrainingDone" data-session-id="{{ grp.sessionId }}">
+                  <text class="status-sub-arrow {{ grp._doneCollapsed ? '' : 'open' }}">▶</text>
+                  <text class="status-sub-label">已审核 ({{ grp._doneTrainees.length }})</text>
+                </view>
+                <block wx:if="{{ !grp._doneCollapsed }}">
+                  <view wx:for="{{ grp._doneTrainees }}" wx:key="examSignId" wx:for-item="t" class="aro-card aro-card-done-card">
+                    <view class="aro-card-header">
+                      <text class="aro-card-name">{{ t.name || '-' }}</text>
+                      <text wx:if="{{ t.projectGroup }}" class="aro-card-group">{{ t.projectGroup }}</text>
+                      <text class="aro-card-status aro-audit-tag {{ t.auditTagClass }}">{{ t.auditStateText }}</text>
+                      <text class="aro-card-status aro-score-tag {{ t.scoreTagClass }}">{{ t.scoreStateText }}</text>
+                    </view>
+                    <view class="aro-card-body">
+                      <text wx:if="{{ t.jobNumber }}" class="aro-card-meta">工号 {{ t.jobNumber }}</text>
+                      <text wx:if="{{ t.mobilePhone }}" class="aro-card-meta">{{ t.mobilePhone }}</text>
+                    </view>
+                    <view wx:if="{{ t.createdAtText }}" class="aro-card-time">{{ t.createdAtText }}</view>
+                  </view>
+                </block>
+              </block>
+            </block>
+          </view>
+        </block>
+      </view>
+      <!-- 历史已处理区 -->
+      <view wx:if="{{ aroTrainingHistoryDone.length }}" class="time-group">
+        <view class="time-group-head" bindtap="onToggleAroTrainingHistoryDone">
+          <text class="time-group-arrow {{ aroTrainingHistoryDoneOpen ? 'open' : '' }}">▶</text>
+          <text>历史 ({{ aroTrainingHistoryDone.length }})</text>
+        </view>
+        <block wx:if="{{ aroTrainingHistoryDoneOpen }}">
+          <view wx:for="{{ aroTrainingGroupedHistoryDone }}" wx:key="sessionId" wx:for-item="grp" class="session-group">
+            <view class="session-header" bindtap="onToggleAroTrainingSession" data-session-id="{{ grp.sessionId }}">
+              <text class="session-arrow {{ grp._collapsed ? '' : 'open' }}">▶</text>
+              <text class="session-title">{{ grp.title }}</text>
+              <text wx:if="{{ grp.address }}" class="session-meta">{{ grp.address }}</text>
+              <text class="session-count">{{ grp.trainees.length }} 人</text>
+            </view>
+            <block wx:if="{{ !grp._collapsed }}">
+              <view wx:for="{{ grp._pendingTrainees }}" wx:key="examSignId" wx:for-item="t" class="aro-card aro-card-done-card">
+                <view class="aro-card-header">
+                  <text class="aro-card-name">{{ t.name || '-' }}</text>
+                  <text wx:if="{{ t.projectGroup }}" class="aro-card-group">{{ t.projectGroup }}</text>
+                  <text class="aro-card-status aro-audit-tag {{ t.auditTagClass }}">{{ t.auditStateText }}</text>
+                  <text class="aro-card-status aro-score-tag {{ t.scoreTagClass }}">{{ t.scoreStateText }}</text>
+                </view>
+                <view class="aro-card-body">
+                  <text wx:if="{{ t.jobNumber }}" class="aro-card-meta">工号 {{ t.jobNumber }}</text>
+                  <text wx:if="{{ t.mobilePhone }}" class="aro-card-meta">{{ t.mobilePhone }}</text>
+                </view>
+                <view wx:if="{{ t.createdAtText }}" class="aro-card-time">{{ t.createdAtText }}</view>
+              </view>
+              <block wx:if="{{ grp._doneTrainees.length > 0 }}">
+                <view class="status-sub-head" bindtap="onToggleAroTrainingDone" data-session-id="{{ grp.sessionId }}">
+                  <text class="status-sub-arrow {{ grp._doneCollapsed ? '' : 'open' }}">▶</text>
+                  <text class="status-sub-label">已审核 ({{ grp._doneTrainees.length }})</text>
+                </view>
+                <block wx:if="{{ !grp._doneCollapsed }}">
+                  <view wx:for="{{ grp._doneTrainees }}" wx:key="examSignId" wx:for-item="t" class="aro-card aro-card-done-card">
+                    <view class="aro-card-header">
+                      <text class="aro-card-name">{{ t.name || '-' }}</text>
+                      <text wx:if="{{ t.projectGroup }}" class="aro-card-group">{{ t.projectGroup }}</text>
+                      <text class="aro-card-status aro-audit-tag {{ t.auditTagClass }}">{{ t.auditStateText }}</text>
+                      <text class="aro-card-status aro-score-tag {{ t.scoreTagClass }}">{{ t.scoreStateText }}</text>
+                    </view>
+                    <view class="aro-card-body">
+                      <text wx:if="{{ t.jobNumber }}" class="aro-card-meta">工号 {{ t.jobNumber }}</text>
+                      <text wx:if="{{ t.mobilePhone }}" class="aro-card-meta">{{ t.mobilePhone }}</text>
+                    </view>
+                    <view wx:if="{{ t.createdAtText }}" class="aro-card-time">{{ t.createdAtText }}</view>
+                  </view>
+                </block>
+              </block>
+            </block>
+          </view>
+        </block>
+      </view>
+    </block>
   </block>
 
   <auto-approve-panel

@@ -40,6 +40,7 @@ import {
 import { fetchPendingBadges, type PendingBadges } from "@/api/domains/me.api";
 import { fetchPendingMaterialRequests } from "@/api/domains/material.api";
 import { fetchPendingScanDelayRequests } from "@/api/domains/scanDelay.api";
+import { fetchPendingTrainingSessions } from "@/api/domains/aro-training.api";
 import { materialQueryKeys } from "@/api/hooks/queryKeys";
 import { studentReviewPendingQueryOptions } from "@/features/student-review/studentReviewPoll";
 import { refreshAuthSession, sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
@@ -405,9 +406,19 @@ export default function AdminLayout() {
     enabled: studentReviewBadgeQueriesEnabled,
     ...studentReviewPendingQueryOptions,
   });
+  const { data: liveTrainingPending = [] } = useQuery({
+    queryKey: ["aro-training", "sessions", "pending"],
+    queryFn: fetchPendingTrainingSessions,
+    enabled: studentReviewBadgeQueriesEnabled,
+    ...studentReviewPendingQueryOptions,
+  });
+  const liveTrainingPendingCount = useMemo(
+    () => liveTrainingPending.reduce((sum, s) => sum + (s.trainees?.filter((t: any) => t.testYn === 0 || t.testFraction === 0).length ?? 0), 0),
+    [liveTrainingPending],
+  );
   const liveStudentReviewBadgeText = useMemo(
-    () => formatStudentReviewBadgeCount(liveMaterialPending.length, liveScanDelayPending.length),
-    [liveMaterialPending.length, liveScanDelayPending.length],
+    () => formatStudentReviewBadgeCount(liveMaterialPending.length, liveScanDelayPending.length, liveTrainingPendingCount),
+    [liveMaterialPending.length, liveScanDelayPending.length, liveTrainingPendingCount],
   );
 
   /** 全后台常驻一条通知 SSE：新消息/站内通知到达即刷新角标；此前仅子页订阅时，不点进通知页侧栏不会更新 */

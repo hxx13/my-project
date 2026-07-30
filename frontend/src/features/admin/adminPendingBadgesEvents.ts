@@ -21,3 +21,6 @@ export const ADMIN_NOTIFICATION_SSE_PUSH_EVENT = "aro-admin-notification-sse-pus
 
 /** 好友页通讯录/分组在全局右键菜单中变更后，通知好友页刷新列表（与 post-save 策略解耦，仅整表轻量刷新） */
 export const ADMIN_STAFF_CONTACTS_REFRESH_EVENT = "aro-admin-staff-contacts-refresh";
+
+/** 后端 SSE 推送 aro_training_pending 事件后刷新培训审批列表 */
+export const ARO_TRAINING_PENDING_SSE_EVENT = "aro_training_pending";

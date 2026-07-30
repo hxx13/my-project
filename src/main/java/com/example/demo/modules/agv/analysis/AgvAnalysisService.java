@@ -35,12 +35,25 @@ public class AgvAnalysisService {
     private final AgvTrajectoryMapper trajectoryMapper;
     private final AgvAnalysisMapper analysisMapper;
     private final AgvSpatialService spatialService;
+    private final AgvRouteService routeService;
 
     public AgvAnalysisService(AgvTrajectoryMapper trajectoryMapper, AgvAnalysisMapper analysisMapper,
-                              AgvSpatialService spatialService) {
+                              AgvSpatialService spatialService, AgvRouteService routeService) {
         this.trajectoryMapper = trajectoryMapper;
         this.analysisMapper = analysisMapper;
         this.spatialService = spatialService;
+        this.routeService = routeService;
+    }
+
+    /** 启动时初始化路线发现 */
+    @jakarta.annotation.PostConstruct
+    public void initRoutes() {
+        try {
+            int routes = routeService.discoverRoutes();
+            if (routes > 0) log.info("[AgvAnalysis] Startup: discovered {} routes", routes);
+        } catch (Exception e) {
+            log.warn("[AgvAnalysis] Startup route discovery failed: {}", e.getMessage());
+        }
     }
 
     /**
@@ -57,8 +70,9 @@ public class AgvAnalysisService {
         LocalDateTime from = parseIso(req.getFrom());
         LocalDateTime to = parseIso(req.getTo());
         // Step 1: load frames (ASC order for detector)
+        // 500ms 采集频率下，全天约 172K 条，取 200K 覆盖完整一天
         List<Map<String, Object>> rows = trajectoryMapper.selectTrajectoryAsc(
-                req.getRobotIp(), from, to, 10000);
+                req.getRobotIp(), from, to, 200000);
         if (rows.isEmpty()) return Collections.emptyList();
 
         List<AgvPrimitiveDetector.TrajectoryFrame> frames = rows.stream().map(this::mapRow).collect(Collectors.toList());
@@ -152,8 +166,55 @@ public class AgvAnalysisService {
             }
         }
 
+        // Post-process: merge STATION_DWELL + STATION_WORK → complete docking cycle
+        segments = mergeDockingSegments(segments);
+
         // Conflict resolution: remove lower-priority overlapping segments
         return resolveConflicts(segments, rules);
+    }
+
+    /**
+     * Merge overlapping STATION_DWELL + STATION_WORK into a single complete docking cycle.
+     * STATION_DWELL without fork → kept as incomplete visit (low confidence, for review).
+     */
+    private List<AgvActivitySegment> mergeDockingSegments(List<AgvActivitySegment> segments) {
+        List<AgvActivitySegment> dwells = segments.stream()
+                .filter(s -> "STATION_DWELL".equals(s.getActivityType())).collect(Collectors.toList());
+        List<AgvActivitySegment> works = segments.stream()
+                .filter(s -> "STATION_WORK".equals(s.getActivityType())).collect(Collectors.toList());
+        if (dwells.isEmpty() || works.isEmpty()) return segments;
+
+        Set<AgvActivitySegment> toRemove = new HashSet<>();
+        for (AgvActivitySegment work : works) {
+            for (AgvActivitySegment dwell : dwells) {
+                if (!work.getRobotIp().equals(dwell.getRobotIp())) continue;
+                if (overlapsTime(work, dwell) && work.getZoneId() != null && work.getZoneId().equals(dwell.getZoneId())) {
+                    // Extend work start to dwell start (captures full docking: SPIN → REVERSE → FORK)
+                    if (dwell.getStartTime().isBefore(work.getStartTime())) {
+                        work.setStartTime(dwell.getStartTime());
+                        work.setStartX(dwell.getStartX());
+                        work.setStartY(dwell.getStartY());
+                    }
+                    if (dwell.getEndTime().isAfter(work.getEndTime())) {
+                        work.setEndTime(dwell.getEndTime());
+                        work.setEndX(dwell.getEndX());
+                        work.setEndY(dwell.getEndY());
+                    }
+                    // Increase confidence for complete cycle
+                    work.setConfidence(Math.min(1.0, work.getConfidence() + 0.05));
+                    toRemove.add(dwell);
+                }
+            }
+        }
+        // Downgrade orphan dwells (no fork operation) → incomplete visit
+        for (AgvActivitySegment dwell : dwells) {
+            if (!toRemove.contains(dwell)) {
+                dwell.setActivityType("未完成停靠");
+                dwell.setConfidence(0.50);
+            }
+        }
+        segments.removeAll(toRemove);
+        return segments;
     }
 
     private List<AgvActivitySegment> resolveConflicts(List<AgvActivitySegment> segments, List<AgvActivityRule> rules) {
@@ -273,6 +334,11 @@ public class AgvAnalysisService {
                     double min = ((Number) cond.get("fork_height_min")).doubleValue();
                     if (f.forkHeight < min) match = false;
                 }
+                // fork_height_max: fork must be below threshold (for 寻路/navigating)
+                if (cond.containsKey("fork_height_max") && f.forkHeight != null) {
+                    double max = ((Number) cond.get("fork_height_max")).doubleValue();
+                    if (f.forkHeight > max) match = false;
+                }
                 // battery threshold (numeric comparison: e.g. battery >= 0.95)
                 if (cond.containsKey("battery") && f.battery != null) {
                     double threshold = ((Number) cond.get("battery")).doubleValue();
@@ -380,6 +446,44 @@ public class AgvAnalysisService {
         }
     }
 
+    /** Incremental analysis: every 5 min, analyze last 15 min + auto-discover zones */
+    @Scheduled(fixedDelay = 300_000)
+    public void incrementalAnalysis() {
+        LocalDateTime to = LocalDateTime.now();
+        LocalDateTime from = to.minusMinutes(15);
+        for (String ip : ROBOT_IPS) {
+            try {
+                List<AgvActivitySegment> incomplete = analysisMapper.selectIncompleteVisits(ip, 30);
+                for (AgvActivitySegment s : incomplete) {
+                    if (s.getEndTime() != null && s.getEndTime().isBefore(from)
+                            && s.getEndTime().isAfter(from.minusHours(2))) {
+                        from = s.getStartTime().minusMinutes(1);
+                    }
+                }
+                AnalysisRequest req = new AnalysisRequest();
+                req.setRobotIp(ip);
+                req.setFrom(from.toString());
+                req.setTo(to.toString());
+                analyze(req);
+            } catch (Exception e) {
+                log.warn("[AgvAnalysis] Incremental failed for {}: {}", ip, e.getMessage());
+            }
+        }
+        // 自动空间发现 + 路线发现 + 清理（路线发现用 24h 窗口保证足够样本）
+        try {
+            LocalDateTime spatialFrom = to.minusHours(2);
+            int discovered = spatialService.spatialZoneDiscovery(spatialFrom, to);
+            int merged = spatialService.mergeOverlappingZones();
+            int cleaned = spatialService.cleanupStaleZones(24);
+            int routes = routeService.discoverRoutes();
+            if (discovered > 0 || merged > 0 || cleaned > 0 || routes > 0) {
+                log.info("[AgvAnalysis] Auto: +{} zones, {} merged, {} cleaned, +{} routes", discovered, merged, cleaned, routes);
+            }
+        } catch (Exception e) {
+            log.warn("[AgvAnalysis] Auto-discover failed: {}", e.getMessage());
+        }
+    }
+
     /** Daily scheduled analysis: runs at 02:00, analyzes yesterday's data for all robots */
     @Scheduled(cron = "0 0 2 * * *")
     public void dailyAnalysis() {
@@ -387,6 +491,7 @@ public class AgvAnalysisService {
         LocalDateTime yesterdayStart = today.minusDays(1);
         LocalDateTime yesterdayEnd = today.minusSeconds(1);
         log.info("[AgvAnalysis] Daily analysis: {} → {}", yesterdayStart, yesterdayEnd);
+        int totalSegs = 0;
         for (String ip : ROBOT_IPS) {
             try {
                 AnalysisRequest req = new AnalysisRequest();
@@ -394,10 +499,24 @@ public class AgvAnalysisService {
                 req.setFrom(yesterdayStart.toString());
                 req.setTo(yesterdayEnd.toString());
                 List<AgvActivitySegment> segs = analyze(req);
+                totalSegs += segs.size();
                 log.info("[AgvAnalysis] {} -> {} segments", ip, segs.size());
             } catch (Exception e) {
                 log.warn("[AgvAnalysis] Daily analysis failed for {}: {}", ip, e.getMessage());
             }
+        }
+        // 行为驱动的空间区域发现 + 路线发现
+        try {
+            int zonesDiscovered = spatialService.spatialZoneDiscovery(yesterdayStart, yesterdayEnd);
+            log.info("[AgvAnalysis] Spatial zone discovery: {} zones", zonesDiscovered);
+        } catch (Exception e) {
+            log.warn("[AgvAnalysis] Spatial zone discovery failed: {}", e.getMessage());
+        }
+        try {
+            int routesDiscovered = routeService.discoverRoutes();
+            log.info("[AgvAnalysis] Route discovery: {} routes", routesDiscovered);
+        } catch (Exception e) {
+            log.warn("[AgvAnalysis] Route discovery failed: {}", e.getMessage());
         }
     }
 }

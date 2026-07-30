@@ -657,6 +657,76 @@ export async function executeCageBoxAction(req: CageBoxActionRequest): Promise<C
   return res.data.data!;
 }
 
+// ── 笼盒绑定 / 取消颜色（2026-07-30） ──
+
+/** cancelColor 取值：1=特殊饲养 2=分笼 3=健康检查 */
+export type CancelColor = 1 | 2 | 3;
+
+/** Action → CancelColor 映射 */
+export const ACTION_CANCEL_COLOR: Record<CageBoxAction, CancelColor> = {
+  DIVIDE: 2,
+  SPECIAL_BREEDING: 1,
+  HEALTH_CHECK: 3,
+};
+
+export async function bindCageBox(animalCageId: string, cageBoxCode: string): Promise<boolean> {
+  const res = await authHttp.post<Result<boolean>>("/aro/cage-box/bind", { animalCageId: String(animalCageId), cageBoxCode });
+  if (!res.data?.success) throw new Error(res.data?.message || "笼盒关联失败");
+  return res.data.data ?? false;
+}
+
+export async function cancelCageBoxColor(
+  roomId: string, shelveId: string, cageBoxCode: string, color: CancelColor
+): Promise<boolean> {
+  const res = await authHttp.post<Result<boolean>>("/aro/cage-box/cancel", { roomId, shelveId, cageBoxCode, color });
+  if (!res.data?.success) throw new Error(res.data?.message || "取消颜色失败");
+  return res.data.data ?? false;
+}
+
+/** 扫码后查询笼盒的课题组成员（绑定前校验用） */
+export interface CageBoxMember {
+  id: number;
+  jobNumber: string;
+  name: string;
+}
+
+export interface CageBoxMembersResult {
+  cageBoxCode: string;
+  cageBoxId: number;
+  animalCageId: number;
+  members: CageBoxMember[];
+}
+
+export async function fetchCageBoxMembers(
+  roomId: string, shelveId: string, cageBoxCode: string
+): Promise<CageBoxMembersResult> {
+  const res = await authHttp.post<Result<CageBoxMembersResult>>("/aro/cage-box/members", { roomId, shelveId, cageBoxCode });
+  if (!res.data?.success) throw new Error(res.data?.message || "查询成员失败");
+  return res.data.data!;
+}
+
+/** 笼位更新 payload */
+export interface AnimalCageUpdatePayload {
+  id: number | string;
+  name: string;
+  roomId: number | string;
+  shelveId: number | string;
+  postionX: number;
+  postionY: number;
+  qrcode?: string;
+  state?: number;
+  type?: number;
+  typeId?: number | string;
+  typeName?: string;
+  orders?: number;
+}
+
+export async function updateAnimalCage(data: AnimalCageUpdatePayload): Promise<boolean> {
+  const res = await authHttp.post<Result<boolean>>("/v1/cage-shelves/cage/update", data);
+  if (!res.data?.success) throw new Error(res.data?.message || "笼位更新失败");
+  return res.data.data ?? false;
+}
+
 // ── 笼位预约管理（2026-07-28） ──
 
 export interface BookingRoom {

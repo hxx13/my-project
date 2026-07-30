@@ -1,0 +1,3220 @@
+{
+  "description": "AGV mechanized route topology - cleaned from raw trajectory data with user domain constraints",
+  "method": "Bidirectional frequency threshold >= 3 + hard constraints from physical road layout",
+  "hard_constraints_applied": {
+    "LM1210": "only connects to LM1209 and LM1305 (physical track limitation)"
+  },
+  "noise_removed": {
+    "zone1": "Statistical: 53 rare (<3x) + Constraint: 2 hard-rule = 55 removed from 191 raw",
+    "zone2": "80 rare segments removed from 292 raw"
+  },
+  "zones": {
+    "zone1": {
+      "stations": {
+        "LM1299": {
+          "x": -12.612,
+          "y": 19.688,
+          "observations": 171
+        },
+        "LM1237": {
+          "x": -14.937,
+          "y": 16.746,
+          "observations": 456
+        },
+        "LM1236": {
+          "x": -15.527,
+          "y": 16.764,
+          "observations": 246
+        },
+        "AP1219": {
+          "x": -15.961,
+          "y": 16.765,
+          "observations": 171
+        },
+        "LM1235": {
+          "x": -16.316,
+          "y": 16.767,
+          "observations": 154
+        },
+        "AP1218": {
+          "x": -16.631,
+          "y": 16.774,
+          "observations": 140
+        },
+        "LM1210": {
+          "x": -22.377,
+          "y": 13.573,
+          "observations": 260
+        },
+        "LM1212": {
+          "x": -27.718,
+          "y": 10.825,
+          "observations": 223
+        },
+        "LM1303": {
+          "x": -27.793,
+          "y": 11.104,
+          "observations": 72
+        },
+        "LM1254": {
+          "x": -27.792,
+          "y": 11.441,
+          "observations": 138
+        },
+        "AP1256": {
+          "x": -27.788,
+          "y": 13.026,
+          "observations": 118
+        },
+        "AP1255": {
+          "x": -27.793,
+          "y": 13.765,
+          "observations": 78
+        },
+        "AP1213": {
+          "x": -27.787,
+          "y": 14.43,
+          "observations": 36
+        },
+        "LM1234": {
+          "x": -16.989,
+          "y": 16.782,
+          "observations": 136
+        },
+        "AP1217": {
+          "x": -17.325,
+          "y": 16.779,
+          "observations": 120
+        },
+        "LM1209": {
+          "x": -19.313,
+          "y": 13.642,
+          "observations": 83
+        },
+        "LM1233": {
+          "x": -17.658,
+          "y": 16.768,
+          "observations": 113
+        },
+        "AP1216": {
+          "x": -17.951,
+          "y": 16.759,
+          "observations": 114
+        },
+        "LM1250": {
+          "x": -14.8,
+          "y": 22.394,
+          "observations": 251
+        },
+        "LM1205": {
+          "x": -4.976,
+          "y": 22.311,
+          "observations": 144
+        },
+        "AP1204": {
+          "x": -4.908,
+          "y": 20.855,
+          "observations": 60
+        },
+        "LM1202": {
+          "x": -10.526,
+          "y": 22.47,
+          "observations": 55
+        },
+        "LM1207": {
+          "x": -10.748,
+          "y": 21.9,
+          "observations": 115
+        },
+        "AP1206": {
+          "x": -10.708,
+          "y": 20.832,
+          "observations": 54
+        },
+        "LM1249": {
+          "x": -14.9,
+          "y": 19.049,
+          "observations": 40
+        },
+        "LM1243": {
+          "x": -14.886,
+          "y": 17.921,
+          "observations": 50
+        },
+        "AP1215": {
+          "x": -18.695,
+          "y": 16.769,
+          "observations": 113
+        },
+        "AP1214": {
+          "x": -19.197,
+          "y": 16.759,
+          "observations": 60
+        },
+        "LM1232": {
+          "x": -18.324,
+          "y": 16.762,
+          "observations": 106
+        },
+        "CP1201": {
+          "x": -10.527,
+          "y": 23.306,
+          "observations": 4
+        },
+        "LM1305": {
+          "x": -25.277,
+          "y": 10.838,
+          "observations": 12
+        },
+        "LM1199": {
+          "x": -12.552,
+          "y": 2.138,
+          "observations": 27
+        },
+        "LM1110": {
+          "x": -14.123,
+          "y": -0.201,
+          "observations": 118
+        },
+        "LM1103": {
+          "x": -13.443,
+          "y": -1.077,
+          "observations": 23
+        },
+        "CP1101": {
+          "x": -13.423,
+          "y": -1.691,
+          "observations": 13
+        },
+        "LM1109": {
+          "x": -19.265,
+          "y": -1.214,
+          "observations": 100
+        },
+        "LM1108": {
+          "x": -22.151,
+          "y": -1.309,
+          "observations": 225
+        },
+        "LM1107": {
+          "x": -22.382,
+          "y": -2.806,
+          "observations": 162
+        },
+        "LM1106": {
+          "x": -24.152,
+          "y": -3.871,
+          "observations": 186
+        },
+        "LM1156": {
+          "x": -24.957,
+          "y": -3.611,
+          "observations": 168
+        },
+        "LM1105": {
+          "x": -25.055,
+          "y": -3.24,
+          "observations": 136
+        },
+        "LM1148": {
+          "x": -25.063,
+          "y": -2.65,
+          "observations": 193
+        },
+        "LM1147": {
+          "x": -25.075,
+          "y": -1.949,
+          "observations": 150
+        },
+        "AP1146": {
+          "x": -25.096,
+          "y": -1.518,
+          "observations": 113
+        },
+        "LM1111": {
+          "x": -8.987,
+          "y": 0.658,
+          "observations": 158
+        },
+        "LM1113": {
+          "x": -6.532,
+          "y": 0.686,
+          "observations": 130
+        },
+        "AP1114": {
+          "x": -6.465,
+          "y": 1.371,
+          "observations": 49
+        },
+        "LM1144": {
+          "x": -25.103,
+          "y": -1.077,
+          "observations": 94
+        },
+        "AP1145": {
+          "x": -25.103,
+          "y": -0.699,
+          "observations": 59
+        },
+        "AP1104": {
+          "x": -25.106,
+          "y": -0.139,
+          "observations": 30
+        },
+        "LM1139": {
+          "x": -24.98,
+          "y": -3.883,
+          "observations": 64
+        },
+        "AP1112": {
+          "x": -8.934,
+          "y": 1.373,
+          "observations": 40
+        },
+        "LM1138": {
+          "x": -4.48,
+          "y": 0.512,
+          "observations": 4
+        },
+        "LM1135": {
+          "x": -3.426,
+          "y": 0.497,
+          "observations": 6
+        },
+        "LM1132": {
+          "x": -2.237,
+          "y": 0.489,
+          "observations": 9
+        },
+        "LM1129": {
+          "x": -1.214,
+          "y": 0.425,
+          "observations": 17
+        },
+        "LM1128": {
+          "x": -1.138,
+          "y": -0.113,
+          "observations": 9
+        },
+        "AP1117": {
+          "x": -1.127,
+          "y": -0.519,
+          "observations": 7
+        },
+        "LM1127": {
+          "x": -1.123,
+          "y": -0.899,
+          "observations": 5
+        },
+        "AP1116": {
+          "x": -1.12,
+          "y": -1.274,
+          "observations": 8
+        },
+        "AP1115": {
+          "x": -1.123,
+          "y": -1.736,
+          "observations": 5
+        },
+        "AP1150": {
+          "x": -24.987,
+          "y": -4.467,
+          "observations": 15
+        },
+        "LM1157": {
+          "x": -26.164,
+          "y": -3.648,
+          "observations": 37
+        },
+        "AP1151": {
+          "x": -26.237,
+          "y": -4.495,
+          "observations": 14
+        }
+      },
+      "edges": [
+        {
+          "from": "LM1237",
+          "to": "LM1236",
+          "distance_m": 0.59,
+          "angle_deg": 178.3,
+          "reverse_angle_deg": 358.3,
+          "forward_count": 40,
+          "reverse_count": 35,
+          "total_count": 75,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1236",
+          "to": "AP1219",
+          "distance_m": 0.434,
+          "angle_deg": 179.9,
+          "reverse_angle_deg": 359.9,
+          "forward_count": 36,
+          "reverse_count": 30,
+          "total_count": 66,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1235",
+          "to": "AP1218",
+          "distance_m": 0.315,
+          "angle_deg": 178.7,
+          "reverse_angle_deg": 358.7,
+          "forward_count": 32,
+          "reverse_count": 23,
+          "total_count": 55,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1219",
+          "to": "LM1235",
+          "distance_m": 0.355,
+          "angle_deg": 179.7,
+          "reverse_angle_deg": 359.7,
+          "forward_count": 30,
+          "reverse_count": 24,
+          "total_count": 54,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1234",
+          "to": "AP1217",
+          "distance_m": 0.336,
+          "angle_deg": -179.5,
+          "reverse_angle_deg": 0.5,
+          "forward_count": 24,
+          "reverse_count": 21,
+          "total_count": 45,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1233",
+          "to": "AP1216",
+          "distance_m": 0.293,
+          "angle_deg": -178.2,
+          "reverse_angle_deg": 1.8,
+          "forward_count": 24,
+          "reverse_count": 19,
+          "total_count": 43,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1218",
+          "to": "LM1234",
+          "distance_m": 0.358,
+          "angle_deg": 178.7,
+          "reverse_angle_deg": 358.7,
+          "forward_count": 24,
+          "reverse_count": 18,
+          "total_count": 42,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1217",
+          "to": "LM1233",
+          "distance_m": 0.333,
+          "angle_deg": -178.1,
+          "reverse_angle_deg": 1.9,
+          "forward_count": 22,
+          "reverse_count": 16,
+          "total_count": 38,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1254",
+          "to": "AP1256",
+          "distance_m": 1.585,
+          "angle_deg": 89.9,
+          "reverse_angle_deg": 269.9,
+          "forward_count": 18,
+          "reverse_count": 17,
+          "total_count": 35,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1237",
+          "to": "LM1209",
+          "distance_m": 5.365,
+          "angle_deg": -144.7,
+          "reverse_angle_deg": 35.3,
+          "forward_count": 16,
+          "reverse_count": 19,
+          "total_count": 35,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1209",
+          "to": "LM1210",
+          "distance_m": 3.065,
+          "angle_deg": -178.7,
+          "reverse_angle_deg": 1.3,
+          "forward_count": 16,
+          "reverse_count": 19,
+          "total_count": 35,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1215",
+          "to": "LM1232",
+          "distance_m": 0.371,
+          "angle_deg": -1.1,
+          "reverse_angle_deg": 178.9,
+          "forward_count": 16,
+          "reverse_count": 18,
+          "total_count": 34,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1299",
+          "to": "LM1237",
+          "distance_m": 3.75,
+          "angle_deg": -128.3,
+          "reverse_angle_deg": 51.7,
+          "forward_count": 8,
+          "reverse_count": 25,
+          "total_count": 33,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1212",
+          "to": "LM1303",
+          "distance_m": 0.289,
+          "angle_deg": 105.0,
+          "reverse_angle_deg": 285.0,
+          "forward_count": 17,
+          "reverse_count": 16,
+          "total_count": 33,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1109",
+          "to": "LM1108",
+          "distance_m": 2.888,
+          "angle_deg": -178.1,
+          "reverse_angle_deg": 1.9,
+          "forward_count": 15,
+          "reverse_count": 17,
+          "total_count": 32,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1108",
+          "to": "LM1107",
+          "distance_m": 1.515,
+          "angle_deg": -98.8,
+          "reverse_angle_deg": 81.2,
+          "forward_count": 15,
+          "reverse_count": 17,
+          "total_count": 32,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1107",
+          "to": "LM1106",
+          "distance_m": 2.066,
+          "angle_deg": -149.0,
+          "reverse_angle_deg": 31.0,
+          "forward_count": 15,
+          "reverse_count": 17,
+          "total_count": 32,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1303",
+          "to": "LM1254",
+          "distance_m": 0.337,
+          "angle_deg": 89.8,
+          "reverse_angle_deg": 269.8,
+          "forward_count": 16,
+          "reverse_count": 15,
+          "total_count": 31,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1216",
+          "to": "LM1232",
+          "distance_m": 0.373,
+          "angle_deg": 179.5,
+          "reverse_angle_deg": 359.5,
+          "forward_count": 17,
+          "reverse_count": 13,
+          "total_count": 30,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1105",
+          "to": "LM1148",
+          "distance_m": 0.59,
+          "angle_deg": 90.8,
+          "reverse_angle_deg": 270.8,
+          "forward_count": 14,
+          "reverse_count": 16,
+          "total_count": 30,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1109",
+          "to": "LM1110",
+          "distance_m": 5.241,
+          "angle_deg": 11.1,
+          "reverse_angle_deg": 191.1,
+          "forward_count": 17,
+          "reverse_count": 13,
+          "total_count": 30,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1156",
+          "to": "LM1105",
+          "distance_m": 0.384,
+          "angle_deg": 104.8,
+          "reverse_angle_deg": 284.8,
+          "forward_count": 14,
+          "reverse_count": 15,
+          "total_count": 29,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1148",
+          "to": "LM1147",
+          "distance_m": 0.701,
+          "angle_deg": 91.0,
+          "reverse_angle_deg": 271.0,
+          "forward_count": 14,
+          "reverse_count": 15,
+          "total_count": 29,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1147",
+          "to": "AP1146",
+          "distance_m": 0.432,
+          "angle_deg": 92.8,
+          "reverse_angle_deg": 272.8,
+          "forward_count": 14,
+          "reverse_count": 15,
+          "total_count": 29,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1110",
+          "to": "LM1111",
+          "distance_m": 5.207,
+          "angle_deg": 9.5,
+          "reverse_angle_deg": 189.5,
+          "forward_count": 17,
+          "reverse_count": 12,
+          "total_count": 29,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1299",
+          "to": "LM1250",
+          "distance_m": 3.48,
+          "angle_deg": 129.0,
+          "reverse_angle_deg": 309.0,
+          "forward_count": 25,
+          "reverse_count": 2,
+          "total_count": 27,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1256",
+          "to": "AP1255",
+          "distance_m": 0.739,
+          "angle_deg": 90.4,
+          "reverse_angle_deg": 270.4,
+          "forward_count": 14,
+          "reverse_count": 12,
+          "total_count": 26,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1207",
+          "to": "AP1206",
+          "distance_m": 1.069,
+          "angle_deg": -87.9,
+          "reverse_angle_deg": 92.1,
+          "forward_count": 12,
+          "reverse_count": 12,
+          "total_count": 24,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1106",
+          "to": "LM1156",
+          "distance_m": 0.846,
+          "angle_deg": 162.1,
+          "reverse_angle_deg": 342.1,
+          "forward_count": 13,
+          "reverse_count": 11,
+          "total_count": 24,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1250",
+          "to": "LM1207",
+          "distance_m": 4.082,
+          "angle_deg": -7.0,
+          "reverse_angle_deg": 173.0,
+          "forward_count": 12,
+          "reverse_count": 11,
+          "total_count": 23,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1205",
+          "to": "AP1204",
+          "distance_m": 1.458,
+          "angle_deg": -87.3,
+          "reverse_angle_deg": 92.7,
+          "forward_count": 11,
+          "reverse_count": 11,
+          "total_count": 22,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1202",
+          "to": "LM1250",
+          "distance_m": 4.275,
+          "angle_deg": -179.0,
+          "reverse_angle_deg": 1.0,
+          "forward_count": 12,
+          "reverse_count": 10,
+          "total_count": 22,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1243",
+          "to": "LM1237",
+          "distance_m": 1.176,
+          "angle_deg": -92.5,
+          "reverse_angle_deg": 87.5,
+          "forward_count": 21,
+          "reverse_count": 0,
+          "total_count": 21,
+          "is_one_way": true,
+          "one_way_direction": "forward",
+          "confidence": "high"
+        },
+        {
+          "from": "AP1215",
+          "to": "AP1214",
+          "distance_m": 0.502,
+          "angle_deg": -178.9,
+          "reverse_angle_deg": 1.1,
+          "forward_count": 11,
+          "reverse_count": 10,
+          "total_count": 21,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1146",
+          "to": "LM1144",
+          "distance_m": 0.441,
+          "angle_deg": 90.9,
+          "reverse_angle_deg": 270.9,
+          "forward_count": 10,
+          "reverse_count": 11,
+          "total_count": 21,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1144",
+          "to": "AP1145",
+          "distance_m": 0.378,
+          "angle_deg": 90.0,
+          "reverse_angle_deg": 270.0,
+          "forward_count": 10,
+          "reverse_count": 11,
+          "total_count": 21,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1205",
+          "to": "LM1202",
+          "distance_m": 5.552,
+          "angle_deg": 178.4,
+          "reverse_angle_deg": 358.4,
+          "forward_count": 11,
+          "reverse_count": 9,
+          "total_count": 20,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1111",
+          "to": "LM1113",
+          "distance_m": 2.455,
+          "angle_deg": 0.7,
+          "reverse_angle_deg": 180.7,
+          "forward_count": 10,
+          "reverse_count": 9,
+          "total_count": 19,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1250",
+          "to": "LM1249",
+          "distance_m": 3.346,
+          "angle_deg": -91.7,
+          "reverse_angle_deg": 88.3,
+          "forward_count": 18,
+          "reverse_count": 0,
+          "total_count": 18,
+          "is_one_way": true,
+          "one_way_direction": "forward",
+          "confidence": "high"
+        },
+        {
+          "from": "LM1249",
+          "to": "LM1243",
+          "distance_m": 1.128,
+          "angle_deg": -89.3,
+          "reverse_angle_deg": 90.7,
+          "forward_count": 18,
+          "reverse_count": 0,
+          "total_count": 18,
+          "is_one_way": true,
+          "one_way_direction": "forward",
+          "confidence": "high"
+        },
+        {
+          "from": "LM1113",
+          "to": "AP1114",
+          "distance_m": 0.688,
+          "angle_deg": 84.4,
+          "reverse_angle_deg": 264.4,
+          "forward_count": 9,
+          "reverse_count": 9,
+          "total_count": 18,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1255",
+          "to": "AP1213",
+          "distance_m": 0.665,
+          "angle_deg": 89.5,
+          "reverse_angle_deg": 269.5,
+          "forward_count": 8,
+          "reverse_count": 8,
+          "total_count": 16,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1111",
+          "to": "AP1112",
+          "distance_m": 0.717,
+          "angle_deg": 85.8,
+          "reverse_angle_deg": 265.8,
+          "forward_count": 7,
+          "reverse_count": 7,
+          "total_count": 14,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1212",
+          "to": "LM1305",
+          "distance_m": 2.441,
+          "angle_deg": 0.3,
+          "reverse_angle_deg": 180.3,
+          "forward_count": 6,
+          "reverse_count": 6,
+          "total_count": 12,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1305",
+          "to": "LM1210",
+          "distance_m": 3.986,
+          "angle_deg": 43.3,
+          "reverse_angle_deg": 223.3,
+          "forward_count": 6,
+          "reverse_count": 6,
+          "total_count": 12,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1156",
+          "to": "LM1139",
+          "distance_m": 0.273,
+          "angle_deg": -94.8,
+          "reverse_angle_deg": 85.2,
+          "forward_count": 7,
+          "reverse_count": 5,
+          "total_count": 12,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1217",
+          "to": "AP1218",
+          "distance_m": 0.694,
+          "angle_deg": -0.4,
+          "reverse_angle_deg": 179.6,
+          "forward_count": 6,
+          "reverse_count": 5,
+          "total_count": 11,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1216",
+          "to": "AP1217",
+          "distance_m": 0.626,
+          "angle_deg": 1.8,
+          "reverse_angle_deg": 181.8,
+          "forward_count": 7,
+          "reverse_count": 3,
+          "total_count": 10,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1218",
+          "to": "AP1219",
+          "distance_m": 0.67,
+          "angle_deg": -0.8,
+          "reverse_angle_deg": 179.2,
+          "forward_count": 4,
+          "reverse_count": 5,
+          "total_count": 9,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP1145",
+          "to": "AP1104",
+          "distance_m": 0.56,
+          "angle_deg": 90.3,
+          "reverse_angle_deg": 270.3,
+          "forward_count": 4,
+          "reverse_count": 5,
+          "total_count": 9,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1254",
+          "to": "LM1212",
+          "distance_m": 0.62,
+          "angle_deg": -83.1,
+          "reverse_angle_deg": 96.9,
+          "forward_count": 5,
+          "reverse_count": 3,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1234",
+          "to": "LM1235",
+          "distance_m": 0.673,
+          "angle_deg": -1.3,
+          "reverse_angle_deg": 178.7,
+          "forward_count": 6,
+          "reverse_count": 2,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1236",
+          "to": "AP1218",
+          "distance_m": 1.104,
+          "angle_deg": 179.5,
+          "reverse_angle_deg": 359.5,
+          "forward_count": 1,
+          "reverse_count": 7,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1139",
+          "to": "LM1106",
+          "distance_m": 0.828,
+          "angle_deg": 0.8,
+          "reverse_angle_deg": 180.8,
+          "forward_count": 6,
+          "reverse_count": 2,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1237",
+          "to": "AP1219",
+          "distance_m": 1.024,
+          "angle_deg": 178.9,
+          "reverse_angle_deg": 358.9,
+          "forward_count": 6,
+          "reverse_count": 1,
+          "total_count": 7,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1233",
+          "to": "LM1234",
+          "distance_m": 0.669,
+          "angle_deg": 1.2,
+          "reverse_angle_deg": 181.2,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1199",
+          "to": "LM1110",
+          "distance_m": 2.818,
+          "angle_deg": -123.9,
+          "reverse_angle_deg": 56.1,
+          "forward_count": 4,
+          "reverse_count": 2,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1235",
+          "to": "LM1236",
+          "distance_m": 0.789,
+          "angle_deg": -0.2,
+          "reverse_angle_deg": 179.8,
+          "forward_count": 1,
+          "reverse_count": 4,
+          "total_count": 5,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM1250",
+          "to": "LM1205",
+          "distance_m": 9.824,
+          "angle_deg": -0.5,
+          "reverse_angle_deg": 179.5,
+          "forward_count": 3,
+          "reverse_count": 1,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "AP1218",
+          "to": "LM1233",
+          "distance_m": 1.027,
+          "angle_deg": -179.7,
+          "reverse_angle_deg": 0.3,
+          "forward_count": 1,
+          "reverse_count": 3,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "AP1219",
+          "to": "LM1234",
+          "distance_m": 1.028,
+          "angle_deg": 179.1,
+          "reverse_angle_deg": 359.1,
+          "forward_count": 4,
+          "reverse_count": 0,
+          "total_count": 4,
+          "is_one_way": true,
+          "one_way_direction": "forward",
+          "confidence": "medium"
+        },
+        {
+          "from": "LM1299",
+          "to": "LM1236",
+          "distance_m": 4.129,
+          "angle_deg": -134.9,
+          "reverse_angle_deg": 45.1,
+          "forward_count": 1,
+          "reverse_count": 3,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM1232",
+          "to": "LM1233",
+          "distance_m": 0.666,
+          "angle_deg": 0.5,
+          "reverse_angle_deg": 180.5,
+          "forward_count": 3,
+          "reverse_count": 1,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM1110",
+          "to": "LM1103",
+          "distance_m": 1.109,
+          "angle_deg": -52.2,
+          "reverse_angle_deg": 127.8,
+          "forward_count": 2,
+          "reverse_count": 2,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM1103",
+          "to": "CP1101",
+          "distance_m": 0.614,
+          "angle_deg": -88.1,
+          "reverse_angle_deg": 91.9,
+          "forward_count": 2,
+          "reverse_count": 2,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM1139",
+          "to": "AP1150",
+          "distance_m": 0.584,
+          "angle_deg": -90.7,
+          "reverse_angle_deg": 89.3,
+          "forward_count": 2,
+          "reverse_count": 2,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM1157",
+          "to": "AP1151",
+          "distance_m": 0.85,
+          "angle_deg": -94.9,
+          "reverse_angle_deg": 85.1,
+          "forward_count": 2,
+          "reverse_count": 2,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM1235",
+          "to": "LM1299",
+          "distance_m": 4.717,
+          "angle_deg": 38.3,
+          "reverse_angle_deg": 218.3,
+          "forward_count": 3,
+          "reverse_count": 0,
+          "total_count": 3,
+          "is_one_way": true,
+          "one_way_direction": "forward",
+          "confidence": "medium"
+        },
+        {
+          "from": "LM1234",
+          "to": "AP1216",
+          "distance_m": 0.962,
+          "angle_deg": -178.6,
+          "reverse_angle_deg": 1.4,
+          "forward_count": 3,
+          "reverse_count": 0,
+          "total_count": 3,
+          "is_one_way": true,
+          "one_way_direction": "forward",
+          "confidence": "medium"
+        },
+        {
+          "from": "LM1212",
+          "to": "AP1256",
+          "distance_m": 2.202,
+          "angle_deg": 91.8,
+          "reverse_angle_deg": 271.8,
+          "forward_count": 1,
+          "reverse_count": 2,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM1111",
+          "to": "LM1199",
+          "distance_m": 3.86,
+          "angle_deg": 157.5,
+          "reverse_angle_deg": 337.5,
+          "forward_count": 3,
+          "reverse_count": 0,
+          "total_count": 3,
+          "is_one_way": true,
+          "one_way_direction": "forward",
+          "confidence": "medium"
+        }
+      ],
+      "station_count": 64,
+      "edge_count": 71,
+      "zone": "zone1",
+      "agvs": [
+        "AGV-1",
+        "AGV-2"
+      ]
+    },
+    "zone2": {
+      "stations": {
+        "CP2201": {
+          "x": 0.679,
+          "y": -0.329,
+          "observations": 11
+        },
+        "LM2203": {
+          "x": 0.098,
+          "y": -0.314,
+          "observations": 51
+        },
+        "LM2202": {
+          "x": 0.977,
+          "y": -1.309,
+          "observations": 34
+        },
+        "AP2220": {
+          "x": -3.634,
+          "y": 0.245,
+          "observations": 20
+        },
+        "AP2260": {
+          "x": -2.897,
+          "y": 0.246,
+          "observations": 63
+        },
+        "LM2221": {
+          "x": -0.295,
+          "y": 0.23,
+          "observations": 211
+        },
+        "LM2217": {
+          "x": -1.767,
+          "y": 3.724,
+          "observations": 162
+        },
+        "LM2216": {
+          "x": -1.861,
+          "y": 5.996,
+          "observations": 188
+        },
+        "LM2245": {
+          "x": -3.415,
+          "y": 6.508,
+          "observations": 130
+        },
+        "AP2231": {
+          "x": -3.484,
+          "y": 7.356,
+          "observations": 39
+        },
+        "LM2243": {
+          "x": -3.484,
+          "y": 7.69,
+          "observations": 48
+        },
+        "AP2230": {
+          "x": -3.485,
+          "y": 8.028,
+          "observations": 45
+        },
+        "LM2242": {
+          "x": -3.487,
+          "y": 8.351,
+          "observations": 59
+        },
+        "AP2229": {
+          "x": -3.493,
+          "y": 8.665,
+          "observations": 56
+        },
+        "LM2218": {
+          "x": -1.121,
+          "y": 3.25,
+          "observations": 141
+        },
+        "LM2219": {
+          "x": -0.23,
+          "y": 0.649,
+          "observations": 99
+        },
+        "LM2222": {
+          "x": -0.815,
+          "y": 0.249,
+          "observations": 147
+        },
+        "AP2261": {
+          "x": -2.14,
+          "y": 0.239,
+          "observations": 107
+        },
+        "LM2244": {
+          "x": -3.483,
+          "y": 6.976,
+          "observations": 58
+        },
+        "LM2241": {
+          "x": -3.486,
+          "y": 9.011,
+          "observations": 54
+        },
+        "AP2228": {
+          "x": -3.478,
+          "y": 9.318,
+          "observations": 54
+        },
+        "LM2240": {
+          "x": -3.466,
+          "y": 9.646,
+          "observations": 43
+        },
+        "AP2227": {
+          "x": -3.439,
+          "y": 10.043,
+          "observations": 50
+        },
+        "LM2258": {
+          "x": -0.292,
+          "y": -1.614,
+          "observations": 127
+        },
+        "LM2259": {
+          "x": 0.264,
+          "y": -2.251,
+          "observations": 55
+        },
+        "AP2254": {
+          "x": 0.305,
+          "y": -3.267,
+          "observations": 18
+        },
+        "AP2226": {
+          "x": -3.428,
+          "y": 10.598,
+          "observations": 19
+        },
+        "LM2257": {
+          "x": -0.836,
+          "y": -2.087,
+          "observations": 47
+        },
+        "LM2224": {
+          "x": -0.862,
+          "y": -2.456,
+          "observations": 23
+        },
+        "AP2255": {
+          "x": -0.854,
+          "y": -3.267,
+          "observations": 22
+        },
+        "LM2248": {
+          "x": -2.312,
+          "y": 6.428,
+          "observations": 53
+        },
+        "LM2223": {
+          "x": -0.277,
+          "y": -2.292,
+          "observations": 23
+        },
+        "AP2256": {
+          "x": -0.27,
+          "y": -2.65,
+          "observations": 6
+        },
+        "AP2233": {
+          "x": -2.334,
+          "y": 6.802,
+          "observations": 14
+        },
+        "LM2249": {
+          "x": -2.334,
+          "y": 7.031,
+          "observations": 19
+        },
+        "AP2234": {
+          "x": -2.332,
+          "y": 7.343,
+          "observations": 17
+        },
+        "LM2250": {
+          "x": -2.334,
+          "y": 7.673,
+          "observations": 20
+        },
+        "AP2235": {
+          "x": -2.325,
+          "y": 8.001,
+          "observations": 18
+        },
+        "LM2251": {
+          "x": -2.323,
+          "y": 8.334,
+          "observations": 25
+        },
+        "AP2236": {
+          "x": -2.323,
+          "y": 8.67,
+          "observations": 24
+        },
+        "LM2252": {
+          "x": -2.325,
+          "y": 8.985,
+          "observations": 27
+        },
+        "AP2237": {
+          "x": -2.334,
+          "y": 9.311,
+          "observations": 22
+        },
+        "LM2253": {
+          "x": -2.34,
+          "y": 9.653,
+          "observations": 22
+        },
+        "AP2238": {
+          "x": -2.315,
+          "y": 10.073,
+          "observations": 21
+        },
+        "AP2239": {
+          "x": -2.288,
+          "y": 10.575,
+          "observations": 10
+        },
+        "LM2102": {
+          "x": 7.546,
+          "y": 0.331,
+          "observations": 63
+        },
+        "LM2130": {
+          "x": 7.624,
+          "y": -0.746,
+          "observations": 269
+        },
+        "LM2172": {
+          "x": 8.559,
+          "y": -0.716,
+          "observations": 198
+        },
+        "LM2173": {
+          "x": 9.303,
+          "y": -0.709,
+          "observations": 199
+        },
+        "AP2170": {
+          "x": 9.711,
+          "y": -0.712,
+          "observations": 125
+        },
+        "LM2129": {
+          "x": 7.598,
+          "y": -1.817,
+          "observations": 145
+        },
+        "LM2103": {
+          "x": 7.592,
+          "y": -2.552,
+          "observations": 118
+        },
+        "LM2168": {
+          "x": 6.597,
+          "y": -5.277,
+          "observations": 206
+        },
+        "LM2165": {
+          "x": 5.41,
+          "y": -5.239,
+          "observations": 260
+        },
+        "LM2162": {
+          "x": 4.311,
+          "y": -5.19,
+          "observations": 259
+        },
+        "LM2161": {
+          "x": 4.255,
+          "y": -4.673,
+          "observations": 163
+        },
+        "AP2153": {
+          "x": 4.254,
+          "y": -4.26,
+          "observations": 94
+        },
+        "LM2160": {
+          "x": 4.247,
+          "y": -3.933,
+          "observations": 81
+        },
+        "AP2152": {
+          "x": 4.244,
+          "y": -3.626,
+          "observations": 76
+        },
+        "LM2149": {
+          "x": 10.133,
+          "y": -0.712,
+          "observations": 113
+        },
+        "AP2171": {
+          "x": 10.501,
+          "y": -0.716,
+          "observations": 91
+        },
+        "AP2131": {
+          "x": 11.095,
+          "y": -0.721,
+          "observations": 51
+        },
+        "LM2164": {
+          "x": 5.404,
+          "y": -4.674,
+          "observations": 99
+        },
+        "AP2154": {
+          "x": 5.398,
+          "y": -4.284,
+          "observations": 55
+        },
+        "LM2163": {
+          "x": 5.397,
+          "y": -3.936,
+          "observations": 67
+        },
+        "AP2155": {
+          "x": 5.407,
+          "y": -3.63,
+          "observations": 46
+        },
+        "LM2123": {
+          "x": 5.407,
+          "y": -3.282,
+          "observations": 43
+        },
+        "AP2156": {
+          "x": 5.405,
+          "y": -2.939,
+          "observations": 46
+        },
+        "LM2122": {
+          "x": 5.407,
+          "y": -2.582,
+          "observations": 38
+        },
+        "AP2111": {
+          "x": 5.403,
+          "y": -2.241,
+          "observations": 36
+        },
+        "LM2120": {
+          "x": 5.401,
+          "y": -1.221,
+          "observations": 19
+        },
+        "AP2109": {
+          "x": 5.413,
+          "y": -0.798,
+          "observations": 28
+        },
+        "AP2108": {
+          "x": 5.419,
+          "y": -0.261,
+          "observations": 9
+        },
+        "LM2121": {
+          "x": 5.405,
+          "y": -1.915,
+          "observations": 26
+        },
+        "AP2110": {
+          "x": 5.401,
+          "y": -1.559,
+          "observations": 28
+        },
+        "CP2101": {
+          "x": 7.963,
+          "y": -2.555,
+          "observations": 16
+        },
+        "AP2105": {
+          "x": 4.26,
+          "y": -0.828,
+          "observations": 60
+        },
+        "AP2106": {
+          "x": 4.255,
+          "y": -1.545,
+          "observations": 66
+        },
+        "LM2117": {
+          "x": 4.26,
+          "y": -1.885,
+          "observations": 74
+        },
+        "LM2118": {
+          "x": 4.253,
+          "y": -2.595,
+          "observations": 75
+        },
+        "LM2119": {
+          "x": 4.242,
+          "y": -3.296,
+          "observations": 85
+        },
+        "LM2137": {
+          "x": 4.545,
+          "y": -7.22,
+          "observations": 96
+        },
+        "AP2147": {
+          "x": 4.537,
+          "y": -8.441,
+          "observations": 53
+        },
+        "AP2139": {
+          "x": 4.537,
+          "y": -8.91,
+          "observations": 37
+        },
+        "AP2140": {
+          "x": 4.543,
+          "y": -9.373,
+          "observations": 29
+        },
+        "AP2141": {
+          "x": 4.555,
+          "y": -9.787,
+          "observations": 19
+        },
+        "AP2142": {
+          "x": 4.568,
+          "y": -10.166,
+          "observations": 8
+        },
+        "AP2151": {
+          "x": 4.248,
+          "y": -2.951,
+          "observations": 88
+        },
+        "AP2107": {
+          "x": 4.257,
+          "y": -2.242,
+          "observations": 75
+        },
+        "LM2116": {
+          "x": 4.256,
+          "y": -1.214,
+          "observations": 46
+        },
+        "AP2104": {
+          "x": 4.27,
+          "y": -0.281,
+          "observations": 22
+        },
+        "LM2138": {
+          "x": 6.315,
+          "y": -7.229,
+          "observations": 89
+        },
+        "AP2148": {
+          "x": 6.351,
+          "y": -8.465,
+          "observations": 50
+        },
+        "AP2143": {
+          "x": 6.348,
+          "y": -8.916,
+          "observations": 38
+        },
+        "AP2144": {
+          "x": 6.347,
+          "y": -9.354,
+          "observations": 29
+        },
+        "AP2145": {
+          "x": 6.342,
+          "y": -9.777,
+          "observations": 17
+        },
+        "AP2146": {
+          "x": 6.344,
+          "y": -10.146,
+          "observations": 8
+        },
+        "LM2167": {
+          "x": 6.551,
+          "y": -4.741,
+          "observations": 3
+        },
+        "AP2159": {
+          "x": 6.554,
+          "y": -4.231,
+          "observations": 2
+        },
+        "AP2158": {
+          "x": 6.558,
+          "y": -3.627,
+          "observations": 2
+        },
+        "LM2127": {
+          "x": 6.553,
+          "y": -3.334,
+          "observations": 1
+        },
+        "AP2157": {
+          "x": 6.547,
+          "y": -2.978,
+          "observations": 1
+        },
+        "LM2126": {
+          "x": 6.546,
+          "y": -2.62,
+          "observations": 2
+        },
+        "AP2115": {
+          "x": 6.543,
+          "y": -2.244,
+          "observations": 2
+        }
+      },
+      "edges": [
+        {
+          "from": "LM2103",
+          "to": "LM2168",
+          "distance_m": 2.901,
+          "angle_deg": -110.1,
+          "reverse_angle_deg": 69.9,
+          "forward_count": 26,
+          "reverse_count": 22,
+          "total_count": 48,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2168",
+          "to": "LM2165",
+          "distance_m": 1.188,
+          "angle_deg": 178.2,
+          "reverse_angle_deg": 358.2,
+          "forward_count": 26,
+          "reverse_count": 22,
+          "total_count": 48,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2130",
+          "to": "LM2129",
+          "distance_m": 1.071,
+          "angle_deg": -91.4,
+          "reverse_angle_deg": 88.6,
+          "forward_count": 25,
+          "reverse_count": 20,
+          "total_count": 45,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2130",
+          "to": "LM2172",
+          "distance_m": 0.935,
+          "angle_deg": 1.8,
+          "reverse_angle_deg": 181.8,
+          "forward_count": 23,
+          "reverse_count": 21,
+          "total_count": 44,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2172",
+          "to": "LM2173",
+          "distance_m": 0.744,
+          "angle_deg": 0.5,
+          "reverse_angle_deg": 180.5,
+          "forward_count": 23,
+          "reverse_count": 21,
+          "total_count": 44,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2162",
+          "to": "LM2161",
+          "distance_m": 0.52,
+          "angle_deg": 96.2,
+          "reverse_angle_deg": 276.2,
+          "forward_count": 21,
+          "reverse_count": 22,
+          "total_count": 43,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2173",
+          "to": "AP2170",
+          "distance_m": 0.408,
+          "angle_deg": -0.4,
+          "reverse_angle_deg": 179.6,
+          "forward_count": 22,
+          "reverse_count": 20,
+          "total_count": 42,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2129",
+          "to": "LM2103",
+          "distance_m": 0.735,
+          "angle_deg": -90.5,
+          "reverse_angle_deg": 89.5,
+          "forward_count": 22,
+          "reverse_count": 17,
+          "total_count": 39,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2161",
+          "to": "AP2153",
+          "distance_m": 0.413,
+          "angle_deg": 90.1,
+          "reverse_angle_deg": 270.1,
+          "forward_count": 21,
+          "reverse_count": 18,
+          "total_count": 39,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2165",
+          "to": "LM2164",
+          "distance_m": 0.565,
+          "angle_deg": 90.6,
+          "reverse_angle_deg": 270.6,
+          "forward_count": 18,
+          "reverse_count": 19,
+          "total_count": 37,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2160",
+          "to": "AP2152",
+          "distance_m": 0.307,
+          "angle_deg": 90.6,
+          "reverse_angle_deg": 270.6,
+          "forward_count": 17,
+          "reverse_count": 14,
+          "total_count": 31,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2153",
+          "to": "LM2160",
+          "distance_m": 0.327,
+          "angle_deg": 91.2,
+          "reverse_angle_deg": 271.2,
+          "forward_count": 17,
+          "reverse_count": 13,
+          "total_count": 30,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2149",
+          "to": "AP2171",
+          "distance_m": 0.368,
+          "angle_deg": -0.6,
+          "reverse_angle_deg": 179.4,
+          "forward_count": 16,
+          "reverse_count": 14,
+          "total_count": 30,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2165",
+          "to": "LM2162",
+          "distance_m": 1.1,
+          "angle_deg": 177.4,
+          "reverse_angle_deg": 357.4,
+          "forward_count": 15,
+          "reverse_count": 12,
+          "total_count": 27,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2152",
+          "to": "LM2119",
+          "distance_m": 0.33,
+          "angle_deg": 90.3,
+          "reverse_angle_deg": 270.3,
+          "forward_count": 14,
+          "reverse_count": 13,
+          "total_count": 27,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2119",
+          "to": "AP2151",
+          "distance_m": 0.345,
+          "angle_deg": 89.0,
+          "reverse_angle_deg": 269.0,
+          "forward_count": 14,
+          "reverse_count": 13,
+          "total_count": 27,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2221",
+          "to": "LM2222",
+          "distance_m": 0.52,
+          "angle_deg": 177.9,
+          "reverse_angle_deg": 357.9,
+          "forward_count": 14,
+          "reverse_count": 12,
+          "total_count": 26,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2222",
+          "to": "AP2261",
+          "distance_m": 1.325,
+          "angle_deg": -179.6,
+          "reverse_angle_deg": 0.4,
+          "forward_count": 14,
+          "reverse_count": 12,
+          "total_count": 26,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2170",
+          "to": "LM2149",
+          "distance_m": 0.422,
+          "angle_deg": 0.0,
+          "reverse_angle_deg": 180.0,
+          "forward_count": 14,
+          "reverse_count": 12,
+          "total_count": 26,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2217",
+          "to": "LM2216",
+          "distance_m": 2.274,
+          "angle_deg": 92.4,
+          "reverse_angle_deg": 272.4,
+          "forward_count": 12,
+          "reverse_count": 13,
+          "total_count": 25,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2217",
+          "to": "LM2218",
+          "distance_m": 0.801,
+          "angle_deg": -36.3,
+          "reverse_angle_deg": 143.7,
+          "forward_count": 13,
+          "reverse_count": 11,
+          "total_count": 24,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2218",
+          "to": "LM2219",
+          "distance_m": 2.749,
+          "angle_deg": -71.1,
+          "reverse_angle_deg": 108.9,
+          "forward_count": 13,
+          "reverse_count": 11,
+          "total_count": 24,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2164",
+          "to": "AP2154",
+          "distance_m": 0.39,
+          "angle_deg": 90.9,
+          "reverse_angle_deg": 270.9,
+          "forward_count": 14,
+          "reverse_count": 10,
+          "total_count": 24,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2219",
+          "to": "LM2221",
+          "distance_m": 0.424,
+          "angle_deg": -98.8,
+          "reverse_angle_deg": 81.2,
+          "forward_count": 12,
+          "reverse_count": 11,
+          "total_count": 23,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2151",
+          "to": "LM2118",
+          "distance_m": 0.356,
+          "angle_deg": 89.2,
+          "reverse_angle_deg": 269.2,
+          "forward_count": 12,
+          "reverse_count": 11,
+          "total_count": 23,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2118",
+          "to": "AP2107",
+          "distance_m": 0.353,
+          "angle_deg": 89.4,
+          "reverse_angle_deg": 269.4,
+          "forward_count": 12,
+          "reverse_count": 11,
+          "total_count": 23,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2102",
+          "to": "LM2130",
+          "distance_m": 1.08,
+          "angle_deg": -85.9,
+          "reverse_angle_deg": 94.1,
+          "forward_count": 12,
+          "reverse_count": 10,
+          "total_count": 22,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2163",
+          "to": "AP2155",
+          "distance_m": 0.306,
+          "angle_deg": 88.1,
+          "reverse_angle_deg": 268.1,
+          "forward_count": 13,
+          "reverse_count": 9,
+          "total_count": 22,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2106",
+          "to": "LM2117",
+          "distance_m": 0.34,
+          "angle_deg": -89.2,
+          "reverse_angle_deg": 90.8,
+          "forward_count": 10,
+          "reverse_count": 11,
+          "total_count": 21,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2154",
+          "to": "LM2163",
+          "distance_m": 0.348,
+          "angle_deg": 90.2,
+          "reverse_angle_deg": 270.2,
+          "forward_count": 12,
+          "reverse_count": 7,
+          "total_count": 19,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2107",
+          "to": "LM2117",
+          "distance_m": 0.357,
+          "angle_deg": 89.5,
+          "reverse_angle_deg": 269.5,
+          "forward_count": 11,
+          "reverse_count": 8,
+          "total_count": 19,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2216",
+          "to": "LM2245",
+          "distance_m": 1.636,
+          "angle_deg": 161.8,
+          "reverse_angle_deg": 341.8,
+          "forward_count": 8,
+          "reverse_count": 10,
+          "total_count": 18,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2245",
+          "to": "LM2244",
+          "distance_m": 0.473,
+          "angle_deg": 98.3,
+          "reverse_angle_deg": 278.3,
+          "forward_count": 9,
+          "reverse_count": 9,
+          "total_count": 18,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2242",
+          "to": "AP2229",
+          "distance_m": 0.314,
+          "angle_deg": 91.1,
+          "reverse_angle_deg": 271.1,
+          "forward_count": 9,
+          "reverse_count": 8,
+          "total_count": 17,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2243",
+          "to": "AP2230",
+          "distance_m": 0.338,
+          "angle_deg": 90.2,
+          "reverse_angle_deg": 270.2,
+          "forward_count": 8,
+          "reverse_count": 8,
+          "total_count": 16,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2230",
+          "to": "LM2242",
+          "distance_m": 0.323,
+          "angle_deg": 90.4,
+          "reverse_angle_deg": 270.4,
+          "forward_count": 9,
+          "reverse_count": 7,
+          "total_count": 16,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2261",
+          "to": "AP2260",
+          "distance_m": 0.757,
+          "angle_deg": 179.5,
+          "reverse_angle_deg": 359.5,
+          "forward_count": 9,
+          "reverse_count": 7,
+          "total_count": 16,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2241",
+          "to": "AP2228",
+          "distance_m": 0.307,
+          "angle_deg": 88.5,
+          "reverse_angle_deg": 268.5,
+          "forward_count": 9,
+          "reverse_count": 7,
+          "total_count": 16,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2137",
+          "to": "AP2147",
+          "distance_m": 1.221,
+          "angle_deg": -90.4,
+          "reverse_angle_deg": 89.6,
+          "forward_count": 8,
+          "reverse_count": 8,
+          "total_count": 16,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2231",
+          "to": "LM2243",
+          "distance_m": 0.334,
+          "angle_deg": 90.0,
+          "reverse_angle_deg": 270.0,
+          "forward_count": 7,
+          "reverse_count": 8,
+          "total_count": 15,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2229",
+          "to": "LM2241",
+          "distance_m": 0.346,
+          "angle_deg": 88.8,
+          "reverse_angle_deg": 268.8,
+          "forward_count": 8,
+          "reverse_count": 7,
+          "total_count": 15,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2244",
+          "to": "AP2231",
+          "distance_m": 0.38,
+          "angle_deg": 90.2,
+          "reverse_angle_deg": 270.2,
+          "forward_count": 8,
+          "reverse_count": 7,
+          "total_count": 15,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2258",
+          "to": "LM2221",
+          "distance_m": 1.844,
+          "angle_deg": 90.1,
+          "reverse_angle_deg": 270.1,
+          "forward_count": 9,
+          "reverse_count": 6,
+          "total_count": 15,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2171",
+          "to": "AP2131",
+          "distance_m": 0.594,
+          "angle_deg": -0.5,
+          "reverse_angle_deg": 179.5,
+          "forward_count": 8,
+          "reverse_count": 7,
+          "total_count": 15,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2138",
+          "to": "AP2148",
+          "distance_m": 1.237,
+          "angle_deg": -88.3,
+          "reverse_angle_deg": 91.7,
+          "forward_count": 8,
+          "reverse_count": 7,
+          "total_count": 15,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2123",
+          "to": "AP2156",
+          "distance_m": 0.343,
+          "angle_deg": 90.3,
+          "reverse_angle_deg": 270.3,
+          "forward_count": 9,
+          "reverse_count": 5,
+          "total_count": 14,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2106",
+          "to": "LM2116",
+          "distance_m": 0.331,
+          "angle_deg": 89.8,
+          "reverse_angle_deg": 269.8,
+          "forward_count": 7,
+          "reverse_count": 7,
+          "total_count": 14,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2116",
+          "to": "AP2105",
+          "distance_m": 0.386,
+          "angle_deg": 89.4,
+          "reverse_angle_deg": 269.4,
+          "forward_count": 7,
+          "reverse_count": 7,
+          "total_count": 14,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2155",
+          "to": "LM2123",
+          "distance_m": 0.348,
+          "angle_deg": 90.0,
+          "reverse_angle_deg": 270.0,
+          "forward_count": 8,
+          "reverse_count": 5,
+          "total_count": 13,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2148",
+          "to": "AP2143",
+          "distance_m": 0.451,
+          "angle_deg": -90.4,
+          "reverse_angle_deg": 89.6,
+          "forward_count": 8,
+          "reverse_count": 5,
+          "total_count": 13,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2122",
+          "to": "AP2111",
+          "distance_m": 0.341,
+          "angle_deg": 90.7,
+          "reverse_angle_deg": 270.7,
+          "forward_count": 8,
+          "reverse_count": 4,
+          "total_count": 12,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2147",
+          "to": "AP2139",
+          "distance_m": 0.469,
+          "angle_deg": -90.0,
+          "reverse_angle_deg": 90.0,
+          "forward_count": 7,
+          "reverse_count": 5,
+          "total_count": 12,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2137",
+          "to": "LM2165",
+          "distance_m": 2.162,
+          "angle_deg": 66.4,
+          "reverse_angle_deg": 246.4,
+          "forward_count": 5,
+          "reverse_count": 7,
+          "total_count": 12,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2162",
+          "to": "LM2138",
+          "distance_m": 2.859,
+          "angle_deg": -45.5,
+          "reverse_angle_deg": 134.5,
+          "forward_count": 7,
+          "reverse_count": 5,
+          "total_count": 12,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2228",
+          "to": "LM2240",
+          "distance_m": 0.328,
+          "angle_deg": 87.9,
+          "reverse_angle_deg": 267.9,
+          "forward_count": 6,
+          "reverse_count": 5,
+          "total_count": 11,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2240",
+          "to": "AP2227",
+          "distance_m": 0.398,
+          "angle_deg": 86.1,
+          "reverse_angle_deg": 266.1,
+          "forward_count": 6,
+          "reverse_count": 5,
+          "total_count": 11,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2156",
+          "to": "LM2122",
+          "distance_m": 0.357,
+          "angle_deg": 89.7,
+          "reverse_angle_deg": 269.7,
+          "forward_count": 7,
+          "reverse_count": 4,
+          "total_count": 11,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2163",
+          "to": "LM2164",
+          "distance_m": 0.738,
+          "angle_deg": -89.5,
+          "reverse_angle_deg": 90.5,
+          "forward_count": 6,
+          "reverse_count": 4,
+          "total_count": 10,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2168",
+          "to": "LM2129",
+          "distance_m": 3.602,
+          "angle_deg": 73.9,
+          "reverse_angle_deg": 253.9,
+          "forward_count": 7,
+          "reverse_count": 3,
+          "total_count": 10,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2143",
+          "to": "AP2144",
+          "distance_m": 0.438,
+          "angle_deg": -90.1,
+          "reverse_angle_deg": 89.9,
+          "forward_count": 6,
+          "reverse_count": 4,
+          "total_count": 10,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2203",
+          "to": "LM2202",
+          "distance_m": 1.328,
+          "angle_deg": -48.5,
+          "reverse_angle_deg": 131.5,
+          "forward_count": 6,
+          "reverse_count": 2,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2258",
+          "to": "LM2257",
+          "distance_m": 0.721,
+          "angle_deg": -139.0,
+          "reverse_angle_deg": 41.0,
+          "forward_count": 4,
+          "reverse_count": 4,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2257",
+          "to": "LM2224",
+          "distance_m": 0.37,
+          "angle_deg": -94.0,
+          "reverse_angle_deg": 86.0,
+          "forward_count": 4,
+          "reverse_count": 4,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2224",
+          "to": "AP2255",
+          "distance_m": 0.811,
+          "angle_deg": -89.4,
+          "reverse_angle_deg": 90.6,
+          "forward_count": 4,
+          "reverse_count": 4,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2121",
+          "to": "AP2110",
+          "distance_m": 0.356,
+          "angle_deg": 90.6,
+          "reverse_angle_deg": 270.6,
+          "forward_count": 5,
+          "reverse_count": 3,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2139",
+          "to": "AP2140",
+          "distance_m": 0.463,
+          "angle_deg": -89.3,
+          "reverse_angle_deg": 90.7,
+          "forward_count": 5,
+          "reverse_count": 3,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2105",
+          "to": "AP2104",
+          "distance_m": 0.547,
+          "angle_deg": 89.0,
+          "reverse_angle_deg": 269.0,
+          "forward_count": 4,
+          "reverse_count": 4,
+          "total_count": 8,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2220",
+          "to": "AP2260",
+          "distance_m": 0.737,
+          "angle_deg": 0.1,
+          "reverse_angle_deg": 180.1,
+          "forward_count": 3,
+          "reverse_count": 4,
+          "total_count": 7,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2258",
+          "to": "LM2259",
+          "distance_m": 0.846,
+          "angle_deg": -48.9,
+          "reverse_angle_deg": 131.1,
+          "forward_count": 3,
+          "reverse_count": 4,
+          "total_count": 7,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2259",
+          "to": "AP2254",
+          "distance_m": 1.017,
+          "angle_deg": -87.7,
+          "reverse_angle_deg": 92.3,
+          "forward_count": 3,
+          "reverse_count": 4,
+          "total_count": 7,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2216",
+          "to": "LM2248",
+          "distance_m": 0.625,
+          "angle_deg": 136.2,
+          "reverse_angle_deg": 316.2,
+          "forward_count": 4,
+          "reverse_count": 3,
+          "total_count": 7,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2120",
+          "to": "AP2109",
+          "distance_m": 0.423,
+          "angle_deg": 88.4,
+          "reverse_angle_deg": 268.4,
+          "forward_count": 4,
+          "reverse_count": 3,
+          "total_count": 7,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2111",
+          "to": "LM2121",
+          "distance_m": 0.326,
+          "angle_deg": 89.6,
+          "reverse_angle_deg": 269.6,
+          "forward_count": 4,
+          "reverse_count": 3,
+          "total_count": 7,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2140",
+          "to": "AP2141",
+          "distance_m": 0.414,
+          "angle_deg": -88.3,
+          "reverse_angle_deg": 91.7,
+          "forward_count": 4,
+          "reverse_count": 3,
+          "total_count": 7,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2144",
+          "to": "AP2145",
+          "distance_m": 0.423,
+          "angle_deg": -90.7,
+          "reverse_angle_deg": 89.3,
+          "forward_count": 4,
+          "reverse_count": 3,
+          "total_count": 7,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2227",
+          "to": "AP2226",
+          "distance_m": 0.555,
+          "angle_deg": 88.9,
+          "reverse_angle_deg": 268.9,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2248",
+          "to": "AP2233",
+          "distance_m": 0.375,
+          "angle_deg": 93.4,
+          "reverse_angle_deg": 273.4,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2233",
+          "to": "LM2249",
+          "distance_m": 0.229,
+          "angle_deg": 90.0,
+          "reverse_angle_deg": 270.0,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2249",
+          "to": "AP2234",
+          "distance_m": 0.312,
+          "angle_deg": 89.6,
+          "reverse_angle_deg": 269.6,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2234",
+          "to": "LM2250",
+          "distance_m": 0.33,
+          "angle_deg": 90.3,
+          "reverse_angle_deg": 270.3,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2250",
+          "to": "AP2235",
+          "distance_m": 0.328,
+          "angle_deg": 88.4,
+          "reverse_angle_deg": 268.4,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2235",
+          "to": "LM2251",
+          "distance_m": 0.333,
+          "angle_deg": 89.7,
+          "reverse_angle_deg": 269.7,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2251",
+          "to": "AP2236",
+          "distance_m": 0.336,
+          "angle_deg": 90.0,
+          "reverse_angle_deg": 270.0,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2236",
+          "to": "LM2252",
+          "distance_m": 0.315,
+          "angle_deg": 90.4,
+          "reverse_angle_deg": 270.4,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2252",
+          "to": "AP2237",
+          "distance_m": 0.326,
+          "angle_deg": 91.6,
+          "reverse_angle_deg": 271.6,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2103",
+          "to": "CP2101",
+          "distance_m": 0.371,
+          "angle_deg": -0.5,
+          "reverse_angle_deg": 179.5,
+          "forward_count": 3,
+          "reverse_count": 3,
+          "total_count": 6,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2221",
+          "to": "LM2203",
+          "distance_m": 0.671,
+          "angle_deg": -54.2,
+          "reverse_angle_deg": 125.8,
+          "forward_count": 4,
+          "reverse_count": 1,
+          "total_count": 5,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2168",
+          "to": "LM2130",
+          "distance_m": 4.646,
+          "angle_deg": 77.2,
+          "reverse_angle_deg": 257.2,
+          "forward_count": 4,
+          "reverse_count": 1,
+          "total_count": 5,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2123",
+          "to": "LM2163",
+          "distance_m": 0.654,
+          "angle_deg": -90.9,
+          "reverse_angle_deg": 89.1,
+          "forward_count": 2,
+          "reverse_count": 3,
+          "total_count": 5,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "AP2110",
+          "to": "LM2120",
+          "distance_m": 0.338,
+          "angle_deg": 90.0,
+          "reverse_angle_deg": 270.0,
+          "forward_count": 3,
+          "reverse_count": 2,
+          "total_count": 5,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "high"
+        },
+        {
+          "from": "LM2258",
+          "to": "LM2223",
+          "distance_m": 0.678,
+          "angle_deg": -88.7,
+          "reverse_angle_deg": 91.3,
+          "forward_count": 2,
+          "reverse_count": 2,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM2223",
+          "to": "AP2256",
+          "distance_m": 0.358,
+          "angle_deg": -88.9,
+          "reverse_angle_deg": 91.1,
+          "forward_count": 2,
+          "reverse_count": 2,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "AP2237",
+          "to": "LM2253",
+          "distance_m": 0.342,
+          "angle_deg": 91.0,
+          "reverse_angle_deg": 271.0,
+          "forward_count": 2,
+          "reverse_count": 2,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM2253",
+          "to": "AP2238",
+          "distance_m": 0.421,
+          "angle_deg": 86.6,
+          "reverse_angle_deg": 266.6,
+          "forward_count": 2,
+          "reverse_count": 2,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM2129",
+          "to": "LM2102",
+          "distance_m": 2.149,
+          "angle_deg": 91.4,
+          "reverse_angle_deg": 271.4,
+          "forward_count": 4,
+          "reverse_count": 0,
+          "total_count": 4,
+          "is_one_way": true,
+          "one_way_direction": "forward",
+          "confidence": "medium"
+        },
+        {
+          "from": "LM2173",
+          "to": "LM2149",
+          "distance_m": 0.83,
+          "angle_deg": -0.2,
+          "reverse_angle_deg": 179.8,
+          "forward_count": 2,
+          "reverse_count": 2,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM2103",
+          "to": "LM2130",
+          "distance_m": 1.806,
+          "angle_deg": 89.0,
+          "reverse_angle_deg": 269.0,
+          "forward_count": 3,
+          "reverse_count": 1,
+          "total_count": 4,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "CP2201",
+          "to": "LM2203",
+          "distance_m": 0.581,
+          "angle_deg": 178.5,
+          "reverse_angle_deg": 358.5,
+          "forward_count": 2,
+          "reverse_count": 1,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM2244",
+          "to": "LM2243",
+          "distance_m": 0.714,
+          "angle_deg": 90.1,
+          "reverse_angle_deg": 270.1,
+          "forward_count": 1,
+          "reverse_count": 2,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM2258",
+          "to": "LM2202",
+          "distance_m": 1.305,
+          "angle_deg": 13.5,
+          "reverse_angle_deg": 193.5,
+          "forward_count": 1,
+          "reverse_count": 2,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "AP2111",
+          "to": "LM2120",
+          "distance_m": 1.02,
+          "angle_deg": 90.1,
+          "reverse_angle_deg": 270.1,
+          "forward_count": 1,
+          "reverse_count": 2,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "AP2109",
+          "to": "AP2108",
+          "distance_m": 0.537,
+          "angle_deg": 89.4,
+          "reverse_angle_deg": 269.4,
+          "forward_count": 2,
+          "reverse_count": 1,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "AP2111",
+          "to": "LM2123",
+          "distance_m": 1.041,
+          "angle_deg": -89.8,
+          "reverse_angle_deg": 90.2,
+          "forward_count": 3,
+          "reverse_count": 0,
+          "total_count": 3,
+          "is_one_way": true,
+          "one_way_direction": "forward",
+          "confidence": "medium"
+        },
+        {
+          "from": "AP2155",
+          "to": "AP2156",
+          "distance_m": 0.691,
+          "angle_deg": 90.2,
+          "reverse_angle_deg": 270.2,
+          "forward_count": 1,
+          "reverse_count": 2,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM2162",
+          "to": "LM2137",
+          "distance_m": 2.043,
+          "angle_deg": -83.4,
+          "reverse_angle_deg": 96.6,
+          "forward_count": 2,
+          "reverse_count": 1,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "AP2141",
+          "to": "AP2142",
+          "distance_m": 0.379,
+          "angle_deg": -88.0,
+          "reverse_angle_deg": 92.0,
+          "forward_count": 2,
+          "reverse_count": 1,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "AP2153",
+          "to": "AP2152",
+          "distance_m": 0.634,
+          "angle_deg": 90.9,
+          "reverse_angle_deg": 270.9,
+          "forward_count": 1,
+          "reverse_count": 2,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "AP2145",
+          "to": "AP2146",
+          "distance_m": 0.369,
+          "angle_deg": -89.7,
+          "reverse_angle_deg": 90.3,
+          "forward_count": 2,
+          "reverse_count": 1,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        },
+        {
+          "from": "LM2138",
+          "to": "LM2165",
+          "distance_m": 2.186,
+          "angle_deg": 114.5,
+          "reverse_angle_deg": 294.5,
+          "forward_count": 2,
+          "reverse_count": 1,
+          "total_count": 3,
+          "is_one_way": false,
+          "one_way_direction": null,
+          "confidence": "medium"
+        }
+      ],
+      "station_count": 104,
+      "edge_count": 109,
+      "constraint_removed": [],
+      "zone": "zone2",
+      "agvs": [
+        "AGV-3",
+        "AGV-4"
+      ]
+    }
+  }
+}

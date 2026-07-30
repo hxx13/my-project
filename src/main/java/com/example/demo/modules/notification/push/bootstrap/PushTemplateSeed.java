@@ -257,5 +257,23 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "🕐 {swingTime}\n"
                         + "> ARO 系统自动推送"
         ));
+
+        // ========== 培训审批待审核 ==========
+        TEMPLATES.put("ARO_TRAINING_PENDING", new Template(
+                "培训审批 — {sessionTitle}",
+                "<h3>培训审批待审核</h3><p>培训 <b>{sessionTitle}</b> 有新学员待审批：</p>"
+                        + "<p><b>{traineeName}</b>（{jobNumber} / {projectGroup}）</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>ARO 培训审批系统</p>",
+                "## 培训审批待审核\n培训 **{sessionTitle}** 有新学员待审批\n\n"
+                        + "👤 {traineeName}\n"
+                        + "🔢 {jobNumber}\n"
+                        + "🏫 {projectGroup}\n\n"
+                        + "> ARO 培训审批系统",
+                "## 培训审批待审核\n培训 **{sessionTitle}** 有新学员待审批\n"
+                        + "👤 {traineeName}\n"
+                        + "🔢 {jobNumber}\n"
+                        + "🏫 {projectGroup}\n"
+                        + "> ARO 培训审批系统"
+        ));
     }
 }

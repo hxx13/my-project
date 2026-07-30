@@ -88,7 +88,12 @@ public class NotifySourceRegistry implements ApplicationRunner {
                         "threshold", "阈值次数", "openTypeLabel", "事件类型",
                         "enterOrExitLabel", "进出方向", "swingTime", "刷卡时间"));
 
-        log.info("[Push] 通知源注册完成（18个源）");
+        register("ARO_TRAINING_PENDING", "培训审批待审核",
+                "培训场次同步后有新的待审核学员",
+                Map.of("sessionTitle", "培训名称", "traineeName", "学员姓名",
+                        "jobNumber", "工号", "projectGroup", "课题组"));
+
+        log.info("[Push] 通知源注册完成（19个源）");
     }
 
     private void register(String code, String name, String desc, Map<String, String> variables) {

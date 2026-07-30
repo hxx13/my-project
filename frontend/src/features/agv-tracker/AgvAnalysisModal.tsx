@@ -16,9 +16,12 @@ const TABS: { key: ModalTab; label: string; icon: typeof GanttChartSquare }[] = 
 interface Props {
   open: boolean;
   onClose: () => void;
+  onRequestPick?: () => void;
+  pendingPick?: { x: number; y: number } | null;
+  onClearPick?: () => void;
 }
 
-export default function AgvAnalysisModal({ open, onClose }: Props) {
+export default function AgvAnalysisModal({ open, onClose, onRequestPick, pendingPick, onClearPick }: Props) {
   const [tab, setTab] = useState<ModalTab>("timeline");
   const [timelineRobot, setTimelineRobot] = useState("172.22.159.16");
 
@@ -28,7 +31,7 @@ export default function AgvAnalysisModal({ open, onClose }: Props) {
         <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center pointer-events-none">
           {/* Modal */}
           <motion.div
-            className="pointer-events-auto relative w-[72vw] max-w-[960px] h-[80vh] max-h-[720px] bg-[var(--app-color-surface-container)] rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] shadow-2xl flex flex-col overflow-hidden"
+            className="pointer-events-auto relative w-[90vw] max-w-[1320px] h-[70vh] max-h-[720px] bg-[var(--app-color-surface-container)] rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] shadow-2xl flex flex-col overflow-hidden"
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -65,10 +68,10 @@ export default function AgvAnalysisModal({ open, onClose }: Props) {
               ))}
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-hidden">
+            {/* Content — flex column so timeline can fill available height */}
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0">
               {tab === "timeline" && (
-                <div className="h-full px-2 py-2">
+                <div className="flex flex-col flex-1 min-h-0 px-2 py-2">
                   <AgvTimelineTab
                     selectedRobot={timelineRobot}
                     onSelectRobot={setTimelineRobot}
@@ -76,12 +79,16 @@ export default function AgvAnalysisModal({ open, onClose }: Props) {
                 </div>
               )}
               {tab === "zones" && (
-                <div className="h-full overflow-auto">
-                  <AgvZonePanel />
+                <div className="flex-1 min-h-0 overflow-auto">
+                  <AgvZonePanel
+                    onRequestPick={onRequestPick}
+                    pendingPick={pendingPick}
+                    onClearPick={onClearPick}
+                  />
                 </div>
               )}
               {tab === "rules" && (
-                <div className="h-full overflow-auto">
+                <div className="flex-1 min-h-0 overflow-auto">
                   <AgvRulePanel />
                 </div>
               )}

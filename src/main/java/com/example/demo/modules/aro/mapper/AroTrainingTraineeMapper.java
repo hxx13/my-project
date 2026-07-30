@@ -29,4 +29,24 @@ public interface AroTrainingTraineeMapper {
 
     @Delete("DELETE FROM aro_training_trainee")
     void deleteAll();
+
+    @Update("UPDATE aro_training_trainee SET test_yn = #{testYn}, reviewed_at = NOW() WHERE exam_sign_id = #{examSignId}")
+    int updateTestYn(@Param("examSignId") Long examSignId, @Param("testYn") Integer testYn);
+
+    @Update("UPDATE aro_training_trainee SET test_fraction = #{testFraction}, scored_at = NOW() WHERE exam_sign_id = #{examSignId}")
+    int updateTestFraction(@Param("examSignId") Long examSignId, @Param("testFraction") Integer testFraction);
+
+    @Update("UPDATE aro_training_trainee SET room_ids_json = #{roomIdsJson}, rooms_json = #{roomsJson} WHERE user_id = #{userId}")
+    int updateRooms(@Param("userId") String userId, @Param("roomIdsJson") String roomIdsJson, @Param("roomsJson") String roomsJson);
+
+    @Select("SELECT * FROM aro_training_trainee WHERE exam_sign_id = #{examSignId} LIMIT 1")
+    AroTrainingTrainee selectByExamSignId(@Param("examSignId") Long examSignId);
+
+    /** 关联 session 表，返回所有有待审核学员的场次 ID */
+    @Select("SELECT t.session_id FROM aro_training_trainee t " +
+            "INNER JOIN aro_training_session s ON t.session_id = s.id " +
+            "WHERE t.test_yn IS NULL OR t.test_yn = 0 " +
+            "GROUP BY t.session_id, s.start_time " +
+            "ORDER BY s.start_time DESC")
+    List<Long> selectPendingSessionIds();
 }

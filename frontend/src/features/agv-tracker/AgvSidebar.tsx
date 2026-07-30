@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgvConfigEntry } from "@/api/domains/agv.api";
 import { fetchAgvConfig, updateAgvConfig, fetchCoordConfigs, updateCoordConfig } from "@/api/domains/agv.api";
 import { Link } from "react-router-dom";
-import { FileText, LayoutGrid, Maximize2, Settings2, BarChart3, RotateCw } from "lucide-react";
+import { FileText, LayoutGrid, Maximize2, Settings2, BarChart3, RotateCw, Map, Route, Crosshair, Zap } from "lucide-react";
 
 const ROBOT_KEYS = ["AGV_ROBOT_16", "AGV_ROBOT_18", "AGV_ROBOT_20", "AGV_ROBOT_22"] as const;
 const ROBOT_SHORT = [".16", ".18", ".20", ".22"] as const;
@@ -14,9 +14,16 @@ interface Props {
   layout: LayoutMode; onLayoutChange: (m: LayoutMode) => void;
   singleTab: number; onSingleTabChange: (i: number) => void;
   analysisOpen: boolean; onAnalysisToggle: () => void;
+  showZones: boolean; onToggleZones: () => void;
+  routeMode: boolean; onToggleRouteMode: () => void;
+  followMode: boolean; onToggleFollowMode: () => void;
+  /** 路线模型2：正在重新生成 */
+  topologyGenerating?: boolean;
+  /** 路线模型2：触发拓扑重新生成 */
+  onGenerateTopology?: () => void;
 }
 
-export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleTab, onSingleTabChange, analysisOpen, onAnalysisToggle }: Props) {
+export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleTab, onSingleTabChange, analysisOpen, onAnalysisToggle, showZones, onToggleZones, routeMode, onToggleRouteMode, followMode, onToggleFollowMode, topologyGenerating, onGenerateTopology }: Props) {
   const qc = useQueryClient();
   const { data: configs } = useQuery({ queryKey: ["agvConfig"], queryFn: fetchAgvConfig, refetchInterval: 30_000 });
   const { data: rotations } = useQuery({ queryKey: ["agvCoordConfigs"], queryFn: fetchCoordConfigs, staleTime: 60_000 });
@@ -81,6 +88,25 @@ export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleT
         className="px-2 py-0.5 rounded-full text-[10px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors flex items-center gap-1"><FileText size={11} />日志</Link>
       <Link to="/admin/agv-tracker/analytics"
         className="px-2 py-0.5 rounded-full text-[10px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors flex items-center gap-1"><BarChart3 size={11} />分析</Link>
+      <button onClick={onToggleZones}
+        className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${showZones ? "text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
+        title={showZones ? "隐藏区域框" : "显示区域框"}><Map size={11} /></button>
+      <button onClick={onToggleRouteMode}
+        className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${routeMode ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
+        title={routeMode ? "关闭路线模式" : "路线模式"}><Route size={11} /></button>
+      {routeMode && (
+        <button onClick={() => onGenerateTopology?.()}
+          disabled={topologyGenerating}
+          className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center gap-1 ${
+            topologyGenerating ? "opacity-50 cursor-not-allowed text-[var(--app-color-text-tertiary)]" : "text-[var(--app-color-accent)] hover:bg-[var(--app-color-accent-soft)]"
+          }`}
+          title="从数据库轨迹重新生成路线拓扑">
+          <Zap size={10} className={topologyGenerating ? "animate-spin" : ""} />
+        </button>
+      )}
+      <button onClick={onToggleFollowMode}
+        className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${followMode ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
+        title={followMode ? "关闭视角跟随" : "视角跟随"}><Crosshair size={11} /></button>
       <button onClick={onAnalysisToggle}
         className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${analysisOpen ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}><Settings2 size={11} /></button>
     </div>
