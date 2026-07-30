@@ -1,316 +1,189 @@
 package com.example.demo.modules.agv.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.modules.agv.analysis.AgvAnalyticsRollupService;
+import com.example.demo.modules.agv.analysis.AgvSpatialService;
+import com.example.demo.modules.agv.mapper.AgvAnalysisMapper;
 import com.example.demo.modules.agv.mapper.AgvTrajectoryMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * AGV 数据分析接口。后端 SQL 聚合 + Java 计算，避免前端拉全量原始数据。
+ * AGV 数据分析接口。
+ * <p>
+ * 重新设计后的分析区块（4块）：
+ * <ol>
+ *   <li>任务概览 — 趟次/里程/时长/速度/电量/异常</li>
+ *   <li>时间分配 — 运输/充电/站点停靠/寻路/其他 占比</li>
+ *   <li>站点排行 — 各站点停留频次和时长</li>
+ *   <li>异常汇总 — 急停/阻挡/重定位 次数 + 最近发生时间</li>
+ * </ol>
  */
 @RestController
 @RequestMapping("/api/v1/agv/analytics")
-@Tag(name = "AGV 数据分析", description = "速度/效率/能耗/利用率/站点/加速度")
+@Tag(name = "AGV 数据分析", description = "任务概览 / 时间分配 / 站点排行 / 异常汇总")
 public class AgvAnalyticsController {
 
-    private final AgvTrajectoryMapper mapper;
+    private final AgvTrajectoryMapper trajectoryMapper;
+    private final AgvAnalysisMapper analysisMapper;
+    private final AgvAnalyticsRollupService rollupService;
+    private final AgvSpatialService spatialService;
 
-    public AgvAnalyticsController(AgvTrajectoryMapper mapper) {
-        this.mapper = mapper;
-    }
-
-    // ── 请求参数 ──
-    public record AnalyticsRequest(String from, String to, String ip, int sampleLimit) {}
-
-    // ── 响应 ──
-    public static class AnalyticsResult {
-        public Map<String, Object> overview;
-        public List<Map<String, Object>> speedHistogram;
-        public List<Map<String, Object>> stationRanking;
-        public List<Map<String, Object>> stationHops;
-        public List<Map<String, Object>> accelEvents;
+    public AgvAnalyticsController(AgvTrajectoryMapper trajectoryMapper,
+                                   AgvAnalysisMapper analysisMapper,
+                                   AgvAnalyticsRollupService rollupService,
+                                   AgvSpatialService spatialService) {
+        this.trajectoryMapper = trajectoryMapper;
+        this.analysisMapper = analysisMapper;
+        this.rollupService = rollupService;
+        this.spatialService = spatialService;
     }
 
     @GetMapping("/{ip}")
     @Operation(summary = "AGV 数据分析")
-    public Result<AnalyticsResult> analyze(
+    public Result<Map<String, Object>> analyze(
             @PathVariable String ip,
             @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to,
-            @RequestParam(defaultValue = "5000") int sampleLimit) {
+            @RequestParam(required = false) String to) {
 
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime fromDt = from != null ? parseIso(from) : now.minusHours(1);
+        LocalDateTime fromDt = from != null ? parseIso(from) : now.minusHours(24);
         LocalDateTime toDt = to != null ? parseIso(to) : now;
 
-        int limit = Math.min(sampleLimit, 20000);
-        List<Map<String, Object>> rows = mapper.selectTrajectoryAsc(ip, fromDt, toDt, limit);
+        Map<String, Object> resp = new LinkedHashMap<>();
 
-        if (rows.isEmpty()) {
-            return Result.error("无数据");
+        // ── ① 任务概览 ──
+        Map<String, Object> hourly = rollupService.buildFromHourly(ip, fromDt, toDt);
+        int transportTrips = analysisMapper.countTransportTrips(ip, fromDt, toDt);
+        double batteryAvg = analysisMapper.avgBattery(ip, fromDt, toDt);
+
+        Map<String, Object> overview;
+        if (hourly != null) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> hourlyOverview = (Map<String, Object>) hourly.get("overview");
+            overview = new LinkedHashMap<>(hourlyOverview);
+            overview.put("transportTrips", transportTrips);
+            overview.put("avgBattery", Math.round(batteryAvg * 100.0) / 100.0);
+            overview.remove("xRange");
+            overview.remove("yRange");
+            overview.remove("movingCount");
+        } else {
+            overview = new LinkedHashMap<>();
+            overview.put("transportTrips", transportTrips);
+            overview.put("totalDistanceKm", 0);
+            overview.put("totalTimeHr", 0);
+            overview.put("avgSpeedMps", 0);
+            overview.put("avgBattery", Math.round(batteryAvg * 100.0) / 100.0);
+            overview.put("totalSamples", 0);
+            overview.put("utilization", 0);
+        }
+        resp.put("overview", overview);
+
+        // ── ② 时间分配 ──
+        List<Map<String, Object>> distRaw = analysisMapper.selectActivityDistribution(ip, fromDt, toDt);
+        long totalSec = distRaw.stream().mapToLong(m -> toLong(m.get("total_sec"))).sum();
+        Map<String, String> categoryMap = new HashMap<>();
+        categoryMap.put("TRANSPORT", "运输"); categoryMap.put("NAVIGATING", "寻路");
+        categoryMap.put("CHARGING", "充电"); categoryMap.put("CHARGING_COMPLETE", "充电");
+        categoryMap.put("STATION_DWELL", "站点停靠"); categoryMap.put("STATION_WORK", "站点停靠");
+        categoryMap.put("REST_STATION", "站点停靠"); categoryMap.put("FORK_OPERATION", "站点停靠");
+        categoryMap.put("UNKNOWN_IDLE", "站点停靠");
+        categoryMap.put("PATH_WAIT", "其他"); categoryMap.put("REVERSE_MANEUVER", "其他");
+        categoryMap.put("RELOC_EVENT", "其他"); categoryMap.put("BLOCKED_WAIT", "其他");
+        categoryMap.put("EMERGENCY_STOP", "其他");
+        Map<String, Long> categorySec = new LinkedHashMap<>();
+        for (var row : distRaw) {
+            String type = (String) row.get("activity_type");
+            long sec = toLong(row.get("total_sec"));
+            categorySec.merge(categoryMap.getOrDefault(type, "其他"), sec, Long::sum);
+        }
+        String[] order = {"运输", "充电", "站点停靠", "寻路", "其他"};
+        List<Map<String, Object>> timeDist = new ArrayList<>();
+        for (String cat : order) {
+            long sec = categorySec.getOrDefault(cat, 0L);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("category", cat); item.put("totalSec", sec);
+            item.put("percent", totalSec > 0 ? Math.round(sec * 1000.0 / totalSec) / 10.0 : 0);
+            timeDist.add(item);
+        }
+        resp.put("timeDistribution", timeDist);
+
+        // ── ③ 站点排行（带中文名称解析）──
+        if (hourly != null) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> ranking = (List<Map<String, Object>>) hourly.get("stationRanking");
+            if (ranking != null) {
+                for (Map<String, Object> item : ranking) {
+                    String code = (String) item.get("station");
+                    if (code != null) {
+                        item.put("stationName", spatialService.resolveStationName(code));
+                    }
+                }
+            }
+            resp.put("stationRanking", ranking != null ? ranking : Collections.emptyList());
+        } else {
+            resp.put("stationRanking", Collections.emptyList());
         }
 
-        AnalyticsResult result = new AnalyticsResult();
-        result.overview = computeOverview(rows);
-        result.speedHistogram = computeSpeedHistogram(rows);
-        result.stationRanking = computeStationRanking(rows);
-        result.stationHops = computeStationHops(rows);
-        result.accelEvents = computeAccelEvents(rows);
+        // ── ④ 异常汇总 ──
+        List<Map<String, Object>> anomalyRows = analysisMapper.selectAnomalyCounts(ip, fromDt, toDt);
+        int emergencyCount = 0, blockedCount = 0, relocCount = 0;
+        for (var row : anomalyRows) {
+            String t = (String) row.get("activity_type");
+            int c = toInt(row.get("cnt"));
+            switch (t) {
+                case "EMERGENCY_STOP" -> emergencyCount = c;
+                case "BLOCKED_WAIT" -> blockedCount = c;
+                case "RELOC_EVENT" -> relocCount = c;
+            }
+        }
+        Map<String, Object> anomalies = new LinkedHashMap<>();
+        anomalies.put("emergencyCount", emergencyCount);
+        anomalies.put("blockedCount", blockedCount);
+        anomalies.put("relocCount", relocCount);
+        anomalies.put("totalAnomalies", emergencyCount + blockedCount + relocCount);
+        resp.put("anomalies", anomalies);
 
-        return Result.success(result);
+        return Result.success(resp);
     }
-
-    // ══════════════════════════════════════════
-    //  SQL 级聚合
-    // ══════════════════════════════════════════
 
     @GetMapping("/{ip}/summary")
     @Operation(summary = "AGV 概要统计（纯 SQL）")
     public Result<Map<String, Object>> summary(@PathVariable String ip) {
-        Map<String, Object> stats = mapper.selectRobotSummary(ip);
+        Map<String, Object> stats = trajectoryMapper.selectRobotSummary(ip);
         return stats != null ? Result.success(stats) : Result.error("无数据");
     }
 
-    // ══════════════════════════════════════════
-    //  Java 计算
-    // ══════════════════════════════════════════
-
-    private Map<String, Object> computeOverview(List<Map<String, Object>> rows) {
-        double totalDist = 0;
-        double minX = Double.MAX_VALUE, maxX = -Double.MAX_VALUE;
-        double minY = Double.MAX_VALUE, maxY = -Double.MAX_VALUE;
-        long firstTs = 0, lastTs = 0;
-        int movingCount = 0;
-
-        for (int i = 0; i < rows.size(); i++) {
-            Map<String, Object> r = rows.get(i);
-            Double x = toDouble(r.get("x"));
-            Double y = toDouble(r.get("y"));
-            if (x == null || y == null) continue;
-
-            if (x < minX) minX = x; if (x > maxX) maxX = x;
-            if (y < minY) minY = y; if (y > maxY) maxY = y;
-
-            if (i > 0) {
-                Map<String, Object> prev = rows.get(i - 1);
-                Double px = toDouble(prev.get("x"));
-                Double py = toDouble(prev.get("y"));
-                if (px != null && py != null) {
-                    double d = Math.sqrt((x - px) * (x - px) + (y - py) * (y - py));
-                    totalDist += d;
-                    Object rts = r.get("recorded_at"), pts = prev.get("recorded_at");
-                    if (rts != null && pts != null) {
-                        double dt = timeDiffSec(pts.toString(), rts.toString());
-                        if (dt > 0.01 && d / dt > 0.05) movingCount++;
-                    }
-                }
-            }
-
-            Object ts = r.get("recorded_at");
-            if (ts != null) {
-                long t = toEpochMs(ts.toString());
-                if (firstTs == 0) firstTs = t;
-                lastTs = t;
-            }
-        }
-
-        Map<String, Object> overview = new LinkedHashMap<>();
-        overview.put("totalDistanceKm", Math.round(totalDist / 10.0) / 100.0);
-        double totalHr = (lastTs - firstTs) / 3600_000.0;
-        overview.put("totalTimeHr", Math.round(totalHr * 10) / 10.0);
-        overview.put("avgSpeedMps", totalHr > 0 ? Math.round(totalDist / (totalHr * 3600) * 100.0) / 100.0 : 0);
-        overview.put("movingCount", movingCount);
-        overview.put("totalSamples", rows.size());
-        overview.put("utilization", rows.size() > 0 ? Math.round(movingCount * 100.0 / rows.size()) : 0);
-        overview.put("xRange", Math.round((maxX - minX) * 100.0) / 100.0);
-        overview.put("yRange", Math.round((maxY - minY) * 100.0) / 100.0);
-
-        // path efficiency (straight-line / actual)
-        if (rows.size() >= 2 && totalDist > 0) {
-            Map<String, Object> first = rows.get(0), last = rows.get(rows.size() - 1);
-            Double fx = toDouble(first.get("x")), fy = toDouble(first.get("y"));
-            Double lx = toDouble(last.get("x")), ly = toDouble(last.get("y"));
-            if (fx != null && fy != null && lx != null && ly != null) {
-                double straight = Math.sqrt((lx - fx) * (lx - fx) + (ly - fy) * (ly - fy));
-                overview.put("pathEfficiency", Math.round(straight / totalDist * 100));
-            }
-        }
-
-        return overview;
-    }
-
-    private List<Map<String, Object>> computeSpeedHistogram(List<Map<String, Object>> rows) {
-        int[] bins = new int[7];
-        double[] thresholds = {0.1, 0.3, 0.5, 0.8, 1.2, 1.8};
-        String[] labels = {"0-0.1", "0.1-0.3", "0.3-0.5", "0.5-0.8", "0.8-1.2", "1.2-1.8", "1.8+"};
-
-        for (int i = 1; i < rows.size(); i++) {
-            Map<String, Object> prev = rows.get(i - 1), cur = rows.get(i);
-            Double px = toDouble(prev.get("x")), py = toDouble(prev.get("y"));
-            Double cx = toDouble(cur.get("x")), cy = toDouble(cur.get("y"));
-            Object pts = prev.get("recorded_at"), cts = cur.get("recorded_at");
-            if (px == null || py == null || cx == null || cy == null || pts == null || cts == null) continue;
-            double d = Math.sqrt((cx - px) * (cx - px) + (cy - py) * (cy - py));
-            double dt = timeDiffSec(pts.toString(), cts.toString());
-            if (dt < 0.01) continue;
-            double speed = d / dt;
-            int bin = 6;
-            for (int b = 0; b < thresholds.length; b++) {
-                if (speed < thresholds[b]) { bin = b; break; }
-            }
-            bins[bin]++;
-        }
-
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (int i = 0; i < bins.length; i++) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("label", labels[i]); m.put("count", bins[i]);
-            result.add(m);
-        }
-        return result;
-    }
-
-    private List<Map<String, Object>> computeStationRanking(List<Map<String, Object>> rows) {
-        Map<String, int[]> stationMap = new LinkedHashMap<>(); // [count, totalSec, lastIdx]
-        Map<String, Integer> lastSeen = new LinkedHashMap<>();
-
-        for (int i = 0; i < rows.size(); i++) {
-            Object st = rows.get(i).get("station");
-            if (st == null || st.toString().isEmpty()) continue;
-            String station = st.toString();
-
-            if (lastSeen.containsKey(station)) {
-                int prevIdx = lastSeen.get(station);
-                if (i == prevIdx + 1) { // consecutive
-                    double dur = timeDiffSec(
-                        rows.get(prevIdx).get("recorded_at").toString(),
-                        rows.get(i).get("recorded_at").toString()
-                    );
-                    int[] arr = stationMap.computeIfAbsent(station, k -> new int[]{0, 0, 0});
-                    arr[0]++;
-                    arr[1] += (int) dur;
-                }
-            }
-            lastSeen.put(station, i);
-        }
-
-        // Count distinct visits
-        String prevSt = null;
-        for (Map<String, Object> row : rows) {
-            Object st = row.get("station");
-            String curSt = st != null ? st.toString() : "";
-            if (!curSt.isEmpty() && !curSt.equals(prevSt)) {
-                int[] arr = stationMap.computeIfAbsent(curSt, k -> new int[]{0, 0, 0});
-                arr[2]++; // visit count
-            }
-            prevSt = curSt.isEmpty() ? prevSt : curSt;
-        }
-
-        return stationMap.entrySet().stream()
-            .filter(e -> e.getValue()[1] > 0)
-            .sorted((a, b) -> Integer.compare(b.getValue()[1], a.getValue()[1]))
-            .map(e -> {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("station", e.getKey());
-                m.put("count", e.getValue()[2]);
-                m.put("totalSec", e.getValue()[1]);
-                m.put("avgSec", e.getValue()[2] > 0 ? e.getValue()[1] / e.getValue()[2] : 0);
-                return m;
-            })
-            .collect(Collectors.toList());
-    }
-
-    private List<Map<String, Object>> computeStationHops(List<Map<String, Object>> rows) {
-        List<Map<String, Object>> hops = new ArrayList<>();
-        String prevStation = null;
-        double prevX = 0, prevY = 0;
-        long prevTs = 0;
-
-        for (Map<String, Object> row : rows) {
-            Object st = row.get("station");
-            String curStation = st != null ? st.toString() : "";
-            Double cx = toDouble(row.get("x")), cy = toDouble(row.get("y"));
-            Object ts = row.get("recorded_at");
-            if (cx == null || cy == null || ts == null) continue;
-
-            if (prevStation != null && !curStation.isEmpty() && !curStation.equals(prevStation)) {
-                double dist = Math.sqrt((cx - prevX) * (cx - prevX) + (cy - prevY) * (cy - prevY));
-                long curTs = toEpochMs(ts.toString());
-                Map<String, Object> hop = new LinkedHashMap<>();
-                hop.put("from", prevStation);
-                hop.put("to", curStation);
-                hop.put("durationSec", curTs > prevTs ? (curTs - prevTs) / 1000 : 0);
-                hop.put("distance", Math.round(dist * 100.0) / 100.0);
-                hops.add(hop);
-            }
-
-            if (!curStation.isEmpty()) {
-                prevStation = curStation; prevX = cx; prevY = cy; prevTs = toEpochMs(ts.toString());
-            }
-        }
-        return hops;
-    }
-
-    private List<Map<String, Object>> computeAccelEvents(List<Map<String, Object>> rows) {
-        List<Map<String, Object>> events = new ArrayList<>();
-        double lastSpeed = 0;
-        long lastTs = 0;
-        boolean first = true;
-
-        for (int i = 1; i < rows.size(); i++) {
-            Map<String, Object> prev = rows.get(i - 1), cur = rows.get(i);
-            Double px = toDouble(prev.get("x")), py = toDouble(prev.get("y"));
-            Double cx = toDouble(cur.get("x")), cy = toDouble(cur.get("y"));
-            Object pts = prev.get("recorded_at"), cts = cur.get("recorded_at");
-            if (px == null || py == null || cx == null || cy == null || pts == null || cts == null) continue;
-
-            double d = Math.sqrt((cx - px) * (cx - px) + (cy - py) * (cy - py));
-            double dt = timeDiffSec(pts.toString(), cts.toString());
-            if (dt < 0.01) continue;
-            double speed = d / dt;
-
-            if (!first) {
-                double acc = (speed - lastSpeed) / dt;
-                if (Math.abs(acc) > 0.5) {
-                    Map<String, Object> evt = new LinkedHashMap<>();
-                    evt.put("ts", cts.toString());
-                    evt.put("mps2", Math.round(acc * 100.0) / 100.0);
-                    evt.put("type", acc > 0 ? "急加速" : "急减速");
-                    events.add(evt);
-                }
-            }
-
-            lastSpeed = speed; lastTs = toEpochMs(cts.toString()); first = false;
-        }
-        return events;
+    @PostMapping("/{ip}/refresh")
+    @Operation(summary = "手动刷新小时聚合")
+    public Result<String> refresh(@PathVariable String ip) {
+        rollupService.refreshRecentHours(ip);
+        return Result.success("ok");
     }
 
     // ── helpers ──
-    private static double toDouble(Object o) {
-        if (o instanceof Number n) return n.doubleValue();
-        if (o instanceof String s) try { return Double.parseDouble(s); } catch (Exception e) { }
+
+    private static long toLong(Object o) {
+        if (o instanceof Number n) return n.longValue();
+        if (o instanceof String s) try { return Long.parseLong(s); } catch (Exception e) { }
         return 0;
     }
 
-    private static double timeDiffSec(String from, String to) {
-        try {
-            long f = java.time.Instant.parse(from).toEpochMilli();
-            long t = java.time.Instant.parse(to).toEpochMilli();
-            return (t - f) / 1000.0;
-        } catch (Exception e) { return 0; }
-    }
-
-    private static long toEpochMs(String iso) {
-        try { return java.time.Instant.parse(iso).toEpochMilli(); } catch (Exception e) { return 0; }
+    private static int toInt(Object o) {
+        if (o instanceof Number n) return n.intValue();
+        if (o instanceof String s) try { return Integer.parseInt(s); } catch (Exception e) { }
+        return 0;
     }
 
     private static LocalDateTime parseIso(String s) {
-        try { return java.time.Instant.parse(s).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime(); }
+        try { return Instant.parse(s).atZone(ZoneId.systemDefault()).toLocalDateTime(); }
         catch (Exception e) { return LocalDateTime.parse(s); }
     }
 }

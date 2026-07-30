@@ -494,6 +494,10 @@ Page({
     lastScannedEntry: { position: '', code: '', act_DIVIDE: false, act_SPECIAL_BREEDING: false, act_HEALTH_CHECK: false },
     actionSubmitting: false,
     editMode: false,
+    bindMode: false,
+    bindScannedCode: '',
+    bindSelectedKey: '',
+    unbindActive: false,
     navBarHeight: 64,
 
     // Cell detail（对齐 Web CellDetailPanel / MobileCageCellDetailDialog）
@@ -943,7 +947,7 @@ Page({
     self.setData({ loading: true, error: '', screen: 'grid' });
 
     springAuth.springRequest({
-      url: '/api/student/mobile/cage-shelves/' + shelveId + '/detail' + (self.data.editMode ? '?realtime=true' : ''),
+      url: '/api/student/mobile/cage-shelves/' + shelveId + '/detail' + (self.data.editMode || self.data.bindMode ? '?realtime=true' : ''),
       method: 'GET',
       data: {}
     }).then(function(res) {
@@ -1012,6 +1016,11 @@ Page({
       scannedCageBoxCode: '',
       scanCache: {},
       lastScannedKey: '',
+      editMode: false,
+      bindMode: false,
+      bindScannedCode: '',
+      bindSelectedKey: '',
+      unbindActive: false,
       showCellDetail: false,
       selectedCell: null,
       cellDetailMeta: null,
@@ -1028,6 +1037,11 @@ Page({
 
   onCellTap: function(e) {
     var self = this;
+    // 绑定模式：触发绑定流程，不打开详情
+    if (self.data.bindMode) {
+      self.onBindCellTap(e);
+      return;
+    }
     var x = Number(e.currentTarget.dataset.x);
     var y = Number(e.currentTarget.dataset.y);
     var cell = null;
@@ -1556,7 +1570,7 @@ Page({
       self._doExitEditMode();
       return;
     }
-    self.setData({ editMode: next });
+    self.setData({ editMode: next, bindMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false });
     if (next && self.data.selectedShelf && self.data.selectedShelf.shelveId) {
       // 进入编辑模式 → 刷新实时数据
       springAuth.springRequest({
@@ -1649,29 +1663,29 @@ Page({
     this.setData(patch, this.applyCacheToGrid.bind(this));
   },
 
+  // Action → CancelColor 映射
+  ACTION_CANCEL_COLOR: { DIVIDE: 2, SPECIAL_BREEDING: 1, HEALTH_CHECK: 3 },
+
   /** 提交全部缓存 */
   onSubmitScanActions: function() {
     var self = this;
     var cache = self.data.scanCache || {};
-    // 区分新增(0→1)和反选(1→0)：新增调API，反选后端仅支持 SET 无 UNSET
-    var entries = [];
-    var removeCount = 0;
+    var addEntries = [];
+    var removeEntries = [];
     for (var key in cache) {
       if (Object.prototype.hasOwnProperty.call(cache, key)) {
         var e = cache[key];
         var init = e.initialActions || {};
         var curr = e.currentActions || {};
-        // 新增：current 中有但 initial 中没有 → 调 API
-        if (curr.DIVIDE && !init.DIVIDE) entries.push({ key: key, code: e.code, action: 'DIVIDE' });
-        if (curr.SPECIAL_BREEDING && !init.SPECIAL_BREEDING) entries.push({ key: key, code: e.code, action: 'SPECIAL_BREEDING' });
-        if (curr.HEALTH_CHECK && !init.HEALTH_CHECK) entries.push({ key: key, code: e.code, action: 'HEALTH_CHECK' });
-        // 反选：initial 中有但 current 中没有 → 计数提示
-        if (!curr.DIVIDE && init.DIVIDE) removeCount++;
-        if (!curr.SPECIAL_BREEDING && init.SPECIAL_BREEDING) removeCount++;
-        if (!curr.HEALTH_CHECK && init.HEALTH_CHECK) removeCount++;
+        if (curr.DIVIDE && !init.DIVIDE) addEntries.push({ key: key, code: e.code, action: 'DIVIDE' });
+        if (curr.SPECIAL_BREEDING && !init.SPECIAL_BREEDING) addEntries.push({ key: key, code: e.code, action: 'SPECIAL_BREEDING' });
+        if (curr.HEALTH_CHECK && !init.HEALTH_CHECK) addEntries.push({ key: key, code: e.code, action: 'HEALTH_CHECK' });
+        if (!curr.DIVIDE && init.DIVIDE) removeEntries.push({ key: key, code: e.code, action: 'DIVIDE' });
+        if (!curr.SPECIAL_BREEDING && init.SPECIAL_BREEDING) removeEntries.push({ key: key, code: e.code, action: 'SPECIAL_BREEDING' });
+        if (!curr.HEALTH_CHECK && init.HEALTH_CHECK) removeEntries.push({ key: key, code: e.code, action: 'HEALTH_CHECK' });
       }
     }
-    if (entries.length === 0 && removeCount === 0) return;
+    if (addEntries.length === 0 && removeEntries.length === 0) return;
 
     var meta = self.data.gridMeta || {};
     var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
@@ -1679,32 +1693,201 @@ Page({
 
     self.setData({ actionSubmitting: true });
     var okCount = 0, failCount = 0;
+    var totalTasks = addEntries.concat(removeEntries.map(function(r) {
+      return { key: r.key, code: r.code, action: r.action, cancel: true };
+    }));
 
     var next = function(idx) {
-      if (idx >= entries.length) {
+      if (idx >= totalTasks.length) {
         self.setData({ actionSubmitting: false });
         if (failCount === 0) {
-          var msg = '已完成 ' + okCount + ' 个操作';
-          if (removeCount > 0) msg += '，' + removeCount + ' 项标记移除（需管理员确认）';
-          wx.showToast({ title: msg, icon: 'success', duration: 3000 });
-          self.onExitScanMode();
-          self.onRetry();
+          wx.showToast({ title: '已完成 ' + okCount + ' 个操作', icon: 'success', duration: 3000 });
+          self.onRetry(); // 先刷新实时数据（editMode 仍为 true）
+          self.onExitScanMode(); // 再退出编辑模式
         } else {
           wx.showToast({ title: okCount + ' 成功 / ' + failCount + ' 失败', icon: 'none' });
         }
         return;
       }
-      var entry = entries[idx];
-      springAuth.springRequest({
-        url: '/api/aro/cage-box/action',
-        method: 'POST',
-        data: { roomId: roomId, shelveId: shelveId, cageBoxCode: entry.code, action: entry.action }
-      }).then(function(res) {
-        var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
-        if (body && body.success) { okCount++; } else { failCount++; }
-        next(idx + 1);
-      }).catch(function() { failCount++; next(idx + 1); });
+      var entry = totalTasks[idx];
+      var url, data;
+      if (entry.cancel) {
+        var color = self.ACTION_CANCEL_COLOR[entry.action];
+        url = '/api/aro/cage-box/cancel';
+        data = { roomId: roomId, shelveId: shelveId, cageBoxCode: entry.code, color: color };
+      } else {
+        url = '/api/aro/cage-box/action';
+        data = { roomId: roomId, shelveId: shelveId, cageBoxCode: entry.code, action: entry.action };
+      }
+      springAuth.springRequest({ url: url, method: 'POST', data: data })
+        .then(function(res) {
+          var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+          if (body && body.success) { okCount++; } else { failCount++; }
+          next(idx + 1);
+        }).catch(function() { failCount++; next(idx + 1); });
     };
     next(0);
+  },
+
+  /* ── 绑定模式 ── */
+
+  /** 进入绑定模式 */
+  onEnterBindMode: function() {
+    if (!this.data.staffView) {
+      wx.showToast({ title: '仅教职工可用', icon: 'none' });
+      return;
+    }
+    // 进入绑定模式 → 退出编辑 → 加载实时数据
+    this.setData({ bindMode: true, editMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false, scanCache: {}, lastScannedKey: '' });
+    this.loadShelfDetail(this.data.selectedShelf ? this.data.selectedShelf.shelveId : '');
+  },
+
+  /** 退出绑定模式 */
+  onExitBindMode: function() {
+    this.setData({ bindMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false });
+    this.loadShelfDetail(this.data.selectedShelf ? this.data.selectedShelf.shelveId : '');
+  },
+
+  /** 绑定扫码 */
+  onBindScanTap: function() {
+    var self = this;
+    wx.scanCode({
+      onlyFromCamera: true,
+      scanType: ['qrCode', 'barCode'],
+      success: function(res) {
+        var code = res.result;
+        console.log('[bind-scan] 扫码结果:', code);
+        self.setData({ bindScannedCode: code, bindSelectedKey: '' });
+        wx.showToast({ title: '已扫码: ' + code, icon: 'success', duration: 2000 });
+      },
+      fail: function(err) {
+        if (err && err.errMsg && err.errMsg.indexOf('cancel') === -1) {
+          wx.showToast({ title: '扫码失败', icon: 'none' });
+        }
+      }
+    });
+  },
+
+  /** 切换解绑模式 */
+  onToggleUnbind: function() {
+    var next = !this.data.unbindActive;
+    this.setData({ unbindActive: next, bindSelectedKey: '' });
+  },
+
+  /** 绑定模式下点击笼位：case2=绑定 / case3=解绑 */
+  onBindCellTap: function(e) {
+    var cell = e.currentTarget.dataset.cell;
+    if (!cell || cell.empty) return;
+    var self = this;
+    var animalCageType = cell.animalCageType || (cell.cageBoxInfo && cell.cageBoxInfo.AnimalCageType) || 0;
+
+    // case 2: 绑定
+    if (animalCageType === 2) {
+      if (self.data.unbindActive) { wx.showToast({ title: '当前是解绑模式，请先关闭', icon: 'none' }); return; }
+      if (!self.data.bindScannedCode) { wx.showToast({ title: '请先扫码获取笼盒编号', icon: 'none' }); return; }
+      var key2 = cell.x + ':' + cell.y;
+      self.setData({ bindSelectedKey: key2 });
+      var piInfo = cell.piName || (cell.cageBoxInfo && cell.cageBoxInfo.ProjectPiName) || '';
+      wx.showModal({
+        title: '确认绑定',
+        content: '笼盒：' + self.data.bindScannedCode + '\n笼位：' + (cell.position || '') + '\nPI：' + piInfo + '\n\n确认绑定？',
+        success: function(res) {
+          if (!res.confirm) { self.setData({ bindSelectedKey: '' }); return; }
+          self.doBindCage(cell, self.data.bindScannedCode);
+        }
+      });
+      return;
+    }
+
+    // case 3: 解绑
+    if (animalCageType === 3) {
+      if (!self.data.unbindActive) { wx.showToast({ title: '请先点击「解绑」按钮', icon: 'none' }); return; }
+      var key3 = cell.x + ':' + cell.y;
+      self.setData({ bindSelectedKey: key3 });
+      var pi3 = cell.piName || (cell.cageBoxInfo && cell.cageBoxInfo.ProjectPiName) || '';
+      wx.showModal({
+        title: '确认解绑',
+        content: '笼位：' + (cell.position || '') + '\nPI：' + pi3 + '\n\n确认解绑并恢复空笼盒？',
+        success: function(res) {
+          if (!res.confirm) { self.setData({ bindSelectedKey: '' }); return; }
+          self.doUnbindCage(cell);
+        }
+      });
+      return;
+    }
+
+    wx.showToast({ title: animalCageType === 1 ? '该笼位尚未预约' : '该笼位状态异常', icon: 'none' });
+  },
+
+  /** 执行绑定 */
+  doBindCage: function(cell, cageBoxCode) {
+    var self = this;
+    var meta = self.data.gridMeta || {};
+    var cageId = String(cell.id || '');
+    var cageName = String(cell.name || '');
+    var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
+    var shelveId = String((self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
+
+    wx.showLoading({ title: '绑定中...' });
+    springAuth.springRequest({
+      url: '/api/aro/cage-box/bind',
+      method: 'POST',
+      data: { animalCageId: cageId, cageBoxCode: cageBoxCode }
+    }).then(function(res) {
+      var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (!body || !body.success) {
+        wx.hideLoading();
+        wx.showToast({ title: '关联失败: ' + (body && body.message || ''), icon: 'none' });
+        return Promise.reject('bind failed');
+      }
+      return springAuth.springRequest({
+        url: '/api/v1/cage-shelves/cage/update',
+        method: 'POST',
+        data: { id: cageId, name: cageName, roomId: roomId, shelveId: shelveId, postionX: cell.x || 0, postionY: cell.y || 0, qrcode: cageBoxCode, state: 3 }
+      });
+    }).then(function(res) {
+      wx.hideLoading();
+      var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (body && body.success) {
+        wx.showToast({ title: '绑定成功！', icon: 'success' });
+        self.onRetry(); // 先刷新（bindMode 仍为 true 拉实时）
+        self.onExitBindMode();
+      } else {
+        wx.showToast({ title: '更新失败: ' + (body && body.message || ''), icon: 'none' });
+      }
+    }).catch(function(err) {
+      wx.hideLoading();
+      if (err !== 'bind failed') wx.showToast({ title: '绑定失败', icon: 'none' });
+    });
+  },
+
+  /** 执行解绑：update state=2 + 清空 qrcode */
+  doUnbindCage: function(cell) {
+    var self = this;
+    var meta = self.data.gridMeta || {};
+    var cageId = String(cell.id || '');
+    var cageName = String(cell.name || '');
+    var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
+    var shelveId = String((self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
+
+    wx.showLoading({ title: '解绑中...' });
+    springAuth.springRequest({
+      url: '/api/v1/cage-shelves/cage/update',
+      method: 'POST',
+      data: { id: cageId, name: cageName, roomId: roomId, shelveId: shelveId, postionX: cell.x || 0, postionY: cell.y || 0, qrcode: '', state: 2 }
+    }).then(function(res) {
+      wx.hideLoading();
+      var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (body && body.success) {
+        wx.showToast({ title: '解绑成功！', icon: 'success' });
+        self.onRetry(); // 先刷新实时数据
+        self.onExitBindMode();
+      } else {
+        wx.showToast({ title: '解绑失败: ' + (body && body.message || ''), icon: 'none' });
+      }
+    }).catch(function() {
+      wx.hideLoading();
+      wx.showToast({ title: '解绑失败', icon: 'none' });
+    });
   }
 });

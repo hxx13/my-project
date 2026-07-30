@@ -4,6 +4,7 @@ import com.example.demo.common.config.AdminAuthInterceptor;
 import com.example.demo.common.dto.Result;
 import com.example.demo.modules.agv.analysis.AgvAnalysisService;
 import com.example.demo.modules.agv.analysis.AgvCorrectionService;
+import com.example.demo.modules.agv.analysis.AgvRouteService;
 import com.example.demo.modules.agv.analysis.AgvSpatialService;
 import com.example.demo.modules.agv.analysis.dto.AnalysisRequest;
 import com.example.demo.modules.agv.analysis.model.*;
@@ -28,13 +29,16 @@ public class AgvAnalysisController {
     private final AgvSpatialService spatialService;
     private final AgvAnalysisService analysisService;
     private final AgvCorrectionService correctionService;
+    private final AgvRouteService routeService;
     private final AgvAnalysisMapper mapper;
 
     public AgvAnalysisController(AgvSpatialService spatialService, AgvAnalysisService analysisService,
-                                  AgvCorrectionService correctionService, AgvAnalysisMapper mapper) {
+                                  AgvCorrectionService correctionService, AgvRouteService routeService,
+                                  AgvAnalysisMapper mapper) {
         this.spatialService = spatialService;
         this.analysisService = analysisService;
         this.correctionService = correctionService;
+        this.routeService = routeService;
         this.mapper = mapper;
     }
 
@@ -80,6 +84,14 @@ public class AgvAnalysisController {
         return Result.success(result);
     }
 
+    // ── Station Names ──
+
+    @GetMapping("/station-names")
+    @Operation(summary = "获取站点代码→中文名称映射表")
+    public Result<Map<String, String>> stationNames() {
+        return Result.success(spatialService.getStationNameMap());
+    }
+
     // ── Spatial Elements ──
 
     @GetMapping("/spatial-elements")
@@ -107,6 +119,34 @@ public class AgvAnalysisController {
         return Result.success(spatialService.autoGenerateCandidates(mapName));
     }
 
+    @PostMapping("/spatial-elements/discover")
+    @Operation(summary = "手动触发行为驱动的空间区域发现（先分析→再聚类）")
+    public Result<Map<String, Object>> discoverZones() {
+        LocalDateTime to = LocalDateTime.now();
+        LocalDateTime from = to.minusHours(24); // 最近24小时
+        // Step 1: 先跑分析，确保有活动段数据
+        String[] ips = {"172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22"};
+        int totalSegs = 0;
+        for (String ip : ips) {
+            try {
+                AnalysisRequest req = new AnalysisRequest();
+                req.setRobotIp(ip);
+                req.setFrom(from.toString());
+                req.setTo(to.toString());
+                totalSegs += analysisService.analyze(req).size();
+            } catch (Exception e) {
+                // skip individual failures
+            }
+        }
+        // Step 2: 空间聚类发现区域
+        int count = spatialService.spatialZoneDiscovery(from, to);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("segmentsAnalyzed", totalSegs);
+        result.put("zonesCreatedOrUpdated", count);
+        result.put("window", from.toString() + " → " + to.toString());
+        return Result.success(result);
+    }
+
     // ── Rules ──
 
     @GetMapping("/rules")
@@ -131,6 +171,34 @@ public class AgvAnalysisController {
     @Operation(summary = "启用/停用规则")
     public Result<String> toggleRule(@PathVariable Long id, @RequestParam int enabled) {
         mapper.toggleRule(id, enabled);
+        return Result.success("ok");
+    }
+
+    // ── Routes ──
+
+    @GetMapping("/routes")
+    @Operation(summary = "查询全部路线")
+    public Result<List<AgvRoute>> listRoutes(@RequestParam(required = false) String robotIp) {
+        if (robotIp != null && !robotIp.isEmpty()) {
+            return Result.success(routeService.listByRobot(robotIp));
+        }
+        return Result.success(routeService.listAll());
+    }
+
+    @PostMapping("/routes/discover")
+    @Operation(summary = "从历史活动段中发现路线。force=true 时删除已有路线并重新发现")
+    public Result<Map<String, Object>> discoverRoutes(@RequestParam(required = false, defaultValue = "false") boolean force) {
+        int count = routeService.discoverRoutes(force);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("routesDiscovered", count);
+        result.put("force", force);
+        return Result.success(result);
+    }
+
+    @PutMapping("/routes/{id}/toggle")
+    @Operation(summary = "启用/停用路线")
+    public Result<String> toggleRoute(@PathVariable Long id, @RequestParam int enabled) {
+        mapper.toggleRoute(id, enabled);
         return Result.success("ok");
     }
 

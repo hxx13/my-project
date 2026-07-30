@@ -1198,10 +1198,10 @@ export default function AdminStudentViolationsPage() {
 
   return (
     <AdminPageShell>
-      <div className="flex flex-col">
+      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
 
-        {/* ═══ 第一层：标题 + 标签卡片（sticky 固定顶部） ═══ */}
-        <AdminFormCard className="sticky top-16 z-[--z-sticky] shrink-0 mb-3">
+        {/* ═══ 第一层：标题 + 标签卡片（双滚动容器内顶部固定） ═══ */}
+        <AdminFormCard className="shrink-0 mb-3">
           {/* 第一行：标签栏（左） + 操作按钮（右），下方有分隔线 */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
             <AdminPageTabs
@@ -1382,8 +1382,8 @@ export default function AdminStudentViolationsPage() {
           </div>
         </AdminFormCard>
 
-      {/* ═══ 第二层：内容区 ═══ */}
-      <div>
+      {/* ═══ 第二层：内容区（双滚动容器内独立滚动） ═══ */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain">
         <AdminTabPanel
           id="violation-page-panel-unbound"
           tabId="unbound"
@@ -2196,7 +2196,7 @@ export default function AdminStudentViolationsPage() {
             <div>
             <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
               <thead className="border-b-2 border-[var(--app-color-border-strong)]">
-                <tr className="sticky top-16 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
+                <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                   <th className="whitespace-nowrap px-3 py-2">ID</th>
                   <th className="px-3 py-2">人员</th>
                   <th className="whitespace-nowrap px-3 py-2">规则</th>

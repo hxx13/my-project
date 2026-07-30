@@ -30,7 +30,7 @@ import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
 import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
 import MobileCageCellDetailDialog from "./MobileCageCellDetailDialog";
 import MobileScanDialog from "./MobileScanDialog";
-import { executeCageBoxAction, fetchFullTree, refreshShelfDetail, type CageBoxAction } from "@/api/domains/cageShelf.api";
+import { executeCageBoxAction, fetchFullTree, refreshShelfDetail, cancelCageBoxColor, ACTION_CANCEL_COLOR, bindCageBox, updateAnimalCage, type CageBoxAction, type AnimalCageUpdatePayload } from "@/api/domains/cageShelf.api";
 import toast from "react-hot-toast";
 import { buildPlaceholderGridCells } from "./mobileCageShelfGrid";
 
@@ -208,6 +208,7 @@ const GridCellButton = memo(function GridCellButton({
   isCached,
   isLastScanned,
   cachedActions,
+  isBindHighlight,
 }: {
   cell: CageShelfCell;
   onSelect: () => void;
@@ -216,6 +217,7 @@ const GridCellButton = memo(function GridCellButton({
   isCached?: boolean;
   isLastScanned?: boolean;
   cachedActions?: Set<CageBoxAction>;
+  isBindHighlight?: boolean;
 }) {
   const isCrossCol = crossCol != null && cell.x === crossCol;
   const isCrossRow = crossRow != null && cell.y === crossRow;
@@ -300,12 +302,18 @@ const GridCellButton = memo(function GridCellButton({
         !cell.empty && cell.visible ? "ring-1 ring-[var(--student-primary-muted)]" : "",
         hit && "scale-[1.05] z-10",
         isInCross && !hit && "ring-2 ring-[#ac1736]/50 shadow-[0_0_6px_rgba(172,23,54,0.15)]",
+        isBindHighlight && "scale-[1.05] z-10 ring-2 ring-[#2563eb] shadow-[0_0_10px_rgba(37,99,235,0.3)]",
         cageCardTone(cell),
       )}
       style={hit ? {
         ...statusStyle,
         boxShadow: `0 0 14px ${ringShadow}`,
         outline: `3px solid ${ringColor}`,
+        outlineOffset: -1,
+      } : isBindHighlight ? {
+        ...statusStyle,
+        boxShadow: "0 0 14px rgba(37,99,235,0.4)",
+        outline: "3px solid #2563eb",
         outlineOffset: -1,
       } : isInCross && !multiBg ? {
         ...statusStyle,
@@ -827,6 +835,9 @@ function CageShelfGridView({
   staffView, scanOpen, onOpenScan, onCloseScan,
   scanCache, lastScannedKey, onScanResult, onActionSubmit, actionSubmitting,
   onToggleAction, onRemoveCache, editMode, onToggleRealtime,
+  bindMode, onToggleBindMode, bindSelectedKey,
+  bindScanOpen, onOpenBindScan, onCloseBindScan, onBindScanResult,
+  unbindActive, onToggleUnbind,
 }: {
   shelf: MobileCageShelfSummary;
   detail: CageShelfDetail | null;
@@ -843,6 +854,15 @@ function CageShelfGridView({
   onRemoveCache: (key: string) => void;
   editMode?: boolean;
   onToggleRealtime?: () => void;
+  bindMode?: boolean;
+  onToggleBindMode?: () => void;
+  bindSelectedKey?: string | null;
+  bindScanOpen?: boolean;
+  onOpenBindScan?: () => void;
+  onCloseBindScan?: () => void;
+  onBindScanResult?: (text: string) => void;
+  unbindActive?: boolean;
+  onToggleUnbind?: () => void;
 }) {
   const cells = detail && detail.grid.length > 0 ? detail.grid : buildPlaceholderGridCells();
   const meta = detail?.shelfMeta;
@@ -880,6 +900,18 @@ function CageShelfGridView({
             {editMode ? "编辑中" : "编辑"}
           </button>
         )}
+        {/* 绑定按钮 */}
+        {staffView && !editMode && (
+          <button type="button" onClick={onToggleBindMode}
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold active:scale-95 transition shrink-0"
+            style={{
+              color: bindMode ? "#fff" : "#2563eb",
+              background: bindMode ? "#2563eb" : "rgba(37,99,235,0.1)",
+              border: `1px solid ${bindMode ? "#2563eb" : "rgba(37,99,235,0.25)"}`,
+            }}>
+            {bindMode ? "绑定中" : "绑定"}
+          </button>
+        )}
         <div className="flex-1 min-w-0 text-center">
           <p className="text-[13px] font-bold truncate" style={{ color: "#1e293b" }}>{title}</p>
           {meta && <p className="text-[10px] truncate" style={{ color: "#94a3b8" }}>
@@ -896,6 +928,7 @@ function CageShelfGridView({
             className="flex items-center justify-center rounded-full w-7 h-7 active:scale-95"
             style={{ background: "rgba(0,0,0,0.05)" }} aria-label="刷新">
             <RefreshCw className="size-3.5" style={{ color: "#969799" }} /></button>
+          {/* 编辑模式扫码（红色圆形） */}
           {staffView && editMode && (<>
                 <button type="button" onClick={onOpenScan}
                   className="relative flex items-center justify-center rounded-full w-7 h-7 active:scale-95 transition"
@@ -911,6 +944,26 @@ function CageShelfGridView({
                   </button>
                 )}
               </>)}
+          {/* 绑定模式：扫码 + 解绑 */}
+          {staffView && bindMode && (
+            <>
+              <button type="button" onClick={onOpenBindScan}
+                className="relative flex items-center justify-center rounded-md w-7 h-7 active:scale-95 transition"
+                style={{ background: "rgba(37,99,235,0.12)" }} aria-label="绑定扫码">
+                <Scan className="size-4" style={{ color: "#2563eb" }} strokeWidth={1.5} />
+              </button>
+              <button type="button"
+                className="flex items-center gap-1 shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold active:scale-95 transition"
+                style={{
+                  color: unbindActive ? "#fff" : "#dc2626",
+                  background: unbindActive ? "#dc2626" : "rgba(220,38,38,0.1)",
+                  border: `1px solid ${unbindActive ? "#dc2626" : "rgba(220,38,38,0.25)"}`,
+                }}
+                onClick={onToggleUnbind}>
+                {unbindActive ? "解绑中" : "解绑"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -970,6 +1023,7 @@ function CageShelfGridView({
                     isCached={cachedKeys.has(ck)}
                     isLastScanned={ck === lastScannedKey}
                     cachedActions={cacheEntry?.currentActions}
+                    isBindHighlight={bindSelectedKey === ck}
                   />
                 );
               })}
@@ -977,6 +1031,7 @@ function CageShelfGridView({
           </div>}
       </div>
       <MobileScanDialog open={scanOpen} onClose={onCloseScan} onResult={onScanResult} />
+      {bindScanOpen && <MobileScanDialog open={bindScanOpen} onClose={onCloseBindScan!} onResult={onBindScanResult!} />}
     </div>
   );
 }
@@ -1016,6 +1071,12 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   // ── 扫码缓存（支持连续扫码，统一提交） ──
   const [scanOpen, setScanOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [bindMode, setBindMode] = useState(false);
+  const [bindScanOpen, setBindScanOpen] = useState(false);
+  const [bindScannedCode, setBindScannedCode] = useState("");
+  const [bindSelectedKey, setBindSelectedKey] = useState<string | null>(null);
+  const [bindSubmitting, setBindSubmitting] = useState(false);
+  const [unbindActive, setUnbindActive] = useState(false);
   const [scanCache, setScanCache] = useState<Map<string, ScanCacheEntry>>(new Map());
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);  // "x:y" 刚扫的
   const [actionSubmitting, setActionSubmitting] = useState(false);
@@ -1097,13 +1158,13 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     setDetailError(null);
     setDetail(null);
     (jwtMode
-      ? fetchStudentMobileCageShelfDetail(selectedShelf.shelveId, editMode)
+      ? fetchStudentMobileCageShelfDetail(selectedShelf.shelveId, editMode || bindMode)
       : fetchMobileCageShelfDetail(token!, selectedShelf.shelveId)
     )
       .then(setDetail)
       .catch((e) => setDetailError(e instanceof Error ? e.message : "加载笼架详情失败"))
       .finally(() => setDetailLoading(false));
-  }, [token, jwtMode, selectedShelf, screen, detailReloadKey, editMode]);
+  }, [token, jwtMode, selectedShelf, screen, detailReloadKey, editMode, bindMode]);
 
   const openShelf = (shelf: MobileCageShelfSummary) => {
     setSelectedShelf(shelf);
@@ -1134,11 +1195,34 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
 
   const handleCellClick = (cell: CageShelfCell) => {
     if (cell.empty) return;
+    // bind 模式：case2=绑定(需扫码) / case3=解绑(需点解绑按钮)
+    if (bindMode) {
+      const cellType = (cell as any).animalCageType;
+      if (cellType === 2) {
+        if (unbindActive) { toast.error("当前是解绑模式，请先关闭"); return; }
+        if (!bindScannedCode) {
+          toast.error("请先扫码获取笼盒编号");
+          return;
+        }
+        setBindSelectedKey(`${cell.x}:${cell.y}`);
+        setSelectedCell(cell);
+        return;
+      }
+      if (cellType === 3) {
+        if (!unbindActive) { toast.error("请先点击「解绑」按钮进入解绑模式"); return; }
+        setBindSelectedKey(`${cell.x}:${cell.y}`);
+        setSelectedCell(cell);
+        return;
+      }
+      toast.error(cellType === 1 ? "该笼位尚未预约" : cellType === 4 ? "该笼位状态异常" : "该笼位不可操作");
+      return;
+    }
     setSelectedCell(cell);
   };
 
-  // ── 扫码结果处理：匹配 grid → 加入缓存 ──
+  // ── 扫码结果处理 ──
   const handleScanResult = useCallback((text: string) => {
+    // 编辑模式：匹配 grid → 加入缓存
     if (!detail?.grid) return;
     const matched = detail.grid.find((cell) => {
       if (cell.empty) return false;
@@ -1181,6 +1265,15 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     setScanOpen(false);
   }, [detail]);
 
+  // ── 绑定模式扫码：直接存编码 ──
+  const handleBindScanResult = useCallback((text: string) => {
+    console.log("[bind-scan] 扫码结果:", text);
+    setBindScannedCode(text);
+    setBindSelectedKey(null);
+    setBindScanOpen(false);
+    toast.success("已扫码: " + text);
+  }, []);
+
   // ── 弹窗动作 → scanCache 同步（统一 tap/scan 为同一条缓存路径）──
   const syncDialogActionsToCache = useCallback((currentActions: Set<CageBoxAction>) => {
     if (!selectedCell) return;
@@ -1215,20 +1308,21 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     const roomId = String((meta as any)?.roomId ?? selectedShelf.roomId ?? "");
     const shelveId = String(selectedShelf.shelveId);
 
-    // 区分新增(0→1)和反选(1→0)：新增调API，反选后端仅支持 SET 无 UNSET
+    // 区分新增(0→1)和反选(1→0)
     const toAdd: { entry: ScanCacheEntry; action: CageBoxAction }[] = [];
-    let removeCount = 0;
-    for (const [key, entry] of scanCache) {
+    const toRemove: { entry: ScanCacheEntry; action: CageBoxAction }[] = [];
+    for (const [, entry] of scanCache) {
       for (const a of entry.currentActions) {
         if (!entry.initialActions.has(a)) toAdd.push({ entry, action: a });
       }
       for (const a of entry.initialActions) {
-        if (!entry.currentActions.has(a)) removeCount++;
+        if (!entry.currentActions.has(a)) toRemove.push({ entry, action: a });
       }
     }
-    if (toAdd.length === 0 && removeCount === 0) { setActionSubmitting(false); return; }
+    if (toAdd.length === 0 && toRemove.length === 0) { setActionSubmitting(false); return; }
 
     let okCount = 0, failCount = 0;
+    // 新增
     for (const { entry, action } of toAdd) {
       try {
         await executeCageBoxAction({ roomId, shelveId, cageBoxCode: entry.code, action });
@@ -1238,11 +1332,19 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
         failCount++;
       }
     }
+    // 取消（反选）
+    for (const { entry, action } of toRemove) {
+      const color = ACTION_CANCEL_COLOR[action];
+      try {
+        await cancelCageBoxColor(roomId, shelveId, entry.code, color);
+        okCount++;
+      } catch (e: any) {
+        toast.error(`${displayPosition(entry.cell.position)} 取消${action}: ${e?.message || "失败"}`);
+        failCount++;
+      }
+    }
     if (failCount === 0) {
-      const msgs: string[] = [];
-      if (okCount > 0) msgs.push(`已完成 ${okCount} 个操作`);
-      if (removeCount > 0) msgs.push(`${removeCount} 项标记移除（需管理员确认）`);
-      toast.success(msgs.join('，'));
+      toast.success(`已完成 ${okCount} 个操作`);
       setScanCache(new Map());
       setLastScannedKey(null);
       setDetailReloadKey((k) => k + 1);
@@ -1252,6 +1354,73 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     setActionSubmitting(false);
   }, [selectedShelf, detail, scanCache]);
 
+  // ── 绑定模式提交 ──
+  const handleBindConfirm = useCallback(async () => {
+    if (!selectedCell || !bindScannedCode || !selectedShelf) return;
+    const cellType = (selectedCell as any).animalCageType;
+    if (cellType !== 2) { toast.error("只能绑定到「已预约(空笼盒)」的笼位"); return; }
+
+    setBindSubmitting(true);
+    try {
+      const cageData: any = detail?.grid?.find((c) => c.x === selectedCell.x && c.y === selectedCell.y) ?? selectedCell;
+      const cageId = String((cageData as any).id ?? "");
+      const cageName = String((cageData as any).name ?? "");
+      const meta = detail?.shelfMeta;
+      const roomId = String((meta as any)?.roomId ?? selectedShelf.roomId ?? "");
+      const shelveId = String(selectedShelf.shelveId ?? "");
+
+      console.log("[bind-confirm] animalCageId:", cageId, "cageBoxCode:", bindScannedCode);
+
+      await bindCageBox(cageId, bindScannedCode);
+      await updateAnimalCage({
+        id: cageId, name: cageName, roomId, shelveId,
+        postionX: selectedCell.x, postionY: selectedCell.y,
+        qrcode: bindScannedCode, state: 3,
+      });
+      toast.success("绑定成功！");
+      setBindScannedCode("");
+      setBindSelectedKey(null);
+      setSelectedCell(null);
+      setDetailReloadKey((k) => k + 1); // 先刷新（bindMode 仍为 true 拉实时）
+      setBindMode(false); // 再退出
+    } catch (e: any) {
+      toast.error(e?.message || "绑定失败");
+    } finally {
+      setBindSubmitting(false);
+    }
+  }, [selectedCell, bindScannedCode, selectedShelf, detail]);
+
+  // ── 绑定模式解绑提交 ──
+  const handleUnbindConfirm = useCallback(async () => {
+    if (!selectedCell || !selectedShelf) return;
+    const cellType = (selectedCell as any).animalCageType;
+    if (cellType !== 3) { toast.error("只能解绑「已预约(饲养中)」的笼位"); return; }
+
+    setBindSubmitting(true);
+    try {
+      const cageData: any = detail?.grid?.find((c) => c.x === selectedCell.x && c.y === selectedCell.y) ?? selectedCell;
+      const cageId = String((cageData as any).id ?? "");
+      const cageName = String((cageData as any).name ?? "");
+      const meta = detail?.shelfMeta;
+      const roomId = String((meta as any)?.roomId ?? selectedShelf.roomId ?? "");
+      const shelveId = String(selectedShelf.shelveId ?? "");
+
+      await updateAnimalCage({
+        id: cageId, name: cageName, roomId, shelveId,
+        postionX: selectedCell.x, postionY: selectedCell.y,
+        qrcode: "", state: 2,
+      });
+      toast.success("解绑成功！");
+      setBindSelectedKey(null);
+      setSelectedCell(null);
+      setDetailReloadKey((k) => k + 1);
+    } catch (e: any) {
+      toast.error(e?.message || "解绑失败");
+    } finally {
+      setBindSubmitting(false);
+    }
+  }, [selectedCell, selectedShelf, detail]);
+
   // ── 返回列表：检查未保存修改 ──
   const goBackToList = useCallback(() => {
     if (hasChanges) {
@@ -1259,6 +1428,12 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     }
     setScanCache(new Map());
     setLastScannedKey(null);
+    setEditMode(false);
+    // 绑定模式退出清空
+    setBindMode(false);
+    setBindScannedCode("");
+    setBindSelectedKey(null);
+    setUnbindActive(false);
     setScreen("list");
     setSelectedCell(null);
     setDetailError(null);
@@ -1335,6 +1510,14 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               onToggleAction={toggleScanAction}
               onRemoveCache={removeScanCache}
               editMode={editMode}
+              bindMode={bindMode}
+              bindSelectedKey={bindSelectedKey}
+              bindScanOpen={bindScanOpen}
+              onOpenBindScan={() => setBindScanOpen(true)}
+              onCloseBindScan={() => setBindScanOpen(false)}
+              onBindScanResult={handleBindScanResult}
+              unbindActive={unbindActive}
+              onToggleUnbind={() => { setUnbindActive((v) => !v); setBindSelectedKey(null); setSelectedCell(null); }}
               onToggleRealtime={async () => {
                 const next = !editMode;
                 // 退出编辑模式且有未提交修改 → 弹窗确认
@@ -1352,11 +1535,19 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                   setLastScannedKey(null);
                 }
               }}
+              onToggleBindMode={() => {
+                if (bindMode) {
+                  setBindMode(false); setBindScannedCode(""); setBindSelectedKey(null);
+                  setSelectedCell(null); setUnbindActive(false);
+                } else {
+                  setBindMode(true);
+                }
+              }}
             />
           </div>
         )}
 
-        {selectedCell && selectedShelf && (
+        {selectedCell && selectedShelf && !bindMode && (
           <MobileCageCellDetailDialog
             token={token}
             jwtMode={jwtMode}
@@ -1379,6 +1570,52 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
           apiFn={specialStatusApiFn}
           variant={staffSpecialStatusView ? "staff" : "student"}
         />
+
+        {/* ── 绑定模式确认栏：case2=绑定 / case3=解绑 ── */}
+        {bindMode && selectedCell && (() => {
+          const cellType = (selectedCell as any).animalCageType;
+          const isBind = cellType === 2 && bindScannedCode && !unbindActive;
+          const isUnbind = cellType === 3 && unbindActive;
+          if (!isBind && !isUnbind) return null;
+          const accentColor = isBind ? "#2563eb" : "#dc2626";
+          const label = isBind ? "绑定确认" : "解绑确认";
+          const actionLabel = isBind ? "确认绑定" : "确认解绑";
+          const handler = isBind ? handleBindConfirm : handleUnbindConfirm;
+          return (
+            <div className="fixed bottom-0 left-0 right-0 z-[var(--z-modal)] p-3"
+              style={{ background: "rgba(255,255,255,0.96)", borderTop: "1px solid var(--app-color-border)" }}>
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-[var(--app-color-text-secondary)]">{label}</div>
+                  <div className="text-sm font-semibold text-[var(--app-color-text-primary)]">
+                    {isBind
+                      ? `笼盒 ${bindScannedCode} → 笼位 ${selectedCell.position}`
+                      : `笼位 ${selectedCell.position} 解绑并恢复空笼盒`}
+                  </div>
+                  {(selectedCell as any).piName && (
+                    <div className="text-xs text-[var(--app-color-text-secondary)]">
+                      PI: {(selectedCell as any).piName}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={() => { setBindSelectedKey(null); setSelectedCell(null); }}
+                    className="px-4 py-2 rounded-[var(--app-radius-container)] text-sm text-[var(--app-color-text-secondary)] bg-[var(--app-color-surface-raised)]">
+                    取消
+                  </button>
+                  <button
+                    onClick={handler}
+                    disabled={bindSubmitting}
+                    className="px-4 py-2 rounded-[var(--app-radius-container)] text-sm text-white font-semibold disabled:opacity-50"
+                    style={{ background: accentColor }}>
+                    {bindSubmitting ? "处理中..." : actionLabel}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </CageColorProvider>
   );

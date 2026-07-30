@@ -15,6 +15,9 @@ public class AgvSpatialElement {
     private String semanticTags;   // JSON array ["充电","作业"]
     private String color;
     private Boolean isActive;
+    private Double confidence;   // 行为确认置信度 0~1
+    private Integer hitCount;    // 被分析命中的总次数
+    private String source;       // AUTO | BEHAVIOR | MANUAL
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -42,6 +45,12 @@ public class AgvSpatialElement {
     public void setColor(String color) { this.color = color; }
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+    public Double getConfidence() { return confidence; }
+    public void setConfidence(Double confidence) { this.confidence = confidence; }
+    public Integer getHitCount() { return hitCount; }
+    public void setHitCount(Integer hitCount) { this.hitCount = hitCount; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

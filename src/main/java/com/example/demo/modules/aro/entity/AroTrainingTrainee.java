@@ -17,5 +17,7 @@ public class AroTrainingTrainee {
     private String userId;
     private String roomIdsJson;
     private String roomsJson;
+    private LocalDateTime reviewedAt;
+    private LocalDateTime scoredAt;
     private LocalDateTime cachedAt;
 }

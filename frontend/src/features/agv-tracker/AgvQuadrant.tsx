@@ -1,6 +1,10 @@
+import { useRef, useState } from "react";
 import AgvQuadrantCanvas from "./AgvQuadrantCanvas";
+import AgvPlaybackTimeline from "./AgvPlaybackTimeline";
 import type { TrailPoint } from "./useAgvTrailRef";
-import { Zap, Wifi, WifiOff, AlertTriangle, Route, MoveRight, Circle, Play, Pause, ArrowUp, ArrowDown, Crosshair, RotateCw, Gauge, ArrowUpRight, ArrowLeft, Rewind, Clock } from "lucide-react";
+import type { HistoryPlaybackResponse } from "@/api/domains/agv.api";
+import { ACTIVITY_COLORS } from "@/api/domains/agv-analysis.api";
+import { Zap, Wifi, WifiOff, AlertTriangle, Route, MoveRight, Circle, Play, Pause, ArrowUp, ArrowDown, Crosshair, RotateCw, Gauge, ArrowUpRight, ArrowLeft, Rewind, X, Clock } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { updateCoordConfig } from "@/api/domains/agv.api";
 
@@ -21,14 +25,35 @@ interface Props {
   errors: string[] | null; warnings: string[] | null;
   diChannels?: { id: number; source: string; status: boolean; valid: boolean }[] | null;
   coordRotationDeg?: number;
-  onTimeWindow?: () => void;
-  timeWindowActive?: boolean;
-  /** Activity segments for trail coloring on canvas */
-  activitySegments?: { startTime: string; endTime: string; activityType: string }[];
   /** Zone polygons to overlay on canvas */
   zoneOverlays?: { id: number; polygonJson: string; color: string; name: string }[];
+  /** Route paths to overlay on canvas */
+  routeOverlays?: { id: number; pathJson: string; color: string; name: string; routeType: string }[];
+  /** Route mode: 30s fading trail */
+  routeMode?: boolean;
+  /** Vehicle-follow mode: camera locks to vehicle, heading = up */
+  followMode?: boolean;
   /** Transition markers for canvas */
   transitionMarkers?: { x: number; y: number; label: string }[];
+  /** Current activity type from analysis (e.g. "CHARGING"), overrides raw telemetry status */
+  currentActivity?: string;
+  /** 地图选点模式 */
+  pickMode?: boolean;
+  onPointPick?: (x: number, y: number) => void;
+  // ── History playback props (single-quadrant only) ──
+  playbackActive?: boolean;
+  playbackData?: HistoryPlaybackResponse | null;
+  playbackPlaying?: boolean;
+  playbackProgress?: number;
+  playbackSpeed?: number;
+  playbackLoading?: boolean;
+  playbackError?: string | null;
+  onStartPlayback?: (ip: string, from: string, to: string) => void;
+  onClearPlayback?: () => void;
+  onPlaybackPlay?: () => void;
+  onPlaybackPause?: () => void;
+  onPlaybackProgress?: (p: number) => void;
+  onPlaybackSpeed?: (s: number) => void;
 }
 
 // ── Action state derivation ──
@@ -53,10 +78,21 @@ function deriveAction(
   charging: boolean | null, blocked: boolean | null, emergency: boolean | null,
   jackState: number | null, forkMoving: boolean,
   reversing: boolean, online: boolean,
+  currentActivity?: string,
 ): { state: ActionState; label: string; icon: React.ReactNode } {
   if (!online) return { state: "idle", label: "已休眠", icon: <Circle size={16} className="text-gray-400" /> };
   if (emergency) return { state: "emergency", label: "急停!", icon: <AlertTriangle size={16} className="text-red-500" /> };
   if (blocked) return { state: "blocked", label: "阻挡", icon: <AlertTriangle size={16} className="text-red-500" /> };
+  // Use analysis-derived activity if available (maps to our analysis rules)
+  if (currentActivity === "CHARGING") return { state: "charging", label: "充电中", icon: <Zap size={16} className="text-yellow-500" /> };
+  if (currentActivity === "STATION_DWELL") return { state: "paused", label: "站点停靠", icon: <Circle size={16} className="text-amber-400" fill="currentColor" /> };
+  if (currentActivity === "STATION_WORK") return { state: "lifting", label: "站点作业", icon: <ArrowUp size={16} className="text-purple-400" /> };
+  if (currentActivity === "TRANSPORT") return { state: "moving", label: "运输中", icon: <Play size={16} className="text-green-500" /> };
+  if (currentActivity === "NAVIGATING") return { state: "moving", label: "寻路中", icon: <Play size={16} className="text-blue-400" /> };
+  if (currentActivity === "REST_STATION") return { state: "idle", label: "休息站", icon: <Circle size={16} className="text-teal-400" fill="currentColor" /> };
+  if (currentActivity === "PATH_WAIT") return { state: "paused", label: "路径等待", icon: <Pause size={16} className="text-gray-400" /> };
+  if (currentActivity === "REVERSE_MANEUVER") return { state: "reversing", label: "倒车调头", icon: <Rewind size={16} className="text-orange-500" /> };
+  // Fallback: raw telemetry
   if (charging) return { state: "charging", label: "充电中", icon: <Zap size={16} className="text-yellow-500" /> };
   if (taskStatus === 3) return { state: "paused", label: "暂停中", icon: <Pause size={16} className="text-yellow-500" /> };
   if (taskStatus === 6) return { state: "error", label: "错误", icon: <AlertTriangle size={16} className="text-red-500" /> };
@@ -85,7 +121,7 @@ function JackIcon({ enable, state, isFull, mode }: { enable: boolean | null; sta
   );
 }
 
-const FORK_MAX_M = 2.0; // max fork height in meters for visual bar
+const FORK_MAX_M = 0.1; // max fork height in meters for visual bar
 
 export default function AgvQuadrant(props: Props) {
   const {
@@ -96,11 +132,15 @@ export default function AgvQuadrant(props: Props) {
     odo, rssi, driverEmc, forkHeight, forkInPlace,
     jackEnable, jackState, jackIsFull, jackMode, jackErrorCode,
     errors, warnings, diChannels, coordRotationDeg,
-    onTimeWindow, timeWindowActive,
-    activitySegments, zoneOverlays, transitionMarkers,
+    zoneOverlays, routeOverlays, routeMode, followMode, transitionMarkers, currentActivity,
+    pickMode, onPointPick,
+    playbackActive, playbackData, playbackPlaying, playbackProgress, playbackSpeed,
+    playbackLoading, playbackError,
+    onStartPlayback, onClearPlayback, onPlaybackPlay, onPlaybackPause, onPlaybackProgress, onPlaybackSpeed,
   } = props;
 
   const qc = useQueryClient();
+  const [showTimeline, setShowTimeline] = useState(false);
   const pct = battery != null ? Math.round(battery * 100) : null;
   const barColor = pct != null
     ? (pct <= 20 ? "#ef4444" : pct <= 50 ? "#f59e0b" : "#22c55e") : "#9ca3af";
@@ -124,8 +164,11 @@ export default function AgvQuadrant(props: Props) {
       reversing = (moveDirX * headingX + moveDirY * headingY) < -0.3;
     }
   }
-  const forkMoving = jackState === 2;
-  const action = deriveAction(speed, taskStatus, charging, blocked, emergency, jackState, forkMoving, reversing, online);
+  // 叉臂运动检测：对比当前高度与上次记录
+  const prevForkRef = useRef(forkHeight);
+  const forkMoving = forkHeight != null && prevForkRef.current != null && Math.abs(forkHeight - prevForkRef.current!) > 0.0005;
+  prevForkRef.current = forkHeight;
+  const action = deriveAction(speed, taskStatus, charging, blocked, emergency, jackState, forkMoving, reversing, online, currentActivity);
   const hasAlerts = (errors && errors.length > 0) || (warnings && warnings.length > 0);
   const forkPct = forkHeight != null ? Math.min(1, Math.max(0, forkHeight / FORK_MAX_M)) * 100 : 0;
 
@@ -139,15 +182,14 @@ export default function AgvQuadrant(props: Props) {
         <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: online ? color : "#9ca3af" }} />
         <span className="text-[11px] font-semibold text-[var(--app-color-text-primary)]">{label}</span>
         {online ? <Wifi size={11} className="text-green-500 shrink-0" /> : <WifiOff size={11} className="text-red-400 shrink-0" />}
-        {onTimeWindow && (
-          <button onClick={onTimeWindow}
-            className={`p-0.5 rounded hover:bg-[var(--app-color-surface-hover)] transition-colors ${
-              timeWindowActive ? "text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"
-            }`}
-            title="选择时间窗口回放">
-            <Clock size={11} />
-          </button>
-        )}
+        {/* 回放时间线开关 */}
+        <button onClick={() => setShowTimeline(v => !v)}
+          className={`p-0.5 rounded hover:bg-[var(--app-color-surface-hover)] transition-colors ${
+            showTimeline || playbackActive ? "text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)]"
+          }`}
+          title="历史回放">
+          <Clock size={11} />
+        </button>
         <button onClick={doRotate} className="p-0.5 rounded hover:bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]" title={`旋转坐标系: ${coordRotationDeg ?? 0}°`}>
           <RotateCw size={10} />
         </button>
@@ -173,7 +215,7 @@ export default function AgvQuadrant(props: Props) {
         {/* Center: speed + angle + odo — primary data */}
         <div className="flex-1 flex items-center justify-center gap-2">
           <span className="text-xl font-black tabular-nums tracking-tight" style={{ color }}>
-            {speed != null ? (speed < 0.005 ? "0.00" : speed.toFixed(2)) : "—.—"}
+            {speed != null ? (speed < 0.005 ? "0.00" : speed.toFixed(2)) : "0.00"}
           </span>
           <span className="text-[9px] text-[var(--app-color-text-tertiary)]">m/s</span>
 
@@ -208,17 +250,25 @@ export default function AgvQuadrant(props: Props) {
         <AgvQuadrantCanvas ip={ip} trail={trail}
           currentX={x} currentY={y} currentAngle={angle}
           online={online} color={color} dwellSpots={dwellSpots} coordRotationDeg={coordRotationDeg}
-          activitySegments={activitySegments} zoneOverlays={zoneOverlays} transitionMarkers={transitionMarkers} />
+          activitySegments={playbackActive && playbackData ? playbackData.segments : undefined}
+          zoneOverlays={zoneOverlays} routeOverlays={routeOverlays} routeMode={routeMode} followMode={followMode} transitionMarkers={transitionMarkers}
+          forkHeight={forkHeight} jackState={jackState} jackIsFull={jackIsFull}
+          pickMode={pickMode} onPointPick={onPointPick}
+          playbackActive={playbackActive}
+          playbackData={playbackData ?? null}
+          playbackTrail={playbackActive && playbackData ? playbackData.trail : null}
+          playbackProgress={playbackProgress}
+        />
 
         {/* Top-left: fork height dot indicator */}
         <div className="absolute top-2 left-2 flex items-center gap-2 pointer-events-none bg-[var(--app-color-surface-container)]/80 rounded px-2 py-1.5">
           {/* Vertical track + dot */}
-          <div className="relative w-2 h-20 rounded-full bg-[var(--app-color-border-default)]">
-            <div className="absolute left-1/2 -translate-x-1/2 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-300"
-              style={{ bottom: `${forkPct}%`, transform: `translate(-50%, 50%)`, backgroundColor: "#f59e0b" }} />
+          <div className="relative w-4 h-40 rounded-full bg-[var(--app-color-border-default)]">
+            <div className="absolute left-1/2 -translate-x-1/2 w-8 h-8 rounded-full border-4 border-white shadow-md"
+              style={{ bottom: `${forkPct}%`, transform: `translate(-50%, 50%)`, backgroundColor: "#f59e0b", transition: "bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }} />
           </div>
           <div className="flex flex-col">
-            <span className="text-xs font-bold text-[var(--app-color-text-primary)] tabular-nums">{forkHeight != null ? forkHeight.toFixed(2) : "—.—"}</span>
+            <span className="text-xs font-bold text-[var(--app-color-text-primary)] tabular-nums">{forkHeight != null ? forkHeight.toFixed(4) : "—.——"}</span>
             <span className="text-[10px] text-[var(--app-color-text-tertiary)]">m</span>
           </div>
         </div>
@@ -240,9 +290,10 @@ export default function AgvQuadrant(props: Props) {
           <span className="text-[12px] font-bold">{action.label}</span>
         </div>
 
-        {/* Bottom-right: station */}
+        {/* Bottom-right: station — shift up when timeline shown */}
         {station && (
-          <div className="absolute bottom-1 right-2 text-[10px] text-[var(--app-color-accent)] font-semibold bg-[var(--app-color-accent-soft)] px-1.5 py-0.5 rounded pointer-events-none">
+          <div className="absolute text-[10px] text-[var(--app-color-accent)] font-semibold bg-[var(--app-color-accent-soft)] px-1.5 py-0.5 rounded pointer-events-none"
+            style={{ bottom: (showTimeline || playbackActive) ? 100 : 4, right: 8 }}>
             {station}
           </div>
         )}
@@ -265,9 +316,12 @@ export default function AgvQuadrant(props: Props) {
 
         {/* Bottom-left: coordinates + trail count */}
         <div className="absolute bottom-1 left-2 text-[10px] text-[var(--app-color-text-primary)] tabular-nums pointer-events-none bg-[var(--app-color-surface-container)]/80 rounded px-1.5 py-0.5">
-          {x != null && y != null ? `(${x.toFixed(2)}, ${y.toFixed(2)})` : "—"} · {trail.length}点
-          {avgSpeed != null && ` · 均${avgSpeed.toFixed(2)}m/s`}
-          {maxSpeed != null && ` · 峰${maxSpeed.toFixed(2)}m/s`}
+          {playbackActive && playbackData
+            ? `${playbackData.totalPoints}点 · 回放`
+            : (x != null && y != null ? `(${x.toFixed(2)}, ${y.toFixed(2)})` : "—") + ` · ${trail.length}点`
+          }
+          {!playbackActive && avgSpeed != null && ` · 均${avgSpeed.toFixed(2)}m/s`}
+          {!playbackActive && maxSpeed != null && ` · 峰${maxSpeed.toFixed(2)}m/s`}
         </div>
 
         {/* Alerts panel (bottom-right, below station) */}
@@ -280,6 +334,45 @@ export default function AgvQuadrant(props: Props) {
               <span key={"w" + i} className="text-[8px] text-orange-500 bg-orange-50 px-1 rounded">{w}</span>
             ))}
           </div>
+        )}
+
+        {/* ── History playback: loading overlay ── */}
+        {playbackLoading && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--app-color-surface-container)]/60 backdrop-blur-sm pointer-events-none">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-lg">
+              <span className="text-xs text-[var(--app-color-text-secondary)]">加载回放数据...</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── History playback: error banner ── */}
+        {playbackError && (
+          <div className="absolute top-8 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500 text-white text-[10px] font-medium shadow-lg">
+            <AlertTriangle size={12} />
+            <span>{playbackError}</span>
+            <button onClick={onClearPlayback} className="text-white/80 hover:text-white"><X size={11} /></button>
+          </div>
+        )}
+
+        {/* ── Day timeline + playback controls (toggle on/off) ── */}
+        {(showTimeline || playbackActive) && (
+        <div className="absolute bottom-1 left-2 right-2 z-20">
+          <AgvPlaybackTimeline
+            ip={ip}
+            playbackActive={!!playbackActive}
+            playbackData={playbackData ?? null}
+            playbackPlaying={!!playbackPlaying}
+            playbackProgress={playbackProgress ?? 1}
+            playbackSpeed={playbackSpeed ?? 1}
+            playbackLoading={!!playbackLoading}
+            onStartPlayback={onStartPlayback ?? (() => {})}
+            onClearPlayback={onClearPlayback ?? (() => {})}
+            onPlaybackPlay={onPlaybackPlay ?? (() => {})}
+            onPlaybackPause={onPlaybackPause ?? (() => {})}
+            onPlaybackProgress={onPlaybackProgress ?? (() => {})}
+            onPlaybackSpeed={onPlaybackSpeed ?? (() => {})}
+          />
+        </div>
         )}
       </div>
     </div>

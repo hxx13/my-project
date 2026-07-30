@@ -238,9 +238,9 @@ export function injectGroupBadges(groups: AdminSidebarNavGroup[]): AdminSidebarN
   });
 }
 
-/** 学生审核入口角标：物资待审 + 延迟免冻结待审（与 MaterialReviewPage 两 Tab 各自标题计数同源，相加=侧栏总数） */
-export function formatStudentReviewBadgeCount(material: number, scanDelay: number): string | undefined {
-  const total = Math.max(0, material) + Math.max(0, scanDelay);
+/** 学生审核入口角标：物资待审 + 延迟免冻结待审 + 培训审批待处理 */
+export function formatStudentReviewBadgeCount(material: number, scanDelay: number, training?: number): string | undefined {
+  const total = Math.max(0, material) + Math.max(0, scanDelay) + Math.max(0, training ?? 0);
   const text = formatBadgeCount(total);
   return text || undefined;
 }
@@ -260,10 +260,10 @@ export function patchStudentReviewNavBadges(
   }));
 }
 
-/** 学生审核入口：物资待审 + 延迟免冻结待审（侧栏显示总数，页面内各 tab 标题独立计数） */
-function studentReviewBadgeText(pending: PendingBadges | null): string | undefined {
+/** 学生审核入口：物资待审 + 延迟免冻结待审 + 培训审批（侧栏显示总数，页面内各 tab 标题独立计数） */
+function studentReviewBadgeText(pending: PendingBadges | null, trainingOverride?: number): string | undefined {
   if (!pending) return undefined;
-  return formatStudentReviewBadgeCount(pending.processMaterial ?? 0, pending.processScanDelay ?? 0);
+  return formatStudentReviewBadgeCount(pending.processMaterial ?? 0, pending.processScanDelay ?? 0, trainingOverride);
 }
 
 function isMaterialReviewNavPath(path: string): boolean {

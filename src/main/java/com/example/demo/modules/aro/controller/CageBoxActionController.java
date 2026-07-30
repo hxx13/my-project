@@ -109,6 +109,103 @@ public class CageBoxActionController {
         return Result.success(result);
     }
 
+    // ── 笼盒关联笼位（2026-07-30 新增）──
+
+    @PostMapping("/bind")
+    @Operation(summary = "扫码后将笼盒关联到指定笼位")
+    public Result<Map<String, Object>> bind(@RequestBody Map<String, Object> body,
+                                            HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) return Result.fail(401, "未登录");
+
+        String animalCageIdStr = str(body, "animalCageId");
+        String cageBoxCode = str(body, "cageBoxCode");
+        if (anyBlank(animalCageIdStr, cageBoxCode))
+            return Result.fail(400, "animalCageId, cageBoxCode 均为必填");
+
+        Long animalCageId = toLong(animalCageIdStr);
+        if (animalCageId == null) return Result.fail(400, "animalCageId 格式错误");
+
+        boolean ok = aroService.saveCageRelatedBox(animalCageId, cageBoxCode);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("animalCageId", animalCageId);
+        result.put("cageBoxCode", cageBoxCode);
+        result.put("success", ok);
+        log.info("[cage-box-bind] user={} animalCageId={} cageBoxCode={} ok={}",
+                user.getId(), animalCageId, cageBoxCode, ok);
+        return ok ? Result.success(result) : Result.error("ARO 笼盒关联失败，请查看日志");
+    }
+
+    // ── 取消笼盒颜色/状态（2026-07-30 新增）──
+
+    @PostMapping("/cancel")
+    @Operation(summary = "取消笼盒颜色标记（反选编辑模式中的状态）")
+    public Result<Map<String, Object>> cancel(@RequestBody Map<String, Object> body,
+                                              HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) return Result.fail(401, "未登录");
+
+        String roomIdStr = str(body, "roomId");
+        String shelveIdStr = str(body, "shelveId");
+        String cageBoxCode = str(body, "cageBoxCode");
+        String colorStr = str(body, "color");
+        if (anyBlank(roomIdStr, shelveIdStr, cageBoxCode, colorStr))
+            return Result.fail(400, "roomId, shelveId, cageBoxCode, color 均为必填");
+
+        Long roomId = toLong(roomIdStr);
+        Long shelveId = toLong(shelveIdStr);
+        Integer color = intOrNull(body, "color");
+        if (roomId == null || shelveId == null) return Result.fail(400, "roomId/shelveId 格式错误");
+        if (color == null) return Result.fail(400, "color 格式错误");
+
+        // 解析 cageBoxCode → cageBoxId
+        Map<String, Long> ids = aroService.resolveCageBoxIds(roomId, shelveId, cageBoxCode);
+        if (ids.isEmpty()) return Result.error("在指定笼架未找到笼盒 " + cageBoxCode);
+
+        Long cageBoxId = ids.get("cageBoxId");
+        boolean ok = aroService.cancelCageBoxColor(cageBoxId, color);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("cageBoxCode", cageBoxCode);
+        result.put("cageBoxId", String.valueOf(cageBoxId));
+        result.put("color", color);
+        result.put("success", ok);
+        log.info("[cage-box-cancel] user={} cageBoxId={} color={} ok={}",
+                user.getId(), cageBoxId, color, ok);
+        return ok ? Result.success(result) : Result.error("ARO 取消颜色失败，请查看日志");
+    }
+
+    // ── 查询课题组成员（2026-07-30 新增）──
+
+    @PostMapping("/members")
+    @Operation(summary = "扫码后查询笼盒对应的课题组成员（用于绑定前校验）")
+    public Result<Map<String, Object>> members(@RequestBody Map<String, Object> body,
+                                               HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) return Result.fail(401, "未登录");
+
+        String cageBoxCode = str(body, "cageBoxCode");
+        if (cageBoxCode == null || cageBoxCode.isBlank())
+            return Result.fail(400, "cageBoxCode 必填");
+
+        // 扫码结果即 cageBoxId（绑定模式下笼盒尚未上架，直接当 ID 用）
+        Long cageBoxId;
+        try {
+            cageBoxId = Long.parseLong(cageBoxCode.trim());
+        } catch (NumberFormatException e) {
+            return Result.error("笼盒编号格式异常: " + cageBoxCode);
+        }
+
+        List<Map<String, Object>> members = aroService.getProjectGroupMembersByCageBoxId(cageBoxId);
+        log.info("[cage-box-members] user={} cageBoxCode={} → cageBoxId={} memberCount={}",
+                user.getId(), cageBoxCode, cageBoxId, members.size());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("cageBoxCode", cageBoxCode);
+        result.put("cageBoxId", cageBoxId);
+        result.put("members", members);
+        return Result.success(result);
+    }
+
     // ── helpers ──
 
     enum Action { DIVIDE, SPECIAL_BREEDING, HEALTH_CHECK }

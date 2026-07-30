@@ -171,6 +171,46 @@ async function fetchScanDelayOptions() {
   return unwrap(res.data) || [];
 }
 
+/** 获取待审核培训场次及学员 */
+async function fetchPendingTrainingSessions() {
+  const res = await springAuth.springRequest({
+    url: '/api/admin/aro-training/sessions/pending',
+    method: 'GET',
+    data: {},
+  });
+  return unwrap(res.data) || [];
+}
+
+/** 审批学员 state: 1=通过, 2=拒绝 */
+async function auditTrainee(examSignId, state) {
+  const res = await springAuth.springRequest({
+    url: '/api/admin/aro-training/audit',
+    method: 'POST',
+    data: { examSignId, state },
+  });
+  return unwrap(res.data);
+}
+
+/** 评分学员 state: 1=合格, 2=不合格 */
+async function scoreTrainee(examSignId, state) {
+  const res = await springAuth.springRequest({
+    url: '/api/admin/aro-training/score',
+    method: 'POST',
+    data: { examSignId, state },
+  });
+  return unwrap(res.data);
+}
+
+/** 获取收藏列表 */
+async function fetchAroFavorites() {
+  const res = await springAuth.springRequest({
+    url: '/api/admin/aro-training/favorites',
+    method: 'GET',
+    data: {},
+  });
+  return unwrap(res.data) || [];
+}
+
 module.exports = {
   fetchPendingMaterialRequests,
   fetchFinishedMaterialRequests,
@@ -189,4 +229,8 @@ module.exports = {
   reviewScanDelayRequest,
   resolveMaterialDemand,
   toggleDemandEntryVisible,
+  fetchPendingTrainingSessions,
+  auditTrainee,
+  scoreTrainee,
+  fetchAroFavorites,
 };

@@ -99,6 +99,16 @@ public interface AgvTrajectoryMapper {
             "WHERE recorded_at >= #{since} AND x IS NOT NULL AND y IS NOT NULL")
     List<Map<String, Object>> selectFleetTrajectory(@Param("since") LocalDateTime since);
 
+    /** 分析专用：只查 4 列，避免 SELECT * 拉 TEXT 大字段 */
+    @Select("SELECT x, y, recorded_at, station FROM agv_trajectory " +
+            "WHERE robot_ip = #{ip} AND recorded_at BETWEEN #{from} AND #{to} " +
+            "AND x IS NOT NULL AND y IS NOT NULL " +
+            "ORDER BY recorded_at ASC LIMIT #{limit}")
+    List<Map<String, Object>> selectTrajectoryAnalytics(@Param("ip") String ip,
+                                                         @Param("from") LocalDateTime from,
+                                                         @Param("to") LocalDateTime to,
+                                                         @Param("limit") int limit);
+
     /** 查询历史轨迹中所有不同的站点（用于自动生成空间元素候选项） */
     @Select("<script>SELECT DISTINCT station, map_name FROM agv_trajectory WHERE station IS NOT NULL AND station != ''" +
             "<if test='mapName != null'> AND map_name = #{mapName}</if>" +
@@ -108,4 +118,38 @@ public interface AgvTrajectoryMapper {
     /** 查询某站点最近的坐标样本（用于生成包围盒 polygon） */
     @Select("SELECT x, y FROM agv_trajectory WHERE station = #{station} AND x IS NOT NULL AND y IS NOT NULL ORDER BY recorded_at DESC LIMIT #{limit}")
     List<Map<String, Object>> selectStationCoords(@Param("station") String station, @Param("limit") int limit);
+
+    // ── 小时级预聚合 ──
+
+    @Select("SELECT * FROM agv_analytics_hourly WHERE robot_ip = #{ip} AND hour_bucket BETWEEN #{from} AND #{to} ORDER BY hour_bucket")
+    List<Map<String, Object>> selectAnalyticsHourly(@Param("ip") String ip,
+                                                     @Param("from") LocalDateTime from,
+                                                     @Param("to") LocalDateTime to);
+
+    @Select("SELECT * FROM agv_analytics_hourly WHERE robot_ip = #{ip} AND hour_bucket = #{hour}")
+    Map<String, Object> selectAnalyticsHour(@Param("ip") String ip, @Param("hour") LocalDateTime hour);
+
+    @Insert("INSERT INTO agv_analytics_hourly (robot_ip, hour_bucket, sample_count, moving_count, total_distance_m, " +
+            "first_x, first_y, last_x, last_y, min_x, max_x, min_y, max_y, speed_bins_json, station_json, hop_json, accel_json) " +
+            "VALUES (#{ip}, #{hour}, #{sampleCount}, #{movingCount}, #{totalDistanceM}, " +
+            "#{firstX}, #{firstY}, #{lastX}, #{lastY}, #{minX}, #{maxX}, #{minY}, #{maxY}, " +
+            "#{speedBinsJson}, #{stationJson}, #{hopJson}, #{accelJson}) " +
+            "ON DUPLICATE KEY UPDATE sample_count=VALUES(sample_count), moving_count=VALUES(moving_count), " +
+            "total_distance_m=VALUES(total_distance_m), first_x=VALUES(first_x), first_y=VALUES(first_y), " +
+            "last_x=VALUES(last_x), last_y=VALUES(last_y), min_x=VALUES(min_x), max_x=VALUES(max_x), " +
+            "min_y=VALUES(min_y), max_y=VALUES(max_y), speed_bins_json=VALUES(speed_bins_json), " +
+            "station_json=VALUES(station_json), hop_json=VALUES(hop_json), accel_json=VALUES(accel_json)")
+    int upsertAnalyticsHourly(@Param("ip") String ip,
+                               @Param("hour") LocalDateTime hour,
+                               @Param("sampleCount") int sampleCount,
+                               @Param("movingCount") int movingCount,
+                               @Param("totalDistanceM") double totalDistanceM,
+                               @Param("firstX") Double firstX, @Param("firstY") Double firstY,
+                               @Param("lastX") Double lastX, @Param("lastY") Double lastY,
+                               @Param("minX") Double minX, @Param("maxX") Double maxX,
+                               @Param("minY") Double minY, @Param("maxY") Double maxY,
+                               @Param("speedBinsJson") String speedBinsJson,
+                               @Param("stationJson") String stationJson,
+                               @Param("hopJson") String hopJson,
+                               @Param("accelJson") String accelJson);
 }

@@ -19,6 +19,15 @@ export interface AgvRobotStatus {
   DI?: { id: number; source: string; status: boolean; valid: boolean }[];
 }
 
+export interface AgvRecentResponse {
+  [ip: string]: { x: number; y: number; angle: number; battery: number; charging: number; task_status: number; station: string; map_name: string; recorded_at: string }[];
+}
+
+export async function fetchAgvRecent(seconds = 2): Promise<AgvRecentResponse> {
+  const res = await authHttp.get<{ data: AgvRecentResponse }>(`/v1/agv/recent?seconds=${seconds}`);
+  return res.data.data;
+}
+
 export interface AgvCurrentResponse {
   robots: Record<string, { status: AgvRobotStatus; last_polled_at: string }>;
   count: number; server_time: string;
@@ -49,11 +58,25 @@ export interface AgvTrajectoryRow {
 }
 
 export interface AgvAnalyticsResult {
-  overview: Record<string, unknown>;
-  speedHistogram: { label: string; count: number }[];
-  stationRanking: { station: string; count: number; totalSec: number; avgSec: number }[];
-  stationHops: { from: string; to: string; durationSec: number; distance: number }[];
-  accelEvents: { ts: string; mps2: number; type: string }[];
+  overview: {
+    transportTrips: number;
+    totalDistanceKm: number;
+    totalTimeHr: number;
+    avgSpeedMps: number;
+    avgBattery: number;
+    totalSamples: number;
+    utilization: number;
+    pathEfficiency?: number;
+  };
+  timeDistribution: { category: string; totalSec: number; percent: number }[];
+  stationRanking: { station: string; stationName?: string; count: number; totalSec: number; avgSec: number }[];
+  anomalies: {
+    emergencyCount: number;
+    blockedCount: number;
+    relocCount: number;
+    totalAnomalies: number;
+  };
+  speedHistogram?: { label: string; count: number }[];
 }
 
 // ---- API functions ----
@@ -83,7 +106,7 @@ export async function fetchAgvTrajectory(ip: string, from: string, to: string, l
 }
 
 export async function fetchAgvAnalytics(ip: string, from: string, to: string): Promise<AgvAnalyticsResult> {
-  const res = await authHttp.get<{ data: AgvAnalyticsResult }>(`/v1/agv/analytics/${ip}?from=${from}&to=${to}&sampleLimit=10000`);
+  const res = await authHttp.get<{ data: AgvAnalyticsResult }>(`/v1/agv/analytics/${ip}?from=${from}&to=${to}`);
   return res.data.data;
 }
 
@@ -94,4 +117,36 @@ export async function fetchCoordConfigs(): Promise<Record<string, number>> {
 
 export async function updateCoordConfig(ip: string, deg: number): Promise<void> {
   await authHttp.put(`/v1/agv/coord-config/${ip}?deg=${deg}`);
+}
+
+// ── History Playback ──
+
+export interface HistoryPlaybackResponse {
+  robotIp: string;
+  from: string;
+  to: string;
+  totalPoints: number;
+  trail: AgvTrajectoryRow[];
+  segments: {
+    id: number;
+    robotIp: string;
+    startTime: string;
+    endTime: string;
+    activityType: string;
+    zoneId?: number;
+    startX?: number; startY?: number; endX?: number; endY?: number;
+    avgX?: number; avgY?: number;
+    distanceM?: number; batteryDelta?: number;
+    source: string;
+    confidence: number;
+    ruleId?: number; correctionId?: number;
+    metadataJson?: string;
+  }[];
+}
+
+export async function fetchHistoryPlayback(ip: string, from: string, to: string): Promise<HistoryPlaybackResponse> {
+  const res = await authHttp.get<{ data: HistoryPlaybackResponse }>(
+    `/v1/agv/history-playback/${ip}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  );
+  return res.data.data;
 }

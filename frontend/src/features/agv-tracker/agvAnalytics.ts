@@ -23,7 +23,27 @@ export function smoothSpeed(s: SpeedSample[], w = 5): SpeedSample[] {
   for (let i = h; i < s.length - h; i++) { let sum = 0; for (let j = i - h; j <= i + h; j++) sum += s[j].speedMps; r.push({ ts: s[i].ts, speedMps: sum / w }); }
   r.push(...s.slice(s.length - h)); return r;
 }
-export function currentSpeed(p: TrailPoint[]) { if (p.length < 2) return null; const a = p[p.length - 2], b = p[p.length - 1]; const dt = (b.ts - a.ts) / 1000; return dt > 0.01 ? dist(a, b) / dt : null; }
+/** 瞬时速度：取最近 3 个点的平均速度 */
+export function currentSpeed(p: TrailPoint[]) {
+  if (p.length < 2) return null;
+  const w = Math.min(p.length, 4);
+  let totalDist = 0, totalTime = 0;
+  for (let i = p.length - w + 1; i < p.length; i++) {
+    const a = p[i - 1], b = p[i];
+    const dt = (b.ts - a.ts) / 1000;
+    if (dt > 0.01 && dt < 2.0) {
+      totalDist += dist(a, b);
+      totalTime += dt;
+    }
+  }
+  // fallback: 最后两个点直接算
+  if (totalTime < 0.01 && p.length >= 2) {
+    const a = p[p.length - 2], b = p[p.length - 1];
+    const dt = (b.ts - a.ts) / 1000;
+    return dt > 0.01 ? dist(a, b) / dt : null;
+  }
+  return totalTime > 0.01 ? totalDist / totalTime : null;
+}
 export function totalDistance(p: TrailPoint[]) { let d = 0; for (let i = 1; i < p.length; i++) d += dist(p[i - 1], p[i]); return d; }
 
 // 2. 效率 = 直线距离 / 实际里程

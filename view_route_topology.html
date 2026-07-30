@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>AGV 机械化路线拓扑图</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;font-family:system-ui;overflow:hidden;color:#c9d1d9}
+
+/* ── top bar ── */
+#bar{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#161b22;border-bottom:1px solid #30363d}
+#bar button{padding:6px 14px;border:1px solid #30363d;border-radius:6px;background:#21262d;color:#c9d1d9;cursor:pointer;font-size:12px;transition:.15s}
+#bar button.on{border-color:#58a6ff;color:#58a6ff;background:#1f2937}
+#bar button:hover{border-color:#8b949e}
+#bar .sep{width:1px;height:20px;background:#30363d;margin:0 4px}
+#bar span{font-size:11px;color:#8b949e}
+#bar .stat-group{display:flex;align-items:center;gap:12px;margin-left:auto}
+
+/* ── canvas ── */
+canvas{display:block;cursor:grab}
+canvas:active{cursor:grabbing}
+
+/* ── tooltip ── */
+#tip{position:fixed;pointer-events:none;z-index:20;padding:10px 14px;background:#1c2128;border:1px solid #30363d;border-radius:8px;font-size:11px;line-height:1.6;display:none;max-width:320px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+#tip .tt-title{font-size:13px;font-weight:600;margin-bottom:4px}
+#tip .tt-row{display:flex;gap:16px}
+#tip .tt-label{color:#8b949e}
+#tip .tt-val{color:#c9d1d9;font-variant-numeric:tabular-nums}
+#tip .tt-tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-left:4px}
+.tt-high{background:#1a3d2c;color:#3fb950}
+.tt-med{background:#3d3516;color:#d29922}
+.tt-oneway{background:#3d1a1a;color:#f85149}
+
+/* ── legend (bottom-right) ── */
+#legend{position:fixed;bottom:14px;right:14px;z-index:10;padding:12px 16px;background:#161b22dd;backdrop-filter:blur(8px);border:1px solid #30363d;border-radius:8px;font-size:11px;line-height:2}
+#legend .swatch{display:inline-block;width:12px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+#legend .swatch.station{width:8px;height:8px;border-radius:50%}
+#legend .swatch.diamond{width:8px;height:8px;border-radius:1px;transform:rotate(45deg)}
+#legend .swatch.triangle{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid;border-radius:0;background:none;vertical-align:middle;margin-right:6px;display:inline-block;position:relative;top:-1px}
+#legend .arrow{display:inline-block;width:18px;height:2px;vertical-align:middle;margin-right:4px;position:relative}
+#legend .arrow::after{content:'';position:absolute;right:-2px;top:-3px;border-left:6px solid #f85149;border-top:4px solid transparent;border-bottom:4px solid transparent}
+
+/* ── bottom bar ── */
+#bottombar{position:fixed;bottom:14px;left:14px;z-index:10;font-size:11px;color:#484f58}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <button id="btnZone1" class="on">Zone 1 AGV-1,2</button>
+  <button id="btnZone2" class="on">Zone 2 AGV-3,4</button>
+  <span class="sep"></span>
+  <button id="btnZoomIn">＋</button>
+  <button id="btnZoomOut">－</button>
+  <button id="btnReset">↺ 重置</button>
+  <span class="sep"></span>
+  <label style="font-size:11px;color:#8b949e;display:flex;align-items:center;gap:4px;cursor:pointer">
+    <input type="checkbox" id="chkLabels" checked> 站点标签
+  </label>
+  <label style="font-size:11px;color:#8b949e;display:flex;align-items:center;gap:4px;cursor:pointer">
+    <input type="checkbox" id="chkOneWay" checked> 单行道箭头
+  </label>
+  <div class="stat-group">
+    <span id="statStations"></span>
+    <span id="statEdges"></span>
+  </div>
+</div>
+
+<canvas id="c"></canvas>
+<div id="tip"></div>
+<div id="legend">
+  <div style="font-weight:600;margin-bottom:2px">图例</div>
+  <div><span class="swatch station" style="background:#58a6ff"></span> LM 地标定位点</div>
+  <div><span class="swatch diamond" style="background:#bc8cff;transform:rotate(45deg);display:inline-block"></span> AP 接入点/工位</div>
+  <div><span class="swatch triangle" style="border-bottom-color:#3fb950"></span> CP 充电点</div>
+  <div><span class="swatch" style="background:#3fb950"></span> 高置信 (≥5次)</div>
+  <div><span class="swatch" style="background:#d29922"></span> 中置信 (3-4次)</div>
+  <div><span class="arrow" style="background:#f85149"></span> 单行道</div>
+</div>
+<div id="bottombar"></div>
+
+<script>
+(async () => {
+  const resp = await fetch('route_topology_clean.json');
+  const data = await resp.json();
+
+  const ZONES = {
+    zone1: { label: 'Zone 1 · AGV-1,2', color: '#58a6ff' },
+    zone2: { label: 'Zone 2 · AGV-3,4', color: '#3fb950' },
+  };
+
+  // ── state ──
+  let activeZones = new Set(['zone1','zone2']);
+  let showLabels = true, showOneWay = true;
+
+  // ── build render lists ──
+  function buildScene() {
+    const allStations = [];  // { zone, id, x, y, type, observations }
+    const allEdges = [];     // { zone, from, to, ...edgeData, x1, y1, x2, y2 }
+
+    for (const [zkey, zone] of Object.entries(data.zones)) {
+      const stMap = zone.stations;
+      for (const [sid, s] of Object.entries(stMap)) {
+        let type = 'LM';
+        if (sid.startsWith('AP')) type = 'AP';
+        else if (sid.startsWith('CP')) type = 'CP';
+        allStations.push({ zone: zkey, id: sid, x: s.x, y: s.y, type, observations: s.observations });
+      }
+      for (const e of zone.edges) {
+        const fa = stMap[e.from], ta = stMap[e.to];
+        if (!fa || !ta) continue;
+        allEdges.push({ ...e, zone: zkey, x1: fa.x, y1: fa.y, x2: ta.x, y2: ta.y });
+      }
+    }
+    return { stations: allStations, edges: allEdges };
+  }
+
+  let scene = buildScene();
+
+  // ── canvas ──
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  let view = { x: 0, y: 0, zoom: 1 };
+
+  function resize() {
+    const dpr = devicePixelRatio;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    draw();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function activeBounds() {
+    let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+    for (const s of scene.stations) {
+      if (!activeZones.has(s.zone)) continue;
+      if (s.x < xMin) xMin = s.x;
+      if (s.x > xMax) xMax = s.x;
+      if (s.y < yMin) yMin = s.y;
+      if (s.y > yMax) yMax = s.y;
+    }
+    if (!isFinite(xMin)) return { xMin: -10, xMax: 10, yMin: -10, yMax: 10 };
+    // Add padding
+    const px = (xMax - xMin) * 0.08 || 3;
+    const py = (yMax - yMin) * 0.08 || 3;
+    return { xMin: xMin - px, xMax: xMax + px, yMin: yMin - py, yMax: yMax + py };
+  }
+
+  function draw() {
+    const w = canvas.width, h = canvas.height, dpr = devicePixelRatio;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+
+    const bb = activeBounds();
+    const pad = 50;
+    const sc = Math.min((w - 2 * pad) / (bb.xMax - bb.xMin), (h - 2 * pad) / (bb.yMax - bb.yMin)) * view.zoom;
+    const tx = x => (x - bb.xMin) * sc + pad + view.x;
+    const ty = y => h - (y - bb.yMin) * sc - pad + view.y;
+
+    // ── grid ──
+    const rawStep = view.zoom > 1.5 ? 1 : view.zoom > 0.8 ? 2 : 5;
+    const step = Math.max(rawStep, (bb.xMax - bb.xMin) / 30);
+    ctx.strokeStyle = '#1a1f28';
+    ctx.lineWidth = 0.5;
+    for (let gx = Math.floor(bb.xMin / step) * step; gx <= bb.xMax; gx += step) {
+      const sx = tx(gx);
+      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
+    }
+    for (let gy = Math.floor(bb.yMin / step) * step; gy <= bb.yMax; gy += step) {
+      const sy = ty(gy);
+      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke();
+    }
+
+    // ── axis labels ──
+    ctx.fillStyle = '#30363d';
+    ctx.font = '9px system-ui';
+    ctx.textAlign = 'center';
+    for (let gx = Math.floor(bb.xMin / step) * step; gx <= bb.xMax; gx += step) {
+      ctx.fillText(gx.toFixed(1), tx(gx), ty(bb.yMin) - 10);
+    }
+    ctx.textAlign = 'right';
+    for (let gy = Math.floor(bb.yMin / step) * step; gy <= bb.yMax; gy += step) {
+      ctx.fillText(gy.toFixed(1), tx(bb.xMin) - 6, ty(gy) + 3);
+    }
+
+    // ── edges ──
+    const activeEdges = scene.edges.filter(e => activeZones.has(e.zone));
+    const activeStations = scene.stations.filter(s => activeZones.has(s.zone));
+
+    // Draw edges in two passes: bidirectional first, one-way on top
+    const bidirEdges = activeEdges.filter(e => !e.is_one_way);
+    const oneWayEdges = activeEdges.filter(e => e.is_one_way && showOneWay);
+
+    function drawEdge(e, color, alpha, lwScale) {
+      const x1 = tx(e.x1), y1 = ty(e.y1);
+      const x2 = tx(e.x2), y2 = ty(e.y2);
+      const alphaHex = Math.round(alpha * 255).toString(16).padStart(2, '0');
+
+      ctx.strokeStyle = color + alphaHex;
+      ctx.lineWidth = Math.max(0.8, Math.min(6, Math.log2(e.total_count) * lwScale));
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      // Arrow for one-way
+      if (e.is_one_way && showOneWay) {
+        const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+        const ang = Math.atan2(y2 - y1, x2 - x1);
+        const arrowLen = 10;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(midX + Math.cos(ang) * arrowLen * 0.6, midY + Math.sin(ang) * arrowLen * 0.6);
+        ctx.lineTo(
+          midX + Math.cos(ang + 2.6) * arrowLen * 0.5,
+          midY + Math.sin(ang + 2.6) * arrowLen * 0.5
+        );
+        ctx.lineTo(
+          midX + Math.cos(ang - 2.6) * arrowLen * 0.5,
+          midY + Math.sin(ang - 2.6) * arrowLen * 0.5
+        );
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Bidirectional edges
+    for (const e of bidirEdges) {
+      const color = e.confidence === 'high' ? '#3fb950' : '#d29922';
+      drawEdge(e, color, e.confidence === 'high' ? 0.7 : 0.5, e.confidence === 'high' ? 1.0 : 0.8);
+    }
+
+    // One-way edges on top in red
+    for (const e of oneWayEdges) {
+      drawEdge(e, '#f85149', 0.85, 1.1);
+    }
+
+    // ── stations ──
+    for (const s of activeStations) {
+      const sx = tx(s.x), sy = ty(s.y);
+      const baseSize = Math.min(7, Math.max(3, Math.log2(s.observations + 1) * 1.5));
+
+      if (s.type === 'LM') {
+        // Circle
+        ctx.fillStyle = ZONES[s.zone].color + 'cc';
+        ctx.beginPath();
+        ctx.arc(sx, sy, baseSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = ZONES[s.zone].color;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else if (s.type === 'AP') {
+        // Diamond (rotated square)
+        const sz = baseSize * 1.2;
+        ctx.fillStyle = '#bc8cffcc';
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - sz);
+        ctx.lineTo(sx + sz, sy);
+        ctx.lineTo(sx, sy + sz);
+        ctx.lineTo(sx - sz, sy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#bc8cff';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else if (s.type === 'CP') {
+        // Triangle (pointing up)
+        const sz = baseSize * 1.3;
+        ctx.fillStyle = '#3fb950cc';
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - sz);
+        ctx.lineTo(sx + sz * 0.8, sy + sz * 0.6);
+        ctx.lineTo(sx - sz * 0.8, sy + sz * 0.6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#3fb950';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    // ── labels ──
+    if (showLabels) {
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'center';
+      for (const s of activeStations) {
+        const sx = tx(s.x), sy = ty(s.y);
+        const offset = s.type === 'LM' ? 12 : s.type === 'AP' ? 10 : 11;
+        // Background pill
+        const metrics = ctx.measureText(s.id);
+        const lw = metrics.width + 8, lh = 14;
+        ctx.fillStyle = '#0d1117cc';
+        ctx.beginPath();
+        ctx.roundRect(sx - lw / 2, sy + offset - 2, lw, lh, 3);
+        ctx.fill();
+
+        ctx.fillStyle = ZONES[s.zone].color;
+        ctx.fillText(s.id, sx, sy + offset + 9);
+      }
+    }
+
+    // ── update stats ──
+    document.getElementById('statStations').textContent =
+      `站点: ${activeStations.length}`;
+    document.getElementById('statEdges').textContent =
+      `路段: ${activeEdges.length}`;
+    document.getElementById('bottombar').textContent =
+      `坐标 X ${bb.xMin.toFixed(1)} ~ ${bb.xMax.toFixed(1)} | Y ${bb.yMin.toFixed(1)} ~ ${bb.yMax.toFixed(1)} | 缩放 ${view.zoom.toFixed(1)}× | 滚轮缩放 · 拖拽平移 · 悬停查看详情`;
+  }
+
+  // ── interaction ──
+  let dragging = false, dragX = 0, dragY = 0;
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const f = e.deltaY < 0 ? 1.18 : 0.85;
+    view.zoom = Math.max(0.15, Math.min(25, view.zoom * f));
+    draw();
+  });
+
+  canvas.addEventListener('mousedown', e => {
+    dragging = true;
+    dragX = e.clientX - view.x;
+    dragY = e.clientY - view.y;
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) {
+      // Hover detection
+      const bb = activeBounds();
+      const pad = 50;
+      const sc = Math.min((canvas.width / devicePixelRatio - 2 * pad) / (bb.xMax - bb.xMin),
+                          (canvas.height / devicePixelRatio - 2 * pad) / (bb.yMax - bb.yMin)) * view.zoom;
+      const tx = x => (x - bb.xMin) * sc + pad + view.x;
+      const ty = y => canvas.height / devicePixelRatio - (y - bb.yMin) * sc - pad + view.y;
+      const mx = e.clientX, my = e.clientY;
+
+      const tip = document.getElementById('tip');
+      let found = null;
+
+      // Check stations first (higher priority)
+      for (const s of scene.stations) {
+        if (!activeZones.has(s.zone)) continue;
+        const sx = tx(s.x), sy = ty(s.y);
+        if (Math.hypot(mx - sx, my - sy) < 14) {
+          found = { type: 'station', data: s };
+          break;
+        }
+      }
+
+      // Check edges
+      if (!found) {
+        for (const e of scene.edges) {
+          if (!activeZones.has(e.zone)) continue;
+          const x1 = tx(e.x1), y1 = ty(e.y1);
+          const x2 = tx(e.x2), y2 = ty(e.y2);
+          // Distance from point to line segment
+          const dx = x2 - x1, dy = y2 - y1;
+          const len2 = dx * dx + dy * dy;
+          let t = ((mx - x1) * dx + (my - y1) * dy) / len2;
+          t = Math.max(0, Math.min(1, t));
+          const cx = x1 + t * dx, cy = y1 + t * dy;
+          if (Math.hypot(mx - cx, my - cy) < 8) {
+            found = { type: 'edge', data: e };
+            break;
+          }
+        }
+      }
+
+      if (found) {
+        let html = '';
+        if (found.type === 'station') {
+          const s = found.data;
+          const zname = ZONES[s.zone].label;
+          html = `<div class="tt-title" style="color:${ZONES[s.zone].color}">${s.id}</div>
+                  <div class="tt-row"><span class="tt-label">类型</span><span class="tt-val">${s.type === 'LM' ? '地标定位点' : s.type === 'AP' ? '接入点/工位' : '充电点'}</span></div>
+                  <div class="tt-row"><span class="tt-label">坐标</span><span class="tt-val">(${s.x.toFixed(2)}, ${s.y.toFixed(2)})</span></div>
+                  <div class="tt-row"><span class="tt-label">观测次数</span><span class="tt-val">${s.observations}</span></div>
+                  <div class="tt-row"><span class="tt-label">所属</span><span class="tt-val">${zname}</span></div>`;
+        } else {
+          const e = found.data;
+          const zname = ZONES[e.zone].label;
+          const confTag = e.confidence === 'high'
+            ? '<span class="tt-tag tt-high">高置信</span>'
+            : '<span class="tt-tag tt-med">中置信</span>';
+          const owTag = e.is_one_way
+            ? '<span class="tt-tag tt-oneway">单行道</span>'
+            : '';
+          html = `<div class="tt-title" style="color:${e.is_one_way ? '#f85149' : '#c9d1d9'}">${e.from} → ${e.to}</div>
+                  <div class="tt-row"><span class="tt-label">距离</span><span class="tt-val">${e.distance_m.toFixed(2)} m</span></div>
+                  <div class="tt-row"><span class="tt-label">角度</span><span class="tt-val">${e.angle_deg}° / ${e.reverse_angle_deg}°</span></div>
+                  <div class="tt-row"><span class="tt-label">频次</span><span class="tt-val">正向 ${e.forward_count} · 反向 ${e.reverse_count} · 合计 ${e.total_count}</span></div>
+                  <div class="tt-row"><span class="tt-label">状态</span><span class="tt-val">${confTag}${owTag}</span></div>
+                  <div class="tt-row"><span class="tt-label">所属</span><span class="tt-val">${zname}</span></div>`;
+        }
+        tip.innerHTML = html;
+        tip.style.display = 'block';
+        tip.style.left = (e.clientX + 16) + 'px';
+        tip.style.top = (e.clientY - 20) + 'px';
+      } else {
+        tip.style.display = 'none';
+      }
+      return;
+    }
+    view.x = e.clientX - dragX;
+    view.y = e.clientY - dragY;
+    draw();
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  canvas.addEventListener('mouseleave', () => {
+    dragging = false;
+    document.getElementById('tip').style.display = 'none';
+  });
+
+  // ── button handlers ──
+  function toggleZone(zkey, btn) {
+    if (activeZones.has(zkey)) activeZones.delete(zkey);
+    else activeZones.add(zkey);
+    btn.classList.toggle('on', activeZones.has(zkey));
+    draw();
+  }
+
+  document.getElementById('btnZone1').addEventListener('click', function() {
+    toggleZone('zone1', this);
+  });
+  document.getElementById('btnZone2').addEventListener('click', function() {
+    toggleZone('zone2', this);
+  });
+  document.getElementById('btnZoomIn').addEventListener('click', () => {
+    view.zoom *= 1.35;
+    draw();
+  });
+  document.getElementById('btnZoomOut').addEventListener('click', () => {
+    view.zoom *= 0.74;
+    draw();
+  });
+  document.getElementById('btnReset').addEventListener('click', () => {
+    view = { x: 0, y: 0, zoom: 1 };
+    draw();
+  });
+  document.getElementById('chkLabels').addEventListener('change', function() {
+    showLabels = this.checked;
+    draw();
+  });
+  document.getElementById('chkOneWay').addEventListener('change', function() {
+    showOneWay = this.checked;
+    draw();
+  });
+
+  // ── initial draw ──
+  draw();
+})();
+</script>
+</body>
+</html>

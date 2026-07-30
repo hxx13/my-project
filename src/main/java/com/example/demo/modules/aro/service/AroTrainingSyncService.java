@@ -4,8 +4,11 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.example.demo.modules.aro.entity.AroTrainingSession;
 import com.example.demo.modules.aro.entity.AroTrainingTrainee;
+import com.example.demo.modules.aro.mapper.AroTrainingFavoriteMapper;
 import com.example.demo.modules.aro.mapper.AroTrainingSessionMapper;
 import com.example.demo.modules.aro.mapper.AroTrainingTraineeMapper;
+import com.example.demo.modules.notification.push.dispatch.PushService;
+import com.example.demo.modules.notification.service.NotificationPushService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.*;
@@ -16,10 +19,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class AroTrainingSyncService {
@@ -30,20 +30,29 @@ public class AroTrainingSyncService {
     private final RestTemplate restTemplate;
     private final AroTrainingSessionMapper sessionMapper;
     private final AroTrainingTraineeMapper traineeMapper;
+    private final AroTrainingFavoriteMapper favoriteMapper;
     private final AroService aroService;
     private final JdbcTemplate jdbcTemplate;
+    private final PushService pushService;
+    private final NotificationPushService notificationPushService;
 
     public AroTrainingSyncService(
             @org.springframework.beans.factory.annotation.Qualifier("aroRestTemplate") RestTemplate restTemplate,
             AroTrainingSessionMapper sessionMapper,
             AroTrainingTraineeMapper traineeMapper,
+            AroTrainingFavoriteMapper favoriteMapper,
             AroService aroService,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            PushService pushService,
+            NotificationPushService notificationPushService) {
         this.restTemplate = restTemplate;
         this.sessionMapper = sessionMapper;
         this.traineeMapper = traineeMapper;
+        this.favoriteMapper = favoriteMapper;
         this.aroService = aroService;
         this.jdbcTemplate = jdbcTemplate;
+        this.pushService = pushService;
+        this.notificationPushService = notificationPushService;
     }
 
     public Map<String, String> getLastSyncInfo() {
@@ -169,12 +178,25 @@ public class AroTrainingSyncService {
         log.info("[AroSync] 同步完成: {} 场次, {} 学员", allSessions.size(), totalTrainees);
     }
 
-    /** 单场次增量刷新 */
+    /** 单场次增量刷新，同步完成后向订阅者推送新增待审核学员 */
     @Transactional
     public void syncSession(Long sessionId) {
         String token = aroService.requireJtuApiToken();
         if (token == null || token.isBlank()) return;
         log.info("[AroSync] 刷新场次 {}", sessionId);
+
+        // 0. 刷新前记录旧学员状态（examSignId -> testYn）
+        List<AroTrainingTrainee> oldTrainees = traineeMapper.selectBySessionId(sessionId);
+        Map<Long, Integer> oldTestYnMap = new LinkedHashMap<>();
+        for (AroTrainingTrainee t : oldTrainees) {
+            if (t.getExamSignId() != null) {
+                oldTestYnMap.put(t.getExamSignId(), t.getTestYn());
+            }
+        }
+        AroTrainingSession session = sessionMapper.selectById(sessionId);
+        String sessionTitle = session != null && session.getTitle() != null ? session.getTitle() : String.valueOf(sessionId);
+
+        // 1. 清空旧学员数据
         traineeMapper.deleteBySessionId(sessionId);
         int tp = 1, count = 0;
         while (true) {
@@ -214,6 +236,63 @@ public class AroTrainingSyncService {
             }
         }
         log.info("[AroSync] 场次 {} 刷新完成: {} 学员", sessionId, count);
+
+        // 2. 找出新增的待审核学员（testYn=0 且旧数据中不存在或旧 testYn != 0）
+        List<AroTrainingTrainee> newTrainees = traineeMapper.selectBySessionId(sessionId);
+        List<AroTrainingTrainee> newPending = new ArrayList<>();
+        for (AroTrainingTrainee t : newTrainees) {
+            if (t.getTestYn() == null || t.getTestYn() == 0) {
+                Integer oldTestYn = oldTestYnMap.get(t.getExamSignId());
+                if (oldTestYn == null || oldTestYn != 0) {
+                    newPending.add(t);
+                }
+            }
+        }
+
+        if (newPending.isEmpty()) {
+            log.info("[AroSync] 场次 {} 无新增待审核学员，跳过推送", sessionId);
+            return;
+        }
+
+        // 3. 查订阅者
+        List<String> subscriberIds = favoriteMapper.findSubscribersBySessionId(String.valueOf(sessionId));
+        if (subscriberIds.isEmpty()) {
+            log.info("[AroSync] 场次 {} 无订阅者，跳过推送", sessionId);
+            return;
+        }
+        Set<String> subscriberSet = new HashSet<>(subscriberIds);
+
+        // 4. 逐学员推送
+        for (AroTrainingTrainee trainee : newPending) {
+            String traineeName = trainee.getName() != null ? trainee.getName() : "";
+            String jobNumber = trainee.getJobNumber() != null ? trainee.getJobNumber() : "";
+            String projectGroup = trainee.getProjectGroup() != null ? trainee.getProjectGroup() : "";
+            String examSignId = trainee.getExamSignId() != null ? String.valueOf(trainee.getExamSignId()) : "";
+
+            Map<String, String> vars = new LinkedHashMap<>();
+            vars.put("sessionTitle", sessionTitle);
+            vars.put("traineeName", traineeName);
+            vars.put("jobNumber", jobNumber);
+            vars.put("projectGroup", projectGroup);
+
+            try {
+                pushService.send("ARO_TRAINING_PENDING", vars, subscriberSet);
+                log.info("[AroSync] 推送成功 session={} trainee={} subscribers={}", sessionId, traineeName, subscriberSet.size());
+            } catch (Exception e) {
+                log.error("[AroSync] 推送失败 session={} trainee={}: {}", sessionId, traineeName, e.getMessage());
+            }
+        }
+
+        // 5. SSE 实时事件
+        try {
+            notificationPushService.pushEventToUsers("aro_training_pending", subscriberSet,
+                    Map.of("type", "aro_training_pending",
+                            "sessionId", String.valueOf(sessionId),
+                            "sessionTitle", sessionTitle,
+                            "pendingCount", newPending.size()));
+        } catch (Exception e) {
+            log.warn("[AroSync] SSE 推送失败 session={}: {}", sessionId, e.getMessage());
+        }
     }
 
     private HttpEntity<Void> authHeaders(String token) {

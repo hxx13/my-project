@@ -17,7 +17,7 @@ public class AgvRestTemplateConfig {
     public RestTemplate agvRestTemplate(RestTemplateBuilder builder) {
         return builder
                 .connectTimeout(Duration.ofSeconds(3))
-                .readTimeout(Duration.ofSeconds(5))
+                .readTimeout(Duration.ofSeconds(30))
                 .build();
     }
 }

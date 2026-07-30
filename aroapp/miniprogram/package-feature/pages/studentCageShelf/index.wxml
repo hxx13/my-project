@@ -154,8 +154,13 @@
   <subpage-nav-bar title="{{ gridMeta.shelveName || selectedShelf.shelveName }}" customBack="{{ true }}" bind:back="onBackToList" />
   <!-- 操作栏：图例 + 刷新 + 扫描 + 提交 -->
   <view class="grid-actions-bar" style="top: {{ navBarHeight }}px;">
-    <view wx:if="{{ staffView }}" class="gt-edit-btn {{ editMode ? 'gt-edit-btn--on' : '' }}" bindtap="onToggleRealtime">
-      <text>{{ editMode ? '编辑中' : '编辑' }}</text>
+    <view class="gt-left-btns">
+      <view wx:if="{{ staffView }}" class="gt-edit-btn {{ editMode ? 'gt-edit-btn--on' : '' }}" bindtap="onToggleRealtime">
+        <text>{{ editMode ? '编辑中' : '编辑' }}</text>
+      </view>
+      <view wx:if="{{ staffView }}" class="gt-bind-btn {{ bindMode ? 'gt-bind-btn--on' : '' }}" bindtap="{{ bindMode ? 'onExitBindMode' : 'onEnterBindMode' }}">
+        <text>{{ bindMode ? '绑定中' : '绑定' }}</text>
+      </view>
     </view>
     <view class="grid-actions-btns">
       <view class="gt-legend-btn {{ legendOpen ? 'gt-legend-btn--on' : '' }}" bindtap="onToggleGridLegend">
@@ -164,6 +169,7 @@
       <view class="gt-refresh" bindtap="onRetry">
         <van-icon name="replay" size="36rpx" color="#969799" />
       </view>
+      <!-- 编辑模式：扫码 + 提交 -->
       <view wx:if="{{ staffView && editMode }}" class="gt-scan-btn" bindtap="onGridScanTap">
         <van-icon name="scan" size="36rpx" color="#ac1736" />
       </view>
@@ -171,11 +177,24 @@
         <van-icon name="goods-collect-o" size="32rpx" color="#fff" />
         <text>提交</text>
       </view>
+      <!-- 绑定模式：扫码 + 解绑 -->
+      <view wx:if="{{ staffView && bindMode }}" class="gt-bind-scan" bindtap="onBindScanTap">
+        <van-icon name="scan" size="36rpx" color="#2563eb" />
+      </view>
+      <view wx:if="{{ staffView && bindMode }}" class="gt-unbind-btn {{ unbindActive ? 'gt-unbind-btn--on' : '' }}" bindtap="onToggleUnbind">
+        <text>{{ unbindActive ? '解绑中' : '解绑' }}</text>
+      </view>
     </view>
   </view>
 
   <!-- 固定操作栏占位（actions bar 为 position:fixed，需在文档流中为其留出空间） -->
   <view class="grid-actions-spacer"></view>
+
+  <!-- 绑定模式提示条 -->
+  <view wx:if="{{ bindMode }}" class="bind-banner">
+    <text wx:if="{{ !bindScannedCode }}" class="bind-banner-text">绑定模式：请先点击上方扫码按钮获取笼盒编号</text>
+    <text wx:else class="bind-banner-text">已扫码: {{ bindScannedCode }} — 请点击目标笼位（仅可选空笼盒）</text>
+  </view>
 
   <view wx:if="{{ loading }}" class="center-box">
       <van-loading size="28px" color="#ac1736" />

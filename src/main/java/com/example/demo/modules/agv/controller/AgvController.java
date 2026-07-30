@@ -3,9 +3,12 @@ package com.example.demo.modules.agv.controller;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.agv.dto.AgvRobotStatus;
+import com.example.demo.modules.agv.analysis.model.AgvActivitySegment;
+import com.example.demo.modules.agv.mapper.AgvAnalysisMapper;
 import com.example.demo.modules.agv.mapper.AgvTrajectoryMapper;
 import com.example.demo.modules.agv.service.AgvProxyService;
 import com.example.demo.modules.agv.service.AgvStatusCache;
+import com.example.demo.modules.agv.analysis.AgvRouteTopologyService;
 import com.example.demo.modules.twin.common.entity.TwinJobScheduleConfig;
 import com.example.demo.modules.twin.common.mapper.TwinJobScheduleConfigMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,19 +33,25 @@ public class AgvController {
     private final AgvProxyService agvProxyService;
     private final AgvStatusCache statusCache;
     private final AgvTrajectoryMapper trajectoryMapper;
+    private final AgvAnalysisMapper analysisMapper;
     private final TwinJobScheduleConfigMapper configMapper;
     private final JdbcTemplate jdbc;
+    private final AgvRouteTopologyService routeTopologyService;
 
     public AgvController(AgvProxyService agvProxyService,
                          AgvStatusCache statusCache,
                          AgvTrajectoryMapper trajectoryMapper,
+                         AgvAnalysisMapper analysisMapper,
                          TwinJobScheduleConfigMapper configMapper,
-                         JdbcTemplate jdbc) {
+                         JdbcTemplate jdbc,
+                         AgvRouteTopologyService routeTopologyService) {
         this.agvProxyService = agvProxyService;
         this.statusCache = statusCache;
         this.trajectoryMapper = trajectoryMapper;
+        this.analysisMapper = analysisMapper;
         this.configMapper = configMapper;
         this.jdbc = jdbc;
+        this.routeTopologyService = routeTopologyService;
     }
 
     private static final String[] KNOWN_IPS = {
@@ -94,6 +103,24 @@ public class AgvController {
         return Result.success(body);
     }
 
+    /**
+     * 批量获取最近 N 秒的轨迹点（前端低频拉取用）。
+     * 后端高频采集，前端 1s 拉一次，一次拿多帧。
+     */
+    @GetMapping("/recent")
+    @Operation(summary = "获取最近 N 秒的轨迹点")
+    public Result<Map<String, List<Map<String, Object>>>> recent(
+            @RequestParam(defaultValue = "2") int seconds) {
+        LocalDateTime since = LocalDateTime.now().minusSeconds(seconds);
+        Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
+        for (String ip : KNOWN_IPS) {
+            List<Map<String, Object>> rows = trajectoryMapper.selectTrajectoryAsc(
+                ip, since, LocalDateTime.now(), 100);
+            if (!rows.isEmpty()) result.put(ip, rows);
+        }
+        return Result.success(result);
+    }
+
     /** 单台车实时透传上位机（用于调试），不读缓存 */
     @GetMapping("/status/{ip}")
     @Operation(summary = "单台 AGV 实时状态（透传上位机）")
@@ -135,6 +162,44 @@ public class AgvController {
         int safeLimit = Math.min(limit, 20000);
         List<Map<String, Object>> rows = trajectoryMapper.selectReplay(ips, fromDt, toDt, safeLimit);
         return Result.success(rows);
+    }
+
+    /**
+     * 历史回放数据接口：返回指定时间窗口（最大10分钟）的单车轨迹 + 活动段，
+     * 供前端单象限模式历史回放渲染使用。
+     */
+    @GetMapping("/history-playback/{ip}")
+    @Operation(summary = "历史回放数据（单车，最大2小时窗口）")
+    public Result<Map<String, Object>> historyPlayback(
+            @PathVariable String ip,
+            @RequestParam String from,
+            @RequestParam String to) {
+        LocalDateTime fromDt = parseIso(from);
+        LocalDateTime toDt = parseIso(to);
+
+        // 时间窗口校验：最大 2 小时
+        long windowMs = java.time.Duration.between(fromDt, toDt).toMillis();
+        if (windowMs <= 0) {
+            return Result.error("结束时间必须晚于起始时间");
+        }
+        if (windowMs > 2 * 60 * 60 * 1000L) {
+            return Result.error("时间窗口不能超过2小时，当前窗口: " + (windowMs / 60000) + " 分钟");
+        }
+
+        // 2小时窗口 × 500ms 采集频率 ≈ 最多14400条，取15000安全上限
+        List<Map<String, Object>> trail = trajectoryMapper.selectTrajectoryAsc(ip, fromDt, toDt, 20000);
+
+        // 取该窗口内的活动段
+        List<AgvActivitySegment> segments = analysisMapper.selectSegments(ip, fromDt, toDt);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("robotIp", ip);
+        result.put("from", fromDt.toString());
+        result.put("to", toDt.toString());
+        result.put("totalPoints", trail.size());
+        result.put("trail", trail);
+        result.put("segments", segments);
+        return Result.success(result);
     }
 
     /** AGV 配置摘要（5 个 Job 的 enabled/窗口/频率） */
@@ -213,4 +278,94 @@ public class AgvController {
             ip, deg, deg);
         return Result.success("ok");
     }
+
+    // ── 固定路线拓扑（机械分析修正结果，非算法动态发现） ──
+
+    /** Zone → AGV IP 映射 */
+    private static final Map<String, String[]> ZONE_AGV_MAP = Map.of(
+        "zone1", new String[]{"172.22.159.16", "172.22.159.18"},
+        "zone2", new String[]{"172.22.159.20", "172.22.159.22"}
+    );
+
+    /**
+     * 获取修正后的机械化路线拓扑（固定数据，非算法生成）。
+     * 可选 robotIp 参数按小车过滤，不传则返回全部。
+     */
+    @GetMapping("/routes/topology")
+    @Operation(summary = "获取机械化路线拓扑（固定修正数据）")
+    public Result<Map<String, Object>> routeTopology(
+            @RequestParam(required = false) String robotIp) {
+        try {
+            // 从 classpath 读取修正后的路线拓扑 JSON
+            var is = getClass().getClassLoader().getResourceAsStream("agv/route-topology.json");
+            if (is == null) {
+                return Result.error("路线拓扑数据文件未找到: agv/route-topology.json");
+            }
+            String json = new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            is.close();
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> full = new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, Map.class);
+
+            // 如果指定了 robotIp，只返回该车所属 zone 的数据
+            if (robotIp != null && !robotIp.isBlank()) {
+                String targetZone = null;
+                for (var entry : ZONE_AGV_MAP.entrySet()) {
+                    for (String ip : entry.getValue()) {
+                        if (ip.equals(robotIp)) { targetZone = entry.getKey(); break; }
+                    }
+                    if (targetZone != null) break;
+                }
+                if (targetZone == null) {
+                    return Result.error("未知 AGV IP: " + robotIp);
+                }
+
+                @SuppressWarnings("unchecked")
+                Map<String, Object> zones = (Map<String, Object>) full.get("zones");
+                Map<String, Object> filtered = new LinkedHashMap<>(full);
+                Map<String, Object> filteredZones = new LinkedHashMap<>();
+                filteredZones.put(targetZone, zones.get(targetZone));
+                filtered.put("zones", filteredZones);
+                return Result.success(filtered);
+            }
+
+            return Result.success(full);
+        } catch (Exception e) {
+            return Result.error("读取路线拓扑失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 路线模型2 — 从数据库轨迹数据重新生成路线拓扑。
+     * 执行完整的7阶段算法：站点聚类→频次统计→噪声过滤→硬约束→方向分析→区域分配→持久化。
+     * 生成结果写入 agv_route_topology_station / agv_route_topology_edge 表。
+     */
+    @PostMapping("/routes/topology/generate")
+    @Operation(summary = "路线模型2：从轨迹数据重新生成机械化路线拓扑")
+    public Result<Map<String, Object>> generateRouteTopology() {
+        try {
+            Map<String, Object> result = routeTopologyService.generateAll();
+            return Result.success(result);
+        } catch (Exception e) {
+            log.error("路线模型2生成失败", e);
+            return Result.error("路线拓扑生成失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 路线模型2 — 查询最近一次生成结果（从数据库读取，非静态文件）。
+     */
+    @GetMapping("/routes/topology/generated")
+    @Operation(summary = "路线模型2：查询已生成的路线拓扑")
+    public Result<Map<String, Object>> getGeneratedTopology(
+            @RequestParam(required = false) String robotIp) {
+        try {
+            Map<String, Object> result = routeTopologyService.getGenerated(robotIp);
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error("查询路线拓扑失败: " + e.getMessage());
+        }
+    }
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AgvController.class);
 }

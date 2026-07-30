@@ -490,6 +490,31 @@ public class CageShelfController {
         return Result.error("ARO 取消分配失败，请查看日志");
     }
 
+    // ── 笼位更新（2026-07-30 新增）──
+
+    @PostMapping("/cage/update")
+    @Operation(summary = "更新笼位属性（含 qrcode / state / type 等）")
+    public Result<Map<String, Object>> updateCage(@RequestBody Map<String, Object> body,
+                                                  jakarta.servlet.http.HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) return Result.fail(401, "未登录");
+
+        Object idObj = body.get("id");
+        if (idObj == null) return Result.fail(400, "笼位 id 不能为空");
+
+        boolean ok = aroService.updateAnimalCage(body);
+        if (ok) {
+            // 尝试刷新缓存
+            Object roomIdObj = body.get("roomId");
+            if (roomIdObj != null) {
+                Long roomId = toLong(roomIdObj);
+                if (roomId != null) cageShelfService.forceRefreshAfterMutation(roomId);
+            }
+            return Result.success(Map.of("ok", true));
+        }
+        return Result.error("ARO 笼位更新失败，请查看日志");
+    }
+
     private static Long toLong(Object v) {
         if (v == null) return null;
         if (v instanceof Number n) return n.longValue();

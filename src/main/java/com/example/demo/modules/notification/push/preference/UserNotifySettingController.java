@@ -27,14 +27,20 @@ public class UserNotifySettingController {
         this.service = service;
     }
 
-    /** 获取当前登录用户的 ID */
+    /** 获取当前登录用户的 ID（兼容管理端 AdminAuthInterceptor 和小程序 ApiAuthInterceptor） */
     private String currentUserId(HttpServletRequest request) {
+        // 先查管理端
         Object attr = request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
+        if (attr instanceof User u) return u.getId();
+        // 再查小程序端
+        attr = request.getAttribute(com.example.demo.common.config.ApiAuthInterceptor.CURRENT_USER_ATTR);
         if (attr instanceof User u) return u.getId();
         return "UNKNOWN";
     }
     private String currentUserRole(HttpServletRequest request) {
         Object attr = request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
+        if (attr instanceof User u) return u.getRole() != null ? u.getRole().getCode() : "ALL";
+        attr = request.getAttribute(com.example.demo.common.config.ApiAuthInterceptor.CURRENT_USER_ATTR);
         if (attr instanceof User u) return u.getRole() != null ? u.getRole().getCode() : "ALL";
         return "ALL";
     }

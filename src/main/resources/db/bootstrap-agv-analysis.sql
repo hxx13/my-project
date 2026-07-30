@@ -76,16 +76,24 @@ CREATE TABLE IF NOT EXISTS agv_correction (
     INDEX idx_corr_feedback (feedback_applied)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AGV活动标注人工纠正记录';
 
--- Preset rules (11 rules)
+-- Clean up ALL old rules (including duplicates from previous INSERT IGNORE), then insert presets
+DELETE FROM agv_activity_rule;
+
+-- Preset rules (14 rules) — spatial_cond 只用于细分场景，不加在基础发现规则上
 INSERT INTO agv_activity_rule (name, activity_type, spatial_cond, primitive_cond, state_cond, min_duration_sec, max_duration_sec, priority, confidence_base) VALUES
-('充电',          'CHARGING',          '{"zone_tags":["充电"]}',                '["ENTER_ZONE","CHARGING_START"]', '{"charging":true,"task_status":4}',               30, NULL, 10, 0.95),
-('站点作业',      'STATION_WORK',      '{"zone_tags":["作业"]}',                '["MOVE_END"]',                    '{"task_status":4}',                                5,  600,  7, 0.85),
-('运输',          'TRANSPORT',         NULL,                                    '["MOVE_START"]',                  '{"task_status":2,"charging":false}',               3, NULL,  6, 0.90),
-('路径等待',      'PATH_WAIT',         '{"zone_tags":["路径","通道"]}',          '["MOVE_END"]',                    '{"task_status":4}',                                0,    5,  3, 0.70),
+-- 基础发现规则（无 spatial_cond，任何位置都能触发 → 后续由 spatialZoneDiscovery 聚类发现区域）
+('充电',          'CHARGING',          NULL,                                    '["CHARGING_START"]',              '{"charging":true,"task_status":4}',               30, NULL, 10, 0.95),
+('站点作业',      'STATION_WORK',      NULL,                                    '["FORK_RAISE","FORK_LOWER"]',     '{"task_status":4}',                               5,  600,  8, 0.90),
+-- 细分场景规则（有 spatial_cond，只在已标记区域内触发精分类）
+('站点停靠',      'STATION_DWELL',     '{"zone_tags":["作业"]}',                '["MOVE_END","SPIN","REVERSE","CREEP"]', '{"task_status":4}',                      3,  600,  5, 0.70),
+('运输中',        'TRANSPORT',         NULL,                                    '["MOVE_START"]',                  '{"task_status":2,"charging":false,"fork_height_min":0.001}',   3, NULL,  6, 0.90),
+('寻路中',        'NAVIGATING',        NULL,                                    '["MOVE_START"]',                  '{"task_status":2,"charging":false,"fork_height_max":0.001}',   3, NULL,  5, 0.85),
+('路径等待',      'PATH_WAIT',         NULL,                                    '["MOVE_END"]',                    '{"task_status":4}',                                0,    5,  3, 0.70),
 ('货叉操作',      'FORK_OPERATION',    NULL,                                    '["FORK_RAISE","FORK_LOWER"]',     '{"task_status":4}',                               1,   30,  8, 0.90),
 ('倒车调头',      'REVERSE_MANEUVER',  NULL,                                    '["REVERSE"]',                     NULL,                                             NULL, NULL,  6, 0.80),
 ('重定位事件',    'RELOC_EVENT',       NULL,                                    '["RELOC"]',                       NULL,                                             NULL, NULL,  2, 0.95),
 ('急停',          'EMERGENCY_STOP',    NULL,                                    '["EMERGENCY_ON"]',                '{"emergency":true}',                            NULL, NULL, 10, 1.00),
 ('受阻等待',      'BLOCKED_WAIT',      NULL,                                    '["BLOCKED_ON"]',                  '{"blocked":true}',                              NULL, NULL,  9, 0.95),
-('充电完成',      'CHARGING_COMPLETE', '{"zone_tags":["充电"]}',                '["CHARGING_END"]',                '{"charging":false,"battery":0.95}',              NULL, NULL, 10, 0.80),
-('未知停靠(兜底)','UNKNOWN_IDLE',      NULL,                                    '["MOVE_END"]',                    '{"task_status":4}',                                5, NULL,  1, 0.30);
+('充电完成',      'CHARGING_COMPLETE', NULL,                                    '["CHARGING_END"]',                '{"charging":false,"battery":0.95}',              NULL, NULL, 10, 0.80),
+('未知停靠(兜底)','UNKNOWN_IDLE',      NULL,                                    '["MOVE_END"]',                    '{"task_status":4}',                                5, NULL,  1, 0.30),
+('休息站',        'REST_STATION',      NULL,                                    '["MOVE_END"]',                    '{"charging":false}',                              20, NULL,  9, 0.85);

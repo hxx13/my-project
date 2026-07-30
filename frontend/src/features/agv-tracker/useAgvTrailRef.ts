@@ -14,8 +14,8 @@ export function useAgvTrailRef() {
     const arr = map.get(ip)!;
     if (arr.length > 0) {
       const last = arr[arr.length - 1];
-      if (Math.abs(last.x - point.x) < 0.03 && Math.abs(last.y - point.y) < 0.03
-        && Math.abs(last.angle - point.angle) < 0.087 && (point.ts - last.ts) / 1000 < 5) return;
+      if (Math.abs(last.x - point.x) < 0.005 && Math.abs(last.y - point.y) < 0.005
+        && Math.abs(last.angle - point.angle) < 0.017 && (point.ts - last.ts) / 1000 < 5) return;
     }
     arr.push(point);
     if (arr.length > MAX_POINTS) arr.splice(0, arr.length - MAX_POINTS);
@@ -26,8 +26,8 @@ export function useAgvTrailRef() {
     const filtered: TrailPoint[] = [points[0]];
     for (let i = 1; i < points.length; i++) {
       const prev = points[i - 1], lastKept = filtered[filtered.length - 1];
-      if (Math.abs(prev.x - points[i].x) > 0.03 || Math.abs(prev.y - points[i].y) > 0.03
-        || Math.abs(prev.angle - points[i].angle) > 0.087
+      if (Math.abs(prev.x - points[i].x) > 0.005 || Math.abs(prev.y - points[i].y) > 0.005
+        || Math.abs(prev.angle - points[i].angle) > 0.017
         || (points[i].ts - lastKept.ts) / 1000 > 5) {
         filtered.push(points[i]);
       }
