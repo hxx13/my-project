@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -193,7 +194,7 @@ public class CageSpecialStatusScanService {
                                 firstNonNull(cageBoxVo.get("cageBoxQrCode"), cageBoxVo.get("cageBoxCode"))) : "";
                         row.setCageBoxQrCode(rawQr);
                         row.setCageBoxCode(extractCageBoxCode(rawQr));
-                        row.setCageBoxJson(cageBoxVo != null ? JSON.toJSONString(cageBoxVo) : null);
+                        row.setCageBoxJson(injectAnimalCageId(cageBoxVo, cage.get("id")));
                         row.setAnimalCageType(toInt(cage.get("animalCageType")));
                         row.setScannedAt(now);
 
@@ -330,7 +331,7 @@ public class CageSpecialStatusScanService {
                 if (cage != null) {
                     row.put("animalCageType", toInt(cage.get("animalCageType")));
                     row.put("cageBoxJson", cage.get("cageBoxVo") != null
-                            ? toJson(cage.get("cageBoxVo")) : "{}");
+                            ? injectAnimalCageId(cage.get("cageBoxVo"), cage.get("id")) : "{}");
                     row.put("specialStatusesJson", toJson(
                             SpecialStatusComputer.compute((Map<String, Object>) cage.get("cageBoxVo"))));
                 }
@@ -345,6 +346,16 @@ public class CageSpecialStatusScanService {
     private static String toJson(Object obj) {
         try { return obj == null ? "{}" : JSON.toJSONString(obj); }
         catch (Exception e) { return "{}"; }
+    }
+
+    /** 将 animalCageId 注入 cageBoxVo JSON，前端 bind/unbind 依赖此 id */
+    @SuppressWarnings("unchecked")
+    private static String injectAnimalCageId(Object cageBoxVo, Object animalCageId) {
+        Map<String, Object> enriched = cageBoxVo instanceof Map
+                ? new LinkedHashMap<>((Map<String, Object>) cageBoxVo)
+                : new LinkedHashMap<>();
+        enriched.put("id", animalCageId);
+        return JSON.toJSONString(enriched);
     }
 
     private static String objToStr(Object v) {

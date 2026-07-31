@@ -364,6 +364,12 @@ public class CageShelfService {
                 catch (Exception ignored) { /* keep empty */ }
             }
             cell.put("cageBoxInfo", cbi);
+            // 对齐 simplifyCell：snapshot cell 也需要 id（animalCageId），
+            // 前端绑定/解绑 API 依赖此字段作为 animalCageIdList 参数
+            Object animalCageId = cbi.get("id");
+            if (animalCageId != null) {
+                cell.put("id", String.valueOf(animalCageId));
+            }
             // 从 QR URL 提取 cageBoxCode 方便前端扫码匹配
             String qr = s.getCageBoxQrCode();
             if (qr != null && !qr.isBlank()) {

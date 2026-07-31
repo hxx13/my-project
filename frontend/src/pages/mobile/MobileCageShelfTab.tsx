@@ -866,6 +866,7 @@ function CageShelfGridView({
   bindScanOpen, onOpenBindScan, onCloseBindScan, onBindScanResult,
   unbindActive, onToggleUnbind, bindScannedCode,
   bindPairCache, bindPairCacheSize, onBatchBindSubmit, onClearBindCache, onRemoveBindPair, bindSubmitting,
+  unbindPairCache, unbindPairCacheSize, onBatchUnbindSubmit, onClearUnbindCache, onRemoveUnbindPair,
 }: {
   shelf: MobileCageShelfSummary;
   detail: CageShelfDetail | null;
@@ -899,6 +900,11 @@ function CageShelfGridView({
   onRemoveBindPair?: (key: string) => void;
   bindPairCache?: Map<string, { cell: CageShelfCell; code: string }>;
   bindSubmitting?: boolean;
+  unbindPairCache?: Set<string>;
+  unbindPairCacheSize?: number;
+  onBatchUnbindSubmit?: () => void;
+  onClearUnbindCache?: () => void;
+  onRemoveUnbindPair?: (key: string) => void;
 }) {
   const cells = detail && detail.grid.length > 0 ? detail.grid : buildPlaceholderGridCells();
   const meta = detail?.shelfMeta;
@@ -1006,6 +1012,17 @@ function CageShelfGridView({
                   提交({bindPairCacheSize})
                 </button>
                 <button type="button" onClick={onClearBindCache}
+                  className="shrink-0 rounded-full px-2 py-1 text-[10px] text-slate-500 active:text-red-500 transition">清空</button>
+              </>}
+              {/* 解绑批量提交 */}
+              {unbindActive && unbindPairCacheSize != null && unbindPairCacheSize > 0 && <>
+                <button type="button" onClick={onBatchUnbindSubmit} disabled={bindSubmitting}
+                  className="flex items-center gap-1 shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition disabled:opacity-50"
+                  style={{ background: "#dc2626" }}>
+                  {bindSubmitting ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" strokeWidth={3} />}
+                  提交({unbindPairCacheSize})
+                </button>
+                <button type="button" onClick={onClearUnbindCache}
                   className="shrink-0 rounded-full px-2 py-1 text-[10px] text-slate-500 active:text-red-500 transition">清空</button>
               </>}
             </>
@@ -1502,16 +1519,17 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     let ok = 0, fail = 0;
     await Promise.all(entries.map(async ([key, { cell, code }]) => {
       try {
-        const cageId = String((cell as any).id ?? "");
+        const cageId = String((cell as any).id ?? (cell?.cageBoxInfo as Record<string, any>)?.id ?? "");
         await bindCageBox(cageId, code, roomId);
         ok++;
       } catch (e: any) { fail++; toast.error(`${cell.position}: ${e?.message || "失败"}`); }
     }));
     setBindPairCache(new Map());
     setBindSubmitting(false);
+    setDetailReloadKey((k) => k + 1);  // 刷新 grid 数据（后端异步刷新缓存后需要重新拉取）
     if (fail === 0) toast.success(`${ok} 个绑定全部成功！`);
     else toast(`${ok} 成功 / ${fail} 失败`, { icon: "⚠️" });
-  }, [bindPairCache, selectedShelf, detail]);
+  }, [bindPairCache, selectedShelf, detail, setDetailReloadKey]);
 
   // ── 批量解绑提交 ──
   const handleBatchUnbindSubmit = useCallback(async () => {
@@ -1522,7 +1540,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     await Promise.all(ids.map(async (ck) => {
       try {
         const cell = unbindCells.get(ck);
-        const cageId = String((cell as any)?.id ?? "");
+        // 优先 cell.id，回退到 cageBoxInfo.id（snapshot 路径可能不包含顶层 id）
+        const cageId = String((cell as any)?.id ?? (cell?.cageBoxInfo as Record<string, any>)?.id ?? "");
         const meta = detail?.shelfMeta;
         const roomId = String((meta as any)?.roomId ?? selectedShelf.roomId ?? "");
         await unbindCageBox(cageId, roomId);
@@ -1531,9 +1550,10 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     }));
     setUnbindPairCache(new Set()); setUnbindCells(new Map());
     setBindSubmitting(false);
+    setDetailReloadKey((k) => k + 1);  // 刷新 grid 数据
     if (fail === 0) toast.success(`${ok} 个解绑全部成功！`);
     else toast(`${ok} 成功 / ${fail} 失败`, { icon: "⚠️" });
-  }, [unbindPairCache, unbindCells, selectedShelf, detail]);
+  }, [unbindPairCache, unbindCells, selectedShelf, detail, setDetailReloadKey]);
 
   // ── 绑定模式确认（Dialog，仅解绑用）──
   const handleBindConfirm = useCallback(async () => {
@@ -1544,7 +1564,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     setBindSubmitting(true);
     try {
       const cageData: any = detail?.grid?.find((c) => c.x === selectedCell.x && c.y === selectedCell.y) ?? selectedCell;
-      const cageId = String((cageData as any).id ?? "");
+      const cageId = String((cageData as any).id ?? (cageData?.cageBoxInfo as Record<string, any>)?.id ?? "");
       const cageName = String((cageData as any).name ?? "");
       const meta = detail?.shelfMeta;
       const roomId = String((meta as any)?.roomId ?? selectedShelf.roomId ?? "");
@@ -1576,7 +1596,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     setBindSubmitting(true);
     try {
       const cageData: any = detail?.grid?.find((c) => c.x === selectedCell.x && c.y === selectedCell.y) ?? selectedCell;
-      const cageId = String((cageData as any).id ?? "");
+      const cageId = String((cageData as any).id ?? (cageData?.cageBoxInfo as Record<string, any>)?.id ?? "");
       const meta = detail?.shelfMeta;
       const roomId = String((meta as any)?.roomId ?? selectedShelf.roomId ?? "");
 
@@ -1671,7 +1691,12 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               loading={detailLoading}
               error={detailError}
               onBack={goBackToList}
-              onRetry={() => setDetailReloadKey((k) => k + 1)}
+              onRetry={async () => {
+                if (selectedShelf) {
+                  try { await refreshShelfDetail(selectedShelf.shelveId); } catch { /* 静默 */ }
+                }
+                setDetailReloadKey((k) => k + 1);
+              }}
               onCellClick={handleCellClick}
               staffView={staffSpecialStatusView}
               scanOpen={scanOpen}
@@ -1706,6 +1731,14 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                 onClearBindCache={() => setBindPairCache(new Map())}
                 onRemoveBindPair={(key: string) => setBindPairCache(prev => { const next = new Map(prev); next.delete(key); return next; })}
                 bindSubmitting={bindSubmitting}
+                unbindPairCache={unbindPairCache}
+                unbindPairCacheSize={unbindPairCache.size}
+                onBatchUnbindSubmit={handleBatchUnbindSubmit}
+                onClearUnbindCache={() => { setUnbindPairCache(new Set()); setUnbindCells(new Map()); }}
+                onRemoveUnbindPair={(key: string) => {
+                  setUnbindPairCache(prev => { const next = new Set(prev); next.delete(key); return next; });
+                  setUnbindCells(prev => { const next = new Map(prev); next.delete(key); return next; });
+                }}
               onToggleRealtime={async () => {
                 const next = !editMode;
                 // 退出编辑模式且有未提交修改 → 弹窗确认

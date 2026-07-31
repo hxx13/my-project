@@ -140,17 +140,14 @@ public class CageBoxActionController {
         log.info("[cage-box-bind] user={} animalCageId={} cageBoxCode={} roomId={} ok={}",
                 user.getId(), animalCageId, cageBoxCode, roomId, ok);
         if (ok) {
-            // 异步刷新缓存，不阻塞响应
+            // 同步刷新缓存，确保前端重读时已是最新数据
             if (roomId != null) {
-                final Long rid = roomId;
-                java.util.concurrent.CompletableFuture.runAsync(() -> {
-                    try {
-                        cageShelfService.forceRefreshAfterMutation(rid);
-                        log.info("[cage-box-bind] 异步缓存刷新完成 roomId={}", rid);
-                    } catch (Exception e) {
-                        log.warn("[cage-box-bind] 异步缓存刷新失败 roomId={} err={}", rid, e.getMessage());
-                    }
-                });
+                try {
+                    cageShelfService.forceRefreshAfterMutation(roomId);
+                    log.info("[cage-box-bind] 缓存刷新完成 roomId={}", roomId);
+                } catch (Exception e) {
+                    log.warn("[cage-box-bind] 缓存刷新失败 roomId={} err={}", roomId, e.getMessage());
+                }
             }
             return Result.success(result);
         }
@@ -187,17 +184,14 @@ public class CageBoxActionController {
         log.info("[cage-box-unbind] user={} ids={} roomId={} ok={}",
                 user.getId(), animalCageIdList, roomId, ok);
         if (ok) {
-            // 异步刷新缓存，不阻塞响应
+            // 同步刷新缓存，确保前端重读时已是最新数据
             if (roomId != null) {
-                final Long rid = roomId;
-                java.util.concurrent.CompletableFuture.runAsync(() -> {
-                    try {
-                        cageShelfService.forceRefreshAfterMutation(rid);
-                        log.info("[cage-box-unbind] 异步缓存刷新完成 roomId={}", rid);
-                    } catch (Exception e) {
-                        log.warn("[cage-box-unbind] 异步缓存刷新失败 roomId={} err={}", rid, e.getMessage());
-                    }
-                });
+                try {
+                    cageShelfService.forceRefreshAfterMutation(roomId);
+                    log.info("[cage-box-unbind] 缓存刷新完成 roomId={}", roomId);
+                } catch (Exception e) {
+                    log.warn("[cage-box-unbind] 缓存刷新失败 roomId={} err={}", roomId, e.getMessage());
+                }
             }
             return Result.success(result);
         }
