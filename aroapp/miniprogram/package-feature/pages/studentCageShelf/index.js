@@ -770,7 +770,8 @@ Page({
   onRetry: function() {
     var self = this;
     if (self.data.screen === 'grid') {
-      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+      // 刷新按钮强制拉取实时数据，绕过快照
+      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '', true);
     } else {
       self.loadShelves();
     }
@@ -1052,12 +1053,14 @@ Page({
     self.loadShelfDetail(shelveId);
   },
 
-  loadShelfDetail: function(shelveId) {
+  /** @param {boolean=} forceRealtime 刷新按钮强制跳过快照拉实时数据 */
+  loadShelfDetail: function(shelveId, forceRealtime) {
     var self = this;
     self.setData({ loading: true, error: '', screen: 'grid' });
+    var useRealtime = forceRealtime || self.data.editMode || self.data.bindMode;
 
     springAuth.springRequest({
-      url: '/api/student/mobile/cage-shelves/' + shelveId + '/detail' + (self.data.editMode || self.data.bindMode ? '?realtime=true' : ''),
+      url: '/api/student/mobile/cage-shelves/' + shelveId + '/detail' + (useRealtime ? '?realtime=true' : ''),
       method: 'GET',
       data: {}
     }).then(function(res) {
@@ -1874,13 +1877,23 @@ Page({
 
   /** 进入绑定模式 */
   onEnterBindMode: function() {
+    var self = this;
     if (!this.data.staffView) {
       wx.showToast({ title: '仅教职工可用', icon: 'none' });
       return;
     }
-    // 进入绑定模式 → 退出编辑 → 加载实时数据
+    // 进入绑定模式 → 退出编辑 → 先刷新 grid cache（对齐 Web Admin 的 refreshRoomRealtime）
     this.setData({ bindMode: true, editMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false, bindPairCache: [], bindPairCacheSize: 0, scanCache: {}, lastScannedKey: '' });
-    this.loadShelfDetail(this.data.selectedShelf ? this.data.selectedShelf.shelveId : '');
+    var shelveId = self.data.selectedShelf ? self.data.selectedShelf.shelveId : '';
+    springAuth.springRequest({
+      url: '/api/v1/cage-shelves/' + shelveId + '/refresh',
+      method: 'POST',
+      data: {}
+    }).then(function() {
+      self.loadShelfDetail(shelveId);
+    }).catch(function() {
+      self.loadShelfDetail(shelveId);
+    });
   },
 
   /** 退出绑定模式 */
@@ -1995,11 +2008,12 @@ Page({
     var promises = [];
     for (var i = 0; i < arr.length; i++) {
       var entry = arr[i];
-      var cageId = String(entry.cell.id || '');
+      // 优先 cell.id，回退到 cageBoxInfo.id（snapshot 路径可能不包含顶层 id）
+      var cageId = String(entry.cell.id || (entry.cell.cageBoxInfo && entry.cell.cageBoxInfo.id) || '');
       (function(cid, code, pos) {
         promises.push(new Promise(function(resolve) {
           springAuth.springRequest({
-            url: '/aro/cage-box/bind',
+            url: '/api/aro/cage-box/bind',
             method: 'POST',
             data: { animalCageId: cid, cageBoxCode: code, roomId: roomId }
           }).then(function(res) {
@@ -2030,11 +2044,12 @@ Page({
     var promises = [];
     for (var i = 0; i < arr.length; i++) {
       var entry = arr[i];
-      var cageId = String(entry.cell.id || '');
+      // 优先 cell.id，回退到 cageBoxInfo.id（snapshot 路径可能不包含顶层 id）
+      var cageId = String(entry.cell.id || (entry.cell.cageBoxInfo && entry.cell.cageBoxInfo.id) || '');
       (function(cid, pos) {
         promises.push(new Promise(function(resolve) {
           springAuth.springRequest({
-            url: '/aro/cage-box/unbind',
+            url: '/api/aro/cage-box/unbind',
             method: 'POST',
             data: { animalCageIdList: [cid], roomId: roomId }
           }).then(function(res) {
@@ -2086,14 +2101,15 @@ Page({
   doBindCage: function(cell, cageBoxCode) {
     var self = this;
     var meta = self.data.gridMeta || {};
-    var cageId = String(cell.id || '');
+    // 优先 cell.id，回退到 cageBoxInfo.id（snapshot 路径可能不包含顶层 id）
+    var cageId = String(cell.id || (cell.cageBoxInfo && cell.cageBoxInfo.id) || '');
     var cageName = String(cell.name || '');
     var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
     var shelveId = String((self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
 
     wx.showLoading({ title: '绑定中...' });
     springAuth.springRequest({
-      url: '/aro/cage-box/bind',
+      url: '/api/aro/cage-box/bind',
       method: 'POST',
       data: { animalCageId: cageId, cageBoxCode: cageBoxCode }
     }).then(function(res) {
@@ -2128,14 +2144,15 @@ Page({
   doUnbindCage: function(cell) {
     var self = this;
     var meta = self.data.gridMeta || {};
-    var cageId = String(cell.id || '');
+    // 优先 cell.id，回退到 cageBoxInfo.id（snapshot 路径可能不包含顶层 id）
+    var cageId = String(cell.id || (cell.cageBoxInfo && cell.cageBoxInfo.id) || '');
     var cageName = String(cell.name || '');
     var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
     var shelveId = String((self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
 
     wx.showLoading({ title: '解绑中...' });
     springAuth.springRequest({
-      url: '/aro/cage-box/unbind',
+      url: '/api/aro/cage-box/unbind',
       method: 'POST',
       data: { animalCageIdList: [cageId], roomId: roomId }
     }).then(function(res) {
