@@ -535,6 +535,7 @@ public class DahuaService {
         Map<String, Object> monitor = new HashMap<>();
         monitor.put("monitor", myCallbackUrl);
         monitor.put("monitorType", "url");
+        monitor.put("keepAliveInterval", 60); // 🔑 与 subscribe() 保持一致
         List<Map<String, Object>> events = new ArrayList<>();
         Map<String, Object> alarmEvent = new HashMap<>();
         alarmEvent.put("category", "alarm");
@@ -561,6 +562,11 @@ public class DahuaService {
         diagnostic.put("subscriberName", subName);
         diagnostic.put("callbackUrl", myCallbackUrl);
         diagnostic.put("requestBody", payload);
+
+        // 先取消已有同名订阅，避免 26100006 重复名称误报
+        try {
+            unsubscribe(subName);
+        } catch (Exception ignored) { }
 
         try {
             HttpHeaders headers = new HttpHeaders();
