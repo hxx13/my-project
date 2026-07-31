@@ -126,8 +126,8 @@ echo "=== Step 7/8: 启动服务 ==="
 sudo chown -R twin:twin /var/log/twin
 sudo chown aroadmin:aroadmin "$ENV_FILE" 2>/dev/null || true
 sudo systemctl start twin
-echo "  等待 25 秒..."
-sleep 25
+echo "  等待 60 秒..."
+sleep 60
 
 # Step 8/8: 健康检查
 echo "=== Step 8/8: 健康检查 ==="
