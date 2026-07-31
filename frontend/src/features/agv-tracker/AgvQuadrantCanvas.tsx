@@ -152,6 +152,13 @@ export default function AgvQuadrantCanvas({ ip, trail, currentX, currentY, curre
   const dragRef = useRef({ on: false, lx: 0, ly: 0 });
   const dragStartRef = useRef({ x: 0, y: 0 });
   const prevForkRef = useRef(forkHeight ?? 0);
+
+  // ── Playback refs for draw-loop access (bypasses React render pipeline) ──
+  const pbSortedRef = useRef<{ x: number; y: number; angle: number; ts: number; forkHeight: number | null; jackState: number | null; jackIsFull: boolean }[] | null>(null);
+  const pbProgressRef = useRef(playbackProgress ?? 1);
+  const pbDataRef = useRef(playbackData ?? null);
+  pbProgressRef.current = playbackProgress ?? 1;
+  pbDataRef.current = playbackData ?? null;
   // 保持 event handler 闭包中的 pickMode/onPointPick 同步
   const pickModeRef = useRef(pickMode);
   pickModeRef.current = pickMode;
@@ -163,68 +170,70 @@ export default function AgvQuadrantCanvas({ ip, trail, currentX, currentY, curre
   const rotDeg = coordRotationDeg ?? 0;
   if (rotDeg !== prevDegRef.current) { delete rawBounds[ip]; prevDegRef.current = rotDeg; prevLenRef.current = 0; }
 
-  // ── Playback trail conversion ──
-  const playbackPoints: TrailPoint[] = useMemo(() => {
-    if (!playbackActive || !playbackTrail || !playbackTrail.length) return [];
+  // ── Playback: sort ONCE, sync to ref for draw-loop access ──
+  const playbackSorted = useMemo(() => {
+    if (!playbackActive || !playbackTrail || !playbackTrail.length) return null;
     const pts = playbackTrail
       .filter(r => r.x != null && r.y != null)
       .sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime())
-      .map(r => ({ x: r.x!, y: r.y!, angle: r.angle ?? 0, ts: new Date(r.recorded_at).getTime() }));
-    if (pts.length < 2) return pts;
-    // 按时间进度截断：progress=0→开头几帧，progress=1→全部
-    const totalMs = pts[pts.length - 1].ts - pts[0].ts;
-    if (totalMs <= 0) return pts;
-    const cutoffTs = pts[0].ts + totalMs * (playbackProgress ?? 1);
-    return pts.filter(p => p.ts <= cutoffTs);
-  }, [playbackActive, playbackTrail, playbackProgress]);
+      .map(r => ({ x: r.x!, y: r.y!, angle: r.angle ?? 0, ts: new Date(r.recorded_at).getTime(), forkHeight: r.fork_height ?? null, jackState: r.jack_state ?? null, jackIsFull: r.jack_isFull === 1 }));
+    pbSortedRef.current = pts;
+    return pts;
+  }, [playbackActive, playbackTrail]);
 
-  // When in playback mode, use playbackPoints for trail rendering
-  const effectiveTrail = playbackActive ? playbackPoints : trail;
+  // For React-driven UI (progress bar, etc) — keep lightweight
+  // Canvas draw loop reads refs directly
 
-  // Playback interpolated position + state: lerp between two closest trail points
+  const effectiveTrail = playbackActive
+    ? (() => {
+        const s = pbSortedRef.current;
+        if (!s || s.length < 2) return s ?? [];
+        const totalMs = s[s.length - 1].ts - s[0].ts;
+        if (totalMs <= 0) return s;
+        const cutoffTs = s[0].ts + totalMs * (playbackProgress ?? 1);
+        let lo = 0, hi = s.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (s[mid].ts <= cutoffTs) lo = mid + 1; else hi = mid; }
+        return s.slice(0, lo);
+      })()
+    : trail;
+
   const playbackPos = useMemo(() => {
-    if (!playbackActive || !playbackData || !playbackTrail || !playbackTrail.length) return null;
-    const totalMs = new Date(playbackData.to).getTime() - new Date(playbackData.from).getTime();
-    const nowTs = new Date(playbackData.from).getTime() + totalMs * (playbackProgress ?? 1);
-    const pts = playbackTrail
-      .filter(r => r.x != null && r.y != null)
-      .sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime());
-    if (pts.length === 0) return null;
-    if (pts.length === 1) {
-      const p = pts[0];
-      return { x: p.x!, y: p.y!, angle: p.angle ?? 0, forkHeight: p.fork_height ?? null, jackState: p.jack_state ?? null, jackIsFull: p.jack_isFull === 1 };
-    }
-    let after = pts.findIndex(p => new Date(p.recorded_at).getTime() > nowTs);
-    if (after <= 0) after = 1;
-    if (after >= pts.length) after = pts.length - 1;
-    const a = pts[after - 1], b = pts[after];
-    const aTs = new Date(a.recorded_at).getTime(), bTs = new Date(b.recorded_at).getTime();
-    const t = Math.min(1, Math.max(0, (nowTs - aTs) / (bTs - aTs || 1)));
+    if (!playbackActive) return null;
+    const s = pbSortedRef.current;
+    const data = pbDataRef.current;
+    if (!s || !s.length || !data) return null;
+    const totalMs = new Date(data.to).getTime() - new Date(data.from).getTime();
+    const nowTs = new Date(data.from).getTime() + totalMs * (playbackProgress ?? 1);
+    if (s.length === 1) return { x: s[0].x, y: s[0].y, angle: s[0].angle, forkHeight: s[0].forkHeight, jackState: s[0].jackState, jackIsFull: s[0].jackIsFull };
+    let lo = 0, hi = s.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (s[mid].ts <= nowTs) lo = mid + 1; else hi = mid; }
+    const after = Math.min(Math.max(lo, 1), s.length - 1);
+    const a = s[after - 1], b = s[after];
+    const t = Math.min(1, Math.max(0, (nowTs - a.ts) / (b.ts - a.ts || 1)));
     return {
-      x: a.x! + (b.x! - a.x!) * t,
-      y: a.y! + (b.y! - a.y!) * t,
-      angle: lerpAngle(a.angle ?? 0, b.angle ?? 0, t),
-      forkHeight: a.fork_height ?? null,
-      jackState: a.jack_state ?? null,
-      jackIsFull: a.jack_isFull === 1,
+      x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t,
+      angle: lerpAngle(a.angle, b.angle, t),
+      forkHeight: a.forkHeight, jackState: a.jackState, jackIsFull: a.jackIsFull,
     };
-  }, [playbackActive, playbackData, playbackTrail, playbackProgress]);
+  }, [playbackActive, playbackProgress]);
 
   const hasData = playbackActive
-    ? (playbackPos != null)
+    ? (pbSortedRef.current != null && pbSortedRef.current.length > 0)
     : (currentX != null && currentY != null);
 
-  // 轨迹长度变化 → 全量重建边界（收缩+扩张），不再只扩张
-  if (effectiveTrail.length !== prevLenRef.current || !rawBounds[ip]) {
-    prevLenRef.current = effectiveTrail.length;
+  // 轨迹长度变化 → 全量重建边界
+  const trailForBounds = playbackActive ? (pbSortedRef.current ?? []) : effectiveTrail;
+  if (trailForBounds.length !== prevLenRef.current || !rawBounds[ip]) {
+    prevLenRef.current = trailForBounds.length;
     let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
     if (hasData) {
-      const cx = playbackActive && playbackPos ? playbackPos.x : currentX!;
-      const cy = playbackActive && playbackPos ? playbackPos.y : currentY!;
+      const s = pbSortedRef.current;
+      const cx = playbackActive && s && s.length > 0 ? s[s.length - 1].x : currentX!;
+      const cy = playbackActive && s && s.length > 0 ? s[s.length - 1].y : currentY!;
       if (cx < xMin) xMin = cx; if (cx > xMax) xMax = cx;
       if (cy < yMin) yMin = cy; if (cy > yMax) yMax = cy;
     }
-    for (const p of effectiveTrail) {
+    for (const p of trailForBounds) {
       if (p.x < xMin) xMin = p.x; if (p.x > xMax) xMax = p.x;
       if (p.y < yMin) yMin = p.y; if (p.y > yMax) yMax = p.y;
     }
@@ -242,7 +251,7 @@ export default function AgvQuadrantCanvas({ ip, trail, currentX, currentY, curre
       } catch {}
     }
     if (isFinite(xMin)) {
-      const mx = Math.max((xMax - xMin) * 0.02, 0.5), my = Math.max((yMax - yMin) * 0.02, 0.5);
+      const mx = Math.max((xMax - xMin) * 0.08, 1.0), my = Math.max((yMax - yMin) * 0.08, 1.0);
       rawBounds[ip] = { xMin: xMin - mx, xMax: xMax + mx, yMin: yMin - my, yMax: yMax + my };
     }
   }
@@ -440,10 +449,23 @@ export default function AgvQuadrantCanvas({ ip, trail, currentX, currentY, curre
       }
     }
 
-    // ── Trail with activity coloring ──
-    const displayTrail = routeMode && !playbackActive
-      ? effectiveTrail.filter(p => Date.now() - p.ts < 30_000)
-      : effectiveTrail;
+    // ── Trail: playback uses refs (no React lag), live uses state ──
+    let displayTrail: TrailPoint[];
+    if (playbackActive) {
+      const s = pbSortedRef.current;
+      const p = pbProgressRef.current;
+      if (s && s.length >= 2) {
+        const totalMs = s[s.length - 1].ts - s[0].ts;
+        const cutoffTs = s[0].ts + totalMs * p;
+        let lo = 0, hi = s.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (s[mid].ts <= cutoffTs) lo = mid + 1; else hi = mid; }
+        displayTrail = s.slice(0, lo) as TrailPoint[];
+      } else {
+        displayTrail = (s ?? []) as TrailPoint[];
+      }
+    } else {
+      displayTrail = routeMode ? effectiveTrail.filter(p => Date.now() - p.ts < 30_000) : effectiveTrail;
+    }
     if (displayTrail.length > 1) {
       if (activitySegments && activitySegments.length > 0) {
         const segLookup: { ts: number; color: string }[] = [];
@@ -498,11 +520,32 @@ export default function AgvQuadrantCanvas({ ip, trail, currentX, currentY, curre
 
     // Current position arrow (interpolated for smooth movement, or playback position)
     if (hasData) {
-      const pos = playbackActive && playbackPos
-        ? playbackPos
-        : interpolatePosition(trail, currentX ?? null, currentY ?? null, currentAngle ?? null);
+      // Playback pos from refs (no React lag), live pos from interpolate
+      let pos: { x: number; y: number; angle: number } | { x: number | null; y: number | null; angle: number | null };
+      if (playbackActive) {
+        const s = pbSortedRef.current;
+        const data = pbDataRef.current;
+        const p = pbProgressRef.current;
+        if (s && data && s.length > 0) {
+          const totalMs = new Date(data.to).getTime() - new Date(data.from).getTime();
+          const nowTs = new Date(data.from).getTime() + totalMs * p;
+          if (s.length === 1) { pos = { x: s[0].x, y: s[0].y, angle: s[0].angle }; }
+          else {
+            let lo = 0, hi = s.length;
+            while (lo < hi) { const mid = (lo + hi) >> 1; if (s[mid].ts <= nowTs) lo = mid + 1; else hi = mid; }
+            const after = Math.min(Math.max(lo, 1), s.length - 1);
+            const a = s[after - 1], b = s[after];
+            const t = Math.min(1, Math.max(0, (nowTs - a.ts) / (b.ts - a.ts || 1)));
+            pos = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, angle: lerpAngle(a.angle, b.angle, t) };
+          }
+        } else {
+          pos = { x: null, y: null, angle: null };
+        }
+      } else {
+        pos = interpolatePosition(trail, currentX ?? null, currentY ?? null, currentAngle ?? null);
+      }
       const px = toPx(pos.x!, pos.y!), py = toPy(pos.x!, pos.y!);
-      const effectiveAngle = playbackActive && playbackPos ? playbackPos.angle : currentAngle;
+      const effectiveAngle = playbackActive ? (pos.angle ?? currentAngle) : currentAngle;
       if (effectiveAngle != null) {
         ctx.save(); ctx.translate(px, py);
         if (effectiveFollow) {
@@ -525,9 +568,21 @@ export default function AgvQuadrantCanvas({ ip, trail, currentX, currentY, curre
       }
 
       // ── Fork height mini bar ──
-      const effForkH = playbackActive && playbackPos ? playbackPos.forkHeight : forkHeight;
-      const effJackSt = playbackActive && playbackPos ? playbackPos.jackState : jackState;
-      const effJackFull = playbackActive && playbackPos ? playbackPos.jackIsFull : jackIsFull;
+      // Playback: fork/jack from refs (lerped frame). Live: from props
+      let effForkH = forkHeight, effJackSt = jackState, effJackFull = jackIsFull;
+      if (playbackActive) {
+        const s = pbSortedRef.current;
+        const data = pbDataRef.current;
+        const p = pbProgressRef.current;
+        if (s && data && s.length > 0) {
+          const totalMs = new Date(data.to).getTime() - new Date(data.from).getTime();
+          const nowTs = new Date(data.from).getTime() + totalMs * p;
+          let lo = 0, hi = s.length;
+          while (lo < hi) { const mid = (lo + hi) >> 1; if (s[mid].ts <= nowTs) lo = mid + 1; else hi = mid; }
+          const idx = Math.min(Math.max(lo - 1, 0), s.length - 1);
+          effForkH = s[idx].forkHeight; effJackSt = s[idx].jackState; effJackFull = s[idx].jackIsFull;
+        }
+      }
       if (effForkH != null) {
         const fh = effForkH;
         const prevFh = prevForkRef.current;
@@ -566,7 +621,7 @@ export default function AgvQuadrantCanvas({ ip, trail, currentX, currentY, curre
       ctx.save(); ctx.translate(10, h / 2); ctx.rotate(-Math.PI / 2);
       ctx.fillText(`Y: ${rb.yMin.toFixed(d)} — ${rb.yMax.toFixed(d)}`, 0, 0); ctx.restore();
     }
-  }, [ip, effectiveTrail, currentX, currentY, currentAngle, online, color, hasData, dwellSpots, rotDeg, activitySegments, zoneOverlays, routeOverlays, routeMode, followMode, transitionMarkers, forkHeight, jackState, jackIsFull, playbackActive, playbackProgress]);
+  }, [ip, trail, currentX, currentY, currentAngle, online, color, hasData, dwellSpots, rotDeg, activitySegments, zoneOverlays, routeOverlays, routeMode, followMode, transitionMarkers, forkHeight, jackState, jackIsFull]);
 
   const drawRef = useRef(draw);
   drawRef.current = draw;

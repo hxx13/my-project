@@ -1150,6 +1150,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   const [bindConfirmOpen, setBindConfirmOpen] = useState(false);
   const [unbindActive, setUnbindActive] = useState(false);
   const [bindPairCache, setBindPairCache] = useState<Map<string, {cell: CageShelfCell; code: string}>>(new Map());
+  const [unbindPairCache, setUnbindPairCache] = useState<Set<string>>(new Set());
+  const [unbindCells, setUnbindCells] = useState<Map<string, CageShelfCell>>(new Map());
   const [scanCache, setScanCache] = useState<Map<string, ScanCacheEntry>>(new Map());
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);  // "x:y" 刚扫的
   const [actionSubmitting, setActionSubmitting] = useState(false);
@@ -1338,12 +1340,15 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
         toast.success(`已缓存 (${bindPairCache.size + 1} 个待提交)`);
         return;
       }
-      // 解绑：弹窗确认
+      // 解绑：加入批量缓存
       if (cellType === 3) {
         if (!unbindActive) { toast.error("请先进入解绑模式"); return; }
+        const ck = `${cell.x}:${cell.y}`;
+        if (unbindPairCache.has(ck)) { toast.error("该笼位已在缓存中"); return; }
+        setUnbindPairCache(prev => { const next = new Set(prev); next.add(ck); return next; });
+        setUnbindCells(prev => { const next = new Map(prev); next.set(ck, cell); return next; });
         setBindSelectedKey(`${cell.x}:${cell.y}`);
-        setSelectedCell(cell);
-        setBindConfirmOpen(true);
+        toast.success(`已缓存 (${unbindPairCache.size + 1} 个待解绑)`);
         return;
       }
       toast.error(cellType === 1 ? "该笼位尚未预约" : cellType === 4 ? "该笼位状态异常" : "该笼位不可操作");
@@ -1507,6 +1512,28 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     if (fail === 0) toast.success(`${ok} 个绑定全部成功！`);
     else toast(`${ok} 成功 / ${fail} 失败`, { icon: "⚠️" });
   }, [bindPairCache, selectedShelf, detail]);
+
+  // ── 批量解绑提交 ──
+  const handleBatchUnbindSubmit = useCallback(async () => {
+    if (unbindPairCache.size === 0 || !selectedShelf) return;
+    setBindSubmitting(true);
+    const ids = Array.from(unbindPairCache);
+    let ok = 0, fail = 0;
+    await Promise.all(ids.map(async (ck) => {
+      try {
+        const cell = unbindCells.get(ck);
+        const cageId = String((cell as any)?.id ?? "");
+        const meta = detail?.shelfMeta;
+        const roomId = String((meta as any)?.roomId ?? selectedShelf.roomId ?? "");
+        await unbindCageBox(cageId, roomId);
+        ok++;
+      } catch { fail++; }
+    }));
+    setUnbindPairCache(new Set()); setUnbindCells(new Map());
+    setBindSubmitting(false);
+    if (fail === 0) toast.success(`${ok} 个解绑全部成功！`);
+    else toast(`${ok} 成功 / ${fail} 失败`, { icon: "⚠️" });
+  }, [unbindPairCache, unbindCells, selectedShelf, detail]);
 
   // ── 绑定模式确认（Dialog，仅解绑用）──
   const handleBindConfirm = useCallback(async () => {

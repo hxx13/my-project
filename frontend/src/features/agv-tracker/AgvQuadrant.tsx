@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import AgvQuadrantCanvas from "./AgvQuadrantCanvas";
 import AgvPlaybackTimeline from "./AgvPlaybackTimeline";
 import type { TrailPoint } from "./useAgvTrailRef";
@@ -141,6 +141,12 @@ export default function AgvQuadrant(props: Props) {
 
   const qc = useQueryClient();
   const [showTimeline, setShowTimeline] = useState(false);
+
+  // 进入回放模式时自动收起时间轴，只保留紧凑播放条
+  useEffect(() => {
+    if (playbackActive) setShowTimeline(false);
+  }, [playbackActive]);
+
   const pct = battery != null ? Math.round(battery * 100) : null;
   const barColor = pct != null
     ? (pct <= 20 ? "#ef4444" : pct <= 50 ? "#f59e0b" : "#22c55e") : "#9ca3af";
@@ -293,7 +299,7 @@ export default function AgvQuadrant(props: Props) {
         {/* Bottom-right: station — shift up when timeline shown */}
         {station && (
           <div className="absolute text-[10px] text-[var(--app-color-accent)] font-semibold bg-[var(--app-color-accent-soft)] px-1.5 py-0.5 rounded pointer-events-none"
-            style={{ bottom: (showTimeline || playbackActive) ? 100 : 4, right: 8 }}>
+            style={{ bottom: showTimeline ? 100 : playbackActive ? 30 : 4, right: 8 }}>
             {station}
           </div>
         )}
@@ -354,7 +360,7 @@ export default function AgvQuadrant(props: Props) {
           </div>
         )}
 
-        {/* ── Day timeline + playback controls (toggle on/off) ── */}
+        {/* ── Timeline overlay: peek (clock toggle) or playback scrubber ── */}
         {(showTimeline || playbackActive) && (
         <div className="absolute bottom-1 left-2 right-2 z-20">
           <AgvPlaybackTimeline

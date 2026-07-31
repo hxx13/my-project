@@ -500,6 +500,8 @@ Page({
     unbindActive: false,
     bindPairCache: [],       // [{ key: "x:y", cell, code }] 批量绑定缓存（数组）
     bindPairCacheSize: 0,
+    unbindPairCache: [],     // [{ key: "x:y", cell }] 批量解绑缓存（数组）
+    unbindPairCacheSize: 0,
     bindSubmitting: false,
     navBarHeight: 64,
 
@@ -1883,21 +1885,22 @@ Page({
 
   /** 退出绑定模式 */
   onExitBindMode: function() {
-    if (this.data.bindPairCacheSize > 0) {
+    var total = this.data.bindPairCacheSize + this.data.unbindPairCacheSize;
+    if (total > 0) {
       var self = this;
       wx.showModal({
-        title: '未提交的绑定',
-        content: '有 ' + self.data.bindPairCacheSize + ' 个未提交的绑定，是否放弃？',
+        title: '未提交的操作',
+        content: '有 ' + total + ' 个未提交的操作，是否放弃？',
         success: function(res) {
           if (res.confirm) {
-            self.setData({ bindMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false, bindPairCache: [], bindPairCacheSize: 0 });
+            self.setData({ bindMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false, bindPairCache: [], bindPairCacheSize: 0, unbindPairCache: [], unbindPairCacheSize: 0 });
             self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
           }
         }
       });
       return;
     }
-    this.setData({ bindMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false, bindPairCache: [], bindPairCacheSize: 0 });
+    this.setData({ bindMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false, bindPairCache: [], bindPairCacheSize: 0, unbindPairCache: [], unbindPairCacheSize: 0 });
     this.loadShelfDetail(this.data.selectedShelf ? this.data.selectedShelf.shelveId : '');
   },
 
@@ -1962,20 +1965,18 @@ Page({
       return;
     }
 
-    // case 3: 解绑
+    // case 3: 解绑 → 加入批量缓存
     if (animalCageType === 3) {
       if (!self.data.unbindActive) { wx.showToast({ title: '请先进入解绑模式', icon: 'none' }); return; }
       var key3 = cell.x + ':' + cell.y;
-      self.setData({ bindSelectedKey: key3 });
-      var pi3 = cell.piName || (cell.cageBoxInfo && cell.cageBoxInfo.ProjectPiName) || '';
-      wx.showModal({
-        title: '确认解绑',
-        content: '目标笼位：' + (cell.position || '') + (pi3 ? '\n课题组 PI：' + pi3 : '') + '\n\n解绑后恢复空笼盒状态',
-        success: function(res) {
-          if (!res.confirm) { self.setData({ bindSelectedKey: '' }); return; }
-          self.doUnbindCage(cell);
-        }
-      });
+      var dup3 = false;
+      var uarr = self.data.unbindPairCache;
+      for (var u = 0; u < uarr.length; u++) { if (uarr[u].key === key3) { dup3 = true; break; } }
+      if (dup3) { wx.showToast({ title: '该笼位已在缓存中', icon: 'none' }); return; }
+      var displayPos = cell._displayPosition || cell.position || '';
+      var newUArr = uarr.concat([{ key: key3, cell: cell, pos: displayPos }]);
+      self.setData({ unbindPairCache: newUArr, unbindPairCacheSize: newUArr.length, bindSelectedKey: key3 });
+      wx.showToast({ title: '已缓存（' + newUArr.length + ' 个待解绑）', icon: 'success' });
       return;
     }
 
@@ -2015,6 +2016,55 @@ Page({
       else { wx.showToast({ title: ok + ' 成功 / ' + fail + ' 失败', icon: 'none' }); }
       self.onRetry();
     });
+  },
+
+  /** 批量解绑提交 */
+  onBatchUnbindSubmit: function() {
+    var self = this;
+    var arr = self.data.unbindPairCache;
+    if (arr.length === 0) return;
+    self.setData({ bindSubmitting: true });
+    var meta = self.data.gridMeta || {};
+    var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
+    var ok = 0, fail = 0, total = arr.length;
+    var promises = [];
+    for (var i = 0; i < arr.length; i++) {
+      var entry = arr[i];
+      var cageId = String(entry.cell.id || '');
+      (function(cid, pos) {
+        promises.push(new Promise(function(resolve) {
+          springAuth.springRequest({
+            url: '/aro/cage-box/unbind',
+            method: 'POST',
+            data: { animalCageIdList: [cid], roomId: roomId }
+          }).then(function(res) {
+            var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+            if (body && body.success) { ok++; } else { fail++; }
+            resolve();
+          }).catch(function() { fail++; resolve(); });
+        }));
+      })(cageId, entry.pos);
+    }
+    Promise.all(promises).then(function() {
+      self.setData({ unbindPairCache: [], unbindPairCacheSize: 0, bindSubmitting: false });
+      if (fail === 0) { wx.showToast({ title: total + ' 个解绑全部成功！', icon: 'success' }); }
+      else { wx.showToast({ title: ok + ' 成功 / ' + fail + ' 失败', icon: 'none' }); }
+      self.onRetry();
+    });
+  },
+
+  /** 清空解绑缓存 */
+  onClearUnbindCache: function() {
+    this.setData({ unbindPairCache: [], unbindPairCacheSize: 0 });
+  },
+
+  /** 移除单个解绑缓存 */
+  onRemoveUnbindPair: function(e) {
+    var key = e.currentTarget.dataset.key;
+    var arr = this.data.unbindPairCache;
+    var newArr = [];
+    for (var i = 0; i < arr.length; i++) { if (arr[i].key !== key) newArr.push(arr[i]); }
+    this.setData({ unbindPairCache: newArr, unbindPairCacheSize: newArr.length });
   },
 
   /** 清空绑定缓存 */
@@ -2085,9 +2135,9 @@ Page({
 
     wx.showLoading({ title: '解绑中...' });
     springAuth.springRequest({
-      url: '/api/v1/cage-shelves/cage/update',
+      url: '/aro/cage-box/unbind',
       method: 'POST',
-      data: { id: cageId, name: cageName, roomId: roomId, shelveId: shelveId, postionX: cell.x || 0, postionY: cell.y || 0, qrcode: '', state: 2 }
+      data: { animalCageIdList: [cageId], roomId: roomId }
     }).then(function(res) {
       wx.hideLoading();
       var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);

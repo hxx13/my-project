@@ -687,7 +687,7 @@ export async function bindCageBox(animalCageId: string, cageBoxCode: string, roo
 
 /** 解绑笼盒（批量删除笼盒关联） */
 export async function unbindCageBox(animalCageId: string, roomId?: string): Promise<boolean> {
-  const res = await authHttp.post<Result<boolean>>("/aro/cage-box/unbind", { animalCageIdList: [Number(animalCageId)], roomId: roomId || undefined });
+  const res = await authHttp.post<Result<boolean>>("/aro/cage-box/unbind", { animalCageIdList: [String(animalCageId)], roomId: roomId || undefined });
   console.log("[API unbindCageBox] raw:", JSON.stringify(res.data, null, 2));
   if (!res.data?.success) throw new Error(res.data?.message || "解绑失败");
   return res.data.data ?? false;

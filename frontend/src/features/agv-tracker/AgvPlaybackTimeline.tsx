@@ -70,20 +70,31 @@ export default function AgvPlaybackTimeline(props: Props) {
     return { start: viewDate, end: viewDateEnd };
   }, [daySegments, viewDate, viewDateEnd]);
 
-  // ── Selection window (ms since epoch), centered, re-centers when bounds change ──
-  const selCenter = (timeBounds.start + timeBounds.end) / 2;
-  const defaultSelStart = Math.max(selCenter - MAX_WINDOW_MS / 2, timeBounds.start);
-  const defaultSelEnd = Math.min(selCenter + MAX_WINDOW_MS / 2, timeBounds.end);
-  const [selStart, setSelStart] = useState(defaultSelStart);
-  const [selEnd, setSelEnd] = useState(defaultSelEnd);
+  // ── Selection window (ms since epoch), initialized later via effect ──
+  const [selStart, setSelStart] = useState(timeBounds.start);
+  const [selEnd, setSelEnd] = useState(Math.min(timeBounds.start + MAX_WINDOW_MS, timeBounds.end));
+
+  // 数据加载后居中到视觉中点（而非时间中点）
+  const selInitRef = useRef(false);
+  useEffect(() => {
+    if (daySegments.length === 0 || compressed.totalPx <= 0) return;
+    const centerTs = compressed.fromPx(compressed.totalPx / 2);
+    const start = Math.max(centerTs - MAX_WINDOW_MS / 2, timeBounds.start);
+    const end = Math.min(centerTs + MAX_WINDOW_MS / 2, timeBounds.end);
+    setSelStart(start);
+    setSelEnd(end);
+    selInitRef.current = true;
+  }, [daySegments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 时间边界变化时重新居中
   useEffect(() => {
-    setSelStart(Math.max(selCenter - MAX_WINDOW_MS / 2, timeBounds.start));
-    setSelEnd(Math.min(selCenter + MAX_WINDOW_MS / 2, timeBounds.end));
-  }, [timeBounds.start, timeBounds.end]);
+    if (!selInitRef.current) return;
+    const centerTs = compressed.fromPx(compressed.totalPx / 2);
+    setSelStart(Math.max(centerTs - MAX_WINDOW_MS / 2, timeBounds.start));
+    setSelEnd(Math.min(centerTs + MAX_WINDOW_MS / 2, timeBounds.end));
+  }, [timeBounds.start, timeBounds.end]); // eslint-disable-line react-hooks/exhaustive-deps
   const [dragging, setDragging] = useState<"left" | "right" | "body" | "progress" | null>(null);
-  const dragRef = useRef({ startX: 0, startSelStart: 0, startSelEnd: 0, startProgress: 0 });
+  const dragRef = useRef({ startX: 0, startSelStart: 0, startSelEnd: 0, startProgress: 0, startSelLeftPx: 0, startSelRightPx: 0 });
 
   // ── Fetch segments for viewDate, auto-analyze if empty ──
   useEffect(() => {
@@ -133,6 +144,7 @@ export default function AgvPlaybackTimeline(props: Props) {
       const r = timeBounds.end - timeBounds.start || 1;
       return {
         toPx: (ts: number) => (ts - timeBounds.start) / r * dayPx + 10,
+        fromPx: (px: number) => timeBounds.start + (px - 10) / dayPx * r,
         pxPerMs: dayPx / r,
         totalPx: dayPx + 20,
         gapBlocks: [] as { from: number; to: number; px: number; w: number }[],
@@ -181,14 +193,32 @@ export default function AgvPlaybackTimeline(props: Props) {
       return 10 + dayPx;
     };
 
-    // compressed.pxPerMs for drag: use avg over active time only
+    // Inverse mapping: pixel → timestamp (true inverse of toPx)
+    const fromPxComp = (px: number): number => {
+      for (let i = 0; i < blocks.length; i++) {
+        const b = blocks[i];
+        const blockStart = off[i];
+        const blockEnd = off[i] + b.displayPx;
+        if (px >= blockStart && px <= blockEnd) {
+          // Linear interpolation for both active and gap blocks —
+          // gaps are 6px wide but span large time ranges; interpolating
+          // across those 6px prevents the drag from feeling "stuck".
+          const frac = (px - blockStart) / (b.displayPx || 1);
+          return b.from + frac * (b.to - b.from);
+        }
+      }
+      if (px < (blocks[0] ? off[0] : 10)) return timeBounds.start;
+      return timeBounds.end;
+    };
+
+    // compressed.pxPerMs for drag: use avg over active time only (fallback for progress scrubber)
     const avgPxPerMs = remainingPx / totalActiveMs;
 
     const gapBlocks = blocks.filter(b => b.type === "gap").map((b, i) => ({
       from: b.from, to: b.to, px: off[blocks.indexOf(b)], w: b.displayPx,
     }));
 
-    return { toPx: toPxComp, pxPerMs: avgPxPerMs, totalPx: cum, gapBlocks };
+    return { toPx: toPxComp, fromPx: fromPxComp, pxPerMs: avgPxPerMs, totalPx: cum, gapBlocks };
   }, [daySegments, timeBounds, dayPx]);
 
   // Clamp selection within bounds, max window 2h
@@ -209,34 +239,42 @@ export default function AgvPlaybackTimeline(props: Props) {
     e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setDragging(part);
-    dragRef.current = { startX: e.clientX, startSelStart: selStart, startSelEnd: selEnd, startProgress: playbackProgress };
+    dragRef.current = { startX: e.clientX, startSelStart: selStart, startSelEnd: selEnd, startProgress: playbackProgress, startSelLeftPx: compressed.toPx(selStart), startSelRightPx: compressed.toPx(selEnd) };
   };
 
   useEffect(() => {
     if (!dragging) return;
     const onMove = (e: PointerEvent) => {
-      const dx = (e.clientX - dragRef.current.startX) / compressed.pxPerMs;
-      let { startSelStart: s, startSelEnd: en, startProgress: sp } = dragRef.current;
+      const pixelDelta = e.clientX - dragRef.current.startX;
+      const { startSelStart: s, startSelEnd: en, startProgress: sp, startSelLeftPx, startSelRightPx } = dragRef.current;
       if (dragging === "progress") {
-        // 拖动播放进度：在选中的回放窗口内按像素换算
         if (playbackData) {
           const winMs = en - s;
           if (winMs > 0) {
-            const dp = dx / winMs;
+            const dp = pixelDelta / compressed.pxPerMs / winMs;
             onPlaybackProgress(Math.min(1, Math.max(0, sp + dp)));
           }
         }
       } else if (dragging === "body") {
+        // Position-based: track absolute pixel → timestamp via fromPx inverse
+        const newLeftPx = startSelLeftPx + pixelDelta;
+        const newRightPx = startSelRightPx + pixelDelta;
+        let ns = compressed.fromPx(newLeftPx);
+        let ne = compressed.fromPx(newRightPx);
         const dur = en - s;
-        let ns = s + dx;
-        let ne = ns + dur;
-        if (ns < timeBounds.start) { ns = timeBounds.start; ne = ns + dur; }
-        if (ne > timeBounds.end) { ne = timeBounds.end; ns = ne - dur; }
+        ns = Math.max(timeBounds.start, Math.min(ns, timeBounds.end - dur));
+        ne = Math.min(timeBounds.end, Math.max(ne, timeBounds.start + dur));
+        if (ne - ns < 1000) ne = Math.min(ns + 1000, timeBounds.end);
         setSelStart(ns); setSelEnd(ne);
       } else if (dragging === "left") {
-        setSelStart(clampSel(s + dx, en).start);
+        // Position-based: pixel → timestamp via fromPx, then clamp
+        const newPx = startSelLeftPx + pixelDelta;
+        const newTs = compressed.fromPx(newPx);
+        setSelStart(clampSel(newTs, en).start);
       } else if (dragging === "right") {
-        setSelEnd(clampSel(s, en + dx).end);
+        const newPx = startSelRightPx + pixelDelta;
+        const newTs = compressed.fromPx(newPx);
+        setSelEnd(clampSel(s, newTs).end);
       }
     };
     const onUp = () => setDragging(null);
@@ -262,68 +300,71 @@ export default function AgvPlaybackTimeline(props: Props) {
   return (
     <div ref={containerRef} className="w-full select-none flex flex-col gap-1">
 
-      {/* ── Scrubber bar (playback mode, above date nav) ── */}
+      {/* ── Playback mode: compact scrubber bar only ── */}
       {playbackActive && playbackData && (
-        <div className="flex items-center justify-center gap-2 px-2 py-1.5 bg-[var(--app-color-surface-container)] rounded-lg border border-[var(--app-color-accent)]/30 shadow-sm">
-          {/* Play/Pause */}
-          <button onClick={playbackPlaying ? onPlaybackPause : onPlaybackPlay}
-            className="w-5 h-5 rounded-full bg-white border-2 border-[var(--app-color-accent)] text-[var(--app-color-accent)] flex items-center justify-center shadow-sm hover:bg-[var(--app-color-accent-soft)] shrink-0 transition-colors">
-            {playbackPlaying ? <Pause size={10} /> : <Play size={10} className="ml-0.5" />}
-          </button>
+      <div className="flex items-center justify-center gap-2 px-2 py-1 bg-[var(--app-color-surface-container)] rounded-lg border border-[var(--app-color-accent)]/30 shadow-sm">
+        {/* Play/Pause */}
+        <button onClick={playbackPlaying ? onPlaybackPause : onPlaybackPlay}
+          className="w-5 h-5 rounded-full bg-white border-2 border-[var(--app-color-accent)] text-[var(--app-color-accent)] flex items-center justify-center shadow-sm hover:bg-[var(--app-color-accent-soft)] shrink-0 transition-colors">
+          {playbackPlaying ? <Pause size={10} /> : <Play size={10} className="ml-0.5" />}
+        </button>
 
-          {/* Scrubber */}
-          <div className="relative h-full bg-[var(--app-color-surface-page)] rounded-full border border-[var(--app-color-border-default)] cursor-pointer overflow-hidden shadow-inner"
-            style={{ width: "clamp(80px, 40%, 300px)" }}
-            onPointerDown={e => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-              onPlaybackProgress(frac);
-              e.currentTarget.setPointerCapture(e.pointerId);
-              const onMove2 = (ev: PointerEvent) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                onPlaybackProgress(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)));
-              };
-              const onUp2 = () => {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-                window.removeEventListener("pointermove", onMove2);
-                window.removeEventListener("pointerup", onUp2);
-              };
-              window.addEventListener("pointermove", onMove2);
-              window.addEventListener("pointerup", onUp2);
-            }}>
-            {/* Fill */}
-            <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-[var(--app-color-accent)]/40 to-[var(--app-color-accent)]/60 rounded-full"
-              style={{ width: `${(playbackProgress ?? 0) * 100}%` }} />
-            {/* Knob */}
-            <div className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 -translate-x-1.5 rounded-full bg-[var(--app-color-accent)] border-2 border-white shadow-md ring-1 ring-[var(--app-color-accent)]/30"
-              style={{ left: `${(playbackProgress ?? 0) * 100}%` }} />
-          </div>
-
-          {/* Time */}
-          <span className="text-[10px] font-semibold text-[var(--app-color-accent)] tabular-nums whitespace-nowrap shrink-0 min-w-[40px]">
-            {fmtHM(new Date(playbackData.from).getTime() + (new Date(playbackData.to).getTime() - new Date(playbackData.from).getTime()) * playbackProgress)}
-          </span>
-
-          {/* Speed */}
-          <select value={playbackSpeed} onChange={e => onPlaybackSpeed(parseFloat(e.target.value))}
-            className="px-1 h-5 rounded text-[9px] bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] text-[var(--app-color-text-primary)] shrink-0">
-            {[0.5, 1, 2, 4, 8].map(s => <option key={s} value={s}>{s}×</option>)}
-          </select>
-
-          {/* REC */}
-          <span className="flex items-center gap-0.5 text-[9px] text-red-500 font-bold shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />回放
-          </span>
-
-          {/* Close */}
-          <button onClick={onClearPlayback}
-            className="p-1 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0 shadow-sm">
-            <X size={14} />
-          </button>
+        {/* Scrubber */}
+        <div className="relative h-5 bg-[var(--app-color-surface-page)] rounded-full border border-[var(--app-color-border-default)] cursor-pointer overflow-hidden shadow-inner"
+          style={{ width: "clamp(140px, 50%, 400px)" }}
+          onPointerDown={e => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            onPlaybackProgress(frac);
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const onMove2 = (ev: PointerEvent) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              onPlaybackProgress(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)));
+            };
+            const onUp2 = () => {
+              e.currentTarget.releasePointerCapture(e.pointerId);
+              window.removeEventListener("pointermove", onMove2);
+              window.removeEventListener("pointerup", onUp2);
+            };
+            window.addEventListener("pointermove", onMove2);
+            window.addEventListener("pointerup", onUp2);
+          }}>
+          {/* Fill */}
+          <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-[var(--app-color-accent)]/40 to-[var(--app-color-accent)]/60 rounded-full"
+            style={{ width: `${(playbackProgress ?? 0) * 100}%` }} />
+          {/* Knob */}
+          <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 -translate-x-1.5 rounded-full bg-[var(--app-color-accent)] border-2 border-white shadow-md ring-1 ring-[var(--app-color-accent)]/30"
+            style={{ left: `${(playbackProgress ?? 0) * 100}%` }} />
         </div>
+
+        {/* Time */}
+        <span className="text-[10px] font-semibold text-[var(--app-color-accent)] tabular-nums whitespace-nowrap shrink-0 min-w-[38px]">
+          {fmtHM(new Date(playbackData.from).getTime() + (new Date(playbackData.to).getTime() - new Date(playbackData.from).getTime()) * playbackProgress)}
+        </span>
+
+        {/* Speed */}
+        <select value={playbackSpeed} onChange={e => onPlaybackSpeed(parseFloat(e.target.value))}
+          className="px-1 h-5 rounded text-[9px] bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] text-[var(--app-color-text-primary)] shrink-0">
+          {[0.5, 1, 2, 4, 8].map(s => <option key={s} value={s}>{s}×</option>)}
+        </select>
+
+        {/* REC */}
+        <span className="flex items-center gap-0.5 text-[9px] text-red-500 font-bold shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />回放
+        </span>
+
+        {/* Close */}
+        <button onClick={onClearPlayback}
+          className="p-1 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0 shadow-sm">
+          <X size={14} />
+        </button>
+      </div>
       )}
 
-      {/* ── Date picker ── */}
+      {/* ── Non-playback mode: full timeline with date picker ── */}
+      {!playbackActive && (
+      <>
+      {/* Date picker */}
       <div className="flex items-center justify-center">
         <input type="date" value={fmtDate(viewDate)}
           max={fmtDate(todayStart)}
@@ -408,14 +449,14 @@ export default function AgvPlaybackTimeline(props: Props) {
           <div className="absolute inset-0 cursor-grab active:cursor-grabbing bg-[var(--app-color-accent)]/12"
             onPointerDown={e => onPointerDown("body", e)} />
           {/* Left anchor pin */}
-          <div className="absolute -left-1.5 top-0 w-3 h-full flex flex-col items-center cursor-ew-resize z-10"
+          <div className="absolute -left-2 top-0 w-5 h-full flex flex-col items-center cursor-ew-resize z-10"
             onPointerDown={e => onPointerDown("left", e)}>
             <div className="w-3 h-3 rounded-full bg-[var(--app-color-accent)] border-2 border-white shadow mt-0.5" />
             <div className="w-0.5 flex-1 bg-[var(--app-color-accent)]" />
             <div className="w-3 h-3 rounded-full bg-[var(--app-color-accent)] border-2 border-white shadow mb-0.5" />
           </div>
           {/* Right anchor pin */}
-          <div className="absolute -right-1.5 top-0 w-3 h-full flex flex-col items-center cursor-ew-resize z-10"
+          <div className="absolute -right-2 top-0 w-5 h-full flex flex-col items-center cursor-ew-resize z-10"
             onPointerDown={e => onPointerDown("right", e)}>
             <div className="w-3 h-3 rounded-full bg-[var(--app-color-accent)] border-2 border-white shadow mt-0.5" />
             <div className="w-0.5 flex-1 bg-[var(--app-color-accent)]" />
@@ -456,6 +497,8 @@ export default function AgvPlaybackTimeline(props: Props) {
           </>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
