@@ -629,11 +629,13 @@ public class CageShelfService {
     private Map<String, Object> simplifyCell(Map<String, Object> cage, int x, int y, CageShelfIndex index) {
         Map<String, Object> cell = new LinkedHashMap<>();
         Map<String, Object> cageBoxVo = castMap(cage.get("cageBoxVo"));
-        cell.put("x", x);
-        cell.put("y", y);
+        cell.put("x", toIntObj(cage.get("postionX")));
+        cell.put("y", toIntObj(cage.get("postionY")));
+        cell.put("postionX", toIntObj(cage.get("postionX")));
+        cell.put("postionY", toIntObj(cage.get("postionY")));
         cell.put("position", toPosition(x, y));
         cell.put("empty", false);
-        cell.put("id", cage.get("id"));
+        cell.put("id", String.valueOf(cage.get("id")));
         cell.put("name", trim(cage.get("name")));
         cell.put("piName", trim(cage.get("piName")));
         cell.put("projectGroup", cageBoxVo == null ? "" : trim(cageBoxVo.get("projectName")));
@@ -1287,13 +1289,14 @@ public class CageShelfService {
                     }
                 }
             } else {
-                // 不在冷却 → 并行拉取
+                // 不在冷却 → 并行拉取，按 shelveIdList 原序收集结果
+                java.util.concurrent.ConcurrentHashMap<String, Map<String, Object>> resultMap = new java.util.concurrent.ConcurrentHashMap<>();
                 java.util.concurrent.CompletableFuture<?>[] futures = shelveIdList.stream()
                     .map(sid -> java.util.concurrent.CompletableFuture.runAsync(() -> {
                         try {
                             Map<String, Object> detail = refreshShelfDetail(sid);
                             if (detail != null && !detail.isEmpty()) {
-                                synchronized (shelves) { shelves.add(detail); }
+                                resultMap.put(sid, detail);
                             }
                         } catch (Exception e) {
                             // 单个笼架失败不影响其他
@@ -1301,6 +1304,13 @@ public class CageShelfService {
                     }))
                     .toArray(java.util.concurrent.CompletableFuture[]::new);
                 java.util.concurrent.CompletableFuture.allOf(futures).join();
+                // 按 shelveIdList 原序收集，保证前端架子按排序字段排列
+                for (String sid : shelveIdList) {
+                    Map<String, Object> detail = resultMap.get(sid);
+                    if (detail != null) {
+                        shelves.add(detail);
+                    }
+                }
             }
         } else {
             // 单笼架模式

@@ -22,7 +22,7 @@ public class FaceAuthConfigSeed implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;
 
-    @Value("${app.face.master-enabled:true}")
+    @Value("${app.face.master-enabled:false}")
     private String defaultMasterEnabled;
 
     @Value("${app.face.scan-popup-enabled:true}")

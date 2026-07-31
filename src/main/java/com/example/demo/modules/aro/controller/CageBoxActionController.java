@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.cageshelf.service.CageShelfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -33,11 +34,14 @@ public class CageBoxActionController {
 
     private final AuthContextService authContextService;
     private final AroService aroService;
+    private final CageShelfService cageShelfService;
 
     public CageBoxActionController(AuthContextService authContextService,
-                                   AroService aroService) {
+                                   AroService aroService,
+                                   CageShelfService cageShelfService) {
         this.authContextService = authContextService;
         this.aroService = aroService;
+        this.cageShelfService = cageShelfService;
     }
 
     @PostMapping("/action")
@@ -112,7 +116,7 @@ public class CageBoxActionController {
     // ── 笼盒关联笼位（2026-07-30 新增）──
 
     @PostMapping("/bind")
-    @Operation(summary = "扫码后将笼盒关联到指定笼位")
+    @Operation(summary = "扫码后将笼盒关联到指定笼位，成功后刷新房间缓存")
     public Result<Map<String, Object>> bind(@RequestBody Map<String, Object> body,
                                             HttpServletRequest request) {
         User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
@@ -126,14 +130,79 @@ public class CageBoxActionController {
         Long animalCageId = toLong(animalCageIdStr);
         if (animalCageId == null) return Result.fail(400, "animalCageId 格式错误");
 
+        Long roomId = toLong(str(body, "roomId"));
+
         boolean ok = aroService.saveCageRelatedBox(animalCageId, cageBoxCode);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("animalCageId", animalCageId);
         result.put("cageBoxCode", cageBoxCode);
         result.put("success", ok);
-        log.info("[cage-box-bind] user={} animalCageId={} cageBoxCode={} ok={}",
-                user.getId(), animalCageId, cageBoxCode, ok);
-        return ok ? Result.success(result) : Result.error("ARO 笼盒关联失败，请查看日志");
+        log.info("[cage-box-bind] user={} animalCageId={} cageBoxCode={} roomId={} ok={}",
+                user.getId(), animalCageId, cageBoxCode, roomId, ok);
+        if (ok) {
+            // 异步刷新缓存，不阻塞响应
+            if (roomId != null) {
+                final Long rid = roomId;
+                java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    try {
+                        cageShelfService.forceRefreshAfterMutation(rid);
+                        log.info("[cage-box-bind] 异步缓存刷新完成 roomId={}", rid);
+                    } catch (Exception e) {
+                        log.warn("[cage-box-bind] 异步缓存刷新失败 roomId={} err={}", rid, e.getMessage());
+                    }
+                });
+            }
+            return Result.success(result);
+        }
+        String aroMsg = aroService.getLastAroErrorMessage();
+        return Result.error(aroMsg != null && !aroMsg.isBlank() ? aroMsg : "课题组与AUP不符");
+    }
+
+    // ── 笼盒解绑（2026-07-31）──
+
+    @PostMapping("/unbind")
+    @Operation(summary = "解绑笼盒（批量删除笼盒关联），成功后刷新房间缓存")
+    public Result<Map<String, Object>> unbind(@RequestBody Map<String, Object> body,
+                                              HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) return Result.fail(401, "未登录");
+
+        Object idsObj = body.get("animalCageIdList");
+        if (!(idsObj instanceof List<?> list) || list.isEmpty())
+            return Result.fail(400, "animalCageIdList 不能为空");
+
+        List<Long> animalCageIdList = new ArrayList<>();
+        for (Object item : list) {
+            Long id = toLong(String.valueOf(item).trim());
+            if (id != null) animalCageIdList.add(id);
+        }
+        if (animalCageIdList.isEmpty()) return Result.fail(400, "无有效笼位ID");
+
+        Long roomId = toLong(str(body, "roomId"));
+
+        boolean ok = aroService.unbindCageBox(animalCageIdList);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("animalCageIdList", animalCageIdList);
+        result.put("success", ok);
+        log.info("[cage-box-unbind] user={} ids={} roomId={} ok={}",
+                user.getId(), animalCageIdList, roomId, ok);
+        if (ok) {
+            // 异步刷新缓存，不阻塞响应
+            if (roomId != null) {
+                final Long rid = roomId;
+                java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    try {
+                        cageShelfService.forceRefreshAfterMutation(rid);
+                        log.info("[cage-box-unbind] 异步缓存刷新完成 roomId={}", rid);
+                    } catch (Exception e) {
+                        log.warn("[cage-box-unbind] 异步缓存刷新失败 roomId={} err={}", rid, e.getMessage());
+                    }
+                });
+            }
+            return Result.success(result);
+        }
+        String aroMsg = aroService.getLastAroErrorMessage();
+        return Result.error(aroMsg != null && !aroMsg.isBlank() ? aroMsg : "解绑失败");
     }
 
     // ── 取消笼盒颜色/状态（2026-07-30 新增）──

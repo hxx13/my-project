@@ -26,5 +26,7 @@ public interface UserAroBindingMapper {
 
     void clearCasCredentials(@Param("userId") String userId);
 
-    void upsertCasBinding(@Param("userId") String userId, @Param("aroUserId") String aroUserId, @Param("casToken") String casToken, @Param("casTokenExp") Long casTokenExp, @Param("casAccount") String casAccount);
+    void updateCasCredentials(@Param("userId") String userId, @Param("casAccount") String casAccount, @Param("aroPassword") String aroPassword);
+
+    void upsertCasBinding(@Param("userId") String userId, @Param("aroUserId") String aroUserId, @Param("casToken") String casToken, @Param("casTokenExp") Long casTokenExp, @Param("casAccount") String casAccount, @Param("aroPassword") String aroPassword);
 }

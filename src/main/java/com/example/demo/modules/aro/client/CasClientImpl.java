@@ -202,6 +202,53 @@ public class CasClientImpl implements CasClient {
     }
 
     @Override
+    public CasTokenInfo loginWithCredentials(String account, String password) {
+        if (account == null || account.isBlank() || password == null || password.isBlank()) {
+            log.error("[CAS] loginWithCredentials: account/password 为空");
+            return null;
+        }
+
+        String url = "https://aro.shsmu.edu.cn/jtu/api/login";
+        log.info("[CAS] 正在用账号密码登录: account={}", account);
+
+        try {
+            Map<String, String> body = new java.util.HashMap<>();
+            body.put("account", account);
+            body.put("password", password);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+
+            ResponseEntity<Map> response = aroRestTemplate.postForEntity(url, request, Map.class);
+
+            if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null) {
+                log.error("[CAS] loginWithCredentials 返回异常: status={}", response.getStatusCode());
+                return null;
+            }
+
+            Object dataObj = response.getBody().get("data");
+            if (!(dataObj instanceof Map<?, ?> dataMap)) {
+                log.error("[CAS] loginWithCredentials 返回体缺少 data 字段");
+                return null;
+            }
+
+            Object tokenObj = dataMap.get("token");
+            if (!(tokenObj instanceof String token) || token.isBlank()) {
+                log.error("[CAS] loginWithCredentials 返回体缺少 token");
+                return null;
+            }
+
+            CasTokenInfo info = buildTokenInfo(token);
+            log.info("[CAS] loginWithCredentials 成功: account={}", info != null ? info.getAccount() : "?");
+            return info;
+        } catch (Exception e) {
+            log.error("[CAS] loginWithCredentials 失败: account={}, error={}", account, e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
     @Deprecated
     public CasTokenInfo exchangeTicket(String ticket) {
         String url = ARO_LOGIN_AUTH_URL + "?ticket=" + URLEncoder.encode(ticket, StandardCharsets.UTF_8);

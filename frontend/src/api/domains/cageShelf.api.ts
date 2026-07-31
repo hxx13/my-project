@@ -582,12 +582,21 @@ export interface CooldownStatus {
   inCooldown: boolean;
 }
 
-/** 实时拉取笼架数据（含 5min 冷却） */
+/** 实时拉取笼架数据（含 1min 冷却） */
 export async function fetchRealtimeRefresh(roomId: string, shelveId?: string): Promise<RealtimeRefreshResponse> {
   const res = await authHttp.post<Result<RealtimeRefreshResponse>>("/v1/cage-shelves/realtime/refresh", {
     roomId, shelveId: shelveId || undefined,
   });
   if (!res.data?.success) throw new Error(res.data?.message || "实时刷新失败");
+  return res.data.data!;
+}
+
+/** 强制实时拉取（绕过冷却） */
+export async function forceRealtimeRefresh(roomId: string): Promise<RealtimeRefreshResponse> {
+  const res = await authHttp.post<Result<RealtimeRefreshResponse>>("/v1/cage-shelves/realtime/force-refresh", {
+    roomId,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "强制刷新失败");
   return res.data.data!;
 }
 
@@ -669,14 +678,27 @@ export const ACTION_CANCEL_COLOR: Record<CageBoxAction, CancelColor> = {
   HEALTH_CHECK: 3,
 };
 
-export async function bindCageBox(animalCageId: string, cageBoxCode: string): Promise<boolean> {
-  const res = await authHttp.post<Result<boolean>>("/aro/cage-box/bind", { animalCageId: String(animalCageId), cageBoxCode });
+export async function bindCageBox(animalCageId: string, cageBoxCode: string, roomId?: string): Promise<boolean> {
+  const res = await authHttp.post<Result<boolean>>("/aro/cage-box/bind", { animalCageId: String(animalCageId), cageBoxCode, roomId: roomId || undefined });
+  console.log("[API bindCageBox] raw:", JSON.stringify(res.data, null, 2));
   if (!res.data?.success) throw new Error(res.data?.message || "笼盒关联失败");
   return res.data.data ?? false;
 }
 
+/** 解绑笼盒（批量删除笼盒关联） */
+export async function unbindCageBox(animalCageId: string, roomId?: string): Promise<boolean> {
+  const res = await authHttp.post<Result<boolean>>("/aro/cage-box/unbind", { animalCageIdList: [Number(animalCageId)], roomId: roomId || undefined });
+  console.log("[API unbindCageBox] raw:", JSON.stringify(res.data, null, 2));
+  if (!res.data?.success) throw new Error(res.data?.message || "解绑失败");
+  return res.data.data ?? false;
+}
+
+
 export async function cancelCageBoxColor(
-  roomId: string, shelveId: string, cageBoxCode: string, color: CancelColor
+  roomId: string,
+  shelveId: string,
+  cageBoxCode: string,
+  color: number,
 ): Promise<boolean> {
   const res = await authHttp.post<Result<boolean>>("/aro/cage-box/cancel", { roomId, shelveId, cageBoxCode, color });
   if (!res.data?.success) throw new Error(res.data?.message || "取消颜色失败");
@@ -723,6 +745,7 @@ export interface AnimalCageUpdatePayload {
 
 export async function updateAnimalCage(data: AnimalCageUpdatePayload): Promise<boolean> {
   const res = await authHttp.post<Result<boolean>>("/v1/cage-shelves/cage/update", data);
+  console.log("[API updateAnimalCage] 完整响应:", JSON.stringify(res, null, 2));
   if (!res.data?.success) throw new Error(res.data?.message || "笼位更新失败");
   return res.data.data ?? false;
 }
@@ -829,4 +852,33 @@ export async function searchAupsAcrossRooms(keyword: string): Promise<AupSearchH
     params: { keyword },
   });
   return res.data?.data ?? [];
+}
+
+// ── 统一扫码查询 ──
+
+export interface CodeLookupCageBox {
+  /** 从 cage_shelf_index 解析的真实 shelveId（非快照表） */
+  shelveId?: number;
+  roomId?: number;
+  campusName: string;
+  roomName: string;
+  positionX: number;
+  positionY: number;
+  positionLabel: string;
+}
+
+export interface CodeLookupResult {
+  type: "CAGE_BOX" | "ASSET" | "NOT_FOUND";
+  message?: string;
+  cageBox?: CodeLookupCageBox;
+  asset?: Record<string, unknown>;
+}
+
+/** 统一扫码查询：根据二维码/条形码内容自动识别类型 */
+export async function lookupCode(code: string): Promise<CodeLookupResult> {
+  const res = await authHttp.get<Result<CodeLookupResult>>("/v1/scan/lookup", {
+    params: { code },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "查询失败");
+  return res.data.data!;
 }

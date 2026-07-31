@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class CageShelfRealtimeCooldown {
 
-    private static final long COOLDOWN_MS = 5 * 60 * 1000; // 5 分钟
+    private static final long COOLDOWN_MS = 1 * 60 * 1000; // 1 分钟
 
     private final ConcurrentHashMap<String, Long> lastFetchMap = new ConcurrentHashMap<>();
 

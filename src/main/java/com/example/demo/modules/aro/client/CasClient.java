@@ -60,6 +60,16 @@ public interface CasClient {
     CasTokenInfo refreshToken(String oldToken);
 
     /**
+     * 使用 ARO 账号密码直接登录获取 Token。
+     * 调用 ARO 的 /jtu/api/login 端点，无需验证码。
+     *
+     * @param account ARO 账号（如 YF0408）
+     * @param password ARO 密码
+     * @return CasTokenInfo，登录失败返回 null
+     */
+    CasTokenInfo loginWithCredentials(String account, String password);
+
+    /**
      * CAS 登出，fire-and-forget。
      */
     void logout();

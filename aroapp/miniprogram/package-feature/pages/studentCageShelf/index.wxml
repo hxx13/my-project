@@ -155,10 +155,10 @@
   <!-- 操作栏：图例 + 刷新 + 扫描 + 提交 -->
   <view class="grid-actions-bar" style="top: {{ navBarHeight }}px;">
     <view class="gt-left-btns">
-      <view wx:if="{{ staffView }}" class="gt-edit-btn {{ editMode ? 'gt-edit-btn--on' : '' }}" bindtap="onToggleRealtime">
+      <view wx:if="{{ staffView && !bindMode }}" class="gt-edit-btn {{ editMode ? 'gt-edit-btn--on' : '' }}" bindtap="onToggleRealtime">
         <text>{{ editMode ? '编辑中' : '编辑' }}</text>
       </view>
-      <view wx:if="{{ staffView }}" class="gt-bind-btn {{ bindMode ? 'gt-bind-btn--on' : '' }}" bindtap="{{ bindMode ? 'onExitBindMode' : 'onEnterBindMode' }}">
+      <view wx:if="{{ staffView && !editMode }}" class="gt-bind-btn {{ bindMode ? 'gt-bind-btn--on' : '' }}" bindtap="{{ bindMode ? 'onExitBindMode' : 'onEnterBindMode' }}">
         <text>{{ bindMode ? '绑定中' : '绑定' }}</text>
       </view>
     </view>
@@ -182,7 +182,14 @@
         <van-icon name="scan" size="36rpx" color="#2563eb" />
       </view>
       <view wx:if="{{ staffView && bindMode }}" class="gt-unbind-btn {{ unbindActive ? 'gt-unbind-btn--on' : '' }}" bindtap="onToggleUnbind">
-        <text>{{ unbindActive ? '解绑中' : '解绑' }}</text>
+        <text>{{ unbindActive || bindScannedCode ? '取消' : '解绑' }}</text>
+      </view>
+      <!-- 批量提交 + 清空（仅绑定模式，有缓存时显示） -->
+      <view wx:if="{{ staffView && bindMode && !unbindActive && bindPairCacheSize > 0 }}" class="gt-batch-actions">
+        <view class="gt-batch-submit {{ bindSubmitting ? 'gt-batch-submit--disabled' : '' }}" bindtap="{{ bindSubmitting ? '' : 'onBatchBindSubmit' }}">
+          {{ bindSubmitting ? '...' : '提交(' + bindPairCacheSize + ')' }}
+        </view>
+        <view class="gt-batch-clear" bindtap="onClearBindCache">清空</view>
       </view>
     </view>
   </view>
@@ -192,8 +199,23 @@
 
   <!-- 绑定模式提示条 -->
   <view wx:if="{{ bindMode }}" class="bind-banner">
-    <text wx:if="{{ !bindScannedCode }}" class="bind-banner-text">绑定模式：请先点击上方扫码按钮获取笼盒编号</text>
-    <text wx:else class="bind-banner-text">已扫码: {{ bindScannedCode }} — 请点击目标笼位（仅可选空笼盒）</text>
+    <text wx:if="{{ !bindScannedCode }}" class="bind-banner-text">请先点击上方扫码按钮获取笼盒编号</text>
+    <text wx:else class="bind-banner-text">已录入 {{ bindScannedCode }}，请点击空笼盒格位完成绑定</text>
+  </view>
+  <view wx:if="{{ bindMode && unbindActive }}" class="bind-banner bind-banner--unbind">
+    <text class="bind-banner-text">请点击饲养中格位完成解绑</text>
+  </view>
+
+  <!-- 批量绑定缓存面板（仅展示已缓存的绑定条目） -->
+  <view wx:if="{{ bindMode && !unbindActive && bindPairCacheSize > 0 }}" class="bind-cache-bar">
+    <view class="bind-cache-chips">
+      <block wx:for="{{ bindPairCache }}" wx:key="key" wx:for-item="entry">
+        <view class="bind-cache-chip">
+          <text class="bind-cache-chip-pos">{{ entry.pos }}</text>
+          <view class="bind-cache-chip-close" data-key="{{ entry.key }}" catchtap="onRemoveBindPair">✕</view>
+        </view>
+      </block>
+    </view>
   </view>
 
   <view wx:if="{{ loading }}" class="center-box">
@@ -231,10 +253,15 @@
 
     <!-- 扫码结果面板（扫码后始终显示供切换选项，不受 diff 影响；提交按钮单独判断 scanTotalActions） -->
     <view wx:if="{{ editMode && lastScannedKey && scanCacheSize > 0 }}" class="scan-result-panel">
-      <view class="scan-result-info">
-        <text class="scan-result-label">已定位:</text>
-        <text class="scan-result-pos">{{ lastScannedEntry.position }}</text>
-        <text class="scan-result-code">· {{ lastScannedEntry.code }}</text>
+      <view class="scan-result-top-row">
+        <view class="scan-result-info">
+          <text class="scan-result-label">已定位:</text>
+          <text class="scan-result-pos">{{ lastScannedEntry.position }}</text>
+          <text class="scan-result-code">· {{ lastScannedEntry.code }}</text>
+        </view>
+        <view class="scan-dismiss-btn" bindtap="onDismissCrosshair">
+          <van-icon name="cross" size="28rpx" color="#969799" />
+        </view>
       </view>
       <view class="scan-action-btns">
         <view

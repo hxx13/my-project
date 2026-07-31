@@ -54,6 +54,9 @@ public interface CageSpecialStatusSnapshotMapper {
             @Param("scanBatchId") String scanBatchId,
             @Param("shelveIds") List<String> shelveIds);
 
+    /** Find a single snapshot row by cageBoxCode (exact match, for scan lookup). */
+    CageSpecialStatusSnapshot findByCageBoxCode(@Param("code") String code);
+
     /** Get distinct shelf summaries whose cells match given group names in the latest scan batch. */
     List<Map<String, Object>> selectDistinctShelvesByGroups(
             @Param("scanBatchId") String scanBatchId,

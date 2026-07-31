@@ -27,6 +27,7 @@ import MobileRecordsTab from "./MobileRecordsTab";
 import MobileViolationsTab from "./MobileViolationsTab";
 import MobileMineTab from "./MobileMineTab";
 import MobileCageShelfTab, { type MobileCageShelfTabHandle } from "./MobileCageShelfTab";
+import { lookupCode } from "@/api/domains/cageShelf.api";
 import MobileGroupTab from "./MobileGroupTab";
 import MobileNoticesPanel from "./MobileNoticesPanel";
 import { mobileNoticeItemKey } from "./MobileNoticesPanel";
@@ -128,6 +129,10 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [showWxPusherDialog, setShowWxPusherDialog] = useState(false);
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
+  const [cageJumpTarget, setCageJumpTarget] = useState<{
+    shelveId?: string; x: number; y: number; campusName?: string; roomName?: string;
+  } | null>(null);
+  const [scanLookupLoading, setScanLookupLoading] = useState(false);
 
   const handleEmailChip = () => {
     if (!userIdForBind) return;
@@ -643,6 +648,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
               data.html5PrivilegeBypass === true || html5PrivilegeBypass
             }
             onScreenChange={(_screen, shelfTitle) => setCageShelfNavTitle(shelfTitle)}
+            jumpTarget={cageJumpTarget}
+            onJumpConsumed={() => setCageJumpTarget(null)}
           />
         )}
         {activeTab === "mine" && (
@@ -693,10 +700,39 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
       <MobileScanDialog
         open={showScanDialog}
         onClose={() => setShowScanDialog(false)}
-        onResult={(text) => {
-          setScanResult(text);
-          console.log("[mobile-scan] result:", text);
-          // TODO: 根据扫码内容路由（URL/房间/笼架二维码等）
+        onResult={async (text) => {
+          setShowScanDialog(false);
+          const trimmed = text.trim();
+          setScanResult(trimmed);
+          if (!trimmed) return;
+
+          setScanLookupLoading(true);
+          try {
+            const result = await lookupCode(trimmed);
+            if (result.type === "CAGE_BOX" && result.cageBox) {
+              const cb = result.cageBox;
+              console.log('[scan-lookup] CAGE_BOX found:', JSON.stringify(cb));
+              setCageJumpTarget({
+                shelveId: cb.shelveId != null ? String(cb.shelveId) : undefined,
+                x: Number(cb.positionX),
+                y: Number(cb.positionY),
+                campusName: cb.campusName,
+                roomName: cb.roomName,
+              });
+              console.log('[scan-lookup] setCageJumpTarget + setActiveTab("cage")');
+              setActiveTab("cage");
+            } else if (result.type === "ASSET" && result.asset) {
+              const assetCode = (result.asset as any).assetCode || trimmed;
+              const assetName = (result.asset as any).assetName || "";
+              alert(`已识别资产: ${assetCode}${assetName ? " - " + assetName : ""}\n\n手机版暂不支持资产详情查看，请登录电脑端。`);
+            } else {
+              alert(result.message || "未识别到有效内容");
+            }
+          } catch (e: any) {
+            alert(e?.message || "查询失败");
+          } finally {
+            setScanLookupLoading(false);
+          }
         }}
       />
     </div>

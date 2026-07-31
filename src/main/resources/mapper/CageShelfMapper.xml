@@ -237,7 +237,7 @@
     </select>
 
     <select id="listShelveIdsByRoomIds" resultType="string">
-        SELECT DISTINCT CAST(shelve_id AS CHAR)
+        SELECT CAST(shelve_id AS CHAR) AS shelve_id
         FROM cage_shelf_index
         WHERE deleted = 0
           <if test="roomIds != null and roomIds.size() > 0">
@@ -247,6 +247,7 @@
           <if test="roomIds == null or roomIds.size() == 0">
               AND 1 = 0
           </if>
+        ORDER BY orders ASC, CAST(shelve_id AS UNSIGNED) ASC
     </select>
 
     <select id="listRoomIdsMatchingName" resultType="string">
@@ -267,5 +268,19 @@
         <if test="limit != null and limit > 0">
             LIMIT #{limit}
         </if>
+    </select>
+
+    <select id="findFirstByRoomNameAndCampus" resultType="com.example.demo.modules.cageshelf.entity.CageShelfIndex">
+        SELECT id, campus_id AS campusId, campus_name AS campusName,
+               area_id AS areaId, area_name AS areaName,
+               floor_id AS floorId, floor_name AS floorName,
+               room_id AS roomId, room_name AS roomName,
+               shelve_id AS shelveId, shelve_name AS shelveName,
+               orders, deleted, create_time AS createTime, update_time AS updateTime
+        FROM cage_shelf_index
+        WHERE room_name = #{roomName}
+          AND campus_name = #{campusName}
+          AND deleted = 0
+        LIMIT 1
     </select>
 </mapper>

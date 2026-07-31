@@ -277,9 +277,9 @@ public class AgvCollectorService {
         Boolean prev = robotOnline.put(ip, online);
         if (prev == null || prev != online) {
             if (online) {
-                log.info("AGV {} 已上线", ip);
+                // log.info("AGV {} 已上线", ip);
             } else {
-                log.warn("AGV {} 已离线", ip);
+                // log.warn("AGV {} 已离线", ip);
             }
         }
     }

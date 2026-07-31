@@ -89,4 +89,8 @@ public interface CageShelfMapper {
 
     /** 全量树：所有未被删除的笼架索引，含完整校区→区域→楼层→房间→笼架层级 */
     List<Map<String, Object>> listFullTree();
+
+    /** 扫码索引：按 roomName 查第一个笼架的真实 shelveId（快照表的 shelve_id 不可靠） */
+    CageShelfIndex findFirstByRoomNameAndCampus(@Param("roomName") String roomName,
+                                                 @Param("campusName") String campusName);
 }

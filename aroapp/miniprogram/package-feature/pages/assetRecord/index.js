@@ -294,6 +294,13 @@ Page({
     exportAllChecked: true,
   },
 
+  onLoad(options) {
+    // 扫码跳转：缓存 searchCode 供 onShow 使用
+    if (options && options.searchCode) {
+      this._pendingSearchCode = String(options.searchCode || '').trim();
+    }
+  },
+
   onShow() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     if (!hasMinRole(role, 'STAFF')) {
@@ -302,6 +309,17 @@ Page({
       return;
     }
     if (!pagePermission.guardPageOnShow(this, '/package-feature/pages/assetRecord/index', role, 'STAFF')) return;
+
+    // 扫码跳转：自动搜索资产编号
+    const searchCode = this._pendingSearchCode;
+    if (searchCode) {
+      this._pendingSearchCode = null;
+      this.setData({ page: 1, rows: [], searchKeyword: searchCode }, () => this.loadData(1));
+      this.loadFacets();
+      this.loadAllLocations();
+      return;
+    }
+
     this.setData({ page: 1, rows: [] }, () => this.loadData(1));
     this.loadFacets();
     this.loadAllLocations();

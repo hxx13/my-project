@@ -63,19 +63,28 @@
         WHERE user_id = #{userId}
     </update>
 
+    <insert id="updateCasCredentials">
+        INSERT INTO user_aro_binding (user_id, cas_account, aro_password, created_at)
+        VALUES (#{userId}, #{casAccount}, #{aroPassword}, NOW())
+        ON DUPLICATE KEY UPDATE
+            cas_account = VALUES(cas_account),
+            aro_password = VALUES(aro_password)
+    </insert>
+
     <update id="clearCasCredentials">
         UPDATE user_aro_binding
-        SET cas_token = NULL, cas_token_exp = NULL, cas_tgc = NULL, cas_account = NULL
+        SET cas_token = NULL, cas_token_exp = NULL, cas_tgc = NULL, cas_account = NULL, aro_password = NULL
         WHERE user_id = #{userId}
     </update>
 
     <insert id="upsertCasBinding">
-        INSERT INTO user_aro_binding (user_id, aro_user_id, cas_token, cas_token_exp, cas_account, created_at)
-        VALUES (#{userId}, #{aroUserId}, #{casToken}, #{casTokenExp}, #{casAccount}, NOW())
+        INSERT INTO user_aro_binding (user_id, aro_user_id, cas_token, cas_token_exp, cas_account, aro_password, created_at)
+        VALUES (#{userId}, #{aroUserId}, #{casToken}, #{casTokenExp}, #{casAccount}, #{aroPassword}, NOW())
         ON DUPLICATE KEY UPDATE
             cas_token = VALUES(cas_token),
             cas_token_exp = VALUES(cas_token_exp),
-            cas_account = VALUES(cas_account)
+            cas_account = VALUES(cas_account),
+            aro_password = VALUES(aro_password)
     </insert>
 
 </mapper>

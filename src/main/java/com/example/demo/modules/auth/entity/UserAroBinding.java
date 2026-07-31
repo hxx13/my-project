@@ -19,4 +19,6 @@ public class UserAroBinding {
     private String casTgc;
     /** CAS账号名 */
     private String casAccount;
+    /** ARO密码(AES加密)，用于账号密码方式自动续期 */
+    private String aroPassword;
 }
