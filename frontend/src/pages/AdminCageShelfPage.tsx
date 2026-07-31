@@ -189,7 +189,7 @@ const CellButton=memo(function CellButton({cell,onClick,alert,selectable,selecte
   </button>;
 });
 
-function ShelfGrid({title,detail,loading,emptyHint,onCellClick,isBookmarked,onToggleBookmark,alertMap,selectable,selectedCells,onToggleCell,allocMode,clickMode,scanCache,lastScannedKey,bindSelectedKey,editMode,bindMode,crossX,crossY,crossSid,bindPairCache}:{
+function ShelfGrid({title,detail,loading,emptyHint,onCellClick,isBookmarked,onToggleBookmark,alertMap,selectable,selectedCells,onToggleCell,allocMode,clickMode,scanCache,lastScannedKey,bindSelectedKey,editMode,bindMode,crossX,crossY,crossSid,bindPairCache,unbindPairCache}:{
   title:string;detail:CageShelfDetail|null;loading:boolean;emptyHint?:string;
   onCellClick?:(c:CageShelfCell)=>void;isBookmarked?:boolean;onToggleBookmark?:()=>void;
   alertMap:Map<string,PersistedAlert>;
@@ -198,6 +198,7 @@ function ShelfGrid({title,detail,loading,emptyHint,onCellClick,isBookmarked,onTo
   scanCache?:Map<string,any>;lastScannedKey?:string|null;bindSelectedKey?:string|null;editMode?:boolean;bindMode?:boolean;
   crossX?:number;crossY?:number;crossSid?:string;
   bindPairCache?:Map<string,{cell:CageShelfCell;code:string}>;
+  unbindPairCache?:Set<string>;
 }){
   const sid=detail?.shelfMeta?.shelveId??"";
   const cells=detail?.grid??[];
@@ -205,7 +206,7 @@ function ShelfGrid({title,detail,loading,emptyHint,onCellClick,isBookmarked,onTo
   const gridContent=loading?<div className="flex-1 rounded-twin-lg border border-dashed text-xs text-[var(--twin-mute)] grid place-items-center">加载中...</div>
     :!detail||detail.totalCells===0?<div className="flex-1 rounded-twin-lg border border-dashed text-xs text-[var(--twin-mute)] grid place-items-center px-2 text-center">{emptyHint??"暂无数据"}</div>
     :<div className="flex-1 min-h-0 overflow-y-auto content-start p-[3px]">
-        <div className="grid grid-cols-8 gap-1.5">{cells.map(c=>{const alertKey=`${sid}:${c.position}`;const selKey=`${sid}:${c.x}:${c.y}`;const ck=`${sid}:${c.x}:${c.y}`;const showCross=crossSid!=null&&crossSid===sid;const isBindCached=bindPairCache?.has(ck)??false;return<CellButton key={c.position} cell={c} onClick={onCellClick} alert={alertMap.get(alertKey)} selectable={selectable} selected={selectedCells?.has(selKey)} onToggle={onToggleCell?(e:React.MouseEvent)=>onToggleCell(sid,c.x,c.y,e.shiftKey):undefined} allocMode={allocMode} clickMode={clickMode} editCacheEntry={scanCache?.get(ck)} isLastScanned={lastScannedKey===ck} bindHighlight={bindSelectedKey===ck} bindPending={isBindCached} editMode={editMode} bindMode={bindMode} isCrossCol={showCross&&c.x===crossX} isCrossRow={showCross&&c.y===crossY}/>;})}</div>
+        <div className="grid grid-cols-8 gap-1.5">{cells.map(c=>{const alertKey=`${sid}:${c.position}`;const selKey=`${sid}:${c.x}:${c.y}`;const ck=`${sid}:${c.x}:${c.y}`;const showCross=crossSid!=null&&crossSid===sid;const isBindCached=bindPairCache?.has(ck)??false;const isUnbindCached=unbindPairCache?.has(ck)??false;return<CellButton key={c.position} cell={c} onClick={onCellClick} alert={alertMap.get(alertKey)} selectable={selectable} selected={selectedCells?.has(selKey)} onToggle={onToggleCell?(e:React.MouseEvent)=>onToggleCell(sid,c.x,c.y,e.shiftKey):undefined} allocMode={allocMode} clickMode={clickMode} editCacheEntry={scanCache?.get(ck)} isLastScanned={lastScannedKey===ck} bindHighlight={bindSelectedKey===ck} bindPending={isBindCached||isUnbindCached} editMode={editMode} bindMode={bindMode} isCrossCol={showCross&&c.x===crossX} isCrossRow={showCross&&c.y===crossY}/>;})}</div>
       </div>;
 
   return <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 min-h-0 flex flex-col">
@@ -464,6 +465,9 @@ function Inner(){
   const[unbindActive,setUnbindActive]=useState(false);
   // 批量绑定缓存: cageKey → {cell, code}
   const[bindPairCache,setBindPairCache]=useState<Map<string,{cell:CageShelfCell;code:string}>>(new Map());
+  // 批量解绑缓存: cageKey → cell
+  const[unbindPairCache,setUnbindPairCache]=useState<Set<string>>(new Set());
+  const[unbindCells,setUnbindCells]=useState<Map<string,CageShelfCell>>(new Map());
   const[editScanOpen,setEditScanOpen]=useState(false);
   const[bindScanOpen,setBindScanOpen]=useState(false);
   const[editDialogCell,setEditDialogCell]=useState<CageShelfCell|null>(null);
@@ -885,12 +889,21 @@ function Inner(){
         if(bindPairCache.has(ck)){toast.error("该笼位已在缓存中");return;}
         setBindPairCache(prev=>{const next=new Map(prev);next.set(ck,{cell,code});return next;});
         setBindScannedCode("");setBindInputVal("");
-        setBindSelectedKey(ck);
+        setBindSelectedKey(ck);setBindConfirmOpen(false);setCell(null);
         toast.success(`已缓存 (${bindPairCache.size+1} 个待提交)`);
         return;
       }
-      // 解绑：弹窗确认
-      if(unbindActive&&ct===3){setBindSelectedKey(`${cell.x}:${cell.y}`);setCell(cell);setBindConfirmOpen(true);return;}
+      // 解绑：加入批量缓存
+      if(unbindActive&&ct===3){
+        const sid=findShelfIdForCell(cell);
+        const ck=`${sid}:${cell.x}:${cell.y}`;
+        if(unbindPairCache.has(ck)){toast.error("该笼位已在缓存中");return;}
+        setUnbindPairCache(prev=>{const next=new Set(prev);next.add(ck);return next;});
+        setUnbindCells(prev=>{const next=new Map(prev);next.set(ck,cell);return next;});
+        setBindSelectedKey(ck);
+        toast.success(`已缓存 (${unbindPairCache.size+1} 个待解绑)`);
+        return;
+      }
       if(!unbindActive&&ct===2&&!code){toast.error("请先输入笼盒编号");return;}
       if(!unbindActive&&ct!==2){toast.error("只能选择「已预约(空笼盒)」的笼位");return;}
       if(unbindActive&&ct!==3){toast.error("只能选择「已预约(饲养中)」的笼位解绑");return;}
@@ -898,7 +911,7 @@ function Inner(){
     }
     // 查看模式
     setCell(cell);setShelfId("");
-  },[editMode,lastScannedKey,bindMode,unbindActive,bindScannedCode,bindInputVal,viewMode,aRid,bindPairCache]);
+  },[editMode,lastScannedKey,bindMode,unbindActive,bindScannedCode,bindInputVal,viewMode,aRid,bindPairCache,unbindPairCache]);
 
   // ── 编辑模式：扫码 → 匹配 grid → 加入缓存 ──
   const handleEditScan=useCallback((text:string)=>{
@@ -984,6 +997,26 @@ function Inner(){
     if(fail===0)toast.success(`${ok} 个绑定全部成功！`,{duration:4000});
     else toast(`${ok} 成功 / ${fail} 失败`,{icon:"⚠️"});
   },[bindPairCache,aRid]);
+
+  // ── 批量解绑提交（并行调用）──
+  const handleBatchUnbindSubmit=useCallback(async()=>{
+    if(unbindPairCache.size===0||!aRid)return;
+    setBindSubmitting(true);
+    const ids=Array.from(unbindPairCache);
+    let ok=0,fail=0;
+    await Promise.all(ids.map(async(ck)=>{
+      try{
+        const cell=unbindCells.get(ck);
+        const cageId=String((cell as any)?.id??"");
+        await unbindCageBox(cageId,aRid);
+        ok++;
+      }catch{fail++;}
+    }));
+    setUnbindPairCache(new Set());setUnbindCells(new Map());
+    setBindSubmitting(false);
+    if(fail===0)toast.success(`${ok} 个解绑全部成功！`,{duration:4000});
+    else toast(`${ok} 成功 / ${fail} 失败`,{icon:"⚠️"});
+  },[unbindPairCache,unbindCells,aRid]);
 
   // ── 单个绑定（保留兼容，Dialog 调用）──
   const handleBindConfirm=useCallback(async(cell:CageShelfCell)=>{
@@ -1087,9 +1120,10 @@ function Inner(){
               </button>}
               {/* ── 绑定模式（编辑时隐藏）── */}
               {!editMode&&<button type="button" onClick={()=>{
-                  if(bindMode&&bindPairCache.size>0){
-                    if(!window.confirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？\n\n「确定」放弃并退出\n「取消」继续绑定`))return;
-                    setBindPairCache(new Map());
+                  if(bindMode&&(bindPairCache.size>0||unbindPairCache.size>0)){
+                    const total=bindPairCache.size+unbindPairCache.size;
+                    if(!window.confirm(`有 ${total} 个未提交的操作，是否放弃？\n\n「确定」放弃并退出\n「取消」继续`))return;
+                    setBindPairCache(new Map());setUnbindPairCache(new Set());setUnbindCells(new Map());
                   }
                   const n=!bindMode;setBindMode(n);setPageMode("view");setBindScannedCode("");setBindSelectedKey(null);setUnbindActive(false);if(!n){setScanCache(new Map());}if(n){setEditMode(false);setScanCache(new Map());setLastScannedKey(null);setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);}
                 }}
@@ -1194,7 +1228,7 @@ function Inner(){
                 className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${unbindActive?"bg-red-600 text-white":(bindScannedCode||bindInputVal.trim())?"text-red-500 border border-red-300 hover:bg-red-50":"text-red-600 border border-red-300 hover:bg-red-50"}`}>
                 {(unbindActive||bindScannedCode||bindInputVal.trim())?"取消":"解绑"}
               </button>
-              {/* 批量提交 + 清空缓存 */}
+              {/* 批量绑定：提交 + 清空 */}
               {!unbindActive&&bindPairCache.size>0&&<>
                 <button onClick={handleBatchBindSubmit} disabled={bindSubmitting}
                   className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition">
@@ -1202,6 +1236,16 @@ function Inner(){
                   提交 ({bindPairCache.size})
                 </button>
                 <button onClick={()=>{setBindPairCache(new Map());toast("已清空缓存");}}
+                  className="rounded-twin-md px-2 py-1 text-[10px] text-slate-500 hover:text-red-500 transition">清空</button>
+              </>}
+              {/* 批量解绑：提交 + 清空 */}
+              {unbindActive&&unbindPairCache.size>0&&<>
+                <button onClick={handleBatchUnbindSubmit} disabled={bindSubmitting}
+                  className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition">
+                  {bindSubmitting?<Loader2 className="h-3 w-3 inline animate-spin"/>:null}
+                  提交 ({unbindPairCache.size})
+                </button>
+                <button onClick={()=>{setUnbindPairCache(new Set());setUnbindCells(new Map());toast("已清空缓存");}}
                   className="rounded-twin-md px-2 py-1 text-[10px] text-slate-500 hover:text-red-500 transition">清空</button>
               </>}
             </>}
@@ -1218,6 +1262,19 @@ function Inner(){
               <span className="font-semibold text-[var(--twin-ink)]">{displayPosition(cell.position)}</span>
               <button onClick={()=>{
                 setBindPairCache(prev=>{const next=new Map(prev);next.delete(key);return next;});
+              }} className="ml-1 text-[var(--twin-mute)] hover:text-red-500 text-xs">✕</button>
+            </div>;
+          })}</div>
+        </div>}
+        {/* ── 批量解绑缓存面板 ── */}
+        {bindMode&&unbindActive&&unbindPairCache.size>0&&<div className="shrink-0 rounded-twin-lg border border-red-300 bg-red-50/50 p-2">
+          <div className="flex flex-wrap gap-2">{Array.from(unbindPairCache).map((key)=>{
+            const cell=unbindCells.get(key);if(!cell)return null;
+            return <div key={key} className="rounded-twin-md border border-red-300 bg-white px-3 py-1.5 text-[11px] flex items-center gap-2">
+              <span className="font-semibold text-[var(--twin-ink)]">{displayPosition(cell.position)}</span>
+              <button onClick={()=>{
+                setUnbindPairCache(prev=>{const next=new Set(prev);next.delete(key);return next;});
+                setUnbindCells(prev=>{const next=new Map(prev);next.delete(key);return next;});
               }} className="ml-1 text-[var(--twin-mute)] hover:text-red-500 text-xs">✕</button>
             </div>;
           })}</div>
@@ -1293,7 +1350,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} bindSelectedKey={bindSelectedKey} editMode={editMode} bindMode={bindMode} crossX={editCross.crossX} crossY={editCross.crossY} crossSid={editCross.crossSid} bindPairCache={bindPairCache}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} bindSelectedKey={bindSelectedKey} editMode={editMode} bindMode={bindMode} crossX={editCross.crossX} crossY={editCross.crossY} crossSid={editCross.crossSid} bindPairCache={bindPairCache} unbindPairCache={unbindPairCache}/></div>;
             })}</div>}
           </>}
 

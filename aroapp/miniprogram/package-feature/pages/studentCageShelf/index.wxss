@@ -1760,6 +1760,25 @@
   font-size: 24rpx;
   font-weight: 700;
 }
+/* 解绑变体 */
+.bind-cache-bar--unbind {
+  background: rgba(220,38,38,0.04);
+  border-color: rgba(220,38,38,0.2);
+}
+.bind-cache-chip--unbind {
+  border-color: rgba(220,38,38,0.25);
+}
+.gt-batch-unbind-submit {
+  display: flex;
+  align-items: center;
+  padding: 8rpx 20rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #fff;
+  background: #dc2626;
+  flex-shrink: 0;
+}
 .bind-cache-chip-close {
   width: 32rpx;
   height: 32rpx;

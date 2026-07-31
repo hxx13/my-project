@@ -191,6 +191,13 @@
         </view>
         <view class="gt-batch-clear" bindtap="onClearBindCache">清空</view>
       </view>
+      <!-- 批量提交 + 清空（仅解绑模式，有缓存时显示） -->
+      <view wx:if="{{ staffView && bindMode && unbindActive && unbindPairCacheSize > 0 }}" class="gt-batch-actions">
+        <view class="gt-batch-unbind-submit {{ bindSubmitting ? 'gt-batch-submit--disabled' : '' }}" bindtap="{{ bindSubmitting ? '' : 'onBatchUnbindSubmit' }}">
+          {{ bindSubmitting ? '...' : '提交(' + unbindPairCacheSize + ')' }}
+        </view>
+        <view class="gt-batch-clear" bindtap="onClearUnbindCache">清空</view>
+      </view>
     </view>
   </view>
 
@@ -213,6 +220,18 @@
         <view class="bind-cache-chip">
           <text class="bind-cache-chip-pos">{{ entry.pos }}</text>
           <view class="bind-cache-chip-close" data-key="{{ entry.key }}" catchtap="onRemoveBindPair">✕</view>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <!-- 批量解绑缓存面板 -->
+  <view wx:if="{{ bindMode && unbindActive && unbindPairCacheSize > 0 }}" class="bind-cache-bar bind-cache-bar--unbind">
+    <view class="bind-cache-chips">
+      <block wx:for="{{ unbindPairCache }}" wx:key="key" wx:for-item="entry">
+        <view class="bind-cache-chip bind-cache-chip--unbind">
+          <text class="bind-cache-chip-pos">{{ entry.pos }}</text>
+          <view class="bind-cache-chip-close" data-key="{{ entry.key }}" catchtap="onRemoveUnbindPair">✕</view>
         </view>
       </block>
     </view>
