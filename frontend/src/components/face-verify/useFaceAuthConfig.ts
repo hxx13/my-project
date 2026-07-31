@@ -24,9 +24,9 @@ let cacheTime = 0;
 
 const FACE_CONFIG_CHANGED_EVENT = 'face-config-changed';
 
-/** 硬性默认值：仅 master 强制开启，分开关尊重 DB/环境变量 */
+/** 硬性默认值：仅 master 强制关闭，分开关尊重 DB/环境变量 */
 const HARD_DEFAULTS: Record<string, boolean> = {
-  'face.master_enabled': true,
+  'face.master_enabled': false,
 };
 
 /** 管理端保存 face 模块配置后调用，使各业务页立即拉取最新开关 */

@@ -168,7 +168,7 @@ function LogStream({ paused, onTogglePaused }: { paused: boolean; onTogglePaused
               </button>
             </div>
           ) : (
-            filtered.map((e) => (
+            filtered.slice().reverse().map((e) => (
               <div key={e.seq} className="flex gap-2.5 hover:bg-white/[0.04] min-w-0">
                 <span className="text-gray-500 shrink-0 select-none">{e.ts}</span>
                 <span className={`shrink-0 w-[56px] font-semibold ${LEVEL_COLORS[e.level] || "text-gray-400"}`}>{e.level}</span>

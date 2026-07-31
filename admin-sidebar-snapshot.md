@@ -1,0 +1,443 @@
+- generic [ref=e4]:
+  - complementary "后台主导航" [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - img "上海医学院" [ref=e9]
+        - navigation [ref=e10]:
+          - generic [ref=e11]:
+            - link "登录页" [ref=e12] [cursor=pointer]:
+              - /url: "#/login"
+            - link "首页" [ref=e16] [cursor=pointer]:
+              - /url: "#/"
+          - link "后台工作台" [ref=e20] [cursor=pointer]:
+            - /url: "#/console/admin"
+          - button "搜索页面… Ctrl K" [ref=e24] [cursor=pointer]:
+            - generic [ref=e28]: 搜索页面…
+            - generic [ref=e29]: Ctrl K
+          - button "收起侧栏" [ref=e30] [cursor=pointer]
+      - navigation [ref=e36]:
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - button "收藏" [expanded] [ref=e39] [cursor=pointer]
+            - generic [ref=e45]:
+              - generic [ref=e46]:
+                - button "取消收藏" [ref=e47] [cursor=pointer]
+                - link "管理-账户权限" [ref=e50] [cursor=pointer]:
+                  - /url: "#/console/admin/personnel"
+              - generic [ref=e59]:
+                - button "取消收藏" [ref=e60] [cursor=pointer]
+                - link "管理-违规警告与弹窗公告" [ref=e63] [cursor=pointer]:
+                  - /url: "#/console/admin/student-violations"
+              - generic [ref=e69]:
+                - button "取消收藏" [ref=e70] [cursor=pointer]
+                - link "系统-设置" [ref=e73] [cursor=pointer]:
+                  - /url: "#/console/admin/settings"
+              - generic [ref=e80]:
+                - button "取消收藏" [ref=e81] [cursor=pointer]
+                - link "审计-数据看板" [ref=e84] [cursor=pointer]:
+                  - /url: "#/console/admin/analytics"
+              - generic [ref=e91]:
+                - button "取消收藏" [ref=e92] [cursor=pointer]
+                - link "记录-门禁记录数据" [ref=e95] [cursor=pointer]:
+                  - /url: "#/console/admin/dahua-swing-tasks"
+              - generic [ref=e100]:
+                - button "取消收藏" [ref=e101] [cursor=pointer]
+                - link "记录-自动化执行日志" [ref=e104] [cursor=pointer]:
+                  - /url: "#/console/admin/automation-logs"
+              - generic [ref=e111]:
+                - button "取消收藏" [ref=e112] [cursor=pointer]
+                - link "管理-笼架管理" [ref=e115] [cursor=pointer]:
+                  - /url: "#/console/admin/cage-shelves"
+              - generic [ref=e124]:
+                - button "取消收藏" [ref=e125] [cursor=pointer]
+                - link "记录-日志控制台" [ref=e128] [cursor=pointer]:
+                  - /url: "#/console/admin/logging-console"
+          - generic [ref=e134]:
+            - button "消息" [expanded] [ref=e135] [cursor=pointer]
+            - generic [ref=e143]:
+              - button "收藏此页面" [ref=e144] [cursor=pointer]
+              - link "消息" [ref=e147] [cursor=pointer]:
+                - /url: "#/console/admin/staff-messages"
+          - generic [ref=e154]:
+            - button "常用 8" [expanded] [ref=e155] [cursor=pointer]:
+              - generic [ref=e162]: 常用
+              - generic [ref=e163]: "8"
+            - generic [ref=e164]:
+              - generic [ref=e165]:
+                - button "收藏此页面" [ref=e166] [cursor=pointer]
+                - link "学生审核 8" [ref=e169] [cursor=pointer]:
+                  - /url: "#/console/admin/material/review"
+                  - generic [ref=e170]: 学生审核
+                  - generic [ref=e177]: "8"
+              - generic [ref=e178]:
+                - button "收藏此页面" [ref=e179] [cursor=pointer]
+                - link "管理-校园卡权限" [ref=e182] [cursor=pointer]:
+                  - /url: "#/console/admin/dahua-issue"
+              - generic [ref=e188]:
+                - button "收藏此页面" [ref=e189] [cursor=pointer]
+                - link "AGV 小车" [ref=e192] [cursor=pointer]:
+                  - /url: "#/console/admin/agv-tracker"
+              - generic [ref=e199]:
+                - button "收藏此页面" [ref=e200] [cursor=pointer]
+                - link "ARO 认证" [ref=e203] [cursor=pointer]:
+                  - /url: "#/console/admin/aro-binding"
+          - button "数据分析" [ref=e211] [cursor=pointer]
+          - button "申请 1" [ref=e216] [cursor=pointer]:
+            - generic [ref=e219]: 申请
+            - generic [ref=e220]: "1"
+          - button "管理" [ref=e222] [cursor=pointer]
+          - button "处理 14" [ref=e227] [cursor=pointer]:
+            - generic [ref=e230]: 处理
+            - generic [ref=e231]: "14"
+          - button "动物房数字孪生" [ref=e233] [cursor=pointer]
+          - button "系统" [ref=e238] [cursor=pointer]
+          - button "记录" [ref=e243] [cursor=pointer]
+          - button "数据库" [ref=e248] [cursor=pointer]
+          - button "学生审核" [ref=e253] [cursor=pointer]
+          - button "文档" [ref=e258] [cursor=pointer]
+          - button "配置" [ref=e263] [cursor=pointer]
+          - button "资产与运维" [ref=e268] [cursor=pointer]
+          - button "门禁、元数据与环境" [ref=e273] [cursor=pointer]
+          - button "系统与安全" [ref=e278] [cursor=pointer]
+          - button "AI 实验室" [ref=e283] [cursor=pointer]
+          - button "ARO 房间与联动" [ref=e288] [cursor=pointer]
+  - generic [ref=e292]:
+    - generic [ref=e293]:
+      - generic [ref=e294]:
+        - button "收起侧栏" [ref=e295] [cursor=pointer]
+        - button "搜索后台页面… Ctrl K" [ref=e299] [cursor=pointer]:
+          - generic [ref=e303]: 搜索后台页面…
+          - generic [ref=e304]: Ctrl K
+        - generic [ref=e305]:
+          - heading "后台工作台" [level=1] [ref=e306]
+          - button "标准" [ref=e308] [cursor=pointer]
+          - button "本页帮助" [ref=e318] [cursor=pointer]
+          - button "管理侧边栏文件夹" [ref=e322] [cursor=pointer]
+      - button "位亚磊 ARO未绑定 @weiyalei" [ref=e327] [cursor=pointer]:
+        - generic [ref=e328]: 位
+        - generic [ref=e329]:
+          - generic [ref=e330]:
+            - text: 位亚磊
+            - generic "ARO未绑定" [ref=e331]
+          - generic [ref=e332]: "@weiyalei"
+    - main [ref=e335]:
+      - generic [ref=e339]:
+        - generic [ref=e340]:
+          - generic [ref=e341]:
+            - paragraph [ref=e342]: 工作台
+            - heading "欢迎回来" [level=1] [ref=e346]
+          - generic [ref=e347]:
+            - generic [ref=e348]: 平台所有者
+            - generic [ref=e349]: ·
+            - generic [ref=e350]: 58 入口
+        - generic [ref=e351]:
+          - heading "收藏" [level=2] [ref=e352]
+          - generic [ref=e355]:
+            - button "审计-数据看板 取消收藏" [ref=e356] [cursor=pointer]:
+              - generic [ref=e361]: 审计-数据看板
+              - button "取消收藏" [ref=e362]
+            - button "管理-账户权限 取消收藏" [ref=e365] [cursor=pointer]:
+              - generic [ref=e372]: 管理-账户权限
+              - button "取消收藏" [ref=e373]
+            - button "管理-笼架管理 取消收藏" [ref=e376] [cursor=pointer]:
+              - generic [ref=e383]: 管理-笼架管理
+              - button "取消收藏" [ref=e384]
+            - button "管理-违规警告与弹窗公告 取消收藏" [ref=e387] [cursor=pointer]:
+              - generic [ref=e391]: 管理-违规警告与弹窗公告
+              - button "取消收藏" [ref=e392]
+            - button "系统-设置 取消收藏" [ref=e395] [cursor=pointer]:
+              - generic [ref=e400]: 系统-设置
+              - button "取消收藏" [ref=e401]
+            - button "记录-日志控制台 取消收藏" [ref=e404] [cursor=pointer]:
+              - generic [ref=e408]: 记录-日志控制台
+              - button "取消收藏" [ref=e409]
+            - button "记录-门禁记录数据 取消收藏" [ref=e412] [cursor=pointer]:
+              - generic [ref=e415]: 记录-门禁记录数据
+              - button "取消收藏" [ref=e416]
+            - button "记录-自动化执行日志 取消收藏" [ref=e419] [cursor=pointer]:
+              - generic [ref=e424]: 记录-自动化执行日志
+              - button "取消收藏" [ref=e425]
+        - generic [ref=e428]:
+          - heading "最近访问" [level=2] [ref=e429]
+          - generic [ref=e430]:
+            - button "管理-笼架管理 取消收藏" [ref=e431] [cursor=pointer]:
+              - generic [ref=e438]: 管理-笼架管理
+              - button "取消收藏" [ref=e439]
+            - button "待处理 2 学生审核 收藏" [ref=e442] [cursor=pointer]:
+              - generic "待处理 2" [ref=e443]: "2"
+              - generic [ref=e449]: 学生审核
+              - button "收藏" [ref=e450]
+            - button "记录-日志控制台 取消收藏" [ref=e453] [cursor=pointer]:
+              - generic [ref=e457]: 记录-日志控制台
+              - button "取消收藏" [ref=e458]
+            - button "管理-校园卡权限 收藏" [ref=e461] [cursor=pointer]:
+              - generic [ref=e465]: 管理-校园卡权限
+              - button "收藏" [ref=e466]
+            - button "记录-门禁记录数据 取消收藏" [ref=e469] [cursor=pointer]:
+              - generic [ref=e472]: 记录-门禁记录数据
+              - button "取消收藏" [ref=e473]
+            - button "AGV 小车 收藏" [ref=e476] [cursor=pointer]:
+              - generic [ref=e481]: AGV 小车
+              - button "收藏" [ref=e482]
+            - button "记录-自动化执行日志 取消收藏" [ref=e485] [cursor=pointer]:
+              - generic [ref=e490]: 记录-自动化执行日志
+              - button "取消收藏" [ref=e491]
+            - button "ARO 认证 收藏" [ref=e494] [cursor=pointer]:
+              - generic [ref=e499]: ARO 认证
+              - button "收藏" [ref=e500]
+        - generic [ref=e503]:
+          - button "数据分析 2 个入口" [ref=e505] [cursor=pointer]:
+            - text: 数据分析
+            - generic [ref=e508]: 2 个入口
+          - generic [ref=e510]:
+            - button "审计-数据看板 取消收藏" [ref=e511] [cursor=pointer]:
+              - generic [ref=e516]: 审计-数据看板
+              - button "取消收藏" [ref=e517]
+            - button "管理-小程序内容中心 收藏" [ref=e520] [cursor=pointer]:
+              - generic [ref=e525]: 管理-小程序内容中心
+              - button "收藏" [ref=e526]
+        - generic [ref=e529]:
+          - button "申请 3 个入口" [ref=e531] [cursor=pointer]:
+            - text: 申请
+            - generic [ref=e534]: 3 个入口
+          - generic [ref=e536]:
+            - button "申请-采购申请 收藏" [ref=e537] [cursor=pointer]:
+              - generic [ref=e543]: 申请-采购申请
+              - button "收藏" [ref=e544]
+            - button "申请-报修申请 收藏" [ref=e547] [cursor=pointer]:
+              - generic [ref=e551]: 申请-报修申请
+              - button "收藏" [ref=e552]
+            - button "待处理 1 申请-物资商城 收藏" [ref=e555] [cursor=pointer]:
+              - generic "待处理 1" [ref=e556]: "1"
+              - generic [ref=e562]: 申请-物资商城
+              - button "收藏" [ref=e563]
+        - generic [ref=e566]:
+          - button "管理 5 个入口" [ref=e568] [cursor=pointer]:
+            - text: 管理
+            - generic [ref=e571]: 5 个入口
+          - generic [ref=e573]:
+            - button "管理-校园卡权限 收藏" [ref=e574] [cursor=pointer]:
+              - generic [ref=e578]: 管理-校园卡权限
+              - button "收藏" [ref=e579]
+            - button "管理-账户权限 取消收藏" [ref=e582] [cursor=pointer]:
+              - generic [ref=e589]: 管理-账户权限
+              - button "取消收藏" [ref=e590]
+            - button "管理-门禁控制 收藏" [ref=e593] [cursor=pointer]:
+              - generic [ref=e598]: 管理-门禁控制
+              - button "收藏" [ref=e599]
+            - button "管理-笼架管理 取消收藏" [ref=e602] [cursor=pointer]:
+              - generic [ref=e609]: 管理-笼架管理
+              - button "取消收藏" [ref=e610]
+            - button "管理-违规警告与弹窗公告 取消收藏" [ref=e613] [cursor=pointer]:
+              - generic [ref=e617]: 管理-违规警告与弹窗公告
+              - button "取消收藏" [ref=e618]
+        - generic [ref=e621]:
+          - button "处理 3 个入口" [ref=e623] [cursor=pointer]:
+            - text: 处理
+            - generic [ref=e626]: 3 个入口
+          - generic [ref=e628]:
+            - button "待处理 2 学生审核 收藏" [ref=e629] [cursor=pointer]:
+              - generic "待处理 2" [ref=e630]: "2"
+              - generic [ref=e636]: 学生审核
+              - button "收藏" [ref=e637]
+            - button "待处理 2 处理-采购处理 收藏" [ref=e640] [cursor=pointer]:
+              - generic "待处理 2" [ref=e641]: "2"
+              - generic [ref=e646]: 处理-采购处理
+              - button "收藏" [ref=e647]
+            - button "待处理 4 处理-报修处理 收藏" [ref=e650] [cursor=pointer]:
+              - generic "待处理 4" [ref=e651]: "4"
+              - generic [ref=e657]: 处理-报修处理
+              - button "收藏" [ref=e658]
+        - generic [ref=e661]:
+          - button "动物房数字孪生 5 个入口" [ref=e663] [cursor=pointer]:
+            - text: 动物房数字孪生
+            - generic [ref=e666]: 5 个入口
+          - generic [ref=e668]:
+            - button "动物房-温湿度监控总览 收藏" [ref=e669] [cursor=pointer]:
+              - generic [ref=e673]: 动物房-温湿度监控总览
+              - button "收藏" [ref=e674]
+            - button "遥测历史分析 收藏" [ref=e677] [cursor=pointer]:
+              - generic [ref=e682]: 遥测历史分析
+              - button "收藏" [ref=e683]
+            - button "动物房-温湿度驾驶舱总览 收藏" [ref=e686] [cursor=pointer]:
+              - generic [ref=e690]: 动物房-温湿度驾驶舱总览
+              - button "收藏" [ref=e691]
+            - button "遥测对比组配置 收藏" [ref=e694] [cursor=pointer]:
+              - generic [ref=e699]: 遥测对比组配置
+              - button "收藏" [ref=e700]
+            - button "动物房-数字化画面编辑器(开发中) 收藏" [ref=e703] [cursor=pointer]:
+              - generic [ref=e707]: 动物房-数字化画面编辑器(开发中)
+              - button "收藏" [ref=e708]
+        - generic [ref=e711]:
+          - button "系统 2 个入口" [ref=e713] [cursor=pointer]:
+            - text: 系统
+            - generic [ref=e716]: 2 个入口
+          - generic [ref=e718]:
+            - button "系统-设置 取消收藏" [ref=e719] [cursor=pointer]:
+              - generic [ref=e724]: 系统-设置
+              - button "取消收藏" [ref=e725]
+            - button "系统-注册推荐码 收藏" [ref=e728] [cursor=pointer]:
+              - generic [ref=e732]: 系统-注册推荐码
+              - button "收藏" [ref=e733]
+        - generic [ref=e736]:
+          - button "记录 9 个入口" [ref=e738] [cursor=pointer]:
+            - text: 记录
+            - generic [ref=e741]: 9 个入口
+          - generic [ref=e743]:
+            - button "记录-经验值统计 收藏" [ref=e744] [cursor=pointer]:
+              - generic [ref=e749]: 记录-经验值统计
+              - button "收藏" [ref=e750]
+            - button "管理-资产管理 收藏" [ref=e753] [cursor=pointer]:
+              - generic [ref=e758]: 管理-资产管理
+              - button "收藏" [ref=e759]
+            - button "记录-资产转移 收藏" [ref=e762] [cursor=pointer]:
+              - generic [ref=e767]: 记录-资产转移
+              - button "收藏" [ref=e768]
+            - button "记录-日志控制台 取消收藏" [ref=e771] [cursor=pointer]:
+              - generic [ref=e775]: 记录-日志控制台
+              - button "取消收藏" [ref=e776]
+            - button "记录-门禁记录数据 取消收藏" [ref=e779] [cursor=pointer]:
+              - generic [ref=e782]: 记录-门禁记录数据
+              - button "取消收藏" [ref=e783]
+            - button "记录-笼架特殊状态 收藏" [ref=e786] [cursor=pointer]:
+              - generic [ref=e790]: 记录-笼架特殊状态
+              - button "收藏" [ref=e791]
+            - button "记录-自动化执行日志 取消收藏" [ref=e794] [cursor=pointer]:
+              - generic [ref=e799]: 记录-自动化执行日志
+              - button "取消收藏" [ref=e800]
+            - button "记录-物资出入记录 收藏" [ref=e803] [cursor=pointer]:
+              - generic [ref=e807]: 记录-物资出入记录
+              - button "收藏" [ref=e808]
+            - button "记录-温湿度数据源 收藏" [ref=e811] [cursor=pointer]:
+              - generic [ref=e816]: 记录-温湿度数据源
+              - button "收藏" [ref=e817]
+        - generic [ref=e820]:
+          - button "数据库 5 个入口" [ref=e822] [cursor=pointer]:
+            - text: 数据库
+            - generic [ref=e825]: 5 个入口
+          - generic [ref=e827]:
+            - button "数据库-门组 收藏" [ref=e828] [cursor=pointer]:
+              - generic [ref=e833]: 数据库-门组
+              - button "收藏" [ref=e834]
+            - button "数据库-通道编码 收藏" [ref=e837] [cursor=pointer]:
+              - generic [ref=e841]: 数据库-通道编码
+              - button "收藏" [ref=e842]
+            - button "数据库-ARO房间 收藏" [ref=e845] [cursor=pointer]:
+              - generic [ref=e850]: 数据库-ARO房间
+              - button "收藏" [ref=e851]
+            - button "数据库-笼架落库索引 收藏" [ref=e854] [cursor=pointer]:
+              - generic [ref=e858]: 数据库-笼架落库索引
+              - button "收藏" [ref=e859]
+            - button "数据库-部门 收藏" [ref=e862] [cursor=pointer]:
+              - generic [ref=e868]: 数据库-部门
+              - button "收藏" [ref=e869]
+        - generic [ref=e872]:
+          - button "学生审核 2 个入口" [ref=e874] [cursor=pointer]:
+            - text: 学生审核
+            - generic [ref=e877]: 2 个入口
+          - generic [ref=e879]:
+            - button "物品管理 收藏" [ref=e880] [cursor=pointer]:
+              - generic [ref=e886]: 物品管理
+              - button "收藏" [ref=e887]
+            - button "申领审计导出 收藏" [ref=e890] [cursor=pointer]:
+              - generic [ref=e895]: 申领审计导出
+              - button "收藏" [ref=e896]
+        - generic [ref=e899]:
+          - button "文档 3 个入口" [ref=e901] [cursor=pointer]:
+            - text: 文档
+            - generic [ref=e904]: 3 个入口
+          - generic [ref=e906]:
+            - button "文档-接口中心 收藏" [ref=e907] [cursor=pointer]:
+              - generic [ref=e911]: 文档-接口中心
+              - button "收藏" [ref=e912]
+            - button "日常-设施维护 收藏" [ref=e915] [cursor=pointer]:
+              - generic [ref=e919]: 日常-设施维护
+              - button "收藏" [ref=e920]
+            - button "上传文件模板共享库 收藏" [ref=e923] [cursor=pointer]:
+              - generic [ref=e928]: 上传文件模板共享库
+              - button "收藏" [ref=e929]
+        - generic [ref=e932]:
+          - button "配置 3 个入口" [ref=e934] [cursor=pointer]:
+            - text: 配置
+            - generic [ref=e937]: 3 个入口
+          - generic [ref=e939]:
+            - button "配置-房间权限规则 收藏" [ref=e940] [cursor=pointer]:
+              - generic [ref=e946]: 配置-房间权限规则
+              - button "收藏" [ref=e947]
+            - button "配置-门禁激活与联动 收藏" [ref=e950] [cursor=pointer]:
+              - generic [ref=e954]: 配置-门禁激活与联动
+              - button "收藏" [ref=e955]
+            - button "配置-WinCC 变量导入 收藏" [ref=e958] [cursor=pointer]:
+              - generic [ref=e962]: 配置-WinCC 变量导入
+              - button "收藏" [ref=e963]
+        - generic [ref=e966]:
+          - button "资产与运维 2 个入口" [ref=e968] [cursor=pointer]:
+            - text: 资产与运维
+            - generic [ref=e971]: 2 个入口
+          - generic [ref=e973]:
+            - button "填报报表管理 收藏" [ref=e974] [cursor=pointer]:
+              - generic [ref=e978]: 填报报表管理
+              - button "收藏" [ref=e979]
+            - button "填报中心 收藏" [ref=e982] [cursor=pointer]:
+              - generic [ref=e988]: 填报中心
+              - button "收藏" [ref=e989]
+        - generic [ref=e992]:
+          - button "门禁、元数据与环境 6 个入口" [ref=e994] [cursor=pointer]:
+            - text: 门禁、元数据与环境
+            - generic [ref=e997]: 6 个入口
+          - generic [ref=e999]:
+            - button "人脸识别调试 收藏" [ref=e1000] [cursor=pointer]:
+              - generic [ref=e1005]: 人脸识别调试
+              - button "收藏" [ref=e1006]
+            - button "3D 楼盘 收藏" [ref=e1009] [cursor=pointer]:
+              - generic [ref=e1013]: 3D 楼盘
+              - button "收藏" [ref=e1014]
+            - button "动物房温湿度监测 收藏" [ref=e1017] [cursor=pointer]:
+              - generic [ref=e1021]: 动物房温湿度监测
+              - button "收藏" [ref=e1022]
+            - button "动物房驾驶舱 收藏" [ref=e1025] [cursor=pointer]:
+              - generic [ref=e1030]: 动物房驾驶舱
+              - button "收藏" [ref=e1031]
+            - button "数字孪生大屏 收藏" [ref=e1034] [cursor=pointer]:
+              - generic [ref=e1038]: 数字孪生大屏
+              - button "收藏" [ref=e1039]
+            - button "3D 楼盘 收藏" [ref=e1042] [cursor=pointer]:
+              - generic [ref=e1046]: 3D 楼盘
+              - button "收藏" [ref=e1047]
+        - generic [ref=e1050]:
+          - button "系统与安全 6 个入口" [ref=e1052] [cursor=pointer]:
+            - text: 系统与安全
+            - generic [ref=e1055]: 6 个入口
+          - generic [ref=e1057]:
+            - button "系统监控 收藏" [ref=e1058] [cursor=pointer]:
+              - generic [ref=e1062]: 系统监控
+              - button "收藏" [ref=e1063]
+            - button "推送仪表盘 收藏" [ref=e1066] [cursor=pointer]:
+              - generic [ref=e1071]: 推送仪表盘
+              - button "收藏" [ref=e1072]
+            - button "推送配置 收藏" [ref=e1075] [cursor=pointer]:
+              - generic [ref=e1080]: 推送配置
+              - button "收藏" [ref=e1081]
+            - button "推送日志 收藏" [ref=e1084] [cursor=pointer]:
+              - generic [ref=e1089]: 推送日志
+              - button "收藏" [ref=e1090]
+            - button "通知聚合 收藏" [ref=e1093] [cursor=pointer]:
+              - generic [ref=e1098]: 通知聚合
+              - button "收藏" [ref=e1099]
+            - button "AGV 小车 收藏" [ref=e1102] [cursor=pointer]:
+              - generic [ref=e1107]: AGV 小车
+              - button "收藏" [ref=e1108]
+        - generic [ref=e1111]:
+          - button "AI 实验室 1 个入口" [ref=e1113] [cursor=pointer]:
+            - text: AI 实验室
+            - generic [ref=e1116]: 1 个入口
+          - button "用户对话存档 收藏" [ref=e1119] [cursor=pointer]:
+            - generic [ref=e1124]: 用户对话存档
+            - button "收藏" [ref=e1125]
+        - generic [ref=e1128]:
+          - button "ARO 房间与联动 1 个入口" [ref=e1130] [cursor=pointer]:
+            - text: ARO 房间与联动
+            - generic [ref=e1133]: 1 个入口
+          - button "ARO 认证 收藏" [ref=e1136] [cursor=pointer]:
+            - generic [ref=e1141]: ARO 认证
+            - button "收藏" [ref=e1142]

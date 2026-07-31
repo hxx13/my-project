@@ -242,8 +242,25 @@ async function batchUpdateAssets(payload) {
   return parsed.body.data || {};
 }
 
+/**
+ * 统一扫码查询：根据二维码/条形码内容自动识别类型（笼盒 or 资产）
+ */
+function lookupCode(code) {
+  return springAuth.springRequest({
+    url: '/api/v1/scan/lookup',
+    method: 'GET',
+    data: { code: String(code || '').trim() },
+  }).then(function (res) {
+    var parsed = parseResponse(res);
+    if (!parsed.ok) throw new Error(parsed.message || '查询失败');
+    return (parsed.body && parsed.body.data) || {};
+  });
+}
+
 module.exports = {
   fetchAssetRecords,
+  lookupCode,
+
   searchAssets,
   fetchAssetByCode,
   fetchDistinctLocations,

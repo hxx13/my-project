@@ -5,7 +5,7 @@
 import { useState, useCallback } from "react";
 import { Loader2, AlertTriangle, Check, QrCode } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { bindCageBox, updateAnimalCage, type AnimalCageUpdatePayload } from "@/api/domains/cageShelf.api";
+import { bindCageBox } from "@/api/domains/cageShelf.api";
 import type { CageShelfCell } from "@/features/student/api/student.api";
 import { getCellStatusDisplayLabel } from "@/features/cage-shelf/components/CageCellOverlays";
 import toast from "react-hot-toast";
@@ -26,9 +26,6 @@ export default function MobileCageBindQrDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const roomId = shelfMeta?.roomId != null ? Number(shelfMeta.roomId) : 0;
-  const shelveId = shelfMeta?.shelveId != null ? Number(shelfMeta.shelveId) : 0;
-
   const handleConfirm = useCallback(async () => {
     if (!selectedCell || !selectedCageData || !scannedCode) {
       setError("请先扫码并选择目标笼位");
@@ -45,23 +42,9 @@ export default function MobileCageBindQrDialog({
 
     try {
       const cageId = Number((selectedCageData as any).id ?? 0);
-      const cageName = String((selectedCageData as any).name ?? "");
-      const cagePosX = Number((selectedCageData as any).positionX ?? (selectedCell as any).x ?? 0);
-      const cagePosY = Number((selectedCageData as any).positionY ?? (selectedCell as any).y ?? 0);
 
-      await bindCageBox(String(cageId), scannedCode);
-
-      const payload: AnimalCageUpdatePayload = {
-        id: cageId,
-        name: cageName,
-        roomId,
-        shelveId,
-        postionX: cagePosX,
-        postionY: cagePosY,
-        qrcode: scannedCode,
-        state: 3,
-      };
-      await updateAnimalCage(payload);
+      const roomId = shelfMeta?.roomId != null ? String(shelfMeta.roomId) : undefined;
+      await bindCageBox(String(cageId), scannedCode, roomId);
 
       toast.success("绑定成功！");
       setSubmitting(false);
@@ -71,7 +54,7 @@ export default function MobileCageBindQrDialog({
       setError(e?.message || "绑定失败");
       setSubmitting(false);
     }
-  }, [selectedCell, selectedCageData, scannedCode, roomId, shelveId, onBound, onClose]);
+  }, [selectedCell, selectedCageData, scannedCode, onBound, onClose]);
 
   const handleClose = useCallback(() => {
     setError("");

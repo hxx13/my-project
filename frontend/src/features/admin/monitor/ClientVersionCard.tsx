@@ -88,12 +88,10 @@ export function ClientVersionCard() {
                         </span>
                     )}
                 </div>
-                {!allUpToDate && (
-                    <AdminButton type="button" tone="primary" size="sm" className="gap-1.5" onClick={() => void handleBroadcast()}>
-                        <RefreshCw size={14} />
-                        同步在线页
-                    </AdminButton>
-                )}
+                <AdminButton type="button" tone="primary" size="sm" className="gap-1.5" onClick={() => void handleBroadcast()}>
+                    <RefreshCw size={14} />
+                    同步在线页
+                </AdminButton>
             </div>
 
             {stats && (

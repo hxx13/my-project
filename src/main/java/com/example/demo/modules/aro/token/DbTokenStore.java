@@ -42,7 +42,8 @@ public class DbTokenStore implements TokenStore {
                 tokenInfo.getAroUserId(),
                 encryptedToken,
                 exp,
-                tokenInfo.getAccount()
+                tokenInfo.getAccount(),
+                null
         );
 
         log.info("[TokenStore] 已保存 CAS token: userId={}, aroUserId={}", userId, tokenInfo.getAroUserId());
@@ -93,5 +94,27 @@ public class DbTokenStore implements TokenStore {
         }
         UserAroBinding binding = userAroBindingMapper.selectByUserId(userId);
         return binding != null && binding.getCasToken() != null;
+    }
+
+    @Override
+    public void saveCredentials(String userId, String aroAccount, String aroPassword) {
+        if (userId == null) return;
+        String encrypted = aesEncryptionService.encrypt(aroPassword);
+        userAroBindingMapper.updateCasCredentials(userId, aroAccount, encrypted);
+        log.info("[TokenStore] 已保存 ARO 凭据: userId={}, account={}", userId, aroAccount);
+    }
+
+    @Override
+    public String[] loadCredentials(String userId) {
+        if (userId == null) return null;
+        UserAroBinding binding = userAroBindingMapper.selectByUserId(userId);
+        if (binding == null || binding.getAroPassword() == null) return null;
+        try {
+            String decrypted = aesEncryptionService.decrypt(binding.getAroPassword());
+            return new String[]{binding.getCasAccount(), decrypted};
+        } catch (Exception e) {
+            log.error("[TokenStore] 解密凭据失败: userId={}", userId, e);
+            return null;
+        }
     }
 }

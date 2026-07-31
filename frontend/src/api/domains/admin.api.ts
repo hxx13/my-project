@@ -168,13 +168,18 @@ export async function fetchCasBindingStatus(): Promise<CasBindingStatus> {
 }
 
 export async function bindCasAccount(
-  aroToken: string
+  aroTokenOrAccount: string,
+  password?: string
 ): Promise<{ casAccount: string; bound: boolean }> {
-  const res = await adminHttp.post<
-    Result<{ casAccount: string; bound: boolean }>
-  >("/account/binding/cas-bind", { aroToken });
-  if (!res.data?.success)
-    throw new Error(res.data?.message || "绑定失败");
+  const body: Record<string, string> = {};
+  if (password) {
+    body.aroAccount = aroTokenOrAccount;
+    body.aroPassword = password;
+  } else {
+    body.aroToken = aroTokenOrAccount;
+  }
+  const res = await adminHttp.post<Result<{ casAccount: string; bound: boolean }>>("/account/binding/cas-bind", body);
+  if (!res.data?.success) throw new Error(res.data?.message || "绑定失败");
   return res.data.data;
 }
 

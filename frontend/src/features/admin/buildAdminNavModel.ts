@@ -679,8 +679,13 @@ function convertServerConfigToModel(
 }
 
 export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBadges | null) {
-  // 1. Try server config
-  const serverConfig = await fetchAdminNavConfig();
+  // 1. Try server config（带重试：解决首次加载时 token 未就绪 / 网络波动导致的空返回）
+  let serverConfig = await fetchAdminNavConfig();
+  if (serverConfig.length === 0) {
+    // 短暂延迟后重试一次，解决与 token refresh / session 恢复之间的竞态
+    await new Promise(r => setTimeout(r, 300));
+    serverConfig = await fetchAdminNavConfig();
+  }
 
   let sidebarGroups: AdminSidebarNavGroup[];
   let homeSections: AdminHomeSection[];
@@ -704,6 +709,21 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
     const legacy = buildLegacyAdminNavModel(ctx, pendingBadges);
     sidebarGroups = legacy.sidebarGroups;
     homeSections = legacy.homeSections;
+
+    // 后台自动播种：表为空时从注册表恢复，避免必须重启应用
+    const allRegistryItems = ADMIN_NAV_REGISTRY.flatMap(rg =>
+      collectRegistryGroupItems(rg).map(ri => ({
+        path: ri.path,
+        label: ri.label,
+        icon: (ri.icon as any)?.displayName || 'Layers',
+        groupTitle: rg.title,
+      }))
+    );
+    if (allRegistryItems.length > 0) {
+      import("@/api/domains/adminNavConfig.api").then(({ ensureNavItems }) => {
+        ensureNavItems(allRegistryItems).catch(() => {});
+      });
+    }
   }
 
   // Build flat navigable items (same logic as before, works with either source)
@@ -723,14 +743,26 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
 
     // 尝试匹配服务器 config 中同标题的分组
     let targetGroup = sidebarGroups.find((g) => g.title === rg.title);
+    // 服务器自定义配置存在时，不创建 fallback 分组：
+    // 用户已通过 AdminNavManager 有意删除/重命名分组，不应自动复活默认分组。
+    // 只在无服务器配置（纯 registry 模式）或目标分组已存在时才补回条目。
     if (!targetGroup) {
-      targetGroup = { id: `fallback-${rg.id}`, title: rg.title, items: [] };
-      sidebarGroups.push(targetGroup);
+      if (serverConfig.length === 0) {
+        targetGroup = { id: `fallback-${rg.id}`, title: rg.title, items: [] };
+        sidebarGroups.push(targetGroup);
+      } else {
+        // 服务器配置存在但没有同名分组 → 用户有意移除该分组，跳过
+        continue;
+      }
     }
     let targetHome = homeSections.find((s) => s.title === rg.title);
     if (!targetHome) {
-      targetHome = { title: rg.title, entries: [] };
-      homeSections.push(targetHome);
+      if (serverConfig.length === 0) {
+        targetHome = { title: rg.title, entries: [] };
+        homeSections.push(targetHome);
+      } else {
+        continue;
+      }
     }
 
     for (const ri of missing) {

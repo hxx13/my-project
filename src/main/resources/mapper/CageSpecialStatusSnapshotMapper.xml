@@ -23,11 +23,13 @@
             detail_name VARCHAR(256),
             detail_description TEXT,
             cage_box_qr_code VARCHAR(512),
+            cage_box_code VARCHAR(128),
             animal_cage_type INT,
             scanned_at DATETIME NOT NULL,
             INDEX idx_scan_batch (scan_batch_id),
             INDEX idx_status_code (status_code),
-            INDEX idx_shelve_id (shelve_id)
+            INDEX idx_shelve_id (shelve_id),
+            INDEX idx_cage_box_code (cage_box_code)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
     </update>
@@ -49,7 +51,7 @@
             status_code, status_label,
             pi_name, department_name, project_pi_name,
             detail_name, detail_description,
-            cage_box_qr_code, cage_box_json, animal_cage_type,
+            cage_box_qr_code, cage_box_code, cage_box_json, animal_cage_type,
             scanned_at
         ) VALUES
         <foreach collection="list" item="row" separator=",">
@@ -59,7 +61,7 @@
                 #{row.statusCode}, #{row.statusLabel},
                 #{row.piName}, #{row.departmentName}, #{row.projectPiName},
                 #{row.detailName}, #{row.detailDescription},
-                #{row.cageBoxQrCode}, #{row.cageBoxJson}, #{row.animalCageType},
+                #{row.cageBoxQrCode}, #{row.cageBoxCode}, #{row.cageBoxJson}, #{row.animalCageType},
                 #{row.scannedAt}
             )
         </foreach>
@@ -102,6 +104,7 @@
                project_pi_name AS projectPiName,
                detail_name AS detailName, detail_description AS detailDescription,
                cage_box_qr_code AS cageBoxQrCode,
+               cage_box_code AS cageBoxCode,
                cage_box_json AS cageBoxJson,
                animal_cage_type AS animalCageType,
                scanned_at AS scannedAt
@@ -127,6 +130,7 @@
                project_pi_name AS projectPiName,
                detail_name AS detailName, detail_description AS detailDescription,
                cage_box_qr_code AS cageBoxQrCode,
+               cage_box_code AS cageBoxCode,
                cage_box_json AS cageBoxJson,
                animal_cage_type AS animalCageType,
                scanned_at AS scannedAt
@@ -158,6 +162,7 @@
                project_pi_name AS projectPiName,
                detail_name AS detailName, detail_description AS detailDescription,
                cage_box_qr_code AS cageBoxQrCode,
+               cage_box_code AS cageBoxCode,
                cage_box_json AS cageBoxJson,
                animal_cage_type AS animalCageType,
                scanned_at AS scannedAt
@@ -179,6 +184,31 @@
               #{id}
           </foreach>
         GROUP BY shelve_id, animal_cage_type
+    </select>
+
+    <select id="findByCageBoxCode" resultType="com.example.demo.modules.cageshelf.entity.CageSpecialStatusSnapshot">
+        SELECT id, scan_batch_id AS scanBatchId,
+               shelve_id AS shelveId, campus_name AS campusName,
+               room_id AS roomId, room_name AS roomName,
+               position_x AS positionX, position_y AS positionY,
+               position_label AS positionLabel,
+               status_code AS statusCode, status_label AS statusLabel,
+               pi_name AS piName, department_name AS departmentName,
+               project_pi_name AS projectPiName,
+               detail_name AS detailName, detail_description AS detailDescription,
+               cage_box_qr_code AS cageBoxQrCode,
+               cage_box_code AS cageBoxCode,
+               cage_box_json AS cageBoxJson,
+               animal_cage_type AS animalCageType,
+               scanned_at AS scannedAt
+        FROM cage_special_status_snapshot
+        WHERE (
+            cage_box_code = #{code}
+            OR cage_box_qr_code = #{code}
+            OR cage_box_qr_code LIKE CONCAT('%/', #{code}, '_%')
+            OR cage_box_qr_code LIKE CONCAT('%/', #{code})
+        )
+        LIMIT 1
     </select>
 
     <select id="selectDistinctShelvesByGroups" resultType="map">

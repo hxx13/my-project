@@ -274,15 +274,53 @@ Page({
     }
   },
 
-  /** 左上角扫码：调用微信扫码工具 */
+  /** 左上角扫码：调用微信扫码工具 → 统一查询 → 路由跳转 */
   onScanTap() {
     var self = this;
     wx.scanCode({
       onlyFromCamera: true,
       scanType: ['qrCode', 'barCode', 'datamatrix', 'pdf417'],
       success: function (res) {
-        console.log('[index] scan result:', res.result);
-        // TODO: 根据扫码内容路由
+        var code = (res && (res.result || res.rawData)) ? String(res.result || res.rawData).trim() : '';
+        console.log('[index] scan result:', code);
+        if (!code) return;
+
+        wx.showLoading({ title: '识别中…', mask: true });
+        springAuth.springRequest({
+          url: '/api/v1/scan/lookup',
+          method: 'GET',
+          data: { code: code },
+        }).then(function (lookupRes) {
+          wx.hideLoading();
+          var body = typeof lookupRes.data === 'string' ? JSON.parse(lookupRes.data) : lookupRes.data;
+          var result = (body && body.success && body.data) ? body.data : {};
+          console.log('[scan-lookup] result:', JSON.stringify(result));
+          if (!result.type || result.type === 'NOT_FOUND') {
+            wx.showToast({ title: result.message || '未识别到有效内容', icon: 'none' });
+            return;
+          }
+
+          if (result.type === 'CAGE_BOX' && result.cageBox) {
+            var cb = result.cageBox;
+            var url = '/package-feature/pages/studentCageShelf/index' +
+              '?highlightX=' + cb.positionX +
+              '&highlightY=' + cb.positionY +
+              '&campusName=' + (cb.campusName || '') +
+              '&roomName=' + (cb.roomName || '') +
+              (cb.shelveId ? '&shelveId=' + cb.shelveId : '');
+            wx.navigateTo({ url: url });
+          } else if (result.type === 'ASSET' && result.asset) {
+            var assetCode = result.asset.assetCode || code;
+            wx.navigateTo({
+              url: '/package-feature/pages/assetRecord/index?searchCode=' + encodeURIComponent(assetCode)
+            });
+          } else {
+            wx.showToast({ title: result.message || '未识别到有效内容', icon: 'none' });
+          }
+        }).catch(function (e) {
+          wx.hideLoading();
+          wx.showToast({ title: (e && e.message) || '查询失败', icon: 'none' });
+        });
       },
       fail: function (err) {
         // 用户取消不提示

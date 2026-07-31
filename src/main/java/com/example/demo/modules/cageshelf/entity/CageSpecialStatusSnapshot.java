@@ -21,6 +21,7 @@ public class CageSpecialStatusSnapshot {
     private String detailName;
     private String detailDescription;
     private String cageBoxQrCode;
+    private String cageBoxCode;
     private String cageBoxJson;
     private Integer animalCageType;
     private String scannedAt;
@@ -61,6 +62,8 @@ public class CageSpecialStatusSnapshot {
     public void setDetailDescription(String detailDescription) { this.detailDescription = detailDescription; }
     public String getCageBoxQrCode() { return cageBoxQrCode; }
     public void setCageBoxQrCode(String cageBoxQrCode) { this.cageBoxQrCode = cageBoxQrCode; }
+    public String getCageBoxCode() { return cageBoxCode; }
+    public void setCageBoxCode(String cageBoxCode) { this.cageBoxCode = cageBoxCode; }
     public String getCageBoxJson() { return cageBoxJson; }
     public void setCageBoxJson(String cageBoxJson) { this.cageBoxJson = cageBoxJson; }
     public Integer getAnimalCageType() { return animalCageType; }

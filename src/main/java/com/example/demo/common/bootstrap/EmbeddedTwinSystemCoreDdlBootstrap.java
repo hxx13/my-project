@@ -117,7 +117,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/migration/V20260703__llm_conversation.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-password-plain.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cas-fields.sql", ctx)) success++;
+        total++; if (runScript("db/migration/V20260731__cage_snapshot_add_cage_box_code.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aro-training-cache.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aro-password-col.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aro-training-favorite.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aro-training-reviewed-at.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-notify-push.sql", ctx)) success++;

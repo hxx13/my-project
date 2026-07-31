@@ -197,6 +197,8 @@ export default function AdminLayout() {
   const [casPopupReady, setCasPopupReady] = useState(false);
   const [casRenewing, setCasRenewing] = useState(false);
   const casPasteRef = useRef<HTMLTextAreaElement>(null);
+  const [aroAccount, setAroAccount] = useState("");
+  const [aroPassword, setAroPassword] = useState("");
   const [aroUnbindDialogOpen, setAroUnbindDialogOpen] = useState(false);
 
   /** Email / SendKey binding */
@@ -1067,12 +1069,22 @@ export default function AdminLayout() {
     const text = e.clipboardData?.getData("text") || "";
     let token = "";
     try { const json = JSON.parse(text); token = json?.data?.token || json?.token || ""; } catch { if (text.startsWith("eyJ")) token = text.trim(); }
-    if (token) { e.preventDefault(); doCasBind(token); }
+    if (token) { e.preventDefault(); doCasBindToken(token); }
   };
-  const doCasBind = async (aroToken: string) => {
+  const doCasBindToken = async (aroToken: string) => {
     setCasBinding(true);
     try { await bindCasAccount(aroToken); toast.success("ARO认证绑定成功"); setCasPopupReady(false); setCasDialogOpen(false); fetchCasBindingStatus().then(setCasStatus); }
     catch (e: any) { toast.error(e?.message || "绑定失败"); }
+    finally { setCasBinding(false); }
+  };
+  const doCasBindPwd = async (account: string, pwd: string) => {
+    setCasBinding(true);
+    try {
+      const res = await fetch("/api/admin/account/binding/cas-bind", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + authStorage.getToken() }, body: JSON.stringify({ aroAccount: account, aroPassword: pwd }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.message || "登录失败");
+      toast.success("ARO认证绑定成功"); setCasDialogOpen(false); setAroAccount(""); setAroPassword("");
+      fetchCasBindingStatus().then(setCasStatus);
+    } catch (e: any) { toast.error(e?.message || "绑定失败"); }
     finally { setCasBinding(false); }
   };
   const handleCasRenew = async () => {
@@ -1720,48 +1732,35 @@ export default function AdminLayout() {
         </DialogContent>
       </Dialog>
 
-      {/* CAS Token 绑定弹窗 */}
+      {/* ARO 认证绑定弹窗 */}
       <Dialog open={casDialogOpen} onOpenChange={setCasDialogOpen}>
         <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>绑定 ARO 个人认证</DialogTitle>
-            <DialogDescription>
-              获取你的 ARO Token 以使用需要个人权限的功能。
-            </DialogDescription>
+            <DialogDescription>选择一种方式获取你的 ARO Token。</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <AdminButton type="button" tone="secondary" size="default" className="w-full" onClick={() => {
-              const w = window.open("https://auth2.shsmu.edu.cn/cas/logout", "aro-cas-logout", "width=1,height=1");
-              setTimeout(() => {
-                if (w) w.close();
-                window.open("https://auth2.shsmu.edu.cn/cas/login?service=https://aro.shsmu.edu.cn", "aro-cas", "width=800,height=600");
-              }, 800);
-            }}>
-              统一认证登录
-            </AdminButton>
-            <AdminButton type="button" tone="primary" size="default" className="w-full" onClick={handleCasFetch}>
-              <KeyRound className="mr-2 h-4 w-4" />一键获取 Token
-            </AdminButton>
-            {casPopupReady && (
-              <div className="space-y-2">
-                <div className="rounded bg-blue-50 border border-blue-200 p-2.5 text-xs text-blue-700 leading-relaxed">
-                  在弹窗中 <strong>Ctrl+A</strong> 全选 → <strong>Ctrl+C</strong> 复制 →
-                  回到此处 <strong>Ctrl+V</strong> 粘贴
+            {/* 方式一：账号密码 */}
+            <div className="rounded border p-3 space-y-2">
+              <p className="text-xs font-medium">方式一：账号密码（推荐）</p>
+              <input type="text" value={aroAccount} onChange={e => setAroAccount(e.target.value)} placeholder="ARO 账号（如 YF0408）" className="w-full rounded border px-3 py-2 text-sm" />
+              <input type="password" value={aroPassword} onChange={e => setAroPassword(e.target.value)} placeholder="ARO 密码" className="w-full rounded border px-3 py-2 text-sm" onKeyDown={e => { if (e.key === "Enter" && aroAccount.trim() && aroPassword) doCasBindPwd(aroAccount.trim(), aroPassword); }} />
+              <AdminButton type="button" tone="primary" size="default" className="w-full" disabled={!aroAccount.trim() || !aroPassword || casBinding} onClick={() => doCasBindPwd(aroAccount.trim(), aroPassword)}>{casBinding ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />绑定中...</> : "绑定"}</AdminButton>
+            </div>
+
+            {/* 方式二：统一认证登录 */}
+            <div className="rounded border p-3 space-y-2">
+              <p className="text-xs font-medium">方式二：统一认证登录</p>
+              <p className="text-[10px] text-[var(--twin-mute)]">点击按钮打开弹窗。若已有 ARO 会话则直接 Ctrl+A C V 粘贴 Token；若没有请先完成 CAS 登录。</p>
+              <AdminButton type="button" tone="primary" size="default" className="w-full" onClick={handleCasFetch}>一键获取 Token</AdminButton>
+              <AdminButton type="button" tone="secondary" size="default" className="w-full" onClick={() => { const w = window.open("https://auth2.shsmu.edu.cn/cas/logout", "aro-cas-lo", "width=1,height=1"); setTimeout(() => { if (w) w.close(); window.open("https://auth2.shsmu.edu.cn/cas/login?service=https://aro.shsmu.edu.cn", "aro-cas", "width=800,height=600"); }, 800); }}>完成 CAS 登录</AdminButton>
+              {casPopupReady && (
+                <div className="space-y-2">
+                  <div className="rounded bg-blue-50 border border-blue-200 p-2 text-xs text-blue-700 leading-relaxed">在弹窗中 <strong>Ctrl+A</strong> 全选 → <strong>Ctrl+C</strong> 复制 → 回到此处 <strong>Ctrl+V</strong> 粘贴</div>
+                  <textarea ref={casPasteRef} onPaste={handleCasPaste} placeholder="在此 Ctrl+V 粘贴..." className="w-full h-16 rounded border px-3 py-2 text-xs font-mono resize-none" autoFocus />
                 </div>
-                <textarea
-                  ref={casPasteRef}
-                  onPaste={handleCasPaste}
-                  placeholder="在此 Ctrl+V 粘贴..."
-                  className="w-full h-16 rounded border px-3 py-2 text-xs font-mono resize-none"
-                  autoFocus
-                />
-                {casBinding && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" /> 绑定中...
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -71,4 +71,14 @@ public class CachedTokenStore implements TokenStore {
         }
         return delegate.exists(userId);
     }
+
+    @Override
+    public void saveCredentials(String userId, String aroAccount, String aroPassword) {
+        delegate.saveCredentials(userId, aroAccount, aroPassword);
+    }
+
+    @Override
+    public String[] loadCredentials(String userId) {
+        return delegate.loadCredentials(userId);
+    }
 }

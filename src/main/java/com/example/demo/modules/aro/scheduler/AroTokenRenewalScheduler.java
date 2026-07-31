@@ -71,6 +71,14 @@ public class AroTokenRenewalScheduler {
                         userId, info.getAccount(), remaining);
 
                 CasTokenInfo newToken = casClient.refreshToken(info.getToken());
+                if (newToken == null) {
+                    // token 续期失败，尝试用存储的凭据重新登录
+                    String[] creds = tokenStore.loadCredentials(userId);
+                    if (creds != null && creds[0] != null && creds[1] != null) {
+                        log.info("[ARO-renewal] token续期失败，尝试凭据登录: userId={}", userId);
+                        newToken = casClient.loginWithCredentials(creds[0], creds[1]);
+                    }
+                }
                 if (newToken != null) {
                     tokenStore.save(userId, newToken);
                     renewed++;

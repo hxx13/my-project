@@ -30,4 +30,15 @@ public interface TokenStore {
      * 判断 token 是否存在。
      */
     boolean exists(String userId);
+
+    /**
+     * 保存 ARO 账号密码（AES 加密），用于后续自动续期。
+     */
+    void saveCredentials(String userId, String aroAccount, String aroPassword);
+
+    /**
+     * 加载 ARO 账号密码（AES 解密）。
+     * @return [account, password]，不存在返回 null
+     */
+    String[] loadCredentials(String userId);
 }

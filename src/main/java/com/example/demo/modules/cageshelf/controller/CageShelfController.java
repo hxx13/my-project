@@ -399,7 +399,7 @@ public class CageShelfController {
     // ==========================================================================
 
     @PostMapping("/realtime/refresh")
-    @Operation(summary = "实时拉取笼架数据（含 5min 冷却）")
+    @Operation(summary = "实时拉取笼架数据（含 1min 冷却）")
     public Result<?> refreshRealtime(@RequestHeader(value = "Authorization", required = false) String authorization,
                                       @RequestBody Map<String, Object> body) {
         User user = resolveUser(authorization);
@@ -409,6 +409,18 @@ public class CageShelfController {
         if (roomId == null) return Result.error("请提供 roomId");
         String shelveId = body.get("shelveId") != null ? String.valueOf(body.get("shelveId")) : null;
         return Result.success(cageShelfService.refreshRoomRealtime(roomId, shelveId));
+    }
+
+    @PostMapping("/realtime/force-refresh")
+    @Operation(summary = "强制实时拉取笼架数据（绕过冷却）")
+    public Result<?> forceRefreshRealtime(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @RequestBody Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        Long roomId = toLong(body.get("roomId"));
+        if (roomId == null) return Result.error("请提供 roomId");
+        return Result.success(cageShelfService.forceRefreshAfterMutation(roomId));
     }
 
     @GetMapping("/realtime/cooldown")
@@ -514,7 +526,6 @@ public class CageShelfController {
         }
         return Result.error("ARO 笼位更新失败，请查看日志");
     }
-
     private static Long toLong(Object v) {
         if (v == null) return null;
         if (v instanceof Number n) return n.longValue();

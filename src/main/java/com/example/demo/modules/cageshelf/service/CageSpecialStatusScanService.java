@@ -189,8 +189,10 @@ public class CageSpecialStatusScanService {
                         row.setProjectPiName(cageBoxVo != null ? objToStr(cageBoxVo.get("projectPiName")) : "");
                         row.setDetailName(se.getDetailName());
                         row.setDetailDescription(se.getDetailDescription());
-                        row.setCageBoxQrCode(cageBoxVo != null ? objToStr(
-                                firstNonNull(cageBoxVo.get("cageBoxQrCode"), cageBoxVo.get("cageBoxCode"))) : "");
+                        String rawQr = cageBoxVo != null ? objToStr(
+                                firstNonNull(cageBoxVo.get("cageBoxQrCode"), cageBoxVo.get("cageBoxCode"))) : "";
+                        row.setCageBoxQrCode(rawQr);
+                        row.setCageBoxCode(extractCageBoxCode(rawQr));
                         row.setCageBoxJson(cageBoxVo != null ? JSON.toJSONString(cageBoxVo) : null);
                         row.setAnimalCageType(toInt(cage.get("animalCageType")));
                         row.setScannedAt(now);
@@ -368,6 +370,24 @@ public class CageSpecialStatusScanService {
         if (o == null) return true;
         if (o instanceof String s) return s.isBlank();
         return false;
+    }
+
+    /** 从 QR URL 提取纯数字笼盒编码（例：http://.../123456_qrcode → 123456） */
+    static String extractCageBoxCode(String qrCodeOrUrl) {
+        if (qrCodeOrUrl == null || qrCodeOrUrl.isBlank()) return null;
+        String s = qrCodeOrUrl.trim();
+        // 纯数字 → 直接返回
+        if (s.matches("^\\d+$")) return s;
+        // URL 模式：取最后一个 / 和 _qrcode 之间的部分
+        int ls = s.lastIndexOf('/');
+        int qi = s.indexOf("_qrcode");
+        if (ls >= 0 && qi > ls) return s.substring(ls + 1, qi);
+        // 兜底：取最后一个 / 之后的非空段
+        if (ls >= 0 && ls < s.length() - 1) {
+            String last = s.substring(ls + 1);
+            if (last.matches("^\\d+$")) return last;
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")
