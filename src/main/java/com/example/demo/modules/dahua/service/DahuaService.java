@@ -54,7 +54,7 @@ public class DahuaService {
     @Autowired
     private com.example.demo.modules.dahua.mapper.DahuaDeviceChannelCacheMapper deviceChannelCacheMapper;
 
-    @Value("${app.dahua.callback-url:http://172.22.161.252:18082/api/event}")
+    @Value("${app.dahua.callback-url:http://172.22.161.252:8080/api/event}")
     private String myCallbackUrl;
 
     @Value("${app.dahua.buffer-url:}")
@@ -410,7 +410,9 @@ public class DahuaService {
                 "172.22.161.252_8080", "172.22.161.252_3000",
                 "172.22.161.254_3000", "172.22.161.254_8080",
                 "192.168.1.3_8080",
-                "My_Fixed_Java_Client_V1", "My_Fixed_Java_Client_V2026"  // 旧固定名，迁移到 Twin_ 后清理
+                "My_Fixed_Java_Client_V1", "My_Fixed_Java_Client_V2026",
+                "Twin_172.22.161.252_18082"   // 旧18082端口残留
+        );
         for (String name : zombieNames) unsubscribe(name);
     }
 
