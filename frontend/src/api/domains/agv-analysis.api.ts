@@ -16,7 +16,8 @@ export interface AgvSpatialElement {
   isActive?: boolean;
   confidence?: number;  // 行为确认置信度 0~1
   hitCount?: number;    // 被分析命中的总次数
-  source?: string;      // AUTO | BEHAVIOR | MANUAL
+  source?: string;      // AUTO | BEHAVIOR | MANUAL | TOPOLOGY
+  robotIp?: string;     // 所属小车 IP，null = 共享区域
   createdAt?: string;
   updatedAt?: string;
 }
@@ -211,6 +212,22 @@ export function useDiscoverZones() {
   });
 }
 
+/** 路线拓扑 → 区域生成（复用路线标签和频次，质量远超旧算法） */
+export async function generateZonesFromTopology(): Promise<{ zonesCreated: number; source: string }> {
+  const res = await authHttp.post<{ data: { zonesCreated: number; source: string } }>(
+    "/v1/agv/analysis/spatial-elements/generate-from-topology"
+  );
+  return res.data.data;
+}
+
+export function useGenerateZonesFromTopology() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: generateZonesFromTopology,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["agvSpatialElements"] }),
+  });
+}
+
 export function useRules() {
   return useQuery({ queryKey: ["agvRules"], queryFn: fetchRules, staleTime: 60_000 });
 }
@@ -299,6 +316,11 @@ function topologyToRouteOverlays(
   topology: RouteTopologyResponse,
 ): Array<{ id: number; pathJson: string; color: string; name: string; routeType: string; robotIp: string }> {
   const results: Array<{ id: number; pathJson: string; color: string; name: string; routeType: string; robotIp: string }> = [];
+  // robot_ips 缺失时的 zone 级 fallback
+  const zoneAgvMap: Record<string, string[]> = {
+    zone1: ["172.22.159.16", "172.22.159.18"],
+    zone2: ["172.22.159.20", "172.22.159.22"],
+  };
   let idCounter = 1;
 
   for (const [zoneKey, zone] of Object.entries(topology.zones)) {
@@ -328,8 +350,10 @@ function topologyToRouteOverlays(
         color = "#f85149"; routeType = "REVERSE";       // 单行 → 红色
       } else if (fromType === "CP" || toType === "CP") {
         color = "#22c55e"; routeType = "REST";           // 充电 → 绿色
+      } else if (fromType === "LM" || toType === "LM") {
+        color = "#f59e0b"; routeType = "STATION_WORK";   // 作业站 → 橙色
       } else if (fromType === "AP" || toType === "AP") {
-        color = "#f59e0b"; routeType = "STATION_WORK";   // 工位 → 橙色
+        color = "#6b7280"; routeType = "NAVIGATING";     // 路径点 → 灰色
       } else if (edge.confidence === "high") {
         color = "#3b82f6"; routeType = "TRANSPORT";      // 高频 → 蓝色
       } else {
@@ -337,8 +361,10 @@ function topologyToRouteOverlays(
       }
       const name = (edge.total_count ?? 0) >= 15 ? `${edge.from}-${edge.to}` : "";
 
-      // 按 robot_ips 分配路线：每台车只看自己走过的路段（单象限不交叉）
-      const agvIps = edge.robot_ips?.length ? edge.robot_ips : [];
+      // 按 robot_ips 分配路线：每台车只看自己走过的路段
+      // 静态 JSON fallback 没有 robot_ips → 回退到 zone 级分配
+      const agvIps = edge.robot_ips?.length ? edge.robot_ips
+        : zoneAgvMap[zoneKey] || [];
       for (const agvIp of agvIps) {
         results.push({ id: idCounter++, pathJson, color, name, routeType, robotIp: agvIp });
       }

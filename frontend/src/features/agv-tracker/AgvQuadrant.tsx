@@ -37,9 +37,14 @@ interface Props {
   transitionMarkers?: { x: number; y: number; label: string }[];
   /** Current activity type from analysis (e.g. "CHARGING"), overrides raw telemetry status */
   currentActivity?: string;
+  /** Vehicle icon style */
+  vehicleIcon?: 'arrow'|'forklift';
   /** 地图选点模式 */
   pickMode?: boolean;
+  /** 两点式选点第一角点锚点（canvas 渲染锚点标记） */
+  pickAnchor?: { x: number; y: number } | null;
   onPointPick?: (x: number, y: number) => void;
+  onZoneClick?: (zoneId: number) => void;
   // ── History playback props (single-quadrant only) ──
   playbackActive?: boolean;
   playbackData?: HistoryPlaybackResponse | null;
@@ -50,6 +55,7 @@ interface Props {
   playbackError?: string | null;
   onStartPlayback?: (ip: string, from: string, to: string) => void;
   onClearPlayback?: () => void;
+  onStopPlayback?: () => void;
   onPlaybackPlay?: () => void;
   onPlaybackPause?: () => void;
   onPlaybackProgress?: (p: number) => void;
@@ -133,10 +139,10 @@ export default function AgvQuadrant(props: Props) {
     jackEnable, jackState, jackIsFull, jackMode, jackErrorCode,
     errors, warnings, diChannels, coordRotationDeg,
     zoneOverlays, routeOverlays, routeMode, followMode, transitionMarkers, currentActivity,
-    pickMode, onPointPick,
+    vehicleIcon, pickMode, pickAnchor, onPointPick, onZoneClick,
     playbackActive, playbackData, playbackPlaying, playbackProgress, playbackSpeed,
     playbackLoading, playbackError,
-    onStartPlayback, onClearPlayback, onPlaybackPlay, onPlaybackPause, onPlaybackProgress, onPlaybackSpeed,
+    onStartPlayback, onClearPlayback, onStopPlayback, onPlaybackPlay, onPlaybackPause, onPlaybackProgress, onPlaybackSpeed,
   } = props;
 
   const qc = useQueryClient();
@@ -145,6 +151,15 @@ export default function AgvQuadrant(props: Props) {
   // 进入回放模式时自动收起时间轴，只保留紧凑播放条
   useEffect(() => {
     if (playbackActive) setShowTimeline(false);
+  }, [playbackActive]);
+  // 停止播放时回到时间轴选择器
+  const wasPlayingRef = useRef(false);
+  useEffect(() => { if (playbackActive) wasPlayingRef.current = true; }, [playbackActive]);
+  useEffect(() => {
+    if (!playbackActive && wasPlayingRef.current) {
+      wasPlayingRef.current = false;
+      setShowTimeline(true);
+    }
   }, [playbackActive]);
 
   const pct = battery != null ? Math.round(battery * 100) : null;
@@ -259,7 +274,9 @@ export default function AgvQuadrant(props: Props) {
           activitySegments={playbackActive && playbackData ? playbackData.segments : undefined}
           zoneOverlays={zoneOverlays} routeOverlays={routeOverlays} routeMode={routeMode} followMode={followMode} transitionMarkers={transitionMarkers}
           forkHeight={forkHeight} jackState={jackState} jackIsFull={jackIsFull}
-          pickMode={pickMode} onPointPick={onPointPick}
+          vehicleIcon={vehicleIcon}
+          currentActivity={currentActivity} charging={charging} speed={speed}
+          pickMode={pickMode} pickAnchor={pickAnchor} onPointPick={onPointPick} onZoneClick={onZoneClick}
           playbackActive={playbackActive}
           playbackData={playbackData ?? null}
           playbackTrail={playbackActive && playbackData ? playbackData.trail : null}
@@ -373,6 +390,7 @@ export default function AgvQuadrant(props: Props) {
             playbackLoading={!!playbackLoading}
             onStartPlayback={onStartPlayback ?? (() => {})}
             onClearPlayback={onClearPlayback ?? (() => {})}
+            onStopPlayback={onStopPlayback ?? (() => {})}
             onPlaybackPlay={onPlaybackPlay ?? (() => {})}
             onPlaybackPause={onPlaybackPause ?? (() => {})}
             onPlaybackProgress={onPlaybackProgress ?? (() => {})}

@@ -34,9 +34,14 @@ interface Props {
   routeOverlaysB?: { id: number; pathJson: string; color: string; name: string; routeType: string }[];
   routeMode?: boolean;
   followMode?: boolean;
+  /** Vehicle icon style */
+  vehicleIcon?: 'arrow'|'forklift';
   /** 地图选点模式 */
   pickMode?: boolean;
+  /** 两点矩形模式下的第一个角点锚点 */
+  pickAnchor?: { x: number; y: number } | null;
   onPointPick?: (x: number, y: number) => void;
+  onZoneClick?: (zoneId: number) => void;
 }
 
 // ── Action state (same logic as AgvQuadrant) ──
@@ -177,7 +182,7 @@ function AgvHeaderRow({ info }: { info: AgvInfo }) {
 }
 
 export default function AgvDualQuadrant(props: Props) {
-  const { agvA, agvB, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, pickMode, onPointPick } = props;
+  const { agvA, agvB, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, vehicleIcon, pickMode, pickAnchor, onPointPick, onZoneClick } = props;
   const [followTarget, setFollowTarget] = useState<"A" | "B">("A");
 
   // ── Build canvas data for both AGVs ──
@@ -257,7 +262,8 @@ export default function AgvDualQuadrant(props: Props) {
           zoneOverlays={zoneOverlays}
           routeOverlaysA={routeOverlaysA} routeOverlaysB={routeOverlaysB} routeMode={routeMode}
           followMode={followMode} followTarget={followMode ? followTarget : null}
-          pickMode={pickMode} onPointPick={onPointPick} />
+          vehicleIcon={vehicleIcon}
+          pickMode={pickMode} pickAnchor={pickAnchor} onPointPick={onPointPick} onZoneClick={onZoneClick} />
 
         {/* ── AGV-A overlays (left side) ── */}
         <div className="absolute top-2 left-2 flex items-start gap-2 pointer-events-none">

@@ -34,9 +34,14 @@ interface Props {
   routeMode?: boolean;
   followMode?: boolean;
   followTarget?: "A" | "B" | null;
+  /** Vehicle icon style */
+  vehicleIcon?: 'arrow'|'forklift';
   /** 地图选点模式：cursor 变十字，点击回传世界坐标 */
   pickMode?: boolean;
+  /** 两点矩形模式下的第一个角点锚点（canvas 渲染锚点标记） */
+  pickAnchor?: { x: number; y: number } | null;
   onPointPick?: (x: number, y: number) => void;
+  onZoneClick?: (zoneId: number) => void;
 }
 
 // ── helpers (same as AgvQuadrantCanvas) ──
@@ -146,13 +151,37 @@ function interpolatePosition(
   return { x: dx, y: dy, angle: normAngle(last.angle) };
 }
 
+// ── Heavy forklift draw ──
+function drawForkliftDual(ctx: CanvasRenderingContext2D, clr: string) {
+  ctx.save(); ctx.scale(1.3, 1.3);
+  drawForkliftDualInner(ctx, clr);
+  ctx.restore(); }
+function drawForkliftDualInner(ctx: CanvasRenderingContext2D, clr: string) {
+  ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
+  ctx.fillStyle = "#000"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 0.9;
+  ctx.beginPath(); ctx.roundRect(-9, -8.5, 18, 3, 1); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(-9, 5.5, 18, 3, 1); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,0.07)"; ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = clr; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = clr; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.3;
+  ctx.beginPath(); ctx.roundRect(-13, -7, 26, 14, 6); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = clr + "cc";
+  ctx.beginPath(); ctx.moveTo(11, -4); ctx.lineTo(11, 4); ctx.lineTo(14, 3); ctx.lineTo(14, -3); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = "#d1d5db"; ctx.lineWidth = 4; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(-13, -6); ctx.lineTo(-13 - 11, -6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-13, 6); ctx.lineTo(-13 - 11, 6); ctx.stroke();
+  ctx.shadowColor = "transparent";
+}
+
 // ── Component ──
-export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, followTarget, pickMode, onPointPick }: Props) {
+export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, followTarget, vehicleIcon, pickMode, pickAnchor, onPointPick, onZoneClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
   const boundsRef = useRef<{ xMin: number; xMax: number; yMin: number; yMax: number } | null>(null);
-  const prevLenRef = useRef({ a: 0, b: 0 });
+  const prevLenRef = useRef({ a: 0, b: 0, z: 0 });
   const prevDegRef = useRef(coordRotationDeg ?? 0);
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -166,16 +195,19 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
   pickModeRef.current = pickMode;
   const onPointPickRef = useRef(onPointPick);
   onPointPickRef.current = onPointPick;
+  // 跟踪双 AGV 是否在移动中（用于自动回正决策：静止时不回正）
+  const isMovingRef = useRef(false);
   // 存储当前帧的坐标变换参数，供 click handler 做逆变换
   const transformRef = useRef<{ scale: number; xMid: number; yMid: number; panX: number; panY: number; totalRad: number; w: number; h: number } | null>(null);
 
   const rotDeg = coordRotationDeg ?? 0;
-  if (rotDeg !== prevDegRef.current) { boundsRef.current = null; prevDegRef.current = rotDeg; prevLenRef.current = { a: 0, b: 0 }; }
+  if (rotDeg !== prevDegRef.current) { boundsRef.current = null; prevDegRef.current = rotDeg; prevLenRef.current = { a: 0, b: 0, z: 0 }; }
 
-  // Rebuild bounds from trail data (zones rendered but don't affect viewport = world coord isolation)
+  // Rebuild bounds from trail data + zone/route overlays (确保远距离区域可见)
   const lenA = agvA.trail.length, lenB = agvB.trail.length;
-  if (lenA !== prevLenRef.current.a || lenB !== prevLenRef.current.b || !boundsRef.current) {
-    prevLenRef.current = { a: lenA, b: lenB };
+  const zonesLen = (zoneOverlays ?? []).length + (routeOverlaysA ?? []).length + (routeOverlaysB ?? []).length;
+  if (lenA !== prevLenRef.current.a || lenB !== prevLenRef.current.b || zonesLen !== prevLenRef.current.z || !boundsRef.current) {
+    prevLenRef.current = { a: lenA, b: lenB, z: zonesLen };
     let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
     for (const agv of [agvA, agvB]) {
       if (agv.currentX != null && agv.currentY != null) {
@@ -191,8 +223,8 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
         if (d.y < yMin) yMin = d.y; if (d.y > yMax) yMax = d.y;
       }
     }
-    // Fallback: if no trail data, use zone polygons so viewport doesn't collapse
-    if (!isFinite(xMin) && zoneOverlays) for (const z of zoneOverlays) {
+    // Always include zone polygons in viewport so distant manual/behavior zones are visible
+    if (zoneOverlays) for (const z of zoneOverlays) {
       try { const poly: [number,number][] = JSON.parse(z.polygonJson);
         for (const p of poly) { if (p[0] < xMin) xMin = p[0]; if (p[0] > xMax) xMax = p[0]; if (p[1] < yMin) yMin = p[1]; if (p[1] > yMax) yMax = p[1]; }
       } catch {}
@@ -318,6 +350,23 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
       zoneHitRef.current = hits;
     }
 
+    // ── Pick anchor marker (两点矩形第一角点) ──
+    if (pickMode && pickAnchor) {
+      const ax = toPx(pickAnchor.x, pickAnchor.y), ay = toPy(pickAnchor.x, pickAnchor.y);
+      const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 300);
+      ctx.fillStyle = "#f59e0b";
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = pulse;
+      ctx.beginPath(); ctx.arc(ax, ay, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(ax - 10, ay); ctx.lineTo(ax + 10, ay); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ax, ay - 10); ctx.lineTo(ax, ay + 10); ctx.stroke();
+      ctx.fillStyle = "#fff"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText(`(${pickAnchor.x.toFixed(2)},${pickAnchor.y.toFixed(2)})`, ax, ay - 16);
+    }
+
     // ── Route overlays ──
     if (routeMode) {
       const allRoutes = [...(routeOverlaysA ?? []), ...(routeOverlaysB ?? [])];
@@ -414,10 +463,15 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
         const px = toPx(pos.x, pos.y), py = toPy(pos.x, pos.y);
         if (pos.angle != null) {
           ctx.save(); ctx.translate(px, py); ctx.rotate(-((pos.angle ?? 0) + rad));
-          ctx.shadowColor = "rgba(0,0,0,0.25)"; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
-          ctx.fillStyle = agv.online ? agv.color : "#9ca3af";
-          ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-4, -8); ctx.lineTo(2, 0); ctx.lineTo(-4, 8); ctx.closePath(); ctx.fill();
-          ctx.shadowColor = "transparent"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
+          if (vehicleIcon === 'forklift') {
+            drawForkliftDual(ctx, agv.online ? agv.color : "#9ca3af");
+          } else {
+            ctx.shadowColor = "rgba(0,0,0,0.25)"; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
+            ctx.fillStyle = agv.online ? agv.color : "#9ca3af";
+            ctx.beginPath(); ctx.moveTo(28, 0); ctx.lineTo(-8, -16); ctx.lineTo(4, 0); ctx.lineTo(-8, 16); ctx.closePath(); ctx.fill();
+            ctx.shadowColor = "transparent"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
+          }
+          ctx.restore();
         } else {
           ctx.fillStyle = agv.online ? agv.color : "#9ca3af"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -462,7 +516,21 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
     ctx.fillText(`X: ${rb.xMin.toFixed(d)} — ${rb.xMax.toFixed(d)}`, w / 2, h - 6);
     ctx.save(); ctx.translate(10, h / 2); ctx.rotate(-Math.PI / 2);
     ctx.fillText(`Y: ${rb.yMin.toFixed(d)} — ${rb.yMax.toFixed(d)}`, 0, 0); ctx.restore();
-  }, [agvA, agvB, rotDeg, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, followTarget]);
+
+    // 检测任一 AGV 是否在移动（用于自动回正决策：静止时不回正）
+    let moving = false;
+    for (const agv of [agvA, agvB]) {
+      if (agv.trail.length >= 2) {
+        const a = agv.trail[agv.trail.length - 2], b = agv.trail[agv.trail.length - 1];
+        const dt = (b.ts - a.ts) / 1000;
+        if (dt > 0 && dt < 5) {
+          const dx = b.x - a.x, dy = b.y - a.y;
+          if (Math.sqrt(dx * dx + dy * dy) / dt > 0.02) { moving = true; break; }
+        }
+      }
+    }
+    isMovingRef.current = moving;
+  }, [agvA, agvB, rotDeg, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, followTarget, vehicleIcon]);
 
   const drawRef = useRef(draw);
   drawRef.current = draw;
@@ -481,15 +549,17 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
     return () => { running = false; cancelAnimationFrame(animRef.current); ro.disconnect(); };
   }, []);
 
-  // ── Pan (drag) + Zoom (wheel) with auto-reset after 3s idle (only when not interacting) ──
+  // ── Pan (drag) + Zoom (wheel) with auto-reset after 30s idle (only when AGV moving) ──
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelReset = () => { if (resetTimerRef.current) { clearTimeout(resetTimerRef.current); resetTimerRef.current = null; } };
   const scheduleReset = () => {
     cancelReset();
     resetTimerRef.current = setTimeout(() => {
-      panRef.current = { x: 0, y: 0 };
-      zoomRef.current = 1;
-    }, 10000);
+      if (isMovingRef.current) {
+        panRef.current = { x: 0, y: 0 };
+        zoomRef.current = 1;
+      }
+    }, 30000);
   };
 
   useEffect(() => {
@@ -524,6 +594,22 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
             const wy = rx * sinR + ry * cosR;
             pp(wx, wy);
             return;
+          }
+        }
+      }
+      // 非选点模式 + 短点击 → 检测是否点击了区域标签
+      if (!pm && onZoneClick && wasDragging) {
+        const dx = e.clientX - dragStartRef.current.x;
+        const dy = e.clientY - dragStartRef.current.y;
+        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
+          const rect = c.getBoundingClientRect();
+          const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+          const hits = zoneHitRef.current;
+          for (const h of hits) {
+            if (sx >= h.sx && sx <= h.sx + h.w && sy >= h.sy && sy <= h.sy + h.h) {
+              onZoneClick(h.id);
+              return;
+            }
           }
         }
       }

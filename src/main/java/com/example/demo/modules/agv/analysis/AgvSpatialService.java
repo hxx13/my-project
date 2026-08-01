@@ -6,8 +6,10 @@ import com.example.demo.modules.agv.analysis.model.AgvActivitySegment;
 import com.example.demo.modules.agv.analysis.model.AgvSpatialElement;
 import com.example.demo.modules.agv.mapper.AgvAnalysisMapper;
 import com.example.demo.modules.agv.mapper.AgvTrajectoryMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
@@ -30,10 +32,14 @@ public class AgvSpatialService {
 
     private final AgvAnalysisMapper mapper;
     private final AgvTrajectoryMapper trajectoryMapper;
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper jsonMapper = new ObjectMapper();
 
-    public AgvSpatialService(AgvAnalysisMapper mapper, AgvTrajectoryMapper trajectoryMapper) {
+    public AgvSpatialService(AgvAnalysisMapper mapper, AgvTrajectoryMapper trajectoryMapper,
+                             JdbcTemplate jdbc) {
         this.mapper = mapper;
         this.trajectoryMapper = trajectoryMapper;
+        this.jdbc = jdbc;
     }
 
     /** Auto-import zones from trajectory history on first startup (when table is empty). */
@@ -159,6 +165,13 @@ public class AgvSpatialService {
 
             List<Map<String, Object>> coords = trajectoryMapper.selectStationCoords(station, 50);
             String polygonJson = buildBoundingPolygon(coords);
+            // 取该站点轨迹中出现最多的 robotIp 作为归属
+            String robotIp = coords.stream()
+                .map(r -> (String) r.get("robot_ip"))
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(ip -> ip, Collectors.counting()))
+                .entrySet().stream().max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey).orElse(null);
 
             AgvSpatialElement e = new AgvSpatialElement();
             e.setName(station);
@@ -172,9 +185,206 @@ public class AgvSpatialService {
             e.setConfidence(0.5);
             e.setHitCount(0);
             e.setSource("AUTO");
+            e.setRobotIp(robotIp);
             candidates.add(e);
         }
         return candidates;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 路线拓扑驱动的区域生成（与路线模型2同等质量）
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * 从路线拓扑数据生成区域，复用路线模型2的频次统计、方向分析和标签推断。
+     * 质量远高于旧的 station-prefix 简单标签方法。
+     *
+     * 算法：
+     * 1. 读 agv_route_topology_station 获取站点锚点和观测次数
+     * 2. 读 agv_route_topology_edge 获取连接关系和频次
+     * 3. 为每个站点生成区域：标签由连接边的类型决定，大小由观测次数决定
+     * 4. 为高频主干路段生成通道区域
+     * 5. UPSERT 到 agv_spatial_element
+     */
+    public int generateZonesFromTopology() {
+        int created = 0;
+        LocalDateTime now = LocalDateTime.now();
+
+        // 检查拓扑表是否有数据
+        Integer edgeCount = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM agv_route_topology_edge", Integer.class);
+        if (edgeCount == null || edgeCount == 0) {
+            log.warn("[AgvSpatial] 路线拓扑表为空，无法生成区域。请先运行路线模型2生成。");
+            return 0;
+        }
+
+        // 软删除旧的 TOPOLOGY 来源区域（幂等替换）
+        jdbc.update("UPDATE agv_spatial_element SET is_active = 0 WHERE source = 'TOPOLOGY'");
+
+        // ── 阶段1：站点区域 ──
+        // 读取站点和连接的边标签，推断站点主要用途
+        List<Map<String, Object>> stations = jdbc.queryForList(
+            "SELECT s.station_code, s.x, s.y, s.observations, s.zone_key " +
+            "FROM agv_route_topology_station s ORDER BY s.observations DESC");
+
+        for (var st : stations) {
+            String code = (String) st.get("station_code");
+            double cx = ((Number) st.get("x")).doubleValue();
+            double cy = ((Number) st.get("y")).doubleValue();
+            int obs = ((Number) st.get("observations")).intValue();
+            String zoneKey = (String) st.get("zone_key");
+
+            // 查询该站点连接的所有边，统计边的类型
+            List<Map<String, Object>> edges = jdbc.queryForList(
+                "SELECT station_from, station_to, confidence, is_one_way, total_count " +
+                "FROM agv_route_topology_edge " +
+                "WHERE zone_key = ? AND (station_from = ? OR station_to = ?) " +
+                "ORDER BY total_count DESC",
+                zoneKey, code, code);
+
+            if (edges.isEmpty()) continue;
+
+            // 标签复用行为发现映射：CP→充电, LM→作业, AP→路径
+            String primaryTag = inferTags(code);
+            String color = inferColor(code);
+            double confidence = Math.min(0.95, 0.5 + edges.size() * 0.05);
+
+            // 区域大小基于观测次数：观测越多，区域越大（log 缩放）
+            double half = Math.max(0.3, Math.min(3.0, Math.log10(obs + 1) * 0.8));
+            String polygonJson = String.format("[[%.3f,%.3f],[%.3f,%.3f],[%.3f,%.3f],[%.3f,%.3f]]",
+                cx - half, cy - half, cx + half, cy - half,
+                cx + half, cy + half, cx - half, cy + half);
+
+            // 查询该站点轨迹数据中占比最多的小车 IP
+            String stationRobotIp = null;
+            try {
+                Map<String, Object> dom = trajectoryMapper.selectDominantRobotIpForStation(code);
+                if (dom != null) stationRobotIp = (String) dom.get("robot_ip");
+            } catch (Exception ignored) {}
+
+            // UPSERT
+            List<AgvSpatialElement> existing = mapper.selectByStationPatternAndSource(code, "TOPOLOGY");
+            AgvSpatialElement zone;
+            // 名称取标签值（与行为发现一致：充电/作业/路径），站号存 stationPattern
+            String tagName = primaryTag.replace("[\"", "").replace("\"]", "");
+            if (!existing.isEmpty()) {
+                zone = existing.get(0);
+                zone.setName(tagName);
+                zone.setIsActive(true);
+                zone.setPolygonJson(polygonJson);
+                zone.setSemanticTags(primaryTag);
+                zone.setColor(color);
+                zone.setConfidence(confidence);
+                zone.setHitCount(edges.size());
+                zone.setRobotIp(stationRobotIp);
+                zone.setUpdatedAt(now);
+                mapper.updateSpatialElement(zone);
+            } else {
+                zone = new AgvSpatialElement();
+                zone.setName(tagName);
+                zone.setElementType("STATION_ZONE");
+                zone.setStationPattern(code);
+                zone.setPolygonJson(polygonJson);
+                zone.setSemanticTags(primaryTag);
+                zone.setColor(color);
+                zone.setIsActive(true);
+                zone.setConfidence(confidence);
+                zone.setHitCount(edges.size());
+                zone.setSource("TOPOLOGY");
+                zone.setRobotIp(stationRobotIp);
+                zone.setCreatedAt(now);
+                zone.setUpdatedAt(now);
+                mapper.insertSpatialElement(zone);
+            }
+            created++;
+        }
+
+        // ── 阶段2：高频主干路段通道区域 ──
+        List<Map<String, Object>> mainEdges = jdbc.queryForList(
+            "SELECT e.station_from, e.station_to, e.total_count, e.confidence, e.is_one_way, " +
+            "e.zone_key, s1.x as x1, s1.y as y1, s2.x as x2, s2.y as y2 " +
+            "FROM agv_route_topology_edge e " +
+            "JOIN agv_route_topology_station s1 ON s1.zone_key = e.zone_key AND s1.station_code = e.station_from " +
+            "JOIN agv_route_topology_station s2 ON s2.zone_key = e.zone_key AND s2.station_code = e.station_to " +
+            "WHERE e.total_count >= 15 AND e.confidence = 'high' " +
+            "ORDER BY e.total_count DESC LIMIT 30");
+
+        for (var e : mainEdges) {
+            String from = (String) e.get("station_from");
+            String to = (String) e.get("station_to");
+            double x1 = ((Number) e.get("x1")).doubleValue();
+            double y1 = ((Number) e.get("y1")).doubleValue();
+            double x2 = ((Number) e.get("x2")).doubleValue();
+            double y2 = ((Number) e.get("y2")).doubleValue();
+            int total = ((Number) e.get("total_count")).intValue();
+            Object owObj = e.get("is_one_way");
+            boolean isOneWay = owObj instanceof Boolean b ? b : ((Number) owObj).intValue() == 1;
+
+            // 标签复用行为发现映射
+            String tag;
+            String color;
+            if (isOneWay) { tag = "运输"; color = inferColorByTag("运输"); }
+            else if (from.startsWith("CP") || to.startsWith("CP")) { tag = "充电"; color = inferColorByTag("充电"); }
+            else if (from.startsWith("LM") || to.startsWith("LM")) { tag = "作业"; color = inferColorByTag("作业"); }
+            else if (from.startsWith("AP") || to.startsWith("AP")) { tag = "路径"; color = inferColorByTag("路径"); }
+            else { tag = "运输"; color = inferColorByTag("运输"); }
+
+            // 通道宽度：高频宽，低频窄
+            double halfW = Math.max(0.15, Math.min(1.0, total / 30.0));
+            double dx = x2 - x1, dy = y2 - y1;
+            double len = Math.sqrt(dx * dx + dy * dy);
+            if (len < 0.01) continue;
+            double ux = -dy / len * halfW, uy = dx / len * halfW;
+
+            String polygonJson = String.format("[[%.3f,%.3f],[%.3f,%.3f],[%.3f,%.3f],[%.3f,%.3f]]",
+                x1 + ux, y1 + uy, x1 - ux, y1 - uy,
+                x2 - ux, y2 - uy, x2 + ux, y2 + uy);
+
+            // 查询起始站点轨迹中最多的 robot_ip 作为路段归属
+            String edgeRobotIp = null;
+            try {
+                Map<String, Object> dom = trajectoryMapper.selectDominantRobotIpForStation(from);
+                if (dom != null) edgeRobotIp = (String) dom.get("robot_ip");
+            } catch (Exception ignored) {}
+
+            String zoneKey = (String) e.get("zone_key");
+            List<AgvSpatialElement> existing = mapper.selectByStationPatternAndSource(
+                from + "→" + to, "TOPOLOGY");
+            AgvSpatialElement zone;
+            if (!existing.isEmpty()) {
+                zone = existing.get(0);
+                zone.setIsActive(true);
+                zone.setPolygonJson(polygonJson);
+                zone.setSemanticTags("[\"" + tag + "\"]");
+                zone.setColor(color);
+                zone.setConfidence(0.85);
+                zone.setHitCount(total);
+                zone.setRobotIp(edgeRobotIp);
+                zone.setUpdatedAt(now);
+                mapper.updateSpatialElement(zone);
+            } else {
+                zone = new AgvSpatialElement();
+                zone.setName(tag);
+                zone.setElementType("POLYGON_ZONE");
+                zone.setStationPattern(from + "→" + to);
+                zone.setPolygonJson(polygonJson);
+                zone.setSemanticTags("[\"" + tag + "\"]");
+                zone.setColor(color);
+                zone.setIsActive(true);
+                zone.setConfidence(0.85);
+                zone.setHitCount(total);
+                zone.setSource("TOPOLOGY");
+                zone.setRobotIp(edgeRobotIp);
+                zone.setCreatedAt(now);
+                zone.setUpdatedAt(now);
+                mapper.insertSpatialElement(zone);
+            }
+            created++;
+        }
+
+        log.info("[AgvSpatial] 路线拓扑区域生成完成: {} 站点区域 + {} 通道区域",
+            stations.size(), mainEdges.size());
+        return created;
     }
 
     // ── 行为驱动的空间区域发现 ──
@@ -218,6 +428,13 @@ public class AgvSpatialService {
                 // 排除移动中的叉臂操作：距离 > 50cm 说明车在走动
                 if (seg.getDistanceM() != null && seg.getDistanceM() > 0.5) continue;
 
+                // 作业标签额外条件：必须有叉臂抬升/降低动作
+                if ("STATION_WORK".equals(activityType)) {
+                    int forkActive = trajectoryMapper.countForkActiveInWindow(
+                        seg.getRobotIp(), seg.getStartTime(), seg.getEndTime());
+                    if (forkActive == 0) continue;
+                }
+
                 double cx = seg.getAvgX(), cy = seg.getAvgY();
 
                 // 去重：5cm 质心距离内视为同一区域 → 仅增量更新
@@ -246,6 +463,7 @@ public class AgvSpatialService {
                 zone.setHitCount(1);
                 zone.setConfidence(1.0);
                 zone.setSource("BEHAVIOR");
+                zone.setRobotIp(seg.getRobotIp());
                 mapper.insertSpatialElement(zone);
                 created++;
             }
@@ -265,6 +483,14 @@ public class AgvSpatialService {
             Map<String, List<AgvActivitySegment>> grid = new HashMap<>();
             for (AgvActivitySegment seg : typed) {
                 if (seg.getAvgX() == null || seg.getAvgY() == null) continue;
+
+                // 路径/等待标签：不能有叉臂变化
+                if ("PATH_WAIT".equals(activityType)) {
+                    int forkActive = trajectoryMapper.countForkActiveInWindow(
+                        seg.getRobotIp(), seg.getStartTime(), seg.getEndTime());
+                    if (forkActive > 0) continue;
+                }
+
                 int gx = (int) Math.floor(seg.getAvgX() / GRID_CELL_M);
                 int gy = (int) Math.floor(seg.getAvgY() / GRID_CELL_M);
                 grid.computeIfAbsent(gx + "," + gy, k -> new ArrayList<>()).add(seg);
@@ -273,7 +499,28 @@ public class AgvSpatialService {
             for (Cluster cluster : mergeAdjacentCells(grid)) {
                 if (cluster.segments.size() < minSegs) continue;
                 double[] bbox = clusterBbox(cluster);
-                created += upsertZone(bbox[0], bbox[1], bbox[2], bbox[3], tag, cluster.segments.size());
+                double ccx = (bbox[0] + bbox[1]) / 2, ccy = (bbox[2] + bbox[3]) / 2;
+
+                // PATH_WAIT/等待：如果质心靠近已有「作业」zone，说明是停在作业站旁，不生成路径区域
+                if ("PATH_WAIT".equals(activityType)) {
+                    List<AgvSpatialElement> workZones = mapper.selectBehaviorZonesByTag("作业");
+                    boolean nearWork = false;
+                    for (AgvSpatialElement wz : workZones) {
+                        double[] wb = zoneBounds(wz);
+                        double wcx = (wb[0] + wb[1]) / 2, wcy = (wb[2] + wb[3]) / 2;
+                        if (Math.sqrt((ccx - wcx) * (ccx - wcx) + (ccy - wcy) * (ccy - wcy)) <= MERGE_DISTANCE_M) {
+                            nearWork = true; break;
+                        }
+                    }
+                    if (nearWork) continue;
+                }
+
+                // 取 cluster 中出现次数最多的 robotIp
+                String majorityIp = cluster.segments.stream()
+                    .collect(Collectors.groupingBy(AgvActivitySegment::getRobotIp, Collectors.counting()))
+                    .entrySet().stream().max(Map.Entry.comparingByValue())
+                    .map(Map.Entry::getKey).orElse(null);
+                created += upsertZone(bbox[0], bbox[1], bbox[2], bbox[3], tag, cluster.segments.size(), majorityIp);
             }
         }
 
@@ -284,7 +531,7 @@ public class AgvSpatialService {
     }
 
     /** 合并同标签且质心 ≤5cm 的 BEHAVIOR 区域（仅去重，不扩展包围盒） */
-    private static final double MERGE_DISTANCE_M = 0.20; // 20cm
+    private static final double MERGE_DISTANCE_M = 0.80; // 80cm
 
     public int mergeOverlappingZones() {
         List<AgvSpatialElement> all = mapper.selectAllSpatialElements().stream()
@@ -354,7 +601,7 @@ public class AgvSpatialService {
         return new double[]{minX, minY, maxX, maxY};
     }
 
-    private int upsertZone(double minX, double minY, double maxX, double maxY, String tag, int hits) {
+    private int upsertZone(double minX, double minY, double maxX, double maxY, String tag, int hits, String robotIp) {
         double cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
         List<AgvSpatialElement> existingZones = mapper.selectBehaviorZonesByTag(tag);
         for (AgvSpatialElement zone : existingZones) {
@@ -376,6 +623,7 @@ public class AgvSpatialService {
         zone.setHitCount(hits);
         zone.setConfidence((double) hits / (hits + 5));
         zone.setSource("BEHAVIOR");
+        zone.setRobotIp(robotIp);
         mapper.insertSpatialElement(zone);
         return 1; // created
     }

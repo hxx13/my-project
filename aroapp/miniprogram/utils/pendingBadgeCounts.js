@@ -53,6 +53,7 @@ const EMPTY_BADGE_COUNTS = {
   processSupplies: 0,
   processMaterial: 0,
   processScanDelay: 0,
+  processAroTraining: 0,
   material: 0,
   /** 站内信未读，与 GET /api/chat 已读游标同源 */
   chatUnread: 0,
@@ -69,6 +70,7 @@ const EMPTY_BADGE_COUNTS = {
   processSuppliesText: '',
   processMaterialText: '',
   processScanDelayText: '',
+  processAroTrainingText: '',
   materialText: '',
   chatUnreadText: '',
   staffMessagesSidebarTotalText: '',
@@ -101,6 +103,7 @@ function mapBodyToCounts(body) {
   const processSupplies = pick('processSupplies', 'processSupplies', 'SUPPLIES_CLAIM_PROCESS');
   const processMaterial = pick('processMaterial', 'processMaterial', 'MATERIAL_REQUEST_PROCESS', 'processMaterialRequest');
   const processScanDelay = pick('processScanDelay', 'processScanDelay', 'SCAN_DELAY_PROCESS');
+  const processAroTraining = pick('processAroTraining', 'processAroTraining', 'ARO_TRAINING_PROCESS');
   const material = pick('material', 'material', 'MATERIAL_REQUEST_APPLICANT', 'materialRequest');
   const chatUnread = pick('chatUnread', 'chatUnread', 'CHAT_DM_UNREAD');
   const staffUnifiedWorkInboxPending = pick(
@@ -139,6 +142,7 @@ function mapBodyToCounts(body) {
     processSupplies,
     processMaterial,
     processScanDelay,
+    processAroTraining,
     material,
     chatUnread,
     staffUnifiedWorkInboxPending,
@@ -169,6 +173,10 @@ function mapBodyToCounts(body) {
       d.processScanDelayText != null && String(d.processScanDelayText) !== ''
         ? String(d.processScanDelayText)
         : formatBadgeText(processScanDelay),
+    processAroTrainingText:
+      d.processAroTrainingText != null && String(d.processAroTrainingText) !== ''
+        ? String(d.processAroTrainingText)
+        : formatBadgeText(processAroTraining),
     materialText:
       d.materialText != null && String(d.materialText) !== '' ? String(d.materialText) : formatBadgeText(material),
     chatUnreadText,
@@ -282,7 +290,8 @@ function studentReviewMenuBadgeText(c) {
   if (!c) return '';
   const material = Number(c.processMaterial || 0);
   const scanDelay = Number(c.processScanDelay || 0);
-  const total = material + scanDelay;
+  const aroTraining = Number(c.processAroTraining || 0);
+  const total = material + scanDelay + aroTraining;
   if (total <= 0) return '';
   return formatBadgeText(total);
 }

@@ -13,6 +13,7 @@ interface Props {
   playbackLoading: boolean;
   onStartPlayback: (ip: string, from: string, to: string, autoPlay?: boolean) => void;
   onClearPlayback: () => void;
+  onStopPlayback?: () => void;
   onPlaybackPlay: () => void;
   onPlaybackPause: () => void;
   onPlaybackProgress: (p: number) => void;
@@ -33,7 +34,7 @@ export default function AgvPlaybackTimeline(props: Props) {
   const {
     ip, playbackActive, playbackData, playbackPlaying, playbackProgress,
     playbackSpeed, playbackLoading,
-    onStartPlayback, onClearPlayback, onPlaybackPlay, onPlaybackPause,
+    onStartPlayback, onClearPlayback, onStopPlayback, onPlaybackPlay, onPlaybackPause,
     onPlaybackProgress, onPlaybackSpeed,
   } = props;
 
@@ -318,11 +319,14 @@ export default function AgvPlaybackTimeline(props: Props) {
             onPlaybackProgress(frac);
             e.currentTarget.setPointerCapture(e.pointerId);
             const onMove2 = (ev: PointerEvent) => {
-              const r = e.currentTarget.getBoundingClientRect();
+              const el = e.currentTarget as HTMLElement | null;
+              if (!el) return;
+              const r = el.getBoundingClientRect();
               onPlaybackProgress(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)));
             };
             const onUp2 = () => {
-              e.currentTarget.releasePointerCapture(e.pointerId);
+              const el = e.currentTarget as HTMLElement | null;
+              if (el) el.releasePointerCapture(e.pointerId);
               window.removeEventListener("pointermove", onMove2);
               window.removeEventListener("pointerup", onUp2);
             };
@@ -354,7 +358,7 @@ export default function AgvPlaybackTimeline(props: Props) {
         </span>
 
         {/* Close */}
-        <button onClick={onClearPlayback}
+        <button onClick={onStopPlayback || onClearPlayback}
           className="p-1 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0 shadow-sm">
           <X size={14} />
         </button>

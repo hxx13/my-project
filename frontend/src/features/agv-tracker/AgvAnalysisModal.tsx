@@ -13,15 +13,19 @@ const TABS: { key: ModalTab; label: string; icon: typeof GanttChartSquare }[] = 
   { key: "rules", label: "规则", icon: SlidersHorizontal },
 ];
 
+type PendingPick = { x: number; y: number } | { x1: number; y1: number; x2: number; y2: number };
+
 interface Props {
   open: boolean;
   onClose: () => void;
   onRequestPick?: () => void;
-  pendingPick?: { x: number; y: number } | null;
+  onRequestRectPick?: () => void;
+  pendingPick?: PendingPick | null;
   onClearPick?: () => void;
+  focusZoneId?: number | null;
 }
 
-export default function AgvAnalysisModal({ open, onClose, onRequestPick, pendingPick, onClearPick }: Props) {
+export default function AgvAnalysisModal({ open, onClose, onRequestPick, onRequestRectPick, pendingPick, onClearPick, focusZoneId }: Props) {
   const [tab, setTab] = useState<ModalTab>("timeline");
   const [timelineRobot, setTimelineRobot] = useState("172.22.159.16");
 
@@ -82,8 +86,10 @@ export default function AgvAnalysisModal({ open, onClose, onRequestPick, pending
                 <div className="flex-1 min-h-0 overflow-auto">
                   <AgvZonePanel
                     onRequestPick={onRequestPick}
+                    onRequestRectPick={onRequestRectPick}
                     pendingPick={pendingPick}
                     onClearPick={onClearPick}
+                    focusZoneId={focusZoneId}
                   />
                 </div>
               )}

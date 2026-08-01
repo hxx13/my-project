@@ -17,7 +17,8 @@ public class AgvSpatialElement {
     private Boolean isActive;
     private Double confidence;   // 行为确认置信度 0~1
     private Integer hitCount;    // 被分析命中的总次数
-    private String source;       // AUTO | BEHAVIOR | MANUAL
+    private String source;       // AUTO | BEHAVIOR | MANUAL | TOPOLOGY
+    private String robotIp;      // 所属小车 IP，NULL = 共享区域
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -51,6 +52,8 @@ public class AgvSpatialElement {
     public void setHitCount(Integer hitCount) { this.hitCount = hitCount; }
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
+    public String getRobotIp() { return robotIp; }
+    public void setRobotIp(String robotIp) { this.robotIp = robotIp; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

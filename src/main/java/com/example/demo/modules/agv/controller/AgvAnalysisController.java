@@ -195,6 +195,19 @@ public class AgvAnalysisController {
         return Result.success(result);
     }
 
+    /**
+     * 从路线拓扑数据重新生成区域（高质量，复用路线模型2的频次和标签）。
+     */
+    @PostMapping("/spatial-elements/generate-from-topology")
+    @Operation(summary = "从路线拓扑生成区域（复用路线标签和频次）")
+    public Result<Map<String, Object>> generateZonesFromTopology() {
+        int count = spatialService.generateZonesFromTopology();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("zonesCreated", count);
+        result.put("source", "TOPOLOGY");
+        return Result.success(result);
+    }
+
     @PutMapping("/routes/{id}/toggle")
     @Operation(summary = "启用/停用路线")
     public Result<String> toggleRoute(@PathVariable Long id, @RequestParam int enabled) {

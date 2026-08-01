@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAgvCurrent, fetchAgvRecent, fetchAgvTrajectory, fetchCoordConfigs, fetchHistoryPlayback, type AgvRobotStatus, type HistoryPlaybackResponse } from "@/api/domains/agv.api";
-import { useSpatialElements, useRouteTopology, buildTopologyOverlays, useGenerateRouteTopology } from "@/api/domains/agv-analysis.api";
+import { useSpatialElements, useRouteTopology, buildTopologyOverlays, useGenerateRouteTopology, useDeleteSpatialElement, useSaveSpatialElement, type AgvSpatialElement } from "@/api/domains/agv-analysis.api";
 import { useAgvTrailRef } from "@/features/agv-tracker/useAgvTrailRef";
 import { computeSpeed, smoothSpeed, currentSpeed, detectDwellSegments, type TrailPoint } from "@/features/agv-tracker/agvAnalytics";
 import AgvQuadrant from "@/features/agv-tracker/AgvQuadrant";
@@ -15,6 +15,14 @@ const ROBOTS = [
   { ip: "172.22.159.20", label: "AGV-3", color: "#f59e0b" },
   { ip: "172.22.159.22", label: "AGV-4", color: "#8b5cf6" },
 ];
+
+const TAG_OPTIONS = ["充电", "作业", "路径", "等待", "休息站", "运输", "倒车"];
+const TAG_COLORS: Record<string, string> = { "充电": "#22c55e", "作业": "#f59e0b", "路径": "#6b7280", "等待": "#f97316", "休息站": "#14b8a6", "运输": "#3b82f6", "倒车": "#ec4899" };
+function makeRectPolygon(x1: number, y1: number, x2: number, y2: number): string {
+  const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+  const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+  return JSON.stringify([[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]]);
+}
 
 /** Derive activity type from raw telemetry, matching analysis rule logic */
 function deriveActivity(s: AgvRobotStatus | null): string | undefined {
@@ -88,22 +96,59 @@ function smartSample(points: { x: number; y: number; angle: number; ts: number }
 export default function AgvTrackerPage() {
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [showZones, setShowZones] = useState(true);
+  // 每台 AGV 独立标签显隐：{ "172.22.159.16": Set<"充电","作业",...>, ... }
+  const [hiddenTagsByIp, setHiddenTagsByIp] = useState<Record<string, Set<string>>>(() => {
+    const init: Record<string, Set<string>> = {};
+    for (const r of ROBOTS) init[r.ip] = new Set<string>();
+    return init;
+  });
+  const [hiddenRouteTypes, setHiddenRouteTypes] = useState<Set<string>>(new Set());
+  const [vehicleIcon, setVehicleIcon] = useState<'arrow'|'forklift'>('forklift');
   const [routeMode, setRouteMode] = useState(false);
   const [followMode, setFollowMode] = useState(false);
   const [layout, setLayout] = useState<LayoutMode>("quad");
-  const [quadVehicles, setQuadVehicles] = useState([0, 1]); // 双象限各选哪台车 (index into ROBOTS)
   const [singleTab, setSingleTab] = useState(0);
-  // 地图选点模式
+  // 标签胶囊条当前控制目标 IP — 无论单/双象限，标签开关只操作这一台车的 hiddenTagsByIp
+  const [tagControlIp, setTagControlIp] = useState(ROBOTS[0].ip);
+
+  // 切换布局/车辆时同步标签控制目标
+  useEffect(() => {
+    if (layout === "single") {
+      setTagControlIp(ROBOTS[singleTab].ip);
+    }
+    // quad 模式下保持用户上次选择不变，不自动覆盖
+  }, [layout, singleTab]);
+  // 地图选点模式 — 支持单点标记 + 两点矩形
   const [pickMode, setPickMode] = useState(false);
-  const [pendingPick, setPendingPick] = useState<{ x: number; y: number } | null>(null);
+  const [pickTwoPoint, setPickTwoPoint] = useState(false);
+  const [pickAnchor, setPickAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [pendingPick, setPendingPick] = useState<{ x: number; y: number } | { x1: number; y1: number; x2: number; y2: number } | null>(null);
+  // 点击区域标签弹出操作面板
+  const [zonePopover, setZonePopover] = useState<{ id: number; name: string } | null>(null);
   const { append, seed, getTrail, clearAll } = useAgvTrailRef();
 
   useTrailSeed(seed);
 
-  // 地图选点模式回调
-  const handleStartPick = () => { setPickMode(true); setPendingPick(null); };
-  const handlePointPicked = (x: number, y: number) => { setPendingPick({ x, y }); setPickMode(false); };
-  const handleCancelPick = () => { setPickMode(false); setPendingPick(null); };
+  // 单点标记（原有模式）
+  const handleStartPick = () => { setPickMode(true); setPickTwoPoint(false); setPickAnchor(null); setPendingPick(null); };
+  // 两点矩形（新模式）
+  const handleStartRectPick = () => { setPickMode(true); setPickTwoPoint(true); setPickAnchor(null); setPendingPick(null); };
+  const handlePointPicked = (x: number, y: number) => {
+    if (pickTwoPoint) {
+      if (!pickAnchor) {
+        setPickAnchor({ x, y });
+      } else {
+        setPendingPick({ x1: pickAnchor.x, y1: pickAnchor.y, x2: x, y2: y });
+        setPickAnchor(null);
+        setPickMode(false);
+        setPickTwoPoint(false);
+      }
+    } else {
+      setPendingPick({ x, y });
+      setPickMode(false);
+    }
+  };
+  const handleCancelPick = () => { setPickMode(false); setPickTwoPoint(false); setPickAnchor(null); setPendingPick(null); };
   // Esc 键取消选点
   useEffect(() => {
     if (!pickMode) return;
@@ -169,6 +214,12 @@ export default function AgvTrackerPage() {
   };
 
   const clearPlayback = () => {
+    setPlayback(null);
+    setPlaybackProgress(1);
+    setPlaybackPlaying(false);
+  };
+  const stopPlaybackKeepTimeline = () => {
+    // 清掉回放进度条，让时间轴选择器显示出来
     setPlayback(null);
     setPlaybackProgress(1);
     setPlaybackPlaying(false);
@@ -283,70 +334,120 @@ export default function AgvTrackerPage() {
   // 固定路线拓扑（机械化分析修正结果，非算法动态发现）
   const { data: routeTopology } = useRouteTopology();
   const generateTopologyMut = useGenerateRouteTopology();
+  const deleteZoneMut = useDeleteSpatialElement();
+  const saveZoneMut = useSaveSpatialElement();
 
-  const routeOverlays = useMemo(() => buildTopologyOverlays(routeTopology), [routeTopology]);
+  const handleQuickSaveZone = (tag: string) => {
+    if (!pendingPick) return;
+    const color = TAG_COLORS[tag] || "#3b82f6";
+    const polygonJson = 'x1' in pendingPick
+      ? makeRectPolygon(pendingPick.x1, pendingPick.y1, pendingPick.x2, pendingPick.y2)
+      : JSON.stringify([[pendingPick.x - 0.8, pendingPick.y + 0.8], [pendingPick.x + 0.8, pendingPick.y + 0.8], [pendingPick.x + 0.8, pendingPick.y - 0.8], [pendingPick.x - 0.8, pendingPick.y - 0.8]]);
+    const element: AgvSpatialElement = {
+      name: `${tag}标记`, elementType: "POLYGON_ZONE", polygonJson,
+      semanticTags: JSON.stringify([tag]), mapName: "", color,
+    };
+    saveZoneMut.mutate(element, { onSuccess: () => setPendingPick(null) });
+  };
 
-  // Zone overlays — 按 AGV 结对的历史坐标范围过滤，每象限只显示自己区域
+  const handleZoneClick = (zoneId: number) => {
+    const z = zones.find(item => item.id === zoneId);
+    setZonePopover({ id: zoneId, name: z?.name || String(zoneId) });
+  };
+  const handleDeleteZone = () => {
+    if (!zonePopover) return;
+    deleteZoneMut.mutate(zonePopover.id);
+    setZonePopover(null);
+  };
+
+  const routeOverlays = useMemo(() => {
+    const all = buildTopologyOverlays(routeTopology);
+    if (hiddenRouteTypes.size === 0) return all;
+    return all.filter(r => !hiddenRouteTypes.has(r.routeType));
+  }, [routeTopology, hiddenRouteTypes]);
+
+  // ── Zone 隔离系统：按站点前缀编号分区，防止跨楼层/跨区域重叠 ──
+  // AGV-1,2 → zone1 (LM1xxx/AP1xxx/CP1xxx) | AGV-3,4 → zone2 (LM2xxx/AP2xxx/CP2xxx)
+  const AGV_ZONE_MAP: Record<string, 'zone1' | 'zone2'> = {
+    "172.22.159.16": "zone1", "172.22.159.18": "zone1",
+    "172.22.159.20": "zone2", "172.22.159.22": "zone2",
+  };
+
+  // 判断一个 zone 属于哪个区域：站号前缀 → 坐标回退
+  function getZoneGroup(polygonJson: string, stationPattern?: string): 'zone1' | 'zone2' {
+    if (stationPattern) {
+      const m = stationPattern.match(/^(LM|AP|CP)(\d)/);
+      if (m) return m[2] === '1' ? 'zone1' : 'zone2';
+    }
+    try {
+      const p: number[][] = JSON.parse(polygonJson);
+      if (p.length > 0) return p[0][0] < -5 ? 'zone1' : 'zone2';
+    } catch {}
+    return 'zone2';
+  }
+
+
+  // Zone overlays — 双象限按区域隔离（AGV-1+2 只看 zone1，AGV-3+4 只看 zone2）
   const pairZoneOverlays = useMemo(() => {
     const allZones = zones
       .filter(z => z.polygonJson && (z.elementType === "POLYGON_ZONE" || z.elementType === "STATION_ZONE"))
-      .filter(z => z.source === "BEHAVIOR" || z.source === "MANUAL" || (z.source === "AUTO" && (z.hitCount ?? 0) > 0))
+      .filter(z => z.source === "BEHAVIOR" || z.source === "MANUAL" || z.source === "TOPOLOGY" || (z.source === "AUTO" && (z.hitCount ?? 0) > 0))
       .map(z => {
         let cx = 0, cy = 0;
         try { const p: number[][] = JSON.parse(z.polygonJson!); for (const v of p) { cx += v[0]; cy += v[1]; } cx /= p.length; cy /= p.length; } catch {}
-        return { id: z.id!, polygonJson: z.polygonJson!, color: z.color || "#3b82f6", name: z.name, cx, cy };
+        const group = getZoneGroup(z.polygonJson!, z.stationPattern);
+        return { id: z.id!, polygonJson: z.polygonJson!, color: z.color || "#3b82f6", name: z.name, cx, cy, group, robotIp: z.robotIp ?? undefined, semanticTags: z.semanticTags ?? "[]" };
       });
-    // Pair 0: AGV-1+2, Pair 1: AGV-3+4
     const pairs = [[ROBOTS[0], ROBOTS[1]], [ROBOTS[2], ROBOTS[3]]];
     return pairs.map(([a, b]) => {
-      const trailA = getTrail(a.ip), trailB = getTrail(b.ip);
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (const t of [...trailA, ...trailB]) {
-        if (t.x < minX) minX = t.x; if (t.x > maxX) maxX = t.x;
-        if (t.y < minY) minY = t.y; if (t.y > maxY) maxY = t.y;
-      }
-      if (!isFinite(minX)) return allZones; // no trail yet → show all
-      const MARGIN = 5; // 5m world-coord margin
-      return allZones.filter(z => z.cx >= minX - MARGIN && z.cx <= maxX + MARGIN && z.cy >= minY - MARGIN && z.cy <= maxY + MARGIN);
-    });
-  }, [zones, dataUpdatedAt]);
-
-  // 单象限：每个机器人独立的世界坐标隔离
-  const robotZoneOverlays = useMemo(() => {
-    const allZones = zones
-      .filter(z => z.polygonJson && (z.elementType === "POLYGON_ZONE" || z.elementType === "STATION_ZONE"))
-      .filter(z => z.source === "BEHAVIOR" || z.source === "MANUAL" || (z.source === "AUTO" && (z.hitCount ?? 0) > 0))
-      .map(z => {
-        let cx = 0, cy = 0;
-        try { const p: number[][] = JSON.parse(z.polygonJson!); for (const v of p) { cx += v[0]; cy += v[1]; } cx /= p.length; cy /= p.length; } catch {}
-        return { id: z.id!, polygonJson: z.polygonJson!, color: z.color || "#3b82f6", name: z.name, cx, cy };
+      const pairGroup = AGV_ZONE_MAP[a.ip];
+      // 只取标签控制目标车的 hidden set（如果属于本 pair），不再取两台车并集
+      const isControlInThisPair = AGV_ZONE_MAP[tagControlIp] === pairGroup;
+      const hidden = isControlInThisPair ? (hiddenTagsByIp[tagControlIp] || new Set()) : new Set();
+      // 双象限模式：标签控制目标车的专属 zone（robotIp 未设置=共享区域，始终可见）
+      const pairIps = new Set([a.ip, b.ip]);
+      return allZones.filter(z => {
+        if (z.group !== pairGroup) return false;
+        // robotIp 归属过滤：有归属则仅匹配车可见，无归属=共享
+        if (z.robotIp && !pairIps.has(z.robotIp)) return false;
+        if (hidden.size === 0) return true;
+        try { const tags: string[] = JSON.parse(z.semanticTags || "[]"); return !tags.some(t => hidden.has(t)); } catch { return true; }
       });
-    const result: Record<string, typeof allZones> = {};
-    for (const r of ROBOTS) {
-      const trail = getTrail(r.ip);
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (const t of trail) {
-        if (t.x < minX) minX = t.x; if (t.x > maxX) maxX = t.x;
-        if (t.y < minY) minY = t.y; if (t.y > maxY) maxY = t.y;
-      }
-      if (!isFinite(minX)) { result[r.ip] = allZones; continue; }
-      const MARGIN = 5;
-      result[r.ip] = allZones.filter(z => z.cx >= minX - MARGIN && z.cx <= maxX + MARGIN && z.cy >= minY - MARGIN && z.cy <= maxY + MARGIN);
-    }
-    return result;
-  }, [zones, dataUpdatedAt]);
+    });
+  }, [zones, hiddenTagsByIp, tagControlIp]);
 
+  // 全量 zone（无裁剪，供单象限基础渲染）
   const canvasZoneOverlays = useMemo(() => {
     return zones
       .filter(z => z.polygonJson && (z.elementType === "POLYGON_ZONE" || z.elementType === "STATION_ZONE"))
-      .filter(z => z.source === "BEHAVIOR" || z.source === "MANUAL" || (z.source === "AUTO" && (z.hitCount ?? 0) > 0))
+      .filter(z => z.source === "BEHAVIOR" || z.source === "MANUAL" || z.source === "TOPOLOGY" || (z.source === "AUTO" && (z.hitCount ?? 0) > 0))
       .map(z => ({
         id: z.id!,
         polygonJson: z.polygonJson!,
         color: z.color || "#3b82f6",
         name: z.name,
+        group: getZoneGroup(z.polygonJson!, z.stationPattern),
+        robotIp: z.robotIp ?? undefined,
+        semanticTags: z.semanticTags ?? "[]",
       }));
   }, [zones]);
+
+  // 单象限：每台 AGV 只看自己区域的 zone + 自己独立的标签显隐
+  const robotZoneOverlays = useMemo(() => {
+    const result: Record<string, typeof canvasZoneOverlays> = {};
+    for (const r of ROBOTS) {
+      const agvGroup = AGV_ZONE_MAP[r.ip];
+      const hidden = hiddenTagsByIp[r.ip] || new Set<string>();
+      result[r.ip] = canvasZoneOverlays.filter(z => {
+        if (z.group !== agvGroup) return false;
+        // robotIp 归属过滤：有归属则仅匹配车可见，无归属=共享区域
+        if (z.robotIp && z.robotIp !== r.ip) return false;
+        if (hidden.size === 0) return true;
+        try { const tags: string[] = JSON.parse(z.semanticTags || "[]"); return !tags.some(t => hidden.has(t)); } catch { return true; }
+      });
+    }
+    return result;
+  }, [canvasZoneOverlays, hiddenTagsByIp]);
 
   // Shared AGV info extractor — used by both single (AgvQuadrant) and merged (AgvDualQuadrant) views
   const buildAgvInfo = (r: typeof ROBOTS[number]) => {
@@ -400,8 +501,11 @@ export default function AgvTrackerPage() {
           routeMode={routeMode}
           followMode={followMode}
           currentActivity={info.currentActivity}
+          vehicleIcon={vehicleIcon}
           pickMode={pickMode}
+          pickAnchor={pickAnchor}
           onPointPick={handlePointPicked}
+          onZoneClick={handleZoneClick}
           // History playback props (single-quadrant only)
           playbackActive={isPlaybackActive}
           playbackData={isPlaybackActive ? playback!.data! : null}
@@ -412,6 +516,7 @@ export default function AgvTrackerPage() {
           playbackError={playback?.error ?? null}
           onStartPlayback={(ip, from, to) => startHistoryPlayback(ip, from, to)}
           onClearPlayback={clearPlayback}
+          onStopPlayback={stopPlaybackKeepTimeline}
           onPlaybackPlay={handlePlaybackPlay}
           onPlaybackPause={() => setPlaybackPlaying(false)}
           onPlaybackProgress={setPlaybackProgress}
@@ -425,6 +530,119 @@ export default function AgvTrackerPage() {
 
   return (
     <div className="flex-1 flex flex-col relative">
+      {/* 统一可视开关胶囊 — 区域 + 路线合并，随总开关显隐 */}
+      {(showZones || routeMode) && (() => {
+        const showZoneBar = showZones && zones.length > 0;
+        const showRouteBar = routeMode;
+        if (!showZoneBar && !showRouteBar) return null;
+
+        // 当前标签控制目标车的 zone group
+        const controlGroup = AGV_ZONE_MAP[tagControlIp] ?? 'zone1';
+        // 当前控制目标车的标签
+        const controlLabel = ROBOTS.find(r => r.ip === tagControlIp)?.label ?? tagControlIp;
+
+        // 区域标签 — 只收集控制目标所属 zone 的标签
+        const availableTags = new Set<string>();
+        if (showZoneBar) {
+          for (const z of zones) {
+            if (!z.polygonJson) continue;
+            const zoneNum = z.stationPattern?.match(/^(?:LM|AP|CP)(\d)/)?.[1];
+            if (zoneNum === '1' && controlGroup !== 'zone1') continue;
+            if (zoneNum === '2' && controlGroup !== 'zone2') continue;
+            if (!zoneNum) {
+              try { const p: number[][] = JSON.parse(z.polygonJson); if (p.length > 0 && (p[0][0] >= -5) !== (controlGroup === 'zone2')) continue; } catch {}
+            }
+            if (!z.semanticTags) continue;
+            try { const tags: string[] = JSON.parse(z.semanticTags); for (const t of tags) availableTags.add(t); } catch {}
+          }
+        }
+
+        const ROUTE_TAGS = [
+          { key: "TRANSPORT", label: "运输", color: "#3b82f6" },
+          { key: "STATION_WORK", label: "作业", color: "#f59e0b" },
+          { key: "REST", label: "充电", color: "#22c55e" },
+          { key: "NAVIGATING", label: "支线", color: "#9ca3af" },
+          { key: "REVERSE", label: "单行", color: "#f85149" },
+        ];
+
+        // 可选的控制目标车列表（全部4台车可切换）
+        const controllableVehicles = ROBOTS;
+
+        // 当前控制目标的 hidden set
+        const controlHidden = hiddenTagsByIp[tagControlIp] ?? new Set<string>();
+        const allTagsHidden = TAG_OPTIONS.length > 0 && TAG_OPTIONS.every(t => controlHidden.has(t));
+
+        return (
+        <div className="absolute -top-6 right-4 z-[var(--z-overlay)] flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--app-color-surface-container)]/90 backdrop-blur border border-[var(--app-color-border-default)] shadow-md">
+          {/* 车辆选择器 — 始终显示4台车 */}
+          <div className="relative flex items-center">
+            <select
+              value={tagControlIp}
+              onChange={e => setTagControlIp(e.target.value)}
+              className="appearance-none bg-transparent text-[9px] font-semibold text-[var(--app-color-accent)] pr-2 cursor-pointer outline-none"
+            >
+              {controllableVehicles.map(r => (
+                <option key={r.ip} value={r.ip}>{r.label}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-0 text-[7px] text-[var(--app-color-text-tertiary)]">▾</span>
+          </div>
+
+          {/* 该车标签全开/全关总开关 */}
+          <button onClick={() => {
+              setHiddenTagsByIp(prev => {
+                const next = { ...prev };
+                if (allTagsHidden) {
+                  next[tagControlIp] = new Set(); // 全开
+                } else {
+                  next[tagControlIp] = new Set(TAG_OPTIONS); // 全关
+                }
+                return next;
+              });
+            }}
+            className={`text-[10px] leading-none transition-opacity ${allTagsHidden ? "opacity-30" : "opacity-100"}`}
+            title={allTagsHidden ? `显示${controlLabel}全部标签` : `隐藏${controlLabel}全部标签`}
+          >{allTagsHidden ? '◯' : '●'}</button>
+
+          {showZoneBar && availableTags.size > 0 && (
+            <>
+              <span className="w-px h-3 bg-[var(--app-color-border-default)]" />
+              {TAG_OPTIONS.filter(t => availableTags.has(t)).map(tag => (
+                <button key={tag} onClick={() => {
+                    // 🔑 核心：永远只操作 tagControlIp 这一台车
+                    setHiddenTagsByIp(prev => {
+                      const next = { ...prev };
+                      const hidden = prev[tagControlIp]?.has(tag);
+                      next[tagControlIp] = new Set(
+                        hidden
+                          ? [...(prev[tagControlIp] ?? [])].filter(t => t !== tag)
+                          : [...(prev[tagControlIp] ?? []), tag]
+                      );
+                      return next;
+                    });
+                  }}
+                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium transition-colors ${controlHidden.has(tag) ? "opacity-30 bg-[var(--app-color-border-default)]" : "text-white"}`}
+                  style={!controlHidden.has(tag) ? { backgroundColor: TAG_COLORS[tag] || "#3b82f6" } : {}}
+                  title={controlHidden.has(tag) ? `显示${tag}区域` : `隐藏${tag}区域`}>{tag}</button>
+              ))}
+            </>
+          )}
+          {showRouteBar && (
+            <>
+              {showZoneBar && availableTags.size > 0 && <span className="w-px h-3 bg-[var(--app-color-border-default)]" />}
+              <span className="text-[8px] text-[var(--app-color-text-tertiary)] shrink-0">路线</span>
+              {ROUTE_TAGS.map(rt => (
+                <button key={rt.key} onClick={() => setHiddenRouteTypes(prev => { const next = new Set(prev); if (prev.has(rt.key)) next.delete(rt.key); else next.add(rt.key); return next; })}
+                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium transition-colors ${hiddenRouteTypes.has(rt.key) ? "opacity-30 bg-[var(--app-color-border-default)]" : "text-white"}`}
+                  style={!hiddenRouteTypes.has(rt.key) ? { backgroundColor: rt.color } : {}}
+                  title={hiddenRouteTypes.has(rt.key) ? `显示${rt.label}路线` : `隐藏${rt.label}路线`}>{rt.label}</button>
+              ))}
+            </>
+          )}
+        </div>
+        );
+        })()}
+
       {/* Floating pill toolbar */}
       <AgvSidebar
         serverTime={data?.server_time ?? null}
@@ -434,8 +652,10 @@ export default function AgvTrackerPage() {
         showZones={showZones} onToggleZones={() => setShowZones(v => !v)}
         routeMode={routeMode} onToggleRouteMode={() => setRouteMode(v => !v)}
         followMode={followMode} onToggleFollowMode={() => setFollowMode(v => !v)}
+        vehicleIcon={vehicleIcon} onToggleVehicleIcon={() => setVehicleIcon(v => v==='arrow'?'forklift':'arrow')}
         topologyGenerating={generateTopologyMut.isPending}
         onGenerateTopology={() => generateTopologyMut.mutate()}
+        onStartRectPick={handleStartRectPick}
       />
 
       {/* Quadrant grid — 双象限: AGV-1+2 (左), AGV-3+4 (右) */}
@@ -451,8 +671,11 @@ export default function AgvTrackerPage() {
                 routeOverlaysA={routeMode ? routeOverlays.filter(ro => ro.robotIp === ROBOTS[ai].ip) : []}
                 routeOverlaysB={routeMode ? routeOverlays.filter(ro => ro.robotIp === ROBOTS[bi].ip) : []}
                 routeMode={routeMode}
+                vehicleIcon={vehicleIcon}
                 pickMode={pickMode}
+                pickAnchor={pickAnchor}
                 onPointPick={handlePointPicked}
+                onZoneClick={handleZoneClick}
               />
             );
           })}
@@ -466,21 +689,72 @@ export default function AgvTrackerPage() {
         open={analysisOpen && !pickMode}
         onClose={() => setAnalysisOpen(false)}
         onRequestPick={handleStartPick}
+        onRequestRectPick={handleStartRectPick}
         pendingPick={pendingPick}
         onClearPick={() => setPendingPick(null)}
+        focusZoneId={zonePopover?.id ?? null}
       />
 
-      {/* 地图选点模式浮动提示条 */}
+      {/* 选框完成 → 快捷标签选择器（弹窗关闭时直接在此显示，弹窗打开时由 AgvZonePanel 内部处理） */}
+      {pendingPick && !pickMode && !analysisOpen && (
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-[var(--z-overlay)] flex items-center gap-2 px-3 py-2 rounded-full bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-lg">
+          <span className="text-[10px] text-[var(--app-color-text-secondary)] whitespace-nowrap">
+            {'x1' in pendingPick ? '矩形区域 · 选择标签' : '标记点 · 选择标签'}
+          </span>
+          <div className="flex gap-1">
+            {TAG_OPTIONS.map(tag => (
+              <button key={tag} onClick={() => handleQuickSaveZone(tag)} disabled={saveZoneMut.isPending}
+                className="px-2.5 py-1 rounded-full text-[10px] font-medium text-white hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: TAG_COLORS[tag] }}>
+                {tag}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setPendingPick(null)} className="text-[10px] text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]">取消</button>
+        </div>
+      )}
+
+      {/* 地图选点模式浮动提示条 — 单点 / 两点矩形 */}
       {pickMode && (
         <div
           onClick={handleCancelPick}
           className="absolute top-10 left-1/2 -translate-x-1/2 z-[var(--z-overlay)] flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--app-color-accent)] text-white text-xs font-medium shadow-lg cursor-pointer hover:opacity-90 transition-opacity select-none"
         >
-          <span className="text-base">📍</span>
-          <span>在地图上点击标记位置</span>
+          <span className="text-base">{pickTwoPoint ? "📐" : "📍"}</span>
+          {pickTwoPoint ? (
+            pickAnchor ? (
+              <span>点击第二个角点完成矩形区域</span>
+            ) : (
+              <span>点击第一个角点标记矩形区域</span>
+            )
+          ) : (
+            <span>在地图上点击标记位置</span>
+          )}
           <span className="text-[10px] opacity-70">· Esc 取消</span>
         </div>
       )}
+
+      {/* 区域标签点击弹出操作面板（底部居中，不受坐标偏移影响） */}
+      {zonePopover && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[var(--z-tooltip)]" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-3 px-4 py-2.5 rounded-full bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-lg">
+            <span className="text-[12px] font-medium text-[var(--app-color-text-primary)]">{zonePopover.name}</span>
+            <button
+              onClick={() => { setAnalysisOpen(true); setZonePopover(null); }}
+              className="px-3 py-1 rounded-full text-[11px] bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)] hover:opacity-80"
+            >编辑</button>
+            <button
+              onClick={handleDeleteZone}
+              className="px-3 py-1 rounded-full text-[11px] bg-red-50 text-red-500 hover:bg-red-100"
+            >删除</button>
+            <button
+              onClick={() => setZonePopover(null)}
+              className="ml-1 w-5 h-5 rounded-full border border-[var(--app-color-border-default)] text-[11px] flex items-center justify-center hover:bg-[var(--app-color-surface-hover)]"
+            >✕</button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

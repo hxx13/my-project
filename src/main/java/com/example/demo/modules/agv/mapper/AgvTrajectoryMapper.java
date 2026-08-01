@@ -115,9 +115,17 @@ public interface AgvTrajectoryMapper {
             "ORDER BY station</script>")
     List<Map<String, Object>> selectDistinctStations(@Param("mapName") String mapName);
 
-    /** 查询某站点最近的坐标样本（用于生成包围盒 polygon） */
-    @Select("SELECT x, y FROM agv_trajectory WHERE station = #{station} AND x IS NOT NULL AND y IS NOT NULL ORDER BY recorded_at DESC LIMIT #{limit}")
+    /** 查询某站点最近的坐标样本（用于生成包围盒 polygon），含 robot_ip 以标记归属 */
+    @Select("SELECT x, y, robot_ip FROM agv_trajectory WHERE station = #{station} AND x IS NOT NULL AND y IS NOT NULL ORDER BY recorded_at DESC LIMIT #{limit}")
     List<Map<String, Object>> selectStationCoords(@Param("station") String station, @Param("limit") int limit);
+
+    /** 查询某站点出现次数最多的 robot_ip（用于 zone 归属标记） */
+    @Select("SELECT robot_ip, COUNT(*) AS cnt FROM agv_trajectory WHERE station = #{station} AND robot_ip IS NOT NULL GROUP BY robot_ip ORDER BY cnt DESC LIMIT 1")
+    Map<String, Object> selectDominantRobotIpForStation(@Param("station") String station);
+
+    /** 检查某时间段内小车是否有叉臂抬升/降低动作 (fork_height > 0.001m) */
+    @Select("SELECT COUNT(*) FROM agv_trajectory WHERE robot_ip = #{ip} AND recorded_at BETWEEN #{from} AND #{to} AND fork_height IS NOT NULL AND fork_height > 0.001")
+    int countForkActiveInWindow(@Param("ip") String ip, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     // ── 小时级预聚合 ──
 

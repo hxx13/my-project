@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgvConfigEntry } from "@/api/domains/agv.api";
 import { fetchAgvConfig, updateAgvConfig, fetchCoordConfigs, updateCoordConfig } from "@/api/domains/agv.api";
 import { Link } from "react-router-dom";
-import { FileText, LayoutGrid, Maximize2, Settings2, BarChart3, RotateCw, Map, Route, Crosshair, Zap } from "lucide-react";
+import { FileText, LayoutGrid, Maximize2, Settings2, BarChart3, RotateCw, Map, Route, Crosshair, Zap, SquareDashed } from "lucide-react";
 
 const ROBOT_KEYS = ["AGV_ROBOT_16", "AGV_ROBOT_18", "AGV_ROBOT_20", "AGV_ROBOT_22"] as const;
 const ROBOT_SHORT = [".16", ".18", ".20", ".22"] as const;
@@ -17,13 +17,16 @@ interface Props {
   showZones: boolean; onToggleZones: () => void;
   routeMode: boolean; onToggleRouteMode: () => void;
   followMode: boolean; onToggleFollowMode: () => void;
+  vehicleIcon: 'arrow'|'forklift'; onToggleVehicleIcon: () => void;
   /** 路线模型2：正在重新生成 */
   topologyGenerating?: boolean;
   /** 路线模型2：触发拓扑重新生成 */
   onGenerateTopology?: () => void;
+  /** 地图上快速框选标记区域 */
+  onStartRectPick?: () => void;
 }
 
-export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleTab, onSingleTabChange, analysisOpen, onAnalysisToggle, showZones, onToggleZones, routeMode, onToggleRouteMode, followMode, onToggleFollowMode, topologyGenerating, onGenerateTopology }: Props) {
+export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleTab, onSingleTabChange, analysisOpen, onAnalysisToggle, showZones, onToggleZones, routeMode, onToggleRouteMode, followMode, onToggleFollowMode, vehicleIcon, onToggleVehicleIcon, topologyGenerating, onGenerateTopology, onStartRectPick }: Props) {
   const qc = useQueryClient();
   const { data: configs } = useQuery({ queryKey: ["agvConfig"], queryFn: fetchAgvConfig, refetchInterval: 30_000 });
   const { data: rotations } = useQuery({ queryKey: ["agvCoordConfigs"], queryFn: fetchCoordConfigs, staleTime: 60_000 });
@@ -94,6 +97,9 @@ export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleT
       <button onClick={onToggleRouteMode}
         className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${routeMode ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
         title={routeMode ? "关闭路线模式" : "路线模式"}><Route size={11} /></button>
+      <button onClick={() => onStartRectPick?.()}
+        className="px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center text-[var(--app-color-accent)] hover:bg-[var(--app-color-accent-soft)]"
+        title="地图框选标记区域（点击两点画矩形）"><SquareDashed size={11} /></button>
       {routeMode && (
         <button onClick={() => onGenerateTopology?.()}
           disabled={topologyGenerating}
@@ -107,6 +113,9 @@ export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleT
       <button onClick={onToggleFollowMode}
         className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${followMode ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
         title={followMode ? "关闭视角跟随" : "视角跟随"}><Crosshair size={11} /></button>
+      <button onClick={onToggleVehicleIcon}
+        className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${vehicleIcon==='forklift' ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
+        title={vehicleIcon==='arrow'?'切为叉车图标':'切为箭头图标'}><span style={{fontSize:'11px'}}>{vehicleIcon==='arrow'?'▶':'🚜'}</span></button>
       <button onClick={onAnalysisToggle}
         className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${analysisOpen ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}><Settings2 size={11} /></button>
     </div>
