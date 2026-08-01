@@ -16,7 +16,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.scheduling.annotation.Async;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -601,24 +600,6 @@ public class DahuaService {
             log.info("[大华网关] 订阅就绪，雷达已开启！");
         } catch (Exception e) {
             log.error("[大华网关] 订阅启动失败: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * 🔄 每10分钟自动续订，防止跨网段NAT超时或ICC侧丢弃后订阅永久死亡。
-     * subscribe() 内部会先 unsubscribe 再重新注册，幂等安全。
-     */
-    @Scheduled(fixedDelay = 600_000)
-    public void ensureSubscriptionAlive() {
-        try {
-            boolean ok = subscribe();
-            if (ok) {
-                log.info("[大华网关] 🔄 定时续订成功");
-            } else {
-                log.warn("[大华网关] ⚠ 定时续订失败（ICC拒绝），将在10分钟后重试");
-            }
-        } catch (Exception e) {
-            log.error("[大华网关] ❌ 定时续订异常: {}", e.getMessage());
         }
     }
 }
