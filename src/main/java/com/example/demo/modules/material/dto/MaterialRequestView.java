@@ -20,5 +20,9 @@ public class MaterialRequestView {
     private String receivedAt;
     private String createdAt;
     private String updatedAt;
+    /** 预约领取时间 ISO 格式，nullable */
+    private String scheduledPickupTime;
+    /** 预约通知是否已发送：0=未发，1=已发 */
+    private Integer notificationSent;
     private List<MaterialRequestLineView> lines;
 }

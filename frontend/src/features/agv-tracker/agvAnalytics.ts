@@ -157,7 +157,72 @@ export function fleetHeatmap(allTrails: Map<string, TrailPoint[]>): FleetHeatCel
   return [...grid.values()].filter(v => v.count >= 3).map(v => ({ x: v.x, y: v.y, weight: v.count / maxC }));
 }
 
-// 10. 停留段检测
+// 10. 轨迹智能采样：保留转向/位移关键点，去重冗余静止帧
+export interface SampledPoint { x: number; y: number; angle: number; ts: number; }
+
+/**
+ * 智能降采样 — 保留最新点、转向点、位移变化点，永远保留首尾。
+ *
+ * 可调参数：
+ *   minDistM      - 最小位移阈值（米），低于此视为静止
+ *   minAngleRad   - 最小角度变化阈值（弧度）
+ *   minKeep       - 最少保留点数
+ *   maxWindowHr   - 最大时间窗口（小时），超出截断
+ *   minPtsForCut  - 截断前最少有效点数
+ */
+export function smartSampleTrail(
+  points: SampledPoint[],
+  opts?: {
+    minDistM?: number;
+    minAngleRad?: number;
+    minKeep?: number;
+    maxWindowHr?: number;
+    minPtsForCut?: number;
+  },
+): SampledPoint[] {
+  const {
+    minDistM = 0.05,
+    minAngleRad = 0.087, // ~5°
+    minKeep = 3,
+    maxWindowHr = 2,
+    minPtsForCut = 20,
+  } = opts ?? {};
+
+  if (points.length < 2) return points;
+
+  const newest = points[points.length - 1];
+  const oldest = points[0];
+  const result: SampledPoint[] = [newest];
+  let last = result[0];
+
+  for (let i = points.length - 2; i >= 0; i--) {
+    const p = points[i];
+    const dx = Math.abs(last.x - p.x);
+    const dy = Math.abs(last.y - p.y);
+    if (dx > minDistM || dy > minDistM || Math.abs(last.angle - p.angle) > minAngleRad) {
+      result.push(p);
+      last = p;
+    }
+    // 不够密集时补点
+    if (result.length < minKeep) result.push(p);
+    // 时间窗口截断
+    if ((result[0].ts - p.ts) / 3600_000 >= maxWindowHr && result.length >= minPtsForCut) break;
+  }
+
+  // 保留最旧参考点
+  if (result[result.length - 1] !== oldest && (result[result.length - 1].ts - oldest.ts) > 600_000) {
+    result.push(oldest);
+  }
+  result.reverse();
+
+  // 长期静止补偿
+  if (result.length < minKeep && points.length >= 10) {
+    return [oldest, newest];
+  }
+  return result;
+}
+
+// 11. 停留段检测
 export function detectDwellSegments(points: TrailPoint[], stations: Map<number, string>, minSec = 3, radius = 0.5): DwellSegment[] {
   if (points.length < 2) return [];
   const segs: DwellSegment[] = [];

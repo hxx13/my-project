@@ -253,29 +253,40 @@ public class AgvController {
     // ── 坐标系旋转配置 ──
 
     @GetMapping("/coord-config")
-    @Operation(summary = "获取所有小车坐标系旋转角度")
+    @Operation(summary = "获取所有小车坐标系配置（旋转+平移偏移）")
     public Result<Map<String, Object>> getCoordConfig() {
         Map<String, Object> result = new LinkedHashMap<>();
         for (String ip : KNOWN_IPS) {
             try {
-                Double deg = jdbc.queryForObject(
-                    "SELECT rotation_deg FROM agv_coord_config WHERE robot_ip = ?",
-                    Double.class, ip);
-                result.put(ip, deg != null ? deg : 0.0);
+                Map<String, Object> cfg = jdbc.queryForMap(
+                    "SELECT rotation_deg, offset_x, offset_y FROM agv_coord_config WHERE robot_ip = ?",
+                    ip);
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("rotationDeg", cfg.getOrDefault("rotation_deg", 0.0));
+                entry.put("offsetX", cfg.getOrDefault("offset_x", 0.0));
+                entry.put("offsetY", cfg.getOrDefault("offset_y", 0.0));
+                result.put(ip, entry);
             } catch (Exception e) {
-                result.put(ip, 0.0); // 表空或行不存在 → 默认0
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("rotationDeg", 0.0);
+                entry.put("offsetX", 0.0);
+                entry.put("offsetY", 0.0);
+                result.put(ip, entry);
             }
         }
         return Result.success(result);
     }
 
     @PutMapping("/coord-config/{ip}")
-    @Operation(summary = "设置单台小车坐标系旋转角度")
-    public Result<String> setCoordConfig(@PathVariable String ip, @RequestParam double deg) {
+    @Operation(summary = "设置单台小车坐标系配置（旋转+平移偏移）")
+    public Result<String> setCoordConfig(@PathVariable String ip,
+                                         @RequestParam(defaultValue = "0") double deg,
+                                         @RequestParam(defaultValue = "0") double offsetX,
+                                         @RequestParam(defaultValue = "0") double offsetY) {
         jdbc.update(
-            "INSERT INTO agv_coord_config (robot_ip, rotation_deg) VALUES (?, ?) " +
-            "ON DUPLICATE KEY UPDATE rotation_deg = ?",
-            ip, deg, deg);
+            "INSERT INTO agv_coord_config (robot_ip, rotation_deg, offset_x, offset_y) VALUES (?, ?, ?, ?) " +
+            "ON DUPLICATE KEY UPDATE rotation_deg = ?, offset_x = ?, offset_y = ?",
+            ip, deg, offsetX, offsetY, deg, offsetX, offsetY);
         return Result.success("ok");
     }
 

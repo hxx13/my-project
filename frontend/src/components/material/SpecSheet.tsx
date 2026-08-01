@@ -14,6 +14,7 @@ import {
   hasAnyMultiSpecSelection,
   isMultiSpecSelectionReady,
   isSpecOptionSelected,
+  itemIdFromCartKey,
   maxQtyForMaterialItem,
   parseSpecDimensions,
   sumCartQtyForItem,
@@ -129,10 +130,20 @@ export function SpecSheet({
   const [selections, setSelections] = useState<MultiSpecSelections>({});
   const [expandedDims, setExpandedDims] = useState<Set<string>>(new Set());
 
+  const [draftCart, setDraftCart] = useState<Record<string, number>>({});
+
   useEffect(() => {
     setSelections({});
     setExpandedDims(new Set());
   }, [item.id]);
+
+  useEffect(() => {
+    if (open) {
+      setDraftCart({ ...cart });
+    } else {
+      setDraftCart({});
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -155,7 +166,7 @@ export function SpecSheet({
   const soldOut = maxQty <= 0;
   const specRequired = Number(item.specRequired) === 1;
   const showPlainRow = !specRequired && !hasAnyMultiSpecSelection(selections);
-  const itemCartQty = sumCartQtyForItem(cart, item.id);
+  const itemCartQty = sumCartQtyForItem(draftCart, item.id);
 
   const toggleDimExpanded = (dimName: string) => {
     setExpandedDims((prev) => {
@@ -299,11 +310,17 @@ export function SpecSheet({
                     {combo.label}
                   </span>
                   <SheetQtyStepper
-                    qty={cart[buildSpecCartKey(item.id, combo.key)] || 0}
+                    qty={draftCart[buildSpecCartKey(item.id, combo.key)] || 0}
                     max={maxQty}
                     disabled={soldOut}
-                    onAdd={() => onAddKey(buildSpecCartKey(item.id, combo.key))}
-                    onDec={() => onDecKey(buildSpecCartKey(item.id, combo.key))}
+                    onAdd={() => {
+                      const ck = buildSpecCartKey(item.id, combo.key);
+                      setDraftCart((prev) => ({ ...prev, [ck]: Math.min((prev[ck] || 0) + 1, maxQty) }));
+                    }}
+                    onDec={() => {
+                      const ck = buildSpecCartKey(item.id, combo.key);
+                      setDraftCart((prev) => ({ ...prev, [ck]: Math.max(0, (prev[ck] || 0) - 1) }));
+                    }}
                   />
                 </div>
               ))}
@@ -320,11 +337,17 @@ export function SpecSheet({
             <div className="flex items-center justify-between gap-3 pt-1 border-t border-dashed border-[var(--student-hairline)]">
               <span className="text-[13px] text-[var(--student-mute)]">默认（不选规格）</span>
               <SheetQtyStepper
-                qty={cart[String(item.id)] || 0}
+                qty={draftCart[String(item.id)] || 0}
                 max={maxQty}
                 disabled={soldOut}
-                onAdd={onAddPlain}
-                onDec={onDecPlain}
+                onAdd={() => {
+                  const pk = String(item.id);
+                  setDraftCart((prev) => ({ ...prev, [pk]: Math.min((prev[pk] || 0) + 1, maxQty) }));
+                }}
+                onDec={() => {
+                  const pk = String(item.id);
+                  setDraftCart((prev) => ({ ...prev, [pk]: Math.max(0, (prev[pk] || 0) - 1) }));
+                }}
               />
             </div>
           )}
@@ -350,7 +373,32 @@ export function SpecSheet({
             </button>
             <button
               type="button"
-              onClick={() => onOpenChange(false)}
+              onClick={() => {
+                const allKeys = new Set<string>();
+                for (const k of Object.keys(draftCart)) {
+                  if (itemIdFromCartKey(k) === item.id) allKeys.add(k);
+                }
+                for (const k of Object.keys(cart)) {
+                  if (itemIdFromCartKey(k) === item.id) allKeys.add(k);
+                }
+                for (const key of allKeys) {
+                  const draftQty = draftCart[key] || 0;
+                  const origQty = cart[key] || 0;
+                  const diff = draftQty - origQty;
+                  if (diff > 0) {
+                    for (let i = 0; i < diff; i++) {
+                      if (key === String(item.id)) onAddPlain();
+                      else onAddKey(key);
+                    }
+                  } else if (diff < 0) {
+                    for (let i = 0; i < -diff; i++) {
+                      if (key === String(item.id)) onDecPlain();
+                      else onDecKey(key);
+                    }
+                  }
+                }
+                onOpenChange(false);
+              }}
               className="px-5 py-2.5 min-h-[44px] rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity"
             >
               确认

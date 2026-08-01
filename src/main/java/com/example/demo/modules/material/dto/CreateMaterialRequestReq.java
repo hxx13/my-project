@@ -7,6 +7,8 @@ import java.util.List;
 public class CreateMaterialRequestReq {
     /** 申请人所属课题组（前端传入） */
     private String applicantGroup;
+    /** 预约领取时间 ISO 格式字符串，nullable；null=立即提交 */
+    private String scheduledPickupTime;
     private List<LineItem> lines;
 
     @Data

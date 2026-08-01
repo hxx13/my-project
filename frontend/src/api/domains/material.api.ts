@@ -37,6 +37,7 @@ export interface MaterialItem {
   specSchema?: string;   // JSON: {"dimensions":[{"name":"尺码","options":["S","M","L"]}]}
   specRequired?: number; // 0=可选 1=必选
   independentOrder?: number; // 0=可合并下单 1=必须独立下单
+  notifyAdvanceHours?: number; // 通知提前量（小时），0=提交即通知审核人
 }
 
 export interface MaterialRequestLine {
@@ -63,6 +64,8 @@ export interface MaterialRequest {
   fulfilledBy?: string;
   receivedAt?: string;
   createdAt: string;
+  scheduledPickupTime?: string; // ISO格式，预约领取时间
+  notificationSent?: number; // 0=未通知 1=已通知
   lines?: MaterialRequestLine[];
 }
 
@@ -220,8 +223,8 @@ export async function saveMaterialCart(cart: Record<string, number>): Promise<vo
   await authHttp.put("/material/cart", { lines });
 }
 
-export async function createMaterialRequest(lines: { itemId: number; qty: number; specSnapshot?: string }[], applicantGroup?: string) {
-  const res = await authHttp.post<Result<MaterialRequest[]>>("/material/requests", { lines, applicantGroup });
+export async function createMaterialRequest(lines: { itemId: number; qty: number; specSnapshot?: string }[], applicantGroup?: string, scheduledPickupTime?: string | null) {
+  const res = await authHttp.post<Result<MaterialRequest[]>>("/material/requests", { lines, applicantGroup, scheduledPickupTime });
   return res.data.data;
 }
 
@@ -237,10 +240,11 @@ export async function createMaterialRequestWithToken(
   bearerToken: string,
   lines: { itemId: number; qty: number; specSnapshot?: string }[],
   applicantGroup?: string,
+  scheduledPickupTime?: string | null,
 ) {
   const res = await axios.post<Result<MaterialRequest[]>>(
     "/api/material/requests",
-    { lines, applicantGroup },
+    { lines, applicantGroup, scheduledPickupTime },
     { headers: { Authorization: `Bearer ${bearerToken}` } },
   );
   if (!res.data?.success) {

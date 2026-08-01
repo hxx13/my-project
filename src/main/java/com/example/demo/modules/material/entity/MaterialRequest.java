@@ -27,4 +27,8 @@ public class MaterialRequest {
     private LocalDateTime purgeAfterTime;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    /** 预约领取时间：NULL=立即提交，非NULL=预约模式 */
+    private LocalDateTime scheduledPickupTime;
+    /** 预约通知是否已发送：0=未发，1=已发 */
+    private Integer notificationSent;
 }

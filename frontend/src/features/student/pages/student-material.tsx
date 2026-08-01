@@ -1,7 +1,7 @@
 /** 学生物资商城 — 快捷入口路由：/student/material */
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package, Lightbulb, Loader2, X } from "lucide-react";
+import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package, Lightbulb, Loader2, X, Clock, Pencil } from "lucide-react";
 import { useMaterialCategories, useMaterialItems, useMaterialCart, useSaveMaterialCart, useCreateMaterialRequest } from "@/api/hooks/useMaterial";
 import { createMaterialDemand } from "@/api/domains/material.api";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
@@ -66,6 +66,8 @@ export default function StudentMaterialPage() {
   const [showDemandForm, setShowDemandForm] = useState(false);
   const [demandEntryVisible, setDemandEntryVisible] = useState(true);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [scheduledPickupTime, setScheduledPickupTime] = useState<string | null>(null);
+  const [showPickupPicker, setShowPickupPicker] = useState(false);
 
   useEffect(() => {
     fetchPublicRuntimeConfig()
@@ -131,6 +133,34 @@ export default function StudentMaterialPage() {
     [cartItems],
   );
 
+  /** 预约领取预设日期（北京时间） */
+  const pickupPresets = useMemo(() => {
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const beijingNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+    const y = beijingNow.getFullYear();
+    const m = beijingNow.getMonth() + 1;
+    const d = beijingNow.getDate();
+    const todayStr = `${y}-${pad2(m)}-${pad2(d)}`;
+
+    const tomorrow = new Date(beijingNow);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tmrStr = `${tomorrow.getFullYear()}-${pad2(tomorrow.getMonth() + 1)}-${pad2(tomorrow.getDate())}`;
+
+    const afterTomorrow = new Date(beijingNow);
+    afterTomorrow.setDate(afterTomorrow.getDate() + 2);
+    const datStr = `${afterTomorrow.getFullYear()}-${pad2(afterTomorrow.getMonth() + 1)}-${pad2(afterTomorrow.getDate())}`;
+
+    return [
+      { label: "后天", iso: datStr },
+    ];
+  }, []);
+
+  function pickupTimeLabel(iso: string): string {
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return "";
+    return `预约 ${parseInt(m[2])}月${parseInt(m[3])}日 领取`;
+  }
+
   /** 独立下单拆分提示：按 itemId 去重（同物品的规格键属于同一物品） */
   const { willSplit, multiIndependent } = useMemo(() => {
     const lookup = allItems && allItems.length > 0 ? allItems : items || [];
@@ -161,7 +191,7 @@ export default function StudentMaterialPage() {
     saveCart.mutate(next);
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(pickupTime?: string | null) {
     if (!cart || cartCount === 0) return;
     const lines = Object.entries(cart)
       .filter(([, qty]) => qty > 0)
@@ -175,9 +205,11 @@ export default function StudentMaterialPage() {
       });
     const group = resolveMaterialApplicantGroupForStudentSession();
     try {
-      const data = await createRequest.mutateAsync({ lines, applicantGroup: group });
+      const data = await createRequest.mutateAsync({ lines, applicantGroup: group, scheduledPickupTime: pickupTime ?? null });
       const count = Array.isArray(data) ? data.length : 1;
       saveCart.mutate({}); // 清空申领物品栏，保存后仅合并购物车，禁止整表 load — post-save-no-full-refresh.mdc
+      setScheduledPickupTime(null);
+      setShowPickupPicker(false);
       toast.success(`已提交 ${count} 张申领单`);
       navigate("/student/material/requests");
     } catch (e) {
@@ -434,19 +466,97 @@ export default function StudentMaterialPage() {
             )}
           </div>
           {cartItems.length > 0 && (
-            <div className="flex items-center justify-between p-3 border-t border-[var(--student-hairline)]">
-              <span className="text-[13px] text-[var(--student-mute)]">
-                合计{" "}
-                <strong className="text-[var(--student-ink)] text-[15px]">{cartCount} 件</strong>
-              </span>
-              <button
-                onClick={() => setConfirmOpen(true)}
-                disabled={cartCount === 0}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[var(--student-primary)] text-white text-[13px] font-semibold disabled:opacity-40 transition-opacity"
-              >
-                <Send className="size-4" /> 提交申领
-              </button>
-            </div>
+            <>
+              {/* 领取方式选择 */}
+              <div className="px-3 py-2 border-t border-[var(--student-hairline)] space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[var(--student-mute)] shrink-0">领取方式</span>
+                  <div className="flex rounded-md border border-[var(--student-hairline)] overflow-hidden">
+                    <button
+                      onClick={() => { setScheduledPickupTime(null); setShowPickupPicker(false); }}
+                      className={cn(
+                        "px-3 py-1 text-[11px] font-medium transition-colors",
+                        !scheduledPickupTime
+                          ? "bg-[var(--student-primary)] text-white"
+                          : "text-[var(--student-mute)] hover:text-[var(--student-ink)]"
+                      )}
+                    >
+                      立即领取
+                    </button>
+                    <button
+                      onClick={() => setShowPickupPicker(!showPickupPicker)}
+                      className={cn(
+                        "px-3 py-1 text-[11px] font-medium transition-colors",
+                        scheduledPickupTime
+                          ? "bg-[var(--student-primary)] text-white"
+                          : "text-[var(--student-mute)] hover:text-[var(--student-ink)]"
+                      )}
+                    >
+                      预约日期
+                    </button>
+                  </div>
+                  {scheduledPickupTime && !showPickupPicker && (
+                    <button
+                      onClick={() => setShowPickupPicker(true)}
+                      className="text-[11px] text-[var(--student-primary)] ml-auto hover:underline flex items-center gap-1"
+                    >
+                      {pickupTimeLabel(scheduledPickupTime)}
+                      <Pencil className="size-3" />
+                    </button>
+                  )}
+                  {scheduledPickupTime && showPickupPicker && (
+                    <span className="text-[11px] text-[var(--student-primary)] ml-auto">
+                      {pickupTimeLabel(scheduledPickupTime)}
+                    </span>
+                  )}
+                </div>
+                {showPickupPicker && (
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {pickupPresets.map((p) => (
+                        <button
+                          key={p.iso}
+                          type="button"
+                          onClick={() => { setScheduledPickupTime(p.iso); setShowPickupPicker(false); }}
+                          className={cn(
+                            "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                            scheduledPickupTime === p.iso
+                              ? "border-[var(--student-primary)] bg-[var(--student-primary-soft)] text-[var(--student-primary)]"
+                              : "border-[var(--student-hairline)] text-[var(--student-body)] hover:bg-[var(--student-surface)] hover:border-[var(--student-primary)]"
+                          )}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-[var(--student-mute)] shrink-0">自定义</span>
+                      <input
+                        type="date"
+                        min={pickupPresets[0]?.iso}
+                        onChange={(e) => {
+                          if (e.target.value) { setScheduledPickupTime(e.target.value); setShowPickupPicker(false); }
+                        }}
+                        className="flex-1 rounded border border-[var(--student-hairline)] px-2 py-1 text-[11px] text-[var(--student-ink)] bg-[var(--student-canvas)]"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-between p-3 border-t border-[var(--student-hairline)]">
+                <span className="text-[13px] text-[var(--student-mute)]">
+                  合计{" "}
+                  <strong className="text-[var(--student-ink)] text-[15px]">{cartCount} 件</strong>
+                </span>
+                <button
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={cartCount === 0}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[var(--student-primary)] text-white text-[13px] font-semibold disabled:opacity-40 transition-opacity"
+                >
+                  <Send className="size-4" /> 提交申领
+                </button>
+              </div>
+            </>
           )}
         </aside>
       )}
@@ -455,7 +565,11 @@ export default function StudentMaterialPage() {
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogHeader>
           <DialogTitle>确认提交申领</DialogTitle>
-          <DialogDescription>请核对以下物品，提交后将进入审核流程</DialogDescription>
+          <DialogDescription>
+            {scheduledPickupTime
+              ? "预约申领将在预约时间前提前通知审核人，审核通过后按时领取"
+              : "请核对以下物品，提交后将进入审核流程"}
+          </DialogDescription>
           {(willSplit || multiIndependent) && (
             <p className="text-[12px] text-[var(--student-warning,#d97706)]">
               {willSplit ? "含独立下单物资，将拆分为多份申领单" : "多个独立下单物资将分别生成申领单"}
@@ -495,12 +609,29 @@ export default function StudentMaterialPage() {
           ))}
         </div>
 
+        {/* 领取方式提示 */}
+        <div className="flex items-center gap-2 rounded-lg border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-2">
+          <span className="text-[12px] text-[var(--student-mute)]">领取方式</span>
+          <span className="text-[13px] font-medium text-[var(--student-ink)]">
+            {scheduledPickupTime ? pickupTimeLabel(scheduledPickupTime) : "立即领取"}
+          </span>
+          {scheduledPickupTime && (
+            <button
+              onClick={() => { setConfirmOpen(false); setShowPickupPicker(true); }}
+              className="ml-auto text-[10px] text-[var(--student-mute)] hover:text-[var(--student-ink)]"
+              aria-label="修改预约日期"
+            >
+              <Pencil className="size-3" />
+            </button>
+          )}
+        </div>
+
         <DialogFooter className="justify-between">
           <span className="text-[13px] text-[var(--student-mute)]">
             合计{" "}
             <strong className="text-[15px] text-[var(--student-ink)]">{cartCount} 件</strong>
           </span>
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={() => setConfirmOpen(false)}
@@ -512,7 +643,7 @@ export default function StudentMaterialPage() {
               type="button"
               onClick={async () => {
                 setConfirmOpen(false);
-                await handleSubmit();
+                await handleSubmit(scheduledPickupTime);
               }}
               disabled={createRequest.isPending}
               className="flex items-center gap-2 rounded-lg bg-[var(--student-primary)] px-5 py-2 text-[13px] font-semibold text-white transition-opacity disabled:opacity-50"
@@ -521,6 +652,11 @@ export default function StudentMaterialPage() {
                 <>
                   <Loader2 className="size-4 animate-spin" />
                   提交中…
+                </>
+              ) : scheduledPickupTime ? (
+                <>
+                  <Clock className="size-3.5" />
+                  确认预约提交
                 </>
               ) : (
                 <>

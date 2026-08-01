@@ -83,6 +83,8 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
                     fulfilled_at DATETIME NULL COMMENT '出库时间',
                     fulfilled_by VARCHAR(64) NULL COMMENT '出库操作人',
                     received_at DATETIME NULL COMMENT '学生确认领取时间',
+                    scheduled_pickup_time DATETIME NULL COMMENT '预约领取时间',
+                    notification_sent TINYINT NOT NULL DEFAULT 0 COMMENT '预约通知是否已发送:0=未发,1=已发',
                     deleted TINYINT NOT NULL DEFAULT 0 COMMENT '软删除',
                     deleted_time DATETIME NULL,
                     deleted_by VARCHAR(50) NULL,
@@ -183,6 +185,15 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
             // independent_order 独立成单
             ensureColumnExists("material_item", "independent_order",
                     "ALTER TABLE material_item ADD COLUMN independent_order TINYINT NOT NULL DEFAULT 0 COMMENT '是否独立成单:1是,0否'");
+            // notify_advance_hours 预约提前通知小时数
+            ensureColumnExists("material_item", "notify_advance_hours",
+                    "ALTER TABLE material_item ADD COLUMN notify_advance_hours INT NOT NULL DEFAULT 0 COMMENT '预约提前通知小时数:0=立即通知'");
+            // scheduled_pickup_time 预约领取时间
+            ensureColumnExists("material_request", "scheduled_pickup_time",
+                    "ALTER TABLE material_request ADD COLUMN scheduled_pickup_time DATETIME NULL COMMENT '预约领取时间'");
+            // notification_sent 预约通知是否已发
+            ensureColumnExists("material_request", "notification_sent",
+                    "ALTER TABLE material_request ADD COLUMN notification_sent TINYINT NOT NULL DEFAULT 0 COMMENT '预约通知是否已发送:0=未发,1=已发'");
 
             int backfilled = materialService.backfillRequestApplicantMetadata();
             if (backfilled > 0) {

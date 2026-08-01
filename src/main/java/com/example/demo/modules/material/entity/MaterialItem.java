@@ -36,4 +36,6 @@ public class MaterialItem {
     private Integer specRequired;
     /** 是否独立成单：1=必须单独成单，不与其他物品混合申领；0=可合并 */
     private Integer independentOrder;
+    /** 预约提前通知小时数：0=立即通知（与现有行为一致），>0=预约模式下提前N小时发通知 */
+    private Integer notifyAdvanceHours;
 }

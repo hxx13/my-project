@@ -420,6 +420,7 @@ export async function submitMobileMaterialRequest(
   token: string,
   lines: { itemId: number; qty: number; specSnapshot?: string }[],
   applicantGroup?: string,
+  scheduledPickupTime?: string | null,
 ) {
   const resp = await publicHttp.post<{
     code: number;
@@ -429,6 +430,7 @@ export async function submitMobileMaterialRequest(
   }>(`/public/mobile-center/${encodeURIComponent(token)}/material/requests`, {
     lines: normalizeMaterialRequestLines(lines),
     applicantGroup,
+    scheduledPickupTime,
   });
   if (!resp.data.success) throw new Error(resp.data.message || "提交失败");
   return resp.data.data;

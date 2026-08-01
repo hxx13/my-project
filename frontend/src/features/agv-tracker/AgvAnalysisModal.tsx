@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { X, GanttChartSquare, MapPin, SlidersHorizontal } from "lucide-react";
+import { X, GanttChartSquare, MapPin, SlidersHorizontal, Activity } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import AgvTimelineTab from "./AgvTimelineTab";
 import AgvZonePanel from "./AgvZonePanel";
 import AgvRulePanel from "./AgvRulePanel";
+import AgvStatsTab from "./AgvStatsTab";
 
-type ModalTab = "timeline" | "zones" | "rules";
+type ModalTab = "timeline" | "zones" | "rules" | "stats";
 
 const TABS: { key: ModalTab; label: string; icon: typeof GanttChartSquare }[] = [
   { key: "timeline", label: "时间线", icon: GanttChartSquare },
   { key: "zones", label: "区域", icon: MapPin },
   { key: "rules", label: "规则", icon: SlidersHorizontal },
+  { key: "stats", label: "实时指标", icon: Activity },
 ];
 
 type PendingPick = { x: number; y: number } | { x1: number; y1: number; x2: number; y2: number };
@@ -23,9 +25,11 @@ interface Props {
   pendingPick?: PendingPick | null;
   onClearPick?: () => void;
   focusZoneId?: number | null;
+  creatableTags?: string[];
+  allTagColors?: Record<string, string>;
 }
 
-export default function AgvAnalysisModal({ open, onClose, onRequestPick, onRequestRectPick, pendingPick, onClearPick, focusZoneId }: Props) {
+export default function AgvAnalysisModal({ open, onClose, onRequestPick, onRequestRectPick, pendingPick, onClearPick, focusZoneId, creatableTags, allTagColors }: Props) {
   const [tab, setTab] = useState<ModalTab>("timeline");
   const [timelineRobot, setTimelineRobot] = useState("172.22.159.16");
 
@@ -90,12 +94,19 @@ export default function AgvAnalysisModal({ open, onClose, onRequestPick, onReque
                     pendingPick={pendingPick}
                     onClearPick={onClearPick}
                     focusZoneId={focusZoneId}
+                    creatableTags={creatableTags}
+                    allTagColors={allTagColors}
                   />
                 </div>
               )}
               {tab === "rules" && (
                 <div className="flex-1 min-h-0 overflow-auto">
                   <AgvRulePanel />
+                </div>
+              )}
+              {tab === "stats" && (
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                  <AgvStatsTab />
                 </div>
               )}
             </div>

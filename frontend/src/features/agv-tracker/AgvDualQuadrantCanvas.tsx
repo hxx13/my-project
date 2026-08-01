@@ -4,6 +4,9 @@ import { ACTIVITY_COLORS } from "@/api/domains/agv-analysis.api";
 
 interface ZoneOverlay {
   id: number; polygonJson: string; color: string; name: string;
+  robotIp?: string;
+  source?: string;
+  stationPattern?: string;
 }
 
 export interface AgvCanvasData {
@@ -18,6 +21,12 @@ export interface AgvCanvasData {
   forkHeight?: number | null;
   jackState?: number | null;
   jackIsFull?: boolean | null;
+  /** 独立坐标系偏移 (米) */
+  coordOffsetX?: number;
+  coordOffsetY?: number;
+  coordRotationDeg?: number;
+  /** 坐标系缩放 (1.0=默认) */
+  coordScale?: number;
 }
 
 interface RouteOverlay {
@@ -36,12 +45,31 @@ interface Props {
   followTarget?: "A" | "B" | null;
   /** Vehicle icon style */
   vehicleIcon?: 'arrow'|'forklift';
+  hiddenAgvs?: Set<string>;
   /** 地图选点模式：cursor 变十字，点击回传世界坐标 */
   pickMode?: boolean;
+  /** 两点矩形模式（拖拽绘制矩形区域） */
+  pickTwoPoint?: boolean;
   /** 两点矩形模式下的第一个角点锚点（canvas 渲染锚点标记） */
   pickAnchor?: { x: number; y: number } | null;
   onPointPick?: (x: number, y: number) => void;
-  onZoneClick?: (zoneId: number) => void;
+  /** 拖拽绘制矩形完成：直接回传两个对角点的世界坐标 */
+  onRectDrawn?: (x1: number, y1: number, x2: number, y2: number) => void;
+  onZoneClick?: (zoneId: number, name: string, stationPattern?: string) => void;
+  /** 坐标系编辑模式：打开后显示参考框+可拖拽 */
+  coordEditMode?: boolean;
+  /** 标签编辑模式：打开后可拖拽调整 zone */
+  zoneEditMode?: boolean;
+  /** 编辑模式：当前选中的 zone ID（显示角手柄，可拖拽调整大小/移动） */
+  selectedZoneId?: number | null;
+  /** 编辑模式：点击 zone 选中 */
+  onZoneSelect?: (id: number | null) => void;
+  /** 编辑模式：拖拽角手柄或移动 zone 后提交新坐标 */
+  onZoneReshape?: (id: number, polygonJson: string) => void;
+  /** 编辑模式：拖拽参考系包围盒后提交新偏移 */
+  onCoordFrameMove?: (ip: string, offsetX: number, offsetY: number) => void;
+  /** 编辑模式：拖拽角手柄缩放后提交新 scale + 偏移 */
+  onCoordFrameScale?: (ip: string, scale: number, offsetX: number, offsetY: number) => void;
 }
 
 // ── helpers (same as AgvQuadrantCanvas) ──
@@ -84,13 +112,41 @@ function drawTrail(
   toPy: (x: number, y: number) => number,
 ) {
   if (trail.length < 2) return;
-  ctx.lineWidth = 1.5; ctx.lineCap = "round"; ctx.lineJoin = "round";
-  for (let i = 1; i < trail.length; i++) {
-    const a = 0.15 + 0.7 * (i / trail.length);
+  // 强制按时间戳排序
+  const sorted = [...trail].sort((a, b) => a.ts - b.ts);
+
+  // 去重同坐标静止帧：位置变化 < 0.05m 时放宽到 120s 间隔
+  const deduped: TrailPoint[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const p = sorted[i];
+    if (deduped.length === 0) { deduped.push(p); continue; }
+    const last = deduped[deduped.length - 1];
+    const dx = Math.abs(p.x - last.x), dy = Math.abs(p.y - last.y);
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const maxGap = dist < 0.01 ? 120_000 : 30_000; // 同位置放宽到 120s
+    if (dist < 0.05 && (p.ts - last.ts) < maxGap) continue;
+    deduped.push(p);
+  }
+
+
+  // White outline
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = "rgba(255,255,255,0.45)";
+  ctx.beginPath();
+  ctx.moveTo(toPx(deduped[0].x, deduped[0].y), toPy(deduped[0].x, deduped[0].y));
+  for (let i = 1; i < deduped.length; i++) {
+    ctx.lineTo(toPx(deduped[i].x, deduped[i].y), toPy(deduped[i].x, deduped[i].y));
+  }
+  ctx.stroke();
+
+  // Colored core
+  ctx.lineWidth = 3;
+  for (let i = 1; i < deduped.length; i++) {
+    const a = 0.15 + 0.7 * (i / deduped.length);
     ctx.strokeStyle = color + Math.floor(a * 255).toString(16).padStart(2, "0");
     ctx.beginPath();
-    ctx.moveTo(toPx(trail[i - 1].x, trail[i - 1].y), toPy(trail[i - 1].x, trail[i - 1].y));
-    ctx.lineTo(toPx(trail[i].x, trail[i].y), toPy(trail[i].x, trail[i].y));
+    ctx.moveTo(toPx(deduped[i - 1].x, deduped[i - 1].y), toPy(deduped[i - 1].x, deduped[i - 1].y));
+    ctx.lineTo(toPx(deduped[i].x, deduped[i].y), toPy(deduped[i].x, deduped[i].y));
     ctx.stroke();
   }
 }
@@ -175,8 +231,29 @@ function drawForkliftDualInner(ctx: CanvasRenderingContext2D, clr: string) {
   ctx.shadowColor = "transparent";
 }
 
+// ── 屏幕坐标逆变换 → 世界坐标 ──
+function screenToWorldDual(sx: number, sy: number, t: { scale: number; xMid: number; yMid: number; panX: number; panY: number; rad: number; w: number; h: number; followMode: boolean }): { wx: number; wy: number } {
+  if (t.followMode) return { wx: 0, wy: 0 };
+  const rx = (sx - t.w / 2 - t.panX) / t.scale + t.xMid;
+  const ry = -((sy - t.h / 2 - t.panY) / t.scale) + t.yMid;
+  const cosR = Math.cos(-t.rad), sinR = Math.sin(-t.rad);
+  return { wx: rx * cosR - ry * sinR, wy: rx * sinR + ry * cosR };
+}
+
+// ── 点是否在屏幕空间多边形内（射线法） ──
+function pointInPolygonScrDual(px: number, py: number, poly: {x:number;y:number}[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 // ── Component ──
-export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, followTarget, vehicleIcon, pickMode, pickAnchor, onPointPick, onZoneClick }: Props) {
+export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, followTarget, vehicleIcon, hiddenAgvs, pickMode, pickTwoPoint, pickAnchor, onPointPick, onRectDrawn, onZoneClick, selectedZoneId, onZoneSelect, onZoneReshape, onCoordFrameMove, onCoordFrameScale, coordEditMode, zoneEditMode }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
@@ -188,17 +265,46 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
   const dragRef = useRef({ on: false, lx: 0, ly: 0 });
   const prevForkARef = useRef(0);
   const prevForkBRef = useRef(0);
-  const zoneHitRef = useRef<{ id: number; name: string; sx: number; sy: number; w: number; h: number }[]>([]);
+  const zoneHitRef = useRef<{ id: number; name: string; stationPattern?: string; sx: number; sy: number; w: number; h: number; polyScr: {x:number;y:number}[] }[]>([]);
   const dragStartRef = useRef({ x: 0, y: 0 });
-  // 保持 event handler 闭包中的 pickMode/onPointPick 同步
+  // 保持 event handler 闭包同步
   const pickModeRef = useRef(pickMode);
   pickModeRef.current = pickMode;
+  const pickTwoPointRef = useRef(pickTwoPoint);
+  pickTwoPointRef.current = pickTwoPoint;
   const onPointPickRef = useRef(onPointPick);
   onPointPickRef.current = onPointPick;
+  const onRectDrawnRef = useRef(onRectDrawn);
+  onRectDrawnRef.current = onRectDrawn;
+  const onZoneSelectRef = useRef(onZoneSelect);
+  onZoneSelectRef.current = onZoneSelect;
+  const onZoneReshapeRef = useRef(onZoneReshape);
+  onZoneReshapeRef.current = onZoneReshape;
+  const coordEditModeRef = useRef(coordEditMode);
+  coordEditModeRef.current = coordEditMode;
+  const zoneEditModeRef = useRef(zoneEditMode);
+  zoneEditModeRef.current = zoneEditMode;
+  const onCoordFrameMoveRef = useRef(onCoordFrameMove);
+  onCoordFrameMoveRef.current = onCoordFrameMove;
+  const onCoordFrameScaleRef = useRef(onCoordFrameScale);
+  onCoordFrameScaleRef.current = onCoordFrameScale;
   // 跟踪双 AGV 是否在移动中（用于自动回正决策：静止时不回正）
   const isMovingRef = useRef(false);
   // 存储当前帧的坐标变换参数，供 click handler 做逆变换
-  const transformRef = useRef<{ scale: number; xMid: number; yMid: number; panX: number; panY: number; totalRad: number; w: number; h: number } | null>(null);
+  const transformRef = useRef<{ scale: number; xMid: number; yMid: number; panX: number; panY: number; rad: number; w: number; h: number; followMode: boolean } | null>(null);
+  // ── 拖拽绘制矩形 ──
+  const drawingRef = useRef<{ active: boolean; startSx: number; startSy: number; curSx: number; curSy: number } | null>(null);
+  // ── 编辑模式：角手柄拖拽 ──
+  const handleDragRef = useRef<{ zoneId: number; vertIdx: number; origPoly: number[][] } | null>(null);
+  // ── 编辑模式：zone 整体移动 ──
+  const moveDragRef = useRef<{ zoneId: number; origPoly: number[][]; startSx: number; startSy: number; moved: boolean } | null>(null);
+  // ── 参考系拖拽 ──
+  const refFrameHitRef = useRef<{ ip: string; left: number; top: number; right: number; bottom: number }[]>([]);
+  const refFrameDragRef = useRef<{ ip: string; startSx: number; startSy: number; origOffsetX: number; origOffsetY: number; combinedRad: number } | null>(null);
+  const refFrameScaleRef = useRef<{ ip: string; startSx: number; startSy: number; origScale: number; anchorSx: number; anchorSy: number; anchorLocalX: number; anchorLocalY: number; oldOffsetX: number; oldOffsetY: number; origDist: number } | null>(null);
+  const refFrameHandleHitRef = useRef<{ ip: string; sx: number; sy: number; w: number; h: number }[]>([]);
+  // 存储每车包围盒的局部坐标边界，供缩放计算用
+  const refFrameLocalBoundsRef = useRef<Record<string, { bxMin: number; byMin: number; bxMax: number; byMax: number }>>({});
 
   const rotDeg = coordRotationDeg ?? 0;
   if (rotDeg !== prevDegRef.current) { boundsRef.current = null; prevDegRef.current = rotDeg; prevLenRef.current = { a: 0, b: 0, z: 0 }; }
@@ -281,11 +387,35 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
     const xRange = (b.xMax - b.xMin) || 1, yRange = (b.yMax - b.yMin) || 1;
     const scale = Math.min((w * (1 - 2 * pad)) / xRange, (h * (1 - 2 * pad)) / yRange) * zoom;
     const xMid = (b.xMin + b.xMax) / 2, yMid = (b.yMin + b.yMax) / 2;
+
+    // ── 每台 AGV 独立坐标系的变换工厂 ──
+    const makeAgvTr = (agv: AgvCanvasData) => {
+      const ox = agv.coordOffsetX ?? 0;
+      const oy = agv.coordOffsetY ?? 0;
+      const agvRad = ((agv.coordRotationDeg ?? 0) * Math.PI) / 180;
+      const combinedRad = totalRad + agvRad;
+      const agvScale = agv.coordScale ?? 1.0;
+      return {
+        toPx: (vx: number, vy: number) => {
+          const r = rotPt((vx + ox) * agvScale, (vy + oy) * agvScale, combinedRad);
+          return (r.x - xMid) * scale + w / 2 + panX;
+        },
+        toPy: (vx: number, vy: number) => {
+          const r = rotPt((vx + ox) * agvScale, (vy + oy) * agvScale, combinedRad);
+          return -(r.y - yMid) * scale + h / 2 + panY;
+        },
+      };
+    };
+    const trA = makeAgvTr(agvA);
+    const trB = makeAgvTr(agvB);
+    const getTr = (ip?: string) => ip === agvA.ip ? trA : ip === agvB.ip ? trB : null;
+
+    // World 变换（无偏移，用于网格/全局元素）
     const toPx = (vx: number, vy: number) => { const r = rotPt(vx, vy, totalRad); return (r.x - xMid) * scale + w / 2 + panX; };
     const toPy = (vx: number, vy: number) => { const r = rotPt(vx, vy, totalRad); return -(r.y - yMid) * scale + h / 2 + panY; };
 
     // 存储变换参数供 click handler 逆变换
-    transformRef.current = { scale, xMid, yMid, panX, panY, totalRad, w, h };
+    transformRef.current = { scale, xMid, yMid, panX, panY, rad: totalRad, w, h, followMode: !!(followMode && followTarget) };
 
     // ── Grid (fixed to raw bounds, not rotated) ──
     const rawXRange = (rb.xMax - rb.xMin) || 1, rawYRange = (rb.yMax - rb.yMin) || 1;
@@ -303,30 +433,54 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
       ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke();
     }
 
-    // ── Zone overlays: box contains label + coordinates; fixed pixel size ──
-    const hits: { id: number; name: string; sx: number; sy: number; w: number; h: number }[] = [];
+    // ── Zone overlays: polygon fill+stroke + compact label box at centroid ──
+    const hits: { id: number; name: string; stationPattern?: string; sx: number; sy: number; w: number; h: number; polyScr: {x:number;y:number}[] }[] = [];
     if (zoneOverlays && zoneOverlays.length > 0) {
       for (const zone of zoneOverlays) {
+        if (zone.robotIp && hiddenAgvs?.has(zone.robotIp)) continue;
         let cx = 0, cy = 0;
+        let poly: number[][] = [];
         try {
-          const poly: number[][] = JSON.parse(zone.polygonJson);
+          poly = JSON.parse(zone.polygonJson);
           if (poly.length < 3) continue;
           for (const p of poly) { cx += p[0]; cy += p[1]; }
           cx /= poly.length; cy /= poly.length;
         } catch { continue; }
 
-        const csx = toPx(cx, cy), csy = toPy(cx, cy);
+        const isSelected = selectedZoneId === zone.id;
+        const zTr2 = getTr(zone.robotIp);
+        const polyScr = poly.map(p => ({ x: zTr2 ? zTr2.toPx(p[0], p[1]) : toPx(p[0], p[1]), y: zTr2 ? zTr2.toPy(p[0], p[1]) : toPy(p[0], p[1]) }));
+
+        // ── 手动绘制区域 (MANUAL_RECT)：绘制多边形填充 + 描边 ──
+        if (zone.source === "MANUAL_RECT") {
+          ctx.beginPath();
+          ctx.moveTo(polyScr[0].x, polyScr[0].y);
+          for (let i = 1; i < polyScr.length; i++) {
+            ctx.lineTo(polyScr[i].x, polyScr[i].y);
+          }
+          ctx.closePath();
+          ctx.fillStyle = zone.color + (isSelected ? "1c" : "0d");
+          ctx.fill();
+          ctx.strokeStyle = zone.color + (isSelected ? "cc" : "55");
+          ctx.lineWidth = isSelected ? Math.max(2, 2.5 / zoom) : Math.max(1, 1.2 / zoom);
+          if (isSelected) { ctx.setLineDash([5, 3]); }
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // ── 质心标签框（圆角矩形包围盒） ──
+        const zTr = getTr(zone.robotIp);
+        const csx = zTr ? zTr.toPx(cx, cy) : toPx(cx, cy);
+        const csy = zTr ? zTr.toPy(cx, cy) : toPy(cx, cy);
         const nameLine = zone.name;
         const coordLine = "(" + cx.toFixed(1) + "," + cy.toFixed(1) + ")";
 
-        // Measure to size box
         ctx.font = "bold 8px sans-serif";
         const tw1 = ctx.measureText(nameLine).width;
         ctx.font = "7px sans-serif";
         const tw2 = ctx.measureText(coordLine).width;
         const boxW = Math.max(Math.max(tw1, tw2) + 6, 28), boxH = 20;
 
-        // Box at centroid
         ctx.fillStyle = zone.color + "20";
         ctx.strokeStyle = zone.color + "aa";
         ctx.lineWidth = 1;
@@ -334,7 +488,6 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
         ctx.roundRect(csx - boxW / 2, csy - boxH / 2, boxW, boxH, 3);
         ctx.fill(); ctx.stroke();
 
-        // Label: name (bold) + coords (small)
         ctx.fillStyle = zone.color + "ee";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.font = "bold 8px sans-serif";
@@ -343,11 +496,55 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
         ctx.fillStyle = zone.color + "99";
         ctx.fillText(coordLine, csx, csy + 6);
         ctx.textBaseline = "alphabetic";
-
-        // Record hit area for click-to-edit
-        hits.push({ id: zone.id, name: zone.name, sx: csx - boxW / 2, sy: csy - boxH / 2, w: boxW, h: boxH });
+        hits.push({ id: zone.id, name: zone.name, stationPattern: zone.stationPattern, sx: csx - boxW / 2, sy: csy - boxH / 2, w: boxW, h: boxH, polyScr });
       }
       zoneHitRef.current = hits;
+    }
+
+    // ── 选中 Zone 角手柄渲染（仅 editMode 开启时） ──
+    if (selectedZoneId != null && !pickMode && zoneEditMode) {
+      const selHit = hits.find(h => h.id === selectedZoneId);
+      if (selHit && selHit.polyScr.length >= 3) {
+        for (let i = 0; i < selHit.polyScr.length; i++) {
+          const v = selHit.polyScr[i];
+          const hs = 7;
+          ctx.fillStyle = "#fff";
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(v.x - hs, v.y - hs, hs * 2, hs * 2, 2);
+          ctx.fill(); ctx.stroke();
+          ctx.fillStyle = "#f59e0b";
+          ctx.font = "bold 8px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(i + 1), v.x, v.y);
+        }
+      }
+    }
+
+    // ── 拖拽绘制矩形预览 ──
+    if (drawingRef.current?.active) {
+      const { startSx, startSy, curSx, curSy } = drawingRef.current;
+      const rx = Math.min(startSx, curSx), ry = Math.min(startSy, curSy);
+      const rw = Math.abs(curSx - startSx), rh = Math.abs(curSy - startSy);
+      ctx.fillStyle = "rgba(245,158,11,0.13)";
+      ctx.fillRect(rx, ry, rw, rh);
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.setLineDash([]);
+      const t = transformRef.current;
+      if (t && !t.followMode) {
+        const wWStart = screenToWorldDual(startSx, startSy, t);
+        const wWEnd = screenToWorldDual(curSx, curSy, t);
+        const ww = Math.abs(wWEnd.wx - wWStart.wx), wh = Math.abs(wWEnd.wy - wWStart.wy);
+        ctx.fillStyle = "#f59e0b";
+        ctx.font = "bold 9px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`${ww.toFixed(2)} × ${wh.toFixed(2)} m`, (startSx + curSx) / 2, ry - 8);
+      }
     }
 
     // ── Pick anchor marker (两点矩形第一角点) ──
@@ -407,39 +604,15 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
           ctx.lineTo(ax - ux * 3 - uy * 3, ay - uy * 3 + ux * 3);
           ctx.closePath(); ctx.fill();
         }
-        // 只给有名称的路线绘制标签（路线拓扑中仅高频路段有名称，避免标签堆叠）
-        if (path.length >= 2 && route.name) {
-          const mid = Math.floor(path.length / 2);
-          const mx = toPx(path[mid][0], path[mid][1]), my = toPy(path[mid][0], path[mid][1]);
-          const a = path[Math.max(0, mid - 1)], b = path[Math.min(path.length - 1, mid + 1)];
-          const dx = toPx(b[0], b[1]) - toPx(a[0], a[1]);
-          const dy = toPy(b[0], b[1]) - toPy(a[0], a[1]);
-          const len = Math.sqrt(dx*dx + dy*dy) || 1;
-          const ox = -dy / len, oy = dx / len;
-          const lx = mx + ox * 18, ly = my + oy * 18;
-          const ROUTE_TYPE_LABELS: Record<string, string> = {
-            TRANSPORT: "运输", REVERSE: "单行", REST: "充电", NAVIGATING: "支线", STATION_WORK: "作业",
-          };
-          let typeLine = ROUTE_TYPE_LABELS[route.routeType] || route.routeType;
-          let coordLine = route.name;
-          for (const p of Object.values(ROUTE_TYPE_LABELS)) {
-            if (route.name.startsWith(p + "-")) { typeLine = p; coordLine = route.name.slice(p.length + 1); break; }
-          }
-          ctx.font = "bold 8px sans-serif"; const tw1 = ctx.measureText(typeLine).width;
-          ctx.font = "7px sans-serif"; const tw2 = ctx.measureText(coordLine).width;
-          const bw = Math.max(tw1, tw2) + 8, bh = 24;
-          ctx.fillStyle = route.color + "dd";
-          ctx.beginPath(); ctx.roundRect(lx - bw/2, ly - bh/2, bw, bh, 3); ctx.fill();
-          ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.font = "bold 8px sans-serif"; ctx.fillText(typeLine, lx, ly - 4);
-          ctx.font = "7px sans-serif"; ctx.fillText(coordLine, lx, ly + 6);
-          ctx.textBaseline = "alphabetic";
-        }
       }
     }
 
     // ── Render each AGV: heatmap → trail → position arrow ──
-    for (const agv of [agvA, agvB]) {
+    refFrameHitRef.current = [];
+    refFrameHandleHitRef.current = [];
+    const visibleAgvs = [agvA, agvB].filter(a => !hiddenAgvs?.has(a.ip));
+    for (const agv of visibleAgvs) {
+      const tr = agv.ip === agvA.ip ? trA : trB;
       // Route mode: only show last 30s of trail
       const displayTrail = routeMode
         ? agv.trail.filter(p => Date.now() - p.ts < 30_000)
@@ -450,19 +623,25 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
         for (const s of agv.dwellSpots) {
           const t = Math.min(s.durationSec, maxD) / maxD;
           ctx.fillStyle = agv.color + Math.floor((0.1 + 0.5 * t) * 255).toString(16).padStart(2, "0");
-          ctx.beginPath(); ctx.arc(toPx(s.x, s.y), toPy(s.x, s.y), 3 + 8 * t, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(tr.toPx(s.x, s.y), tr.toPy(s.x, s.y), 3 + 8 * t, 0, Math.PI * 2); ctx.fill();
         }
       }
 
       // Trail
-      drawTrail(ctx, displayTrail, agv.color, toPx, toPy);
+      drawTrail(ctx, displayTrail, agv.color, tr.toPx, tr.toPy);
 
-      // Current position arrow
-      const pos = interpolatePosition(displayTrail, agv.currentX, agv.currentY, agv.currentAngle);
-      if (agv.currentX != null && agv.currentY != null && pos.x != null && pos.y != null) {
-        const px = toPx(pos.x, pos.y), py = toPy(pos.x, pos.y);
+      // Current position arrow — 实时坐标优先，无数据回退到轨迹最后点
+      let pos = interpolatePosition(displayTrail, agv.currentX, agv.currentY, agv.currentAngle);
+      if ((pos.x == null || pos.y == null) && displayTrail.length > 0) {
+        const last = displayTrail[displayTrail.length - 1];
+        pos = { x: last.x, y: last.y, angle: last.angle ?? 0 };
+      }
+      if (pos.x != null && pos.y != null) {
+        const px = tr.toPx(pos.x, pos.y), py = tr.toPy(pos.x, pos.y);
+        const agvRotDeg = agv.coordRotationDeg ?? 0;
+        const agvRotRad = (agvRotDeg * Math.PI) / 180;
         if (pos.angle != null) {
-          ctx.save(); ctx.translate(px, py); ctx.rotate(-((pos.angle ?? 0) + rad));
+          ctx.save(); ctx.translate(px, py); ctx.rotate(-((pos.angle ?? 0) + rad + agvRotRad));
           if (vehicleIcon === 'forklift') {
             drawForkliftDual(ctx, agv.online ? agv.color : "#9ca3af");
           } else {
@@ -505,6 +684,81 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
           ctx.beginPath(); ctx.moveTo(cx - 6, cy - 4); ctx.lineTo(cx + 6, cy - 4); ctx.stroke();
         }
       }
+
+      // ── 参考系包围盒（编辑模式下始终显示，含轨迹+zones+当前位置兜底） ──
+      if (coordEditMode) {
+        let bxMin = Infinity, bxMax = -Infinity, byMin = Infinity, byMax = -Infinity;
+        for (const p of displayTrail) {
+          if (p.x < bxMin) bxMin = p.x; if (p.x > bxMax) bxMax = p.x;
+          if (p.y < byMin) byMin = p.y; if (p.y > byMax) byMax = p.y;
+        }
+        // 纳入属于该 AGV 的 zone 多边形
+        if (zoneOverlays) for (const z of zoneOverlays) {
+          if (z.robotIp !== agv.ip) continue;
+          try { const poly: [number,number][] = JSON.parse(z.polygonJson);
+            for (const p of poly) {
+              if (p[0] < bxMin) bxMin = p[0]; if (p[0] > bxMax) bxMax = p[0];
+              if (p[1] < byMin) byMin = p[1]; if (p[1] > byMax) byMax = p[1];
+            }
+          } catch {}
+        }
+        // 兜底：以 AGV 当前位置为中心
+        if (!isFinite(bxMin)) {
+          const cx = agv.currentX ?? 0, cy = agv.currentY ?? 0;
+          bxMin = cx - 2; bxMax = cx + 2; byMin = cy - 2; byMax = cy + 2;
+        }
+        const padBox = Math.max((bxMax - bxMin) * 0.08, 0.5);
+        bxMin -= padBox; bxMax += padBox; byMin -= padBox; byMax += padBox;
+        const corners = [
+          tr.toPx(bxMin, byMin), tr.toPy(bxMin, byMin),
+          tr.toPx(bxMax, byMin), tr.toPy(bxMax, byMin),
+          tr.toPx(bxMax, byMax), tr.toPy(bxMax, byMax),
+          tr.toPx(bxMin, byMax), tr.toPy(bxMin, byMax),
+        ];
+        // 虚线包围盒
+        ctx.strokeStyle = agv.color + "88";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(corners[0], corners[1]);
+        ctx.lineTo(corners[2], corners[3]);
+        ctx.lineTo(corners[4], corners[5]);
+        ctx.lineTo(corners[6], corners[7]);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // AGV 名称标签（顶部居中）
+        const cxBox = (corners[0] + corners[4]) / 2;
+        const agvName = agv.ip.endsWith(".16") ? "AGV-1" : agv.ip.endsWith(".18") ? "AGV-2" : agv.ip.endsWith(".20") ? "AGV-3" : "AGV-4";
+        ctx.fillStyle = agv.color;
+        ctx.font = "bold 9px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(agvName, cxBox, corners[1] - 8);
+        // ── 缩放手柄（顶部左角橙色方块） ──
+        const hx = corners[6], hy = corners[7];
+        const hs = 8;
+        ctx.fillStyle = "#f59e0b";
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(hx - hs, hy - hs, hs * 2, hs * 2, 3);
+        ctx.fill(); ctx.stroke();
+        // 十字箭头
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(hx - 4, hy); ctx.lineTo(hx + 4, hy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(hx, hy - 4); ctx.lineTo(hx, hy + 4); ctx.stroke();
+        // 记录整个包围盒命中区（移动） + 角手柄命中区（缩放）
+        const boxLeft = Math.min(corners[0], corners[2], corners[4], corners[6]);
+        const boxRight = Math.max(corners[0], corners[2], corners[4], corners[6]);
+        const boxTop = Math.min(corners[1], corners[3], corners[5], corners[7]);
+        const boxBottom = Math.max(corners[1], corners[3], corners[5], corners[7]);
+        refFrameHitRef.current.push({ ip: agv.ip, left: boxLeft, top: boxTop, right: boxRight, bottom: boxBottom });
+        // 角手柄命中区（比视觉稍大）
+        refFrameHandleHitRef.current.push({ ip: agv.ip, sx: hx - hs - 2, sy: hy - hs - 2, w: (hs + 2) * 2, h: (hs + 2) * 2 });
+        // 存储局部坐标边界供缩放锚点计算
+        refFrameLocalBoundsRef.current[agv.ip] = { bxMin, byMin, bxMax, byMax };
+      }
     }
 
     // Offline overlay (subtle when either AGV is offline)
@@ -530,7 +784,7 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
       }
     }
     isMovingRef.current = moving;
-  }, [agvA, agvB, rotDeg, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, followTarget, vehicleIcon]);
+  }, [agvA, agvB, rotDeg, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, followTarget, vehicleIcon, hiddenAgvs, coordEditMode, zoneEditMode, selectedZoneId, pickTwoPoint, pickMode, pickAnchor]);
 
   const drawRef = useRef(draw);
   drawRef.current = draw;
@@ -564,57 +818,331 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
 
   useEffect(() => {
     const c = containerRef.current; if (!c) return;
-    const onDown = (e: PointerEvent) => { cancelReset(); dragRef.current = { on: true, lx: e.clientX, ly: e.clientY }; dragStartRef.current = { x: e.clientX, y: e.clientY }; c.setPointerCapture(e.pointerId); };
+
+    const HANDLE_HIT_R = 10;
+    const DRAG_THRESHOLD = 4;
+
+    const findZoneAt = (sx: number, sy: number): number | null => {
+      const hits = zoneHitRef.current;
+      for (const h of hits) {
+        if (h.polyScr && h.polyScr.length >= 3 && pointInPolygonScrDual(sx, sy, h.polyScr)) return h.id;
+      }
+      for (const h of hits) {
+        if (sx >= h.sx && sx <= h.sx + h.w && sy >= h.sy && sy <= h.sy + h.h) return h.id;
+      }
+      return null;
+    };
+
+    const findHandleAt = (sx: number, sy: number): { zoneId: number; vertIdx: number } | null => {
+      if (selectedZoneId == null) return null;
+      const hit = zoneHitRef.current.find(h => h.id === selectedZoneId);
+      if (!hit || !hit.polyScr) return null;
+      for (let i = 0; i < hit.polyScr.length; i++) {
+        const v = hit.polyScr[i];
+        if (Math.abs(sx - v.x) < HANDLE_HIT_R && Math.abs(sy - v.y) < HANDLE_HIT_R) {
+          return { zoneId: selectedZoneId, vertIdx: i };
+        }
+      }
+      return null;
+    };
+
+    const onDown = (e: PointerEvent) => {
+      cancelReset();
+      const rect = c.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const pm = pickModeRef.current;
+      const ptp = pickTwoPointRef.current;
+
+      // ① 拖拽绘制矩形
+      if (pm && ptp) {
+        drawingRef.current = { active: true, startSx: sx, startSy: sy, curSx: sx, curSy: sy };
+        dragStartRef.current = { x: e.clientX, y: e.clientY };
+        dragRef.current = { on: true, lx: e.clientX, ly: e.clientY };
+        c.setPointerCapture(e.pointerId);
+        return;
+      }
+
+      // ② 角手柄拖拽（需 editMode 开启）
+      const handleHit = findHandleAt(sx, sy);
+      if (handleHit && !pm && zoneEditModeRef.current) {
+        const zo = zoneOverlays?.find(z => z.id === handleHit.zoneId);
+        if (zo) {
+          try {
+            const origPoly: number[][] = JSON.parse(zo.polygonJson);
+            handleDragRef.current = { zoneId: handleHit.zoneId, vertIdx: handleHit.vertIdx, origPoly };
+            dragStartRef.current = { x: e.clientX, y: e.clientY };
+            c.setPointerCapture(e.pointerId);
+            return;
+          } catch {}
+        }
+      }
+
+      // ②.5 参考系：角手柄→缩放，包围盒→移动
+      const refHandleHit = refFrameHandleHitRef.current.find(h => sx >= h.sx && sx <= h.sx + h.w && sy >= h.sy && sy <= h.sy + h.h);
+      if (refHandleHit && !pm && coordEditModeRef.current) {
+        const agv = refHandleHit.ip === agvA.ip ? agvA : agvB;
+        const box = refFrameHitRef.current.find(f => f.ip === refHandleHit.ip);
+        const localBounds = refFrameLocalBoundsRef.current[refHandleHit.ip];
+        if (box && localBounds) {
+          const agvScale = agv.coordScale ?? 1.0;
+          // 用局部坐标 + 当前 scale 实时计算 origDist，杜绝新旧帧不匹配
+          const localDx = localBounds.bxMax - localBounds.bxMin;
+          const localDy = localBounds.byMax - localBounds.byMin;
+          const localDiag = Math.sqrt(localDx * localDx + localDy * localDy);
+          const viewScale = transformRef.current?.scale ?? 1;
+          const origDist = Math.max(localDiag * agvScale * viewScale, 1);
+          refFrameScaleRef.current = {
+            ip: refHandleHit.ip,
+            startSx: e.clientX, startSy: e.clientY,
+            origScale: agvScale,
+            anchorSx: box.right, anchorSy: box.bottom,
+            anchorLocalX: localBounds.bxMax, anchorLocalY: localBounds.byMax,
+            oldOffsetX: agv.coordOffsetX ?? 0,
+            oldOffsetY: agv.coordOffsetY ?? 0,
+            origDist,
+          };
+        }
+        dragStartRef.current = { x: e.clientX, y: e.clientY };
+        c.setPointerCapture(e.pointerId);
+        return;
+      }
+      const refFrame = refFrameHitRef.current.find(f => sx >= f.left && sx <= f.right && sy >= f.top && sy <= f.bottom);
+      if (refFrame && !pm && coordEditModeRef.current) {
+        const agv = refFrame.ip === agvA.ip ? agvA : agvB;
+        const agvRad = ((agv.coordRotationDeg ?? 0) * Math.PI) / 180;
+        refFrameDragRef.current = {
+          ip: refFrame.ip,
+          startSx: e.clientX, startSy: e.clientY,
+          origOffsetX: agv.coordOffsetX ?? 0,
+          origOffsetY: agv.coordOffsetY ?? 0,
+          combinedRad: (transformRef.current?.rad ?? 0) + agvRad,
+        };
+        dragStartRef.current = { x: e.clientX, y: e.clientY };
+        c.setPointerCapture(e.pointerId);
+        return;
+      }
+
+      // ③ zone 体内点击 → 拖拽移动（需 editMode 开启）
+      const zoneHit = findZoneAt(sx, sy);
+      if (zoneHit != null && !pm && zoneEditModeRef.current) {
+        const zo = zoneOverlays?.find(z => z.id === zoneHit);
+        if (zo) {
+          try {
+            const origPoly: number[][] = JSON.parse(zo.polygonJson);
+            moveDragRef.current = { zoneId: zoneHit, origPoly, startSx: sx, startSy: sy, moved: false };
+            dragStartRef.current = { x: e.clientX, y: e.clientY };
+            c.setPointerCapture(e.pointerId);
+            return;
+          } catch {}
+        }
+      }
+
+      // ④ 普通平移
+      dragRef.current = { on: true, lx: e.clientX, ly: e.clientY };
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
+      c.setPointerCapture(e.pointerId);
+    };
+
     const onMove = (e: PointerEvent) => {
+      if (drawingRef.current?.active) {
+        cancelReset();
+        const rect = c.getBoundingClientRect();
+        drawingRef.current.curSx = e.clientX - rect.left;
+        drawingRef.current.curSy = e.clientY - rect.top;
+        return;
+      }
+      if (handleDragRef.current) {
+        cancelReset();
+        const rect = c.getBoundingClientRect();
+        const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+        const t = transformRef.current;
+        if (!t) return;
+        const w = screenToWorldDual(sx, sy, t);
+        const { zoneId, vertIdx } = handleDragRef.current;
+        const zo = zoneOverlays?.find(z => z.id === zoneId);
+        if (zo) {
+          try {
+            const poly: number[][] = JSON.parse(zo.polygonJson);
+            if (vertIdx < poly.length) {
+              poly[vertIdx] = [w.wx, w.wy];
+              handleDragRef.current = { zoneId, vertIdx, origPoly: poly };
+            }
+          } catch {}
+        }
+        return;
+      }
+      if (refFrameScaleRef.current) {
+        cancelReset();
+        const rect = c.getBoundingClientRect();
+        const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+        const { anchorSx, anchorSy, origScale, origDist, ip, anchorLocalX, anchorLocalY, oldOffsetX, oldOffsetY } = refFrameScaleRef.current;
+        const newDist = Math.sqrt((sx - anchorSx) ** 2 + (sy - anchorSy) ** 2);
+        const newScale = Math.max(0.1, Math.min(10, origScale * (newDist / origDist)));
+        // 对角固定：保持锚点世界坐标不变
+        const anchorWorldX = (anchorLocalX + oldOffsetX) * origScale;
+        const anchorWorldY = (anchorLocalY + oldOffsetY) * origScale;
+        const newOffsetX = anchorWorldX / newScale - anchorLocalX;
+        const newOffsetY = anchorWorldY / newScale - anchorLocalY;
+        const cfs = onCoordFrameScaleRef.current;
+        if (cfs) cfs(ip, newScale, newOffsetX, newOffsetY);
+        return;
+      }
+      if (refFrameDragRef.current) {
+        cancelReset();
+        const dx = e.clientX - refFrameDragRef.current.startSx;
+        const dy = e.clientY - refFrameDragRef.current.startSy;
+        if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+          const scale = transformRef.current?.scale ?? 1;
+          // 屏幕增量 → 世界增量 → 逆向旋转抵消坐标系旋转
+          const worldDx = dx / scale, worldDy = -dy / scale;
+          const invRad = -refFrameDragRef.current.combinedRad;
+          const rotDx = worldDx * Math.cos(invRad) - worldDy * Math.sin(invRad);
+          const rotDy = worldDx * Math.sin(invRad) + worldDy * Math.cos(invRad);
+          const newOx = refFrameDragRef.current.origOffsetX + rotDx;
+          const newOy = refFrameDragRef.current.origOffsetY + rotDy;
+          const cfm = onCoordFrameMoveRef.current;
+          if (cfm) cfm(refFrameDragRef.current.ip, newOx, newOy);
+        }
+        return;
+      }
+      if (moveDragRef.current) {
+        cancelReset();
+        const rect = c.getBoundingClientRect();
+        const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+        if (Math.abs(sx - moveDragRef.current.startSx) > DRAG_THRESHOLD ||
+            Math.abs(sy - moveDragRef.current.startSy) > DRAG_THRESHOLD) {
+          moveDragRef.current.moved = true;
+          const t = transformRef.current;
+          if (!t) return;
+          const wCur = screenToWorldDual(sx, sy, t);
+          const wStart = screenToWorldDual(moveDragRef.current.startSx, moveDragRef.current.startSy, t);
+          const wDx = wCur.wx - wStart.wx, wDy = wCur.wy - wStart.wy;
+          moveDragRef.current.startSx = sx;
+          moveDragRef.current.startSy = sy;
+          const movedPoly = moveDragRef.current.origPoly.map(([vx, vy]) => [vx + wDx, vy + wDy]);
+          moveDragRef.current.origPoly = movedPoly;
+        }
+        return;
+      }
       if (!dragRef.current.on) return;
       cancelReset();
       panRef.current = { x: panRef.current.x + e.clientX - dragRef.current.lx, y: panRef.current.y + e.clientY - dragRef.current.ly };
       dragRef.current = { on: true, lx: e.clientX, ly: e.clientY };
     };
+
     const onUp = (e: PointerEvent) => {
       const wasDragging = dragRef.current.on;
       dragRef.current.on = false;
-      // 选点模式：非拖拽的点击 → 逆变换为世界坐标
-      const pm = pickModeRef.current;
-      const pp = onPointPickRef.current;
-      if (pm && pp && wasDragging) {
-        const dx = e.clientX - dragStartRef.current.x;
-        const dy = e.clientY - dragStartRef.current.y;
-        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
-          const rect = c.getBoundingClientRect();
-          const sx = e.clientX - rect.left;
-          const sy = e.clientY - rect.top;
+      const ddx = e.clientX - dragStartRef.current.x;
+      const ddy = e.clientY - dragStartRef.current.y;
+
+      // ① 拖拽绘制完成
+      if (drawingRef.current?.active) {
+        drawingRef.current.active = false;
+        if (Math.abs(ddx) > DRAG_THRESHOLD || Math.abs(ddy) > DRAG_THRESHOLD) {
           const t = transformRef.current;
-          if (t) {
-            // 逆变换屏幕坐标 → 世界坐标
-            const rx = (sx - t.w / 2 - t.panX) / t.scale + t.xMid;
-            const ry = -((sy - t.h / 2 - t.panY) / t.scale) + t.yMid;
-            const cosR = Math.cos(-t.totalRad), sinR = Math.sin(-t.totalRad);
-            const wx = rx * cosR - ry * sinR;
-            const wy = rx * sinR + ry * cosR;
-            pp(wx, wy);
+          const rd = onRectDrawnRef.current;
+          if (t && rd) {
+            const w1 = screenToWorldDual(drawingRef.current.startSx, drawingRef.current.startSy, t);
+            const w2 = screenToWorldDual(drawingRef.current.curSx, drawingRef.current.curSy, t);
+            rd(w1.wx, w1.wy, w2.wx, w2.wy);
+          }
+        } else {
+          const pp = onPointPickRef.current;
+          if (pp) {
+            const rect = c.getBoundingClientRect();
+            const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+            const t = transformRef.current;
+            if (t && !t.followMode) {
+              const w = screenToWorldDual(sx, sy, t);
+              pp(w.wx, w.wy);
+            }
+          }
+        }
+        drawingRef.current = null;
+        scheduleReset();
+        return;
+      }
+
+      // ② 角手柄拖拽完成
+      if (handleDragRef.current) {
+        const { zoneId, origPoly } = handleDragRef.current;
+        handleDragRef.current = null;
+        const or = onZoneReshapeRef.current;
+        if (or) or(zoneId, JSON.stringify(origPoly));
+        scheduleReset();
+        return;
+      }
+
+      // ②.5 参考系缩放完成
+      if (refFrameScaleRef.current) {
+        refFrameScaleRef.current = null;
+        scheduleReset();
+        return;
+      }
+      // 参考系拖拽完成
+      if (refFrameDragRef.current) {
+        refFrameDragRef.current = null;
+        scheduleReset();
+        return;
+      }
+
+      // ③ zone 移动完成
+      if (moveDragRef.current) {
+        const { zoneId, origPoly, moved } = moveDragRef.current;
+        moveDragRef.current = null;
+        if (moved) {
+          const or = onZoneReshapeRef.current;
+          if (or) or(zoneId, JSON.stringify(origPoly));
+        } else {
+          const zs = onZoneSelectRef.current;
+          if (zs) zs(zoneId);
+        }
+        scheduleReset();
+        return;
+      }
+
+      // ④ 普通点击 → 选点 或 zone点击
+      const pm = pickModeRef.current;
+      if (pm && wasDragging && Math.abs(ddx) < DRAG_THRESHOLD && Math.abs(ddy) < DRAG_THRESHOLD) {
+        const pp = onPointPickRef.current;
+        if (pp) {
+          const rect = c.getBoundingClientRect();
+          const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+          const t = transformRef.current;
+          if (t && !t.followMode) {
+            const w = screenToWorldDual(sx, sy, t);
+            pp(w.wx, w.wy);
+            scheduleReset();
             return;
           }
         }
       }
-      // 非选点模式 + 短点击 → 检测是否点击了区域标签
-      if (!pm && onZoneClick && wasDragging) {
-        const dx = e.clientX - dragStartRef.current.x;
-        const dy = e.clientY - dragStartRef.current.y;
-        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
-          const rect = c.getBoundingClientRect();
-          const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-          const hits = zoneHitRef.current;
-          for (const h of hits) {
-            if (sx >= h.sx && sx <= h.sx + h.w && sy >= h.sy && sy <= h.sy + h.h) {
-              onZoneClick(h.id);
-              return;
-            }
+
+      if (!pm && wasDragging && Math.abs(ddx) < DRAG_THRESHOLD && Math.abs(ddy) < DRAG_THRESHOLD) {
+        const rect = c.getBoundingClientRect();
+        const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+        for (const h of zoneHitRef.current) {
+          if (sx >= h.sx && sx <= h.sx + h.w && sy >= h.sy && sy <= h.sy + h.h) {
+            if (onZoneClick) onZoneClick(h.id, h.name, h.stationPattern);
+            const zs = onZoneSelectRef.current;
+            if (zs) zs(h.id);
+            return;
           }
         }
+        const bodyId = findZoneAt(sx, sy);
+        if (bodyId != null) {
+          const zs = onZoneSelectRef.current;
+          if (zs) zs(bodyId);
+          return;
+        }
+        const zs2 = onZoneSelectRef.current;
+        if (zs2) zs2(null);
       }
+
       scheduleReset();
     };
+
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const rect = c.getBoundingClientRect();
@@ -632,15 +1160,12 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
       scheduleReset();
     };
     const onDbl = () => { panRef.current = { x: 0, y: 0 }; zoomRef.current = 1; };
-    // 点击标签编辑已禁用 — 保留空 handler 避免其他 click 行为
-    const onClick = () => {};
     c.addEventListener("pointerdown", onDown);
     c.addEventListener("pointermove", onMove);
     c.addEventListener("pointerup", onUp);
     c.addEventListener("pointerleave", onUp);
     c.addEventListener("wheel", onWheel, { passive: false });
     c.addEventListener("dblclick", onDbl);
-    c.addEventListener("click", onClick);
     return () => {
       c.removeEventListener("pointerdown", onDown);
       c.removeEventListener("pointermove", onMove);
@@ -648,12 +1173,11 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
       c.removeEventListener("pointerleave", onUp);
       c.removeEventListener("wheel", onWheel);
       c.removeEventListener("dblclick", onDbl);
-      c.removeEventListener("click", onClick);
     };
-  }, []);
+  }, [zoneOverlays, selectedZoneId]);
 
   return (
-    <div ref={containerRef} className={`relative w-full h-full min-h-0 ${pickMode ? "cursor-crosshair" : "cursor-grab"}`} style={{ touchAction: "none" }}>
+    <div ref={containerRef} className={`relative w-full h-full min-h-0 ${pickMode ? "cursor-crosshair" : selectedZoneId != null ? "cursor-default" : "cursor-grab"}`} style={{ touchAction: "none" }}>
       <canvas ref={canvasRef} className="absolute inset-0" />
     </div>
   );

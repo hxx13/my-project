@@ -87,6 +87,8 @@ public class JobExecutionRegistry {
     public static final String JOB_SCAN_DELAY_AUTO_APPROVE = "SCAN_DELAY_AUTO_APPROVE";
     /** 物资申领·自动审批（信任名单 + 批量规则） */
     public static final String JOB_MATERIAL_AUTO_APPROVE = "MATERIAL_AUTO_APPROVE";
+    /** 物资申领·预约通知（每分钟扫描到窗口的预约单并发送 CREATED 通知） */
+    public static final String JOB_MATERIAL_SCHEDULED_NOTIFY = "MATERIAL_SCHEDULED_NOTIFY";
     /** 经验值·每日流水对账（扫描昨日 aro_access_log 配对进出记录并写入 twin_exp_record） */
     public static final String JOB_EXP_RECONCILE = "EXP_RECONCILE";
     /** 笼架特殊状态违规检测（纯天数模式定时判定） */
@@ -148,6 +150,8 @@ public class JobExecutionRegistry {
     private com.example.demo.modules.twin.scan.delay.service.ScanDelayAutoApproveService scanDelayAutoApproveService;
     @Autowired(required = false)
     private com.example.demo.modules.material.service.MaterialAutoApproveService materialAutoApproveService;
+    @Autowired(required = false)
+    private com.example.demo.modules.material.service.MaterialService materialService;
     @Autowired(required = false)
     private com.example.demo.modules.twin.rpg.service.TwinExpReconcileService twinExpReconcileService;
     @Autowired(required = false)
@@ -225,6 +229,7 @@ public class JobExecutionRegistry {
         jobs.put(JOB_STRANDED_SIGNOUT_CHECK, "滞留·未豁免人员自动签退（二道）");
         jobs.put(JOB_SCAN_DELAY_AUTO_APPROVE, "延迟免冻结·自动审批");
         jobs.put(JOB_MATERIAL_AUTO_APPROVE, "物资申领·自动审批");
+        jobs.put(JOB_MATERIAL_SCHEDULED_NOTIFY, "物资申领·预约通知");
         jobs.put(JOB_TELEMETRY_WINCC_UI, "动物房·WinCC温湿度测量值（窗口内轮询）");
         jobs.put(JOB_TELEMETRY_WINCC_LIMITS_UI, "动物房·WinCC限值同步（窗口内轮询）");
         jobs.put(
@@ -363,6 +368,13 @@ public class JobExecutionRegistry {
                     }
                     var summary = materialAutoApproveService.runScheduledJob();
                     yield JobRunOutcome.ok(jobKey, "物资自动审批 approved=" + summary.get("approved"), summary);
+                }
+                case JOB_MATERIAL_SCHEDULED_NOTIFY -> {
+                    if (materialService == null) {
+                        throw new IllegalStateException("MaterialService 未就绪");
+                    }
+                    var summary = materialService.processScheduledNotifications();
+                    yield JobRunOutcome.ok(jobKey, "预约通知完成 notified=" + summary.get("notified"), summary);
                 }
                 case JOB_TELEMETRY_WINCC_UI -> {
                     telemetrySnapshotService.refreshFromWinCc();

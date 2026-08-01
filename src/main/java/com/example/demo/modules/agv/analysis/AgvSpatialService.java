@@ -28,7 +28,17 @@ public class AgvSpatialService {
     private static final double FIXED_HALF_M = 0.025;
     /** 聚类最少段数（休息站需要 5 次以上，等待类 3 次） */
     private static final int REST_MIN_SEGMENTS = 3;
-    private static final int WAIT_MIN_SEGMENTS = 3;
+
+    /** 固定休息站编码 — 始终标记为"休息"，不受算法判定影响 */
+    private static final Set<String> FIXED_REST_STATIONS = Set.of("LM1299", "LM1199", "LM2102", "LM2202");
+
+    /** 固定休息站 → 所属 AGV IP 映射，用于前端标签显隐控制 */
+    private static final Map<String, String> REST_STATION_AGV = Map.of(
+        "LM1299", "172.22.159.16",  // AGV-1
+        "LM1199", "172.22.159.18",  // AGV-2
+        "LM2202", "172.22.159.20",  // AGV-3
+        "LM2102", "172.22.159.22"   // AGV-4
+    );
 
     private final AgvAnalysisMapper mapper;
     private final AgvTrajectoryMapper trajectoryMapper;
@@ -42,20 +52,24 @@ public class AgvSpatialService {
         this.jdbc = jdbc;
     }
 
-    /** Auto-import zones from trajectory history on first startup (when table is empty). */
+    /** Ensure AUTO zones exist for every known station (CP/LM/AP), upsert on startup. */
     @PostConstruct
     public void autoImportOnStartup() {
-        List<AgvSpatialElement> existing = mapper.selectAllSpatialElements();
-        if (existing.isEmpty()) {
-            List<AgvSpatialElement> candidates = autoGenerateCandidates(null);
-            for (AgvSpatialElement e : candidates) {
-                e.setIsActive(true);
-                e.setConfidence(0.5);
-                e.setHitCount(0);
-                e.setSource("AUTO");
-                mapper.insertSpatialElement(e);
-            }
-            log.info("[AgvSpatial] Auto-imported {} zones from trajectory history", candidates.size());
+        List<AgvSpatialElement> candidates = autoGenerateCandidates(null);
+        int created = 0, skipped = 0;
+        for (AgvSpatialElement e : candidates) {
+            // 检查是否已有同 station_pattern 的 AUTO zone
+            List<AgvSpatialElement> dup = mapper.selectByStationPatternAndSource(e.getStationPattern(), "AUTO");
+            if (!dup.isEmpty()) { skipped++; continue; }
+            e.setIsActive(true);
+            e.setConfidence(0.5);
+            e.setHitCount(0);
+            e.setSource("AUTO");
+            mapper.insertSpatialElement(e);
+            created++;
+        }
+        if (created > 0 || skipped > 0) {
+            log.info("[AgvSpatial] Startup AUTO zones: {} created, {} skipped (already exist)", created, skipped);
         }
     }
 
@@ -88,9 +102,9 @@ public class AgvSpatialService {
         String resolved = cache.get(code);
         if (resolved != null) return resolved;
         // 2. 前缀启发式
-        if (code.startsWith("LM")) return "作业站" + code.substring(2);
+        if (code.startsWith("LM")) return "路径点" + code.substring(2);
         if (code.startsWith("CP")) return "充电站" + code.substring(2);
-        if (code.startsWith("AP")) return "路径点" + code.substring(2);
+        if (code.startsWith("AP")) return "作业站" + code.substring(2);
         // 3. 兜底
         return code;
     }
@@ -222,7 +236,6 @@ public class AgvSpatialService {
         jdbc.update("UPDATE agv_spatial_element SET is_active = 0 WHERE source = 'TOPOLOGY'");
 
         // ── 阶段1：站点区域 ──
-        // 读取站点和连接的边标签，推断站点主要用途
         List<Map<String, Object>> stations = jdbc.queryForList(
             "SELECT s.station_code, s.x, s.y, s.observations, s.zone_key " +
             "FROM agv_route_topology_station s ORDER BY s.observations DESC");
@@ -244,9 +257,26 @@ public class AgvSpatialService {
 
             if (edges.isEmpty()) continue;
 
-            // 标签复用行为发现映射：CP→充电, LM→作业, AP→路径
-            String primaryTag = inferTags(code);
-            String color = inferColor(code);
+            // 智能标签：CP→充电, AP→作业, LM→检查是否为休息站
+            String primaryTag;
+            String color;
+            if (code.startsWith("LM")) {
+                int totalEdgeTraffic = edges.stream()
+                    .mapToInt(e -> ((Number) e.get("total_count")).intValue()).sum();
+                int dwellScore = obs - totalEdgeTraffic;
+                // 休息站判定：固定休息站 OR 观测远超边流量
+                boolean isRest = FIXED_REST_STATIONS.contains(code) || (dwellScore > 100 && obs > totalEdgeTraffic * 5);
+                if (isRest) {
+                    primaryTag = "[\"休息\"]";
+                    color = inferColorByTag("休息");
+                } else {
+                    primaryTag = "[\"路径\"]";
+                    color = inferColorByTag("路径");
+                }
+            } else {
+                primaryTag = inferTags(code);
+                color = inferColor(code);
+            }
             double confidence = Math.min(0.95, 0.5 + edges.size() * 0.05);
 
             // 区域大小基于观测次数：观测越多，区域越大（log 缩放）
@@ -256,11 +286,13 @@ public class AgvSpatialService {
                 cx + half, cy + half, cx - half, cy + half);
 
             // 查询该站点轨迹数据中占比最多的小车 IP
-            String stationRobotIp = null;
-            try {
-                Map<String, Object> dom = trajectoryMapper.selectDominantRobotIpForStation(code);
-                if (dom != null) stationRobotIp = (String) dom.get("robot_ip");
-            } catch (Exception ignored) {}
+            String stationRobotIp = REST_STATION_AGV.get(code); // 固定休息站优先
+            if (stationRobotIp == null) {
+                try {
+                    Map<String, Object> dom = trajectoryMapper.selectDominantRobotIpForStation(code);
+                    if (dom != null) stationRobotIp = (String) dom.get("robot_ip");
+                } catch (Exception ignored) {}
+            }
 
             // UPSERT
             List<AgvSpatialElement> existing = mapper.selectByStationPatternAndSource(code, "TOPOLOGY");
@@ -320,14 +352,18 @@ public class AgvSpatialService {
             Object owObj = e.get("is_one_way");
             boolean isOneWay = owObj instanceof Boolean b ? b : ((Number) owObj).intValue() == 1;
 
-            // 标签复用行为发现映射
+            // 边标签判定：纯LM→作业走廊，纯AP→路径通道，混接→运输，触CP→充电
             String tag;
             String color;
+            boolean hasLM = from.startsWith("LM") || to.startsWith("LM");
+            boolean hasAP = from.startsWith("AP") || to.startsWith("AP");
+            boolean hasCP = from.startsWith("CP") || to.startsWith("CP");
+
             if (isOneWay) { tag = "运输"; color = inferColorByTag("运输"); }
-            else if (from.startsWith("CP") || to.startsWith("CP")) { tag = "充电"; color = inferColorByTag("充电"); }
-            else if (from.startsWith("LM") || to.startsWith("LM")) { tag = "作业"; color = inferColorByTag("作业"); }
-            else if (from.startsWith("AP") || to.startsWith("AP")) { tag = "路径"; color = inferColorByTag("路径"); }
-            else { tag = "运输"; color = inferColorByTag("运输"); }
+            else if (hasCP) { tag = "充电"; color = inferColorByTag("充电"); }
+            else if (hasLM && !hasAP) { tag = "路径"; color = inferColorByTag("路径"); }
+            else if (hasAP && !hasLM) { tag = "作业"; color = inferColorByTag("作业"); }
+            else { tag = "运输"; color = inferColorByTag("运输"); }  // LM+AP混合边
 
             // 通道宽度：高频宽，低频窄
             double halfW = Math.max(0.15, Math.min(1.0, total / 30.0));
@@ -382,8 +418,8 @@ public class AgvSpatialService {
             created++;
         }
 
-        log.info("[AgvSpatial] 路线拓扑区域生成完成: {} 站点区域 + {} 通道区域",
-            stations.size(), mainEdges.size());
+            log.info("[AgvSpatial] 路线拓扑区域生成完成: {}站点 + {}边 → 写入{}条",
+                stations.size(), mainEdges.size(), created);
         return created;
     }
 
@@ -469,58 +505,34 @@ public class AgvSpatialService {
             }
         }
 
-        // ── 聚类发现：REST_STATION → 休息站，PATH_WAIT → 等待 ──
-        for (var entry : Map.of("REST_STATION", "休息站", "PATH_WAIT", "等待").entrySet()) {
-            String activityType = entry.getKey();
-            String tag = entry.getValue();
-            int minSegs = "REST_STATION".equals(activityType) ? REST_MIN_SEGMENTS : WAIT_MIN_SEGMENTS;
+        // ── 聚类发现：REST_STATION → 休息 ──
+        {
+            String activityType = "REST_STATION";
+            String tag = "休息";
 
             List<AgvActivitySegment> typed = segments.stream()
                 .filter(s -> activityType.equals(s.getActivityType()))
                 .collect(Collectors.toList());
-            if (typed.size() < minSegs) continue;
+            if (typed.size() >= REST_MIN_SEGMENTS) {
 
-            Map<String, List<AgvActivitySegment>> grid = new HashMap<>();
-            for (AgvActivitySegment seg : typed) {
-                if (seg.getAvgX() == null || seg.getAvgY() == null) continue;
-
-                // 路径/等待标签：不能有叉臂变化
-                if ("PATH_WAIT".equals(activityType)) {
-                    int forkActive = trajectoryMapper.countForkActiveInWindow(
-                        seg.getRobotIp(), seg.getStartTime(), seg.getEndTime());
-                    if (forkActive > 0) continue;
+                Map<String, List<AgvActivitySegment>> grid = new HashMap<>();
+                for (AgvActivitySegment seg : typed) {
+                    if (seg.getAvgX() == null || seg.getAvgY() == null) continue;
+                    int gx = (int) Math.floor(seg.getAvgX() / GRID_CELL_M);
+                    int gy = (int) Math.floor(seg.getAvgY() / GRID_CELL_M);
+                    grid.computeIfAbsent(gx + "," + gy, k -> new ArrayList<>()).add(seg);
                 }
 
-                int gx = (int) Math.floor(seg.getAvgX() / GRID_CELL_M);
-                int gy = (int) Math.floor(seg.getAvgY() / GRID_CELL_M);
-                grid.computeIfAbsent(gx + "," + gy, k -> new ArrayList<>()).add(seg);
-            }
+                for (Cluster cluster : mergeAdjacentCells(grid)) {
+                    if (cluster.segments.size() < REST_MIN_SEGMENTS) continue;
+                    double[] bbox = clusterBbox(cluster);
 
-            for (Cluster cluster : mergeAdjacentCells(grid)) {
-                if (cluster.segments.size() < minSegs) continue;
-                double[] bbox = clusterBbox(cluster);
-                double ccx = (bbox[0] + bbox[1]) / 2, ccy = (bbox[2] + bbox[3]) / 2;
-
-                // PATH_WAIT/等待：如果质心靠近已有「作业」zone，说明是停在作业站旁，不生成路径区域
-                if ("PATH_WAIT".equals(activityType)) {
-                    List<AgvSpatialElement> workZones = mapper.selectBehaviorZonesByTag("作业");
-                    boolean nearWork = false;
-                    for (AgvSpatialElement wz : workZones) {
-                        double[] wb = zoneBounds(wz);
-                        double wcx = (wb[0] + wb[1]) / 2, wcy = (wb[2] + wb[3]) / 2;
-                        if (Math.sqrt((ccx - wcx) * (ccx - wcx) + (ccy - wcy) * (ccy - wcy)) <= MERGE_DISTANCE_M) {
-                            nearWork = true; break;
-                        }
-                    }
-                    if (nearWork) continue;
+                    String majorityIp = cluster.segments.stream()
+                        .collect(Collectors.groupingBy(AgvActivitySegment::getRobotIp, Collectors.counting()))
+                        .entrySet().stream().max(Map.Entry.comparingByValue())
+                        .map(Map.Entry::getKey).orElse(null);
+                    created += upsertZone(bbox[0], bbox[1], bbox[2], bbox[3], tag, cluster.segments.size(), majorityIp);
                 }
-
-                // 取 cluster 中出现次数最多的 robotIp
-                String majorityIp = cluster.segments.stream()
-                    .collect(Collectors.groupingBy(AgvActivitySegment::getRobotIp, Collectors.counting()))
-                    .entrySet().stream().max(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey).orElse(null);
-                created += upsertZone(bbox[0], bbox[1], bbox[2], bbox[3], tag, cluster.segments.size(), majorityIp);
             }
         }
 
@@ -726,25 +738,24 @@ public class AgvSpatialService {
 
     private String inferTags(String station) {
         if (station.startsWith("CP")) return "[\"充电\"]";
-        if (station.startsWith("LM")) return "[\"作业\"]";
-        if (station.startsWith("AP")) return "[\"路径\"]";
+        if (station.startsWith("LM")) return "[\"路径\"]";
+        if (station.startsWith("AP")) return "[\"作业\"]";
         return "[\"未知\"]";
     }
 
     private String inferColor(String station) {
         if (station.startsWith("CP")) return "#22c55e";
-        if (station.startsWith("LM")) return "#f59e0b";
-        if (station.startsWith("AP")) return "#6b7280";
+        if (station.startsWith("LM")) return "#6b7280";
+        if (station.startsWith("AP")) return "#f59e0b";
         return "#3b82f6";
     }
 
     private String inferColorByTag(String tag) {
         return switch (tag) {
             case "充电" -> "#22c55e";
-            case "作业" -> "#f59e0b";
+            case "作业", "载货" -> "#f59e0b";
             case "路径" -> "#6b7280";
-            case "休息站" -> "#14b8a6";
-            case "等待" -> "#f97316";
+            case "休息" -> "#14b8a6";
             default -> "#3b82f6";
         };
     }

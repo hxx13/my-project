@@ -131,6 +131,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-agv-trajectory.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-trajectory-fields.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-coord-config.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-agv-coord-config-offset.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-trajectory-partition.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-analysis.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-spatial-element-confidence.sql", ctx)) success++;
@@ -139,6 +140,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-agv-route.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-route-topology.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-analytics-hourly.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-agv-stats-pipeline.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-agv-stats-config.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");

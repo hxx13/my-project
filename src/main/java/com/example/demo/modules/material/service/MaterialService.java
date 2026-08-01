@@ -165,6 +165,7 @@ public class MaterialService {
         item.setSpecSchema(req.getSpecSchema() != null && !req.getSpecSchema().isBlank() ? req.getSpecSchema() : null);
         item.setSpecRequired(req.getSpecRequired() != null ? req.getSpecRequired() : 0);
         item.setIndependentOrder(req.getIndependentOrder() != null ? req.getIndependentOrder() : 0);
+        item.setNotifyAdvanceHours(req.getNotifyAdvanceHours() != null ? req.getNotifyAdvanceHours() : 0);
         itemMapper.insert(item);
         // 初始入库创建库存流水
         if (initQty > 0) {
@@ -204,6 +205,7 @@ public class MaterialService {
         if (req.getSpecSchema() != null) item.setSpecSchema(req.getSpecSchema().isBlank() ? null : req.getSpecSchema());
         if (req.getSpecRequired() != null) item.setSpecRequired(req.getSpecRequired());
         if (req.getIndependentOrder() != null) item.setIndependentOrder(req.getIndependentOrder());
+        if (req.getNotifyAdvanceHours() != null) item.setNotifyAdvanceHours(req.getNotifyAdvanceHours());
         itemMapper.updateById(item);
         logOp("ITEM", String.valueOf(id), "UPDATE", null);
         return Result.success(toItemView(itemMapper.selectById(id)));
@@ -380,7 +382,8 @@ public class MaterialService {
 
         String applicantName = userDisplayNameService.resolveDisplayName(user.getId());
         String applicantGroup = resolveApplicantGroup(user.getId(), req.getApplicantGroup());
-        return Result.success(insertGroupedRequests(user, grouped, itemById, applicantName, applicantGroup));
+        LocalDateTime scheduledPickupTime = parseScheduledPickupTime(req.getScheduledPickupTime());
+        return Result.success(insertGroupedRequests(user, grouped, itemById, applicantName, applicantGroup, scheduledPickupTime));
     }
 
     /**
@@ -463,7 +466,12 @@ public class MaterialService {
         if (!others.isEmpty()) {
             String applicantName = userDisplayNameService.resolveDisplayName(user.getId());
             String applicantGroup = resolveApplicantGroup(user.getId(), req.getApplicantGroup());
-            results.addAll(insertGroupedRequests(user, others, itemById, applicantName, applicantGroup));
+            // 合并产生的新子单预约时间：优先请求体，其次目标单已有预约时间
+            LocalDateTime mergeScheduledPickupTime = parseScheduledPickupTime(req.getScheduledPickupTime());
+            if (mergeScheduledPickupTime == null) {
+                mergeScheduledPickupTime = target.getScheduledPickupTime();
+            }
+            results.addAll(insertGroupedRequests(user, others, itemById, applicantName, applicantGroup, mergeScheduledPickupTime));
         }
         Map<String, Object> detail = new HashMap<>();
         detail.put("mergedLines", mergedLineCount);
@@ -625,7 +633,8 @@ public class MaterialService {
     private List<MaterialRequestView> insertGroupedRequests(User user,
                                                             Map<String, List<CreateMaterialRequestReq.LineItem>> grouped,
                                                             Map<Long, MaterialItem> itemById,
-                                                            String applicantName, String applicantGroup) {
+                                                            String applicantName, String applicantGroup,
+                                                            LocalDateTime scheduledPickupTime) {
         List<MaterialRequestView> results = new ArrayList<>();
         long baseTs = System.currentTimeMillis();
 
@@ -647,6 +656,7 @@ public class MaterialService {
                 request.setStatus("PENDING");
             }
             request.setWorkflowType(workflowType);
+            request.setScheduledPickupTime(scheduledPickupTime);
             LocalDateTime now = LocalDateTime.now();
             request.setCreatedAt(now);
             request.setUpdatedAt(now);
@@ -690,8 +700,25 @@ public class MaterialService {
             }
 
             logOp("REQUEST", id, "SUBMIT", Map.of("lines", groupLines.size(), "workflow", workflowType, "reviewerGroup", groupKey));
-            publishMaterialEvent("CREATED", id, user.getId(), user.getId(), "共 " + groupLines.size() + " 项物资");
-        try { String itemDetail = groupLines.stream().map(lr -> { MaterialItem it = itemMapper.selectById(lr.getItemId()); return (it != null ? it.getName() : "物品") + " ×" + lr.getQty(); }).collect(Collectors.joining("、")); pushService.send("MATERIAL_REQUESTED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(user.getId()), "applicantGroup", resolveApplicantGroup(user.getId(), null), "summary", itemDetail, "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))), resolveReviewerUserIdsForRequest(requestMapper.selectById(id))); } catch (Exception e) { log.warn("[Push] MATERIAL_REQUESTED failed: {}", e.getMessage()); }
+            // 预约模式：若所有物品 notifyAdvanceHours=0 则等同立即通知，否则由定时任务在预约窗口到时再发
+            boolean shouldNotifyNow = scheduledPickupTime == null;
+            if (!shouldNotifyNow) {
+                shouldNotifyNow = true;
+                for (var lineReq : groupLines) {
+                    MaterialItem it = itemById.get(lineReq.getItemId());
+                    if (it != null && (it.getNotifyAdvanceHours() == null || it.getNotifyAdvanceHours() > 0)) {
+                        shouldNotifyNow = false;
+                        break;
+                    }
+                }
+            }
+            if (shouldNotifyNow) {
+                publishMaterialEvent("CREATED", id, user.getId(), user.getId(), "共 " + groupLines.size() + " 项物资");
+                try { String itemDetail = groupLines.stream().map(lr -> { MaterialItem it = itemMapper.selectById(lr.getItemId()); return (it != null ? it.getName() : "物品") + " ×" + lr.getQty(); }).collect(Collectors.joining("、")); pushService.send("MATERIAL_REQUESTED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(user.getId()), "applicantGroup", resolveApplicantGroup(user.getId(), null), "summary", itemDetail, "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))), resolveReviewerUserIdsForRequest(requestMapper.selectById(id))); } catch (Exception e) { log.warn("[Push] MATERIAL_REQUESTED failed: {}", e.getMessage()); }
+                if (scheduledPickupTime != null) {
+                    requestMapper.updateNotificationSent(id);
+                }
+            }
             if ("PENDING".equals(requestMapper.selectById(id).getStatus())) {
                 try {
                     autoApproveService.tryTrustOnSubmit(id);
@@ -790,7 +817,50 @@ public class MaterialService {
         if (reviewer == null) return 0;
         Result<List<MaterialRequestView>> res = listPendingForReview(reviewer);
         if (!Boolean.TRUE.equals(res.getSuccess()) || res.getData() == null) return 0;
-        return res.getData().size();
+        // 排除预约类：已设预约时间但尚未通知的不计入角标
+        return (int) res.getData().stream()
+                .filter(v -> v.getScheduledPickupTime() == null
+                        || (v.getNotificationSent() != null && v.getNotificationSent() == 1))
+                .count();
+    }
+
+    /**
+     * 定时任务调用：扫描待通知的预约申领（已到通知窗口且未通知），发送 CREATED 通知并标记。
+     */
+    public Map<String, Object> processScheduledNotifications() {
+        List<MaterialRequest> pending = requestMapper.selectScheduledPendingForNotify();
+        int notified = 0;
+        for (MaterialRequest request : pending) {
+            try {
+                List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(request.getId());
+                String itemDetail = lines.stream()
+                        .map(lr -> {
+                            MaterialItem it = itemMapper.selectById(lr.getItemId());
+                            return (it != null ? it.getName() : "物品") + " ×" + lr.getQty();
+                        }).collect(Collectors.joining("、"));
+                publishMaterialEvent("CREATED", request.getId(), request.getUserId(), request.getUserId(), itemDetail);
+                try {
+                    pushService.send("MATERIAL_REQUESTED", Map.of(
+                            "applicantName", userDisplayNameService.resolveDisplayName(request.getUserId()),
+                            "applicantGroup", resolveApplicantGroup(request.getUserId(), null),
+                            "summary", itemDetail,
+                            "createdAt", request.getCreatedAt() != null
+                                    ? request.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                                    : ""
+                    ), resolveReviewerUserIdsForRequest(request));
+                } catch (Exception e) {
+                    log.warn("[Push] MATERIAL_REQUESTED (scheduled) request {} failed: {}", request.getId(), e.getMessage());
+                }
+                requestMapper.updateNotificationSent(request.getId());
+                notified++;
+            } catch (Exception e) {
+                log.warn("[material-scheduled-notify] request {} failed: {}", request.getId(), e.getMessage());
+            }
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("notified", notified);
+        result.put("scanned", pending.size());
+        return result;
     }
 
     public Result<MaterialRequestView> getRequestDetail(User user, String id) {
@@ -2016,6 +2086,22 @@ public class MaterialService {
 
     // ==================== 内部辅助 ====================
 
+    /** 解析前端传入的预约领取时间 ISO 字符串 → LocalDateTime */
+    private static LocalDateTime parseScheduledPickupTime(String iso) {
+        if (iso == null || iso.isBlank()) return null;
+        try {
+            String trimmed = iso.trim().replace(" ", "T");
+            // 兼容日期格式 "2026-08-03"：补充时间部分为 00:00:00
+            if (trimmed.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                trimmed = trimmed + "T00:00:00";
+            }
+            return LocalDateTime.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (Exception e) {
+            log.warn("[material] 解析 scheduledPickupTime 失败: {}", iso);
+            return null;
+        }
+    }
+
     private String resolveApplicantGroup(String userId, String preferred) {
         if (StringUtils.hasText(preferred)) {
             return preferred.trim();
@@ -2078,6 +2164,7 @@ public class MaterialService {
         v.setSpecSchema(item.getSpecSchema());
         v.setSpecRequired(item.getSpecRequired());
         v.setIndependentOrder(item.getIndependentOrder());
+        v.setNotifyAdvanceHours(item.getNotifyAdvanceHours());
         return v;
     }
 
@@ -2098,6 +2185,10 @@ public class MaterialService {
         v.setReceivedAt(toDisplayTime(request.getReceivedAt()));
         v.setCreatedAt(toDisplayTime(request.getCreatedAt()));
         v.setUpdatedAt(toDisplayTime(request.getUpdatedAt()));
+        if (request.getScheduledPickupTime() != null) {
+            v.setScheduledPickupTime(request.getScheduledPickupTime().toString().replace("T", " "));
+        }
+        v.setNotificationSent(request.getNotificationSent() != null ? request.getNotificationSent() : 0);
         List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(request.getId());
         v.setLines(lines.stream().map(l -> {
             MaterialRequestLineView lv = new MaterialRequestLineView();

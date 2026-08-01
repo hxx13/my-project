@@ -88,7 +88,7 @@ export async function fetchSegments(ip: string, from: string, to: string, type?:
 }
 
 export async function runAnalysis(req: AnalysisRequest): Promise<AgvActivitySegment[]> {
-  const res = await authHttp.post<{ data: AgvActivitySegment[] }>("/v1/agv/analysis/run", req);
+  const res = await authHttp.post<{ data: AgvActivitySegment[] }>("/v1/agv/analysis/run", req, { timeout: 120_000 });
   return res.data.data;
 }
 
@@ -141,7 +141,8 @@ export async function toggleRule(id: number, enabled: number): Promise<void> {
 
 export function useSegments(ip: string, from: string, to: string, type?: string) {
   return useQuery({
-    queryKey: ["agvSegments", ip, from, to, type],
+    // 去掉末尾 undefined，保证 key 与 mutation 的 setQueryData 一致
+    queryKey: type != null ? ["agvSegments", ip, from, to, type] : ["agvSegments", ip, from, to],
     queryFn: () => fetchSegments(ip, from, to, type),
     enabled: !!ip && !!from && !!to,
     staleTime: 30_000,
@@ -153,6 +154,7 @@ export function useAnalysisRun() {
   return useMutation({
     mutationFn: runAnalysis,
     onSuccess: (data, vars) => {
+      // key 现在一致：["agvSegments", ip, from, to]，精准写入缓存
       qc.setQueryData(["agvSegments", vars.robotIp, vars.from, vars.to], data);
     },
     onError: (e: Error) => { console.error("分析失败:", e.message); },
@@ -254,18 +256,9 @@ export function useToggleRule() {
 
 export const ACTIVITY_COLORS: Record<string, string> = {
   CHARGING: "#22c55e",
-  CHARGING_COMPLETE: "#16a34a",
-  STATION_DWELL: "#f59e0b",
-  STATION_WORK: "#f97316",
+  STATION_WORK: "#f59e0b",
   TRANSPORT: "#3b82f6",
   NAVIGATING: "#60a5fa",
-  PATH_WAIT: "#9ca3af",
-  FORK_OPERATION: "#8b5cf6",
-  REVERSE_MANEUVER: "#ec4899",
-  RELOC_EVENT: "#6b7280",
-  EMERGENCY_STOP: "#ef4444",
-  BLOCKED_WAIT: "#f97316",
-  UNKNOWN_IDLE: "#d1d5db",
   REST_STATION: "#14b8a6",
 };
 
@@ -346,18 +339,16 @@ function topologyToRouteOverlays(
       const toType = edge.to.startsWith("CP") ? "CP" : edge.to.startsWith("AP") ? "AP" : "LM";
 
       let color: string, routeType: string;
-      if (edge.is_one_way) {
-        color = "#f85149"; routeType = "REVERSE";       // 单行 → 红色
-      } else if (fromType === "CP" || toType === "CP") {
+      if (fromType === "CP" || toType === "CP") {
         color = "#22c55e"; routeType = "REST";           // 充电 → 绿色
-      } else if (fromType === "LM" || toType === "LM") {
-        color = "#f59e0b"; routeType = "STATION_WORK";   // 作业站 → 橙色
       } else if (fromType === "AP" || toType === "AP") {
+        color = "#f59e0b"; routeType = "STATION_WORK";   // 作业站 → 橙色
+      } else if (fromType === "LM" || toType === "LM") {
         color = "#6b7280"; routeType = "NAVIGATING";     // 路径点 → 灰色
       } else if (edge.confidence === "high") {
         color = "#3b82f6"; routeType = "TRANSPORT";      // 高频 → 蓝色
       } else {
-        color = "#9ca3af"; routeType = "NAVIGATING";     // 低频 → 灰色
+        color = "#3b82f6"; routeType = "TRANSPORT";      // 默认 → 运输
       }
       const name = (edge.total_count ?? 0) >= 15 ? `${edge.from}-${edge.to}` : "";
 
@@ -373,22 +364,9 @@ function topologyToRouteOverlays(
   return results;
 }
 
-// 修正后的机械化路线拓扑（编译时嵌入，后端不可达时兜底）
-import bundledTopology from "./route_topology_clean.json";
-
 export async function fetchRouteTopology(): Promise<RouteTopologyResponse> {
-  // 默认从后端路线模型2读取数据库生成结果
-  try {
-    const res = await authHttp.get<{ data: RouteTopologyResponse }>("/v1/agv/routes/topology/generated");
-    const data = res.data.data;
-    const hasContent = data?.zones && Object.values(data.zones).some(
-      z => (z.edges?.length ?? 0) > 0
-    );
-    if (hasContent) return data;
-  } catch { /* 端点不可达 */ }
-
-  // 数据库无数据时回退到编译时嵌入的静态修正数据
-  return bundledTopology as RouteTopologyResponse;
+  const res = await authHttp.get<{ data: RouteTopologyResponse }>("/v1/agv/routes/topology/generated");
+  return res.data.data;
 }
 
 export function useRouteTopology() {
@@ -512,17 +490,8 @@ export const ROUTE_LABELS: Record<string, string> = {
 
 export const ACTIVITY_LABELS: Record<string, string> = {
   CHARGING: "充电",
-  CHARGING_COMPLETE: "充电完成",
-  STATION_DWELL: "站点停靠",
-  STATION_WORK: "站点作业",
-  TRANSPORT: "运输中",
-  NAVIGATING: "寻路中",
-  PATH_WAIT: "路径等待",
-  FORK_OPERATION: "货叉操作",
-  REVERSE_MANEUVER: "倒车调头",
-  RELOC_EVENT: "重定位",
-  EMERGENCY_STOP: "急停",
-  BLOCKED_WAIT: "受阻等待",
-  UNKNOWN_IDLE: "未知停靠",
-  REST_STATION: "休息站",
+  STATION_WORK: "载货",
+  TRANSPORT: "运输",
+  NAVIGATING: "寻路",
+  REST_STATION: "休息",
 };

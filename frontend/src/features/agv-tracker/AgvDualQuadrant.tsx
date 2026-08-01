@@ -23,6 +23,9 @@ interface AgvInfo {
   errors: string[] | null; warnings: string[] | null;
   diChannels?: { id: number; source: string; status: boolean; valid: boolean }[] | null;
   coordRotationDeg?: number;
+  coordOffsetX?: number;
+  coordOffsetY?: number;
+  coordScale?: number;
   currentActivity?: string;
 }
 
@@ -36,12 +39,27 @@ interface Props {
   followMode?: boolean;
   /** Vehicle icon style */
   vehicleIcon?: 'arrow'|'forklift';
+  /** 隐藏的 AGV IP 集合 */
+  hiddenAgvs?: Set<string>;
   /** 地图选点模式 */
   pickMode?: boolean;
+  /** 两点矩形模式（拖拽绘制） */
+  pickTwoPoint?: boolean;
   /** 两点矩形模式下的第一个角点锚点 */
   pickAnchor?: { x: number; y: number } | null;
   onPointPick?: (x: number, y: number) => void;
-  onZoneClick?: (zoneId: number) => void;
+  /** 拖拽绘制矩形完成 */
+  onRectDrawn?: (x1: number, y1: number, x2: number, y2: number) => void;
+  onZoneClick?: (zoneId: number, name: string, stationPattern?: string) => void;
+  zoneEditMode?: boolean;
+  /** 标签编辑 */
+  /** 编辑模式 */
+  coordEditMode?: boolean;
+  selectedZoneId?: number | null;
+  onZoneSelect?: (id: number | null) => void;
+  onZoneReshape?: (id: number, polygonJson: string) => void;
+  onCoordFrameMove?: (ip: string, offsetX: number, offsetY: number) => void;
+  onCoordFrameScale?: (ip: string, scale: number, offsetX: number, offsetY: number) => void;
 }
 
 // ── Action state (same logic as AgvQuadrant) ──
@@ -69,20 +87,12 @@ function deriveAction(
   currentActivity?: string,
 ): { state: ActionState; label: string; icon: React.ReactNode } {
   if (!online) return { state: "idle", label: "已休眠", icon: <Circle size={14} className="text-gray-400" /> };
-  if (emergency) return { state: "emergency", label: "急停!", icon: <AlertTriangle size={14} className="text-red-500" /> };
-  if (blocked) return { state: "blocked", label: "阻挡", icon: <AlertTriangle size={14} className="text-red-500" /> };
   if (currentActivity === "CHARGING") return { state: "charging", label: "充电中", icon: <Zap size={14} className="text-yellow-500" /> };
-  if (currentActivity === "STATION_DWELL") return { state: "paused", label: "站点停靠", icon: <Circle size={14} className="text-amber-400" fill="currentColor" /> };
-  if (currentActivity === "STATION_WORK") return { state: "lifting", label: "站点作业", icon: <ArrowUp size={14} className="text-purple-400" /> };
+  if (currentActivity === "STATION_WORK") return { state: "lifting", label: "载货中", icon: <ArrowUp size={14} className="text-purple-400" /> };
   if (currentActivity === "TRANSPORT") return { state: "moving", label: "运输中", icon: <Play size={14} className="text-green-500" /> };
   if (currentActivity === "NAVIGATING") return { state: "moving", label: "寻路中", icon: <Play size={14} className="text-blue-400" /> };
-  if (currentActivity === "REST_STATION") return { state: "idle", label: "休息站", icon: <Circle size={14} className="text-teal-400" fill="currentColor" /> };
-  if (currentActivity === "PATH_WAIT") return { state: "paused", label: "路径等待", icon: <Pause size={14} className="text-gray-400" /> };
-  if (currentActivity === "REVERSE_MANEUVER") return { state: "reversing", label: "倒车调头", icon: <Rewind size={14} className="text-orange-500" /> };
+  if (currentActivity === "REST_STATION") return { state: "idle", label: "休息中", icon: <Circle size={14} className="text-teal-400" fill="currentColor" /> };
   if (charging) return { state: "charging", label: "充电中", icon: <Zap size={14} className="text-yellow-500" /> };
-  if (taskStatus === 3) return { state: "paused", label: "暂停中", icon: <Pause size={14} className="text-yellow-500" /> };
-  if (taskStatus === 6) return { state: "error", label: "错误", icon: <AlertTriangle size={14} className="text-red-500" /> };
-  if (forkMoving) return { state: jackState === 1 ? "lifting" : "lowering", label: jackState === 1 ? "抬升中" : "放下中", icon: jackState === 1 ? <ArrowUp size={14} className="text-blue-400" /> : <ArrowDown size={14} className="text-blue-400" /> };
   const spd = speed ?? 0;
   if (spd > 0.05) {
     if (reversing) return { state: "reversing", label: "倒车中", icon: <Rewind size={14} className="text-orange-500" /> };
@@ -182,7 +192,7 @@ function AgvHeaderRow({ info }: { info: AgvInfo }) {
 }
 
 export default function AgvDualQuadrant(props: Props) {
-  const { agvA, agvB, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, vehicleIcon, pickMode, pickAnchor, onPointPick, onZoneClick } = props;
+  const { agvA, agvB, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, vehicleIcon, hiddenAgvs, pickMode, pickTwoPoint, pickAnchor, onPointPick, onRectDrawn, onZoneClick, coordEditMode, zoneEditMode, selectedZoneId, onZoneSelect, onZoneReshape, onCoordFrameMove, onCoordFrameScale } = props;
   const [followTarget, setFollowTarget] = useState<"A" | "B">("A");
 
   // ── Build canvas data for both AGVs ──
@@ -192,6 +202,7 @@ export default function AgvDualQuadrant(props: Props) {
     online: agvA.online, color: agvA.color,
     dwellSpots: agvA.dwellSpots,
     forkHeight: agvA.forkHeight, jackState: agvA.jackState, jackIsFull: agvA.jackIsFull,
+    coordOffsetX: agvA.coordOffsetX, coordOffsetY: agvA.coordOffsetY, coordRotationDeg: agvA.coordRotationDeg, coordScale: agvA.coordScale,
   };
   const canvasB: AgvCanvasData = {
     ip: agvB.ip, trail: agvB.trail,
@@ -199,6 +210,7 @@ export default function AgvDualQuadrant(props: Props) {
     online: agvB.online, color: agvB.color,
     dwellSpots: agvB.dwellSpots,
     forkHeight: agvB.forkHeight, jackState: agvB.jackState, jackIsFull: agvB.jackIsFull,
+    coordOffsetX: agvB.coordOffsetX, coordOffsetY: agvB.coordOffsetY, coordRotationDeg: agvB.coordRotationDeg, coordScale: agvB.coordScale,
   };
 
   // ── Derive actions ──
@@ -250,9 +262,9 @@ export default function AgvDualQuadrant(props: Props) {
 
       {/* ── Header: two AGV info rows side by side ── */}
       <div className="shrink-0 flex items-stretch border-b border-[var(--app-color-border-default)]">
-        <div className="flex-1 px-3 py-1 min-w-0"><AgvHeaderRow info={agvA} /></div>
+        <div className={`flex-1 px-3 py-1 min-w-0 transition-opacity ${hiddenAgvs?.has(agvA.ip) ? "opacity-20" : ""}`}><AgvHeaderRow info={agvA} /></div>
         <div className="w-px bg-[var(--app-color-border-default)]" />
-        <div className="flex-1 px-3 py-1 min-w-0"><AgvHeaderRow info={agvB} /></div>
+        <div className={`flex-1 px-3 py-1 min-w-0 transition-opacity ${hiddenAgvs?.has(agvB.ip) ? "opacity-20" : ""}`}><AgvHeaderRow info={agvB} /></div>
       </div>
 
       {/* ── Canvas with overlays ── */}
@@ -263,7 +275,8 @@ export default function AgvDualQuadrant(props: Props) {
           routeOverlaysA={routeOverlaysA} routeOverlaysB={routeOverlaysB} routeMode={routeMode}
           followMode={followMode} followTarget={followMode ? followTarget : null}
           vehicleIcon={vehicleIcon}
-          pickMode={pickMode} pickAnchor={pickAnchor} onPointPick={onPointPick} onZoneClick={onZoneClick} />
+          hiddenAgvs={hiddenAgvs}
+          pickMode={pickMode} pickTwoPoint={pickTwoPoint} pickAnchor={pickAnchor} onPointPick={onPointPick} onRectDrawn={onRectDrawn} onZoneClick={onZoneClick} coordEditMode={coordEditMode} zoneEditMode={zoneEditMode} selectedZoneId={selectedZoneId} onZoneSelect={onZoneSelect} onZoneReshape={onZoneReshape} onCoordFrameMove={onCoordFrameMove} onCoordFrameScale={onCoordFrameScale} />
 
         {/* ── AGV-A overlays (left side) ── */}
         <div className="absolute top-2 left-2 flex items-start gap-2 pointer-events-none">

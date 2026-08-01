@@ -41,6 +41,7 @@ import {
 } from "@/utils/scanDelayReviewDisplay";
 
 type TabKey = "material" | "scanDelay" | "demands" | "aroTraining";
+type MaterialSubTab = "today" | "scheduled" | "history";
 
 function parseReviewTab(raw: string | null): TabKey {
   if (raw === "scanDelay" || raw === "demands" || raw === "aroTraining") return raw;
@@ -124,6 +125,7 @@ export default function MaterialReviewPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   /** 与 URL ?tab= 单一同步；避免 hash 跳转到无 tab 时仍停留在 scanDelay */
   const tab = parseReviewTab(searchParams.get("tab"));
+  const [materialSubTab, setMaterialSubTab] = useState<MaterialSubTab>("today");
   const [autoApproveOpen, setAutoApproveOpen] = useState(false);
   const [materialAutoApproveOpen, setMaterialAutoApproveOpen] = useState(false);
   const highlightRequestId = searchParams.get("requestId");
@@ -310,6 +312,22 @@ export default function MaterialReviewPage() {
   const materialTodayPending = useMemo(() => materialToday.filter(r => isMaterialPendingStatus(r.status)), [materialToday]);
   const materialTodayDone = useMemo(() => materialToday.filter(r => !isMaterialPendingStatus(r.status)), [materialToday]);
 
+  /** 三分类：今天（即时请求）、预约类（已预约未通知）、历史（已审结） */
+  const materialTodayItems = useMemo(
+    () => filteredMaterialRequests.filter(r => isMaterialPendingStatus(r.status) && (!r.scheduledPickupTime || r.notificationSent === 1)),
+    [filteredMaterialRequests],
+  );
+  const materialScheduledItems = useMemo(
+    () => filteredMaterialRequests.filter(r => isMaterialPendingStatus(r.status) && r.scheduledPickupTime && r.notificationSent === 0),
+    [filteredMaterialRequests],
+  );
+  const materialHistoryItems = useMemo(
+    () => filteredMaterialRequests.filter(r => !isMaterialPendingStatus(r.status)),
+    [filteredMaterialRequests],
+  );
+  const materialTodayCount = materialTodayItems.length;
+  const materialScheduledCount = materialScheduledItems.length;
+
   /** 友好课题组：当前审核人历史上审批通过 + 已出库 + 已完成的课题组集合 */
   const friendlyGroups = useMemo(() => {
     const groups = new Set<string>();
@@ -442,6 +460,16 @@ export default function MaterialReviewPage() {
   const handleBatchApprove = async () => {
     const ids = Array.from(batchSelectedIds);
     if (ids.length === 0) { toast.error("未选中任何申领"); return; }
+    // 预约类二次确认
+    const scheduledIds = ids.filter((id) => materialScheduledItems.some((r) => r.id === id));
+    if (scheduledIds.length > 0) {
+      const labels = scheduledIds.map((id) => {
+        const r = materialScheduledItems.find((x) => x.id === id);
+        const t = r?.scheduledPickupTime ? String(r.scheduledPickupTime).slice(0, 10) : "";
+        return `${id}${t ? ` (${t})` : ""}`;
+      }).join("\n");
+      if (!window.confirm(`以下 ${scheduledIds.length} 条为预约类申领，预约通知时间尚未到达：\n\n${labels}\n\n确定要提前审批通过吗？`)) return;
+    }
     let ok = 0; let fail = 0;
     for (const id of ids) {
       try { await approve.mutateAsync(id); ok++; }
@@ -866,78 +894,90 @@ export default function MaterialReviewPage() {
           {filteredMaterialRequests.length === 0 && !loading ? (
             <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无你负责审核的物资申领</p>
           ) : (
-            <div className="space-y-6">
-              {materialToday.length > 0 && (
-                <TimeGroup label="今天" count={materialToday.length}>
-                  <div className="space-y-4">
-                    {/* 待审核（今天）— 始终展开 */}
-                    {materialTodayPending.length > 0 && (
-                      <MaterialRequestGroup
-                        items={materialTodayPending}
-                        dotColor="bg-[var(--twin-primary)]"
-                        canDelete={canDelete}
-                        approve={approve}
-                        reject={reject}
-                        revoke={revoke}
-                        deleteReq={deleteReq}
-                        handleExportPersonal={handleExportPersonal}
-                        friendlyGroups={friendlyGroups}
-                      />
-                    )}
-                    {/* 已审核（今天）— 默认折叠，对齐小程序 studentReviewHub */}
-                    {materialTodayDone.length > 0 && (
-                      <MaterialResolvedSection
-                        items={materialTodayDone}
-                        canDelete={canDelete}
-                        approve={approve}
-                        reject={reject}
-                        revoke={revoke}
-                        deleteReq={deleteReq}
-                        handleExportPersonal={handleExportPersonal}
-                        friendlyGroups={friendlyGroups}
-                      />
-                    )}
-                  </div>
-                </TimeGroup>
-              )}
-              {/* 历史中的待审项独立分组，避免混入已审结列表被遗漏 */}
-              {materialHistoryPending.length > 0 && (
-                <TimeGroup
-                  label="待审核（历史）"
-                  count={materialHistoryPending.length}
-                  defaultOpen={true}
+            <div className="space-y-4">
+              {/* 三分类子标签 */}
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMaterialSubTab("today")}
+                  className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${materialSubTab === "today" ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}
                 >
-                  <MaterialRequestGroup
-                    items={materialHistoryPending}
-                    dotColor="bg-amber-400"
-                    canDelete={canDelete}
-                    approve={approve}
-                    reject={reject}
-                    revoke={revoke}
-                    deleteReq={deleteReq}
-                    handleExportPersonal={handleExportPersonal}
-                    friendlyGroups={friendlyGroups}
-                  />
-                </TimeGroup>
-              )}
-              {materialHistoryDone.length > 0 && (
-                <TimeGroup
-                  label="历史"
-                  count={materialHistoryDone.length}
-                  defaultOpen={false}
+                  今天{materialTodayCount > 0 ? ` (${materialTodayCount})` : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMaterialSubTab("scheduled")}
+                  className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${materialSubTab === "scheduled" ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}
                 >
-                  <MaterialRequestGroup
-                    items={materialHistoryDone}
-                    dotColor="bg-[var(--twin-mute)]"
-                    canDelete={canDelete}
-                    approve={approve}
-                    reject={reject}
-                    revoke={revoke}
-                    deleteReq={deleteReq}
-                    handleExportPersonal={handleExportPersonal}
-                    friendlyGroups={friendlyGroups}
-                  />
-                </TimeGroup>
+                  预约类{materialScheduledCount > 0 ? ` (${materialScheduledCount})` : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMaterialSubTab("history")}
+                  className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${materialSubTab === "history" ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}
+                >
+                  历史
+                </button>
+              </div>
+
+              {/* Sub-tab content */}
+              {materialSubTab === "today" && (
+                <div className="space-y-4">
+                  {materialTodayItems.length === 0 ? (
+                    <p className="text-center text-sm text-[var(--twin-mute)] py-8">暂无即时申领</p>
+                  ) : (
+                    <MaterialRequestGroup
+                      items={materialTodayItems}
+                      dotColor="bg-[var(--twin-primary)]"
+                      canDelete={canDelete}
+                      approve={approve}
+                      reject={reject}
+                      revoke={revoke}
+                      deleteReq={deleteReq}
+                      handleExportPersonal={handleExportPersonal}
+                      friendlyGroups={friendlyGroups}
+                    />
+                  )}
+                </div>
+              )}
+              {materialSubTab === "scheduled" && (
+                <div className="space-y-4">
+                  {materialScheduledItems.length === 0 ? (
+                    <p className="text-center text-sm text-[var(--twin-mute)] py-8">暂无预约申领</p>
+                  ) : (
+                    <MaterialRequestGroup
+                      items={materialScheduledItems}
+                      dotColor="bg-blue-300"
+                      dimmed
+                      canDelete={canDelete}
+                      approve={approve}
+                      reject={reject}
+                      revoke={revoke}
+                      deleteReq={deleteReq}
+                      handleExportPersonal={handleExportPersonal}
+                      friendlyGroups={friendlyGroups}
+                    />
+                  )}
+                </div>
+              )}
+              {materialSubTab === "history" && (
+                <div className="space-y-4">
+                  {materialHistoryItems.length === 0 ? (
+                    <p className="text-center text-sm text-[var(--twin-mute)] py-8">暂无历史申领</p>
+                  ) : (
+                    <MaterialRequestGroup
+                      items={materialHistoryItems}
+                      dotColor="bg-[var(--twin-mute)]"
+                      canDelete={canDelete}
+                      approve={approve}
+                      reject={reject}
+                      revoke={revoke}
+                      deleteReq={deleteReq}
+                      handleExportPersonal={handleExportPersonal}
+                      friendlyGroups={friendlyGroups}
+                    />
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -963,7 +1003,7 @@ function TimeGroup({ label, count, children, defaultOpen = true, className }: { 
 }
 
 /** 按物品分组 + 按规格分子组，渲染请求卡片列表。物品名和规格均可折叠收纳。 */
-function MaterialRequestGroup({ items, dotColor, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal, friendlyGroups }: { items: MaterialRequest[]; dotColor: string; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void; friendlyGroups?: Set<string> }) {
+function MaterialRequestGroup({ items, dotColor, dimmed, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal, friendlyGroups }: { items: MaterialRequest[]; dotColor: string; dimmed?: boolean; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void; friendlyGroups?: Set<string> }) {
   const hasFriendly = friendlyGroups && friendlyGroups.size > 0;
 
   // ── 初始折叠状态：待处理物品→展开物品层/折叠规格层；已处理→全折叠 ──
@@ -1045,7 +1085,7 @@ function MaterialRequestGroup({ items, dotColor, canDelete, approve, reject, rev
                             const g = (req as any).applicantGroup as string | undefined;
                             const isFriendly = hasFriendly && g ? friendlyGroups.has(g) : undefined;
                             return (
-                              <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} isFriendly={isFriendly} />
+                              <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} isFriendly={isFriendly} dimmed={dimmed} />
                             );
                           })}
                         </div>
@@ -1093,13 +1133,14 @@ function MaterialResolvedSection({ items, canDelete, approve, reject, revoke, de
   );
 }
 
-function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal, isFriendly }: { req: MaterialRequest; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void; isFriendly?: boolean }) {
+function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal, isFriendly, dimmed }: { req: MaterialRequest; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void; isFriendly?: boolean; dimmed?: boolean }) {
   const isPending = req.status === "PENDING" || req.status === "FIRST_OK";
   const canRevoke = req.status === "APPROVED" || req.status === "FULFILLED";
   const groupName = (req as any).applicantGroup as string | undefined;
   const showGroupTag = isPending && groupName; // 仅在待审核时展示标记
+  const hasScheduledTime = !!(req as any).scheduledPickupTime;
   return (
-    <div className={`rounded-twin-lg border p-3 shadow-twin-level-1 flex flex-col gap-2 relative overflow-hidden ${cardStatusTint(req.status)}`}
+    <div className={`rounded-twin-lg border p-3 shadow-twin-level-1 flex flex-col gap-2 relative overflow-hidden ${cardStatusTint(req.status)} ${dimmed ? "opacity-65" : ""}`}
       style={showGroupTag && isFriendly !== undefined ? {
         borderLeftWidth: '4px',
         borderLeftColor: isFriendly ? '#10b981' : '#f59e0b',
@@ -1143,12 +1184,24 @@ function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteRe
               {l.fulfilledQty > 0 && <span className="text-[10px] text-green-600 shrink-0">已出库 {l.fulfilledQty}</span>}
             </div>
           ))}</div>
+          {hasScheduledTime && (
+            <div className="text-[11px] text-blue-500">
+              <span className="inline-block size-1 rounded-full bg-blue-400 mr-1 align-middle" />
+              预约领取 {(() => { const v = (req as any).scheduledPickupTime; if (!v) return "—"; const s = String(v); return s.length >= 10 ? s.slice(0, 10).replace(/-/g, "/") : s; })()}
+            </div>
+          )}
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1.5 min-w-[120px]">
           <span className="text-[11px] text-[var(--twin-mute)] text-right">{req.createdAt ? formatBeijingDateTimeFull(req.createdAt) : "—"}</span>
           {isPending && (
             <div className="flex gap-1.5">
-              <button onClick={() => approve.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "审核失败") })} className="rounded-twin-sm bg-green-600 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">
+              <button onClick={() => {
+                if (dimmed) {
+                  const pickupInfo = hasScheduledTime ? `\n预约领取日期：${String((req as any).scheduledPickupTime).slice(0, 10)}` : "";
+                  if (!window.confirm(`此申领为预约类申领，预约通知时间尚未到达。${pickupInfo}\n\n确定要提前审批通过吗？`)) return;
+                }
+                approve.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "审核失败") });
+              }} className="rounded-twin-sm bg-green-600 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">
                 {req.status === "FIRST_OK" ? "复审通过" : req.workflowType === "DUAL_REVIEW" ? "初审通过" : "通过"}
               </button>
               <button onClick={() => reject.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "操作失败") })} className="rounded-twin-sm bg-red-500 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">拒绝</button>

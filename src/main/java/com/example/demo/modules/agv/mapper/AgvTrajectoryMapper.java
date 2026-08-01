@@ -80,6 +80,17 @@ public interface AgvTrajectoryMapper {
                                                   @Param("to") LocalDateTime to,
                                                   @Param("limit") int limit);
 
+    /** 轻量级分析查询：只选分析需要的列，跳过 errors/fatals/warnings/notices 等 TEXT 大字段 */
+    @Select("SELECT robot_ip, recorded_at, x, y, angle, battery, task_status, station, map_name, " +
+            "charging, blocked, emergency, fork_height, jack_state, reloc_status, di_json " +
+            "FROM agv_trajectory " +
+            "WHERE robot_ip = #{ip} AND recorded_at BETWEEN #{from} AND #{to} " +
+            "ORDER BY recorded_at ASC LIMIT #{limit}")
+    List<Map<String, Object>> selectTrajectoryAnalysis(@Param("ip") String ip,
+                                                        @Param("from") LocalDateTime from,
+                                                        @Param("to") LocalDateTime to,
+                                                        @Param("limit") int limit);
+
     /** 单机器人概要统计 */
     @Select("SELECT " +
             "COUNT(*) AS totalSamples, " +

@@ -1,20 +1,12 @@
 import { useState, useEffect } from "react";
 import { useSpatialElements, useSaveSpatialElement, useDeleteSpatialElement, useDiscoverZones, useGenerateZonesFromTopology, type AgvSpatialElement } from "@/api/domains/agv-analysis.api";
 import { Plus, Edit3, Trash2, AlertTriangle, Search, Crosshair, Sparkles } from "lucide-react";
+import { BUILTIN_TAG_OPTIONS, BUILTIN_TAG_COLORS } from "@/features/agv-tracker/tagConfig";
 
-const TAG_OPTIONS = ["充电", "作业", "路径", "等待", "休息站", "运输", "倒车"];
-// 标签 → 颜色映射（与后端 inferColorByTag 保持一致）
-const TAG_COLORS: Record<string, string> = {
-  "充电": "#22c55e",
-  "作业": "#f59e0b",
-  "路径": "#6b7280",
-  "等待": "#f97316",
-  "休息站": "#14b8a6",
-  "运输": "#3b82f6",
-  "倒车": "#ec4899",
-};
+const TAG_OPTIONS = [...BUILTIN_TAG_OPTIONS];
+const TAG_COLORS: Record<string, string> = { ...BUILTIN_TAG_COLORS };
 // 两点式矩形：以 (x1,y1) 和 (x2,y2) 为对角角点，生成矩形 polygon
-function makeRectPolygon(x1: number, y1: number, x2: number, y2: number): string {
+export function makeRectPolygon(x1: number, y1: number, x2: number, y2: number): string {
   const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
   const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
   return JSON.stringify([[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]]);
@@ -44,9 +36,11 @@ interface Props {
   pendingPick?: PendingPick | null;
   onClearPick?: () => void;
   focusZoneId?: number | null;
+  creatableTags?: string[];
+  allTagColors?: Record<string, string>;
 }
 
-export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pendingPick, onClearPick, focusZoneId }: Props) {
+export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pendingPick, onClearPick, focusZoneId, creatableTags, allTagColors }: Props) {
   const { data: zones = [], isLoading, isError, error } = useSpatialElements();
   const saveMut = useSaveSpatialElement();
   const deleteMut = useDeleteSpatialElement();
@@ -82,7 +76,7 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
 
   const handleQuickSave = (tag: string) => {
     if (!quickPick) return;
-    const color = TAG_COLORS[tag] || "#3b82f6";
+    const color = (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6";
     const polygonJson = isRectPick(quickPick)
       ? makeRectPolygon(quickPick.x1, quickPick.y1, quickPick.x2, quickPick.y2)
       : makeDiamondPolygon(quickPick.x, quickPick.y);
@@ -160,12 +154,12 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
             </button>
           </div>
           <div className="flex flex-wrap gap-1">
-            {TAG_OPTIONS.map(tag => (
+            {(creatableTags ?? TAG_OPTIONS).map(tag => (
               <button key={tag}
                 onClick={() => handleQuickSave(tag)}
                 disabled={saveMut.isPending}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-                style={{ backgroundColor: TAG_COLORS[tag] || "#3b82f6" }}>
+                style={{ backgroundColor: (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6" }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-white/50" />
                 {tag}
               </button>
@@ -195,7 +189,7 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
 
       {/* 标签筛选 + 来源分类 + 批量操作 */}
       {zones.length > 0 && (
-        <TagsFilterBar zones={zones} activeTag={activeTag} onSetActiveTag={setActiveTag} activeSource={activeSource} onSetActiveSource={setActiveSource} onDeleteByTag={(tag) => {
+        <TagsFilterBar zones={zones} activeTag={activeTag} onSetActiveTag={setActiveTag} activeSource={activeSource} onSetActiveSource={setActiveSource} allTagColors={allTagColors} onDeleteByTag={(tag) => {
           const ids = zones.filter(z => {
             try { const tags: string[] = JSON.parse(z.semanticTags || "[]"); return tags.includes(tag); } catch { return false; }
           }).map(z => z.id!);
@@ -290,15 +284,22 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
           className="shrink-0 border-t border-[var(--app-color-border-default)] p-2 space-y-1.5 bg-[var(--app-color-surface-container)] max-h-[60%] overflow-auto">
           {/* 快速任务类型切换 */}
           <div className="flex items-center gap-1">
+          {editing.robotIp && (
+            <span className="text-[9px] text-[var(--app-color-text-tertiary)] shrink-0 mr-1">
+              归属: <span className="font-semibold text-[var(--app-color-text-primary)]">
+                {editing.robotIp.endsWith(".16") ? "AGV-1" : editing.robotIp.endsWith(".18") ? "AGV-2" : editing.robotIp.endsWith(".20") ? "AGV-3" : "AGV-4"}
+              </span>
+            </span>
+          )}
             <span className="text-[9px] text-[var(--app-color-text-tertiary)] shrink-0">快捷任务:</span>
-            {TAG_OPTIONS.map(tag => (
+            {(creatableTags ?? TAG_OPTIONS).map(tag => (
               <button key={tag} onClick={() => setEditing(prev => {
                 if (!prev) return prev;
                 const tags = [tag]; // 单选替换
-                return { ...prev, semanticTags: JSON.stringify(tags), color: TAG_COLORS[tag] || prev.color };
+                return { ...prev, semanticTags: JSON.stringify(tags), color: (allTagColors ?? TAG_COLORS)[tag] || prev.color };
               })}
                 className="px-1.5 py-0.5 rounded-full text-[9px] font-medium text-white hover:opacity-90"
-                style={{ backgroundColor: TAG_COLORS[tag] || "#3b82f6" }}>
+                style={{ backgroundColor: (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6" }}>
                 {tag}
               </button>
             ))}
@@ -374,7 +375,7 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
           <div>
             <div className="text-[9px] text-[var(--app-color-text-tertiary)] mb-0.5">语义标签</div>
             <div className="flex flex-wrap gap-1">
-              {TAG_OPTIONS.map(t => {
+              {(creatableTags ?? TAG_OPTIONS).map(t => {
                 let tags: string[] = [];
                 try { tags = editing.semanticTags ? JSON.parse(editing.semanticTags) : []; } catch { tags = []; }
                 const active = tags.includes(t);
@@ -412,12 +413,13 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
 }
 
 /** 标签筛选 + 来源分类 + 批量删除组件 */
-function TagsFilterBar({ zones, activeTag, onSetActiveTag, activeSource, onSetActiveSource, onDeleteByTag, onDeleteBySource }: {
+function TagsFilterBar({ zones, activeTag, onSetActiveTag, activeSource, onSetActiveSource, onDeleteByTag, onDeleteBySource, allTagColors }: {
   zones: AgvSpatialElement[];
   activeTag: string | null; onSetActiveTag: (t: string | null) => void;
   activeSource: string | null; onSetActiveSource: (s: string | null) => void;
   onDeleteByTag: (tag: string) => void;
   onDeleteBySource: (source: string) => void;
+  allTagColors?: Record<string, string>;
 }) {
 
   // 统计各标签数量
@@ -431,7 +433,7 @@ function TagsFilterBar({ zones, activeTag, onSetActiveTag, activeSource, onSetAc
 
   const allTags = Object.keys(tagCounts).sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0));
   const allSources = Object.keys(sourceCounts).sort();
-  const SOURCE_LABELS: Record<string, string> = { BEHAVIOR: "行为", MANUAL: "手动", AUTO: "导入", TOPOLOGY: "拓扑" };
+  const SOURCE_LABELS: Record<string, string> = { BEHAVIOR: "行为", MANUAL: "手动", AUTO: "自动", TOPOLOGY: "拓扑" };
 
   return (
     <div className="shrink-0 px-2 py-1.5 border-b border-[var(--app-color-border-default)] space-y-1">
@@ -445,7 +447,7 @@ function TagsFilterBar({ zones, activeTag, onSetActiveTag, activeSource, onSetAc
         {allTags.map(tag => (
           <button key={tag} onClick={() => onSetActiveTag(activeTag === tag ? null : tag)}
             className={`px-1.5 py-0.5 rounded-full text-[9px] ${activeTag === tag ? "text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}
-            style={activeTag === tag ? { backgroundColor: TAG_COLORS[tag] || "#3b82f6" } : {}}>
+            style={activeTag === tag ? { backgroundColor: (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6" } : {}}>
             {tag}({tagCounts[tag]})
           </button>
         ))}

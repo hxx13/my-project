@@ -110,13 +110,23 @@ export async function fetchAgvAnalytics(ip: string, from: string, to: string): P
   return res.data.data;
 }
 
-export async function fetchCoordConfigs(): Promise<Record<string, number>> {
-  const res = await authHttp.get<{ data: Record<string, number> }>("/v1/agv/coord-config");
+export interface AgvCoordFrame {
+  rotationDeg: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+export async function fetchCoordConfigs(): Promise<Record<string, AgvCoordFrame>> {
+  const res = await authHttp.get<{ data: Record<string, AgvCoordFrame> }>("/v1/agv/coord-config");
   return res.data.data;
 }
 
-export async function updateCoordConfig(ip: string, deg: number): Promise<void> {
-  await authHttp.put(`/v1/agv/coord-config/${ip}?deg=${deg}`);
+export async function updateCoordConfig(ip: string, deg?: number, offsetX?: number, offsetY?: number): Promise<void> {
+  const params = new URLSearchParams();
+  if (deg !== undefined) params.set("deg", String(deg));
+  if (offsetX !== undefined) params.set("offsetX", String(offsetX));
+  if (offsetY !== undefined) params.set("offsetY", String(offsetY));
+  await authHttp.put(`/v1/agv/coord-config/${ip}?${params.toString()}`);
 }
 
 // ── History Playback ──
