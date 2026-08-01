@@ -410,7 +410,9 @@ public class DahuaService {
                 "172.22.161.254_3000", "172.22.161.254_8080",
                 "192.168.1.3_8080",
                 "My_Fixed_Java_Client_V1", "My_Fixed_Java_Client_V2026",
-                "Twin_172.22.161.252_18082"   // 旧18082端口残留
+                "Twin_172.22.161.252_18082",   // 旧18082端口残留
+                "Twin_10.127.139.31_9000",      // 被ICC限频的旧名
+                "Twin_172.22.161.252_8080"      // 同清理
         );
         for (String name : zombieNames) unsubscribe(name);
     }
@@ -426,7 +428,8 @@ public class DahuaService {
         }
 
         // 订阅名加 magic 后缀，防止 Windows/Linux 多环境互踢
-        String subName = "Twin_" + magic;
+        // v2 后缀绕过 ICC 频率限制（26100006）
+        String subName = "Twin_" + magic + "_v2";
         unsubscribe(subName);
 
         String subUrl = authService.getBaseUrl() + "/evo-apigw/evo-event/1.0.0/subscribe/mqinfo";
@@ -532,7 +535,7 @@ public class DahuaService {
             magic = "127.0.0.1_8080";
         }
 
-        String subName = "Twin_" + magic;
+        String subName = "Twin_" + magic + "_v2";
         String subUrl = authService.getBaseUrl() + "/evo-apigw/evo-event/1.0.0/subscribe/mqinfo";
 
         // 构建请求体（与 subscribe() 完全一致）
