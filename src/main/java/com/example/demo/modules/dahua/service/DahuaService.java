@@ -406,7 +406,11 @@ public class DahuaService {
     // =========================================================================
     public void cleanupLegacySubscriptions() {
         log.info("[System] 清理旧订阅...");
-        List<String> zombieNames = Arrays.asList("172.22.161.252_8080", "172.22.161.252_3000", "172.22.161.254_3000", "172.22.161.254_8080", "192.168.1.3_8080", "My_Fixed_Java_Client_V1");
+        List<String> zombieNames = Arrays.asList(
+                "172.22.161.252_8080", "172.22.161.252_3000",
+                "172.22.161.254_3000", "172.22.161.254_8080",
+                "192.168.1.3_8080",
+                "My_Fixed_Java_Client_V1", "My_Fixed_Java_Client_V2026"  // 旧固定名，迁移到 Twin_ 后清理
         for (String name : zombieNames) unsubscribe(name);
     }
 
@@ -420,7 +424,8 @@ public class DahuaService {
             magic = "127.0.0.1_8080";
         }
 
-        String subName = "My_Fixed_Java_Client_V2026";
+        // 订阅名加 magic 后缀，防止 Windows/Linux 多环境互踢
+        String subName = "Twin_" + magic;
         unsubscribe(subName);
 
         String subUrl = authService.getBaseUrl() + "/evo-apigw/evo-event/1.0.0/subscribe/mqinfo";
@@ -526,7 +531,7 @@ public class DahuaService {
             magic = "127.0.0.1_8080";
         }
 
-        String subName = "My_Fixed_Java_Client_V2026";
+        String subName = "Twin_" + magic;
         String subUrl = authService.getBaseUrl() + "/evo-apigw/evo-event/1.0.0/subscribe/mqinfo";
 
         // 构建请求体（与 subscribe() 完全一致）
