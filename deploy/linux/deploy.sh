@@ -89,6 +89,8 @@ else
     # Step 4/8: 后端构建
     echo "=== Step 4/8: mvn package ==="
     cd "$REPO_DIR"
+    # 清理上次构建残留（可能属 root，mvn clean 删不动）
+    sudo rm -rf target
     mvn clean package -DskipTests -Plinux
 fi
 
