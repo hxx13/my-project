@@ -426,9 +426,16 @@ export function buildTopologyOverlays(
   return topologyToRouteOverlays(topology);
 }
 
-// ── 以下为旧版算法路线 API（保留以兼容分析弹窗，但路线模式不再使用） ──
+// ═══════════════════════════════════════════════════════════════
+// DEPRECATED — 旧版路线 v1 API（保留仅供编译兼容，路由模式已停用）
+// ═══════════════════════════════════════════════════════════════
+// 替代方案:
+//   fetchRoutes / useRoutes → 请改用 useRouteTopology()
+//   discoverRoutes / useDiscoverRoutes → 已彻底废弃，直接返回空结果
+//   AgvRoute 类型 → 对应新类型 RouteTopologyStation/Edge/Zone/Response
+// ═══════════════════════════════════════════════════════════════
 
-/** @deprecated 路线模式已改用固定拓扑数据，此类型仅保留兼容分析弹窗 */
+/** @deprecated 路线模式已改用固定拓扑数据（RouteTopologyResponse），此类型仅保留以兼容分析弹窗历史引用 */
 export interface AgvRoute {
   id: number;
   robotIp: string;
@@ -442,14 +449,14 @@ export interface AgvRoute {
   enabled: boolean;
 }
 
-/** @deprecated 路线模式已改用 useRouteTopology() */
+/** @deprecated 路线模式已改用 useRouteTopology()（v2 拓扑），此 v1 API 不再使用 */
 export async function fetchRoutes(robotIp?: string): Promise<AgvRoute[]> {
   const params = robotIp ? `?robotIp=${encodeURIComponent(robotIp)}` : "";
   const res = await authHttp.get<{ data: AgvRoute[] }>(`/v1/agv/analysis/routes${params}`);
   return res.data.data;
 }
 
-/** @deprecated 路线模式已改用 useRouteTopology() */
+/** @deprecated 路线模式已改用 useRouteTopology()（v2 拓扑），此 v1 hook 不再使用 */
 export function useRoutes(robotIp?: string) {
   return useQuery({
     queryKey: ["agvRoutes", robotIp],
@@ -458,12 +465,12 @@ export function useRoutes(robotIp?: string) {
   });
 }
 
-/** @deprecated 路线发现算法已废弃，固定路线数据无需重新计算 */
+/** @deprecated 路线发现算法 v1 已彻底废弃（v2 改用 generateRouteTopology()），此函数为 no-op 桩 */
 export async function discoverRoutes(_force = false): Promise<{ routesDiscovered: number; force: boolean }> {
   return { routesDiscovered: 0, force: false };
 }
 
-/** @deprecated 路线发现算法已废弃 */
+/** @deprecated 路线发现算法 v1 已彻底废弃（v2 改用 useGenerateRouteTopology()），此 hook 为 no-op 桩 */
 export function useDiscoverRoutes() {
   const qc = useQueryClient();
   return useMutation<Awaited<ReturnType<typeof discoverRoutes>>, Error, boolean | undefined>({

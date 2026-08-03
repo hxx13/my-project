@@ -31,6 +31,10 @@ export function resolveZoneGroup(
   polygonJson: string,
   stationPattern?: string | null,
 ): ZoneGroup {
+  // 0. 手动创建 zone 的强制分组标记（__zone1__ / __zone2__）
+  if (stationPattern?.startsWith("__zone")) {
+    return stationPattern.includes("zone1") ? "zone1" : "zone2";
+  }
   // 1. 站点前缀精确匹配
   if (stationPattern) {
     const m = stationPattern.match(/^(?:LM|AP|CP)(\d)/);

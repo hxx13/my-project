@@ -515,7 +515,7 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
       {
         id: "cage-index",
         path: "/admin/cage-shelf-indexes",
-        label: "笼架落库索引",
+        label: "笼架与笼位索引",
         icon: TableProperties,
         homeTone: "from-amber-400 to-orange-500",
         fallbackMinRole: "STAFF",

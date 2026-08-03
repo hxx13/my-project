@@ -1,0 +1,165 @@
+package com.example.demo.modules.cageshelf.controller;
+
+import com.example.demo.common.dto.Result;
+import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.cageshelf.entity.CageClaim;
+import com.example.demo.modules.cageshelf.service.CageClaimService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
+
+import jakarta.servlet.http.HttpServletRequest;
+import java.util.*;
+
+/**
+ * 管理端笼位申请 API — 审批 + 手动分配。
+ */
+@RestController
+@RequestMapping("/api/admin/cage-claims")
+@Tag(name = "管理端笼位申请")
+@Transactional
+public class AdminCageClaimController {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminCageClaimController.class);
+
+    private final AuthContextService authContextService;
+    private final CageClaimService claimService;
+
+    public AdminCageClaimController(AuthContextService authContextService,
+                                     CageClaimService claimService) {
+        this.authContextService = authContextService;
+        this.claimService = claimService;
+    }
+
+    private User resolveUser(HttpServletRequest req) {
+        User u = authContextService.resolveUserFromBearer(req.getHeader("Authorization"));
+        if (u == null) return null;
+        if (u.getRole() == null) u.setRole(RoleEnum.MEMBER);
+        return u;
+    }
+
+    private Result<?> requireMinRole(User u, RoleEnum min) {
+        if (u == null) return Result.error("未登录");
+        if (u.getStatus() != null && u.getStatus() == 0) return Result.error("账号已禁用");
+        if (u.getRole().getLevel() < min.getLevel()) return Result.error("无权限");
+        return null;
+    }
+
+    // ── 待审批列表 ──
+
+    @GetMapping("/pending")
+    @Operation(summary = "待审批列表（分页+筛选）")
+    public Result<Map<String, Object>> pending(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMinRole(u, RoleEnum.PI);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        return Result.success(claimService.getPendingList(status, keyword, page, pageSize));
+    }
+
+    // ── 审批 ──
+
+    @PostMapping("/{id}/approve")
+    @Operation(summary = "审批申请/释放")
+    public Result<Map<String, Object>> approve(@PathVariable Long id,
+                                                @RequestBody Map<String, Object> body,
+                                                HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMinRole(u, RoleEnum.PI);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+
+        String decision = str(body, "decision");
+        String reason = str(body, "reason");
+        if (decision == null || decision.isBlank())
+            return Result.fail(400, "decision 必填（approved / rejected）");
+        if (!"approved".equals(decision) && !"rejected".equals(decision))
+            return Result.fail(400, "decision 必须为 approved 或 rejected");
+
+        try {
+            CageClaim claim = claimService.approve(u, id, decision, reason);
+            return Result.success(Map.of("id", claim.getId(), "status", claim.getClaimStatus()));
+        } catch (Exception e) {
+            log.warn("[admin-approve] 审批失败 claimId={}: {}", id, e.getMessage());
+            return handleServiceException(e);
+        }
+    }
+
+    // ── 手动分配 ──
+
+    @PostMapping("/assign")
+    @Operation(summary = "管理员手动分配笼位给学生")
+    public Result<Map<String, Object>> assign(@RequestBody Map<String, Object> body,
+                                               HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMinRole(u, RoleEnum.ADMIN);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+
+        Long animalCageId = toLong(body.get("animalCageId"));
+        Long shelfIndexId = toLong(body.get("shelfIndexId"));
+        String studentUserId = str(body, "studentUserId");
+        Long aupId = toLong(body.get("aupId"));
+        if (animalCageId == null || shelfIndexId == null || studentUserId == null)
+            return Result.fail(400, "animalCageId, shelfIndexId, studentUserId 必填");
+
+        try {
+            CageClaim claim = claimService.assign(u, animalCageId, shelfIndexId, studentUserId, aupId);
+            return Result.success(Map.of("id", claim.getId(), "status", claim.getClaimStatus()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    // ── 分配候选人 ──
+
+    @GetMapping("/assign-candidates")
+    @Operation(summary = "可被分配的学生列表")
+    public Result<?> assignCandidates(@RequestParam Long shelfIndexId,
+                                       HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMinRole(u, RoleEnum.STAFF);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        // 后续版本实现：从 AUP → ARO 拉课题组成员列表
+        return Result.success(List.of());
+    }
+
+    // ── 审批历史 ──
+
+    @GetMapping("/{id}/history")
+    @Operation(summary = "认领审批历史")
+    public Result<?> history(@PathVariable Long id, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMinRole(u, RoleEnum.STAFF);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        return Result.success(claimService.getApprovalHistory(id));
+    }
+
+    // ── helpers ──
+
+    @SuppressWarnings("unchecked")
+    private static <T> Result<T> handleServiceException(Exception e) {
+        if (e instanceof com.example.demo.common.exception.TwinBusinessException be) {
+            return (Result<T>) Result.fail(be.getCode(), be.getMessage());
+        }
+        return (Result<T>) Result.error(e.getMessage());
+    }
+
+    private static String str(Map<String, Object> m, String k) {
+        Object v = m.get(k); return v == null ? null : String.valueOf(v).trim();
+    }
+
+    private static Long toLong(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number n) return n.longValue();
+        try { return Long.parseLong(String.valueOf(v).trim()); }
+        catch (NumberFormatException e) { return null; }
+    }
+}

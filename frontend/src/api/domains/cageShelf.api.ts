@@ -34,6 +34,7 @@ export interface CageShelfCell {
   y: number;
   position: string;
   empty: boolean;
+  visible?: boolean;
   stateLabel: string;
   animalCageType?: number;
   name?: string;
@@ -116,6 +117,7 @@ export async function fetchCageShelfDetail(shelveId: string, batchId?: string) {
 }
 
 export interface CageShelfIndexRow {
+  id: number;
   campusId: string;
   campusName: string;
   areaId: string;
@@ -234,6 +236,7 @@ export async function fetchCageShelfIndexes(params: {
   areaId?: string;
   floorId?: string;
   roomId?: string;
+  keyword?: string;
   page?: number;
   size?: number;
 }) {
@@ -448,6 +451,7 @@ export function dedupeBookmarks(list: BookmarkEntry[]): BookmarkEntry[] {
 }
 
 export interface CageShelfTreeNode {
+  id: number;  // cage_shelf_index 主键，用于 pool/claim 等接口的 shelfIndexId
   campusId: string; campusName: string;
   areaId: string; areaName: string;
   floorId: string; floorName: string;
@@ -881,4 +885,330 @@ export async function lookupCode(code: string): Promise<CodeLookupResult> {
   });
   if (!res.data?.success) throw new Error(res.data?.message || "查询失败");
   return res.data.data!;
+}
+
+// ── 笼位ID索引 API (cage-cell-index) ──
+
+export interface ShelfCellSummary {
+  shelfIndexId: number;
+  shelveId: number;
+  shelveName: string;
+  roomId: number;
+  roomName: string;
+  campusName: string;
+  areaName: string;
+  floorName: string;
+  totalCells: number;
+  syncedCells: number;
+  boundCells: number;
+  lastSyncedAt: string | null;
+}
+
+export interface CageCellIndexEntry {
+  id: number;
+  shelfIndexId: number;
+  shelveId: number;
+  positionX: number;
+  positionY: number;
+  animalCageId: number | null;
+  hasCageBox: boolean;
+  cageBoxCode: string | null;
+  lastSyncStatus: string;
+  lastSyncError: string | null;
+  syncedAt: string | null;
+}
+
+export interface CellSyncStats {
+  ok: boolean;
+  totalShelves: number;
+  successShelves: number;
+  failShelves: number;
+  totalCellsWritten?: number;
+  totalUpdated?: number;
+  totalSkipped?: number;
+  total?: number;
+  startedAt: string;
+  finishedAt: string;
+  failures?: Array<{ shelveId: string; error: string }>;
+}
+
+export async function fetchCellIndexSummary(params: {
+  roomId?: number;
+  keyword?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const res = await authHttp.get<Result<{ rows: ShelfCellSummary[]; total: number; page: number; pageSize: number }>>(
+    "/cage-cell-index/summary",
+    { params }
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "加载笼位索引汇总失败");
+  return res.data.data!;
+}
+
+export async function fetchCellIndexByShelf(shelfIndexId: number): Promise<CageCellIndexEntry[]> {
+  const res = await authHttp.get<Result<CageCellIndexEntry[]>>(
+    `/cage-cell-index/shelf/${shelfIndexId}/cells`
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "加载笼位列表失败");
+  return res.data.data ?? [];
+}
+
+export async function syncAllCellIds(roomId?: number): Promise<CellSyncStats> {
+  const res = await authHttp.post<Result<CellSyncStats>>("/cage-cell-index/sync", {
+    roomId: roomId ?? undefined,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "同步失败");
+  return res.data.data!;
+}
+
+export interface CageCellLookupResult {
+  shelfIndexId: number;
+  shelveId: number;
+  positionX: number;
+  positionY: number;
+  animalCageId: number;
+  hasCageBox: boolean;
+  cageBoxCode: string | null;
+  campusName: string;
+  areaName: string;
+  floorName: string;
+  roomName: string;
+  roomId: number;
+  shelveName: string;
+}
+
+/** 独立 /book 状态同步 */
+export async function syncStatusFromBook(roomId?: number): Promise<CellSyncStats> {
+  const res = await authHttp.post<Result<CellSyncStats>>("/cage-cell-index/sync-status", { roomId: roomId ?? undefined });
+  if (!res.data?.success) throw new Error(res.data?.message || "状态同步失败");
+  return res.data.data!;
+}
+
+// ═══════════════════════════════════════════
+// 本地业务接口 (/api/local/*)
+// ═══════════════════════════════════════════
+
+export async function localBind(animalCageId: number | string, cageBoxCode: string) {
+  const res = await authHttp.post<Result<any>>("/local/bind", { animalCageId, cageBoxCode });
+  if (!res.data?.success) throw new Error(res.data?.message || "绑定失败");
+}
+export async function localUnbind(animalCageId: number | string) {
+  const res = await authHttp.post<Result<any>>("/local/unbind", { animalCageId });
+  if (!res.data?.success) throw new Error(res.data?.message || "解绑失败");
+}
+export async function localAllocate(animalCageIds: (number | string)[], aupId: number | string, roomId: number | string, shelveId: number | string, piName: string, aupNumber: string) {
+  const res = await authHttp.post<Result<any>>("/local/allocate", { animalCageIds, aupId, roomId, shelveId, piName, aupNumber });
+  if (!res.data?.success) throw new Error(res.data?.message || "分配失败");
+}
+export async function localCancelAllocate(animalCageIds: (number | string)[]) {
+  const res = await authHttp.post<Result<any>>("/local/cancel-allocate", { animalCageIds });
+  if (!res.data?.success) throw new Error(res.data?.message || "取消分配失败");
+}
+export async function localEdit(animalCageId: number | string, toggle: string, enable: boolean, cageBoxCode?: string) {
+  const res = await authHttp.post<Result<any>>("/local/edit", { animalCageId, toggle, enable, cageBoxCode: cageBoxCode || "" });
+  if (!res.data?.success) throw new Error(res.data?.message || "编辑失败");
+}
+
+/** @deprecated 用 localBind/localUnbind/localAllocate/localEdit 替代 */
+export async function localAction(body: {
+  action: string; animalCageId: number | string; cageBoxCode?: string;
+  specialBreedingName?: string; specialBreedingDescription?: string;
+}): Promise<{ ok: boolean; local: boolean; syncedToAro: boolean }> {
+  const res = await authHttp.post<Result<{ ok: boolean; local: boolean; syncedToAro: boolean }>>("/cage-cell-index/local-action", body);
+  if (!res.data?.success) throw new Error(res.data?.message || "操作失败");
+  return res.data.data ?? { ok: false, local: false, syncedToAro: false };
+}
+
+/** 补全详情字段 — 从 ARO /list 批量拉取动物品系/性别/周龄等 */
+export async function syncDetailFields(roomId?: number): Promise<CellSyncStats> {
+  const res = await authHttp.post<Result<CellSyncStats>>("/cage-cell-index/sync-details", {
+    roomId: roomId ?? undefined,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "详情补全失败");
+  return res.data.data!;
+}
+
+/** 本地数据源：通过 shelveId 加载笼架网格 */
+export async function fetchLocalShelfGridByShelveId(shelveId: string): Promise<CageShelfDetail> {
+  const res = await authHttp.get<Result<CageShelfDetail>>(`/cage-cell-index/local-grid/by-shelve/${shelveId}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "加载本地数据失败");
+  return res.data.data!;
+}
+
+/** 全局反查：根据 animalCageId 定位笼位 */
+export async function lookupAnimalCageId(animalCageId: number): Promise<CageCellLookupResult> {
+  const res = await authHttp.get<Result<CageCellLookupResult>>("/cage-cell-index/lookup", {
+    params: { animalCageId },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "未找到");
+  return res.data.data!;
+}
+
+export async function updateCellAnimalCageId(
+  shelfIndexId: number,
+  positionX: number,
+  positionY: number,
+  animalCageId: number | null
+): Promise<boolean> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-cell-index/cell", {
+    shelfIndexId,
+    positionX,
+    positionY,
+    animalCageId,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "更新笼位ID失败");
+  return res.data.data?.ok ?? false;
+}
+
+// ── 本地标注（实验记录 + 照片）─
+
+export async function fetchLocalAnnotate(animalCageId: number | string): Promise<{ experimentDesc: string; imagesJson: string; statusPhotos?: string }> {
+  const res = await authHttp.get<Result<{ experimentDesc: string; imagesJson: string; statusPhotos?: string }>>(`/local/annotate/${animalCageId}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "加载标注失败");
+  return res.data.data ?? { experimentDesc: "", imagesJson: "[]" };
+}
+
+export async function localAnnotate(animalCageId: number | string, experimentDesc?: string, imagesJson?: string, statusPhotos?: string) {
+  const res = await authHttp.post<Result<any>>("/local/annotate", { animalCageId, experimentDesc, imagesJson, statusPhotos });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存标注失败");
+}
+
+// ═══════════════════════════════════════════
+// 笼位申请系统 (/api/student/cage-claims + /api/admin/cage-claims)
+// ═══════════════════════════════════════════
+
+/** 池中可用笼位 */
+export interface PoolCell {
+  animalCageId: number;
+  positionX: number;
+  positionY: number;
+  shelveId: number;
+  cageTypeCode: number;
+  projectPiName: string;
+  aupNumber: string;
+  departmentName: string;
+  projectName: string;
+}
+
+/** 申请记录 */
+export interface CageClaimItem {
+  id: number;
+  animalCageId: number;
+  claimStatus: string;
+  claimantId: string;
+  claimantName: string;
+  claimantDept: string;
+  aupId: number | null;
+  assignerId: string | null;
+  assignerName: string | null;
+  confirmRequired: boolean;
+  retryCount: number;
+  rejectedAt: string | null;
+  confirmedAt: string | null;
+  releasedAt: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 审批记录 */
+export interface ApprovalRecordItem {
+  id: number;
+  targetType: string;
+  targetId: number;
+  approverId: string;
+  approverName: string;
+  approverRole: string;
+  decision: string;
+  rejectReason: string | null;
+  createdAt: string;
+}
+
+// ── 学生端 ──
+
+/** 查看池中可用笼位 */
+export async function fetchPoolCells(shelfIndexId: number): Promise<PoolCell[]> {
+  const res = await authHttp.get<Result<PoolCell[]>>("/student/cage-claims/pool", {
+    params: { shelfIndexId },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载池数据失败");
+  return res.data.data ?? [];
+}
+
+/** 申请笼位 */
+export async function claimCage(animalCageId: number, shelfIndexId: number): Promise<{ id: number; animalCageId: number; status: string; needApproval: boolean }> {
+  const res = await authHttp.post<Result<{ id: number; animalCageId: number; status: string; needApproval: boolean }>>(
+    "/student/cage-claims", { animalCageId, shelfIndexId },
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "申请失败");
+  return res.data.data!;
+}
+
+/** 取消申请 */
+export async function cancelClaim(id: number): Promise<void> {
+  const res = await authHttp.post<Result<any>>(`/student/cage-claims/${id}/cancel`);
+  if (!res.data?.success) throw new Error(res.data?.message || "取消失败");
+}
+
+/** 到场确认 */
+export async function confirmClaim(id: number): Promise<void> {
+  const res = await authHttp.post<Result<any>>(`/student/cage-claims/${id}/confirm`);
+  if (!res.data?.success) throw new Error(res.data?.message || "确认失败");
+}
+
+/** 释放笼位 */
+export async function releaseClaim(id: number, reason?: string): Promise<void> {
+  const res = await authHttp.post<Result<any>>(`/student/cage-claims/${id}/release`, { reason });
+  if (!res.data?.success) throw new Error(res.data?.message || "释放失败");
+}
+
+/** 转移归属 */
+export async function transferClaim(id: number, toStudentUserId: string, reason?: string): Promise<void> {
+  const res = await authHttp.post<Result<any>>(`/student/cage-claims/${id}/transfer`, { toStudentUserId, reason });
+  if (!res.data?.success) throw new Error(res.data?.message || "转移失败");
+}
+
+/** 我的申请列表 */
+export async function fetchMyClaims(status?: string): Promise<CageClaimItem[]> {
+  const res = await authHttp.get<Result<CageClaimItem[]>>("/student/cage-claims/my", {
+    params: status ? { status } : undefined,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载申请列表失败");
+  return res.data.data ?? [];
+}
+
+// ── 管理端 ──
+
+/** 待审批列表 */
+export async function fetchPendingClaims(
+  status?: string, keyword?: string, page = 1, pageSize = 20,
+): Promise<{ list: CageClaimItem[]; total: number; page: number; pageSize: number }> {
+  const res = await authHttp.get<Result<{ list: CageClaimItem[]; total: number; page: number; pageSize: number }>>(
+    "/admin/cage-claims/pending",
+    { params: { status, keyword, page, pageSize } },
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "加载待审批列表失败");
+  return res.data.data ?? { list: [], total: 0, page: 1, pageSize: 20 };
+}
+
+/** 审批 */
+export async function approveClaim(id: number, decision: "approved" | "rejected", reason?: string): Promise<void> {
+  const res = await authHttp.post<Result<any>>(`/admin/cage-claims/${id}/approve`, { decision, reason });
+  if (!res.data?.success) throw new Error(res.data?.message || "审批失败");
+}
+
+/** 手动分配 */
+export async function assignClaim(animalCageId: number, shelfIndexId: number, studentUserId: string, aupId?: number): Promise<void> {
+  const res = await authHttp.post<Result<any>>("/admin/cage-claims/assign", {
+    animalCageId, shelfIndexId, studentUserId, aupId,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "分配失败");
+}
+
+/** 审批历史 */
+export async function fetchClaimHistory(id: number): Promise<ApprovalRecordItem[]> {
+  const res = await authHttp.get<Result<ApprovalRecordItem[]>>(`/admin/cage-claims/${id}/history`);
+  if (!res.data?.success) throw new Error(res.data?.message || "加载审批历史失败");
+  return res.data.data ?? [];
 }

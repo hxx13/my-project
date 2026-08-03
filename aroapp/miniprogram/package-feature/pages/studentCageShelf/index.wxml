@@ -146,6 +146,10 @@
       </view>
       <view class="list-pad-bottom" />
     </scroll-view>
+    <!-- ── 扫码定位 FAB（列表页常驻）── -->
+    <view wx:if="{{ staffView }}" class="scan-float-btn" bindtap="onScanLock">
+      <van-icon name="scan" size="44rpx" color="#fff" />
+    </view>
   </view>
 </view>
 
@@ -321,14 +325,20 @@
           </block>
           <text wx:if="{{ item.empty }}" class="gcell-empty-text">空</text>
           <text wx:elif="{{ item.visible === false }}" class="gcell-hidden-text">***</text>
+          <view wx:if="{{ scanLockHighlight && (scanLockHighlight.sid + '') === (gridMeta.shelveId + '') && scanLockHighlight.x === item.x && scanLockHighlight.y === item.y }}" class="scan-flash-overlay"></view>
         </view>
       </view>
       <view class="grid-pad-bottom" />
     </view>
   </scroll-view>
+
+  <!-- ── 扫码定位 FAB（右下悬浮圆形按钮，常驻）── -->
+  <view class="scan-float-btn" bindtap="onScanLock">
+    <van-icon name="scan" size="44rpx" color="#fff" />
+  </view>
 </view>
 
-<!-- Cell Detail Popup（对齐 Web CellDetailPanel / MobileCageCellDetailDialog） -->
+<!-- Cell Detail Popup（卡片式布局，对齐 H5 / 设计稿） -->
 <van-popup
   show="{{ showCellDetail }}"
   position="center"
@@ -338,29 +348,11 @@
   custom-style="width:90vw;max-width:680rpx;max-height:80vh;box-sizing:border-box;overflow:hidden;"
   bind:close="onCloseCellDetail"
 >
-  <!-- 提交按钮：定位在关闭图标左侧（absolute，与 van-popup close-icon 同行） -->
-  <view wx:if="{{ false }}" class="detail-popup-submit" bindtap="onSubmitDetailActions">
-    <text>{{ detailActionSubmitting ? '提交中' : '提交' }}</text>
-  </view>
-
-  <scroll-view wx:if="{{ selectedCell && cellDetailMeta }}" class="detail-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+  <scroll-view wx:if="{{ selectedCell && cellDetail }}" class="detail-scroll" scroll-y enhanced show-scrollbar="{{false}}">
     <view class="detail-root">
-      <view class="detail-head">
-        <view class="detail-head-main">
-          <view class="detail-head-title-row">
-            <text class="detail-head-title">笼位详情</text>
-            <view class="detail-head-position-badge"><text>{{ selectedCell._displayPosition || selectedCell.position }}</text></view>
-            <view wx:if="{{ selectedCell._cageTypeDotColor }}" class="detail-head-dot" style="background:{{ selectedCell._cageTypeDotColor }};">
-              <text>{{ selectedCell._cageTypeAbbr }}</text>
-            </view>
-          </view>
-          <text class="detail-head-sub">{{ cellDetailMeta.cageTypeLabel }} · {{ selectedCell.stateLabel || '—' }}</text>
-        </view>
-      </view>
 
       <!-- 教职工动作选择（仅编辑模式） -->
-      <!-- 对齐 H5：三态按钮 → 保留已有(绿✓) / 新增(红✓) / 取消已有(灰✕) -->
-      <view wx:if="{{ staffView && editMode && cellDetailMeta.permitted }}" class="detail-actions-bar">
+      <view wx:if="{{ staffView && editMode && cellDetailMeta && cellDetailMeta.permitted }}" class="detail-actions-bar">
         <view class="detail-action-btn {{ detailActions.DIVIDE ? (initialDetailActions.DIVIDE ? 'detail-action-btn--keep' : 'detail-action-btn--on') : (initialDetailActions.DIVIDE ? 'detail-action-btn--off' : '') }}" data-act="DIVIDE" bindtap="onToggleDetailAction">
           <text wx:if="{{ detailActions.DIVIDE }}">✓ </text>
           <text wx:elif="{{ initialDetailActions.DIVIDE }}">✕ </text>
@@ -378,93 +370,231 @@
         </view>
       </view>
 
-      <view class="detail-section-label"><text>ARO 官方数据</text></view>
-
-      <block wx:if="{{ cellDetailMeta.permitted }}">
-        <view wx:if="{{ cellDetailMeta.specialChips.length }}" class="detail-status-chips">
-          <view wx:for="{{ cellDetailMeta.specialChips }}" wx:key="code" class="detail-status-chip detail-status-chip--{{ item.code }}">
-            <text class="detail-status-chip-abbr">{{ item.abbr }}</text>
-            <text class="detail-status-chip-label">{{ item.label }}</text>
+      <!-- Header: 位置 + 类型 + 笼盒编号 -->
+      <view class="detail-head">
+        <view class="detail-head-row">
+          <view wx:if="{{ cellDetail.cageTypeDotColor }}" class="detail-head-dot" style="background:{{ cellDetail.cageTypeDotColor }};">
+            <text>{{ cellDetail.cageTypeAbbr }}</text>
           </view>
+          <text class="detail-head-position">{{ cellDetail.position }}</text>
+          <text class="detail-head-coords">{{ cellDetail.coords }}</text>
+          <text class="detail-head-type">{{ cellDetail.cageTypeLabel }}</text>
         </view>
+        <text wx:if="{{ cellDetail.cageBoxCode }}" class="detail-head-code">笼盒: {{ cellDetail.cageBoxCode }}</text>
+      </view>
 
-        <!-- 对齐 Web 端：遍历 cageBoxInfo 全部字段，自动过滤空值 -->
-        <view class="detail-field-grid">
-          <view wx:for="{{ detailFields }}" wx:key="key" class="detail-field {{ item.key === 'CageBoxQrCode' ? 'detail-field--full' : '' }}">
-            <text class="detail-field-label">{{ item.label }}</text>
-            <text class="detail-field-value {{ item.key === 'CageBoxQrCode' ? 'detail-field-value--mono' : '' }}">{{ item.value }}</text>
-            <view wx:if="{{ item.key === 'CageBoxQrCode' && selectedCell.cageBoxQrCode }}" class="detail-qr-wrap">
-              <image wx:if="{{ detailQrImageSrc }}" class="detail-qr-image" src="{{ detailQrImageSrc }}" mode="aspectFit" />
-              <text wx:else class="detail-qr-loading">二维码生成中…</text>
+      <view class="detail-divider" />
+
+      <!-- PI & 部门 & AUP -->
+      <view class="detail-info-section">
+        <view class="detail-info-row">
+          <text class="detail-info-icon">👤</text>
+          <text class="detail-info-label">PI</text>
+          <text class="detail-info-value">{{ cellDetail.piName || '—' }}</text>
+        </view>
+        <view wx:if="{{ cellDetail.deptName }}" class="detail-info-row">
+          <text class="detail-info-icon">🏢</text>
+          <text class="detail-info-label">部门</text>
+          <text class="detail-info-value">{{ cellDetail.deptName }}</text>
+        </view>
+        <view wx:if="{{ cellDetail.aupNumber }}" class="detail-info-row">
+          <text class="detail-info-icon">📋</text>
+          <text class="detail-info-label">AUP</text>
+          <text class="detail-info-value">{{ cellDetail.aupNumber }}</text>
+        </view>
+      </view>
+
+      <!-- 动物信息 -->
+      <view wx:if="{{ cellDetail.strainName || cellDetail.sex || cellDetail.weekAge || cellDetail.animalCount || cellDetail.animalSource }}" class="detail-info-section">
+        <view wx:if="{{ cellDetail.strainName }}" class="detail-info-row">
+          <text class="detail-info-icon">🧬</text>
+          <text class="detail-info-label">品系</text>
+          <text class="detail-info-value">{{ cellDetail.strainName }}</text>
+        </view>
+        <view wx:if="{{ cellDetail.sex || cellDetail.weekAge || cellDetail.animalCount }}" class="detail-info-row">
+          <text class="detail-info-icon">⚥</text>
+          <text class="detail-info-value">
+            <text wx:if="{{ cellDetail.sex }}">{{ cellDetail.sex }}</text>
+            <text wx:if="{{ cellDetail.weekAge }}"> {{ cellDetail.weekAge }}周龄</text>
+            <text wx:if="{{ cellDetail.animalCount }}"> {{ cellDetail.animalCount }}</text>
+          </text>
+        </view>
+        <view wx:if="{{ cellDetail.animalSource }}" class="detail-info-row">
+          <text class="detail-info-icon">📍</text>
+          <text class="detail-info-label">来源</text>
+          <text class="detail-info-value">{{ cellDetail.animalSource }}</text>
+        </view>
+      </view>
+
+      <view wx:if="{{ cellDetail.statusChips.length }}" class="detail-divider" />
+
+      <!-- 特殊状态标签 -->
+      <view wx:if="{{ cellDetail.statusChips.length }}" class="detail-chips-section">
+        <view wx:for="{{ cellDetail.statusChips }}" wx:key="code" class="detail-chip" style="color:{{ item.color }}; background:{{ item.bg }}; border:1px solid {{ item.color }};">
+          <view class="detail-chip-dot" style="background:{{ item.color }};"></view>
+          <text>{{ item.label }}</text>
+        </view>
+      </view>
+
+      <!-- 通道一：状态专属照片（只读） + 标注备注（只读） -->
+      <view wx:if="{{ detailStatusPhotos }}" class="detail-status-photos">
+        <block wx:for="{{ cellDetail.statusChips }}" wx:key="code">
+          <view wx:if="{{ detailStatusPhotos[item.statusField] && detailStatusPhotos[item.statusField].length }}" class="detail-chip-photos">
+            <view wx:for="{{ detailStatusPhotos[item.statusField] }}" wx:key="*this" wx:for-item="img" class="detail-chip-photo-wrap">
+              <image src="{{ img }}" mode="aspectFill" class="detail-chip-photo" data-url="{{ img }}" bindtap="onDetailPreviewImage"></image>
             </view>
-          </view>
-        </view>
-        <view wx:if="{{ cellDetailMeta.locationText }}" class="detail-field detail-field--full">
-          <text class="detail-field-label">位置</text>
-          <text class="detail-field-value detail-field-value--location">{{ cellDetailMeta.locationText }}</text>
-        </view>
-
-        <view class="detail-divider" />
-        <view class="detail-section-label"><text>备注与标注</text></view>
-
-        <view wx:if="{{ detailAnnotationLoading }}" class="detail-annotation-loading">
-          <van-loading size="20px" color="#ac1736" />
-          <text>加载标注…</text>
-        </view>
-        <block wx:else>
-          <view class="detail-form-block">
-            <text class="detail-form-label">富文本备注</text>
-            <textarea
-              class="detail-textarea"
-              value="{{ detailRichText }}"
-              placeholder="输入备注信息（支持 HTML）…"
-              maxlength="-1"
-              auto-height
-              bindinput="onDetailRichTextInput"
-            />
-          </view>
-          <view class="detail-form-block">
-            <view class="detail-form-label-row">
-              <text class="detail-form-label">图片（每行一个 URL）</text>
-              <view class="detail-upload-btn {{ detailImageUploading ? 'detail-upload-btn--disabled' : '' }}" bindtap="onDetailChooseImage">
-                <text>{{ detailImageUploading ? '上传中…' : '上传图片' }}</text>
-              </view>
-            </view>
-            <textarea
-              class="detail-textarea detail-textarea--mono"
-              value="{{ detailImageUrls }}"
-              placeholder="上传后自动填入 URL，也可手动编辑"
-              maxlength="-1"
-              auto-height
-              bindinput="onDetailImageUrlsInput"
-            />
-          </view>
-          <view wx:if="{{ detailImagePreviewUrls.length }}" class="detail-image-previews">
-            <image
-              wx:for="{{ detailImagePreviewUrls }}"
-              wx:key="*this"
-              class="detail-preview-image"
-              src="{{ item }}"
-              mode="aspectFill"
-              binderror="onDetailImageError"
-              data-url="{{ item }}"
-            />
-          </view>
-          <view class="detail-save-row">
-            <view class="detail-save-btn {{ detailSaving ? 'detail-save-btn--disabled' : '' }}" bindtap="onSaveCellAnnotation">
-              <text>{{ detailSaving ? '保存中…' : '保存标注' }}</text>
-            </view>
-            <text wx:if="{{ detailSaveMsg }}" class="detail-save-msg detail-save-msg--{{ detailSaveMsgType }}">{{ detailSaveMsg }}</text>
           </view>
         </block>
-      </block>
+        <!-- 标注备注（_note 只读） -->
+        <view wx:if="{{ detailStatusPhotos._note }}" class="detail-chip-note">
+          <text class="detail-chip-note-label">📝 标注备注</text>
+          <text class="detail-chip-note-text">{{ detailStatusPhotos._note }}</text>
+        </view>
+      </view>
 
-      <view wx:else class="detail-no-permission">
+      <view class="detail-divider" />
+
+      <!-- 加载标注时显示 loading -->
+      <view wx:if="{{ detailAnnotationLoading }}" class="detail-annotation-loading">
+        <van-loading size="20px" color="#ac1736" />
+        <text>加载标注…</text>
+      </view>
+
+      <!-- 无权限提示 -->
+      <view wx:if="{{ cellDetailMeta && !cellDetailMeta.permitted }}" class="detail-no-permission">
         <text>仅限所属课题组及管理员查看详情</text>
       </view>
 
+      <!-- 实验记录（有权限时显示） -->
+      <block wx:if="{{ cellDetailMeta && cellDetailMeta.permitted }}">
+        <view class="detail-form-section">
+          <view class="detail-form-label-row">
+            <text class="detail-form-icon">📝</text>
+            <text class="detail-form-label">实验记录</text>
+          </view>
+          <textarea
+            class="detail-textarea"
+            value="{{ experimentDesc }}"
+            placeholder="输入实验记录…"
+            maxlength="-1"
+            auto-height
+            bindinput="onDetailExperimentDescInput"
+          />
+        </view>
+
+        <!-- 照片 -->
+        <view class="detail-form-section">
+          <view class="detail-form-label-row">
+            <text class="detail-form-icon">📷</text>
+            <text class="detail-form-label">照片</text>
+          </view>
+          <view wx:if="{{ detailImages.length }}" class="detail-photo-grid">
+            <view wx:for="{{ detailImages }}" wx:key="*this" wx:for-item="imgUrl" wx:for-index="imgIdx" class="detail-photo-item">
+              <image class="detail-photo-img" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onDetailPreviewImage" />
+              <view class="detail-photo-remove" data-index="{{ imgIdx }}" catchtap="onDetailRemoveImage">✕</view>
+            </view>
+          </view>
+          <view class="detail-upload-row">
+            <view class="detail-upload-btn {{ detailImageUploading ? 'detail-upload-btn--disabled' : '' }}" bindtap="onDetailChooseImage">
+              <text>{{ detailImageUploading ? '上传中…' : '+ 上传图片' }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 保存 -->
+        <view class="detail-save-row">
+          <view class="detail-save-btn {{ detailSaving ? 'detail-save-btn--disabled' : '' }}" bindtap="onSaveCellAnnotation">
+            <text>{{ detailSaving ? '保存中…' : '保存' }}</text>
+          </view>
+          <text wx:if="{{ detailSaveMsg }}" class="detail-save-msg detail-save-msg--{{ detailSaveMsgType }}">{{ detailSaveMsg }}</text>
+        </view>
+      </block>
+
     </view>
   </scroll-view>
+</van-popup>
+
+<!-- 编辑模式操作弹窗 -->
+<van-popup
+  show="{{ editActionPopup }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  root-portal="{{ true }}"
+  z-index="{{ 21000 }}"
+  custom-style="width:90vw;max-width:600rpx;padding:24rpx;box-sizing:border-box;"
+  bind:close="onEditActionJustClose"
+>
+  <view class="ea-header">
+    <text class="ea-pos">{{ editActionCell._displayPosition || '' }}</text>
+    <text class="ea-type">{{ editActionCell._cageTypeLabel || '' }}</text>
+  </view>
+
+  <!-- 操作按钮 -->
+  <view class="ea-actions">
+    <view wx:for="{{ ['DIVIDE','SPECIAL_BREEDING','HEALTH_CHECK'] }}" wx:key="*this" wx:for-item="a"
+      class="ea-chip {{ editActionCurrent[a] ? 'ea-chip-on' : '' }}"
+      style="{{ editActionCurrent[a] ? 'background:'+(a==='DIVIDE'?'#fef08a':a==='SPECIAL_BREEDING'?'#fecaca':'#e9d5ff')+';color:'+(a==='DIVIDE'?'#eab308':a==='SPECIAL_BREEDING'?'#ef4444':'#a855f7') : '' }}"
+      data-action="{{ a }}" bindtap="onEditActionToggle">
+      <text wx:if="{{ editActionCurrent[a] && !editActionInitial[a] }}" class="ea-chip-mark">+</text>
+      <text wx:if="{{ !editActionCurrent[a] && editActionInitial[a] }}" class="ea-chip-mark">−</text>
+      <text>{{ a==='DIVIDE'?'需分笼':a==='SPECIAL_BREEDING'?'特殊饲养':'健康检查' }}</text>
+    </view>
+  </view>
+
+  <!-- 照片上传 -->
+  <view class="ea-photo-section">
+    <view class="ea-photo-header">
+      <text class="ea-photo-title">📷 状态专属照片 ({{ editActionPhotos.length }})</text>
+      <view class="ea-photo-add" bindtap="onEditActionChoosePhoto">
+        <text class="ea-photo-add-icon">{{ editActionUploading ? '⏳' : '+' }}</text>
+      </view>
+    </view>
+    <view wx:if="{{ editActionPhotos.length }}" class="ea-photo-grid">
+      <view wx:for="{{ editActionPhotos }}" wx:key="*this" wx:for-index="idx" class="ea-photo-wrap">
+        <image src="{{ item }}" mode="aspectFill" class="ea-photo" data-url="{{ item }}" bindtap="onDetailPreviewImage"/>
+        <view class="ea-photo-del" data-index="{{ idx }}" catchtap="onEditActionRemovePhoto">✕</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 备注 + 保存按钮 -->
+  <view class="ea-note">
+    <textarea value="{{ editActionNote }}" placeholder="备注..." bindinput="onEditActionNoteInput" maxlength="-1"/>
+    <view class="ea-note-actions">
+      <view class="ea-btn-save" bindtap="onEditActionSave">💾 保存标注</view>
+      <view class="ea-btn-new-version" bindtap="onEditActionNewVersion">📄 存为新记录</view>
+    </view>
+  </view>
+
+  <!-- 历史记录 -->
+  <view class="ea-history">
+    <view class="ea-history-hd">
+      <text>📦 历史记录 ({{ editHistory.length }})</text>
+    </view>
+    <scroll-view scroll-y class="ea-history-scroll">
+      <view wx:for="{{ editHistory }}" wx:key="id" class="ea-history-item">
+        <view class="ea-history-item-top">
+          <text class="ea-history-label" style="color:{{ item.action==='unmarked'?'#ef4444':item.action==='annotated'?'#3b82f6':'#10b981' }}">{{ item.action==='unmarked'?'✕':item.action==='annotated'?'📝':'✓' }} {{ item.statusField==='needs_division'?'需分笼':item.statusField==='needs_special_feeding'?'特殊饲养':item.statusField==='_annotation'?'标注记录':'健康异常' }}</text>
+          <text class="ea-history-time">{{ item.createdAt }}</text>
+          <view class="ea-history-del" data-id="{{ item.id }}" catchtap="onEditHistoryDelete">✕</view>
+        </view>
+        <view wx:if="{{ item.experimentDesc }}" class="ea-history-note">{{ item.experimentDesc }}</view>
+        <view wx:if="{{ item._imgs && item._imgs.length }}" class="ea-history-imgs">
+          <image wx:for="{{ item._imgs }}" wx:key="*this" wx:for-item="img" src="{{ img }}" mode="aspectFill" class="ea-history-img" data-url="{{ img }}" bindtap="onDetailPreviewImage"/>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+  <view wx:if="{{ editHistoryLoading }}" class="ea-history-loading">
+    <van-loading size="16px" color="#ac1736"/><text>加载历史…</text>
+  </view>
+
+  <!-- 按钮 -->
+  <view class="ea-btns">
+    <view class="ea-btn-close" bindtap="onEditActionJustClose">关闭</view>
+  </view>
 </van-popup>
 
 <!-- 特殊状态总览弹窗（对齐 H5 MobileSpecialStatusPanel 三层折叠设计） -->

@@ -290,7 +290,10 @@ public class AgvController {
         return Result.success("ok");
     }
 
-    // ── 固定路线拓扑（机械分析修正结果，非算法动态发现） ──
+    // ── 固定路线拓扑（DEPRECATED — 静态 JSON 方案已废弃） ──
+    // 此静态 JSON 方案已被路线模型2取代，请使用:
+    //   POST /api/v1/agv/routes/topology/generate  — 从 DB 轨迹数据动态生成
+    //   GET  /api/v1/agv/routes/topology/generated  — 查询已生成的拓扑
 
     /** Zone → AGV IP 映射 */
     private static final Map<String, String[]> ZONE_AGV_MAP = Map.of(
@@ -301,9 +304,12 @@ public class AgvController {
     /**
      * 获取修正后的机械化路线拓扑（固定数据，非算法生成）。
      * 可选 robotIp 参数按小车过滤，不传则返回全部。
+     *
+     * @deprecated 静态 JSON 方案已废弃，请使用 GET /api/v1/agv/routes/topology/generated（动态生成版本）
      */
+    @Deprecated
     @GetMapping("/routes/topology")
-    @Operation(summary = "获取机械化路线拓扑（固定修正数据）")
+    @Operation(summary = "[已废弃] 获取机械化路线拓扑（固定修正数据）— 请使用 /routes/topology/generated")
     public Result<Map<String, Object>> routeTopology(
             @RequestParam(required = false) String robotIp) {
         try {

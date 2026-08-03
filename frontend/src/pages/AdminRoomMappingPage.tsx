@@ -118,6 +118,7 @@ export default function AdminRoomMappingPage() {
   const [appliedRegion, setAppliedRegion] = useState("");
   const [appliedFloor, setAppliedFloor] = useState("");
 
+
   const { data: facets, isLoading: facetsLoading } = useQuery({
     queryKey: FACETS_KEY,
     queryFn: fetchRoomMappingFacets,

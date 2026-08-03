@@ -9,12 +9,9 @@ import { BUILTIN_TAG_OPTIONS, BUILTIN_TAG_COLORS, type CustomTag } from "@/featu
 const ROBOT_KEYS = ["AGV_ROBOT_16", "AGV_ROBOT_18", "AGV_ROBOT_20", "AGV_ROBOT_22"] as const;
 const ROBOT_SHORT = [".16", ".18", ".20", ".22"] as const;
 const ROBOT_NAMES = ["AGV-1", "AGV-2", "AGV-3", "AGV-4"] as const;
-type LayoutMode = "quad" | "single";
-
 interface Props {
   serverTime: string | null;
-  layout: LayoutMode; onLayoutChange: (m: LayoutMode) => void;
-  singleTab: number; onSingleTabChange: (i: number) => void;
+  focusedAgvIp: string | null; onFocusedAgvIpChange: (ip: string | null) => void;
   analysisOpen: boolean; onAnalysisToggle: () => void;
   showZones: boolean; onToggleZones: () => void;
   routeMode: boolean; onToggleRouteMode: () => void;
@@ -47,7 +44,7 @@ interface Props {
   coordPresetSaved?: boolean;
 }
 
-export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleTab, onSingleTabChange, analysisOpen, onAnalysisToggle, showZones, onToggleZones, routeMode, onToggleRouteMode, followMode, onToggleFollowMode, coordEditMode, onToggleCoordEditMode, zoneEditMode, onToggleZoneEditMode, vehicleIcon, onToggleVehicleIcon, topologyGenerating, onGenerateTopology, onStartRectPick, hiddenTagsByIp, onToggleHiddenTag, customTags, onAddCustomTag, onDeleteCustomTag, allTagColors, creatableTags, undoLabel, onUndo, onSaveCoordPreset, onRestoreCoordPreset, onResetCoordZero, coordPresetSaved }: Props) {
+export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpChange, analysisOpen, onAnalysisToggle, showZones, onToggleZones, routeMode, onToggleRouteMode, followMode, onToggleFollowMode, coordEditMode, onToggleCoordEditMode, zoneEditMode, onToggleZoneEditMode, vehicleIcon, onToggleVehicleIcon, topologyGenerating, onGenerateTopology, onStartRectPick, hiddenTagsByIp, onToggleHiddenTag, customTags, onAddCustomTag, onDeleteCustomTag, allTagColors, creatableTags, undoLabel, onUndo, onSaveCoordPreset, onRestoreCoordPreset, onResetCoordZero, coordPresetSaved }: Props) {
   const qc = useQueryClient();
   const [tagDropdownIp, setTagDropdownIp] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
@@ -78,7 +75,7 @@ export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleT
     });
   };
 
-  const showSingleTabs = layout === "single";
+  const showSingleTabs = focusedAgvIp !== null;
 
   return (
     <>
@@ -92,17 +89,20 @@ export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleT
       style={{ scrollbarWidth: "thin", scrollbarColor: "var(--app-color-accent) transparent" } as React.CSSProperties}
     >
       <span className={`w-2 h-2 rounded-full shrink-0 mx-0.5 ${masterOn && anyOnline ? "bg-green-500" : masterOn ? "bg-yellow-500" : "bg-gray-400"}`} />
-      <button onClick={() => onLayoutChange(layout === "quad" ? "single" : "quad")}
+      <button onClick={() => onFocusedAgvIpChange(focusedAgvIp === null ? "172.22.159.16" : null)}
         className="px-2 py-0.5 rounded-full text-[10px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors flex items-center gap-1">
-        {layout === "quad" ? <Maximize2 size={11} /> : <LayoutGrid size={11} />}
+        {focusedAgvIp === null ? <LayoutGrid size={11} /> : <Maximize2 size={11} />}
       </button>
       <span className="w-px h-3 bg-[var(--app-color-border-default)]" />
 
       <span className="w-px h-3 bg-[var(--app-color-border-default)]" />
-      {showSingleTabs && ROBOT_SHORT.map((l, i) => (
-        <button key={l} onClick={() => onSingleTabChange(i)}
-          className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors ${i === singleTab ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}>{l}</button>
-      ))}
+      {showSingleTabs && ROBOT_SHORT.map((l, i) => {
+        const ip = `172.22.159.${16 + i * 2}`;
+        return (
+        <button key={l} onClick={() => onFocusedAgvIpChange(ip)}
+          className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors ${ip === focusedAgvIp ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}>{l}</button>
+        );
+      })}
       {showSingleTabs && <span className="w-px h-3 bg-[var(--app-color-border-default)]" />}
 
       {/* 每车标签显隐配置（下拉式） */}
@@ -130,12 +130,6 @@ export default function AgvSidebar({ serverTime, layout, onLayoutChange, singleT
                     style={{ color: robotColor }}>
                     {ROBOT_NAMES[i]}
                     <ChevronDown size={9} className={`transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                  </button>
-                  {/* 每车独立旋转按钮 */}
-                  <button onClick={() => rotateRobot(ip)}
-                    className="p-0.5 rounded-full text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-accent)]"
-                    title={`旋转 ${ROBOT_NAMES[i]} 坐标系 (+90°)`}>
-                    <RotateCw size={10} />
                   </button>
                 </span>
               );

@@ -14,6 +14,7 @@ import {
 } from "@/api/domains/scanDelay.api";
 import { fetchAdminMaterialItems, type MaterialItem } from "@/api/domains/material.api";
 import { fetchPendingTrainingSessions, auditTrainee, scoreTrainee, type PendingTrainingSession, type Trainee } from "@/api/domains/aro-training.api";
+import { fetchPendingClaims, approveClaim, type CageClaimItem } from "@/api/domains/cageShelf.api";
 import { ScanDelayAutoApprovePanel } from "@/features/scan-delay-auto-approve/ScanDelayAutoApprovePanel";
 import { MaterialAutoApprovePanel } from "@/features/material-auto-approve/MaterialAutoApprovePanel";
 import { authStorage } from "@/features/auth/authStorage";
@@ -40,11 +41,11 @@ import {
   type ScanDelayOptionGroup,
 } from "@/utils/scanDelayReviewDisplay";
 
-type TabKey = "material" | "scanDelay" | "demands" | "aroTraining";
+type TabKey = "material" | "scanDelay" | "demands" | "aroTraining" | "cageClaims";
 type MaterialSubTab = "today" | "scheduled" | "history";
 
 function parseReviewTab(raw: string | null): TabKey {
-  if (raw === "scanDelay" || raw === "demands" || raw === "aroTraining") return raw;
+  if (raw === "scanDelay" || raw === "demands" || raw === "aroTraining" || raw === "cageClaims") return raw;
   return "material";
 }
 
@@ -200,6 +201,25 @@ export default function MaterialReviewPage() {
     }
     return { today, historyPending, historyDone };
   }, [pendingSessions]);
+
+  // ── 笼位申请审批 ──
+  const { data: cageClaimsData, isLoading: cageClaimsLoading } = useQuery({
+    queryKey: ["cage-claims", "pending"],
+    queryFn: () => fetchPendingClaims(undefined, undefined, 1, 50),
+    enabled: tab === "cageClaims",
+    ...studentReviewPendingQueryOptions,
+  });
+  const cageClaimsPending = cageClaimsData?.list ?? [];
+  const cageClaimsApproveMutation = useMutation({
+    mutationFn: ({ id, decision, reason }: { id: number; decision: "approved" | "rejected"; reason?: string }) =>
+      approveClaim(id, decision, reason),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["cage-claims", "pending"] }); },
+  });
+
+  const CLAIM_STATUS_LABEL: Record<string, string> = {
+    pending_approval: "申请审批中", pending_release_approval: "释放审批中",
+    locked: "已锁定", confirmed: "已确认", rejected: "已驳回", cancelled: "已取消", released: "已释放",
+  };
 
   const trainingTotalPending = useMemo(
     () => pendingSessions.reduce((sum, s) => sum + s.trainees.filter((t) => t.testYn === 0 || t.testFraction === 0).length, 0),
@@ -525,6 +545,7 @@ export default function MaterialReviewPage() {
             ["material", `物资审核${filteredMaterialPendingCount > 0 ? ` (${filteredMaterialPendingCount})` : ""}`],
             ["scanDelay", `延迟免冻结${filteredScanDelayPending.length > 0 ? ` (${filteredScanDelayPending.length})` : ""}`],
             ["aroTraining", `培训审批${trainingTotalPending > 0 ? ` (${trainingTotalPending})` : ""}`],
+            ["cageClaims", `笼位申请${cageClaimsPending.length > 0 ? ` (${cageClaimsPending.length})` : ""}`],
             ["demands", (() => {
               const open = demands.filter((d: MaterialDemand) => d.status === 0).length;
               return `需求建议${open > 0 ? ` (${open})` : ""}`;
@@ -829,6 +850,50 @@ export default function MaterialReviewPage() {
             ))}
             {!demandLoading && demands.length === 0 && <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无需求建议</p>}
           </div>
+        </div>
+      ) : tab === "cageClaims" ? (
+        <div className="space-y-4">
+          {cageClaimsLoading ? <DataSkeleton variant="card" rows={5} /> : null}
+          {cageClaimsPending.length === 0 && !cageClaimsLoading ? (
+            <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无待审批的笼位申请</p>
+          ) : (
+            <div className="space-y-3">
+              {cageClaimsPending.map((c) => (
+                <div key={c.id} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-semibold text-[var(--twin-ink)]">{c.claimantName}</span>
+                        <span className="text-[11px] text-[var(--twin-mute)]">{c.claimantDept}</span>
+                      </div>
+                      <div className="text-[12px] text-[var(--twin-mute)] space-y-0.5">
+                        <div>笼位 ID：{c.animalCageId}</div>
+                        <div>申请时间：{c.createdAt?.substring(0, 16)?.replace("T", " ")}</div>
+                        <div>状态：<span className="font-semibold">{CLAIM_STATUS_LABEL[c.claimStatus] || c.claimStatus}</span></div>
+                        {c.note && <div>备注：{c.note}</div>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => {
+                          const reason = prompt("驳回理由（必填）：");
+                          if (!reason) return;
+                          cageClaimsApproveMutation.mutate({ id: c.id, decision: "rejected", reason });
+                        }}
+                        disabled={cageClaimsApproveMutation.isPending}
+                        className="rounded-twin-md px-3 py-1.5 text-xs font-semibold border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >驳回</button>
+                      <button
+                        onClick={() => cageClaimsApproveMutation.mutate({ id: c.id, decision: "approved" })}
+                        disabled={cageClaimsApproveMutation.isPending}
+                        className="rounded-twin-md px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >通过</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : tab === "aroTraining" ? (
         <div className="space-y-6">

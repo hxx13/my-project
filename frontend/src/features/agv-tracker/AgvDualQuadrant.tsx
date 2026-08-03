@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import AgvDualQuadrantCanvas, { type AgvCanvasData } from "./AgvDualQuadrantCanvas";
+import AgvCanvas from "./agvCanvas";
+import type { AgvLayer } from "./agvCanvas/types";
 import type { TrailPoint } from "./useAgvTrailRef";
 import { Zap, Wifi, WifiOff, AlertTriangle, Route, MoveRight, Circle, Play, Pause, ArrowUp, ArrowDown, Crosshair, RotateCw, Gauge, Rewind } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -60,6 +61,7 @@ interface Props {
   onZoneReshape?: (id: number, polygonJson: string) => void;
   onCoordFrameMove?: (ip: string, offsetX: number, offsetY: number) => void;
   onCoordFrameScale?: (ip: string, scale: number, offsetX: number, offsetY: number) => void;
+  onCoordFrameRotate?: (ip: string, newDeg: number, centerX: number, centerY: number) => void;
 }
 
 // ── Action state (same logic as AgvQuadrant) ──
@@ -131,22 +133,11 @@ function AgvHeaderRow({ info }: { info: AgvInfo }) {
   const barColor = pct != null ? (pct <= 20 ? "#ef4444" : pct <= 50 ? "#f59e0b" : "#22c55e") : "#9ca3af";
   const hasAlerts = (errors && errors.length > 0) || (warnings && warnings.length > 0);
 
-  const doRotate = async () => {
-    const cur = coordRotationDeg ?? 0;
-    const next = ((cur + 90) % 360 + 360) % 360;
-    await updateCoordConfig(ip, next);
-    qc.setQueryData(["agvCoordConfigs"], (old: Record<string, number> | undefined) => ({ ...old, [ip]: next }));
-  };
-
   return (
     <div className="flex items-center gap-1.5 flex-1 min-w-0">
       <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: online ? color : "#9ca3af" }} />
       <span className="text-[10px] font-semibold text-[var(--app-color-text-primary)] shrink-0">{label}</span>
       {online ? <Wifi size={10} className="text-green-500 shrink-0" /> : <WifiOff size={10} className="text-red-400 shrink-0" />}
-
-      <button onClick={doRotate} className="p-0.5 rounded hover:bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] shrink-0" title={`旋转: ${coordRotationDeg ?? 0}°`}>
-        <RotateCw size={9} />
-      </button>
 
       {blocked && <AlertTriangle size={10} className="text-red-500 shrink-0" />}
       {emergency && <AlertTriangle size={10} className="text-red-500 shrink-0" fill="currentColor" />}
@@ -192,26 +183,24 @@ function AgvHeaderRow({ info }: { info: AgvInfo }) {
 }
 
 export default function AgvDualQuadrant(props: Props) {
-  const { agvA, agvB, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, vehicleIcon, hiddenAgvs, pickMode, pickTwoPoint, pickAnchor, onPointPick, onRectDrawn, onZoneClick, coordEditMode, zoneEditMode, selectedZoneId, onZoneSelect, onZoneReshape, onCoordFrameMove, onCoordFrameScale } = props;
+  const { agvA, agvB, zoneOverlays, routeOverlaysA, routeOverlaysB, routeMode, followMode, vehicleIcon, hiddenAgvs, pickMode, pickTwoPoint, pickAnchor, onPointPick, onRectDrawn, onZoneClick, coordEditMode, zoneEditMode, selectedZoneId, onZoneSelect, onZoneReshape, onCoordFrameMove, onCoordFrameScale, onCoordFrameRotate } = props;
   const [followTarget, setFollowTarget] = useState<"A" | "B">("A");
 
-  // ── Build canvas data for both AGVs ──
-  const canvasA: AgvCanvasData = {
-    ip: agvA.ip, trail: agvA.trail,
-    currentX: agvA.x, currentY: agvA.y, currentAngle: agvA.angle,
-    online: agvA.online, color: agvA.color,
-    dwellSpots: agvA.dwellSpots,
-    forkHeight: agvA.forkHeight, jackState: agvA.jackState, jackIsFull: agvA.jackIsFull,
-    coordOffsetX: agvA.coordOffsetX, coordOffsetY: agvA.coordOffsetY, coordRotationDeg: agvA.coordRotationDeg, coordScale: agvA.coordScale,
-  };
-  const canvasB: AgvCanvasData = {
-    ip: agvB.ip, trail: agvB.trail,
-    currentX: agvB.x, currentY: agvB.y, currentAngle: agvB.angle,
-    online: agvB.online, color: agvB.color,
-    dwellSpots: agvB.dwellSpots,
-    forkHeight: agvB.forkHeight, jackState: agvB.jackState, jackIsFull: agvB.jackIsFull,
-    coordOffsetX: agvB.coordOffsetX, coordOffsetY: agvB.coordOffsetY, coordRotationDeg: agvB.coordRotationDeg, coordScale: agvB.coordScale,
-  };
+  // ── Build AgvLayer[] for unified canvas ──
+  const layers: AgvLayer[] = [agvA, agvB].map(agv => ({
+    ip: agv.ip,
+    label: agv.label,
+    color: agv.color,
+    visible: !hiddenAgvs?.has(agv.ip),
+    trail: agv.trail,
+    currentX: agv.x, currentY: agv.y, currentAngle: agv.angle,
+    online: agv.online,
+    dwellSpots: agv.dwellSpots,
+    forkHeight: agv.forkHeight, jackState: agv.jackState, jackIsFull: agv.jackIsFull,
+    coordOffsetX: agv.coordOffsetX, coordOffsetY: agv.coordOffsetY,
+    coordRotationDeg: agv.coordRotationDeg, coordScale: agv.coordScale,
+    currentActivity: agv.currentActivity, charging: agv.charging, speed: agv.speed,
+  }));
 
   // ── Derive actions ──
   const prevForkARef = useRef(agvA.forkHeight);
@@ -269,14 +258,23 @@ export default function AgvDualQuadrant(props: Props) {
 
       {/* ── Canvas with overlays ── */}
       <div className="flex-1 min-h-0 relative">
-        <AgvDualQuadrantCanvas agvA={canvasA} agvB={canvasB}
-          coordRotationDeg={agvA.coordRotationDeg}
+        <AgvCanvas
+          layers={layers}
           zoneOverlays={zoneOverlays}
-          routeOverlaysA={routeOverlaysA} routeOverlaysB={routeOverlaysB} routeMode={routeMode}
-          followMode={followMode} followTarget={followMode ? followTarget : null}
+          routeOverlays={[...(routeOverlaysA ?? []), ...(routeOverlaysB ?? [])]}
+          routeMode={routeMode}
+          followMode={followMode}
+          followTargetIp={followMode ? (followTarget === "A" ? agvA.ip : agvB.ip) : null}
           vehicleIcon={vehicleIcon}
           hiddenAgvs={hiddenAgvs}
-          pickMode={pickMode} pickTwoPoint={pickTwoPoint} pickAnchor={pickAnchor} onPointPick={onPointPick} onRectDrawn={onRectDrawn} onZoneClick={onZoneClick} coordEditMode={coordEditMode} zoneEditMode={zoneEditMode} selectedZoneId={selectedZoneId} onZoneSelect={onZoneSelect} onZoneReshape={onZoneReshape} onCoordFrameMove={onCoordFrameMove} onCoordFrameScale={onCoordFrameScale} />
+          pickMode={pickMode} pickTwoPoint={pickTwoPoint} pickAnchor={pickAnchor}
+          onPointPick={onPointPick} onRectDrawn={onRectDrawn} onZoneClick={onZoneClick}
+          coordEditMode={coordEditMode} zoneEditMode={zoneEditMode}
+          selectedZoneId={selectedZoneId} onZoneSelect={onZoneSelect}
+          onZoneReshape={onZoneReshape}
+          onCoordFrameMove={onCoordFrameMove} onCoordFrameScale={onCoordFrameScale}
+          onCoordFrameRotate={onCoordFrameRotate}
+        />
 
         {/* ── AGV-A overlays (left side) ── */}
         <div className="absolute top-2 left-2 flex items-start gap-2 pointer-events-none">

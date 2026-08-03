@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T13:42:56.313Z",
+  "generatedAt": "2026-08-03T05:09:49.062Z",
   "pages": [
     {
       "path": "/admin",
@@ -74,7 +74,7 @@
     },
     {
       "path": "/admin/cage-shelf-indexes",
-      "label": "笼架落库索引",
+      "label": "笼架与笼位索引",
       "fallbackMinRole": "STAFF",
       "groupTitle": "ARO 房间与联动",
       "registryId": "cage-index"

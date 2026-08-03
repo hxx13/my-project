@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper">
+
+    <resultMap id="CageCellDetailMap" type="com.example.demo.modules.cageshelf.entity.CageCellDetail">
+        <id property="animalCageId" column="animal_cage_id"/>
+        <result property="cageTypeCode" column="cage_type_code"/>
+        <result property="state" column="state"/>
+        <result property="stateLabel" column="state_label"/>
+        <result property="rentType" column="rent_type"/>
+        <result property="cageName" column="cage_name"/>
+        <result property="hasCageBox" column="has_cage_box"/>
+        <result property="cageBoxCode" column="cage_box_code"/>
+        <result property="cageBoxName" column="cage_box_name"/>
+        <result property="cageBoxId" column="cage_box_id"/>
+        <result property="piName" column="pi_name"/>
+        <result property="projectPiName" column="project_pi_name"/>
+        <result property="projectName" column="project_name"/>
+        <result property="departmentName" column="department_name"/>
+        <result property="aupNumber" column="aup_number"/>
+        <result property="experimenterName" column="experimenter_name"/>
+        <result property="labAssistantName" column="lab_assistant_name"/>
+        <result property="animalStrainName" column="animal_strain_name"/>
+        <result property="animalSex" column="animal_sex"/>
+        <result property="animalWeekAge" column="animal_week_age"/>
+        <result property="animalMaleNumber" column="animal_male_number"/>
+        <result property="animalFemaleNumber" column="animal_female_number"/>
+        <result property="animalComeFrom" column="animal_come_from"/>
+        <result property="needsDivision" column="needs_division"/>
+        <result property="needsSpecialFeeding" column="needs_special_feeding"/>
+        <result property="needsTransfer" column="needs_transfer"/>
+        <result property="hasHealthAbnormality" column="has_health_abnormality"/>
+        <result property="cohabitationDate" column="cohabitation_date"/>
+        <result property="specialBreedingName" column="special_breeding_name"/>
+        <result property="specialBreedingDesc" column="special_breeding_desc"/>
+        <result property="experimentDesc" column="experiment_desc"/>
+        <result property="imagesJson" column="images_json"/>
+        <result property="aroRawData" column="aro_raw_data"/>
+        <result property="extraData" column="extra_data"/>
+        <result property="mappingVersion" column="mapping_version"/>
+        <result property="syncedAt" column="synced_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectByAnimalCageId" resultMap="CageCellDetailMap">
+        SELECT * FROM cage_cell_detail WHERE animal_cage_id = #{animalCageId}
+    </select>
+
+    <select id="selectByAnimalCageIdForUpdate" resultMap="CageCellDetailMap">
+        SELECT * FROM cage_cell_detail WHERE animal_cage_id = #{animalCageId} FOR UPDATE
+    </select>
+
+    <insert id="batchUpsert">
+        INSERT INTO cage_cell_detail (
+            animal_cage_id,
+            cage_type_code, state, state_label, rent_type, cage_name,
+            has_cage_box, cage_box_code, cage_box_id, cage_box_name,
+            pi_name, project_pi_name, project_name, department_name, aup_number,
+            experimenter_name, lab_assistant_name,
+            animal_strain_name, animal_sex, animal_week_age,
+            animal_male_number, animal_female_number, animal_come_from,
+            needs_division, needs_special_feeding, needs_transfer, has_health_abnormality,
+            cohabitation_date, special_breeding_name, special_breeding_desc,
+            experiment_desc, images_json,
+            aro_raw_data, extra_data,
+            mapping_version, synced_at
+        ) VALUES
+        <foreach collection="list" item="d" separator=",">
+        (
+            #{d.animalCageId},
+            #{d.cageTypeCode}, #{d.state}, #{d.stateLabel}, #{d.rentType}, #{d.cageName},
+            #{d.hasCageBox}, #{d.cageBoxCode}, #{d.cageBoxId}, #{d.cageBoxName},
+            #{d.piName}, #{d.projectPiName}, #{d.projectName}, #{d.departmentName}, #{d.aupNumber},
+            #{d.experimenterName}, #{d.labAssistantName},
+            #{d.animalStrainName}, #{d.animalSex}, #{d.animalWeekAge},
+            #{d.animalMaleNumber}, #{d.animalFemaleNumber}, #{d.animalComeFrom},
+            #{d.needsDivision}, #{d.needsSpecialFeeding}, #{d.needsTransfer}, #{d.hasHealthAbnormality},
+            #{d.cohabitationDate}, #{d.specialBreedingName}, #{d.specialBreedingDesc},
+            #{d.experimentDesc}, #{d.imagesJson},
+            #{d.aroRawData}, #{d.extraData},
+            #{d.mappingVersion}, NOW()
+        )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            cage_type_code = VALUES(cage_type_code),
+            state = VALUES(state),
+            state_label = VALUES(state_label),
+            rent_type = VALUES(rent_type),
+            cage_name = VALUES(cage_name),
+            has_cage_box = VALUES(has_cage_box),
+            cage_box_code = VALUES(cage_box_code),
+            cage_box_id = VALUES(cage_box_id),
+            cage_box_name = VALUES(cage_box_name),
+            pi_name = VALUES(pi_name),
+            project_pi_name = VALUES(project_pi_name),
+            project_name = VALUES(project_name),
+            department_name = VALUES(department_name),
+            aup_number = VALUES(aup_number),
+            experimenter_name = VALUES(experimenter_name),
+            lab_assistant_name = VALUES(lab_assistant_name),
+            animal_strain_name = VALUES(animal_strain_name),
+            animal_sex = VALUES(animal_sex),
+            animal_week_age = VALUES(animal_week_age),
+            animal_male_number = VALUES(animal_male_number),
+            animal_female_number = VALUES(animal_female_number),
+            animal_come_from = VALUES(animal_come_from),
+            needs_division = VALUES(needs_division),
+            needs_special_feeding = VALUES(needs_special_feeding),
+            needs_transfer = VALUES(needs_transfer),
+            has_health_abnormality = VALUES(has_health_abnormality),
+            cohabitation_date = VALUES(cohabitation_date),
+            special_breeding_name = VALUES(special_breeding_name),
+            special_breeding_desc = VALUES(special_breeding_desc),
+            experiment_desc = VALUES(experiment_desc),
+            images_json = VALUES(images_json),
+            aro_raw_data = VALUES(aro_raw_data),
+            extra_data = VALUES(extra_data),
+            mapping_version = VALUES(mapping_version),
+            synced_at = NOW()
+    </insert>
+
+    <select id="selectByShelfIndexId" resultMap="CageCellDetailMap">
+        SELECT d.* FROM cage_cell_detail d
+        JOIN cage_cell_index i ON i.animal_cage_id = d.animal_cage_id
+        WHERE i.shelf_index_id = #{shelfIndexId}
+        ORDER BY i.position_y, i.position_x
+    </select>
+
+    <select id="selectByAnimalCageIds" resultMap="CageCellDetailMap">
+        SELECT * FROM cage_cell_detail WHERE animal_cage_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <select id="selectByCageBoxCode" resultMap="CageCellDetailMap">
+        SELECT * FROM cage_cell_detail WHERE cage_box_code = #{code} LIMIT 1
+    </select>
+
+</mapper>

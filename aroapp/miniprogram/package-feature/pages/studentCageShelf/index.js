@@ -245,7 +245,10 @@ function enrichGridCell(cell) {
   // 显示坐标反转：A-1(顶)↔A-10(底)，内容不动仅编号反转
   enriched._displayPosition = (function(p) {
     var m = /^([A-H])-(\d+)$/.exec(p);
-    return m ? (m[1] + '-' + (11 - parseInt(m[2]))) : p;
+    if (m) return m[1] + '-' + (11 - parseInt(m[2]));
+    var m2 = /^(\d+)-(\d+)$/.exec(p);
+    if (m2) { var col = COLUMNS[Math.max(0, Math.min(7, Number(m2[1]) - 1))] || 'A'; return col + '-' + (11 - parseInt(m2[2])); }
+    return p;
   })(enriched.position || '');
   return enriched;
 }
@@ -328,50 +331,69 @@ function parseImageUrlLines(text) {
   return String(text).split("\n").map(function(s) { return s.trim(); }).filter(Boolean);
 }
 
-// 对齐 Web 端 CAGE_BOX_INFO_FIELD_ORDER：遍历 cageBoxInfo 全部字段
-var DETAIL_FIELD_ORDER = [
-  "AnimalCageType","PositionX","PositionY","AreaId","DepartmentName",
-  "floorId","RoomName","ShelveName","ProjectPiName","MobilePhone",
-  "AupNumber","CageBoxQrCode","createAdmin","CreateTime","UpdateTime",
-  "SpecialBreedingName","specialBreedingDescription",
-  "NeedDivideYn","NeedFeedingYn","NeedTransferYn","AbnormalHealthYn","ClosingDate",
-  "State","StateName","HasPhysicalBox"
-];
+/** 从 cell.detail（本地笼位索引数据）构建详情卡片数据 */
+function buildCellDetailData(cell) {
+  var detail = cell.detail || {};
+  var ct = resolveAnimalCageType(cell);
 
-var DETAIL_FIELD_LABEL = {
-  AnimalCageType:"笼位类型",PositionX:"X 坐标",PositionY:"Y 坐标",
-  AreaId:"区域 ID",DepartmentName:"部门",floorId:"楼层 ID",
-  RoomName:"房间名称",ShelveName:"笼架名称",ProjectPiName:"课题 PI",
-  MobilePhone:"手机号",AupNumber:"AUP 编号",CageBoxQrCode:"笼盒卡号",
-  createAdmin:"创建人",CreateTime:"创建时间",UpdateTime:"更新时间",
-  SpecialBreedingName:"特殊饲养名称",specialBreedingDescription:"特殊饲养说明",
-  NeedDivideYn:"请分笼",NeedFeedingYn:"特殊饲养",NeedTransferYn:"动物转移",
-  AbnormalHealthYn:"健康异常",ClosingDate:"合笼日期",
-  State:"状态值",StateName:"状态名称",HasPhysicalBox:"是否有实体笼盒"
-};
+  // 性别映射
+  var sexMap = { 'M': '♂雄', 'F': '♀雌', 'male': '♂雄', 'female': '♀雌', '1': '♂雄', '2': '♀雌' };
+  var sexDisplay = sexMap[String(detail.animalSex || '').toLowerCase()] || detail.animalSex || '';
 
-function formatDetailValue(v) {
-  if (v === null || v === undefined || v === '') return null; // 空值不展示
-  if (typeof v === 'boolean') return v ? '是' : '否';
-  return String(v);
-}
-
-function buildDetailFields(cell) {
-  var source = cell.cageBoxInfo || cell.detail || {};
-  var fields = [];
-  for (var i = 0; i < DETAIL_FIELD_ORDER.length; i++) {
-    var k = DETAIL_FIELD_ORDER[i];
-    var v = source[k];
-    var display = formatDetailValue(v);
-    if (display === null) continue; // 跳过空值
-    // 翻译 AnimalCageType 数字
-    if (k === 'AnimalCageType') {
-      var ct = Number(v);
-      display = CAGE_TYPE_LABEL[ct] || display;
-    }
-    fields.push({ key: k, label: DETAIL_FIELD_LABEL[k] || k, value: display });
+  // 动物数量字符串
+  var maleNum = parseInt(detail.animalMaleNumber) || 0;
+  var femaleNum = parseInt(detail.animalFemaleNumber) || 0;
+  var animalCountStr = '';
+  if (maleNum > 0 && femaleNum > 0) {
+    animalCountStr = maleNum + '♂+' + femaleNum + '♀';
+  } else if (maleNum > 0) {
+    animalCountStr = maleNum + '♂';
+  } else if (femaleNum > 0) {
+    animalCountStr = femaleNum + '♀';
   }
-  return fields;
+
+  // 特殊状态标签
+  var chips = [];
+  var yn = function(v) { return v === 1 || v === true || v === '1'; };
+  if (yn(detail.needsDivision)) chips.push({ code: 'NEED_DIVIDE', label: '需分笼', color: '#eab308', bg: '#fef08a', statusField: 'needs_division' });
+  if (yn(detail.needsSpecialFeeding)) chips.push({ code: 'SPECIAL_FEEDING', label: '特殊饲养', color: '#ef4444', bg: '#fecaca', statusField: 'needs_special_feeding' });
+  if (yn(detail.needsTransfer)) chips.push({ code: 'ANIMAL_TRANSFER', label: '需转移', color: '#06b6d4', bg: '#cffafe', statusField: 'needs_transfer' });
+  if (yn(detail.hasHealthAbnormality)) chips.push({ code: 'HEALTH_ABNORMAL', label: '健康异常', color: '#a855f7', bg: '#e9d5ff', statusField: 'has_health_abnormality' });
+  if (detail.cohabitationDate && String(detail.cohabitationDate).trim()) chips.push({ code: 'COHABITATION', label: '合笼中', color: '#10b981', bg: '#a7f3d0', statusField: 'cohabitation_date' });
+
+  // 解析图片
+  var images = [];
+  try {
+    if (typeof detail.imagesJson === 'string') {
+      var parsed = JSON.parse(detail.imagesJson);
+      images = Array.isArray(parsed) ? parsed : [];
+    } else if (Array.isArray(detail.imagesJson)) {
+      images = detail.imagesJson;
+    }
+  } catch (e) {
+    images = [];
+  }
+
+  return {
+    position: cell._displayPosition || cell.position,
+    coords: '(' + cell.x + ',' + cell.y + ')',
+    cageTypeAbbr: CAGE_TYPE_ABBR[ct] || '',
+    cageTypeLabel: CAGE_TYPE_LABEL[ct] || cell.stateLabel || '—',
+    cageTypeDotColor: ct === 3 ? '' : (CAGE_TYPE_DOT_COLOR[ct] || ''),
+    cageBoxCode: detail.cageBoxCode || (cell.cageBoxInfo && cell.cageBoxInfo.cageBoxCode) || '',
+    piName: detail.projectPiName || '',
+    deptName: detail.departmentName || '',
+    aupNumber: detail.aupNumber || '',
+    strainName: detail.animalStrainName || '',
+    sex: sexDisplay,
+    weekAge: detail.animalWeekAge || '',
+    animalCount: animalCountStr,
+    animalSource: detail.animalComeFrom || '',
+    experimenterName: detail.experimenterName || '',
+    labAssistantName: detail.labAssistantName || '',
+    statusChips: chips,
+    images: images
+  };
 }
 
 function buildCellDetailMeta(cell, gridMeta) {
@@ -493,6 +515,13 @@ Page({
     lastScannedKey: '',
     lastScannedEntry: { position: '', code: '', act_DIVIDE: false, act_SPECIAL_BREEDING: false, act_HEALTH_CHECK: false },
     actionSubmitting: false,
+    editActionCell: null,       // 编辑模式弹出的 cell
+    editActionPopup: false,     // 弹窗显隐
+    editActionPhotos: [],       // 弹窗内上传的照片
+    editActionNote: "",         // 弹窗内备注
+    editActionUploading: false,
+    editHistory: [],            // 弹窗内历史记录
+    editHistoryLoading: false,
     editMode: false,
     bindMode: false,
     bindScannedCode: '',
@@ -509,11 +538,11 @@ Page({
     selectedCell: null,
     cellDetailMeta: null,
     showCellDetail: false,
-    detailRichText: "",
-    detailImageUrls: "",
-    detailImagePreviewUrls: [],
+    cellDetail: null,
+    experimentDesc: '',
+    detailImages: [],
+    detailStatusPhotos: {},
     detailAnnotationLoading: false,
-    detailFields: [],
     detailSaving: false,
     detailSaveMsg: "",
     detailSaveMsgType: "",
@@ -533,6 +562,7 @@ Page({
     anyExpanded: false,
     scannedAt: '',
     highlightTarget: null,  // { shelveId, x, y, campusName, roomName } 扫码跳转高亮
+    scanLockHighlight: null, // { sid: shelveId, x, y } 扫码定位闪烁高亮
   },
 
   onLoad: function(options) {
@@ -901,10 +931,16 @@ Page({
       };
       var groups = (data.groups || []).map(function(g) {
         var cages = g.cages || [];
-        // 反转显示坐标
+        // 反转显示坐标（兼容数字格式 1-1 和字母格式 A-1）
         cages.forEach(function(c) {
-          var m = /^([A-H])-(\d+)$/.exec(c.position || '');
-          c._displayPosition = m ? (m[1] + '-' + (11 - parseInt(m[2]))) : (c.position || '');
+          var p = c.position || '';
+          var m = /^([A-H])-(\d+)$/.exec(p);
+          if (m) { c._displayPosition = m[1] + '-' + (11 - parseInt(m[2])); }
+          else {
+            var m2 = /^(\d+)-(\d+)$/.exec(p);
+            if (m2) { var col = COLUMNS[Math.max(0, Math.min(7, Number(m2[1]) - 1))] || 'A'; c._displayPosition = col + '-' + (11 - parseInt(m2[2])); }
+            else { c._displayPosition = p; }
+          }
         });
         // 对齐 H5 groupCagesByShelf：按 shelveId 分组（Status → Shelf → Cage）
         var shelfMap = {};
@@ -1053,16 +1089,15 @@ Page({
     self.loadShelfDetail(shelveId);
   },
 
-  /** @param {boolean=} forceRealtime 刷新按钮强制跳过快照拉实时数据 */
-  loadShelfDetail: function(shelveId, forceRealtime) {
+  /** 从本地DB加载笼架网格（秒加载） */
+  loadShelfDetail: function(shelveId, opts) {
     var self = this;
+    opts = opts || {};
     self.setData({ loading: true, error: '', screen: 'grid' });
-    var useRealtime = forceRealtime || self.data.editMode || self.data.bindMode;
 
     springAuth.springRequest({
-      url: '/api/student/mobile/cage-shelves/' + shelveId + '/detail' + (useRealtime ? '?realtime=true' : ''),
-      method: 'GET',
-      data: {}
+      url: '/api/cage-cell-index/local-grid/by-shelve/' + shelveId,
+      method: 'GET'
     }).then(function(res) {
       var p = unwrap(res);
       if (!p.ok) {
@@ -1072,23 +1107,64 @@ Page({
       var data = p.data || {};
       var shelfMeta = data.shelfMeta || {};
       var gridCells = data.grid || [];
-      var totalCells = data.totalCells || 80;
-      var filledCells = data.filledCells || 0;
       var grid = buildGrid(gridCells);
 
-      self.setData({
+      var patch = {
         loading: false,
         error: '',
         selectedShelf: shelfMeta,
         grid: grid,
         gridMeta: shelfMeta,
-        filledCount: filledCells,
-        totalCells: totalCells,
         showCellDetail: false,
         selectedCell: null
-      });
+      };
+
+      // 扫码定位 → 设置十字交叉高亮 + 闪烁动画
+      if (opts.locateX != null && opts.locateY != null) {
+        patch.lastScannedKey = opts.locateX + ':' + opts.locateY;
+        patch.scannedCellX = opts.locateX;
+        patch.scannedCellY = opts.locateY;
+        patch.scanLockHighlight = { sid: String(shelfMeta.shelveId || shelveId), x: opts.locateX, y: opts.locateY };
+      }
+
+      self.setData(patch);
     }).catch(function(e) {
       self.setData({ loading: false, error: (e && e.message) || '加载失败' });
+    });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  扫码定位（学生/教职工通用）                                          */
+  /* ------------------------------------------------------------------ */
+
+  onScanLock: function() {
+    var self = this;
+    wx.scanCode({
+      onlyFromCamera: true,
+      scanType: ['qrCode', 'barCode'],
+      success: function(res) {
+        var code = (res.result || '').trim();
+        if (!code) return;
+        springAuth.springRequest({
+          url: '/api/local/scan-lookup',
+          method: 'GET',
+          data: { code: code }
+        }).then(function(res2) {
+          var p = unwrap(res2);
+          if (!p.ok || !p.data || p.data.type === 'NOT_FOUND') {
+            wx.showToast({ title: '未找到对应笼位', icon: 'none' });
+            return;
+          }
+          var d = p.data;
+          var sid = String(d.shelveId || '');
+          if (!sid) { wx.showToast({ title: '无笼架信息', icon: 'none' }); return; }
+          // Load the grid with crosshair locate target
+          self.loadShelfDetail(sid, { locateX: d.positionX, locateY: d.positionY });
+          wx.showToast({ title: '已定位: ' + (d.roomName||'') + ' ' + (d.shelveName||'') + ' (' + d.positionX + ',' + d.positionY + ')', icon: 'success' });
+        }).catch(function() {
+          wx.showToast({ title: '扫码查询失败', icon: 'none' });
+        });
+      }
     });
   },
 
@@ -1137,10 +1213,12 @@ Page({
       showCellDetail: false,
       selectedCell: null,
       cellDetailMeta: null,
-      detailRichText: "",
-      detailImageUrls: "",
-      detailImagePreviewUrls: [],
-      detailQrImageSrc: ""
+      cellDetail: null,
+      experimentDesc: "",
+      detailImages: [],
+    detailStatusPhotos: {},
+      detailQrImageSrc: "",
+      scanLockHighlight: null
     });
   },
 
@@ -1150,7 +1228,6 @@ Page({
 
   onCellTap: function(e) {
     var self = this;
-    // 绑定模式：触发绑定流程，不打开详情
     if (self.data.bindMode) {
       self.onBindCellTap(e);
       return;
@@ -1167,14 +1244,69 @@ Page({
     }
     if (!cell || cell.empty) return;
 
+    // 编辑模式：弹出操作选择窗口而非详情
+    if (self.data.editMode && self.data.staffView) {
+      var ld = cell.detail || {};
+      var ck = cell.x + ':' + cell.y;
+      var cacheEntry = (self.data.scanCache || {})[ck];
+      // 优先从 scanCache 读取，其次从 cell.detail
+      var initAct = cacheEntry ? cacheEntry.initialActions : { DIVIDE: ld.needsDivision===true, SPECIAL_BREEDING: ld.needsSpecialFeeding===true, HEALTH_CHECK: ld.hasHealthAbnormality===true };
+      var currAct = cacheEntry ? cacheEntry.currentActions : JSON.parse(JSON.stringify(initAct));
+      var animalCageId = cell.id || cell.animalCageId || '';
+      self.setData({
+        editActionCell: cell,
+        editActionPopup: true,
+        editActionPhotos: [],
+        editActionNote: '',
+        editHistory: [],
+        editHistoryLoading: true,
+        editActionInitial: { DIVIDE: initAct.DIVIDE, SPECIAL_BREEDING: initAct.SPECIAL_BREEDING, HEALTH_CHECK: initAct.HEALTH_CHECK },
+        editActionCurrent: { DIVIDE: currAct.DIVIDE, SPECIAL_BREEDING: currAct.SPECIAL_BREEDING, HEALTH_CHECK: currAct.HEALTH_CHECK }
+      });
+      // 加载历史记录
+      if (animalCageId) {
+        springAuth.springRequest({ url: '/api/local/history/' + animalCageId, method: 'GET', data: {} }).then(function(res) {
+          var hp = unwrap(res);
+          var list = (hp.ok ? hp.data : []) || [];
+          // 解析 imagesJson → _imgs 供模板渲染
+          list.forEach(function(h) {
+            try { h._imgs = JSON.parse(h.imagesJson || '[]'); } catch(e) { h._imgs = []; }
+            if (h.createdAt) h.createdAt = (h.createdAt || '').substring(0, 16);
+          });
+          self.setData({ editHistory: list, editHistoryLoading: false });
+        }).catch(function() { self.setData({ editHistoryLoading: false }); });
+      }
+      // 从 annotate 加载已有备注和状态照片（不能从 cell.detail 读取）
+      if (animalCageId) {
+        springAuth.springRequest({ url: '/api/local/annotate/' + animalCageId, method: 'GET', data: {} }).then(function(res) {
+          var up = unwrap(res);
+          if (up.ok && up.data) {
+            var d = up.data;
+            var note = '';
+            var all = [];
+            if (d.statusPhotos) {
+              try {
+                var sp = typeof d.statusPhotos === 'string' ? JSON.parse(d.statusPhotos) : d.statusPhotos;
+                if (typeof sp._note === 'string') note = sp._note;
+                // 合并所有 key 的照片（跳过 _note 字符串）
+                for (var k in sp) { if (k !== '_note' && Object.prototype.hasOwnProperty.call(sp, k) && Array.isArray(sp[k])) all = all.concat(sp[k]); }
+              } catch (e) {}
+            }
+            self.setData({ editActionNote: note, editActionPhotos: all });
+          }
+        });
+      }
+      return;
+    }
+
+    var cellDetail = buildCellDetailData(cell);
     var detailMeta = buildCellDetailMeta(cell, self.data.gridMeta);
-    // 1) 从缓存读取（diff 模型：initialActions=服务端快照，currentActions=用户修改后状态）
+
     var ck = x + ':' + y;
     var cacheEntry = (self.data.scanCache || {})[ck];
     var initialActions = { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false };
     var currentActions = { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false };
     if (cacheEntry && cacheEntry.initialActions && cacheEntry.currentActions) {
-      // 缓存已有 diff 记录 → 分别读取基准和当前值（支持 1→0 反选三态显示）
       initialActions.DIVIDE = !!cacheEntry.initialActions.DIVIDE;
       initialActions.SPECIAL_BREEDING = !!cacheEntry.initialActions.SPECIAL_BREEDING;
       initialActions.HEALTH_CHECK = !!cacheEntry.initialActions.HEALTH_CHECK;
@@ -1182,82 +1314,74 @@ Page({
       currentActions.SPECIAL_BREEDING = !!cacheEntry.currentActions.SPECIAL_BREEDING;
       currentActions.HEALTH_CHECK = !!cacheEntry.currentActions.HEALTH_CHECK;
     } else {
-      // 2) 无缓存 → 从 cageBoxInfo 预选（兼容扁平 gridCache 和嵌套 snapshot 两种结构）
       var cbi = cell.cageBoxInfo || {};
       var cvo = cbi.cageBoxVo || cbi['cageBoxVo'] || {};
-      if (cbi.NeedDivideYn === 1 || cbi.NeedDivideYn === "1" || cvo.needDivideYn === 1 || cvo.needDivideYn === "1") currentActions.DIVIDE = true;
-      if (cbi.NeedFeedingYn === 1 || cbi.NeedFeedingYn === "1" || cvo.needFeedingYn === 1 || cvo.needFeedingYn === "1" || (typeof cbi.specialBreedingName === 'string' && cbi.specialBreedingName.trim()) || (typeof cvo.specialBreedingName === 'string' && cvo.specialBreedingName.trim())) currentActions.SPECIAL_BREEDING = true;
-      if (cbi.AbnormalHealthYn === 1 || cbi.AbnormalHealthYn === "1" || cvo.abnormalHealthYn === 1 || cvo.abnormalHealthYn === "1" || cbi.animalHealthEntity != null || cvo.animalHealthEntity != null) currentActions.HEALTH_CHECK = true;
+      if (cbi.NeedDivideYn === 1 || cbi.NeedDivideYn === '1' || cvo.needDivideYn === 1 || cvo.needDivideYn === '1') currentActions.DIVIDE = true;
+      if (cbi.NeedFeedingYn === 1 || cbi.NeedFeedingYn === '1' || cvo.needFeedingYn === 1 || cvo.needFeedingYn === '1' || (typeof cbi.specialBreedingName === 'string' && cbi.specialBreedingName.trim()) || (typeof cvo.specialBreedingName === 'string' && cvo.specialBreedingName.trim())) currentActions.SPECIAL_BREEDING = true;
+      if (cbi.AbnormalHealthYn === 1 || cbi.AbnormalHealthYn === '1' || cvo.abnormalHealthYn === 1 || cvo.abnormalHealthYn === '1' || cbi.animalHealthEntity != null || cvo.animalHealthEntity != null) currentActions.HEALTH_CHECK = true;
       initialActions = JSON.parse(JSON.stringify(currentActions));
     }
-
     this.initialDetailActions = JSON.parse(JSON.stringify(initialActions));
 
     self.setData({
       selectedCell: cell,
       cellDetailMeta: detailMeta,
-      detailFields: buildDetailFields(cell),
+      cellDetail: cellDetail,
       showCellDetail: true,
-      detailRichText: "",
-      detailImageUrls: "",
-      detailImagePreviewUrls: [],
+      experimentDesc: (cell.detail && cell.detail.experimentDesc) || '',
+      detailImages: cellDetail.images,
       detailAnnotationLoading: detailMeta.permitted,
       detailSaving: false,
-      detailSaveMsg: "",
-      detailSaveMsgType: "",
-      detailQrImageSrc: "",
+      detailSaveMsg: '',
+      detailSaveMsgType: '',
+      detailQrImageSrc: '',
       detailActions: JSON.parse(JSON.stringify(currentActions)),
       initialDetailActions: JSON.parse(JSON.stringify(initialActions))
     });
 
     if (detailMeta.permitted) {
       self.loadCellAnnotation(cell);
-      if (cell.cageBoxQrCode) {
-        setTimeout(function() { self.drawCageQrCode(cell.cageBoxQrCode); }, 280);
-      }
+      var cbCode = (cell.detail && cell.detail.cageBoxCode) || (cell.cageBoxInfo && cell.cageBoxInfo.cageBoxCode) || cell.cageBoxCode;
+      // QR code rendering removed — local DB doesn't generate QR codes
     }
   },
-
-  loadCellAnnotation: function(cell) {
+loadCellAnnotation: function(cell) {
     var self = this;
-    var shelveId = getActiveShelveId(self.data);
-    if (!shelveId || !cell) {
+    var animalCageId = cell.id || cell.animalCageId || '';
+    if (!animalCageId) {
       self.setData({ detailAnnotationLoading: false });
       return;
     }
     springAuth.springRequest({
-      url: "/api/student/mobile/cage-shelves/" + shelveId + "/cells/" + cell.x + "/" + cell.y + "/annotation",
-      method: "GET",
+      url: '/api/local/annotate/' + animalCageId,
+      method: 'GET',
       data: {}
     }).then(function(res) {
-      var p = unwrap(res);
-      if (!p.ok) {
+      var up = unwrap(res);
+      if (!up.ok) {
         self.setData({ detailAnnotationLoading: false });
         return;
       }
-      var a = p.data;
+      var a = up.data;
       if (!a) {
         self.setData({ detailAnnotationLoading: false });
         return;
       }
-      var imageUrls = "";
-      var previews = [];
-      if (a.images) {
+      var images = [];
+      if (a.imagesJson) {
         try {
-          var arr = JSON.parse(a.images);
-          if (Array.isArray(arr)) {
-            imageUrls = arr.join("\n");
-            previews = arr.slice();
-          }
-        } catch (err) {
-          imageUrls = String(a.images);
-          previews = parseImageUrlLines(imageUrls);
-        }
+          var arr = typeof a.imagesJson === 'string' ? JSON.parse(a.imagesJson) : a.imagesJson;
+          if (Array.isArray(arr)) images = arr;
+        } catch (err2) {}
+      }
+      var statusPhotos = {};
+      if (a.statusPhotos) {
+        try { var sp = typeof a.statusPhotos === 'string' ? JSON.parse(a.statusPhotos) : a.statusPhotos; if (typeof sp === 'object' && !Array.isArray(sp)) statusPhotos = sp; } catch (err3) {}
       }
       self.setData({
-        detailRichText: a.richText || "",
-        detailImageUrls: imageUrls,
-        detailImagePreviewUrls: previews,
+        experimentDesc: a.experimentDesc || '',
+        detailImages: images,
+        detailStatusPhotos: statusPhotos,
         detailAnnotationLoading: false
       });
     }).catch(function() {
@@ -1265,27 +1389,45 @@ Page({
     });
   },
 
-  onDetailRichTextInput: function(e) {
-    this.setData({ detailRichText: e.detail.value || "" });
+  onDetailExperimentDescInput: function(e) {
+    this.setData({ experimentDesc: e.detail.value || '' });
   },
 
-  onDetailImageUrlsInput: function(e) {
-    var text = e.detail.value || "";
-    this.setData({
-      detailImageUrls: text,
-      detailImagePreviewUrls: parseImageUrlLines(text)
+  onDetailPreviewImage: function(e) {
+    var url = e.currentTarget.dataset.url;
+    var urls = this.data.detailImages || [];
+    if (urls.length === 0) return;
+    wx.previewImage({
+      current: url,
+      urls: urls
     });
   },
 
-  onDetailImageError: function(e) {
-    var url = e.currentTarget.dataset.url;
-    if (!url) return;
-    var previews = (this.data.detailImagePreviewUrls || []).filter(function(u) { return u !== url; });
-    this.setData({ detailImagePreviewUrls: previews });
+  onDetailRemoveImage: function(e) {
+    var index = e.currentTarget.dataset.index;
+    var images = (this.data.detailImages || []).slice();
+    if (index >= 0 && index < images.length) {
+      images.splice(index, 1);
+      this.setData({ detailImages: images });
+    }
   },
 
-  /** 选择并上传图片（对齐 H5 MobileCageCellDetailDialog） */
-  onDetailChooseImage: function() {
+  onDetailRemoveStatusPhoto: function(e) {
+    var field = e.currentTarget.dataset.field;
+    var index = e.currentTarget.dataset.index;
+    var sp = this.data.detailStatusPhotos || {};
+    if (sp[field]) {
+      var arr = sp[field].slice();
+      if (index >= 0 && index < arr.length) {
+        arr.splice(index, 1);
+        var nsp = {}; for (var k in sp) { if (Object.prototype.hasOwnProperty.call(sp, k)) nsp[k] = sp[k]; }
+        nsp[field] = arr;
+        this.setData({ detailStatusPhotos: nsp });
+      }
+    }
+  },
+
+onDetailChooseImage: function() {
     var self = this;
     if (self.data.detailImageUploading) return;
     wx.chooseImage({
@@ -1301,13 +1443,9 @@ Page({
           if (idx >= res.tempFilePaths.length) {
             self.setData({ detailImageUploading: false });
             if (uploaded.length > 0) {
-              // 追加到已有 URL 列表
-              var existing = parseImageUrlLines(self.data.detailImageUrls);
+              var existing = self.data.detailImages || [];
               var merged = existing.concat(uploaded);
-              self.setData({
-                detailImageUrls: merged.join('\n'),
-                detailImagePreviewUrls: merged.slice()
-              });
+              self.setData({ detailImages: merged });
             }
             if (failed > 0) {
               self.setData({ detailSaveMsg: uploaded.length + ' 张上传成功 / ' + failed + ' 张失败', detailSaveMsgType: 'err' });
@@ -1328,106 +1466,70 @@ Page({
     });
   },
 
-  onSaveCellAnnotation: function() {
+onSaveCellAnnotation: function() {
     var self = this;
     var cell = self.data.selectedCell;
-    var shelveId = getActiveShelveId(self.data);
-    if (!cell || !shelveId || self.data.detailSaving) return;
+    if (!cell || self.data.detailSaving) return;
     if (!self.data.cellDetailMeta || !self.data.cellDetailMeta.permitted) return;
 
-    var imgArr = parseImageUrlLines(self.data.detailImageUrls);
-    var payload = { position: cell.position };
-    if (self.data.detailRichText) payload.richText = self.data.detailRichText;
-    if (imgArr.length > 0) payload.images = JSON.stringify(imgArr);
+    var animalCageId = cell.id || cell.animalCageId || '';
+    var payload = {
+      animalCageId: animalCageId,
+      experimentDesc: self.data.experimentDesc || '',
+      imagesJson: JSON.stringify(self.data.detailImages || []),
+      statusPhotos: JSON.stringify(self.data.detailStatusPhotos || {})
+    };
 
-    self.setData({ detailSaving: true, detailSaveMsg: "", detailSaveMsgType: "" });
+    self.setData({ detailSaving: true, detailSaveMsg: '', detailSaveMsgType: '' });
 
     springAuth.springRequest({
-      url: "/api/student/mobile/cage-shelves/" + shelveId + "/cells/" + cell.x + "/" + cell.y + "/annotation",
-      method: "PUT",
+      url: '/api/local/annotate',
+      method: 'POST',
       data: payload
     }).then(function(res) {
-      var p = unwrap(res);
-      if (!p.ok) {
+      var up = unwrap(res);
+      if (!up.ok) {
         self.setData({
           detailSaving: false,
-          detailSaveMsg: p.message || "保存失败",
-          detailSaveMsgType: "err"
+          detailSaveMsg: up.message || '保存失败',
+          detailSaveMsgType: 'err'
         });
         return;
       }
-      // 保存后仅更新标注表单状态，禁止整表 load — post-save-no-full-refresh.mdc
       self.setData({
         detailSaving: false,
-        detailSaveMsg: "保存成功",
-        detailSaveMsgType: "ok",
-        detailImagePreviewUrls: imgArr.slice()
+        detailSaveMsg: '保存成功',
+        detailSaveMsgType: 'ok'
       });
       setTimeout(function() {
-        if (self.data.detailSaveMsgType === "ok") {
-          self.setData({ detailSaveMsg: "", detailSaveMsgType: "" });
+        if (self.data.detailSaveMsgType === 'ok') {
+          self.setData({ detailSaveMsg: '', detailSaveMsgType: '' });
         }
       }, 2000);
     }).catch(function(e) {
       self.setData({
         detailSaving: false,
-        detailSaveMsg: (e && e.message) || "保存失败",
-        detailSaveMsgType: "err"
+        detailSaveMsg: (e && e.message) || '保存失败',
+        detailSaveMsgType: 'err'
       });
     });
   },
 
-  drawCageQrCode: function(qrText) {
-    var self = this;
-    if (!qrText) return;
-    self.setData({ detailQrImageSrc: "" });
-    try {
-      var drawQrcode = require("../../../libs/weapp-qrcode.js");
-      var dpr = Math.min(3, Math.max(1, (wx.getSystemInfoSync() && wx.getSystemInfoSync().pixelRatio) || 2));
-      drawQrcode({
-        width: 160,
-        height: 160,
-        canvasId: "cageQrCanvasOffscreen",
-        text: String(qrText),
-        _this: self,
-        callback: function() {
-          wx.canvasToTempFilePath({
-            canvasId: "cageQrCanvasOffscreen",
-            width: 160,
-            height: 160,
-            destWidth: Math.floor(160 * dpr),
-            destHeight: Math.floor(160 * dpr),
-            success: function(res) {
-              if (res && res.tempFilePath) {
-                self.setData({ detailQrImageSrc: res.tempFilePath });
-              }
-            }
-          }, self);
-        }
-      });
-    } catch (err) {
-      console.warn("[studentCageShelf] qrcode", err);
-    }
-  },
-
-  onCloseCellDetail: function() {
-    this._closeDetail();
-  },
-
-  _closeDetail: function() {
+onCloseCellDetail: function() { this._closeDetail(); },
+_closeDetail: function() {
     this.setData({
       showCellDetail: false,
       selectedCell: null,
       cellDetailMeta: null,
-      detailRichText: "",
-      detailImageUrls: "",
-      detailImagePreviewUrls: [],
+      cellDetail: null,
+      experimentDesc: '',
+      detailImages: [],
+    detailStatusPhotos: {},
       detailAnnotationLoading: false,
-      detailFields: [],
       detailSaving: false,
-      detailSaveMsg: "",
-      detailSaveMsgType: "",
-      detailQrImageSrc: "",
+      detailSaveMsg: '',
+      detailSaveMsgType: '',
+      detailQrImageSrc: '',
       detailImageUploading: false,
       detailActions: { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false },
       initialDetailActions: { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false },
@@ -1439,7 +1541,7 @@ Page({
   /*  WXS helpers for template use                                        */
   /* ------------------------------------------------------------------ */
 
-  getCellStyleWxs: function(cell) {
+getCellStyleWxs: function(cell) {
     return getCellStyle(cell);
   },
 
@@ -1563,63 +1665,64 @@ Page({
 
   /** 匹配扫码结果 → 加入缓存 */
   handleScanResult: function(code) {
-    var grid = this.data.grid || [];
-    var matched = null;
-    for (var i = 0; i < grid.length; i++) {
-      var cell = grid[i];
-      if (!cell || cell.empty) continue;
-      // 对齐 H5：顶层 cell.cageBoxCode → cageBoxInfo 扁平 → cageBoxVo 嵌套 三级回退
-      var cellCode = cell.cageBoxCode || '';
-      if (!cellCode) {
-        var cbi = cell.cageBoxInfo;
-        if (cbi) {
-          cellCode = cbi.cageBoxCode || cbi['cageBoxCode'];
-          if (!cellCode) {
-            var cvo = (cbi.cageBoxVo || cbi['cageBoxVo']) || {};
-            cellCode = cvo.cageBoxCode || cvo['cageBoxCode'] || '';
-          }
+    var self = this;
+    var grid = self.data.grid || [];
+    // 本地DB扫码检索 — 支持笼盒码和笼位ID
+    springAuth.springRequest({
+      url: '/api/local/scan-lookup',
+      method: 'GET',
+      data: { code: String(code).trim() }
+    }).then(function(res) {
+      var p = unwrap(res);
+      if (!p.ok || !p.data || p.data.type === 'NOT_FOUND') {
+        wx.showToast({ title: '未找到对应笼位: ' + code, icon: 'none' });
+        return;
+      }
+      var d = p.data;
+      // 在 grid 中按坐标匹配
+      var matched = null;
+      for (var i = 0; i < grid.length; i++) {
+        if (grid[i] && grid[i].x === d.positionX && grid[i].y === d.positionY) {
+          matched = grid[i];
+          break;
         }
       }
-      if (String(cellCode) === String(code)) {
-        matched = cell;
-        break;
+      if (!matched) {
+        wx.showToast({ title: '当前笼架未找到坐标 (' + d.positionX + ',' + d.positionY + ')', icon: 'none' });
+        return;
       }
-    }
-    if (!matched) {
-      wx.showToast({ title: '未找到笼盒 ' + code, icon: 'none' });
-      return;
-    }
-    var key = matched.x + ':' + matched.y;
-    var oldCache = this.data.scanCache || {};
-    var newCache = {};
-    for (var k in oldCache) { if (Object.prototype.hasOwnProperty.call(oldCache, k)) newCache[k] = oldCache[k]; }
-    if (!newCache[key]) {
-      // 预选：从 cageBoxInfo 读取当前状态（兼容扁平 gridCache 和嵌套 snapshot 结构）
-      var cbi = matched.cageBoxInfo || {};
-      var cvo = cbi.cageBoxVo || cbi['cageBoxVo'] || {};
-      var preActions = {
-        DIVIDE: !!(cbi.NeedDivideYn === 1 || cbi.NeedDivideYn === "1" || cvo.needDivideYn === 1 || cvo.needDivideYn === "1"),
-        SPECIAL_BREEDING: !!(cbi.NeedFeedingYn === 1 || cbi.NeedFeedingYn === "1" || cvo.needFeedingYn === 1 || cvo.needFeedingYn === "1" || (typeof cbi.specialBreedingName === 'string' && cbi.specialBreedingName.trim()) || (typeof cvo.specialBreedingName === 'string' && cvo.specialBreedingName.trim())),
-        HEALTH_CHECK: !!(cbi.AbnormalHealthYn === 1 || cbi.AbnormalHealthYn === "1" || cvo.abnormalHealthYn === 1 || cvo.abnormalHealthYn === "1" || cbi.animalHealthEntity != null || cvo.animalHealthEntity != null)
-      };
-      newCache[key] = { cell: matched, code: String(code), initialActions: { DIVIDE: preActions.DIVIDE, SPECIAL_BREEDING: preActions.SPECIAL_BREEDING, HEALTH_CHECK: preActions.HEALTH_CHECK }, currentActions: { DIVIDE: preActions.DIVIDE, SPECIAL_BREEDING: preActions.SPECIAL_BREEDING, HEALTH_CHECK: preActions.HEALTH_CHECK } };
-    }
-    var entry = newCache[key];
-    this.setData({
-      scanCache: newCache,
-      scanCacheSize: Object.keys(newCache).length,
-      lastScannedKey: key,
-      lastScannedEntry: {
-        position: matched._displayPosition || matched.position || '',
-        code: String(code),
-        act_DIVIDE: entry.currentActions.DIVIDE,
-        act_SPECIAL_BREEDING: entry.currentActions.SPECIAL_BREEDING,
-        act_HEALTH_CHECK: entry.currentActions.HEALTH_CHECK
-      },
-      scannedCellX: matched.x,
-      scannedCellY: matched.y,
-      legendOpen: false
-    }, this.applyCacheToGrid.bind(this));
+      var key = matched.x + ':' + matched.y;
+      var oldCache = self.data.scanCache || {};
+      var newCache = {};
+      for (var k in oldCache) { if (Object.prototype.hasOwnProperty.call(oldCache, k)) newCache[k] = oldCache[k]; }
+      if (!newCache[key]) {
+        var ld = (matched.detail) || {};
+        var preActions = {
+          DIVIDE: ld.needsDivision === true,
+          SPECIAL_BREEDING: ld.needsSpecialFeeding === true,
+          HEALTH_CHECK: ld.hasHealthAbnormality === true
+        };
+        newCache[key] = { cell: matched, code: String(code), initialActions: { DIVIDE: preActions.DIVIDE, SPECIAL_BREEDING: preActions.SPECIAL_BREEDING, HEALTH_CHECK: preActions.HEALTH_CHECK }, currentActions: { DIVIDE: preActions.DIVIDE, SPECIAL_BREEDING: preActions.SPECIAL_BREEDING, HEALTH_CHECK: preActions.HEALTH_CHECK } };
+      }
+      var entry = newCache[key];
+      self.setData({
+        scanCache: newCache,
+        scanCacheSize: Object.keys(newCache).length,
+        lastScannedKey: key,
+        lastScannedEntry: {
+          position: matched._displayPosition || matched.position || '',
+          code: String(code),
+          act_DIVIDE: entry.currentActions.DIVIDE,
+          act_SPECIAL_BREEDING: entry.currentActions.SPECIAL_BREEDING,
+          act_HEALTH_CHECK: entry.currentActions.HEALTH_CHECK
+        },
+        scannedCellX: matched.x,
+        scannedCellY: matched.y,
+        legendOpen: false
+      }, self.applyCacheToGrid.bind(self));
+    }).catch(function() {
+      wx.showToast({ title: '扫码查询失败', icon: 'none' });
+    });
   },
 
   /** 仅关闭十字交叉高亮（保留有 diff 的缓存条目） */
@@ -1716,16 +1819,8 @@ Page({
     }
     self.setData({ editMode: next, bindMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false });
     if (next && self.data.selectedShelf && self.data.selectedShelf.shelveId) {
-      // 进入编辑模式 → 刷新实时数据
-      springAuth.springRequest({
-        url: '/api/v1/cage-shelves/' + self.data.selectedShelf.shelveId + '/refresh',
-        method: 'POST',
-        data: {}
-      }).then(function() {
-        self.loadShelfDetail(self.data.selectedShelf.shelveId);
-      }).catch(function() {
-        self.loadShelfDetail(self.data.selectedShelf.shelveId);
-      });
+      // 进入编辑模式 → 从本地DB刷新
+      self.loadShelfDetail(self.data.selectedShelf.shelveId);
     } else {
       // 退出编辑模式 → 清除缓存、定位、交叉高亮
       self.setData({
@@ -1810,7 +1905,259 @@ Page({
   // Action → CancelColor 映射
   ACTION_CANCEL_COLOR: { DIVIDE: 2, SPECIAL_BREEDING: 1, HEALTH_CHECK: 3 },
 
-  /** 提交全部缓存 */
+  /** 切换状态选项 → 写入 scanCache（对齐 Desktop：不在弹窗内直接提交） */
+  onEditActionToggle: function(e) {
+    var a = e.currentTarget.dataset.action;
+    var cell = this.data.editActionCell;
+    if (!cell || !a) return;
+    var key = cell.x + ':' + cell.y;
+    var cache = this.data.scanCache || {};
+    var newCache = {};
+    for (var k in cache) { if (Object.prototype.hasOwnProperty.call(cache, k)) newCache[k] = cache[k]; }
+    if (!newCache[key]) {
+      // 首次创建缓存条目，从 cell.detail 读取初始状态
+      var ld = cell.detail || {};
+      newCache[key] = {
+        cell: cell,
+        code: ld.cageBoxCode || '',
+        initialActions: {
+          DIVIDE: ld.needsDivision === true,
+          SPECIAL_BREEDING: ld.needsSpecialFeeding === true,
+          HEALTH_CHECK: ld.hasHealthAbnormality === true
+        },
+        currentActions: {
+          DIVIDE: ld.needsDivision === true,
+          SPECIAL_BREEDING: ld.needsSpecialFeeding === true,
+          HEALTH_CHECK: ld.hasHealthAbnormality === true
+        }
+      };
+    }
+    // 切换动作
+    newCache[key].currentActions[a] = !newCache[key].currentActions[a];
+    // 如果 currentActions 已恢复为初始状态，移除缓存条目
+    var init = newCache[key].initialActions;
+    var cur = newCache[key].currentActions;
+    if (cur.DIVIDE === init.DIVIDE && cur.SPECIAL_BREEDING === init.SPECIAL_BREEDING && cur.HEALTH_CHECK === init.HEALTH_CHECK) {
+      delete newCache[key];
+    }
+    // 同步更新 editActionCurrent（弹窗内显示用）
+    var ec = { DIVIDE: (newCache[key] && newCache[key].currentActions.DIVIDE), SPECIAL_BREEDING: (newCache[key] && newCache[key].currentActions.SPECIAL_BREEDING), HEALTH_CHECK: (newCache[key] && newCache[key].currentActions.HEALTH_CHECK) };
+    this.setData({ scanCache: newCache, editActionCurrent: ec }, this.applyCacheToGrid.bind(this));
+  },
+
+  onEditActionChoosePhoto: function() {
+    var self = this;
+    wx.chooseImage({
+      count: 6,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: function(res) {
+        if (!res.tempFilePaths || res.tempFilePaths.length === 0) return;
+        self.setData({ editActionUploading: true });
+        var uploaded = [];
+        var next = function(idx) {
+          if (idx >= res.tempFilePaths.length) {
+            self.setData({ editActionUploading: false });
+            if (uploaded.length > 0) {
+              var cur = self.data.editActionPhotos || [];
+              var np = cur.concat(uploaded);
+              self.setData({ editActionPhotos: np });
+              // 不再自动保存，统一由「保存标注」按钮提交
+            }
+            return;
+          }
+          springAuth.uploadFileDirect(res.tempFilePaths[idx], {}).then(function(url) {
+            uploaded.push(url);
+            next(idx + 1);
+          }).catch(function() { next(idx + 1); });
+        };
+        next(0);
+      }
+    });
+  },
+
+  onEditActionRemovePhoto: function(e) {
+    var idx = e.currentTarget.dataset.index;
+    var photos = (this.data.editActionPhotos || []).slice();
+    if (idx >= 0 && idx < photos.length) { photos.splice(idx, 1); this.setData({ editActionPhotos: photos }); }
+  },
+
+  onEditActionNoteInput: function(e) {
+    this.setData({ editActionNote: e.detail.value || '' });
+  },
+
+  onEditActionSave: function() {
+    var self = this;
+    var cell = self.data.editActionCell;
+    if (!cell) return;
+    var animalCageId = cell.id || cell.animalCageId || '';
+    if (!animalCageId) { wx.showToast({ title: '无法获取笼位ID', icon: 'none' }); return; }
+    // 合并后端已有 statusPhotos
+    springAuth.springRequest({ url: '/api/local/annotate/' + animalCageId, method: 'GET', data: {} }).then(function(res) {
+      var up = unwrap(res);
+      var sp = {};
+      if (up.ok && up.data && up.data.statusPhotos) {
+        try { var ex = typeof up.data.statusPhotos === 'string' ? JSON.parse(up.data.statusPhotos) : up.data.statusPhotos; if (typeof ex === 'object' && !Array.isArray(ex)) sp = ex; } catch(e) {}
+      }
+      var ld = cell.detail || {};
+      var photos = self.data.editActionPhotos || [];
+      if (ld.needsDivision === true) sp.needs_division = photos;
+      if (ld.needsSpecialFeeding === true) sp.needs_special_feeding = photos;
+      if (ld.hasHealthAbnormality === true) sp.has_health_abnormality = photos;
+      if (photos.length > 0) sp._status = photos;
+      var note = (self.data.editActionNote || '').trim();
+      if (note) sp._note = note; // 标注文本存入 statusPhotos，与实验记录分离
+      var body = { animalCageId: animalCageId, statusPhotos: JSON.stringify(sp) };
+      return springAuth.springRequest({ url: '/api/local/annotate', method: 'POST', data: body });
+    }).then(function() {
+      wx.showToast({ title: '标注已保存', icon: 'success' });
+    }).catch(function(e) {
+      wx.showToast({ title: '保存失败: ' + ((e && e.message) || ''), icon: 'none' });
+    });
+  },
+
+  onEditActionNewVersion: function() {
+    var self = this;
+    var cell = self.data.editActionCell;
+    if (!cell) return;
+    var animalCageId = cell.id || cell.animalCageId || '';
+    if (!animalCageId) { wx.showToast({ title: '无法获取笼位ID', icon: 'none' }); return; }
+    // 先GET已有数据，合并后POST，然后清空表单
+    springAuth.springRequest({ url: '/api/local/annotate/' + animalCageId, method: 'GET', data: {} }).then(function(res) {
+      var up = unwrap(res);
+      var sp = {};
+      if (up.ok && up.data && up.data.statusPhotos) {
+        try { var ex = typeof up.data.statusPhotos === 'string' ? JSON.parse(up.data.statusPhotos) : up.data.statusPhotos; if (typeof ex === 'object' && !Array.isArray(ex)) sp = ex; } catch(e) {}
+      }
+      var ld = cell.detail || {};
+      var photos = self.data.editActionPhotos || [];
+      if (ld.needsDivision === true) sp.needs_division = photos;
+      if (ld.needsSpecialFeeding === true) sp.needs_special_feeding = photos;
+      if (ld.hasHealthAbnormality === true) sp.has_health_abnormality = photos;
+      if (photos.length > 0) sp._status = photos;
+      var note = (self.data.editActionNote || '').trim();
+      if (note) sp._note = note;
+      var body = { animalCageId: animalCageId, statusPhotos: JSON.stringify(sp) };
+      return springAuth.springRequest({ url: '/api/local/annotate', method: 'POST', data: body });
+    }).then(function() {
+      // 清空表单 + 刷新历史
+      self.setData({ editActionPhotos: [], editActionNote: '' });
+      if (animalCageId) {
+        springAuth.springRequest({ url: '/api/local/history/' + animalCageId, method: 'GET', data: {} }).then(function(res2) {
+          var hp = unwrap(res2);
+          var list = (hp.ok ? hp.data : []) || [];
+          list.forEach(function(h) {
+            try { h._imgs = JSON.parse(h.imagesJson || '[]'); } catch(e) { h._imgs = []; }
+            if (h.createdAt) h.createdAt = (h.createdAt || '').substring(0, 16);
+          });
+          self.setData({ editHistory: list });
+        }).catch(function(){});
+      }
+      wx.showToast({ title: '已归档为新记录', icon: 'success', duration: 2000 });
+    }).catch(function(e) {
+      wx.showToast({ title: '保存失败: ' + ((e && e.message) || ''), icon: 'none' });
+    });
+  },
+
+  onEditActionJustClose: function() {
+    this.setData({ editActionPopup: false, editActionCell: null, editActionPhotos: [], editActionNote: '', editHistory: [] });
+  },
+
+  onEditHistoryDelete: function(e) {
+    var self = this;
+    var id = e.currentTarget.dataset.id;
+    if (!id) return;
+    wx.showModal({
+      title: '删除确认',
+      content: '确定删除该条历史记录？',
+      success: function(res) {
+        if (!res.confirm) return;
+        springAuth.springRequest({ url: '/api/local/history/' + id, method: 'DELETE', data: {} }).then(function() {
+          var list = (self.data.editHistory || []).filter(function(h) { return h.id !== id; });
+          self.setData({ editHistory: list });
+          wx.showToast({ title: '已删除', icon: 'success' });
+        }).catch(function() { wx.showToast({ title: '删除失败', icon: 'none' }); });
+      }
+    });
+  },
+
+  onEditActionClose: function() {
+    var self = this;
+    var cell = self.data.editActionCell;
+    // 保存照片和备注到 statusPhotos
+    if (cell && (self.data.editActionPhotos.length > 0 || self.data.editActionNote.trim())) {
+      var animalCageId = cell.id || cell.animalCageId || '';
+      if (animalCageId) {
+        var sp = {};
+        var ld = cell.detail || {};
+        if (ld.needsDivision === true) sp.needs_division = self.data.editActionPhotos;
+        if (ld.needsSpecialFeeding === true) sp.needs_special_feeding = self.data.editActionPhotos;
+        if (ld.hasHealthAbnormality === true) sp.has_health_abnormality = self.data.editActionPhotos;
+        sp._status = self.data.editActionPhotos;  // 兜底
+        springAuth.springRequest({
+          url: '/api/local/annotate', method: 'POST',
+          data: { animalCageId: animalCageId, experimentDesc: self.data.editActionNote, statusPhotos: JSON.stringify(sp) }
+        });
+      }
+    }
+    self.setData({ editActionPopup: false, editActionCell: null, editActionPhotos: [], editActionNote: '' });
+  },
+
+  onEditActionSubmit: function() {
+    var self = this;
+    var cell = self.data.editActionCell;
+    if (!cell) return;
+    // Save photos first
+    var animalCageId = cell.id || cell.animalCageId || '';
+    if (animalCageId && (self.data.editActionPhotos.length > 0 || self.data.editActionNote.trim())) {
+      var sp = {};
+      var ld = cell.detail || {};
+      var cur = self.data.editActionCurrent || {};
+      if (cur.DIVIDE) sp.needs_division = self.data.editActionPhotos;
+      if (cur.SPECIAL_BREEDING) sp.needs_special_feeding = self.data.editActionPhotos;
+      if (cur.HEALTH_CHECK) sp.has_health_abnormality = self.data.editActionPhotos;
+      sp._status = self.data.editActionPhotos;  // 兜底
+      springAuth.springRequest({
+        url: '/api/local/annotate', method: 'POST',
+        data: { animalCageId: animalCageId, experimentDesc: self.data.editActionNote, statusPhotos: JSON.stringify(sp) }
+      });
+    }
+    // Submit actions
+    var init = self.data.editActionInitial || {};
+    var cur2 = self.data.editActionCurrent || {};
+    var toAdd = [], toRemove = [];
+    if (cur2.DIVIDE && !init.DIVIDE) toAdd.push('DIVIDE');
+    if (cur2.SPECIAL_BREEDING && !init.SPECIAL_BREEDING) toAdd.push('SPECIAL_BREEDING');
+    if (cur2.HEALTH_CHECK && !init.HEALTH_CHECK) toAdd.push('HEALTH_CHECK');
+    if (!cur2.DIVIDE && init.DIVIDE) toRemove.push('DIVIDE');
+    if (!cur2.SPECIAL_BREEDING && init.SPECIAL_BREEDING) toRemove.push('SPECIAL_BREEDING');
+    if (!cur2.HEALTH_CHECK && init.HEALTH_CHECK) toRemove.push('HEALTH_CHECK');
+    if (toAdd.length === 0 && toRemove.length === 0) {
+      self.onEditActionClose();
+      return;
+    }
+    self.setData({ actionSubmitting: true });
+    var ok=0, fail=0, total=toAdd.length+toRemove.length;
+    var tasks = [];
+    for (var i=0;i<toAdd.length;i++) {
+      (function(action){
+        var toggle = action==='DIVIDE'?'needs_division':action==='SPECIAL_BREEDING'?'needs_special_feeding':'has_health_abnormality';
+        tasks.push(springAuth.springRequest({url:'/api/local/edit',method:'POST',data:{animalCageId:animalCageId,toggle:toggle,enable:true,cageBoxCode:''}}).then(function(){ok++;}).catch(function(){fail++;}));
+      })(toAdd[i]);
+    }
+    for (var j=0;j<toRemove.length;j++) {
+      (function(action){
+        var toggle = action==='DIVIDE'?'needs_division':action==='SPECIAL_BREEDING'?'needs_special_feeding':'has_health_abnormality';
+        tasks.push(springAuth.springRequest({url:'/api/local/edit',method:'POST',data:{animalCageId:animalCageId,toggle:toggle,enable:false,cageBoxCode:''}}).then(function(){ok++;}).catch(function(){fail++;}));
+      })(toRemove[j]);
+    }
+    Promise.all(tasks).then(function(){
+      self.setData({ actionSubmitting: false, editActionPopup: false, editActionCell: null, editActionPhotos: [], editActionNote: '' });
+      if(fail===0){wx.showToast({title:'已完成 '+ok+' 个操作（本地+异步投递）',icon:'success'});self.onRetry();}
+      else{wx.showToast({title:ok+' 成功 / '+fail+' 失败',icon:'none'});}
+    });
+  },
+
   onSubmitScanActions: function() {
     var self = this;
     var cache = self.data.scanCache || {};
@@ -1821,49 +2168,45 @@ Page({
         var e = cache[key];
         var init = e.initialActions || {};
         var curr = e.currentActions || {};
-        if (curr.DIVIDE && !init.DIVIDE) addEntries.push({ key: key, code: e.code, action: 'DIVIDE' });
-        if (curr.SPECIAL_BREEDING && !init.SPECIAL_BREEDING) addEntries.push({ key: key, code: e.code, action: 'SPECIAL_BREEDING' });
-        if (curr.HEALTH_CHECK && !init.HEALTH_CHECK) addEntries.push({ key: key, code: e.code, action: 'HEALTH_CHECK' });
-        if (!curr.DIVIDE && init.DIVIDE) removeEntries.push({ key: key, code: e.code, action: 'DIVIDE' });
-        if (!curr.SPECIAL_BREEDING && init.SPECIAL_BREEDING) removeEntries.push({ key: key, code: e.code, action: 'SPECIAL_BREEDING' });
-        if (!curr.HEALTH_CHECK && init.HEALTH_CHECK) removeEntries.push({ key: key, code: e.code, action: 'HEALTH_CHECK' });
+        if (curr.DIVIDE && !init.DIVIDE) addEntries.push({ key: key, code: e.code, action: 'DIVIDE', cell: e.cell });
+        if (curr.SPECIAL_BREEDING && !init.SPECIAL_BREEDING) addEntries.push({ key: key, code: e.code, action: 'SPECIAL_BREEDING', cell: e.cell });
+        if (curr.HEALTH_CHECK && !init.HEALTH_CHECK) addEntries.push({ key: key, code: e.code, action: 'HEALTH_CHECK', cell: e.cell });
+        if (!curr.DIVIDE && init.DIVIDE) removeEntries.push({ key: key, code: e.code, action: 'DIVIDE', cell: e.cell });
+        if (!curr.SPECIAL_BREEDING && init.SPECIAL_BREEDING) removeEntries.push({ key: key, code: e.code, action: 'SPECIAL_BREEDING', cell: e.cell });
+        if (!curr.HEALTH_CHECK && init.HEALTH_CHECK) removeEntries.push({ key: key, code: e.code, action: 'HEALTH_CHECK', cell: e.cell });
       }
     }
     if (addEntries.length === 0 && removeEntries.length === 0) return;
 
-    var meta = self.data.gridMeta || {};
-    var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
-    var shelveId = String((self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
-
     self.setData({ actionSubmitting: true });
     var okCount = 0, failCount = 0;
     var totalTasks = addEntries.concat(removeEntries.map(function(r) {
-      return { key: r.key, code: r.code, action: r.action, cancel: true };
+      return { key: r.key, code: r.code, action: r.action, cancel: true, cell: r.cell };
     }));
 
     var next = function(idx) {
       if (idx >= totalTasks.length) {
         self.setData({ actionSubmitting: false });
         if (failCount === 0) {
-          wx.showToast({ title: '已完成 ' + okCount + ' 个操作', icon: 'success', duration: 3000 });
-          self.onRetry(); // 先刷新实时数据（editMode 仍为 true）
-          self.onExitScanMode(); // 再退出编辑模式
+          wx.showToast({ title: '已完成 ' + okCount + ' 个操作（本地+异步投递）', icon: 'success', duration: 3000 });
+          self.onRetry();
+          self.onExitScanMode();
         } else {
           wx.showToast({ title: okCount + ' 成功 / ' + failCount + ' 失败', icon: 'none' });
         }
         return;
       }
       var entry = totalTasks[idx];
-      var url, data;
-      if (entry.cancel) {
-        var color = self.ACTION_CANCEL_COLOR[entry.action];
-        url = '/api/aro/cage-box/cancel';
-        data = { roomId: roomId, shelveId: shelveId, cageBoxCode: entry.code, color: color };
-      } else {
-        url = '/api/aro/cage-box/action';
-        data = { roomId: roomId, shelveId: shelveId, cageBoxCode: entry.code, action: entry.action };
-      }
-      springAuth.springRequest({ url: url, method: 'POST', data: data })
+      var cageId = String(entry.cell.id || (entry.cell.animalCageId) || '');
+      var toggle = entry.action === 'DIVIDE' ? 'needs_division' : entry.action === 'SPECIAL_BREEDING' ? 'needs_special_feeding' : 'has_health_abnormality';
+      var enable = !entry.cancel;
+      var data = {
+        animalCageId: cageId,
+        toggle: toggle,
+        enable: enable,
+        cageBoxCode: entry.code || ''
+      };
+      springAuth.springRequest({ url: '/api/local/edit', method: 'POST', data: data })
         .then(function(res) {
           var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
           if (body && body.success) { okCount++; } else { failCount++; }
@@ -2002,20 +2345,17 @@ Page({
     var arr = self.data.bindPairCache;
     if (arr.length === 0) return;
     self.setData({ bindSubmitting: true });
-    var meta = self.data.gridMeta || {};
-    var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
     var ok = 0, fail = 0, total = arr.length;
     var promises = [];
     for (var i = 0; i < arr.length; i++) {
       var entry = arr[i];
-      // 优先 cell.id，回退到 cageBoxInfo.id（snapshot 路径可能不包含顶层 id）
-      var cageId = String(entry.cell.id || (entry.cell.cageBoxInfo && entry.cell.cageBoxInfo.id) || '');
+      var cageId = String(entry.cell.id || (entry.cell.animalCageId) || '');
       (function(cid, code, pos) {
         promises.push(new Promise(function(resolve) {
           springAuth.springRequest({
-            url: '/api/aro/cage-box/bind',
+            url: '/api/local/bind',
             method: 'POST',
-            data: { animalCageId: cid, cageBoxCode: code, roomId: roomId }
+            data: { animalCageId: cid, cageBoxCode: code }
           }).then(function(res) {
             var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
             if (body && body.success) { ok++; } else { fail++; if (fail <= 3) wx.showToast({ title: pos + ' 失败', icon: 'none' }); }
@@ -2026,7 +2366,7 @@ Page({
     }
     Promise.all(promises).then(function() {
       self.setData({ bindPairCache: [], bindPairCacheSize: 0, bindSubmitting: false, bindScannedCode: '', bindSelectedKey: '' });
-      if (fail === 0) { wx.showToast({ title: total + ' 个绑定全部成功！', icon: 'success' }); }
+      if (fail === 0) { wx.showToast({ title: total + ' 个绑定全部成功！（本地+异步投递）', icon: 'success' }); }
       else { wx.showToast({ title: ok + ' 成功 / ' + fail + ' 失败', icon: 'none' }); }
       self.onRetry();
     });
@@ -2038,20 +2378,17 @@ Page({
     var arr = self.data.unbindPairCache;
     if (arr.length === 0) return;
     self.setData({ bindSubmitting: true });
-    var meta = self.data.gridMeta || {};
-    var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
     var ok = 0, fail = 0, total = arr.length;
     var promises = [];
     for (var i = 0; i < arr.length; i++) {
       var entry = arr[i];
-      // 优先 cell.id，回退到 cageBoxInfo.id（snapshot 路径可能不包含顶层 id）
-      var cageId = String(entry.cell.id || (entry.cell.cageBoxInfo && entry.cell.cageBoxInfo.id) || '');
+      var cageId = String(entry.cell.id || (entry.cell.animalCageId) || '');
       (function(cid, pos) {
         promises.push(new Promise(function(resolve) {
           springAuth.springRequest({
-            url: '/api/aro/cage-box/unbind',
+            url: '/api/local/unbind',
             method: 'POST',
-            data: { animalCageIdList: [cid], roomId: roomId }
+            data: { animalCageId: cid }
           }).then(function(res) {
             var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
             if (body && body.success) { ok++; } else { fail++; }
@@ -2062,7 +2399,7 @@ Page({
     }
     Promise.all(promises).then(function() {
       self.setData({ unbindPairCache: [], unbindPairCacheSize: 0, bindSubmitting: false });
-      if (fail === 0) { wx.showToast({ title: total + ' 个解绑全部成功！', icon: 'success' }); }
+      if (fail === 0) { wx.showToast({ title: total + ' 个解绑全部成功！（本地+异步投递）', icon: 'success' }); }
       else { wx.showToast({ title: ok + ' 成功 / ' + fail + ' 失败', icon: 'none' }); }
       self.onRetry();
     });

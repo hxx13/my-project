@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from "react";
-import AgvQuadrantCanvas from "./AgvQuadrantCanvas";
+import AgvCanvas from "./agvCanvas";
+import type { AgvLayer } from "./agvCanvas/types";
 import AgvPlaybackTimeline from "./AgvPlaybackTimeline";
 import type { TrailPoint } from "./useAgvTrailRef";
 import type { HistoryPlaybackResponse } from "@/api/domains/agv.api";
@@ -59,6 +60,8 @@ interface Props {
   selectedZoneId?: number | null;
   onZoneSelect?: (id: number | null) => void;
   onZoneReshape?: (id: number, polygonJson: string) => void;
+  onCoordFrameRotate?: (ip: string, newDeg: number, centerX: number, centerY: number) => void;
+  playbackProgressRef?: React.MutableRefObject<number>;
   // ── History playback props (single-quadrant only) ──
   playbackActive?: boolean;
   playbackData?: HistoryPlaybackResponse | null;
@@ -142,8 +145,8 @@ export default function AgvQuadrant(props: Props) {
     odo, rssi, driverEmc, forkHeight, forkInPlace,
     jackEnable, jackState, jackIsFull, jackMode, jackErrorCode,
     errors, warnings, diChannels, coordRotationDeg,
-    zoneOverlays, routeOverlays, routeMode, followMode, transitionMarkers, currentActivity,
-    vehicleIcon, pickMode, pickTwoPoint, pickAnchor, onPointPick, onRectDrawn, onZoneClick, coordEditMode, zoneEditMode, selectedZoneId, onZoneSelect, onZoneReshape,
+    zoneOverlays, routeOverlays, routeMode, followMode, currentActivity,
+    vehicleIcon, pickMode, pickTwoPoint, pickAnchor, onPointPick, onRectDrawn, onZoneClick, coordEditMode, zoneEditMode, selectedZoneId, onZoneSelect, onZoneReshape, onCoordFrameRotate, playbackProgressRef,
     playbackActive, playbackData, playbackPlaying, playbackProgress, playbackSpeed,
     playbackLoading, playbackError,
     onStartPlayback, onClearPlayback, onStopPlayback, onPlaybackPlay, onPlaybackPause, onPlaybackProgress, onPlaybackSpeed,
@@ -169,13 +172,6 @@ export default function AgvQuadrant(props: Props) {
   const pct = battery != null ? Math.round(battery * 100) : null;
   const barColor = pct != null
     ? (pct <= 20 ? "#ef4444" : pct <= 50 ? "#f59e0b" : "#22c55e") : "#9ca3af";
-
-  const doRotate = async () => {
-    const cur = coordRotationDeg ?? 0;
-    const next = ((cur + 90) % 360 + 360) % 360;
-    await updateCoordConfig(ip, next);
-    qc.setQueryData(["agvCoordConfigs"], (old: Record<string, number> | undefined) => ({ ...old, [ip]: next }));
-  };
 
   // 倒车检测：移动方向 vs 朝向 (dot product < 0 → 倒车)
   let reversing = false;
@@ -215,15 +211,6 @@ export default function AgvQuadrant(props: Props) {
           title="历史回放">
           <Clock size={11} />
         </button>
-        <button onClick={doRotate} className="p-0.5 rounded hover:bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]" title={`旋转坐标系: ${coordRotationDeg ?? 0}°`}>
-          <RotateCw size={10} />
-        </button>
-        {(coordRotationDeg ?? 0) !== 0 && (
-          <button onClick={async () => { await updateCoordConfig(ip, 0); qc.setQueryData(["agvCoordConfigs"], (old: Record<string, number> | undefined) => ({ ...old, [ip]: 0 })); }}
-            className="p-0.5 rounded hover:bg-[var(--app-color-surface-hover)] text-red-400 hover:text-red-600" title="重置为0°">
-            <RotateCw size={10} className="rotate-180" />
-          </button>
-        )}
         {blocked && <AlertTriangle size={11} className="text-red-500" />}
         {emergency && <AlertTriangle size={11} className="text-red-500" fill="currentColor" />}
         {hasAlerts && <AlertTriangle size={11} className="text-orange-500" />}
@@ -272,21 +259,41 @@ export default function AgvQuadrant(props: Props) {
 
       {/* ── Canvas with overlays ── */}
       <div className="flex-1 min-h-0 relative">
-        <AgvQuadrantCanvas ip={ip} trail={trail}
-          currentX={x} currentY={y} currentAngle={angle}
-          online={online} color={color} dwellSpots={dwellSpots} coordRotationDeg={coordRotationDeg}
-          coordOffsetX={props.coordOffsetX} coordOffsetY={props.coordOffsetY} coordScale={props.coordScale}
-          activitySegments={playbackActive && playbackData ? playbackData.segments : undefined}
-          zoneOverlays={zoneOverlays} routeOverlays={routeOverlays} routeMode={routeMode} followMode={followMode} transitionMarkers={transitionMarkers}
-          forkHeight={forkHeight} jackState={jackState} jackIsFull={jackIsFull}
-          vehicleIcon={vehicleIcon}
-          currentActivity={currentActivity} charging={charging} speed={speed}
-          pickMode={pickMode} pickTwoPoint={pickTwoPoint} pickAnchor={pickAnchor} onPointPick={onPointPick} onRectDrawn={onRectDrawn} onZoneClick={onZoneClick} coordEditMode={coordEditMode} zoneEditMode={zoneEditMode} selectedZoneId={selectedZoneId} onZoneSelect={onZoneSelect} onZoneReshape={onZoneReshape}
-          playbackActive={playbackActive}
-          playbackData={playbackData ?? null}
-          playbackTrail={playbackActive && playbackData ? playbackData.trail : null}
-          playbackProgress={playbackProgress}
-        />
+        {(() => {
+          const layer: AgvLayer = {
+            ip, label, color, visible: true,
+            trail, currentX: x, currentY: y, currentAngle: angle,
+            online, dwellSpots,
+            forkHeight, jackState, jackIsFull,
+            coordOffsetX: props.coordOffsetX, coordOffsetY: props.coordOffsetY,
+            coordRotationDeg, coordScale: props.coordScale,
+            currentActivity, charging, speed,
+          };
+          return (
+            <AgvCanvas
+              layers={[layer]}
+              zoneOverlays={zoneOverlays}
+              routeOverlays={routeMode ? routeOverlays : []}
+              routeMode={routeMode}
+              followMode={followMode}
+              followTargetIp={followMode ? ip : null}
+              vehicleIcon={vehicleIcon}
+              hiddenAgvs={new Set()}
+              pickMode={pickMode} pickTwoPoint={pickTwoPoint} pickAnchor={pickAnchor}
+              onPointPick={onPointPick} onRectDrawn={onRectDrawn} onZoneClick={onZoneClick}
+              coordEditMode={coordEditMode} zoneEditMode={zoneEditMode}
+              selectedZoneId={selectedZoneId} onZoneSelect={onZoneSelect}
+              onZoneReshape={onZoneReshape}
+              onCoordFrameMove={undefined} onCoordFrameScale={undefined}
+              onCoordFrameRotate={onCoordFrameRotate}
+              playbackProgressRef={playbackProgressRef}
+              playbackActive={playbackActive}
+              playbackData={playbackData ?? null}
+              playbackTrail={playbackActive && playbackData ? playbackData.trail : null}
+              playbackProgress={playbackProgress}
+            />
+          );
+        })()}
 
         {/* Top-left: fork height dot indicator */}
         <div className="absolute top-2 left-2 flex items-center gap-2 pointer-events-none bg-[var(--app-color-surface-container)]/80 rounded px-2 py-1.5">

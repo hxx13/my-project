@@ -211,8 +211,10 @@ function uploadFileDirect(tempFilePath, meta) {
       success(res) {
         try {
           const body = JSON.parse(res.data);
-          if (res.statusCode === 200 && body && body.success === true && body.data && body.data.url) {
-            resolve(toAbsoluteMediaUrl(body.data.url));
+          if (res.statusCode === 200 && body && body.success === true && body.data) {
+            // 优先取 publicUrl（绝对地址），兜底 url（相对路径）
+            const imgUrl = body.data.publicUrl || body.data.url;
+            if (imgUrl) { resolve(toAbsoluteMediaUrl(imgUrl)); return; }
             return;
           }
           reject(new Error((body && body.message) || `上传失败 HTTP ${res.statusCode}`));
