@@ -77,8 +77,12 @@ else
     # Step 3/8: 前端构建
     echo "=== Step 3/8: npm build ==="
     cd "$REPO_DIR/frontend"
+    # 如果 node_modules 存在但属主不对（上次 sudo 跑的），先清掉
+    if [ -d node_modules ]; then
+        sudo rm -rf node_modules
+    fi
     npm ci
-    sudo chown -R aroadmin:aroadmin "$REPO_DIR/frontend/node_modules"
+    sudo chown -R aroadmin:aroadmin node_modules
     npm run build
 
     # Step 4/8: 后端构建
