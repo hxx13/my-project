@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, Bell, ChevronDown, LogOut, Mail, Menu, MessageCircle, Smartphone, UserRound } from "lucide-react";
+import { ArrowLeft, Bell, ChevronDown, ChevronRight, LogOut, Mail, Menu, MessageCircle, Smartphone, UserRound } from "lucide-react";
+import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import { cn } from "@/lib/utils";
 import { authStorage } from "@/features/auth/authStorage";
 import { getImpersonationState, returnToStaffView, fullLogout } from "@/features/auth/impersonation";
@@ -108,6 +109,22 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
     navigate("/login", { replace: true });
   };
 
+  const breadcrumbMap: Record<string, string> = {
+    "/student/home": "首页",
+    "/student/records": "出入记录",
+    "/student/rooms": "我的房间",
+    "/student/cage-shelf": "笼架信息",
+    "/student/material": "申领物品",
+    "/student/material/requests": "我的申领",
+    "/student/material/stats": "物品统计",
+    "/student/stats": "数据统计",
+    "/student/notifications": "通知",
+    "/student/feedback": "帮助反馈",
+    "/student/settings": "设置",
+  };
+
+  const currentLabel = breadcrumbMap[pathname] || "";
+
   return (
     <header
       className={cn(
@@ -125,9 +142,23 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
           <Menu className="h-4 w-4" />
         </button>
 
-        <h1 className="text-lg font-semibold text-[var(--student-ink)] tracking-tight">
-          学生中心
-        </h1>
+        {/* Logo — desktop only */}
+        <img
+          src={SHSMU_LOGO_URL}
+          alt="上海交通大学医学院"
+          className="hidden lg:block h-8 w-auto object-contain object-left"
+        />
+
+        {/* Breadcrumb */}
+        <div className="hidden lg:flex items-center gap-1.5 text-sm">
+          <span className="text-[var(--student-mute)]">学生中心</span>
+          {currentLabel && currentLabel !== "首页" && (
+            <>
+              <ChevronRight className="h-3.5 w-3.5 text-[var(--student-mute)]" />
+              <span className="font-medium text-[var(--student-ink)]">{currentLabel}</span>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Right side */}
