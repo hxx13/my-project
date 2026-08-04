@@ -4,6 +4,7 @@ import { toast } from "react-hot-toast";
 import { ChevronLeft, ChevronRight, LogIn, X, ChevronDown, LogOut } from "lucide-react";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import { fetchLoginBranding, pickLoginHeroUrls, type LoginBranding } from "@/api/domains/publicSite.api";
+import { PortalHero } from "@/features/portal/PortalHero";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
@@ -45,9 +46,6 @@ const SJTU_ASSETS = {
   arrowRight: `${SJTU_ORIGIN}/assets/images/icon-arrow-right.svg`,
 } as const;
 
-/** 轮播未加载时的过渡底色（深灰，避免红色闪烁） */
-const LOGIN_FALLBACK_BG = "#1a1a1a";
-
 function loginPortalWowDelay(delay: string): CSSProperties {
   return { "--login-wow-delay": delay } as CSSProperties;
 }
@@ -55,14 +53,13 @@ function loginPortalWowDelay(delay: string): CSSProperties {
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { effectiveMode, themeId } = useTheme();
+  const { effectiveMode } = useTheme();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [assetBroken, setAssetBroken] = useState<Record<string, boolean>>({});
   const [branding, setBranding] = useState<LoginBranding | null>(null);
-  const [heroIdx, setHeroIdx] = useState(0);
   const passwordRef = useRef<HTMLInputElement>(null);
   const casProcessedRef = useRef(false);
   const [sessionUser, setSessionUser] = useState(() => authStorage.getUserInfo());
@@ -201,19 +198,7 @@ export default function LoginPage() {
   );
   const heroUrlKey = useMemo(() => heroUrls.join("\0"), [heroUrls]);
 
-  useEffect(() => {
-    setHeroIdx(0);
-  }, [effectiveMode, heroUrlKey, themeId]);
   const heroCarouselOn = branding?.heroCarouselEnabled !== false && heroUrls.length > 0;
-
-  useEffect(() => {
-    if (!heroCarouselOn || heroUrls.length <= 1) return;
-    const sec = Math.max(3, branding?.intervalSec ?? 8);
-    const t = window.setInterval(() => {
-      setHeroIdx((i) => (i + 1) % heroUrls.length);
-    }, sec * 1000);
-    return () => window.clearInterval(t);
-  }, [heroCarouselOn, heroUrlKey, heroUrls.length, branding?.intervalSec]);
 
   // Turnstile widget: 登录抽屉打开 + 非忘记密码模式时渲染
   const [turnstileLoadFailed, setTurnstileLoadFailed] = useState(false);
@@ -550,25 +535,7 @@ export default function LoginPage() {
 
   return (
     <div className="login-home-page fnt18">
-      {/* 轮播底图：fallback 底色 + 首图淡入，避免 loading 闪烁 */}
-      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden key={`hero-${effectiveMode}-${heroUrlKey}`}>
-        <div className="absolute inset-0 z-0 transition-colors duration-500" style={{ backgroundColor: heroCarouselOn ? "transparent" : LOGIN_FALLBACK_BG }} />
-        {heroCarouselOn && (
-          <>
-            {heroUrls.map((url, i) => (
-              <div
-                key={`${effectiveMode}-${i}-${url}`}
-                className={cn(
-                  "absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-opacity duration-1000",
-                  i === heroIdx ? "opacity-100" : "opacity-0"
-                )}
-                style={{ backgroundImage: `url(${url})` }}
-              />
-            ))}
-            <div className="absolute inset-0 z-[1] bg-gradient-to-b from-[#6b0408]/78 via-[#a30000]/65 to-[#3d0204]/85" />
-          </>
-        )}
-      </div>
+      <PortalHero height="100vh" />
 
       {/* 对应原站 a.logo：本系统为医学院 logo */}
       <Link
