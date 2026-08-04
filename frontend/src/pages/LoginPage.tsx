@@ -311,7 +311,7 @@ export default function LoginPage() {
           authStorage.markLoginPortal("student");
           toast("学生账号已自动跳转至学生中心", { icon: "🎒" });
           setShowLogin(false);
-          navigate("/student/home", { replace: true });
+          navigate("/", { replace: true });
           return;
         }
         authStorage.markLoginPortal("staff");
@@ -364,7 +364,7 @@ export default function LoginPage() {
         setShowLogin(false);
         setUsername("");
         setPassword("");
-        navigate("/student/home", { replace: true });
+        navigate("/", { replace: true });
         return;
       }
 
