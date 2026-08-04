@@ -1,8 +1,6 @@
-import { useEffect } from "react";
 import { createHashRouter, Navigate, useParams } from "react-router-dom";
-import { authStorage } from "@/features/auth/authStorage";
-import { resolveRootEntryPath } from "@/features/auth/postLoginNavigation";
 import TwinLayout from "@/layouts/TwinLayout";
+import PortalLandingPage from "@/pages/PortalLandingPage";
 import DashboardPage from "@/pages/DashboardPage";
 import DashboardPreviewPage from "@/pages/DashboardPreviewPage";
 import DebugTablePage from "@/pages/DebugTablePage.tsx";
@@ -97,6 +95,7 @@ import PermissionsSettings from "@/features/admin/settings/PermissionsSettings";
 import DangerZoneSettings from "@/features/admin/settings/DangerZoneSettings";
 import DashboardPreviewSettings from "@/features/admin/settings/DashboardPreviewSettings";
 import StudentRegisterPage from "@/features/student/pages/student-register";
+import StudentLoginPage from "@/features/student/pages/student-login";
 import StudentLayout from "@/features/student/components/layout/student-layout";
 import StudentHomePage from "@/features/student/pages/student-home";
 import StudentRecordsPage from "@/features/student/pages/student-records";
@@ -133,24 +132,6 @@ function LegacyRedirect({ to }: { to: string }) {
   const splat = useParams()["*"] ?? "";
   const target = splat ? `${to}/${splat}`.replace(/\/+/g, "/") : to;
   return <Navigate to={target} replace />;
-}
-
-/** 站点根路径 /：未登录进登录页；已登录按角色进首页（避免一律打 dashboard） */
-function RootEntryRedirect() {
-  // CAS ticket preservation: hash-router strip query params before hash,
-  // save ticket to sessionStorage before Navigate replaces the URL
-  useEffect(() => {
-    const ticket = new URLSearchParams(window.location.search).get('ticket');
-    if (ticket) {
-      sessionStorage.setItem('cas_pending_ticket', ticket);
-    }
-  }, []);
-
-  if (!authStorage.hasToken()) {
-    return <Navigate to="/login" replace />;
-  }
-  const role = authStorage.getRole() ?? "MEMBER";
-  return <Navigate to={resolveRootEntryPath(role)} replace />;
 }
 
 // ────────────────── 旧路由路径别名（保留兼容） ──────────────────
@@ -190,6 +171,7 @@ export const router = createHashRouter([
   { path: "/m/home", element: <AuthGuard><MobileStudentCenterPage /></AuthGuard> },
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <RegisterStaffPage /> },
+  { path: "/student/login", element: <StudentLoginPage /> },
 
   // ═══════════════════════════════════════════════════════
   //  学生端路由
@@ -373,6 +355,6 @@ export const router = createHashRouter([
   // ═══════════════════════════════════════════════════════
   //  旧路由兼容重定向（渐进迁移，无感知）
   // ═══════════════════════════════════════════════════════
-  { path: "/", element: <RootEntryRedirect /> },
+  { path: "/", element: <PortalLandingPage /> },
   ...legacyRedirects,
 ]);
