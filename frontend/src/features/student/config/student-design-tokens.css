@@ -82,6 +82,16 @@
     0 0 0 1px rgba(0,0,0,0.06),
     0 8px 24px rgba(0,0,0,0.10),
     0 24px 56px rgba(0,0,0,0.08);
+
+  /* === 深色侧栏令牌（portal-style dark sidebar） === */
+  --student-sidebar-bg:            #0f172a;   /* slate-900 近黑 */
+  --student-sidebar-ink:           #f1f5f9;   /* slate-100 浅色文字 */
+  --student-sidebar-mute:          #94a3b8;   /* slate-400 辅助文字 */
+  --student-sidebar-hairline:      #1e293b;   /* slate-800 分割线 */
+  --student-sidebar-hover:         rgba(255,255,255,0.06);
+  --student-sidebar-active-bg:     rgba(255,255,255,0.10);
+  --student-sidebar-active-border: #d97706;   /* peach-600 活跃指示 */
+  --student-sidebar-divider-text:  #64748b;   /* slate-500 分组标题 */
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -137,6 +147,16 @@
   --student-shadow-card:          0 0 0 1px rgba(255,255,255,0.04);
   --student-shadow-card-hover:    0 0 0 1px rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.3);
   --student-shadow-modal:         0 0 0 1px rgba(255,255,255,0.06), 0 16px 48px rgba(0,0,0,0.5);
+
+  /* === 深色侧栏暗色适配 === */
+  --student-sidebar-bg:            #020617;   /* slate-950 */
+  --student-sidebar-ink:           #e2e8f0;
+  --student-sidebar-mute:          #64748b;
+  --student-sidebar-hairline:      #0f172a;
+  --student-sidebar-hover:         rgba(255,255,255,0.04);
+  --student-sidebar-active-bg:     rgba(213,119,6,0.15);
+  --student-sidebar-active-border: #f0c080;
+  --student-sidebar-divider-text:  #475569;
 }
 
 /* ══════════════════════════════════════════════════════════════════════
