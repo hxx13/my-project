@@ -131,8 +131,6 @@ export function PortalHeader() {
                 <>
                   <button type="button" onClick={openLogin}
                     className="text-left px-3 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-colors">登录</button>
-                  <button type="button" onClick={() => { setMenuOpen(false); navigate("/student/register"); }}
-                    className="text-left px-3 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-colors">注册</button>
                 </>
               )}
             </nav>
@@ -171,12 +169,9 @@ export function PortalHeader() {
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-1 text-sm">
+            <div className="flex items-center text-sm">
               <button type="button" onClick={openLogin}
                 className="text-white/50 hover:text-white/80 transition-colors px-2 py-1">登录</button>
-              <span className="text-white/20">/</span>
-              <button type="button" onClick={() => navigate("/student/register")}
-                className="text-white/50 hover:text-white/80 transition-colors px-2 py-1">注册</button>
             </div>
           )}
         </div>
