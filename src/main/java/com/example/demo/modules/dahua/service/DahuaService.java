@@ -56,6 +56,9 @@ public class DahuaService {
     @Value("${app.dahua.callback-url:http://172.22.161.252:8080/api/event}")
     private String myCallbackUrl;
 
+    @Value("${app.dahua.subscription-suffix:_v2}")
+    private String subscriptionSuffix;
+
     @Value("${app.dahua.buffer-url:}")
     private String bufferUrl;
 
@@ -405,14 +408,13 @@ public class DahuaService {
     // =========================================================================
     public void cleanupLegacySubscriptions() {
         log.info("[System] 清理旧订阅...");
+        // ICC 网页管理台自动创建的 Client 订阅（domainSubscribe=1），
+        // 会占满 10 条配额导致 26100006，每次启动清理掉
         List<String> zombieNames = Arrays.asList(
-                "172.22.161.252_8080", "172.22.161.252_3000",
-                "172.22.161.254_3000", "172.22.161.254_8080",
-                "192.168.1.3_8080",
-                "My_Fixed_Java_Client_V1", "My_Fixed_Java_Client_V2026",
-                "Twin_172.22.161.252_18082",   // 旧18082端口残留
-                "Twin_10.127.139.31_9000",      // 被ICC限频的旧名
-                "Twin_172.22.161.252_8080"      // 同清理
+                "Client_1770601682912", "Client_1770599460796",
+                "SuperClient_1770602048825", "Client_1770599458878",
+                "Client_1770600447240", "Client_1770601623003",
+                "Client_1770599607937", "Client_1770600913700"
         );
         for (String name : zombieNames) unsubscribe(name);
     }
@@ -422,14 +424,15 @@ public class DahuaService {
         String magic;
         try {
             java.net.URI uri = new java.net.URI(myCallbackUrl);
-            magic = uri.getHost() + "_" + uri.getPort();
+            // magic 也带后缀，与 name 一起对 ICC 构成全新订阅者身份，绕开 26100006
+            magic = uri.getHost() + "_" + uri.getPort() + subscriptionSuffix;
         } catch (Exception e) {
-            magic = "127.0.0.1_8080";
+            magic = "127.0.0.1_8080" + subscriptionSuffix;
         }
 
         // 订阅名加 magic 后缀，防止 Windows/Linux 多环境互踢
-        // v2 后缀绕过 ICC 频率限制（26100006）
-        String subName = "Twin_" + magic + "_v2";
+        // 后缀通过 app.dahua.subscription-suffix 配置，换后缀可绕开 ICC 26100006 频率限制
+        String subName = "Twin_" + magic;
         unsubscribe(subName);
 
         String subUrl = authService.getBaseUrl() + "/evo-apigw/evo-event/1.0.0/subscribe/mqinfo";
@@ -530,12 +533,12 @@ public class DahuaService {
         String magic;
         try {
             java.net.URI uri = new java.net.URI(myCallbackUrl);
-            magic = uri.getHost() + "_" + uri.getPort();
+            magic = uri.getHost() + "_" + uri.getPort() + subscriptionSuffix;
         } catch (Exception e) {
-            magic = "127.0.0.1_8080";
+            magic = "127.0.0.1_8080" + subscriptionSuffix;
         }
 
-        String subName = "Twin_" + magic + "_v2";
+        String subName = "Twin_" + magic;
         String subUrl = authService.getBaseUrl() + "/evo-apigw/evo-event/1.0.0/subscribe/mqinfo";
 
         // 构建请求体（与 subscribe() 完全一致）
@@ -592,6 +595,30 @@ public class DahuaService {
             diagnostic.put("error", e.getMessage());
         }
         return diagnostic;
+    }
+
+    /**
+     * 🔧 诊断用：查询 ICC 上当前所有 url 类型的订阅列表
+     */
+    public Map<String, Object> querySubscriptionList() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        String token = authService.getValidToken();
+        String baseUrl = authService.getBaseUrl();
+        String[] categories = {"alarm", "business", "state", "perception"};
+        RestTemplate rt = authService.getRestTemplate();
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "bearer " + token);
+
+        for (String cat : categories) {
+            try {
+                String url = baseUrl + "/evo-apigw/evo-event/1.0.0/subscribe/subscribe-list?monitorType=url&category=" + cat;
+                ResponseEntity<Map> resp = rt.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+                result.put(cat, resp.getBody());
+            } catch (Exception e) {
+                result.put(cat, Map.of("error", e.getMessage()));
+            }
+        }
+        return result;
     }
 
     @Async("coreTaskExecutor")

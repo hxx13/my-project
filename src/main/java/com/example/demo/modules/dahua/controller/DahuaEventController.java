@@ -82,4 +82,14 @@ public class DahuaEventController {
         }
         return result;
     }
+
+    /**
+     * 🔍 诊断端点：查询 ICC 上当前所有 url 类型订阅列表
+     * GET /api/event/subscribe-list
+     */
+    @GetMapping("/subscribe-list")
+    @Operation(summary = "查询 ICC 事件订阅列表（alarm/business/state/perception）")
+    public Map<String, Object> subscribeList() {
+        return dahuaService.querySubscriptionList();
+    }
 }

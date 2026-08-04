@@ -10,7 +10,7 @@ interface PortalHeroProps {
   height?: string;
 }
 
-export function PortalHero({ className, height = "520px" }: PortalHeroProps) {
+export function PortalHero({ className, height = "calc(100vh - 64px)" }: PortalHeroProps) {
   const { theme } = useTheme();
   const effectiveMode = theme.mode === "dark" ? "dark" : "light";
   const [branding, setBranding] = useState<LoginBranding | null>(null);

@@ -436,7 +436,7 @@ export default function StudentCageShelfPage() {
                 {!loading && aRid && details.length === 0 && <div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
                 {details.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d, idx) => {
                   const sid = String(d.shelfMeta?.shelveId ?? ""), isBm = sid !== "" && pinned.has(sid);
-                  return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid !== "" ? () => toggleBm(sid) : undefined} claimMode={claimMode} poolCells={poolCells} onCellClick={(c: any) => { if (claimMode) { handleClaimCell(c); return; } setCell(c); setShelfId(sid); }} /></div>;
+                  return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid !== "" ? () => toggleBm(sid) : undefined} claimMode={claimMode} poolCells={poolCells} onCellClick={(c: any) => { setShelfId(sid); if (claimMode) { handleClaimCell(c); return; } setCell(c); }} /></div>;
                 })}</div>}
               </>}
 
@@ -445,7 +445,7 @@ export default function StudentCageShelfPage() {
                 <div className="w-1/2 flex flex-col min-w-0">
                   {shelfLoading && <div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
                   {!shelfLoading && !shelfDetail && <div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20" />点击左侧笼架<br /><span className="text-[11px]">选中后显示该笼架 8x10 笼位</span></div>}
-                  {!shelfLoading && shelfDetail && <ShelfGrid title={shelfDetail.shelfMeta?.shelveName || "笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" claimMode={claimMode} poolCells={poolCells} onCellClick={(c: any) => { if (claimMode) { handleClaimCell(c); return; } setCell(c); setShelfId(String(shelfDetail.shelfMeta?.shelveId ?? "")); }} />}
+                  {!shelfLoading && shelfDetail && <ShelfGrid title={shelfDetail.shelfMeta?.shelveName || "笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" claimMode={claimMode} poolCells={poolCells} onCellClick={(c: any) => { setShelfId(String(shelfDetail.shelfMeta?.shelveId ?? "")); if (claimMode) { handleClaimCell(c); return; } setCell(c); }} />}
                 </div>
                 <div className="w-1/2 flex flex-col min-w-0">
                   {cell ? <CellDetailPanel cell={cell} gridMeta={shelfDetail?.shelfMeta ?? null} shelveId={shelfId ?? ""} onClose={() => setCell(null)} /> :
