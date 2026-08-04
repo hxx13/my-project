@@ -121,7 +121,7 @@ export function StudentSidebar({ collapsed, onToggle }: StudentSidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 space-y-0.5">
-        {navEntries.map((entry, i) =>
+        {navEntries.map((entry) =>
           entry.type === "divider" ? (
             <div
               key={`div-${entry.label}`}
