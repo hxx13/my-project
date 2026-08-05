@@ -123,7 +123,7 @@ public class TelemetryAlarmConfigService {
      * 解析变量在指定套间下的有效报警限。
      * 优先级：逐测点 override > 套间配置 > 全局限值
      */
-    public record ResolvedAlarmLimit(String minValue, String maxValue) {}
+    public record ResolvedAlarmLimit(String minValue, String maxValue, String hysteresisValue) {}
 
     public ResolvedAlarmLimit resolveEffectiveLimits(
             String suiteNorm,
@@ -145,7 +145,13 @@ public class TelemetryAlarmConfigService {
         // 优先级：逐测点 > 套间 > 全局
         String effectiveMin = firstNonBlank(alarmOverrideMin, minFromSuite, minFromGlobal);
         String effectiveMax = firstNonBlank(alarmOverrideMax, maxFromSuite, maxFromGlobal);
-        return new ResolvedAlarmLimit(effectiveMin, effectiveMax);
+
+        // Hysteresis resolution: suite > global (per-tag doesn't have hysteresis override)
+        String hysFromSuite = suiteHysteresisForMetric(suiteConfig, metricKindCode);
+        String hysFromGlobal = globalHysteresisForMetric(global, metricKindCode);
+        String effectiveHysteresis = firstNonBlank(hysFromSuite, hysFromGlobal);
+
+        return new ResolvedAlarmLimit(effectiveMin, effectiveMax, effectiveHysteresis);
     }
 
     private static String suiteLimitForMetric(TelemetrySuiteAlarmConfig cfg, String metricKind, boolean isMin) {
@@ -166,6 +172,28 @@ public class TelemetryAlarmConfigService {
             case "TEMP" -> isMin ? g.getTempMin() : g.getTempMax();
             case "HUM", "RH" -> isMin ? g.getHumMin() : g.getHumMax();
             case "PRESSURE" -> isMin ? g.getPressureMin() : g.getPressureMax();
+            default -> null;
+        };
+    }
+
+    private static String suiteHysteresisForMetric(TelemetrySuiteAlarmConfig cfg, String metricKind) {
+        if (cfg == null) return null;
+        String u = metricKind != null ? metricKind.trim().toUpperCase(Locale.ROOT) : "";
+        return switch (u) {
+            case "TEMP" -> cfg.getHysteresisTemp();
+            case "HUM", "RH" -> cfg.getHysteresisHum();
+            case "PRESSURE" -> cfg.getHysteresisPressure();
+            default -> null;
+        };
+    }
+
+    private static String globalHysteresisForMetric(TelemetryGlobalAlarmLimitsDto g, String metricKind) {
+        if (g == null) return null;
+        String u = metricKind != null ? metricKind.trim().toUpperCase(Locale.ROOT) : "";
+        return switch (u) {
+            case "TEMP" -> g.getHysteresisTemp();
+            case "HUM", "RH" -> g.getHysteresisHum();
+            case "PRESSURE" -> g.getHysteresisPressure();
             default -> null;
         };
     }
@@ -303,7 +331,7 @@ public class TelemetryAlarmConfigService {
 
                         ResolvedAlarmLimit limits = isAlarm
                                 ? resolveEffectiveLimits(sn, mk, t.getAlarmOverrideMin(), t.getAlarmOverrideMax(), global, suiteCfg)
-                                : new ResolvedAlarmLimit(null, null);
+                                : new ResolvedAlarmLimit(null, null, null);
 
                         // alarmEnabled: 优先用 alarm_enabled 列，否则同 enabled
                         Boolean alarmOn = t.getAlarmEnabled() != null
@@ -321,6 +349,7 @@ public class TelemetryAlarmConfigService {
                                 .kindRole(role)
                                 .isAlarmMetric(isAlarm)
                                 .alarmEnabled(isAlarm ? alarmOn : null)
+                                .alarmCooldownMinutes(isAlarm ? (t.getAlarmCooldownMinutes() != null ? t.getAlarmCooldownMinutes() : 0) : null)
                                 .alarmOverrideMin(isAlarm && StringUtils.hasText(t.getAlarmOverrideMin()) ? t.getAlarmOverrideMin().trim() : null)
                                 .alarmOverrideMax(isAlarm && StringUtils.hasText(t.getAlarmOverrideMax()) ? t.getAlarmOverrideMax().trim() : null)
                                 .effectiveMinValue(limits.minValue())
@@ -350,6 +379,9 @@ public class TelemetryAlarmConfigService {
                         .humMax(suiteCfg != null && StringUtils.hasText(suiteCfg.getHumMax()) ? suiteCfg.getHumMax().trim() : null)
                         .pressureMin(suiteCfg != null && StringUtils.hasText(suiteCfg.getPressureMin()) ? suiteCfg.getPressureMin().trim() : null)
                         .pressureMax(suiteCfg != null && StringUtils.hasText(suiteCfg.getPressureMax()) ? suiteCfg.getPressureMax().trim() : null)
+                        .hysteresisTemp(suiteCfg != null && StringUtils.hasText(suiteCfg.getHysteresisTemp()) ? suiteCfg.getHysteresisTemp().trim() : null)
+                        .hysteresisHum(suiteCfg != null && StringUtils.hasText(suiteCfg.getHysteresisHum()) ? suiteCfg.getHysteresisHum().trim() : null)
+                        .hysteresisPressure(suiteCfg != null && StringUtils.hasText(suiteCfg.getHysteresisPressure()) ? suiteCfg.getHysteresisPressure().trim() : null)
                         .hasCustomThresholds(hasCustom)
                         .variableCount(suiteVarCount)
                         .roomCount(roomNodes.size())
@@ -367,6 +399,7 @@ public class TelemetryAlarmConfigService {
                     .enabled(floorEnabled)
                     .cooldownMinutes(cooldown)
                     .notifyOnRecovery(floorRecovery)
+                    .bufferFlushMinutes(floorCfg != null && floorCfg.getBufferFlushMinutes() != null ? floorCfg.getBufferFlushMinutes() : 5)
                     .variableCount(floorVarCount)
                     .suiteCount(suiteNodes.size())
                     .suites(suiteNodes)

@@ -25,6 +25,9 @@ export type TelemetryGlobalAlarmLimits = {
   humMax?: string | null;
   pressureMin?: string | null;
   pressureMax?: string | null;
+  hysteresisTemp?: string | null;
+  hysteresisHum?: string | null;
+  hysteresisPressure?: string | null;
 };
 
 export type TelemetryWatchlistTag = {

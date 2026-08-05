@@ -44,9 +44,6 @@ public class TelemetryAlarmCheckScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(TelemetryAlarmCheckScheduler.class);
     private static final Set<String> MONITORED_KINDS = Set.of("TEMP", "HUM", "RH", "PRESSURE");
-    /** Layer-1 内存缓冲冷却时间（分钟），与 Digest 二次聚合间隔对齐 */
-    private static final int BUFFER_COOLDOWN_MINUTES = 5;
-
     private static String canonicalMetricKind(String kind) {
         if (kind == null) return null;
         String u = kind.trim().toUpperCase(Locale.ROOT);
@@ -90,7 +87,7 @@ public class TelemetryAlarmCheckScheduler {
 
     @PostConstruct
     public void init() {
-        log.info("[遥测报警] 调度器已创建，Layer-1 缓冲冷却 {} min，首次检测将在 120s 后执行", BUFFER_COOLDOWN_MINUTES);
+        log.info("[遥测报警] 调度器已创建，缓冲冷却按楼层配置，首次检测将在 120s 后执行");
     }
 
     @Scheduled(fixedDelay = 60_000, initialDelay = 120_000)
@@ -189,8 +186,18 @@ public class TelemetryAlarmCheckScheduler {
         }
 
         // ── 2. 判断是否到 flush 时间 ──
+        // 取所有活跃楼层中最小的 buffer_flush_minutes 作为 flush 间隔
+        int minBufferMinutes = 5; // 兜底默认
+        for (var entry : byFloor.entrySet()) {
+            TelemetryFloorAlarmConfig fCfg = alarmConfigService.getFloorByCode(entry.getKey());
+            if (fCfg != null && fCfg.getBufferFlushMinutes() != null && fCfg.getBufferFlushMinutes() > 0
+                    && fCfg.getBufferFlushMinutes() < minBufferMinutes) {
+                minBufferMinutes = fCfg.getBufferFlushMinutes();
+            }
+        }
+
         boolean shouldFlush = lastFlushTime == null
-                || Duration.between(lastFlushTime, LocalDateTime.now()).toMinutes() >= BUFFER_COOLDOWN_MINUTES;
+                || Duration.between(lastFlushTime, LocalDateTime.now()).toMinutes() >= minBufferMinutes;
 
         if (!shouldFlush) {
             log.info("[遥测报警] Layer-2 缓冲中（{} 报警 {} 恢复），距上次 flush {}s，{} 跳过",
@@ -302,20 +309,12 @@ public class TelemetryAlarmCheckScheduler {
         Double limitMax = parseNumeric(limits.maxValue());
 
         String newBand, limitDisplay, direction;
-        if (limitMax != null && current > limitMax) {
-            newBand = "HIGH"; limitDisplay = limits.maxValue(); direction = "偏高";
-        } else if (limitMin != null && current < limitMin) {
-            newBand = "LOW"; limitDisplay = limits.minValue(); direction = "偏低";
-        } else {
-            newBand = "OK"; limitDisplay = null; direction = "";
-        }
 
-        String metricKindDisplay = switch (metricKind) {
-            case "TEMP" -> "温度"; case "HUM" -> "湿度"; case "PRESSURE" -> "压强"; default -> metricKind;
-        };
-        String valUnit = currentValue + (metricKind.contains("TEMP") ? "℃" : metricKind.contains("HUM") ? "%" : "Pa");
+        // 解析滞回值
+        Double hysteresis = parseNumeric(limits.hysteresisValue());
+        if (hysteresis == null || hysteresis < 0) hysteresis = 0.0;
 
-        // 状态机（基于 alarm_log 历史）
+        // 查上次报警状态用于滞回判断
         TelemetryAlarmLog lastAny = alarmLogMapper.findLastByVariable(variableName);
         String lastBand = lastAny != null ? lastAny.getAlarmBand() : null;
         LocalDateTime lastSentAt = lastAny != null ? lastAny.getSentAt() : null;
@@ -325,6 +324,30 @@ public class TelemetryAlarmCheckScheduler {
                 && Duration.between(lastSentAt, LocalDateTime.now()).toMinutes() >= resetCooldownMin) {
             lastBand = "OK";
         }
+
+        if (limitMax != null && current > limitMax) {
+            // 超过上限 → HIGH
+            newBand = "HIGH"; limitDisplay = limits.maxValue(); direction = "偏高";
+        } else if (limitMin != null && current < limitMin) {
+            // 低于下限 → LOW
+            newBand = "LOW"; limitDisplay = limits.minValue(); direction = "偏低";
+        } else if ("HIGH".equals(lastBand) && limitMax != null && current > limitMax - hysteresis) {
+            // 滞回区内：曾 HIGH 但未降到 limitMax - hysteresis 以下 → 保持 HIGH（不触发恢复）
+            return null;
+        } else if ("LOW".equals(lastBand) && limitMin != null && current < limitMin + hysteresis) {
+            // 滞回区内：曾 LOW 但未升到 limitMin + hysteresis 以上 → 保持 LOW（不触发恢复）
+            return null;
+        } else {
+            // 正常范围（含滞回恢复）
+            newBand = "OK"; limitDisplay = null; direction = "";
+        }
+
+        String metricKindDisplay = switch (metricKind) {
+            case "TEMP" -> "温度"; case "HUM" -> "湿度"; case "PRESSURE" -> "压强"; default -> metricKind;
+        };
+        String valUnit = currentValue + (metricKind.contains("TEMP") ? "℃" : metricKind.contains("HUM") ? "%" : "Pa");
+
+        // 状态机（基于 alarm_log 历史，已在滞回判断中查询）
 
         boolean isNewAlarm = "OK".equals(lastBand) || lastBand == null;
         boolean isRecovery = ("HIGH".equals(lastBand) || "LOW".equals(lastBand)) && "OK".equals(newBand);

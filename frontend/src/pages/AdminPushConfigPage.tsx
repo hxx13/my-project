@@ -22,9 +22,17 @@ import {
   saveFloorConfig,
   saveSuiteConfig,
   setTagAlarmEnabled,
+  setTagAlarmOverrides,
+  batchSetTagAlarmOverrides,
+  fetchAlarmPresets,
+  createAlarmPreset,
+  updateAlarmPreset,
+  deleteAlarmPreset,
   type AlarmConfigTree,
   type FloorNode,
   type SuiteNode,
+  type TagAlarmOverridePatch,
+  type AlarmPreset,
 } from "@/api/domains/telemetryAlarmConfig.api";
 import { SwipeAlertRuleList } from "@/features/swipe-alert/SwipeAlertRuleList";
 import { SwipeAlertRuleForm } from "@/features/swipe-alert/SwipeAlertRuleForm";
@@ -1081,6 +1089,9 @@ function AnimalRoomAlarmTab({
       humMax: limitsQ.data.humMax ?? "",
       pressureMin: limitsQ.data.pressureMin ?? "",
       pressureMax: limitsQ.data.pressureMax ?? "",
+      hysteresisTemp: limitsQ.data.hysteresisTemp ?? "0.3",
+      hysteresisHum: limitsQ.data.hysteresisHum ?? "2.0",
+      hysteresisPressure: limitsQ.data.hysteresisPressure ?? "5.0",
     });
   }, [limitsQ.data, limitsDraft]);
 
@@ -1160,6 +1171,40 @@ function AnimalRoomAlarmTab({
             {limitRow(<Thermometer className="h-3.5 w-3.5 text-orange-500" />, "温度", "tempMin", "tempMax", "℃")}
             {limitRow(<Droplets className="h-3.5 w-3.5 text-blue-500" />, "湿度", "humMin", "humMax", "%")}
             {limitRow(<Gauge className="h-3.5 w-3.5 text-emerald-500" />, "压强", "pressureMin", "pressureMax", "Pa")}
+            {/* Hysteresis rows — single value per metric */}
+            <div className="flex items-center gap-3 py-1.5">
+              <span className="inline-flex items-center gap-1.5 w-[80px] shrink-0 text-xs font-medium text-[var(--app-color-text-secondary)]">
+                <Thermometer className="h-3.5 w-3.5 text-orange-400" />温度死区
+              </span>
+              <input type="text" inputMode="decimal"
+                className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+                placeholder="0.3"
+                value={limitsDraft?.hysteresisTemp ?? ""}
+                onChange={(e) => setLimitsDraft((p) => p ? { ...p, hysteresisTemp: e.target.value } : null)} />
+              <span className="text-[11px] text-[var(--app-color-text-tertiary)] w-[1.5rem] text-right">℃</span>
+            </div>
+            <div className="flex items-center gap-3 py-1.5">
+              <span className="inline-flex items-center gap-1.5 w-[80px] shrink-0 text-xs font-medium text-[var(--app-color-text-secondary)]">
+                <Droplets className="h-3.5 w-3.5 text-blue-400" />湿度死区
+              </span>
+              <input type="text" inputMode="decimal"
+                className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+                placeholder="2.0"
+                value={limitsDraft?.hysteresisHum ?? ""}
+                onChange={(e) => setLimitsDraft((p) => p ? { ...p, hysteresisHum: e.target.value } : null)} />
+              <span className="text-[11px] text-[var(--app-color-text-tertiary)] w-[1.5rem] text-right">%</span>
+            </div>
+            <div className="flex items-center gap-3 py-1.5">
+              <span className="inline-flex items-center gap-1.5 w-[80px] shrink-0 text-xs font-medium text-[var(--app-color-text-secondary)]">
+                <Gauge className="h-3.5 w-3.5 text-emerald-400" />压差死区
+              </span>
+              <input type="text" inputMode="decimal"
+                className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+                placeholder="5.0"
+                value={limitsDraft?.hysteresisPressure ?? ""}
+                onChange={(e) => setLimitsDraft((p) => p ? { ...p, hysteresisPressure: e.target.value } : null)} />
+              <span className="text-[11px] text-[var(--app-color-text-tertiary)] w-[1.5rem] text-right">Pa</span>
+            </div>
           </div>
         )}
       </AdminFormCard>
@@ -1273,16 +1318,97 @@ function FloorSuiteAlarmPanel() {
   const [savingSuite, setSavingSuite] = useState(false);
   const [togglingTag, setTogglingTag] = useState<number | null>(null);
 
-  const [floorDrafts, setFloorDrafts] = useState<Record<string, { resetMin: number; notifyRecovery: boolean }>>({});
+  /* ---- tag override drafts & batch selection ---- */
+  interface TagOverrideDraft { min: string; max: string; cooldown: number; }
+  const [tagDrafts, setTagDrafts] = useState<Record<number, TagOverrideDraft>>({});
+  const [savingTags, setSavingTags] = useState<Set<number>>(new Set());
+  const [selectedTags, setSelectedTags] = useState<Set<number>>(new Set());
+  const [presets, setPresets] = useState<AlarmPreset[]>([]);
+  const [presetsExpanded, setPresetsExpanded] = useState(false);
+  const [activePresetId, setActivePresetId] = useState<number | null>(null);
+  const [presetEditor, setPresetEditor] = useState<AlarmPreset | null | undefined>(undefined);
+
+  const [floorDrafts, setFloorDrafts] = useState<Record<string, { resetMin: number; notifyRecovery: boolean; bufferFlush: number }>>({});
 
   useEffect(() => {
     if (!treeQ.data) return;
-    const d: Record<string, { resetMin: number; notifyRecovery: boolean }> = {};
+    const d: Record<string, { resetMin: number; notifyRecovery: boolean; bufferFlush: number }> = {};
     for (const f of treeQ.data.floors) {
-      d[f.floorCode] = { resetMin: f.cooldownMinutes, notifyRecovery: f.notifyOnRecovery };
+      d[f.floorCode] = { resetMin: f.cooldownMinutes, notifyRecovery: f.notifyOnRecovery, bufferFlush: f.bufferFlushMinutes ?? 5 };
     }
     setFloorDrafts((prev) => ({ ...d, ...prev }));
   }, [treeQ.data]);
+
+  /* ---- presets ---- */
+  useEffect(() => { fetchAlarmPresets().then(setPresets).catch(() => {}); }, []);
+
+  /* ---- tag draft helpers ---- */
+  const updateTagDraft = (tagId: number, patch: Partial<TagOverrideDraft>) => {
+    setTagDrafts(prev => ({
+      ...prev,
+      [tagId]: { ...(prev[tagId] ?? { min: '', max: '', cooldown: 0 }), ...patch }
+    }));
+  };
+
+  const saveTagOverride = async (tagId: number) => {
+    const draft = tagDrafts[tagId];
+    if (!draft) return;
+    setSavingTags(prev => new Set(prev).add(tagId));
+    try {
+      await setTagAlarmOverrides(tagId, {
+        tagId, alarmOverrideMin: draft.min || null, alarmOverrideMax: draft.max || null,
+        alarmCooldownMinutes: draft.cooldown || null,
+      });
+      toast.success('已保存');
+      queryClient.invalidateQueries({ queryKey: ['telemetry-alarm-config-tree'] });
+    } catch (e: any) { toast.error(e?.message || '保存失败'); }
+    finally { setSavingTags(prev => { const n = new Set(prev); n.delete(tagId); return n; }); }
+  };
+
+  const allAlarmTagsInSuite = (suite: SuiteNode) =>
+    suite.rooms.flatMap(r => r.tags).filter(t => t.isAlarmMetric);
+
+  const toggleSelectAll = (checked: boolean, suite: SuiteNode) => {
+    const alarmTags = allAlarmTagsInSuite(suite);
+    setSelectedTags(prev => {
+      const next = new Set(prev);
+      alarmTags.forEach(t => checked ? next.add(t.tagId) : next.delete(t.tagId));
+      return next;
+    });
+  };
+
+  const applyPresetToSelected = async () => {
+    const preset = presets.find(p => p.id === activePresetId);
+    if (!preset || selectedTags.size === 0) return;
+    const newDrafts = { ...tagDrafts };
+    for (const tagId of selectedTags) {
+      newDrafts[tagId] = {
+        min: preset.tempMin ?? preset.humMin ?? preset.pressureMin ?? '',
+        max: preset.tempMax ?? preset.humMax ?? preset.pressureMax ?? '',
+        cooldown: preset.alarmCooldownMinutes ?? 0,
+      };
+    }
+    setTagDrafts(newDrafts);
+    toast.success(`已应用模板到 ${selectedTags.size} 个变量（请逐个保存或使用批量保存）`);
+  };
+
+  const resetSelectedToInherit = async () => {
+    const batch: TagAlarmOverridePatch[] = [];
+    for (const tagId of selectedTags) {
+      batch.push({ tagId, alarmOverrideMin: null, alarmOverrideMax: null, alarmCooldownMinutes: null });
+    }
+    try {
+      await batchSetTagAlarmOverrides(batch);
+      toast.success(`已重置 ${selectedTags.size} 个变量为继承`);
+      setSelectedTags(new Set());
+      setTagDrafts(prev => {
+        const next = { ...prev };
+        for (const tagId of selectedTags) delete next[tagId];
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ['telemetry-alarm-config-tree'] });
+    } catch (e: any) { toast.error(e?.message || '重置失败'); }
+  };
 
   const toggleFloor = (fc: string) => {
     setExpandedFloors((prev) => {
@@ -1306,7 +1432,7 @@ function FloorSuiteAlarmPanel() {
     const floor = treeQ.data?.floors.find((f) => f.floorCode === fc);
     setSavingFloor(fc);
     try {
-      await saveFloorConfig({ id: floor?.configId ?? undefined, floorCode: fc, enabled, cooldownMinutes: d.resetMin, notifyOnRecovery: d.notifyRecovery });
+      await saveFloorConfig({ id: floor?.configId ?? undefined, floorCode: fc, enabled, cooldownMinutes: d.resetMin, notifyOnRecovery: d.notifyRecovery, bufferFlushMinutes: d.bufferFlush });
       toast.success(`${fc} 已保存`);
       queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "保存失败"); }
@@ -1386,6 +1512,10 @@ function FloorSuiteAlarmPanel() {
                       <label className="text-[11px] text-[var(--app-color-text-secondary)]">重置<input type="number" min={5} max={1440}
                         className="w-[3.5rem] ml-1 rounded border border-[var(--app-color-border-default)] px-1 py-0.5 text-xs font-mono text-center"
                         value={draft.resetMin} onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, resetMin: Math.max(5, Number(e.target.value) || 60) } }))} />min</label>
+                      <label className="text-[11px] text-[var(--app-color-text-secondary)]">缓冲<input type="number" min={1} max={60}
+                        className="w-[3.5rem] ml-1 rounded border border-[var(--app-color-border-default)] px-1 py-0.5 text-xs font-mono text-center"
+                        value={draft.bufferFlush}
+                        onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, bufferFlush: Math.max(1, Number(e.target.value) || 5) } }))} />min</label>
                       <label className="inline-flex items-center gap-1 text-[11px] text-[var(--app-color-text-secondary)] cursor-pointer select-none">
                         <input type="checkbox" className="h-3 w-3 rounded accent-[var(--app-color-accent)]" checked={draft.notifyRecovery}
                           onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, notifyRecovery: e.target.checked } }))} />恢复通知</label>
@@ -1432,6 +1562,34 @@ function FloorSuiteAlarmPanel() {
                           {/* Rooms (expanded under suite) */}
                           {sexp && (
                             <div className="border-t border-[var(--app-color-border-default)] px-2.5 py-1.5 space-y-1">
+                              {/* Batch operations bar */}
+                              <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-[var(--app-color-border-default)]/60 bg-[var(--app-color-surface-elevated)]/30 rounded-t">
+                                <label className="inline-flex items-center gap-1 text-[10px] text-[var(--app-color-text-secondary)] cursor-pointer select-none">
+                                  <input type="checkbox" className="h-3 w-3 rounded accent-[var(--app-color-accent)]"
+                                    checked={allAlarmTagsInSuite(suite).length > 0 && allAlarmTagsInSuite(suite).every(t => selectedTags.has(t.tagId))}
+                                    onChange={(e) => toggleSelectAll(e.target.checked, suite)}
+                                  />
+                                  全选报警变量
+                                </label>
+                                <select className="rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1.5 py-0.5 text-[10px] text-[var(--app-color-text-primary)]"
+                                  value={activePresetId ?? ''}
+                                  onChange={(e) => setActivePresetId(e.target.value ? Number(e.target.value) : null)}>
+                                  <option value="">阈值模板...</option>
+                                  {(presets ?? []).map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                  ))}
+                                </select>
+                                <AdminButton type="button" tone="secondary" size="sm"
+                                  disabled={selectedTags.size === 0}
+                                  onClick={applyPresetToSelected}>
+                                  应用模板到选中 ({selectedTags.size})
+                                </AdminButton>
+                                <AdminButton type="button" tone="ghost" size="sm"
+                                  disabled={selectedTags.size === 0}
+                                  onClick={resetSelectedToInherit}>
+                                  重置为继承
+                                </AdminButton>
+                              </div>
                               {suite.rooms.map((room) => (
                                 <div key={room.roomCanonical} className="rounded border border-[var(--app-color-border-default)]/60 bg-[var(--app-color-surface-elevated)]/50 px-2 py-1">
                                   <div className="flex items-center gap-2 mb-0.5">
@@ -1457,12 +1615,41 @@ function FloorSuiteAlarmPanel() {
                                           )}
                                           {tag.alarmOverrideMin || tag.alarmOverrideMax ? <span className="text-[var(--app-color-accent)] ml-auto text-[9px]">已覆盖</span> : null}
                                           {tag.isAlarmMetric && (
-                                            <button type="button" disabled={isToggling}
-                                              className={cn("ml-1 rounded px-1.5 py-0 text-[9px] font-medium border transition-colors",
-                                                alarmOn === false ? "border-red-200 bg-red-50 text-red-600" : "border-emerald-200 bg-emerald-50 text-emerald-600")}
-                                              onClick={() => handleToggleTag(tag.tagId, alarmOn)}>
-                                              {isToggling ? "..." : alarmOn === false ? "已禁用" : "启用"}
-                                            </button>
+                                            <div className="flex items-center gap-1 ml-auto">
+                                              <input type="checkbox"
+                                                className="h-3 w-3 rounded accent-[var(--app-color-accent)] shrink-0"
+                                                checked={selectedTags.has(tag.tagId)}
+                                                onChange={(e) => {
+                                                  setSelectedTags(prev => {
+                                                    const next = new Set(prev);
+                                                    e.target.checked ? next.add(tag.tagId) : next.delete(tag.tagId);
+                                                    return next;
+                                                  });
+                                                }}
+                                                title="选择此变量" />
+                                              <input
+                                                className="w-[4rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1 py-0 text-[10px] font-mono text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none"
+                                                placeholder={tag.effectiveMinValue ?? "min"}
+                                                value={tagDrafts[tag.tagId]?.min ?? ''}
+                                                onChange={(e) => updateTagDraft(tag.tagId, { min: e.target.value })} />
+                                              <span className="text-[10px] text-[var(--app-color-text-tertiary)]">~</span>
+                                              <input
+                                                className="w-[4rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1 py-0 text-[10px] font-mono text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none"
+                                                placeholder={tag.effectiveMaxValue ?? "max"}
+                                                value={tagDrafts[tag.tagId]?.max ?? ''}
+                                                onChange={(e) => updateTagDraft(tag.tagId, { max: e.target.value })} />
+                                              <input
+                                                className="w-[3rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1 py-0 text-[10px] font-mono text-[var(--app-color-text-primary)]"
+                                                placeholder="冷却"
+                                                value={tagDrafts[tag.tagId]?.cooldown || ''}
+                                                onChange={(e) => updateTagDraft(tag.tagId, { cooldown: Number(e.target.value) || 0 })}
+                                                title="重报警冷却(分钟)" />
+                                              <AdminButton type="button" tone="primary" size="sm"
+                                                loading={savingTags.has(tag.tagId)}
+                                                onClick={() => saveTagOverride(tag.tagId)}>
+                                                <Save className="h-3 w-3" />
+                                              </AdminButton>
+                                            </div>
                                           )}
                                         </div>
                                       );
@@ -1481,6 +1668,42 @@ function FloorSuiteAlarmPanel() {
             );
           })}
         </div>
+
+        {/* Preset management */}
+        <div className="border-t border-[var(--app-color-border-default)] pt-3 mt-3">
+          <button type="button" onClick={() => setPresetsExpanded(v => !v)}
+            className="flex items-center gap-2 text-xs font-semibold text-[var(--app-color-text-primary)] hover:opacity-80 w-full text-left">
+            <SlidersHorizontal className="h-3.5 w-3.5 text-[var(--app-color-accent)]" />
+            阈值预设模板 ({presets.length})
+            {presetsExpanded ? <ChevronUp className="h-3.5 w-3.5 ml-auto text-[var(--app-color-text-tertiary)]" />
+                              : <ChevronDown className="h-3.5 w-3.5 ml-auto text-[var(--app-color-text-tertiary)]" />}
+          </button>
+          {presetsExpanded && (
+            <div className="mt-2 space-y-1.5">
+              {presets.map(p => (
+                <div key={p.id} className="flex items-center gap-2 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5">
+                  <span className="text-xs font-medium min-w-[80px] text-[var(--app-color-text-primary)]">{p.name}</span>
+                  <span className="text-[10px] text-[var(--app-color-text-tertiary)]">
+                    温{p.tempMin ?? '-'}~{p.tempMax ?? '-'}℃ 湿{p.humMin ?? '-'}~{p.humMax ?? '-'}% 冷{p.alarmCooldownMinutes ?? 0}min
+                  </span>
+                  <div className="flex-1" />
+                  <AdminButton type="button" tone="ghost" size="sm" onClick={() => setPresetEditor(p)}>编辑</AdminButton>
+                  <AdminButton type="button" tone="ghost" size="sm" onClick={async () => {
+                    if (!p.id || !confirm(`删除模板「${p.name}」？`)) return;
+                    try {
+                      await deleteAlarmPreset(p.id);
+                      setPresets(prev => prev.filter(x => x.id !== p.id));
+                      toast.success('已删除');
+                    } catch (e: any) { toast.error(e?.message || '删除失败'); }
+                  }}>删除</AdminButton>
+                </div>
+              ))}
+              <AdminButton type="button" tone="secondary" size="sm" onClick={() => setPresetEditor(null)}>
+                + 新建模板
+              </AdminButton>
+            </div>
+          )}
+        </div>
       </AdminFormCard>
 
       {editingSuite && (
@@ -1493,6 +1716,7 @@ function FloorSuiteAlarmPanel() {
                 id: editingSuite.configId ?? undefined, floorCode: editingSuite.floorCode, suiteNorm: editingSuite.suiteNorm,
                 enabled: editingSuite.enabled, tempMin: editingSuite.tempMin, tempMax: editingSuite.tempMax,
                 humMin: editingSuite.humMin, humMax: editingSuite.humMax, pressureMin: editingSuite.pressureMin, pressureMax: editingSuite.pressureMax,
+                hysteresisTemp: editingSuite.hysteresisTemp, hysteresisHum: editingSuite.hysteresisHum, hysteresisPressure: editingSuite.hysteresisPressure,
               });
               toast.success(`${editingSuite.suiteNorm} 已保存`);
               setEditingSuite(null);
@@ -1501,6 +1725,14 @@ function FloorSuiteAlarmPanel() {
             finally { setSavingSuite(false); }
           }}
           onClose={() => setEditingSuite(null)} />
+      )}
+
+      {presetEditor !== undefined && (
+        <PresetEditorModal preset={presetEditor} onClose={() => setPresetEditor(undefined)}
+          onSaved={() => {
+            setPresetEditor(undefined);
+            fetchAlarmPresets().then(setPresets).catch(() => {});
+          }} />
       )}
     </>
   );
@@ -1557,6 +1789,47 @@ function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
           ))}
         </div>
 
+        {/* Hysteresis section */}
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold">死区设置</span>
+            <span className="text-[10px] text-[var(--app-color-text-tertiary)]">防止阈值边界振荡</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium text-[var(--app-color-text-secondary)]">
+              <Thermometer className="h-3.5 w-3.5 text-orange-400" />温度
+            </span>
+            <input type="text" inputMode="decimal"
+              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+              placeholder="0.3"
+              value={(suite.hysteresisTemp as string) ?? ""}
+              onChange={(e) => onChange({ ...suite, hysteresisTemp: e.target.value || null })} />
+            <span className="text-[10px] text-[var(--app-color-text-tertiary)] w-[1.25rem] text-right">℃</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium text-[var(--app-color-text-secondary)]">
+              <Droplets className="h-3.5 w-3.5 text-blue-400" />湿度
+            </span>
+            <input type="text" inputMode="decimal"
+              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+              placeholder="2.0"
+              value={(suite.hysteresisHum as string) ?? ""}
+              onChange={(e) => onChange({ ...suite, hysteresisHum: e.target.value || null })} />
+            <span className="text-[10px] text-[var(--app-color-text-tertiary)] w-[1.25rem] text-right">%</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium text-[var(--app-color-text-secondary)]">
+              <Gauge className="h-3.5 w-3.5 text-emerald-400" />压差
+            </span>
+            <input type="text" inputMode="decimal"
+              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+              placeholder="5.0"
+              value={(suite.hysteresisPressure as string) ?? ""}
+              onChange={(e) => onChange({ ...suite, hysteresisPressure: e.target.value || null })} />
+            <span className="text-[10px] text-[var(--app-color-text-tertiary)] w-[1.25rem] text-right">Pa</span>
+          </div>
+        </div>
+
         {/* Room/variable preview */}
         <div className="rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2 max-h-[240px] overflow-auto">
           <p className="text-[10px] font-semibold text-[var(--app-color-text-secondary)] mb-1.5">本套间房间与变量</p>
@@ -1581,6 +1854,75 @@ function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
         <div className="flex items-center justify-end gap-2 border-t border-[var(--app-color-border-default)] pt-3 mt-3">
           <AdminButton type="button" tone="ghost" size="sm" onClick={onClose}>取消</AdminButton>
           <AdminButton type="button" tone="primary" size="sm" loading={saving} onClick={onSave}><Save className="h-3.5 w-3.5" />保存套间配置</AdminButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  PresetEditorModal — 阈值预设模板编辑弹窗                              */
+/* ------------------------------------------------------------------ */
+
+function PresetEditorModal({ preset, onClose, onSaved }: {
+  preset: AlarmPreset | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState<AlarmPreset>(preset ?? {
+    name: '', description: '', isGlobal: 1,
+    tempMin: null, tempMax: null, humMin: null, humMax: null, pressureMin: null, pressureMax: null,
+    hysteresisTemp: null, hysteresisHum: null, hysteresisPressure: null,
+    alarmCooldownMinutes: 0,
+  });
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!form.name?.trim()) { toast.error('请输入模板名称'); return; }
+    setSaving(true);
+    try {
+      if (form.id) {
+        await updateAlarmPreset(form.id, form);
+      } else {
+        await createAlarmPreset(form);
+      }
+      toast.success('已保存');
+      onSaved();
+    } catch (e: any) { toast.error(e?.message || '保存失败'); }
+    finally { setSaving(false); }
+  };
+
+  const inputCls = "w-full rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20";
+
+  return (
+    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="w-full max-w-md max-h-[85vh] overflow-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold">{form.id ? '编辑模板' : '新建模板'}</h3>
+          <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]"><X className="h-4 w-4 text-[var(--app-color-text-tertiary)]" /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className={adminLabelClass}>名称</label>
+            <input className={cn(inputCls, "mt-1")} value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="如：标准鼠房" />
+          </div>
+          <div>
+            <label className={adminLabelClass}>描述</label>
+            <input className={cn(inputCls, "mt-1")} value={form.description ?? ''} onChange={e => setForm({...form, description: e.target.value})} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><label className={adminLabelClass}>温度下限</label><input className={cn(inputCls, "mt-1")} placeholder="20.0" value={form.tempMin ?? ''} onChange={e => setForm({...form, tempMin: e.target.value || null})} /></div>
+            <div><label className={adminLabelClass}>温度上限</label><input className={cn(inputCls, "mt-1")} placeholder="26.0" value={form.tempMax ?? ''} onChange={e => setForm({...form, tempMax: e.target.value || null})} /></div>
+            <div><label className={adminLabelClass}>湿度下限</label><input className={cn(inputCls, "mt-1")} placeholder="40.0" value={form.humMin ?? ''} onChange={e => setForm({...form, humMin: e.target.value || null})} /></div>
+            <div><label className={adminLabelClass}>湿度上限</label><input className={cn(inputCls, "mt-1")} placeholder="70.0" value={form.humMax ?? ''} onChange={e => setForm({...form, humMax: e.target.value || null})} /></div>
+            <div><label className={adminLabelClass}>温度死区</label><input className={cn(inputCls, "mt-1")} placeholder="0.3" value={form.hysteresisTemp ?? ''} onChange={e => setForm({...form, hysteresisTemp: e.target.value || null})} /></div>
+            <div><label className={adminLabelClass}>湿度死区</label><input className={cn(inputCls, "mt-1")} placeholder="2.0" value={form.hysteresisHum ?? ''} onChange={e => setForm({...form, hysteresisHum: e.target.value || null})} /></div>
+            <div><label className={adminLabelClass}>冷却(分钟)</label><input className={cn(inputCls, "mt-1")} placeholder="10" type="number" value={form.alarmCooldownMinutes ?? 0} onChange={e => setForm({...form, alarmCooldownMinutes: Number(e.target.value) || 0})} /></div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <AdminButton type="button" tone="ghost" size="sm" onClick={onClose}>取消</AdminButton>
+            <AdminButton type="button" tone="primary" size="sm" loading={saving} onClick={save}><Save className="h-3.5 w-3.5" />保存</AdminButton>
+          </div>
         </div>
       </div>
     </div>

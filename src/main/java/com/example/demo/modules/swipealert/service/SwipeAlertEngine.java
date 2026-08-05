@@ -53,6 +53,10 @@ public class SwipeAlertEngine {
     @Autowired(required = false)
     private com.example.demo.modules.twin.common.mapper.TwinDashboardMapper personnelMapper;
 
+    /** ARO personnel mapper — 按 userId 精确查 mobile_phone */
+    @Autowired(required = false)
+    private com.example.demo.modules.aro.mapper.AroPersonnelMapper aroPersonnelMapper;
+
     /** Card mapping lookup — 用卡号精确匹配系统用户 ID（dahua_card_mapping 表） */
     @Autowired(required = false)
     private com.example.demo.modules.twin.card.mapper.TwinCardMappingMapper cardMappingMapper;
@@ -373,6 +377,21 @@ public class SwipeAlertEngine {
             }
         } else if (userId.isBlank() && !person.isBlank()) {
             log.info("[swipe-alert] personnelMapper not wired — cardholder name lookup skipped for '{}'", person);
+        }
+
+        // ②½ 卡号匹配成功时补查 mobile_phone（路径①未查），姓名兜底已查的可跳过
+        if (!userId.isBlank() && mobilePhone.isBlank() && aroPersonnelMapper != null) {
+            try {
+                var aroPerson = aroPersonnelMapper.findByUserId(userId);
+                if (aroPerson != null && aroPerson.getMobilePhone() != null && !aroPerson.getMobilePhone().isBlank()) {
+                    mobilePhone = aroPerson.getMobilePhone();
+                    log.info("[swipe-alert] phone resolved via aro_personnel for userId={}: {}", userId, mobilePhone);
+                } else {
+                    log.info("[swipe-alert] phone NOT found in aro_personnel for userId={}", userId);
+                }
+            } catch (Exception e) {
+                log.debug("[swipe-alert] aroPersonnel lookup failed for userId={}: {}", userId, e.getMessage());
+            }
         }
 
         // ③ 屏障内外状态（仅当已解析到 userId 时查询）
