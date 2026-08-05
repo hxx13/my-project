@@ -1,8 +1,10 @@
 /**
  * 规格选择器 — 全端统一居中 Dialog。
  * 规格维度默认折叠，点击展开；组合行仅在各维度均有选中项后展示。
+ * Portal 到 body 避免被父级 stacking context（sticky header 等）遮挡。
  */
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Minus, Plus, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { webImageSrc } from "@/utils/mediaUrl";
@@ -179,7 +181,7 @@ export function SpecSheet({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4"
       role="dialog"
@@ -406,6 +408,7 @@ export function SpecSheet({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

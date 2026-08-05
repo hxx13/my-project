@@ -9,6 +9,8 @@ import com.example.demo.modules.notification.push.channel.PushChannel;
 import com.example.demo.modules.notification.push.channel.PushResult;
 import com.example.demo.modules.notification.push.config.NotifySourceChannel;
 import com.example.demo.modules.notification.push.config.NotifySourceChannelService;
+import com.example.demo.modules.notification.push.preference.UserNotifyMute;
+import com.example.demo.modules.notification.push.preference.UserNotifySettingService;
 import com.example.demo.modules.notification.push.source.NotifySource;
 import com.example.demo.modules.notification.push.source.NotifySourceService;
 import org.slf4j.Logger;
@@ -41,6 +43,7 @@ public class DigestScheduler {
     private final UserDisplayNameService displayNameService;
     private final List<PushChannel> channels;
     private final NotificationMiniProgramMapper deliveryLogMapper;
+    private final UserNotifySettingService notifySettingService;
     /** 学生端绑定查询（contact_email / send_key / wx_pusher_uid 在 aro_personnel 表中） */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.example.demo.modules.aro.mapper.AroPersonnelMapper aroPersonnelMapper;
@@ -53,7 +56,8 @@ public class DigestScheduler {
                            UserMapper userMapper,
                            UserDisplayNameService displayNameService,
                            List<PushChannel> channels,
-                           NotificationMiniProgramMapper deliveryLogMapper) {
+                           NotificationMiniProgramMapper deliveryLogMapper,
+                           UserNotifySettingService notifySettingService) {
         this.digestItemMapper = digestItemMapper;
         this.defaultConfigMapper = defaultConfigMapper;
         this.userPrefMapper = userPrefMapper;
@@ -63,6 +67,7 @@ public class DigestScheduler {
         this.displayNameService = displayNameService;
         this.channels = channels;
         this.deliveryLogMapper = deliveryLogMapper;
+        this.notifySettingService = notifySettingService;
     }
 
     @Scheduled(cron = "0 * * * * *") // 每分钟执行
@@ -215,6 +220,13 @@ public class DigestScheduler {
                         String target = resolveTarget(userId, chCfg.getChannelCode());
                         if (target == null || target.isBlank()) continue;
 
+                        // ★ 个人静默偏好：检查当前用户是否关闭了该信息源或该渠道
+                        if (isMuted(userId, sample.getSourceCode(), chCfg.getChannelCode())) {
+                            log.debug("[Digest] skipped muted: userId={} source={} channel={}",
+                                    userId, sample.getSourceCode(), chCfg.getChannelCode());
+                            continue;
+                        }
+
                         try {
                             PushResult result = channel.send(target, title, content);
                             if (result.isSuccess()) {
@@ -305,6 +317,12 @@ public class DigestScheduler {
             if (!channel.isEnabled()) continue;
             String target = resolveTarget(userId, channel.getCode());
             if (target == null || target.isBlank()) continue;
+            // ★ 个人静默偏好：夜间冲刷同样遵守
+            if (isMuted(userId, items.get(0).getSourceCode(), channel.getCode())) {
+                log.debug("[Digest] night flush skipped muted: userId={} source={} channel={}",
+                        userId, items.get(0).getSourceCode(), channel.getCode());
+                continue;
+            }
             try {
                 channel.send(target, title, content);
                 sent = true;
@@ -395,6 +413,27 @@ public class DigestScheduler {
         s = s.replaceAll("^---+\\s*", "");
         s = s.replaceAll("\\s*---+$", "");
         return s.strip();
+    }
+
+    /** 检查用户是否对特定信息源和渠道设置了静默。
+     *  @return true = 应跳过发送 */
+    private boolean isMuted(String userId, String sourceCode, String channelCode) {
+        try {
+            UserNotifyMute mute = notifySettingService.getMute(userId, sourceCode);
+            if (mute == null) return false; // 无记录 = 不静默
+            // 信息源总开关关闭 → 所有渠道跳过
+            if (Boolean.FALSE.equals(mute.getEnabled())) return true;
+            // 渠道级静默
+            if (PushConstants.CHANNEL_EMAIL.equals(channelCode) && Boolean.TRUE.equals(mute.getMuteEmail()))
+                return true;
+            if (PushConstants.CHANNEL_SERVER_CHAN.equals(channelCode) && Boolean.TRUE.equals(mute.getMuteServerChan()))
+                return true;
+            if (PushConstants.CHANNEL_WXPUSHER.equals(channelCode) && Boolean.TRUE.equals(mute.getMuteWxpusher()))
+                return true;
+        } catch (Exception e) {
+            log.warn("[Digest] failed to check mute for {}/{}: {}", userId, sourceCode, e.getMessage());
+        }
+        return false;
     }
 
     /** 去除 HTML + Markdown 标签，保留纯文本 */

@@ -41,3 +41,24 @@ export async function fetchLoginBranding(): Promise<LoginBranding> {
   }
   return response.data.data;
 }
+
+export type PortalLineChart = {
+  times: string[];
+  pudong: number[];
+  puxi: number[];
+};
+
+export type PortalStats = {
+  totalEnter: number;
+  pudongTotal: number;
+  puxiTotal: number;
+  lineChart?: PortalLineChart;
+};
+
+export async function fetchPortalStats(): Promise<PortalStats> {
+  const response = await axios.get<Result<PortalStats>>("/api/public/portal-stats");
+  if (!response.data?.success || !response.data?.data) {
+    throw new Error(response.data?.message || "加载首页统计失败");
+  }
+  return response.data.data;
+}

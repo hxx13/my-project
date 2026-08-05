@@ -225,8 +225,8 @@ export interface RoomData {
 export interface StatsData {
   period: { start: string; end: string; days: number };
   summary: { totalAccess: number; dailyAvg: number; attendanceDays: number; roomCount: number; violationCount: number };
-  dailyTrend: { date: string; count: number }[];
-  hourlyDistribution: { bucket: string; count: number }[];
+  dailyTrend: { date: string; count: number; entryCount: number; exitCount: number }[];
+  hourlyDistribution: { bucket: string; count: number; entryCount: number; exitCount: number }[];
   roomDistribution: { roomName: string; count: number; percentage: number }[];
   avgStayDuration: { roomName: string; durationMinutes: number }[];
 }

@@ -1,4 +1,7 @@
 import { useMemo } from "react";
+import { authStorage } from "@/features/auth/authStorage";
+import { hasMinRole } from "@/features/auth/roleAccess";
+import { resolveRootEntryPath } from "@/features/auth/postLoginNavigation";
 
 interface FooterLink {
   label: string;
@@ -10,39 +13,51 @@ interface FooterGroup {
   items: FooterLink[];
 }
 
-const DEFAULT_LINKS: FooterGroup[] = [
-  {
+const BASE_HELP_LINKS: FooterGroup = {
+  group: "帮助支持",
+  items: [
+    { label: "帮助反馈", url: "/#/student/feedback" },
+    { label: "联系我们", url: "mailto:aro@shsmu.edu.cn" },
+  ],
+};
+
+function buildLinks(): FooterGroup[] {
+  const role = authStorage.getRole() ?? "MEMBER";
+  const isStaff = hasMinRole(role, "STAFF");
+
+  // Env override takes priority
+  try {
+    const raw = import.meta.env.VITE_PORTAL_FOOTER_LINKS;
+    if (raw) return JSON.parse(raw) as FooterGroup[];
+  } catch { /* ignore */ }
+
+  const groups: FooterGroup[] = [];
+
+  // Student service: always visible
+  groups.push({
     group: "学生服务",
     items: [
       { label: "学生中心", url: "/#/student/home" },
       { label: "笼架信息", url: "/#/student/cage-shelf" },
     ],
-  },
-  {
-    group: "管理入口",
-    items: [
-      { label: "管理后台", url: "/#/console/admin" },
-    ],
-  },
-  {
-    group: "帮助支持",
-    items: [
-      { label: "帮助反馈", url: "/#/student/feedback" },
-      { label: "联系我们", url: "mailto:aro@shsmu.edu.cn" },
-    ],
-  },
-];
+  });
 
-function parseFooterLinks(): FooterGroup[] {
-  try {
-    const raw = import.meta.env.VITE_PORTAL_FOOTER_LINKS;
-    if (raw) return JSON.parse(raw) as FooterGroup[];
-  } catch { /* ignore */ }
-  return DEFAULT_LINKS;
+  // Staff: add link back to their own backend (consistent with header "进入后台")
+  if (isStaff) {
+    groups.push({
+      group: "快捷入口",
+      items: [
+        { label: "返回管理后台", url: `/#${resolveRootEntryPath(role)}` },
+      ],
+    });
+  }
+
+  groups.push(BASE_HELP_LINKS);
+  return groups;
 }
 
 export function PortalFooter() {
-  const groups = useMemo(() => parseFooterLinks(), []);
+  const groups = useMemo(() => buildLinks(), []);
 
   return (
     <footer className="bg-[#1e293b] py-16 px-6">

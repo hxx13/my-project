@@ -17,6 +17,7 @@ import {
   Skeleton,
   StudentButton,
 } from "../components/ui";
+import { AdminPageShell } from "@/components/admin/AdminPageShell";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                           */
@@ -260,7 +261,8 @@ export default function StudentFeedbackPage() {
   };
 
   return (
-    <div className="p-6 min-h-full">
+    <AdminPageShell>
+      <div className="min-h-full">
       {/* Tabs */}
       <Tabs
         variant="pills"
@@ -279,6 +281,7 @@ export default function StudentFeedbackPage() {
       {activeTab === "tickets" && (
         <div className="mt-4 flex flex-col gap-4">{renderTicketsTab()}</div>
       )}
-    </div>
+      </div>
+    </AdminPageShell>
   );
 }

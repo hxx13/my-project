@@ -84,8 +84,9 @@ public class CageLocalController {
         detailService.bindCageBox(animalCageId, code);
         String pos = buildPositionLabel(animalCageId);
         String summary = String.format("%s 绑定笼盒 %s → 笼位 %d %s", u.getUsername(), code, animalCageId, pos);
+        // 使用 canonical 命名（与 aro_field_mapping.json 对齐）
         outboxService.enqueue("cage_cell", String.valueOf(animalCageId), "bind",
-                Map.of("animalCageId", animalCageId, "cageBoxCode", code), "cageRelatedBox", summary);
+                Map.of("animal_cage_id", animalCageId, "cage_box_code", code), "cageRelatedBox", summary);
 
         log.info("[local/bind] {}", summary);
         return Result.success(Map.of("ok", true, "local", true));
@@ -105,7 +106,7 @@ public class CageLocalController {
         String pos = buildPositionLabel(animalCageId);
         String summary = String.format("%s 解绑笼盒 → 笼位 %d %s", u.getUsername(), animalCageId, pos);
         outboxService.enqueue("cage_cell", String.valueOf(animalCageId), "unbind",
-                Map.of("animalCageId", animalCageId), "unbindCageBox", summary);
+                Map.of("animal_cage_id", animalCageId), "unbindCageBox", summary);
 
         log.info("[local/unbind] {}", summary);
         return Result.success(Map.of("ok", true, "local", true));
@@ -214,14 +215,19 @@ public class CageLocalController {
         // enable=true → 标记（add 接口）; enable=false → 取消（cancelColor 接口）
         String endpoint;
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("animalCageId", animalCageId);
-        payload.put("cageBoxCode", cageBoxCode != null ? cageBoxCode : "");
+        // 使用 canonical 命名（与 aro_field_mapping.json 对齐），同时保留 camelCase 兼容旧代码
+        payload.put("animal_cage_id", animalCageId);
+        payload.put("cage_box_code", cageBoxCode != null ? cageBoxCode : "");
+        // 关键：将业务字段写入 payload，供 OutboxService 通过 CageFieldMappingService 翻译为 ARO 字段
+        // e.g. "needs_division": true → mapping.applyPush("cageBoxAction") → {NeedDivideYn: 1}
+        payload.put(toggle, Boolean.TRUE.equals(enable));
 
         if (Boolean.TRUE.equals(enable)) {
+            // 仅 needs_division 走专用端点 cageBoxAction（其映射 target: NeedDivideYn）
+            // needs_special_feeding / has_health_abnormality 走 updateAnimalCage
+            // （映射分别有 needFeedingYn / abnormalHealthYn），避免空映射端点
             endpoint = switch (toggle) {
                 case "needs_division" -> "cageBoxAction";
-                case "needs_special_feeding" -> "specialBreeding";
-                case "has_health_abnormality" -> "animalHealth";
                 default -> "updateAnimalCage";
             };
         } else {

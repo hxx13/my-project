@@ -27,6 +27,7 @@ public class TelemetryAlarmConfigTreeDto {
         private boolean enabled;
         private int cooldownMinutes;
         private boolean notifyOnRecovery;
+        private int bufferFlushMinutes;
         private int variableCount;
         private int suiteCount;
         private List<SuiteNode> suites;
@@ -48,6 +49,9 @@ public class TelemetryAlarmConfigTreeDto {
         private String humMax;
         private String pressureMin;
         private String pressureMax;
+        private String hysteresisTemp;
+        private String hysteresisHum;
+        private String hysteresisPressure;
         private boolean hasCustomThresholds;
         private int variableCount;
         private int roomCount;
@@ -88,6 +92,7 @@ public class TelemetryAlarmConfigTreeDto {
         private boolean isAlarmMetric;
         /** 逐变量报警开关：null=继承父级，false=禁用，true=启用 */
         private Boolean alarmEnabled;
+        private Integer alarmCooldownMinutes;
         /** 逐测点报警限覆盖（null=无覆盖） */
         private String alarmOverrideMin;
         private String alarmOverrideMax;

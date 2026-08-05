@@ -54,4 +54,6 @@ public interface TelemetryWatchlistTagMapper {
 
     List<TelemetryWatchlistTagRow> selectCachedAlarmLimitsForSnapshotMerge();
     int updateAlarmEnabled(@Param("id") Long id, @Param("alarmEnabled") Integer alarmEnabled);
+
+    int updateAlarmCooldown(@Param("id") Long id, @Param("cooldownMinutes") Integer cooldownMinutes);
 }

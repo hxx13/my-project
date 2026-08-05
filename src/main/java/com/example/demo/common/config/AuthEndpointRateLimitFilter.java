@@ -28,10 +28,12 @@ public class AuthEndpointRateLimitFilter extends OncePerRequestFilter {
     private static final String REGISTER_PATH = "/api/auth/register/staff";
     private static final String FORGOT_PWD_VERIFY = "/api/auth/forgot-password/verify";
     private static final String FORGOT_PWD_RESET = "/api/auth/forgot-password/reset";
+    private static final String PIN_SELF_RESET = "/api/auth/special-channel/self/reset-pin";
 
     private final Map<String, Deque<Long>> loginHits = new ConcurrentHashMap<>();
     private final Map<String, Deque<Long>> registerHits = new ConcurrentHashMap<>();
     private final Map<String, Deque<Long>> forgotPwdHits = new ConcurrentHashMap<>();
+    private final Map<String, Deque<Long>> pinSelfResetHits = new ConcurrentHashMap<>();
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -39,7 +41,8 @@ public class AuthEndpointRateLimitFilter extends OncePerRequestFilter {
         return !LOGIN_PATH.equals(uri)
             && !REGISTER_PATH.equals(uri)
             && !FORGOT_PWD_VERIFY.equals(uri)
-            && !FORGOT_PWD_RESET.equals(uri);
+            && !FORGOT_PWD_RESET.equals(uri)
+            && !PIN_SELF_RESET.equals(uri);
     }
 
     @Override
@@ -59,6 +62,11 @@ public class AuthEndpointRateLimitFilter extends OncePerRequestFilter {
             }
         } else if (FORGOT_PWD_VERIFY.equals(uri) || FORGOT_PWD_RESET.equals(uri)) {
             if (!allow(forgotPwdHits, ip, 300_000L, 5)) {
+                tooMany(response);
+                return;
+            }
+        } else if (PIN_SELF_RESET.equals(uri)) {
+            if (!allow(pinSelfResetHits, ip, 300_000L, 5)) {
                 tooMany(response);
                 return;
             }

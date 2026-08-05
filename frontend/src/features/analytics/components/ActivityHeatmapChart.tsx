@@ -41,10 +41,10 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
 
   return (
     <div className={shell}>
-      <div className="mx-auto w-full overflow-x-auto rounded-md border border-[var(--app-color-border-default)]" style={{ maxWidth: 720 }}>
+      <div className="w-full overflow-x-auto rounded-md border border-[var(--app-color-border-default)]">
         <table
           className="border-collapse leading-tight"
-          style={{ width: "100%", tableLayout: "fixed", minWidth: 320 }}
+          style={{ width: "100%", tableLayout: "fixed", minWidth: 320, maxWidth: "100%" }}
         >
           <colgroup>
             <col style={{ width: `${DAY_COL_PCT}%` }} />

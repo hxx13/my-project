@@ -10,11 +10,14 @@
         <result column="hum_max" property="humMax"/>
         <result column="pressure_min" property="pressureMin"/>
         <result column="pressure_max" property="pressureMax"/>
+        <result column="hysteresis_temp" property="hysteresisTemp"/>
+        <result column="hysteresis_hum" property="hysteresisHum"/>
+        <result column="hysteresis_pressure" property="hysteresisPressure"/>
         <result column="updated_at" property="updatedAt"/>
     </resultMap>
 
     <select id="selectSingleton" resultMap="RowMap">
-        SELECT id, temp_min, temp_max, hum_min, hum_max, pressure_min, pressure_max, updated_at
+        SELECT id, temp_min, temp_max, hum_min, hum_max, pressure_min, pressure_max, hysteresis_temp, hysteresis_hum, hysteresis_pressure, updated_at
         FROM telemetry_global_alarm_limits
         WHERE id = 1
         LIMIT 1
@@ -32,6 +35,9 @@
             hum_max = #{humMax},
             pressure_min = #{pressureMin},
             pressure_max = #{pressureMax},
+            hysteresis_temp = #{hysteresisTemp},
+            hysteresis_hum = #{hysteresisHum},
+            hysteresis_pressure = #{hysteresisPressure},
             updated_at = CURRENT_TIMESTAMP
         WHERE id = 1
     </update>

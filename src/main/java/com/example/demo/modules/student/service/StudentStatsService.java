@@ -104,36 +104,50 @@ public class StudentStatsService {
         summary.setViolationCount(violationCount);
         resp.setSummary(summary);
 
-        // Daily trend — group by date
-        Map<String, Integer> dailyMap = new LinkedHashMap<>();
+        // Daily trend — group by date, split entry/exit
+        Map<String, Integer> dailyEntryMap = new LinkedHashMap<>();
+        Map<String, Integer> dailyExitMap = new LinkedHashMap<>();
         for (LocalDate d = startDate; !d.isAfter(endDate); d = d.plusDays(1)) {
-            dailyMap.put(d.toString(), 0);
+            dailyEntryMap.put(d.toString(), 0);
+            dailyExitMap.put(d.toString(), 0);
         }
         for (Map<String, Object> r : records) {
             String eventTime = String.valueOf(r.getOrDefault("event_time", ""));
+            String eventType = String.valueOf(r.getOrDefault("event_type", ""));
             if (!eventTime.isEmpty()) {
                 String dateKey = eventTime.substring(0, 10);
-                dailyMap.merge(dateKey, 1, Integer::sum);
+                if ("进入".equals(eventType)) {
+                    dailyEntryMap.merge(dateKey, 1, Integer::sum);
+                } else if ("离开".equals(eventType)) {
+                    dailyExitMap.merge(dateKey, 1, Integer::sum);
+                }
             }
         }
         List<StudentStatsResponse.DailyTrend> dailyTrend = new ArrayList<>();
-        for (Map.Entry<String, Integer> e : dailyMap.entrySet()) {
+        for (String dateKey : dailyEntryMap.keySet()) {
             StudentStatsResponse.DailyTrend dt = new StudentStatsResponse.DailyTrend();
-            dt.setDate(LocalDate.parse(e.getKey()));
-            dt.setCount(e.getValue());
+            dt.setDate(LocalDate.parse(dateKey));
+            int entry = dailyEntryMap.getOrDefault(dateKey, 0);
+            int exit = dailyExitMap.getOrDefault(dateKey, 0);
+            dt.setEntryCount(entry);
+            dt.setExitCount(exit);
+            dt.setCount(entry + exit);
             dailyTrend.add(dt);
         }
         resp.setDailyTrend(dailyTrend);
 
-        // Hourly distribution
-        int[] hourBuckets = new int[24];
+        // Hourly distribution — split entry/exit
+        int[] hourEntry = new int[24];
+        int[] hourExit = new int[24];
         for (Map<String, Object> r : records) {
             String eventTime = String.valueOf(r.getOrDefault("event_time", ""));
+            String eventType = String.valueOf(r.getOrDefault("event_type", ""));
             if (eventTime.length() >= 13) {
                 try {
                     int hour = Integer.parseInt(eventTime.substring(11, 13));
                     if (hour >= 0 && hour < 24) {
-                        hourBuckets[hour]++;
+                        if ("进入".equals(eventType)) hourEntry[hour]++;
+                        else if ("离开".equals(eventType)) hourExit[hour]++;
                     }
                 } catch (NumberFormatException ignored) {
                 }
@@ -143,7 +157,9 @@ public class StudentStatsService {
         for (int h = 0; h < 24; h++) {
             StudentStatsResponse.HourlyDist hd = new StudentStatsResponse.HourlyDist();
             hd.setBucket(String.format("%02d:00-%02d:00", h, (h + 1) % 24));
-            hd.setCount(hourBuckets[h]);
+            hd.setEntryCount(hourEntry[h]);
+            hd.setExitCount(hourExit[h]);
+            hd.setCount(hourEntry[h] + hourExit[h]);
             hourlyList.add(hd);
         }
         resp.setHourlyDistribution(hourlyList);
@@ -170,8 +186,44 @@ public class StudentStatsService {
                 .collect(Collectors.toList());
         resp.setRoomDistribution(roomDist);
 
-        // Avg stay duration — empty for now, requires enter/exit pairing
-        resp.setAvgStayDuration(Collections.emptyList());
+        // Avg stay duration — pair entry→exit per room per day
+        Map<String, List<Long>> roomDurations = new LinkedHashMap<>();
+        Map<String, LocalDateTime> pendingEntry = new HashMap<>(); // key = userId_date_room
+        for (Map<String, Object> r : records) {
+            String eventType = String.valueOf(r.getOrDefault("event_type", ""));
+            String eventTimeStr = String.valueOf(r.getOrDefault("event_time", ""));
+            String roomName = String.valueOf(r.getOrDefault("room_name", ""));
+            if (eventTimeStr.isEmpty() || roomName.isEmpty() || "null".equals(roomName)) continue;
+
+            LocalDateTime eventTime;
+            try {
+                eventTime = LocalDateTime.parse(eventTimeStr.replace(" ", "T"));
+            } catch (Exception e) { continue; }
+
+            String userDateRoom = user.getId() + "_" + eventTime.toLocalDate() + "_" + roomName;
+
+            if ("进入".equals(eventType)) {
+                pendingEntry.put(userDateRoom, eventTime);
+            } else if ("离开".equals(eventType)) {
+                LocalDateTime entryTime = pendingEntry.remove(userDateRoom);
+                if (entryTime != null) {
+                    long minutes = java.time.Duration.between(entryTime, eventTime).toMinutes();
+                    if (minutes > 0 && minutes < 1440) { // skip outliers >24h
+                        roomDurations.computeIfAbsent(roomName, k -> new ArrayList<>()).add(minutes);
+                    }
+                }
+            }
+        }
+        List<StudentStatsResponse.StayDuration> stayList = new ArrayList<>();
+        for (Map.Entry<String, List<Long>> e : roomDurations.entrySet()) {
+            double avg = e.getValue().stream().mapToLong(Long::longValue).average().orElse(0);
+            StudentStatsResponse.StayDuration sd = new StudentStatsResponse.StayDuration();
+            sd.setRoomName(e.getKey());
+            sd.setDurationMinutes((int) Math.round(avg));
+            stayList.add(sd);
+        }
+        stayList.sort((a, b) -> Integer.compare(b.getDurationMinutes(), a.getDurationMinutes()));
+        resp.setAvgStayDuration(stayList);
 
         return resp;
     }

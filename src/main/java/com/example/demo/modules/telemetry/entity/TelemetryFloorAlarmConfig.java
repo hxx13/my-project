@@ -10,6 +10,7 @@ public class TelemetryFloorAlarmConfig {
     private Integer enabled;
     private Integer cooldownMinutes;
     private Integer notifyOnRecovery;
+    private Integer bufferFlushMinutes;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

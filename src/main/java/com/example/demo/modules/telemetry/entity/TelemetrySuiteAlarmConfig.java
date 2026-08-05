@@ -15,6 +15,9 @@ public class TelemetrySuiteAlarmConfig {
     private String humMax;
     private String pressureMin;
     private String pressureMax;
+    private String hysteresisTemp;
+    private String hysteresisHum;
+    private String hysteresisPressure;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

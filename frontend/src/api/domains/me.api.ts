@@ -94,6 +94,12 @@ export interface MiniPreferences {
   adminNavStars?: string[];
   /** 管理后台锁定入口 */
   adminNavLock?: string | null;
+  /** 学生端侧栏「常用」 */
+  studentNavRecent?: string[];
+  /** 学生端侧栏「收藏」 */
+  studentNavStars?: string[];
+  /** 学生端锁定入口 */
+  studentNavLock?: string | null;
 }
 
 interface MiniPreferencesResultBody {

@@ -5,18 +5,18 @@ import { authHttp } from "@/api/core/authHttp";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 
 const CAGE_TYPE_COLORS: Record<number, { bg: string; border: string; label: string }> = {
-  1: { bg: "#fef3c7", border: "#f59e0b", label: "等待分配" },
-  2: { bg: "#d1fae5", border: "#10b981", label: "已预约(空笼盒)" },
-  3: { bg: "#ffe4e6", border: "#e11d48", label: "饲养中" },
-  4: { bg: "#dbeafe", border: "#3b82f6", label: "异常" },
+  1: { bg: "var(--student-warning-soft)", border: "var(--student-warning)", label: "等待分配" },
+  2: { bg: "var(--student-success-soft)", border: "var(--student-success)", label: "已预约(空笼盒)" },
+  3: { bg: "var(--student-error-soft)", border: "var(--student-error)", label: "饲养中" },
+  4: { bg: "var(--student-accent-telemetry-soft)", border: "var(--student-accent-telemetry)", label: "异常" },
 };
 
 const STATUS_CHIPS: Array<{ key: string; label: string; color: string }> = [
-  { key: "needsDivision", label: "需分笼", color: "#eab308" },
-  { key: "needsSpecialFeeding", label: "特殊饲养", color: "#ef4444" },
+  { key: "needsDivision", label: "需分笼", color: "var(--student-warning)" },
+  { key: "needsSpecialFeeding", label: "特殊饲养", color: "var(--student-error)" },
   { key: "hasHealthAbnormality", label: "健康异常", color: "#a855f7" },
   { key: "needsTransfer", label: "动物转移", color: "#06b6d4" },
-  { key: "cohabitationDate", label: "合笼", color: "#10b981" },
+  { key: "cohabitationDate", label: "合笼", color: "var(--student-success)" },
 ];
 
 interface CellDetailPanelProps {
@@ -113,7 +113,7 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
 
   if (!cell) {
     return (
-      <div className="flex-1 flex items-center justify-center rounded-xl border border-[var(--student-hairline)] bg-white p-6">
+      <div className="flex-1 flex items-center justify-center rounded-xl border border-[var(--student-hairline)] bg-[var(--app-color-surface-container)] p-6">
         <div className="text-center text-[13px] text-[var(--student-mute)]">点击笼盒查看详情</div>
       </div>
     );
@@ -128,7 +128,7 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
   });
 
   return (
-    <div className="flex-1 flex flex-col rounded-xl border border-[var(--student-hairline)] bg-white overflow-hidden min-h-0">
+    <div className="flex-1 flex flex-col rounded-xl border border-[var(--student-hairline)] bg-[var(--app-color-surface-container)] overflow-hidden min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[var(--student-hairline)] px-4 py-3 shrink-0">
         <div className="flex items-center gap-2">
@@ -166,11 +166,11 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
           <div className="flex flex-wrap gap-1.5">
             {statusChips.map(c => (
               <span key={c.key} className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                style={{ background: `${c.color}18`, color: c.color, border: `1px solid ${c.color}40` }}>
+                style={{ background: c.color.startsWith("var(") ? `color-mix(in srgb, ${c.color} 9%, transparent)` : `${c.color}18`, color: c.color, border: `1px solid ${c.color.startsWith("var(") ? `color-mix(in srgb, ${c.color} 25%, transparent)` : `${c.color}40`}` }}>
                 {c.label}{c.key === "cohabitationDate" && detail?.cohabitationDate ? ` ${String(detail.cohabitationDate).substring(0, 10)}` : ""}
               </span>
             ))}
-            {detail?.specialBreedingName && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200">{detail.specialBreedingName}</span>}
+            {detail?.specialBreedingName && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--student-error-soft)] text-[var(--student-error)] border border-[var(--student-error-soft)]">{detail.specialBreedingName}</span>}
           </div>
         )}
 
@@ -185,7 +185,7 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
 
         {/* 状态标记照片（通道一：admin编辑模式上传，Student端只读） */}
         {Object.keys(statusPhotos).length > 0 && (
-          <div className="rounded-lg bg-[var(--twin-canvas-soft)] p-3 space-y-2">
+          <div className="rounded-lg bg-[var(--app-color-surface-hover)] p-3 space-y-2">
             <div className="text-[12px] font-semibold text-[var(--student-mute)]">📸 状态标记照片</div>
             {Object.entries(statusPhotos).map(([key, urls]) => (
               <div key={key}>
@@ -229,7 +229,7 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
                     className="h-14 w-14 object-cover rounded border border-[var(--student-hairline)] cursor-pointer" />
                   <button
                     onClick={(e) => { e.stopPropagation(); setImages(prev => prev.filter((_, j) => j !== i)); }}
-                    className="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity leading-none"
+                    className="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-[var(--student-error)] text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity leading-none"
                   >&times;</button>
                 </div>
               ))}
@@ -243,7 +243,7 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
             className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--student-primary)] px-4 py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-50">
             <Save className="size-4" /> {saving ? "保存中…" : "保存"}
           </button>
-          {saveMsg && <span className={cn("text-[12px]", saveMsg.type === "ok" ? "text-emerald-600" : "text-red-500")}>{saveMsg.text}</span>}
+          {saveMsg && <span className={cn("text-[12px]", saveMsg.type === "ok" ? "text-[var(--student-success)]" : "text-[var(--student-error)]")}>{saveMsg.text}</span>}
         </div>
       </div>
 

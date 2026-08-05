@@ -219,4 +219,8 @@
     <update id="updateAlarmEnabled">
         UPDATE telemetry_watchlist_tag SET alarm_enabled = #{alarmEnabled} WHERE id = #{id}
     </update>
+
+    <update id="updateAlarmCooldown">
+        UPDATE telemetry_watchlist_tag SET alarm_cooldown_minutes = #{cooldownMinutes} WHERE id = #{id}
+    </update>
 </mapper>

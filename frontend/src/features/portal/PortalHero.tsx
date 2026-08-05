@@ -16,7 +16,6 @@ export function PortalHero({ className, height = "calc(100vh - 64px)" }: PortalH
   const [branding, setBranding] = useState<LoginBranding | null>(null);
   const [heroIdx, setHeroIdx] = useState(0);
 
-  // Restore from cache
   useEffect(() => {
     try {
       const cached = sessionStorage.getItem("aro_login_branding_v1");
@@ -26,11 +25,11 @@ export function PortalHero({ className, height = "calc(100vh - 64px)" }: PortalH
           setBranding(parsed as LoginBranding);
         }
       }
-    } catch { /* ignore */ }
+    } catch {}
     fetchLoginBranding()
       .then((b) => {
         setBranding(b);
-        try { sessionStorage.setItem("aro_login_branding_v1", JSON.stringify(b)); } catch { /* ignore */ }
+        try { sessionStorage.setItem("aro_login_branding_v1", JSON.stringify(b)); } catch {}
       })
       .catch(() => {});
   }, []);
@@ -45,7 +44,6 @@ export function PortalHero({ className, height = "calc(100vh - 64px)" }: PortalH
 
   const heroCarouselOn = branding?.heroCarouselEnabled !== false && heroUrls.length > 0;
 
-  // Auto-rotate
   useEffect(() => {
     if (!heroCarouselOn || heroUrls.length <= 1) return;
     const sec = Math.max(3, branding?.intervalSec ?? 8);
@@ -71,8 +69,14 @@ export function PortalHero({ className, height = "calc(100vh - 64px)" }: PortalH
           )}
         />
       ))}
-      {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/50" />
+
+      {/* Scroll indicator */}
+      <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-70 animate-bounce">
+          <path d="M12 5v14M5 12l7 7 7-7" />
+        </svg>
+        <span className="text-xs text-white/50 tracking-[0.2em]">向下滚动</span>
+      </div>
     </section>
   );
 }

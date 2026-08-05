@@ -1,9 +1,10 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { Star, Building2, X, Clock, User, RefreshCw, ShieldCheck, DoorOpen, type LucideIcon } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Star, Building2, X, Clock, User, RefreshCw, ShieldCheck, DoorOpen, FileText, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { useStudentRooms } from "../hooks/use-student-rooms";
 import { getStudentSessionScope, studentQueryKey } from "../utils/studentQueryScope";
 import { toggleRoomPin, fetchRoomStatusList, fetchRooms } from "../api/student.api";
@@ -11,8 +12,6 @@ import type { RoomData, FetchRoomsParams, RoomStatusData } from "../api/student.
 import {
   RoomCard,
   ViewToggle,
-  StudentInput,
-  StudentSelect,
   EmptyState,
   ErrorRetry,
   Skeleton,
@@ -20,6 +19,7 @@ import {
   Table,
 } from "../components/ui";
 import type { Column } from "../components/ui";
+import StudentRecordsPage from "./student-records";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -28,12 +28,6 @@ import type { Column } from "../components/ui";
 const ALL_ROOMS_SIZE = 300;
 
 const CAMPUS_ORDER = ["浦东", "浦西"] as const;
-
-const STATUS_OPTIONS = [
-  { value: "idle", label: "空闲" },
-  { value: "busy", label: "较满" },
-  { value: "full", label: "已满" },
-];
 
 const STATUS_BADGE_VARIANT: Record<RoomData["status"], "success" | "warning" | "error"> = {
   idle: "success",
@@ -48,9 +42,9 @@ const STATUS_LABEL: Record<RoomData["status"], string> = {
 };
 
 const STATUS_BAR_COLOR: Record<RoomData["status"], string> = {
-  idle: "#16a34a",
-  busy: "#d97706",
-  full: "#dc2626",
+  idle: "var(--student-success)",
+  busy: "var(--student-warning)",
+  full: "var(--student-error)",
 };
 
 /* ------------------------------------------------------------------ */
@@ -63,10 +57,6 @@ function RoomsSkeleton({ viewMode }: { viewMode: "card" | "list" }) {
       <div className="flex items-center justify-between mb-4">
         <Skeleton variant="rectangular" className="h-9 w-56" />
         <Skeleton variant="rectangular" className="h-8 w-16" />
-      </div>
-      <div className="flex items-center gap-3 mb-4">
-        <Skeleton className="h-9 flex-1" />
-        <Skeleton className="h-9 w-24" />
       </div>
       {viewMode === "card" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
@@ -150,7 +140,9 @@ function SectionHeader({ icon: Icon, label, count, colorClass }: {
 export default function StudentRoomsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
 
+  const [view, setView] = useState<"rooms" | "records">(() => searchParams.get("view") === "records" ? "records" : "rooms");
   const [viewMode, setViewMode] = useState<"card" | "list">(() => {
     try {
       if (localStorage.getItem("student-room-view") === "list") return "list";
@@ -158,30 +150,21 @@ export default function StudentRoomsPage() {
     return "card";
   });
 
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
   const [occupantRoom, setOccupantRoom] = useState<RoomData | null>(null);
 
-  /* ---- 常用房间：ARO API 匹配（pinned=1 触发 getMyRooms） ---- */
+  /* ---- 我的房间：ARO API 匹配（pinned=1 触发 getMyRooms） ---- */
   const scope = getStudentSessionScope();
   const myRoomsQuery = useQuery({
     queryKey: studentQueryKey("rooms", { pinned: "1" }),
     queryFn: () => fetchRooms({ pinned: "1", page: 1, size: ALL_ROOMS_SIZE }),
     enabled: scope !== "anonymous",
-    staleTime: 30 * 1000,
+    staleTime: 0,
     retry: 1,
-    // 后台静默刷新
-    refetchInterval: 5 * 60 * 1000,
   });
   const aroMatchedRooms: RoomData[] = myRoomsQuery.data?.data ?? [];
 
   /* ---- 全部房间（筛选/搜索用） ---- */
-  const params = useMemo<FetchRoomsParams>(() => {
-    const p: FetchRoomsParams = { page: 1, size: ALL_ROOMS_SIZE };
-    if (search) p.search = search;
-    if (status) p.status = status;
-    return p;
-  }, [search, status]);
+  const params = useMemo<FetchRoomsParams>(() => ({ page: 1, size: ALL_ROOMS_SIZE }), []);
 
   const { data, isLoading, isError, error, refetch, isFetching } = useStudentRooms(params);
 
@@ -312,22 +295,27 @@ export default function StudentRoomsPage() {
   const hasTopSections = frequentRooms.length > 0 || pinnedRooms.length > 0;
 
   return (
-    <div className="p-6 min-h-full">
-      {/* Top bar */}
-      <div className="flex items-center justify-between mb-4">
+    <AdminPageShell>
+      <div className="min-h-full">
+        {view === "records" ? (
+          <StudentRecordsPage embedded />
+        ) : (
+        <>
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold text-[var(--student-ink)]">
             全部房间 · {totalRoomCount}
           </h2>
           {isFetching && <RefreshCw className="size-4 text-[var(--student-mute)] animate-spin" />}
         </div>
-        <ViewToggle value={viewMode} onChange={handleViewChange} />
-      </div>
-
-      {/* Filter bar */}
-      <div className="flex items-center gap-3 mb-4">
-        <StudentInput placeholder="搜索房间..." value={search} onChange={(e) => setSearch(e.target.value)} />
-        <StudentSelect placeholder="状态" options={STATUS_OPTIONS} value={status} onChange={(e) => setStatus(e.target.value)} />
+        <div className="flex items-center gap-2">
+          <button onClick={() => setView("records")}
+            className="rounded-full border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-1.5 text-xs font-medium text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)] whitespace-nowrap">
+            <FileText className="size-3.5 mr-1 inline" />出入记录
+          </button>
+          <ViewToggle value={viewMode} onChange={handleViewChange} />
+        </div>
       </div>
 
       {/* ================================================================ */}
@@ -346,12 +334,12 @@ export default function StudentRoomsPage() {
       )}
 
       {/* ================================================================ */}
-      {/* 2. 常用房间（ARO API 匹配，自动填充）                              */}
+      {/* 2. 我的房间（ARO API 匹配，自动填充）                              */}
       {/* ================================================================ */}
       {frequentRooms.length > 0 && (
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-3">
-            <SectionHeader icon={DoorOpen} label="常用房间" count={frequentRooms.length} colorClass="bg-[var(--student-primary-soft)] text-[var(--student-primary)]" />
+            <SectionHeader icon={DoorOpen} label="我的房间" count={frequentRooms.length} colorClass="bg-[var(--student-primary-soft)] text-[var(--student-primary)]" />
             {myRoomsQuery.isFetching && <RefreshCw className="size-3 text-[var(--student-mute)] animate-spin" />}
           </div>
           {viewMode === "card"
@@ -410,7 +398,7 @@ export default function StudentRoomsPage() {
         const occ = getOccRoom(occupantRoom);
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOccupantRoom(null)}>
-            <div className="w-full max-w-md max-h-[70vh] overflow-hidden rounded-xl border border-[var(--student-hairline)] bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="w-full max-w-md max-h-[70vh] overflow-hidden rounded-xl border border-[var(--student-hairline)] bg-[var(--student-surface)] shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-[var(--student-hairline)] px-5 py-3">
                 <div>
                   <h3 className="text-sm font-semibold text-[var(--student-ink)]">{occupantRoom.roomName}</h3>
@@ -449,6 +437,8 @@ export default function StudentRoomsPage() {
           </div>
         );
       })(), document.body)}
-    </div>
+        </> )}
+      </div>
+    </AdminPageShell>
   );
 }

@@ -212,10 +212,27 @@ public class DahuaSwingPullService {
                     // 同一 record_id 全局唯一（uk_dahua_record_id）：若库中已是 mapping_hit=1，则不再跑联动，避免激活/延时签退被重复排程。
                     // 使用 findRecordByRecordId 与表唯一键对齐，防止多任务场景下 ON DUPLICATE KEY UPDATE 覆写 task_id 导致跨任务去重失效。
                     DahuaSwingRecord existing = dahuaSwingMapper.findRecordByRecordId(record.getRecordId());
-                    boolean alreadyLinkageEligible =
-                            existing != null && Integer.valueOf(1).equals(existing.getMappingHit());
                     boolean isNewRecord = existing == null;
                     if (!isNewRecord) {
+                        // 🔧 修复：记录虽已存在（webhook先入库），仍需尝试触发规则引擎。
+                        // 原因：webhook 的 openResult 来自 extend.openFailedCode（可能为null→误判为0），
+                        // 而拉取的 openResult 来自 API 原始字段（更可靠）。若 webhook 因数据不准确
+                        // 未能触发签退规则，此处可补救。onRecordIngested 内部有 lastRecordId 去重，
+                        // 已正确触发的不会重复排程。
+                        log.info("[大华·拉取] RECORD_EXISTS_BUT_RETRY_LINKAGE recordId={} personName={} channelCode={} existingMappingHit={} existingOpenResult={} newMappingHit={} newOpenResult={}",
+                                record.getRecordId(), record.getPersonName(), record.getChannelCode(),
+                                existing != null ? existing.getMappingHit() : null,
+                                existing != null ? existing.getOpenResult() : null,
+                                record.getMappingHit(), record.getOpenResult());
+                        // 用拉取数据更新DB（纠正 webhook 可能写错的 openResult/mappingHit/channelCode）
+                        record.setSwingTime(DahuaService.adjustSwingTime9Min(record.getSwingTime()));
+                        dahuaSwingMapper.upsertRecord(record);
+                        // 尝试触发规则引擎（内部有 lastRecordId 去重，已触发的不会重复）
+                        if (Integer.valueOf(1).equals(record.getMappingHit())
+                                && Integer.valueOf(1).equals(record.getOpenResult())) {
+                            dahuaSwingRuleEngineService.onRecordIngested(record);
+                        }
+                        totalSaved++;
                         continue;
                     }
                     // 修正 pull 时间戳（大华时间快9分钟）
@@ -243,9 +260,6 @@ public class DahuaSwingPullService {
                         }
                     }
                     totalSaved++;
-                    if (alreadyLinkageEligible) {
-                        continue;
-                    }
                     if (Integer.valueOf(1).equals(record.getMappingHit())
                             && Integer.valueOf(1).equals(record.getOpenResult())) {
                         dahuaSwingRuleEngineService.onRecordIngested(record);

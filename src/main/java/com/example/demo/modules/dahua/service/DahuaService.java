@@ -160,6 +160,7 @@ public class DahuaService {
             // ── 步骤0：ICC 事件去重（同一 alarmCode 只处理一次）──
             String alarmCode = str(info.get("alarmCode"));
             if (!alarmCode.isBlank() && processedIccEvents.putIfAbsent(alarmCode, System.currentTimeMillis()) != null) {
+                log.debug("[dahua-webhook] SKIP_ICC_DEDUP alarmCode={}", alarmCode);
                 return;
             }
             // 定期清理（10分钟以上的记录）
@@ -212,7 +213,8 @@ public class DahuaService {
             boolean isRemoteOpen = Integer.valueOf(48).equals(openType);
 
             if (!isAllowedChannel && !isRemoteOpen) {
-                log.debug("[dahua-webhook] 跳过: deptId={} channelCode={}", r.getDepartmentId(), r.getChannelCode());
+                log.info("[dahua-webhook] SKIP_DEPT_FILTER deptId={} deptName={} channelCode={} channelName={} personName={}",
+                        r.getDepartmentId(), r.getDepartmentName(), r.getChannelCode(), r.getChannelName(), r.getPersonName());
                 return;
             }
             if (!isDept26) {
@@ -222,6 +224,8 @@ public class DahuaService {
 
             // ---- 入库（先到先得，已有 recordId 则跳过） ----
             if (dahuaSwingMapper.findRecordByRecordId(r.getRecordId()) != null) {
+                log.info("[dahua-webhook] SKIP_RECORD_EXISTS recordId={} personName={} channelCode={} — 拉取路径已先入库，webhook跳过",
+                        r.getRecordId(), r.getPersonName(), r.getChannelCode());
                 return;
             }
             dahuaSwingMapper.upsertRecord(r);

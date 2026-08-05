@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryAlarmPresetMapper">
+
+    <resultMap id="BaseResultMap" type="com.example.demo.modules.telemetry.entity.TelemetryAlarmPreset">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="description" property="description"/>
+        <result column="floor_code" property="floorCode"/>
+        <result column="temp_min" property="tempMin"/>
+        <result column="temp_max" property="tempMax"/>
+        <result column="hum_min" property="humMin"/>
+        <result column="hum_max" property="humMax"/>
+        <result column="pressure_min" property="pressureMin"/>
+        <result column="pressure_max" property="pressureMax"/>
+        <result column="hysteresis_temp" property="hysteresisTemp"/>
+        <result column="hysteresis_hum" property="hysteresisHum"/>
+        <result column="hysteresis_pressure" property="hysteresisPressure"/>
+        <result column="alarm_cooldown_minutes" property="alarmCooldownMinutes"/>
+        <result column="is_global" property="isGlobal"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="findAll" resultMap="BaseResultMap">
+        SELECT * FROM telemetry_alarm_preset
+        WHERE is_global = 1 OR floor_code = #{floorCode} OR floor_code IS NULL
+        ORDER BY is_global DESC, name ASC
+    </select>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT * FROM telemetry_alarm_preset WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO telemetry_alarm_preset (name, description, floor_code,
+            temp_min, temp_max, hum_min, hum_max, pressure_min, pressure_max,
+            hysteresis_temp, hysteresis_hum, hysteresis_pressure,
+            alarm_cooldown_minutes, is_global)
+        VALUES (#{name}, #{description}, #{floorCode},
+            #{tempMin}, #{tempMax}, #{humMin}, #{humMax}, #{pressureMin}, #{pressureMax},
+            #{hysteresisTemp}, #{hysteresisHum}, #{hysteresisPressure},
+            #{alarmCooldownMinutes}, #{isGlobal})
+    </insert>
+
+    <update id="update">
+        UPDATE telemetry_alarm_preset SET
+            name = #{name}, description = #{description}, floor_code = #{floorCode},
+            temp_min = #{tempMin}, temp_max = #{tempMax},
+            hum_min = #{humMin}, hum_max = #{humMax},
+            pressure_min = #{pressureMin}, pressure_max = #{pressureMax},
+            hysteresis_temp = #{hysteresisTemp}, hysteresis_hum = #{hysteresisHum},
+            hysteresis_pressure = #{hysteresisPressure},
+            alarm_cooldown_minutes = #{alarmCooldownMinutes},
+            is_global = #{isGlobal}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM telemetry_alarm_preset WHERE id = #{id}
+    </delete>
+</mapper>

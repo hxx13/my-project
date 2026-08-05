@@ -10,7 +10,7 @@ export default function AdminPage() {
   const handleLogout = () => {
     authStorage.clear();
     toast.success("已退出登录");
-    navigate("/login", { replace: true });
+    navigate("/", { replace: true });
   };
 
   return (
