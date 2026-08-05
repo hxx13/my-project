@@ -169,6 +169,19 @@ public class TelemetryAlarmCheckScheduler {
 
                 for (TelemetryWatchlistTagRow row : suiteRows) {
                     if (row.getAlarmEnabled() != null && row.getAlarmEnabled() == 0) { skipped++; continue; }
+
+                    // ── 逐变量重报警冷却 ──
+                    Integer cooldown = row.getAlarmCooldownMinutes();
+                    if (cooldown != null && cooldown > 0) {
+                        TelemetryAlarmLog lastAlarm = alarmLogMapper.findLastAlarmByVariable(row.getWinccVariableName());
+                        if (lastAlarm != null && lastAlarm.getSentAt() != null) {
+                            long minutesSinceLastAlarm = Duration.between(lastAlarm.getSentAt(), LocalDateTime.now()).toMinutes();
+                            if (minutesSinceLastAlarm < cooldown) {
+                                skipped++; continue; // 冷却中，跳过本次检测
+                            }
+                        }
+                    }
+
                     AlarmItem item = evaluateVariable(row, floorCode, suiteNorm, suiteCfg, globalLimits,
                             snapshotValues, resetCooldownMin, notifyRecovery);
                     if (item != null) {

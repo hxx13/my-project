@@ -2,8 +2,11 @@ package com.example.demo.modules.telemetry.controller;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.modules.telemetry.dto.TelemetryAlarmConfigTreeDto;
+import com.example.demo.modules.telemetry.dto.watchlist.TelemetryWatchlistTagAlarmOverridePatchDto;
+import com.example.demo.modules.telemetry.entity.TelemetryAlarmPreset;
 import com.example.demo.modules.telemetry.entity.TelemetryFloorAlarmConfig;
 import com.example.demo.modules.telemetry.entity.TelemetrySuiteAlarmConfig;
+import com.example.demo.modules.telemetry.mapper.TelemetryAlarmPresetMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryWatchlistTagMapper;
 import com.example.demo.modules.telemetry.service.TelemetryAlarmConfigService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,11 +23,19 @@ public class TelemetryAlarmConfigController {
 
     private final TelemetryAlarmConfigService configService;
     private final TelemetryWatchlistTagMapper tagMapper;
+    private final TelemetryAlarmPresetMapper presetMapper;
 
     public TelemetryAlarmConfigController(TelemetryAlarmConfigService configService,
                                           TelemetryWatchlistTagMapper tagMapper) {
+        this(configService, tagMapper, null);
+    }
+
+    public TelemetryAlarmConfigController(TelemetryAlarmConfigService configService,
+                                          TelemetryWatchlistTagMapper tagMapper,
+                                          TelemetryAlarmPresetMapper presetMapper) {
         this.configService = configService;
         this.tagMapper = tagMapper;
+        this.presetMapper = presetMapper;
     }
 
     // ── 楼层 ──
@@ -115,6 +126,65 @@ public class TelemetryAlarmConfigController {
                                            @RequestParam(required = false) Boolean enabled) {
         Integer val = enabled == null ? null : (enabled ? 1 : 0);
         tagMapper.updateAlarmEnabled(tagId, val);
+        return Result.success();
+    }
+
+    // ── 逐测点报警限覆盖 ──
+
+    @PatchMapping("/tags/{tagId}/alarm-overrides")
+    @Operation(summary = "设置逐测点报警限覆盖 + 冷却时间")
+    public Result<Void> setTagAlarmOverrides(@PathVariable Long tagId,
+                                             @RequestBody TelemetryWatchlistTagAlarmOverridePatchDto body) {
+        tagMapper.updateAlarmOverridesById(tagId, body.getBundleId(), body.getAlarmOverrideMin(), body.getAlarmOverrideMax());
+        if (body.getAlarmCooldownMinutes() != null) {
+            tagMapper.updateAlarmCooldown(tagId, body.getAlarmCooldownMinutes());
+        }
+        return Result.success();
+    }
+
+    @PatchMapping("/tags/batch-alarm-overrides")
+    @Operation(summary = "批量设置逐测点报警限覆盖")
+    public Result<Integer> batchSetTagAlarmOverrides(@RequestBody List<TelemetryWatchlistTagAlarmOverridePatchDto> batch) {
+        int count = 0;
+        for (var body : batch) {
+            if (body.getTagId() == null) continue;
+            tagMapper.updateAlarmOverridesById(body.getTagId(), body.getBundleId(),
+                    body.getAlarmOverrideMin(), body.getAlarmOverrideMax());
+            if (body.getAlarmCooldownMinutes() != null) {
+                tagMapper.updateAlarmCooldown(body.getTagId(), body.getAlarmCooldownMinutes());
+            }
+            count++;
+        }
+        return Result.success(count);
+    }
+
+    // ── 报警预设模板 CRUD ──
+
+    @GetMapping("/presets")
+    @Operation(summary = "列出报警预设模板")
+    public Result<List<TelemetryAlarmPreset>> listPresets(@RequestParam(required = false) String floorCode) {
+        return Result.success(presetMapper.findAll(floorCode));
+    }
+
+    @PostMapping("/presets")
+    @Operation(summary = "创建报警预设模板")
+    public Result<TelemetryAlarmPreset> createPreset(@RequestBody TelemetryAlarmPreset preset) {
+        presetMapper.insert(preset);
+        return Result.success(presetMapper.findById(preset.getId()));
+    }
+
+    @PutMapping("/presets/{id}")
+    @Operation(summary = "更新报警预设模板")
+    public Result<TelemetryAlarmPreset> updatePreset(@PathVariable Long id, @RequestBody TelemetryAlarmPreset preset) {
+        preset.setId(id);
+        presetMapper.update(preset);
+        return Result.success(presetMapper.findById(id));
+    }
+
+    @DeleteMapping("/presets/{id}")
+    @Operation(summary = "删除报警预设模板")
+    public Result<Void> deletePreset(@PathVariable Long id) {
+        presetMapper.deleteById(id);
         return Result.success();
     }
 }
