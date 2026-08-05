@@ -333,8 +333,14 @@ public class TelemetryAlarmCheckScheduler {
         LocalDateTime lastSentAt = lastAny != null ? lastAny.getSentAt() : null;
 
         // 超过 resetCooldownMin 自动重置为 OK，允许再次报警
+        // Bug fix: 当逐变量冷却周期 < 楼层重置周期时，取较小值，确保冷却到期后状态机不会错误阻塞
+        int effectiveResetMin = resetCooldownMin;
+        Integer tagCooldown = row.getAlarmCooldownMinutes();
+        if (tagCooldown != null && tagCooldown > 0 && tagCooldown < effectiveResetMin) {
+            effectiveResetMin = tagCooldown;
+        }
         if (lastBand != null && !"OK".equals(lastBand) && lastSentAt != null
-                && Duration.between(lastSentAt, LocalDateTime.now()).toMinutes() >= resetCooldownMin) {
+                && Duration.between(lastSentAt, LocalDateTime.now()).toMinutes() >= effectiveResetMin) {
             lastBand = "OK";
         }
 
@@ -344,10 +350,10 @@ public class TelemetryAlarmCheckScheduler {
         } else if (limitMin != null && current < limitMin) {
             // 低于下限 → LOW
             newBand = "LOW"; limitDisplay = limits.minValue(); direction = "偏低";
-        } else if ("HIGH".equals(lastBand) && limitMax != null && current > limitMax - hysteresis) {
+        } else if ("HIGH".equals(lastBand) && limitMax != null && current >= limitMax - hysteresis) {
             // 滞回区内：曾 HIGH 但未降到 limitMax - hysteresis 以下 → 保持 HIGH（不触发恢复）
             return null;
-        } else if ("LOW".equals(lastBand) && limitMin != null && current < limitMin + hysteresis) {
+        } else if ("LOW".equals(lastBand) && limitMin != null && current <= limitMin + hysteresis) {
             // 滞回区内：曾 LOW 但未升到 limitMin + hysteresis 以上 → 保持 LOW（不触发恢复）
             return null;
         } else {
