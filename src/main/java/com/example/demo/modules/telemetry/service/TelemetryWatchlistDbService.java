@@ -917,7 +917,7 @@ public class TelemetryWatchlistDbService {
         }
         String min = trimToNull(body.getAlarmOverrideMin());
         String max = trimToNull(body.getAlarmOverrideMax());
-        int n = tagMapper.updateAlarmOverridesById(tagId, b.getId(), min, max);
+        int n = tagMapper.updateAlarmOverridesById(tagId, min, max);
         if (n <= 0) {
             throw new IllegalStateException("更新报警覆盖失败");
         }

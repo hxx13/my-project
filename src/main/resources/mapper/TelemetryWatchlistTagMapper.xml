@@ -192,7 +192,7 @@
         UPDATE telemetry_watchlist_tag
         SET alarm_override_min = #{min},
             alarm_override_max = #{max}
-        WHERE id = #{id} AND bundle_id = #{bundleId}
+        WHERE id = #{id}
     </update>
 
     <update id="mergeCachedAlarmLimitsByVariableName">

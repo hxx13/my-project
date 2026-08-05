@@ -135,7 +135,7 @@ public class TelemetryAlarmConfigController {
     @Operation(summary = "设置逐测点报警限覆盖 + 冷却时间")
     public Result<Void> setTagAlarmOverrides(@PathVariable Long tagId,
                                              @RequestBody TelemetryWatchlistTagAlarmOverridePatchDto body) {
-        tagMapper.updateAlarmOverridesById(tagId, body.getBundleId(), body.getAlarmOverrideMin(), body.getAlarmOverrideMax());
+        tagMapper.updateAlarmOverridesById(tagId, body.getAlarmOverrideMin(), body.getAlarmOverrideMax());
         if (body.getAlarmCooldownMinutes() != null) {
             tagMapper.updateAlarmCooldown(tagId, body.getAlarmCooldownMinutes());
         }
@@ -148,7 +148,7 @@ public class TelemetryAlarmConfigController {
         int count = 0;
         for (var body : batch) {
             if (body.getTagId() == null) continue;
-            tagMapper.updateAlarmOverridesById(body.getTagId(), body.getBundleId(),
+            tagMapper.updateAlarmOverridesById(body.getTagId(),
                     body.getAlarmOverrideMin(), body.getAlarmOverrideMax());
             if (body.getAlarmCooldownMinutes() != null) {
                 tagMapper.updateAlarmCooldown(body.getTagId(), body.getAlarmCooldownMinutes());

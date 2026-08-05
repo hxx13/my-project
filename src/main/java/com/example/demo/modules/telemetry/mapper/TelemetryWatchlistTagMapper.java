@@ -43,7 +43,6 @@ public interface TelemetryWatchlistTagMapper {
     TelemetryWatchlistTagRow selectById(@Param("id") Long id);
 
     int updateAlarmOverridesById(@Param("id") Long id,
-                                 @Param("bundleId") Long bundleId,
                                  @Param("min") String min,
                                  @Param("max") String max);
 
