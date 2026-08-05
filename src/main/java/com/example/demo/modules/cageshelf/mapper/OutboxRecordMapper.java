@@ -12,7 +12,7 @@ public interface OutboxRecordMapper {
 
     int insert(OutboxRecord record);
 
-    /** 取待投递记录（FOR UPDATE SKIP LOCKED，防并发重复投递） */
+    /** 取待投递记录（FOR UPDATE 行锁，防并发重复投递） */
     List<OutboxRecord> selectPending(@Param("limit") int limit);
 
     int updateStatus(@Param("id") Long id,

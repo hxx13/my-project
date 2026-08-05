@@ -828,15 +828,18 @@ function ChannelConfigSection({
           const ch = source.channels.find(c => c.channelCode === def.code);
           const draft = ch ? drafts[ch.id] : null;
           const enabled = draft?.enabled ?? false;
+          const hasTemplate = ch && (ch.titleTpl || ch.contentTpl);
+          const noTemplateHint = !ch ? "渠道未创建，请点击按钮进入配置" : !hasTemplate ? "无模板，请先配置模板内容" : undefined;
           return (
             <div key={def.code} className="inline-flex items-center gap-0.5">
               <AdminButton type="button" tone={enabled ? "secondary" : "ghost"} size="sm"
                 onClick={() => setOpenChannel(def.code)}>
                 {def.icon}
                 {def.name}
+                {!hasTemplate && <span className="ml-0.5 text-[10px] text-amber-500" title={noTemplateHint}>⚠</span>}
               </AdminButton>
               <AdminSwitchScaled size="sm" checked={enabled}
-                onChange={(v) => { const c = source.channels.find(x => x.channelCode === def.code); if (c) onUpdate(source.sourceId, c.id, { enabled: v }); }} />
+                  onChange={(v) => { const c = source.channels.find(x => x.channelCode === def.code); if (c) onUpdate(source.sourceId, c.id, { enabled: v }); }} />
             </div>
           );
         })}

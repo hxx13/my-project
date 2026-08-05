@@ -228,7 +228,10 @@ public class DigestScheduler {
                         }
 
                         try {
-                            PushResult result = channel.send(target, title, content);
+                            // EMAIL 渠道需要 HTML 格式，Markdown 源码会显示为乱码
+                            String channelContent = PushConstants.CHANNEL_EMAIL.equals(chCfg.getChannelCode())
+                                    ? markdownToHtml(content) : content;
+                            PushResult result = channel.send(target, title, channelContent);
                             if (result.isSuccess()) {
                                 sent++;
                                 writeDeliveryLog(userId, chCfg.getChannelCode(), sample.getSourceCode(),
@@ -324,7 +327,9 @@ public class DigestScheduler {
                 continue;
             }
             try {
-                channel.send(target, title, content);
+                String channelContent = PushConstants.CHANNEL_EMAIL.equals(channel.getCode())
+                        ? markdownToHtml(content) : content;
+                channel.send(target, title, channelContent);
                 sent = true;
                 writeDeliveryLog(userId, channel.getCode(), items.get(0).getSourceCode(),
                         items.get(0).getSourceCode(), userName, title, content, true, null, null);
@@ -434,6 +439,24 @@ public class DigestScheduler {
             log.warn("[Digest] failed to check mute for {}/{}: {}", userId, sourceCode, e.getMessage());
         }
         return false;
+    }
+
+    /** 将聚合摘要用的轻量 Markdown 转为 HTML（专用于 EMAIL 渠道） */
+    private static String markdownToHtml(String md) {
+        if (md == null) return "";
+        String s = md;
+        // 标题 ## xxx
+        s = s.replaceAll("(?m)^##\\s+(.+)$", "<h2 style='font-size:16px;margin:16px 0 8px'>$1</h2>");
+        // 粗体 **xxx**
+        s = s.replaceAll("\\*\\*(.+?)\\*\\*", "<b>$1</b>");
+        // 分隔线 ---
+        s = s.replaceAll("(?m)^---\\s*$", "<hr style='border:none;border-top:1px solid #e2e8f0;margin:12px 0'>");
+        // 引用 > xxx
+        s = s.replaceAll("(?m)^>\\s?(.+)$", "<blockquote style='color:#64748b;border-left:3px solid #cbd5e1;padding-left:12px;margin:8px 0'>$1</blockquote>");
+        // 换行
+        s = s.replaceAll("\n\n", "<br><br>");
+        s = s.replaceAll("\n", "<br>");
+        return s;
     }
 
     /** 去除 HTML + Markdown 标签，保留纯文本 */

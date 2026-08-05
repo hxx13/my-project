@@ -34,39 +34,57 @@ public class PushTemplateSeed implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        List<NotifySource> sources = sourceMapper.findAll();
+        List<NotifySource> sources;
+        try {
+            sources = sourceMapper.findAll();
+        } catch (Exception e) {
+            log.error("[Push] 模板种子：查询通知源失败 — {}", e.getMessage());
+            return;
+        }
         if (sources.isEmpty()) {
             log.info("[Push] 通知源为空，跳过模板种子");
             return;
         }
+        int created = 0, updated = 0, errors = 0;
         for (NotifySource src : sources) {
             for (String ch : List.of("EMAIL", "SERVER_CHAN", "WXPUSHER")) {
+                try {
                 Template t = TEMPLATES.get(src.getSourceCode());
-                if (t == null) continue;
+                // 无预定义模板 → 创建渠道行但留空模板，用户后续在 UI 中自行编辑
+                String title = t != null ? t.title : "";
+                String content = t != null
+                        ? ("EMAIL".equals(ch) ? t.contentEmail
+                                : "WXPUSHER".equals(ch) ? t.contentWxpusher() : t.contentWechat())
+                        : "";
                 NotifySourceChannel exist = channelMapper.findBySourceAndChannel(src.getId(), ch);
-                String content = "EMAIL".equals(ch) ? t.contentEmail
-                        : "WXPUSHER".equals(ch) ? t.contentWxpusher() : t.contentWechat();
                 if (exist != null) {
-                    // 已有记录 → 更新模板（保留 enable/quiet 等已有设置）
-                    exist.setTitleTpl(t.title);
-                    exist.setContentTpl(content);
+                    // 已有记录 → 仅当预定义模板存在时更新模板（保留 enable/quiet 等已有设置）
+                    if (t != null) {
+                        exist.setTitleTpl(title);
+                        exist.setContentTpl(content);
+                    }
                     if ("SWIPE_FAILURE_ALERT".equals(src.getSourceCode())) exist.setRateLimitSeconds(0);
                     channelMapper.update(exist);
-                    log.info("[Push] 更新模板 {}/{} -> {}", src.getSourceCode(), ch, t.title);
+                    updated++;
                 } else {
                     NotifySourceChannel cfg = new NotifySourceChannel();
                     cfg.setSourceId(src.getId());
                     cfg.setChannelCode(ch);
-                    cfg.setEnabled(true);
-                    cfg.setTitleTpl(t.title);
+                    cfg.setEnabled(t != null);  // 有预定义模板才默认启用，否则由用户自行开启
+                    cfg.setTitleTpl(title);
                     cfg.setContentTpl(content);
                     cfg.setRateLimitSeconds("SWIPE_FAILURE_ALERT".equals(src.getSourceCode()) ? 0 : 300);
                     cfg.setDigestMode("INSTANT");
                     channelMapper.insert(cfg);
-                    log.info("[Push] 种子模板 {}/{} -> {}", src.getSourceCode(), ch, t.title);
+                    created++;
+                }
+                } catch (Exception e) {
+                    errors++;
+                    log.error("[Push] 模板种子失败 {}/{}: {}", src.getSourceCode(), ch, e.getMessage());
                 }
             }
         }
+        log.info("[Push] 模板种子完成 — 新建 {} / 更新 {} / 失败 {}", created, updated, errors);
     }
 
     private record Template(String title, String contentEmail, String contentWechat, String contentWxpusher) {
@@ -274,6 +292,50 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "🔢 {jobNumber}\n"
                         + "🏫 {projectGroup}\n"
                         + "> ARO 培训审批系统"
+        ));
+
+        // ========== 人员进出通知 ==========
+        TEMPLATES.put("ACCESS_ENTER", new Template(
+                "人员进入 — {personName}",
+                "<div style='border-left:4px solid #16a34a;padding-left:14px;margin:8px 0'>"
+                        + "<p style='font-size:15px;font-weight:700;color:#1e293b;margin:0 0 6px'>{roomName} · {doorLabel}</p>"
+                        + "<p style='font-size:17px;font-weight:700;color:#16a34a;margin:0 0 4px'>{personName} 进入</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>部门：{department}</p>"
+                        + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{enterTime}</p></div>"
+                        + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 门禁监测</p>",
+                "## 🟢 人员进入\n\n"
+                        + "📍 **{roomName}** · {doorLabel}\n\n"
+                        + "👤 {personName} 进入\n\n"
+                        + "🏫 {department}\n\n"
+                        + "🕐 {enterTime}\n\n"
+                        + "> ARO 系统自动推送",
+                "## 🟢 人员进入\n"
+                        + "📍 **{roomName}** · {doorLabel}\n"
+                        + "👤 {personName} 进入\n"
+                        + "🏫 {department}\n"
+                        + "🕐 {enterTime}\n"
+                        + "> ARO 系统自动推送"
+        ));
+        TEMPLATES.put("ACCESS_EXIT", new Template(
+                "人员离开 — {personName}",
+                "<div style='border-left:4px solid #f59e0b;padding-left:14px;margin:8px 0'>"
+                        + "<p style='font-size:15px;font-weight:700;color:#1e293b;margin:0 0 6px'>{roomName} · {doorLabel}</p>"
+                        + "<p style='font-size:17px;font-weight:700;color:#d97706;margin:0 0 4px'>{personName} 离开</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>部门：{department}</p>"
+                        + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{exitTime}</p></div>"
+                        + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 门禁监测</p>",
+                "## 🟡 人员离开\n\n"
+                        + "📍 **{roomName}** · {doorLabel}\n\n"
+                        + "👤 {personName} 离开\n\n"
+                        + "🏫 {department}\n\n"
+                        + "🕐 {exitTime}\n\n"
+                        + "> ARO 系统自动推送",
+                "## 🟡 人员离开\n"
+                        + "📍 **{roomName}** · {doorLabel}\n"
+                        + "👤 {personName} 离开\n"
+                        + "🏫 {department}\n"
+                        + "🕐 {exitTime}\n"
+                        + "> ARO 系统自动推送"
         ));
     }
 }

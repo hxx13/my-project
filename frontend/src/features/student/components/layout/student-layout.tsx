@@ -101,7 +101,7 @@ export default function StudentLayout() {
 
         <main
           className={cn(
-            "flex-1 overflow-y-auto overscroll-y-contain p-6",
+            "student-page-content flex-1 overflow-y-auto overscroll-y-contain",
             isDark ? "bg-transparent" : "bg-[var(--student-canvas-soft)]",
           )}
         >

@@ -7,6 +7,7 @@ import {
   type CageShelfCell,
   type CageShelfDetail,
   type PersistedAlert,
+  type PoolCell,
 } from "@/api/domains/cageShelf.api";
 import { CellButton } from "./CellButton";
 
@@ -52,6 +53,8 @@ export function ShelfGrid({
   scanLockTarget,
   bindPairCache,
   unbindPairCache,
+  claimMode,
+  poolCells,
 }: {
   title: string;
   detail: CageShelfDetail | null;
@@ -77,6 +80,8 @@ export function ShelfGrid({
   scanLockTarget?: { sid: string; x: number; y: number } | null;
   bindPairCache?: Map<string, { cell: CageShelfCell; code: string }>;
   unbindPairCache?: Set<string>;
+  claimMode?: boolean;
+  poolCells?: Map<number, PoolCell>;
 }) {
   const sid = detail?.shelfMeta?.shelveId ?? "";
   const cells = detail?.grid ?? [];
@@ -123,6 +128,8 @@ export function ShelfGrid({
               isCrossCol={showCross && c.x === crossX}
               isCrossRow={showCross && c.y === crossY}
               flashOverlay={!!(scanLockTarget && scanLockTarget.sid === sid && scanLockTarget.x === c.x && scanLockTarget.y === c.y)}
+              claimMode={claimMode}
+              isPoolCell={claimMode && poolCells ? poolCells.has(Number((c as any).id ?? (c as any).animalCageId ?? 0)) : false}
             />
           );
         })}

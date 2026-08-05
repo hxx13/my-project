@@ -1,5 +1,7 @@
 package com.example.demo.modules.notification.push.source;
 
+import com.example.demo.modules.notification.push.config.NotifySourceChannelMapper;
+import com.example.demo.modules.notification.push.recipient.NotifySourceRecipientMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -7,7 +9,9 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 @Order(2)
@@ -15,13 +19,24 @@ public class NotifySourceRegistry implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(NotifySourceRegistry.class);
     private final NotifySourceMapper sourceMapper;
+    private final NotifySourceChannelMapper channelMapper;
+    private final NotifySourceRecipientMapper recipientMapper;
 
-    public NotifySourceRegistry(NotifySourceMapper sourceMapper) {
+    /** 前序部署可能遗留的脏数据 — 以 source_name 匹配并删除（级联清理渠道+接收人） */
+    private static final Set<String> OBSOLETE_SOURCE_NAMES = Set.of(
+            "设备告警通知", "学生审核通知");
+
+    public NotifySourceRegistry(NotifySourceMapper sourceMapper,
+                                NotifySourceChannelMapper channelMapper,
+                                NotifySourceRecipientMapper recipientMapper) {
         this.sourceMapper = sourceMapper;
+        this.channelMapper = channelMapper;
+        this.recipientMapper = recipientMapper;
     }
 
     @Override
     public void run(ApplicationArguments args) {
+        cleanObsoleteSources();
         log.info("[Push] 注册通知源...");
 
         register("ACTIVATION_SUCCESS", "激活成功通知", "刷卡进入后刷激活门成功",
@@ -93,7 +108,52 @@ public class NotifySourceRegistry implements ApplicationRunner {
                 Map.of("sessionTitle", "培训名称", "traineeName", "学员姓名",
                         "jobNumber", "工号", "projectGroup", "课题组"));
 
-        log.info("[Push] 通知源注册完成（19个源）");
+        // ========== 人员进出通知 ==========
+        register("ACCESS_ENTER", "人员进入通知",
+                "人员刷卡/扫码进入房间时触发",
+                Map.of("personName", "人员姓名", "roomName", "房间名称",
+                        "doorLabel", "门禁名称", "enterTime", "进入时间",
+                        "department", "部门/课题组", "targetUserId", "进入人员ID（自动索引）"));
+        register("ACCESS_EXIT", "人员离开通知",
+                "人员刷卡/扫码离开房间时触发",
+                Map.of("personName", "人员姓名", "roomName", "房间名称",
+                        "doorLabel", "门禁名称", "exitTime", "离开时间",
+                        "department", "部门/课题组", "targetUserId", "离开人员ID（自动索引）"));
+
+        log.info("[Push] 通知源注册完成（21个源）");
+    }
+
+    /** 清理前序部署遗留的脏数据：以名称匹配，级联删除渠道+接收人+源本身 */
+    private void cleanObsoleteSources() {
+        List<NotifySource> all;
+        try {
+            all = sourceMapper.findAll();
+        } catch (Exception e) {
+            log.warn("[Push] 清理脏数据前查询失败，跳过: {}", e.getMessage());
+            return;
+        }
+        int cleaned = 0;
+        for (NotifySource src : all) {
+            String name = src.getSourceName();
+            String code = src.getSourceCode();
+            boolean shouldDelete = OBSOLETE_SOURCE_NAMES.contains(name)
+                    || ("人员进入通知".equals(name) && !"ACCESS_ENTER".equals(code))
+                    || ("人员离开通知".equals(name) && !"ACCESS_EXIT".equals(code));
+            if (!shouldDelete) continue;
+
+            try {
+                channelMapper.deleteBySourceId(src.getId());
+                recipientMapper.deleteBySourceId(src.getId());
+                sourceMapper.deleteById(src.getId());
+                cleaned++;
+                log.info("[Push] 清理脏数据: name={} code={} id={}", name, code, src.getId());
+            } catch (Exception e) {
+                log.warn("[Push] 清理脏数据失败 name={} code={}: {}", name, code, e.getMessage());
+            }
+        }
+        if (cleaned > 0) {
+            log.info("[Push] 脏数据清理完成 — 删除 {} 条", cleaned);
+        }
     }
 
     private void register(String code, String name, String desc, Map<String, String> variables) {
