@@ -26,11 +26,6 @@ public class TelemetryAlarmConfigController {
     private final TelemetryAlarmPresetMapper presetMapper;
 
     public TelemetryAlarmConfigController(TelemetryAlarmConfigService configService,
-                                          TelemetryWatchlistTagMapper tagMapper) {
-        this(configService, tagMapper, null);
-    }
-
-    public TelemetryAlarmConfigController(TelemetryAlarmConfigService configService,
                                           TelemetryWatchlistTagMapper tagMapper,
                                           TelemetryAlarmPresetMapper presetMapper) {
         this.configService = configService;
