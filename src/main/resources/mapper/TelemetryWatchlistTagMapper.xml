@@ -23,6 +23,7 @@
         <result column="metric_kind_label" property="metricKindLabel"/>
         <result column="enabled" property="enabled"/>
         <result column="alarm_enabled" property="alarmEnabled"/>
+        <result column="alarm_cooldown_minutes" property="alarmCooldownMinutes"/>
         <result column="sort_order" property="sortOrder"/>
         <result column="created_at" property="createdAt"/>
         <result column="bundle_code" property="bundleCode"/>
@@ -83,6 +84,7 @@
                t.floor_code, t.room_base, t.room_canonical, t.suite_suffix, t.metric_kind_code,
                t.cached_alarm_min_value, t.cached_alarm_max_value, t.cached_alarm_limits_at,
                t.alarm_override_min, t.alarm_override_max,
+               t.alarm_enabled, t.alarm_cooldown_minutes,
                t.enabled, t.sort_order, t.created_at,
                b.code AS bundle_code, b.display_name AS bundle_display_name,
                mk.kind_role AS metric_kind_role,
