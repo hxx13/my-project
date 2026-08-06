@@ -24,6 +24,9 @@ public interface AroDatabaseMapper {
     /** 人员库姓名；无记录或姓名为空时返回 null */
     String findPersonnelNameByUserId(@Param("userId") String userId);
 
+    /** 查询人员所属课题组名称 */
+    String findProjectGroupByUserId(@Param("userId") String userId);
+
     /**
      * 批量人员姓名；每项含 userId、name（与 {@link #findPersonnelNameByUserId} 同源，多行取 MIN(name)）。
      */

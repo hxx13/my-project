@@ -85,6 +85,7 @@ import AdminPushConfigPage from "@/pages/AdminPushConfigPage";
 import AdminNotificationDigestPage from "@/pages/AdminNotificationDigestPage";
 import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
+import ReferenceDataPage from "@/pages/ReferenceDataPage";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
 import AppearanceSettings from "@/features/admin/settings/AppearanceSettings";
 import NotificationsSettings from "@/features/admin/settings/NotificationsSettings";
@@ -191,6 +192,7 @@ export const router = createHashRouter([
       { path: "cage-shelf", element: <StudentCageShelfPage /> },
       { path: "material", element: <StudentMaterialPage /> },
       { path: "material/requests", element: <Navigate to="/student/material?view=requests" replace /> },
+      { path: "animal-order", element: <ReferenceDataPage /> },
     ],
   },
 
@@ -226,6 +228,7 @@ export const router = createHashRouter([
               { path: "animal-room-cockpit", element: <AnimalRoomCockpitPage /> },
               { path: "digital-twin-screen", element: <DigitalTwinScreenPage /> },
               { path: "digital-twin-3d", element: <DigitalTwin3DPage /> },
+              { path: "animal-order", element: <ReferenceDataPage /> },
             ],
           },
           { path: "profile-security", element: <Navigate to={`${STAFF_NS}/admin/profile-security`} replace /> },
@@ -306,6 +309,7 @@ export const router = createHashRouter([
                   { path: "page-permissions", element: <Navigate to={`${STAFF_NS}/admin/settings/permissions`} replace /> },
                   { path: "login-branding", element: <Navigate to={`${STAFF_NS}/admin/settings/appearance`} replace /> },
                   { path: "conversation-archive", element: <AdminConversationArchivePage /> },
+                  { path: "animal-order", element: <ReferenceDataPage /> },
                 ],
               },
               {

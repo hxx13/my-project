@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.referencedata.mapper.RefOrderLineMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.referencedata.entity.RefOrderLine">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="refDataId" column="ref_data_id"/>
+        <result property="specSelections" column="spec_selections"/>
+        <result property="hierarchyChain" column="hierarchy_chain"/>
+        <result property="quantity" column="quantity"/>
+        <result property="lineRemark" column="line_remark"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ref_order_line(order_id, ref_data_id, spec_selections, hierarchy_chain, quantity, line_remark)
+        VALUES (#{orderId}, #{refDataId}, #{specSelections}, #{hierarchyChain}, #{quantity}, #{lineRemark})
+    </insert>
+
+    <delete id="deleteByOrderId">
+        DELETE FROM ref_order_line WHERE order_id = #{orderId}
+    </delete>
+
+    <select id="listByOrderId" resultMap="Base">
+        SELECT id, order_id, ref_data_id, spec_selections, hierarchy_chain, quantity, line_remark
+        FROM ref_order_line WHERE order_id = #{orderId} ORDER BY id ASC
+    </select>
+
+</mapper>

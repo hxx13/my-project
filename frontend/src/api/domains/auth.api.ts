@@ -17,6 +17,8 @@ export interface AuthUserInfo {
   miniHomeDefaultTab?: string | null;
   /** 账号来源库：STUDENT（学生库）/ STAFF（教职工库） */
   accountSource?: string | null;
+  /** 所属课题组名称 */
+  projectGroupName?: string | null;
 }
 
 export interface AuthData {

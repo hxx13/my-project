@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Home, DoorOpen, Bell,
-  MessageSquare, Settings, LayoutGrid, Package,
+  MessageSquare, Settings, LayoutGrid, Package, ShoppingCart,
   ChevronsLeft, ChevronsRight, ChevronDown, ChevronRight,
   Search, Star, Lock, History,
 } from "lucide-react";
@@ -65,6 +65,13 @@ const navGroups: NavGroup[] = [
     label: "物品",
     items: [
       { to: "/student/material", icon: Package, label: "申领物品" },
+    ],
+  },
+  {
+    id: "reference",
+    label: "订购",
+    items: [
+      { to: "/student/animal-order", icon: ShoppingCart, label: "实验动物订购" },
     ],
   },
 ];

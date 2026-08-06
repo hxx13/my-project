@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.referencedata.mapper.RefCartMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.referencedata.entity.RefCart">
+        <id property="id" column="id"/>
+        <result property="groupId" column="group_id"/>
+        <result property="refDataId" column="ref_data_id"/>
+        <result property="specSelections" column="spec_selections"/>
+        <result property="quantity" column="quantity"/>
+        <result property="remark" column="remark"/>
+        <result property="addedBy" column="added_by"/>
+        <result property="addedAt" column="added_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ref_cart(group_id, ref_data_id, spec_selections, quantity, remark, added_by)
+        VALUES (#{groupId}, #{refDataId}, #{specSelections}, #{quantity}, #{remark}, #{addedBy})
+    </insert>
+
+    <update id="update">
+        UPDATE ref_cart
+        SET spec_selections = #{specSelections},
+            quantity = #{quantity},
+            remark = #{remark}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM ref_cart WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByGroupId">
+        DELETE FROM ref_cart WHERE group_id = #{groupId}
+    </delete>
+
+    <select id="findById" resultMap="Base">
+        SELECT * FROM ref_cart WHERE id = #{id} LIMIT 1
+    </select>
+
+    <select id="listByGroupId" resultMap="Base">
+        SELECT * FROM ref_cart WHERE group_id = #{groupId} ORDER BY id ASC
+    </select>
+
+</mapper>
