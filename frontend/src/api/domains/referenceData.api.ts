@@ -125,12 +125,12 @@ export async function fetchSpecTemplates() {
   return res.data.data;
 }
 
-export async function createSpecTemplate(body: Partial<RefSpecTemplate> & { name: string; scope: string; options: string[] }) {
+export async function createSpecTemplate(body: Omit<Partial<RefSpecTemplate>, "options"> & { name: string; scope: string; options: { items: string[] } }) {
   const res = await authHttp.post<Result<RefSpecTemplate>>("/reference-data/spec-templates", body);
   return res.data.data;
 }
 
-export async function updateSpecTemplate(id: number, body: Partial<RefSpecTemplate>) {
+export async function updateSpecTemplate(id: number, body: Partial<Omit<RefSpecTemplate, "options">> & { options?: { items: string[] } }) {
   const res = await authHttp.put<Result<RefSpecTemplate>>(`/reference-data/spec-templates/${id}`, body);
   return res.data.data;
 }
