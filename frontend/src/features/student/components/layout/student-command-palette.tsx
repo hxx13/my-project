@@ -90,7 +90,7 @@ export function StudentCommandPalette({ open, onOpenChange }: StudentCommandPale
   );
 
   const handleSelect = (item: NavItem) => {
-    appendRecent(item.to);
+    appendStudentNavRecent(item.to);
     navigate(item.to);
     onOpenChange(false);
   };

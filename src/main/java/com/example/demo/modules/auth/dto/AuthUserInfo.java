@@ -25,4 +25,7 @@ public class AuthUserInfo {
 
     /** 小程序首页默认分栏：news | announcements */
     private String miniHomeDefaultTab;
+
+    /** 所属课题组名称（来自 aro_personnel.project_group_name） */
+    private String projectGroupName;
 }

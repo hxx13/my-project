@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PortalHeader } from "@/features/portal/PortalHeader";
 import { PortalHero } from "@/features/portal/PortalHero";
 import { PortalStatsSection } from "@/features/portal/PortalStatsSection";
@@ -5,6 +6,7 @@ import { ModelResourceSection } from "@/features/portal/ModelResourceSection";
 import { NewsSection } from "@/features/portal/NewsSection";
 import { AboutSection } from "@/features/portal/AboutSection";
 import { PortalFooter } from "@/features/portal/PortalFooter";
+import { PortalLoginModal } from "@/features/portal/PortalLoginModal";
 import { FadeInSection } from "@/components/scroll-reveal";
 
 function Divider() {
@@ -19,9 +21,11 @@ function Divider() {
 }
 
 export default function PortalLandingPage() {
+  const [loginOpen, setLoginOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-white">
-      <PortalHeader />
+      <PortalHeader onOpenLogin={() => setLoginOpen(true)} />
       <PortalHero />
       <Divider />
       <FadeInSection>
@@ -39,7 +43,8 @@ export default function PortalLandingPage() {
       <FadeInSection>
         <AboutSection />
       </FadeInSection>
-      <PortalFooter />
+      <PortalFooter onRequestLogin={() => setLoginOpen(true)} />
+      <PortalLoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   );
 }

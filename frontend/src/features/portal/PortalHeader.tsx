@@ -4,8 +4,7 @@ import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import { authStorage } from "@/features/auth/authStorage";
 import { resolveRootEntryPath } from "@/features/auth/postLoginNavigation";
 import { fullLogout } from "@/features/auth/impersonation";
-import { PortalLoginModal } from "@/features/portal/PortalLoginModal";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -72,7 +71,11 @@ function NavDropdown({ entry, onClose }: { entry: NavEntry; onClose: () => void 
 /*  PortalHeader — full-width dark sticky + Aceternity dropdowns        */
 /* ------------------------------------------------------------------ */
 
-export function PortalHeader() {
+interface PortalHeaderProps {
+  onOpenLogin: () => void;
+}
+
+export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
   const navigate = useNavigate();
   const hasToken = authStorage.hasToken();
   const role = authStorage.getRole() ?? "MEMBER";
@@ -83,7 +86,6 @@ export function PortalHeader() {
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [loginOpen, setLoginOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const dropdownTimer = useRef<number | null>(null);
@@ -143,7 +145,19 @@ export function PortalHeader() {
         </button>
 
         {/* Right: user / login */}
-        <div className="flex items-center" ref={userMenuRef}>
+        <div className="flex items-center gap-2" ref={userMenuRef}>
+          {/* 手机版入口 */}
+          <button
+            type="button"
+            onClick={() => navigate(hasToken ? "/m/home" : "/m/login")}
+            title="手机版"
+            aria-label="手机版"
+            className="flex items-center gap-1 text-sm text-white/50 hover:text-white/80 transition-colors px-2 py-1.5 rounded-lg border border-white/15 hover:border-white/30"
+          >
+            <Smartphone className="size-4" />
+            <span className="hidden sm:inline">手机版</span>
+          </button>
+
           {hasToken ? (
             <div className="relative">
               <button type="button" onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -156,13 +170,18 @@ export function PortalHeader() {
                   <div className="px-4 py-2 text-xs text-white/40 truncate border-b border-white/5">{displayName || userInfo?.username || "已登录"}</div>
                   <button onClick={() => { setUserMenuOpen(false); navigate(backgroundTarget || "/"); }}
                     className="w-full text-left px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors">进入后台</button>
+                  <button onClick={() => { setUserMenuOpen(false); navigate("/m/home"); }}
+                    className="w-full text-left px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors">
+                    <Smartphone className="size-3.5 inline mr-1.5 opacity-60" />
+                    切换到手机版
+                  </button>
                   <button onClick={() => { setUserMenuOpen(false); fullLogout(); }}
                     className="w-full text-left px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-white/5 transition-colors">退出登录</button>
                 </div>
               )}
             </div>
           ) : (
-            <button onClick={() => setLoginOpen(true)}
+            <button onClick={onOpenLogin}
               className="text-sm text-white/50 hover:text-white/80 transition-colors px-3 py-1.5 rounded-lg border border-white/15 hover:border-white/30">
               登录
             </button>
@@ -172,7 +191,10 @@ export function PortalHeader() {
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="absolute top-16 inset-x-0 border-b border-white/10 bg-[#0f172a]/98 shadow-xl p-4 z-40 lg:hidden">
+        <div
+          className="absolute top-16 inset-x-0 border-b border-white/10 shadow-xl p-4 z-40 lg:hidden"
+          style={{ backgroundColor: "rgba(15, 23, 42, 0.98)" }}
+        >
           <nav className="flex flex-col gap-1">
             {NAV_ENTRIES.map((entry) => (
               <div key={entry.label}>
@@ -185,6 +207,11 @@ export function PortalHeader() {
               </div>
             ))}
             <hr className="border-white/10 my-2" />
+            <button onClick={() => { setMobileOpen(false); navigate("/m/login"); }}
+              className="text-left px-3 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg">
+              <Smartphone className="size-3.5 inline mr-1.5 opacity-60" />
+              手机版
+            </button>
             {hasToken ? (
               <>
                 <button onClick={() => { setMobileOpen(false); navigate(backgroundTarget || "/"); }}
@@ -193,14 +220,13 @@ export function PortalHeader() {
                   className="text-left px-3 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-white/5 rounded-lg">退出登录</button>
               </>
             ) : (
-              <button onClick={() => { setMobileOpen(false); setLoginOpen(true); }}
+              <button onClick={() => { setMobileOpen(false); onOpenLogin(); }}
                 className="text-left px-3 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg">登录</button>
             )}
           </nav>
         </div>
       )}
 
-      <PortalLoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </>
   );
 }

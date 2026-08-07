@@ -1,0 +1,28 @@
+[Unit]
+Description=Twin System Spring Boot Application
+After=network.target mariadb.service
+Wants=mariadb.service
+
+[Service]
+Type=simple
+User=twin
+Group=twin
+WorkingDirectory=/opt/twin
+EnvironmentFile=/opt/twin/config/.env
+ExecStart=/usr/bin/java -jar /opt/twin/app/demo-*.jar --spring.profiles.active=prod
+ExecStop=/bin/kill -15 $MAINPID
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=twin
+
+# 优雅停机超时
+TimeoutStopSec=30
+
+# 防止 OOM
+MemoryHigh=3G
+MemoryMax=3500M
+
+[Install]
+WantedBy=multi-user.target

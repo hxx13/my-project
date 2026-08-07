@@ -7,6 +7,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.site.LoginBrandingService;
 import com.example.demo.modules.site.SiteConfigJdbcRepository;
 import com.example.demo.modules.site.dto.LoginBrandingVo;
+import com.example.demo.modules.site.dto.PortalFooterVo;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -116,6 +117,44 @@ public class AdminSiteBrandingController {
             String json = objectMapper.writeValueAsString(body == null ? new java.util.LinkedHashMap<>() : body);
             siteConfigRepo.upsertDashboardPreviewJson(json);
             return Result.success(body);
+        } catch (Exception ex) {
+            return Result.error(ex.getMessage() != null ? ex.getMessage() : "保存失败");
+        }
+    }
+
+    /* ── Portal Footer config ── */
+
+    @GetMapping("/portal-footer")
+    @Operation(summary = "读取门户页脚配置")
+    public Result<PortalFooterVo> getPortalFooter(HttpServletRequest request) {
+        Result<?> denied = requireSettingsAdmin(request);
+        if (denied != null) {
+            return (Result<PortalFooterVo>) denied;
+        }
+        try {
+            String json = siteConfigRepo.findPortalFooterJson().orElse("{}");
+            PortalFooterVo vo = objectMapper.readValue(json, PortalFooterVo.class);
+            return Result.success(vo != null ? vo : new PortalFooterVo());
+        } catch (Exception ex) {
+            return Result.success(new PortalFooterVo());
+        }
+    }
+
+    @PutMapping("/portal-footer")
+    @Operation(summary = "保存门户页脚配置")
+    public Result<PortalFooterVo> putPortalFooter(
+            @RequestBody PortalFooterVo body,
+            HttpServletRequest request
+    ) {
+        Result<?> denied = requireSettingsAdmin(request);
+        if (denied != null) {
+            return (Result<PortalFooterVo>) denied;
+        }
+        try {
+            PortalFooterVo vo = body != null ? body : new PortalFooterVo();
+            String json = objectMapper.writeValueAsString(vo);
+            siteConfigRepo.upsertPortalFooterJson(json);
+            return Result.success(vo);
         } catch (Exception ex) {
             return Result.error(ex.getMessage() != null ? ex.getMessage() : "保存失败");
         }

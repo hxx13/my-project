@@ -55,6 +55,41 @@ export type PortalStats = {
   lineChart?: PortalLineChart;
 };
 
+export type PortalFooterLink = {
+  label: string;
+  url: string;
+  requiresAuth: boolean;
+  sortOrder: number;
+};
+
+export type PortalFooterGroup = {
+  id: string;
+  group: string;
+  sortOrder: number;
+  items: PortalFooterLink[];
+};
+
+export type PortalFooterContact = {
+  phone: string;
+  email: string;
+  address: string;
+  workHours: string;
+};
+
+export type PortalFooterData = {
+  contact: PortalFooterContact;
+  groups: PortalFooterGroup[];
+  copyright?: string;
+};
+
+export async function fetchPortalFooter(): Promise<PortalFooterData> {
+  const response = await axios.get<Result<PortalFooterData>>("/api/public/portal-footer");
+  if (!response.data?.success || !response.data?.data) {
+    throw new Error(response.data?.message || "加载页脚配置失败");
+  }
+  return response.data.data;
+}
+
 export async function fetchPortalStats(): Promise<PortalStats> {
   const response = await axios.get<Result<PortalStats>>("/api/public/portal-stats");
   if (!response.data?.success || !response.data?.data) {

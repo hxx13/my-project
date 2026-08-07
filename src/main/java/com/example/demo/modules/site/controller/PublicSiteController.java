@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.modules.site.LoginBrandingService;
 import com.example.demo.modules.site.SiteConfigJdbcRepository;
 import com.example.demo.modules.site.dto.LoginBrandingVo;
+import com.example.demo.modules.site.dto.PortalFooterVo;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.dashboard.service.TwinDashboardService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -88,6 +89,18 @@ public class PublicSiteController {
             return ResponseEntity.ok().contentType(mediaType).body(new FileSystemResource(path));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/portal-footer")
+    @Operation(summary = "门户页脚配置（公开）")
+    public Result<PortalFooterVo> portalFooter() {
+        try {
+            String json = siteConfigRepo.findPortalFooterJson().orElse("{}");
+            PortalFooterVo vo = objectMapper.readValue(json, PortalFooterVo.class);
+            return Result.success(vo != null ? vo : new PortalFooterVo());
+        } catch (Exception ex) {
+            return Result.success(new PortalFooterVo());
         }
     }
 

@@ -12,7 +12,6 @@ import DebugCardStatusPage from "@/pages/DebugCardStatusPage.tsx";
 import DebugCardMappingPage from "@/pages/DebugCardMappingPage.tsx";
 import FaceDebugPage from "@/pages/FaceDebugPage.tsx";
 import { TwinDebugRouteShell } from "@/features/twin-chrome/TwinDebugRouteShell";
-import LoginPage from "@/pages/LoginPage";
 import AuthGuard from "@/router/AuthGuard";
 import TwinDebugStaffGuard from "@/router/TwinDebugStaffGuard";
 import RegisterStaffPage from "@/pages/RegisterStaffPage";
@@ -85,6 +84,7 @@ import AdminPushConfigPage from "@/pages/AdminPushConfigPage";
 import AdminNotificationDigestPage from "@/pages/AdminNotificationDigestPage";
 import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
+import ReferenceDataPage from "@/pages/ReferenceDataPage";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
 import AppearanceSettings from "@/features/admin/settings/AppearanceSettings";
 import NotificationsSettings from "@/features/admin/settings/NotificationsSettings";
@@ -94,6 +94,7 @@ import IntegrationsSettings from "@/features/admin/settings/IntegrationsSettings
 import PermissionsSettings from "@/features/admin/settings/PermissionsSettings";
 import DangerZoneSettings from "@/features/admin/settings/DangerZoneSettings";
 import DashboardPreviewSettings from "@/features/admin/settings/DashboardPreviewSettings";
+import PortalFooterSettings from "@/features/admin/settings/PortalFooterSettings";
 import StudentRegisterPage from "@/features/student/pages/student-register";
 import StudentLoginPage from "@/features/student/pages/student-login";
 import StudentLayout from "@/features/student/components/layout/student-layout";
@@ -169,7 +170,7 @@ export const router = createHashRouter([
   { path: "/m/settings/notifications", element: <AuthGuard><MobileSettingsPage /></AuthGuard> },
   { path: "/m/settings/account-security", element: <AuthGuard><MobileAccountSecurityPage /></AuthGuard> },
   { path: "/m/home", element: <AuthGuard><MobileStudentCenterPage /></AuthGuard> },
-  { path: "/login", element: <LoginPage /> },
+  { path: "/login", element: <Navigate to="/" replace /> },
   { path: "/register", element: <RegisterStaffPage /> },
   { path: "/student/login", element: <StudentLoginPage /> },
 
@@ -191,6 +192,7 @@ export const router = createHashRouter([
       { path: "cage-shelf", element: <StudentCageShelfPage /> },
       { path: "material", element: <StudentMaterialPage /> },
       { path: "material/requests", element: <Navigate to="/student/material?view=requests" replace /> },
+      { path: "animal-order", element: <ReferenceDataPage /> },
     ],
   },
 
@@ -306,6 +308,7 @@ export const router = createHashRouter([
                   { path: "page-permissions", element: <Navigate to={`${STAFF_NS}/admin/settings/permissions`} replace /> },
                   { path: "login-branding", element: <Navigate to={`${STAFF_NS}/admin/settings/appearance`} replace /> },
                   { path: "conversation-archive", element: <AdminConversationArchivePage /> },
+                  { path: "animal-order", element: <ReferenceDataPage /> },
                 ],
               },
               {
@@ -339,6 +342,7 @@ export const router = createHashRouter([
                       { path: "permissions", element: <PermissionsSettings /> },
                       { path: "danger-zone", element: <DangerZoneSettings /> },
                       { path: "dashboard-preview", element: <DashboardPreviewSettings /> },
+                      { path: "portal-footer", element: <PortalFooterSettings /> },
                     ],
                   },
                 ],

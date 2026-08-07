@@ -15,8 +15,8 @@ export default function AuthGuard({ requireRole, children }: AuthGuardProps) {
   if (!hasToken) {
     // 根据当前路由判断应跳哪个登录页
     const loginPath = currentPath.startsWith("/m/") ? "/m/login"
-      : currentPath.startsWith("/student/") ? "/login"
-      : "/login";
+      : currentPath.startsWith("/student/") ? "/student/login"
+      : "/";
     return <Navigate to={loginPath} replace state={{ from: location }} />;
   }
 

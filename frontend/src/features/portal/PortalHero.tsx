@@ -10,7 +10,7 @@ interface PortalHeroProps {
   height?: string;
 }
 
-export function PortalHero({ className, height = "calc(100vh - 64px)" }: PortalHeroProps) {
+export function PortalHero({ className, height }: PortalHeroProps) {
   const { theme } = useTheme();
   const effectiveMode = theme.mode === "dark" ? "dark" : "light";
   const [branding, setBranding] = useState<LoginBranding | null>(null);
@@ -55,8 +55,13 @@ export function PortalHero({ className, height = "calc(100vh - 64px)" }: PortalH
 
   return (
     <section
-      className={cn("relative overflow-hidden", className)}
-      style={{ height, backgroundColor: heroCarouselOn ? "transparent" : FALLBACK_BG }}
+      className={cn(
+        "relative overflow-hidden",
+        /* 手机端 40vh 等比例适配，桌面端全屏高度 */
+        "h-[40vh] md:h-[calc(100vh-64px)]",
+        className,
+      )}
+      style={{ backgroundColor: heroCarouselOn ? "transparent" : FALLBACK_BG, ...(height ? { height } : {}) }}
     >
       {heroCarouselOn && heroUrls.map((url, i) => (
         <img
@@ -64,14 +69,16 @@ export function PortalHero({ className, height = "calc(100vh - 64px)" }: PortalH
           src={url}
           alt=""
           className={cn(
-            "absolute inset-0 w-full h-full object-cover transition-opacity duration-1000",
+            "absolute inset-0 w-full h-full transition-opacity duration-1000",
+            /* 手机端 object-contain 等比例展示全图，深色背景填充留白 */
+            "object-contain bg-[#0f172a] md:object-cover",
             i === heroIdx ? "opacity-100" : "opacity-0",
           )}
         />
       ))}
 
-      {/* Scroll indicator */}
-      <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3">
+      {/* Scroll indicator — 手机端隐藏 */}
+      <div className="hidden md:flex absolute bottom-10 left-1/2 -translate-x-1/2 flex-col items-center gap-3">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-70 animate-bounce">
           <path d="M12 5v14M5 12l7 7 7-7" />
         </svg>

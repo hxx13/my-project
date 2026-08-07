@@ -106,7 +106,7 @@ export default function StudentLoginPage() {
             </Link>
           </p>
           <Link
-            to="/login"
+            to="/"
             className="text-[var(--student-mute)] hover:text-[var(--student-primary)] transition-colors"
           >
             教职工登录入口

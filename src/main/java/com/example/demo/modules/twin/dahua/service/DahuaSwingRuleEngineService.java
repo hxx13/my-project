@@ -535,6 +535,68 @@ public class DahuaSwingRuleEngineService {
         return deleted;
     }
 
+    /**
+     * 兜底双保险复核：从 DB 重查签退通道记录，若确认命中签退规则且未被主流程处理则补送。
+     * <p>每条拉取记录在主流程处理完毕后调用，只对 exitChannelCodes / activatedReswipeExitChannelCodes 生效。
+     * 不做跨批次缓存、不做未激活等候——仅复核「已激活用户 + 签退通道 + 门已开」的记录。</p>
+     * <p>主流程已处理过的记录由 {@code lastRecordId} 去重保护，补送不会重复排程。</p>
+     */
+    public void safetyNetSignoffCheck(DahuaSwingRecord record) {
+        try {
+            String channelCode = str(record.getChannelCode());
+            Map<String, Object> rules = dahuaSwingRuleConfigService.getConfig();
+            List<String> exitChannels = strList(rules.get("exitChannelCodes"));
+            List<String> activatedReswipeExitChannels = strList(rules.get("activatedReswipeExitChannelCodes"));
+            boolean hitSignoff = (!exitChannels.isEmpty() && exitChannels.contains(channelCode))
+                    || (!activatedReswipeExitChannels.isEmpty() && activatedReswipeExitChannels.contains(channelCode));
+            if (!hitSignoff) {
+                return;
+            }
+            // DB 双保险重查：不信任内存中的中间态
+            DahuaSwingRecord dbRecord = dahuaSwingMapper.findRecordByRecordId(record.getRecordId());
+            if (dbRecord == null) {
+                return;
+            }
+            if (!Integer.valueOf(1).equals(dbRecord.getMappingHit())) {
+                return;
+            }
+            if (!Integer.valueOf(1).equals(dbRecord.getOpenResult())) {
+                return;
+            }
+            String userId = str(dbRecord.getMappingUserId());
+            if (userId.isBlank()) {
+                return;
+            }
+            int activated = dahuaSwingMapper.countActivatedStatesForUser(GLOBAL_RULE_TASK_ID, userId);
+            if (activated == 0) {
+                return;
+            }
+            int already = dahuaSwingMapper.countActivationByUserAndLastRecordId(
+                    GLOBAL_RULE_TASK_ID, userId, dbRecord.getRecordId());
+            if (already > 0) {
+                return;
+            }
+            log.info("[swing-rule] safety-net-resubmit userId={} channel={} recordId={}",
+                    userId, channelCode, dbRecord.getRecordId());
+            twinAutomationLogService.write(
+                    TwinAutomationLogService.TYPE_ACCESS_TRACE,
+                    "LINKAGE_STEP",
+                    "SAFETY_NET",
+                    "SAFETY_NET_SIGNOFF_RESUBMIT",
+                    userId,
+                    channelCode,
+                    true,
+                    "兜底复核命中：recordId=" + dbRecord.getRecordId()
+                            + " channel=" + channelCode + " 已激活且主流程遗漏，补送签退规则引擎。",
+                    "dahua-swing-safety-net"
+            );
+            onRecordIngested(dbRecord);
+        } catch (Exception e) {
+            log.warn("[swing-rule] safety-net-check-failed recordId={} err={}",
+                    record.getRecordId(), e.getMessage());
+        }
+    }
+
     private static DahuaActivationState newStateRow(String userId, String channelCode) {
         DahuaActivationState state = new DahuaActivationState();
         state.setTaskId(GLOBAL_RULE_TASK_ID);

@@ -129,7 +129,7 @@ export default function AdminSuppliesMallPage() {
 
   const [permNodes, setPermNodes] = useState<PublicPagePermissionNode[]>([]);
   const [capMap, setCapMap] = useState<Record<string, { canProcess: boolean }>>({});
-  const [activeCat, setActiveCat] = useState<number | "all">("all");
+  const [activeCat, setActiveCat] = useState<number | "all" | "all-items">("all");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -153,6 +153,29 @@ export default function AdminSuppliesMallPage() {
   const [remarkMap, setRemarkMap] = useState<Record<string, string>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
+  const [flyItems, setFlyItems] = useState<{ id: number; sx: number; sy: number; dx: number; dy: number; dur: number }[]>([]);
+
+  function FlyDot({ f }: { f: { id: number; sx: number; sy: number; dx: number; dy: number; dur: number } }) {
+    const [landed, setLanded] = useState(false);
+    useEffect(() => {
+      const t = requestAnimationFrame(() => setLanded(true));
+      return () => cancelAnimationFrame(t);
+    }, []);
+    return (
+      <div
+        className="fixed z-[60] w-4 h-4 rounded-full bg-orange-500 pointer-events-none"
+        style={{
+          left: landed ? f.dx : f.sx,
+          top: landed ? f.dy : f.sy,
+          transition: landed ? `left ${f.dur}ms ease-out, top ${f.dur}ms ease-out, opacity ${f.dur}ms ease-out` : "none",
+          opacity: landed ? 0 : 1,
+        }}
+      />
+    );
+  }
+  const [fabBounce, setFabBounce] = useState(0);
+  const fabRef = useRef<HTMLButtonElement>(null);
+  const flyIdRef = useRef(0);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergePlanGroups, setMergePlanGroups] = useState<MergePlanGroup[]>([]);
   /** 合并方案选择：分组 key（"regular" / "ind:<itemId>"）→ 目标订单 id；空串 = 新建订单 */
@@ -170,7 +193,8 @@ export default function AdminSuppliesMallPage() {
     canShowWebEntry(permNodes, "/admin/supplies/manage", "sidebar", role, "SUPER_ADMIN");
 
   const { data: categories = [] } = useSupplyCategories();
-  const { data: rawItems = [], isLoading: itemsLoading } = useSupplyItems(activeCat);
+  const effectiveCat = activeCat === "all-items" ? "all" : activeCat;
+  const { data: rawItems = [], isLoading: itemsLoading } = useSupplyItems(effectiveCat);
   /** 全量物资（跨分类）：购物车可能含非当前分类的物资，拆单提示需要完整查找表 */
   const { data: allRawItems = [] } = useSupplyItems("all");
 
@@ -588,13 +612,32 @@ export default function AdminSuppliesMallPage() {
   const addToCart = (item: SupplyItem, cartKey?: string) => {
     const key = cartKey || String(item.id);
     const max = maxForItem(item);
-    if (max <= 0) {
-      toast.error("暂无库存");
-      return;
-    }
+    if (max <= 0) { toast.error("暂无库存"); return; }
     const cur = cart[key] || 0;
     const nextQty = Math.min(cur + 1, max);
     syncCart({ ...cart, [key]: nextQty });
+  };
+
+  const addToCartWithFly = (item: SupplyItem, cartKey?: string) => (e: React.MouseEvent) => {
+    const btn = e.currentTarget as HTMLElement;
+    const card = btn.closest('[data-item-id]') as HTMLElement | null;
+    const fab = fabRef.current;
+    if (!fab) { addToCart(item, cartKey); return; }
+    const cr = (card ?? btn).getBoundingClientRect();
+    const fr = fab.getBoundingClientRect();
+    const id = ++flyIdRef.current;
+    const sx = cr.left + cr.width / 2 - 8;
+    const sy = cr.top + cr.height / 4;
+    const dx = fr.left + fr.width / 2 - 8;
+    const dy = fr.top + fr.height / 2 - 8;
+    const dist = Math.sqrt((dx - sx) ** 2 + (dy - sy) ** 2);
+    const dur = Math.max(350, Math.min(700, dist / 1.5));
+    setFlyItems(prev => [...prev, { id, sx, sy, dx, dy, dur }]);
+    setTimeout(() => {
+      setFlyItems(prev => prev.filter(x => x.id !== id));
+      setFabBounce(c => c + 1);
+    }, dur);
+    addToCart(item, cartKey);
   };
 
   const decFromCart = (cartKey: string) => {
@@ -951,42 +994,105 @@ export default function AdminSuppliesMallPage() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-row">
-        <aside className="w-[128px] shrink-0 overflow-y-auto border-r border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] py-2">
-          <button
-            type="button"
-            onClick={() => setActiveCat("all")}
-            className={`block w-full px-3 py-2 text-left text-xs leading-snug ${
-              activeCat === "all" ? "border-l-2 border-sky-500 bg-[var(--twin-canvas)] font-semibold text-sky-700" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]/80"
-            }`}
-          >
-            全部
-          </button>
-          {categories.map((c) => (
+        {/* Sidebar — shown when viewing items (all-items or specific category) */}
+        {activeCat !== "all" && (
+          <aside className="w-[128px] shrink-0 overflow-y-auto border-r border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] py-2">
             <button
-              key={c.id}
               type="button"
-              onClick={() => setActiveCat(c.id)}
+              onClick={() => setActiveCat("all")}
+              className="flex items-center gap-1 w-full px-3 py-2 text-xs font-medium text-[var(--twin-link)] hover:bg-[var(--twin-canvas)] transition-colors border-b border-[var(--twin-hairline)] mb-1"
+            >
+              <span className="text-sm leading-none">&larr;</span>
+              <span>返回分类</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCat("all-items" as any)}
               className={`block w-full px-3 py-2 text-left text-xs leading-snug ${
-                activeCat === c.id ? "border-l-2 border-sky-500 bg-[var(--twin-canvas)] font-semibold text-sky-700" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]/80"
+                activeCat === "all-items" ? "border-l-2 border-sky-500 bg-[var(--twin-canvas)] font-semibold text-sky-700" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"
               }`}
             >
-              {c.name}
+              全部
             </button>
-          ))}
-        </aside>
+            <div className="px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--twin-mute)]">分类</div>
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setActiveCat(c.id)}
+                className={`block w-full px-3 py-2 text-left text-xs leading-snug ${
+                  activeCat === c.id ? "border-l-2 border-[var(--twin-link)] bg-[var(--twin-canvas)] font-semibold text-[var(--twin-link)]" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </aside>
+        )}
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-2">
+        {/* Main area — category cards or item cards */}
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3">
           {itemsLoading ? <div className="p-4 text-xs text-[var(--twin-mute)]">加载中…</div> : null}
-          {!itemsLoading && filteredItems.length === 0 ? (
+
+          {/* Root level: category cards */}
+          {activeCat === "all" && !itemsLoading && (
+            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))" }}>
+              {/* "全部" card — shows all items regardless of category */}
+              <div className="relative rounded-twin-md border-2 border-sky-300 bg-sky-50/50 p-5 shadow-sm min-h-[9rem] animate-[card-in_0.4s_ease-out_both]" style={{ animationDelay: "0ms" }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveCat("all-items" as any)}
+                  className="flex flex-col items-center justify-center gap-3 w-full h-full cursor-pointer transition-colors"
+                >
+                  <div className="relative shrink-0 overflow-hidden rounded-full bg-sky-100 flex items-center justify-center aspect-square w-24">
+                    <span className="text-3xl font-bold text-sky-600 select-none">全</span>
+                  </div>
+                  <span className="text-base font-semibold text-sky-700">全部</span>
+                </button>
+              </div>
+              {categories.map((c, i) => (
+                <div
+                  key={c.id}
+                  className="relative rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-sm min-h-[9rem] animate-[card-in_0.4s_ease-out_both]"
+                  style={{ animationDelay: `${i * 60}ms` }}
+                >
+                  {showAdminEntry && (
+                    <a
+                      href={`#${toAdminRoutePath("/admin/supplies/manage")}?editCat=${c.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-1 top-1 z-10 p-1 rounded text-[var(--twin-mute)] hover:text-[var(--twin-link)] hover:bg-[var(--twin-canvas-soft)] transition-colors"
+                      title="编辑分类"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveCat(c.id)}
+                    className="flex flex-col items-center justify-center gap-3 w-full h-full cursor-pointer hover:text-sky-600 transition-colors"
+                  >
+                    <div className="relative shrink-0 overflow-hidden rounded-md bg-[var(--twin-canvas-soft)] flex items-center justify-center aspect-square w-24">
+                      <span className="text-3xl font-bold text-[var(--twin-mute)] select-none">{String(c.name || "?").charAt(0)}</span>
+                    </div>
+                    <span className="text-base font-semibold text-[var(--twin-ink)]">{c.name}</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Drilled: item cards */}
+          {activeCat !== "all" && !itemsLoading && filteredItems.length === 0 && (
             <div className="p-8 text-center text-sm text-[var(--twin-mute)]">暂无物资</div>
-          ) : null}
+          )}
+          {activeCat !== "all" && !itemsLoading && filteredItems.length > 0 && <>
           <div
             className="grid gap-2"
             style={{
               gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${SUPPLIES_MALL_CARD_MIN_COL_PX}px), 1fr))`,
             }}
           >
-            {filteredItems.map((item) => {
+            {filteredItems.map((item, i) => {
               const cover = webImageSrc(item.coverUrl);
               const qty = cart[String(item.id)] || 0;
               const hasSpec = (() => {
@@ -1008,9 +1114,20 @@ export default function AdminSuppliesMallPage() {
               return (
                 <div
                   key={item.id}
-                  className="relative flex min-w-0 flex-col rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 shadow-sm"
-                  style={{ minHeight: SUPPLIES_MALL_CARD_MIN_H }}
+                  data-item-id={item.id}
+                  className="relative flex min-w-0 flex-col rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 shadow-sm animate-[card-in_0.4s_ease-out_both]"
+                  style={{ minHeight: SUPPLIES_MALL_CARD_MIN_H, animationDelay: `${i * 50}ms` }}
                 >
+                  {showAdminEntry && (
+                    <a
+                      href={`#${toAdminRoutePath("/admin/supplies/manage")}?edit=${item.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-1 top-1 z-10 p-1 rounded text-[var(--twin-mute)] hover:text-[var(--twin-link)] hover:bg-[var(--twin-canvas-soft)] transition-colors"
+                      title="编辑商品"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    </a>
+                  )}
                   <div className="flex min-w-0 flex-row items-center gap-3">
                   <div
                     className="relative shrink-0 overflow-hidden rounded-md bg-[var(--twin-canvas-soft)]"
@@ -1085,7 +1202,7 @@ export default function AdminSuppliesMallPage() {
                     <button
                       type="button"
                       className="h-6 w-6 shrink-0 rounded bg-sky-600 text-xs font-bold text-white hover:bg-sky-700"
-                      onClick={() => addToCart(item)}
+                      onClick={addToCartWithFly(item)}
                     >
                       +
                     </button>
@@ -1147,7 +1264,7 @@ export default function AdminSuppliesMallPage() {
                             <button
                               type="button"
                               className="h-6 w-6 shrink-0 rounded bg-sky-600 text-xs font-bold text-white hover:bg-sky-700"
-                              onClick={() => addToCart(item, specCartKey)}
+                              onClick={addToCartWithFly(item, specCartKey)}
                             >
                               +
                             </button>
@@ -1162,129 +1279,85 @@ export default function AdminSuppliesMallPage() {
               );
             })}
           </div>
+          </>}
+        </div>
         </div>
       </div>
 
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-        <button
-          type="button"
-          onClick={openCartSheet}
-          className="relative rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-4 py-2 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft-2)]"
-        >
-          购物车
-          {cartCount > 0 ? (
-            <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
-              {cartCount > 99 ? "99+" : cartCount}
-            </span>
-          ) : null}
-        </button>
-        <button
-          type="button"
-          disabled={submitting || cartCount === 0}
-          onClick={() => void openSubmitFlow()}
-          className="rounded-full bg-sky-600 px-5 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50 whitespace-nowrap"
-        >
-          {submitting ? "提交中…" : reviseClaimId ? "完成修改" : "提交领用单"}
-        </button>
-      </footer>
-
-      {cartSheetOpen ? (
-        <div
-          className="absolute inset-0 z-40 flex flex-col justify-end bg-black/35"
-          onClick={() => setCartSheetOpen(false)}
-        >
-          <div
-            className="mx-2 mb-2 flex min-h-0 max-h-[90%] flex-col overflow-hidden rounded-twin-xl bg-[var(--twin-canvas)] shadow-[0_-8px_28px_rgba(0,0,0,0.15)] sm:mx-3 sm:mb-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="shrink-0 border-b border-[var(--twin-hairline)] px-4 py-3 text-sm font-semibold text-[var(--twin-ink)]">购物车</div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-              {cartLines.map((line) => {
-                const item = items.find((x) => x.id === line.itemId);
-                return (
-                  <div key={line.key} className="mb-2 flex gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
-                    {line.cover ? (
-                      <img src={line.cover} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
-                    ) : (
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-[var(--twin-canvas-soft-2)] text-xs font-bold text-[var(--twin-mute)]">
-                        {line.initial}
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-[var(--twin-ink)]">{line.name}</div>
-                      <div className="mt-1 flex items-center gap-0.5">
-                        <button
-                          type="button"
-                          className="h-7 w-7 rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-sm"
-                          onClick={() => decFromCart(line.key)}
-                        >
-                          −
-                        </button>
-                        <input
-                          type="number"
-                          min={0}
-                          value={line.qty}
-                          onChange={(e) => {
-                            const raw = e.target.value;
-                            const n = Number.parseInt(raw || "0", 10);
-                            const max = item ? maxForItem(item) : 999;
-                            const safe = Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
-                            const next = { ...cart };
-                            if (safe <= 0) delete next[line.key];
-                            else next[line.key] = safe;
-                            syncCart(next);
-                            if (Number.isFinite(n) && n > max) toast.error(`最多 ${max}`);
-                          }}
-                          className="h-7 w-12 rounded border border-[var(--twin-hairline)] text-center text-xs"
-                        />
-                        <button
-                          type="button"
-                          className="h-7 w-7 rounded bg-sky-600 text-sm font-bold text-white disabled:opacity-40"
-                          disabled={!item}
-                          onClick={() => item && addToCart(item, line.key.includes("::") ? line.key : undefined)}
-                        >
-                          +
-                        </button>
+      <style>{`
+        @keyframes card-in { from { opacity:0; transform:scale(0.9) translateY(12px); } to { opacity:1; transform:scale(1) translateY(0); } }
+        @keyframes cart-pop { 0% { transform:scale(1); } 25% { transform:scale(1.35); } 50% { transform:scale(0.9); } 65% { transform:scale(1.12); } 80% { transform:scale(0.95); } 100% { transform:scale(1); } }
+      `}</style>
+      {/* Floating cart FAB — bottom-right */}
+      <div className="fixed right-16 bottom-12 z-50 flex flex-col items-end gap-2" style={{ bottom: "max(48px, env(safe-area-inset-bottom, 0px) + 32px)" }}>
+        {cartSheetOpen && (
+          <div className="w-80 max-h-[60vh] flex flex-col rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-[0_8px_32px_rgba(0,0,0,0.18)]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--twin-hairline)]">
+              <span className="text-sm font-semibold text-[var(--twin-ink)]">购物车 · {cartCount} 件</span>
+              <button onClick={() => setCartSheetOpen(false)} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)] text-sm">✕</button>
+            </div>
+            <div className="min-h-0 overflow-y-auto px-3 py-2 space-y-2" style={{scrollbarWidth:'none'}}>
+              {cartLines.length === 0 ? (
+                <div className="py-6 text-center text-xs text-[var(--twin-mute)]">购物车是空的</div>
+              ) : (
+                cartLines.map((line) => {
+                  const item = items.find((x) => x.id === line.itemId);
+                  return (
+                    <div key={line.key} className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-[var(--twin-ink)] truncate">{line.name}</div>
+                        </div>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button type="button" className="h-6 w-6 rounded border border-[var(--twin-hairline)] bg-white text-xs" onClick={() => decFromCart(line.key)}>−</button>
+                          <span className="w-8 text-center text-xs font-semibold tabular-nums">{line.qty}</span>
+                          <button type="button" className="h-6 w-6 rounded bg-sky-600 text-xs font-bold text-white disabled:opacity-40" disabled={!item} onClick={item ? addToCartWithFly(item, line.key.includes("::") ? line.key : undefined) : undefined}>+</button>
+                        </div>
                       </div>
                       <input
-                        type="text"
-                        placeholder="备注（可选，将计入审计）"
+                        type="text" placeholder="备注"
                         value={remarkMap[line.key] || ""}
                         onChange={(e) => setRemarkMap((prev) => ({ ...prev, [line.key]: e.target.value }))}
-                        className="mt-1 w-full rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-0.5 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
+                        className="mt-1 w-full rounded border border-[var(--twin-hairline)] bg-white px-2 py-0.5 text-[11px] outline-none"
                       />
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
             <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--twin-hairline)] px-4 py-3">
-              <button
-                type="button"
-                className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs text-red-500 disabled:opacity-50"
-                disabled={cartCount === 0}
-                onClick={() => setClearCartConfirmOpen(true)}
-              >
-                清空
+              <button type="button" className="text-xs text-red-500 disabled:opacity-50" disabled={cartCount === 0} onClick={() => setClearCartConfirmOpen(true)}>清空</button>
+              <button type="button" disabled={submitting || cartCount === 0} onClick={() => void openSubmitFlow()} className="rounded-full bg-sky-600 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
+                {submitting ? "提交中…" : reviseClaimId ? "完成修改" : "提交领用单"}
               </button>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[var(--twin-body)]">共 {cartCount} 件</span>
-                <button type="button" className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs text-[var(--twin-body)]" onClick={() => setCartSheetOpen(false)}>
-                  收起
-                </button>
-                <button
-                  type="button"
-                  className="rounded-full bg-sky-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
-                  disabled={submitting || cartCount === 0}
-                  onClick={() => void openSubmitFlow()}
-                >
-                  去提交
-                </button>
-              </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        )}
+        <button
+          ref={fabRef}
+          key={`fab-${fabBounce}`}
+          type="button"
+          onClick={() => setCartSheetOpen(!cartSheetOpen)}
+          className={`relative flex items-center justify-center rounded-full shadow-lg transition-all duration-300 ${
+            cartSheetOpen ? "w-10 h-10 bg-[var(--twin-canvas)] border border-[var(--twin-hairline)]" : "w-14 h-14 bg-orange-500 hover:bg-orange-600 hover:scale-110 animate-[cart-pop_0.5s_ease-out]"
+          }`}
+        >
+          {cartSheetOpen ? (
+            <span className="text-lg leading-none">✕</span>
+          ) : (
+            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          )}
+          {!cartSheetOpen && cartCount > 0 && (
+            <span key={cartCount} className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white animate-[cart-pop_0.3s_ease-out]">
+              {cartCount > 99 ? "99+" : cartCount}
+            </span>
+          )}
+        </button>
+      </div>
+      {/* Fly-to-cart: JS positions + CSS transition = guaranteed straight line */}
+      {flyItems.map(f => (
+        <FlyDot key={f.id} f={f} />
+      ))}
 
       {/* 图片预览弹窗 */}
       {previewSrc ? (
@@ -1626,7 +1699,6 @@ export default function AdminSuppliesMallPage() {
       {recordsPanelOpen ? (
         <MySuppliesRecordsPanel onClose={() => setRecordsPanelOpen(false)} />
       ) : null}
-    </div>
     </div>
   );
 }

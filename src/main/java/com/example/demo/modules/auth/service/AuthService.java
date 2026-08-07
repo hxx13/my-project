@@ -7,6 +7,7 @@ import com.example.demo.modules.auth.AuthProfileConstants;
 import com.example.demo.modules.auth.dto.AuthData;
 import com.example.demo.modules.auth.dto.AuthUserInfo;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.aro.mapper.AroDatabaseMapper;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -18,13 +19,15 @@ public class AuthService {
     private final UserDisplayNameService userDisplayNameService;
     private final JwtTokenService jwtTokenService;
     private final WechatApiService wechatApiService;
+    private final AroDatabaseMapper aroDatabaseMapper;
 
     public AuthService(UserMapper userMapper, UserDisplayNameService userDisplayNameService, JwtTokenService jwtTokenService,
-                       WechatApiService wechatApiService) {
+                       WechatApiService wechatApiService, AroDatabaseMapper aroDatabaseMapper) {
         this.userMapper = userMapper;
         this.userDisplayNameService = userDisplayNameService;
         this.jwtTokenService = jwtTokenService;
         this.wechatApiService = wechatApiService;
+        this.aroDatabaseMapper = aroDatabaseMapper;
     }
 
     public Result<AuthData> generateAuthResult(User user) {
@@ -46,6 +49,10 @@ public class AuthService {
         userInfo.setAuthProfile(user.getAuthProfile());
         userInfo.setAccountSource(user.getAccountSource());
         userInfo.setMiniHomeDefaultTab(AuthProfileConstants.miniHomeDefaultTab(user.getAuthProfile()));
+        String projectGroup = aroDatabaseMapper.findProjectGroupByUserId(user.getId());
+        if (StringUtils.hasText(projectGroup)) {
+            userInfo.setProjectGroupName(projectGroup.trim());
+        }
         data.setUserInfo(userInfo);
         return Result.success(data);
     }

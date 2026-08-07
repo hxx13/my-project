@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-03T05:09:49.062Z",
+  "generatedAt": "2026-08-07T03:15:02.344Z",
   "pages": [
     {
       "path": "/admin",
@@ -29,6 +29,13 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "资产与运维",
       "registryId": "analytics"
+    },
+    {
+      "path": "/admin/animal-order",
+      "label": "实验动物订购",
+      "fallbackMinRole": "STAFF",
+      "groupTitle": "AI 实验室",
+      "registryId": "animal-order"
     },
     {
       "path": "/admin/api-docs",

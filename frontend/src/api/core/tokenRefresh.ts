@@ -22,7 +22,7 @@ function forceLogout() {
     }
     const loginPath = portal === "student" ? "/student/login"
       : portal === "mobile" ? "/m/login"
-      : "/login";
+      : "/";
     if (window.location.pathname !== loginPath && window.location.hash !== `#${loginPath}`) {
         window.location.href = loginPath;
     }

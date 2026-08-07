@@ -412,9 +412,14 @@ public class DahuaService {
     // =========================================================================
     public void cleanupLegacySubscriptions() {
         log.info("[System] 清理旧订阅...");
-        // ICC 网页管理台自动创建的 Client 订阅（domainSubscribe=1），
+        // 清理 ICC 网页管理台自动创建的 Client 订阅（domainSubscribe=1），
         // 会占满 10 条配额导致 26100006，每次启动清理掉
+        // 同时清理旧固定名和 IP 格式的遗留订阅
         List<String> zombieNames = Arrays.asList(
+                "172.22.161.252_8080", "172.22.161.252_3000",
+                "172.22.161.254_3000", "172.22.161.254_8080",
+                "192.168.1.3_8080",
+                "My_Fixed_Java_Client_V1", "My_Fixed_Java_Client_V2026",
                 "Client_1770601682912", "Client_1770599460796",
                 "SuperClient_1770602048825", "Client_1770599458878",
                 "Client_1770600447240", "Client_1770601623003",

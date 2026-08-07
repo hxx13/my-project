@@ -120,6 +120,7 @@ export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps
     "/student/notifications": "通知",
     "/student/feedback": "帮助反馈",
     "/student/settings": "设置",
+    "/student/animal-order": "实验动物订购",
   };
 
   const currentLabel = breadcrumbMap[pathname] || "";

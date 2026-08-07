@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.referencedata.mapper.ReferenceDataMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.referencedata.entity.RefData">
+        <id property="id" column="id"/>
+        <result property="refType" column="ref_type"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="status" column="status"/>
+        <result property="fieldData" column="field_data"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ref_data(ref_type, parent_id, sort_order, status, field_data)
+        VALUES (#{refType}, #{parentId}, #{sortOrder}, #{status}, #{fieldData})
+    </insert>
+
+    <update id="update">
+        UPDATE ref_data
+        SET parent_id = #{parentId},
+            sort_order = #{sortOrder},
+            status = #{status},
+            field_data = #{fieldData}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM ref_data WHERE id = #{id}
+    </delete>
+
+    <select id="findById" resultMap="Base">
+        SELECT * FROM ref_data WHERE id = #{id} LIMIT 1
+    </select>
+
+    <select id="listByType" resultMap="Base">
+        SELECT * FROM ref_data
+        <where>
+            ref_type = #{refType}
+            <if test="parentId != null">
+                AND parent_id = #{parentId}
+            </if>
+            <if test="parentId == null">
+                AND parent_id IS NULL
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND JSON_SEARCH(field_data, 'one', CONCAT('%', #{keyword}, '%')) IS NOT NULL
+            </if>
+        </where>
+        ORDER BY sort_order ASC, id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByType" resultType="int">
+        SELECT COUNT(1) FROM ref_data
+        <where>
+            ref_type = #{refType}
+            <if test="parentId != null">
+                AND parent_id = #{parentId}
+            </if>
+            <if test="parentId == null">
+                AND parent_id IS NULL
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND JSON_SEARCH(field_data, 'one', CONCAT('%', #{keyword}, '%')) IS NOT NULL
+            </if>
+        </where>
+    </select>
+
+    <select id="listOptions" resultMap="Base">
+        SELECT * FROM ref_data
+        WHERE ref_type = #{refType}
+          AND status = 1
+          AND JSON_EXTRACT(field_data, '$.purchasable') = true
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="countChildren" resultType="int">
+        SELECT COUNT(1) FROM ref_data WHERE parent_id = #{parentId}
+    </select>
+
+    <select id="maxSortOrder" resultType="int">
+        SELECT COALESCE(MAX(sort_order), 0) FROM ref_data
+        WHERE ref_type = #{refType}
+        <if test="parentId != null">AND parent_id = #{parentId}</if>
+        <if test="parentId == null">AND parent_id IS NULL</if>
+    </select>
+
+    <select id="findAncestors" resultMap="Base">
+        WITH RECURSIVE ancestor_chain AS (
+            SELECT * FROM ref_data WHERE id = #{id}
+            UNION ALL
+            SELECT t.* FROM ref_data t
+            INNER JOIN ancestor_chain a ON t.id = a.parent_id
+        )
+        SELECT * FROM ancestor_chain
+    </select>
+
+</mapper>

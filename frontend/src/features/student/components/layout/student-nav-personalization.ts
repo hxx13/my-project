@@ -24,7 +24,7 @@ const RECENT_MAX = 8;
 /* ------------------------------------------------------------------ */
 
 let cachedPrefs: MiniPreferences | null = null;
-let fetchPromise: Promise<MiniPreferences | null> | null = null;
+let fetchPromise: Promise<MiniPreferences> | null = null;
 
 async function getPrefs(): Promise<MiniPreferences> {
   if (cachedPrefs) return cachedPrefs;
@@ -37,7 +37,7 @@ async function getPrefs(): Promise<MiniPreferences> {
       return cachedPrefs;
     });
   }
-  return fetchPromise;
+  return fetchPromise!;
 }
 
 function readLocal(key: string): string | null {

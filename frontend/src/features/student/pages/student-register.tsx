@@ -182,7 +182,7 @@ export default function StudentRegisterPage() {
             <p className="mt-6 text-sm text-[var(--student-mute)]">
               已有账号？
               <Link
-                to="/login"
+                to="/"
                 className="ml-1 font-medium text-[var(--student-primary)] hover:underline"
               >
                 去登录

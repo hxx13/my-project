@@ -674,6 +674,7 @@ public class PagePermissionService {
                 || path.startsWith("/admin/material/audit-export")
                 || path.startsWith("/admin/conversation-archive")
                 || path.startsWith("/admin/file-templates")
+                || path.startsWith("/admin/animal-order")
                 || path.startsWith("/admin/exp-stats")) {
             return "ADMIN";
         }

@@ -22,6 +22,7 @@ export const HIDDEN_ADMIN_SIDEBAR_PATHS = new Set([
   "/admin/settings/permissions",
   "/admin/settings/danger-zone",
   "/admin/settings/dashboard-preview",
+  "/admin/settings/portal-footer",
 ]);
 
 export function isHiddenAdminSidebarPath(path: string): boolean {
