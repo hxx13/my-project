@@ -8,7 +8,6 @@ import { isTwinFullscreenEntryPath, normalizeAdminPath } from "@/features/admin/
 import { AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { TwinChromeContextMenu, type TwinChromeContextMenuPayload } from "@/features/twin-chrome/TwinChromeContextMenu";
 import { ScanAssistantCarrier } from "@/components/scanner/ScanAssistantCarrier";
-import { AutoSwitchToggle } from "@/features/dashboard-ops-wall/AutoSwitchToggle";
 import { twinChromeGlobalPointerShouldBypass } from "@/features/twin-chrome/twinChromeGlobalPointerBypass";
 import { useTwinChromeTheme } from "@/features/twin-chrome/TwinChromeThemeContext";
 import { useTheme } from "@/features/theme/ThemeProvider";
@@ -184,7 +183,6 @@ export default function TwinLayoutInner() {
                 onClose={() => setCtxMenu(null)}
             />
 
-            <AutoSwitchToggle />
         </div>
     );
 }

@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-hot-toast";
 import { PortalHeader } from "@/features/portal/PortalHeader";
 import { PortalHero } from "@/features/portal/PortalHero";
 import { PortalStatsSection } from "@/features/portal/PortalStatsSection";
@@ -8,6 +10,9 @@ import { AboutSection } from "@/features/portal/AboutSection";
 import { PortalFooter } from "@/features/portal/PortalFooter";
 import { PortalLoginModal } from "@/features/portal/PortalLoginModal";
 import { FadeInSection } from "@/components/scroll-reveal";
+import { loginCas } from "@/api/domains/auth.api";
+import { authStorage } from "@/features/auth/authStorage";
+import { resolvePostLoginTarget } from "@/features/auth/postLoginNavigation";
 
 function Divider() {
   return (
@@ -21,7 +26,69 @@ function Divider() {
 }
 
 export default function PortalLandingPage() {
+  const navigate = useNavigate();
   const [loginOpen, setLoginOpen] = useState(false);
+  const casProcessedRef = useRef(false);
+
+  /* ── CAS ticket 回调处理 ──
+   * PortalLoginModal / MobileLoginPage / 旧 LoginPage 发起 CAS 登录后，
+   * CAS 服务器携带 ?ticket=ST-xxx 重定向回本页。提取 ticket 并完成登录。
+   */
+  useEffect(() => {
+    if (casProcessedRef.current) return;
+
+    const ticketMatch = window.location.href.match(/[?&]ticket=([^&#]+)/);
+    const ticket = ticketMatch ? decodeURIComponent(ticketMatch[1]) : null;
+    // 也可能由旧 LoginPage 存入 sessionStorage
+    const pendingTicket = sessionStorage.getItem("cas_pending_ticket");
+    const finalTicket = ticket || pendingTicket;
+
+    if (!finalTicket) return;
+
+    sessionStorage.removeItem("cas_pending_ticket");
+    casProcessedRef.current = true;
+
+    // 清理 URL 中的 ticket 参数
+    window.history.replaceState(
+      null,
+      "",
+      window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "").replace(/#$/, ""),
+    );
+
+    // serviceUrl 必须与 CAS 登录入口使用的 service 参数一致
+    const serviceUrl =
+      sessionStorage.getItem("cas_service_url") || window.location.origin + "/#/";
+    sessionStorage.removeItem("cas_service_url");
+
+    (async () => {
+      try {
+        const data = await loginCas(finalTicket, serviceUrl);
+        authStorage.setAuth(data.token, data.role, data.userInfo);
+
+        const isStudent =
+          data.userInfo?.accountSource === "STUDENT" ||
+          (data.userInfo?.accountSource == null && data.role === "MEMBER");
+
+        if (isStudent) {
+          authStorage.markLoginPortal("student");
+          navigate("/student/home", { replace: true });
+          return;
+        }
+
+        authStorage.markLoginPortal("staff");
+        toast.success("CAS 登录成功");
+        const target = await resolvePostLoginTarget({
+          role: data.role,
+          pendingTwin: null,
+          fromFull: null,
+        });
+        navigate(target, { replace: true });
+      } catch (error) {
+        casProcessedRef.current = false;
+        toast.error(error instanceof Error ? error.message : "CAS 登录失败，请重试");
+      }
+    })();
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-white">

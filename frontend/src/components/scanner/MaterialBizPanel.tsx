@@ -207,7 +207,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
           {/* 分类 — 左侧纵向 */}
           <div
             className={`flex min-h-0 shrink-0 flex-col gap-0.5 overflow-y-auto overscroll-y-contain border-r ${CARD_BORDER} px-1.5 py-2`}
-            style={{ width: 72 }}
+            style={{ width: 108 }}
           >
             <button
               onClick={() => setActiveCat("all")}
@@ -283,7 +283,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                             />
                           ) : (
                             <div
-                              className={`h-8 w-8 shrink-0 rounded ${BTN_GHOST} flex items-center justify-center text-[10px] ${TEXT_MUTED}`}
+                              className={`h-10 w-10 shrink-0 rounded ${BTN_GHOST} flex items-center justify-center text-xs ${TEXT_MUTED}`}
                             >
                               {line.name.charAt(0)}
                             </div>
@@ -296,7 +296,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                               </span>
                             )}
                           </span>
-                          <span className={`shrink-0 ${TEXT_MUTED}`}>&times;{line.qty}</span>
+                          <span className={`shrink-0 text-sm ${TEXT_MUTED}`}>&times;{line.qty}</span>
                         </div>
                       ))}
                     </div>
@@ -350,7 +350,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                       <button
                         onClick={() => { setCart({}); setScheduledPickupTime(null); }}
                         disabled={cartCount === 0}
-                        className={`h-10 flex-1 rounded-xl border ${CARD_BORDER} text-sm font-medium ${TEXT_SEC} hover:border-[var(--app-color-feedback-danger)]/40 hover:text-[var(--app-color-feedback-danger)] disabled:opacity-30 transition-colors`}
+                        className={`h-12 flex-1 rounded-xl border ${CARD_BORDER} text-base font-medium ${TEXT_SEC} hover:border-[var(--app-color-feedback-danger)]/40 hover:text-[var(--app-color-feedback-danger)] disabled:opacity-30 transition-colors`}
                       >
                         取消
                       </button>
@@ -364,7 +364,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                         }}
                         disabled={cartCount === 0}
                         className={cn(
-                          "h-10 flex-[2] rounded-xl text-sm font-bold transition-colors disabled:opacity-30",
+                          "h-12 flex-[2] rounded-xl text-base font-bold transition-colors disabled:opacity-30",
                           scheduledPickupTime
                             ? `${ACCENT_BG} text-white hover:opacity-90`
                             : `border border-cyan-500/40 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20`
@@ -389,7 +389,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                       <button
                         onClick={() => { setScheduledPickupTime(null); handleSubmit(); }}
                         disabled={submitting || cartCount === 0}
-                        className={`h-10 flex-[2] rounded-xl ${ACCENT_BG} text-sm font-bold text-white hover:opacity-90 disabled:opacity-30 transition-colors`}
+                        className={`h-12 flex-[2] rounded-xl ${ACCENT_BG} text-base font-bold text-white hover:opacity-90 disabled:opacity-30 transition-colors`}
                       >
                         {submitting ? "提交中…" : `提交领用 (${cartCount})`}
                       </button>
@@ -427,18 +427,18 @@ function MaterialItemCard({
     <div className={cn(`rounded-xl border ${CARD_BORDER} ${CARD_BG} p-2 overflow-visible`, soldOut && "opacity-40")}>
       <div className="flex gap-2">
         {imgSrc ? (
-          <img src={imgSrc} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+          <img src={imgSrc} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
         ) : (
           <div
-            className={`h-12 w-12 shrink-0 rounded-lg ${BTN_GHOST} flex items-center justify-center text-lg ${TEXT_MUTED}`}
+            className={`h-16 w-16 shrink-0 rounded-lg ${BTN_GHOST} flex items-center justify-center text-xl ${TEXT_MUTED}`}
           >
             {item.name.charAt(0)}
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className={`text-xs font-medium truncate ${TEXT}`}>{item.name}</div>
-          {item.subtitle && <div className={`text-[10px] truncate ${TEXT_MUTED}`}>{item.subtitle}</div>}
-          <div className={`mt-1 text-[10px] ${TEXT_SEC}`}>
+          <div className={`text-sm font-medium truncate ${TEXT}`}>{item.name}</div>
+          {item.subtitle && <div className={`text-xs truncate ${TEXT_MUTED}`}>{item.subtitle}</div>}
+          <div className={`mt-1 text-xs ${TEXT_SEC}`}>
             {item.stockMode === "QUANTIFIED" ? `库存 ${item.stockQty}` : item.stockQty >= 1 ? "有货" : "缺货"}
           </div>
         </div>
@@ -461,17 +461,17 @@ function MaterialItemCard({
               <button
                 onClick={() => onCartChange(cartKey, -1)}
                 disabled={cartQty <= 0}
-                className={`h-6 w-6 rounded ${BTN_GHOST} text-xs ${TEXT} hover:opacity-80 disabled:opacity-20`}
+                className={`h-8 w-8 rounded ${BTN_GHOST} text-sm ${TEXT} hover:opacity-80 disabled:opacity-20`}
               >
-                <Minus className="h-3 w-3 mx-auto" />
+                <Minus className="h-4 w-4 mx-auto" />
               </button>
-              <span className={`w-8 text-center text-xs tabular-nums ${TEXT}`}>{cartQty}</span>
+              <span className={`w-10 text-center text-sm tabular-nums ${TEXT}`}>{cartQty}</span>
               <button
                 onClick={() => onCartChange(cartKey, 1)}
                 disabled={cartQty >= maxStock}
-                className="h-6 w-6 rounded bg-cyan-500/30 text-xs text-cyan-400 hover:bg-cyan-500/50 disabled:opacity-20"
+                className="h-8 w-8 rounded bg-cyan-500/30 text-sm text-cyan-400 hover:bg-cyan-500/50 disabled:opacity-20"
               >
-                <Plus className="h-3 w-3 mx-auto" />
+                <Plus className="h-4 w-4 mx-auto" />
               </button>
             </div>
           )}

@@ -693,6 +693,18 @@ export default function AdminSuppliesManagePage() {
                 <input className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.name} onChange={e => setEditingItem({ ...editingItem, name: e.target.value })} />
               </label>
               <label className="flex flex-col gap-1">
+                <span className="text-xs text-[var(--twin-mute)]">分类</span>
+                <select
+                  className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]"
+                  value={editingItem.categoryId}
+                  onChange={e => setEditingItem({ ...editingItem, categoryId: Number(e.target.value) })}
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
                 <span className="text-xs text-[var(--twin-mute)]">状态</span>
                 <select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.shelfStatus} onChange={e => setEditingItem({ ...editingItem, shelfStatus: e.target.value })}>
                   <option value="ON_SHELF">上架</option>
@@ -769,6 +781,7 @@ export default function AdminSuppliesManagePage() {
                   updateItemMut.mutate({
                     id: editingItem.id,
                     body: {
+                      categoryId: editingItem.categoryId,
                       name: editingItem.name,
                       shelfStatus: editingItem.shelfStatus,
                       stockMode: editingItem.stockMode,

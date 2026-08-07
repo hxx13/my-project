@@ -33,6 +33,7 @@ export const REFERENCE_TYPE_REGISTRY: Record<string, ReferenceTypeConfig> = {
       { key: "address", label: "地址", type: "text", required: false, showInCard: false, searchable: false, placeholder: "详细地址" },
       { key: "phone", label: "电话", type: "tel", required: false, showInCard: false, searchable: false, placeholder: "联系电话" },
       { key: "email", label: "邮箱", type: "email", required: false, showInCard: false, searchable: false, placeholder: "电子邮箱" },
+      { key: "imageUrl", label: "图片", type: "image", required: false, showInCard: false, searchable: false },
     ],
   },
   ANIMAL_BREED: {
@@ -47,6 +48,7 @@ export const REFERENCE_TYPE_REGISTRY: Record<string, ReferenceTypeConfig> = {
       { key: "title", label: "主标题", type: "text", required: true, showInCard: true, searchable: true, placeholder: "如: 实验小鼠" },
       { key: "subtitle", label: "副标题", type: "text", required: false, showInCard: true, searchable: true, placeholder: "如: Mus musculus" },
       { key: "description", label: "描述", type: "textarea", required: false, showInCard: false, searchable: false, placeholder: "品种描述..." },
+      { key: "imageUrl", label: "图片", type: "image", required: false, showInCard: false, searchable: false },
     ],
   },
   ANIMAL_STRAIN: {
@@ -74,6 +76,7 @@ export const REFERENCE_TYPE_REGISTRY: Record<string, ReferenceTypeConfig> = {
       { key: "title", label: "主标题", type: "text", required: true, showInCard: true, searchable: true, placeholder: "如: Wild Type" },
       { key: "subtitle", label: "副标题", type: "text", required: false, showInCard: true, searchable: true, placeholder: "如: WT" },
       { key: "description", label: "描述", type: "textarea", required: false, showInCard: false, searchable: false, placeholder: "规格描述..." },
+      { key: "imageUrl", label: "图片", type: "image", required: false, showInCard: false, searchable: false },
     ],
   },
 };

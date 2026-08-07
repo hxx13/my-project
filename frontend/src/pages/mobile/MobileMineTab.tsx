@@ -379,11 +379,15 @@ export default function MobileMineTab({
         </div>
       )}
 
-      {/* Footer */}
+      {/* Footer — 点击跳转门户首页 */}
       <div className="text-center py-8 mt-4">
-        <p className="text-[10px]" style={{ color: "rgba(100,116,139,0.4)" }}>
+        <a
+          href="/#/"
+          className="text-[10px] hover:underline"
+          style={{ color: "rgba(100,116,139,0.4)" }}
+        >
           上海交通大学医学院·实验动物科学部
-        </p>
+        </a>
       </div>
 
       {/* Email edit dialog */}

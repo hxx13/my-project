@@ -246,8 +246,9 @@ export function PortalLoginModal({ open, onClose }: PortalLoginModalProps) {
               type="button"
               onClick={() => {
                 const origin = window.location.origin;
-                const service = encodeURIComponent(`${origin}/#/`);
-                window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${service}`;
+                const service = `${origin}/#/`;
+                try { sessionStorage.setItem("cas_service_url", service); } catch {}
+                window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${encodeURIComponent(service)}`;
               }}
               className="w-full rounded-lg border border-white/15 bg-transparent px-4 py-2.5 text-sm font-medium text-white/60 transition hover:border-white/30 hover:text-white/80"
             >

@@ -2,7 +2,7 @@
 import "./mobile-student-shell.css";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Loader2, WifiOff, X, Mail, MessageCircle, Smartphone, Scan } from "lucide-react";
+import { Loader2, WifiOff, X, Scan } from "lucide-react";
 import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
 import {
   fetchMobileCenter,
@@ -416,51 +416,6 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
           </button>
         ) : null}
       />
-      {/* Email / SendKey status chips — top-left, home tab only */}
-      {isHome && userIdForBind && (
-        <div
-          className="fixed left-4 z-50 flex flex-col items-start gap-2"
-          style={{ top: "calc(env(safe-area-inset-top, 0px) + 52px)" }}
-        >
-          <button
-            type="button"
-            onClick={handleEmailChip}
-            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
-            style={{
-              background: currentEmail ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
-              backdropFilter: "blur(8px)",
-              border: "1px solid rgba(255,255,255,0.2)",
-            }}
-          >
-            <Mail className="size-3 mr-1 inline" />{currentEmail ? "邮箱已绑定" : "邮箱未绑定"}
-          </button>
-          <button
-            type="button"
-            onClick={handleSendKeyChip}
-            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
-            style={{
-              background: currentSendKey ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
-              backdropFilter: "blur(8px)",
-              border: "1px solid rgba(255,255,255,0.2)",
-            }}
-          >
-            <MessageCircle className="size-3 mr-1 inline" />{currentSendKey ? "微信已绑定" : "微信未绑定"}
-          </button>
-          <button
-            type="button"
-            onClick={handleWxPusherChip}
-            className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
-            style={{
-              background: currentWxPusher ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)",
-              backdropFilter: "blur(8px)",
-              border: "1px solid rgba(255,255,255,0.2)",
-            }}
-          >
-            <Smartphone className="size-3 mr-1 inline" />{currentWxPusher ? "WxPusher已绑定" : "WxPusher未绑定"}
-          </button>
-        </div>
-      )}
-
       {/* Email bind dialog */}
       {showEmailDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowEmailDialog(false)}>
@@ -623,6 +578,10 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             }
             currentEmail={currentEmail}
             currentSendKey={currentSendKey}
+            currentWxPusher={currentWxPusher}
+            onEmailChip={userIdForBind ? handleEmailChip : undefined}
+            onSendKeyChip={userIdForBind ? handleSendKeyChip : undefined}
+            onWxPusherChip={userIdForBind ? handleWxPusherChip : undefined}
             onNav={setActiveTab}
             onOpenAnnouncements={openAnnouncements}
             onOpenFeedback={openFeedback}

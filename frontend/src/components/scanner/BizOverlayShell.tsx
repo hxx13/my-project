@@ -6,13 +6,13 @@ import { Z_INDEX } from "@/constants/zIndex";
 import { getBizItems } from "./useBizRegistry";
 import type { BizOverlayShellProps, BizItem } from "./BizOverlayShell.types";
 
-/** 菜单宽度 — 收起时 300px，展开右侧后缩小为 154px */
-const MENU_FULL = 300;
-const MENU_COMPACT = 154;
-/** 总宽度占视口比例 */
-const TOTAL_VW = 30;
-/** 高度占视口比例 */
-const TOTAL_VH = 40;
+/** 菜单宽度 — 收起时 450px，展开右侧后缩小为 231px（150% scale） */
+const MENU_FULL = 450;
+const MENU_COMPACT = 231;
+/** 总宽度占视口比例（150% scale） */
+const TOTAL_VW = 45;
+/** 高度占视口比例（150% scale） */
+const TOTAL_VH = 60;
 
 // 明暗主题适配令牌
 const SHELL_BG = "bg-[var(--app-color-surface-container)]";

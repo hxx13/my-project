@@ -111,6 +111,7 @@ public final class TwinAutomationLogDisplayHelper {
             case "MANUAL" -> "手动触发";
             case "SYSTEM" -> "系统触发";
             case "USER" -> "用户触发";
+            case "SAFETY_NET" -> "兜底复核";
             default -> v.isEmpty() ? "-" : v;
         };
     }
@@ -163,6 +164,7 @@ public final class TwinAutomationLogDisplayHelper {
             case "FACE_REJECT" -> "低于拒绝线";
             case "FACE_GRAY" -> "未达通过线";
             case "FACE_NO_FACE" -> "抓拍未检测到人脸";
+            case "SAFETY_NET_SIGNOFF_RESUBMIT" -> "兜底复核补送签退";
             default -> v.isEmpty() ? "-" : v;
         };
     }

@@ -1,11 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { loginWeb, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
+import { loginWeb, loginCas, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { toast } from "react-hot-toast";
 
 export default function MobileLoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromPortal = (location.state as any)?.fromPortal === true;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -45,6 +48,36 @@ export default function MobileLoginPage() {
   useEffect(() => {
     return () => { if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current); };
   }, []);
+
+  /* ── CAS ticket 回调处理（MobileLoginPage 自身 CAS 入口的回调）── */
+  const casProcessedRef = useRef(false);
+  useEffect(() => {
+    if (casProcessedRef.current) return;
+    const ticketMatch = window.location.href.match(/[?&]ticket=([^&#]+)/);
+    const ticket = ticketMatch ? decodeURIComponent(ticketMatch[1]) : null;
+    if (!ticket) return;
+    casProcessedRef.current = true;
+
+    window.history.replaceState(
+      null, "",
+      window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "").replace(/#$/, ""),
+    );
+
+    const serviceUrl = sessionStorage.getItem("cas_service_url") || window.location.origin;
+    sessionStorage.removeItem("cas_service_url");
+
+    (async () => {
+      try {
+        const data = await loginCas(ticket, serviceUrl);
+        authStorage.setAuth(data.token, data.role, data.userInfo);
+        authStorage.markLoginPortal("mobile");
+        navigate("/m/home", { replace: true });
+      } catch (err) {
+        casProcessedRef.current = false;
+        setError(err instanceof Error ? err.message : "CAS 登录失败，请重试");
+      }
+    })();
+  }, [navigate]);
 
   const doLogin = useCallback(async () => {
     if (!username.trim() || !password.trim()) {
@@ -223,6 +256,17 @@ export default function MobileLoginPage() {
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center p-5"
       style={{ background: bg, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif" }}>
+      {/* 从门户首页进入时显示返回按钮 */}
+      {fromPortal && (
+        <button
+          onClick={() => navigate("/", { replace: true })}
+          className="absolute top-4 left-4 z-10 flex items-center gap-1 px-3 py-2 rounded-full transition active:scale-95"
+          style={{ background: "rgba(0,0,0,0.06)", color: secondary }}
+        >
+          <ArrowLeft className="size-4" />
+          <span className="text-sm">返回首页</span>
+        </button>
+      )}
       <div className="w-full max-w-sm rounded-[var(--app-radius-container)] p-[var(--app-space-container-padding)]"
         style={{ background: cardBg }}>
         {forgotMode ? (
@@ -473,7 +517,9 @@ export default function MobileLoginPage() {
               <button
                 type="button"
                 onClick={() => {
-                  window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${encodeURIComponent(window.location.origin)}`;
+                  const service = window.location.origin;
+                  try { sessionStorage.setItem("cas_service_url", service); } catch {}
+                  window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${encodeURIComponent(service)}`;
                 }}
                 className="w-full rounded-[var(--app-radius-element)] border px-4 py-3 text-sm font-medium transition"
                 style={{ borderColor: accent, color: accent, background: "transparent" }}
