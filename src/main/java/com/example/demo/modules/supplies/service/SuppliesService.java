@@ -156,6 +156,7 @@ public class SuppliesService {
         }
         SupplyCategory c = new SupplyCategory();
         c.setName(req.getName().trim());
+        c.setCoverUrl(req.getCoverUrl());
         c.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         c.setStatus(req.getStatus() == null ? 1 : req.getStatus());
         categoryMapper.insert(c);
@@ -167,6 +168,7 @@ public class SuppliesService {
         if (existing == null) return Result.error("分类不存在");
         if (req == null) return Result.error("参数无效");
         if (StringUtils.hasText(req.getName())) existing.setName(req.getName().trim());
+        if (req.getCoverUrl() != null) existing.setCoverUrl(req.getCoverUrl().isBlank() ? null : req.getCoverUrl().trim());
         if (req.getSortOrder() != null) existing.setSortOrder(req.getSortOrder());
         if (req.getStatus() != null) existing.setStatus(req.getStatus());
         categoryMapper.update(existing);
@@ -1808,6 +1810,7 @@ public class SuppliesService {
         SupplyCategoryView v = new SupplyCategoryView();
         v.setId(c.getId());
         v.setName(c.getName());
+        v.setCoverUrl(c.getCoverUrl());
         v.setSortOrder(c.getSortOrder());
         v.setStatus(c.getStatus());
         return v;
@@ -2112,7 +2115,7 @@ public class SuppliesService {
         if (req.getCategoryId() != null) it.setCategoryId(req.getCategoryId());
         if (StringUtils.hasText(req.getName())) it.setName(req.getName().trim());
         if (req.getSubtitle() != null) it.setSubtitle(req.getSubtitle());
-        if (req.getCoverUrl() != null) it.setCoverUrl(req.getCoverUrl());
+        if (req.getCoverUrl() != null) it.setCoverUrl(req.getCoverUrl().isBlank() ? null : req.getCoverUrl().trim());
         if (StringUtils.hasText(req.getShelfStatus())) it.setShelfStatus(req.getShelfStatus().trim().toUpperCase());
         if (StringUtils.hasText(req.getStockMode())) it.setStockMode(req.getStockMode().trim().toUpperCase());
         if (req.getStockQty() != null) it.setStockQty(req.getStockQty());

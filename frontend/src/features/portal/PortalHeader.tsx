@@ -149,7 +149,7 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
           {/* 手机版入口 */}
           <button
             type="button"
-            onClick={() => navigate(hasToken ? "/m/home" : "/m/login")}
+            onClick={() => navigate(hasToken ? "/m/home" : "/m/login", { state: { fromPortal: true } })}
             title="手机版"
             aria-label="手机版"
             className="flex items-center gap-1 text-sm text-white/50 hover:text-white/80 transition-colors px-2 py-1.5 rounded-lg border border-white/15 hover:border-white/30"
@@ -170,7 +170,7 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
                   <div className="px-4 py-2 text-xs text-white/40 truncate border-b border-white/5">{displayName || userInfo?.username || "已登录"}</div>
                   <button onClick={() => { setUserMenuOpen(false); navigate(backgroundTarget || "/"); }}
                     className="w-full text-left px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors">进入后台</button>
-                  <button onClick={() => { setUserMenuOpen(false); navigate("/m/home"); }}
+                  <button onClick={() => { setUserMenuOpen(false); navigate("/m/home", { state: { fromPortal: true } }); }}
                     className="w-full text-left px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors">
                     <Smartphone className="size-3.5 inline mr-1.5 opacity-60" />
                     切换到手机版
@@ -207,7 +207,7 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
               </div>
             ))}
             <hr className="border-white/10 my-2" />
-            <button onClick={() => { setMobileOpen(false); navigate("/m/login"); }}
+            <button onClick={() => { setMobileOpen(false); navigate("/m/login", { state: { fromPortal: true } }); }}
               className="text-left px-3 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg">
               <Smartphone className="size-3.5 inline mr-1.5 opacity-60" />
               手机版

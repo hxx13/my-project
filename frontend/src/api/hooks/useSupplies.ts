@@ -39,6 +39,7 @@ import {
   fulfillSupplyClaim,
   fetchSupplyPendingTasks,
   fetchSupplyRecentClosedClaims,
+  type SupplyItem,
 } from "@/api/domains/supplies.api";
 import { toast } from "react-hot-toast";
 
@@ -283,6 +284,7 @@ export function useCreateAdminSupplyCategory() {
   return useMutation({
     mutationFn: createAdminSupplyCategory,
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.supplies.all });
       qc.invalidateQueries({ queryKey: [...queryKeys.supplies.all, "adminCategories"] });
       toast.success("分类已创建");
     },
@@ -293,9 +295,10 @@ export function useCreateAdminSupplyCategory() {
 export function useUpdateAdminSupplyCategory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: Partial<{ name: string; sortOrder: number; status: number }> }) =>
+    mutationFn: ({ id, body }: { id: number; body: Partial<{ name: string; coverUrl: string; sortOrder: number; status: number }> }) =>
       updateAdminSupplyCategory(id, body),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.supplies.all });
       qc.invalidateQueries({ queryKey: [...queryKeys.supplies.all, "adminCategories"] });
       toast.success("分类已更新");
     },
@@ -308,6 +311,7 @@ export function useDeleteAdminSupplyCategory() {
   return useMutation({
     mutationFn: deleteAdminSupplyCategory,
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.supplies.all });
       qc.invalidateQueries({ queryKey: [...queryKeys.supplies.all, "adminCategories"] });
       toast.success("分类已删除");
     },
@@ -337,7 +341,7 @@ export function useCreateAdminSupplyItem() {
 export function useUpdateAdminSupplyItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
+    mutationFn: ({ id, body }: { id: number; body: Partial<SupplyItem> }) =>
       updateAdminSupplyItem(id, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.supplies.all });

@@ -5,6 +5,7 @@ import lombok.Data;
 @Data
 public class SupplyCategoryUpsertRequest {
     private String name;
+    private String coverUrl;
     private Integer sortOrder;
     private Integer status;
 }

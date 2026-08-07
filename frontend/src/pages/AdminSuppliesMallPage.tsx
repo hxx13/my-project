@@ -30,6 +30,8 @@ import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { webImageSrc } from "@/utils/mediaUrl";
 import { Portal } from "@/components/Portal";
 import MySuppliesRecordsPanel from "@/components/supplies/MySuppliesRecordsPanel";
+import SuppliesItemEditDialog from "@/components/supplies/SuppliesItemEditDialog";
+import SuppliesCategoryEditDialog from "@/components/supplies/SuppliesCategoryEditDialog";
 
 const SUPPLIES_MALL_CARD_MIN_COL_PX = 300;
 /** 卡片最小高度（约为原版 2×） */
@@ -181,6 +183,8 @@ export default function AdminSuppliesMallPage() {
   /** 合并方案选择：分组 key（"regular" / "ind:<itemId>"）→ 目标订单 id；空串 = 新建订单 */
   const [mergeSelections, setMergeSelections] = useState<Record<string, string>>({});
   const [recordsPanelOpen, setRecordsPanelOpen] = useState(false);
+  const [editItem, setEditItem] = useState<SupplyItem | null>(null);
+  const [editCategory, setEditCategory] = useState<SupplyCategory | null>(null);
   const [specSelections, setSpecSelections] = useState<Record<number, Record<string, string>>>({});
   const queryClient = useQueryClient();
 
@@ -1050,21 +1054,23 @@ export default function AdminSuppliesMallPage() {
                   <span className="text-base font-semibold text-sky-700">全部</span>
                 </button>
               </div>
-              {categories.map((c, i) => (
+              {categories.map((c, i) => {
+                const catCover = webImageSrc(c.coverUrl);
+                return (
                 <div
                   key={c.id}
                   className="relative rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-sm min-h-[9rem] animate-[card-in_0.4s_ease-out_both]"
                   style={{ animationDelay: `${i * 60}ms` }}
                 >
                   {showAdminEntry && (
-                    <a
-                      href={`#${toAdminRoutePath("/admin/supplies/manage")}?editCat=${c.id}`}
-                      onClick={(e) => e.stopPropagation()}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setEditCategory(c); }}
                       className="absolute right-1 top-1 z-10 p-1 rounded text-[var(--twin-mute)] hover:text-[var(--twin-link)] hover:bg-[var(--twin-canvas-soft)] transition-colors"
                       title="编辑分类"
                     >
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-                    </a>
+                    </button>
                   )}
                   <button
                     type="button"
@@ -1072,12 +1078,17 @@ export default function AdminSuppliesMallPage() {
                     className="flex flex-col items-center justify-center gap-3 w-full h-full cursor-pointer hover:text-sky-600 transition-colors"
                   >
                     <div className="relative shrink-0 overflow-hidden rounded-md bg-[var(--twin-canvas-soft)] flex items-center justify-center aspect-square w-24">
-                      <span className="text-3xl font-bold text-[var(--twin-mute)] select-none">{String(c.name || "?").charAt(0)}</span>
+                      {catCover ? (
+                        <img src={catCover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-3xl font-bold text-[var(--twin-mute)] select-none">{String(c.name || "?").charAt(0)}</span>
+                      )}
                     </div>
                     <span className="text-base font-semibold text-[var(--twin-ink)]">{c.name}</span>
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -1119,14 +1130,14 @@ export default function AdminSuppliesMallPage() {
                   style={{ minHeight: SUPPLIES_MALL_CARD_MIN_H, animationDelay: `${i * 50}ms` }}
                 >
                   {showAdminEntry && (
-                    <a
-                      href={`#${toAdminRoutePath("/admin/supplies/manage")}?edit=${item.id}`}
-                      onClick={(e) => e.stopPropagation()}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setEditItem(item); }}
                       className="absolute right-1 top-1 z-10 p-1 rounded text-[var(--twin-mute)] hover:text-[var(--twin-link)] hover:bg-[var(--twin-canvas-soft)] transition-colors"
                       title="编辑商品"
                     >
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-                    </a>
+                    </button>
                   )}
                   <div className="flex min-w-0 flex-row items-center gap-3">
                   <div
@@ -1699,6 +1710,25 @@ export default function AdminSuppliesMallPage() {
       {recordsPanelOpen ? (
         <MySuppliesRecordsPanel onClose={() => setRecordsPanelOpen(false)} />
       ) : null}
+
+      {/* 物资编辑弹窗 */}
+      {editItem && (
+        <SuppliesItemEditDialog
+          item={editItem}
+          categories={categories}
+          open={!!editItem}
+          onClose={() => setEditItem(null)}
+        />
+      )}
+
+      {/* 分类编辑弹窗 */}
+      {editCategory && (
+        <SuppliesCategoryEditDialog
+          category={editCategory}
+          open={!!editCategory}
+          onClose={() => setEditCategory(null)}
+        />
+      )}
     </div>
   );
 }

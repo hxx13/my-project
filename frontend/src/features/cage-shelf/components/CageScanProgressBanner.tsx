@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 
 export interface CageScanProgress {
   status: string;         // idle | running | done | failed
@@ -15,9 +15,10 @@ export interface CageScanProgress {
 
 interface Props {
   progress: CageScanProgress | null;
+  onDismiss?: () => void;
 }
 
-export default function CageScanProgressBanner({ progress }: Props) {
+export default function CageScanProgressBanner({ progress, onDismiss }: Props) {
   if (!progress || progress.status === "idle") return null;
 
   const isRunning = progress.status === "running";
@@ -34,7 +35,7 @@ export default function CageScanProgressBanner({ progress }: Props) {
     <div className={`rounded-twin-lg border px-4 py-3 text-xs ${toneClass}`}>
       <div className="flex items-center gap-2 mb-1">
         {isRunning && <Loader2 className="h-4 w-4 animate-spin shrink-0" />}
-        <span className="font-semibold">
+        <span className="font-semibold flex-1">
           {isRunning
             ? "笼位数据同步中…"
             : isDone
@@ -43,6 +44,15 @@ export default function CageScanProgressBanner({ progress }: Props) {
         </span>
         {progress.startedAt && (
           <span className="opacity-60">· 开始于 {progress.startedAt}</span>
+        )}
+        {(isDone || isFailed) && onDismiss && (
+          <button
+            onClick={onDismiss}
+            className="shrink-0 p-0.5 rounded hover:bg-black/10 transition-colors"
+            title="关闭"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         )}
       </div>
 

@@ -769,7 +769,9 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${encodeURIComponent(window.location.origin)}`;
+                        const service = window.location.origin;
+                        try { sessionStorage.setItem("cas_service_url", service); } catch {}
+                        window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${encodeURIComponent(service)}`;
                       }}
                       className="w-full rounded border border-[#f5d76a]/40 bg-transparent px-4 py-3 text-sm font-medium text-[#e8c547] transition hover:border-[#f5d76a]/70 hover:bg-[#f5d76a]/10"
                     >

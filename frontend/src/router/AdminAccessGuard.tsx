@@ -29,13 +29,13 @@ export default function AdminAccessGuard() {
   }, []);
 
   if (!hasMinRole(role, "STAFF")) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/console/dashboard" replace />;
   }
   if (loading) {
     return <div className="p-6 text-sm text-slate-500">权限加载中...</div>;
   }
   if (!canAccessWebPage(nodes, location.pathname, role, "STAFF")) {
-    return <Navigate to="/admin" replace />;
+    return <Navigate to="/console/dashboard" replace />;
   }
   return <Outlet />;
 }

@@ -363,6 +363,8 @@ function Inner(){
   },[aRid,fullTree,selectedBatchId,pageMode,editMode,bindMode,detailReloadKey,dataSource]);
 
   const{data:scan}=useQuery({queryKey:["cageScanProgress"],queryFn:fetchCageScanProgress,refetchInterval:(q)=>q.state.data?.status==="running"?5000:30000});
+  const [scanDismissed, setScanDismissed] = useState(false);
+  useEffect(() => { if (scan?.status === "running") setScanDismissed(false); }, [scan?.status]);
   // 告警基线批次（独立于快照选择器）：自动=倒数第二个，手动=配置的对比基准
   const alertBaselineId = useMemo(() => {
     if (configMode === "auto") return batchList.length >= 2 ? batchList[1].scanBatchId : (batchList[0]?.scanBatchId || "");
@@ -929,7 +931,7 @@ function Inner(){
       {/* ======== RIGHT PANEL ======== */}
       <div className="flex-1 min-w-0 grid grid-rows-[auto_1fr] h-full pr-1 overflow-hidden">
         <div className="shrink-0 space-y-2">
-        {scan&&scan.status!=="idle"&&<CageScanProgressBanner progress={scan}/>}
+        {scan&&scan.status!=="idle"&&!scanDismissed&&<CageScanProgressBanner progress={scan} onDismiss={()=>setScanDismissed(true)}/>}
         {/* Top toolbar: tabs + view mode + actions */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1">

@@ -5,19 +5,21 @@
     <resultMap id="Base" type="com.example.demo.modules.supplies.entity.SupplyCategory">
         <id property="id" column="id"/>
         <result property="name" column="name"/>
+        <result property="coverUrl" column="cover_url"/>
         <result property="sortOrder" column="sort_order"/>
         <result property="status" column="status"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO supply_category(name, sort_order, status)
-        VALUES (#{name}, #{sortOrder}, #{status})
+        INSERT INTO supply_category(name, cover_url, sort_order, status)
+        VALUES (#{name}, #{coverUrl}, #{sortOrder}, #{status})
     </insert>
 
     <update id="update">
         UPDATE supply_category
         SET name = #{name},
+            cover_url = #{coverUrl},
             sort_order = #{sortOrder},
             status = #{status}
         WHERE id = #{id}

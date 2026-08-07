@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 public class SupplyCategory {
     private Long id;
     private String name;
+    private String coverUrl;
     private Integer sortOrder;
     private Integer status;
     private LocalDateTime updatedAt;

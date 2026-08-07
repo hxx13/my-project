@@ -107,6 +107,8 @@ public class SuppliesSchemaMigrator implements ApplicationRunner {
                     "ALTER TABLE supply_claim_line ADD COLUMN spec_snapshot VARCHAR(500) NULL COMMENT '规格快照'");
             ensureColumnExists("supply_item", "independent_order",
                     "ALTER TABLE supply_item ADD COLUMN independent_order TINYINT NOT NULL DEFAULT 0 COMMENT '是否独立成单:1是,0否'");
+            ensureColumnExists("supply_category", "cover_url",
+                    "ALTER TABLE supply_category ADD COLUMN cover_url VARCHAR(500) NULL COMMENT '分类封面图URL'");
             boolean lockedQtyCreated = ensureColumnExists("supply_item", "locked_qty",
                     "ALTER TABLE supply_item ADD COLUMN locked_qty INT NOT NULL DEFAULT 0 COMMENT '待处理领用锁定数量'");
             if (lockedQtyCreated) {

@@ -10,6 +10,7 @@ interface Result<T> {
 export interface SupplyCategory {
   id: number;
   name: string;
+  coverUrl?: string;
   sortOrder: number;
   status: number;
 }
@@ -309,12 +310,12 @@ export async function fetchAdminSupplyCategories() {
   return res.data.data;
 }
 
-export async function createAdminSupplyCategory(body: { name: string; sortOrder?: number; status?: number }) {
+export async function createAdminSupplyCategory(body: { name: string; coverUrl?: string; sortOrder?: number; status?: number }) {
   const res = await authHttp.post<Result<SupplyCategory>>("/supplies/admin/categories", body);
   return res.data.data;
 }
 
-export async function updateAdminSupplyCategory(id: number, body: Partial<{ name: string; sortOrder: number; status: number }>) {
+export async function updateAdminSupplyCategory(id: number, body: Partial<{ name: string; coverUrl: string; sortOrder: number; status: number }>) {
   const res = await authHttp.patch<Result<SupplyCategory>>(`/supplies/admin/categories/${id}`, body);
   return res.data.data;
 }

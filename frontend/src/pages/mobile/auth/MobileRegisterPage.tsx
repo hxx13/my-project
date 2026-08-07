@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle } from "lucide-react";
 import { QrUploader } from "@/features/student/components/qr";
 import { authStorage } from "@/features/auth/authStorage";
@@ -17,6 +17,8 @@ interface VerifiedData {
 
 export default function MobileRegisterPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromPortal = (location.state as any)?.fromPortal === true;
   const [step, setStep] = useState<RegisterStep>("qr");
   const [verifiedData, setVerifiedData] = useState<VerifiedData | null>(null);
   const [username, setUsername] = useState("");
@@ -111,14 +113,18 @@ export default function MobileRegisterPage() {
       {/* Back button */}
       <button
         onClick={() => {
-          if (step === "qr") navigate("/m/login");
+          if (step === "qr") {
+            if (fromPortal) navigate("/", { replace: true });
+            else navigate("/m/login");
+          }
           else if (step === "confirm") { setVerifiedData(null); setStep("qr"); }
           else if (step === "credentials") setStep("confirm");
         }}
-        className="absolute top-4 left-4 z-10 w-10 h-10 rounded-full flex items-center justify-center transition active:scale-95"
+        className="absolute top-4 left-4 z-10 flex items-center gap-1 px-3 py-2 rounded-full transition active:scale-95"
         style={{ background: "rgba(0,0,0,0.06)" }}
       >
         <ArrowLeft className="size-5" style={{ color: primary }} />
+        {step === "qr" && fromPortal && <span className="text-sm" style={{ color: secondary }}>返回首页</span>}
       </button>
       <div className="w-full max-w-sm rounded-[var(--app-radius-container)] p-[var(--app-space-container-padding)]" style={{ background: cardBg }}>
 

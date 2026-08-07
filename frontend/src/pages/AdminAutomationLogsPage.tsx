@@ -14,6 +14,7 @@ import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShangha
 const TYPE_OPTIONS = [
   { value: "", label: "全部类型" },
   { value: "AUTO_SIGNOUT", label: "离开自动化" },
+  { value: "ACCESS_TRACE", label: "通行与联动步骤" },
   { value: "SCHEDULER", label: "定时器自动化" },
   { value: "EXEMPTION", label: "豁免自动化" },
   { value: "FACE_VERIFY", label: "门禁人脸验证" },
