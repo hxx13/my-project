@@ -4,6 +4,7 @@ import { toast } from "react-hot-toast";
 import { ChevronLeft, ChevronRight, LogIn, X, ChevronDown, LogOut } from "lucide-react";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import { fetchLoginBranding, pickLoginHeroUrls, type LoginBranding } from "@/api/domains/publicSite.api";
+import { PortalHero } from "@/features/portal/PortalHero";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
@@ -35,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import ForgotPasswordPanel from "@/components/shared/ForgotPasswordPanel";
 import "./loginPortalLayout.css";
 
 const SJTU_ORIGIN = "https://130.sjtu.edu.cn";
@@ -45,9 +47,6 @@ const SJTU_ASSETS = {
   arrowRight: `${SJTU_ORIGIN}/assets/images/icon-arrow-right.svg`,
 } as const;
 
-/** 轮播未加载时的过渡底色（深灰，避免红色闪烁） */
-const LOGIN_FALLBACK_BG = "#1a1a1a";
-
 function loginPortalWowDelay(delay: string): CSSProperties {
   return { "--login-wow-delay": delay } as CSSProperties;
 }
@@ -55,14 +54,13 @@ function loginPortalWowDelay(delay: string): CSSProperties {
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { effectiveMode, themeId } = useTheme();
+  const { effectiveMode } = useTheme();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [assetBroken, setAssetBroken] = useState<Record<string, boolean>>({});
   const [branding, setBranding] = useState<LoginBranding | null>(null);
-  const [heroIdx, setHeroIdx] = useState(0);
   const passwordRef = useRef<HTMLInputElement>(null);
   const casProcessedRef = useRef(false);
   const [sessionUser, setSessionUser] = useState(() => authStorage.getUserInfo());
@@ -97,6 +95,16 @@ export default function LoginPage() {
   // Cleanup cooldown timer on unmount
   useEffect(() => {
     return () => { if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current); };
+  }, []);
+
+  // 支持从其他页面跳转 /login?forgot=1 自动打开忘记密码面板
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("forgot") === "1") {
+      setShowLogin(true);
+      setForgotMode(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Turnstile — 同时读取 enabled 开关和 site-key，缺一不可
@@ -201,19 +209,7 @@ export default function LoginPage() {
   );
   const heroUrlKey = useMemo(() => heroUrls.join("\0"), [heroUrls]);
 
-  useEffect(() => {
-    setHeroIdx(0);
-  }, [effectiveMode, heroUrlKey, themeId]);
   const heroCarouselOn = branding?.heroCarouselEnabled !== false && heroUrls.length > 0;
-
-  useEffect(() => {
-    if (!heroCarouselOn || heroUrls.length <= 1) return;
-    const sec = Math.max(3, branding?.intervalSec ?? 8);
-    const t = window.setInterval(() => {
-      setHeroIdx((i) => (i + 1) % heroUrls.length);
-    }, sec * 1000);
-    return () => window.clearInterval(t);
-  }, [heroCarouselOn, heroUrlKey, heroUrls.length, branding?.intervalSec]);
 
   // Turnstile widget: 登录抽屉打开 + 非忘记密码模式时渲染
   const [turnstileLoadFailed, setTurnstileLoadFailed] = useState(false);
@@ -309,9 +305,8 @@ export default function LoginPage() {
         const isStudent = data.userInfo?.accountSource === "STUDENT" || (data.userInfo?.accountSource == null && data.role === "MEMBER");
         if (isStudent) {
           authStorage.markLoginPortal("student");
-          toast("学生账号已自动跳转至学生中心", { icon: "🎒" });
           setShowLogin(false);
-          navigate("/student/home", { replace: true });
+          navigate("/", { replace: true });
           return;
         }
         authStorage.markLoginPortal("staff");
@@ -360,11 +355,10 @@ export default function LoginPage() {
         || (data.userInfo?.accountSource == null && data.role === "MEMBER");
       if (isStudentAccount) {
         authStorage.markLoginPortal("student");
-        toast("学生账号已自动跳转至学生中心", { icon: "🎒" });
         setShowLogin(false);
         setUsername("");
         setPassword("");
-        navigate("/student/home", { replace: true });
+        navigate("/", { replace: true });
         return;
       }
 
@@ -550,25 +544,7 @@ export default function LoginPage() {
 
   return (
     <div className="login-home-page fnt18">
-      {/* 轮播底图：fallback 底色 + 首图淡入，避免 loading 闪烁 */}
-      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden key={`hero-${effectiveMode}-${heroUrlKey}`}>
-        <div className="absolute inset-0 z-0 transition-colors duration-500" style={{ backgroundColor: heroCarouselOn ? "transparent" : LOGIN_FALLBACK_BG }} />
-        {heroCarouselOn && (
-          <>
-            {heroUrls.map((url, i) => (
-              <div
-                key={`${effectiveMode}-${i}-${url}`}
-                className={cn(
-                  "absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-opacity duration-1000",
-                  i === heroIdx ? "opacity-100" : "opacity-0"
-                )}
-                style={{ backgroundImage: `url(${url})` }}
-              />
-            ))}
-            <div className="absolute inset-0 z-[1] bg-gradient-to-b from-[#6b0408]/78 via-[#a30000]/65 to-[#3d0204]/85" />
-          </>
-        )}
-      </div>
+      <PortalHero height="100vh" />
 
       {/* 对应原站 a.logo：本系统为医学院 logo */}
       <Link
@@ -707,267 +683,11 @@ export default function LoginPage() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
               {forgotMode ? (
-                !forgotMethod ? (
-                  // ─── Method Selection ───
-                  <>
-                    <p className="mb-6 text-sm leading-relaxed text-[#b8a88c]">
-                      请选择一种方式验证身份后重置密码。
-                    </p>
-                    <div className="space-y-3">
-                      <button type="button" onClick={() => setForgotMethod("qr")}
-                        className="w-full rounded border-2 border-[#f5d76a]/20 bg-black/25 px-5 py-4 text-left transition hover:border-[#f5d76a]/50 hover:bg-black/35">
-                        <div className="text-base font-semibold text-[#e8dcc4]">人员二维码 + 手机号</div>
-                        <div className="mt-1 text-sm text-[#b8a88c]">上传身份二维码并验证登记手机号</div>
-                      </button>
-                      <button type="button" onClick={() => setForgotMethod("email")}
-                        className="w-full rounded border-2 border-[#f5d76a]/20 bg-black/25 px-5 py-4 text-left transition hover:border-[#f5d76a]/50 hover:bg-black/35">
-                        <div className="text-base font-semibold text-[#e8dcc4]">绑定邮箱 + 验证码</div>
-                        <div className="mt-1 text-sm text-[#b8a88c]">通过已绑定的邮箱接收验证码</div>
-                      </button>
-                    </div>
-                    <p className="mt-6 text-center text-sm text-[#9a8b72]">
-                      <button type="button" onClick={resetForgotState} className="font-medium text-[#e8c547] hover:text-[#f5e6a8]">
-                        返回登录
-                      </button>
-                    </p>
-                  </>
-                ) : forgotMethod === "qr" ? (
-                  // ─── QR verification flow ───
-                  !forgotVerified ? (
-                    <>
-                      <p className="mb-6 text-sm leading-relaxed text-[#b8a88c]">
-                        请输入或上传二维码识别您的 19 位人员编号，并输入登记的手机号进行验证。
-                      </p>
-                      <div className="space-y-4">
-                        {/* 人员编号：手动输入 + 二维码自动填入 */}
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-[#e8dcc4]" htmlFor="forgot-userid">
-                            人员编号（19 位）
-                          </label>
-                          <input
-                            id="forgot-userid"
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={19}
-                            value={forgotUserId}
-                            onChange={(e) => {
-                              const v = e.target.value.replace(/\D/g, "").slice(0, 19);
-                              setForgotUserId(v);
-                              if (!v) { setForgotPersonnelName(""); setQrDecoded(false); }
-                            }}
-                            className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
-                            placeholder="手动输入 19 位人员编号"
-                            autoComplete="off"
-                          />
-                          {forgotPersonnelName ? (
-                            <p className="mt-1.5 text-xs text-emerald-300/90">
-                              已识别：{forgotPersonnelName}
-                            </p>
-                          ) : null}
-                        </div>
-
-                        {/* 二维码上传（便捷填入） */}
-                        <div>
-                          <input
-                            ref={forgotQrRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={handleQrUpload}
-                            className="hidden"
-                          />
-                          <button
-                            type="button"
-                            disabled={qrUploading}
-                            onClick={() => forgotQrRef.current?.click()}
-                            className="w-full rounded border-2 border-dashed border-[#f5d76a]/30 bg-black/25 px-4 py-3 text-sm text-[#b8a89a] hover:border-[#f5d76a]/60 hover:text-[#e8dcc4] transition-colors disabled:opacity-50"
-                          >
-                            {qrUploading ? "识别中..." : qrDecoded && forgotUserId ? "重新上传二维码" : "上传二维码自动填入"}
-                          </button>
-                        </div>
-
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-[#e8dcc4]" htmlFor="forgot-phone">
-                            登记手机号
-                          </label>
-                          <input
-                            id="forgot-phone"
-                            type="text"
-                            value={forgotPhone}
-                            onChange={(e) => setForgotPhone(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") handleForgotVerify(); }}
-                            className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
-                            placeholder="人员在库中登记的手机号"
-                            autoComplete="off"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          disabled={forgotVerifying || forgotUserId.trim().length === 0}
-                          onClick={() => void handleForgotVerify()}
-                          className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {forgotVerifying ? "验证中..." : "验证"}
-                        </button>
-                      </div>
-                      <p className="mt-6 text-center text-sm text-[#9a8b72]">
-                        <button type="button" onClick={backToForgotMethodSelection} className="font-medium text-[#e8c547] hover:text-[#f5e6a8]">
-                          返回选择方式
-                        </button>
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="mb-2 text-sm leading-relaxed text-[#b8a88c]">
-                        验证通过。请设置新密码。
-                      </p>
-                      {forgotPersonnelName ? (
-                        <p className="mb-4 text-sm text-[#e8dcc4]">姓名：{forgotPersonnelName}</p>
-                      ) : null}
-                      <div className="space-y-4">
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-[#e8dcc4]">登录账号（可修改）</label>
-                          <input
-                            type="text"
-                            value={forgotNewUsername}
-                            onChange={(e) => setForgotNewUsername(e.target.value)}
-                            className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
-                            maxLength={64}
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-[#e8dcc4]">新密码</label>
-                          <input
-                            type="password"
-                            value={forgotNewPassword}
-                            onChange={(e) => setForgotNewPassword(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") handleForgotReset(); }}
-                            className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
-                            placeholder="至少6位"
-                            autoComplete="new-password"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          disabled={forgotSubmitting}
-                          onClick={() => void handleForgotReset()}
-                          className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {forgotSubmitting ? "重置中..." : "重置密码"}
-                        </button>
-                      </div>
-                      <p className="mt-6 text-center text-sm text-[#9a8b72]">
-                        <button type="button" onClick={backToForgotMethodSelection} className="font-medium text-[#e8c547] hover:text-[#f5e6a8]">
-                          返回选择方式
-                        </button>
-                      </p>
-                    </>
-                  )
-                ) : (
-                  // ─── Email verification flow ───
-                  forgotEmailStep === "email" ? (
-                    <>
-                      <p className="mb-6 text-sm leading-relaxed text-[#b8a88c]">
-                        请输入您已绑定的邮箱地址，我们将发送验证码。
-                      </p>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-[#e8dcc4]" htmlFor="forgot-email">
-                            已绑定邮箱
-                          </label>
-                          <input
-                            id="forgot-email" type="email"
-                            value={forgotEmail}
-                            onChange={(e) => setForgotEmail(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") handleSendCode(); }}
-                            className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
-                            placeholder="请输入已绑定的邮箱地址"
-                            autoComplete="email"
-                          />
-                        </div>
-                        <button type="button"
-                          disabled={forgotEmailSending || forgotEmailCooldown > 0 || !forgotEmail.trim()}
-                          onClick={() => void handleSendCode()}
-                          className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {forgotEmailSending ? "发送中..." : forgotEmailCooldown > 0 ? `${forgotEmailCooldown}s 后重发` : "发送验证码"}
-                        </button>
-                      </div>
-                      <p className="mt-6 text-center text-sm text-[#9a8b72]">
-                        <button type="button" onClick={backToForgotMethodSelection} className="font-medium text-[#e8c547] hover:text-[#f5e6a8]">
-                          返回选择方式
-                        </button>
-                      </p>
-                    </>
-                  ) : forgotEmailStep === "code" ? (
-                    <>
-                      <p className="mb-2 text-sm leading-relaxed text-[#b8a88c]">
-                        验证码已发送至 <span className="text-[#e8dcc4]">{forgotEmail}</span>
-                      </p>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-[#e8dcc4]" htmlFor="forgot-code">验证码</label>
-                          <input
-                            id="forgot-code" type="text" inputMode="numeric" maxLength={6}
-                            value={forgotEmailCode}
-                            onChange={(e) => setForgotEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                            onKeyDown={(e) => { if (e.key === "Enter") handleEmailVerify(); }}
-                            className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-center text-lg tracking-[0.5em] text-[#f8efd9] placeholder:text-[#b8a89a]"
-                            placeholder="000000" autoComplete="one-time-code"
-                          />
-                        </div>
-                        <button type="button"
-                          disabled={forgotEmailCode.length !== 6 || forgotEmailVerifying}
-                          onClick={() => void handleEmailVerify()}
-                          className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {forgotEmailVerifying ? "验证中..." : "验证"}
-                        </button>
-                        <button type="button"
-                          disabled={forgotEmailCooldown > 0 || forgotEmailSending}
-                          onClick={() => void handleSendCode()}
-                          className="w-full text-sm text-[#e8c547] hover:text-[#f5e6a8] transition"
-                        >
-                          {forgotEmailCooldown > 0 ? `${forgotEmailCooldown}s 后重发` : "重新发送验证码"}
-                        </button>
-                      </div>
-                      <p className="mt-4 text-center text-sm text-[#9a8b72]">
-                        <button type="button" onClick={backToForgotMethodSelection} className="font-medium text-[#e8c547] hover:text-[#f5e6a8]">
-                          返回选择方式
-                        </button>
-                      </p>
-                    </>
-                  ) : (
-                    // email step === "reset"
-                    <>
-                      <p className="mb-2 text-sm leading-relaxed text-[#b8a88c]">
-                        验证通过。请设置新密码。
-                      </p>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-[#e8dcc4]">新密码</label>
-                          <input type="password" value={forgotNewPassword}
-                            onChange={(e) => setForgotNewPassword(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") handleEmailReset(); }}
-                            className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
-                            placeholder="至少8位，含大小写字母、数字、特殊符号中至少三类"
-                            autoComplete="new-password"
-                          />
-                        </div>
-                        <button type="button" disabled={forgotSubmitting}
-                          onClick={() => void handleEmailReset()}
-                          className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {forgotSubmitting ? "重置中..." : "重置密码"}
-                        </button>
-                      </div>
-                      <p className="mt-6 text-center text-sm text-[#9a8b72]">
-                        <button type="button" onClick={resetForgotState} className="font-medium text-[#e8c547] hover:text-[#f5e6a8]">
-                          返回登录
-                        </button>
-                      </p>
-                    </>
-                  )
-                )
+                <ForgotPasswordPanel
+                  theme="drawer"
+                  onBackToLogin={() => setForgotMode(false)}
+                  onResetSuccess={() => setForgotMode(false)}
+                />
               ) : (
                 <>
                   <p className="mb-6 text-sm leading-relaxed text-[#b8a88c]">
@@ -1071,16 +791,7 @@ export default function LoginPage() {
                   <p className="mt-3 text-center text-sm text-[#9a8b72]">
                     <button
                       type="button"
-                      onClick={() => {
-                        setForgotMode(true);
-                        setForgotMethod(null);
-                        setForgotVerified(false);
-                        setForgotUserId(""); setForgotPhone("");
-                        setQrDecoded(false); setForgotPersonnelName("");
-                        setForgotEmail(""); setForgotEmailCode("");
-                        setForgotEmailStep("email"); setForgotEmailResetToken("");
-                        setForgotEmailCooldown(0);
-                      }}
+                      onClick={() => setForgotMode(true)}
                       className="font-medium text-[#e8c547] hover:text-[#f5e6a8]"
                     >
                       忘记密码？

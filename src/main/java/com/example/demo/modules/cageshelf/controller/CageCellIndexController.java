@@ -158,7 +158,8 @@ public class CageCellIndexController {
         // ① 本地业务服务处理
         String aroEndpoint;
         Map<String, Object> outboxPayload = new LinkedHashMap<>();
-        outboxPayload.put("animalCageId", animalCageId);
+        // 使用 canonical 命名（与 aro_field_mapping.json 对齐）
+        outboxPayload.put("animal_cage_id", animalCageId);
 
         switch (action.toUpperCase()) {
             case "DIVIDE" -> {
@@ -178,7 +179,7 @@ public class CageCellIndexController {
                     return Result.fail(400, "BIND 操作需要 cageBoxCode");
                 detailService.bindCageBox(animalCageId, cageBoxCode);
                 aroEndpoint = "cageRelatedBox";
-                outboxPayload.put("cageBoxCode", cageBoxCode);
+                outboxPayload.put("cage_box_code", cageBoxCode);
             }
             case "UNBIND" -> {
                 detailService.unbindCageBox(animalCageId);
@@ -187,10 +188,20 @@ public class CageCellIndexController {
             case "ALLOCATE" -> {
                 detailService.allocate(animalCageId);
                 aroEndpoint = "cageBook";
+                // 从 cage_cell_index 解析 roomId/shelveId，补全投递所需字段
+                var idx = indexMapper.selectByAnimalCageId(animalCageId);
+                if (idx != null) {
+                    outboxPayload.put("roomId", toLong(idx.get("roomId")));
+                    outboxPayload.put("shelveId", toLong(idx.get("shelve_id")));
+                }
+                Long aupId = toLong(body.get("aupId"));
+                if (aupId != null) outboxPayload.put("aupId", aupId);
+                outboxPayload.put("animalCageIds", java.util.List.of(animalCageId));
             }
             case "CANCEL_ALLOCATE" -> {
                 detailService.cancelAllocate(animalCageId);
                 aroEndpoint = "cancelBook";
+                outboxPayload.put("animalCageIds", java.util.List.of(animalCageId));
             }
             default -> { return Result.fail(400, "未支持: " + action); }
         }

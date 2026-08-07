@@ -26,13 +26,14 @@ import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains
  *
  * Props 共 21 个 — 如需新增请评估是否该拆出子组件
  */
-export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay }: {
+export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell }: {
   cell: CageShelfCell; onClick?: (c: CageShelfCell) => void; alert?: PersistedAlert;
   selectable?: boolean; selected?: boolean; onToggle?: (e: React.MouseEvent) => void; allocMode?: boolean;
   clickMode?: "toggle" | "checkbox";
   editCacheEntry?: { initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction> };
   isLastScanned?: boolean; bindHighlight?: boolean; bindPending?: boolean; editMode?: boolean; bindMode?: boolean;
   isCrossCol?: boolean; isCrossRow?: boolean; flashOverlay?: boolean;
+  claimMode?: boolean; isPoolCell?: boolean;
 }) {
   const dominant = getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
   const singleStyle = useStatusStyle(dominant);
@@ -105,6 +106,8 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     {/* Bind highlight (selected = blue, cache-pending = green) */}
     {bindHighlight && !bindPending && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)] pointer-events-none" />}
     {bindPending && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-green-500 shadow-[0_0_10px_rgba(34,197,94,0.35)] pointer-events-none" />}
+    {/* Claim mode pool cell highlight */}
+    {claimMode && isPoolCell && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.35)] pointer-events-none" />}
     {/* Edit cache markers */}
     {editCacheEntry && editCacheEntry.currentActions.size > 0 && <div className="absolute top-0.5 right-0.5 z-20 flex gap-0.5">{Array.from(editCacheEntry.currentActions).map(a => <span key={a} className="text-[8px] px-1 rounded-full text-white font-bold" style={{ background: a === "DIVIDE" ? "#d97706" : a === "SPECIAL_BREEDING" ? "#dc2626" : "#7c3aed" }}>{a === "DIVIDE" ? "分" : a === "SPECIAL_BREEDING" ? "饲" : "健"}</span>)}</div>}
     {isLastScanned && <div className="absolute inset-0 z-10 rounded-twin-md ring-[3px] ring-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)] pointer-events-none" />}

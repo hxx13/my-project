@@ -24,4 +24,5 @@
     quiet_start=#{quietStart}, quiet_end=#{quietEnd}, rate_limit_seconds=#{rateLimitSeconds}, digest_mode=#{digestMode} WHERE id=#{id}
   </update>
   <update id="updateEnabled">UPDATE notify_source_channel SET enabled=#{enabled} WHERE id=#{id}</update>
+  <delete id="deleteBySourceId">DELETE FROM notify_source_channel WHERE source_id = #{sourceId}</delete>
 </mapper>

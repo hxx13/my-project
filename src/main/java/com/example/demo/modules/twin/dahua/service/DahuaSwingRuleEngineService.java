@@ -159,9 +159,13 @@ public class DahuaSwingRuleEngineService {
     public synchronized void onRecordIngested(DahuaSwingRecord record) {
         Map<String, Object> rules = dahuaSwingRuleConfigService.getConfig();
         if (record.getMappingHit() == null || record.getMappingHit() != 1) {
+            writeSkipAudit(record, "SKIP_NO_MAPPING",
+                    "mappingHit=" + record.getMappingHit() + " 卡号未映射到用户，规则引擎跳过");
             return;
         }
         if (!Integer.valueOf(1).equals(record.getOpenResult())) {
+            writeSkipAudit(record, "SKIP_OPEN_FAILED",
+                    "openResult=" + record.getOpenResult() + " 门禁开门失败，规则引擎跳过");
             return;
         }
         int exitDelay = intv(rules.get("autoExitDelaySeconds"), 10);
@@ -173,6 +177,8 @@ public class DahuaSwingRuleEngineService {
 
         String userId = str(record.getMappingUserId());
         if (userId.isBlank()) {
+            writeSkipAudit(record, "SKIP_NO_USER_ID",
+                    "mappingUserId 为空，无法关联用户");
             return;
         }
         String channelCode = str(record.getChannelCode());
@@ -181,6 +187,8 @@ public class DahuaSwingRuleEngineService {
         boolean hitActivatedReswipeExitRule =
                 !activatedReswipeExitChannels.isEmpty() && activatedReswipeExitChannels.contains(channelCode);
         if (!hitExitRule && !hitToggleRule && !hitActivatedReswipeExitRule) {
+            writeSkipAudit(record, "SKIP_CHANNEL_NOT_IN_RULES",
+                    "channel=" + channelCode + " 不在任何规则通道列表中");
             return;
         }
 
@@ -189,6 +197,8 @@ public class DahuaSwingRuleEngineService {
             int dup = dahuaSwingMapper.countActivationByUserAndLastRecordId(
                     GLOBAL_RULE_TASK_ID, userId, recordId);
             if (dup > 0) {
+                writeSkipAudit(record, "SKIP_DUP_RECORD_ID",
+                        "recordId=" + recordId + " 已用于该用户的联动行（lastRecordId 重复），跳过防重");
                 log.debug("[swing-rule] skip-duplicate-record linkage userId={} recordId={} channel={}",
                         userId, recordId, channelCode);
                 return;
@@ -211,6 +221,8 @@ public class DahuaSwingRuleEngineService {
                     LocalDateTime toggleDebounceUntil = parse(toggleRow.getDebounceUntil());
                     if (toggleDebounceUntil != null && now.isBefore(toggleDebounceUntil)) {
                         allowActivatedReswipeExit = false;
+                        writeSkipAudit(record, "SKIP_RESWIPE_EXIT_TOGGLE_DEBOUNCE",
+                                "同一门为激活门+签退门双角色，激活防抖窗内禁止签退 until=" + toggleRow.getDebounceUntil());
                         log.info("[swing-rule] skip-reswipe-exit-under-toggle-debounce userId={} channel={} until={}",
                                 userId, channelCode, toggleRow.getDebounceUntil());
                     }
@@ -222,6 +234,8 @@ public class DahuaSwingRuleEngineService {
                 if (existingSameChannel != null && "AUTO_EXIT_SCHEDULED".equalsIgnoreCase(str(existingSameChannel.getState()))) {
                     LocalDateTime exitDebounceUntil = parse(existingSameChannel.getDebounceUntil());
                     if (exitDebounceUntil != null && now.isBefore(exitDebounceUntil)) {
+                        writeSkipAudit(record, "SKIP_RESWIPE_EXIT_DEBOUNCE",
+                                "同通道已排程延时签退，防抖窗内跳过 until=" + existingSameChannel.getDebounceUntil());
                         log.info("[swing-rule] skip-activated-reswipe-exit-debounce userId={} channel={} until={}",
                                 userId, channelCode, existingSameChannel.getDebounceUntil());
                         return;
@@ -256,6 +270,8 @@ public class DahuaSwingRuleEngineService {
         // 仅「激活后再刷门签退」独有
         // 若该通道也在 toggleChannelCodes 中（同一物理门双角色），须继续走下方激活逻辑以清除 __PENDING_ACTIVATION__。
         if (hitActivatedReswipeExitRule && !hitToggleRule) {
+            writeSkipAudit(record, "SKIP_RESWIPE_EXIT_NOT_ACTIVATED",
+                    "channel=" + channelCode + " 仅配置为「激活后再刷签退」，用户未激活且无待激活计时器");
             log.info("[swing-rule] skip-reswipe-exit-only-until-activated userId={} channel={}", userId, channelCode);
             return;
         }
@@ -270,12 +286,16 @@ public class DahuaSwingRuleEngineService {
 
         LocalDateTime debounceUntil = parse(state.getDebounceUntil());
         if (debounceUntil != null && now.isBefore(debounceUntil)) {
+            writeSkipAudit(record, "SKIP_DEBOUNCE",
+                    "channel=" + channelCode + " 防抖窗内 until=" + state.getDebounceUntil());
             return;
         }
 
         // 刷门即签退：须已「激活卡片」成功；未激活时若同门亦在激活组则交下方激活逻辑，否则忽略
         if (hitExitRule && !userActivatedElsewhere) {
             if (!hitToggleRule) {
+                writeSkipAudit(record, "SKIP_EXIT_NOT_ACTIVATED",
+                        "channel=" + channelCode + " 为签退门，用户未激活且无待激活计时器，该门亦非激活门");
                 log.info("[swing-rule] skip-exit-until-activated userId={} channel={}", userId, channelCode);
                 return;
             }
@@ -310,6 +330,8 @@ public class DahuaSwingRuleEngineService {
         }
 
         if (!hitToggleRule) {
+            writeSkipAudit(record, "SKIP_NOT_TOGGLE_RULE",
+                    "channel=" + channelCode + " 仅命中签退规则但用户未激活，且不是激活门");
             return;
         }
 
@@ -320,6 +342,8 @@ public class DahuaSwingRuleEngineService {
 
         // 延时签退进行中：禁止再次激活，避免清空 scheduled_exit_at 导致无法自动签退
         if (dahuaSwingMapper.countAutoExitScheduledForUser(GLOBAL_RULE_TASK_ID, userId) > 0) {
+            writeSkipAudit(record, "SKIP_ACTIVATION_DURING_EXIT_SCHEDULED",
+                    "用户已有延时签退排程（AUTO_EXIT_SCHEDULED），禁止再次激活");
             log.debug("[swing-rule] skip-activation-during-exit-scheduled userId={} channel={}",
                     userId, channelCode);
             return;
@@ -329,6 +353,8 @@ public class DahuaSwingRuleEngineService {
                 && userActivatedElsewhere == false
                 && dahuaSwingMapper.existsPendingActivationForUser(
                         GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL) == 0) {
+            writeSkipAudit(record, "SKIP_ACTIVATION_NO_PENDING_TIMER",
+                    "无待激活计时器（PENDING_ACTIVATION），禁止刷门直接激活；须先扫码进入");
             log.debug("[swing-rule] skip-activation-without-pending-timer userId={} channel={}",
                     userId, channelCode);
             return;
@@ -344,6 +370,8 @@ public class DahuaSwingRuleEngineService {
                 LocalDateTime pendingSince = parse(pendingRow.getLastSwipeAt());
                 LocalDateTime recordTime = parse(record.getSwingTime());
                 if (pendingSince != null && recordTime != null && recordTime.isBefore(pendingSince)) {
+                    writeSkipAudit(record, "SKIP_STALE_RECORD",
+                            "刷卡时间(" + record.getSwingTime() + ")早于待激活计时器创建时间(" + pendingRow.getLastSwipeAt() + ")，幽灵记录跳过");
                     log.info("[swing-rule] skip-stale-record-for-pending-activation userId={} channel={} recordTime={} pendingSince={}",
                             userId, channelCode, record.getSwingTime(), pendingRow.getLastSwipeAt());
                     return;
@@ -366,6 +394,8 @@ public class DahuaSwingRuleEngineService {
         // 已激活（当前门或任意其他门）→ 跳过，防止换门重复通知
         if (alreadyActivated || userActivatedElsewhere) {
             dahuaSwingMapper.upsertActivationState(state);
+            writeSkipAudit(record, "SKIP_DUP_ACTIVATION",
+                    "alreadyActivated=" + alreadyActivated + " elsewhere=" + userActivatedElsewhere + " 已激活，跳过重复通知");
             log.debug("[swing-rule] skip-duplicate-activation-audit userId={} channel={} alreadyActivated={} elsewhere={}",
                     userId, channelCode, alreadyActivated, userActivatedElsewhere);
             return;
@@ -398,7 +428,12 @@ public class DahuaSwingRuleEngineService {
      */
     private static final String LOCK_DUE_STATES = "dahua_process_due_states";
 
-    public synchronized void processDueStates() {
+    /**
+     * 到期任务：须完整自动离开。
+     * <p>使用 MySQL 命名锁做跨实例互斥，不加 {@code synchronized}——
+     * 避免阻塞 {@link #onRecordIngested} 导致刷卡事件排队乱序，引发签退规则被跳过。</p>
+     */
+    public void processDueStates() {
         int locked = dahuaSwingMapper.tryAcquireLock(LOCK_DUE_STATES, 0);
         if (locked != 1) {
             log.debug("[swing-rule] skip-process-due-states lock-not-acquired locked={}", locked);
@@ -564,6 +599,38 @@ public class DahuaSwingRuleEngineService {
 
     private static String fmt(LocalDateTime t) {
         return t == null ? null : t.format(DT);
+    }
+
+    /**
+     * 规则跳过诊断埋点：写入 twin_automation_log 持久化，不受应用日志轮转影响。
+     * <p>查询被跳过的记录：</p>
+     * <pre>
+     * SELECT event_time, trigger_reason, detail, user_id, target_id
+     * FROM twin_automation_log
+     * WHERE event_key = 'LINKAGE_SKIP'
+     * ORDER BY event_time DESC LIMIT 50;
+     * </pre>
+     */
+    private void writeSkipAudit(DahuaSwingRecord record, String reason, String detail) {
+        try {
+            String userId = str(record.getMappingUserId());
+            String locator = "recordId=" + str(record.getRecordId())
+                    + " channel=" + str(record.getChannelCode())
+                    + " person=" + str(record.getPersonName());
+            twinAutomationLogService.write(
+                    TwinAutomationLogService.TYPE_ACCESS_TRACE,
+                    "LINKAGE_SKIP",
+                    "SYSTEM",
+                    reason,
+                    userId,
+                    str(record.getChannelCode()),
+                    false,
+                    locator + " | " + (detail != null ? detail : ""),
+                    "dahua-swing-rule"
+            );
+        } catch (Exception ignored) {
+            // 诊断埋点不阻断主流程
+        }
     }
 
     /** 到期行 → ACCESS_TRACE 的 trigger_reason，与 {@link TwinAutomationLogService} 常量一致 */

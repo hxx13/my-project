@@ -12,20 +12,26 @@
     <result column="hum_max" property="humMax"/>
     <result column="pressure_min" property="pressureMin"/>
     <result column="pressure_max" property="pressureMax"/>
+    <result column="hysteresis_temp" property="hysteresisTemp"/>
+    <result column="hysteresis_hum" property="hysteresisHum"/>
+    <result column="hysteresis_pressure" property="hysteresisPressure"/>
     <result column="create_time" property="createTime"/>
     <result column="update_time" property="updateTime"/>
   </resultMap>
   <select id="findByFloorCode" resultMap="BaseResultMap">SELECT * FROM telemetry_suite_alarm_config WHERE floor_code = #{floorCode} ORDER BY suite_norm</select>
   <select id="findBySuiteNorm" resultMap="BaseResultMap">SELECT * FROM telemetry_suite_alarm_config WHERE suite_norm = #{suiteNorm}</select>
   <insert id="insertOrUpdate">
-    INSERT INTO telemetry_suite_alarm_config (floor_code, suite_norm, enabled, temp_min, temp_max, hum_min, hum_max, pressure_min, pressure_max)
-    VALUES (#{floorCode}, #{suiteNorm}, #{enabled}, #{tempMin}, #{tempMax}, #{humMin}, #{humMax}, #{pressureMin}, #{pressureMax})
+    INSERT INTO telemetry_suite_alarm_config (floor_code, suite_norm, enabled, temp_min, temp_max, hum_min, hum_max, pressure_min, pressure_max, hysteresis_temp, hysteresis_hum, hysteresis_pressure)
+    VALUES (#{floorCode}, #{suiteNorm}, #{enabled}, #{tempMin}, #{tempMax}, #{humMin}, #{humMax}, #{pressureMin}, #{pressureMax}, #{hysteresisTemp}, #{hysteresisHum}, #{hysteresisPressure})
     ON DUPLICATE KEY UPDATE
       floor_code = VALUES(floor_code),
       enabled = VALUES(enabled),
       temp_min = VALUES(temp_min), temp_max = VALUES(temp_max),
       hum_min = VALUES(hum_min), hum_max = VALUES(hum_max),
-      pressure_min = VALUES(pressure_min), pressure_max = VALUES(pressure_max)
+      pressure_min = VALUES(pressure_min), pressure_max = VALUES(pressure_max),
+      hysteresis_temp = VALUES(hysteresis_temp),
+      hysteresis_hum = VALUES(hysteresis_hum),
+      hysteresis_pressure = VALUES(hysteresis_pressure)
   </insert>
   <update id="updateEnabled">UPDATE telemetry_suite_alarm_config SET enabled = #{enabled} WHERE id = #{id}</update>
 </mapper>

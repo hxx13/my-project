@@ -36,6 +36,7 @@ public class TelemetryWatchlistTagRow {
     private String metricKindLabel;
     private Integer enabled;
     private Integer alarmEnabled;
+    private Integer alarmCooldownMinutes;
     private Integer sortOrder;
     private LocalDateTime createdAt;
 }

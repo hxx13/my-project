@@ -16,5 +16,8 @@ public interface TelemetryGlobalAlarmLimitsMapper {
                         @Param("humMin") String humMin,
                         @Param("humMax") String humMax,
                         @Param("pressureMin") String pressureMin,
-                        @Param("pressureMax") String pressureMax);
+                        @Param("pressureMax") String pressureMax,
+                        @Param("hysteresisTemp") String hysteresisTemp,
+                        @Param("hysteresisHum") String hysteresisHum,
+                        @Param("hysteresisPressure") String hysteresisPressure);
 }

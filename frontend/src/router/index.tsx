@@ -1,8 +1,6 @@
-import { useEffect } from "react";
 import { createHashRouter, Navigate, useParams } from "react-router-dom";
-import { authStorage } from "@/features/auth/authStorage";
-import { resolveRootEntryPath } from "@/features/auth/postLoginNavigation";
 import TwinLayout from "@/layouts/TwinLayout";
+import PortalLandingPage from "@/pages/PortalLandingPage";
 import DashboardPage from "@/pages/DashboardPage";
 import DashboardPreviewPage from "@/pages/DashboardPreviewPage";
 import DebugTablePage from "@/pages/DebugTablePage.tsx";
@@ -97,18 +95,15 @@ import PermissionsSettings from "@/features/admin/settings/PermissionsSettings";
 import DangerZoneSettings from "@/features/admin/settings/DangerZoneSettings";
 import DashboardPreviewSettings from "@/features/admin/settings/DashboardPreviewSettings";
 import StudentRegisterPage from "@/features/student/pages/student-register";
+import StudentLoginPage from "@/features/student/pages/student-login";
 import StudentLayout from "@/features/student/components/layout/student-layout";
 import StudentHomePage from "@/features/student/pages/student-home";
-import StudentRecordsPage from "@/features/student/pages/student-records";
 import StudentRoomsPage from "@/features/student/pages/student-rooms";
-import StudentStatsPage from "@/features/student/pages/student-stats";
 import StudentNotificationsPage from "@/features/student/pages/student-notifications";
 import StudentFeedbackPage from "@/features/student/pages/student-feedback";
 import StudentSettingsPage from "@/features/student/pages/student-settings";
 import StudentCageShelfPage from "@/features/student/pages/student-cage-shelf";
 import StudentMaterialPage from "@/features/student/pages/student-material";
-import StudentMaterialRequestsPage from "@/features/student/pages/student-material-requests";
-import StudentMaterialStatsPage from "@/features/student/pages/student-material-stats";
 import ReportFormListPage from "@/features/report-form/pages/ReportFormListPage";
 import ReportFormDesignPage from "@/features/report-form/pages/ReportFormDesignPage";
 import ReportFillHubPage from "@/features/report-form/pages/ReportFillHubPage";
@@ -121,6 +116,8 @@ import MobileRegisterPage from "@/pages/mobile/auth/MobileRegisterPage";
 import MobileActivatePage from "@/pages/mobile/auth/MobileActivatePage";
 import MobileStudentCenterPage from "@/pages/mobile/MobileStudentCenterPage";
 import MobileSettingsPage from "@/pages/mobile/MobileSettingsPage";
+import MobileSettingsIndexPage from "@/pages/mobile/MobileSettingsIndexPage";
+import MobileAccountSecurityPage from "@/pages/mobile/MobileAccountSecurityPage";
 
 /**
  * 教职工路由统一命名空间。
@@ -133,24 +130,6 @@ function LegacyRedirect({ to }: { to: string }) {
   const splat = useParams()["*"] ?? "";
   const target = splat ? `${to}/${splat}`.replace(/\/+/g, "/") : to;
   return <Navigate to={target} replace />;
-}
-
-/** 站点根路径 /：未登录进登录页；已登录按角色进首页（避免一律打 dashboard） */
-function RootEntryRedirect() {
-  // CAS ticket preservation: hash-router strip query params before hash,
-  // save ticket to sessionStorage before Navigate replaces the URL
-  useEffect(() => {
-    const ticket = new URLSearchParams(window.location.search).get('ticket');
-    if (ticket) {
-      sessionStorage.setItem('cas_pending_ticket', ticket);
-    }
-  }, []);
-
-  if (!authStorage.hasToken()) {
-    return <Navigate to="/login" replace />;
-  }
-  const role = authStorage.getRole() ?? "MEMBER";
-  return <Navigate to={resolveRootEntryPath(role)} replace />;
 }
 
 // ────────────────── 旧路由路径别名（保留兼容） ──────────────────
@@ -186,10 +165,13 @@ export const router = createHashRouter([
   { path: "/m/login", element: <MobileLoginPage /> },
   { path: "/m/register", element: <MobileRegisterPage /> },
   { path: "/m/activate", element: <MobileActivatePage /> },
-  { path: "/m/settings", element: <AuthGuard><MobileSettingsPage /></AuthGuard> },
+  { path: "/m/settings", element: <AuthGuard><MobileSettingsIndexPage /></AuthGuard> },
+  { path: "/m/settings/notifications", element: <AuthGuard><MobileSettingsPage /></AuthGuard> },
+  { path: "/m/settings/account-security", element: <AuthGuard><MobileAccountSecurityPage /></AuthGuard> },
   { path: "/m/home", element: <AuthGuard><MobileStudentCenterPage /></AuthGuard> },
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <RegisterStaffPage /> },
+  { path: "/student/login", element: <StudentLoginPage /> },
 
   // ═══════════════════════════════════════════════════════
   //  学生端路由
@@ -201,16 +183,14 @@ export const router = createHashRouter([
     children: [
       { index: true, element: <Navigate to="/student/home" replace /> },
       { path: "home", element: <StudentHomePage /> },
-      { path: "records", element: <StudentRecordsPage /> },
+      { path: "records", element: <Navigate to="/student/rooms?view=records" replace /> },
       { path: "rooms", element: <StudentRoomsPage /> },
-      { path: "stats", element: <StudentStatsPage /> },
       { path: "notifications", element: <StudentNotificationsPage /> },
       { path: "feedback", element: <StudentFeedbackPage /> },
       { path: "settings", element: <StudentSettingsPage /> },
       { path: "cage-shelf", element: <StudentCageShelfPage /> },
       { path: "material", element: <StudentMaterialPage /> },
-      { path: "material/requests", element: <StudentMaterialRequestsPage /> },
-      { path: "material/stats", element: <StudentMaterialStatsPage /> },
+      { path: "material/requests", element: <Navigate to="/student/material?view=requests" replace /> },
     ],
   },
 
@@ -373,6 +353,6 @@ export const router = createHashRouter([
   // ═══════════════════════════════════════════════════════
   //  旧路由兼容重定向（渐进迁移，无感知）
   // ═══════════════════════════════════════════════════════
-  { path: "/", element: <RootEntryRedirect /> },
+  { path: "/", element: <PortalLandingPage /> },
   ...legacyRedirects,
 ]);

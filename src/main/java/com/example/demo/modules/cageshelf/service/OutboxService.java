@@ -90,27 +90,40 @@ public class OutboxService {
         // 根据端点路由
         Map<String, Object> payload = JSON.parseObject(r.getPayload(), Map.class);
         switch (r.getAroEndpoint()) {
+            // ── 映射端点：使用 CageFieldMappingService 翻译业务字段 ──
             case "cageBoxAction" -> {
-                Long[] ids = resolveIds(payload);
                 aroUrl = ARO_BASE + "/animalCageBoxPart/save";
-                ok = ids != null && aroService.saveAnimalCageBoxPart(ids[0], ids[1]);
+                Long aid = getAnimalCageId(payload);
+                Long cbId = resolveCageBoxId(payload);
+                if (aid == null || cbId == null) {
+                    ok = false;
+                    break;
+                }
+                Map<String, Object> mapped = mappingService.applyPush("cageBoxAction", payload);
+                ok = aroService.saveAnimalCageBoxPart(aid, cbId, mapped);
             }
             case "specialBreeding" -> {
-                Long cbId = resolveCageBoxId(payload);
                 aroUrl = ARO_BASE + "/specialBreeding/save";
-                ok = cbId != null && aroService.saveSpecialBreeding(cbId,
-                    String.valueOf(payload.getOrDefault("specialBreedingName", "")),
-                    String.valueOf(payload.getOrDefault("specialBreedingDescription", "")));
+                Long cbId = resolveCageBoxId(payload);
+                if (cbId == null) {
+                    ok = false;
+                    break;
+                }
+                Map<String, Object> mapped = mappingService.applyPush("specialBreeding", payload);
+                mapped.putIfAbsent("cageBoxId", cbId);
+                ok = aroService.postAroJson("/admin/specialBreeding/save", mapped);
             }
             case "animalHealth" -> {
-                Long cbId = resolveCageBoxId(payload);
                 aroUrl = ARO_BASE + "/animalHealth/save";
-                ok = cbId != null && aroService.saveAnimalHealth(cbId,
-                    toInt(payload.get("animalHealthDegree")),
-                    String.valueOf(payload.getOrDefault("healthDetail", "")),
-                    toInt(payload.get("itching")),
-                    String.valueOf(payload.getOrDefault("reportUserName", "")),
-                    String.valueOf(payload.getOrDefault("observeDate", "")));
+                Long cbId = resolveCageBoxId(payload);
+                if (cbId == null) {
+                    ok = false;
+                    break;
+                }
+                // animalHealth 无映射 targets，直接传 payload + cageBoxId
+                Map<String, Object> healthBody = new LinkedHashMap<>(payload);
+                healthBody.put("cageBoxId", cbId);
+                ok = aroService.postAroJson("/admin/animalHealth/save", healthBody);
             }
             case "cancelColor" -> {
                 Long cbId = resolveCageBoxId(payload);
@@ -120,13 +133,15 @@ public class OutboxService {
             }
             case "cageRelatedBox" -> {
                 aroUrl = ARO_BASE + "/cageRelatedBox/save";
-                ok = aroService.saveCageRelatedBox(
-                        toLong(payload.get("animalCageId")),
-                        String.valueOf(payload.getOrDefault("cageBoxCode", "")));
+                Map<String, Object> mapped = mappingService.applyPush("cageRelatedBox", payload);
+                Long aid = getAnimalCageId(payload);
+                if (aid != null) mapped.putIfAbsent("animalCageId", aid);
+                ok = aroService.postAroJson("/admin/cageRelatedBox/save", mapped);
             }
+            // ── 非映射端点：保持原有逻辑 ──
             case "unbindCageBox" -> {
                 aroUrl = ARO_BASE + "/cageBox/batchDelete";
-                Long aid = toLong(payload.get("animalCageId"));
+                Long aid = getAnimalCageId(payload);
                 ok = aid != null && aroService.unbindCageBox(java.util.List.of(aid));
             }
             case "updateAnimalCage" -> {
@@ -212,37 +227,47 @@ public class OutboxService {
         return result;
     }
 
-    /** 从本地DB解析 animalCageId + cageBoxCode → [animalCageId, cageBoxId] */
-    private Long[] resolveIds(Map<String, Object> payload) {
-        Long animalCageId = toLong(payload.get("animalCageId"));
-        if (animalCageId == null) return null;
-        Long cageBoxId = resolveCageBoxId(payload);
-        if (cageBoxId == null) return null;
-        return new Long[]{animalCageId, cageBoxId};
+    /** 同时兼容 canonical (snake_case) 和 camelCase 的 animalCageId 取值 */
+    private Long getAnimalCageId(Map<String, Object> payload) {
+        Long v = toLong(payload.get("animal_cage_id"));
+        if (v == null) v = toLong(payload.get("animalCageId"));
+        return v;
     }
 
-    /** 优先从本地DB取 cageBoxId（同步时从 cageBoxVo.id 存入），没有再调 ARO 解析 */
+    /** 同时兼容 canonical (snake_case) 和 camelCase 的 cageBoxCode 取值 */
+    private String getCageBoxCode(Map<String, Object> payload) {
+        String v = payload.containsKey("cage_box_code") ? String.valueOf(payload.get("cage_box_code")).trim() : "";
+        if (v.isEmpty()) v = payload.containsKey("cageBoxCode") ? String.valueOf(payload.get("cageBoxCode")).trim() : "";
+        return v;
+    }
+
+    /**
+     * 解析 cageBoxId — 三级回退 + 写回本地DB。
+     * 兼容 canonical (snake_case) 和旧 camelCase 键名。
+     */
     private Long resolveCageBoxId(Map<String, Object> payload) {
-        // ① payload 直接带了 cageBoxId
-        Long cbId = toLong(payload.get("cageBoxId"));
+        // ① payload 直接带了 cageBoxId（兼容两种命名）
+        Long cbId = toLong(payload.get("cage_box_id"));
+        if (cbId == null) cbId = toLong(payload.get("cageBoxId"));
         if (cbId != null) return cbId;
 
-        // ② 从本地 cage_cell_detail 取（同步时已存入）
-        Long aid = toLong(payload.get("animalCageId"));
+        // ② 从本地 cage_cell_detail 取
+        Long aid = getAnimalCageId(payload);
         if (aid != null) {
             CageCellDetail d = detailMapper.selectByAnimalCageId(aid);
             if (d != null && d.getCageBoxId() != null) return d.getCageBoxId();
         }
 
-        // ③ 兜底：调 ARO 解析 cageBoxCode → cageBoxId
-        String code = payload.containsKey("cageBoxCode") ? String.valueOf(payload.get("cageBoxCode")).trim() : "";
-        if (code.isEmpty()) {
-            if (aid != null) {
-                CageCellDetail d = detailMapper.selectByAnimalCageId(aid);
-                if (d != null && d.getCageBoxCode() != null) code = d.getCageBoxCode();
-            }
+        // ③ 兜底：通过 ARO 用 cageBoxCode 解析
+        String code = getCageBoxCode(payload);
+        if (code.isEmpty() && aid != null) {
+            CageCellDetail d = detailMapper.selectByAnimalCageId(aid);
+            if (d != null && d.getCageBoxCode() != null) code = d.getCageBoxCode();
         }
-        if (code.isEmpty()) return null;
+        if (code.isEmpty()) {
+            log.warn("[outbox] resolveCageBoxId 失败: animalCageId={} 无 cageBoxCode/cageBoxId", aid);
+            return null;
+        }
 
         if (aid != null) {
             Map<String, Object> idx = indexMapper.selectByAnimalCageId(aid);
@@ -251,7 +276,23 @@ public class OutboxService {
                 Long shelveId = toLong(idx.get("shelve_id"));
                 if (roomId != null && shelveId != null) {
                     Map<String, Long> resolved = aroService.resolveCageBoxIds(roomId, shelveId, code);
-                    if (!resolved.isEmpty()) return resolved.get("cageBoxId");
+                    if (!resolved.isEmpty()) {
+                        Long resolvedCbId = resolved.get("cageBoxId");
+                        // 写回本地 DB，下次直接命中步骤②
+                        if (resolvedCbId != null && aid != null) {
+                            try {
+                                CageCellDetail d = detailMapper.selectByAnimalCageId(aid);
+                                if (d != null && d.getCageBoxId() == null) {
+                                    d.setCageBoxId(resolvedCbId);
+                                    detailMapper.batchUpsert(java.util.List.of(d));
+                                    log.info("[outbox] 已缓存 cageBoxId: animalCageId={} cageBoxId={}", aid, resolvedCbId);
+                                }
+                            } catch (Exception e) {
+                                log.warn("[outbox] 缓存 cageBoxId 失败: {}", e.getMessage());
+                            }
+                        }
+                        return resolvedCbId;
+                    }
                 }
             }
         }
@@ -260,7 +301,7 @@ public class OutboxService {
 
     /** 从本地DB构建完整的 ARO updateAnimalCage 请求体，通过映射表翻译字段名 */
     private Map<String, Object> buildUpdateBody(Map<String, Object> payload) {
-        Long animalCageId = toLong(payload.get("animalCageId"));
+        Long animalCageId = getAnimalCageId(payload);
         if (animalCageId == null) return null;
 
         Map<String, Object> idx = indexMapper.selectByAnimalCageId(animalCageId);

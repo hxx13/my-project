@@ -10,6 +10,7 @@
     "specialBreeding": { "path": "/admin/specialBreeding/save", "direction": "push" },
     "animalHealth":    { "path": "/admin/animalHealth/save", "direction": "push" },
     "cageRelatedBox":  { "path": "/admin/cageRelatedBox/save", "direction": "push" },
+    "cancelColor":     { "path": "/admin/cageBox/cancelColor", "direction": "push" },
     "updateAnimalCage":{ "path": "/admin/animalCage/update", "direction": "push" }
   },
   "filters": [

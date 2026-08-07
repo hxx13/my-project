@@ -19,7 +19,7 @@ function isStudentAccount(): boolean {
 /** 站点根路径 / 刷新后默认落地（同步，供 RootEntryRedirect）。不检查 portal — 根路径按账号类型决定去向。 */
 export function resolveRootEntryPath(_role: string): string {
   if (isStudentAccount()) return "/student/home";
-  return `${STAFF_NS}/dashboard`;
+  return `${STAFF_NS}/admin`;
 }
 
 /** 无「落地页 / 回跳地址」时，按账号类型决定默认首页 */

@@ -32,7 +32,7 @@
           AND retry_count &lt; 10
         ORDER BY created_at ASC
         LIMIT #{limit}
-        FOR UPDATE SKIP LOCKED
+        FOR UPDATE
     </select>
 
     <update id="updateStatus">

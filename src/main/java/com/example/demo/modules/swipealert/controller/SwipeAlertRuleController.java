@@ -29,12 +29,12 @@ public class SwipeAlertRuleController {
     }
 
     @GetMapping
-    @Operation(summary = "查询全部启用的预警规则")
+    @Operation(summary = "查询全部预警规则（含已禁用）")
     public Result<?> list(@RequestHeader(value = "Authorization", required = false) String authorization) {
         Result<?> denied = requireAdmin(authorization);
         if (denied != null) return denied;
         try {
-            List<SwipeAlertRule> rules = mapper.findByEnabledTrue();
+            List<SwipeAlertRule> rules = mapper.findAll();
             return Result.success(rules);
         } catch (Exception e) {
             return Result.error(e.getMessage() != null ? e.getMessage() : "查询失败");

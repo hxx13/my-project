@@ -37,6 +37,9 @@ public class TelemetryGlobalAlarmLimitsService {
                     .humMax(trimToNull(row.getHumMax()))
                     .pressureMin(trimToNull(row.getPressureMin()))
                     .pressureMax(trimToNull(row.getPressureMax()))
+                    .hysteresisTemp(trimToNull(row.getHysteresisTemp()))
+                    .hysteresisHum(trimToNull(row.getHysteresisHum()))
+                    .hysteresisPressure(trimToNull(row.getHysteresisPressure()))
                     .build();
         } catch (Exception e) {
             log.warn("[WinCC遥测] 读取全局报警限失败（表是否已执行 telemetry-global-alarm-limits.sql？）: {}", e.getMessage());
@@ -54,7 +57,10 @@ public class TelemetryGlobalAlarmLimitsService {
                 normalized.getHumMin(),
                 normalized.getHumMax(),
                 normalized.getPressureMin(),
-                normalized.getPressureMax());
+                normalized.getPressureMax(),
+                normalized.getHysteresisTemp(),
+                normalized.getHysteresisHum(),
+                normalized.getHysteresisPressure());
         return load();
     }
 
@@ -77,6 +83,9 @@ public class TelemetryGlobalAlarmLimitsService {
                 .humMax(blankToNull(in.getHumMax()))
                 .pressureMin(blankToNull(in.getPressureMin()))
                 .pressureMax(blankToNull(in.getPressureMax()))
+                .hysteresisTemp(blankToNull(in.getHysteresisTemp()))
+                .hysteresisHum(blankToNull(in.getHysteresisHum()))
+                .hysteresisPressure(blankToNull(in.getHysteresisPressure()))
                 .build();
     }
 

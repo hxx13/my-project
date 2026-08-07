@@ -50,8 +50,9 @@ public class TelemetryWatchlistSchemaInitializer implements StartupRunner {
         ctx.subtask("value-archive", () -> runBestEffort("db/telemetry-value-archive.sql")); ok++;
         ctx.subtask("insights-tables", () -> runBestEffort("db/telemetry-insights.sql")); ok++;
         ctx.subtask("chart-group-metadata", () -> runBestEffort("db/telemetry-chart-group-metadata-column.sql")); ok++;
+        ctx.subtask("per-tag-alarm-control", () -> runBestEffort("db/telemetry-per-tag-alarm-control.sql")); ok++;
 
-        return StartupResult.success("14 个脚本已同步");
+        return StartupResult.success("15 个脚本已同步");
     }
 
     private void runCore(String path, boolean continueOnError) {

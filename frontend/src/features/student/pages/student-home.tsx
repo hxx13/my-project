@@ -1,18 +1,17 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
 import { createPortal } from "react-dom";
 import {
   FileText,
   AlertTriangle,
   BarChart3,
-  ChevronRight,
-  Plus,
   Key,
   Pin,
   X,
   Brain,
   Clock,
   TrendingUp,
+  Calendar,
   Mail,
   Phone,
   MapPin,
@@ -24,60 +23,27 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AdminPageShell } from "@/components/admin/AdminPageShell";
+import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import { useStudentDashboard } from "../hooks/use-student-dashboard";
 import { useStudentAiProfile } from "../hooks/use-student-ai-profile";
-import { useStudentRooms } from "../hooks/use-student-rooms";
+import { useStudentStats } from "../hooks/use-student-stats";
 import { StudentActivityDashboard } from "../components/student-activity-dashboard";
-import type { AiPredictionRecord } from "../api/student.api";
+import type { AiPredictionRecord, StatsData } from "../api/student.api";
 import {
   StudentCard,
   Badge,
   Skeleton,
   ErrorRetry,
-  EmptyState,
-  RoomCard,
   Avatar,
+  BarChart,
+  StatPanel,
 } from "../components/ui";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 
 /* ------------------------------------------------------------------ */
 /*  Sub-components                                                     */
 /* ------------------------------------------------------------------ */
-
-/** Animated stat card — number scrolls from 0 to value on mount */
-function StatCard({ label, value }: { label: string; value: number }) {
-  const numRef = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    const el = numRef.current;
-    if (!el) return;
-    const target = value;
-    const duration = 1000;
-    const start = performance.now();
-    let raf: number;
-    const animate = (now: number) => {
-      const elapsed = now - start;
-      const progress = Math.min(elapsed / duration, 1);
-      // easeOutQuad
-      const eased = 1 - (1 - progress) * (1 - progress);
-      el.textContent = String(Math.round(eased * target));
-      if (progress < 1) raf = requestAnimationFrame(animate);
-    };
-    raf = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
-
-  return (
-    <div className="flex-1 rounded-[var(--student-radius-md)] bg-white p-4 shadow-[var(--student-card-shadow)]">
-      <div className="text-2xl font-bold text-[var(--student-ink)]">
-        <span ref={numRef}>0</span>
-      </div>
-      <div className="mt-1 text-xs text-[var(--student-mute-foreground)]">
-        {label}
-      </div>
-    </div>
-  );
-}
 
 /** An action link in the Quick Actions sidebar card */
 function QuickActionItem({
@@ -116,12 +82,6 @@ function QuickActionItem({
   );
 }
 
-/** Pattern for displaying an access-record type badge */
-function recordTypeVariant(type: string): "success" | "warning" {
-  if (type === "进入") return "success";
-  return "warning";
-}
-
 /** Gender label */
 function genderLabel(g?: number): string {
   if (g === 1) return "男";
@@ -132,12 +92,6 @@ function genderLabel(g?: number): string {
 /** Simple level from EXP — sqrt(exp/50) floor */
 function levelFromExp(exp: number): number {
   return Math.max(1, Math.floor(Math.sqrt(Math.max(0, exp) / 50)));
-}
-
-/** Pattern for displaying a notification type colour dot */
-function noticeTypeClass(type: string): string {
-  if (type === "ARO") return "bg-[var(--student-error)]";
-  return "bg-[var(--student-primary)]";
 }
 
 /* ------------------------------------------------------------------ */
@@ -173,15 +127,15 @@ function DashboardSkeleton() {
       {/* Right content skeleton */}
       <main className="flex-1 flex flex-col gap-3 min-w-0">
         {/* Stats skeleton */}
-        <div className="flex gap-2.5">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="flex-1 rounded-[var(--student-radius-md)] bg-white p-4 shadow-[var(--student-card-shadow)]"
-            >
-              <Skeleton className="h-8 w-12 mb-2" />
-              <Skeleton className="h-3 w-16" />
-            </div>
+        <div className="flex items-center gap-8 bg-[var(--student-surface)] rounded-xl px-6 py-5 shadow-sm mb-4 flex-wrap">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Fragment key={i}>
+              {i > 0 && <div className="w-px h-8 bg-[var(--student-hairline)] shrink-0" />}
+              <div className="flex flex-col gap-1">
+                <Skeleton className="h-3 w-12" />
+                <Skeleton className="h-5 w-16" />
+              </div>
+            </Fragment>
           ))}
         </div>
 
@@ -236,21 +190,9 @@ export default function StudentHomePage() {
   const { data, isLoading, isError, error, refetch } = useStudentDashboard();
   const { data: aiData } = useStudentAiProfile();
   const [showAiModal, setShowAiModal] = useState(false);
+  const [period, setPeriod] = useState<string>("7d");
+  const { data: statsData, isLoading: statsLoading } = useStudentStats(period);
 
-  // 常用房间：ARO API 匹配 + 手动收藏（与 /student/rooms 页同源）
-  const { data: myRoomsData } = useStudentRooms({ pinned: "1", page: 1, size: 20 });
-  const aroRooms = myRoomsData?.data ?? [];
-  // 拆分为收藏和常用
-  const { pinnedRoomsHome, frequentRoomsHome } = useMemo(() => {
-    const pinned: typeof aroRooms = [];
-    const freq: typeof aroRooms = [];
-    for (const r of aroRooms) {
-      if ((r as any).isPinned) pinned.push(r);
-      else freq.push(r);
-    }
-    return { pinnedRoomsHome: pinned, frequentRoomsHome: freq };
-  }, [aroRooms]);
-  const maxShow = 6;
   const pageRef = useRef<HTMLDivElement>(null);
 
   /* ---- loading ---- */
@@ -273,11 +215,13 @@ export default function StudentHomePage() {
   /* ---- empty / guard ---- */
   if (!data) return null;
 
-  const { profile, stats, recentRecords, recentNotices } = data;
+  const { profile } = data;
 
   /* ---- normal ---- */
   return (
-    <div ref={pageRef} className="flex gap-5 p-6 min-h-full">
+    <AdminPageShell>
+      <AdminFullWidthPage>
+        <div ref={pageRef} className="flex gap-5 min-h-0 h-full overflow-hidden">
       {/* ============================================================ */}
       {/* LEFT COLUMN — 260px fixed width                              */}
       {/* ============================================================ */}
@@ -410,203 +354,111 @@ export default function StudentHomePage() {
       {/* ============================================================ */}
       {/* RIGHT COLUMN — flex-1                                        */}
       {/* ============================================================ */}
-      <main className="flex-1 flex flex-col gap-3 min-w-0">
-        {/* 3. Stats Summary Row */}
-        <div className="flex gap-2.5">
-          <StatCard label="今日进出次数" value={stats.todayAccessCount} />
-          <StatCard label="违规记录" value={stats.violationCount} />
-          <StatCard label="未读通知" value={stats.unreadNoticeCount} />
-          <StatCard label="可进房间" value={stats.accessibleRoomCount} />
-        </div>
+      <main className="flex-1 flex flex-col gap-3 min-w-0 min-h-0 overflow-y-auto">
+        {/* 3. Stats Summary — migrated from /student/stats */}
+        {statsLoading ? (
+          <div className="flex items-center gap-8 bg-[var(--student-surface)] rounded-xl px-6 py-5 shadow-sm mb-4 flex-wrap">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Fragment key={i}>
+                {i > 0 && <div className="w-px h-8 bg-[var(--student-hairline)] shrink-0" />}
+                <div className="flex flex-col gap-1">
+                  <Skeleton className="h-3 w-12" />
+                  <Skeleton className="h-5 w-16" />
+                </div>
+              </Fragment>
+            ))}
+          </div>
+        ) : statsData && statsData.period.days >= 7 ? (
+          <>
+            {/* Summary bar — Calendar icon clickable to cycle period */}
+            <div className="flex items-center gap-8 bg-[var(--student-surface)] rounded-xl px-6 py-5 shadow-sm mb-4 flex-wrap">
+              <button type="button"
+                onClick={() => setPeriod(period === "7d" ? "30d" : period === "30d" ? "90d" : "7d")}
+                title={period === "7d" ? "近 7 天 · 点击切换" : period === "30d" ? "近 30 天 · 点击切换" : "近 90 天 · 点击切换"}
+                className="shrink-0 flex items-center gap-2 group cursor-pointer hover:opacity-80 transition-opacity">
+                <Calendar className="size-4 text-[var(--student-mute-foreground)] shrink-0 group-hover:text-[var(--student-primary)] transition-colors" strokeWidth={1.5} />
+                <div>
+                  <span className="text-[11px] text-[var(--student-mute-foreground)]">统计周期 · <span className="font-medium text-[var(--student-primary)]">{{ "7d": "近 7 天", "30d": "近 30 天", "90d": "近 90 天" }[period]}</span></span>
+                  <div className="mt-0.5 text-[13px] font-semibold text-[var(--student-ink)] tabular-nums">
+                    {statsData.period.start}<span className="mx-1 text-[var(--student-mute-foreground)] font-normal">~</span>{statsData.period.end}
+                  </div>
+                </div>
+              </button>
+              {[{ label: "总进出次数", value: statsData.summary.totalAccess, unit: "次" },
+                { label: "日均进出", value: statsData.summary.dailyAvg, unit: "次/天" },
+                { label: "出勤天数", value: statsData.summary.attendanceDays, unit: "天" },
+                { label: "涉及房间", value: statsData.summary.roomCount, unit: "间" },
+                { label: "违规记录", value: statsData.summary.violationCount, unit: "次" },
+              ].map((s, i) => (
+                <Fragment key={s.label}>
+                  <div className="w-px h-8 bg-[var(--student-hairline)] shrink-0" />
+                  <div className="shrink-0">
+                    <span className="text-[11px] text-[var(--student-mute-foreground)]">{s.label}</span>
+                    <div className="mt-0.5">
+                      <span className="text-lg font-bold text-[var(--student-ink)] tabular-nums">{s.value.toLocaleString()}</span>
+                      <span className="ml-1 text-[11px] text-[var(--student-mute-foreground)]">{s.unit}</span>
+                    </div>
+                  </div>
+                </Fragment>
+              ))}
+            </div>
+
+            {/* Two-column charts — flat grid so each row's left/right share the same height */}
+            <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: "1fr 320px" }}>
+              <StatPanel title="进出趋势">
+                <div className="flex items-center gap-3 mb-2 text-[11px]">
+                  <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-[var(--student-primary)]" /> 进入</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-[var(--student-primary-soft)]" /> 离开</span>
+                </div>
+                <BarChart data={statsData.dailyTrend.map((d: any) => ({ label: d.date.slice(5), value: d.entryCount, value2: d.exitCount }))} height={140} barColor="var(--student-primary)" barColor2="var(--student-primary-soft)" />
+              </StatPanel>
+              <StatPanel title="房间访问分布" isEmpty={statsData.roomDistribution.length === 0} emptyText="暂无房间访问数据">
+                <div className="overflow-y-auto">
+                  {statsData.roomDistribution.map((r: any) => (
+                    <div key={r.roomName} className="flex items-center gap-2 mb-3 last:mb-0">
+                      <span className="text-[13px] text-[var(--student-foreground)] flex-1 truncate">{r.roomName}</span>
+                      <span className="text-[11px] text-[var(--student-mute-foreground)] whitespace-nowrap tabular-nums">{r.count}次</span>
+                      <span className="text-[11px] font-medium text-[var(--student-ink)] w-10 text-right tabular-nums">{r.percentage}%</span>
+                      <div className="w-16 h-1.5 bg-[var(--student-mute)] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-[var(--student-primary)] transition-all" style={{ width: `${Math.min(r.percentage, 100)}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </StatPanel>
+              <StatPanel title="时段分布">
+                <div className="flex items-center gap-3 mb-2 text-[11px]">
+                  <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-[var(--student-primary)]" /> 进入</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-[var(--student-primary-soft)]" /> 离开</span>
+                </div>
+                <BarChart data={statsData.hourlyDistribution.map((d: any) => ({ label: d.bucket.slice(0, 5), value: d.entryCount, value2: d.exitCount }))} height={100} barColor="var(--student-primary)" barColor2="var(--student-primary-soft)" />
+              </StatPanel>
+              <StatPanel title="平均进入时长" isEmpty={statsData.avgStayDuration.length === 0} emptyText="暂无在室时长数据">
+                <div className="overflow-y-auto">
+                  {statsData.avgStayDuration.map((d: any) => (
+                    <div key={d.roomName} className="flex justify-between items-center text-[13px] mb-2 last:mb-0">
+                      <span className="text-[var(--student-foreground)] truncate flex-1 min-w-0">{d.roomName}</span>
+                      <span className="font-semibold text-[var(--student-ink)] ml-2 shrink-0 tabular-nums">{d.durationMinutes} 分钟</span>
+                    </div>
+                  ))}
+                </div>
+              </StatPanel>
+            </div>
+          </>
+        ) : null}
 
         {/* 3.5 课题组活跃度模块 */}
         <StudentActivityDashboard
           groupName={profile.projectGroupName || ""}
         />
 
-        {/* 4. Rooms Section: 收藏 + 常用 */}
-        <StudentCard>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[13px] font-semibold text-[var(--student-foreground)]">
-              🚪 我的房间
-            </h3>
-            <button
-              onClick={() => navigate("/student/rooms")}
-              className="text-[12px] text-[var(--student-primary)] hover:underline transition-colors flex items-center gap-0.5"
-            >
-              查看全部
-              <ChevronRight className="size-3" />
-            </button>
-          </div>
-
-          {pinnedRoomsHome.length === 0 && frequentRoomsHome.length === 0 ? (
-            <p className="text-[12px] text-[var(--student-mute)] py-4 text-center">暂无房间数据</p>
-          ) : (
-            <div className="space-y-3">
-              {/* Pinned rooms */}
-              {pinnedRoomsHome.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-medium text-amber-700 mb-1.5">⭐ 收藏的房间</p>
-                  <div className="flex flex-wrap gap-2">
-                    {pinnedRoomsHome.slice(0, maxShow).map((room: any) => (
-                      <RoomCard
-                        key={room.roomId}
-                        className="w-[180px]"
-                        roomName={room.roomName}
-                        floor={room.floor}
-                        zone={room.zone}
-                        occupantCount={room.occupantCount}
-                        capacity={room.capacity}
-                        status={room.status}
-                        isPinned={room.isPinned}
-                        onClick={() => navigate(`/student/rooms?highlight=${room.roomId}`)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* ARO-matched rooms */}
-              {frequentRoomsHome.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-medium text-[var(--student-primary)] mb-1.5">🚪 常用房间（门禁权限）</p>
-                  <div className="flex flex-wrap gap-2">
-                    {frequentRoomsHome.slice(0, maxShow).map((room: any) => (
-                      <RoomCard
-                        key={room.roomId}
-                        className="w-[180px]"
-                        roomName={room.roomName}
-                        floor={room.floor}
-                        zone={room.zone}
-                        occupantCount={room.occupantCount}
-                        capacity={room.capacity}
-                        status={room.status}
-                        isPinned={room.isPinned}
-                        onClick={() => navigate(`/student/rooms?highlight=${room.roomId}`)}
-                      />
-                    ))}
-                    {/* "+" add card inline */}
-                    <button
-                      aria-label="添加房间"
-                      onClick={() => navigate("/student/rooms")}
-                      className="w-[180px] h-[100px] flex items-center justify-center rounded-[var(--student-radius-md)] border-2 border-dashed border-[var(--student-hairline)] bg-[var(--student-mute)]/10 hover:bg-[var(--student-mute)]/20 transition-colors"
-                    >
-                      <Plus className="size-5 text-[var(--student-mute-foreground)]" strokeWidth={1.5} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* "+" card when no rooms at all */}
-          {pinnedRoomsHome.length === 0 && frequentRoomsHome.length === 0 && (
-            <button
-              aria-label="添加房间"
-              onClick={() => navigate("/student/rooms")}
-              className="w-[180px] h-[100px] flex items-center justify-center rounded-[var(--student-radius-md)] border-2 border-dashed border-[var(--student-hairline)] bg-[var(--student-mute)]/10 hover:bg-[var(--student-mute)]/20 transition-colors"
-            >
-              <Plus className="size-5 text-[var(--student-mute-foreground)]" strokeWidth={1.5} />
-            </button>
-          )}
-        </StudentCard>
-
-        {/* 5. Recent Records + Notifications (dual column) */}
-        <div className="flex gap-2.5">
-          {/* Recent Access Records */}
-          <div className="flex-1">
-            <StudentCard>
-              <h3 className="text-[13px] font-semibold text-[var(--student-foreground)] mb-3">
-                📋 最近出入记录
-              </h3>
-
-              {recentRecords.length > 0 ? (
-                <div className="space-y-2.5">
-                  {recentRecords.slice(0, 5).map((record, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 text-[13px]"
-                    >
-                      <span className="text-[var(--student-mute-foreground)] text-[12px] whitespace-nowrap">
-                        {record.time}
-                      </span>
-                      <Badge variant={recordTypeVariant(record.type)}>
-                        {record.type}
-                      </Badge>
-                      <span className="text-[var(--student-body)] truncate">
-                        {record.roomName}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-center text-[13px] text-[var(--student-mute)] py-6">
-                  暂无出入记录
-                </p>
-              )}
-
-              <button
-                onClick={() => navigate("/student/records")}
-                className="mt-3 text-[12px] text-[var(--student-primary)] hover:underline transition-colors flex items-center gap-0.5"
-              >
-                查看全部
-                <ChevronRight className="size-3" />
-              </button>
-            </StudentCard>
-          </div>
-
-          {/* Notifications */}
-          <div className="flex-1">
-            <StudentCard>
-              <h3 className="text-[13px] font-semibold text-[var(--student-foreground)] mb-3">
-                📢 通知公告
-              </h3>
-
-              {recentNotices.length > 0 ? (
-                <div className="space-y-2.5">
-                  {recentNotices.slice(0, 3).map((notice, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 text-[13px]"
-                    >
-                      <span
-                        className={cn(
-                          "size-2 rounded-full shrink-0",
-                          noticeTypeClass(notice.type),
-                        )}
-                      />
-                      <span className="text-[var(--student-body)] truncate flex-1">
-                        {notice.title}
-                      </span>
-                      <span className="text-[var(--student-mute-foreground)] text-[12px] whitespace-nowrap">
-                        {notice.publishDate}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-center text-[13px] text-[var(--student-mute)] py-6">
-                  暂无通知
-                </p>
-              )}
-
-              <button
-                onClick={() => navigate("/student/notifications")}
-                className="mt-3 text-[12px] text-[var(--student-primary)] hover:underline transition-colors flex items-center gap-0.5"
-              >
-                查看全部
-                <ChevronRight className="size-3" />
-              </button>
-            </StudentCard>
-          </div>
-        </div>
       </main>
 
       {/* ---- AI 个人画像 Modal ---- */}
       {showAiModal && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAiModal(false)}>
           <div
-            className="w-full max-w-lg max-h-[75vh] overflow-hidden rounded-xl border border-[var(--student-hairline)] bg-white shadow-xl"
+            className="w-full max-w-lg max-h-[75vh] overflow-hidden rounded-xl border border-[var(--student-hairline)] bg-[var(--student-surface)] shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[var(--student-hairline)] px-5 py-3">
@@ -668,6 +520,8 @@ export default function StudentHomePage() {
         </div>,
         document.body,
       )}
-    </div>
+        </div>
+      </AdminFullWidthPage>
+    </AdminPageShell>
   );
 }

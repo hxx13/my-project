@@ -65,3 +65,12 @@ export async function resetStudentPin(personnelUserId: string): Promise<void> {
   const { resetPersonnelPin } = await import("@/api/domains/admin.api");
   await resetPersonnelPin(personnelUserId);
 }
+
+/** 已登录用户自助重置自己的 PIN（JWT 认证，仅操作本人） */
+export async function selfResetPin(): Promise<void> {
+  const { authHttp } = await import("@/api/core/authHttp");
+  const res = await authHttp.post<Result<null>>("/auth/special-channel/self/reset-pin");
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "重置 PIN 失败");
+  }
+}

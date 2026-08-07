@@ -10,6 +10,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { useStudentAccessRecords } from "../hooks/use-student-access-records";
 import { useStudentViolations } from "../hooks/use-student-violations";
 import type { ViolationData } from "../api/student.api";
@@ -83,7 +84,7 @@ function RecordsSkeleton({ count = 8 }: { count?: number }) {
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="flex items-center gap-3 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-white p-3"
+          className="flex items-center gap-3 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)] p-3"
         >
           <Skeleton variant="circular" className="size-8 shrink-0" />
           <div className="flex-1 space-y-1.5">
@@ -215,7 +216,7 @@ function RecordsTab({
             {items.map((record) => (
               <div
                 key={record.id}
-                className="flex items-center gap-3 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-white px-4 py-2.5 hover:bg-[var(--student-canvas-soft)] transition-colors"
+                className="flex items-center gap-3 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)] px-4 py-2.5 hover:bg-[var(--student-canvas-soft)] transition-colors"
               >
                 {/* Icon */}
                 <div
@@ -329,7 +330,7 @@ function ViolationsTab({
             {items.map((v) => (
               <div
                 key={v.id}
-                className="flex items-center gap-3 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-white px-4 py-2.5 hover:bg-[var(--student-canvas-soft)] transition-colors"
+                className="flex items-center gap-3 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)] px-4 py-2.5 hover:bg-[var(--student-canvas-soft)] transition-colors"
               >
                 {/* Icon */}
                 <div className="size-8 shrink-0 rounded-full bg-red-50 text-red-500 flex items-center justify-center">
@@ -387,7 +388,7 @@ function ViolationsTab({
 /*  Main Page                                                           */
 /* ================================================================== */
 
-export default function StudentRecordsPage() {
+export default function StudentRecordsPage({ embedded }: { embedded?: boolean }) {
   const [activeTab, setActiveTab] = useState<"records" | "violations">("records");
   const [startDate, setStartDate] = useState(getDefaultStartDate);
   const [endDate, setEndDate] = useState(() => formatDate(new Date()));
@@ -423,10 +424,10 @@ export default function StudentRecordsPage() {
   const violations = violationsQuery.data?.data ?? [];
   const violationsTotal = violationsQuery.data?.total ?? 0;
 
-  return (
-    <div className="p-6 min-h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+  const content = (
+      <div className="min-h-full">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
         <Tabs
           variant="pills"
           tabs={[
@@ -493,6 +494,9 @@ export default function StudentRecordsPage() {
           />
         )}
       </StudentCard>
-    </div>
+      </div>
   );
+
+  if (embedded) return content;
+  return <AdminPageShell>{content}</AdminPageShell>;
 }

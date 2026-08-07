@@ -27,7 +27,7 @@ export function StatPanel({
       <h3 className="mb-3 text-[13px] font-semibold text-[var(--student-ink)]">
         {title}
       </h3>
-      <div className="min-h-[40px]">
+      <div className="min-h-[40px] overflow-x-auto">
         {isEmpty ? (
           <p className="text-center text-[13px] text-[var(--student-mute)]">
             {emptyText}

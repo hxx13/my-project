@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { Bell, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { useStudentNotifications, useMarkNotificationRead } from "../hooks/use-student-notifications";
 import type { FetchNotificationsParams, NotificationData } from "../api/student.api";
 import {
@@ -22,11 +23,11 @@ import {
 
 const PAGE_SIZE = 25;
 
-const NOTIFICATION_TYPE_CONFIG = {
-  ARO: { label: "ARO 官方", textClass: "text-[#dc2626]", bgClass: "bg-[#fee2e2]" },
-  PLATFORM: { label: "平台公告", textClass: "text-[#2563eb]", bgClass: "bg-[#dbeafe]" },
-  WORK_ORDER: { label: "工单通知", textClass: "text-[#7c3aed]", bgClass: "bg-[#ede9fe]" },
-} as const;
+const NOTIFICATION_TYPE_CONFIG: Record<string, { label: string; textClass: string; bgClass: string }> = {
+  ARO: { label: "ARO 官方", textClass: "text-[var(--student-error)]", bgClass: "bg-[var(--student-error-soft)]" },
+  PLATFORM: { label: "平台通知", textClass: "text-[var(--student-accent-telemetry)]", bgClass: "bg-[var(--student-accent-telemetry-soft)]" },
+  WORK_ORDER: { label: "工单", textClass: "text-[var(--student-primary)]", bgClass: "bg-[var(--student-primary-soft)]" },
+};
 
 const TYPE_FILTERS: Array<{ id: string; label: string }> = [
   { id: "ALL", label: "全部" },
@@ -56,7 +57,7 @@ function FilterPill({
         "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors",
         active
           ? "bg-[var(--student-primary)] text-white shadow-sm"
-          : "bg-white text-[var(--student-mute-foreground)] hover:bg-[var(--student-primary-soft)]/20",
+          : "bg-[var(--student-surface)] text-[var(--student-mute-foreground)] hover:bg-[var(--student-primary-soft)]/20",
       )}
     >
       {children}
@@ -84,7 +85,7 @@ function NotificationsSkeleton() {
         {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
-            className="flex items-start gap-3 rounded-[10px] bg-white px-4 py-3"
+            className="flex items-start gap-3 rounded-[10px] bg-[var(--student-surface)] px-4 py-3"
           >
             <Skeleton variant="circular" className="mt-[6px] h-2 w-2 shrink-0" />
             <div className="flex-1 space-y-2">
@@ -169,7 +170,8 @@ export default function StudentNotificationsPage() {
 
   /* ---- Normal render ---- */
   return (
-    <div className="p-6 min-h-full">
+    <AdminPageShell>
+    <div className="min-h-full">
       {/* Filter pills + summary */}
       <div className="flex items-center gap-2 mb-4">
         {TYPE_FILTERS.map((f) => (
@@ -294,5 +296,6 @@ export default function StudentNotificationsPage() {
         )}
       </Dialog>
     </div>
+    </AdminPageShell>
   );
 }

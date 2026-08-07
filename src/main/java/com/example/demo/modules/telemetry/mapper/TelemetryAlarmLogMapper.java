@@ -14,5 +14,7 @@ public interface TelemetryAlarmLogMapper {
             @Param("alarmBand") String alarmBand);
     /** 查询指定变量上一次的 alarmBand（无论方向），用于状态变化检测 */
     TelemetryAlarmLog findLastByVariable(@Param("variableName") String variableName);
+    /** 查询指定变量最近一次非OK报警记录，用于每变量重报警冷却 */
+    TelemetryAlarmLog findLastAlarmByVariable(@Param("variableName") String variableName);
     int deleteOlderThan(@Param("before") LocalDateTime before);
 }

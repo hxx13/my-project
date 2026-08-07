@@ -48,6 +48,28 @@ public interface SwipeAlertRuleMapper {
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM swipe_alert_rule
+            ORDER BY enabled DESC, id ASC
+            """)
+    List<SwipeAlertRule> findAll();
+
+    @Select("""
+            SELECT id, name, enabled,
+                   channels, departments,
+                   open_types AS openTypes,
+                   title_template AS titleTemplate,
+                   body_template AS bodyTemplate,
+                   threshold_count AS thresholdCount,
+                   threshold_window_sec AS thresholdWindowSec,
+                   banner_duration_sec AS bannerDurationSec,
+                   min_role_level AS minRoleLevel,
+                   cooldown_sec AS cooldownSec,
+                   notify_site AS notifySite,
+                   notify_push AS notifyPush,
+                   notify_user_ids AS notifyUserIds,
+                   notify_cardholder AS notifyCardholder,
+                   created_at AS createdAt,
+                   updated_at AS updatedAt
+            FROM swipe_alert_rule
             WHERE id = #{id}
             """)
     SwipeAlertRule findById(@Param("id") Long id);

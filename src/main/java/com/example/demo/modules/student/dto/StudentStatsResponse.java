@@ -40,6 +40,8 @@ public class StudentStatsResponse {
     public static class DailyTrend {
         private LocalDate date;
         private int count;
+        private int entryCount;
+        private int exitCount;
     }
 
     @Data
@@ -47,6 +49,8 @@ public class StudentStatsResponse {
     public static class HourlyDist {
         private String bucket;
         private int count;
+        private int entryCount;
+        private int exitCount;
     }
 
     @Data
