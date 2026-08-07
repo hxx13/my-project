@@ -37,7 +37,7 @@ async function getPrefs(): Promise<MiniPreferences> {
       return cachedPrefs;
     });
   }
-  return fetchPromise;
+  return fetchPromise!;
 }
 
 function readLocal(key: string): string | null {

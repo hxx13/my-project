@@ -17,7 +17,7 @@ gsap.registerPlugin(ScrollTrigger);
 export interface FadeInSectionProps {
   children: React.ReactNode;
   className?: string;
-  as?: 'div' | 'section' | 'article' | 'main' | 'aside' | 'header' | 'footer';
+  as?: React.ElementType;
 }
 
 /** Header height in px, baked into the start offset */
@@ -26,7 +26,7 @@ const HEADER_H = 64;
 export function FadeInSection({
   children,
   className,
-  as: Component = 'div',
+  as: element = 'div',
 }: FadeInSectionProps) {
   const ref = useRef<HTMLDivElement>(null);
   const reducedMotion = usePrefersReducedMotion();
@@ -54,9 +54,13 @@ export function FadeInSection({
     { scope: ref, dependencies: [reducedMotion] },
   );
 
+  // TS cannot resolve the intersection of all possible ElementType props,
+  // so we cast to any for the JSX tag — the runtime behaviour is sound.
+  const Tag = element as any;
+
   return (
-    <Component ref={ref} className={className}>
+    <Tag ref={ref} className={className}>
       {children}
-    </Component>
+    </Tag>
   );
 }
