@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper">
+
+    <resultMap id="CageCellIndexMap" type="com.example.demo.modules.cageshelf.entity.CageCellIndex">
+        <id property="id" column="id"/>
+        <result property="shelfIndexId" column="shelf_index_id"/>
+        <result property="shelveId" column="shelve_id"/>
+        <result property="positionX" column="position_x"/>
+        <result property="positionY" column="position_y"/>
+        <result property="animalCageId" column="animal_cage_id"/>
+        <result property="hasCageBox" column="has_cage_box"/>
+        <result property="cageBoxCode" column="cage_box_code"/>
+        <result property="lastSyncStatus" column="last_sync_status"/>
+        <result property="lastSyncError" column="last_sync_error"/>
+        <result property="syncedAt" column="synced_at"/>
+    </resultMap>
+
+    <update id="createTableIfNeeded">
+        CREATE TABLE IF NOT EXISTS cage_cell_index (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            shelf_index_id BIGINT NOT NULL,
+            shelve_id BIGINT NOT NULL,
+            position_x INT NOT NULL,
+            position_y INT NOT NULL,
+            animal_cage_id BIGINT NULL,
+            has_cage_box TINYINT(1) DEFAULT 0,
+            cage_box_code VARCHAR(100) NULL,
+            last_sync_status VARCHAR(20) DEFAULT 'PENDING',
+            last_sync_error VARCHAR(500) NULL,
+            synced_at DATETIME NULL,
+            UNIQUE KEY uk_cell_position (shelf_index_id, position_x, position_y),
+            KEY idx_cell_shelve (shelve_id),
+            KEY idx_cell_animal_cage (animal_cage_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    </update>
+
+    <insert id="batchUpsert">
+        INSERT INTO cage_cell_index (
+            shelf_index_id, shelve_id, position_x, position_y,
+            animal_cage_id, has_cage_box, cage_box_code,
+            last_sync_status, last_sync_error, synced_at
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.shelfIndexId}, #{item.shelveId},
+                #{item.positionX}, #{item.positionY},
+                #{item.animalCageId}, #{item.hasCageBox}, #{item.cageBoxCode},
+                #{item.lastSyncStatus}, #{item.lastSyncError}, NOW()
+            )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            animal_cage_id = VALUES(animal_cage_id),
+            has_cage_box = VALUES(has_cage_box),
+            cage_box_code = VALUES(cage_box_code),
+            last_sync_status = VALUES(last_sync_status),
+            last_sync_error = VALUES(last_sync_error),
+            synced_at = NOW()
+    </insert>
+
+    <select id="selectByShelfIndexId" resultMap="CageCellIndexMap">
+        SELECT *
+        FROM cage_cell_index
+        WHERE shelf_index_id = #{shelfIndexId}
+        ORDER BY position_y, position_x
+    </select>
+
+    <select id="selectByShelveId" resultMap="CageCellIndexMap">
+        SELECT *
+        FROM cage_cell_index
+        WHERE shelve_id = #{shelveId}
+        ORDER BY position_y, position_x
+    </select>
+
+    <update id="updateAnimalCageId">
+        UPDATE cage_cell_index
+        SET animal_cage_id = #{animalCageId}, synced_at = NOW()
+        WHERE shelf_index_id = #{shelfIndexId}
+          AND position_x = #{positionX}
+          AND position_y = #{positionY}
+    </update>
+
+    <select id="shelfCellSummary" resultType="map">
+        SELECT
+            si.id AS shelfIndexId,
+            si.shelve_id AS shelveId,
+            si.shelve_name AS shelveName,
+            si.room_id AS roomId,
+            si.room_name AS roomName,
+            si.campus_name AS campusName,
+            si.area_name AS areaName,
+            si.floor_name AS floorName,
+            COUNT(cci.id) AS totalCells,
+            SUM(CASE WHEN cci.animal_cage_id IS NOT NULL THEN 1 ELSE 0 END) AS syncedCells,
+            SUM(CASE WHEN cci.has_cage_box = 1 THEN 1 ELSE 0 END) AS boundCells,
+            MAX(cci.synced_at) AS lastSyncedAt
+        FROM cage_shelf_index si
+        LEFT JOIN cage_cell_index cci ON cci.shelf_index_id = si.id
+        WHERE si.deleted = 0
+        <if test="roomId != null">
+            AND si.room_id = #{roomId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (si.shelve_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR si.room_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR si.campus_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        GROUP BY si.id, si.shelve_id, si.shelve_name, si.room_id, si.room_name,
+                 si.campus_name, si.area_name, si.floor_name
+        ORDER BY si.campus_name, si.area_name, si.floor_name, si.room_name, si.shelve_name
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="shelfCellSummaryCount" resultType="int">
+        SELECT COUNT(DISTINCT si.id)
+        FROM cage_shelf_index si
+        WHERE si.deleted = 0
+        <if test="roomId != null">
+            AND si.room_id = #{roomId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (si.shelve_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR si.room_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+
+    <delete id="deleteByShelveId">
+        DELETE FROM cage_cell_index WHERE shelve_id = #{shelveId}
+    </delete>
+
+    <select id="selectIndexedShelveIds" resultType="long">
+        SELECT DISTINCT shelve_id FROM cage_cell_index WHERE animal_cage_id IS NOT NULL
+    </select>
+
+    <select id="selectByAnimalCageId" resultType="map">
+        SELECT cci.*,
+               si.room_id AS roomId,
+               si.room_name AS room_name,
+               si.shelve_name AS shelve_name,
+               si.id AS shelf_index_id
+        FROM cage_cell_index cci
+        JOIN cage_shelf_index si ON si.id = cci.shelf_index_id
+        WHERE cci.animal_cage_id = #{animalCageId}
+        LIMIT 1
+    </select>
+
+    <select id="lookupByAnimalCageId" resultType="map">
+        SELECT
+            cci.shelf_index_id AS shelfIndexId,
+            cci.shelve_id AS shelveId,
+            cci.position_x AS positionX,
+            cci.position_y AS positionY,
+            cci.animal_cage_id AS animalCageId,
+            cci.has_cage_box AS hasCageBox,
+            cci.cage_box_code AS cageBoxCode,
+            si.campus_name AS campusName,
+            si.area_name AS areaName,
+            si.floor_name AS floorName,
+            si.room_name AS roomName,
+            si.room_id AS roomId,
+            si.shelve_name AS shelveName
+        FROM cage_cell_index cci
+        JOIN cage_shelf_index si ON si.id = cci.shelf_index_id
+        WHERE cci.animal_cage_id = #{animalCageId}
+        LIMIT 1
+    </select>
+
+</mapper>

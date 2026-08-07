@@ -947,8 +947,8 @@ export default function AdminLayout() {
           <nav data-admin-sidebar-nav-top className={cn("space-y-2", collapsed && "space-y-1")}>
           <div className="flex w-full min-w-0 flex-row gap-1.5">
             <NavLink
-              to="/login"
-              title={collapsed ? "登录页" : undefined}
+              to="/"
+              title={collapsed ? "门户首页" : undefined}
               onClick={() => onAfterNav?.()}
               className={({ isActive }) =>
                 cn(
@@ -960,12 +960,12 @@ export default function AdminLayout() {
               }
             >
               <LogIn className="h-4 w-4 shrink-0" />
-              {!collapsed && "登录页"}
+              {!collapsed && "门户首页"}
             </NavLink>
             <NavLink
-              to="/"
+              to="/console/dashboard"
               end
-              title={collapsed ? "首页" : undefined}
+              title={collapsed ? "仪表盘" : undefined}
               onClick={() => onAfterNav?.()}
               className={({ isActive }) =>
                 cn(
@@ -977,7 +977,7 @@ export default function AdminLayout() {
               }
             >
               <Home className="h-4 w-4 shrink-0" />
-              {!collapsed && "首页"}
+              {!collapsed && "仪表盘"}
             </NavLink>
           </div>
           <NavLink
@@ -1571,7 +1571,7 @@ export default function AdminLayout() {
                 setLogoutDialogOpen(false);
                 // Redirect browser: CAS clears CASTGC → redirects back to login
                 window.location.href = 'https://auth2.shsmu.edu.cn/cas/logout?service='
-                    + encodeURIComponent(window.location.origin + '/#/login');
+                    + encodeURIComponent(window.location.origin + '/#/');
               }}
             >
               退出登录

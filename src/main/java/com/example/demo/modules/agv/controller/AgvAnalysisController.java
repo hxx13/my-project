@@ -174,10 +174,15 @@ public class AgvAnalysisController {
         return Result.success("ok");
     }
 
-    // ── Routes ──
+    // ── Routes (DEPRECATED v1) ──
+    // 这些端点已被 AgvController 中的 v2 拓扑端点取代:
+    //   GET  /routes           → 改用 GET  /api/v1/agv/routes/topology/generated
+    //   POST /routes/discover  → 改用 POST /api/v1/agv/routes/topology/generate
 
+    /** @deprecated 路线查询 v1 已废弃，请使用 AgvController 中的 GET /api/v1/agv/routes/topology/generated */
+    @Deprecated
     @GetMapping("/routes")
-    @Operation(summary = "查询全部路线")
+    @Operation(summary = "[已废弃] 查询全部路线 — 请使用 /api/v1/agv/routes/topology/generated")
     public Result<List<AgvRoute>> listRoutes(@RequestParam(required = false) String robotIp) {
         if (robotIp != null && !robotIp.isEmpty()) {
             return Result.success(routeService.listByRobot(robotIp));
@@ -185,13 +190,28 @@ public class AgvAnalysisController {
         return Result.success(routeService.listAll());
     }
 
+    /** @deprecated 路线发现 v1 已废弃，请使用 AgvController 中的 POST /api/v1/agv/routes/topology/generate */
+    @Deprecated
     @PostMapping("/routes/discover")
-    @Operation(summary = "从历史活动段中发现路线。force=true 时删除已有路线并重新发现")
+    @Operation(summary = "[已废弃] 从历史活动段中发现路线 — 请使用 /api/v1/agv/routes/topology/generate")
     public Result<Map<String, Object>> discoverRoutes(@RequestParam(required = false, defaultValue = "false") boolean force) {
         int count = routeService.discoverRoutes(force);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("routesDiscovered", count);
         result.put("force", force);
+        return Result.success(result);
+    }
+
+    /**
+     * 从路线拓扑数据重新生成区域（高质量，复用路线模型2的频次和标签）。
+     */
+    @PostMapping("/spatial-elements/generate-from-topology")
+    @Operation(summary = "从路线拓扑生成区域（复用路线标签和频次）")
+    public Result<Map<String, Object>> generateZonesFromTopology() {
+        int count = spatialService.generateZonesFromTopology();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("zonesCreated", count);
+        result.put("source", "TOPOLOGY");
         return Result.success(result);
     }
 

@@ -211,6 +211,20 @@ function toTime(v) {
   return String(v).replace('T', ' ').slice(0, 16);
 }
 
+async function submitRequest(lines, applicantGroup, scheduledPickupTime) {
+  const payload = { lines: lines };
+  if (applicantGroup) payload.applicantGroup = applicantGroup;
+  if (scheduledPickupTime != null && scheduledPickupTime !== '') {
+    payload.scheduledPickupTime = scheduledPickupTime;
+  }
+  const res = await springAuth.springRequest({
+    url: '/api/material/requests',
+    method: 'POST',
+    data: payload,
+  });
+  return parseResponse(res);
+}
+
 module.exports = {
   parseResponse: parseResponse,
   loadLocalCart: loadLocalCart,
@@ -228,4 +242,5 @@ module.exports = {
   formatSpecLabel: formatSpecLabel,
   itemIdFromCartKey: itemIdFromCartKey,
   parseSpecCartKey: parseSpecCartKey,
+  submitRequest: submitRequest,
 };

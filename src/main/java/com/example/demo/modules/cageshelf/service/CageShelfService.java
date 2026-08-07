@@ -596,12 +596,12 @@ public class CageShelfService {
         return cell;
     }
 
-    public Map<String, Object> listIndexRows(Integer campusId, String areaId, String floorId, String roomId, int page, int size) {
+    public Map<String, Object> listIndexRows(Integer campusId, String areaId, String floorId, String roomId, String keyword, int page, int size) {
         int safeSize = Math.max(10, Math.min(size, 200));
         int safePage = Math.max(1, page);
         int offset = (safePage - 1) * safeSize;
-        List<Map<String, Object>> rows = cageShelfMapper.listIndexes(campusId, trim(areaId), trim(floorId), trim(roomId), safeSize, offset);
-        int total = cageShelfMapper.countIndexes(campusId, trim(areaId), trim(floorId), trim(roomId));
+        List<Map<String, Object>> rows = cageShelfMapper.listIndexes(campusId, trim(areaId), trim(floorId), trim(roomId), trim(keyword), safeSize, offset);
+        int total = cageShelfMapper.countIndexes(campusId, trim(areaId), trim(floorId), trim(roomId), trim(keyword));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rows", rows);
         out.put("total", total);

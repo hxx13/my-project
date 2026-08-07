@@ -66,6 +66,10 @@ public interface MaterialRequestMapper {
     int resetForRevoke(@Param("id") String id, @Param("updatedAt") java.time.LocalDateTime updatedAt);
     /** 待审核申领数（PENDING + 双审 FIRST_OK） */
     int countPendingReview();
+    /** 扫描待通知的预约申领：已到通知窗口 + 未通知 */
+    List<MaterialRequest> selectScheduledPendingForNotify();
+    /** 标记预约通知已发送 */
+    int updateNotificationSent(@Param("id") String id);
 
     List<Map<String, Object>> statsDailyRequests(@Param("from") String from, @Param("to") String to,
                                                   @Param("groupId") String groupId);

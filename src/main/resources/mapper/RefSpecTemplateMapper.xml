@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.referencedata.mapper.RefSpecTemplateMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.referencedata.entity.RefSpecTemplate">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="scope" column="scope"/>
+        <result property="breedType" column="breed_type"/>
+        <result property="options" column="options"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ref_spec_template(name, scope, breed_type, options)
+        VALUES (#{name}, #{scope}, #{breedType}, #{options})
+    </insert>
+
+    <update id="update">
+        UPDATE ref_spec_template
+        SET name = #{name},
+            scope = #{scope},
+            breed_type = #{breedType},
+            options = #{options}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM ref_spec_template WHERE id = #{id}
+    </delete>
+
+    <select id="findById" resultMap="Base">
+        SELECT * FROM ref_spec_template WHERE id = #{id} LIMIT 1
+    </select>
+
+    <select id="listAll" resultMap="Base">
+        SELECT * FROM ref_spec_template ORDER BY id ASC
+    </select>
+
+</mapper>

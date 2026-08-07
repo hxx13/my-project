@@ -97,4 +97,9 @@ public final class ErrorCodeConstants {
     public static final int AGV_RULE_NOT_FOUND = 1_012_005;
     public static final int AGV_SEGMENT_NOT_FOUND = 1_012_006;
     public static final int AGV_ANALYSIS_NO_DATA = 1_012_007;
+
+    /** AGV 统计管道 agv-stats 1-012-xxx */
+    public static final int AGV_STATS_CONFIG_NOT_FOUND = 1_012_008;
+    public static final int AGV_STATS_PIPE_NOT_FOUND    = 1_012_009;
+    public static final int AGV_STATS_INVALID_CONFIG    = 1_012_010;
 }

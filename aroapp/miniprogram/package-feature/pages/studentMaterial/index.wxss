@@ -661,6 +661,13 @@ page {
   color: #969799;
 }
 
+.merge-req-pickup {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #e6a23c;
+}
+
 .confirm-line {
   display: flex;
   align-items: center;
@@ -1124,4 +1131,84 @@ page {
   font-size: 20rpx;
   color: #ac1736;
   margin-top: 2rpx;
+}
+
+/* ---- 确认弹窗第三按钮：预约领取 ---- */
+.pop-btn.outline {
+  color: #323233;
+  border: 1px solid #ac1736;
+  background: #fff;
+}
+
+/* ---- 预约时间选择 ---- */
+.pickup-section {
+  margin-top: 16rpx;
+  padding: 16rpx 0;
+  border-top: 1px solid #f2f3f5;
+}
+
+.pickup-section-title {
+  display: block;
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #323233;
+  margin-bottom: 12rpx;
+}
+
+.pickup-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-bottom: 10rpx;
+}
+
+.pickup-preset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10rpx 18rpx;
+  font-size: 24rpx;
+  color: #646566;
+  background: #f7f8fa;
+  border: 1px solid #e6e8eb;
+  border-radius: 8rpx;
+  line-height: 1.3;
+}
+
+.pickup-preset-on {
+  color: #ac1736;
+  background: rgba(172, 23, 54, 0.08);
+  border-color: #ac1736;
+  font-weight: 600;
+}
+
+.pickup-preset-custom {
+  color: #576b95;
+  background: #f0f2f5;
+  border: 1px dashed #d4d7db;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  margin-top: 6rpx;
+}
+
+.pickup-label-row {
+  margin-top: 16rpx;
+  padding: 16rpx 0;
+  border-top: 1px solid #f2f3f5;
+  text-align: center;
+}
+
+.pickup-label {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #ac1736;
+}
+
+.pickup-label-edit {
+  margin-left: 12rpx;
+  font-size: 22rpx;
+  color: #576b95;
+  text-decoration: underline;
 }

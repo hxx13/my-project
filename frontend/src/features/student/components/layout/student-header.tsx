@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, Bell, ChevronDown, LogOut, Mail, Menu, MessageCircle, Smartphone, UserRound } from "lucide-react";
+import { ArrowLeft, Bell, ChevronDown, LogOut, Mail, Menu, MessageCircle, Search, Smartphone, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authStorage } from "@/features/auth/authStorage";
 import { getImpersonationState, returnToStaffView, fullLogout } from "@/features/auth/impersonation";
@@ -21,9 +21,10 @@ import { PageHelpHost } from "@/features/page-help/PageHelpHost";
 
 interface StudentHeaderProps {
   onMenuClick: () => void;
+  onOpenCommand?: () => void;
 }
 
-export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
+export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const impersonation = useMemo(() => getImpersonationState(), []);
@@ -105,28 +106,61 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
 
   const handleLogout = () => {
     fullLogout();
-    navigate("/login", { replace: true });
+    navigate("/", { replace: true });
   };
+
+  const breadcrumbMap: Record<string, string> = {
+    "/student/home": "首页",
+    "/student/records": "出入记录",
+    "/student/rooms": "我的房间",
+    "/student/cage-shelf": "笼架信息",
+    "/student/material": "申领物品",
+    "/student/material/requests": "我的申领",
+    "/student/material/stats": "物品统计",
+    "/student/notifications": "通知",
+    "/student/feedback": "帮助反馈",
+    "/student/settings": "设置",
+    "/student/animal-order": "实验动物订购",
+  };
+
+  const currentLabel = breadcrumbMap[pathname] || "";
 
   return (
     <header
       className={cn(
-        "sticky top-0 z-[var(--z-sticky)] flex h-14 shrink-0 items-center justify-between border-b border-[var(--student-hairline)] bg-[var(--student-canvas)] px-4",
+        "sticky top-0 z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--student-hairline)] px-4 py-2 shadow-sm sm:px-6 md:h-16 md:flex-nowrap md:py-0",
+        "bg-[var(--student-canvas)]/95 backdrop-blur-md",
       )}
     >
       {/* Left side */}
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:flex-1 md:flex-nowrap">
         <button
           type="button"
           onClick={onMenuClick}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] lg:hidden"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] md:hidden"
           aria-label="打开导航菜单"
         >
           <Menu className="h-4 w-4" />
         </button>
 
-        <h1 className="text-lg font-semibold text-[var(--student-ink)] tracking-tight">
-          学生中心
+        {/* Search — matches admin header Ctrl+K search bar */}
+        {onOpenCommand ? (
+          <button
+            type="button"
+            onClick={onOpenCommand}
+            className="flex min-w-0 max-w-full flex-1 items-center gap-2 rounded-lg border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-2 text-left text-sm text-[var(--student-mute)] hover:bg-[var(--student-canvas-soft-2)] sm:max-w-md"
+          >
+            <Search className="h-4 w-4 shrink-0 opacity-60" />
+            <span className="min-w-0 flex-1 truncate">搜索页面…</span>
+            <kbd className="hidden shrink-0 rounded border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--student-mute)] sm:inline">
+              Ctrl K
+            </kbd>
+          </button>
+        ) : null}
+
+        {/* Page title — like admin's adminHeaderTitle h1 */}
+        <h1 className="hidden min-w-0 truncate text-base font-semibold tracking-tight text-[var(--student-ink)] sm:block">
+          {currentLabel || "学生中心"}
         </h1>
       </div>
 

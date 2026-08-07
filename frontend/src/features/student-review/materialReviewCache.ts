@@ -3,7 +3,7 @@ import type { MaterialRequest } from "@/api/domains/material.api";
 import { materialQueryKeys } from "@/api/hooks/queryKeys";
 
 /** 与 MaterialReviewPage 已审结列表分页一致 */
-export const MATERIAL_REVIEW_FINISHED_PAGE = { page: 1, size: 50 } as const;
+export const MATERIAL_REVIEW_FINISHED_PAGE = { page: 1, size: 200 } as const;
 
 function isMaterialPendingStatus(status?: string): boolean {
   const s = (status ?? "").toUpperCase();

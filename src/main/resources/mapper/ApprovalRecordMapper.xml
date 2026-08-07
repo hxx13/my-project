@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.ApprovalRecordMapper">
+
+    <resultMap id="ApprovalRecordMap" type="com.example.demo.modules.cageshelf.entity.ApprovalRecord">
+        <id property="id" column="id"/>
+        <result property="targetType" column="target_type"/>
+        <result property="targetId" column="target_id"/>
+        <result property="approverId" column="approver_id"/>
+        <result property="approverName" column="approver_name"/>
+        <result property="approverRole" column="approver_role"/>
+        <result property="decision" column="decision"/>
+        <result property="rejectReason" column="reject_reason"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.example.demo.modules.cageshelf.entity.ApprovalRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO approval_records (
+            target_type, target_id, approver_id, approver_name, approver_role,
+            decision, reject_reason, created_at
+        ) VALUES (
+            #{targetType}, #{targetId}, #{approverId}, #{approverName}, #{approverRole},
+            #{decision}, #{rejectReason}, NOW()
+        )
+    </insert>
+
+    <select id="selectByTarget" resultMap="ApprovalRecordMap">
+        SELECT * FROM approval_records
+        WHERE target_type = #{targetType}
+          AND target_id = #{targetId}
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByApprover" resultMap="ApprovalRecordMap">
+        SELECT * FROM approval_records
+        WHERE approver_id = #{approverId}
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+</mapper>

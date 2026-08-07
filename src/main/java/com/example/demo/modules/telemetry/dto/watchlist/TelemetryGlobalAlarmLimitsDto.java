@@ -17,4 +17,7 @@ public class TelemetryGlobalAlarmLimitsDto {
     private String humMax;
     private String pressureMin;
     private String pressureMax;
+    private String hysteresisTemp;
+    private String hysteresisHum;
+    private String hysteresisPressure;
 }

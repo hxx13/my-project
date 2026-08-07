@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.referencedata.mapper.RefOrderLogMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.referencedata.entity.RefOrderLog">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="action" column="action"/>
+        <result property="operatorId" column="operator_id"/>
+        <result property="detail" column="detail"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ref_order_log(order_id, action, operator_id, detail)
+        VALUES (#{orderId}, #{action}, #{operatorId}, #{detail})
+    </insert>
+
+    <select id="listByOrderId" resultMap="Base">
+        SELECT * FROM ref_order_log WHERE order_id = #{orderId} ORDER BY created_at ASC
+    </select>
+
+</mapper>

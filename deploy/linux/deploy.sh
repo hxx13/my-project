@@ -77,13 +77,20 @@ else
     # Step 3/8: 前端构建
     echo "=== Step 3/8: npm build ==="
     cd "$REPO_DIR/frontend"
+    # 清理上次构建残留（可能属 root），避免 npm ci / vite build 权限错误
+    if [ -d node_modules ]; then
+        sudo rm -rf node_modules
+    fi
+    sudo rm -rf "$REPO_DIR/src/main/resources/static" 2>/dev/null || true
     npm ci
-    sudo chown -R aroadmin:aroadmin "$REPO_DIR/frontend/node_modules"
+    sudo chown -R aroadmin:aroadmin node_modules
     npm run build
 
     # Step 4/8: 后端构建
     echo "=== Step 4/8: mvn package ==="
     cd "$REPO_DIR"
+    # 清理上次构建残留（可能属 root，mvn clean 删不动）
+    sudo rm -rf target
     mvn clean package -DskipTests -Plinux
 fi
 

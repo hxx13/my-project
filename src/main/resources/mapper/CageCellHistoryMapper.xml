@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageCellHistoryMapper">
+
+    <resultMap id="CageCellHistoryMap" type="com.example.demo.modules.cageshelf.entity.CageCellHistory">
+        <id property="id" column="id"/>
+        <result property="animalCageId" column="animal_cage_id"/>
+        <result property="statusField" column="status_field"/>
+        <result property="imagesJson" column="images_json"/>
+        <result property="experimentDesc" column="experiment_desc"/>
+        <result property="toggledBy" column="toggled_by"/>
+        <result property="action" column="action"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_cell_history (animal_cage_id, status_field, images_json, experiment_desc, toggled_by, action)
+        VALUES (#{animalCageId}, #{statusField}, #{imagesJson}, #{experimentDesc}, #{toggledBy}, #{action})
+    </insert>
+
+    <select id="selectByAnimalCageId" resultMap="CageCellHistoryMap">
+        SELECT * FROM cage_cell_history WHERE animal_cage_id = #{animalCageId} ORDER BY created_at DESC
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM cage_cell_history WHERE id = #{id}
+    </delete>
+
+</mapper>

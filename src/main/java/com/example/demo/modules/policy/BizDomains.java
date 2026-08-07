@@ -15,4 +15,6 @@ public final class BizDomains {
     public static final String SUPPLIES_ADMIN = "SUPPLIES_ADMIN";
     /** 学生物资申领（申请 / 审核 / 出库） */
     public static final String MATERIAL_REQUEST = "MATERIAL_REQUEST";
+    /** 实验动物订购（供应商/品种/品系/规格） */
+    public static final String REFERENCE_DATA_ADMIN = "REFERENCE_DATA_ADMIN";
 }

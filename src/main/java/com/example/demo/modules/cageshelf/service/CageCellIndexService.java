@@ -1,0 +1,681 @@
+package com.example.demo.modules.cageshelf.service;
+
+import com.alibaba.fastjson2.JSON;
+import com.example.demo.modules.aro.service.AroService;
+import com.example.demo.modules.cageshelf.entity.CageCellDetail;
+import com.example.demo.modules.cageshelf.entity.CageCellIndex;
+import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
+import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
+import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
+import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
+import com.example.demo.modules.cageshelf.support.CageFieldMappingService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+@Service
+public class CageCellIndexService {
+
+    private static final Logger log = LoggerFactory.getLogger(CageCellIndexService.class);
+    private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final String MAPPING_VERSION = "3";
+
+    private final CageCellIndexMapper cellIndexMapper;
+    private final CageCellDetailMapper detailMapper;
+    private final CageShelfMapper shelfMapper;
+    private final AroService aroService;
+    private final CageFieldMappingService mappingService;
+
+    public CageCellIndexService(CageCellIndexMapper cellIndexMapper,
+                                CageCellDetailMapper detailMapper,
+                                CageShelfMapper shelfMapper,
+                                AroService aroService,
+                                CageFieldMappingService mappingService) {
+        this.cellIndexMapper = cellIndexMapper;
+        this.detailMapper = detailMapper;
+        this.shelfMapper = shelfMapper;
+        this.aroService = aroService;
+        this.mappingService = mappingService;
+    }
+
+    /**
+     * 全量同步：遍历所有架子，调 ARO /back 拿笼位ID，写入 cage_cell_index。
+     * @param roomId 可选，限定只同步某个房间
+     * @return 同步统计
+     */
+    public Map<String, Object> syncAllCells(Long roomId) {
+        LocalDateTime startedAt = LocalDateTime.now();
+        // 从本地索引表取所有架子
+        List<Map<String, Object>> shelfList;
+        if (roomId != null) {
+            shelfList = shelfMapper.listShelves(null, null, null, null, null,
+                    String.valueOf(roomId), null);
+        } else {
+            shelfList = shelfMapper.listAllShelfSummaries();
+        }
+
+        if (shelfList == null || shelfList.isEmpty()) {
+            return Map.of("ok", false, "error", "本地架子索引为空，请先导入架子数据");
+        }
+
+        int totalShelves = shelfList.size();
+        int successShelves = 0;
+        int failShelves = 0;
+        int totalCells = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+
+        log.info("[cell-sync] 开始全量笼位ID同步，共 {} 个架子", totalShelves);
+
+        for (Map<String, Object> shelf : shelfList) {
+            Long sRoomId = toLongSafe(shelf.get("roomId"));
+            Long shelveId = toLongSafe(shelf.get("shelveId"));
+            Long shelfIdxId = toLongSafe(shelf.get("id"));
+            String location = shelf.get("campusName") + "/" + shelf.get("roomName")
+                    + "/" + shelf.get("shelveName");
+
+            if (sRoomId == null || shelveId == null) {
+                failShelves++;
+                failures.add(Map.of("shelveId", String.valueOf(shelveId),
+                        "error", "roomId或shelveId缺失"));
+                continue;
+            }
+
+            if (shelfIdxId == null) {
+                failShelves++;
+                log.warn("[cell-sync] shelveId={} 本地架子索引无 id 字段，跳过", shelveId);
+                failures.add(Map.of("shelveId", String.valueOf(shelveId),
+                        "error", "本地架子索引无id字段"));
+                continue;
+            }
+
+            try {
+                // 先清掉该架子的旧数据（防止脏数据残留）
+                int deleted = cellIndexMapper.deleteByShelveId(shelveId);
+                log.info("[cell-sync] {} | shelveId={} idx={} 清理:{}条",
+                        location, shelveId, shelfIdxId, deleted);
+
+                // 调 ARO /back 获取笼位列表
+                Map<String, Object> aroResp = aroService.fetchAnimalCagesByRoomAndShelve(sRoomId, shelveId);
+                Object dataObj = aroResp.get("data");
+                if (!(dataObj instanceof List<?> list)) {
+                    failShelves++;
+                    failures.add(Map.of("shelveId", String.valueOf(shelveId),
+                            "error", "ARO 返回无 data/list"));
+                    continue;
+                }
+
+                // 解析每个笼位
+                List<CageCellIndex> batch = new ArrayList<>();
+                String now = DT_FMT.format(LocalDateTime.now());
+
+                for (Object item : list) {
+                    if (!(item instanceof Map<?, ?> cage)) continue;
+                    Map<String, Object> cageMap = (Map<String, Object>) cage;
+
+                    // 跳过笼盒条目 — /back 返回 mix 了笼位和笼盒，笼盒 id 是 cageBoxId 不是 animalCageId
+                    if (isTruthy(cageMap.get("isCageBox"))) continue;
+
+                    Integer x = toInt(firstNonNull(cageMap.get("postionX"), cageMap.get("positionX")));
+                    Integer y = toInt(firstNonNull(cageMap.get("postionY"), cageMap.get("positionY")));
+                    if (x == null || y == null || x < 1 || x > 8 || y < 1 || y > 10) continue;
+
+                    Long animalCageId = toLongSafe(cageMap.get("id"));
+                    Map<String, Object> cageBoxVo = castMap(cageMap.get("cageBoxVo"));
+                    boolean hasCageBox = cageBoxVo != null && cageBoxVo.get("cageBoxCode") != null
+                            && !String.valueOf(cageBoxVo.get("cageBoxCode")).isBlank();
+                    String cageBoxCode = hasCageBox ? String.valueOf(cageBoxVo.get("cageBoxCode")).trim() : null;
+
+                    CageCellIndex cell = new CageCellIndex();
+                    cell.setShelfIndexId(shelfIdxId);
+                    cell.setShelveId(shelveId);
+                    cell.setPositionX(x);
+                    cell.setPositionY(y);
+                    cell.setAnimalCageId(animalCageId);
+                    cell.setHasCageBox(hasCageBox);
+                    cell.setCageBoxCode(cageBoxCode);
+                    cell.setLastSyncStatus(animalCageId != null ? "OK" : "EMPTY");
+                    cell.setSyncedAt(now);
+                    batch.add(cell);
+                }
+
+                // 批量写入 cage_cell_index
+                if (!batch.isEmpty()) {
+                    cellIndexMapper.batchUpsert(batch);
+                    totalCells += batch.size();
+                }
+
+                // 批量写入 cage_cell_detail
+                List<CageCellDetail> detailBatch = buildDetailBatch(list, shelveId);
+                if (!detailBatch.isEmpty()) {
+                    detailMapper.batchUpsert(detailBatch);
+                }
+
+                successShelves++;
+                log.info("[cell-sync] {} | shelveId={} → {} cells, {} details",
+                        location, shelveId, batch.size(), detailBatch.size());
+
+            } catch (Exception e) {
+                failShelves++;
+                log.warn("[cell-sync] shelveId={} 同步失败: {}", shelveId, e.getMessage());
+                failures.add(Map.of("shelveId", String.valueOf(shelveId),
+                        "error", e.getMessage()));
+            }
+        }
+
+        String finishedAt = DT_FMT.format(LocalDateTime.now());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("ok", true);
+        result.put("totalShelves", totalShelves);
+        result.put("successShelves", successShelves);
+        result.put("failShelves", failShelves);
+        result.put("totalCellsWritten", totalCells);
+        result.put("startedAt", DT_FMT.format(startedAt));
+        result.put("finishedAt", finishedAt);
+        if (!failures.isEmpty()) {
+            result.put("failures", failures);
+        }
+        log.info("[cell-sync] 完成: {}成功 {}失败, 写入{}个笼位",
+                successShelves, failShelves, totalCells);
+        return result;
+    }
+
+    /** 按架子查询笼位 */
+    public List<CageCellIndex> getCellsByShelfIndexId(Long shelfIndexId) {
+        return cellIndexMapper.selectByShelfIndexId(shelfIndexId);
+    }
+
+    /** 通过 shelveId 从本地DB加载（先尝试 PK，再尝试 shelve_id 列） */
+    public Map<String, Object> getLocalShelfGridByShelveId(Long id) {
+        // 先按主键查
+        CageShelfIndex idx = shelfMapper.findById(id);
+        if (idx != null) return getLocalShelfGrid(id);
+        // 再按 shelve_id 列查
+        idx = shelfMapper.findByShelveId(String.valueOf(id));
+        if (idx == null) return Map.of("error", "架子不存在: " + id);
+        return getLocalShelfGrid(idx.getId());
+    }
+
+    /** 从本地DB加载笼架网格数据（格式对齐 ARO CageShelfDetail） */
+    public Map<String, Object> getLocalShelfGrid(Long shelfIndexId) {
+        // 查位置索引
+        CageShelfIndex shelfIndex = shelfMapper.findById(shelfIndexId);
+        if (shelfIndex == null) return Map.of("error", "架子不存在: " + shelfIndexId);
+
+        // 查笼位索引 + 详情
+        List<CageCellIndex> cells = cellIndexMapper.selectByShelfIndexId(shelfIndexId);
+        List<CageCellDetail> details = detailMapper.selectByShelfIndexId(shelfIndexId);
+        Map<Long, CageCellDetail> detailMap = new LinkedHashMap<>();
+        for (CageCellDetail d : details) detailMap.put(d.getAnimalCageId(), d);
+
+        // 构建 grid
+        List<Map<String, Object>> grid = new ArrayList<>();
+        for (CageCellIndex cell : cells) {
+            Map<String, Object> gc = new LinkedHashMap<>();
+            gc.put("x", cell.getPositionX());
+            gc.put("y", cell.getPositionY());
+            gc.put("position", cell.getPositionX() + "-" + cell.getPositionY());
+            gc.put("id", String.valueOf(cell.getAnimalCageId()));
+            gc.put("animalCageId", cell.getAnimalCageId());
+            gc.put("hasCageBox", cell.getHasCageBox());
+            gc.put("cageBoxCode", cell.getCageBoxCode());
+            boolean empty = cell.getAnimalCageId() == null;
+            gc.put("empty", empty);
+            gc.put("visible", !empty); // 本地数据源不做课题组过滤，有笼位即可见
+
+            CageCellDetail detail = detailMap.get(cell.getAnimalCageId());
+            if (detail != null) {
+                gc.put("cageTypeCode", detail.getCageTypeCode());
+                gc.put("animalCageType", detail.getCageTypeCode()); // 前端网格图例渲染
+                gc.put("rentType", detail.getRentType());
+                gc.put("stateLabel", detail.getStateLabel());
+                gc.put("piName", detail.getPiName());
+                gc.put("projectPiName", detail.getProjectPiName());
+                gc.put("departmentName", detail.getDepartmentName());
+                gc.put("aupNumber", detail.getAupNumber());
+                gc.put("needsDivision", detail.getNeedsDivision());
+                gc.put("needsSpecialFeeding", detail.getNeedsSpecialFeeding());
+                gc.put("hasHealthAbnormality", detail.getHasHealthAbnormality());
+
+                // 构建 specialStatuses（与 ARO 格式对齐，供前端 CageCellOverlays 渲染）
+                List<Map<String, String>> statuses = new ArrayList<>();
+                if (Boolean.TRUE.equals(detail.getNeedsDivision()))
+                    statuses.add(Map.of("code","NEED_DIVIDE","label","请分笼/密度超标","iconKey","divide"));
+                if (Boolean.TRUE.equals(detail.getNeedsSpecialFeeding()))
+                    statuses.add(Map.of("code","SPECIAL_FEEDING","label","特殊饲养","iconKey","feeding"));
+                if (Boolean.TRUE.equals(detail.getNeedsTransfer()))
+                    statuses.add(Map.of("code","ANIMAL_TRANSFER","label","动物转移","iconKey","transfer"));
+                if (Boolean.TRUE.equals(detail.getHasHealthAbnormality()))
+                    statuses.add(Map.of("code","HEALTH_ABNORMAL","label","动物健康异常","iconKey","health"));
+                if (detail.getCohabitationDate() != null && !detail.getCohabitationDate().isBlank())
+                    statuses.add(Map.of("code","COHABITATION","label","合笼/繁殖","iconKey","cohabitation"));
+                gc.put("specialStatuses", statuses);
+
+                gc.put("detail", detail); // 完整详情
+            }
+            grid.add(gc);
+        }
+
+        // 构建 shelfMeta
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("campusName", shelfIndex.getCampusName());
+        meta.put("areaName", shelfIndex.getAreaName());
+        meta.put("floorName", shelfIndex.getFloorName());
+        meta.put("roomName", shelfIndex.getRoomName());
+        meta.put("shelveId", String.valueOf(shelfIndex.getShelveId()));
+        meta.put("shelveName", shelfIndex.getShelveName());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("shelfMeta", meta);
+        result.put("grid", grid);
+        result.put("totalCells", cells.size());
+        result.put("fromLocal", true);
+        return result;
+    }
+
+    /** 按 shelveId 查询笼位 */
+    public List<CageCellIndex> getCellsByShelveId(Long shelveId) {
+        return cellIndexMapper.selectByShelveId(shelveId);
+    }
+
+    /** 前端编辑：更新单个笼位的 animalCageId */
+    public boolean updateCell(Long shelfIndexId, int x, int y, Long animalCageId) {
+        return cellIndexMapper.updateAnimalCageId(shelfIndexId, x, y, animalCageId) > 0;
+    }
+
+    /**
+     * 补全详情字段 — 按架子调 /admin/animalCage/list 批量获取完整 cageBoxVo，
+     * 填充 animalStrain/Sex/Experimenter 等 /back 不返回的字段。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> syncDetailFields(Long roomId) {
+        LocalDateTime startedAt = LocalDateTime.now();
+        List<Map<String, Object>> shelfList;
+        if (roomId != null) {
+            shelfList = shelfMapper.listShelves(null, null, null, null, null,
+                    String.valueOf(roomId), null);
+        } else {
+            shelfList = shelfMapper.listAllShelfSummaries();
+        }
+
+        int totalShelves = shelfList != null ? shelfList.size() : 0;
+        int successShelves = 0, failShelves = 0, totalUpdated = 0, totalSkipped = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        log.info("[detail-sync] 开始补全详情字段，共 {} 个架子", totalShelves);
+
+        int count = 0;
+        for (Map<String, Object> shelf : shelfList) {
+            Long shelveId = toLongSafe(shelf.get("shelveId"));
+            Long shelfIdxId = toLongSafe(shelf.get("id"));
+            String location = shelf.get("campusName") + "/" + shelf.get("roomName")
+                    + "/" + shelf.get("shelveName");
+            if (shelveId == null || shelfIdxId == null) { failShelves++; continue; }
+
+            try {
+                // 调 /list 批量获取该架子所有笼位（含完整 cageBoxVo）
+                List<Map<String, Object>> cages = aroService.fetchAllAnimalCagesByShelveId(shelveId);
+                if (cages.isEmpty()) { failShelves++; continue; }
+
+                // DEBUG：打印前几个笼位的原始 ARO /list 返回，用于排查动物字段
+                if (count == 0) {
+                    int debugN = Math.min(3, cages.size());
+                    log.info("[detail-sync-debug] shelveId={} 总共{}条, 打印前{}条原始数据:", shelveId, cages.size(), debugN);
+                    for (int di = 0; di < debugN; di++) {
+                        Object item = cages.get(di);
+                        if (item instanceof Map<?, ?> cage) {
+                            Map<String, Object> c = (Map<String, Object>) item;
+                            // 只打印 cageBoxVo 内的动物关键字段
+                            Map<String, Object> cbv = castMap(c.get("cageBoxVo"));
+                            log.info("[detail-sync-debug] cage[{}] animalCageId={} cageBoxVo.animalStrainName={} animalSex={} animalWeekAge={} animalMaleNumber={} animalFemaleNumber={} animalComeFrom={} experimenterName={} labAssistantName={}",
+                                    di, c.get("id"),
+                                    cbv != null ? cbv.get("animalStrainName") : "cageBoxVo=null",
+                                    cbv != null ? cbv.get("animalSex") : "-",
+                                    cbv != null ? cbv.get("animalWeekAge") : "-",
+                                    cbv != null ? cbv.get("animalMaleNumber") : "-",
+                                    cbv != null ? cbv.get("animalFemaleNumber") : "-",
+                                    cbv != null ? cbv.get("animalComeFrom") : "-",
+                                    cbv != null ? cbv.get("experimenterName") : "-",
+                                    cbv != null ? cbv.get("labAssistantName") : "-");
+                        }
+                    }
+                }
+
+                // 加载本地已有 detail 做匹配
+                List<CageCellDetail> existing = detailMapper.selectByShelfIndexId(shelfIdxId);
+                Map<Long, CageCellDetail> detailMap = new LinkedHashMap<>();
+                for (CageCellDetail d : existing) detailMap.put(d.getAnimalCageId(), d);
+
+                List<CageCellDetail> batch = new ArrayList<>();
+                for (Object item : cages) {
+                    if (!(item instanceof Map<?, ?> cage)) continue;
+                    Map<String, Object> c = (Map<String, Object>) item;
+
+                    // 映射表翻译（含 isCageBox 过滤 + animal_cage_id 提取）
+                    Map<String, Object> mapped = mappingService.applyPull("list", c);
+                    if (mapped == null) continue;
+
+                    Long animalCageId = (Long) mapped.get("animal_cage_id");
+                    if (animalCageId == null) continue;
+                    CageCellDetail d = detailMap.get(animalCageId);
+                    if (d == null) continue;
+
+                    // DEBUG：打印第一条映射后的动物字段
+                    if (totalUpdated == 0) {
+                        log.info("[detail-sync-debug-mapped] animalCageId={} mapped fields: strain={} sex={} weekAge={} male={} female={} comeFrom={} exprName={} labName={}",
+                                animalCageId,
+                                mapped.get("animal_strain_name"),
+                                mapped.get("animal_sex"),
+                                mapped.get("animal_week_age"),
+                                mapped.get("animal_male_number"),
+                                mapped.get("animal_female_number"),
+                                mapped.get("animal_come_from"),
+                                mapped.get("experimenter_name"),
+                                mapped.get("lab_assistant_name"));
+                    }
+
+                    // 跳过已有动物信息的
+                    if (d.getAnimalStrainName() != null && d.getAnimalSex() != null) {
+                        totalSkipped++; continue;
+                    }
+
+                    boolean changed = false;
+                    if (mapped.get("animal_strain_name") != null) { d.setAnimalStrainName((String) mapped.get("animal_strain_name")); changed = true; }
+                    if (mapped.get("animal_sex") != null) { d.setAnimalSex((String) mapped.get("animal_sex")); changed = true; }
+                    if (mapped.get("animal_week_age") != null) { d.setAnimalWeekAge((String) mapped.get("animal_week_age")); changed = true; }
+                    if (mapped.get("animal_male_number") != null) { d.setAnimalMaleNumber((Integer) mapped.get("animal_male_number")); changed = true; }
+                    if (mapped.get("animal_female_number") != null) { d.setAnimalFemaleNumber((Integer) mapped.get("animal_female_number")); changed = true; }
+                    if (mapped.get("animal_come_from") != null) { d.setAnimalComeFrom((String) mapped.get("animal_come_from")); changed = true; }
+                    if (mapped.get("experimenter_name") != null) { d.setExperimenterName((String) mapped.get("experimenter_name")); changed = true; }
+                    if (mapped.get("lab_assistant_name") != null) { d.setLabAssistantName((String) mapped.get("lab_assistant_name")); changed = true; }
+                    if (mapped.get("cage_box_name") != null && d.getCageBoxName() == null) { d.setCageBoxName((String) mapped.get("cage_box_name")); changed = true; }
+
+                    if (changed) {
+                        // 合并详情到 raw_data
+                        Map<String, Object> merged = new LinkedHashMap<>();
+                        if (d.getAroRawData() != null) {
+                            try { merged = JSON.parseObject(d.getAroRawData(), Map.class); } catch (Exception ignored) {}
+                        }
+                        merged.put("_detail", c);
+                        d.setAroRawData(JSON.toJSONString(merged));
+                        batch.add(d);
+                    }
+                }
+
+                if (!batch.isEmpty()) {
+                    detailMapper.batchUpsert(batch);
+                    totalUpdated += batch.size();
+                }
+                successShelves++;
+                count++;
+                if (count % 20 == 0) log.info("[detail-sync] 进度: {}/{} 架子, 已更新:{}", count, totalShelves, totalUpdated);
+                Thread.sleep(200);
+
+            } catch (Exception e) {
+                failShelves++;
+                failures.add(Map.of("shelveId", String.valueOf(shelveId), "error", e.getMessage()));
+            }
+        }
+
+        String finishedAt = DT_FMT.format(LocalDateTime.now());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("ok", true);
+        result.put("totalShelves", totalShelves);
+        result.put("successShelves", successShelves);
+        result.put("failShelves", failShelves);
+        result.put("totalUpdated", totalUpdated);
+        result.put("totalSkipped", totalSkipped);
+        result.put("startedAt", DT_FMT.format(startedAt));
+        result.put("finishedAt", finishedAt);
+        if (!failures.isEmpty()) result.put("failures", failures);
+        log.info("[detail-sync] 完成: {}架成功 {}失败, 更新{}个笼位", successShelves, failShelves, totalUpdated);
+        return result;
+    }
+
+    /**
+     * 独立 /book 状态同步 — 只更新 cage_type_code/state/rent_type，
+     * 不删 ID 索引，不重建数据。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> syncStatusFromBook(Long roomId) {
+        LocalDateTime startedAt = LocalDateTime.now();
+        List<Map<String, Object>> shelfList;
+        if (roomId != null) {
+            shelfList = shelfMapper.listShelves(null, null, null, null, null,
+                    String.valueOf(roomId), null);
+        } else {
+            shelfList = shelfMapper.listAllShelfSummaries();
+        }
+
+        int totalShelves = shelfList != null ? shelfList.size() : 0;
+        int successShelves = 0, failShelves = 0, totalUpdated = 0;
+        log.info("[book-sync] 开始独立状态同步，共 {} 个架子", totalShelves);
+
+        int count = 0;
+        for (Map<String, Object> shelf : shelfList) {
+            Long sRoomId = toLongSafe(shelf.get("roomId"));
+            Long shelveId = toLongSafe(shelf.get("shelveId"));
+            Long shelfIdxId = toLongSafe(shelf.get("id"));
+            String location = shelf.get("campusName") + "/" + shelf.get("roomName") + "/" + shelf.get("shelveName");
+            if (sRoomId == null || shelveId == null || shelfIdxId == null) { failShelves++; continue; }
+
+            try {
+                Map<String, Object> bookResp = aroService.fetchAnimalCagesStatusByBook(sRoomId, shelveId);
+                Object bookData = bookResp.get("data");
+                if (!(bookData instanceof List<?> bl)) {
+                    log.warn("[book-sync] {} shelveId={} /book 返回非列表: {}", location, shelveId, bookData);
+                    failShelves++; continue;
+                }
+
+                // 从 cage_cell_index 取已有位置→ID 映射（/back和/book可能返回不同ID）
+                List<CageCellIndex> indexCells = cellIndexMapper.selectByShelfIndexId(shelfIdxId);
+                Map<String, Long> posToAnimalCageId = new LinkedHashMap<>();
+                for (CageCellIndex ic : indexCells) {
+                    posToAnimalCageId.put(ic.getPositionX() + "-" + ic.getPositionY(), ic.getAnimalCageId());
+                }
+
+
+                // 加载已有 detail
+                List<CageCellDetail> existingDetails = detailMapper.selectByShelfIndexId(shelfIdxId);
+                Map<Long, CageCellDetail> detailById = new LinkedHashMap<>();
+                for (CageCellDetail d : existingDetails) detailById.put(d.getAnimalCageId(), d);
+
+                List<CageCellDetail> batch = new ArrayList<>();
+                for (Object bi : bl) {
+                    if (!(bi instanceof Map<?, ?> bm)) continue;
+                    Map<String, Object> bc = (Map<String, Object>) bm;
+                    // 映射表翻译（一次调用取所有字段）
+                    Map<String, Object> mapped = mappingService.applyPull("book", bc);
+                    if (mapped == null) continue;
+                    Integer x = (Integer) mapped.get("position_x");
+                    Integer y = (Integer) mapped.get("position_y");
+                    if (x == null || y == null) continue;
+
+                    // 按位置取正确的 animalCageId
+                    Long animalCageId = posToAnimalCageId.get(x + "-" + y);
+                    if (animalCageId == null) continue;
+
+                    boolean isNew = false;
+                    CageCellDetail d = detailById.get(animalCageId);
+                    if (d == null) {
+                        d = new CageCellDetail();
+                        d.setAnimalCageId(animalCageId);
+                        isNew = true; // 新记录直接写入
+                    }
+
+                    Integer type = (Integer) mapped.get("cage_type_code");
+                    Integer state = (Integer) mapped.get("state");
+                    Integer rent = (Integer) mapped.get("rent_type");
+                    String label = (String) mapped.get("state_label");
+
+                    boolean changed = isNew;
+                    if (type != null && !type.equals(d.getCageTypeCode())) { d.setCageTypeCode(type); changed = true; }
+                    if (state != null && !state.equals(d.getState())) { d.setState(state); changed = true; }
+                    if (rent != null && !rent.equals(d.getRentType())) { d.setRentType(rent); changed = true; }
+                    if (label != null && !label.equals(d.getStateLabel())) { d.setStateLabel(label); changed = true; }
+
+                    if (changed) {
+                        d.setSyncedAt(DT_FMT.format(LocalDateTime.now()));
+                        batch.add(d);
+                    }
+                }
+
+                if (!batch.isEmpty()) {
+                    detailMapper.batchUpsert(batch);
+                    totalUpdated += batch.size();
+                }
+                successShelves++;
+                count++;
+                if (count % 50 == 0) log.info("[book-sync] 进度: {}/{} 架子, 更新:{}", count, totalShelves, totalUpdated);
+
+            } catch (Exception e) {
+                failShelves++;
+                log.warn("[book-sync] shelveId={} 状态同步失败: {}", shelveId, e.getMessage());
+            }
+        }
+
+        String finishedAt = DT_FMT.format(LocalDateTime.now());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("ok", true);
+        result.put("totalShelves", totalShelves);
+        result.put("successShelves", successShelves);
+        result.put("failShelves", failShelves);
+        result.put("totalUpdated", totalUpdated);
+        result.put("startedAt", DT_FMT.format(startedAt));
+        result.put("finishedAt", finishedAt);
+        log.info("[book-sync] 完成: {}架成功 {}失败, 更新{}个笼位状态",
+                successShelves, failShelves, totalUpdated);
+        return result;
+    }
+
+    /** 全局反查：根据 animalCageId 定位笼位 */
+    public Map<String, Object> lookupByAnimalCageId(Long animalCageId) {
+        if (animalCageId == null) return null;
+        return cellIndexMapper.lookupByAnimalCageId(animalCageId);
+    }
+
+    /** 架子笼位汇总列表（分页） */
+    public Map<String, Object> shelfCellSummary(Long roomId, String keyword, int page, int pageSize) {
+        int offset = (page - 1) * pageSize;
+        List<Map<String, Object>> rows = cellIndexMapper.shelfCellSummary(roomId, keyword, pageSize, offset);
+        int total = cellIndexMapper.shelfCellSummaryCount(roomId, keyword);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("rows", rows);
+        result.put("total", total);
+        result.put("page", page);
+        result.put("pageSize", pageSize);
+        return result;
+    }
+
+    /**
+     * 从 ARO 响应构建 cage_cell_detail 批量数据 — 使用映射表翻译字段名。
+     */
+    @SuppressWarnings("unchecked")
+    private List<CageCellDetail> buildDetailBatch(List<?> list, Long shelveId) {
+        List<CageCellDetail> details = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> cage)) continue;
+            Map<String, Object> raw = (Map<String, Object>) cage;
+
+            // 映射表翻译：ARO 字段名 → 规范字段名
+            Map<String, Object> mapped = mappingService.applyPull("back", raw);
+            if (mapped == null) continue; // 被过滤规则跳过（如 isCageBox）
+
+            Long animalCageId = (Long) mapped.get("animal_cage_id");
+            Integer x = (Integer) mapped.get("position_x");
+            Integer y = (Integer) mapped.get("position_y");
+            if (x == null || y == null || x < 1 || x > 8 || y < 1 || y > 10) continue;
+            if (animalCageId == null) continue;
+
+            CageCellDetail d = new CageCellDetail();
+            d.setAnimalCageId(animalCageId);
+
+            // 映射表输出直接赋值
+            d.setCageTypeCode((Integer) mapped.get("cage_type_code"));
+            d.setState((Integer) mapped.get("state"));
+            d.setStateLabel((String) mapped.get("state_label"));
+            d.setRentType((Integer) mapped.get("rent_type"));
+            d.setCageName((String) mapped.get("cage_name"));
+
+            String cbc = (String) mapped.get("cage_box_code");
+            d.setHasCageBox(cbc != null && !cbc.isBlank());
+            d.setCageBoxCode(cbc);
+            d.setCageBoxName((String) mapped.get("cage_box_name"));
+            // 从原始 cageBoxVo.id 提取 cageBoxId，避免 outbox 投递时再调 ARO 解析
+            Map<String, Object> cbv = castMap(raw.get("cageBoxVo"));
+            if (cbv != null && cbv.get("id") instanceof Number n) d.setCageBoxId(n.longValue());
+
+            d.setPiName((String) mapped.get("pi_name"));
+            d.setProjectPiName((String) mapped.get("project_pi_name"));
+            d.setProjectName((String) mapped.get("project_name"));
+            d.setDepartmentName((String) mapped.get("department_name"));
+            d.setAupNumber((String) mapped.get("aup_number"));
+
+            d.setAnimalStrainName((String) mapped.get("animal_strain_name"));
+            d.setAnimalSex((String) mapped.get("animal_sex"));
+            d.setAnimalWeekAge((String) mapped.get("animal_week_age"));
+            d.setAnimalMaleNumber((Integer) mapped.get("animal_male_number"));
+            d.setAnimalFemaleNumber((Integer) mapped.get("animal_female_number"));
+            d.setAnimalComeFrom((String) mapped.get("animal_come_from"));
+            d.setExperimenterName((String) mapped.get("experimenter_name"));
+            d.setLabAssistantName((String) mapped.get("lab_assistant_name"));
+
+            d.setNeedsDivision((Boolean) mapped.get("needs_division"));
+            d.setNeedsSpecialFeeding((Boolean) mapped.get("needs_special_feeding"));
+            d.setNeedsTransfer((Boolean) mapped.get("needs_transfer"));
+            d.setHasHealthAbnormality((Boolean) mapped.get("has_health_abnormality"));
+            d.setCohabitationDate((String) mapped.get("cohabitation_date"));
+            d.setSpecialBreedingName((String) mapped.get("special_breeding_name"));
+            d.setSpecialBreedingDesc((String) mapped.get("special_breeding_desc"));
+
+            d.setAroRawData(JSON.toJSONString(raw));
+            d.setMappingVersion(MAPPING_VERSION);
+            details.add(d);
+        }
+        return details;
+    }
+
+    private static String trimStr(Object v) {
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    // ---- helpers ----
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object o) {
+        if (o instanceof Map<?, ?> m) return (Map<String, Object>) m;
+        return null;
+    }
+
+    private static Object firstNonNull(Object... vals) {
+        for (Object v : vals) if (v != null) return v;
+        return null;
+    }
+
+    private static Integer toInt(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number n) return n.intValue();
+        try { return Integer.parseInt(String.valueOf(v).trim()); }
+        catch (NumberFormatException e) { return null; }
+    }
+
+    private static Long toLongSafe(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number n) return n.longValue();
+        try { return Long.parseLong(String.valueOf(v).trim()); }
+        catch (NumberFormatException e) { return null; }
+    }
+
+    /** ARO 返回的 isCageBox 可能是 Boolean/Integer/String，"1"/"true"/1 都算 true */
+    private static boolean isTruthy(Object v) {
+        if (v == null) return false;
+        if (v instanceof Boolean b) return b;
+        if (v instanceof Number n) return n.intValue() != 0;
+        String s = String.valueOf(v).trim();
+        return "1".equals(s) || "true".equalsIgnoreCase(s);
+    }
+}

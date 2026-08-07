@@ -957,15 +957,19 @@ public class AroService {
                     log.info("[aro] 笼位分配成功 roomId={} shelveId={} count={}", roomId, shelveId, cageIds.size());
                     return true;
                 }
-                log.warn("[aro] 笼位分配被拒绝: {}", response.getBody().get("message"));
+                Object msg = response.getBody().get("message");
+                this.lastAroErrorMessage = msg != null ? String.valueOf(msg) : "笼位分配被拒";
+                log.warn("[aro] 笼位分配被拒绝: {}", this.lastAroErrorMessage);
             }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 this.cachedToken = null;
                 if (login()) return bookCages(roomId, shelveId, cageIds, aupId);
             }
+            this.lastAroErrorMessage = "笼位分配 HTTP " + e.getStatusCode().value();
             log.warn("[aro] 笼位分配请求失败 err={}", e.getMessage());
         } catch (Exception e) {
+            this.lastAroErrorMessage = "笼位分配网络异常: " + e.getMessage();
             log.warn("[aro] 笼位分配网络异常 err={}", e.getMessage());
         }
         return false;
@@ -992,15 +996,19 @@ public class AroService {
                     log.info("[aro] 取消笼位分配成功 count={}", cageIds.size());
                     return true;
                 }
-                log.warn("[aro] 取消分配被拒绝: {}", response.getBody().get("message"));
+                Object msg = response.getBody().get("message");
+                this.lastAroErrorMessage = msg != null ? String.valueOf(msg) : "取消分配被拒";
+                log.warn("[aro] 取消分配被拒绝: {}", this.lastAroErrorMessage);
             }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 this.cachedToken = null;
                 if (login()) return cancelBookCages(cageIds);
             }
+            this.lastAroErrorMessage = "取消分配 HTTP " + e.getStatusCode().value();
             log.warn("[aro] 取消分配请求失败 err={}", e.getMessage());
         } catch (Exception e) {
+            this.lastAroErrorMessage = "取消分配网络异常: " + e.getMessage();
             log.warn("[aro] 取消分配网络异常 err={}", e.getMessage());
         }
         return false;
@@ -1118,17 +1126,25 @@ public class AroService {
         return Map.of();
     }
 
+    // ==========================================================================
+    // 🔧 通用 ARO POST（2026-08-04 重构：消除投递端点重复代码）
+    // ==========================================================================
+
+    private static final String ARO_BASE = "https://aro.shsmu.edu.cn/jtu/api";
+
     /**
-     * 请分笼 / 给药 / 手术 / 采样 / 安乐死 — 统一饲养处理。
-     * POST /jtu/api/admin/animalCageBoxPart/save
+     * 通用 ARO POST 请求 — 统一处理 Token / POST / 响应校验 / 401 重试。
+     *
+     * @param path ARO 接口路径（不含域名），如 "/admin/animalCageBoxPart/save"
+     * @param body 请求体
+     * @return true 表示 ARO 返回 status=0
      */
-    public boolean saveAnimalCageBoxPart(Long animalCageId, Long cageBoxId) {
-        if (animalCageId == null || cageBoxId == null) return false;
-        if (this.cachedToken == null && !login()) return false;
-        String url = "https://aro.shsmu.edu.cn/jtu/api/admin/animalCageBoxPart/save";
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("animalCageId", animalCageId);
-        body.put("cageBoxId", cageBoxId);
+    public boolean postAroJson(String path, Map<String, Object> body) {
+        if (this.cachedToken == null && !login()) {
+            this.lastAroErrorMessage = "ARO 未登录";
+            return false;
+        }
+        String url = ARO_BASE + path;
         try {
             java.net.URI uri = java.net.URI.create(url);
             HttpHeaders headers = getAuthHeaders();
@@ -1137,21 +1153,52 @@ public class AroService {
             ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 if (Integer.valueOf(0).equals(response.getBody().get("status"))) {
-                    log.info("[aro] 饲养处理成功 animalCageId={} cageBoxId={}", animalCageId, cageBoxId);
+                    this.lastAroErrorMessage = "";
                     return true;
                 }
-                log.warn("[aro] 饲养处理被拒: {}", response.getBody().get("message"));
+                Object msg = response.getBody().get("message");
+                this.lastAroErrorMessage = msg != null ? String.valueOf(msg) : "ARO 业务拒绝";
+                log.warn("[aro] {} 被拒: {}", path, this.lastAroErrorMessage);
+            } else {
+                this.lastAroErrorMessage = "ARO HTTP " + response.getStatusCodeValue() + " " + path;
             }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 this.cachedToken = null;
-                if (login()) return saveAnimalCageBoxPart(animalCageId, cageBoxId);
+                if (login()) return postAroJson(path, body);
             }
-            log.warn("[aro] 饲养处理请求失败 err={}", e.getMessage());
+            this.lastAroErrorMessage = "ARO HTTP " + e.getStatusCode().value() + " " + path;
+            log.warn("[aro] {} 请求失败 err={}", path, e.getMessage());
         } catch (Exception e) {
-            log.warn("[aro] 饲养处理网络异常 err={}", e.getMessage());
+            this.lastAroErrorMessage = "ARO 网络异常 " + path + ": " + e.getMessage();
+            log.warn("[aro] {} 网络异常 err={}", path, e.getMessage());
         }
         return false;
+    }
+
+    /**
+     * 请分笼 / 给药 / 手术 / 采样 / 安乐死 — 统一饲养处理。
+     * POST /admin/animalCageBoxPart/save
+     *
+     * @param extraFields 额外 ARO 字段（如 NeedDivideYn），直接合并到请求体
+     */
+    public boolean saveAnimalCageBoxPart(Long animalCageId, Long cageBoxId, Map<String, Object> extraFields) {
+        if (animalCageId == null || cageBoxId == null) {
+            this.lastAroErrorMessage = "animalCageId 或 cageBoxId 缺失";
+            return false;
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("animalCageId", animalCageId);
+        body.put("cageBoxId", cageBoxId);
+        if (extraFields != null) body.putAll(extraFields);
+        boolean ok = postAroJson("/admin/animalCageBoxPart/save", body);
+        if (ok) log.info("[aro] 饲养处理成功 animalCageId={} cageBoxId={} extra={}", animalCageId, cageBoxId, extraFields);
+        return ok;
+    }
+
+    /** @deprecated 使用 {@link #saveAnimalCageBoxPart(Long, Long, Map)} 替代 */
+    public boolean saveAnimalCageBoxPart(Long animalCageId, Long cageBoxId) {
+        return saveAnimalCageBoxPart(animalCageId, cageBoxId, null);
     }
 
     /**
@@ -1159,7 +1206,7 @@ public class AroService {
      * POST /jtu/api/admin/specialBreeding/save
      */
     public boolean saveSpecialBreeding(Long cageBoxId, String name, String description) {
-        if (cageBoxId == null) return false;
+        if (cageBoxId == null) { this.lastAroErrorMessage = "cageBoxId 缺失"; return false; }
         if (this.cachedToken == null && !login()) return false;
         String url = "https://aro.shsmu.edu.cn/jtu/api/admin/specialBreeding/save";
         Map<String, Object> body = new LinkedHashMap<>();
@@ -1177,15 +1224,19 @@ public class AroService {
                     log.info("[aro] 特殊饲养设置成功 cageBoxId={}", cageBoxId);
                     return true;
                 }
-                log.warn("[aro] 特殊饲养设置被拒: {}", response.getBody().get("message"));
+                Object msg = response.getBody().get("message");
+                this.lastAroErrorMessage = msg != null ? String.valueOf(msg) : "特殊饲养被拒";
+                log.warn("[aro] 特殊饲养设置被拒: {}", this.lastAroErrorMessage);
             }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 this.cachedToken = null;
                 if (login()) return saveSpecialBreeding(cageBoxId, name, description);
             }
+            this.lastAroErrorMessage = "特殊饲养 HTTP " + e.getStatusCode().value();
             log.warn("[aro] 特殊饲养请求失败 err={}", e.getMessage());
         } catch (Exception e) {
+            this.lastAroErrorMessage = "特殊饲养网络异常: " + e.getMessage();
             log.warn("[aro] 特殊饲养网络异常 err={}", e.getMessage());
         }
         return false;
@@ -1200,7 +1251,7 @@ public class AroService {
      */
     public boolean saveAnimalHealth(Long cageBoxId, Integer healthDegree, String healthDetail,
                                     Integer itching, String reportUserName, String observeDate) {
-        if (cageBoxId == null) return false;
+        if (cageBoxId == null) { this.lastAroErrorMessage = "cageBoxId 缺失"; return false; }
         if (this.cachedToken == null && !login()) return false;
         String url = "https://aro.shsmu.edu.cn/jtu/api/admin/animalHealth/save";
         Map<String, Object> body = new LinkedHashMap<>();
@@ -1221,15 +1272,19 @@ public class AroService {
                     log.info("[aro] 健康检查创建成功 cageBoxId={}", cageBoxId);
                     return true;
                 }
-                log.warn("[aro] 健康检查创建被拒: {}", response.getBody().get("message"));
+                Object msg = response.getBody().get("message");
+                this.lastAroErrorMessage = msg != null ? String.valueOf(msg) : "健康检查被拒";
+                log.warn("[aro] 健康检查创建被拒: {}", this.lastAroErrorMessage);
             }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 this.cachedToken = null;
                 if (login()) return saveAnimalHealth(cageBoxId, healthDegree, healthDetail, itching, reportUserName, observeDate);
             }
+            this.lastAroErrorMessage = "健康检查 HTTP " + e.getStatusCode().value();
             log.warn("[aro] 健康检查请求失败 err={}", e.getMessage());
         } catch (Exception e) {
+            this.lastAroErrorMessage = "健康检查网络异常: " + e.getMessage();
             log.warn("[aro] 健康检查网络异常 err={}", e.getMessage());
         }
         return false;
@@ -1460,7 +1515,7 @@ public class AroService {
      * POST /jtu/api/admin/cageRelatedBox/save
      */
     public boolean saveCageRelatedBox(Long animalCageId, String cageBoxCode) {
-        if (animalCageId == null || cageBoxCode == null || cageBoxCode.isBlank()) return false;
+        if (animalCageId == null || cageBoxCode == null || cageBoxCode.isBlank()) { this.lastAroErrorMessage = "animalCageId 或 cageBoxCode 缺失"; return false; }
         if (this.cachedToken == null && !login()) return false;
         String url = "https://aro.shsmu.edu.cn/jtu/api/admin/cageRelatedBox/save";
         Map<String, Object> body = new LinkedHashMap<>();
@@ -1488,8 +1543,10 @@ public class AroService {
                 this.cachedToken = null;
                 if (login()) return saveCageRelatedBox(animalCageId, cageBoxCode);
             }
+            this.lastAroErrorMessage = "笼盒关联 HTTP " + e.getStatusCode().value();
             log.warn("[aro] 笼盒关联请求失败 err={}", e.getMessage());
         } catch (Exception e) {
+            this.lastAroErrorMessage = "笼盒关联网络异常: " + e.getMessage();
             log.warn("[aro] 笼盒关联网络异常 err={}", e.getMessage());
         }
         return false;
@@ -1501,7 +1558,7 @@ public class AroService {
      */
     @SuppressWarnings("unchecked")
     public boolean unbindCageBox(List<Long> animalCageIdList) {
-        if (animalCageIdList == null || animalCageIdList.isEmpty()) return false;
+        if (animalCageIdList == null || animalCageIdList.isEmpty()) { this.lastAroErrorMessage = "animalCageIdList 缺失"; return false; }
         if (this.cachedToken == null && !login()) return false;
         String url = "https://aro.shsmu.edu.cn/jtu/api/admin/cageBox/batchDelete";
         Map<String, Object> body = new LinkedHashMap<>();
@@ -1526,8 +1583,10 @@ public class AroService {
                 this.cachedToken = null;
                 if (login()) return unbindCageBox(animalCageIdList);
             }
+            this.lastAroErrorMessage = "笼盒解绑 HTTP " + e.getStatusCode().value();
             log.warn("[aro] 笼盒解绑请求失败 err={}", e.getMessage());
         } catch (Exception e) {
+            this.lastAroErrorMessage = "笼盒解绑网络异常: " + e.getMessage();
             log.warn("[aro] 笼盒解绑网络异常 err={}", e.getMessage());
         }
         return false;
@@ -1571,7 +1630,7 @@ public class AroService {
      */
     @SuppressWarnings("unchecked")
     public boolean updateAnimalCage(Map<String, Object> body) {
-        if (body == null || body.isEmpty()) return false;
+        if (body == null || body.isEmpty()) { this.lastAroErrorMessage = "请求体为空"; return false; }
         if (this.cachedToken == null && !login()) return false;
         // 前端传字符串 ID 防精度丢失，这里转回 Long 给 ARO
         String[] numFields = {"id", "roomId", "shelveId", "state", "type", "typeId", "orders"};
@@ -1597,15 +1656,19 @@ public class AroService {
                     log.info("[aro] 笼位更新成功 id={}", body.get("id"));
                     return true;
                 }
-                log.warn("[aro] 笼位更新被拒: {}", rb.get("message"));
+                Object msg = rb.get("message");
+                this.lastAroErrorMessage = msg != null ? String.valueOf(msg) : "笼位更新被拒";
+                log.warn("[aro] 笼位更新被拒: {}", this.lastAroErrorMessage);
             }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 this.cachedToken = null;
                 if (login()) return updateAnimalCage(body);
             }
+            this.lastAroErrorMessage = "笼位更新 HTTP " + e.getStatusCode().value();
             log.warn("[aro] 笼位更新请求失败 err={}", e.getMessage());
         } catch (Exception e) {
+            this.lastAroErrorMessage = "笼位更新网络异常: " + e.getMessage();
             log.warn("[aro] 笼位更新网络异常 err={}", e.getMessage());
         }
         return false;
@@ -1621,7 +1684,7 @@ public class AroService {
      * POST /jtu/api/admin/animalCage/save
      */
     public boolean saveAnimalCage(Map<String, Object> body) {
-        if (body == null || body.isEmpty()) return false;
+        if (body == null || body.isEmpty()) { this.lastAroErrorMessage = "请求体为空"; return false; }
         if (this.cachedToken == null && !login()) return false;
         String[] numFields = {"id", "roomId", "shelveId", "state", "type", "typeId", "orders"};
         for (String f : numFields) {
@@ -1664,7 +1727,7 @@ public class AroService {
      * @param color     1=取消特殊饲养红 2=取消请分笼橙 3=取消健康异查蓝
      */
     public boolean cancelCageBoxColor(Long cageBoxId, Integer color) {
-        if (cageBoxId == null || color == null) return false;
+        if (cageBoxId == null || color == null) { this.lastAroErrorMessage = "cageBoxId 或 color 缺失"; return false; }
         if (this.cachedToken == null && !login()) return false;
         String url = "https://aro.shsmu.edu.cn/jtu/api/admin/cageBox/cancelColor";
         Map<String, Object> body = new LinkedHashMap<>();
@@ -1681,15 +1744,19 @@ public class AroService {
                     log.info("[aro] 取消笼盒颜色成功 cageBoxId={} color={}", cageBoxId, color);
                     return true;
                 }
-                log.warn("[aro] 取消笼盒颜色被拒: {}", response.getBody().get("message"));
+                Object msg = response.getBody().get("message");
+                this.lastAroErrorMessage = msg != null ? String.valueOf(msg) : "取消笼盒颜色被拒";
+                log.warn("[aro] 取消笼盒颜色被拒: {}", this.lastAroErrorMessage);
             }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 this.cachedToken = null;
                 if (login()) return cancelCageBoxColor(cageBoxId, color);
             }
+            this.lastAroErrorMessage = "取消笼盒颜色 HTTP " + e.getStatusCode().value();
             log.warn("[aro] 取消笼盒颜色请求失败 err={}", e.getMessage());
         } catch (Exception e) {
+            this.lastAroErrorMessage = "取消笼盒颜色网络异常: " + e.getMessage();
             log.warn("[aro] 取消笼盒颜色网络异常 err={}", e.getMessage());
         }
         return false;
@@ -1737,5 +1804,52 @@ public class AroService {
             log.warn("[aro] 课题组成员查询网络异常 cageBoxId={} err={}", cageBoxId, e.getMessage());
         }
         return Collections.emptyList();
+    }
+
+    /**
+     * 🔍 批量笼位列表 — /admin/animalCage/list?roomId=X&shelveId=Y&pageSize=100
+     * 返回完整 cageBoxVo（含动物品系/性别/周龄/实验员等 /back 不返回的字段）。
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> fetchAnimalCageList(Long roomId, Long shelveId, int pageNum, int pageSize) {
+        if (this.cachedToken == null && !login()) return Collections.emptyList();
+        StringBuilder url = new StringBuilder("https://aro.shsmu.edu.cn/jtu/api/admin/animalCage/list?pageNum=")
+                .append(pageNum).append("&pageSize=").append(pageSize);
+        if (roomId != null) url.append("&roomId=").append(roomId);
+        if (shelveId != null) url.append("&shelveId=").append(shelveId);
+        try {
+            java.net.URI uri = java.net.URI.create(url.toString());
+            HttpEntity<String> entity = new HttpEntity<>(null, getAuthHeaders());
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object data = response.getBody().get("data");
+                if (data instanceof Map<?, ?> dm) {
+                    Object list = dm.get("list");
+                    if (list instanceof List<?> l) return (List<Map<String, Object>>) l;
+                }
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) { this.cachedToken = null; if (login()) return fetchAnimalCageList(roomId, shelveId, pageNum, pageSize); }
+            log.warn("[aro] 笼位列表拉取失败 roomId={} shelveId={} err={}", roomId, shelveId, e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] 笼位列表网络异常 roomId={} shelveId={} err={}", roomId, shelveId, e.getMessage());
+        }
+        return Collections.emptyList();
+    }
+
+    /** 按 shelveId 全量拉取（自动分页） */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> fetchAllAnimalCagesByShelveId(Long shelveId) {
+        List<Map<String, Object>> all = new ArrayList<>();
+        int page = 1;
+        while (true) {
+            List<Map<String, Object>> batch = fetchAnimalCageList(null, shelveId, page, 100);
+            if (batch.isEmpty()) break;
+            all.addAll(batch);
+            if (batch.size() < 100) break;
+            page++;
+            try { Thread.sleep(150); } catch (InterruptedException e) { break; }
+        }
+        return all;
     }
 }

@@ -142,6 +142,24 @@ export const queryKeys = {
     inspections: (params?: Record<string, unknown>) =>
       ["facilityMaintenance", "inspections", params ?? {}] as const,
   },
+
+  referenceData: {
+    all: ["referenceData"] as const,
+    list: (typeKey: string, parentId?: number) =>
+      ["referenceData", "list", typeKey, parentId ?? "root"] as const,
+    detail: (typeKey: string, id: number) =>
+      ["referenceData", "detail", typeKey, id] as const,
+    options: (typeKey: string) =>
+      ["referenceData", "options", typeKey] as const,
+    specTemplates: ["referenceData", "specTemplates"] as const,
+    cart: ["referenceData", "cart"] as const,
+    orders: (params?: Record<string, unknown>) =>
+      ["referenceData", "orders", params ?? {}] as const,
+    orderDetail: (id: number) =>
+      ["referenceData", "orderDetail", id] as const,
+    orderLogs: (id: number) =>
+      ["referenceData", "orderLogs", id] as const,
+  },
 } as const;
 
 /** 学生物资申领模块 query keys — 数据隔离于 supplies */

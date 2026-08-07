@@ -195,6 +195,7 @@ public class CageShelfController {
                              @RequestParam(required = false) String areaId,
                              @RequestParam(required = false) String floorId,
                              @RequestParam(required = false) String roomId,
+                             @RequestParam(required = false) String keyword,
                              @RequestParam(defaultValue = "1") int page,
                              @RequestParam(defaultValue = "50") int size) {
         User user = resolveUser(authorization);
@@ -202,7 +203,7 @@ public class CageShelfController {
         if (denied != null) {
             return denied;
         }
-        return Result.success(cageShelfService.listIndexRows(campusId, areaId, floorId, roomId, page, size));
+        return Result.success(cageShelfService.listIndexRows(campusId, areaId, floorId, roomId, keyword, page, size));
     }
 
     // ---- 用户笼位颜色偏好 ----

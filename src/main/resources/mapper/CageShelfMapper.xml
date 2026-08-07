@@ -104,7 +104,8 @@
     </select>
 
     <select id="listShelves" resultType="map">
-        SELECT CAST(shelve_id AS CHAR) AS shelveId,
+        SELECT id,
+               CAST(shelve_id AS CHAR) AS shelveId,
                shelve_name AS shelveName
         FROM cage_shelf_index
         WHERE deleted = 0
@@ -120,7 +121,8 @@
     </select>
 
     <select id="listAllShelfSummaries" resultType="map">
-        SELECT CAST(shelve_id AS CHAR) AS shelveId,
+        SELECT id,
+               CAST(shelve_id AS CHAR) AS shelveId,
                shelve_name AS shelveName,
                CAST(room_id AS CHAR) AS roomId,
                room_name AS roomName,
@@ -131,17 +133,27 @@
     </select>
 
     <select id="listFullTree" resultType="map">
-        SELECT CAST(c.campus_id AS CHAR) AS campusId, c.campus_name AS campusName,
+        SELECT c.id AS id,
+               CAST(c.campus_id AS CHAR) AS campusId, c.campus_name AS campusName,
                CAST(c.area_id AS CHAR) AS areaId, c.area_name AS areaName,
                CAST(c.floor_id AS CHAR) AS floorId, c.floor_name AS floorName,
                CAST(c.room_id AS CHAR) AS roomId, c.room_name AS roomName,
                CAST(c.shelve_id AS CHAR) AS shelveId, c.shelve_name AS shelveName,
-               COALESCE(g.type1_count, 0) AS type1, COALESCE(g.type2_count, 0) AS type2,
-               COALESCE(g.type3_count, 0) AS type3, COALESCE(g.type4_count, 0) AS type4
+               COALESCE(SUM(CASE WHEN d.cage_type_code = 1 THEN 1 ELSE 0 END), 0) AS type1,
+               COALESCE(SUM(CASE WHEN d.cage_type_code = 2 THEN 1 ELSE 0 END), 0) AS type2,
+               COALESCE(SUM(CASE WHEN d.cage_type_code = 3 THEN 1 ELSE 0 END), 0) AS type3,
+               COALESCE(SUM(CASE WHEN d.cage_type_code = 4 THEN 1 ELSE 0 END), 0) AS type4
         FROM cage_shelf_index c
-        LEFT JOIN cage_shelf_grid_cache g ON CAST(c.shelve_id AS CHAR) = g.shelve_id COLLATE utf8mb4_unicode_ci
+        LEFT JOIN cage_cell_index i ON i.shelve_id = c.shelve_id
+        LEFT JOIN cage_cell_detail d ON d.animal_cage_id = i.animal_cage_id
         WHERE c.deleted = 0
+        GROUP BY c.id, c.campus_id, c.campus_name, c.area_id, c.area_name,
+                 c.floor_id, c.floor_name, c.room_id, c.room_name, c.shelve_id, c.shelve_name
         ORDER BY c.campus_name ASC, c.area_name ASC, c.floor_name ASC, c.room_name ASC, c.shelve_id ASC
+    </select>
+
+    <select id="findById" resultMap="CageShelfIndexMap">
+        SELECT * FROM cage_shelf_index WHERE id = #{id}
     </select>
 
     <select id="findByShelveId" resultMap="CageShelfIndexMap">
@@ -153,7 +165,8 @@
     </select>
 
     <select id="listIndexes" resultType="map">
-        SELECT CAST(campus_id AS CHAR) AS campusId,
+        SELECT id,
+               CAST(campus_id AS CHAR) AS campusId,
                campus_name AS campusName,
                CAST(area_id AS CHAR) AS areaId,
                area_name AS areaName,
@@ -171,6 +184,10 @@
           <if test="areaId != null and areaId != ''">AND CAST(area_id AS CHAR) = #{areaId}</if>
           <if test="floorId != null and floorId != ''">AND CAST(floor_id AS CHAR) = #{floorId}</if>
           <if test="roomId != null and roomId != ''">AND CAST(room_id AS CHAR) = #{roomId}</if>
+          <if test="keyword != null and keyword != ''">
+            AND (CAST(shelve_id AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                 OR shelve_name LIKE CONCAT('%', #{keyword}, '%'))
+          </if>
         ORDER BY campus_id, area_id, floor_id, room_id, shelve_id
         LIMIT #{limit} OFFSET #{offset}
     </select>
@@ -183,6 +200,10 @@
           <if test="areaId != null and areaId != ''">AND CAST(area_id AS CHAR) = #{areaId}</if>
           <if test="floorId != null and floorId != ''">AND CAST(floor_id AS CHAR) = #{floorId}</if>
           <if test="roomId != null and roomId != ''">AND CAST(room_id AS CHAR) = #{roomId}</if>
+          <if test="keyword != null and keyword != ''">
+            AND (CAST(shelve_id AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                 OR shelve_name LIKE CONCAT('%', #{keyword}, '%'))
+          </if>
     </select>
 
     <sql id="analyticsShelfFilterWhere">

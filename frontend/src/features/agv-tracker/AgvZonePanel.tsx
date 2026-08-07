@@ -1,18 +1,17 @@
 import { useState, useEffect } from "react";
-import { useSpatialElements, useSaveSpatialElement, useDeleteSpatialElement, useDiscoverZones, type AgvSpatialElement } from "@/api/domains/agv-analysis.api";
-import { Plus, Edit3, Trash2, AlertTriangle, Search, Crosshair } from "lucide-react";
+import { useSpatialElements, useSaveSpatialElement, useDeleteSpatialElement, useDiscoverZones, useGenerateZonesFromTopology, type AgvSpatialElement } from "@/api/domains/agv-analysis.api";
+import { Plus, Edit3, Trash2, AlertTriangle, Search, Crosshair, Sparkles } from "lucide-react";
+import { BUILTIN_TAG_OPTIONS, BUILTIN_TAG_COLORS } from "@/features/agv-tracker/tagConfig";
 
-const TAG_OPTIONS = ["充电", "作业", "等待", "休息站", "运输", "倒车"];
-// 标签 → 颜色映射（与后端 inferColorByTag 保持一致）
-const TAG_COLORS: Record<string, string> = {
-  "充电": "#22c55e",
-  "作业": "#f59e0b",
-  "等待": "#f97316",
-  "休息站": "#14b8a6",
-  "运输": "#3b82f6",
-  "倒车": "#ec4899",
-};
-// 以 (cx, cy) 为中心生成小菱形 polygon，边长 ≈1.6m，canvas 可渲染
+const TAG_OPTIONS = [...BUILTIN_TAG_OPTIONS];
+const TAG_COLORS: Record<string, string> = { ...BUILTIN_TAG_COLORS };
+// 两点式矩形：以 (x1,y1) 和 (x2,y2) 为对角角点，生成矩形 polygon
+export function makeRectPolygon(x1: number, y1: number, x2: number, y2: number): string {
+  const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+  const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+  return JSON.stringify([[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]]);
+}
+// 单点退化（无第二角点时兜底）：以 (cx, cy) 为中心生成小菱形
 function makeDiamondPolygon(cx: number, cy: number): string {
   const d = 0.8;
   return JSON.stringify([[cx, cy + d], [cx + d, cy], [cx, cy - d], [cx - d, cy]]);
@@ -24,26 +23,52 @@ const ELEMENT_TYPES = [
   { value: "STATION_PATTERN", label: "站点模式" },
 ] as const;
 
-interface Props {
-  onRequestPick?: () => void;
-  pendingPick?: { x: number; y: number } | null;
-  onClearPick?: () => void;
+type QuickPick = { x: number; y: number } | { x1: number; y1: number; x2: number; y2: number };
+type PendingPick = { x: number; y: number } | { x1: number; y1: number; x2: number; y2: number };
+
+function isRectPick(p: QuickPick): p is { x1: number; y1: number; x2: number; y2: number } {
+  return 'x1' in p;
 }
 
-export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }: Props) {
+interface Props {
+  onRequestPick?: () => void;
+  onRequestRectPick?: () => void;
+  pendingPick?: PendingPick | null;
+  onClearPick?: () => void;
+  focusZoneId?: number | null;
+  creatableTags?: string[];
+  allTagColors?: Record<string, string>;
+}
+
+export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pendingPick, onClearPick, focusZoneId, creatableTags, allTagColors }: Props) {
   const { data: zones = [], isLoading, isError, error } = useSpatialElements();
   const saveMut = useSaveSpatialElement();
   const deleteMut = useDeleteSpatialElement();
   const discoverMut = useDiscoverZones();
+  const topoGenMut = useGenerateZonesFromTopology();
 
   const [editing, setEditing] = useState<AgvSpatialElement | null>(null);
-  // 快捷标记：选点后直接选标签保存，不用进全量编辑表单
-  const [quickPick, setQuickPick] = useState<{ x: number; y: number } | null>(null);
+  // 快捷标记：选点后直接选标签保存（单点 / 两点矩形）
+  const [quickPick, setQuickPick] = useState<QuickPick | null>(null);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeSource, setActiveSource] = useState<string | null>(null);
+
+  // 从画布点击标签编辑 → 自动选中对应区域
+  useEffect(() => {
+    if (focusZoneId != null && zones.length > 0) {
+      const z = zones.find(item => item.id === focusZoneId);
+      if (z) setEditing(z);
+    }
+  }, [focusZoneId, zones]);
 
   // 当从地图选点返回时，进入快捷标签选择模式
   useEffect(() => {
     if (pendingPick) {
-      setQuickPick({ x: pendingPick.x, y: pendingPick.y });
+      if ('x1' in pendingPick) {
+        setQuickPick({ x1: pendingPick.x1, y1: pendingPick.y1, x2: pendingPick.x2, y2: pendingPick.y2 });
+      } else {
+        setQuickPick({ x: pendingPick.x, y: pendingPick.y });
+      }
       onClearPick?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,12 +76,14 @@ export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }
 
   const handleQuickSave = (tag: string) => {
     if (!quickPick) return;
-    const { x, y } = quickPick;
-    const color = TAG_COLORS[tag] || "#3b82f6";
+    const color = (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6";
+    const polygonJson = isRectPick(quickPick)
+      ? makeRectPolygon(quickPick.x1, quickPick.y1, quickPick.x2, quickPick.y2)
+      : makeDiamondPolygon(quickPick.x, quickPick.y);
     const element: AgvSpatialElement = {
       name: `${tag}标记`,
       elementType: "POLYGON_ZONE",
-      polygonJson: makeDiamondPolygon(x, y),
+      polygonJson,
       semanticTags: JSON.stringify([tag]),
       mapName: "",
       color,
@@ -86,6 +113,11 @@ export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }
           title="从近期行为数据中聚类发现充电/作业/休息区域">
           <Search size={11} /> {discoverMut.isPending ? "发现中..." : "发现区域"}
         </button>
+        <button onClick={() => topoGenMut.mutate()} disabled={topoGenMut.isPending}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-full border border-[var(--app-color-accent)] text-[var(--app-color-accent)] text-[10px] font-medium hover:bg-[var(--app-color-accent-soft)] disabled:opacity-50"
+          title="从路线拓扑数据生成区域（复用路线频次和标签，质量更高）">
+          <Sparkles size={11} /> {topoGenMut.isPending ? "生成中..." : "拓扑生成"}
+        </button>
         <button onClick={() => setEditing(emptyElement())}
           className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-full border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] text-[10px] hover:bg-[var(--app-color-surface-hover)]">
           <Plus size={11} /> 手动
@@ -93,7 +125,12 @@ export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }
         <button onClick={() => onRequestPick?.()}
           className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-full bg-[var(--app-color-accent)] text-white text-[10px] font-medium hover:opacity-90"
           title="隐藏窗口，在地图上点击标记位置">
-          <Crosshair size={11} /> 地图标记
+          <Crosshair size={11} /> 标记
+        </button>
+        <button onClick={() => onRequestRectPick?.()}
+          className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-full border border-[var(--app-color-accent)] text-[var(--app-color-accent)] text-[10px] font-medium hover:bg-[var(--app-color-accent-soft)]"
+          title="隐藏窗口，在地图上点击两个角点绘制矩形区域">
+          <Crosshair size={11} /> 矩形
         </button>
       </div>
       {/* 快捷标签选择器：地图选点后直接选标签保存 */}
@@ -101,9 +138,15 @@ export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }
         <div className="shrink-0 px-2 py-2 border-b border-[var(--app-color-border-default)] space-y-1.5 bg-[var(--app-color-accent-soft)]">
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-[var(--app-color-text-secondary)]">
-              已标记坐标 <span className="font-mono font-semibold text-[var(--app-color-text-primary)]">
-                ({quickPick.x.toFixed(2)}, {quickPick.y.toFixed(2)})
-              </span>
+              {isRectPick(quickPick) ? (
+                <>矩形区域 <span className="font-mono font-semibold text-[var(--app-color-text-primary)]">
+                  ({quickPick.x1.toFixed(2)},{quickPick.y1.toFixed(2)}) → ({quickPick.x2.toFixed(2)},{quickPick.y2.toFixed(2)})
+                </span></>
+              ) : (
+                <>已标记坐标 <span className="font-mono font-semibold text-[var(--app-color-text-primary)]">
+                  ({quickPick.x.toFixed(2)}, {quickPick.y.toFixed(2)})
+                </span></>
+              )}
             </span>
             <button onClick={() => setQuickPick(null)}
               className="text-[9px] text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]">
@@ -111,12 +154,12 @@ export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }
             </button>
           </div>
           <div className="flex flex-wrap gap-1">
-            {TAG_OPTIONS.map(tag => (
+            {(creatableTags ?? TAG_OPTIONS).map(tag => (
               <button key={tag}
                 onClick={() => handleQuickSave(tag)}
                 disabled={saveMut.isPending}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-                style={{ backgroundColor: TAG_COLORS[tag] || "#3b82f6" }}>
+                style={{ backgroundColor: (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6" }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-white/50" />
                 {tag}
               </button>
@@ -144,23 +187,43 @@ export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }
         </div>
       )}
 
+      {/* 标签筛选 + 来源分类 + 批量操作 */}
+      {zones.length > 0 && (
+        <TagsFilterBar zones={zones} activeTag={activeTag} onSetActiveTag={setActiveTag} activeSource={activeSource} onSetActiveSource={setActiveSource} allTagColors={allTagColors} onDeleteByTag={(tag) => {
+          const ids = zones.filter(z => {
+            try { const tags: string[] = JSON.parse(z.semanticTags || "[]"); return tags.includes(tag); } catch { return false; }
+          }).map(z => z.id!);
+          if (ids.length > 0 && window.confirm(`确定删除所有「${tag}」标签区域 (${ids.length}个)？`)) {
+            ids.forEach(id => deleteMut.mutate(id));
+          }
+        }} onDeleteBySource={(source) => {
+          const ids = zones.filter(z => z.source === source).map(z => z.id!);
+          if (ids.length > 0 && window.confirm(`确定删除所有来源「${source}」区域 (${ids.length}个)？`)) {
+            ids.forEach(id => deleteMut.mutate(id));
+          }
+        }} />
+      )}
+
       {/* Zone list */}
       <div className="flex-1 overflow-auto">
-        {isLoading ? (
-          <div className="text-center text-[var(--app-color-text-tertiary)] py-8">加载中...</div>
-        ) : isError ? (
-          <div className="text-center py-8 px-2">
-            <AlertTriangle size={20} className="mx-auto mb-2 text-red-500" />
-            <div className="text-[11px] text-red-500 font-medium mb-1">加载失败</div>
-            <div className="text-[10px] text-[var(--app-color-text-tertiary)] break-all">
-              {error?.message || "未知错误"}
+        {(() => {
+          const filtered = zones.filter(z => {
+            if (activeTag) {
+              try { const tags: string[] = JSON.parse(z.semanticTags || "[]"); if (!tags.includes(activeTag)) return false; } catch { return false; }
+            }
+            if (activeSource && z.source !== activeSource) return false;
+            return true;
+          });
+          if (isLoading) return <div className="text-center text-[var(--app-color-text-tertiary)] py-8">加载中...</div>;
+          if (isError) return (
+            <div className="text-center py-8 px-2">
+              <AlertTriangle size={20} className="mx-auto mb-2 text-red-500" />
+              <div className="text-[11px] text-red-500 font-medium mb-1">加载失败</div>
+              <div className="text-[10px] text-[var(--app-color-text-tertiary)] break-all">{error?.message || "未知错误"}</div>
             </div>
-          </div>
-        ) : zones.length === 0 ? (
-          <div className="text-center text-[var(--app-color-text-tertiary)] py-8">
-            暂无区域。<br />点击"发现区域"从行为数据中聚类发现，或"手动"创建。
-          </div>
-        ) : zones.map(zone => (
+          );
+          if (filtered.length === 0) return <div className="text-center text-[var(--app-color-text-tertiary)] py-8">暂无匹配区域</div>;
+          return filtered.map(zone => (
           <div key={zone.id} className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)]">
             <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: zone.color || "#3b82f6" }} />
             <div className="flex-1 min-w-0">
@@ -170,9 +233,10 @@ export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }
                   <span className={`text-[7px] px-1 rounded-full font-medium ${
                     zone.source === "BEHAVIOR" ? "bg-purple-100 text-purple-600" :
                     zone.source === "MANUAL" ? "bg-blue-100 text-blue-600" :
+                    zone.source === "TOPOLOGY" ? "bg-green-100 text-green-600" :
                     "bg-gray-100 text-gray-500"
                   }`}>
-                    {zone.source === "BEHAVIOR" ? "行为" : zone.source === "MANUAL" ? "手动" : "导入"}
+                    {zone.source === "BEHAVIOR" ? "行为" : zone.source === "MANUAL" ? "手动" : zone.source === "TOPOLOGY" ? "拓扑" : "导入"}
                   </span>
                 )}
               </div>
@@ -210,12 +274,38 @@ export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }
             <button onClick={() => setEditing(zone)} className="p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)]"><Edit3 size={10} /></button>
             <button onClick={() => zone.id && handleDelete(zone.id)} className="p-0.5 text-[var(--app-color-text-tertiary)] hover:text-red-500"><Trash2 size={10} /></button>
           </div>
-        ))}
+        ));
+        })()}
       </div>
 
       {/* Edit form */}
       {editing && (
-        <div className="shrink-0 border-t border-[var(--app-color-border-default)] p-2 space-y-1.5 bg-[var(--app-color-surface-container)] max-h-[60%] overflow-auto">
+        <div ref={(el) => { if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" }); }}
+          className="shrink-0 border-t border-[var(--app-color-border-default)] p-2 space-y-1.5 bg-[var(--app-color-surface-container)] max-h-[60%] overflow-auto">
+          {/* 快速任务类型切换 */}
+          <div className="flex items-center gap-1">
+          {editing.robotIp && (
+            <span className="text-[9px] text-[var(--app-color-text-tertiary)] shrink-0 mr-1">
+              归属: <span className="font-semibold text-[var(--app-color-text-primary)]">
+                {editing.robotIp.endsWith(".16") ? "AGV-1" : editing.robotIp.endsWith(".18") ? "AGV-2" : editing.robotIp.endsWith(".20") ? "AGV-3" : "AGV-4"}
+              </span>
+            </span>
+          )}
+            <span className="text-[9px] text-[var(--app-color-text-tertiary)] shrink-0">快捷任务:</span>
+            {(creatableTags ?? TAG_OPTIONS).map(tag => (
+              <button key={tag} onClick={() => setEditing(prev => {
+                if (!prev) return prev;
+                const tags = [tag]; // 单选替换
+                return { ...prev, semanticTags: JSON.stringify(tags), color: (allTagColors ?? TAG_COLORS)[tag] || prev.color };
+              })}
+                className="px-1.5 py-0.5 rounded-full text-[9px] font-medium text-white hover:opacity-90"
+                style={{ backgroundColor: (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6" }}>
+                {tag}
+              </button>
+            ))}
+            <button onClick={() => setEditing(null)}
+              className="ml-auto px-1.5 py-0.5 rounded-full text-[9px] text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]">✕ 关闭</button>
+          </div>
           <input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })}
             placeholder="名称" className="w-full px-2 py-1.5 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] text-[11px]" />
 
@@ -285,7 +375,7 @@ export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }
           <div>
             <div className="text-[9px] text-[var(--app-color-text-tertiary)] mb-0.5">语义标签</div>
             <div className="flex flex-wrap gap-1">
-              {TAG_OPTIONS.map(t => {
+              {(creatableTags ?? TAG_OPTIONS).map(t => {
                 let tags: string[] = [];
                 try { tags = editing.semanticTags ? JSON.parse(editing.semanticTags) : []; } catch { tags = []; }
                 const active = tags.includes(t);
@@ -318,6 +408,72 @@ export default function AgvZonePanel({ onRequestPick, pendingPick, onClearPick }
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 标签筛选 + 来源分类 + 批量删除组件 */
+function TagsFilterBar({ zones, activeTag, onSetActiveTag, activeSource, onSetActiveSource, onDeleteByTag, onDeleteBySource, allTagColors }: {
+  zones: AgvSpatialElement[];
+  activeTag: string | null; onSetActiveTag: (t: string | null) => void;
+  activeSource: string | null; onSetActiveSource: (s: string | null) => void;
+  onDeleteByTag: (tag: string) => void;
+  onDeleteBySource: (source: string) => void;
+  allTagColors?: Record<string, string>;
+}) {
+
+  // 统计各标签数量
+  const tagCounts: Record<string, number> = {};
+  const sourceCounts: Record<string, number> = {};
+  for (const z of zones) {
+    try { const tags: string[] = JSON.parse(z.semanticTags || "[]"); for (const t of tags) tagCounts[t] = (tagCounts[t] || 0) + 1; } catch {}
+    const s = z.source || "未知";
+    sourceCounts[s] = (sourceCounts[s] || 0) + 1;
+  }
+
+  const allTags = Object.keys(tagCounts).sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0));
+  const allSources = Object.keys(sourceCounts).sort();
+  const SOURCE_LABELS: Record<string, string> = { BEHAVIOR: "行为", MANUAL: "手动", AUTO: "自动", TOPOLOGY: "拓扑" };
+
+  return (
+    <div className="shrink-0 px-2 py-1.5 border-b border-[var(--app-color-border-default)] space-y-1">
+      {/* 标签行 */}
+      <div className="flex items-center gap-1 flex-wrap">
+        <span className="text-[9px] text-[var(--app-color-text-tertiary)] shrink-0">标签:</span>
+        <button onClick={() => onSetActiveTag(null)}
+          className={`px-1.5 py-0.5 rounded-full text-[9px] ${!activeTag ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}>
+          全部({zones.length})
+        </button>
+        {allTags.map(tag => (
+          <button key={tag} onClick={() => onSetActiveTag(activeTag === tag ? null : tag)}
+            className={`px-1.5 py-0.5 rounded-full text-[9px] ${activeTag === tag ? "text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}
+            style={activeTag === tag ? { backgroundColor: (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6" } : {}}>
+            {tag}({tagCounts[tag]})
+          </button>
+        ))}
+        {activeTag && (
+          <button onClick={() => onDeleteByTag(activeTag)}
+            className="px-1.5 py-0.5 rounded-full text-[9px] text-red-500 hover:bg-red-50">🗑 删此标签</button>
+        )}
+      </div>
+      {/* 来源行 */}
+      <div className="flex items-center gap-1 flex-wrap">
+        <span className="text-[9px] text-[var(--app-color-text-tertiary)] shrink-0">来源:</span>
+        <button onClick={() => onSetActiveSource(null)}
+          className={`px-1.5 py-0.5 rounded-full text-[9px] ${!activeSource ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}>
+          全部
+        </button>
+        {allSources.map(src => (
+          <button key={src} onClick={() => onSetActiveSource(activeSource === src ? null : src)}
+            className={`px-1.5 py-0.5 rounded-full text-[9px] ${activeSource === src ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}>
+            {SOURCE_LABELS[src] || src}({sourceCounts[src]})
+          </button>
+        ))}
+        {activeSource && (
+          <button onClick={() => onDeleteBySource(activeSource)}
+            className="px-1.5 py-0.5 rounded-full text-[9px] text-red-500 hover:bg-red-50">🗑 删此来源</button>
+        )}
+      </div>
     </div>
   );
 }

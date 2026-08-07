@@ -18,15 +18,18 @@ public interface AgvAnalysisMapper {
     @Select("SELECT * FROM agv_spatial_element WHERE id = #{id}")
     AgvSpatialElement selectSpatialElementById(Long id);
 
-    @Insert("INSERT INTO agv_spatial_element (name, map_name, element_type, station_pattern, polygon_json, poi_x, poi_y, poi_radius_m, semantic_tags, color, is_active, confidence, hit_count, source) " +
-            "VALUES (#{name}, #{mapName}, #{elementType}, #{stationPattern}, #{polygonJson}, #{poiX}, #{poiY}, #{poiRadiusM}, #{semanticTags}, #{color}, #{isActive}, #{confidence}, #{hitCount}, #{source})")
+    @Select("SELECT * FROM agv_spatial_element WHERE station_pattern = #{pattern} AND source = #{source} AND is_active = 1")
+    List<AgvSpatialElement> selectByStationPatternAndSource(String pattern, String source);
+
+    @Insert("INSERT INTO agv_spatial_element (name, map_name, element_type, station_pattern, polygon_json, poi_x, poi_y, poi_radius_m, semantic_tags, color, is_active, confidence, hit_count, source, robot_ip) " +
+            "VALUES (#{name}, #{mapName}, #{elementType}, #{stationPattern}, #{polygonJson}, #{poiX}, #{poiY}, #{poiRadiusM}, #{semanticTags}, #{color}, #{isActive}, #{confidence}, #{hitCount}, #{source}, #{robotIp})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insertSpatialElement(AgvSpatialElement e);
 
     @Update("UPDATE agv_spatial_element SET name=#{name}, map_name=#{mapName}, element_type=#{elementType}, " +
             "station_pattern=#{stationPattern}, polygon_json=#{polygonJson}, poi_x=#{poiX}, poi_y=#{poiY}, " +
             "poi_radius_m=#{poiRadiusM}, semantic_tags=#{semanticTags}, color=#{color}, is_active=#{isActive}, " +
-            "confidence=#{confidence}, hit_count=#{hitCount}, source=#{source} WHERE id=#{id}")
+            "confidence=#{confidence}, hit_count=#{hitCount}, source=#{source}, robot_ip=#{robotIp} WHERE id=#{id}")
     int updateSpatialElement(AgvSpatialElement e);
 
     @Delete("UPDATE agv_spatial_element SET is_active = 0 WHERE id = #{id}")

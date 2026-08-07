@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageClaimMapper">
+
+    <resultMap id="CageClaimMap" type="com.example.demo.modules.cageshelf.entity.CageClaim">
+        <id property="id" column="id"/>
+        <result property="animalCageId" column="animal_cage_id"/>
+        <result property="claimStatus" column="claim_status"/>
+        <result property="claimantId" column="claimant_id"/>
+        <result property="claimantName" column="claimant_name"/>
+        <result property="claimantDept" column="claimant_dept"/>
+        <result property="aupId" column="aup_id"/>
+        <result property="assignerId" column="assigner_id"/>
+        <result property="assignerName" column="assigner_name"/>
+        <result property="confirmRequired" column="confirm_required"/>
+        <result property="retryCount" column="retry_count"/>
+        <result property="rejectedAt" column="rejected_at"/>
+        <result property="confirmedAt" column="confirmed_at"/>
+        <result property="releasedAt" column="released_at"/>
+        <result property="note" column="note"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.example.demo.modules.cageshelf.entity.CageClaim"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_claims (
+            animal_cage_id, claim_status, claimant_id, claimant_name, claimant_dept,
+            aup_id, assigner_id, assigner_name, confirm_required,
+            retry_count, note, created_at
+        ) VALUES (
+            #{animalCageId}, #{claimStatus}, #{claimantId}, #{claimantName}, #{claimantDept},
+            #{aupId}, #{assignerId}, #{assignerName}, #{confirmRequired},
+            #{retryCount}, #{note}, NOW()
+        )
+    </insert>
+
+    <update id="update" parameterType="com.example.demo.modules.cageshelf.entity.CageClaim">
+        UPDATE cage_claims
+        <set>
+            <if test="claimStatus != null">claim_status = #{claimStatus},</if>
+            <if test="claimantId != null">claimant_id = #{claimantId},</if>
+            <if test="claimantName != null">claimant_name = #{claimantName},</if>
+            <if test="note != null">note = #{note},</if>
+            <if test="retryCount != null">retry_count = #{retryCount},</if>
+            <if test="rejectedAt != null">rejected_at = #{rejectedAt},</if>
+            <if test="confirmedAt != null">confirmed_at = #{confirmedAt},</if>
+            <if test="releasedAt != null">released_at = #{releasedAt},</if>
+            updated_at = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultMap="CageClaimMap">
+        SELECT * FROM cage_claims WHERE id = #{id}
+    </select>
+
+    <select id="selectByIdForUpdate" resultMap="CageClaimMap">
+        SELECT * FROM cage_claims WHERE id = #{id} FOR UPDATE
+    </select>
+
+    <select id="selectActiveByAnimalCageId" resultMap="CageClaimMap">
+        SELECT * FROM cage_claims
+        WHERE animal_cage_id = #{animalCageId}
+          AND claim_status IN ('pending_approval','locked','confirmed','pending_release_approval')
+        LIMIT 1
+    </select>
+
+    <select id="selectByClaimantId" resultMap="CageClaimMap">
+        SELECT * FROM cage_claims
+        WHERE claimant_id = #{claimantId}
+        <if test="status != null and status != ''">
+            AND claim_status = #{status}
+        </if>
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectPending" resultMap="CageClaimMap">
+        SELECT c.* FROM cage_claims c
+        WHERE claim_status IN
+        <choose>
+            <when test="status != null and status != ''">
+                (#{status})
+            </when>
+            <otherwise>
+                ('pending_approval','pending_release_approval')
+            </otherwise>
+        </choose>
+        <if test="keyword != null and keyword != ''">
+            AND (claimant_name LIKE CONCAT('%',#{keyword},'%')
+                 OR claimant_dept LIKE CONCAT('%',#{keyword},'%'))
+        </if>
+        ORDER BY c.created_at ASC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countPending" resultType="int">
+        SELECT COUNT(1) FROM cage_claims
+        WHERE claim_status IN
+        <choose>
+            <when test="status != null and status != ''">
+                (#{status})
+            </when>
+            <otherwise>
+                ('pending_approval','pending_release_approval')
+            </otherwise>
+        </choose>
+        <if test="keyword != null and keyword != ''">
+            AND (claimant_name LIKE CONCAT('%',#{keyword},'%')
+                 OR claimant_dept LIKE CONCAT('%',#{keyword},'%'))
+        </if>
+    </select>
+
+    <select id="countRejectedByAnimalCage" resultType="int">
+        SELECT COUNT(1) FROM cage_claims
+        WHERE animal_cage_id = #{animalCageId}
+          AND claimant_id = #{claimantId}
+          AND claim_status = 'rejected'
+    </select>
+
+    <select id="selectLastRejectedAt" resultType="string">
+        SELECT MAX(rejected_at) FROM cage_claims
+        WHERE animal_cage_id = #{animalCageId}
+          AND claimant_id = #{claimantId}
+          AND claim_status = 'rejected'
+    </select>
+
+    <select id="selectTimedOutPendingApproval" resultMap="CageClaimMap">
+        SELECT * FROM cage_claims
+        WHERE claim_status = 'pending_approval'
+          AND created_at &lt; DATE_SUB(NOW(), INTERVAL #{beforeHours} HOUR)
+    </select>
+
+    <select id="selectTimedOutLocked" resultMap="CageClaimMap">
+        SELECT * FROM cage_claims
+        WHERE claim_status = 'locked'
+          AND updated_at &lt; DATE_SUB(NOW(), INTERVAL #{beforeHours} HOUR)
+    </select>
+
+    <update id="batchUpdateStatus">
+        UPDATE cage_claims
+        SET claim_status = #{status},
+            note = CONCAT(IFNULL(note,''), ' | ', #{note}),
+            updated_at = NOW()
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        <!-- 仅更新仍处于扫描态的记录，防止覆盖已被手动处理的记录 -->
+        <if test="status == 'rejected'">
+            AND claim_status = 'pending_approval'
+        </if>
+        <if test="status == 'cancelled'">
+            AND claim_status = 'locked'
+        </if>
+    </update>
+
+    <!-- 池中可用：cageTypeCode=2 且无 active claim。
+         通过 cage_cell_index JOIN cage_cell_detail 获取笼位信息，
+         LEFT JOIN cage_claims 排除已有活跃认领的笼位 -->
+    <select id="selectPoolCells" resultType="map">
+        SELECT
+            cci.animal_cage_id AS animalCageId,
+            cci.position_x AS positionX,
+            cci.position_y AS positionY,
+            cci.shelve_id AS shelveId,
+            ccd.cage_type_code AS cageTypeCode,
+            ccd.project_pi_name AS projectPiName,
+            ccd.aup_number AS aupNumber,
+            ccd.department_name AS departmentName,
+            ccd.project_name AS projectName
+        FROM cage_cell_index cci
+        JOIN cage_cell_detail ccd ON cci.animal_cage_id = ccd.animal_cage_id
+        LEFT JOIN cage_claims cl ON cci.animal_cage_id = cl.animal_cage_id
+            AND cl.claim_status IN ('pending_approval','locked','confirmed','pending_release_approval')
+        WHERE cci.shelf_index_id = #{shelfIndexId}
+          AND ccd.cage_type_code = 2
+          AND cl.id IS NULL
+        ORDER BY cci.position_x, cci.position_y
+    </select>
+
+    <select id="selectByAnimalCageIdForUpdate" resultMap="CageClaimMap">
+        SELECT * FROM cage_claims
+        WHERE animal_cage_id = #{animalCageId}
+          AND claim_status IN ('pending_approval','locked','confirmed','pending_release_approval')
+        FOR UPDATE
+    </select>
+
+</mapper>

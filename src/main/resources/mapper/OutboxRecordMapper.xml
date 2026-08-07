@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.OutboxRecordMapper">
+
+    <resultMap id="OutboxRecordMap" type="com.example.demo.modules.cageshelf.entity.OutboxRecord">
+        <id property="id" column="id"/>
+        <result property="aggregateType" column="aggregate_type"/>
+        <result property="aggregateId" column="aggregate_id"/>
+        <result property="eventType" column="event_type"/>
+        <result property="payload" column="payload"/>
+        <result property="aroEndpoint" column="aro_endpoint"/>
+        <result property="aroUrl" column="aro_url"/>
+        <result property="summary" column="summary"/>
+        <result property="status" column="status"/>
+        <result property="retryCount" column="retry_count"/>
+        <result property="nextRetryAt" column="next_retry_at"/>
+        <result property="lastError" column="last_error"/>
+        <result property="aroResponse" column="aro_response"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="deliveredAt" column="delivered_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO outbox_record (aggregate_type, aggregate_id, event_type, payload, aro_endpoint, summary, status, next_retry_at)
+        VALUES (#{aggregateType}, #{aggregateId}, #{eventType}, #{payload}, #{aroEndpoint}, #{summary}, 'pending', NOW())
+    </insert>
+
+    <select id="selectPending" resultMap="OutboxRecordMap">
+        SELECT * FROM outbox_record
+        WHERE status IN ('pending','failed')
+          AND (next_retry_at IS NULL OR next_retry_at &lt;= NOW())
+          AND retry_count &lt; 10
+        ORDER BY created_at ASC
+        LIMIT #{limit}
+        FOR UPDATE
+    </select>
+
+    <update id="updateStatus">
+        UPDATE outbox_record SET
+            status = #{status},
+            retry_count = #{retryCount},
+            next_retry_at = #{nextRetryAt},
+            last_error = #{lastError},
+            aro_response = #{aroResponse},
+            delivered_at = #{deliveredAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="stats" resultType="map">
+        SELECT
+            status,
+            COUNT(*) AS cnt
+        FROM outbox_record
+        GROUP BY status
+    </select>
+
+    <select id="selectRecent" resultMap="OutboxRecordMap">
+        SELECT * FROM outbox_record ORDER BY created_at DESC LIMIT #{limit}
+    </select>
+
+    <update id="updateAroUrl">
+        UPDATE outbox_record SET aro_url = #{aroUrl} WHERE id = #{id}
+    </update>
+
+</mapper>

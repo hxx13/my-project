@@ -40,6 +40,7 @@ import {
   Terminal,
   TrendingUp,
   Thermometer,
+  Database,
   Ticket,
   ScanFace,
   Truck,
@@ -515,7 +516,7 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
       {
         id: "cage-index",
         path: "/admin/cage-shelf-indexes",
-        label: "笼架落库索引",
+        label: "笼架与笼位索引",
         icon: TableProperties,
         homeTone: "from-amber-400 to-orange-500",
         fallbackMinRole: "STAFF",
@@ -745,6 +746,16 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         alias: ["对话", "AI", "存档", "conversation", "chat", "archive"],
         sidebarVisible: (ctx) => show(ctx, "/admin/conversation-archive", "ADMIN"),
       },
+      {
+        id: "animal-order",
+        path: "/admin/animal-order",
+        label: "实验动物订购",
+        icon: Database,
+        homeTone: "from-teal-400 to-cyan-500",
+        fallbackMinRole: "STAFF",
+        alias: ["实验动物订购", "动物订购", "品种", "品系", "规格", "供应商", "订购", "animal", "order"],
+        sidebarVisible: (ctx) => show(ctx, "/admin/animal-order", "STAFF"),
+      },
     ],
   },
 ];
@@ -788,6 +799,7 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p === "/admin/access-fusion" ||
     p === "/admin/access-clean-rule-profiles" ||
     p === "/admin/automation-logs" ||
+    p === "/admin/animal-order" ||
     p.startsWith("/admin/department-storage") ||
     p.startsWith("/admin/telemetry-") ||
     p === "/animal-room-telemetry" ||

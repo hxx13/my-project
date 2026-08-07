@@ -666,6 +666,47 @@
     --tw-ring-color: color-mix(in srgb, var(--dash-night-accent-warm) 8%, transparent) !important;
 }
 
+/* ═══════ 学生端暗色表格（AdminTableShell 在学生布局下的暗色覆盖） ═══════ */
+.student-layout-root--night-sky .admin-table-shell-inner table,
+.student-layout-root--night-sky .admin-data-table-wrap table {
+    color: var(--dash-night-text) !important;
+}
+
+.student-layout-root--night-sky .admin-table-shell-inner thead th,
+.student-layout-root--night-sky .admin-data-table-wrap thead th {
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) !important;
+    color: var(--dash-night-text-steel) !important;
+    border-color: color-mix(in srgb, var(--dash-night-border-steel) 28%, transparent) !important;
+    box-shadow: 0 1px 0 0 color-mix(in srgb, var(--dash-night-border-warm) 22%, transparent) !important;
+}
+
+.student-layout-root--night-sky .admin-table-shell-inner tbody td,
+.student-layout-root--night-sky .admin-data-table-wrap tbody td {
+    border-color: color-mix(in srgb, var(--dash-night-border-warm) 16%, transparent) !important;
+}
+
+.student-layout-root--night-sky .admin-table-shell-inner tbody tr:nth-child(even),
+.student-layout-root--night-sky .admin-data-table-wrap tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--dash-night-bg-student) 6%, transparent) !important;
+}
+
+.student-layout-root--night-sky .admin-table-shell-inner tbody tr:hover,
+.student-layout-root--night-sky .admin-data-table-wrap tbody tr:hover {
+    background: color-mix(in srgb, var(--dash-night-accent-warm) 10%, transparent) !important;
+}
+
+.student-layout-root--night-sky .admin-table-shell-inner tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea),
+.student-layout-root--night-sky .admin-data-table-wrap tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea) {
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) !important;
+    color: var(--dash-night-text) !important;
+    border-color: color-mix(in srgb, var(--dash-night-border-steel) 32%, transparent) !important;
+}
+
+.student-layout-root--night-sky .admin-table-shell-inner tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea)::placeholder,
+.student-layout-root--night-sky .admin-data-table-wrap tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea)::placeholder {
+    color: var(--dash-night-text-muted) !important;
+}
+
 .admin-layout-root--night-sky .focus\:ring-indigo-100:focus {
     --tw-ring-color: color-mix(in srgb, var(--dash-night-accent-steel) 28%, transparent) !important;
 }

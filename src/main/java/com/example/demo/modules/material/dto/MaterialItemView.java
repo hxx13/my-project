@@ -24,4 +24,6 @@ public class MaterialItemView {
     private String specSchema;
     private Integer specRequired;
     private Integer independentOrder;
+    /** 预约提前通知小时数 */
+    private Integer notifyAdvanceHours;
 }

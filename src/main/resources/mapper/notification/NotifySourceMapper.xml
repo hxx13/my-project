@@ -25,4 +25,6 @@
   </insert>
   <update id="updateEnabled">UPDATE notify_source SET enabled = #{enabled} WHERE id = #{id}</update>
   <update id="updateVisibleTo">UPDATE notify_source SET visible_to = #{visibleTo} WHERE id = #{id}</update>
+  <delete id="deleteById">DELETE FROM notify_source WHERE id = #{id}</delete>
+  <delete id="deleteByCode">DELETE FROM notify_source WHERE source_code = #{sourceCode}</delete>
 </mapper>

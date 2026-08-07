@@ -73,4 +73,16 @@ public class SpecialChannelController {
         specialChannelService.resetPin(userId.trim(), me.getId());
         return Result.success();
     }
+
+    @PostMapping("/self/reset-pin")
+    @Operation(summary = "已登录用户自助重置自己的个人密码（PIN），仅操作本人")
+    public Result<?> resetSelfPin(HttpServletRequest request) {
+        User me = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (me == null) {
+            return Result.fail(ErrorCodeConstants.UNAUTHORIZED, "未登录");
+        }
+        // 以当前用户的 username 作为人员库 userId（sys_user.username 与 aro_personnel.user_id 对应）
+        specialChannelService.resetPin(me.getUsername().trim(), me.getId());
+        return Result.success();
+    }
 }

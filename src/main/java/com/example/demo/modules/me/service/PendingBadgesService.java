@@ -46,6 +46,7 @@ public class PendingBadgesService {
         v.setMaterialText(formatBadgeText(v.getMaterial()));
         v.setProcessMaterialText(formatBadgeText(v.getProcessMaterial()));
         v.setProcessScanDelayText(formatBadgeText(v.getProcessScanDelay()));
+        v.setProcessAroTrainingText(formatBadgeText(v.getProcessAroTraining()));
         v.setChatUnreadText(formatBadgeText(v.getChatUnread()));
         int staffSidebar = Math.max(0, v.getChatUnread())
                 + Math.max(0, v.getNotify())

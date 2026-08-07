@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import toast from "react-hot-toast";
-import { Pencil, Trash2, Plus, Loader2, Save, X } from "lucide-react";
+import { Pencil, Trash2, Plus, Loader2, Save, X, ChevronDown } from "lucide-react";
 import {
   fetchBookingRoomAups,
   saveBookingAup,
@@ -9,6 +9,7 @@ import {
   type BookingAup,
 } from "@/api/domains/cageShelf.api";
 import type { BookingRoom } from "@/api/domains/cageShelf.api";
+import { Search } from "lucide-react";
 
 interface Props {
   room: BookingRoom | null;
@@ -19,17 +20,125 @@ interface Props {
 interface EditingState {
   id: string; // existing id, or "new" for insertion
   aupId: string;
+  piName: string; // cascading: PI name → filter AUP options
   rentNumber: number;
   memo: string;
+}
+
+/* ================================================================
+ * SearchableSelect — 搜索下拉组件（纯原生，不依赖 cmdk）
+ * 打开即可滚动选择，也可输入关键字过滤
+ * ================================================================ */
+function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder = "请选择…",
+  disabled = false,
+  className = "",
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as HTMLElement)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, []);
+
+  // 打开时自动聚焦搜索框 + 重置搜索
+  const handleOpen = () => {
+    if (disabled) return;
+    setOpen(v => {
+      if (!v) { setSearch(""); setTimeout(() => inputRef.current?.focus(), 50); }
+      return !v;
+    });
+  };
+
+  const selected = options.find(o => o.value === value);
+  const filtered = search.trim()
+    ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  return (
+    <div ref={ref} className={`relative ${className}`}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={handleOpen}
+        className={`w-full rounded border border-[var(--app-color-border-default)] px-2 py-1 text-xs text-left flex items-center justify-between gap-1 transition ${
+          disabled ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white hover:border-blue-400"
+        }`}
+      >
+        <span className={`truncate ${selected ? "text-[var(--twin-ink)] font-medium" : "text-gray-400"}`}>
+          {selected?.label || placeholder}
+        </span>
+        <ChevronDown className="h-3 w-3 shrink-0 text-gray-400" />
+      </button>
+      {open && !disabled && (
+        <div className="absolute left-0 top-full mt-1 z-50 w-full min-w-[160px] rounded-lg border border-[var(--app-color-border-default)] bg-white shadow-xl overflow-hidden">
+          {/* 搜索框 */}
+          <div className="flex items-center gap-1 border-b px-2 py-1.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="输入搜索…"
+              className="flex-1 bg-transparent text-xs outline-none text-[var(--twin-ink)] placeholder:text-gray-400"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+            )}
+          </div>
+          {/* 选项列表 */}
+          <div className="max-h-48 overflow-y-auto p-1">
+            {filtered.length === 0 ? (
+              <div className="px-2 py-4 text-center text-xs text-gray-400">无匹配</div>
+            ) : (
+              filtered.map(o => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(o.value === value ? "" : o.value);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded hover:bg-blue-50 transition ${
+                    o.value === value ? "bg-blue-50 text-blue-700 font-medium" : "text-[var(--twin-ink)]"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function CageBookingPanel({ room, roomId, ensureCasBinding }: Props) {
   const [aups, setAups] = useState<BookingAup[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<EditingState>({ id: "", aupId: "", rentNumber: 0, memo: "" });
+  const [editState, setEditState] = useState<EditingState>({ id: "", aupId: "", piName: "", rentNumber: 0, memo: "" });
   const [saving, setSaving] = useState(false);
-  const [aupOptions, setAupOptions] = useState<{ id: string; title: string; registerNumber: string }[]>([]);
+  const [aupOptions, setAupOptions] = useState<{ id: string; title: string; registerNumber: string; projectPiName: string }[]>([]);
 
   const loadAups = useCallback(async () => {
     if (!roomId) return;
@@ -52,23 +161,34 @@ export default function CageBookingPanel({ room, roomId, ensureCasBinding }: Pro
     fetchAupDict().then(list => setAupOptions(list.filter(a => a.id))).catch(() => {});
   }, [roomId]);
 
+  // ── Derived: unique PI names + AUP options filtered by selected PI ──
+  const piNames = useMemo(() => {
+    const names = [...new Set(aupOptions.map(a => a.projectPiName).filter(Boolean))];
+    return names.sort((a, b) => a.localeCompare(b, "zh"));
+  }, [aupOptions]);
+
+  const aupOptionsByPi = useMemo(() => {
+    if (!editState.piName) return [];
+    return aupOptions.filter(a => a.projectPiName === editState.piName);
+  }, [aupOptions, editState.piName]);
+
   // ── Edit handlers ──
 
   const startEdit = (aup: BookingAup) => {
     if (!ensureCasBinding()) return;
     setEditingId(aup.id);
-    setEditState({ id: aup.id, aupId: aup.aupId || "", rentNumber: aup.rentNumber ?? 0, memo: aup.memo || "" });
+    setEditState({ id: aup.id, aupId: aup.aupId || "", piName: aup.piName || "", rentNumber: aup.rentNumber ?? 0, memo: aup.memo || "" });
   };
 
   const startNew = () => {
     if (!ensureCasBinding()) return;
     setEditingId("new");
-    setEditState({ id: "new", aupId: "", rentNumber: 0, memo: "" });
+    setEditState({ id: "new", aupId: "", piName: "", rentNumber: 0, memo: "" });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditState({ id: "", aupId: "", rentNumber: 0, memo: "" });
+    setEditState({ id: "", aupId: "", piName: "", rentNumber: 0, memo: "" });
   };
 
   const handleSave = async () => {
@@ -190,18 +310,22 @@ export default function CageBookingPanel({ room, roomId, ensureCasBinding }: Pro
                 {editingId === "new" && (
                   <tr className="border-b bg-blue-50/40">
                     <td className="px-3 py-2">
-                      <select
-                        value={editState.aupId}
-                        onChange={e => setEditState(s => ({ ...s, aupId: e.target.value }))}
-                        className="w-full rounded border border-[var(--app-color-border-default)] px-2 py-1 text-xs bg-white"
-                      >
-                        <option value="">选择 AUP…</option>
-                        {aupOptions.map(a => (
-                          <option key={a.id} value={a.id}>{a.title || a.registerNumber}</option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+                        options={piNames.map(n => ({ value: n, label: n }))}
+                        value={editState.piName}
+                        onChange={(piName) => setEditState(s => ({ ...s, piName, aupId: "" }))}
+                        placeholder="选择课题组长…"
+                      />
                     </td>
-                    <td className="px-3 py-2 text-[var(--twin-mute)]">—</td>
+                    <td className="px-3 py-2">
+                      <SearchableSelect
+                        options={aupOptionsByPi.map(a => ({ value: a.id, label: a.registerNumber || a.title || "" }))}
+                        value={editState.aupId}
+                        onChange={(aupId) => setEditState(s => ({ ...s, aupId }))}
+                        placeholder={editState.piName ? "选择 AUP 编号…" : "请先选课题组长"}
+                        disabled={!editState.piName}
+                      />
+                    </td>
                     <td className="px-3 py-2">
                       <input
                         type="number"
@@ -237,8 +361,23 @@ export default function CageBookingPanel({ room, roomId, ensureCasBinding }: Pro
                 {aups.map(aup => (
                   editingId === aup.id ? (
                     <tr key={aup.id} className="border-b bg-blue-50/40">
-                      <td className="px-3 py-2 font-medium text-[var(--twin-ink)]">{aup.piName}</td>
-                      <td className="px-3 py-2 text-[var(--twin-mute)]">{aup.registerNumber}</td>
+                      <td className="px-3 py-2">
+                        <SearchableSelect
+                          options={piNames.map(n => ({ value: n, label: n }))}
+                          value={editState.piName}
+                          onChange={(piName) => setEditState(s => ({ ...s, piName, aupId: "" }))}
+                          placeholder="选择课题组长…"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <SearchableSelect
+                          options={aupOptionsByPi.map(a => ({ value: a.id, label: a.registerNumber || a.title || "" }))}
+                          value={editState.aupId}
+                          onChange={(aupId) => setEditState(s => ({ ...s, aupId }))}
+                          placeholder={editState.piName ? "选择 AUP 编号…" : "请先选课题组长"}
+                          disabled={!editState.piName}
+                        />
+                      </td>
                       <td className="px-3 py-2">
                         <input
                           type="number"

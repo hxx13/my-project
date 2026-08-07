@@ -23,5 +23,8 @@
   <select id="findLastByVariable" resultMap="BaseResultMap">
     SELECT * FROM telemetry_alarm_log WHERE variable_name = #{variableName} ORDER BY sent_at DESC LIMIT 1
   </select>
+  <select id="findLastAlarmByVariable" resultMap="BaseResultMap">
+    SELECT * FROM telemetry_alarm_log WHERE variable_name = #{variableName} AND alarm_band != 'OK' ORDER BY sent_at DESC LIMIT 1
+  </select>
   <delete id="deleteOlderThan">DELETE FROM telemetry_alarm_log WHERE sent_at &lt; #{before}</delete>
 </mapper>

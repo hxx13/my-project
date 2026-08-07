@@ -253,33 +253,47 @@ public class AgvController {
     // ── 坐标系旋转配置 ──
 
     @GetMapping("/coord-config")
-    @Operation(summary = "获取所有小车坐标系旋转角度")
+    @Operation(summary = "获取所有小车坐标系配置（旋转+平移偏移）")
     public Result<Map<String, Object>> getCoordConfig() {
         Map<String, Object> result = new LinkedHashMap<>();
         for (String ip : KNOWN_IPS) {
             try {
-                Double deg = jdbc.queryForObject(
-                    "SELECT rotation_deg FROM agv_coord_config WHERE robot_ip = ?",
-                    Double.class, ip);
-                result.put(ip, deg != null ? deg : 0.0);
+                Map<String, Object> cfg = jdbc.queryForMap(
+                    "SELECT rotation_deg, offset_x, offset_y FROM agv_coord_config WHERE robot_ip = ?",
+                    ip);
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("rotationDeg", cfg.getOrDefault("rotation_deg", 0.0));
+                entry.put("offsetX", cfg.getOrDefault("offset_x", 0.0));
+                entry.put("offsetY", cfg.getOrDefault("offset_y", 0.0));
+                result.put(ip, entry);
             } catch (Exception e) {
-                result.put(ip, 0.0); // 表空或行不存在 → 默认0
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("rotationDeg", 0.0);
+                entry.put("offsetX", 0.0);
+                entry.put("offsetY", 0.0);
+                result.put(ip, entry);
             }
         }
         return Result.success(result);
     }
 
     @PutMapping("/coord-config/{ip}")
-    @Operation(summary = "设置单台小车坐标系旋转角度")
-    public Result<String> setCoordConfig(@PathVariable String ip, @RequestParam double deg) {
+    @Operation(summary = "设置单台小车坐标系配置（旋转+平移偏移）")
+    public Result<String> setCoordConfig(@PathVariable String ip,
+                                         @RequestParam(defaultValue = "0") double deg,
+                                         @RequestParam(defaultValue = "0") double offsetX,
+                                         @RequestParam(defaultValue = "0") double offsetY) {
         jdbc.update(
-            "INSERT INTO agv_coord_config (robot_ip, rotation_deg) VALUES (?, ?) " +
-            "ON DUPLICATE KEY UPDATE rotation_deg = ?",
-            ip, deg, deg);
+            "INSERT INTO agv_coord_config (robot_ip, rotation_deg, offset_x, offset_y) VALUES (?, ?, ?, ?) " +
+            "ON DUPLICATE KEY UPDATE rotation_deg = ?, offset_x = ?, offset_y = ?",
+            ip, deg, offsetX, offsetY, deg, offsetX, offsetY);
         return Result.success("ok");
     }
 
-    // ── 固定路线拓扑（机械分析修正结果，非算法动态发现） ──
+    // ── 固定路线拓扑（DEPRECATED — 静态 JSON 方案已废弃） ──
+    // 此静态 JSON 方案已被路线模型2取代，请使用:
+    //   POST /api/v1/agv/routes/topology/generate  — 从 DB 轨迹数据动态生成
+    //   GET  /api/v1/agv/routes/topology/generated  — 查询已生成的拓扑
 
     /** Zone → AGV IP 映射 */
     private static final Map<String, String[]> ZONE_AGV_MAP = Map.of(
@@ -290,9 +304,12 @@ public class AgvController {
     /**
      * 获取修正后的机械化路线拓扑（固定数据，非算法生成）。
      * 可选 robotIp 参数按小车过滤，不传则返回全部。
+     *
+     * @deprecated 静态 JSON 方案已废弃，请使用 GET /api/v1/agv/routes/topology/generated（动态生成版本）
      */
+    @Deprecated
     @GetMapping("/routes/topology")
-    @Operation(summary = "获取机械化路线拓扑（固定修正数据）")
+    @Operation(summary = "[已废弃] 获取机械化路线拓扑（固定修正数据）— 请使用 /routes/topology/generated")
     public Result<Map<String, Object>> routeTopology(
             @RequestParam(required = false) String robotIp) {
         try {

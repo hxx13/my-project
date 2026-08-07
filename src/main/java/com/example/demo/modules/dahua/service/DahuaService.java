@@ -16,7 +16,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.scheduling.annotation.Async;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -54,8 +53,11 @@ public class DahuaService {
     @Autowired
     private com.example.demo.modules.dahua.mapper.DahuaDeviceChannelCacheMapper deviceChannelCacheMapper;
 
-    @Value("${app.dahua.callback-url:http://172.22.161.252:18082/api/event}")
+    @Value("${app.dahua.callback-url:http://172.22.161.252:8080/api/event}")
     private String myCallbackUrl;
+
+    @Value("${app.dahua.subscription-suffix:_v2}")
+    private String subscriptionSuffix;
 
     @Value("${app.dahua.buffer-url:}")
     private String bufferUrl;
@@ -158,6 +160,7 @@ public class DahuaService {
             // ── 步骤0：ICC 事件去重（同一 alarmCode 只处理一次）──
             String alarmCode = str(info.get("alarmCode"));
             if (!alarmCode.isBlank() && processedIccEvents.putIfAbsent(alarmCode, System.currentTimeMillis()) != null) {
+                log.debug("[dahua-webhook] SKIP_ICC_DEDUP alarmCode={}", alarmCode);
                 return;
             }
             // 定期清理（10分钟以上的记录）
@@ -210,7 +213,8 @@ public class DahuaService {
             boolean isRemoteOpen = Integer.valueOf(48).equals(openType);
 
             if (!isAllowedChannel && !isRemoteOpen) {
-                log.debug("[dahua-webhook] 跳过: deptId={} channelCode={}", r.getDepartmentId(), r.getChannelCode());
+                log.info("[dahua-webhook] SKIP_DEPT_FILTER deptId={} deptName={} channelCode={} channelName={} personName={}",
+                        r.getDepartmentId(), r.getDepartmentName(), r.getChannelCode(), r.getChannelName(), r.getPersonName());
                 return;
             }
             if (!isDept26) {
@@ -220,6 +224,8 @@ public class DahuaService {
 
             // ---- 入库（先到先得，已有 recordId 则跳过） ----
             if (dahuaSwingMapper.findRecordByRecordId(r.getRecordId()) != null) {
+                log.info("[dahua-webhook] SKIP_RECORD_EXISTS recordId={} personName={} channelCode={} — 拉取路径已先入库，webhook跳过",
+                        r.getRecordId(), r.getPersonName(), r.getChannelCode());
                 return;
             }
             dahuaSwingMapper.upsertRecord(r);
@@ -406,11 +412,19 @@ public class DahuaService {
     // =========================================================================
     public void cleanupLegacySubscriptions() {
         log.info("[System] 清理旧订阅...");
+        // 清理 ICC 网页管理台自动创建的 Client 订阅（domainSubscribe=1），
+        // 会占满 10 条配额导致 26100006，每次启动清理掉
+        // 同时清理旧固定名和 IP 格式的遗留订阅
         List<String> zombieNames = Arrays.asList(
                 "172.22.161.252_8080", "172.22.161.252_3000",
                 "172.22.161.254_3000", "172.22.161.254_8080",
                 "192.168.1.3_8080",
-                "My_Fixed_Java_Client_V1", "My_Fixed_Java_Client_V2026"  // 旧固定名，迁移到 Twin_ 后清理
+                "My_Fixed_Java_Client_V1", "My_Fixed_Java_Client_V2026",
+                "Client_1770601682912", "Client_1770599460796",
+                "SuperClient_1770602048825", "Client_1770599458878",
+                "Client_1770600447240", "Client_1770601623003",
+                "Client_1770599607937", "Client_1770600913700"
+        );
         for (String name : zombieNames) unsubscribe(name);
     }
 
@@ -419,12 +433,14 @@ public class DahuaService {
         String magic;
         try {
             java.net.URI uri = new java.net.URI(myCallbackUrl);
-            magic = uri.getHost() + "_" + uri.getPort();
+            // magic 也带后缀，与 name 一起对 ICC 构成全新订阅者身份，绕开 26100006
+            magic = uri.getHost() + "_" + uri.getPort() + subscriptionSuffix;
         } catch (Exception e) {
-            magic = "127.0.0.1_8080";
+            magic = "127.0.0.1_8080" + subscriptionSuffix;
         }
 
         // 订阅名加 magic 后缀，防止 Windows/Linux 多环境互踢
+        // 后缀通过 app.dahua.subscription-suffix 配置，换后缀可绕开 ICC 26100006 频率限制
         String subName = "Twin_" + magic;
         unsubscribe(subName);
 
@@ -526,9 +542,9 @@ public class DahuaService {
         String magic;
         try {
             java.net.URI uri = new java.net.URI(myCallbackUrl);
-            magic = uri.getHost() + "_" + uri.getPort();
+            magic = uri.getHost() + "_" + uri.getPort() + subscriptionSuffix;
         } catch (Exception e) {
-            magic = "127.0.0.1_8080";
+            magic = "127.0.0.1_8080" + subscriptionSuffix;
         }
 
         String subName = "Twin_" + magic;
@@ -590,6 +606,30 @@ public class DahuaService {
         return diagnostic;
     }
 
+    /**
+     * 🔧 诊断用：查询 ICC 上当前所有 url 类型的订阅列表
+     */
+    public Map<String, Object> querySubscriptionList() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        String token = authService.getValidToken();
+        String baseUrl = authService.getBaseUrl();
+        String[] categories = {"alarm", "business", "state", "perception"};
+        RestTemplate rt = authService.getRestTemplate();
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "bearer " + token);
+
+        for (String cat : categories) {
+            try {
+                String url = baseUrl + "/evo-apigw/evo-event/1.0.0/subscribe/subscribe-list?monitorType=url&category=" + cat;
+                ResponseEntity<Map> resp = rt.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+                result.put(cat, resp.getBody());
+            } catch (Exception e) {
+                result.put(cat, Map.of("error", e.getMessage()));
+            }
+        }
+        return result;
+    }
+
     @Async("coreTaskExecutor")
     public void subscribeOnStartupAsync() {
         try {
@@ -599,24 +639,6 @@ public class DahuaService {
             log.info("[大华网关] 订阅就绪，雷达已开启！");
         } catch (Exception e) {
             log.error("[大华网关] 订阅启动失败: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * 🔄 每10分钟自动续订，防止跨网段NAT超时或ICC侧丢弃后订阅永久死亡。
-     * subscribe() 内部会先 unsubscribe 再重新注册，幂等安全。
-     */
-    @Scheduled(fixedDelay = 600_000)
-    public void ensureSubscriptionAlive() {
-        try {
-            boolean ok = subscribe();
-            if (ok) {
-                log.info("[大华网关] 🔄 定时续订成功");
-            } else {
-                log.warn("[大华网关] ⚠ 定时续订失败（ICC拒绝），将在10分钟后重试");
-            }
-        } catch (Exception e) {
-            log.error("[大华网关] ❌ 定时续订异常: {}", e.getMessage());
         }
     }
 }

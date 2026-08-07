@@ -392,10 +392,11 @@ function App() {
                 {!window.location.hash.includes('/dashboard-preview') && (
                   <Toaster position="top-center" containerStyle={{ zIndex: Z_INDEX.globalToast }} />
                 )}
-                {!window.location.hash.includes('/dashboard-preview') && (
+                {/* 仅限 console 管理后台路由下可见，防止门户首页/学生端泄露门禁报警等内容 */}
+                {window.location.hash.startsWith('#/console') && !window.location.hash.includes('/dashboard-preview') && (
                   <AdminGlobalDynamicIslandLayer />
                 )}
-                {!window.location.hash.includes('/dashboard-preview') && (
+                {window.location.hash.startsWith('#/console') && !window.location.hash.includes('/dashboard-preview') && (
                   <ScanDelayPendingAlertSync />
                 )}
             </ThemeProvider>

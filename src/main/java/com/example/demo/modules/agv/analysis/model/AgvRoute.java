@@ -2,6 +2,10 @@ package com.example.demo.modules.agv.analysis.model;
 
 import java.time.LocalDateTime;
 
+/**
+ * @deprecated 路线模型 v1 已废弃，请使用 AgvRouteTopologyService 生成的 RouteTopologyStation/RouteTopologyEdge（Model v2）。
+ */
+@Deprecated
 public class AgvRoute {
     private Long id;
     private String robotIp;

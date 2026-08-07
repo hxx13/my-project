@@ -92,7 +92,7 @@ public class CageSpecialStatusScanService {
         }
 
         // 获取全部笼架索引
-        List<Map<String, Object>> shelves = cageShelfMapper.listIndexes(null, null, null, null, 100000, 0);
+        List<Map<String, Object>> shelves = cageShelfMapper.listIndexes(null, null, null, null, null, 100000, 0);
         int totalShelves = shelves.size();
         if (totalShelves == 0) {
             log.warn("[cage-sync] 无笼架索引数据，跳过同步");

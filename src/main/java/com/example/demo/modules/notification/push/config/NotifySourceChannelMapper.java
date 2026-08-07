@@ -11,4 +11,5 @@ public interface NotifySourceChannelMapper {
     int insert(NotifySourceChannel config);
     int update(NotifySourceChannel config);
     int updateEnabled(@Param("id") Long id, @Param("enabled") Integer enabled);
+    int deleteBySourceId(@Param("sourceId") Long sourceId);
 }

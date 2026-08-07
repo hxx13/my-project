@@ -32,6 +32,10 @@ public class AgvAnalysisService {
         "172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22"
     };
 
+    /** 窗口超过此小时数自动降采样，避免全量分析超时 */
+    private static final long DOWNSAMPLE_WINDOW_HOURS = 4;
+    private static final int MAX_FRAMES_BEFORE_DOWNSAMPLE = 50_000;
+
     private final AgvTrajectoryMapper trajectoryMapper;
     private final AgvAnalysisMapper analysisMapper;
     private final AgvSpatialService spatialService;
@@ -69,11 +73,26 @@ public class AgvAnalysisService {
         // Parse ISO datetime strings (handles both "2026-07-29T15:34:00" and "2026-07-29T07:04:45.326Z")
         LocalDateTime from = parseIso(req.getFrom());
         LocalDateTime to = parseIso(req.getTo());
+
         // Step 1: load frames (ASC order for detector)
-        // 500ms 采集频率下，全天约 172K 条，取 200K 覆盖完整一天
-        List<Map<String, Object>> rows = trajectoryMapper.selectTrajectoryAsc(
-                req.getRobotIp(), from, to, 200000);
+        // 使用轻量查询跳过 errors/fatals/warnings/notices 等 TEXT 大字段，减少 DB 传输量
+        long windowHours = java.time.Duration.between(from, to).toHours();
+        int limit = 200_000;
+        List<Map<String, Object>> rows = trajectoryMapper.selectTrajectoryAnalysis(
+                req.getRobotIp(), from, to, limit);
         if (rows.isEmpty()) return Collections.emptyList();
+
+        // 大窗口自动降采样：>4h 且帧数超过阈值时均匀抽取，目标 ≤5万帧
+        if (windowHours > DOWNSAMPLE_WINDOW_HOURS && rows.size() > MAX_FRAMES_BEFORE_DOWNSAMPLE) {
+            int step = (int) Math.ceil((double) rows.size() / MAX_FRAMES_BEFORE_DOWNSAMPLE);
+            List<Map<String, Object>> sampled = new ArrayList<>(MAX_FRAMES_BEFORE_DOWNSAMPLE);
+            for (int i = 0; i < rows.size(); i += step) {
+                sampled.add(rows.get(i));
+            }
+            log.info("[AgvAnalysis] Downsampled {}→{} frames (window={}h, step={})",
+                    rows.size(), sampled.size(), windowHours, step);
+            rows = sampled;
+        }
 
         List<AgvPrimitiveDetector.TrajectoryFrame> frames = rows.stream().map(this::mapRow).collect(Collectors.toList());
 

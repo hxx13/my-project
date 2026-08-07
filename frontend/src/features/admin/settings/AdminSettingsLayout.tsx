@@ -10,6 +10,7 @@ import {
   KeyRound,
   AlertTriangle,
   LayoutDashboard,
+  Footprints,
   Search,
   ArrowLeft,
 } from "lucide-react";
@@ -28,6 +29,7 @@ const SETTINGS_SUB_PAGES = [
   { path: "permissions",    label: "页面权限",   icon: KeyRound,        minRole: "SUPER_ADMIN" },
   { path: "danger-zone",       label: "危险操作",   icon: AlertTriangle,   minRole: "SUPER_ADMIN", danger: true },
   { path: "dashboard-preview", label: "仪表盘预览", icon: LayoutDashboard,  minRole: "ADMIN" },
+  { path: "portal-footer",     label: "门户页脚",   icon: Footprints,     minRole: "ADMIN" },
 ];
 
 const STAFF_NS = "/console";

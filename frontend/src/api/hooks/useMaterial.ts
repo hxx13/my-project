@@ -39,8 +39,8 @@ export function useSaveMaterialCart() {
 export function useCreateMaterialRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (params: { lines: { itemId: number; qty: number; specSnapshot?: string }[]; applicantGroup?: string }) =>
-      createMaterialRequest(params.lines, params.applicantGroup),
+    mutationFn: (params: { lines: { itemId: number; qty: number; specSnapshot?: string }[]; applicantGroup?: string; scheduledPickupTime?: string | null }) =>
+      createMaterialRequest(params.lines, params.applicantGroup, params.scheduledPickupTime),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: materialQueryKeys.requests() });
       qc.invalidateQueries({ queryKey: materialQueryKeys.cart() });
@@ -127,7 +127,7 @@ export function useInboundMaterialItem() {
 export function usePendingMaterialRequests() {
   return useQuery({
     queryKey: materialQueryKeys.pendingRequests(),
-    queryFn: fetchPendingMaterialRequests,
+    queryFn: () => fetchPendingMaterialRequests(),
     ...studentReviewPendingQueryOptions,
   });
 }

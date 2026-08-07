@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, Clock, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   useMaterialCategories,
@@ -70,6 +70,33 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
   const [showKeypad, setShowKeypad] = useState(false);
   const [keypadMode, setKeypadMode] = useState<"set" | "verify">("verify");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [scheduledPickupTime, setScheduledPickupTime] = useState<string | null>(null);
+  const [showPickupPicker, setShowPickupPicker] = useState(false);
+
+  /** 预约领取预设日期（北京时间） */
+  const pickupPresets = useMemo(() => {
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const beijingNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+    const y = beijingNow.getFullYear();
+    const m = beijingNow.getMonth() + 1;
+    const d = beijingNow.getDate();
+    const todayStr = `${y}-${pad2(m)}-${pad2(d)}`;
+    const tomorrow = new Date(beijingNow);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tmrStr = `${tomorrow.getFullYear()}-${pad2(tomorrow.getMonth() + 1)}-${pad2(tomorrow.getDate())}`;
+    const afterTomorrow = new Date(beijingNow);
+    afterTomorrow.setDate(afterTomorrow.getDate() + 2);
+    const datStr = `${afterTomorrow.getFullYear()}-${pad2(afterTomorrow.getMonth() + 1)}-${pad2(afterTomorrow.getDate())}`;
+    return [
+      { label: "后天", iso: datStr },
+    ];
+  }, []);
+
+  function pickupTimeLabel(iso: string): string {
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return "";
+    return `预约 ${parseInt(m[2])}月${parseInt(m[3])}日 领取`;
+  }
 
   const applicantName = scanUser?.userName?.trim() || userId;
   const applicantGroupLabel = formatMaterialApplicantGroupLabel(scanUser);
@@ -136,11 +163,13 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
       const applicantGroup = resolveMaterialApplicantGroup(scanUser);
       setSubmitting(true);
       try {
-        const results = await createMaterialRequestWithToken(authData.token, lines, applicantGroup);
+        const results = await createMaterialRequestWithToken(authData.token, lines, applicantGroup, scheduledPickupTime);
         const count = Array.isArray(results) ? results.length : 1;
         const message = `已为 ${applicantName} 提交 ${count} 张申领单`;
         setSuccessMessage(message);
         setCart({});
+        setScheduledPickupTime(null);
+        setShowPickupPicker(false);
         toast.success(message, { duration: 4000 });
         window.setTimeout(() => {
           setSuccessMessage(null);
@@ -152,7 +181,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
         setSubmitting(false);
       }
     },
-    [cart, scanUser, applicantName, onDone, userId],
+    [cart, scanUser, applicantName, onDone, userId, scheduledPickupTime],
   );
 
   return (
@@ -242,43 +271,130 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                 </div>
               ) : (
                 <>
-              {cartCount > 0 && (
-                <div className="mb-2 max-h-[25vh] overflow-y-auto space-y-1">
-                  {cartLines.map((line) => (
-                    <div key={line.key} className={`flex items-center gap-2 text-xs ${TEXT_MUTED}`}>
-                      {line.cover ? (
-                        <img
-                          src={webImageSrc(line.cover)}
-                          alt=""
-                          className="h-8 w-8 shrink-0 rounded object-cover"
-                        />
-                      ) : (
-                        <div
-                          className={`h-8 w-8 shrink-0 rounded ${BTN_GHOST} flex items-center justify-center text-[10px] ${TEXT_MUTED}`}
-                        >
-                          {line.name.charAt(0)}
-                        </div>
-                      )}
-                      <span className="flex-1 truncate">
-                        {line.name}
-                        {line.specLabel && (
-                          <span className="ml-1 text-[10px] text-cyan-400">
-                            {line.specLabel}
+                  {cartCount > 0 && (
+                    <div className="mb-2 max-h-[25vh] overflow-y-auto space-y-1">
+                      {cartLines.map((line) => (
+                        <div key={line.key} className={`flex items-center gap-2 text-xs ${TEXT_MUTED}`}>
+                          {line.cover ? (
+                            <img
+                              src={webImageSrc(line.cover)}
+                              alt=""
+                              className="h-8 w-8 shrink-0 rounded object-cover"
+                            />
+                          ) : (
+                            <div
+                              className={`h-8 w-8 shrink-0 rounded ${BTN_GHOST} flex items-center justify-center text-[10px] ${TEXT_MUTED}`}
+                            >
+                              {line.name.charAt(0)}
+                            </div>
+                          )}
+                          <span className="flex-1 truncate">
+                            {line.name}
+                            {line.specLabel && (
+                              <span className="ml-1 text-[10px] text-cyan-400">
+                                {line.specLabel}
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                      <span className={`shrink-0 ${TEXT_MUTED}`}>&times;{line.qty}</span>
+                          <span className={`shrink-0 ${TEXT_MUTED}`}>&times;{line.qty}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || cartCount === 0}
-                className={`h-10 w-full rounded-xl ${ACCENT_BG} text-sm font-bold text-white hover:opacity-90 disabled:opacity-30 transition-colors`}
-              >
-                {submitting ? "提交中…" : `提交领用 (${cartCount})`}
-              </button>
+                  )}
+
+                  {/* 预约日期选择面板 */}
+                  {showPickupPicker && (
+                    <div className="mb-2 space-y-2 rounded-lg border border-cyan-500/40 bg-cyan-500/8 p-2.5">
+                      <p className="text-[12px] font-medium text-cyan-400">选择预约领取日期</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {pickupPresets.map((p) => (
+                          <button
+                            key={p.iso}
+                            type="button"
+                            onClick={() => { setScheduledPickupTime(p.iso); setShowPickupPicker(false); }}
+                            className={cn(
+                              "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                              scheduledPickupTime === p.iso
+                                ? "border-cyan-500 bg-cyan-500/20 text-cyan-400"
+                                : `${CARD_BORDER} ${TEXT_SEC} hover:border-cyan-500/40`
+                            )}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[11px] ${TEXT_MUTED} shrink-0`}>自定义</span>
+                        <input
+                          type="date"
+                          min={pickupPresets[0]?.iso}
+                          onChange={(e) => {
+                            if (e.target.value) { setScheduledPickupTime(e.target.value); setShowPickupPicker(false); }
+                          }}
+                          className={`flex-1 rounded border ${CARD_BORDER} px-2 py-1 text-[11px] ${TEXT} bg-[var(--app-color-surface-canvas)]`}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 操作按钮 */}
+                  {showPickupPicker ? (
+                    <button
+                      onClick={() => { setShowPickupPicker(false); setScheduledPickupTime(null); }}
+                      className={`h-10 w-full rounded-xl border ${CARD_BORDER} text-sm font-medium ${TEXT_SEC} hover:${TEXT} transition-colors`}
+                    >
+                      ← 返回
+                    </button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setCart({}); setScheduledPickupTime(null); }}
+                        disabled={cartCount === 0}
+                        className={`h-10 flex-1 rounded-xl border ${CARD_BORDER} text-sm font-medium ${TEXT_SEC} hover:border-[var(--app-color-feedback-danger)]/40 hover:text-[var(--app-color-feedback-danger)] disabled:opacity-30 transition-colors`}
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (scheduledPickupTime) {
+                            handleSubmit();
+                          } else {
+                            setShowPickupPicker(true);
+                          }
+                        }}
+                        disabled={cartCount === 0}
+                        className={cn(
+                          "h-10 flex-[2] rounded-xl text-sm font-bold transition-colors disabled:opacity-30",
+                          scheduledPickupTime
+                            ? `${ACCENT_BG} text-white hover:opacity-90`
+                            : `border border-cyan-500/40 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20`
+                        )}
+                      >
+                        {scheduledPickupTime ? (
+                          <span className="flex items-center justify-center gap-1.5">
+                            {pickupTimeLabel(scheduledPickupTime)}
+                            <span
+                              onClick={(e) => { e.stopPropagation(); setShowPickupPicker(true); }}
+                              className="inline-flex items-center justify-center rounded-full bg-white/20 p-0.5 hover:bg-white/30"
+                              role="button"
+                              aria-label="修改预约日期"
+                            >
+                              <Pencil className="size-3" />
+                            </span>
+                          </span>
+                        ) : (
+                          "预约领用"
+                        )}
+                      </button>
+                      <button
+                        onClick={() => { setScheduledPickupTime(null); handleSubmit(); }}
+                        disabled={submitting || cartCount === 0}
+                        className={`h-10 flex-[2] rounded-xl ${ACCENT_BG} text-sm font-bold text-white hover:opacity-90 disabled:opacity-30 transition-colors`}
+                      >
+                        {submitting ? "提交中…" : `提交领用 (${cartCount})`}
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>

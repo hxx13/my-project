@@ -1,15 +1,17 @@
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, Package, TrendingUp, type LucideIcon } from "lucide-react";
+import { ChevronLeft, Package, TrendingUp, BarChart3, type LucideIcon } from "lucide-react";
 import { useMyMaterialStats } from "@/api/hooks/useMaterial";
-import { StudentCard, Skeleton } from "../components/ui";
+import { AdminPageShell } from "@/components/admin/AdminPageShell";
+import { StudentCard, Skeleton, EmptyState } from "../components/ui";
 
 export default function StudentMaterialStatsPage() {
   const navigate = useNavigate();
   const { data, isLoading } = useMyMaterialStats();
 
   return (
+    <AdminPageShell>
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-3 px-5 py-3 bg-white border-b">
+      <div className="flex items-center gap-3 px-5 py-3 bg-[var(--student-surface)] border-b">
         <button onClick={() => navigate(-1)}><ChevronLeft className="size-4" /></button>
         <h2 className="text-[15px] font-semibold">领用统计</h2>
       </div>
@@ -34,9 +36,10 @@ export default function StudentMaterialStatsPage() {
               ) : <p className="text-[12px] text-[var(--student-mute)]">暂无数据</p>}
             </StudentCard>
           </>
-        ) : null}
+        ) : <EmptyState icon={BarChart3} title="暂无统计数据" description="数据加载中或暂无数据" />}
       </div>
     </div>
+    </AdminPageShell>
   );
 }
 

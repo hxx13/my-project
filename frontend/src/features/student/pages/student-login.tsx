@@ -24,7 +24,7 @@ export default function StudentLoginPage() {
       authStorage.setAuth(data.token, data.role, data.userInfo);
       authStorage.markLoginPortal("student");
       showToast("登录成功", "success");
-      navigate("/student/home", { replace: true });
+      navigate("/", { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : "登录失败";
       showToast(message, "error");
@@ -106,7 +106,7 @@ export default function StudentLoginPage() {
             </Link>
           </p>
           <Link
-            to="/login"
+            to="/"
             className="text-[var(--student-mute)] hover:text-[var(--student-primary)] transition-colors"
           >
             教职工登录入口

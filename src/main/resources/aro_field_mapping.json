@@ -1,0 +1,210 @@
+{
+  "version": "1",
+  "description": "ARO 字段名 → 本地规范名 双向映射。sources=拉取时ARO→本地, targets=推送时本地→ARO。",
+  "endpoints": {
+    "back":   { "path": "/admin/cageBox/{roomId}/{shelveId}/animalCages/back", "direction": "pull" },
+    "book":   { "path": "/admin/book/{roomId}/{shelveId}/animalCages", "direction": "pull" },
+    "detail": { "path": "/admin/animalCage/{id}", "direction": "pull" },
+    "list":   { "path": "/admin/animalCage/list", "direction": "pull" },
+    "cageBoxAction":   { "path": "/admin/animalCageBoxPart/save", "direction": "push" },
+    "specialBreeding": { "path": "/admin/specialBreeding/save", "direction": "push" },
+    "animalHealth":    { "path": "/admin/animalHealth/save", "direction": "push" },
+    "cageRelatedBox":  { "path": "/admin/cageRelatedBox/save", "direction": "push" },
+    "cancelColor":     { "path": "/admin/cageBox/cancelColor", "direction": "push" },
+    "updateAnimalCage":{ "path": "/admin/animalCage/update", "direction": "push" }
+  },
+  "filters": [
+    { "rule": "skip", "endpoint": "back", "field": "isCageBox", "match": [1, "1", true] },
+    { "rule": "skip", "endpoint": "list", "field": "isCageBox", "match": [1, "1", true] }
+  ],
+  "mappings": [
+    {
+      "canonical": "animal_cage_id",
+      "type": "long",
+      "sources": { "back": "id", "book": "id", "detail": "id", "list": "id" }
+    },
+    {
+      "canonical": "position_x",
+      "type": "int",
+      "sources": { "back": ["postionX","positionX"], "book": ["postionX","positionX"], "list": ["postionX","positionX"] },
+      "targets": { "updateAnimalCage": "postionX" }
+    },
+    {
+      "canonical": "position_y",
+      "type": "int",
+      "sources": { "back": ["postionY","positionY"], "book": ["postionY","positionY"], "list": ["postionY","positionY"] },
+      "targets": { "updateAnimalCage": "postionY" }
+    },
+    {
+      "canonical": "cage_type_code",
+      "sqlColumn": "cage_type_code",
+      "type": "int",
+      "sources": { "back": "animalCageType", "book": "animalCageType", "list": "animalCageType" }
+    },
+    {
+      "canonical": "state",
+      "sqlColumn": "state",
+      "type": "int",
+      "sources": { "back": "state", "book": "state", "list": "state" },
+      "targets": { "updateAnimalCage": "state" }
+    },
+    {
+      "canonical": "state_label",
+      "sqlColumn": "state_label",
+      "type": "string",
+      "sources": { "back": "stateName", "book": "stateName", "list": "stateName" }
+    },
+    {
+      "canonical": "rent_type",
+      "sqlColumn": "rent_type",
+      "type": "int",
+      "sources": { "back": "rentType", "book": "rentType", "list": "rentType" }
+    },
+    {
+      "canonical": "cage_name",
+      "sqlColumn": "cage_name",
+      "type": "string",
+      "sources": { "back": "name", "list": "name" },
+      "targets": { "updateAnimalCage": "name" }
+    },
+    {
+      "canonical": "cage_box_code",
+      "sqlColumn": "cage_box_code",
+      "type": "string",
+      "sources": { "back": ["cageBoxVo.cageBoxCode","cageBoxVo.cageBoxQrCode"], "list": ["cageBoxVo.cageBoxCode","cageBoxVo.cageBoxQrCode"] },
+      "targets": { "cageRelatedBox": "cageBoxCode" }
+    },
+    {
+      "canonical": "cage_box_name",
+      "sqlColumn": "cage_box_name",
+      "type": "string",
+      "sources": { "list": "cageBoxVo.cageBoxName" }
+    },
+    {
+      "canonical": "pi_name",
+      "sqlColumn": "pi_name",
+      "type": "string",
+      "sources": { "back": "piName", "list": "piName" }
+    },
+    {
+      "canonical": "project_pi_name",
+      "sqlColumn": "project_pi_name",
+      "type": "string",
+      "sources": { "back": "cageBoxVo.projectPiName", "list": "cageBoxVo.projectPiName" }
+    },
+    {
+      "canonical": "project_name",
+      "sqlColumn": "project_name",
+      "type": "string",
+      "sources": { "back": "cageBoxVo.projectName", "list": "cageBoxVo.projectName" }
+    },
+    {
+      "canonical": "department_name",
+      "sqlColumn": "department_name",
+      "type": "string",
+      "sources": { "back": "cageBoxVo.departmentName", "list": "cageBoxVo.departmentName" }
+    },
+    {
+      "canonical": "aup_number",
+      "sqlColumn": "aup_number",
+      "type": "string",
+      "sources": { "back": "cageBoxVo.aupNumber", "list": "cageBoxVo.aupNumber" }
+    },
+    {
+      "canonical": "needs_division",
+      "sqlColumn": "needs_division",
+      "type": "boolean",
+      "sources": { "back": "cageBoxVo.needDivideYn", "list": "cageBoxVo.needDivideYn" },
+      "targets": { "cageBoxAction": "NeedDivideYn", "updateAnimalCage": "needDivideYn" }
+    },
+    {
+      "canonical": "needs_special_feeding",
+      "sqlColumn": "needs_special_feeding",
+      "type": "boolean",
+      "sources": { "back": "cageBoxVo.needFeedingYn", "list": "cageBoxVo.needFeedingYn" },
+      "targets": { "updateAnimalCage": "needFeedingYn" }
+    },
+    {
+      "canonical": "needs_transfer",
+      "sqlColumn": "needs_transfer",
+      "type": "boolean",
+      "sources": { "back": "cageBoxVo.needTransferYn", "list": "cageBoxVo.needTransferYn" },
+      "targets": { "updateAnimalCage": "needTransferYn" }
+    },
+    {
+      "canonical": "has_health_abnormality",
+      "sqlColumn": "has_health_abnormality",
+      "type": "boolean",
+      "sources": { "back": "cageBoxVo.abnormalHealthYn", "list": "cageBoxVo.abnormalHealthYn" },
+      "targets": { "updateAnimalCage": "abnormalHealthYn" }
+    },
+    {
+      "canonical": "cohabitation_date",
+      "sqlColumn": "cohabitation_date",
+      "type": "string",
+      "sources": { "back": "cageBoxVo.closingdate", "list": "cageBoxVo.closingdate" }
+    },
+    {
+      "canonical": "special_breeding_name",
+      "sqlColumn": "special_breeding_name",
+      "type": "string",
+      "sources": { "back": "cageBoxVo.specialBreedingName", "list": "cageBoxVo.specialBreedingName" },
+      "targets": { "specialBreeding": "specialBreedingName" }
+    },
+    {
+      "canonical": "special_breeding_desc",
+      "sqlColumn": "special_breeding_desc",
+      "type": "string",
+      "sources": { "back": "cageBoxVo.specialBreedingDescription", "list": "cageBoxVo.specialBreedingDescription" },
+      "targets": { "specialBreeding": "specialBreedingDescription" }
+    },
+    {
+      "canonical": "experimenter_name",
+      "sqlColumn": "experimenter_name",
+      "type": "string",
+      "sources": { "list": "cageBoxVo.experimenterName" }
+    },
+    {
+      "canonical": "lab_assistant_name",
+      "sqlColumn": "lab_assistant_name",
+      "type": "string",
+      "sources": { "list": "cageBoxVo.labAssistantName" }
+    },
+    {
+      "canonical": "animal_strain_name",
+      "sqlColumn": "animal_strain_name",
+      "type": "string",
+      "sources": { "list": "cageBoxVo.animalStrainName" }
+    },
+    {
+      "canonical": "animal_sex",
+      "sqlColumn": "animal_sex",
+      "type": "string",
+      "sources": { "list": "cageBoxVo.animalSex" }
+    },
+    {
+      "canonical": "animal_week_age",
+      "sqlColumn": "animal_week_age",
+      "type": "string",
+      "sources": { "list": "cageBoxVo.animalWeekAge" }
+    },
+    {
+      "canonical": "animal_male_number",
+      "sqlColumn": "animal_male_number",
+      "type": "int",
+      "sources": { "list": "cageBoxVo.animalMaleNumber" }
+    },
+    {
+      "canonical": "animal_female_number",
+      "sqlColumn": "animal_female_number",
+      "type": "int",
+      "sources": { "list": "cageBoxVo.animalFemaleNumber" }
+    },
+    {
+      "canonical": "animal_come_from",
+      "sqlColumn": "animal_come_from",
+      "type": "string",
+      "sources": { "list": "cageBoxVo.animalComeFrom" }
+    }
+  ]
+}

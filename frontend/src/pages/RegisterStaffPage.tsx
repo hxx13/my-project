@@ -100,7 +100,7 @@ export default function RegisterStaffPage() {
 
         <p className="mt-4 text-center text-sm text-slate-400">
           已有账号？
-          <Link to="/login" className="ml-1 text-blue-400 hover:text-blue-300">
+          <Link to="/" className="ml-1 text-blue-400 hover:text-blue-300">
             去登录
           </Link>
         </p>

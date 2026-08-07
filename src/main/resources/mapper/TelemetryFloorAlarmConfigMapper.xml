@@ -7,18 +7,20 @@
     <result column="enabled" property="enabled"/>
     <result column="cooldown_minutes" property="cooldownMinutes"/>
     <result column="notify_on_recovery" property="notifyOnRecovery"/>
+    <result column="buffer_flush_minutes" property="bufferFlushMinutes"/>
     <result column="create_time" property="createTime"/>
     <result column="update_time" property="updateTime"/>
   </resultMap>
   <select id="findAll" resultMap="BaseResultMap">SELECT * FROM telemetry_floor_alarm_config ORDER BY floor_code</select>
   <select id="findByFloorCode" resultMap="BaseResultMap">SELECT * FROM telemetry_floor_alarm_config WHERE floor_code = #{floorCode}</select>
   <insert id="insertOrUpdate">
-    INSERT INTO telemetry_floor_alarm_config (floor_code, enabled, cooldown_minutes, notify_on_recovery)
-    VALUES (#{floorCode}, #{enabled}, #{cooldownMinutes}, #{notifyOnRecovery})
+    INSERT INTO telemetry_floor_alarm_config (floor_code, enabled, cooldown_minutes, notify_on_recovery, buffer_flush_minutes)
+    VALUES (#{floorCode}, #{enabled}, #{cooldownMinutes}, #{notifyOnRecovery}, #{bufferFlushMinutes})
     ON DUPLICATE KEY UPDATE
       enabled = VALUES(enabled),
       cooldown_minutes = VALUES(cooldown_minutes),
-      notify_on_recovery = VALUES(notify_on_recovery)
+      notify_on_recovery = VALUES(notify_on_recovery),
+      buffer_flush_minutes = VALUES(buffer_flush_minutes)
   </insert>
   <update id="updateEnabled">UPDATE telemetry_floor_alarm_config SET enabled = #{enabled} WHERE id = #{id}</update>
 </mapper>

@@ -36,8 +36,8 @@
         SELECT * FROM material_item WHERE id = #{id} FOR UPDATE
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO material_item (category_id, name, subtitle, cover_url, shelf_status, stock_mode, stock_qty, show_stock_qty, workflow_type, reviewer_ids, second_reviewer_ids, spec_schema, spec_required, independent_order)
-        VALUES (#{categoryId}, #{name}, #{subtitle}, #{coverUrl}, #{shelfStatus}, #{stockMode}, #{stockQty}, #{showStockQty}, #{workflowType}, #{reviewerIds}, #{secondReviewerIds}, #{specSchema}, #{specRequired}, #{independentOrder})
+        INSERT INTO material_item (category_id, name, subtitle, cover_url, shelf_status, stock_mode, stock_qty, show_stock_qty, workflow_type, reviewer_ids, second_reviewer_ids, spec_schema, spec_required, independent_order, notify_advance_hours)
+        VALUES (#{categoryId}, #{name}, #{subtitle}, #{coverUrl}, #{shelfStatus}, #{stockMode}, #{stockQty}, #{showStockQty}, #{workflowType}, #{reviewerIds}, #{secondReviewerIds}, #{specSchema}, #{specRequired}, #{independentOrder}, #{notifyAdvanceHours})
     </insert>
     <update id="updateById">
         UPDATE material_item
@@ -47,6 +47,7 @@
             <if test="specSchema != null">, spec_schema = #{specSchema}</if>
             <if test="specRequired != null">, spec_required = #{specRequired}</if>
             <if test="independentOrder != null">, independent_order = #{independentOrder}</if>
+            <if test="notifyAdvanceHours != null">, notify_advance_hours = #{notifyAdvanceHours}</if>
         WHERE id = #{id}
     </update>
     <update id="softDelete">

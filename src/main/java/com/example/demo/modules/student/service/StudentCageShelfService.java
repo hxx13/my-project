@@ -299,7 +299,7 @@ public class StudentCageShelfService {
         String now = LocalDateTime.now().format(DT_FMT);
 
         // Get all imported shelves
-        List<Map<String, Object>> shelves = cageShelfMapper.listIndexes(null, null, null, null, 100000, 0);
+        List<Map<String, Object>> shelves = cageShelfMapper.listIndexes(null, null, null, null, null, 100000, 0);
         if (shelves.isEmpty()) {
             throw new IllegalStateException("当前没有已导入的笼架数据，请先由管理员导入CSV");
         }

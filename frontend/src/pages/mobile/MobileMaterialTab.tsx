@@ -1,6 +1,6 @@
 /** 手机版 — 申领 Tab（布局对齐小程序 studentMaterial，数据走学生中心 token API） */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, WifiOff, ChevronLeft, X, Copy, ExternalLink, Check } from "lucide-react";
+import { Loader2, WifiOff, ChevronLeft, X, Copy, ExternalLink, Check, Clock, Pencil } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -97,6 +97,8 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmLines, setConfirmLines] = useState<CartLine[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [scheduledPickupTime, setScheduledPickupTime] = useState<string | null>(null);
+  const [showPickupPicker, setShowPickupPicker] = useState(false);
 
   const [showRequests, setShowRequests] = useState(false);
   const [requestStatusFilter, setRequestStatusFilter] = useState("");
@@ -176,6 +178,34 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
       multiIndependent: independentIds.size > 1,
     };
   }, [cart, allDecorated]);
+
+  /** 预约领取预设日期（北京时间） */
+  const pickupPresets = useMemo(() => {
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const beijingNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+    const y = beijingNow.getFullYear();
+    const m = beijingNow.getMonth() + 1;
+    const d = beijingNow.getDate();
+    const todayStr = `${y}-${pad2(m)}-${pad2(d)}`;
+
+    const tomorrow = new Date(beijingNow);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tmrStr = `${tomorrow.getFullYear()}-${pad2(tomorrow.getMonth() + 1)}-${pad2(tomorrow.getDate())}`;
+
+    const afterTomorrow = new Date(beijingNow);
+    afterTomorrow.setDate(afterTomorrow.getDate() + 2);
+    const datStr = `${afterTomorrow.getFullYear()}-${pad2(afterTomorrow.getMonth() + 1)}-${pad2(afterTomorrow.getDate())}`;
+
+    return [
+      { label: "后天", iso: datStr },
+    ];
+  }, []);
+
+  function pickupTimeLabel(iso: string): string {
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return "";
+    return `预约 ${parseInt(m[2])}月${parseInt(m[3])}日 领取`;
+  }
 
   const myRequestsRaw = (matData?.myRequests ?? []) as MaterialRequest[];
   const requestRows = useMemo(() => {
@@ -262,7 +292,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
     setConfirmOpen(true);
   };
 
-  const confirmSubmit = async () => {
+  const confirmSubmit = async (pickupTime?: string | null) => {
     if (submitting) return;
     const lines = Object.entries(cart)
       .filter(([, qty]) => qty > 0)
@@ -284,13 +314,15 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
     setConfirmOpen(false);
     try {
       if (jwtMode) {
-        await submitStudentMobileMaterialRequest(lines);
+        await submitStudentMobileMaterialRequest(lines, undefined, pickupTime ?? null);
       } else {
-        await submitMobileMaterialRequest(token, lines);
+        await submitMobileMaterialRequest(token, lines, undefined, pickupTime ?? null);
       }
       toast.success("已提交");
       clearCartStorage(token, jwtMode);
       setCart({});
+      setScheduledPickupTime(null);
+      setShowPickupPicker(false);
       setCartSheetOpen(false);
       load();
       setShowRequests(true);
@@ -686,7 +718,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
       {confirmOpen && (
         <div
           className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => setConfirmOpen(false)}
+          onClick={() => { setConfirmOpen(false); setScheduledPickupTime(null); setShowPickupPicker(false); }}
         >
           <div
             className="flex w-full max-w-sm flex-col overflow-hidden rounded-[var(--student-radius-lg)] bg-[var(--student-surface-raised)]"
@@ -700,14 +732,18 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
               <p id="mobile-confirm-title" className="text-[15px] font-semibold text-[var(--student-ink)]">
                 确认提交申领
               </p>
-              <p className="mt-1 text-xs text-[var(--student-mute)]">请核对以下物品</p>
+              <p className="mt-1 text-xs text-[var(--student-mute)]">
+                {scheduledPickupTime
+                  ? "预约申领将在预约时间前提前通知审核人，审核通过后按时领取"
+                  : "请核对以下物品"}
+              </p>
               {(willSplit || multiIndependent) && (
                 <p className="mt-1 text-xs text-[var(--student-warning)]">
                   {willSplit ? "含独立下单物资，将拆分为多份申领单" : "多个独立下单物资将分别生成申领单"}
                 </p>
               )}
             </div>
-            <div className="max-h-[48vh] overflow-y-auto overscroll-y-contain px-4">
+            <div className="max-h-[40vh] overflow-y-auto overscroll-y-contain px-4">
               {confirmLines.map((line) => (
                 <div
                   key={line.id}
@@ -734,22 +770,103 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
                 </div>
               ))}
             </div>
-            <div className="flex justify-end gap-2 border-t border-[var(--student-hairline)] px-4 py-3">
-              <button
-                type="button"
-                onClick={() => setConfirmOpen(false)}
-                className="h-8 min-w-[64px] rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] px-3 text-center text-xs text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={confirmSubmit}
-                disabled={submitting}
-                className="h-8 min-w-[64px] rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-3 text-center text-xs text-[var(--student-primary-foreground)] disabled:opacity-50 hover:bg-[var(--student-primary-hover)]"
-              >
-                {submitting ? "提交中…" : "确认提交"}
-              </button>
+
+            {/* 预约时间选择面板 */}
+            {showPickupPicker && (
+              <div className="mx-4 mb-2 space-y-2 rounded-lg border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] p-3">
+                <p className="text-[12px] font-medium text-[var(--student-ink)]">选择预约领取时间</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {pickupPresets.map((p) => (
+                    <button
+                      key={p.iso}
+                      type="button"
+                      onClick={() => {
+                        setScheduledPickupTime(p.iso);
+                        setShowPickupPicker(false);
+                      }}
+                      className="rounded-full border border-[var(--student-hairline)] px-2.5 py-1 text-[11px] text-[var(--student-body)] hover:bg-[var(--student-surface)] hover:border-[var(--student-primary)] transition-colors"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[var(--student-mute)] shrink-0">自定义</span>
+                  <input
+                    type="date"
+                    min={pickupPresets[0]?.iso}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setScheduledPickupTime(e.target.value);
+                        setShowPickupPicker(false);
+                      }
+                    }}
+                    className="flex-1 rounded border border-[var(--student-hairline)] px-2 py-1 text-[11px] text-[var(--student-ink)] bg-[var(--student-canvas)]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPickupPicker(false)}
+                  className="text-[10px] text-[var(--student-mute)] hover:text-[var(--student-ink)] transition-colors"
+                >
+                  收起
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between border-t border-[var(--student-hairline)] px-4 py-3">
+              <span className="text-xs text-[var(--student-body)]">
+                共 {cartCount} 件
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmOpen(false);
+                    setScheduledPickupTime(null);
+                    setShowPickupPicker(false);
+                  }}
+                  className="h-8 min-w-[48px] rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] px-2 text-center text-xs text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]"
+                >
+                  取消
+                </button>
+                {scheduledPickupTime ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => confirmSubmit(scheduledPickupTime)}
+                      disabled={submitting}
+                      className="h-8 min-w-[64px] rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-2 text-center text-xs text-[var(--student-primary-foreground)] disabled:opacity-50 hover:bg-[var(--student-primary-hover)]"
+                    >
+                      {submitting ? "提交中…" : pickupTimeLabel(scheduledPickupTime)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPickupPicker(true)}
+                      className="h-8 w-8 flex items-center justify-center rounded-[var(--student-radius-sm)] text-[var(--student-mute)] hover:text-[var(--student-ink)] hover:bg-[var(--student-canvas-soft)]"
+                      aria-label="修改预约日期"
+                    >
+                      <Pencil className="size-3" />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowPickupPicker(!showPickupPicker)}
+                    className="h-8 min-w-[64px] rounded-[var(--student-radius-sm)] border border-[var(--student-primary)] px-2 text-center text-xs font-medium text-[var(--student-primary)] hover:bg-[var(--student-primary-soft)]"
+                  >
+                    <Clock className="size-3 inline mr-0.5" />预约领取
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => confirmSubmit(null)}
+                  disabled={submitting}
+                  className="h-8 min-w-[64px] rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-3 text-center text-xs text-[var(--student-primary-foreground)] disabled:opacity-50 hover:bg-[var(--student-primary-hover)]"
+                >
+                  {submitting ? "提交中…" : "立即提交"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

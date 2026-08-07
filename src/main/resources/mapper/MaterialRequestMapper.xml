@@ -43,8 +43,8 @@
         <if test="applicantGroup != null and applicantGroup != ''">AND applicant_group = #{applicantGroup}</if>
     </select>
     <insert id="insert">
-        INSERT INTO material_request (id, user_id, applicant_name, applicant_group, status, workflow_type, created_at, updated_at)
-        VALUES (#{id}, #{userId}, #{applicantName}, #{applicantGroup}, #{status}, #{workflowType}, #{createdAt}, #{updatedAt})
+        INSERT INTO material_request (id, user_id, applicant_name, applicant_group, status, workflow_type, scheduled_pickup_time, created_at, updated_at)
+        VALUES (#{id}, #{userId}, #{applicantName}, #{applicantGroup}, #{status}, #{workflowType}, #{scheduledPickupTime}, #{createdAt}, #{updatedAt})
     </insert>
     <update id="updateStatus">
         UPDATE material_request SET status = #{status}, updated_at = #{updatedAt} WHERE id = #{id}
@@ -177,6 +177,21 @@
     </select>
     <select id="countPendingReview" resultType="int">
         SELECT COUNT(1) FROM material_request WHERE deleted = 0 AND status IN ('PENDING', 'FIRST_OK')
+    </select>
+    <update id="updateNotificationSent">
+        UPDATE material_request SET notification_sent = 1 WHERE id = #{id}
+    </update>
+    <!-- 预约通知扫描：待审 + 已设预约时间 + 未通知 + 已到通知窗口 -->
+    <select id="selectScheduledPendingForNotify" resultType="com.example.demo.modules.material.entity.MaterialRequest">
+        SELECT DISTINCT r.* FROM material_request r
+        JOIN material_request_line l ON r.id = l.request_id
+        JOIN material_item i ON l.item_id = i.id
+        WHERE r.deleted = 0
+          AND r.status IN ('PENDING', 'FIRST_OK')
+          AND r.scheduled_pickup_time IS NOT NULL
+          AND r.notification_sent = 0
+          AND i.notify_advance_hours IS NOT NULL
+          AND NOW() &gt;= DATE_SUB(r.scheduled_pickup_time, INTERVAL i.notify_advance_hours HOUR)
     </select>
     <select id="statsByStudent" resultType="java.util.HashMap">
         SELECT user_id, applicant_name, applicant_group, COUNT(*) AS total, COUNT(DISTINCT DATE(created_at)) AS active_days

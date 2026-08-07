@@ -1,0 +1,3 @@
+ALTER TABLE agv_coord_config
+  ADD COLUMN offset_x DOUBLE NOT NULL DEFAULT 0 COMMENT '坐标系X轴偏移(米)',
+  ADD COLUMN offset_y DOUBLE NOT NULL DEFAULT 0 COMMENT '坐标系Y轴偏移(米)';

@@ -147,7 +147,8 @@ function normalizeMaterialRequestLines(
 
 export async function submitStudentMobileMaterialRequest(
   lines: { itemId: number; qty: number; specSnapshot?: string }[],
-  applicantGroup?: string
+  applicantGroup?: string,
+  scheduledPickupTime?: string | null,
 ) {
   const resp = await authHttp.post<{
     code: number;
@@ -157,6 +158,7 @@ export async function submitStudentMobileMaterialRequest(
   }>(`/student/mobile/material/requests`, {
     lines: normalizeMaterialRequestLines(lines),
     applicantGroup,
+    scheduledPickupTime,
   });
   if (!resp.data.success) throw new Error(resp.data.message || "提交失败");
   return resp.data.data;

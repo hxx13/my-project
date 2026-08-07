@@ -13,4 +13,6 @@ public interface NotifySourceMapper {
     int insertOrIgnore(NotifySource source);
     int updateEnabled(@Param("id") Long id, @Param("enabled") Integer enabled);
     int updateVisibleTo(@Param("id") Long id, @Param("visibleTo") String visibleTo);
+    int deleteById(@Param("id") Long id);
+    int deleteByCode(@Param("sourceCode") String sourceCode);
 }

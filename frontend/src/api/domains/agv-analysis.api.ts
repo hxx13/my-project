@@ -16,7 +16,8 @@ export interface AgvSpatialElement {
   isActive?: boolean;
   confidence?: number;  // 行为确认置信度 0~1
   hitCount?: number;    // 被分析命中的总次数
-  source?: string;      // AUTO | BEHAVIOR | MANUAL
+  source?: string;      // AUTO | BEHAVIOR | MANUAL | TOPOLOGY
+  robotIp?: string;     // 所属小车 IP，null = 共享区域
   createdAt?: string;
   updatedAt?: string;
 }
@@ -87,7 +88,7 @@ export async function fetchSegments(ip: string, from: string, to: string, type?:
 }
 
 export async function runAnalysis(req: AnalysisRequest): Promise<AgvActivitySegment[]> {
-  const res = await authHttp.post<{ data: AgvActivitySegment[] }>("/v1/agv/analysis/run", req);
+  const res = await authHttp.post<{ data: AgvActivitySegment[] }>("/v1/agv/analysis/run", req, { timeout: 120_000 });
   return res.data.data;
 }
 
@@ -140,7 +141,8 @@ export async function toggleRule(id: number, enabled: number): Promise<void> {
 
 export function useSegments(ip: string, from: string, to: string, type?: string) {
   return useQuery({
-    queryKey: ["agvSegments", ip, from, to, type],
+    // 去掉末尾 undefined，保证 key 与 mutation 的 setQueryData 一致
+    queryKey: type != null ? ["agvSegments", ip, from, to, type] : ["agvSegments", ip, from, to],
     queryFn: () => fetchSegments(ip, from, to, type),
     enabled: !!ip && !!from && !!to,
     staleTime: 30_000,
@@ -152,6 +154,7 @@ export function useAnalysisRun() {
   return useMutation({
     mutationFn: runAnalysis,
     onSuccess: (data, vars) => {
+      // key 现在一致：["agvSegments", ip, from, to]，精准写入缓存
       qc.setQueryData(["agvSegments", vars.robotIp, vars.from, vars.to], data);
     },
     onError: (e: Error) => { console.error("分析失败:", e.message); },
@@ -211,6 +214,22 @@ export function useDiscoverZones() {
   });
 }
 
+/** 路线拓扑 → 区域生成（复用路线标签和频次，质量远超旧算法） */
+export async function generateZonesFromTopology(): Promise<{ zonesCreated: number; source: string }> {
+  const res = await authHttp.post<{ data: { zonesCreated: number; source: string } }>(
+    "/v1/agv/analysis/spatial-elements/generate-from-topology"
+  );
+  return res.data.data;
+}
+
+export function useGenerateZonesFromTopology() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: generateZonesFromTopology,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["agvSpatialElements"] }),
+  });
+}
+
 export function useRules() {
   return useQuery({ queryKey: ["agvRules"], queryFn: fetchRules, staleTime: 60_000 });
 }
@@ -237,18 +256,9 @@ export function useToggleRule() {
 
 export const ACTIVITY_COLORS: Record<string, string> = {
   CHARGING: "#22c55e",
-  CHARGING_COMPLETE: "#16a34a",
-  STATION_DWELL: "#f59e0b",
-  STATION_WORK: "#f97316",
+  STATION_WORK: "#f59e0b",
   TRANSPORT: "#3b82f6",
   NAVIGATING: "#60a5fa",
-  PATH_WAIT: "#9ca3af",
-  FORK_OPERATION: "#8b5cf6",
-  REVERSE_MANEUVER: "#ec4899",
-  RELOC_EVENT: "#6b7280",
-  EMERGENCY_STOP: "#ef4444",
-  BLOCKED_WAIT: "#f97316",
-  UNKNOWN_IDLE: "#d1d5db",
   REST_STATION: "#14b8a6",
 };
 
@@ -299,6 +309,11 @@ function topologyToRouteOverlays(
   topology: RouteTopologyResponse,
 ): Array<{ id: number; pathJson: string; color: string; name: string; routeType: string; robotIp: string }> {
   const results: Array<{ id: number; pathJson: string; color: string; name: string; routeType: string; robotIp: string }> = [];
+  // robot_ips 缺失时的 zone 级 fallback
+  const zoneAgvMap: Record<string, string[]> = {
+    zone1: ["172.22.159.16", "172.22.159.18"],
+    zone2: ["172.22.159.20", "172.22.159.22"],
+  };
   let idCounter = 1;
 
   for (const [zoneKey, zone] of Object.entries(topology.zones)) {
@@ -324,21 +339,23 @@ function topologyToRouteOverlays(
       const toType = edge.to.startsWith("CP") ? "CP" : edge.to.startsWith("AP") ? "AP" : "LM";
 
       let color: string, routeType: string;
-      if (edge.is_one_way) {
-        color = "#f85149"; routeType = "REVERSE";       // 单行 → 红色
-      } else if (fromType === "CP" || toType === "CP") {
+      if (fromType === "CP" || toType === "CP") {
         color = "#22c55e"; routeType = "REST";           // 充电 → 绿色
       } else if (fromType === "AP" || toType === "AP") {
-        color = "#f59e0b"; routeType = "STATION_WORK";   // 工位 → 橙色
+        color = "#f59e0b"; routeType = "STATION_WORK";   // 作业站 → 橙色
+      } else if (fromType === "LM" || toType === "LM") {
+        color = "#6b7280"; routeType = "NAVIGATING";     // 路径点 → 灰色
       } else if (edge.confidence === "high") {
         color = "#3b82f6"; routeType = "TRANSPORT";      // 高频 → 蓝色
       } else {
-        color = "#9ca3af"; routeType = "NAVIGATING";     // 低频 → 灰色
+        color = "#3b82f6"; routeType = "TRANSPORT";      // 默认 → 运输
       }
       const name = (edge.total_count ?? 0) >= 15 ? `${edge.from}-${edge.to}` : "";
 
-      // 按 robot_ips 分配路线：每台车只看自己走过的路段（单象限不交叉）
-      const agvIps = edge.robot_ips?.length ? edge.robot_ips : [];
+      // 按 robot_ips 分配路线：每台车只看自己走过的路段
+      // 静态 JSON fallback 没有 robot_ips → 回退到 zone 级分配
+      const agvIps = edge.robot_ips?.length ? edge.robot_ips
+        : zoneAgvMap[zoneKey] || [];
       for (const agvIp of agvIps) {
         results.push({ id: idCounter++, pathJson, color, name, routeType, robotIp: agvIp });
       }
@@ -347,22 +364,9 @@ function topologyToRouteOverlays(
   return results;
 }
 
-// 修正后的机械化路线拓扑（编译时嵌入，后端不可达时兜底）
-import bundledTopology from "./route_topology_clean.json";
-
 export async function fetchRouteTopology(): Promise<RouteTopologyResponse> {
-  // 默认从后端路线模型2读取数据库生成结果
-  try {
-    const res = await authHttp.get<{ data: RouteTopologyResponse }>("/v1/agv/routes/topology/generated");
-    const data = res.data.data;
-    const hasContent = data?.zones && Object.values(data.zones).some(
-      z => (z.edges?.length ?? 0) > 0
-    );
-    if (hasContent) return data;
-  } catch { /* 端点不可达 */ }
-
-  // 数据库无数据时回退到编译时嵌入的静态修正数据
-  return bundledTopology as RouteTopologyResponse;
+  const res = await authHttp.get<{ data: RouteTopologyResponse }>("/v1/agv/routes/topology/generated");
+  return res.data.data;
 }
 
 export function useRouteTopology() {
@@ -422,9 +426,16 @@ export function buildTopologyOverlays(
   return topologyToRouteOverlays(topology);
 }
 
-// ── 以下为旧版算法路线 API（保留以兼容分析弹窗，但路线模式不再使用） ──
+// ═══════════════════════════════════════════════════════════════
+// DEPRECATED — 旧版路线 v1 API（保留仅供编译兼容，路由模式已停用）
+// ═══════════════════════════════════════════════════════════════
+// 替代方案:
+//   fetchRoutes / useRoutes → 请改用 useRouteTopology()
+//   discoverRoutes / useDiscoverRoutes → 已彻底废弃，直接返回空结果
+//   AgvRoute 类型 → 对应新类型 RouteTopologyStation/Edge/Zone/Response
+// ═══════════════════════════════════════════════════════════════
 
-/** @deprecated 路线模式已改用固定拓扑数据，此类型仅保留兼容分析弹窗 */
+/** @deprecated 路线模式已改用固定拓扑数据（RouteTopologyResponse），此类型仅保留以兼容分析弹窗历史引用 */
 export interface AgvRoute {
   id: number;
   robotIp: string;
@@ -438,14 +449,14 @@ export interface AgvRoute {
   enabled: boolean;
 }
 
-/** @deprecated 路线模式已改用 useRouteTopology() */
+/** @deprecated 路线模式已改用 useRouteTopology()（v2 拓扑），此 v1 API 不再使用 */
 export async function fetchRoutes(robotIp?: string): Promise<AgvRoute[]> {
   const params = robotIp ? `?robotIp=${encodeURIComponent(robotIp)}` : "";
   const res = await authHttp.get<{ data: AgvRoute[] }>(`/v1/agv/analysis/routes${params}`);
   return res.data.data;
 }
 
-/** @deprecated 路线模式已改用 useRouteTopology() */
+/** @deprecated 路线模式已改用 useRouteTopology()（v2 拓扑），此 v1 hook 不再使用 */
 export function useRoutes(robotIp?: string) {
   return useQuery({
     queryKey: ["agvRoutes", robotIp],
@@ -454,12 +465,12 @@ export function useRoutes(robotIp?: string) {
   });
 }
 
-/** @deprecated 路线发现算法已废弃，固定路线数据无需重新计算 */
+/** @deprecated 路线发现算法 v1 已彻底废弃（v2 改用 generateRouteTopology()），此函数为 no-op 桩 */
 export async function discoverRoutes(_force = false): Promise<{ routesDiscovered: number; force: boolean }> {
   return { routesDiscovered: 0, force: false };
 }
 
-/** @deprecated 路线发现算法已废弃 */
+/** @deprecated 路线发现算法 v1 已彻底废弃（v2 改用 useGenerateRouteTopology()），此 hook 为 no-op 桩 */
 export function useDiscoverRoutes() {
   const qc = useQueryClient();
   return useMutation<Awaited<ReturnType<typeof discoverRoutes>>, Error, boolean | undefined>({
@@ -486,17 +497,8 @@ export const ROUTE_LABELS: Record<string, string> = {
 
 export const ACTIVITY_LABELS: Record<string, string> = {
   CHARGING: "充电",
-  CHARGING_COMPLETE: "充电完成",
-  STATION_DWELL: "站点停靠",
-  STATION_WORK: "站点作业",
-  TRANSPORT: "运输中",
-  NAVIGATING: "寻路中",
-  PATH_WAIT: "路径等待",
-  FORK_OPERATION: "货叉操作",
-  REVERSE_MANEUVER: "倒车调头",
-  RELOC_EVENT: "重定位",
-  EMERGENCY_STOP: "急停",
-  BLOCKED_WAIT: "受阻等待",
-  UNKNOWN_IDLE: "未知停靠",
-  REST_STATION: "休息站",
+  STATION_WORK: "载货",
+  TRANSPORT: "运输",
+  NAVIGATING: "寻路",
+  REST_STATION: "休息",
 };

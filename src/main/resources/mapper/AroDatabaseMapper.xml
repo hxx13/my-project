@@ -112,6 +112,13 @@
         LIMIT 1
     </select>
 
+    <select id="findProjectGroupByUserId" resultType="string">
+        SELECT project_group_name
+        FROM aro_personnel
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
     <select id="findPersonnelNamesByUserIds" resultType="java.util.HashMap">
         SELECT user_id AS userId, MIN(name) AS name
         FROM aro_personnel

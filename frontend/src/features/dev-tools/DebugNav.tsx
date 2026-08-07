@@ -5,7 +5,7 @@ import {motion, AnimatePresence} from 'framer-motion';
 // 💥 加上 Map as MapIcon
 import {
     LayoutDashboard, ScrollText, Users, BrainCircuit, Sparkles, ScanFace, Loader2, X, ShoppingCart, Map as MapIcon,
-    Eraser, RotateCw
+    Eraser, RotateCw, Database
 } from 'lucide-react';
 import { useAnalyzeScanMutation, useExecuteAccessMutation } from '@/api/hooks/useScanner';
 import type { AnalyzeResponse, RoomInfo } from '@/api/types/scanner';
@@ -779,9 +779,9 @@ export default function DebugNav() {
                 >
                     <button
                         type="button"
-                        title="登录页"
-                        aria-label="打开登录页，保持当前登录状态"
-                        onClick={() => navigate('/login')}
+                        title="门户首页"
+                        aria-label="打开门户首页，保持当前登录状态"
+                        onClick={() => navigate('/')}
                         className="pr-3 mr-1 border-r border-slate-700 flex items-center justify-center bg-transparent p-0 text-inherit focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#18181b] rounded-l-full"
                     >
                         <div

@@ -15,7 +15,10 @@ import java.util.*;
  *
  * 不做速度计算，不做批量共识。
  * 按时间戳连线 → 第一条做模板 → 后续穿行逐点最近邻匹配优化。
+ *
+ * @deprecated Replaced by AgvRouteTopologyService (Model v2). 路线模型2 已取代此算法。
  */
+@Deprecated
 @Service
 public class AgvRouteService {
 

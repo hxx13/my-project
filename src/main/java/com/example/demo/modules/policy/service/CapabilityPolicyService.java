@@ -43,7 +43,7 @@ public class CapabilityPolicyService {
 
     public List<BizCapabilityPolicy> listAllResolved() {
         refreshCacheIfNeeded();
-        return List.of(BizDomains.REPAIR, BizDomains.PURCHASE, BizDomains.SUPPLIES_CLAIM, BizDomains.SUPPLIES_ADMIN)
+        return List.of(BizDomains.REPAIR, BizDomains.PURCHASE, BizDomains.SUPPLIES_CLAIM, BizDomains.SUPPLIES_ADMIN, BizDomains.REFERENCE_DATA_ADMIN)
                 .stream()
                 .map(this::resolve)
                 .toList();
@@ -52,7 +52,7 @@ public class CapabilityPolicyService {
     /** 小程序/前端运行时按钮显隐：按当前用户与策略计算 */
     public List<CapabilitySummaryRow> summarizeForUser(User user) {
         List<CapabilitySummaryRow> rows = new ArrayList<>();
-        for (String d : List.of(BizDomains.REPAIR, BizDomains.PURCHASE, BizDomains.SUPPLIES_CLAIM, BizDomains.SUPPLIES_ADMIN)) {
+        for (String d : List.of(BizDomains.REPAIR, BizDomains.PURCHASE, BizDomains.SUPPLIES_CLAIM, BizDomains.SUPPLIES_ADMIN, BizDomains.REFERENCE_DATA_ADMIN)) {
             CapabilitySummaryRow r = new CapabilitySummaryRow();
             r.setBizDomain(d);
             r.setCanSubmit(canSubmit(user, d));
@@ -165,6 +165,12 @@ public class CapabilityPolicyService {
                 p.setMinRoleProcess(5);
                 p.setMinRoleViewAllPending(5);
                 p.setSortOrder(40);
+            }
+            case BizDomains.REFERENCE_DATA_ADMIN -> {
+                p.setMinRoleSubmit(5);
+                p.setMinRoleProcess(5);
+                p.setMinRoleViewAllPending(5);
+                p.setSortOrder(50);
             }
             default -> {
                 p.setMinRoleSubmit(2);

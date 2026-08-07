@@ -1239,7 +1239,7 @@ Page({
     const aroTrainingHistoryPending = filterOut(this.data.aroTrainingHistoryPending);
     const aroTrainingHistoryDone = filterOut(this.data.aroTrainingHistoryDone);
     const aroTrainingList = filterOut(this.data.aroTrainingList);
-    const aroTrainingPendingCount = aroTrainingList.filter(function (t) { return t.isAuditPending; }).length;
+    const aroTrainingPendingCount = aroTrainingList.filter(function (t) { return t.isAuditPending || t.isScorePending; }).length;
     const collapseMap = this.data.aroTrainingSessionCollapseMap || {};
     const counts = { ...this.data.counts, aroTrainingPending: aroTrainingPendingCount };
     this.setData({

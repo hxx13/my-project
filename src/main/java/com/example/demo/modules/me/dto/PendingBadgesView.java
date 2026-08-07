@@ -22,6 +22,8 @@ public class PendingBadgesView {
     private int processMaterial;
     /** 延迟免冻结待审（reviewer 视角，与 scan-delay/request/pending 同源） */
     private int processScanDelay;
+    /** 培训审核待处理数（审查者视角，与 /api/admin/aro-training/sessions/pending 同源） */
+    private int processAroTraining;
 
     /** 站内信（好友）未读条数 */
     private int chatUnread;
@@ -36,6 +38,7 @@ public class PendingBadgesView {
     private String materialText = "";
     private String processMaterialText = "";
     private String processScanDelayText = "";
+    private String processAroTrainingText = "";
     private String chatUnreadText = "";
 
     /**
