@@ -12,7 +12,6 @@ import DebugCardStatusPage from "@/pages/DebugCardStatusPage.tsx";
 import DebugCardMappingPage from "@/pages/DebugCardMappingPage.tsx";
 import FaceDebugPage from "@/pages/FaceDebugPage.tsx";
 import { TwinDebugRouteShell } from "@/features/twin-chrome/TwinDebugRouteShell";
-import LoginPage from "@/pages/LoginPage";
 import AuthGuard from "@/router/AuthGuard";
 import TwinDebugStaffGuard from "@/router/TwinDebugStaffGuard";
 import RegisterStaffPage from "@/pages/RegisterStaffPage";
@@ -95,6 +94,7 @@ import IntegrationsSettings from "@/features/admin/settings/IntegrationsSettings
 import PermissionsSettings from "@/features/admin/settings/PermissionsSettings";
 import DangerZoneSettings from "@/features/admin/settings/DangerZoneSettings";
 import DashboardPreviewSettings from "@/features/admin/settings/DashboardPreviewSettings";
+import PortalFooterSettings from "@/features/admin/settings/PortalFooterSettings";
 import StudentRegisterPage from "@/features/student/pages/student-register";
 import StudentLoginPage from "@/features/student/pages/student-login";
 import StudentLayout from "@/features/student/components/layout/student-layout";
@@ -170,7 +170,7 @@ export const router = createHashRouter([
   { path: "/m/settings/notifications", element: <AuthGuard><MobileSettingsPage /></AuthGuard> },
   { path: "/m/settings/account-security", element: <AuthGuard><MobileAccountSecurityPage /></AuthGuard> },
   { path: "/m/home", element: <AuthGuard><MobileStudentCenterPage /></AuthGuard> },
-  { path: "/login", element: <LoginPage /> },
+  { path: "/login", element: <Navigate to="/" replace /> },
   { path: "/register", element: <RegisterStaffPage /> },
   { path: "/student/login", element: <StudentLoginPage /> },
 
@@ -228,7 +228,6 @@ export const router = createHashRouter([
               { path: "animal-room-cockpit", element: <AnimalRoomCockpitPage /> },
               { path: "digital-twin-screen", element: <DigitalTwinScreenPage /> },
               { path: "digital-twin-3d", element: <DigitalTwin3DPage /> },
-              { path: "animal-order", element: <ReferenceDataPage /> },
             ],
           },
           { path: "profile-security", element: <Navigate to={`${STAFF_NS}/admin/profile-security`} replace /> },
@@ -343,6 +342,7 @@ export const router = createHashRouter([
                       { path: "permissions", element: <PermissionsSettings /> },
                       { path: "danger-zone", element: <DangerZoneSettings /> },
                       { path: "dashboard-preview", element: <DashboardPreviewSettings /> },
+                      { path: "portal-footer", element: <PortalFooterSettings /> },
                     ],
                   },
                 ],

@@ -66,6 +66,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const [orderHistoryOpen, setOrderHistoryOpen] = useState(false);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
 
   // Cart: spec-aware keys (like supplies mall) — { "123::age=6W|gender=male": 3 }
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -187,7 +188,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   }
 
   // ── Sync local cart → server (debounced) ──
-  const syncTimer = useRef<ReturnType<typeof setTimeout>>();
+  const syncTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const syncCartToServer = useCallback((nextCart: Record<string, number>) => {
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {

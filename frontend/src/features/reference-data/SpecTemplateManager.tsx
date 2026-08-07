@@ -113,12 +113,12 @@ export default function SpecTemplateManager({ onClose }: SpecTemplateManagerProp
     if (opts.length === 0) { toast.error("至少需要一个选项"); return; }
     if (isEditing) {
       updateMut.mutate(
-        { id: editId!, body: { name, scope: formScope, breedType: formScope.startsWith("ref:") ? formScope.slice(4) : null, options: { items: opts } } },
+        { id: editId!, body: { name, scope: formScope, breedType: formScope.startsWith("ref:") ? formScope.slice(4) : undefined, options: opts } },
         { onSuccess: () => resetForm() },
       );
     } else {
       createMut.mutate(
-        { name, scope: formScope, breedType: formScope.startsWith("ref:") ? formScope.slice(4) : null, options: { items: opts } },
+        { name, scope: formScope, breedType: formScope.startsWith("ref:") ? formScope.slice(4) : undefined, options: opts },
         { onSuccess: () => resetForm() },
       );
     }

@@ -232,6 +232,7 @@ public class DahuaSwingPullService {
                                 && Integer.valueOf(1).equals(record.getOpenResult())) {
                             dahuaSwingRuleEngineService.onRecordIngested(record);
                         }
+                        dahuaSwingRuleEngineService.safetyNetSignoffCheck(record);
                         totalSaved++;
                         continue;
                     }
@@ -264,6 +265,7 @@ public class DahuaSwingPullService {
                             && Integer.valueOf(1).equals(record.getOpenResult())) {
                         dahuaSwingRuleEngineService.onRecordIngested(record);
                     }
+                    dahuaSwingRuleEngineService.safetyNetSignoffCheck(record);
                 }
                 if (rows.size() < pageSize) break;
                 page++;

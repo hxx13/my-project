@@ -495,7 +495,6 @@ export default function DebugNav() {
             links.splice(5, 0, { key: 'order', name: '订单库', path: '/console/debug-order', icon: ShoppingCart });
         }
         if (hasMinRole(role || 'STUDENT', 'STAFF')) {
-            links.push({ key: 'animal-order', name: '实验动物订购', path: '/console/animal-order', icon: Database });
             links.push({ key: 'admin', name: '后台管理', path: '/console/admin', icon: Sparkles });
         }
     }

@@ -11,6 +11,7 @@ public class SiteConfigJdbcRepository {
 
     private static final String LOGIN_BRANDING_KEY = "login_branding";
     private static final String DASH_PREVIEW_KEY = "dashboard_preview";
+    private static final String PORTAL_FOOTER_KEY = "portal_footer";
 
     private final JdbcTemplate jdbc;
 
@@ -45,6 +46,14 @@ public class SiteConfigJdbcRepository {
 
     public void upsertDashboardPreviewJson(String json) {
         upsertJson(DASH_PREVIEW_KEY, "cfg_dashboard_preview", json);
+    }
+
+    public Optional<String> findPortalFooterJson() {
+        return findJsonByKey(PORTAL_FOOTER_KEY);
+    }
+
+    public void upsertPortalFooterJson(String json) {
+        upsertJson(PORTAL_FOOTER_KEY, "cfg_portal_footer", json);
     }
 
     private void upsertJson(String configKey, String id, String json) {

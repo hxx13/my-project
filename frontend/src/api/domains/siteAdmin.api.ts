@@ -46,6 +46,49 @@ export async function putDashboardPreviewConfig(body: DashboardPreviewConfig): P
 }
 
 
+/* ── Portal Footer config ── */
+
+export interface PortalFooterLink {
+  label: string;
+  url: string;
+  requiresAuth: boolean;
+  sortOrder: number;
+}
+
+export interface PortalFooterGroup {
+  id: string;
+  group: string;
+  sortOrder: number;
+  items: PortalFooterLink[];
+}
+
+export interface PortalFooterContact {
+  phone: string;
+  email: string;
+  address: string;
+  workHours: string;
+}
+
+export interface PortalFooterConfig {
+  contact: PortalFooterContact;
+  groups: PortalFooterGroup[];
+  /** 底部版权文案，若不填则使用默认 */
+  copyright?: string;
+}
+
+export async function fetchAdminPortalFooter(): Promise<PortalFooterConfig> {
+  const res = await authHttp.get<Result<PortalFooterConfig>>("/admin/site/portal-footer");
+  if (!res.data?.success) throw new Error(res.data?.message || "读取失败");
+  return res.data.data ?? { contact: { phone: "", email: "", address: "", workHours: "" }, groups: [] };
+}
+
+export async function putAdminPortalFooter(body: PortalFooterConfig): Promise<PortalFooterConfig> {
+  const res = await authHttp.put<Result<PortalFooterConfig>>("/admin/site/portal-footer", body);
+  if (!res.data?.success) throw new Error(res.data?.message || "保存失败");
+  return res.data.data ?? body;
+}
+
+
 export type RegistrationInviteRow = {
   id: string;
   expiresAt: string;

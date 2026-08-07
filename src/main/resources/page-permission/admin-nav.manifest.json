@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-05T06:55:47.835Z",
+  "generatedAt": "2026-08-07T02:47:07.087Z",
   "pages": [
     {
       "path": "/admin",
@@ -29,6 +29,13 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "资产与运维",
       "registryId": "analytics"
+    },
+    {
+      "path": "/admin/animal-order",
+      "label": "实验动物订购",
+      "fallbackMinRole": "STAFF",
+      "groupTitle": "AI 实验室",
+      "registryId": "animal-order"
     },
     {
       "path": "/admin/api-docs",
@@ -288,13 +295,6 @@
       "fallbackMinRole": "SUPER_ADMIN",
       "groupTitle": "系统与安全",
       "registryId": "push-dashboard"
-    },
-    {
-      "path": "/admin/animal-order",
-      "label": "实验动物订购",
-      "fallbackMinRole": "STAFF",
-      "groupTitle": "AI 实验室",
-      "registryId": "animal-order"
     },
     {
       "path": "/admin/registration-invites",

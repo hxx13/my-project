@@ -17,7 +17,7 @@ gsap.registerPlugin(ScrollTrigger);
 export interface FadeInSectionProps {
   children: React.ReactNode;
   className?: string;
-  as?: React.ElementType;
+  as?: 'div' | 'section' | 'article' | 'main' | 'aside' | 'header' | 'footer';
 }
 
 /** Header height in px, baked into the start offset */
