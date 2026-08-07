@@ -4,10 +4,9 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.asset.service.AssetService;
 import com.example.demo.modules.auth.entity.User;
-import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
-import com.example.demo.modules.cageshelf.entity.CageSpecialStatusSnapshot;
-import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
-import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
+import com.example.demo.modules.cageshelf.entity.CageCellDetail;
+import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
+import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,17 +24,17 @@ import java.util.Map;
 public class ScanLookupController {
 
     private final AuthContextService authContextService;
-    private final CageSpecialStatusSnapshotMapper snapshotMapper;
-    private final CageShelfMapper cageShelfMapper;
+    private final CageCellDetailMapper detailMapper;
+    private final CageCellIndexMapper indexMapper;
     private final AssetService assetService;
 
     public ScanLookupController(AuthContextService authContextService,
-                                CageSpecialStatusSnapshotMapper snapshotMapper,
-                                CageShelfMapper cageShelfMapper,
+                                CageCellDetailMapper detailMapper,
+                                CageCellIndexMapper indexMapper,
                                 AssetService assetService) {
         this.authContextService = authContextService;
-        this.snapshotMapper = snapshotMapper;
-        this.cageShelfMapper = cageShelfMapper;
+        this.detailMapper = detailMapper;
+        this.indexMapper = indexMapper;
         this.assetService = assetService;
     }
 
@@ -53,32 +52,28 @@ public class ScanLookupController {
 
         Map<String, Object> result = new LinkedHashMap<>();
 
-        // 纯数字 → 优先查笼盒快照表（毫秒级）
+        // 纯数字 → 查本地DB笼盒（cage_cell_detail → cage_cell_index 实时定位）
         if (looksLikeCageBox) {
-            CageSpecialStatusSnapshot cell = snapshotMapper.findByCageBoxCode(trimmed);
-            if (cell != null) {
-                Map<String, Object> cageBox = new LinkedHashMap<>();
-                // shelveId 来自快照表 → 调 ARO API 加载网格数据用
-                cageBox.put("shelveId", cell.getShelveId());
-                cageBox.put("positionX", cell.getPositionX());
-                cageBox.put("positionY", cell.getPositionY());
-                cageBox.put("positionLabel", cell.getPositionLabel());
-
-                // campusName/roomName 优先从 index 表取 → 前端展开列表层级用
-                CageShelfIndex idx = cageShelfMapper.findFirstByRoomNameAndCampus(
-                        cell.getRoomName(), cell.getCampusName());
-                if (idx != null) {
-                    cageBox.put("campusName", idx.getCampusName());
-                    cageBox.put("roomName", idx.getRoomName());
-                } else {
-                    cageBox.put("campusName", cell.getCampusName());
-                    cageBox.put("roomName", cell.getRoomName());
+            CageCellDetail detail = detailMapper.selectByCageBoxCode(trimmed);
+            if (detail != null) {
+                Map<String, Object> pos = indexMapper.lookupByAnimalCageId(detail.getAnimalCageId());
+                if (pos != null) {
+                    Map<String, Object> cageBox = new LinkedHashMap<>();
+                    cageBox.put("shelveId", pos.get("shelveId"));
+                    cageBox.put("positionX", pos.get("positionX"));
+                    cageBox.put("positionY", pos.get("positionY"));
+                    Object px = pos.get("positionX");
+                    Object py = pos.get("positionY");
+                    cageBox.put("positionLabel",
+                            (px != null ? px : "?") + "-" + (py != null ? py : "?"));
+                    cageBox.put("campusName", pos.getOrDefault("campusName", ""));
+                    cageBox.put("roomName", pos.getOrDefault("roomName", ""));
+                    result.put("type", "CAGE_BOX");
+                    result.put("cageBox", cageBox);
+                    return Result.success(result);
                 }
-                result.put("type", "CAGE_BOX");
-                result.put("cageBox", cageBox);
-                return Result.success(result);
             }
-            // 笼盒未命中 → fallback 资产查询
+            // 本地DB未命中 → fallback 资产查询
         }
 
         // 非纯数字或笼盒未命中 → 查资产

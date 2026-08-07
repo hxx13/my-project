@@ -493,6 +493,11 @@ public class DahuaSwingRuleEngineService {
         }
     }
 
+    /** 给拉取层暴露配置，用于批量扫描时获取规则通道列表 */
+    public Map<String, Object> getConfigForDiagnostics() {
+        return dahuaSwingRuleConfigService.getConfig();
+    }
+
     public int clearActivationStatesForUser(String userId) {
         String uid = str(userId);
         if (uid.isBlank()) {

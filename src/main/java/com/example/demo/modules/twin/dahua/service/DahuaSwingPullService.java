@@ -21,8 +21,10 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -209,67 +211,72 @@ public class DahuaSwingPullService {
                     DahuaSwingRecord record = toRecord(task.getId(), row);
                     enrichMapping(record);
                     departmentSupport.applyToRecord(record, row);
-                    // 同一 record_id 全局唯一（uk_dahua_record_id）：若库中已是 mapping_hit=1，则不再跑联动，避免激活/延时签退被重复排程。
-                    // 使用 findRecordByRecordId 与表唯一键对齐，防止多任务场景下 ON DUPLICATE KEY UPDATE 覆写 task_id 导致跨任务去重失效。
-                    DahuaSwingRecord existing = dahuaSwingMapper.findRecordByRecordId(record.getRecordId());
-                    boolean isNewRecord = existing == null;
-                    if (!isNewRecord) {
-                        // 🔧 修复：记录虽已存在（webhook先入库），仍需尝试触发规则引擎。
-                        // 原因：webhook 的 openResult 来自 extend.openFailedCode（可能为null→误判为0），
-                        // 而拉取的 openResult 来自 API 原始字段（更可靠）。若 webhook 因数据不准确
-                        // 未能触发签退规则，此处可补救。onRecordIngested 内部有 lastRecordId 去重，
-                        // 已正确触发的不会重复排程。
-                        log.info("[大华·拉取] RECORD_EXISTS_BUT_RETRY_LINKAGE recordId={} personName={} channelCode={} existingMappingHit={} existingOpenResult={} newMappingHit={} newOpenResult={}",
-                                record.getRecordId(), record.getPersonName(), record.getChannelCode(),
-                                existing != null ? existing.getMappingHit() : null,
-                                existing != null ? existing.getOpenResult() : null,
-                                record.getMappingHit(), record.getOpenResult());
-                        // 用拉取数据更新DB（纠正 webhook 可能写错的 openResult/mappingHit/channelCode）
-                        record.setSwingTime(DahuaService.adjustSwingTime9Min(record.getSwingTime()));
-                        dahuaSwingMapper.upsertRecord(record);
-                        // 尝试触发规则引擎（内部有 lastRecordId 去重，已触发的不会重复）
-                        if (Integer.valueOf(1).equals(record.getMappingHit())
-                                && Integer.valueOf(1).equals(record.getOpenResult())) {
-                            dahuaSwingRuleEngineService.onRecordIngested(record);
-                        }
-                        dahuaSwingRuleEngineService.safetyNetSignoffCheck(record);
-                        totalSaved++;
-                        continue;
-                    }
                     // 修正 pull 时间戳（大华时间快9分钟）
                     record.setSwingTime(DahuaService.adjustSwingTime9Min(record.getSwingTime()));
-                    dahuaSwingMapper.upsertRecord(record);
-                    accessRawEventIngestService.ingestFromSwing(record, "DAHUA_PULL");
-                    // Feed failures to SwipeAlertEngine ONLY for first-time records;
-                    // re-pulled records already went through the engine on their first pull.
-                    if (isNewRecord && swipeAlertEngine != null) {
-                        try {
-                            com.example.demo.modules.dahua.dto.DahuaRecordDTO dto =
-                                    new com.example.demo.modules.dahua.dto.DahuaRecordDTO();
-                            dto.setId(record.getRecordId());
-                            dto.setPersonName(record.getPersonName());
-                            dto.setChannelName(record.getChannelName());
-                            dto.setChannelCode(record.getChannelCode());
-                            dto.setCardNumber(record.getCardNumber());
-                            dto.setOpenType(record.getOpenType());
-                            dto.setEnterOrExit(record.getEnterOrExit());
-                            dto.setOpenResult(record.getOpenResult());
-                            dto.setSwingTime(record.getSwingTime());
-                            swipeAlertEngine.onSwingRecord(dto);
-                        } catch (Exception e) {
-                            log.debug("[swipe-alert] engine hook failed: {}", e.getMessage());
+                    // INSERT IGNORE：新记录写入，已存在跳过（不覆盖 webhook 数据）
+                    int inserted = dahuaSwingMapper.insertRecord(record);
+                    if (inserted > 0) {
+                        totalSaved++;
+                        accessRawEventIngestService.ingestFromSwing(record, "DAHUA_PULL");
+                        if (swipeAlertEngine != null) {
+                            try {
+                                com.example.demo.modules.dahua.dto.DahuaRecordDTO dto =
+                                        new com.example.demo.modules.dahua.dto.DahuaRecordDTO();
+                                dto.setId(record.getRecordId());
+                                dto.setPersonName(record.getPersonName());
+                                dto.setChannelName(record.getChannelName());
+                                dto.setChannelCode(record.getChannelCode());
+                                dto.setCardNumber(record.getCardNumber());
+                                dto.setOpenType(record.getOpenType());
+                                dto.setEnterOrExit(record.getEnterOrExit());
+                                dto.setOpenResult(record.getOpenResult());
+                                dto.setSwingTime(record.getSwingTime());
+                                swipeAlertEngine.onSwingRecord(dto);
+                            } catch (Exception e) {
+                                log.debug("[swipe-alert] engine hook failed: {}", e.getMessage());
+                            }
                         }
                     }
-                    totalSaved++;
-                    if (Integer.valueOf(1).equals(record.getMappingHit())
-                            && Integer.valueOf(1).equals(record.getOpenResult())) {
-                        dahuaSwingRuleEngineService.onRecordIngested(record);
-                    }
-                    dahuaSwingRuleEngineService.safetyNetSignoffCheck(record);
                 }
                 if (rows.size() < pageSize) break;
                 page++;
             }
+
+            // ── 循环结束后，从 DB 批量扫描待规则引擎处理的记录 ──
+            // 一切以 DB 数据为准，不再依赖内存中的中间态
+            {
+                Map<String, Object> rules = dahuaSwingRuleEngineService.getConfigForDiagnostics();
+                Set<String> allRuleChannels = new java.util.LinkedHashSet<>();
+                for (String key : new String[]{"toggleChannelCodes", "exitChannelCodes", "activatedReswipeExitChannelCodes"}) {
+                    Object v = rules.get(key);
+                    if (v instanceof List<?> list) {
+                        for (Object item : list) {
+                            String s = str(item);
+                            if (!s.isBlank()) allRuleChannels.add(s);
+                        }
+                    }
+                }
+                if (!allRuleChannels.isEmpty()) {
+                    List<String> channelList = new ArrayList<>(allRuleChannels);
+                    List<DahuaSwingRecord> candidates = dahuaSwingMapper.findRuleEngineCandidates(
+                            channelList, fmt(start), fmt(end), 500);
+                    if (!candidates.isEmpty()) {
+                        log.info("[大华·拉取] 批量规则引擎扫描: 窗口内符合条件 {} 条", candidates.size());
+                    }
+                    for (DahuaSwingRecord dbRecord : candidates) {
+                        try {
+                            if (Integer.valueOf(1).equals(dbRecord.getMappingHit())
+                                    && Integer.valueOf(1).equals(dbRecord.getOpenResult())) {
+                                dahuaSwingRuleEngineService.onRecordIngested(dbRecord);
+                            }
+                        } catch (Exception e) {
+                            log.warn("[大华·拉取] 批量规则引擎处理失败 recordId={} err={}",
+                                    dbRecord.getRecordId(), e.getMessage());
+                        }
+                    }
+                }
+            }
+
             dahuaSwingMapper.updateTaskRunState(task.getId(), fmt(end), "SUCCESS", null, runAtText);
             Map<String, Object> out = new HashMap<>();
             out.put("saved", totalSaved);

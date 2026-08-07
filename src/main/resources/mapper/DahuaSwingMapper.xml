@@ -128,6 +128,65 @@
             ingested_at = NOW()
     </insert>
 
+    <insert id="insertRecord" parameterType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
+        INSERT IGNORE INTO twin_dahua_swing_record (
+            task_id, pull_task_type, record_id, card_number, card_status, channel_code, channel_name, open_type,
+            person_code, person_id, person_name, department_id, department_name, audience_type,
+            swing_time, create_time, open_result, enter_or_exit,
+            mapping_user_id, mapping_card_no, mapping_hit, freeze_exempt_flag, raw_json
+        ) VALUES (
+            #{taskId}, #{pullTaskType}, #{recordId}, #{cardNumber}, #{cardStatus}, #{channelCode}, #{channelName}, #{openType},
+            #{personCode}, #{personId}, #{personName}, #{departmentId}, #{departmentName}, #{audienceType},
+            #{swingTime}, #{createTime}, #{openResult}, #{enterOrExit},
+            #{mappingUserId}, #{mappingCardNo}, #{mappingHit}, #{freezeExemptFlag}, #{rawJson}
+        )
+    </insert>
+
+    <select id="findRuleEngineCandidates" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
+        SELECT r.id,
+               r.task_id AS taskId,
+               r.pull_task_type AS pullTaskType,
+               r.record_id AS recordId,
+               r.card_number AS cardNumber,
+               r.card_status AS cardStatus,
+               r.channel_code AS channelCode,
+               r.channel_name AS channelName,
+               r.open_type AS openType,
+               r.person_code AS personCode,
+               r.person_id AS personId,
+               r.person_name AS personName,
+               r.department_id AS departmentId,
+               r.department_name AS departmentName,
+               r.audience_type AS audienceType,
+               DATE_FORMAT(r.swing_time, '%Y-%m-%d %H:%i:%s') AS swingTime,
+               DATE_FORMAT(r.create_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               r.open_result AS openResult,
+               r.enter_or_exit AS enterOrExit,
+               r.mapping_user_id AS mappingUserId,
+               r.mapping_card_no AS mappingCardNo,
+               r.mapping_hit AS mappingHit,
+               r.freeze_exempt_flag AS freezeExemptFlag,
+               r.raw_json AS rawJson,
+               DATE_FORMAT(r.ingested_at, '%Y-%m-%d %H:%i:%s') AS ingestedAt
+        FROM twin_dahua_swing_record r
+        WHERE r.channel_code IN
+            <foreach collection="channelCodes" item="ch" open="(" separator="," close=")">
+                #{ch}
+            </foreach>
+          AND r.mapping_hit = 1
+          AND r.open_result = 1
+          AND r.swing_time &gt;= #{startTime}
+          AND r.swing_time &lt;= #{endTime}
+          AND NOT EXISTS (
+              SELECT 1 FROM twin_dahua_activation_state a
+              WHERE a.last_record_id = r.record_id
+          )
+        ORDER BY r.swing_time ASC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
     <select id="findRecordByTaskIdAndRecordId" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
         SELECT id,
                task_id AS taskId,
