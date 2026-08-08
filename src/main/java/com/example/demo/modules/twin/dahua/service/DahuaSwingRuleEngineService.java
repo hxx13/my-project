@@ -214,6 +214,49 @@ public class DahuaSwingRuleEngineService {
                         log.info("[swing-rule] skip-reswipe-exit-under-toggle-debounce userId={} channel={} until={}",
                                 userId, channelCode, toggleRow.getDebounceUntil());
                     }
+                    // 同一条刷卡记录不得既激活又触发签退：比对 toggleRow.lastRecordId
+                    if (record.getRecordId() != null
+                            && record.getRecordId().equals(toggleRow.getLastRecordId())) {
+                        allowActivatedReswipeExit = false;
+                        writeSkipAudit(record, "SKIP_RESWIPE_EXIT_SAME_RECORD",
+                                "同一条刷卡记录已用于激活，禁止再次触发签退 recordId=" + record.getRecordId());
+                        log.info("[swing-rule] skip-reswipe-exit-same-record userId={} channel={} recordId={}",
+                                userId, channelCode, record.getRecordId());
+                    }
+                    // 刷卡时间早于激活时间 → 旧会话残留记录，禁止触发签退
+                    if (allowActivatedReswipeExit
+                            && record.getSwingTime() != null
+                            && toggleRow.getActivatedAt() != null) {
+                        LocalDateTime swingTime = parse(record.getSwingTime());
+                        LocalDateTime activatedAt = parse(toggleRow.getActivatedAt());
+                        if (swingTime != null && activatedAt != null && swingTime.isBefore(activatedAt)) {
+                            allowActivatedReswipeExit = false;
+                            writeSkipAudit(record, "SKIP_RESWIPE_EXIT_STALE_RECORD",
+                                    "刷卡时间(" + record.getSwingTime() + ")早于激活时间("
+                                            + toggleRow.getActivatedAt() + ")，旧会话残留记录禁止签退");
+                            log.info("[swing-rule] skip-reswipe-exit-stale-record userId={} channel={}"
+                                    + " swingTime={} activatedAt={}",
+                                    userId, channelCode, record.getSwingTime(), toggleRow.getActivatedAt());
+                        }
+                    }
+                }
+            }
+            // 通用校验：刷卡时间早于用户最近一次激活 → 旧会话残留记录，禁止签退
+            if (allowActivatedReswipeExit && record.getSwingTime() != null) {
+                String maxActivatedAt = dahuaSwingMapper.maxActivatedAtForUser(
+                        GLOBAL_RULE_TASK_ID, userId);
+                if (maxActivatedAt != null && !maxActivatedAt.isBlank()) {
+                    LocalDateTime swingTime = parse(record.getSwingTime());
+                    LocalDateTime activatedAt = parse(maxActivatedAt);
+                    if (swingTime != null && activatedAt != null && swingTime.isBefore(activatedAt)) {
+                        allowActivatedReswipeExit = false;
+                        writeSkipAudit(record, "SKIP_RESWIPE_EXIT_STALE_RECORD",
+                                "刷卡时间(" + record.getSwingTime() + ")早于最近激活时间("
+                                        + maxActivatedAt + ")，旧会话残留记录禁止签退");
+                        log.info("[swing-rule] skip-reswipe-exit-stale-anywhere userId={} channel={}"
+                                + " swingTime={} maxActivatedAt={}",
+                                userId, channelCode, record.getSwingTime(), maxActivatedAt);
+                    }
                 }
             }
             if (allowActivatedReswipeExit) {
@@ -473,7 +516,10 @@ public class DahuaSwingRuleEngineService {
             );
             log.info("[swing-rule] due-auto-signout-result userId={} success={}", userId, ok);
             if (ok) {
-                dahuaSwingMapper.deleteActivationStatesByUserId(userId);
+                // 仅删除到期的状态行和 PENDING，保留其他房间新建的 ACTIVATED
+                dahuaSwingMapper.deleteActivationState(state.getId());
+                dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
+                        GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
                 notifyMobilePresence(userId, "auto_signout");
             } else {
                 int attempt = state.getCounter() == null ? 0 : state.getCounter();
@@ -482,7 +528,10 @@ public class DahuaSwingRuleEngineService {
                 if (attempt > 5) {
                     log.warn("[swing-rule] due-auto-signout-max-retries userId={} attempts={} state={} channel={} — force-clean to prevent infinite retry",
                             userId, attempt, state.getState(), state.getChannelCode());
-                    dahuaSwingMapper.deleteActivationStatesByUserId(userId);
+                    // 仅删除到期的状态行和 PENDING，保留其他房间新建的 ACTIVATED
+                    dahuaSwingMapper.deleteActivationState(state.getId());
+                    dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
+                            GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
                     notifyTimerCleared(userId, "auto_signout_failed");
                 } else {
                     dahuaSwingMapper.upsertActivationState(state);
@@ -506,6 +555,19 @@ public class DahuaSwingRuleEngineService {
         int deleted = dahuaSwingMapper.deleteActivationStatesByUserId(uid);
         if (deleted > 0) {
             notifyTimerCleared(uid, "all");
+        }
+        return deleted;
+    }
+
+    /** 仅清理过期/待激活状态（PENDING + AUTO_EXIT_SCHEDULED），保留 ACTIVATED，供 autoSignout 内部使用 */
+    public int clearCompletedStatesForUser(String userId) {
+        String uid = str(userId);
+        if (uid.isBlank()) {
+            return 0;
+        }
+        int deleted = dahuaSwingMapper.deleteExpiredOrPendingStatesByUserId(uid);
+        if (deleted > 0) {
+            notifyTimerCleared(uid, "completed");
         }
         return deleted;
     }
@@ -636,6 +698,31 @@ public class DahuaSwingRuleEngineService {
 
     private static String fmt(LocalDateTime t) {
         return t == null ? null : t.format(DT);
+    }
+
+    /**
+     * 规则跳过诊断埋点：写入 twin_automation_log 持久化，不受应用日志轮转影响。
+     */
+    private void writeSkipAudit(DahuaSwingRecord record, String reason, String detail) {
+        try {
+            String userId = str(record.getMappingUserId());
+            String locator = "recordId=" + str(record.getRecordId())
+                    + " channel=" + str(record.getChannelCode())
+                    + " person=" + str(record.getPersonName());
+            twinAutomationLogService.write(
+                    TwinAutomationLogService.TYPE_ACCESS_TRACE,
+                    "LINKAGE_SKIP",
+                    "SYSTEM",
+                    reason,
+                    userId,
+                    str(record.getChannelCode()),
+                    false,
+                    locator + " | " + (detail != null ? detail : ""),
+                    "dahua-swing-rule"
+            );
+        } catch (Exception ignored) {
+            // 诊断埋点不阻断主流程
+        }
     }
 
     /** 到期行 → ACCESS_TRACE 的 trigger_reason，与 {@link TwinAutomationLogService} 常量一致 */

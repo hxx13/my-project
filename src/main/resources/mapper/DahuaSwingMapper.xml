@@ -626,4 +626,12 @@
           AND scheduled_exit_at IS NOT NULL
         ORDER BY scheduled_exit_at ASC
     </select>
+
+    <select id="maxActivatedAtForUser" resultType="string">
+        SELECT DATE_FORMAT(MAX(activated_at), '%Y-%m-%d %H:%i:%s')
+        FROM twin_dahua_activation_state
+        WHERE task_id = #{taskId}
+          AND user_id = #{userId}
+          AND UPPER(state) = 'ACTIVATED'
+    </select>
 </mapper>
