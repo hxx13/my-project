@@ -109,7 +109,7 @@ public class DahuaAutoSignoutService {
                 EMPTY_ARO_SYNC_LOG_AT_MS.put(userId, nowMs);
                 writeAutoLog(userId, triggerType, reasonForLog, true, shortDetail);
             }
-            clearSwingLinkageAfterAroLeaveResolved(userId);
+            clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
             return true;
         }
         Map<String, Object> first = noLeaveRooms.get(0);
@@ -133,7 +133,7 @@ public class DahuaAutoSignoutService {
         if (lastSignoutMs != null && (nowMs - lastSignoutMs) < RECENT_SIGNOUT_COOLDOWN_MS) {
             log.warn("[auto-signout] duplicate-prevented userId={} roomId={} lastSignoutMsAgo={}",
                     userId, roomId, nowMs - lastSignoutMs);
-            clearSwingLinkageAfterAroLeaveResolved(userId);
+            clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
             String dupDetail = mergeDetail(detail,
                     "签退去重：冷却窗口内已提交过（" + roomLabel + "），本次跳过 ARO 提交。");
             writeAutoLog(userId, triggerType, triggerReason, true,
@@ -153,7 +153,7 @@ public class DahuaAutoSignoutService {
             return false;
         }
         log.info("[auto-signout] aro signout success userId={} roomId={}", userId, roomId);
-        clearSwingLinkageAfterAroLeaveResolved(userId);
+        clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
 
         if (!postAutoLeaveLinkageEnabled()) {
             log.info("[auto-signout] post-leave linkage disabled userId={} roomId={} (aro-only mode)", userId, roomId);
@@ -201,13 +201,21 @@ public class DahuaAutoSignoutService {
         return true;
     }
 
-    /** ARO 离开已落地后清空大华刷卡联动占位，避免影响下一段入馆。 */
-    private void clearSwingLinkageAfterAroLeaveResolved(String userId) {
+    /**
+     * ARO 离开已落地后清空大华刷卡联动占位。
+     * TIMER 触发时仅清理到期/待激活（保留其他房间的 ACTIVATED）；
+     * 违规/手动离开等强制签退场景则全部清理。
+     */
+    private void clearSwingLinkageAfterAroLeaveResolved(String userId, String triggerType) {
         if (userId == null || userId.isBlank()) {
             return;
         }
         try {
-            dahuaSwingRuleEngineService.clearActivationStatesForUser(userId.trim());
+            if ("TIMER".equalsIgnoreCase(triggerType)) {
+                dahuaSwingRuleEngineService.clearCompletedStatesForUser(userId.trim());
+            } else {
+                dahuaSwingRuleEngineService.clearActivationStatesForUser(userId.trim());
+            }
         } catch (Exception e) {
             log.warn("[auto-signout] clear swing linkage failed userId={} err={}", userId, e.getMessage());
         }
