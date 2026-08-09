@@ -203,19 +203,15 @@ public class DahuaAutoSignoutService {
 
     /**
      * ARO 离开已落地后清空大华刷卡联动占位。
-     * TIMER 触发时仅清理到期/待激活（保留其他房间的 ACTIVATED）；
-     * 违规/手动离开等强制签退场景则全部清理。
+     * 所有签退路径（TIMER / 手动 / 违规）统一全量清理，
+     * 不再区分触发类型，避免 ACTIVATED 残留导致误签退。
      */
     private void clearSwingLinkageAfterAroLeaveResolved(String userId, String triggerType) {
         if (userId == null || userId.isBlank()) {
             return;
         }
         try {
-            if ("TIMER".equalsIgnoreCase(triggerType)) {
-                dahuaSwingRuleEngineService.clearCompletedStatesForUser(userId.trim());
-            } else {
-                dahuaSwingRuleEngineService.clearActivationStatesForUser(userId.trim());
-            }
+            dahuaSwingRuleEngineService.clearActivationStatesForUser(userId.trim());
         } catch (Exception e) {
             log.warn("[auto-signout] clear swing linkage failed userId={} err={}", userId, e.getMessage());
         }

@@ -516,10 +516,7 @@ public class DahuaSwingRuleEngineService {
             );
             log.info("[swing-rule] due-auto-signout-result userId={} success={}", userId, ok);
             if (ok) {
-                // 仅删除到期的状态行和 PENDING，保留其他房间新建的 ACTIVATED
-                dahuaSwingMapper.deleteActivationState(state.getId());
-                dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
-                        GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
+                // autoSignout 内部已通过 clearActivationStatesForUser 全量清理，无需额外逐行删除
                 notifyMobilePresence(userId, "auto_signout");
             } else {
                 int attempt = state.getCounter() == null ? 0 : state.getCounter();
@@ -528,10 +525,8 @@ public class DahuaSwingRuleEngineService {
                 if (attempt > 5) {
                     log.warn("[swing-rule] due-auto-signout-max-retries userId={} attempts={} state={} channel={} — force-clean to prevent infinite retry",
                             userId, attempt, state.getState(), state.getChannelCode());
-                    // 仅删除到期的状态行和 PENDING，保留其他房间新建的 ACTIVATED
-                    dahuaSwingMapper.deleteActivationState(state.getId());
-                    dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
-                            GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
+                    // autoSignout 失败且超过重试上限，全量清理避免残留
+                    dahuaSwingMapper.deleteActivationStatesByUserId(userId);
                     notifyTimerCleared(userId, "auto_signout_failed");
                 } else {
                     dahuaSwingMapper.upsertActivationState(state);
