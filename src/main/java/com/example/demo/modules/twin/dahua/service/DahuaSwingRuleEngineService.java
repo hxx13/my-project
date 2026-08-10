@@ -113,9 +113,8 @@ public class DahuaSwingRuleEngineService {
         }
         int activationExpire = intv(rules.get("activationExpireSeconds"), 120);
         LocalDateTime now = LocalDateTime.now();
-        // 新一次权限下发 = 新激活窗口：仅清空待激活/已过期计时器，不删除已完成的 ACTIVATED 状态
-        // （否则已激活的人会被清空记录 → 再次刷门时误判为"首次激活" → 重复写日志 + 重复授权）
-        dahuaSwingMapper.deleteExpiredOrPendingStatesByUserId(uid);
+        // 新一次权限下发 = 新激活窗口：软清理旧计时器，保留行以维持 last_record_id 去重引用
+        dahuaSwingMapper.deactivateExpiredOrPendingStatesByUserId(uid);
         DahuaActivationState pending = new DahuaActivationState();
         pending.setTaskId(GLOBAL_RULE_TASK_ID);
         pending.setUserId(uid);
@@ -525,8 +524,8 @@ public class DahuaSwingRuleEngineService {
                 if (attempt > 5) {
                     log.warn("[swing-rule] due-auto-signout-max-retries userId={} attempts={} state={} channel={} — force-clean to prevent infinite retry",
                             userId, attempt, state.getState(), state.getChannelCode());
-                    // autoSignout 失败且超过重试上限，全量清理避免残留
-                    dahuaSwingMapper.deleteActivationStatesByUserId(userId);
+                    // autoSignout 失败且超过重试上限，软清理避免残留（保留 last_record_id 去重引用）
+                    dahuaSwingMapper.deactivateActivationStatesByUserId(userId);
                     notifyTimerCleared(userId, "auto_signout_failed");
                 } else {
                     dahuaSwingMapper.upsertActivationState(state);
@@ -542,29 +541,33 @@ public class DahuaSwingRuleEngineService {
         return dahuaSwingRuleConfigService.getConfig();
     }
 
+    /**
+     * 清理用户所有激活状态。使用软清理（state=CLEANED）而非物理删除，
+     * 以保留 last_record_id 去重引用，防止旧刷卡记录被重新拉取触发误签退。
+     */
     public int clearActivationStatesForUser(String userId) {
         String uid = str(userId);
         if (uid.isBlank()) {
             return 0;
         }
-        int deleted = dahuaSwingMapper.deleteActivationStatesByUserId(uid);
-        if (deleted > 0) {
+        int updated = dahuaSwingMapper.deactivateActivationStatesByUserId(uid);
+        if (updated > 0) {
             notifyTimerCleared(uid, "all");
         }
-        return deleted;
+        return updated;
     }
 
-    /** 仅清理过期/待激活状态（PENDING + AUTO_EXIT_SCHEDULED），保留 ACTIVATED，供 autoSignout 内部使用 */
+    /** 软清理到期/待激活状态（PENDING + AUTO_EXIT_SCHEDULED），保留行以维持 last_record_id 去重引用 */
     public int clearCompletedStatesForUser(String userId) {
         String uid = str(userId);
         if (uid.isBlank()) {
             return 0;
         }
-        int deleted = dahuaSwingMapper.deleteExpiredOrPendingStatesByUserId(uid);
-        if (deleted > 0) {
+        int updated = dahuaSwingMapper.deactivateExpiredOrPendingStatesByUserId(uid);
+        if (updated > 0) {
             notifyTimerCleared(uid, "completed");
         }
-        return deleted;
+        return updated;
     }
 
     /**

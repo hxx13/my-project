@@ -152,8 +152,14 @@ public interface DahuaSwingMapper {
 
     int deleteActivationStatesByUserId(@Param("userId") String userId);
 
+    /** 将用户所有激活状态标记为 CLEANED（保留行以维持 last_record_id 去重引用），而非物理删除 */
+    int deactivateActivationStatesByUserId(@Param("userId") String userId);
+
     /** 仅清理到期/待激活（PENDING_ACTIVATION / AUTO_EXIT_SCHEDULED），保留已激活 */
     int deleteExpiredOrPendingStatesByUserId(@Param("userId") String userId);
+
+    /** 将用户到期/待激活状态标记为 CLEANED（保留行以维持 last_record_id 去重引用） */
+    int deactivateExpiredOrPendingStatesByUserId(@Param("userId") String userId);
 
     int deleteActivationStateByUserTaskAndChannel(
             @Param("taskId") Long taskId,
