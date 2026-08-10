@@ -296,6 +296,18 @@ public class TwinScanController {
                 return Result.success(result);
             }
 
+            // 离开(accessType=2)：倒计时进行中禁止手动签退，必须等门禁联动计时器到期自动执行
+            if (accessType == 2) {
+                String countdownExitAt = dahuaSwingRuleEngineService.getActiveCountdownExitAt(userId);
+                if (countdownExitAt != null) {
+                    result.setSuccess(false);
+                    result.setMessage("门禁联动倒计时进行中（预计签退时间：" + countdownExitAt
+                            + "），请等待倒计时结束后系统将自动签退，无需手动操作。");
+                    flowLog.fail("倒计时未结束");
+                    return Result.success(result);
+                }
+            }
+
             // =================================================================
             // 💥 第一关：ARO 官方登记 + 预同步本地流水 + 经验值计算（全部在 executeAccessAction 内完成）
             // =================================================================
