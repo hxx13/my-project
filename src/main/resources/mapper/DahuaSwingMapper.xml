@@ -553,11 +553,30 @@
         DELETE FROM twin_dahua_activation_state WHERE user_id = #{userId}
     </delete>
 
+    <!-- 软清理：保留行以维持 last_record_id 去重引用，避免旧刷卡记录被重新拉取触发误签退 -->
+    <update id="deactivateActivationStatesByUserId">
+        UPDATE twin_dahua_activation_state
+        SET state = 'CLEANED',
+            scheduled_exit_at = NULL,
+            updated_at = NOW()
+        WHERE user_id = #{userId}
+    </update>
+
     <delete id="deleteExpiredOrPendingStatesByUserId">
         DELETE FROM twin_dahua_activation_state
         WHERE user_id = #{userId}
           AND state IN ('PENDING_ACTIVATION', 'AUTO_EXIT_SCHEDULED')
     </delete>
+
+    <!-- 软清理到期/待激活：保留行以维持 last_record_id 去重引用 -->
+    <update id="deactivateExpiredOrPendingStatesByUserId">
+        UPDATE twin_dahua_activation_state
+        SET state = 'CLEANED',
+            scheduled_exit_at = NULL,
+            updated_at = NOW()
+        WHERE user_id = #{userId}
+          AND state IN ('PENDING_ACTIVATION', 'AUTO_EXIT_SCHEDULED')
+    </update>
 
     <delete id="deleteActivationStateByUserTaskAndChannel">
         DELETE FROM twin_dahua_activation_state
