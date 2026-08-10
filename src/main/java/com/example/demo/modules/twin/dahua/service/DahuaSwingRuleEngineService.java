@@ -568,6 +568,35 @@ public class DahuaSwingRuleEngineService {
     }
 
     /**
+     * 检查用户是否有<strong>未到期</strong>的倒计时（待激活超时 / 延时签退）。
+     * 倒计时未到期期间禁止手动扫码离开；倒计时已到期则放行（前端会自动提交）。
+     *
+     * @return 最近且未到期的 scheduled_exit_at 时间字符串，无有效倒计时时返回 null
+     */
+    public String getActiveCountdownExitAt(String userId) {
+        String uid = str(userId);
+        if (uid.isBlank()) {
+            return null;
+        }
+        List<DahuaActivationState> rows = dahuaSwingMapper.listActivationStatesByUserId(uid);
+        if (rows == null || rows.isEmpty()) {
+            return null;
+        }
+        String nowStr = fmt(LocalDateTime.now());
+        String earliest = null;
+        for (DahuaActivationState row : rows) {
+            String s = row.getScheduledExitAt();
+            if (s != null && !s.isBlank() && s.compareTo(nowStr) > 0) {
+                // 仅统计尚未到期的倒计时
+                if (earliest == null || s.compareTo(earliest) < 0) {
+                    earliest = s;
+                }
+            }
+        }
+        return earliest;
+    }
+
+    /**
      * 兜底双保险复核：从 DB 重查签退通道记录，若确认命中签退规则且未被主流程处理则补送。
      * <p>每条拉取记录在主流程处理完毕后调用，只对 exitChannelCodes / activatedReswipeExitChannelCodes 生效。
      * 不做跨批次缓存、不做未激活等候——仅复核「已激活用户 + 签退通道 + 门已开」的记录。</p>

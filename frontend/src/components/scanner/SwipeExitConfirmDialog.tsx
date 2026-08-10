@@ -13,7 +13,7 @@ interface SwipeExitConfirmDialogProps {
     roomName: string;
     onConfirm: () => void;
     onCancel: () => void;
-    /** 自动签退剩余秒数（来自 analyze）；null/undefined 则不显示倒计时区块 */
+    /** 自动签退剩余秒数（来自 analyze）；null/undefined 则无倒计时，按钮直接可点 */
     autoSignoutSeconds?: number | null;
     /** PENDING_ACTIVATION / AUTO_EXIT_SCHEDULED；用于区分激活与签退倒计时文案 */
     autoSignoutState?: string | null;
@@ -39,6 +39,10 @@ export function SwipeExitConfirmDialog({
     const [countdown, setCountdown] = useState<number | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const hasEndedRef = useRef(false);
+    const onConfirmRef = useRef(onConfirm);
+    onConfirmRef.current = onConfirm;
+    const onCountdownEndRef = useRef(onCountdownEnd);
+    onCountdownEndRef.current = onCountdownEnd;
 
     // 弹窗打开时初始化倒计时
     useEffect(() => {
@@ -69,19 +73,21 @@ export function SwipeExitConfirmDialog({
         };
     }, [countdown]);
 
-    // 归零时触发回调（仅一次）
+    // 归零时：自动触发签退（仅一次）
     useEffect(() => {
         if (countdown === 0 && !hasEndedRef.current) {
             hasEndedRef.current = true;
-            // 短暂延迟让用户看到 00:00
+            // 短暂延迟让用户看到 00:00，然后自动提交签退
             const t = setTimeout(() => {
-                onCountdownEnd?.();
-            }, 800);
+                onConfirmRef.current();
+                onCountdownEndRef.current?.();
+            }, 600);
             return () => clearTimeout(t);
         }
-    }, [countdown, onCountdownEnd]);
+    }, [countdown]);
 
     const showCountdown = countdown != null && countdown > 0;
+    const countdownZero = countdown === 0;
     const countdownCopy = resolveAutoSignoutCountdownCopy(autoSignoutState);
 
     return createPortal(
@@ -128,18 +134,10 @@ export function SwipeExitConfirmDialog({
                                 确认离开
                             </h2>
 
-                            {/* Auto-Signout Countdown Section */}
+                            {/* Auto-Signout Countdown — 合并到按钮上，不再独立区块 */}
                             {showCountdown && (
-                                <div className="mb-4 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/25 bg-[var(--app-color-feedback-warning-soft)] p-3">
-                                    <div className="mb-1.5 flex items-center justify-center gap-2">
-                                        <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--app-color-feedback-warning)]">
-                                            {countdownCopy.badge}
-                                        </span>
-                                        <span className="font-mono text-2xl font-bold tracking-wider text-[var(--app-color-feedback-warning)]">
-                                            {formatCountdown(countdown!)}
-                                        </span>
-                                    </div>
-                                    <p className="text-center text-[11px] leading-snug text-[var(--app-color-text-secondary)]">
+                                <div className="mb-4 text-center">
+                                    <p className="text-[11px] leading-snug text-[var(--app-color-text-tertiary)]">
                                         {countdownCopy.hint}
                                     </p>
                                 </div>
@@ -186,13 +184,37 @@ export function SwipeExitConfirmDialog({
                                 >
                                     取消
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={onConfirm}
-                                    className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-feedback-danger-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-danger)] transition-colors hover:border-[var(--app-color-feedback-danger)]/60 hover:bg-[var(--app-color-feedback-danger-soft)]"
-                                >
-                                    确认离开
-                                </button>
+
+                                {/* 倒计时进行中：按钮变为倒计时显示，不可手动点击 */}
+                                {showCountdown ? (
+                                    <button
+                                        type="button"
+                                        disabled
+                                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/50 bg-[var(--app-color-feedback-warning-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-warning)] cursor-not-allowed opacity-90"
+                                    >
+                                        <span className="inline-flex items-center gap-1.5">
+                                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--app-color-feedback-warning)] animate-pulse" />
+                                            <span className="font-mono tracking-wider">{formatCountdown(countdown!)}</span>
+                                            <span>后自动签退</span>
+                                        </span>
+                                    </button>
+                                ) : countdownZero ? (
+                                    <button
+                                        type="button"
+                                        disabled
+                                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-success)]/40 bg-[var(--app-color-feedback-success-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-success)] cursor-wait"
+                                    >
+                                        正在签退…
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={onConfirm}
+                                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-feedback-danger-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-danger)] transition-colors hover:border-[var(--app-color-feedback-danger)]/60 hover:bg-[var(--app-color-feedback-danger-soft)]"
+                                    >
+                                        确认离开
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </motion.div>
