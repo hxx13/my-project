@@ -195,6 +195,9 @@ public interface DahuaSwingMapper {
     /** 列出某用户所有待处理激活状态行（含 scheduled_exit_at 不为空的记录） */
     List<DahuaActivationState> listActivationStatesByUserId(@Param("userId") String userId);
 
+    /** DEBUG：列出某用户全部激活状态行（含CLEANED等所有状态，用于调试快照） */
+    List<DahuaActivationState> listAllActivationStatesByUserId(@Param("userId") String userId);
+
     /** 获取用户最近一次激活时间 */
     String maxActivatedAtForUser(
             @Param("taskId") Long taskId,

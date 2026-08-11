@@ -102,6 +102,9 @@ public final class TwinAutomationLogDisplayHelper {
         if ("FACE_VERIFY".equalsIgnoreCase(v)) {
             return "门禁人脸验证";
         }
+        if ("ACCESS_DEBUG".equalsIgnoreCase(v)) {
+            return "联动调试追踪";
+        }
         return v.isEmpty() ? "-" : v;
     }
 
@@ -112,6 +115,7 @@ public final class TwinAutomationLogDisplayHelper {
             case "SYSTEM" -> "系统触发";
             case "USER" -> "用户触发";
             case "SAFETY_NET" -> "兜底复核";
+            case "DEBUG" -> "调试追踪";
             default -> v.isEmpty() ? "-" : v;
         };
     }
@@ -165,6 +169,26 @@ public final class TwinAutomationLogDisplayHelper {
             case "FACE_GRAY" -> "未达通过线";
             case "FACE_NO_FACE" -> "抓拍未检测到人脸";
             case "SAFETY_NET_SIGNOFF_RESUBMIT" -> "兜底复核补送签退";
+            // ===== ACCESS_DEBUG 专用 — 刷卡记录追踪 =====
+            case "SWING_DEBUG_RECORD_RECEIVED" -> "刷卡记录进入引擎";
+            case "SWING_DEBUG_RECORD_DEDUP_BLOCKED" -> "重复记录已拦截";
+            case "SWING_DEBUG_GUARD_DEBOUNCE" -> "防抖窗口拦截";
+            case "SWING_DEBUG_GUARD_STALE_RECORD" -> "旧会话残留拦截";
+            case "SWING_DEBUG_GUARD_EXIT_SCHEDULED" -> "签退进行中-禁激活";
+            case "SWING_DEBUG_GUARD_NO_PENDING" -> "无待激活计时器拦截";
+            case "SWING_DEBUG_GUARD_SAME_RECORD" -> "同记录禁双用拦截";
+            case "SWING_DEBUG_STATE_TRANSITION" -> "激活状态变更";
+            case "SWING_DEBUG_TIMER_CREATED" -> "计时器已创建";
+            case "SWING_DEBUG_TIMER_CLEARED" -> "计时器已清除";
+            case "SWING_DEBUG_PHYSICAL_DELETE" -> "物理删除追踪";
+            case "SWING_DEBUG_DUE_SCAN_START" -> "到期扫描开始";
+            case "SWING_DEBUG_DUE_ROW" -> "到期行处理";
+            case "SWING_DEBUG_STATE_CLEARED" -> "全量软清理";
+            case "SWING_DEBUG_PENDING_CREATED" -> "待激活计时器创建";
+            case "SWING_DEBUG_ALREADY_ACTIVATED" -> "重复激活已跳过";
+            case "SWING_DEBUG_GUARD_NOT_ACTIVATED" -> "未激活-禁签退";
+            case "SWING_DEBUG_SAFETY_NET" -> "兜底复核检查";
+            case "SWING_DEBUG_AUTO_SIGNOUT_DONE" -> "自动签退执行完毕";
             default -> v.isEmpty() ? "-" : v;
         };
     }

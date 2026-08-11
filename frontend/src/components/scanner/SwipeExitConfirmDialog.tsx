@@ -73,21 +73,24 @@ export function SwipeExitConfirmDialog({
         };
     }, [countdown]);
 
-    // 归零时：自动触发签退（仅一次）
+    // 归零时：仅 AUTO_EXIT_SCHEDULED 自动触发签退，PENDING_ACTIVATION 不自动触发
     useEffect(() => {
         if (countdown === 0 && !hasEndedRef.current) {
             hasEndedRef.current = true;
-            // 短暂延迟让用户看到 00:00，然后自动提交签退
-            const t = setTimeout(() => {
-                onConfirmRef.current();
-                onCountdownEndRef.current?.();
-            }, 600);
-            return () => clearTimeout(t);
+            if (autoSignoutState === "AUTO_EXIT_SCHEDULED") {
+                const t = setTimeout(() => {
+                    onConfirmRef.current();
+                    onCountdownEndRef.current?.();
+                }, 600);
+                return () => clearTimeout(t);
+            }
         }
-    }, [countdown]);
+    }, [countdown, autoSignoutState]);
 
-    const showCountdown = countdown != null && countdown > 0;
-    const countdownZero = countdown === 0;
+    // 仅 AUTO_EXIT_SCHEDULED 倒计时锁定按钮；PENDING_ACTIVATION 倒计时不限制
+    const isAutoExitCountdown = autoSignoutState === "AUTO_EXIT_SCHEDULED";
+    const showCountdown = isAutoExitCountdown && countdown != null && countdown > 0;
+    const countdownZero = isAutoExitCountdown && countdown === 0;
     const countdownCopy = resolveAutoSignoutCountdownCopy(autoSignoutState);
 
     return createPortal(
@@ -134,11 +137,12 @@ export function SwipeExitConfirmDialog({
                                 确认离开
                             </h2>
 
-                            {/* Auto-Signout Countdown — 合并到按钮上，不再独立区块 */}
-                            {showCountdown && (
+                            {/* 倒计时信息提示：PENDING_ACTIVATION 仅提示不锁按钮，AUTO_EXIT_SCHEDULED 锁按钮 */}
+                            {countdown != null && countdown > 0 && (
                                 <div className="mb-4 text-center">
                                     <p className="text-[11px] leading-snug text-[var(--app-color-text-tertiary)]">
                                         {countdownCopy.hint}
+                                        {!isAutoExitCountdown && " 可随时点击确认离开。"}
                                     </p>
                                 </div>
                             )}
