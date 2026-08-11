@@ -63,6 +63,8 @@ public class TwinAutomationLogService {
     public static final String TRIGGER_DAILY_EXEMPT_REVOKE_AUTO_SIGNOUT = "DAILY_EXEMPT_REVOKE_AUTO_SIGNOUT";
     /** 扫码/大华联动关键步骤（便于溯源，不写高频 analyze） */
     public static final String TYPE_ACCESS_TRACE = "ACCESS_TRACE";
+    /** 联动规则引擎调试追踪：刷卡记录进入、守卫检查、状态变更、计时器生命周期等，用于排查误签退/续命等异常 */
+    public static final String TYPE_ACCESS_DEBUG = "ACCESS_DEBUG";
 
     /** 滞留跑批：单用户大华物理冻结成功（与 RUN_REAPER 汇总行区分） */
     public static final String EVENT_REAPER_USER_FROZEN = "REAPER_USER_FROZEN";
@@ -86,6 +88,46 @@ public class TwinAutomationLogService {
     public static final String SWING_AUTO_LEAVE_DUE_EXIT_DELAY = "SWING_AUTO_LEAVE_DUE_EXIT_DELAY";
     /** 定时到期：已激活宽限（历史数据）到期，即将自动签退 */
     public static final String SWING_AUTO_LEAVE_DUE_ACTIVATED_SLA = "SWING_AUTO_LEAVE_DUE_ACTIVATED_SLA";
+
+    // ===== ACCESS_DEBUG 专用追踪码 =====
+    /** DEBUG：刷卡记录进入规则引擎 */
+    public static final String SWING_DEBUG_RECORD_RECEIVED = "SWING_DEBUG_RECORD_RECEIVED";
+    /** DEBUG：重复记录拦截（last_record_id去重命中） */
+    public static final String SWING_DEBUG_RECORD_DEDUP_BLOCKED = "SWING_DEBUG_RECORD_DEDUP_BLOCKED";
+    /** DEBUG：防抖拦截 */
+    public static final String SWING_DEBUG_GUARD_DEBOUNCE = "SWING_DEBUG_GUARD_DEBOUNCE";
+    /** DEBUG：时间方向拦截（旧会话残留记录） */
+    public static final String SWING_DEBUG_GUARD_STALE_RECORD = "SWING_DEBUG_GUARD_STALE_RECORD";
+    /** DEBUG：签退进行中拦截（禁止激活） */
+    public static final String SWING_DEBUG_GUARD_EXIT_SCHEDULED = "SWING_DEBUG_GUARD_EXIT_SCHEDULED";
+    /** DEBUG：无待激活计时器拦截 */
+    public static final String SWING_DEBUG_GUARD_NO_PENDING = "SWING_DEBUG_GUARD_NO_PENDING";
+    /** DEBUG：同一记录禁止双用拦截 */
+    public static final String SWING_DEBUG_GUARD_SAME_RECORD = "SWING_DEBUG_GUARD_SAME_RECORD";
+    /** DEBUG：状态变更 */
+    public static final String SWING_DEBUG_STATE_TRANSITION = "SWING_DEBUG_STATE_TRANSITION";
+    /** DEBUG：计时器创建 */
+    public static final String SWING_DEBUG_TIMER_CREATED = "SWING_DEBUG_TIMER_CREATED";
+    /** DEBUG：计时器清除 */
+    public static final String SWING_DEBUG_TIMER_CLEARED = "SWING_DEBUG_TIMER_CLEARED";
+    /** DEBUG：物理删除追踪 */
+    public static final String SWING_DEBUG_PHYSICAL_DELETE = "SWING_DEBUG_PHYSICAL_DELETE";
+    /** DEBUG：到期扫描开始 */
+    public static final String SWING_DEBUG_DUE_SCAN_START = "SWING_DEBUG_DUE_SCAN_START";
+    /** DEBUG：到期行处理 */
+    public static final String SWING_DEBUG_DUE_ROW = "SWING_DEBUG_DUE_ROW";
+    /** DEBUG：全量软清理 */
+    public static final String SWING_DEBUG_STATE_CLEARED = "SWING_DEBUG_STATE_CLEARED";
+    /** DEBUG：待激活计时器创建 */
+    public static final String SWING_DEBUG_PENDING_CREATED = "SWING_DEBUG_PENDING_CREATED";
+    /** DEBUG：已有激活跳过（重复激活审计） */
+    public static final String SWING_DEBUG_ALREADY_ACTIVATED = "SWING_DEBUG_ALREADY_ACTIVATED";
+    /** DEBUG：未激活出口拦截（须先激活才能签退） */
+    public static final String SWING_DEBUG_GUARD_NOT_ACTIVATED = "SWING_DEBUG_GUARD_NOT_ACTIVATED";
+    /** DEBUG：兜底复核触发 */
+    public static final String SWING_DEBUG_SAFETY_NET = "SWING_DEBUG_SAFETY_NET";
+    /** DEBUG：签退规则引擎执行完毕 */
+    public static final String SWING_DEBUG_AUTO_SIGNOUT_DONE = "SWING_DEBUG_AUTO_SIGNOUT_DONE";
 
     private final TwinAutomationLogMapper mapper;
     private final JobExecutionRegistry jobExecutionRegistry;

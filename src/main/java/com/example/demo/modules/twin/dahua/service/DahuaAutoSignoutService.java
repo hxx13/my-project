@@ -188,6 +188,28 @@ public class DahuaAutoSignoutService {
             log.info("[auto-signout] skip-freeze exit_freeze_disabled userId={}", userId);
         }
         log.info("[auto-signout] done userId={}", userId);
+        // DEBUG：自动签退执行完毕
+        try {
+            automationLogService.write(
+                    TwinAutomationLogService.TYPE_ACCESS_DEBUG,
+                    "LINKAGE_DEBUG",
+                    "DEBUG",
+                    TwinAutomationLogService.SWING_DEBUG_AUTO_SIGNOUT_DONE,
+                    userId,
+                    roomId,
+                    true,
+                    "自动签退执行完毕：userId=" + userId
+                    + " 房间=" + roomLabel + "(roomId=" + roomId + ")"
+                    + " | ARO签退=" + (signoutOk ? "成功" : "失败")
+                    + " | 触发类型=" + triggerType
+                    + " | 触发原因=" + triggerReason
+                    + " | revoke已执行=" + (postAutoLeaveLinkageEnabled() && twinAccessRuleScanConfigService.isExitDispatchEnabled())
+                    + " | freeze已执行=" + (postAutoLeaveLinkageEnabled() && twinAccessRuleScanConfigService.isExitFreezeEnabled()),
+                    "dahua-auto-signout"
+            );
+        } catch (Exception ignored) {
+            // 调试日志不阻断
+        }
         String msg;
         if (isSwingLinkageStyleReason(triggerReason)) {
             msg = mergeDetail(detail, "ARO 离开登记已完成（" + roomLabel + "）。");
