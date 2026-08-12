@@ -23,8 +23,14 @@
 
     <update id="update">
         UPDATE portal_category
-        SET name = #{name}, scope = #{scope}, parent_id = #{parentId},
-            sort_order = #{sortOrder}, status = #{status}, cover_url = #{coverUrl}
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="scope != null">scope = #{scope},</if>
+            <if test="parentId != null">parent_id = #{parentId},</if>
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="coverUrl != null">cover_url = #{coverUrl},</if>
+        </set>
         WHERE id = #{id}
     </update>
 

@@ -11,11 +11,18 @@
 
     <update id="update">
         UPDATE portal_content
-        SET content_type = #{contentType}, category_id = #{categoryId}, title = #{title},
-            summary = #{summary}, cover_url = #{coverUrl}, content_html = #{contentHtml},
-            extension_json = #{extensionJson}, status = #{status},
+        <set>
+            <if test="contentType != null">content_type = #{contentType},</if>
+            <if test="categoryId != null">category_id = #{categoryId},</if>
+            <if test="title != null">title = #{title},</if>
+            <if test="summary != null">summary = #{summary},</if>
+            <if test="coverUrl != null">cover_url = #{coverUrl},</if>
+            <if test="contentHtml != null">content_html = #{contentHtml},</if>
+            <if test="extensionJson != null">extension_json = #{extensionJson},</if>
+            <if test="status != null">status = #{status},</if>
             <if test="sortOrder != null">sort_order = #{sortOrder},</if>
-            published_at = #{publishedAt}
+            <if test="publishedAt != null">published_at = #{publishedAt},</if>
+        </set>
         WHERE id = #{id}
     </update>
 
