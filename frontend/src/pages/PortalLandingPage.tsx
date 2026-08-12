@@ -1,14 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { PortalHeader } from "@/features/portal/PortalHeader";
 import { PortalHero } from "@/features/portal/PortalHero";
 import { PortalStatsSection } from "@/features/portal/PortalStatsSection";
 import { ModelResourceSection } from "@/features/portal/ModelResourceSection";
 import { NewsSection } from "@/features/portal/NewsSection";
 import { AboutSection } from "@/features/portal/AboutSection";
-import { PortalFooter } from "@/features/portal/PortalFooter";
-import { PortalLoginModal } from "@/features/portal/PortalLoginModal";
 import { FadeInSection } from "@/components/scroll-reveal";
 import { loginCas } from "@/api/domains/auth.api";
 import { authStorage } from "@/features/auth/authStorage";
@@ -27,13 +24,10 @@ function Divider() {
 
 export default function PortalLandingPage() {
   const navigate = useNavigate();
-  const [loginOpen, setLoginOpen] = useState(false);
-  const casProcessedRef = useRef(false);
+  const location = useLocation();
+  const [casProcessedRef] = useState({ current: false });
 
-  /* ── CAS ticket 回调处理 ──
-   * PortalLoginModal / MobileLoginPage / 旧 LoginPage 发起 CAS 登录后，
-   * CAS 服务器携带 ?ticket=ST-xxx 重定向回本页。提取 ticket 并完成登录。
-   */
+  /* ── CAS ticket 回调处理 ── */
   useEffect(() => {
     if (casProcessedRef.current) return;
 
@@ -90,9 +84,20 @@ export default function PortalLandingPage() {
     })();
   }, [navigate]);
 
+  /* ── 从其他页面跳回首页时，滚动到指定锚点 ── */
+  useEffect(() => {
+    const scrollTo = (location.state as { scrollTo?: string } | null)?.scrollTo;
+    if (scrollTo) {
+      // 等页面渲染完成再滚动
+      const timer = setTimeout(() => {
+        document.querySelector(scrollTo)?.scrollIntoView({ behavior: "smooth" });
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [location.state]);
+
   return (
     <div className="min-h-screen bg-white">
-      <PortalHeader onOpenLogin={() => setLoginOpen(true)} />
       <PortalHero />
       <Divider />
       <FadeInSection>
@@ -110,8 +115,6 @@ export default function PortalLandingPage() {
       <FadeInSection>
         <AboutSection />
       </FadeInSection>
-      <PortalFooter onRequestLogin={() => setLoginOpen(true)} />
-      <PortalLoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   );
 }

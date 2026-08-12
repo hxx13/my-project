@@ -1,7 +1,14 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-08T08:31:40.922Z",
+  "generatedAt": "2026-08-12T11:46:15.899Z",
   "pages": [
+    {
+      "path": "/about",
+      "label": "/about",
+      "fallbackMinRole": null,
+      "groupTitle": null,
+      "registryId": null
+    },
     {
       "path": "/admin",
       "label": "/admin",
@@ -409,6 +416,13 @@
       "registryId": "animal-tel"
     },
     {
+      "path": "/contact",
+      "label": "/contact",
+      "fallbackMinRole": null,
+      "groupTitle": null,
+      "registryId": null
+    },
+    {
       "path": "/digital-twin-3d",
       "label": "3D 楼盘",
       "fallbackMinRole": "ADMIN",
@@ -421,6 +435,55 @@
       "fallbackMinRole": "ADMIN",
       "groupTitle": "门禁、元数据与环境",
       "registryId": "digital-twin-screen"
+    },
+    {
+      "path": "/faq",
+      "label": "/faq",
+      "fallbackMinRole": null,
+      "groupTitle": null,
+      "registryId": null
+    },
+    {
+      "path": "/models",
+      "label": "/models",
+      "fallbackMinRole": null,
+      "groupTitle": null,
+      "registryId": null
+    },
+    {
+      "path": "/models/:id",
+      "label": "/models/:id",
+      "fallbackMinRole": null,
+      "groupTitle": null,
+      "registryId": null
+    },
+    {
+      "path": "/news",
+      "label": "/news",
+      "fallbackMinRole": null,
+      "groupTitle": null,
+      "registryId": null
+    },
+    {
+      "path": "/news/article/:id",
+      "label": "/news/article/:id",
+      "fallbackMinRole": null,
+      "groupTitle": null,
+      "registryId": null
+    },
+    {
+      "path": "/news/notice/:id",
+      "label": "/news/notice/:id",
+      "fallbackMinRole": null,
+      "groupTitle": null,
+      "registryId": null
+    },
+    {
+      "path": "/services",
+      "label": "/services",
+      "fallbackMinRole": null,
+      "groupTitle": null,
+      "registryId": null
     }
   ],
   "sidebarEntries": []

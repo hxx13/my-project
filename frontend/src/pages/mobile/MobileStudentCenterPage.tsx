@@ -2,7 +2,7 @@
 import "./mobile-student-shell.css";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Loader2, WifiOff, X, Scan } from "lucide-react";
+import { Loader2, WifiOff, X, Scan, Home } from "lucide-react";
 import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
 import {
   fetchMobileCenter,
@@ -400,20 +400,35 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         showBack={!isHome}
         onBack={handleTopNavBack}
         rightAction={isHome ? (
-          <button
-            type="button"
-            onClick={() => setShowScanDialog(true)}
-            className="flex items-center justify-center rounded-full active:scale-95 transition-transform"
-            style={{
-              width: 36, height: 36,
-              background: "rgba(0,0,0,0.28)",
-              border: "1px solid rgba(255,255,255,0.38)",
-              backdropFilter: "blur(8px)",
-            }}
-            aria-label="扫码"
-          >
-            <Scan className="size-5 text-white" strokeWidth={1.5} />
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href="/#/"
+              className="flex items-center justify-center rounded-full active:scale-95 transition-transform"
+              style={{
+                width: 36, height: 36,
+                background: "rgba(0,0,0,0.28)",
+                border: "1px solid rgba(255,255,255,0.38)",
+                backdropFilter: "blur(8px)",
+              }}
+              aria-label="门户首页"
+            >
+              <Home className="size-5 text-white" strokeWidth={1.5} />
+            </a>
+            <button
+              type="button"
+              onClick={() => setShowScanDialog(true)}
+              className="flex items-center justify-center rounded-full active:scale-95 transition-transform"
+              style={{
+                width: 36, height: 36,
+                background: "rgba(0,0,0,0.28)",
+                border: "1px solid rgba(255,255,255,0.38)",
+                backdropFilter: "blur(8px)",
+              }}
+              aria-label="扫码"
+            >
+              <Scan className="size-5 text-white" strokeWidth={1.5} />
+            </button>
+          </div>
         ) : null}
       />
       {/* Email bind dialog */}

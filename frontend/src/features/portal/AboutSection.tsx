@@ -33,8 +33,10 @@ export function AboutSection() {
         </div>
 
         <div className="max-w-5xl mx-auto mb-16 py-16 px-8 rounded-2xl border border-neutral-200 bg-white shadow-sm portal-typewriter-card">
-          <style>{`.portal-typewriter-card .text-type { font-size: 2.5rem !important; font-weight: 700 !important; line-height: 3.5rem !important; text-align: center !important; width: 100% !important; display: block !important; }`}</style>
-          <div className="flex items-center justify-center" style={{ minHeight: "10rem" }}>
+          <style>{`
+            .portal-typewriter-card .text-type { font-size: clamp(1.25rem, 4vw, 2.5rem) !important; font-weight: 700 !important; line-height: 1.5 !important; text-align: center !important; width: 100% !important; display: block !important; }
+          `}</style>
+          <div className="flex items-center justify-center overflow-hidden" style={{ height: "16rem" }}>
             <TextType
               text={TYPEWRITER_LINES}
               typingSpeed={55}
@@ -72,7 +74,7 @@ export function AboutSection() {
         </StaggerCards>
 
         <div className="text-center">
-          <a href="#" className="inline-flex items-center gap-2 text-sm font-medium text-amber-600 hover:underline">
+          <a href="/#/about" className="inline-flex items-center gap-2 text-sm font-medium text-amber-600 hover:underline">
             了解更多关于我们 <ArrowRight className="size-4" />
           </a>
         </div>

@@ -121,8 +121,9 @@
 
     <select id="countPage" resultType="long">
         SELECT COUNT(1)
-        FROM twin_automation_log
-        <include refid="FilterWhere"/>
+        FROM twin_automation_log l
+        LEFT JOIN aro_personnel p ON l.user_id = p.user_id
+        <include refid="FilterWhereL"/>
     </select>
 
     <!-- 豁免轨迹：按人（user_id）或卡（target_id）反查豁免授予/收回记账，时间倒序。

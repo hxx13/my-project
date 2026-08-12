@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.portal.mapper.PortalContentMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO portal_content (content_type, category_id, title, summary, cover_url,
+            content_html, extension_json, status, sort_order, published_at, created_by)
+        VALUES (#{contentType}, #{categoryId}, #{title}, #{summary}, #{coverUrl},
+            #{contentHtml}, #{extensionJson}, #{status}, #{sortOrder}, #{publishedAt}, #{createdBy})
+    </insert>
+
+    <update id="update">
+        UPDATE portal_content
+        SET content_type = #{contentType}, category_id = #{categoryId}, title = #{title},
+            summary = #{summary}, cover_url = #{coverUrl}, content_html = #{contentHtml},
+            extension_json = #{extensionJson}, status = #{status},
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            published_at = #{publishedAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultType="com.example.demo.modules.portal.entity.PortalContent">
+        SELECT * FROM portal_content WHERE id = #{id}
+    </select>
+
+    <!-- 公开列表 -->
+    <select id="listPublic" resultType="com.example.demo.modules.portal.entity.PortalContent">
+        SELECT * FROM portal_content
+        WHERE status = 'PUBLISHED' AND deleted = 0
+        <if test="type != null and type != ''">
+            AND content_type = #{type}
+        </if>
+        <if test="categoryId != null">
+            AND category_id = #{categoryId}
+        </if>
+        <if test="search != null and search != ''">
+            AND (title LIKE CONCAT('%',#{search},'%') OR summary LIKE CONCAT('%',#{search},'%'))
+        </if>
+        ORDER BY
+        <choose>
+            <when test="sort == 'published'">published_at DESC</when>
+            <when test="sort == 'title'">title ASC</when>
+            <when test="sort == 'priority'">sort_order DESC, published_at DESC</when>
+            <otherwise>sort_order ASC, published_at DESC</otherwise>
+        </choose>
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countPublic" resultType="int">
+        SELECT COUNT(1) FROM portal_content
+        WHERE status = 'PUBLISHED' AND deleted = 0
+        <if test="type != null and type != ''">AND content_type = #{type}</if>
+        <if test="categoryId != null">AND category_id = #{categoryId}</if>
+        <if test="search != null and search != ''">AND (title LIKE CONCAT('%',#{search},'%') OR summary LIKE CONCAT('%',#{search},'%'))</if>
+    </select>
+
+    <!-- 管理列表 -->
+    <select id="listAdmin" resultType="com.example.demo.modules.portal.entity.PortalContent">
+        SELECT * FROM portal_content WHERE deleted = 0
+        <if test="type != null and type != ''">AND content_type = #{type}</if>
+        <if test="status != null and status != ''">AND status = #{status}</if>
+        <if test="search != null and search != ''">AND title LIKE CONCAT('%',#{search},'%')</if>
+        ORDER BY updated_at DESC LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countAdmin" resultType="int">
+        SELECT COUNT(1) FROM portal_content WHERE deleted = 0
+        <if test="type != null and type != ''">AND content_type = #{type}</if>
+        <if test="status != null and status != ''">AND status = #{status}</if>
+        <if test="search != null and search != ''">AND title LIKE CONCAT('%',#{search},'%')</if>
+    </select>
+
+    <!-- 软删除 -->
+    <update id="softDelete">
+        UPDATE portal_content SET deleted = 1, deleted_time = NOW(),
+            deleted_by = #{deletedBy}, purge_after_time = DATE_ADD(NOW(), INTERVAL 7 DAY)
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <!-- 恢复 -->
+    <update id="restoreById">
+        UPDATE portal_content SET deleted = 0, deleted_time = NULL,
+            deleted_by = NULL, purge_after_time = NULL
+        WHERE id = #{id} AND deleted = 1
+    </update>
+
+    <!-- 回收站 -->
+    <select id="listRecycle" resultType="com.example.demo.modules.portal.entity.PortalContent">
+        SELECT * FROM portal_content WHERE deleted = 1 ORDER BY deleted_time DESC LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countRecycle" resultType="int">
+        SELECT COUNT(1) FROM portal_content WHERE deleted = 1
+    </select>
+
+    <delete id="hardDeleteById">
+        DELETE FROM portal_content WHERE id = #{id} AND deleted = 1
+    </delete>
+</mapper>

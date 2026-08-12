@@ -592,6 +592,16 @@ html[data-modal-scroll-lock] body {
     transform: translateY(0);
   }
 }
+/* ── 页面主滚动条隐藏 ── */
+html, body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   @keyframes slideIn {
     from { opacity: 0; }

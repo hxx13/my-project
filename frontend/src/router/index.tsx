@@ -1,6 +1,16 @@
 import { createHashRouter, Navigate, useParams } from "react-router-dom";
 import TwinLayout from "@/layouts/TwinLayout";
 import PortalLandingPage from "@/pages/PortalLandingPage";
+import PortalLayout from "@/layouts/PortalLayout";
+import ModelResourceListPage from "@/features/portal/pages/ModelResourceListPage";
+import ModelResourceDetailPage from "@/features/portal/pages/ModelResourceDetailPage";
+import ContentListPage from "@/features/portal/pages/ContentListPage";
+import ArticleDetailPage from "@/features/portal/pages/ArticleDetailPage";
+import NoticeDetailPage from "@/features/portal/pages/NoticeDetailPage";
+import AboutPage from "@/features/portal/pages/AboutPage";
+import FAQPage from "@/features/portal/pages/FAQPage";
+import ContactPage from "@/features/portal/pages/ContactPage";
+import ServiceGuidePage from "@/features/portal/pages/ServiceGuidePage";
 import DashboardPage from "@/pages/DashboardPage";
 import DashboardPreviewPage from "@/pages/DashboardPreviewPage";
 import DebugTablePage from "@/pages/DebugTablePage.tsx";
@@ -76,6 +86,10 @@ import AdminTelemetryInsightsConfigPage from "@/pages/AdminTelemetryInsightsConf
 import StaffMessagesPage from "@/pages/StaffMessagesPage";
 import AdminInviteCodesPage from "@/pages/AdminInviteCodesPage";
 import AdminContentHubPage from "@/pages/AdminContentHubPage";
+import AdminPortalContentPage from "@/pages/AdminPortalContentPage";
+import AdminPortalContentEditPage from "@/pages/AdminPortalContentEditPage";
+import AdminPortalRecyclePage from "@/pages/AdminPortalRecyclePage";
+import AdminPortalCategoryPage from "@/pages/AdminPortalCategoryPage";
 import AdminKnowledgeHomePage from "@/pages/AdminKnowledgeHomePage";
 import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
 import AdminNavManager from "@/features/admin/AdminNavManager";
@@ -95,6 +109,12 @@ import PermissionsSettings from "@/features/admin/settings/PermissionsSettings";
 import DangerZoneSettings from "@/features/admin/settings/DangerZoneSettings";
 import DashboardPreviewSettings from "@/features/admin/settings/DashboardPreviewSettings";
 import PortalFooterSettings from "@/features/admin/settings/PortalFooterSettings";
+import PortalContentAdminShell from "@/layouts/PortalContentAdminShell";
+import PageManagementPage from "@/features/portal/pages/editors/PageManagementPage";
+import AboutPageEditor from "@/features/portal/pages/editors/AboutPageEditor";
+import FAQPageEditor from "@/features/portal/pages/editors/FAQPageEditor";
+import ContactPageEditor from "@/features/portal/pages/editors/ContactPageEditor";
+import ServiceGuidePageEditor from "@/features/portal/pages/editors/ServiceGuidePageEditor";
 import StudentRegisterPage from "@/features/student/pages/student-register";
 import StudentLoginPage from "@/features/student/pages/student-login";
 import StudentLayout from "@/features/student/components/layout/student-layout";
@@ -355,8 +375,38 @@ export const router = createHashRouter([
   },
 
   // ═══════════════════════════════════════════════════════
-  //  旧路由兼容重定向（渐进迁移，无感知）
+  //  门户内容管理后台 — 独立全屏壳，入口在门户首页头像下拉
   // ═══════════════════════════════════════════════════════
-  { path: "/", element: <PortalLandingPage /> },
+  {
+    path: "/content-manager",
+    element: <PortalContentAdminShell />,
+    children: [
+      { index: true, element: <Navigate to="/content-manager/content" replace /> },
+      { path: "content", element: <AdminPortalContentPage /> },
+      { path: "content/recycle", element: <AdminPortalRecyclePage /> },
+      { path: "categories", element: <AdminPortalCategoryPage /> },
+      { path: "content/new", element: <AdminPortalContentEditPage /> },
+      { path: "content/:id/edit", element: <AdminPortalContentEditPage /> },
+      { path: "pages", element: <PageManagementPage /> },
+      { path: "pages/about", element: <AboutPageEditor /> },
+      { path: "pages/faq", element: <FAQPageEditor /> },
+      { path: "pages/contact", element: <ContactPageEditor /> },
+      { path: "pages/service-guide", element: <ServiceGuidePageEditor /> },
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════
+  //  门户公开路由 — PortalLayout 用 children 模式，路由拉平避免吞子路径
+  // ═══════════════════════════════════════════════════════
+  { path: "/", element: <PortalLayout><PortalLandingPage /></PortalLayout> },
+  { path: "/news", element: <PortalLayout><ContentListPage /></PortalLayout> },
+  { path: "/news/article/:id", element: <PortalLayout><ArticleDetailPage /></PortalLayout> },
+  { path: "/news/notice/:id", element: <PortalLayout><NoticeDetailPage /></PortalLayout> },
+  { path: "/models", element: <PortalLayout><ModelResourceListPage /></PortalLayout> },
+  { path: "/models/:id", element: <PortalLayout><ModelResourceDetailPage /></PortalLayout> },
+  { path: "/about", element: <PortalLayout><AboutPage /></PortalLayout> },
+  { path: "/faq", element: <PortalLayout><FAQPage /></PortalLayout> },
+  { path: "/contact", element: <PortalLayout><ContactPage /></PortalLayout> },
+  { path: "/services", element: <PortalLayout><ServiceGuidePage /></PortalLayout> },
   ...legacyRedirects,
 ]);

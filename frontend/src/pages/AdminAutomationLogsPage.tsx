@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAutomationLogs, type AutomationLogRow } from "@/api/twinApi";
@@ -33,12 +33,30 @@ function toTime(value?: string) {
   return formatDateTimeAsiaShanghaiShort(value);
 }
 
-function toApiTime(value: string, tail: "00:00:00" | "23:59:59") {
+/**
+ * 将前端日期/日期时间字符串转为后端 API 可接收的格式。
+ * - datetime-local: "2024-01-15T14:30" → "2024-01-15 14:30:00"
+ * - date: "2024-01-15" → 交由调用方决定是否拼接时分秒
+ */
+function toApiTime(value: string): string {
   if (!value) return "";
-  return `${value} ${tail}`;
+  // datetime-local 格式
+  if (value.includes("T")) {
+    const parts = value.split("T");
+    const date = parts[0];
+    const time = parts[1] || "00:00";
+    // time 可能是 "14:30" 或 "14:30:00"
+    const timeParts = time.split(":");
+    const hh = timeParts[0]?.padStart(2, "0") ?? "00";
+    const mm = timeParts[1]?.padStart(2, "0") ?? "00";
+    const ss = timeParts[2]?.padStart(2, "0") ?? "00";
+    return `${date} ${hh}:${mm}:${ss}`;
+  }
+  // 纯日期格式：保持原样返回，由调用方判断
+  return value;
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 100;
 
 function AuditImageThumb({ url, label }: { url: string; label: string }) {
   return (
@@ -106,12 +124,20 @@ export default function AdminAutomationLogsPage() {
   const [automationType, setAutomationType] = useState("");
   const [triggerType, setTriggerType] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [showPenetrationLogs, setShowPenetrationLogs] = useState(false);
+  const [pageInput, setPageInput] = useState("");
+  const pageInputRef = useRef<HTMLInputElement>(null);
+
+  // 任意筛选条件变化时自动回到第 1 页
+  useEffect(() => {
+    setPage(1);
+    setPageInput("");
+  }, [automationType, triggerType, keyword, startTime, endTime, showPenetrationLogs]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["automationLogs", page, automationType, triggerType, keyword, startDate, endDate, showPenetrationLogs] as const,
+    queryKey: ["automationLogs", page, automationType, triggerType, keyword, startTime, endTime, showPenetrationLogs] as const,
     queryFn: () =>
       fetchAutomationLogs({
         page,
@@ -119,8 +145,8 @@ export default function AdminAutomationLogsPage() {
         automationType: automationType || undefined,
         triggerType: triggerType || undefined,
         keyword: keyword.trim() || undefined,
-        startTime: startDate ? toApiTime(startDate, "00:00:00") : undefined,
-        endTime: endDate ? toApiTime(endDate, "23:59:59") : undefined,
+        startTime: startTime ? toApiTime(startTime) : undefined,
+        endTime: endTime ? toApiTime(endTime) : undefined,
         excludePenetrationPoll: !showPenetrationLogs,
       }),
     placeholderData: (prev) => prev,
@@ -136,10 +162,11 @@ export default function AdminAutomationLogsPage() {
     setAutomationType("");
     setTriggerType("");
     setKeyword("");
-    setStartDate("");
-    setEndDate("");
+    setStartTime("");
+    setEndTime("");
     setShowPenetrationLogs(false);
     setPage(1);
+    setPageInput("");
   };
 
   const location = useLocation();
@@ -157,7 +184,7 @@ export default function AdminAutomationLogsPage() {
           </div>
 
           {/* 第二行：筛选控件 */}
-          <div className="flex flex-nowrap items-end gap-2 overflow-x-auto">
+          <div className="flex flex-wrap items-end gap-2 gap-y-1.5">
             <label className="flex w-[7.5rem] shrink-0 flex-col gap-0.5">
               <span className="text-[10px] font-medium text-neutral-500">类型</span>
               <AdminSelect
@@ -195,21 +222,21 @@ export default function AdminAutomationLogsPage() {
                 className={compactInputClass}
               />
             </label>
-            <label className="flex w-[8.5rem] shrink-0 flex-col gap-0.5">
-              <span className="text-[10px] font-medium text-neutral-500">开始</span>
+            <label className="flex w-[10.5rem] shrink-0 flex-col gap-0.5">
+              <span className="text-[10px] font-medium text-neutral-500">开始时间</span>
               <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                type="datetime-local"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
                 className={compactInputClass}
               />
             </label>
-            <label className="flex w-[8.5rem] shrink-0 flex-col gap-0.5">
-              <span className="text-[10px] font-medium text-neutral-500">结束</span>
+            <label className="flex w-[10.5rem] shrink-0 flex-col gap-0.5">
+              <span className="text-[10px] font-medium text-neutral-500">结束时间</span>
               <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                type="datetime-local"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
                 className={compactInputClass}
               />
             </label>
@@ -244,16 +271,16 @@ export default function AdminAutomationLogsPage() {
               <div className="flex min-h-[160px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">暂无日志</div>
             ) : (
               <div>
-          <table className="w-full min-w-max text-left text-xs whitespace-nowrap border-collapse">
-            <thead className="border-b-2 border-[var(--app-color-border-strong)]">
-              <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
-                <th className="px-2 py-1.5">时间</th>
-                <th className="px-2 py-1.5">类型</th>
-                <th className="px-2 py-1.5">触发方式</th>
-                <th className="px-2 py-1.5">事件名称</th>
-                <th className="px-2 py-1.5">用户ID</th>
-                <th className="px-2 py-1.5">姓名</th>
-                <th className="px-2 py-1.5">结果</th>
+          <table className="w-full min-w-[800px] text-left text-xs border-collapse">
+            <thead className="sticky top-0 z-[3] border-b-2 border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-hover)] shadow-[var(--app-elevation-card)]">
+              <tr className="text-[var(--app-color-text-secondary)] font-bold">
+                <th className="px-2 py-1.5 whitespace-nowrap">时间</th>
+                <th className="px-2 py-1.5 whitespace-nowrap">类型</th>
+                <th className="px-2 py-1.5 whitespace-nowrap">触发方式</th>
+                <th className="px-2 py-1.5 whitespace-nowrap">事件名称</th>
+                <th className="px-2 py-1.5 whitespace-nowrap">用户ID</th>
+                <th className="px-2 py-1.5 whitespace-nowrap">姓名</th>
+                <th className="px-2 py-1.5 whitespace-nowrap">结果</th>
                 <th className="px-2 py-1.5">比对图片</th>
                 <th className="px-2 py-1.5">触发原因</th>
                 <th className="px-2 py-1.5">详情</th>
@@ -263,35 +290,35 @@ export default function AdminAutomationLogsPage() {
               {rows.map((r) => (
                 <tr key={`${r.logSource ?? "twin"}-${r.id}`} className="border-b align-top hover:bg-[var(--twin-canvas-soft)]">
                   <td className="px-2 py-1.5 whitespace-nowrap">{toTime(r.eventTime)}</td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 whitespace-nowrap">
                     <div>{r.automationTypeLabel || r.automationType || "-"}</div>
                     {r.automationTypeLabel && <div className="font-mono text-[10px] text-[var(--twin-mute)]">{r.automationType}</div>}
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 whitespace-nowrap">
                     <div>{r.triggerTypeLabel || r.triggerType || "-"}</div>
                     {r.triggerTypeLabel && <div className="font-mono text-[10px] text-[var(--twin-mute)]">{r.triggerType}</div>}
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 whitespace-nowrap">
                     <div>{r.eventKeyLabel || r.eventKey || "-"}</div>
                     {r.eventKeyLabel && <div className="font-mono text-[10px] text-[var(--twin-mute)]">{r.eventKey}</div>}
                   </td>
-                  <td className="px-2 py-1.5 font-mono text-xs">{r.userId || "-"}</td>
-                  <td className="px-2 py-1.5">{r.userName || "-"}</td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">{r.userId || "-"}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{r.userName || "-"}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">
                     {r.success === 1 ? <span className="text-emerald-600">成功</span> : <span className="text-rose-600">失败</span>}
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 max-w-[12rem]">
                     {r.automationType === "FACE_VERIFY" || r.logSource === "face" ? (
                       <FaceCompareImages row={r} />
                     ) : (
                       <span className="text-[var(--twin-mute)]">—</span>
                     )}
                   </td>
-                  <td className="px-2 py-1.5">
-                    <div>{r.triggerReasonLabel || r.triggerReason || "-"}</div>
-                    {r.triggerReasonLabel && <div className="font-mono text-[10px] text-[var(--twin-mute)]">{r.triggerReason}</div>}
+                  <td className="px-2 py-1.5 max-w-[12rem]">
+                    <div className="break-words">{r.triggerReasonLabel || r.triggerReason || "-"}</div>
+                    {r.triggerReasonLabel && <div className="font-mono text-[10px] text-[var(--twin-mute)] break-all">{r.triggerReason}</div>}
                   </td>
-                  <td className="max-w-[32rem] px-2 py-1.5 text-[var(--twin-body)]">
+                  <td className="px-2 py-1.5 text-[var(--twin-body)] max-w-[28rem] min-w-[10rem]">
                     <div className="space-y-1 break-words">
                       {detailTextToLines(String(r.detailDisplayZh || r.detail || "-")).map((line, i) => (
                         <div key={`dz-${i}`} className="leading-snug">
@@ -314,13 +341,32 @@ export default function AdminAutomationLogsPage() {
               共 {total} 条 · 每页 {PAGE_SIZE} 条 · 按时间倒序
             </span>
             <div className="flex items-center gap-2">
-              <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || isLoading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || isLoading} onClick={() => { setPage((p) => Math.max(1, p - 1)); setPageInput(""); }}>
                 上一页
               </AdminButton>
-              <span className="text-xs text-[var(--app-color-text-secondary)]">
-                {page} / {totalPages}
+              <span className="flex items-center gap-1 text-xs text-[var(--app-color-text-secondary)] whitespace-nowrap">
+                <input
+                  ref={pageInputRef}
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={pageInput}
+                  onChange={(e) => setPageInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const n = parseInt(pageInput, 10);
+                      if (n >= 1 && n <= totalPages) {
+                        setPage(n);
+                        setPageInput("");
+                      }
+                    }
+                  }}
+                  placeholder={String(page)}
+                  className="h-7 w-12 rounded border border-neutral-200 bg-white px-1.5 text-center text-xs outline-none focus-visible:border-neutral-300 focus-visible:ring-2 focus-visible:ring-[#0070f3]/25"
+                />
+                / {totalPages}
               </span>
-              <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || isLoading} onClick={() => setPage((p) => p + 1)}>
+              <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || isLoading} onClick={() => { setPage((p) => p + 1); setPageInput(""); }}>
                 下一页
               </AdminButton>
             </div>

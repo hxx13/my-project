@@ -39,7 +39,7 @@ public class TwinAutomationLogController {
             @RequestParam(required = false) String endTime,
             @RequestParam(defaultValue = "true") boolean excludePenetrationPoll,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int pageSize
+            @RequestParam(defaultValue = "100") int pageSize
     ) {
         Result<?> denied = requireStaff(authorization);
         if (denied != null) {

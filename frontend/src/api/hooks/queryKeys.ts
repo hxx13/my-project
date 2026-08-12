@@ -180,3 +180,14 @@ export const materialQueryKeys = {
   statsOverview: (from?: string, to?: string) => [...materialQueryKeys.all, "stats", "overview", { from, to }] as const,
   auditTrail: (params: Record<string, unknown>) => [...materialQueryKeys.all, "stats", "audit", params] as const,
 };
+
+/** 门户内容管理模块 query keys */
+export const portalContentQueryKeys = {
+  all: ["portalContent"] as const,
+  publicList: (params: Record<string, unknown>) => [...portalContentQueryKeys.all, "public", "list", params] as const,
+  publicDetail: (id: number) => [...portalContentQueryKeys.all, "public", "detail", id] as const,
+  categories: (scope?: string) => [...portalContentQueryKeys.all, "categories", { scope }] as const,
+  adminList: (params: Record<string, unknown>) => [...portalContentQueryKeys.all, "admin", "list", params] as const,
+  adminDetail: (id: number) => [...portalContentQueryKeys.all, "admin", "detail", id] as const,
+  recycle: (params: Record<string, unknown>) => [...portalContentQueryKeys.all, "recycle", params] as const,
+};

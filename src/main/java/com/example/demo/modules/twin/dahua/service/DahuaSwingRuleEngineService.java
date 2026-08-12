@@ -310,14 +310,14 @@ public class DahuaSwingRuleEngineService {
                         return;
                     }
                 }
-                // DEBUG：物理删除前快照
-                String preDeleteSnapshot = buildStateSnapshot(userId);
-                dahuaSwingMapper.deleteActivationStatesByUserId(userId);
-                debug(TwinAutomationLogService.SWING_DEBUG_PHYSICAL_DELETE, userId, channelCode,
-                        "[recordId=" + recordId + "] 物理删除：deleteActivationStatesByUserId(userId=" + userId + ")"
-                        + " | 删除前状态：" + preDeleteSnapshot
+                // 软清理：保留行以维持 last_record_id 去重引用，避免旧记录被重拉触发误签退
+                String preDeactivateSnapshot = buildStateSnapshot(userId);
+                dahuaSwingMapper.deactivateActivationStatesByUserId(userId);
+                debug(TwinAutomationLogService.SWING_DEBUG_GUARD_DEBOUNCE, userId, channelCode,
+                        "[recordId=" + recordId + "] 软清理：deactivateActivationStatesByUserId(userId=" + userId + ")"
+                        + " | 清理前状态：" + preDeactivateSnapshot
                         + " | 触发规则=activatedReswipeExit"
-                        + " | 调用链：onRecordIngested → hitActivatedReswipeExitRule && userActivatedElsewhere");
+                        + " | last_record_id 引用已保留在 CLEANED 行中");
                 DahuaActivationState state = newStateRow(userId, channelCode);
                 state.setState("AUTO_EXIT_SCHEDULED");
                 state.setScheduledExitAt(fmt(now.plusSeconds(Math.max(0, exitDelay))));
@@ -383,13 +383,13 @@ public class DahuaSwingRuleEngineService {
         } else if (hitExitRule) {
             dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
                     GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
-            String preDeleteSnapshotExit = buildStateSnapshot(userId);
-            dahuaSwingMapper.deleteActivationStatesByUserId(userId);
-            debug(TwinAutomationLogService.SWING_DEBUG_PHYSICAL_DELETE, userId, channelCode,
-                    "[recordId=" + recordId + "] 物理删除：deleteActivationStatesByUserId(userId=" + userId + ")"
-                    + " | 删除前状态：" + preDeleteSnapshotExit
+            String preDeactivateSnapshotExit = buildStateSnapshot(userId);
+            dahuaSwingMapper.deactivateActivationStatesByUserId(userId);
+            debug(TwinAutomationLogService.SWING_DEBUG_GUARD_DEBOUNCE, userId, channelCode,
+                    "[recordId=" + recordId + "] 软清理：deactivateActivationStatesByUserId(userId=" + userId + ")"
+                    + " | 清理前状态：" + preDeactivateSnapshotExit
                     + " | 触发规则=exitRule（刷门即签退）"
-                    + " | 调用链：onRecordIngested → hitExitRule && userActivatedElsewhere");
+                    + " | last_record_id 引用已保留在 CLEANED 行中");
             DahuaActivationState exitState = newStateRow(userId, channelCode);
             exitState.setState("AUTO_EXIT_SCHEDULED");
             exitState.setScheduledExitAt(fmt(now.plusSeconds(Math.max(0, exitDelay))));
