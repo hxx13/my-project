@@ -105,6 +105,9 @@ public final class TwinAutomationLogDisplayHelper {
         if ("ACCESS_DEBUG".equalsIgnoreCase(v)) {
             return "联动调试追踪";
         }
+        if ("DOOR_TEMP_UNLOCK".equalsIgnoreCase(v)) {
+            return "门禁临时解锁";
+        }
         return v.isEmpty() ? "-" : v;
     }
 
@@ -211,6 +214,10 @@ public final class TwinAutomationLogDisplayHelper {
             case "GATE" -> "门禁闸机验证";
             case "PERSONAL" -> "个人中心验证";
             case "PIP" -> "画中画持续监测";
+            case "TEMP_UNLOCK_TRIGGERED" -> "触发临时解锁";
+            case "TEMP_UNLOCK_RESTORED" -> "恢复普通模式";
+            case "TEMP_UNLOCK_SKIPPED" -> "跳过(常闭模式)";
+            case "TEMP_UNLOCK_COOLDOWN" -> "冷却中跳过";
             default -> v.isEmpty() ? "-" : v;
         };
     }

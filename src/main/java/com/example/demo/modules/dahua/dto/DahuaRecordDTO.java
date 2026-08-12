@@ -11,6 +11,7 @@ public class DahuaRecordDTO {
 
     private String id;
     private String personName;
+    private String personCode;
     private String channelName;
     private String channelCode;
     private String cardNumber;
@@ -25,6 +26,9 @@ public class DahuaRecordDTO {
 
     public String getPersonName() { return personName; }
     public void setPersonName(String personName) { this.personName = personName; }
+
+    public String getPersonCode() { return personCode; }
+    public void setPersonCode(String personCode) { this.personCode = personCode; }
 
     public String getChannelName() { return channelName; }
     public void setChannelName(String channelName) { this.channelName = channelName; }

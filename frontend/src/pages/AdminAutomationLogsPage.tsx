@@ -19,6 +19,7 @@ const TYPE_OPTIONS = [
   { value: "SCHEDULER", label: "定时器自动化" },
   { value: "EXEMPTION", label: "豁免自动化" },
   { value: "FACE_VERIFY", label: "门禁人脸验证" },
+  { value: "DOOR_TEMP_UNLOCK", label: "门禁临时解锁" },
 ];
 
 const TRIGGER_OPTIONS = [
