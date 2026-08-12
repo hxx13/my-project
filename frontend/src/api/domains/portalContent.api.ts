@@ -101,13 +101,15 @@ export async function fetchAdminContent(id: number): Promise<PortalContentView> 
 
 /** 管理：新建 */
 export async function createContent(body: PortalContentUpsertRequest): Promise<PortalContentView> {
-  const res = await authHttp.post<{ data: PortalContentView }>("/portal/admin/content", body);
+  const payload = { ...body, extensionJson: typeof body.extensionJson === "object" ? JSON.stringify(body.extensionJson) : body.extensionJson };
+  const res = await authHttp.post<{ data: PortalContentView }>("/portal/admin/content", payload);
   return res.data.data;
 }
 
 /** 管理：更新 */
 export async function updateContent(id: number, body: Partial<PortalContentUpsertRequest>): Promise<PortalContentView> {
-  const res = await authHttp.patch<{ data: PortalContentView }>(`/portal/admin/content/${id}`, body);
+  const payload = { ...body, extensionJson: typeof body.extensionJson === "object" ? JSON.stringify(body.extensionJson) : body.extensionJson };
+  const res = await authHttp.patch<{ data: PortalContentView }>(`/portal/admin/content/${id}`, payload);
   return res.data.data;
 }
 
