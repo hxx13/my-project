@@ -95,7 +95,7 @@ export async function fetchAdminContents(params: {
 
 /** 管理：单条 */
 export async function fetchAdminContent(id: number): Promise<PortalContentView> {
-  const res = await authHttp.get<{ data: PortalContentView }>(`/api/portal/admin/content/${id}`);
+  const res = await authHttp.get<{ data: PortalContentView }>(`/portal/admin/content/${id}`);
   return res.data.data;
 }
 
@@ -107,13 +107,13 @@ export async function createContent(body: PortalContentUpsertRequest): Promise<P
 
 /** 管理：更新 */
 export async function updateContent(id: number, body: Partial<PortalContentUpsertRequest>): Promise<PortalContentView> {
-  const res = await authHttp.patch<{ data: PortalContentView }>(`/api/portal/admin/content/${id}`, body);
+  const res = await authHttp.patch<{ data: PortalContentView }>(`/portal/admin/content/${id}`, body);
   return res.data.data;
 }
 
 /** 管理：软删除 */
 export async function deleteContent(id: number): Promise<void> {
-  await authHttp.delete(`/api/portal/admin/content/${id}`);
+  await authHttp.delete(`/portal/admin/content/${id}`);
 }
 
 /** 管理：回收站列表 */
