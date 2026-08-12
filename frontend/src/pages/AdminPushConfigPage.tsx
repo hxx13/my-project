@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
-import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminPageTabs, AdminTabPanel } from "@/components/admin/AdminPageTabs";
 import { PersonnelPicker, type PersonnelRow } from "@/components/admin/PersonnelPicker";
 import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
@@ -38,11 +38,21 @@ import { SwipeAlertRuleList } from "@/features/swipe-alert/SwipeAlertRuleList";
 import { SwipeAlertRuleForm } from "@/features/swipe-alert/SwipeAlertRuleForm";
 import type { SwipeAlertRuleRow } from "@/api/domains/swipeAlert.api";
 import {
+  listDoorTempUnlockRules,
+  createDoorTempUnlockRule,
+  updateDoorTempUnlockRule,
+  deleteDoorTempUnlockRule,
+  toggleDoorTempUnlockRule,
+  type DoorTempUnlockRuleRow,
+} from "@/api/domains/doorTempUnlock.api";
+import { fetchDoorControlChannels, type DahuaDeviceChannelRow } from "@/api/twinApi";
+import {
   Building2,
   ChevronDown,
   ChevronUp,
   Droplets,
   Gauge,
+  Pencil,
   Save,
   RotateCw,
   Mail,
@@ -53,6 +63,7 @@ import {
   Variable,
   AlertCircle,
   Search,
+  Trash2,
   X,
   Check,
   UserPlus,
@@ -181,7 +192,7 @@ export default function AdminPushConfigPage() {
   });
 
   /* ---- tab navigation ---- */
-  const [pushTab, setPushTab] = useState<"sources" | "animal-alarm" | "swipe-alarm">("sources");
+  const [pushTab, setPushTab] = useState<"sources" | "animal-alarm" | "swipe-alarm" | "door-unlock">("sources");
 
   /* ---- local expand & draft state ---- */
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -480,9 +491,10 @@ export default function AdminPushConfigPage() {
             { id: "sources", label: "信息源配置" },
             { id: "animal-alarm", label: "动物房环境报警" },
             { id: "swipe-alarm", label: "刷卡失败报警" },
+            { id: "door-unlock", label: "门禁临时解锁" },
           ]}
           value={pushTab}
-          onChange={(id) => setPushTab(id as "sources" | "animal-alarm" | "swipe-alarm")}
+          onChange={(id) => setPushTab(id as "sources" | "animal-alarm" | "swipe-alarm" | "door-unlock")}
           className="shrink-0 mb-0"
         />
 
@@ -672,6 +684,12 @@ export default function AdminPushConfigPage() {
             <AdminTabPanel tabId="swipe-alarm" activeTab={pushTab} id="admin-tab-panel-swipe-alarm">
               <div className="p-3">
                 <SwipeAlarmTab sourceEnabled={sources?.find(s => s.sourceCode === "SWIPE_FAILURE_ALERT")?.sourceEnabled} />
+              </div>
+            </AdminTabPanel>
+
+            <AdminTabPanel tabId="door-unlock" activeTab={pushTab} id="admin-tab-panel-door-unlock">
+              <div className="p-3">
+                <DoorUnlockTab />
               </div>
             </AdminTabPanel>
           </div>
@@ -1965,5 +1983,268 @@ function SwipeAlarmTab({ sourceEnabled }: { sourceEnabled?: boolean }) {
         />
       )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  DoorUnlockTab — 门禁临时解锁配置                                    */
+/* ------------------------------------------------------------------ */
+
+function DoorUnlockTab() {
+  const [rows, setRows] = useState<DoorTempUnlockRuleRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState<DoorTempUnlockRuleRow | null | undefined>(undefined);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const load = async () => {
+    setLoading(true);
+    try { setRows(await listDoorTempUnlockRules()); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "加载失败"); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { void load(); }, [refreshKey]);
+
+  const onDelete = async (id: number) => {
+    if (!window.confirm("确定删除？")) return;
+    try { await deleteDoorTempUnlockRule(id); toast.success("已删除"); setRows(prev => prev.filter(r => r.id !== id)); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "删除失败"); }
+  };
+
+  const onToggle = async (r: DoorTempUnlockRuleRow) => {
+    try {
+      const updated = await toggleDoorTempUnlockRule(r.id);
+      setRows(prev => prev.map(x => x.id === updated.id ? updated : x));
+    } catch (e) { toast.error(e instanceof Error ? e.message : "切换失败"); }
+  };
+
+  return (
+    <div className="space-y-3">
+      <AdminFormCard title="临时解锁规则"
+        actions={
+          <div className="flex gap-2">
+            <AdminButton type="button" tone={editing !== undefined ? "secondary" : "primary"}
+              onClick={editing !== undefined ? () => setEditing(undefined) : () => setEditing(null)}>
+              {editing !== undefined ? "关闭" : "+ 新增规则"}
+            </AdminButton>
+            <AdminButton type="button" tone="secondary" loading={loading} onClick={load}>
+              <RotateCw className="h-4 w-4" />
+            </AdminButton>
+          </div>}
+      >
+        <AdminTableShell loading={loading} empty={!loading && rows.length === 0} emptyMessage="暂无规则" scrollable>
+          <table className="min-w-full text-left text-sm">
+            <thead>
+              <tr>
+                <th className="px-3 py-2">名称</th>
+                <th className="px-3 py-2">通道数</th>
+                <th className="px-3 py-2">阈值</th>
+                <th className="px-3 py-2">时长</th>
+                <th className="px-3 py-2">冷却</th>
+                <th className="px-3 py-2">状态</th>
+                <th className="px-3 py-2 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id}>
+                  <td className="px-3 py-2 font-medium">{r.name}</td>
+                  <td className="px-3 py-2 text-xs">{((): number => { try { return JSON.parse(r.channelCodes ?? "[]").length; } catch { return 0; } })()} 个通道</td>
+                  <td className="px-3 py-2 text-xs">{r.thresholdCount}次 / {r.thresholdWindowSec}秒</td>
+                  <td className="px-3 py-2 text-xs">{r.unlockDurationSec}秒</td>
+                  <td className="px-3 py-2 text-xs">{r.cooldownSec}秒</td>
+                  <td className="px-3 py-2">
+                    <button type="button" onClick={() => onToggle(r)}
+                      style={{ fontSize: 11, fontWeight: 600, padding: "2px 10px", borderRadius: 999, border: "none", cursor: "pointer",
+                        background: r.enabled ? "#dcfce7" : "#f1f5f9", color: r.enabled ? "#166534" : "#94a3b8" }}>
+                      {r.enabled ? "启用" : "停用"}
+                    </button>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end gap-1.5">
+                      <AdminButton type="button" tone="secondary" size="sm" onClick={() => setEditing(r)}><Pencil className="h-3.5 w-3.5" /></AdminButton>
+                      <AdminButton type="button" tone="destructive" size="sm" onClick={() => onDelete(r.id)}><Trash2 className="h-3.5 w-3.5" /></AdminButton>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </AdminTableShell>
+      </AdminFormCard>
+
+      {editing !== undefined && (
+        <DoorUnlockRuleForm
+          key={editing?.id ?? "new"}
+          editing={editing}
+          onSaved={() => { setEditing(undefined); setRefreshKey(k => k + 1); }}
+          onCancel={() => setEditing(undefined)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  DoorUnlockRuleForm — 新增/编辑规则表单                               */
+/* ------------------------------------------------------------------ */
+
+function DoorUnlockRuleForm({ editing, onSaved, onCancel }: {
+  editing: DoorTempUnlockRuleRow | null;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const isNew = !editing;
+  const [name, setName] = useState(editing?.name ?? "");
+  const [selectedChannelCodes, setSelectedChannelCodes] = useState<string[]>(() => {
+    if (editing?.channelCodes) {
+      try { return JSON.parse(editing.channelCodes) as string[]; } catch { return []; }
+    }
+    return [];
+  });
+  const [thresholdCount, setThresholdCount] = useState(editing?.thresholdCount ?? 5);
+  const [thresholdWindowSec, setThresholdWindowSec] = useState(editing?.thresholdWindowSec ?? 60);
+  const [unlockDurationSec, setUnlockDurationSec] = useState(editing?.unlockDurationSec ?? 120);
+  const [cooldownSec, setCooldownSec] = useState(editing?.cooldownSec ?? 300);
+  const [saving, setSaving] = useState(false);
+  const [channelKeyword, setChannelKeyword] = useState("");
+  const [debouncedKeyword, setDebouncedKeyword] = useState("");
+  const [channelOptions, setChannelOptions] = useState<DahuaDeviceChannelRow[]>([]);
+  const [channelLoading, setChannelLoading] = useState(false);
+  const channelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounce channel keyword
+  useEffect(() => {
+    if (channelTimerRef.current) clearTimeout(channelTimerRef.current);
+    channelTimerRef.current = setTimeout(() => setDebouncedKeyword(channelKeyword), 300);
+    return () => { if (channelTimerRef.current) clearTimeout(channelTimerRef.current); };
+  }, [channelKeyword]);
+
+  // Load channel options (debounced)
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setChannelLoading(true);
+      try {
+        const data = await fetchDoorControlChannels({ page: 1, pageSize: 200, keyword: debouncedKeyword || undefined });
+        if (active) setChannelOptions(data.list ?? []);
+      } catch { /* ignore */ }
+      finally { if (active) setChannelLoading(false); }
+    };
+    load();
+    return () => { active = false; };
+  }, [debouncedKeyword]);
+
+  const toggleChannel = (code: string) => {
+    setSelectedChannelCodes(prev =>
+      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
+    );
+  };
+
+  const selectedLabels = selectedChannelCodes.map(code => {
+    const ch = channelOptions.find(c => c.channelCode === code);
+    return ch ? `${ch.channelName ?? code} (${code})` : code;
+  }).join(", ");
+
+  const save = async () => {
+    if (!name.trim()) { toast.error("请输入规则名称"); return; }
+    if (selectedChannelCodes.length === 0) { toast.error("请选择至少一个通道"); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        name: name.trim(),
+        enabled: editing?.enabled ?? true,
+        channelCodes: JSON.stringify(selectedChannelCodes),
+        thresholdCount,
+        thresholdWindowSec,
+        unlockDurationSec,
+        cooldownSec,
+      };
+      if (isNew) {
+        await createDoorTempUnlockRule(payload);
+        toast.success("规则已创建");
+      } else {
+        await updateDoorTempUnlockRule(editing!.id, payload);
+        toast.success("规则已更新");
+      }
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AdminFormCard title={isNew ? "新增临时解锁规则" : `编辑：${editing!.name}`}>
+      <div className="space-y-4">
+        {/* Name */}
+        <div>
+          <label className={adminLabelClass}>规则名称</label>
+          <input className={cn(adminInputClass, "w-full")} value={name} onChange={e => setName(e.target.value)} placeholder="如：北门临时解锁" />
+        </div>
+
+        {/* Channel picker */}
+        <div>
+          <label className={adminLabelClass}>监控通道（多选）</label>
+          <input className={cn(adminInputClass, "w-full mb-2")} value={channelKeyword}
+            onChange={e => setChannelKeyword(e.target.value)} placeholder="搜索通道名称/编码..." />
+          {channelLoading ? <p className={adminHintClass}>加载中...</p> : null}
+          <div className="max-h-48 overflow-auto border border-[var(--app-color-border-default)] rounded-lg p-2 space-y-1">
+            {channelOptions.length === 0 && !channelLoading && (
+              <p className={adminHintClass}>无匹配通道</p>
+            )}
+            {channelOptions.map(ch => (
+              <label key={ch.channelCode} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-[var(--app-color-surface-hover)] px-1 py-0.5 rounded">
+                <input type="checkbox" checked={selectedChannelCodes.includes(ch.channelCode ?? "")}
+                  onChange={() => toggleChannel(ch.channelCode ?? "")} />
+                <span>{ch.channelName ?? ch.channelCode}</span>
+                <span className={adminHintClass}>({ch.channelCode})</span>
+              </label>
+            ))}
+          </div>
+          {selectedChannelCodes.length > 0 && (
+            <p className={adminHintClass}>已选 {selectedChannelCodes.length} 个通道：{selectedLabels}</p>
+          )}
+        </div>
+
+        {/* Threshold */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={adminLabelClass}>失败次数阈值</label>
+            <input className={cn(adminInputClass, "w-full")} type="number" min={1} value={thresholdCount}
+              onChange={e => setThresholdCount(Number(e.target.value) || 1)} />
+          </div>
+          <div>
+            <label className={adminLabelClass}>时间窗口(秒)</label>
+            <input className={cn(adminInputClass, "w-full")} type="number" min={1} value={thresholdWindowSec}
+              onChange={e => setThresholdWindowSec(Number(e.target.value) || 1)} />
+          </div>
+        </div>
+
+        {/* Duration & Cooldown */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={adminLabelClass}>常开持续时长(秒)</label>
+            <input className={cn(adminInputClass, "w-full")} type="number" min={1} value={unlockDurationSec}
+              onChange={e => setUnlockDurationSec(Number(e.target.value) || 1)} />
+          </div>
+          <div>
+            <label className={adminLabelClass}>冷却时间(秒)</label>
+            <input className={cn(adminInputClass, "w-full")} type="number" min={0} value={cooldownSec}
+              onChange={e => setCooldownSec(Number(e.target.value) || 0)} />
+            <p className={adminHintClass}>按人+门维度冷却</p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-2">
+          <AdminButton type="button" tone="primary" loading={saving} onClick={save}>
+            <Save className="h-4 w-4" />保存
+          </AdminButton>
+          <AdminButton type="button" tone="secondary" onClick={onCancel}>取消</AdminButton>
+        </div>
+      </div>
+    </AdminFormCard>
   );
 }

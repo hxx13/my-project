@@ -39,6 +39,7 @@ public class DahuaSwingPullService {
     private final com.example.demo.modules.accessfusion.service.AccessRawEventIngestService accessRawEventIngestService;
     private final DahuaSwingDepartmentSupport departmentSupport;
     private final com.example.demo.modules.swipealert.service.SwipeAlertEngine swipeAlertEngine;
+    private final com.example.demo.modules.doortempunlock.engine.DoorTempUnlockEngine doorTempUnlockEngine;
     private final AtomicBoolean pollInProgress = new AtomicBoolean(false);
 
     public DahuaSwingPullService(
@@ -48,7 +49,8 @@ public class DahuaSwingPullService {
             DahuaSwingRuleEngineService dahuaSwingRuleEngineService,
             com.example.demo.modules.accessfusion.service.AccessRawEventIngestService accessRawEventIngestService,
             DahuaSwingDepartmentSupport departmentSupport,
-            com.example.demo.modules.swipealert.service.SwipeAlertEngine swipeAlertEngine) {
+            com.example.demo.modules.swipealert.service.SwipeAlertEngine swipeAlertEngine,
+            com.example.demo.modules.doortempunlock.engine.DoorTempUnlockEngine doorTempUnlockEngine) {
         this.dahuaSwingMapper = dahuaSwingMapper;
         this.dahuaOpenApiService = dahuaOpenApiService;
         this.twinCardMappingService = twinCardMappingService;
@@ -56,6 +58,7 @@ public class DahuaSwingPullService {
         this.accessRawEventIngestService = accessRawEventIngestService;
         this.departmentSupport = departmentSupport;
         this.swipeAlertEngine = swipeAlertEngine;
+        this.doorTempUnlockEngine = doorTempUnlockEngine;
     }
 
     public List<DahuaSwingPullTask> listTasks() {
@@ -219,22 +222,20 @@ public class DahuaSwingPullService {
                         totalSaved++;
                         accessRawEventIngestService.ingestFromSwing(record, "DAHUA_PULL");
                         if (swipeAlertEngine != null) {
-                            try {
-                                com.example.demo.modules.dahua.dto.DahuaRecordDTO dto =
-                                        new com.example.demo.modules.dahua.dto.DahuaRecordDTO();
-                                dto.setId(record.getRecordId());
-                                dto.setPersonName(record.getPersonName());
-                                dto.setChannelName(record.getChannelName());
-                                dto.setChannelCode(record.getChannelCode());
-                                dto.setCardNumber(record.getCardNumber());
-                                dto.setOpenType(record.getOpenType());
-                                dto.setEnterOrExit(record.getEnterOrExit());
-                                dto.setOpenResult(record.getOpenResult());
-                                dto.setSwingTime(record.getSwingTime());
-                                swipeAlertEngine.onSwingRecord(dto);
-                            } catch (Exception e) {
-                                log.debug("[swipe-alert] engine hook failed: {}", e.getMessage());
-                            }
+                            com.example.demo.modules.dahua.dto.DahuaRecordDTO dto =
+                                    new com.example.demo.modules.dahua.dto.DahuaRecordDTO();
+                            dto.setId(record.getRecordId());
+                            dto.setPersonName(record.getPersonName());
+                            dto.setPersonCode(record.getPersonCode());
+                            dto.setChannelName(record.getChannelName());
+                            dto.setChannelCode(record.getChannelCode());
+                            dto.setCardNumber(record.getCardNumber());
+                            dto.setOpenType(record.getOpenType());
+                            dto.setEnterOrExit(record.getEnterOrExit());
+                            dto.setOpenResult(record.getOpenResult());
+                            dto.setSwingTime(record.getSwingTime());
+                            try { swipeAlertEngine.onSwingRecord(dto); } catch (Exception e) { log.warn("[swipe-alert] engine hook failed: {}", e.getMessage()); }
+                            try { doorTempUnlockEngine.onSwingRecord(dto); } catch (Exception e) { log.warn("[door-temp-unlock] engine hook failed: {}", e.getMessage()); }
                         }
                     }
                 }
