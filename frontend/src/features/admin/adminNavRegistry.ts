@@ -759,7 +759,6 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
     ],
   },
 ];
-
 const PATH_TITLE_MAP: Record<string, string> = Object.fromEntries(
   ADMIN_NAV_REGISTRY.flatMap((g) => collectRegistryGroupItems(g).map((it) => [it.path.replace(/\/+/g, "/"), it.label]))
 );
@@ -808,6 +807,9 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p === "/digital-twin-3d"
   ) {
     return "门禁、元数据与环境";
+  }
+  if (p.startsWith("/content-manager/")) {
+    return "门户与内容";
   }
   if (p.startsWith("/admin/repair-") || p.startsWith("/admin/purchase-") || p.startsWith("/admin/supplies")) {
     return "报修与物资领用";

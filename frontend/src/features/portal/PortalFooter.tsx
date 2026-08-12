@@ -73,17 +73,18 @@ export function PortalFooter({ onRequestLogin }: PortalFooterProps) {
     // 3. API returned empty (no config saved yet) or failed — use hardcoded defaults
     return [
       {
-        group: "学生服务",
+        group: "浏览",
         items: [
-          { label: "学生中心", url: "/#/student/home", requiresAuth: true },
-          { label: "笼架信息", url: "/#/student/cage-shelf", requiresAuth: true },
+          { label: "模型资源", url: "/#/models" },
+          { label: "新闻动态", url: "/#/news" },
+          { label: "关于我们", url: "/#/about" },
         ],
       },
       {
         group: "帮助支持",
         items: [
-          { label: "帮助反馈", url: "/#/student/feedback", requiresAuth: true },
-          { label: "联系我们", url: "mailto:aro@shsmu.edu.cn" },
+          { label: "常见问题", url: "/#/faq" },
+          { label: "联系我们", url: "/#/contact" },
         ],
       },
     ];

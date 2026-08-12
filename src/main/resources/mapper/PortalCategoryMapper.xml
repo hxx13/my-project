@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.portal.mapper.PortalCategoryMapper">
+
+    <select id="listByScope" resultType="com.example.demo.modules.portal.entity.PortalCategory">
+        SELECT * FROM portal_category
+        WHERE status = 1 AND (scope = #{scope} OR scope = 'ALL')
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="listAll" resultType="com.example.demo.modules.portal.entity.PortalCategory">
+        SELECT * FROM portal_category ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="findById" resultType="com.example.demo.modules.portal.entity.PortalCategory">
+        SELECT * FROM portal_category WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO portal_category (name, scope, parent_id, sort_order, status, cover_url)
+        VALUES (#{name}, #{scope}, #{parentId}, #{sortOrder}, #{status}, #{coverUrl})
+    </insert>
+
+    <update id="update">
+        UPDATE portal_category
+        SET name = #{name}, scope = #{scope}, parent_id = #{parentId},
+            sort_order = #{sortOrder}, status = #{status}, cover_url = #{coverUrl}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM portal_category WHERE id = #{id}
+    </delete>
+</mapper>

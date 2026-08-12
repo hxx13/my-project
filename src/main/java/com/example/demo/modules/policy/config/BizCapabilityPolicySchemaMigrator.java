@@ -59,6 +59,7 @@ public class BizCapabilityPolicySchemaMigrator implements ApplicationRunner {
             seedRow(BizDomains.PURCHASE, 2, 5, 5, "VISIBLE_POOL", 1, 20);
             seedRow(BizDomains.SUPPLIES_CLAIM, 2, 5, 5, "VISIBLE_POOL", 1, 30);
             seedRow(BizDomains.SUPPLIES_ADMIN, 5, 5, 5, "VISIBLE_POOL", 1, 40);
+            seedRow(BizDomains.PORTAL_CONTENT_ADMIN, 2, 5, 5, "VISIBLE_POOL", 1, 50);
             // 已有库 INSERT IGNORE 不会覆盖旧阈值：按需抬升到 SUPER_ADMIN(5)；仅在确有变更时递增 policy_version。
             jdbcTemplate.update("""
                     UPDATE biz_capability_policy

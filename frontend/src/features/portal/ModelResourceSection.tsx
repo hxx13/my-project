@@ -1,19 +1,32 @@
 import { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Beaker, Database, Microscope, Stethoscope, ArrowRight, Search } from "lucide-react";
 import { StaggerCards } from "@/components/scroll-reveal";
+import { usePublicCategories } from "@/api/hooks/usePortalContent";
 
-const STRAINS = [
-  { name: "基因编辑模型", desc: "CRISPR/Cas9 基因敲除与条件性敲入品系，覆盖神经、免疫、代谢等多系统靶点", icon: Microscope, color: "from-blue-50 to-indigo-50" },
-  { name: "免疫缺陷模型", desc: "NSG/NOG/B-NDG 等重度免疫缺陷品系，支持 CDX/PDX 肿瘤移植研究", icon: Beaker, color: "from-emerald-50 to-teal-50" },
-  { name: "人源化模型", desc: "靶点基因人源化与免疫系统人源化重建，临床前药物评价核心工具", icon: Database, color: "from-violet-50 to-purple-50" },
-  { name: "疾病模型", desc: "自发/诱发性肿瘤、代谢疾病、神经退行性疾病等病理模型", icon: Stethoscope, color: "from-amber-50 to-orange-50" },
-];
+const CAT_ICONS = [Microscope, Beaker, Database, Stethoscope];
+const CAT_COLORS = ["from-blue-50 to-indigo-50", "from-emerald-50 to-teal-50", "from-violet-50 to-purple-50", "from-amber-50 to-orange-50"];
 
 export function ModelResourceSection() {
+  const navigate = useNavigate();
+  const { data: allCats = [] } = usePublicCategories("MODEL_RESOURCE");
+  const cards = allCats.slice(0, 4).map((c) => ({
+    key: c.name, title: c.name, link: `/models?search=${encodeURIComponent(c.name)}`,
+  }));
+  const placeholders = Array.from({ length: Math.max(0, 4 - cards.length) });
+
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const doSearch = () => {
+    if (searchValue.trim()) {
+      navigate(`/models?search=${encodeURIComponent(searchValue.trim())}`);
+    } else {
+      navigate("/models");
+    }
+  };
 
   return (
     <section id="model-resource" className="min-h-screen flex items-center py-24 px-6">
@@ -27,18 +40,19 @@ export function ModelResourceSection() {
         </div>
 
         <StaggerCards className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {STRAINS.map((strain) => {
-            const Icon = strain.icon;
+          {cards.map((card, i) => {
+            const Icon = CAT_ICONS[i % CAT_ICONS.length];
+            const color = CAT_COLORS[i % CAT_COLORS.length];
             return (
-              <div key={strain.name}
-                className="group relative overflow-hidden rounded-2xl border border-neutral-200 bg-white p-6 hover:shadow-lg hover:border-amber-200 transition-all duration-200">
-                <div className={cn("absolute inset-0 bg-gradient-to-br opacity-40 group-hover:opacity-50 transition-opacity", strain.color)} />
+              <div key={card.key} onClick={() => navigate(card.link)}
+                className="group relative overflow-hidden rounded-2xl border border-neutral-200 bg-white p-6 hover:shadow-lg hover:border-amber-200 transition-all duration-200 cursor-pointer">
+                <div className={cn("absolute inset-0 bg-gradient-to-br opacity-40 group-hover:opacity-50 transition-opacity", color)} />
                 <div className="relative">
                   <div className="size-10 rounded-xl bg-amber-50 flex items-center justify-center mb-4">
                     <Icon className="size-5 text-amber-600" />
                   </div>
-                  <h3 className="font-semibold text-neutral-900">{strain.name}</h3>
-                  <p className="mt-2 text-[13px] text-neutral-500 leading-relaxed">{strain.desc}</p>
+                  <h3 className="font-semibold text-neutral-900">{card.title}</h3>
+                  <p className="mt-2 text-[13px] text-neutral-500 leading-relaxed">点击浏览该分类下的全部品系</p>
                   <div className="mt-4 flex items-center gap-1.5 text-[13px] font-medium text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity">
                     了解详情 <ArrowRight className="size-3.5" />
                   </div>
@@ -46,6 +60,11 @@ export function ModelResourceSection() {
               </div>
             );
           })}
+          {placeholders.map((_, i) => (
+            <div key={`ph-${i}`} className="relative overflow-hidden rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-6 flex items-center justify-center min-h-[180px]">
+              <p className="text-sm text-neutral-300">暂无分类</p>
+            </div>
+          ))}
         </StaggerCards>
 
         {/* Search bar */}
@@ -76,10 +95,12 @@ export function ModelResourceSection() {
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
               placeholder="搜索基因编辑模型、免疫缺陷品系…"
+              onKeyDown={(e) => e.key === "Enter" && doSearch()}
               className="flex-1 bg-transparent text-[14px] text-neutral-900 placeholder:text-neutral-300 outline-none border-none"
             />
             <button
               type="button"
+              onClick={doSearch}
               className={cn(
                 "shrink-0 inline-flex items-center gap-1 px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all duration-300",
                 searchValue.trim()
@@ -91,24 +112,21 @@ export function ModelResourceSection() {
             </button>
           </div>
           <div className="flex flex-wrap justify-center gap-1.5 mt-3">
-            {["CRISPR/Cas9", "NSG小鼠", "人源化模型", "PDX模型"].map((tag) => (
+            {allCats.slice(0, 4).map((cat) => (
               <button
-                key={tag}
+                key={cat.name}
                 type="button"
-                onClick={() => {
-                  setSearchValue(tag);
-                  searchRef.current?.focus();
-                }}
+                onClick={() => { setSearchValue(cat.name); searchRef.current?.focus(); }}
                 className="px-3 py-1 rounded-full text-[11px] font-medium text-neutral-400 bg-neutral-50 hover:bg-amber-50 hover:text-amber-600 transition-colors"
               >
-                {tag}
+                {cat.name}
               </button>
             ))}
           </div>
         </div>
 
         <div className="mt-10 text-center">
-          <a href="#" className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:underline">
+          <a href="/#/models" className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:underline">
             查看全部模型资源 <ArrowRight className="size-3.5" />
           </a>
         </div>

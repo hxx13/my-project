@@ -17,4 +17,6 @@ public final class BizDomains {
     public static final String MATERIAL_REQUEST = "MATERIAL_REQUEST";
     /** 实验动物订购（供应商/品种/品系/规格） */
     public static final String REFERENCE_DATA_ADMIN = "REFERENCE_DATA_ADMIN";
+    /** 门户内容管理（新闻/公告/模型资源） */
+    public static final String PORTAL_CONTENT_ADMIN = "PORTAL_CONTENT_ADMIN";
 }
