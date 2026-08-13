@@ -244,10 +244,14 @@ public class TwinScanService {
         // 1. 发送打卡指令给官方
         boolean success = aroService.submitAccessRecord(userId, officialRoomId, accessType);
         if (!success && accessType == 2 && aroService.isNoLeaveRoomError()) {
-            // 仅对下一次 analyze 生效一次，化解 ARO noLeave/submit 短时不一致
-            noLeaveBypassUntilMap.put(userId, System.currentTimeMillis() + 30_000L);
-            log.debug("[扫码·登记] id={} 离开状态自愈（官方待离不一致）", userId);
-            return true;
+            // 复核官方待离：真无待离房间才自愈；仍在场（或查询失败）则如实失败，杜绝"假离开"
+            List<Map<String, Object>> noLeaveRooms = aroService.getNoLeaveRoom(userId);
+            if (noLeaveRooms != null && noLeaveRooms.isEmpty()) {
+                noLeaveBypassUntilMap.put(userId, System.currentTimeMillis() + 30_000L);
+                log.debug("[扫码·登记] id={} 离开状态自愈（官方确认已无待离房间）", userId);
+                return true;
+            }
+            return false;
         }
         if (success && accessType == 1) {
             // ENTER 成功后必须立刻取消旧的自愈放行，避免状态卡在 OUTSIDE

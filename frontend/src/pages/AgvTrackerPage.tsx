@@ -5,6 +5,7 @@ import { useSpatialElements, useRouteTopology, buildTopologyOverlays, useGenerat
 import { useAgvTrailRef } from "@/features/agv-tracker/useAgvTrailRef";
 import { smartSampleTrail, type TrailPoint } from "@/features/agv-tracker/agvAnalytics";
 import { AGV_ZONE_MAP } from "@/features/agv-tracker/zoneGrouping";
+import { AGV_ROBOTS } from "@/features/agv-tracker/agvRobotConfig";
 import { useAgvTagManagement } from "@/features/agv-tracker/useAgvTagManagement";
 import { useAgvPickMode } from "@/features/agv-tracker/useAgvPickMode";
 import { useAgvPlayback } from "@/features/agv-tracker/useAgvPlayback";
@@ -21,12 +22,7 @@ import AgvTagFilterBar from "@/features/agv-tracker/AgvTagFilterBar";
 import AgvPickModeBar from "@/features/agv-tracker/AgvPickModeBar";
 import AgvZonePopover from "@/features/agv-tracker/AgvZonePopover";
 
-const ROBOTS = [
-  { ip: "172.22.159.16", label: "AGV-1", color: "#3b82f6" },
-  { ip: "172.22.159.18", label: "AGV-2", color: "#22c55e" },
-  { ip: "172.22.159.20", label: "AGV-3", color: "#f59e0b" },
-  { ip: "172.22.159.22", label: "AGV-4", color: "#8b5cf6" },
-];
+const ROBOTS = AGV_ROBOTS;
 
 function smartSample(points: { x: number; y: number; angle: number; ts: number }[]): typeof points {
   return smartSampleTrail(points);
@@ -83,6 +79,7 @@ function useTrailSeed(seed: (ip: string, points: TrailPoint[]) => void, getTrail
 export default function AgvTrackerPage() {
   // ── View mode ──
   const [focusedAgvIp, setFocusedAgvIp] = useState<string | null>(null);
+  const [selectedZone, setSelectedZone] = useState<"zone1" | "zone2">("zone1");
   const [tagControlIp, setTagControlIp] = useState(ROBOTS[0].ip);
 
   // ── UI toggles ──
@@ -232,6 +229,7 @@ export default function AgvTrackerPage() {
       <AgvSidebar
         serverTime={data?.server_time ?? null}
         focusedAgvIp={focusedAgvIp} onFocusedAgvIpChange={setFocusedAgvIp}
+        selectedZone={selectedZone} onSelectedZoneChange={setSelectedZone}
         analysisOpen={analysisOpen} onAnalysisToggle={() => setAnalysisOpen(v => !v)}
         showZones={showZones} onToggleZones={() => setShowZones(v => !v)}
         routeMode={routeMode} onToggleRouteMode={() => setRouteMode(v => !v)}
@@ -250,21 +248,23 @@ export default function AgvTrackerPage() {
         onResetCoordZero={handleResetCoordZero} coordPresetSaved={coordPresetSaved}
       />
 
-      {/* Main content: overview grid or focused single panel */}
+      {/* Main content: single-zone full-screen or focused single car */}
       {focusedAgvIp === null ? (
-        <div className="flex-1 grid grid-cols-2 gap-2 p-2">
-          {[[0, 1], [2, 3]].map(([ai, bi], qi) => {
-            const infoA = info(ROBOTS[ai]), infoB = info(ROBOTS[bi]);
-            return (
-              <AgvDualQuadrant key={`${ai}-${bi}`}
-                agvA={infoA} agvB={infoB}
+        (() => {
+          const zoneIndices = selectedZone === "zone1" ? [0, 1, 4, 5] : [2, 3];
+          const qi = selectedZone === "zone1" ? 0 : 1;
+          const infos = zoneIndices.map(i => info(ROBOTS[i]));
+          const pairIps = new Set(zoneIndices.map(i => ROBOTS[i].ip));
+          return (
+            <div className="flex-1 min-h-0 p-2">
+              <AgvDualQuadrant
+                agvs={infos}
                 zoneOverlays={showZones ? pairZoneOverlays[qi] : []}
-                routeOverlaysA={routeMode ? routeOverlays.filter(ro => ro.robotIp === ROBOTS[ai].ip) : []}
-                routeOverlaysB={routeMode ? routeOverlays.filter(ro => ro.robotIp === ROBOTS[bi].ip) : []}
+                routeOverlays={routeMode ? routeOverlays.filter(ro => pairIps.has(ro.robotIp)) : []}
                 routeMode={routeMode} vehicleIcon={vehicleIcon} hiddenAgvs={hiddenAgvs}
                 pickMode={pickMode} pickTwoPoint={pickTwoPoint} pickAnchor={pickAnchor}
-                onPointPick={(x, y) => { pickZoneRef.current = qi === 0 ? "zone1" : "zone2"; handlePointPicked(x, y); }}
-                onRectDrawn={(x1, y1, x2, y2) => { pickZoneRef.current = qi === 0 ? "zone1" : "zone2"; handleRectDrawn(x1, y1, x2, y2); }}
+                onPointPick={(x, y) => { pickZoneRef.current = selectedZone; handlePointPicked(x, y); }}
+                onRectDrawn={(x1, y1, x2, y2) => { pickZoneRef.current = selectedZone; handleRectDrawn(x1, y1, x2, y2); }}
                 onZoneClick={handleZoneClick}
                 coordEditMode={coordEditMode} zoneEditMode={zoneEditMode}
                 selectedZoneId={selectedZoneId} onZoneSelect={setSelectedZoneId}
@@ -272,9 +272,9 @@ export default function AgvTrackerPage() {
                 onCoordFrameMove={handleCoordFrameMove} onCoordFrameScale={handleCoordFrameScale}
                 onCoordFrameRotate={handleCoordFrameRotate}
               />
-            );
-          })}
-        </div>
+            </div>
+          );
+        })()
       ) : (
         <div className="flex-1 min-h-0 p-2">
           {quadrant(ROBOTS.find(r => r.ip === focusedAgvIp) || ROBOTS[0])}

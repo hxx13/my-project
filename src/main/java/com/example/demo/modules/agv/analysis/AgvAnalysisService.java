@@ -29,7 +29,8 @@ public class AgvAnalysisService {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private static final String[] ROBOT_IPS = {
-        "172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22"
+        "172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22",
+        "172.22.159.113", "172.22.159.115"
     };
 
     /** 窗口超过此小时数自动降采样，避免全量分析超时 */

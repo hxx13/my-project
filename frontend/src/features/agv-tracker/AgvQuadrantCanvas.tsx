@@ -2,6 +2,7 @@ import { useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react"
 import type { TrailPoint } from "./useAgvTrailRef";
 import type { AgvTrajectoryRow, HistoryPlaybackResponse } from "@/api/domains/agv.api";
 import { ACTIVITY_COLORS } from "@/api/domains/agv-analysis.api";
+import { getAgvLabel } from "@/features/agv-tracker/agvRobotConfig";
 
 interface ActivitySegment {
   startTime: string; endTime: string; activityType: string;
@@ -845,7 +846,7 @@ const containerRef = useRef<HTMLDivElement>(null);
       ctx.fillStyle = color;
       ctx.font = "bold 9px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(ip.endsWith(".16") ? "AGV-1" : ip.endsWith(".18") ? "AGV-2" : ip.endsWith(".20") ? "AGV-3" : "AGV-4", cxBox, corners[1] - 8);
+      ctx.fillText(getAgvLabel(ip), cxBox, corners[1] - 8);
     }
 
     // Current position arrow (interpolated for smooth movement, or playback position)

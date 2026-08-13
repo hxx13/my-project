@@ -37,7 +37,7 @@ public interface DahuaSwingMapper {
     /** INSERT IGNORE：新记录写入，已存在则跳过（不覆盖），专供拉取路径纯入库使用 */
     int insertRecord(DahuaSwingRecord record);
 
-    /** 查窗口内待规则引擎处理的记录：指定通道 + mappingHit=1 + openResult=1 + 未被处理过，按 swing_time ASC */
+    /** 查窗口内待规则引擎处理的记录：指定通道 + mappingHit=1 + openType=51 + 未被处理过，按 swing_time ASC */
     List<DahuaSwingRecord> findRuleEngineCandidates(
             @Param("channelCodes") List<String> channelCodes,
             @Param("startTime") String startTime,

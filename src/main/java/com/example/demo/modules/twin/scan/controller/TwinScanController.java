@@ -296,22 +296,21 @@ public class TwinScanController {
                 return Result.success(result);
             }
 
-            // 离开(accessType=2)：倒计时进行中禁止手动签退，必须等门禁联动计时器到期自动执行
+            // 方向化重构后：签退倒计时期间允许手动强制离开（打断倒计时立即签退），移除原倒计时拦截
+
+            // 离开前先解析官方正确房间号：避免 roomId 为空/过期导致 ARO 误报「无房间需要离开」
+            String effectiveRoomId = roomId;
             if (accessType == 2) {
-                String countdownExitAt = dahuaSwingRuleEngineService.getActiveCountdownExitAt(userId);
-                if (countdownExitAt != null) {
-                    result.setSuccess(false);
-                    result.setMessage("门禁联动倒计时进行中（预计签退时间：" + countdownExitAt
-                            + "），请等待倒计时结束后系统将自动签退，无需手动操作。");
-                    flowLog.fail("倒计时未结束");
-                    return Result.success(result);
+                String resolved = resolveOfficialRoomIdFromAro(userId, roomId, roomName);
+                if (resolved != null && !resolved.isBlank()) {
+                    effectiveRoomId = resolved;
                 }
             }
 
             // =================================================================
             // 💥 第一关：ARO 官方登记 + 预同步本地流水 + 经验值计算（全部在 executeAccessAction 内完成）
             // =================================================================
-            boolean aroSuccess = twinScanService.executeAccessAction(userId, roomId, accessType, isSharedCard, isKeepCard, dahuaSeq, isBorrowedCard);
+            boolean aroSuccess = twinScanService.executeAccessAction(userId, effectiveRoomId, accessType, isSharedCard, isKeepCard, dahuaSeq, isBorrowedCard);
             boolean healedNoLeaveConflict = (accessType == 2 && aroService.isNoLeaveRoomError());
 
             if (!aroSuccess) {
@@ -348,10 +347,6 @@ public class TwinScanController {
                 }
             }
 
-            String effectiveRoomId = roomId;
-            if (accessType == 2 && (effectiveRoomId == null || effectiveRoomId.isBlank())) {
-                effectiveRoomId = resolveOfficialRoomIdFromAro(userId, roomId, roomName);
-            }
             // 长期保管卡豁免必须先于门禁派发/待激活计时：否则先起算待激活再写豁免，会出现「库里有待激活行但人已是豁免」的短暂不一致
             if (isKeepCard && physicalCardNo != null) {
                 twinCardMappingService.updateExemptFlagByUserId(userId, 1, ExemptChangeContext.keepCard());

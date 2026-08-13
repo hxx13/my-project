@@ -3,7 +3,6 @@ import { Database, Plus, Play, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminButton } from "@/components/admin/AdminButton";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
 import {
   defaultBackfillForm,
   defaultDailyForm,
@@ -130,8 +129,8 @@ export function DahuaSwingStatsAuditPanel() {
   };
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-slate-500">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <p className="shrink-0 text-sm text-slate-500">
         <strong>日批</strong>：在{" "}
         <a href="#/console/admin/schedule-manager" className="text-indigo-700 underline">
           定时管理
@@ -139,7 +138,7 @@ export function DahuaSwingStatsAuditPanel() {
         配置「审计门禁·每日到点」后，每天自动拉取<strong>上一自然日</strong>在任务内配置的刷卡时刻段。
         </p>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         {(
           [
             ["all", "全部"],
@@ -170,7 +169,7 @@ export function DahuaSwingStatsAuditPanel() {
       </div>
 
       {health && health.failed > 0 ? (
-        <div className="mb-3 flex items-center justify-between rounded-lg border border-red-300 bg-red-50 px-4 py-3">
+        <div className="mb-3 flex shrink-0 items-center justify-between rounded-lg border border-red-300 bg-red-50 px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-red-800">
               ⚠️ {health.failed} 个任务执行失败 · {health.ok} 个正常 · {health.neverRun} 个未运行
@@ -190,7 +189,8 @@ export function DahuaSwingStatsAuditPanel() {
         </div>
       ) : null}
 
-      <AdminDataTableWrap scrollable>
+      <div className="min-h-0 flex-1">
+        <div className="admin-data-table-wrap h-full overflow-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
         <table className="w-full min-w-[720px] text-xs">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
@@ -328,7 +328,8 @@ export function DahuaSwingStatsAuditPanel() {
             )}
           </tbody>
         </table>
-      </AdminDataTableWrap>
+        </div>
+      </div>
 
       <StatsTaskEditDrawer open={drawerOpen} onOpenChange={setDrawerOpen} ed={ed} mode={drawerMode} />
     </div>

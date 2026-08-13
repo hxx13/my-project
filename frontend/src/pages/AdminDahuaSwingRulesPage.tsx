@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { getDahuaSwingRuleConfig, saveDahuaSwingRuleConfig, type DahuaSwingRuleConfig } from "@/api/domains/dahuaSwing.api";
 import { fetchDahuaDeviceChannels, type DahuaDeviceChannelRow } from "@/api/twinApi";
 import { normalizeChannelCode, resolveChannelLabelsByCodes } from "@/utils/dahuaChannelUtils";
@@ -13,13 +13,14 @@ type RuleForm = {
   scanPopupEntryWindowEnabled: boolean;
   scanPopupEntryWindows: TimeBand[];
   scanLeaveDahuaDeferSeconds: number;
-  exitChannelCodes: string[];
-  toggleChannelCodes: string[];
-  activatedReswipeExitChannelCodes: string[];
-  autoRiskActionEnabled: boolean;
+  // 签退规则
+  signoffChannelCodes: string[];
   autoExitDelaySeconds: number;
-  enterDebounceSeconds: number;
+  // 激活规则
+  enterActivationChannelCodes: string[];
+  directionAgnosticActivationChannelCodes: string[];
   activationExpireSeconds: number;
+  autoRiskActionEnabled: boolean;
   requireOtherRoomSuccess: boolean;
   otherRoomWithinSeconds: number;
 };
@@ -28,19 +29,24 @@ const defaultForm = (): RuleForm => ({
   scanPopupEntryWindowEnabled: false,
   scanPopupEntryWindows: [{ startHm: "09:00", endHm: "18:00" }],
   scanLeaveDahuaDeferSeconds: 0,
-  exitChannelCodes: [],
-  toggleChannelCodes: [],
-  activatedReswipeExitChannelCodes: [],
-  autoRiskActionEnabled: true,
+  signoffChannelCodes: [],
   autoExitDelaySeconds: 10,
-  enterDebounceSeconds: 30,
+  enterActivationChannelCodes: [],
+  directionAgnosticActivationChannelCodes: [],
   activationExpireSeconds: 120,
+  autoRiskActionEnabled: true,
   requireOtherRoomSuccess: true,
   otherRoomWithinSeconds: 120,
 });
 
+function strList(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((x) => normalizeChannelCode(String(x))).filter(Boolean);
+}
+
 function cfgToForm(cfg: any): RuleForm {
   if (!cfg) return defaultForm();
+  const signoff = new Set([...strList(cfg.exitChannelCodes), ...strList(cfg.activatedReswipeExitChannelCodes)]);
   return {
     scanPopupEntryWindowEnabled: Boolean(cfg.scanPopupEntryWindowEnabled),
     scanPopupEntryWindows: (() => {
@@ -54,19 +60,12 @@ function cfgToForm(cfg: any): RuleForm {
       return mapped.length > 0 ? mapped : defaultForm().scanPopupEntryWindows;
     })(),
     scanLeaveDahuaDeferSeconds: Math.max(0, Math.min(3600, Number(cfg.scanLeaveDahuaDeferSeconds ?? 0))),
-    exitChannelCodes: Array.isArray(cfg.exitChannelCodes)
-      ? cfg.exitChannelCodes.map((x: string) => normalizeChannelCode(x)).filter(Boolean)
-      : [],
-    toggleChannelCodes: Array.isArray(cfg.toggleChannelCodes)
-      ? cfg.toggleChannelCodes.map((x: string) => normalizeChannelCode(x)).filter(Boolean)
-      : [],
-    activatedReswipeExitChannelCodes: Array.isArray(cfg.activatedReswipeExitChannelCodes)
-      ? cfg.activatedReswipeExitChannelCodes.map((x: string) => normalizeChannelCode(x)).filter(Boolean)
-      : [],
-    autoRiskActionEnabled: Boolean(cfg.autoRiskActionEnabled ?? true),
+    signoffChannelCodes: Array.from(signoff),
     autoExitDelaySeconds: Number(cfg.autoExitDelaySeconds || 10),
-    enterDebounceSeconds: Number(cfg.enterDebounceSeconds || 30),
+    enterActivationChannelCodes: strList(cfg.toggleChannelCodes),
+    directionAgnosticActivationChannelCodes: strList(cfg.directionAgnosticActivationChannelCodes),
     activationExpireSeconds: Number(cfg.activationExpireSeconds || 120),
+    autoRiskActionEnabled: Boolean(cfg.autoRiskActionEnabled ?? true),
     requireOtherRoomSuccess: Boolean(cfg.requireOtherRoomSuccess ?? true),
     otherRoomWithinSeconds: Number(cfg.otherRoomWithinSeconds || 120),
   };
@@ -79,20 +78,98 @@ function formToApi(form: RuleForm): DahuaSwingRuleConfig {
     scanPopupEntryWindowEnabled: form.scanPopupEntryWindowEnabled,
     scanPopupEntryWindows: form.scanPopupEntryWindows,
     scanLeaveDahuaDeferSeconds: form.scanLeaveDahuaDeferSeconds,
-    exitChannelCodes: form.exitChannelCodes.map(normalizeChannelCode).filter(Boolean),
-    toggleChannelCodes: form.toggleChannelCodes.map(normalizeChannelCode).filter(Boolean),
-    activatedReswipeExitChannelCodes: form.activatedReswipeExitChannelCodes.map(normalizeChannelCode).filter(Boolean),
+    // 签退门合并写入 exitChannelCodes；activatedReswipeExitChannelCodes 已并入，置空
+    exitChannelCodes: form.signoffChannelCodes.map(normalizeChannelCode).filter(Boolean),
+    activatedReswipeExitChannelCodes: [],
+    toggleChannelCodes: form.enterActivationChannelCodes.map(normalizeChannelCode).filter(Boolean),
+    directionAgnosticActivationChannelCodes: form.directionAgnosticActivationChannelCodes.map(normalizeChannelCode).filter(Boolean),
     autoRiskActionEnabled: form.autoRiskActionEnabled,
     autoExitDelaySeconds: form.autoExitDelaySeconds,
-    enterDebounceSeconds: form.enterDebounceSeconds,
     activationExpireSeconds: form.activationExpireSeconds,
     requireOtherRoomSuccess: form.requireOtherRoomSuccess,
     otherRoomWithinSeconds: form.otherRoomWithinSeconds,
   };
 }
 
+function ChannelListPicker(props: {
+  title: string;
+  hint?: string;
+  options: DahuaDeviceChannelRow[];
+  selected: string[];
+  onToggle: (code: string, checked: boolean) => void;
+  nameByCode: Map<string, string>;
+  idPrefix: string;
+}) {
+  const { title, hint, options, selected, onToggle, nameByCode, idPrefix } = props;
+  const [availKeyword, setAvailKeyword] = useState("");
+  const [pickedKeyword, setPickedKeyword] = useState("");
+  const pickedCodes = selected.map(normalizeChannelCode).filter(Boolean);
+
+  const matches = (code: string, name: string, kw: string) => {
+    if (!kw) return true;
+    return code.toLowerCase().includes(kw) || name.toLowerCase().includes(kw);
+  };
+
+  const available = options.filter((ch) => {
+    const code = normalizeChannelCode(ch.channelCode);
+    if (!code) return false;
+    if (pickedCodes.includes(code)) return false;
+    return matches(code, (ch.channelName || "").trim(), availKeyword.trim().toLowerCase());
+  });
+
+  const picked = pickedCodes.filter((code) =>
+    matches(code, nameByCode.get(code) || "", pickedKeyword.trim().toLowerCase())
+  );
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
+      <div className="shrink-0 text-sm text-[var(--twin-body)]">{title}</div>
+      {hint ? <p className="shrink-0 text-xs text-[var(--twin-mute)]">{hint}</p> : null}
+      <div className="flex min-h-0 flex-1 gap-2">
+        {/* 左侧：可选通道 */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
+          <div className="shrink-0 text-xs text-[var(--twin-mute)]">可选通道</div>
+          <input className="h-8 w-full shrink-0 rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" placeholder="搜索可选门" value={availKeyword} onChange={(e) => setAvailKeyword(e.target.value)} />
+          <div className="min-h-0 flex-1 overflow-auto rounded border border-[var(--twin-hairline)] p-1">
+            {available.length === 0 ? (
+              <div className="p-2 text-center text-xs text-[var(--twin-mute)]">无可选通道</div>
+            ) : available.map((ch) => {
+              const code = normalizeChannelCode(ch.channelCode);
+              if (!code) return null;
+              const name = (ch.channelName || "未命名通道") + " / " + code;
+              return (
+                <button key={`${idPrefix}-avail-${ch.id}`} type="button" onClick={() => onToggle(code, true)} className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">
+                  <span className="shrink-0 font-bold text-indigo-600">＋</span>
+                  <span className="truncate">{name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {/* 右侧：已选通道 */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
+          <div className="shrink-0 text-xs text-[var(--twin-mute)]">已选通道（{picked.length}）</div>
+          <input className="h-8 w-full shrink-0 rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" placeholder="搜索已选门" value={pickedKeyword} onChange={(e) => setPickedKeyword(e.target.value)} />
+          <div className="min-h-0 flex-1 overflow-auto rounded border border-[var(--twin-hairline)] p-1">
+            {picked.length === 0 ? (
+              <div className="p-2 text-center text-xs text-[var(--twin-mute)]">尚未选择通道</div>
+            ) : picked.map((code) => {
+              const name = nameByCode.get(code) || `未命名 / ${code}`;
+              return (
+                <button key={`${idPrefix}-picked-${code}`} type="button" onClick={() => onToggle(code, false)} className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">
+                  <span className="shrink-0 font-bold text-red-500">×</span>
+                  <span className="truncate">{name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDahuaSwingRulesPage() {
-  const queryClient = useQueryClient();
   const { data: configData, isLoading } = useQuery({
     queryKey: RULE_CONFIG_QUERY_KEY,
     queryFn: getDahuaSwingRuleConfig,
@@ -100,14 +177,15 @@ export default function AdminDahuaSwingRulesPage() {
 
   const [form, setForm] = useState<RuleForm>(defaultForm());
   const [channelOptions, setChannelOptions] = useState<DahuaDeviceChannelRow[]>([]);
-  const [exitChannelKeyword, setExitChannelKeyword] = useState("");
-  const [toggleChannelKeyword, setToggleChannelKeyword] = useState("");
-  const [activatedReswipeExitKeyword, setActivatedReswipeExitKeyword] = useState("");
   const [channelLabelExtra, setChannelLabelExtra] = useState<Record<string, string>>({});
+  /** 最近一次已持久化的完整配置快照：分区保存时用其补齐另一分区，避免互相覆盖 */
+  const savedRef = useRef<RuleForm>(defaultForm());
 
   useEffect(() => {
     if (configData) {
-      setForm(cfgToForm(configData));
+      const next = cfgToForm(configData);
+      setForm(next);
+      savedRef.current = next;
     }
   }, [configData]);
 
@@ -138,9 +216,9 @@ export default function AdminDahuaSwingRulesPage() {
   useEffect(() => {
     void (async () => {
       const all = [
-        ...form.exitChannelCodes,
-        ...form.toggleChannelCodes,
-        ...form.activatedReswipeExitChannelCodes,
+        ...form.signoffChannelCodes,
+        ...form.enterActivationChannelCodes,
+        ...form.directionAgnosticActivationChannelCodes,
       ]
         .map(normalizeChannelCode)
         .filter(Boolean);
@@ -152,21 +230,44 @@ export default function AdminDahuaSwingRulesPage() {
       const resolved = await resolveChannelLabelsByCodes(need, fetchDahuaDeviceChannels);
       setChannelLabelExtra((prev) => ({ ...prev, ...resolved }));
     })();
-  }, [form.exitChannelCodes, form.toggleChannelCodes, form.activatedReswipeExitChannelCodes, channelOptions]);
+  }, [form.signoffChannelCodes, form.enterActivationChannelCodes, form.directionAgnosticActivationChannelCodes, channelOptions]);
 
-  const save = async () => {
+  /** 分区保存：以持久化快照补齐另一分区，仅落库本次分区的改动 */
+  const persist = async (patch: Partial<RuleForm>, successMsg: string) => {
+    const merged = { ...savedRef.current, ...patch };
     try {
-      const payload = formToApi(form);
-      const saved = await saveDahuaSwingRuleConfig(payload);
-      const next = saved ?? payload;
-      // 保存后仅合并 query 缓存，禁止整页 load；post-save-no-full-refresh.mdc
-      queryClient.setQueryData(RULE_CONFIG_QUERY_KEY, next);
-      setForm(cfgToForm(next));
-      toast.success("联动规则保存成功");
+      const saved = await saveDahuaSwingRuleConfig(formToApi(merged));
+      savedRef.current = cfgToForm(saved ?? formToApi(merged));
+      toast.success(successMsg);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "联动规则保存失败");
+      toast.error(e instanceof Error ? e.message : "保存失败");
     }
   };
+
+  const saveScanPopupModule = () =>
+    persist(
+      {
+        scanPopupEntryWindowEnabled: form.scanPopupEntryWindowEnabled,
+        scanPopupEntryWindows: form.scanPopupEntryWindows,
+        scanLeaveDahuaDeferSeconds: form.scanLeaveDahuaDeferSeconds,
+      },
+      "扫码弹窗配置保存成功"
+    );
+
+  const saveSwingRuleModule = () =>
+    persist(
+      {
+        signoffChannelCodes: form.signoffChannelCodes,
+        autoExitDelaySeconds: form.autoExitDelaySeconds,
+        enterActivationChannelCodes: form.enterActivationChannelCodes,
+        directionAgnosticActivationChannelCodes: form.directionAgnosticActivationChannelCodes,
+        activationExpireSeconds: form.activationExpireSeconds,
+        autoRiskActionEnabled: form.autoRiskActionEnabled,
+        requireOtherRoomSuccess: form.requireOtherRoomSuccess,
+        otherRoomWithinSeconds: form.otherRoomWithinSeconds,
+      },
+      "门禁联动规则保存成功"
+    );
 
   const channelNameByCode = useMemo(() => {
     const m = new Map<string, string>();
@@ -182,13 +283,22 @@ export default function AdminDahuaSwingRulesPage() {
     return m;
   }, [channelOptions, channelLabelExtra]);
 
+  const toggleList = (field: "signoffChannelCodes" | "enterActivationChannelCodes" | "directionAgnosticActivationChannelCodes") =>
+    (code: string, checked: boolean) =>
+      setForm((p) => ({
+        ...p,
+        [field]: checked
+          ? Array.from(new Set([...p[field].map(normalizeChannelCode).filter(Boolean), code]))
+          : p[field].filter((c) => normalizeChannelCode(c) !== code),
+      }));
+
   if (isLoading) {
     return <div className="p-6"><DataSkeleton variant="form" rows={4} /></div>;
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 space-y-3 shadow-twin-level-2">
+    <div className="flex flex-col gap-4 max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+      <div className="shrink-0 rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 space-y-3 shadow-twin-level-2">
         <h2 className="text-base font-semibold text-[var(--twin-ink)]">Web 扫码弹窗与离开联动</h2>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded border border-[var(--twin-hairline)] p-2 space-y-2">
@@ -285,11 +395,16 @@ export default function AdminDahuaSwingRulesPage() {
             </div>
           </div>
         </div>
+        <div className="flex justify-end">
+          <button type="button" className="h-8 rounded border border-[var(--twin-hairline)] px-3 text-xs text-[var(--twin-body)]" onClick={() => void saveScanPopupModule()}>
+            保存扫码弹窗配置
+          </button>
+        </div>
       </div>
 
-      <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 space-y-2 shadow-twin-level-2">
-        <h2 className="text-base font-semibold text-[var(--twin-ink)]">门禁联动规则</h2>
-        <div className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2">
+      <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 shadow-twin-level-2 flex min-h-0 flex-1 flex-col gap-2">
+        <h2 className="shrink-0 text-base font-semibold text-[var(--twin-ink)]">门禁联动规则</h2>
+        <div className="shrink-0 rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2">
           <label className="flex items-center gap-2 cursor-pointer text-sm text-[var(--twin-ink)]">
             <AdminSwitchScaled
               size="sm"
@@ -299,183 +414,56 @@ export default function AdminDahuaSwingRulesPage() {
             <span>自动签退后续联动（大华 revoke + 卡片冻结）</span>
           </label>
         </div>
-        <div className="grid gap-2 xl:grid-cols-3">
-          <div className="rounded border border-[var(--twin-hairline)] p-2 space-y-2 flex flex-col h-full">
-            <div className="text-sm font-semibold text-[var(--twin-ink)]">刷门即签退规则</div>
-            <div className="space-y-1.5 text-sm flex-1 flex flex-col">
-              <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[var(--twin-body)]">签退延时(秒)</span>
-                <input className="h-8 flex-1 rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" type="number" value={form.autoExitDelaySeconds} onChange={(e) => setForm((p) => ({ ...p, autoExitDelaySeconds: Math.max(1, Number(e.target.value || 10)) }))} />
-              </div>
-              <div className="space-y-1 flex-1 flex flex-col">
-                <div className="text-sm text-[var(--twin-body)]">触发门组</div>
-                <input className="h-8 w-full rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" placeholder="搜索门名称/编码" value={exitChannelKeyword} onChange={(e) => setExitChannelKeyword(e.target.value)} />
-                <div className="h-full min-h-[180px] max-h-[300px] overflow-auto rounded border border-[var(--twin-hairline)] p-1">
-                  {channelOptions.filter((ch) => {
-                    const code = normalizeChannelCode(ch.channelCode);
-                    const name = (ch.channelName || "").trim();
-                    const kw = exitChannelKeyword.trim().toLowerCase();
-                    if (!kw) return !!code;
-                    return code.toLowerCase().includes(kw) || name.toLowerCase().includes(kw);
-                  }).map((ch) => {
-                    const code = normalizeChannelCode(ch.channelCode);
-                    if (!code) return null;
-                    const checked = form.exitChannelCodes.includes(code);
-                    return (
-                      <label key={`exit-${ch.id}`} className="flex items-center gap-2 text-xs">
-                        <AdminSwitchScaled
-                          size="3.5"
-                          checked={checked}
-                          onChange={(nextChecked) =>
-                            setForm((p) => ({
-                              ...p,
-                              exitChannelCodes: nextChecked
-                                ? Array.from(new Set([...p.exitChannelCodes.map(normalizeChannelCode).filter(Boolean), code]))
-                                : p.exitChannelCodes.filter((c) => normalizeChannelCode(c) !== code),
-                            }))
-                          }
-                        />
-                        <span>{(ch.channelName || "未命名通道") + " / " + code}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                {form.exitChannelCodes.length > 0 && (
-                  <div className="flex flex-wrap gap-1 rounded border border-[var(--twin-hairline)] p-1">
-                    {form.exitChannelCodes.map((code) => {
-                      const k = normalizeChannelCode(code);
-                      const name = channelNameByCode.get(k) || `未命名 / ${k}`;
-                      return (
-                        <span key={`exit-picked-${k}`} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-700">
-                          {name}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+        {/* 主体三等分：激活规则占左 2/3，签退规则占右 1/3 */}
+        <div className="flex min-h-0 flex-1 gap-2">
+          <div className="flex min-h-0 min-w-0 flex-[2] flex-col gap-2 rounded border border-[var(--twin-hairline)] p-2">
+            <div className="shrink-0 text-sm font-semibold text-[var(--twin-ink)]">激活规则</div>
+            <div className="flex shrink-0 items-center gap-2 text-sm">
+              <span className="w-24 shrink-0 text-[var(--twin-body)]">激活超时(秒)</span>
+              <input className="h-8 flex-1 rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" type="number" value={form.activationExpireSeconds} onChange={(e) => setForm((p) => ({ ...p, activationExpireSeconds: Math.max(1, Number(e.target.value || 120)) }))} />
+            </div>
+            <div className="flex min-h-0 flex-1 gap-2">
+              <ChannelListPicker
+                title="进入方向激活门"
+                hint="进门方向（enterOrExit=1）才触发激活"
+                options={channelOptions}
+                selected={form.enterActivationChannelCodes}
+                onToggle={toggleList("enterActivationChannelCodes")}
+                nameByCode={channelNameByCode}
+                idPrefix="enter-activation"
+              />
+              <ChannelListPicker
+                title="方向无关激活门"
+                hint="不看进出方向（1/2/null 都算），用于方向不可靠或双向均算在场的门；不可与签退门重复"
+                options={channelOptions}
+                selected={form.directionAgnosticActivationChannelCodes}
+                onToggle={toggleList("directionAgnosticActivationChannelCodes")}
+                nameByCode={channelNameByCode}
+                idPrefix="agnostic-activation"
+              />
             </div>
           </div>
 
-          <div className="rounded border border-[var(--twin-hairline)] p-2 space-y-2 flex flex-col">
-            <div className="text-sm font-semibold text-[var(--twin-ink)]">激活卡片规则</div>
-            <div className="space-y-1.5 text-sm flex-1 flex flex-col">
-              <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[var(--twin-body)]">进入防抖(秒)</span>
-                <input className="h-8 flex-1 rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" type="number" value={form.enterDebounceSeconds} onChange={(e) => setForm((p) => ({ ...p, enterDebounceSeconds: Math.max(0, Number(e.target.value || 0)) }))} />
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-[var(--twin-body)]">激活超时(秒)</span>
-                  <input className="h-8 flex-1 rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" type="number" value={form.activationExpireSeconds} onChange={(e) => setForm((p) => ({ ...p, activationExpireSeconds: Math.max(1, Number(e.target.value || 120)) }))} />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <div className="text-sm text-[var(--twin-body)]">触发门组</div>
-                <input className="h-8 w-full rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" placeholder="搜索门名称/编码" value={toggleChannelKeyword} onChange={(e) => setToggleChannelKeyword(e.target.value)} />
-                <div className="h-[180px] max-h-[180px] overflow-auto rounded border border-[var(--twin-hairline)] p-1">
-                  {channelOptions.filter((ch) => {
-                    const code = normalizeChannelCode(ch.channelCode);
-                    const name = (ch.channelName || "").trim();
-                    const kw = toggleChannelKeyword.trim().toLowerCase();
-                    if (!kw) return !!code;
-                    return code.toLowerCase().includes(kw) || name.toLowerCase().includes(kw);
-                  }).map((ch) => {
-                    const code = normalizeChannelCode(ch.channelCode);
-                    if (!code) return null;
-                    const checked = form.toggleChannelCodes.includes(code);
-                    return (
-                      <label key={`toggle-${ch.id}`} className="flex items-center gap-2 text-xs">
-                        <AdminSwitchScaled
-                          size="3.5"
-                          checked={checked}
-                          onChange={(nextChecked) =>
-                            setForm((p) => ({
-                              ...p,
-                              toggleChannelCodes: nextChecked
-                                ? Array.from(new Set([...p.toggleChannelCodes.map(normalizeChannelCode).filter(Boolean), code]))
-                                : p.toggleChannelCodes.filter((c) => normalizeChannelCode(c) !== code),
-                            }))
-                          }
-                        />
-                        <span>{(ch.channelName || "未命名通道") + " / " + code}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                {form.toggleChannelCodes.length > 0 && (
-                  <div className="flex flex-wrap gap-1 rounded border border-[var(--twin-hairline)] p-1">
-                    {form.toggleChannelCodes.map((code) => {
-                      const k = normalizeChannelCode(code);
-                      const name = channelNameByCode.get(k) || `未命名 / ${k}`;
-                      return (
-                        <span key={`toggle-picked-${k}`} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-700">
-                          {name}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 rounded border border-[var(--twin-hairline)] p-2">
+            <div className="shrink-0 text-sm font-semibold text-[var(--twin-ink)]">签退规则</div>
+            <div className="flex shrink-0 items-center gap-2 text-sm">
+              <span className="w-24 shrink-0 text-[var(--twin-body)]">签退延时(秒)</span>
+              <input className="h-8 flex-1 rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" type="number" value={form.autoExitDelaySeconds} onChange={(e) => setForm((p) => ({ ...p, autoExitDelaySeconds: Math.max(1, Number(e.target.value || 10)) }))} />
             </div>
-          </div>
-
-          <div className="rounded border border-[var(--twin-hairline)] p-2 space-y-2 flex flex-col">
-            <div className="text-sm font-semibold text-[var(--twin-ink)]">激活后再次刷门即签退规则</div>
-            <div className="space-y-1.5 text-sm flex-1 flex flex-col">
-              <div className="space-y-1">
-                <div className="text-sm text-[var(--twin-body)]">触发门组</div>
-                <input className="h-8 w-full rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" placeholder="搜索门名称/编码" value={activatedReswipeExitKeyword} onChange={(e) => setActivatedReswipeExitKeyword(e.target.value)} />
-                <div className="h-[180px] max-h-[180px] overflow-auto rounded border border-[var(--twin-hairline)] p-1">
-                  {channelOptions.filter((ch) => {
-                    const code = normalizeChannelCode(ch.channelCode);
-                    const name = (ch.channelName || "").trim();
-                    const kw = activatedReswipeExitKeyword.trim().toLowerCase();
-                    if (!kw) return !!code;
-                    return code.toLowerCase().includes(kw) || name.toLowerCase().includes(kw);
-                  }).map((ch) => {
-                    const code = normalizeChannelCode(ch.channelCode);
-                    if (!code) return null;
-                    const checked = form.activatedReswipeExitChannelCodes.includes(code);
-                    return (
-                      <label key={`activated-reswipe-exit-${ch.id}`} className="flex items-center gap-2 text-xs">
-                        <AdminSwitchScaled
-                          size="3.5"
-                          checked={checked}
-                          onChange={(nextChecked) =>
-                            setForm((p) => ({
-                              ...p,
-                              activatedReswipeExitChannelCodes: nextChecked
-                                ? Array.from(new Set([...p.activatedReswipeExitChannelCodes.map(normalizeChannelCode).filter(Boolean), code]))
-                                : p.activatedReswipeExitChannelCodes.filter((c) => normalizeChannelCode(c) !== code),
-                            }))
-                          }
-                        />
-                        <span>{(ch.channelName || "未命名通道") + " / " + code}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                {form.activatedReswipeExitChannelCodes.length > 0 && (
-                  <div className="flex flex-wrap gap-1 rounded border border-[var(--twin-hairline)] p-1">
-                    {form.activatedReswipeExitChannelCodes.map((code) => {
-                      const k = normalizeChannelCode(code);
-                      const name = channelNameByCode.get(k) || `未命名 / ${k}`;
-                      return (
-                        <span key={`activated-reswipe-picked-${k}`} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-700">
-                          {name}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
+            <ChannelListPicker
+              title="离开方向签退门"
+              hint="出门方向（enterOrExit=2）才触发签退"
+              options={channelOptions}
+              selected={form.signoffChannelCodes}
+              onToggle={toggleList("signoffChannelCodes")}
+              nameByCode={channelNameByCode}
+              idPrefix="signoff"
+            />
           </div>
         </div>
-        <div className="flex justify-end">
-          <button type="button" className="h-8 rounded border border-[var(--twin-hairline)] px-3 text-xs text-[var(--twin-body)]" onClick={() => void save()}>
-            保存联动规则
+        <div className="flex shrink-0 justify-end">
+          <button type="button" className="h-8 rounded border border-[var(--twin-hairline)] px-3 text-xs text-[var(--twin-body)]" onClick={() => void saveSwingRuleModule()}>
+            保存门禁联动规则
           </button>
         </div>
       </div>

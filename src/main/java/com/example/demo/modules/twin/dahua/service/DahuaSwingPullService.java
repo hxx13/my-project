@@ -248,7 +248,7 @@ public class DahuaSwingPullService {
             {
                 Map<String, Object> rules = dahuaSwingRuleEngineService.getConfigForDiagnostics();
                 Set<String> allRuleChannels = new java.util.LinkedHashSet<>();
-                for (String key : new String[]{"toggleChannelCodes", "exitChannelCodes", "activatedReswipeExitChannelCodes"}) {
+                for (String key : new String[]{"toggleChannelCodes", "exitChannelCodes", "activatedReswipeExitChannelCodes", "directionAgnosticActivationChannelCodes"}) {
                     Object v = rules.get(key);
                     if (v instanceof List<?> list) {
                         for (Object item : list) {
@@ -267,7 +267,7 @@ public class DahuaSwingPullService {
                     for (DahuaSwingRecord dbRecord : candidates) {
                         try {
                             if (Integer.valueOf(1).equals(dbRecord.getMappingHit())
-                                    && Integer.valueOf(1).equals(dbRecord.getOpenResult())) {
+                                    && Integer.valueOf(51).equals(dbRecord.getOpenType())) {
                                 dahuaSwingRuleEngineService.onRecordIngested(dbRecord);
                             }
                         } catch (Exception e) {

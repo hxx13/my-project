@@ -29,16 +29,7 @@ public final class TwinSwingLinkageDetailBuilder {
     }
 
     /**
-     * 已激活后，按配置宽限再次计时到期。
-     */
-    public static String activatedGraceTimerExpired(int graceSeconds, String scheduledExitAt) {
-        int sec = Math.max(1, graceSeconds);
-        String t = scheduledExitAt == null || scheduledExitAt.isBlank() ? "—" : scheduledExitAt.trim();
-        return "已激活宽限到期（" + sec + " 秒），「" + t + "」。";
-    }
-
-    /**
-     * 刷「离开门禁」或「激活后再次刷卡签退」后排队的延时签退到点触发。
+     * 刷「离开门禁」后排队的延时签退到点触发。
      */
     public static String swingExitDelayTimerFired(String doorLabel, String channelCode, int exitDelaySeconds, String scheduledExitAt) {
         String door = doorLabel == null || doorLabel.isBlank() ? "" : doorLabel.trim();

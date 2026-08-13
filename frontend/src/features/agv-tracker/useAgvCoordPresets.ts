@@ -1,13 +1,9 @@
 import { useState, useRef } from "react";
 import { type QueryClient } from "@tanstack/react-query";
 import { updateCoordConfig } from "@/api/domains/agv.api";
+import { AGV_ROBOTS, getAgvLabel } from "@/features/agv-tracker/agvRobotConfig";
 
-const ROBOTS = [
-  { ip: "172.22.159.16", label: "AGV-1", color: "#3b82f6" },
-  { ip: "172.22.159.18", label: "AGV-2", color: "#22c55e" },
-  { ip: "172.22.159.20", label: "AGV-3", color: "#f59e0b" },
-  { ip: "172.22.159.22", label: "AGV-4", color: "#8b5cf6" },
-];
+const ROBOTS = AGV_ROBOTS;
 
 export const COORD_PRESET_KEY = "agvCoordPreset";
 export const SCALE_KEY = "agvCoordScales";
@@ -97,15 +93,7 @@ export function useAgvCoordPresets(
       const oldOx = frame?.offsetX ?? 0;
       const oldOy = frame?.offsetY ?? 0;
       pushUndo(
-        `${
-          ip.endsWith(".16")
-            ? "AGV-1"
-            : ip.endsWith(".18")
-              ? "AGV-2"
-              : ip.endsWith(".20")
-                ? "AGV-3"
-                : "AGV-4"
-        } 参考系移动`,
+        `${getAgvLabel(ip)} 参考系移动`,
         async () => {
           qc.setQueryData(["agvCoordConfigs"], (old: any) => ({
             ...old,

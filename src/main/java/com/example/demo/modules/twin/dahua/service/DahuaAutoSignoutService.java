@@ -346,8 +346,7 @@ public class DahuaAutoSignoutService {
         }
         String u = reason.toUpperCase(Locale.ROOT);
         return "ACTIVATION_EXPIRE_AUTO_SIGNOUT".equals(u)
-                || "SWING_EXIT_DELAY_AUTO_SIGNOUT".equals(u)
-                || "ACTIVATED_SLA_EXPIRE_AUTO_SIGNOUT".equals(u);
+                || "SWING_EXIT_DELAY_AUTO_SIGNOUT".equals(u);
     }
 
     /**

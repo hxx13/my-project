@@ -2,13 +2,9 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAgvTrajectory, type AgvTrajectoryRow } from "@/api/domains/agv.api";
 import { X } from "lucide-react";
+import { AGV_ROBOTS } from "@/features/agv-tracker/agvRobotConfig";
 
-const TABS = [
-  { ip: "172.22.159.16", label: ".16" },
-  { ip: "172.22.159.18", label: ".18" },
-  { ip: "172.22.159.20", label: ".20" },
-  { ip: "172.22.159.22", label: ".22" },
-];
+const TABS = AGV_ROBOTS.map(r => ({ ip: r.ip, label: r.short }));
 
 interface Props {
   open: boolean;

@@ -5,7 +5,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class DahuaSwingRuleConfigService {
@@ -35,6 +38,7 @@ public class DahuaSwingRuleConfigService {
 
     public void saveConfig(Map<String, Object> config) {
         Map<String, Object> normalized = mergeDefault(config == null ? new HashMap<>() : config);
+        validateConfig(normalized);
         String json = JSON.toJSONString(normalized);
         int updated = jdbcTemplate.update(
                 "UPDATE twin_dahua_rule_config SET config_json = ?, updated_at = NOW() WHERE id = 1",
@@ -53,6 +57,8 @@ public class DahuaSwingRuleConfigService {
         m.put("exitChannelCodes", new java.util.ArrayList<>());
         m.put("toggleChannelCodes", new java.util.ArrayList<>());
         m.put("activatedReswipeExitChannelCodes", new java.util.ArrayList<>());
+        /** 方向无关激活门：不看 enterOrExit（1/2/null 都算），用于方向数据不可靠或双向均算在场的门 */
+        m.put("directionAgnosticActivationChannelCodes", new java.util.ArrayList<>());
         m.put("autoExitDelaySeconds", 10);
         m.put("enterDebounceSeconds", 30);
         /** 刷离开门/激活后签退门：防抖秒数，默认不低于 enterDebounce；可单独配置 exitDebounceSeconds */
@@ -76,6 +82,34 @@ public class DahuaSwingRuleConfigService {
     private Map<String, Object> mergeDefault(Map<String, Object> src) {
         Map<String, Object> out = defaultConfig();
         out.putAll(src);
+        return out;
+    }
+
+    /** 排斥校验：方向无关激活门不得与签退门（exitChannelCodes ∪ activatedReswipeExitChannelCodes）重叠 */
+    private void validateConfig(Map<String, Object> config) {
+        List<String> agnostic = strList(config.get("directionAgnosticActivationChannelCodes"));
+        Set<String> signoff = new LinkedHashSet<>();
+        signoff.addAll(strList(config.get("exitChannelCodes")));
+        signoff.addAll(strList(config.get("activatedReswipeExitChannelCodes")));
+        Set<String> overlap = new LinkedHashSet<>(agnostic);
+        overlap.retainAll(signoff);
+        if (!overlap.isEmpty()) {
+            throw new IllegalArgumentException("方向无关激活门不可与签退门重复：" + String.join(", ", overlap));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> strList(Object v) {
+        List<String> out = new java.util.ArrayList<>();
+        if (!(v instanceof List<?> list)) {
+            return out;
+        }
+        for (Object item : list) {
+            String s = item == null ? "" : String.valueOf(item).trim();
+            if (!s.isBlank()) {
+                out.add(s);
+            }
+        }
         return out;
     }
 }

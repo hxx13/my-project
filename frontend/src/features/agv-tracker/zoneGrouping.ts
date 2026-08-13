@@ -12,15 +12,9 @@
  *   3. 更新 AGV_ZONE_MAP 映射
  */
 
-export type ZoneGroup = "zone1" | "zone2";
-
-/** AGV IP → 所属区域组 */
-export const AGV_ZONE_MAP: Record<string, ZoneGroup> = {
-  "172.22.159.16": "zone1",
-  "172.22.159.18": "zone1",
-  "172.22.159.20": "zone2",
-  "172.22.159.22": "zone2",
-};
+import { AGV_ZONE_MAP, type ZoneGroup } from "./agvRobotConfig";
+export { AGV_ZONE_MAP };
+export type { ZoneGroup };
 
 /**
  * 根据站点编号前缀判定区域组。

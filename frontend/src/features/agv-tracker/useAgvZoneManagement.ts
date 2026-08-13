@@ -4,15 +4,11 @@ import {
   type AgvSpatialElement,
 } from "@/api/domains/agv-analysis.api";
 import { AGV_ZONE_MAP, resolveZoneGroup } from "@/features/agv-tracker/zoneGrouping";
+import { AGV_ROBOTS, getAgvRobotsByZone } from "@/features/agv-tracker/agvRobotConfig";
 import { makeRectPolygon } from "@/features/agv-tracker/AgvZonePanel";
 import { type CustomTag } from "@/features/agv-tracker/tagConfig";
 
-const ROBOTS = [
-  { ip: "172.22.159.16", label: "AGV-1", color: "#3b82f6" },
-  { ip: "172.22.159.18", label: "AGV-2", color: "#22c55e" },
-  { ip: "172.22.159.20", label: "AGV-3", color: "#f59e0b" },
-  { ip: "172.22.159.22", label: "AGV-4", color: "#8b5cf6" },
-];
+const ROBOTS = AGV_ROBOTS;
 
 type PendingPick =
   | { x: number; y: number }
@@ -172,17 +168,18 @@ export function useAgvZoneManagement(
           source: z.source ?? "AUTO",
         };
       });
-    const pairs = [
-      [ROBOTS[0], ROBOTS[1]],
-      [ROBOTS[2], ROBOTS[3]],
+    const groups = [
+      getAgvRobotsByZone("zone1"),
+      getAgvRobotsByZone("zone2"),
     ];
-    return pairs.map(([a, b]) => {
-      const pairGroup = AGV_ZONE_MAP[a.ip];
-      const pairIps = new Set([a.ip, b.ip]);
-      const hiddenA = hiddenTagsByIp[a.ip] || new Set<string>();
-      const hiddenB = hiddenTagsByIp[b.ip] || new Set<string>();
-      // 两台车的隐标签并集 — 用于无归属的 world zone
-      const hiddenMerged = new Set([...hiddenA, ...hiddenB]);
+    return groups.map((robots) => {
+      const pairGroup = AGV_ZONE_MAP[robots[0].ip];
+      const pairIps = new Set(robots.map(r => r.ip));
+      // 同组所有车的隐标签并集 — 用于无归属的 world zone
+      const hiddenMerged = new Set<string>();
+      for (const r of robots) {
+        for (const t of hiddenTagsByIp[r.ip] || []) hiddenMerged.add(t);
+      }
       return allZones.filter((z) => {
         if (z.group !== pairGroup) return false;
         if (z.robotIp && !pairIps.has(z.robotIp)) return false;
@@ -195,7 +192,7 @@ export function useAgvZoneManagement(
             return !tags.some((t) => perAgv.has(t));
           } catch { return true; }
         }
-        // World zone（无归属）→ 两台车都隐藏时才隐藏
+        // World zone（无归属）→ 同组所有车都隐藏时才隐藏
         if (hiddenMerged.size === 0) return true;
         try {
           const tags: string[] = JSON.parse(z.semanticTags || "[]");

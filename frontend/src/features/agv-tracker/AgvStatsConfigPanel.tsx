@@ -6,6 +6,7 @@ import {
   useToggleConfig, useStations,
   type StatsConfig,
 } from "@/api/domains/agv-stats.api";
+import { AGV_ROBOTS } from "@/features/agv-tracker/agvRobotConfig";
 
 type TabKey = "STATION_GROUP" | "METRIC_PIPE" | "BUNDLE";
 
@@ -307,13 +308,13 @@ export default function AgvStatsConfigPanel({ open, onClose }: Props) {
                       <div>
                         <span className="text-[9px] text-[var(--app-color-text-tertiary)]">AGV 小车 {fAgvIps.length > 0 && `(${fAgvIps.length})`}</span>
                         <div className="mt-0.5 flex flex-wrap gap-1">
-                          {["172.22.159.16","172.22.159.18","172.22.159.20","172.22.159.22"].map(ip => (
-                            <button key={ip} onClick={() => toggle(ip, fAgvIps, setFAgvIps)}
+                          {AGV_ROBOTS.map(r => (
+                            <button key={r.ip} onClick={() => toggle(r.ip, fAgvIps, setFAgvIps)}
                               className={`px-2 py-0.5 rounded-full text-[10px] border transition-colors ${
-                                fAgvIps.includes(ip)
+                                fAgvIps.includes(r.ip)
                                   ? "bg-[var(--app-color-accent)] text-white border-[var(--app-color-accent)]"
                                   : "border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
-                              }`}>{ip.replace("172.22.159.","AGV-")}</button>
+                              }`}>{r.label}</button>
                           ))}
                         </div>
                       </div>

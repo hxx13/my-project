@@ -3,13 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchAgvAnalytics } from "@/api/domains/agv.api";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Gauge, TrendingUp, Timer, BatteryFull, AlertTriangle, Route, MapPin, Clock, Package, Zap } from "lucide-react";
+import { AGV_ROBOTS } from "@/features/agv-tracker/agvRobotConfig";
 
-const ROBOTS = [
-  { ip: "172.22.159.16", label: "AGV-1", color: "#3b82f6" },
-  { ip: "172.22.159.18", label: "AGV-2", color: "#22c55e" },
-  { ip: "172.22.159.20", label: "AGV-3", color: "#f59e0b" },
-  { ip: "172.22.159.22", label: "AGV-4", color: "#8b5cf6" },
-];
+const ROBOTS = AGV_ROBOTS;
 
 const TIME_PRESETS = [
   { label: "6h", hours: 6 },

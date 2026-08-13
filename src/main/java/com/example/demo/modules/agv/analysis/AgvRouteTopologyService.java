@@ -50,14 +50,15 @@ public class AgvRouteTopologyService {
 
     private final JdbcTemplate jdbc;
 
-    /** 已知四台 AGV 的 IP */
+    /** 已知六台 AGV 的 IP */
     private static final String[] KNOWN_IPS = {
-        "172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22"
+        "172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22",
+        "172.22.159.113", "172.22.159.115"
     };
 
-    /** Zone → AGV IP 映射 */
+    /** Zone → AGV IP 映射（zone1 现在含 4 台：16/18/113/115） */
     private static final Map<String, String[]> ZONE_AGV_MAP = Map.of(
-        "zone1", new String[]{"172.22.159.16", "172.22.159.18"},
+        "zone1", new String[]{"172.22.159.16", "172.22.159.18", "172.22.159.113", "172.22.159.115"},
         "zone2", new String[]{"172.22.159.20", "172.22.159.22"}
     );
 

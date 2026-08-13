@@ -127,9 +127,9 @@ export function AccessFusionLibraryPanel({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
       {summary ? (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+        <p className="shrink-0 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
           清洗总库：纳入 <strong>{String(summary.includedCount ?? 0)}</strong> 条 · 已配置通道{" "}
           <strong>{String(summary.channelCount ?? 0)}</strong> 个
           {statsPullTaskId ? (
@@ -155,7 +155,7 @@ export function AccessFusionLibraryPanel({
       ) : null}
 
       {selectedLogId ? (
-        <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-900 flex flex-wrap items-center gap-2">
+        <p className="shrink-0 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-900 flex flex-wrap items-center gap-2">
           正在按执行日志 #{selectedLogId} 筛选总库行
           <button type="button" className="underline font-medium" onClick={onClearLogFilter}>
             清除
@@ -163,7 +163,7 @@ export function AccessFusionLibraryPanel({
         </p>
       ) : null}
 
-      <div className="overflow-auto rounded-xl border bg-white shadow-sm">
+      <div className="min-h-0 flex-1 overflow-auto rounded-xl border bg-white shadow-sm">
         {loading ? (
           <p className="p-4 text-sm text-neutral-500">加载中…</p>
         ) : items.length === 0 ? (

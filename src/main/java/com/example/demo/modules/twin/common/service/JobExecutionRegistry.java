@@ -105,6 +105,10 @@ public class JobExecutionRegistry {
     public static final String AGV_ROBOT_20 = "AGV_ROBOT_20";
     /** AGV 采集·172.22.159.22 开关 */
     public static final String AGV_ROBOT_22 = "AGV_ROBOT_22";
+    /** AGV 采集·172.22.159.113 开关 */
+    public static final String AGV_ROBOT_113 = "AGV_ROBOT_113";
+    /** AGV 采集·172.22.159.115 开关 */
+    public static final String AGV_ROBOT_115 = "AGV_ROBOT_115";
 
     private static final Set<String> DEPRECATED_JOB_KEYS =
             Set.of(
@@ -255,6 +259,8 @@ public class JobExecutionRegistry {
         jobs.put(AGV_ROBOT_18, "AGV采集·172.22.159.18 开关");
         jobs.put(AGV_ROBOT_20, "AGV采集·172.22.159.20 开关");
         jobs.put(AGV_ROBOT_22, "AGV采集·172.22.159.22 开关");
+        jobs.put(AGV_ROBOT_113, "AGV采集·172.22.159.113 开关");
+        jobs.put(AGV_ROBOT_115, "AGV采集·172.22.159.115 开关");
         return jobs;
     }
 
@@ -491,7 +497,7 @@ public class JobExecutionRegistry {
                     String msg = agvCollectorService.runImmediatePoll();
                     yield JobRunOutcome.ok(jobKey, msg);
                 }
-                case AGV_ROBOT_16, AGV_ROBOT_18, AGV_ROBOT_20, AGV_ROBOT_22 -> {
+                case AGV_ROBOT_16, AGV_ROBOT_18, AGV_ROBOT_20, AGV_ROBOT_22, AGV_ROBOT_113, AGV_ROBOT_115 -> {
                     if (agvCollectorService == null) {
                         throw new IllegalStateException("AgvCollectorService 未就绪");
                     }

@@ -125,7 +125,7 @@ public class AgvAnalysisController {
         LocalDateTime to = LocalDateTime.now();
         LocalDateTime from = to.minusHours(24); // 最近24小时
         // Step 1: 先跑分析，确保有活动段数据
-        String[] ips = {"172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22"};
+        String[] ips = {"172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22", "172.22.159.113", "172.22.159.115"};
         int totalSegs = 0;
         for (String ip : ips) {
             try {

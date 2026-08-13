@@ -39,6 +39,9 @@ public class DahuaService {
     @Autowired(required = false)
     private com.example.demo.modules.swipealert.service.SwipeAlertEngine swipeAlertEngine;
 
+    @Autowired(required = false)
+    private com.example.demo.modules.doortempunlock.engine.DoorTempUnlockEngine doorTempUnlockEngine;
+
     // ---- Webhook → DB 入库依赖 ----
     @Autowired
     private DahuaSwingMapper dahuaSwingMapper;
@@ -245,7 +248,7 @@ public class DahuaService {
 
             // ---- 门禁联动（激活/签退） ----
             if (Integer.valueOf(1).equals(r.getMappingHit())
-                    && Integer.valueOf(1).equals(r.getOpenResult())
+                    && Integer.valueOf(51).equals(r.getOpenType())
                     && dahuaSwingRuleEngineService != null) {
                 try {
                     dahuaSwingRuleEngineService.onRecordIngested(r);
@@ -383,27 +386,28 @@ public class DahuaService {
         return null;
     }
 
-    /** 将 Webhook 路径的刷卡记录喂给告警引擎（与定时拉取路径共享同一引擎） */
+    /** 将 Webhook 路径的刷卡记录喂给告警引擎与临时解锁引擎（与定时拉取路径共享同一引擎） */
     private void feedSwipeAlertEngine(String recordId, String personName, String channelName,
                                        String channelCode, String cardNumber,
                                        Integer openType, Integer enterOrExit,
                                        Integer openResult, String swingTime) {
-        if (swipeAlertEngine == null) return;
-        try {
-            com.example.demo.modules.dahua.dto.DahuaRecordDTO dto =
-                    new com.example.demo.modules.dahua.dto.DahuaRecordDTO();
-            dto.setId(recordId);
-            dto.setPersonName(personName);
-            dto.setChannelName(channelName);
-            dto.setChannelCode(channelCode);
-            dto.setCardNumber(cardNumber);
-            dto.setOpenType(openType);
-            dto.setEnterOrExit(enterOrExit);
-            dto.setOpenResult(openResult);
-            dto.setSwingTime(swingTime);
-            swipeAlertEngine.onSwingRecord(dto);
-        } catch (Exception e) {
-            log.debug("[swipe-alert] webhook feed failed: {}", e.getMessage());
+        if (swipeAlertEngine == null && doorTempUnlockEngine == null) return;
+        com.example.demo.modules.dahua.dto.DahuaRecordDTO dto =
+                new com.example.demo.modules.dahua.dto.DahuaRecordDTO();
+        dto.setId(recordId);
+        dto.setPersonName(personName);
+        dto.setChannelName(channelName);
+        dto.setChannelCode(channelCode);
+        dto.setCardNumber(cardNumber);
+        dto.setOpenType(openType);
+        dto.setEnterOrExit(enterOrExit);
+        dto.setOpenResult(openResult);
+        dto.setSwingTime(swingTime);
+        if (swipeAlertEngine != null) {
+            try { swipeAlertEngine.onSwingRecord(dto); } catch (Exception e) { log.debug("[swipe-alert] webhook feed failed: {}", e.getMessage()); }
+        }
+        if (doorTempUnlockEngine != null) {
+            try { doorTempUnlockEngine.onSwingRecord(dto); } catch (Exception e) { log.warn("[door-temp-unlock] webhook feed failed: {}", e.getMessage()); }
         }
     }
 

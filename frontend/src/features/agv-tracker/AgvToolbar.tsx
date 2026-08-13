@@ -3,9 +3,10 @@ import type { AgvConfigEntry } from "@/api/domains/agv.api";
 import { fetchAgvConfig, updateAgvConfig } from "@/api/domains/agv.api";
 import { Link } from "react-router-dom";
 import { Play, Pause, FileText, LayoutGrid, Maximize2 } from "lucide-react";
+import { AGV_ROBOT_KEYS, AGV_ROBOT_SHORTS } from "@/features/agv-tracker/agvRobotConfig";
 
-const ROBOT_KEYS = ["AGV_ROBOT_16", "AGV_ROBOT_18", "AGV_ROBOT_20", "AGV_ROBOT_22"] as const;
-const ROBOT_LABELS = [".16", ".18", ".20", ".22"] as const;
+const ROBOT_KEYS = AGV_ROBOT_KEYS;
+const ROBOT_LABELS = AGV_ROBOT_SHORTS;
 
 type LayoutMode = "quad" | "single";
 

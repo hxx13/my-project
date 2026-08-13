@@ -121,6 +121,8 @@ export default function DebugCardMappingPage() {
     const [issueSteps, setIssueSteps] = useState<Array<{ stepName?: string; success?: boolean; upstreamCode?: string; upstreamErrMsg?: string; message?: string }>>([]);
     const [personKeyword, setPersonKeyword] = useState("");
     const personSearchTimer = useRef<number | null>(null);
+    /** 映射列表主搜索的防抖定时器（输入自动检索） */
+    const mappingSearchTimer = useRef<number | null>(null);
     const cardInputRef = useRef<HTMLInputElement | null>(null);
     const cardScanBufferRef = useRef("");
     const cardScanResetTimer = useRef<number | null>(null);
@@ -350,6 +352,9 @@ export default function DebugCardMappingPage() {
         return () => {
             if (personSearchTimer.current) {
                 window.clearTimeout(personSearchTimer.current);
+            }
+            if (mappingSearchTimer.current) {
+                window.clearTimeout(mappingSearchTimer.current);
             }
             if (cardScanResetTimer.current) {
                 window.clearTimeout(cardScanResetTimer.current);
@@ -1024,7 +1029,15 @@ export default function DebugCardMappingPage() {
                             value={searchDraft}
                             onChange={(val) => {
                                 setSearchDraft(val);
-                                if (!val.trim()) setIsSearching(false);
+                                if (mappingSearchTimer.current) window.clearTimeout(mappingSearchTimer.current);
+                                if (!val.trim()) {
+                                    setIsSearching(false);
+                                    setSearchResults([]);
+                                    return;
+                                }
+                                mappingSearchTimer.current = window.setTimeout(() => {
+                                    void handleSearch(val);
+                                }, 300);
                             }}
                             onSubmit={submitMappingSearch}
                         />

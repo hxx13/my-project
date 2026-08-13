@@ -170,8 +170,14 @@ public class AdminDahuaSwingController {
     ) {
         Result<?> denied = requireAdmin(authorization);
         if (denied != null) return denied;
-        dahuaSwingRuleConfigService.saveConfig(body);
-        return Result.success(dahuaSwingRuleConfigService.getConfig());
+        try {
+            dahuaSwingRuleConfigService.saveConfig(body);
+            return Result.success(dahuaSwingRuleConfigService.getConfig());
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("保存联动规则失败: " + readableError(e));
+        }
     }
 
     private Result<?> requireAdmin(String authorization) {

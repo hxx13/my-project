@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Home, DoorOpen, Bell,
@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
+import { authStorage } from "@/features/auth/authStorage";
+import { getImpersonationState } from "@/features/auth/impersonation";
 import {
   hydrateStudentNavPersonalization,
   readStudentNavStars,
@@ -269,6 +271,10 @@ function SidebarGroup({
 
 export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSidebarProps) {
   const { pathname } = useLocation();
+  /** 镜像模式 / 模拟模式（教职工预览学生页）下，隐藏返回门户（/）的“首页”按钮 */
+  const isMirrorMode = useMemo(() => authStorage.isMirrorMode(), []);
+  const isImpersonating = useMemo(() => Boolean(getImpersonationState()?.isImpersonating), []);
+  const hidePortalHome = isMirrorMode || isImpersonating;
   const [logoBroken, setLogoBroken] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => ({
     stars: true, recent: true, space: true, material: true,
@@ -347,10 +353,12 @@ export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSi
           <nav className={cn("space-y-2", collapsed && "space-y-1")}>
             {/* 门户 + 工作台 合并一行 */}
             <div className="flex w-full min-w-0 flex-row gap-1.5">
-              <NavLink to="/" end title={collapsed ? "门户" : undefined}
-                className={({ isActive }) => cn("w-full rounded-lg py-2 text-left text-sm inline-flex items-center gap-2 transition-colors", collapsed ? "justify-center px-2" : "px-3", "!w-auto min-w-0 flex-1 basis-0 justify-center", !collapsed && "!px-2 text-center", isActive ? "bg-white/[0.12] font-medium text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] ring-1 ring-white/15" : "text-neutral-300 hover:bg-white/[0.06] hover:text-white")}>
-                <Home className="h-3.5 w-3.5 shrink-0" />{!collapsed && "首页"}
-              </NavLink>
+              {!hidePortalHome && (
+                <NavLink to="/" end title={collapsed ? "门户" : undefined}
+                  className={({ isActive }) => cn("w-full rounded-lg py-2 text-left text-sm inline-flex items-center gap-2 transition-colors", collapsed ? "justify-center px-2" : "px-3", "!w-auto min-w-0 flex-1 basis-0 justify-center", !collapsed && "!px-2 text-center", isActive ? "bg-white/[0.12] font-medium text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] ring-1 ring-white/15" : "text-neutral-300 hover:bg-white/[0.06] hover:text-white")}>
+                  <Home className="h-3.5 w-3.5 shrink-0" />{!collapsed && "首页"}
+                </NavLink>
+              )}
               <NavLink to="/student/home" end title={collapsed ? "工作台" : undefined}
                 className={({ isActive }) => cn("w-full rounded-lg py-2 text-left text-sm inline-flex items-center gap-2 transition-colors", collapsed ? "justify-center px-2" : "px-3", "!w-auto min-w-0 flex-1 basis-0 justify-center", !collapsed && "!px-2 text-center", isActive ? "bg-white/[0.12] font-medium text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] ring-1 ring-white/15" : "text-neutral-300 hover:bg-white/[0.06] hover:text-white")}>
                 <Home className="h-3.5 w-3.5 shrink-0" />{!collapsed && "工作台"}

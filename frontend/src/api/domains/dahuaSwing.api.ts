@@ -24,10 +24,12 @@ export interface DahuaSwingRuleConfig {
   exitChannelCodes: string[];
   toggleChannelCodes: string[];
   activatedReswipeExitChannelCodes: string[];
+  /** 方向无关激活门：不看 enterOrExit（1/2/null 都算），用于方向数据不可靠或双向均算在场的门 */
+  directionAgnosticActivationChannelCodes?: string[];
   /** 自动签退后是否继续：大华 revoke + 卡片冻结。false 时仅 ARO 离开+小穿甲。仅此键控制，与扫码人工离开无关。 */
   autoRiskActionEnabled: boolean;
   autoExitDelaySeconds: number;
-  enterDebounceSeconds: number;
+  enterDebounceSeconds?: number;
   activationExpireSeconds: number;
   requireOtherRoomSuccess: boolean;
   otherRoomWithinSeconds: number;

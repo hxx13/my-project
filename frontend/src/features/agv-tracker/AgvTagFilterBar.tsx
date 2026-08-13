@@ -1,12 +1,8 @@
 import type { AgvSpatialElement } from "@/api/domains/agv-analysis.api";
 import { AGV_ZONE_MAP } from "@/features/agv-tracker/zoneGrouping";
+import { AGV_ROBOTS } from "@/features/agv-tracker/agvRobotConfig";
 
-const ROBOTS = [
-  { ip: "172.22.159.16", label: "AGV-1", color: "#3b82f6" },
-  { ip: "172.22.159.18", label: "AGV-2", color: "#22c55e" },
-  { ip: "172.22.159.20", label: "AGV-3", color: "#f59e0b" },
-  { ip: "172.22.159.22", label: "AGV-4", color: "#8b5cf6" },
-];
+const ROBOTS = AGV_ROBOTS;
 
 const ROUTE_TAGS = [
   { key: "TRANSPORT", label: "运输", color: "#3b82f6" },
@@ -71,7 +67,7 @@ export default function AgvTagFilterBar({
     }
   }
 
-  // 可选的控制目标车列表（全部4台车可切换）
+  // 可选的控制目标车列表（全部车可切换）
   const controllableVehicles = ROBOTS;
 
   // 当前控制目标的 hidden set
