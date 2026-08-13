@@ -10,7 +10,6 @@ import {
   deleteAccessRule,
   fetchRoomMappingRooms,
   fetchDahuaDoorGroups,
-  fetchDahuaDeviceChannels,
   fetchDahuaDeviceChannelRemarkCategories,
   searchPersonnel,
   type AccessRuleListRow,
@@ -18,7 +17,6 @@ import {
   type AccessRuleDetailView,
   type RoomMappingRoomRow,
   type DahuaDoorGroupRow,
-  type DahuaDeviceChannelRow,
   type DahuaDeviceChannelRemarkCategory,
 } from "@/api/twinApi";
 import { Portal } from "@/components/Portal";
@@ -26,27 +24,9 @@ import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
-import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
-import { cn } from "@/lib/utils";
-import {
-  labelForChannelRow,
-  normalizeChannelCode,
-  resolveChannelLabelsByCodes,
-  useHydrateChannelNameMap,
-} from "@/utils/dahuaChannelUtils";
-
-function normalizeCode(code: string): string {
-  return normalizeChannelCode(code);
-}
-
-function channelLabel(code: string, nameMap: Record<string, string>, rows: DahuaDeviceChannelRow[]): string {
-  const key = normalizeCode(code);
-  const nameByMap = (nameMap[key] || "").trim();
-  if (nameByMap) return nameByMap;
-  const row = rows.find((r) => normalizeCode(r.channelCode || "") === key);
-  if (row) return labelForChannelRow(row);
-  return labelForChannelRow({ channelCode: key, channelName: "" } as DahuaDeviceChannelRow);
-}
+import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
+import { DahuaChannelListPicker } from "@/components/admin/DahuaChannelListPicker";
+import { TransferListPicker } from "@/components/admin/TransferListPicker";
 
 function emptyItem(): AccessRuleItemPayload {
   return { roomId: "", channelCodes: [], doorGroupIds: [], aroUserIds: [] };
@@ -68,15 +48,6 @@ export default function AdminAccessRulesPage() {
   const [roomOptions, setRoomOptions] = useState<RoomMappingRoomRow[]>([]);
   const [doorGroups, setDoorGroups] = useState<DahuaDoorGroupRow[]>([]);
   const [remarkCategories, setRemarkCategories] = useState<DahuaDeviceChannelRemarkCategory[]>([]);
-
-  const [channelKeyword, setChannelKeyword] = useState("");
-  const [channelRemarkId, setChannelRemarkId] = useState<number | "">("");
-  const [channelPage, setChannelPage] = useState(1);
-  const [channelRows, setChannelRows] = useState<DahuaDeviceChannelRow[]>([]);
-  const [channelTotal, setChannelTotal] = useState(0);
-  const [channelLoading, setChannelLoading] = useState(false);
-  const [channelNameMap, setChannelNameMap] = useState<Record<string, string>>({});
-  const [channelPanelItemIdx, setChannelPanelItemIdx] = useState<number | null>(null);
 
   const [personKeyword, setPersonKeyword] = useState("");
   const [personHits, setPersonHits] = useState<any[]>([]);
@@ -112,16 +83,6 @@ export default function AdminAccessRulesPage() {
     onError: (e: Error) => toast.error(e.message || "删除失败"),
   });
 
-  const allSelectedChannelCodes = items.flatMap((it) => it.channelCodes || []);
-
-  useHydrateChannelNameMap(
-    allSelectedChannelCodes,
-    channelNameMap,
-    setChannelNameMap,
-    fetchDahuaDeviceChannels,
-    editorOpen
-  );
-
   const loadMetaForEditor = async () => {
     try {
       const [roomsRes, dgRes, remarkRes] = await Promise.all([
@@ -137,55 +98,11 @@ export default function AdminAccessRulesPage() {
     }
   };
 
-  const loadChannels = async (p: number, append: boolean) => {
-    setChannelLoading(true);
-    try {
-      const res = await fetchDahuaDeviceChannels({
-        page: p,
-        pageSize: 30,
-        keyword: channelKeyword.trim(),
-        remarkCategoryId: channelRemarkId === "" ? undefined : Number(channelRemarkId),
-      });
-      const batch = res.list || [];
-      setChannelNameMap((prev) => {
-        const next = { ...prev };
-        batch.forEach((row) => {
-          const code = normalizeCode(row.channelCode || "");
-          if (code) next[code] = labelForChannelRow(row);
-        });
-        return next;
-      });
-      setChannelRows((prev) => {
-        if (!append) return batch;
-        const merged = [...prev, ...batch];
-        const seen = new Set<number>();
-        return merged.filter((row) => {
-          if (seen.has(row.id)) return false;
-          seen.add(row.id);
-          return true;
-        });
-      });
-      setChannelTotal(res.total || 0);
-      setChannelPage(p);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "加载通道失败");
-    } finally {
-      setChannelLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!editorOpen || channelPanelItemIdx === null) return;
-    void loadChannels(1, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorOpen, channelPanelItemIdx, channelRemarkId]);
-
   const openCreate = async () => {
     setEditingId(null);
     setFormName("");
     setFormEnabled(true);
     setItems([emptyItem()]);
-    setChannelPanelItemIdx(null);
     setPersonItemIdx(null);
     setEditorOpen(true);
     await loadMetaForEditor();
@@ -199,15 +116,9 @@ export default function AdminAccessRulesPage() {
       setFormName(d.name || "");
       setFormEnabled(d.enabled !== false);
       setItems(d.items?.length ? d.items.map((it) => ({ ...it })) : [emptyItem()]);
-      setChannelPanelItemIdx(null);
       setPersonItemIdx(null);
       setEditorOpen(true);
       await loadMetaForEditor();
-      const codes = (d.items || []).flatMap((it) => it.channelCodes || []);
-      if (codes.length) {
-        const labels = await resolveChannelLabelsByCodes(codes, fetchDahuaDeviceChannels);
-        setChannelNameMap((prev) => ({ ...prev, ...labels }));
-      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "加载详情失败");
     } finally {
@@ -226,33 +137,18 @@ export default function AdminAccessRulesPage() {
     setItems((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
   };
 
-  const toggleDoor = (itemIdx: number, id: number, checked: boolean) => {
+  const setItemDoorGroups = (itemIdx: number, ids: number[]) => {
     setItems((prev) => {
       const next = [...prev];
-      const row = { ...next[itemIdx], doorGroupIds: [...(next[itemIdx].doorGroupIds || [])] };
-      const set = new Set(row.doorGroupIds);
-      if (checked) set.add(id);
-      else set.delete(id);
-      row.doorGroupIds = Array.from(set);
-      next[itemIdx] = row;
+      next[itemIdx] = { ...next[itemIdx], doorGroupIds: ids };
       return next;
     });
   };
 
-  const toggleChannel = (itemIdx: number, code: string, checked: boolean, row?: DahuaDeviceChannelRow) => {
-    const cleanCode = normalizeCode(code);
-    if (!cleanCode) return;
-    if (checked && row) {
-      setChannelNameMap((prev) => ({ ...prev, [cleanCode]: labelForChannelRow(row) }));
-    }
+  const setItemChannelCodes = (itemIdx: number, codes: string[]) => {
     setItems((prev) => {
       const next = [...prev];
-      const row = { ...next[itemIdx], channelCodes: [...(next[itemIdx].channelCodes || [])] };
-      const set = new Set(row.channelCodes);
-      if (checked) set.add(cleanCode);
-      else set.delete(cleanCode);
-      row.channelCodes = Array.from(set);
-      next[itemIdx] = row;
+      next[itemIdx] = { ...next[itemIdx], channelCodes: codes };
       return next;
     });
   };
@@ -522,128 +418,30 @@ export default function AdminAccessRulesPage() {
 
                   <div>
                     <div className="text-xs font-medium text-[var(--twin-body)] mb-1">门组（多选）</div>
-                    <div className="max-h-40 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)] p-2">
-                      {sortedDoorGroups.map((g) => {
-                        const checked = (it.doorGroupIds || []).includes(g.id);
-                        return (
-                          <label key={g.id} className="flex items-center gap-2 py-0.5 text-sm">
-                            <AdminSwitchScaled
-                              size="sm"
-                              checked={checked}
-                              onChange={(nextChecked) => toggleDoor(idx, g.id, nextChecked)}
-                            />
-                            <span className="text-[var(--twin-ink)]">{g.name || `门组${g.id}`}</span>
-                            <span className="text-xs text-[var(--twin-mute)]">#{g.id}</span>
-                          </label>
-                        );
-                      })}
-                      {sortedDoorGroups.length === 0 && <div className="text-xs text-[var(--twin-mute)]">暂无门组缓存</div>}
-                    </div>
+                    <TransferListPicker
+                      options={sortedDoorGroups.map((g) => ({
+                        value: String(g.id),
+                        label: g.name || `门组${g.id}`,
+                        meta: `#${g.id}`,
+                      }))}
+                      selected={(it.doorGroupIds || []).map(String)}
+                      onChange={(values) => setItemDoorGroups(idx, values.map(Number))}
+                      idPrefix={`access-rule-${idx}-door`}
+                      availableLabel="可选门组"
+                      pickedLabel="已选门组"
+                      availableSearchPlaceholder="搜索可选门组"
+                      pickedSearchPlaceholder="搜索已选门组"
+                    />
                   </div>
 
                   <div>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-xs font-medium text-[var(--twin-body)]">通道（多选）</span>
-                      <button
-                        type="button"
-                        className="text-xs text-[var(--twin-link-deep)] hover:underline"
-                        onClick={() => setChannelPanelItemIdx(channelPanelItemIdx === idx ? null : idx)}
-                      >
-                        {channelPanelItemIdx === idx ? "收起通道列表" : "选择通道…"}
-                      </button>
-                    </div>
-                    {(it.channelCodes || []).length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {(it.channelCodes || []).map((c) => (
-                          <span
-                            key={c}
-                            className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-900"
-                            title={`编码: ${c}`}
-                          >
-                            {channelLabel(c, channelNameMap, channelRows)}
-                            <button
-                              type="button"
-                              className="text-indigo-500 hover:text-indigo-800"
-                              onClick={() => toggleChannel(idx, c, false)}
-                              aria-label="移除"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {channelPanelItemIdx === idx && (
-                      <div className="mt-2 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3 space-y-2">
-                        <div className="flex flex-wrap gap-2">
-                          <input
-                            className={cn(adminInputClass, "min-w-[8rem] flex-1 py-1.5 text-sm")}
-                            placeholder="通道关键字（支持名称/编码搜索）"
-                            value={channelKeyword}
-                            onChange={(e) => setChannelKeyword(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && void loadChannels(1, false)}
-                          />
-                          <select
-                            className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm"
-                            value={channelRemarkId}
-                            onChange={(e) => setChannelRemarkId(e.target.value === "" ? "" : Number(e.target.value))}
-                          >
-                            <option value="">全部分类</option>
-                            {remarkCategories.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            className="rounded-twin-sm bg-[var(--twin-ink)] px-3 py-1 text-xs font-medium text-white"
-                            onClick={() => void loadChannels(1, false)}
-                          >
-                            搜索
-                          </button>
-                        </div>
-                        <div className="max-h-48 overflow-auto space-y-1">
-                          {channelLoading && (
-                            <div className="flex items-center gap-2 text-xs text-[var(--twin-mute)]">
-                              <Loader2 className="h-4 w-4 animate-spin" /> 加载中…
-                            </div>
-                          )}
-                          {channelRows.map((ch) => {
-                            const code = ch.channelCode || "";
-                            const checked = (it.channelCodes || []).includes(code);
-                            const name = (ch.channelName || "").trim();
-                            return (
-                              <label key={ch.id} className="flex items-start gap-2 text-xs">
-                                <AdminSwitchScaled
-                                  size="3.5"
-                                  disabled={!code}
-                                  checked={checked}
-                                  onChange={(nextChecked) => toggleChannel(idx, code, nextChecked, ch)}
-                                />
-                                <span className="break-all">
-                                  <span className="font-medium text-[var(--twin-ink)]">{name || "未命名通道"}</span>
-                                  {code && <span className="ml-1 text-[10px] text-[var(--twin-mute)]">#{code}</span>}
-                                </span>
-                                {ch.remarkCategoryName && (
-                                  <span className="text-[var(--twin-mute)] shrink-0">[{ch.remarkCategoryName}]</span>
-                                )}
-                              </label>
-                            );
-                          })}
-                        </div>
-                        {channelRows.length < channelTotal && (
-                          <button
-                            type="button"
-                            className="text-xs text-[var(--twin-link-deep)]"
-                            onClick={() => void loadChannels(channelPage + 1, true)}
-                          >
-                            加载更多…
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <div className="text-xs font-medium text-[var(--twin-body)] mb-1">通道（多选）</div>
+                    <DahuaChannelListPicker
+                      selected={it.channelCodes || []}
+                      onChange={(codes) => setItemChannelCodes(idx, codes)}
+                      remarkCategories={remarkCategories}
+                      idPrefix={`access-rule-${idx}`}
+                    />
                   </div>
 
                   <div className="relative">

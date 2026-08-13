@@ -12,7 +12,7 @@ import { AdminFormCard } from "@/components/admin/AdminPageShell";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { ROLE_LEVEL_MAP } from "@/features/auth/roleAccess";
 import { DepartmentMultiSelect } from "@/features/swipe-alert/DepartmentMultiSelect";
-import { ChannelMultiSelect } from "@/features/swipe-alert/ChannelMultiSelect";
+import { DahuaChannelListPicker } from "@/components/admin/DahuaChannelListPicker";
 import { PersonnelPicker, type PersonnelRow } from "@/components/admin/PersonnelPicker";
 
 interface Props {
@@ -212,7 +212,7 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
           <p className="text-xs font-semibold text-neutral-700">触发条件</p>
           <div>
             <label className={labelClass}>通道筛选（留空=全部）</label>
-            <div className="mt-1"><ChannelMultiSelect selected={selectedChannels} onChange={setSelectedChannels} /></div>
+            <div className="mt-1"><DahuaChannelListPicker selected={selectedChannels} onChange={setSelectedChannels} idPrefix="swipe-alarm" /></div>
           </div>
           <div>
             <label className={labelClass}>部门筛选（留空=全部）</label>
