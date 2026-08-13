@@ -3,13 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchAgvTrajectory, type AgvTrajectoryRow } from "@/api/domains/agv.api";
 import { Link } from "react-router-dom";
 import { ArrowLeft, RefreshCw } from "lucide-react";
+import { AGV_ROBOTS } from "@/features/agv-tracker/agvRobotConfig";
 
-const TABS = [
-  { ip: "172.22.159.16", label: "AGV-1 (.16)" },
-  { ip: "172.22.159.18", label: "AGV-2 (.18)" },
-  { ip: "172.22.159.20", label: "AGV-3 (.20)" },
-  { ip: "172.22.159.22", label: "AGV-4 (.22)" },
-];
+const TABS = AGV_ROBOTS.map(r => ({ ip: r.ip, label: `${r.label} (${r.short})` }));
 
 function taskLabel(code: number | null): string {
   if (code == null) return "—";

@@ -13,6 +13,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -112,9 +115,17 @@ public class DoorTempUnlockEngine {
             lastReloadTime = nowMs;
         }
 
-        // Only process failed records
-        Integer openResult = record.getOpenResult();
-        if (openResult != null && openResult == 1) return;
+        // Only process illegal-swipe records (openType=52 = 非法刷卡/刷卡失败),
+        // matching the existing "刷卡失败报警" semantics. openResult is unreliable
+        // here (illegal swipes may still report openResult=1).
+        Integer openType = record.getOpenType();
+        if (openType == null || openType != 52) {
+            if (log.isDebugEnabled()) {
+                log.debug("[door-temp-unlock] skip non-illegal record: openType={} channel={} person={}",
+                        openType, record.getChannelCode(), record.getPersonName());
+            }
+            return;
+        }
 
         // Dedup
         String recordId = record.getId();
@@ -137,10 +148,24 @@ public class DoorTempUnlockEngine {
         }
 
         String channelCode = record.getChannelCode();
-        if (channelCode == null || channelCode.isBlank()) return;
+        if (channelCode == null || channelCode.isBlank()) {
+            log.warn("[door-temp-unlock] illegal record with blank channelCode, skipped: recordId={}", recordId);
+            return;
+        }
 
         String personIdentifier = resolvePersonIdentifier(record);
-        if (personIdentifier == null || personIdentifier.isBlank()) return;
+        if (personIdentifier == null || personIdentifier.isBlank()) {
+            log.warn("[door-temp-unlock] illegal record with no person identifier, skipped: recordId={} channel={}",
+                    recordId, channelCode);
+            return;
+        }
+
+        log.info("[door-temp-unlock] processing illegal swipe: channel={} person={} openType={}",
+                channelCode, personIdentifier, openType);
+
+        // 用刷卡真实时间(swingTime)做窗口判定，而非处理时间(nowMs)。
+        // 否则服务器卡顿导致记录滞后批量到达时，会被误判为「短时间集中失败」。
+        long eventTimeMs = parseSwingTimeMs(record.getSwingTime(), nowMs);
 
         for (DoorTempUnlockRule rule : activeRules) {
             if (!Boolean.TRUE.equals(rule.getEnabled())) continue;
@@ -154,26 +179,21 @@ public class DoorTempUnlockEngine {
             Long ruleId = rule.getId();
             String stateKey = ruleId + ":" + channelCode + ":" + personIdentifier;
 
-            // Atomic window update + threshold check inside compute
-            boolean shouldFire = false;
-            int currentCount;
-            // Use compute for atomicity — check + set fired + count all in one step
+            // Atomic window update (count increment + window reset on expiry).
+            // 窗口锚定到刷卡真实时间 eventTimeMs，避免滞后批量到达被误判。
             FixedWindow w = windowStateMap.compute(stateKey, (k, prev) -> {
-                if (prev == null || nowMs > prev.windowStart + windowMs) {
-                    return new FixedWindow(nowMs, 1);
+                if (prev == null || eventTimeMs > prev.windowStart + windowMs) {
+                    return new FixedWindow(eventTimeMs, 1);
                 }
                 prev.count++;
                 return prev;
             });
-            currentCount = w.count;
+            int currentCount = w.count;
 
-            // Atomically check-and-set fired to prevent double-fire
-            if (currentCount >= thresholdCount && w.fired.compareAndSet(false, true)) {
-                shouldFire = true;
-            }
-
-            if (shouldFire) {
-                // Cooldown check (per person per channel)
+            // Threshold reached?
+            if (currentCount >= thresholdCount) {
+                // Cooldown check BEFORE claiming the window's fire slot, so a
+                // cooldown-blocked attempt does not permanently swallow this window.
                 Integer cooldownSec = rule.getCooldownSec();
                 if (cooldownSec != null && cooldownSec > 0) {
                     Long lastUnlock = cooldownMap.get(stateKey);
@@ -185,6 +205,11 @@ public class DoorTempUnlockEngine {
                                 + " 人员[" + personIdentifier + "] 冷却中，跳过解锁");
                         continue;
                     }
+                }
+
+                // Atomically claim this window's single fire slot
+                if (!w.fired.compareAndSet(false, true)) {
+                    continue; // another thread already fired for this window
                 }
 
                 // Query current door status
@@ -308,6 +333,22 @@ public class DoorTempUnlockEngine {
         } catch (Exception e) {
             log.debug("[door-temp-unlock] channels parse error for rule id={}", rule.getId(), e);
             return false;
+        }
+    }
+
+    /**
+     * 解析刷卡真实时间(yyyy-MM-dd HH:mm:ss)为 epoch ms。空值/解析失败时回退到处理时间，
+     * 保证滞后记录仍以真实刷卡时刻参与窗口判定。
+     */
+    private static long parseSwingTimeMs(String swingTime, long fallbackMs) {
+        if (swingTime == null || swingTime.isBlank()) return fallbackMs;
+        try {
+            LocalDateTime dt = LocalDateTime.parse(
+                    swingTime, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            // swingTime 已由 DahuaService.adjustSwingTime9Min 对齐真实时间，时区为 Asia/Shanghai(UTC+8)
+            return dt.toInstant(ZoneOffset.ofHours(8)).toEpochMilli();
+        } catch (Exception e) {
+            return fallbackMs;
         }
     }
 

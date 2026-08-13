@@ -1,5 +1,6 @@
 import { authHttp } from "@/api/core/authHttp";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getAgvRobotsByZone } from "@/features/agv-tracker/agvRobotConfig";
 
 // ── Types ──
 
@@ -311,8 +312,8 @@ function topologyToRouteOverlays(
   const results: Array<{ id: number; pathJson: string; color: string; name: string; routeType: string; robotIp: string }> = [];
   // robot_ips 缺失时的 zone 级 fallback
   const zoneAgvMap: Record<string, string[]> = {
-    zone1: ["172.22.159.16", "172.22.159.18"],
-    zone2: ["172.22.159.20", "172.22.159.22"],
+    zone1: getAgvRobotsByZone("zone1").map(r => r.ip),
+    zone2: getAgvRobotsByZone("zone2").map(r => r.ip),
   };
   let idCounter = 1;
 

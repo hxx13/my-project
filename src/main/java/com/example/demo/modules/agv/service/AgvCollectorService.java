@@ -48,10 +48,13 @@ public class AgvCollectorService {
             JobExecutionRegistry.AGV_ROBOT_16,
             JobExecutionRegistry.AGV_ROBOT_18,
             JobExecutionRegistry.AGV_ROBOT_20,
-            JobExecutionRegistry.AGV_ROBOT_22
+            JobExecutionRegistry.AGV_ROBOT_22,
+            JobExecutionRegistry.AGV_ROBOT_113,
+            JobExecutionRegistry.AGV_ROBOT_115
     };
     static final String[] ROBOT_IPS = {
-            "172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22"
+            "172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22",
+            "172.22.159.113", "172.22.159.115"
     };
 
     private final AgvProxyService agvProxyService;

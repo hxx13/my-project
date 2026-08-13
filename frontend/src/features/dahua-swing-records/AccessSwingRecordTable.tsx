@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import type { AccessSwingRecordViewRow } from "@/api/domains/accessAudit.api";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
 import { labelMappingHit, labelOpenResult, labelOpenType } from "@/features/dahua-swing-records/swingRecordDisplay";
 
 const TAG_LABEL: Record<string, string> = {
@@ -52,7 +51,7 @@ function Cell({ children, title }: { children: ReactNode; title?: string }) {
 
 export function AccessSwingRecordTable({ rows, loading, emptyHint = "暂无记录" }: Props) {
   return (
-    <AdminDataTableWrap scrollable>
+    <div className="admin-data-table-wrap h-full overflow-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
       <table className="w-full min-w-[1320px] text-xs">
         <thead className="bg-slate-50 text-slate-600 sticky top-0 z-[1]">
           <tr>
@@ -129,6 +128,6 @@ export function AccessSwingRecordTable({ rows, loading, emptyHint = "暂无记�
           )}
         </tbody>
       </table>
-    </AdminDataTableWrap>
+    </div>
   );
 }

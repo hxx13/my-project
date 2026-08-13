@@ -1,17 +1,16 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgvConfigEntry } from "@/api/domains/agv.api";
 import { fetchAgvConfig, updateAgvConfig, fetchCoordConfigs, updateCoordConfig } from "@/api/domains/agv.api";
 import { Link } from "react-router-dom";
-import { FileText, LayoutGrid, Maximize2, Settings2, BarChart3, RotateCw, Map, Route, Crosshair, Zap, SquareDashed, Edit3, ChevronDown, Plus, Trash2, Undo2 } from "lucide-react";
+import { FileText, LayoutGrid, Maximize2, Settings2, BarChart3, RotateCw, Map, Route, Crosshair, Zap, SquareDashed, Edit3, ChevronDown, Plus, Trash2, Undo2, Layers, Pencil, Tag } from "lucide-react";
 import { BUILTIN_TAG_OPTIONS, BUILTIN_TAG_COLORS, type CustomTag } from "@/features/agv-tracker/tagConfig";
-
-const ROBOT_KEYS = ["AGV_ROBOT_16", "AGV_ROBOT_18", "AGV_ROBOT_20", "AGV_ROBOT_22"] as const;
-const ROBOT_SHORT = [".16", ".18", ".20", ".22"] as const;
-const ROBOT_NAMES = ["AGV-1", "AGV-2", "AGV-3", "AGV-4"] as const;
+import { AGV_ROBOT_KEYS, AGV_ROBOT_SHORTS, AGV_ROBOT_LABELS, AGV_ROBOTS, getAgvLabel } from "@/features/agv-tracker/agvRobotConfig";
 interface Props {
   serverTime: string | null;
   focusedAgvIp: string | null; onFocusedAgvIpChange: (ip: string | null) => void;
+  selectedZone: "zone1" | "zone2"; onSelectedZoneChange: (zone: "zone1" | "zone2") => void;
   analysisOpen: boolean; onAnalysisToggle: () => void;
   showZones: boolean; onToggleZones: () => void;
   routeMode: boolean; onToggleRouteMode: () => void;
@@ -44,10 +43,21 @@ interface Props {
   coordPresetSaved?: boolean;
 }
 
-export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpChange, analysisOpen, onAnalysisToggle, showZones, onToggleZones, routeMode, onToggleRouteMode, followMode, onToggleFollowMode, coordEditMode, onToggleCoordEditMode, zoneEditMode, onToggleZoneEditMode, vehicleIcon, onToggleVehicleIcon, topologyGenerating, onGenerateTopology, onStartRectPick, hiddenTagsByIp, onToggleHiddenTag, customTags, onAddCustomTag, onDeleteCustomTag, allTagColors, creatableTags, undoLabel, onUndo, onSaveCoordPreset, onRestoreCoordPreset, onResetCoordZero, coordPresetSaved }: Props) {
+export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpChange, selectedZone, onSelectedZoneChange, analysisOpen, onAnalysisToggle, showZones, onToggleZones, routeMode, onToggleRouteMode, followMode, onToggleFollowMode, coordEditMode, onToggleCoordEditMode, zoneEditMode, onToggleZoneEditMode, vehicleIcon, onToggleVehicleIcon, topologyGenerating, onGenerateTopology, onStartRectPick, hiddenTagsByIp, onToggleHiddenTag, customTags, onAddCustomTag, onDeleteCustomTag, allTagColors, creatableTags, undoLabel, onUndo, onSaveCoordPreset, onRestoreCoordPreset, onResetCoordZero, coordPresetSaved }: Props) {
   const qc = useQueryClient();
   const [tagDropdownIp, setTagDropdownIp] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
+  const [layerMenu, setLayerMenu] = useState<{ top: number; left: number } | null>(null);
+  const [editMenu, setEditMenu] = useState<{ top: number; left: number } | null>(null);
+  const [carMenu, setCarMenu] = useState<{ top: number; left: number } | null>(null);
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
+
+  // 计算下拉面板锚点：top 锚定胶囊底部，left 对齐入口按钮
+  const anchorAt = (el: HTMLElement): { top: number; left: number } => {
+    const barRect = sidebarRef.current?.getBoundingClientRect();
+    const top = barRect ? barRect.bottom + 4 : el.getBoundingClientRect().bottom + 4;
+    return { top, left: el.getBoundingClientRect().left };
+  };
   const [showAddTag, setShowAddTag] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#f59e0b");
@@ -85,19 +95,33 @@ export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpCha
       .agv-sidebar-scroll::-webkit-scrollbar-thumb { background: var(--app-color-accent); border-radius: 3px; }
     `}</style>
     <div
-      className="agv-sidebar-scroll absolute -top-6 left-1/2 -translate-x-1/2 z-[var(--z-overlay)] flex flex-nowrap items-center gap-0.5 px-2 py-1 rounded-full bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-md overflow-x-auto max-w-[95vw] [&>*]:shrink-0"
+      ref={sidebarRef}
+      className="agv-sidebar-scroll absolute -top-6 left-1/2 -translate-x-1/2 z-[var(--z-overlay)] flex items-center gap-0.5 px-2 py-1 rounded-full bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-md overflow-x-auto max-w-[calc(100vw-1rem)] [&>*]:shrink-0"
       style={{ scrollbarWidth: "thin", scrollbarColor: "var(--app-color-accent) transparent" } as React.CSSProperties}
     >
       <span className={`w-2 h-2 rounded-full shrink-0 mx-0.5 ${masterOn && anyOnline ? "bg-green-500" : masterOn ? "bg-yellow-500" : "bg-gray-400"}`} />
-      <button onClick={() => onFocusedAgvIpChange(focusedAgvIp === null ? "172.22.159.16" : null)}
-        className="px-2 py-0.5 rounded-full text-[10px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors flex items-center gap-1">
-        {focusedAgvIp === null ? <LayoutGrid size={11} /> : <Maximize2 size={11} />}
+      <button onClick={() => onFocusedAgvIpChange(focusedAgvIp === null ? AGV_ROBOTS[0].ip : null)}
+        className="px-2 py-0.5 rounded-full text-[10px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors flex items-center gap-1"
+        title={focusedAgvIp === null ? "切换到单车视图" : "切换到楼层视图"}>
+        {focusedAgvIp === null ? <Maximize2 size={11} /> : <LayoutGrid size={11} />}
       </button>
       <span className="w-px h-3 bg-[var(--app-color-border-default)]" />
 
-      <span className="w-px h-3 bg-[var(--app-color-border-default)]" />
-      {showSingleTabs && ROBOT_SHORT.map((l, i) => {
-        const ip = `172.22.159.${16 + i * 2}`;
+      {/* 楼层（zone）切换 — 仅在楼层视图显示 */}
+      {!showSingleTabs && (
+        <>
+          {(["zone1", "zone2"] as const).map((z) => (
+            <button key={z} onClick={() => onSelectedZoneChange(z)}
+              className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors ${selectedZone === z ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}>
+              {z === "zone1" ? "一楼" : "二楼"}
+            </button>
+          ))}
+          <span className="w-px h-3 bg-[var(--app-color-border-default)]" />
+        </>
+      )}
+
+      {showSingleTabs && AGV_ROBOT_SHORTS.map((l, i) => {
+        const ip = AGV_ROBOTS[i].ip;
         return (
         <button key={l} onClick={() => onFocusedAgvIpChange(ip)}
           className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors ${ip === focusedAgvIp ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}>{l}</button>
@@ -105,107 +129,161 @@ export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpCha
       })}
       {showSingleTabs && <span className="w-px h-3 bg-[var(--app-color-border-default)]" />}
 
-      {/* 每车标签显隐配置（下拉式） */}
-      {hiddenTagsByIp && onToggleHiddenTag && (() => {
-        const colors = allTagColors ?? BUILTIN_TAG_COLORS;
-        const tags = creatableTags ?? [...BUILTIN_TAG_OPTIONS];
-        return (
-          <>
-            {ROBOT_KEYS.map((key, i) => {
-              const ip = `172.22.159.${16 + i * 2}`;
-              const hidden = hiddenTagsByIp[ip] ?? new Set<string>();
-              const isExpanded = tagDropdownIp === ip;
-              const robotColor = ["#3b82f6","#22c55e","#f59e0b","#8b5cf6"][i];
-              return (
-                <span key={`tags-${key}`} className="flex items-center gap-0">
-                  <button onClick={(e) => {
-                    if (isExpanded) { setTagDropdownIp(null); setDropdownPos(null); }
-                    else {
-                      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                      setDropdownPos({ top: r.bottom + 4, left: r.left });
-                      setTagDropdownIp(ip);
-                    }
-                  }}
-                    className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap hover:bg-[var(--app-color-surface-hover)] transition-colors"
-                    style={{ color: robotColor }}>
-                    {ROBOT_NAMES[i]}
-                    <ChevronDown size={9} className={`transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                  </button>
-                </span>
-              );
-            })}
-          </>
-        );
-      })()}
+      {/* 车标签入口 */}
+      {hiddenTagsByIp && onToggleHiddenTag && (
+        <button onClick={(e) => {
+          setTagDropdownIp(null); setDropdownPos(null); setLayerMenu(null); setEditMenu(null);
+          setCarMenu(carMenu ? null : anchorAt(e.currentTarget));
+        }}
+          className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center gap-0.5 ${carMenu ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
+          title="每台车的标签显隐">
+          <Tag size={11} /><ChevronDown size={9} className={`transition-transform ${carMenu ? "rotate-180" : ""}`} />
+        </button>
+      )}
+
+      {/* 图层入口 */}
+      <button onClick={(e) => {
+        setTagDropdownIp(null); setDropdownPos(null); setEditMenu(null); setCarMenu(null);
+        setLayerMenu(layerMenu ? null : anchorAt(e.currentTarget));
+      }}
+        className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center gap-0.5 ${layerMenu ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
+        title="图层显示">
+        <Layers size={11} /><ChevronDown size={9} className={`transition-transform ${layerMenu ? "rotate-180" : ""}`} />
+      </button>
+
+      {/* 编辑入口 */}
+      <button onClick={(e) => {
+        setTagDropdownIp(null); setDropdownPos(null); setLayerMenu(null); setCarMenu(null);
+        setEditMenu(editMenu ? null : anchorAt(e.currentTarget));
+      }}
+        className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center gap-0.5 ${editMenu ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
+        title="编辑工具">
+        <Pencil size={11} /><ChevronDown size={9} className={`transition-transform ${editMenu ? "rotate-180" : ""}`} />
+      </button>
+
       <span className="w-px h-3 bg-[var(--app-color-border-default)]" />
 
       <Link to="/admin/agv-tracker/logs"
         className="px-2 py-0.5 rounded-full text-[10px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors flex items-center gap-1 whitespace-nowrap"><FileText size={11} />日志</Link>
       <Link to="/admin/agv-tracker/analytics"
         className="px-2 py-0.5 rounded-full text-[10px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors flex items-center gap-1 whitespace-nowrap"><BarChart3 size={11} />分析</Link>
-      <button onClick={onToggleZones}
-        className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${showZones ? "text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
-        title={showZones ? "隐藏区域框" : "显示区域框"}><Map size={11} /></button>
-      <button onClick={onToggleRouteMode}
-        className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${routeMode ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
-        title={routeMode ? "关闭路线模式" : "路线模式"}><Route size={11} /></button>
-      <button onClick={() => onStartRectPick?.()}
-        className="px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center text-[var(--app-color-accent)] hover:bg-[var(--app-color-accent-soft)]"
-        title="地图框选标记区域（点击两点画矩形）"><SquareDashed size={11} /></button>
-      {onToggleCoordEditMode && (
-        <button onClick={onToggleCoordEditMode}
-          className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center gap-0.5 ${coordEditMode ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
-          title={coordEditMode ? "关闭坐标系编辑" : "坐标系编辑（拖拽参考框移动/旋转）"}><Crosshair size={11} /><span className="text-[8px]">坐标</span></button>
-      )}
-      {coordEditMode && onSaveCoordPreset && (
-        <>
-          <button onClick={onSaveCoordPreset}
-            className="px-1 py-0.5 rounded-full text-[9px] text-[var(--app-color-text-tertiary)] hover:text-green-500 hover:bg-[var(--app-color-surface-hover)]"
-            title="保存当前坐标系配置为预设">{coordPresetSaved ? "✓已存" : "保存"}</button>
-          <button onClick={onRestoreCoordPreset}
-            className="px-1 py-0.5 rounded-full text-[9px] text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]"
-            title="从预设恢复坐标系配置">恢复</button>
-          <button onClick={onResetCoordZero}
-            className="px-1 py-0.5 rounded-full text-[9px] text-[var(--app-color-text-tertiary)] hover:text-red-500 hover:bg-[var(--app-color-surface-hover)]"
-            title="归零所有坐标系偏移和旋转">归零</button>
-        </>
-      )}
-      {onToggleZoneEditMode && (
-        <button onClick={onToggleZoneEditMode}
-          className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center gap-0.5 ${zoneEditMode ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
-          title={zoneEditMode ? "关闭标签编辑" : "标签编辑（拖拽调整区域大小/位置）"}><Edit3 size={11} /><span className="text-[8px]">标签</span></button>
-      )}
-      {onUndo && undoLabel && (
-        <button onClick={onUndo}
-          className="px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center gap-0.5 text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
-          title={`撤销: ${undoLabel} (Ctrl+Z)`}><Undo2 size={11} /><span className="text-[9px] max-w-[60px] truncate">{undoLabel}</span></button>
-      )}
-      {routeMode && (
-        <button onClick={() => onGenerateTopology?.()}
-          disabled={topologyGenerating}
-          className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center gap-1 ${
-            topologyGenerating ? "opacity-50 cursor-not-allowed text-[var(--app-color-text-tertiary)]" : "text-[var(--app-color-accent)] hover:bg-[var(--app-color-accent-soft)]"
-          }`}
-          title="从数据库轨迹重新生成路线拓扑">
-          <Zap size={10} className={topologyGenerating ? "animate-spin" : ""} />
-        </button>
-      )}
-      <button onClick={onToggleFollowMode}
-        className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${followMode ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
-        title={followMode ? "关闭视角跟随" : "视角跟随"}><Crosshair size={11} /></button>
-      <button onClick={onToggleVehicleIcon}
-        className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${vehicleIcon==='forklift' ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}
-        title={vehicleIcon==='arrow'?'切为叉车图标':'切为箭头图标'}><span style={{fontSize:'11px'}}>{vehicleIcon==='arrow'?'▶':'🚜'}</span></button>
       <button onClick={onAnalysisToggle}
         className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${analysisOpen ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}><Settings2 size={11} /></button>
     </div>
+
+    {/* ── 车标签选车面板 ── */}
+    {carMenu && hiddenTagsByIp && onToggleHiddenTag && createPortal(
+      <>
+        <div className="fixed inset-0 z-[var(--z-dropdown)]" onClick={() => setCarMenu(null)} />
+        <div className="fixed z-[var(--z-tooltip)] flex flex-col gap-0.5 px-2 py-1.5 rounded-lg bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-lg min-w-[140px]"
+          style={{ top: carMenu.top, left: carMenu.left }}
+          onClick={(e) => e.stopPropagation()}>
+          <span className="text-[9px] text-[var(--app-color-text-tertiary)] px-1 pb-0.5">选择小车标签</span>
+          {AGV_ROBOTS.map((r) => (
+            <button key={r.ip} onClick={() => { setTagDropdownIp(r.ip); setDropdownPos({ top: carMenu.top, left: carMenu.left }); setCarMenu(null); }}
+              className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium whitespace-nowrap hover:bg-[var(--app-color-surface-hover)]"
+              style={{ color: r.color }}>
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </>,
+      document.body
+    )}
+
+    {/* ── 图层面板 ── */}
+    {layerMenu && createPortal(
+      <>
+        <div className="fixed inset-0 z-[var(--z-dropdown)]" onClick={() => setLayerMenu(null)} />
+        <div className="fixed z-[var(--z-tooltip)] flex flex-col gap-0.5 px-2 py-1.5 rounded-lg bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-lg min-w-[140px]"
+          style={{ top: layerMenu.top, left: layerMenu.left }}
+          onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => { onToggleZones(); setLayerMenu(null); }}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap ${showZones ? "text-[var(--app-color-accent)]" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}>
+            <Map size={11} />区域框{showZones ? " ✓" : ""}
+          </button>
+          <button onClick={() => { onToggleRouteMode(); setLayerMenu(null); }}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap ${routeMode ? "text-[var(--app-color-accent)]" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}>
+            <Route size={11} />路线模式{routeMode ? " ✓" : ""}
+          </button>
+          <button onClick={() => { onToggleFollowMode(); setLayerMenu(null); }}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap ${followMode ? "text-[var(--app-color-accent)]" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}>
+            <Crosshair size={11} />视角跟随{followMode ? " ✓" : ""}
+          </button>
+          <button onClick={() => { onToggleVehicleIcon(); setLayerMenu(null); }}
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
+            <span style={{ fontSize: '11px' }}>{vehicleIcon === 'arrow' ? '▶' : '🚜'}</span>车辆图标
+          </button>
+        </div>
+      </>,
+      document.body
+    )}
+
+    {/* ── 编辑面板 ── */}
+    {editMenu && createPortal(
+      <>
+        <div className="fixed inset-0 z-[var(--z-dropdown)]" onClick={() => setEditMenu(null)} />
+        <div className="fixed z-[var(--z-tooltip)] flex flex-col gap-0.5 px-2 py-1.5 rounded-lg bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-lg min-w-[160px]"
+          style={{ top: editMenu.top, left: editMenu.left }}
+          onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => { onStartRectPick?.(); setEditMenu(null); }}
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]">
+            <SquareDashed size={11} />地图框选标记
+          </button>
+          {onToggleCoordEditMode && (
+            <button onClick={() => { onToggleCoordEditMode(); setEditMenu(null); }}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap ${coordEditMode ? "text-[var(--app-color-accent)]" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}>
+              <Crosshair size={11} />坐标系编辑{coordEditMode ? " ✓" : ""}
+            </button>
+          )}
+          {coordEditMode && onSaveCoordPreset && (
+            <>
+              <button onClick={() => { onSaveCoordPreset(); }}
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
+                <RotateCw size={11} />{coordPresetSaved ? "✓已存预设" : "保存预设"}
+              </button>
+              <button onClick={() => { onRestoreCoordPreset?.(); }}
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
+                恢复预设
+              </button>
+              <button onClick={() => { onResetCoordZero?.(); }}
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap text-red-500 hover:bg-[var(--app-color-surface-hover)]">
+                归零坐标系
+              </button>
+            </>
+          )}
+          {onToggleZoneEditMode && (
+            <button onClick={() => { onToggleZoneEditMode(); setEditMenu(null); }}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap ${zoneEditMode ? "text-[var(--app-color-accent)]" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}>
+              <Edit3 size={11} />标签编辑{zoneEditMode ? " ✓" : ""}
+            </button>
+          )}
+          {onUndo && undoLabel && (
+            <button onClick={() => { onUndo(); setEditMenu(null); }}
+              className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
+              <Undo2 size={11} />撤销
+            </button>
+          )}
+          {routeMode && (
+            <button onClick={() => { onGenerateTopology?.(); setEditMenu(null); }}
+              disabled={topologyGenerating}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap ${topologyGenerating ? "opacity-50 text-[var(--app-color-text-tertiary)]" : "text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]"}`}>
+              <Zap size={11} className={topologyGenerating ? "animate-spin" : ""} />重新生成拓扑
+            </button>
+          )}
+        </div>
+      </>,
+      document.body
+    )}
+
     {/* 标签下拉面板（fixed 定位脱离 bar overflow 限制） */}
     {tagDropdownIp && dropdownPos && hiddenTagsByIp && onToggleHiddenTag && (() => {
       const colors = allTagColors ?? BUILTIN_TAG_COLORS;
       const tags = creatableTags ?? [...BUILTIN_TAG_OPTIONS];
       const ip = tagDropdownIp;
       const hidden = hiddenTagsByIp[ip] ?? new Set<string>();
-      return (
+      return createPortal(
         <>
           <div className="fixed inset-0 z-[var(--z-dropdown)]" onClick={() => { setTagDropdownIp(null); setDropdownPos(null); }} />
           <div className="fixed z-[var(--z-tooltip)] flex flex-wrap gap-0.5 px-2 py-1.5 rounded-lg bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-lg min-w-[130px]"
@@ -252,7 +330,7 @@ export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpCha
                   <select value={newTagScope} onChange={e => setNewTagScope(e.target.value as any)}
                     className="flex-1 px-1 py-0.5 rounded text-[9px] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)]">
                     <option value="world">全局标签</option>
-                    <option value="agv">仅 {ip.endsWith(".16") ? "AGV-1" : ip.endsWith(".18") ? "AGV-2" : ip.endsWith(".20") ? "AGV-3" : "AGV-4"}</option>
+                    <option value="agv">仅 {getAgvLabel(ip)}</option>
                   </select>
                 </div>
                 <div className="flex gap-1">
@@ -270,7 +348,8 @@ export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpCha
               </div>
             )}
           </div>
-        </>
+        </>,
+        document.body
       );
     })()}
     </>

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 
-import { fetchFilteredDebugLogs, fetchFilteredDebugStats, searchCardMappings, syncAccessLogs } from "@/api/twinApi";
+import { fetchFilteredDebugLogs, fetchFilteredDebugStats, fetchCardMappings, syncAccessLogs, type CardMappingRow } from "@/api/twinApi";
 import { Filter } from "lucide-react";
 import { AdminToolbarSearchField } from "@/components/admin/AdminToolbarSearchField";
 import { DebugDangerousOpsMenu } from "@/components/admin/DebugDangerousOpsMenu";
@@ -75,39 +75,34 @@ export default function DebugTablePage() {
     /** 流水线表：离开触发原因「更多」展开的行键 */
     const [exitTriggerExpandedKeys, setExitTriggerExpandedKeys] = useState<Set<string>>(new Set());
 
-    useEffect(() => {
-        const ids: string[] = Array.from(
-            new Set(
-                (displayData || [])
-                    .map((log: any) => getUserKey(log))
-                    .filter((v: unknown): v is string => typeof v === "string" && v.length > 0)
-            )
-        );
-        if (ids.length === 0) {
-            setExemptUserKeySet(new Set());
-            return;
+    // 全量卡映射（一次性拉取 + 缓存），构建 userId → 是否豁免 的本地字典，避免逐行 N+1 搜索
+    const { data: allCardMappings } = useQuery({
+        queryKey: ["cardMappings", "all", "exemptDict"],
+        queryFn: async (): Promise<CardMappingRow[]> => {
+            const res = await fetchCardMappings(1, 100000);
+            return res.list || [];
+        },
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const exemptUserIdMap = useMemo(() => {
+        const m = new Map<string, boolean>();
+        for (const row of allCardMappings || []) {
+            const uid = String(row.aroUserId || "").trim();
+            if (!uid || m.has(uid)) continue;
+            m.set(uid, toBoolFlag(row.freezeExemptFlag) || toBoolFlag((row as any).freeze_exempt_flag));
         }
-        let cancelled = false;
-        (async () => {
-            const next = new Set<string>();
-            await Promise.all(ids.map(async (uid) => {
-                try {
-                    const rows = await searchCardMappings(uid);
-                    const matched = (rows || []).find((row: any) => String(row.aroUserId || "").trim() === uid);
-                    const exempt = matched
-                        ? toBoolFlag(matched.freezeExemptFlag) || toBoolFlag((matched as any).freeze_exempt_flag)
-                        : false;
-                    if (exempt) next.add(uid);
-                } catch {
-                    // ignore single-user lookup failure to avoid blocking table render
-                }
-            }));
-            if (!cancelled) setExemptUserKeySet(next);
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [displayData]);
+        return m;
+    }, [allCardMappings]);
+
+    useEffect(() => {
+        const next = new Set<string>();
+        for (const log of displayData) {
+            const uid = getUserKey(log);
+            if (uid && exemptUserIdMap.get(uid)) next.add(uid);
+        }
+        setExemptUserKeySet(next);
+    }, [displayData, exemptUserIdMap]);
 
     const handleSyncLogs = async () => {
         setIsSyncing(true);

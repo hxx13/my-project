@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
+import { AdminPageTabs } from "@/components/admin/AdminPageTabs";
 import { AccessFusionWorkspacePanel } from "@/features/access-fusion/AccessFusionWorkspacePanel";
 import { DahuaSwingStatsAuditPanel } from "@/features/dahua-swing-stats/DahuaSwingStatsAuditPanel";
 import { AccessSwingRecordsPanel } from "@/features/dahua-swing-records/AccessSwingRecordsPanel";
@@ -90,9 +91,9 @@ type HubTab = "realtime" | "audit" | "records" | "clean";
 
 export default function AdminDahuaSwingTasksPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const rawTab = searchParams.get("tab") || "realtime";
+  const rawTab = searchParams.get("tab") || "records";
   const tab: HubTab =
-    rawTab === "audit" || rawTab === "records" || rawTab === "clean" ? rawTab : "realtime";
+    rawTab === "realtime" || rawTab === "audit" || rawTab === "records" || rawTab === "clean" ? rawTab : "records";
   const profilesOpen = searchParams.get("profiles") === "1";
   const setTab = (next: HubTab) => {
     const p = new URLSearchParams(searchParams);
@@ -298,40 +299,27 @@ export default function AdminDahuaSwingTasksPage() {
   };
 
   return (
-    <div className="p-6 space-y-4">
-      <div>
-        <div className="mt-3 flex flex-wrap gap-2 border-b border-[var(--twin-hairline)] pb-2">
-          {(
-            [
-              ["realtime", "实时拉取"],
-              ["audit", "审计拉取"],
-              ["records", "门禁记录库"],
-              ["clean", "统计清洗"],
-            ] as const
-          ).map(([k, label]) => (
-            <button
-              key={k}
-              type="button"
-              className={`rounded-t px-3 py-1.5 text-xs font-medium ${
-                tab === k ? "bg-indigo-600 text-white" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
-              }`}
-              onClick={() => setTab(k)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-      {tab === "audit" ? <DahuaSwingStatsAuditPanel /> : null}
-      {tab === "records" ? <AccessSwingRecordsPanel /> : null}
-      {tab === "clean" ? <AccessFusionWorkspacePanel initialProfilesOpen={profilesOpen} /> : null}
-      {tab === "realtime" ? (
-        <>
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-[var(--twin-body)]">实时拉取任务</h2>
+    <div className="flex flex-col gap-3 max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+      <AdminPageTabs
+        className="shrink-0"
+        tabs={[
+          { id: "records", label: "门禁记录库" },
+          { id: "realtime", label: "实时拉取" },
+          { id: "audit", label: "审计拉取" },
+          { id: "clean", label: "统计清洗" },
+        ]}
+        value={tab}
+        onChange={(id) => setTab(id as HubTab)}
+      />
+      <div className="flex min-h-0 flex-1 flex-col">
+        {tab === "records" ? <AccessSwingRecordsPanel /> : null}
+        {tab === "realtime" ? (
+          <div className="flex h-full min-h-0 flex-col gap-3">
+            <div className="flex shrink-0 items-center justify-between">
+        <h2 className="text-sm font-semibold text-[var(--app-color-text-secondary)]">实时拉取任务</h2>
         <button
           type="button"
-          className="h-9 rounded bg-[var(--twin-ink)] px-3 text-xs text-[var(--twin-on-primary)]"
+          className="h-9 rounded bg-[var(--app-color-text-primary)] px-3 text-xs text-white"
           onClick={async () => {
             try {
               const res = await executeAllDahuaSwingTask();
@@ -355,7 +343,7 @@ export default function AdminDahuaSwingTasksPage() {
         </button>
       </div>
 
-      <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 space-y-2 shadow-twin-level-2">
+      <div className="shrink-0 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-3 space-y-2 shadow-sm">
         {form.id && (
           <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             当前为编辑模式：正在修改任务
@@ -363,16 +351,16 @@ export default function AdminDahuaSwingTasksPage() {
             <span className="ml-2 text-amber-700">（修改后请点击"更新任务"保存）</span>
           </div>
         )}
-        <label className="flex flex-col gap-1 text-[11px] text-[var(--twin-body)]">
+        <label className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
           任务名称（用于区分不同拉取规则）
           <input
-            className="h-8 w-full max-w-[420px] rounded border border-[var(--twin-hairline)] px-2 text-[11px] text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+            className="h-8 w-full max-w-[420px] rounded border border-[var(--app-color-border-default)] px-2 text-[11px] text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
             placeholder="例如：浦东-1号门-自动签退"
             value={form.name}
             onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
           />
         </label>
-        <label className="text-xs text-[var(--twin-body)] inline-flex items-center gap-2">
+        <label className="text-xs text-[var(--app-color-text-secondary)] inline-flex items-center gap-2">
           <AdminSwitchScaled
             size="3.5"
             checked={form.enabled === 1}
@@ -381,10 +369,10 @@ export default function AdminDahuaSwingTasksPage() {
           启用任务（开启后可被批量执行）
         </label>
         <div className="grid gap-1.5 md:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6">
-          <label className="flex flex-col gap-1 text-[11px] text-[var(--twin-body)]">
+          <label className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
             轮询频率（秒）
             <input
-              className="h-8 rounded border border-[var(--twin-hairline)] px-2 text-[11px] text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+              className="h-8 rounded border border-[var(--app-color-border-default)] px-2 text-[11px] text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
               placeholder="例如 60"
               type="number"
               value={form.pollIntervalSeconds}
@@ -396,20 +384,20 @@ export default function AdminDahuaSwingTasksPage() {
               }
             />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] text-[var(--twin-body)]">
+          <label className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
             分页大小（每次请求条数）
             <input
-              className="h-8 rounded border border-[var(--twin-hairline)] px-2 text-[11px] text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+              className="h-8 rounded border border-[var(--app-color-border-default)] px-2 text-[11px] text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
               placeholder="pageSize"
               type="number"
               value={form.pageSize}
               onChange={(e) => setForm((p) => ({ ...p, pageSize: Math.max(1, Number(e.target.value || 200)) }))}
             />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] text-[var(--twin-body)]">
+          <label className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
             拉取动态窗口（分钟）
             <input
-              className="h-8 rounded border border-[var(--twin-hairline)] px-2 text-[11px] text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+              className="h-8 rounded border border-[var(--app-color-border-default)] px-2 text-[11px] text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
               placeholder="默认30，仅拉取当前时间之前N分钟"
               type="number"
               min={1}
@@ -417,12 +405,12 @@ export default function AdminDahuaSwingTasksPage() {
               onChange={(e) => setForm((p) => ({ ...p, queryWindowMinutes: Number(e.target.value || 30) }))}
             />
           </label>
-          <div className="flex flex-col gap-1 text-[11px] text-[var(--twin-body)]">
+          <div className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
             部门ID（下拉选择）
             <div className="relative">
-              <div className="flex h-8 items-center rounded border border-[var(--twin-hairline)]">
+              <div className="flex h-8 items-center rounded border border-[var(--app-color-border-default)]">
                 <input
-                  className="flex-1 px-2 text-[11px] outline-none text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+                  className="flex-1 px-2 text-[11px] outline-none text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
                   placeholder="全部部门（输入名称/ID搜索）"
                   value={deptKeyword}
                   onChange={(e) => {
@@ -433,7 +421,7 @@ export default function AdminDahuaSwingTasksPage() {
                 />
                 <button
                   type="button"
-                  className="h-full px-2 text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
+                  className="h-full px-2 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-secondary)]"
                   onClick={() => setDeptDropdownOpen((v) => !v)}
                   aria-label="展开部门列表"
                 >
@@ -441,14 +429,14 @@ export default function AdminDahuaSwingTasksPage() {
                 </button>
               </div>
               {deptDropdownOpen && (
-                <div className="absolute z-20 mt-1 w-full rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 shadow-twin-level-3">
+                <div className="absolute z-20 mt-1 w-full rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2 shadow-md">
                   <div className="mb-2 flex items-center justify-between">
-                    <div className="text-[11px] text-[var(--twin-mute)]">
+                    <div className="text-[11px] text-[var(--app-color-text-tertiary)]">
                       已选部门ID：{form.deptIds || ""}
                     </div>
                     <button
                       type="button"
-                      className="rounded border border-[var(--twin-hairline)] px-2 py-0.5 text-[11px] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+                      className="rounded border border-[var(--app-color-border-default)] px-2 py-0.5 text-[11px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
                       onClick={async () => {
                         try {
                           const res = await fetchDahuaDepartments(1, 200, deptKeyword.trim());
@@ -461,10 +449,10 @@ export default function AdminDahuaSwingTasksPage() {
                       刷新
                     </button>
                   </div>
-                  <div className="max-h-56 overflow-auto rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1">
+                  <div className="max-h-56 overflow-auto rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
                     <button
                       type="button"
-                      className={`mb-1 block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--twin-canvas-soft)] ${form.deptIds === "" ? "bg-indigo-50 text-indigo-700" : "text-[var(--twin-body)]"}`}
+                      className={`mb-1 block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--app-color-surface-hover)] ${form.deptIds === "" ? "bg-indigo-50 text-indigo-700" : "text-[var(--app-color-text-secondary)]"}`}
                       onClick={() => {
                         setForm((p) => ({ ...p, deptIds: "" }));
                         setDeptKeyword("");
@@ -485,13 +473,13 @@ export default function AdminDahuaSwingTasksPage() {
                         return (
                           <div key={nodeId} className="mb-0.5">
                             <div
-                              className={`flex items-center gap-1 rounded px-1 py-1 text-xs ${checked ? "bg-indigo-50 text-indigo-700" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}
+                              className={`flex items-center gap-1 rounded px-1 py-1 text-xs ${checked ? "bg-indigo-50 text-indigo-700" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}
                               style={{ marginLeft: `${depth * 14}px` }}
                             >
                               {children.length > 0 ? (
                                 <button
                                   type="button"
-                                  className="h-5 w-5 rounded border border-[var(--twin-hairline)] text-[10px] hover:bg-[var(--twin-canvas-soft)]"
+                                  className="h-5 w-5 rounded border border-[var(--app-color-border-default)] text-[10px] hover:bg-[var(--app-color-surface-hover)]"
                                   onClick={() =>
                                     setExpandedDeptIds((prev) => {
                                       const next = new Set(prev);
@@ -517,7 +505,7 @@ export default function AdminDahuaSwingTasksPage() {
                                 }}
                               />
                               <span className="truncate">{depth > 0 ? "└ " : ""}{deptName}</span>
-                              <span className="text-[10px] text-[var(--twin-mute)]">#{nodeId}</span>
+                              <span className="text-[10px] text-[var(--app-color-text-tertiary)]">#{nodeId}</span>
                             </div>
                             {open && children.length > 0 && (
                               <div>{children.map((child) => renderNode(child, depth + 1))}</div>
@@ -532,12 +520,12 @@ export default function AdminDahuaSwingTasksPage() {
               )}
             </div>
           </div>
-          <div className="flex flex-col gap-1 text-[11px] text-[var(--twin-body)]">
+          <div className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
             卡号（从大华发卡库下拉选择）
             <div className="relative">
-              <div className="flex h-8 items-center rounded border border-[var(--twin-hairline)]">
+              <div className="flex h-8 items-center rounded border border-[var(--app-color-border-default)]">
                 <input
-                  className="flex-1 px-2 text-[11px] outline-none text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+                  className="flex-1 px-2 text-[11px] outline-none text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
                   placeholder="全部卡号（输入卡号/姓名/编号搜索）"
                   value={cardKeyword}
                   onChange={(e) => {
@@ -548,7 +536,7 @@ export default function AdminDahuaSwingTasksPage() {
                 />
                 <button
                   type="button"
-                  className="h-full px-2 text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
+                  className="h-full px-2 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-secondary)]"
                   onClick={() => setCardDropdownOpen((v) => !v)}
                   aria-label="展开卡号列表"
                 >
@@ -556,10 +544,10 @@ export default function AdminDahuaSwingTasksPage() {
                 </button>
               </div>
               {cardDropdownOpen && (
-                <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-3">
+                <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-md">
                   <button
                     type="button"
-                    className={`block w-full px-2 py-2 text-left text-xs hover:bg-[var(--twin-canvas-soft)] ${form.cardNumber === "" ? "bg-indigo-50 text-indigo-700" : ""}`}
+                    className={`block w-full px-2 py-2 text-left text-xs hover:bg-[var(--app-color-surface-hover)] ${form.cardNumber === "" ? "bg-indigo-50 text-indigo-700" : ""}`}
                     onClick={() => {
                       setForm((p) => ({ ...p, cardNumber: "" }));
                       setCardKeyword("");
@@ -576,7 +564,7 @@ export default function AdminDahuaSwingTasksPage() {
                       <button
                         key={`${c.cardNo}-${c.aroUserId}`}
                         type="button"
-                        className={`block w-full px-2 py-2 text-left text-xs hover:bg-[var(--twin-canvas-soft)] ${form.cardNumber === cardNo ? "bg-indigo-50 text-indigo-700" : ""}`}
+                        className={`block w-full px-2 py-2 text-left text-xs hover:bg-[var(--app-color-surface-hover)] ${form.cardNumber === cardNo ? "bg-indigo-50 text-indigo-700" : ""}`}
                         onClick={() => {
                           setForm((p) => ({ ...p, cardNumber: cardNo }));
                           setCardKeyword(label);
@@ -591,10 +579,10 @@ export default function AdminDahuaSwingTasksPage() {
               )}
             </div>
           </div>
-          <label className="flex flex-col gap-1 text-[11px] text-[var(--twin-body)]">
+          <label className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
             开门类型
             <select
-              className="h-8 rounded border border-[var(--twin-hairline)] px-2 text-[11px] text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+              className="h-8 rounded border border-[var(--app-color-border-default)] px-2 text-[11px] text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
               value={form.openType}
               onChange={(e) => setForm((p) => ({ ...p, openType: e.target.value ? Number(e.target.value) : "" }))}
             >
@@ -604,10 +592,10 @@ export default function AdminDahuaSwingTasksPage() {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[11px] text-[var(--twin-body)]">
+          <label className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
             事件类型（进/出）
             <select
-              className="h-8 rounded border border-[var(--twin-hairline)] px-2 text-[11px] text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+              className="h-8 rounded border border-[var(--app-color-border-default)] px-2 text-[11px] text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
               value={form.enterOrExit}
               onChange={(e) => setForm((p) => ({ ...p, enterOrExit: e.target.value ? Number(e.target.value) : "" }))}
             >
@@ -617,10 +605,10 @@ export default function AdminDahuaSwingTasksPage() {
               <option value="3">进/出门</option>
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[11px] text-[var(--twin-body)]">
+          <label className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
             开门结果
             <select
-              className="h-8 rounded border border-[var(--twin-hairline)] px-2 text-[11px] text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+              className="h-8 rounded border border-[var(--app-color-border-default)] px-2 text-[11px] text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
               value={form.openResult}
               onChange={(e) => setForm((p) => ({ ...p, openResult: e.target.value ? Number(e.target.value) : "" }))}
             >
@@ -631,15 +619,15 @@ export default function AdminDahuaSwingTasksPage() {
           </label>
         </div>
 
-        <div className="rounded border border-[var(--twin-hairline)] p-2 space-y-1.5">
-          <div className="text-[11px] font-semibold text-[var(--twin-body)]">门禁通道筛选（任务拉取条件，可多选）</div>
+        <div className="rounded border border-[var(--app-color-border-default)] p-2 space-y-1.5">
+          <div className="text-[11px] font-semibold text-[var(--app-color-text-secondary)]">门禁通道筛选（任务拉取条件，可多选）</div>
           <input
-            className="h-8 w-full max-w-[420px] rounded border border-[var(--twin-hairline)] px-2 text-[11px] text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+            className="h-8 w-full max-w-[420px] rounded border border-[var(--app-color-border-default)] px-2 text-[11px] text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
             placeholder="搜索通道名称/编码"
             value={taskChannelKeyword}
             onChange={(e) => setTaskChannelKeyword(e.target.value)}
           />
-          <div className="max-h-36 overflow-auto space-y-1 rounded border border-[var(--twin-hairline)] p-1">
+          <div className="max-h-36 overflow-auto space-y-1 rounded border border-[var(--app-color-border-default)] p-1">
             {taskChannelOptions.map((ch) => {
               const code = normalizeChannelCode(ch.channelCode);
               if (!code) return null;
@@ -701,7 +689,7 @@ export default function AdminDahuaSwingTasksPage() {
           {form.id && (
             <button
               type="button"
-              className="h-9 rounded border border-[var(--twin-hairline)] px-3 text-xs text-[var(--twin-body)]"
+              className="h-9 rounded border border-[var(--app-color-border-default)] px-3 text-xs text-[var(--app-color-text-secondary)]"
               onClick={() => {
                 setEditingHintName("");
                 setTaskChannelLabelExtra({});
@@ -714,9 +702,10 @@ export default function AdminDahuaSwingTasksPage() {
         </div>
       </div>
 
-      <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-2">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
+        <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full text-xs">
-          <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
+          <thead className="bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]">
             <tr>
               <th className="px-3 py-2 text-left">任务</th>
               <th className="px-3 py-2 text-left">状态</th>
@@ -731,8 +720,8 @@ export default function AdminDahuaSwingTasksPage() {
               <tr><td className="px-3 py-6 text-center" colSpan={4}><EmptyState title="暂无任务" /></td></tr>
             ) : (
               rows.map((it) => (
-                <tr key={it.id} className="border-t border-[var(--twin-hairline)]">
-                  <td className="px-3 py-2 text-[var(--twin-ink)]">{it.name}</td>
+                <tr key={it.id} className="border-t border-[var(--app-color-border-default)]">
+                  <td className="px-3 py-2 text-[var(--app-color-text-primary)]">{it.name}</td>
                   <td className="px-3 py-2">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${it.enabled === 1 ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
                       {it.enabled === 1 ? "已启用" : "已停用"}
@@ -741,7 +730,7 @@ export default function AdminDahuaSwingTasksPage() {
                       {it.lastStatus || "-"}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-[var(--twin-mute)]">{it.lastRunAt || "-"}</td>
+                  <td className="px-3 py-2 text-[var(--app-color-text-tertiary)]">{it.lastRunAt || "-"}</td>
                   <td className="px-3 py-2 space-x-2">
                     <button
                       type="button"
@@ -821,9 +810,13 @@ export default function AdminDahuaSwingTasksPage() {
             )}
           </tbody>
         </table>
+        </div>
+          </div>
+          </div>
+        ) : null}
+        {tab === "audit" ? <DahuaSwingStatsAuditPanel /> : null}
+        {tab === "clean" ? <AccessFusionWorkspacePanel initialProfilesOpen={profilesOpen} /> : null}
       </div>
-        </>
-      ) : null}
     </div>
   );
 }

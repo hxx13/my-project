@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useSpatialElements, useSaveSpatialElement, useDeleteSpatialElement, useDiscoverZones, useGenerateZonesFromTopology, type AgvSpatialElement } from "@/api/domains/agv-analysis.api";
 import { Plus, Edit3, Trash2, AlertTriangle, Search, Crosshair, Sparkles } from "lucide-react";
 import { BUILTIN_TAG_OPTIONS, BUILTIN_TAG_COLORS } from "@/features/agv-tracker/tagConfig";
+import { getAgvLabel } from "@/features/agv-tracker/agvRobotConfig";
 
 const TAG_OPTIONS = [...BUILTIN_TAG_OPTIONS];
 const TAG_COLORS: Record<string, string> = { ...BUILTIN_TAG_COLORS };
@@ -287,7 +288,7 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
           {editing.robotIp && (
             <span className="text-[9px] text-[var(--app-color-text-tertiary)] shrink-0 mr-1">
               归属: <span className="font-semibold text-[var(--app-color-text-primary)]">
-                {editing.robotIp.endsWith(".16") ? "AGV-1" : editing.robotIp.endsWith(".18") ? "AGV-2" : editing.robotIp.endsWith(".20") ? "AGV-3" : "AGV-4"}
+                {getAgvLabel(editing.robotIp)}
               </span>
             </span>
           )}

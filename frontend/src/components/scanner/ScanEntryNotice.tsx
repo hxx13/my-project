@@ -155,8 +155,8 @@ export function ScanEntryNotice({
     </div>
   ) : undefined;
 
-  // "我要离开"按钮：仅场内已有+有倒计时+有回调时显示
-  const showExitButton = isAlreadyInside && hasCountdown && onRequestExit;
+  // "我要离开"按钮：仅场内已有+有倒计时+有回调时显示；正在执行离开(actedRoomId)期间隐藏，避免"确认离开"后又弹一次"我要离开"
+  const showExitButton = isAlreadyInside && hasCountdown && onRequestExit && !state.actedRoomId;
 
   return (
     <MinimizableNotice

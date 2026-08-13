@@ -55,7 +55,8 @@ public class AgvController {
     }
 
     private static final String[] KNOWN_IPS = {
-        "172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22"
+        "172.22.159.16", "172.22.159.18", "172.22.159.20", "172.22.159.22",
+        "172.22.159.113", "172.22.159.115"
     };
 
     /**
@@ -155,7 +156,7 @@ public class AgvController {
     public Result<List<Map<String, Object>>> replay(
             @RequestParam String from,
             @RequestParam String to,
-            @RequestParam(defaultValue = "172.22.159.16,172.22.159.18,172.22.159.20,172.22.159.22") String ips,
+            @RequestParam(defaultValue = "172.22.159.16,172.22.159.18,172.22.159.20,172.22.159.22,172.22.159.113,172.22.159.115") String ips,
             @RequestParam(defaultValue = "20000") int limit) {
         LocalDateTime fromDt = parseIso(from);
         LocalDateTime toDt = parseIso(to);
@@ -295,9 +296,9 @@ public class AgvController {
     //   POST /api/v1/agv/routes/topology/generate  — 从 DB 轨迹数据动态生成
     //   GET  /api/v1/agv/routes/topology/generated  — 查询已生成的拓扑
 
-    /** Zone → AGV IP 映射 */
+    /** Zone → AGV IP 映射（zone1 含 4 台：16/18/113/115） */
     private static final Map<String, String[]> ZONE_AGV_MAP = Map.of(
-        "zone1", new String[]{"172.22.159.16", "172.22.159.18"},
+        "zone1", new String[]{"172.22.159.16", "172.22.159.18", "172.22.159.113", "172.22.159.115"},
         "zone2", new String[]{"172.22.159.20", "172.22.159.22"}
     );
 

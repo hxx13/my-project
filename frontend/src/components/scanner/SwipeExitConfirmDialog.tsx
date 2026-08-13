@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut, Smartphone } from "lucide-react";
-import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
+import { resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
 import { SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { MobileQrCard } from "./MobileQrCard";
@@ -87,10 +87,7 @@ export function SwipeExitConfirmDialog({
         }
     }, [countdown, autoSignoutState]);
 
-    // 仅 AUTO_EXIT_SCHEDULED 倒计时锁定按钮；PENDING_ACTIVATION 倒计时不限制
-    const isAutoExitCountdown = autoSignoutState === "AUTO_EXIT_SCHEDULED";
-    const showCountdown = isAutoExitCountdown && countdown != null && countdown > 0;
-    const countdownZero = isAutoExitCountdown && countdown === 0;
+    // 方向化重构后：倒计时结束仍自动签退，但按钮不再锁定，可随时点击确认离开（提前签退）
     const countdownCopy = resolveAutoSignoutCountdownCopy(autoSignoutState);
 
     return createPortal(
@@ -137,12 +134,12 @@ export function SwipeExitConfirmDialog({
                                 确认离开
                             </h2>
 
-                            {/* 倒计时信息提示：PENDING_ACTIVATION 仅提示不锁按钮，AUTO_EXIT_SCHEDULED 锁按钮 */}
+                            {/* 倒计时信息提示：倒计时结束自动签退，也可随时点击确认离开（提前签退） */}
                             {countdown != null && countdown > 0 && (
                                 <div className="mb-4 text-center">
                                     <p className="text-[11px] leading-snug text-[var(--app-color-text-tertiary)]">
                                         {countdownCopy.hint}
-                                        {!isAutoExitCountdown && " 可随时点击确认离开。"}
+                                        {" 可随时点击确认离开。"}
                                     </p>
                                 </div>
                             )}
@@ -189,36 +186,13 @@ export function SwipeExitConfirmDialog({
                                     取消
                                 </button>
 
-                                {/* 倒计时进行中：按钮变为倒计时显示，不可手动点击 */}
-                                {showCountdown ? (
-                                    <button
-                                        type="button"
-                                        disabled
-                                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/50 bg-[var(--app-color-feedback-warning-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-warning)] cursor-not-allowed opacity-90"
-                                    >
-                                        <span className="inline-flex items-center gap-1.5">
-                                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--app-color-feedback-warning)] animate-pulse" />
-                                            <span className="font-mono tracking-wider">{formatCountdown(countdown!)}</span>
-                                            <span>后自动签退</span>
-                                        </span>
-                                    </button>
-                                ) : countdownZero ? (
-                                    <button
-                                        type="button"
-                                        disabled
-                                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-success)]/40 bg-[var(--app-color-feedback-success-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-success)] cursor-wait"
-                                    >
-                                        正在签退…
-                                    </button>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={onConfirm}
-                                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-feedback-danger-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-danger)] transition-colors hover:border-[var(--app-color-feedback-danger)]/60 hover:bg-[var(--app-color-feedback-danger-soft)]"
-                                    >
-                                        确认离开
-                                    </button>
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={onConfirm}
+                                    className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-feedback-danger-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-danger)] transition-colors hover:border-[var(--app-color-feedback-danger)]/60 hover:bg-[var(--app-color-feedback-danger-soft)]"
+                                >
+                                    确认离开
+                                </button>
                             </div>
                         </div>
                     </motion.div>

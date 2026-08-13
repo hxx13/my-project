@@ -121,8 +121,8 @@ export function AccessFusionWorkspacePanel({ initialProfilesOpen }: Props) {
   }, [statsTaskId, channelCodes.length]);
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-slate-600">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <p className="shrink-0 text-sm text-slate-600">
         查询与纠错已入库的<strong>清洗总库</strong>。入库在「审计拉取」控制（拉取后自动清洗、手动清洗）；隔离服统计所选通道与此处通道漏斗为同一套已启用通道。
         {enabledChannelCount > 0 ? (
           <span className="ml-1 text-slate-500">（全局已启用 {enabledChannelCount} 个通道）</span>
@@ -130,7 +130,7 @@ export function AccessFusionWorkspacePanel({ initialProfilesOpen }: Props) {
       </p>
 
       {channelHint ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{channelHint}</p>
+        <p className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{channelHint}</p>
       ) : null}
 
       <AccessRecordFilterBar
@@ -172,19 +172,21 @@ export function AccessFusionWorkspacePanel({ initialProfilesOpen }: Props) {
         }
       />
 
-      <AccessFusionLibraryPanel
-        key={libraryReloadKey}
-        statsPullTaskId={statsTaskId || undefined}
-        channelCodes={channelCodes}
-        startTime={filters.startTime}
-        endTime={filters.endTime}
-        libraryActionType={filters.libraryActionType}
-        libraryDisposition={filters.libraryDisposition}
-        libraryAudience={filters.libraryAudience}
-        libraryPersonName={filters.libraryPersonName}
-        selectedLogId={selectedLogId}
-        onClearLogFilter={() => setSelectedLogId(null)}
-      />
+      <div className="min-h-0 flex-1">
+        <AccessFusionLibraryPanel
+          key={libraryReloadKey}
+          statsPullTaskId={statsTaskId || undefined}
+          channelCodes={channelCodes}
+          startTime={filters.startTime}
+          endTime={filters.endTime}
+          libraryActionType={filters.libraryActionType}
+          libraryDisposition={filters.libraryDisposition}
+          libraryAudience={filters.libraryAudience}
+          libraryPersonName={filters.libraryPersonName}
+          selectedLogId={selectedLogId}
+          onClearLogFilter={() => setSelectedLogId(null)}
+        />
+      </div>
 
       <AccessChannelScopeDrawer
         open={scopeDrawer}

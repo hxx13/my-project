@@ -28,6 +28,7 @@ import {
 } from "@/features/dahua-swing-stats/statsPullScheduleJobs";
 import { isHistoricalTask, PERIOD_MODE_LABEL, parsePeriodMode } from "@/features/dahua-swing-stats/statsTaskModel";
 import type { StatsPeriodMode } from "@/features/dahua-swing-stats/statsTaskModel";
+import { AGV_ROBOT_KEYS } from "@/features/agv-tracker/agvRobotConfig";
 
 const weekOptions = [
   { id: 1, label: "周一" },
@@ -55,7 +56,7 @@ const DEPRECATED_JOB_KEYS = new Set([
 
 const PLATFORM_POLL_KEYS = new Set(["ARO_PENETRATION_POLL"]);
 const RANKING_POLL_KEYS = new Set(["DASHBOARD_RANKING_ACTIVITY", "DASHBOARD_RANKING_ANIMAL"]);
-const AGV_POLL_KEYS = new Set(["AGV_MASTER", "AGV_ROBOT_16", "AGV_ROBOT_18", "AGV_ROBOT_20", "AGV_ROBOT_22"]);
+const AGV_POLL_KEYS = new Set(["AGV_MASTER", ...AGV_ROBOT_KEYS]);
 const ALL_POLL_KEYS = new Set([...PLATFORM_POLL_KEYS, ...RANKING_POLL_KEYS]);
 const FREEZE_KEYS = new Set(["RUN_REAPER", "RUN_REAPER_SECOND", "DAILY_EXEMPT_RESET", "STRANDED_VIOLATION_CHECK", "STRANDED_SIGNOUT_CHECK"]);
 const DAILY_EXEMPT_RESET_KEY = "DAILY_EXEMPT_RESET";

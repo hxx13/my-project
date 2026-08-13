@@ -3,13 +3,9 @@ import { useSegments, useAnalysisRun, useCorrectSegment, useSpatialElements, ACT
 import { AnimatePresence, motion } from "framer-motion";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
+import { AGV_ROBOTS } from "@/features/agv-tracker/agvRobotConfig";
 
-const ROBOTS = [
-  { ip: "172.22.159.16", label: "AGV-1" },
-  { ip: "172.22.159.18", label: "AGV-2" },
-  { ip: "172.22.159.20", label: "AGV-3" },
-  { ip: "172.22.159.22", label: "AGV-4" },
-];
+const ROBOTS = AGV_ROBOTS;
 
 const ACTIVITY_TYPES = Object.keys(ACTIVITY_LABELS);
 

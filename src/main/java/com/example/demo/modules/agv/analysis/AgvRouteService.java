@@ -54,7 +54,7 @@ public class AgvRouteService {
 
     public int discoverRoutes(boolean force) {
         int created = 0;
-        for (String ip : new String[]{"172.22.159.16","172.22.159.18","172.22.159.20","172.22.159.22"}) {
+        for (String ip : new String[]{"172.22.159.16","172.22.159.18","172.22.159.20","172.22.159.22","172.22.159.113","172.22.159.115"}) {
             if (force) {
                 List<AgvRoute> old = analysisMapper.selectRoutesByRobot(ip);
                 if (!old.isEmpty()) analysisMapper.deleteRoutesByRobot(ip);

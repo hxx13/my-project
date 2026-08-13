@@ -174,9 +174,10 @@
                 #{ch}
             </foreach>
           AND r.mapping_hit = 1
-          AND r.open_result = 1
+          AND r.open_type = 51
           AND r.swing_time &gt;= #{startTime}
           AND r.swing_time &lt;= #{endTime}
+          AND r.swing_time &gt;= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
           AND NOT EXISTS (
               SELECT 1 FROM twin_dahua_activation_state a
               WHERE a.last_record_id = r.record_id

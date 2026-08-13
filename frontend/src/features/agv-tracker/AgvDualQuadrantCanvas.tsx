@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback } from "react";
 import type { TrailPoint } from "./useAgvTrailRef";
 import { ACTIVITY_COLORS } from "@/api/domains/agv-analysis.api";
+import { getAgvLabel } from "@/features/agv-tracker/agvRobotConfig";
 
 interface ZoneOverlay {
   id: number; polygonJson: string; color: string; name: string;
@@ -729,7 +730,7 @@ export default function AgvDualQuadrantCanvas({ agvA, agvB, coordRotationDeg, zo
         ctx.setLineDash([]);
         // AGV 名称标签（顶部居中）
         const cxBox = (corners[0] + corners[4]) / 2;
-        const agvName = agv.ip.endsWith(".16") ? "AGV-1" : agv.ip.endsWith(".18") ? "AGV-2" : agv.ip.endsWith(".20") ? "AGV-3" : "AGV-4";
+        const agvName = getAgvLabel(agv.ip);
         ctx.fillStyle = agv.color;
         ctx.font = "bold 9px sans-serif";
         ctx.textAlign = "center";

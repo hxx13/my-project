@@ -5,6 +5,7 @@ import AgvTimelineTab from "./AgvTimelineTab";
 import AgvZonePanel from "./AgvZonePanel";
 import AgvRulePanel from "./AgvRulePanel";
 import AgvStatsTab from "./AgvStatsTab";
+import { AGV_ROBOTS } from "@/features/agv-tracker/agvRobotConfig";
 
 type ModalTab = "timeline" | "zones" | "rules" | "stats";
 
@@ -31,7 +32,7 @@ interface Props {
 
 export default function AgvAnalysisModal({ open, onClose, onRequestPick, onRequestRectPick, pendingPick, onClearPick, focusZoneId, creatableTags, allTagColors }: Props) {
   const [tab, setTab] = useState<ModalTab>("timeline");
-  const [timelineRobot, setTimelineRobot] = useState("172.22.159.16");
+  const [timelineRobot, setTimelineRobot] = useState(AGV_ROBOTS[0].ip);
 
   return (
     <AnimatePresence>
