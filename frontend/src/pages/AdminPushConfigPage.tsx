@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminButton } from "@/components/admin/AdminButton";
@@ -45,7 +45,8 @@ import {
   toggleDoorTempUnlockRule,
   type DoorTempUnlockRuleRow,
 } from "@/api/domains/doorTempUnlock.api";
-import { fetchDoorControlChannels, type DahuaDeviceChannelRow } from "@/api/twinApi";
+import { fetchDoorControlChannels } from "@/api/twinApi";
+import { DahuaChannelListPicker } from "@/components/admin/DahuaChannelListPicker";
 import {
   Building2,
   ChevronDown,
@@ -2107,45 +2108,6 @@ function DoorUnlockRuleForm({ editing, onSaved, onCancel }: {
   const [unlockDurationSec, setUnlockDurationSec] = useState(editing?.unlockDurationSec ?? 120);
   const [cooldownSec, setCooldownSec] = useState(editing?.cooldownSec ?? 300);
   const [saving, setSaving] = useState(false);
-  const [channelKeyword, setChannelKeyword] = useState("");
-  const [debouncedKeyword, setDebouncedKeyword] = useState("");
-  const [channelOptions, setChannelOptions] = useState<DahuaDeviceChannelRow[]>([]);
-  const [channelLoading, setChannelLoading] = useState(false);
-  const channelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Debounce channel keyword
-  useEffect(() => {
-    if (channelTimerRef.current) clearTimeout(channelTimerRef.current);
-    channelTimerRef.current = setTimeout(() => setDebouncedKeyword(channelKeyword), 300);
-    return () => { if (channelTimerRef.current) clearTimeout(channelTimerRef.current); };
-  }, [channelKeyword]);
-
-  // Load channel options (debounced)
-  useEffect(() => {
-    let active = true;
-    const load = async () => {
-      setChannelLoading(true);
-      try {
-        const data = await fetchDoorControlChannels({ page: 1, pageSize: 200, keyword: debouncedKeyword || undefined });
-        if (active) setChannelOptions(data.list ?? []);
-      } catch { /* ignore */ }
-      finally { if (active) setChannelLoading(false); }
-    };
-    load();
-    return () => { active = false; };
-  }, [debouncedKeyword]);
-
-  const toggleChannel = (code: string) => {
-    setSelectedChannelCodes(prev =>
-      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
-    );
-  };
-
-  const selectedLabels = selectedChannelCodes.map(code => {
-    const ch = channelOptions.find(c => c.channelCode === code);
-    return ch ? `${ch.channelName ?? code} (${code})` : code;
-  }).join(", ");
-
   const save = async () => {
     if (!name.trim()) { toast.error("请输入规则名称"); return; }
     if (selectedChannelCodes.length === 0) { toast.error("请选择至少一个通道"); return; }
@@ -2187,25 +2149,14 @@ function DoorUnlockRuleForm({ editing, onSaved, onCancel }: {
         {/* Channel picker */}
         <div>
           <label className={adminLabelClass}>监控通道（多选）</label>
-          <input className={cn(adminInputClass, "w-full mb-2")} value={channelKeyword}
-            onChange={e => setChannelKeyword(e.target.value)} placeholder="搜索通道名称/编码..." />
-          {channelLoading ? <p className={adminHintClass}>加载中...</p> : null}
-          <div className="max-h-48 overflow-auto border border-[var(--app-color-border-default)] rounded-lg p-2 space-y-1">
-            {channelOptions.length === 0 && !channelLoading && (
-              <p className={adminHintClass}>无匹配通道</p>
-            )}
-            {channelOptions.map(ch => (
-              <label key={ch.channelCode} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-[var(--app-color-surface-hover)] px-1 py-0.5 rounded">
-                <input type="checkbox" checked={selectedChannelCodes.includes(ch.channelCode ?? "")}
-                  onChange={() => toggleChannel(ch.channelCode ?? "")} />
-                <span>{ch.channelName ?? ch.channelCode}</span>
-                <span className={adminHintClass}>({ch.channelCode})</span>
-              </label>
-            ))}
+          <div className="mt-1">
+            <DahuaChannelListPicker
+              selected={selectedChannelCodes}
+              onChange={setSelectedChannelCodes}
+              fetchChannels={fetchDoorControlChannels}
+              idPrefix="door-unlock"
+            />
           </div>
-          {selectedChannelCodes.length > 0 && (
-            <p className={adminHintClass}>已选 {selectedChannelCodes.length} 个通道：{selectedLabels}</p>
-          )}
         </div>
 
         {/* Threshold */}
