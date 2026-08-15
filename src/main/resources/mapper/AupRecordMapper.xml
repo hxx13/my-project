@@ -83,11 +83,13 @@
                 </when>
                 <when test="scopeRole == 'secretary'">
                     AND (r.current_stage = 'formatReview'
+                         OR r.created_by = #{scopeUserId}
                          OR EXISTS (SELECT 1 FROM aup_audit_log l WHERE l.aup_id = r.id AND l.actor = #{scopeUserId}))
                 </when>
                 <when test="scopeRole == 'expert'">
-                    AND EXISTS (SELECT 1 FROM aup_review_assignment a
-                                WHERE a.aup_id = r.id AND a.reviewer_id = #{scopeUserId})
+                    AND (r.created_by = #{scopeUserId}
+                         OR EXISTS (SELECT 1 FROM aup_review_assignment a
+                                WHERE a.aup_id = r.id AND a.reviewer_id = #{scopeUserId}))
                 </when>
                 <!-- admin / null：不过滤 -->
             </choose>

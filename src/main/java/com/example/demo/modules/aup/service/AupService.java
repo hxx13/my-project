@@ -243,11 +243,12 @@ public class AupService {
         // 3. 回填项目冗余字段（组长 = 课题组 GROUP_LEADER 身份标识者）
         applyProjectMeta(record, cleaned);
 
-        // 4. 提交鉴权 + 按提交者身份决定目标阶段：组长/管理员直接进格式审查，实验员/同组进组长审核
+        // 4. 提交鉴权 + 按提交者身份决定目标阶段：组长/教职工/管理员直接进格式审查，学生实验员/同组进组长审核
         accessPolicy.assertCanSubmit(record, user);
         String role = accessPolicy.resolveOperatorRole(record, user);
-        String targetStage = (accessPolicy.isAdmin(user) || accessPolicy.isPi(user))
-                ? STAGE_FORMAT_REVIEW : STAGE_PI_REVIEW;
+        boolean skipPiReview = accessPolicy.isAdmin(user) || accessPolicy.isPi(user)
+                || "STAFF".equals(user.getAccountSource());
+        String targetStage = skipPiReview ? STAGE_FORMAT_REVIEW : STAGE_PI_REVIEW;
         return transition(aupId, STAGE_DRAFT, targetStage, "submit", user.getId(), role, null);
     }
 
