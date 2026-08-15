@@ -12,7 +12,6 @@ import com.example.demo.modules.aup.dto.ReviewTodoItem;
 import com.example.demo.modules.aup.dto.ReviewVoteRequest;
 import com.example.demo.modules.aup.dto.ReviewerConfigRequest;
 import com.example.demo.modules.aup.dto.ReviewerConfigResponse;
-import com.example.demo.modules.aup.dto.TerminateRequest;
 import com.example.demo.modules.aup.dto.VoteAggregate;
 import com.example.demo.modules.aup.entity.AupReview;
 import com.example.demo.modules.aup.entity.AupReviewAssignment;
@@ -74,7 +73,6 @@ public class AupReviewService {
     private static final String R_SECRETARY = "secretary";
     private static final String R_EXPERT = "expert";
 
-    private static final Set<String> REVIEW_VERDICTS = Set.of(V_AGREE, V_DISAGREE, V_MODIFY, V_RECUSE, V_ABSTAIN);
     private static final Set<String> ITEM_VERDICTS = Set.of(IV_COMPLIANT, IV_NON_COMPLIANT, IV_SUGGEST);
     private static final Set<String> REVIEW_FORMS = Set.of("member", "meeting");
 
@@ -189,13 +187,10 @@ public class AupReviewService {
 
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> submitVote(User user, long aupId, ReviewVoteRequest req) {
-        if (req == null || !StringUtils.hasText(req.getVerdict())) {
-            throw TwinBusinessException.of(400, "缺少 verdict");
+        if (req == null) {
+            throw TwinBusinessException.of(400, "缺少请求体");
         }
-        String verdict = req.getVerdict().trim().toLowerCase();
-        if (!REVIEW_VERDICTS.contains(verdict)) {
-            throw TwinBusinessException.of(400, "verdict 非法: " + req.getVerdict());
-        }
+        String verdict = resolveVerdict(req);
         // 结算临界区：锁定主记录，避免并发重复结算
         AupRecordView rec = reviewMapper.selectRecordForUpdate(aupId);
         if (rec == null) {
@@ -217,9 +212,6 @@ public class AupReviewService {
             throw TwinBusinessException.of(409, "您已投过票，请勿重复提交");
         }
 
-        if (V_DISAGREE.equals(verdict) && !StringUtils.hasText(req.getComment())) {
-            throw TwinBusinessException.of(400, "整体结论为「不合格」时，必须填写不合格原因与具体内容");
-        }
         List<ReviewVoteRequest.VoteItem> items = req.getItems() == null ? List.of() : req.getItems();
         validateItems(verdict, items, rec.getTemplateId());
 
@@ -328,25 +320,6 @@ public class AupReviewService {
         return resp;
     }
 
-    // ===================== 终止 =====================
-
-    @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> terminate(User user, long aupId, TerminateRequest req) {
-        AupRecordView record = requireRecord(aupId);
-        if (!STAGE_EXPERT_REVIEW.equals(record.getCurrentStage())) {
-            throw TwinBusinessException.of(409, "当前阶段非专家审查，无法终止");
-        }
-        int roundNo = roundOf(record);
-        AupReviewAssignment assign = assignmentMapper.selectByAupRoundReviewer(aupId, roundNo, user.getId());
-        if (assign == null && !isAdmin(user)) {
-            throw TwinBusinessException.of(403, "仅被分配的专家可终止审查");
-        }
-        String reason = req == null ? null : req.getReason();
-        aupService.transition(aupId, STAGE_EXPERT_REVIEW, STAGE_TERMINATED, "terminate",
-                user.getId(), "expert", reason);
-        return stageResult(aupId, STAGE_TERMINATED);
-    }
-
     // ===================== 专家候选 / 名册配置 =====================
 
     public List<ExpertCandidate> listExperts() {
@@ -435,6 +408,35 @@ public class AupReviewService {
         return STAGE_EXPERT_REVIEW; // 票未齐，等待余票
     }
 
+    /**
+     * 三态推导整体 verdict：abstain/recuse 显式直用（不推导、不要求 items）；
+     * 否则由 items 逐字段推导 —— 任一 nonCompliant → disagree，否则任一 suggest → modify，否则 agree。
+     */
+    private String resolveVerdict(ReviewVoteRequest req) {
+        String verdict = req.getVerdict() == null ? null : req.getVerdict().trim().toLowerCase();
+        if (StringUtils.hasText(verdict)) {
+            if (V_RECUSE.equals(verdict) || V_ABSTAIN.equals(verdict)) {
+                return verdict;
+            }
+            throw TwinBusinessException.of(400, "verdict 仅支持 abstain/recuse，正常评审请通过 items 逐字段推导");
+        }
+        List<ReviewVoteRequest.VoteItem> items = req.getItems() == null ? List.of() : req.getItems();
+        boolean hasSuggest = false;
+        for (ReviewVoteRequest.VoteItem it : items) {
+            if (it == null || !StringUtils.hasText(it.getVerdict())) {
+                continue;
+            }
+            String iv = it.getVerdict().trim().toLowerCase();
+            if (IV_NON_COMPLIANT.equals(iv)) {
+                return V_DISAGREE;
+            }
+            if (IV_SUGGEST.equals(iv)) {
+                hasSuggest = true;
+            }
+        }
+        return hasSuggest ? V_MODIFY : V_AGREE;
+    }
+
     private void validateItems(String verdict, List<ReviewVoteRequest.VoteItem> items, Long templateId) {
         Set<String> validKeys = new HashSet<>();
         if (templateId != null) {
@@ -456,6 +458,9 @@ public class AupReviewService {
             String iv = it.getVerdict().trim().toLowerCase();
             if (!ITEM_VERDICTS.contains(iv)) {
                 throw TwinBusinessException.of(400, "评审项 verdict 非法: " + it.getVerdict());
+            }
+            if (IV_NON_COMPLIANT.equals(iv) && !StringUtils.hasText(it.getReason())) {
+                throw TwinBusinessException.of(400, "不合规字段必须填写原因");
             }
             if (!validKeys.isEmpty() && !validKeys.contains(it.getFieldKey())) {
                 throw TwinBusinessException.of(400, "字段不属于该计划模板版本: " + it.getFieldKey());

@@ -5,7 +5,6 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.aup.dto.FormatReviewRequest;
 import com.example.demo.modules.aup.dto.ReviewVoteRequest;
 import com.example.demo.modules.aup.dto.ReviewerConfigRequest;
-import com.example.demo.modules.aup.dto.TerminateRequest;
 import com.example.demo.modules.aup.service.AupReviewService;
 import com.example.demo.modules.auth.entity.User;
 import io.swagger.v3.oas.annotations.Operation;
@@ -106,18 +105,6 @@ public class AupReviewController {
             return Result.fail(401, "未登录或令牌无效");
         }
         return Result.success(reviewService.reviewItems(user, id, roundNo, fieldKey));
-    }
-
-    @PostMapping("/{id}/terminate")
-    @Operation(summary = "终止审查（专家评审阶段，被分配专家触发，严重违反动物福利）")
-    public Result<?> terminate(@RequestHeader(value = "Authorization", required = false) String authorization,
-                               @PathVariable long id,
-                               @RequestBody TerminateRequest body) {
-        User user = authContextService.resolveUserFromBearer(authorization);
-        if (user == null) {
-            return Result.fail(401, "未登录或令牌无效");
-        }
-        return Result.success(reviewService.terminate(user, id, body));
     }
 
     @GetMapping("/experts")
