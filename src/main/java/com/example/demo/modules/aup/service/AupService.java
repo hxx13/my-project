@@ -239,9 +239,10 @@ public class AupService {
         // 3. 回填项目冗余字段
         applyProjectMeta(record, cleaned);
 
-        // 4. 流转
+        // 4. 提交鉴权（组长或管理员）+ 流转 draft→formatReview
+        accessPolicy.assertCanSubmit(record, user);
         String role = accessPolicy.resolveOperatorRole(record, user);
-        return transition(aupId, STAGE_DRAFT, STAGE_PI_REVIEW, "submit", user.getId(), role, null);
+        return transition(aupId, STAGE_DRAFT, STAGE_FORMAT_REVIEW, "submit", user.getId(), role, null);
     }
 
     // ======================================================================
