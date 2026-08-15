@@ -299,7 +299,7 @@ public class AupService {
         int rows = 0;
         int attempts = isSubmit ? 2 : 1;
         for (int i = 0; i < attempts; i++) {
-            if (isSubmit) {
+            if (isSubmit && record.getRegisterNo() == null) {
                 String[] parts = computeRegisterParts(record);
                 registerNo = parts[0];
                 registerYear = Integer.valueOf(parts[1]);
@@ -556,9 +556,8 @@ public class AupService {
         if (rows == 0) {
             throw TwinBusinessException.of(409, "计划书状态已变更，请刷新后重试");
         }
-        // 解锁回 draft 后清空注册号 / 到期 / 批准时间（draft 状态不携带注册号）
-        jdbcTemplate.update("UPDATE aup_record SET register_no = NULL, register_year = NULL, register_seq = NULL, "
-                + "expire_at = NULL, approved_at = NULL WHERE id = ?", aupId);
+        // 解锁回 draft 后清空通过时间与到期时间；注册号已锁定为该计划书，作废不复用，不清空
+        jdbcTemplate.update("UPDATE aup_record SET expire_at = NULL, approved_at = NULL WHERE id = ?", aupId);
         AupData data = dataMapper.selectByAupId(aupId);
         snapshotService.createSnapshot(record, STAGE_DRAFT, data == null ? null : data.getData(), user.getId());
         audit(aupId, user.getId(), "admin", "unlock", stage, STAGE_DRAFT, "管理员解锁，重新打开计划书");
