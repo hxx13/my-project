@@ -91,7 +91,7 @@
         SELECT r.id, r.register_no AS registerNo, r.project_name AS projectName, r.pi_name AS piName, r.dept,
                r.current_stage AS currentStage, r.round_no AS roundNo, r.draft_source AS draftSource, r.submitted_at AS submittedAt
         FROM aup_record r
-        JOIN aup_review_assignment a ON a.aup_id = r.id AND a.reviewer_id = #{reviewerId} AND a.status = 'pending'
+        JOIN aup_review_assignment a ON a.aup_id = r.id AND a.round_no = r.round_no AND a.reviewer_id = #{reviewerId} AND a.status = 'pending'
         WHERE r.current_stage = 'expertReview'
         ORDER BY r.submitted_at DESC, r.id DESC
     </select>
