@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useAupList } from "@/features/aup/hooks/useAup";
+import { useAupList, useRenewAup } from "@/features/aup/hooks/useAup";
 import { authStorage } from "@/features/auth/authStorage";
 
 /** 阶段 → 展示文案 */
@@ -28,7 +28,18 @@ export default function StudentAupPage() {
     projectGroupName: projectGroupName || undefined,
     size: 100,
   });
+  const renewMut = useRenewAup();
   const items = data?.items ?? [];
+
+  const handleRenew = async (id: number) => {
+    if (!window.confirm("续期将基于该已过期计划书新建一份草稿（引用原注册号、结转未用动物数），重新走审核流程。确定续期？")) return;
+    try {
+      const res = await renewMut.mutateAsync(id);
+      if (res?.id) navigate(`/aup/fill/${res.id}`);
+    } catch {
+      /* toast 已由 hook 处理 */
+    }
+  };
 
   return (
     <div className="p-6">
@@ -78,7 +89,19 @@ export default function StudentAupPage() {
                     <span className="font-mono text-xs text-muted-foreground">{item.registerNo}</span>
                   )}
                 </div>
-                <div className="mt-3 flex justify-end">
+                <div className="mt-3 flex justify-end gap-2">
+                  {item.currentStage === "expired" && (isPi || isOwn) && (
+                    <button
+                      type="button"
+                      className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRenew(item.id);
+                      }}
+                    >
+                      续期
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={

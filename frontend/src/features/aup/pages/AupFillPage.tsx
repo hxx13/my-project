@@ -5,6 +5,7 @@ import {
   useAupAttachments,
   useAupDraft,
   useAupList,
+  useAupMyRoles,
   useAupTraces,
   useAupTemplateById,
   useCreateAup,
@@ -25,6 +26,7 @@ import { FieldReviewTag } from "../components/FieldReviewTag";
 import ScrollButtons from "../components/ScrollButtons";
 import { PortalHeader } from "@/features/portal/PortalHeader";
 import { authStorage } from "@/features/auth/authStorage";
+import { hasMinRole } from "@/features/auth/roleAccess";
 import "../aup.css";
 
 /** 乐观锁冲突判定：authHttp 把 409 转成 Error，仅保留 message */
@@ -128,6 +130,13 @@ export default function AupFillPage() {
 
   // 是否已填写任何内容（用于提交/保存按钮禁用，排除固定默认值）
   const hasContent = useMemo(() => Object.values(draft.values).some((v) => hasValue(v)), [draft.values]);
+
+  // 提交权限：仅组长（PI）或管理员可提交；实验员仅可保存草稿
+  const myRoles = useAupMyRoles();
+  const isAdmin = hasMinRole(authStorage.getRole() || "", "ADMIN");
+  const isPi = myRoles.data?.isPi ?? false;
+  const maySubmit = isPi || isAdmin;
+  const canSubmit = hasContent && maySubmit;
 
   // 逐字段评审意见（批注），按 fieldKey 分组，供题目旁展示
   const reviewQuery = useReviewItems(id);
@@ -412,7 +421,7 @@ export default function AupFillPage() {
         onSubmit={handleSubmit}
         submitting={saving}
         canSave={hasContent}
-        canSubmit={hasContent}
+        canSubmit={canSubmit}
         onOpenAttachments={id ? () => setAttachOpen((v) => !v) : undefined}
         onPrint={id ? handlePrint : undefined}
       />

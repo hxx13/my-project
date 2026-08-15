@@ -28,6 +28,7 @@ import {
   fetchAupDict,
   fetchAupDicts,
   fetchAupList,
+  fetchAupMyRoles,
   fetchAupPrintData,
   fetchAupPickers,
   fetchAupSignatureContext,
@@ -44,6 +45,7 @@ import {
   fetchReviewProgress,
   fetchReviewTodo,
   publishAupTemplate,
+  renewAup,
   reorderAupDictItems,
   resolveTemplate,
   restoreAupDemo,
@@ -102,6 +104,7 @@ export const aupQueryKeys = {
   dicts: (params?: AupDictListParams) => ["aup", "dicts", params ?? {}] as const,
   dict: (dictKey: string) => ["aup", "dict", dictKey] as const,
   signatureContext: () => ["aup", "signatureContext"] as const,
+  myRoles: () => ["aup", "my-roles"] as const,
   pickers: (type: PickerType, params?: Record<string, unknown>) => ["aup", "pickers", type, params ?? {}] as const,
 } as const;
 
@@ -734,6 +737,29 @@ export function useAupSignatureContext() {
   return useQuery({
     queryKey: aupQueryKeys.signatureContext(),
     queryFn: fetchAupSignatureContext,
+  });
+}
+
+/** 当前登录用户的 AUP 角色（组长/秘书/专家），一次性拉取 */
+export function useAupMyRoles() {
+  return useQuery({
+    queryKey: aupQueryKeys.myRoles(),
+    queryFn: fetchAupMyRoles,
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
+/** 续期（expired → 新建 draft 草稿） */
+export function useRenewAup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string | number): Promise<CreateAupResult> => renewAup(String(id)),
+    onSuccess: () => {
+      toast.success("已发起续期，请到新草稿继续填写");
+      qc.invalidateQueries({ queryKey: aupQueryKeys.all });
+    },
+    onError: (e: Error) => toast.error(e.message || "续期失败"),
   });
 }
 

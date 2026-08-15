@@ -10,6 +10,7 @@ import com.example.demo.modules.aup.dto.AupSaveRequest;
 import com.example.demo.modules.aup.dto.AupValidationErrorDTO;
 import com.example.demo.modules.aup.dto.SignatureContextVO;
 import com.example.demo.modules.aup.entity.AupRecord;
+import com.example.demo.modules.aup.service.AupAccessPolicy;
 import com.example.demo.modules.aup.service.AupService;
 import com.example.demo.modules.upload.entity.UploadFileRecord;
 import com.example.demo.modules.upload.service.UploadFileService;
@@ -46,13 +47,16 @@ public class AupController {
     private final AuthContextService authContextService;
     private final AupService aupService;
     private final UploadFileService uploadFileService;
+    private final AupAccessPolicy accessPolicy;
 
     public AupController(AuthContextService authContextService,
                          AupService aupService,
-                         UploadFileService uploadFileService) {
+                         UploadFileService uploadFileService,
+                         AupAccessPolicy accessPolicy) {
         this.authContextService = authContextService;
         this.aupService = aupService;
         this.uploadFileService = uploadFileService;
+        this.accessPolicy = accessPolicy;
     }
 
     // ---- 计划书 ----
@@ -266,6 +270,16 @@ public class AupController {
         User user = requireUser(authorization);
         SignatureContextVO vo = aupService.signatureContext(user);
         return Result.success(vo);
+    }
+
+    @GetMapping("/my-roles")
+    public Result<?> myRoles(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = requireUser(authorization);
+        Map<String, Object> data = new HashMap<>();
+        data.put("isPi", accessPolicy.isPi(user));
+        data.put("isSecretary", accessPolicy.isSecretary(user.getId()));
+        data.put("isExpert", accessPolicy.isExpert(user.getId()));
+        return Result.success(data);
     }
 
     // ---- helpers ----

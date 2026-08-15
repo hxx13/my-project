@@ -536,6 +536,17 @@ export function fetchAupSignatureContext(): Promise<SignatureContext> {
   return authHttp.get<Result<SignatureContext>>("/aup/signature-context").then(({ data }) => data.data);
 }
 
+export interface AupMyRoles {
+  isPi: boolean;
+  isSecretary: boolean;
+  isExpert: boolean;
+}
+
+/** GET /aup/my-roles —— 当前登录用户的 AUP 角色（组长/秘书/专家） */
+export function fetchAupMyRoles(): Promise<AupMyRoles> {
+  return authHttp.get<Result<AupMyRoles>>("/aup/my-roles").then(({ data }) => data.data);
+}
+
 export type PickerType = "person" | "department" | "cage" | "animal";
 
 export interface PickerOption {

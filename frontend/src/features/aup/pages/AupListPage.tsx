@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAupList, useRestoreAupDemo, useDeleteAup, useUnlockAup, useReviewerConfig } from "../hooks/useAup";
+import { useAupList, useRestoreAupDemo, useDeleteAup, useUnlockAup, useRenewAup, useReviewerConfig } from "../hooks/useAup";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import type { AupListItem, AupStage } from "../schema/aup";
@@ -61,6 +61,7 @@ export default function AupListPage() {
   const restoreMut = useRestoreAupDemo();
   const deleteMut = useDeleteAup();
   const unlockMut = useUnlockAup();
+  const renewMut = useRenewAup();
   const isAdmin = hasMinRole(authStorage.getRole() || "", "ADMIN");
   const currentUserId = authStorage.getUserInfo()?.id;
   const reviewerConfigQuery = useReviewerConfig();
@@ -101,6 +102,15 @@ export default function AupListPage() {
   };
   const handleUnlock = (id: number) => {
     if (window.confirm("解锁后计划书将回到返修（草稿）状态，可重新提交审核。确定解锁？")) unlockMut.mutate(id);
+  };
+  const handleRenew = async (id: number) => {
+    if (!window.confirm("续期将基于该已过期计划书新建一份草稿（引用原注册号、结转未用动物数），重新走审核流程。确定续期？")) return;
+    try {
+      const res = await renewMut.mutateAsync(id);
+      if (res?.id) navigate(`/aup/fill/${res.id}`);
+    } catch {
+      /* toast 已由 hook 处理 */
+    }
   };
 
   return (
@@ -221,6 +231,7 @@ export default function AupListPage() {
                           ? () => handleUnlock(item.id)
                           : undefined
                       }
+                      onRenew={item.currentStage === "expired" && isAdmin ? () => handleRenew(item.id) : undefined}
                     />
                   );
                 })}
@@ -256,6 +267,7 @@ function TableRows({
   onRestore,
   onDelete,
   onUnlock,
+  onRenew,
 }: {
   item: AupListItem;
   open: boolean;
@@ -268,6 +280,7 @@ function TableRows({
   onRestore?: () => void;
   onDelete?: () => void;
   onUnlock?: () => void;
+  onRenew?: () => void;
 }) {
   const summary = parseSummary(item.summaryJson);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -323,6 +336,14 @@ function TableRows({
         <td><span className={"status-badge " + badge.cls}>{badge.text}</span></td>
         <td onClick={(e) => e.stopPropagation()}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }} ref={menuRef}>
+            {onRenew && (
+              <button
+                className="btn primary small"
+                onClick={(e) => { e.stopPropagation(); onRenew(); }}
+              >
+                续期
+              </button>
+            )}
             {onReview && (
               <button
                 className={reviewPrimary ? "btn primary small" : "btn ghost small"}
