@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupReviewMapper">
+
+    <insert id="insert" parameterType="com.example.demo.modules.aup.entity.AupReview"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO aup_review (aup_id, round_no, reviewer, role, verdict, comment)
+        VALUES (#{aupId}, #{roundNo}, #{reviewer}, #{role}, #{verdict}, #{comment})
+    </insert>
+
+    <select id="selectByAupReviewerRound" resultType="com.example.demo.modules.aup.entity.AupReview">
+        SELECT id, aup_id AS aupId, round_no AS roundNo, reviewer, role, verdict, comment,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM aup_review
+        WHERE aup_id = #{aupId} AND reviewer = #{reviewer} AND round_no = #{roundNo}
+        LIMIT 1
+    </select>
+
+    <select id="aggregateVotes" resultType="com.example.demo.modules.aup.dto.VoteAggregate">
+        SELECT
+            (SELECT COUNT(*) FROM aup_review_assignment WHERE aup_id = #{aupId} AND round_no = #{roundNo}) AS assignCount,
+            (SELECT COUNT(*) FROM aup_review_assignment WHERE aup_id = #{aupId} AND round_no = #{roundNo} AND status = 'recused') AS recusedCount,
+            (SELECT COUNT(*) FROM aup_review WHERE aup_id = #{aupId} AND round_no = #{roundNo} AND role = 'expert' AND verdict = 'agree') AS agreeCount,
+            (SELECT COUNT(*) FROM aup_review WHERE aup_id = #{aupId} AND round_no = #{roundNo} AND role = 'expert' AND verdict = 'disagree') AS disagreeCount,
+            (SELECT COUNT(*) FROM aup_review WHERE aup_id = #{aupId} AND round_no = #{roundNo} AND role = 'expert' AND verdict = 'modify') AS modifyCount,
+            (SELECT COUNT(*) FROM aup_review WHERE aup_id = #{aupId} AND round_no = #{roundNo} AND role = 'expert' AND verdict = 'abstain') AS abstainCount
+    </select>
+
+    <select id="selectVotesByAupRound" resultType="com.example.demo.modules.aup.dto.ReviewVoteVO">
+        SELECT reviewer, role, verdict, comment
+        FROM aup_review
+        WHERE aup_id = #{aupId} AND round_no = #{roundNo} AND role = 'expert'
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectFieldKeysByTemplate" resultType="string">
+        SELECT f.field_key
+        FROM form_field f
+        LEFT JOIN form_section s ON f.section_id = s.id
+        LEFT JOIN form_subsection sub ON f.subsection_id = sub.id
+        LEFT JOIN form_section s2 ON sub.section_id = s2.id
+        WHERE COALESCE(s.template_id, s2.template_id) = #{templateId}
+    </select>
+
+    <select id="countTemplateFields" resultType="long">
+        SELECT COUNT(*)
+        FROM form_field f
+        LEFT JOIN form_section s ON f.section_id = s.id
+        LEFT JOIN form_subsection sub ON f.subsection_id = sub.id
+        LEFT JOIN form_section s2 ON sub.section_id = s2.id
+        WHERE COALESCE(s.template_id, s2.template_id) = #{templateId}
+    </select>
+
+    <sql id="RecordViewColumns">
+        id, current_stage AS currentStage, round_no AS roundNo, review_form AS reviewForm,
+        draft_source AS draftSource, template_id AS templateId, template_version AS templateVersion,
+        pi_user_id AS piUserId, created_by AS createdBy, project_name AS projectName, register_no AS registerNo,
+        is_demo AS isDemo
+    </sql>
+
+    <select id="selectRecordBasic" resultType="com.example.demo.modules.aup.dto.AupRecordView">
+        SELECT <include refid="RecordViewColumns"/>
+        FROM aup_record
+        WHERE id = #{aupId}
+    </select>
+
+    <select id="selectRecordForUpdate" resultType="com.example.demo.modules.aup.dto.AupRecordView">
+        SELECT <include refid="RecordViewColumns"/>
+        FROM aup_record
+        WHERE id = #{aupId}
+        FOR UPDATE
+    </select>
+
+    <update id="updateReviewForm">
+        UPDATE aup_record SET review_form = #{reviewForm} WHERE id = #{aupId}
+    </update>
+
+    <sql id="TodoColumns">
+        id, register_no AS registerNo, project_name AS projectName, pi_name AS piName, dept,
+        current_stage AS currentStage, round_no AS roundNo, draft_source AS draftSource, submitted_at AS submittedAt
+    </sql>
+
+    <select id="selectSecretaryTodo" resultType="com.example.demo.modules.aup.dto.ReviewTodoItem">
+        SELECT <include refid="TodoColumns"/>
+        FROM aup_record
+        WHERE current_stage = 'formatReview'
+        ORDER BY submitted_at DESC, id DESC
+    </select>
+
+    <select id="selectExpertTodo" resultType="com.example.demo.modules.aup.dto.ReviewTodoItem">
+        SELECT r.id, r.register_no AS registerNo, r.project_name AS projectName, r.pi_name AS piName, r.dept,
+               r.current_stage AS currentStage, r.round_no AS roundNo, r.draft_source AS draftSource, r.submitted_at AS submittedAt
+        FROM aup_record r
+        JOIN aup_review_assignment a ON a.aup_id = r.id AND a.reviewer_id = #{reviewerId} AND a.status = 'pending'
+        WHERE r.current_stage = 'expertReview'
+        ORDER BY r.submitted_at DESC, r.id DESC
+    </select>
+</mapper>

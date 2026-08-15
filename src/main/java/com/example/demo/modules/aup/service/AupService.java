@@ -338,9 +338,6 @@ public class AupService {
     }
 
     private String returnSourceOf(String fromStage) {
-        if (STAGE_PI_REVIEW.equals(fromStage)) {
-            return "piReturn";
-        }
         if (STAGE_FORMAT_REVIEW.equals(fromStage)) {
             return "formatReturn";
         }
