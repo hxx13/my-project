@@ -60,6 +60,8 @@ export default function AupFillPage() {
   const [savingExit, setSavingExit] = useState(false);
   const [entered, setEntered] = useState(false);
   const [errorKeys, setErrorKeys] = useState<Set<string>>(new Set());
+  const [validationErrors, setValidationErrors] = useState<{ fieldKey: string; message: string }[]>([]);
+  const [validationOpen, setValidationOpen] = useState(false);
 
   // 同课题组唯一非审核完毕计划书：无 id 时查本课题组是否已有草稿，有则自动加载（协作续填）
   const projectGroupName = (authStorage.getUserInfo() as { projectGroupName?: string | null } | null)?.projectGroupName?.trim() || "";
@@ -302,11 +304,8 @@ export default function AupFillPage() {
       const errors = await fetchAupValidate(targetId);
       if (errors.length > 0) {
         setErrorKeys(new Set(errors.map((e) => e.fieldKey)));
-        toast.error(
-          "校验未通过：" +
-            errors.slice(0, 5).map((e) => e.message).join("；") +
-            (errors.length > 5 ? " 等" : "")
-        );
+        setValidationErrors(errors.map((e) => ({ fieldKey: e.fieldKey, message: e.message })));
+        setValidationOpen(true);
         return;
       }
       setErrorKeys(new Set());
@@ -319,7 +318,8 @@ export default function AupFillPage() {
         if (id && confirm("草稿已在其他端修改，是否刷新加载最新内容？")) draft.detail.refetch();
         else toast.error("草稿已在其他端修改，请刷新后重试");
       } else if (/校验未通过/i.test(msg)) {
-        toast.error(msg);
+        setValidationErrors([{ fieldKey: "", message: msg }]);
+        setValidationOpen(true);
       } else if (/SIGNATURE_REQUIRED/i.test(msg)) {
         toast.error("请先完成课题组长手写签名后再提交");
       } else {
@@ -455,6 +455,25 @@ export default function AupFillPage() {
               >
                 放弃退出
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {validationOpen && (
+        <div className="aup-modal-mask" onClick={() => setValidationOpen(false)}>
+          <div className="aup-modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+            <h3>校验未通过</h3>
+            <div className="aup-validation-list">
+              {validationErrors.length === 0 ? (
+                <p>存在未通过的校验项，请修正后重新提交。</p>
+              ) : (
+                validationErrors.map((err, i) => (
+                  <div key={i} className="aup-validation-item">{err.message}</div>
+                ))
+              )}
+            </div>
+            <div className="aup-modal-actions">
+              <button className="btn primary" onClick={() => setValidationOpen(false)}>关闭</button>
             </div>
           </div>
         </div>
