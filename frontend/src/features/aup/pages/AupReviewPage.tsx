@@ -1,9 +1,10 @@
 /**
  * AupReviewPage —— IACUC AUP 审批页（按角色渲染）。
  *
- * 组长(pi)   → submitPiReview（approve/return + comment）
  * 秘书(secretary) → submitFormatReview（approve/return + reviewForm + expertIds[]）
  * 专家(expert) → submitExpertReview（verdict + comment + items[] 逐字段）
+ *
+ * 组长审核已迁移至学生端，此处不再渲染组长操作区。
  *
  * 表单数据只读平铺渲染：draftData 平铺 {fieldKey:value}，template 嵌套树驱动字段结构。
  * 逐字段评审：FieldReviewTag（快捷入口）+ ReviewOverviewPanel（总览抽屉）。
@@ -39,7 +40,7 @@ import type {
   Expert,
   ReviewerConfig,
 } from "@/features/aup/schema/review";
-import type { PiReviewBody, FormatReviewBody, ReviewItemsSummary, TemplateDetailVO } from "@/features/aup/api/aup.api";
+import type { FormatReviewBody, ReviewItemsSummary, TemplateDetailVO } from "@/features/aup/api/aup.api";
 import { FieldReviewTag, emptyFieldReviewDraft } from "../components/FieldReviewTag";
 import { displayTitle } from "../components/FormField";
 import type { FieldReviewDraft } from "../components/FieldReviewTag";
@@ -192,16 +193,23 @@ function formatFieldValue(field: FormField, value: unknown): string {
   }
 }
 
-type ReviewRole = "pi" | "secretary" | "expert" | "viewer";
+type ReviewRole = "secretary" | "expert" | "viewer";
+
+/** 判断当前用户是否被分配为当前轮的审查专家：待投（unvoted）或已投/回避（votes）均算 */
+function isAssignedExpert(userId: string, progress: ReviewProgress | undefined): boolean {
+  if ((progress?.unvoted ?? []).includes(userId)) return true;
+  return (progress?.votes ?? []).some((v) => v.reviewer === userId);
+}
 
 function resolveReviewRole(
-  record: AupRecord,
   config: ReviewerConfig | undefined,
-  userId: string | undefined
+  userId: string | undefined,
+  progress: ReviewProgress | undefined
 ): ReviewRole {
   if (!userId) return "viewer";
-  if (record.piUserId && record.piUserId === userId) return "pi";
-  if (config?.expertCandidates?.some((r) => r.userId === userId)) return "expert";
+  // 专家身份按「是否被分配为当前轮审查专家」判定，不再依赖 reviewer-config（纯专家无权限读该接口，会 403）
+  if (isAssignedExpert(userId, progress)) return "expert";
+  // 秘书身份按格式审查人名册判定（秘书可读 reviewer-config）
   if (config?.formatReviewers?.some((r) => r.userId === userId)) return "secretary";
   return "viewer";
 }
@@ -269,7 +277,7 @@ function ReviewContent({ id }: { id: string }) {
   const overviewItems = review.itemsQuery.data?.items ?? [];
   const overviewSummary: ReviewItemsSummary | undefined = review.itemsQuery.data?.summary;
 
-  const role: ReviewRole = record ? resolveReviewRole(record, config, currentUserId) : "viewer";
+  const role: ReviewRole = resolveReviewRole(config, currentUserId, progress);
   const stage = record?.currentStage ?? "draft";
   // 已投票判定：被分配专家且不在未投名单中（后端不再返回 reviews 列表）
   const alreadyVoted =
@@ -343,14 +351,6 @@ function ReviewContent({ id }: { id: string }) {
     review.expertReview.mutate({ verdict, comment: comment.trim() || undefined, items: buildItems() });
   };
 
-  const handlePiSubmit = (body: PiReviewBody) => {
-    if (body.action === "return" && !body.comment?.trim()) {
-      toast.error("退回需填写退回意见");
-      return;
-    }
-    review.piReview.mutate(body);
-  };
-
   const handleFormatSubmit = (body: FormatReviewBody) => {
     if (body.action === "approve") {
       if (!body.reviewForm) {
@@ -366,14 +366,6 @@ function ReviewContent({ id }: { id: string }) {
       return;
     }
     review.formatReview.mutate(body);
-  };
-
-  const handleTerminate = (reason: string) => {
-    if (!reason.trim()) {
-      toast.error("请填写终止原因");
-      return;
-    }
-    review.terminate.mutate({ reason: reason.trim() });
   };
 
   /* ---------- 渲染 ---------- */
@@ -485,13 +477,6 @@ function ReviewContent({ id }: { id: string }) {
           ) : null}
 
           {/* 按角色渲染的审查操作区 */}
-          {stage === "piReview" && (
-            <PiReviewPanel
-              canAct={role === "pi"}
-              submitting={review.piReview.isPending}
-              onSubmit={handlePiSubmit}
-            />
-          )}
           {stage === "formatReview" && (
             <FormatReviewPanel
               canAct={role === "secretary"}
@@ -505,9 +490,7 @@ function ReviewContent({ id }: { id: string }) {
               canVote={canVoteExpert}
               alreadyVoted={alreadyVoted}
               submitting={review.expertReview.isPending}
-              terminating={review.terminate.isPending}
               onSubmit={handleExpertSubmit}
-              onTerminate={handleTerminate}
             />
           )}
 
@@ -687,47 +670,6 @@ function FieldValue({ field }: { field: FlatField }) {
   return <div className="ar-val">{formatFieldValue(field.field, value)}</div>;
 }
 
-/* ---------- 组长审核 ---------- */
-
-function PiReviewPanel({
-  canAct,
-  submitting,
-  onSubmit,
-}: {
-  canAct: boolean;
-  submitting: boolean;
-  onSubmit: (b: PiReviewBody) => void;
-}) {
-  const [action, setAction] = useState<"approve" | "return">("approve");
-  const [comment, setComment] = useState("");
-
-  if (!canAct) {
-    return <ReadonlyBanner text="当前为组长审核阶段，您非本计划书课题组长，仅只读查看。" />;
-  }
-
-  return (
-    <div className="ar-card" style={{ marginBottom: 16, borderColor: "#eef1fd" }}>
-      <h3>组长审核</h3>
-      <div className="sub">通过流转格式审查；退回则回到草稿（第 {2} 轮起标记退回来源）</div>
-      <div className="ar-radio-group" style={{ marginBottom: 12 }}>
-        {(["approve", "return"] as const).map((a) => (
-          <label key={a} className={`ar-choice ${action === a ? "chosen" : ""}`}>
-            <input type="radio" checked={action === a} onChange={() => setAction(a)} />
-            {a === "approve" ? "通过" : "退回修改"}
-          </label>
-        ))}
-      </div>
-      <div className="ar-form-label">审核意见{action === "return" ? "（退回必填）" : ""}</div>
-      <textarea className="ar-form-control" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="填写审核/退回意见" />
-      <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-        <button type="button" className={`ar-btn ${action === "approve" ? "primary" : "danger"}`} disabled={submitting} onClick={() => onSubmit({ action, comment })}>
-          {submitting ? "提交中…" : action === "approve" ? "通过" : "退回"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /* ---------- 格式审查 ---------- */
 
 function FormatReviewPanel({
@@ -836,21 +778,15 @@ function ExpertReviewPanel({
   canVote,
   alreadyVoted,
   submitting,
-  terminating,
   onSubmit,
-  onTerminate,
 }: {
   canVote: boolean;
   alreadyVoted: boolean;
   submitting: boolean;
-  terminating: boolean;
   onSubmit: (verdict: ReviewVerdict, comment: string) => void;
-  onTerminate: (reason: string) => void;
 }) {
   const [verdict, setVerdict] = useState<ReviewVerdict | null>(null);
   const [comment, setComment] = useState("");
-  const [terminateOpen, setTerminateOpen] = useState(false);
-  const [terminateReason, setTerminateReason] = useState("");
 
   if (!canVote) {
     return (
@@ -894,25 +830,7 @@ function ExpertReviewPanel({
         <button type="button" className="ar-btn primary" disabled={submitting} onClick={submit}>
           {submitting ? "提交中…" : "提交投票"}
         </button>
-        <button type="button" className="ar-btn danger" onClick={() => setTerminateOpen((v) => !v)}>
-          终止审查
-        </button>
       </div>
-
-      {terminateOpen ? (
-        <div style={{ marginTop: 12, borderTop: "1px solid #e5e9ef", paddingTop: 12 }}>
-          <div className="ar-form-label">终止原因（必填）</div>
-          <textarea className="ar-form-control" value={terminateReason} onChange={(e) => setTerminateReason(e.target.value)} placeholder="填写终止原因" />
-          <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-            <button type="button" className="ar-btn danger" disabled={terminating} onClick={() => onTerminate(terminateReason)}>
-              {terminating ? "提交中…" : "确认终止"}
-            </button>
-            <button type="button" className="ar-btn ghost" onClick={() => setTerminateOpen(false)}>
-              取消
-            </button>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
