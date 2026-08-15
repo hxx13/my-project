@@ -9,6 +9,7 @@ import com.example.demo.modules.identity.service.PersonIdentityService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -17,7 +18,7 @@ import org.springframework.stereotype.Service;
  * AUP 数据级权限（统一 where 作用域 + 阶段/操作人校验）。
  *
  * IACUC 角色不依赖 RoleEnum（其单值 role 无法表达「既是 PI 又是专家」）；
- * 组长/秘书/专家改由人员身份标识系统（PersonIdentityService）按 label 动态判定，
+ * 组长/秘书/专家改由人员身份标识系统（PersonIdentityService）按 code 动态判定，
  * 留痕/课题组/专家指派仍以 JdbcTemplate 读取。
  */
 @Service
@@ -32,14 +33,14 @@ public class AupAccessPolicy {
     private final JdbcTemplate jdbcTemplate;
     private final PersonIdentityService personIdentityService;
 
-    @Value("${aup.identity.pi-tag:组长}")
-    private String piTag;
+    @Value("${aup.identity.pi-code:GROUP_LEADER}")
+    private String piCode;
 
-    @Value("${aup.identity.secretary-tag:秘书}")
-    private String secretaryTag;
+    @Value("${aup.identity.secretary-code:SECRETARY}")
+    private String secretaryCode;
 
-    @Value("${aup.identity.expert-tag:专家}")
-    private String expertTag;
+    @Value("${aup.identity.expert-code:EXPERT}")
+    private String expertCode;
 
     public AupAccessPolicy(JdbcTemplate jdbcTemplate, PersonIdentityService personIdentityService) {
         this.jdbcTemplate = jdbcTemplate;
@@ -54,7 +55,7 @@ public class AupAccessPolicy {
         return role != null && role.getLevel() >= RoleEnum.ADMIN.getLevel();
     }
 
-    /** 组长（PI）：STUDENT 视角下持有「组长」标签（学号）。 */
+    /** 组长（PI）：STUDENT 视角下持有「组长」标签 code（学号）。 */
     public boolean isPi(User user) {
         if (user == null) {
             return false;
@@ -63,23 +64,23 @@ public class AupAccessPolicy {
         if (uid == null || uid.isBlank()) {
             return false;
         }
-        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STUDENT, uid), piTag);
+        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STUDENT, uid), piCode);
     }
 
-    /** 秘书：STAFF 视角下持有「秘书」标签（sys_user.id）。 */
+    /** 秘书：STAFF 视角下持有「秘书」标签 code（sys_user.id）。 */
     public boolean isSecretary(String userId) {
         if (userId == null || userId.isBlank()) {
             return false;
         }
-        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STAFF, userId), secretaryTag);
+        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STAFF, userId), secretaryCode);
     }
 
-    /** 专家：STAFF 视角下持有「专家」标签（sys_user.id）。 */
+    /** 专家：STAFF 视角下持有「专家」标签 code（sys_user.id）。 */
     public boolean isExpert(String userId) {
         if (userId == null || userId.isBlank()) {
             return false;
         }
-        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STAFF, userId), expertTag);
+        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STAFF, userId), expertCode);
     }
 
     /** 用户身份所属 scope：账号来源 STAFF → STAFF，其余（含 null）→ STUDENT。 */
@@ -87,13 +88,13 @@ public class AupAccessPolicy {
         return "STAFF".equals(user.getAccountSource()) ? "STAFF" : "STUDENT";
     }
 
-    /** 标签列表是否命中目标 label（null 安全）。 */
+    /** 标签列表是否命中目标 code（null 安全）。 */
     private boolean hasTag(List<IdentityTagVO> tags, String target) {
         if (tags == null || target == null) {
             return false;
         }
         for (IdentityTagVO tag : tags) {
-            if (tag != null && target.equals(tag.getLabel())) {
+            if (tag != null && Objects.equals(tag.getCode(), target)) {
                 return true;
             }
         }
@@ -256,7 +257,7 @@ public class AupAccessPolicy {
                     personIdentityService.listByScope(PersonIdentityService.SCOPE_STAFF, null);
             List<String> result = new ArrayList<>();
             for (Map.Entry<String, List<IdentityTagVO>> entry : byScope.entrySet()) {
-                if (hasTag(entry.getValue(), secretaryTag)) {
+                if (hasTag(entry.getValue(), secretaryCode)) {
                     result.add(entry.getKey());
                 }
             }

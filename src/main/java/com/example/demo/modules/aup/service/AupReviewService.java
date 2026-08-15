@@ -37,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -86,11 +87,11 @@ public class AupReviewService {
     private final PersonIdentityService personIdentityService;
     private final AupAccessPolicy accessPolicy;
 
-    @Value("${aup.identity.secretary-tag:秘书}")
-    private String secretaryTag;
+    @Value("${aup.identity.secretary-code:SECRETARY}")
+    private String secretaryCode;
 
-    @Value("${aup.identity.expert-tag:专家}")
-    private String expertTag;
+    @Value("${aup.identity.expert-code:EXPERT}")
+    private String expertCode;
 
     public AupReviewService(AupReviewMapper reviewMapper,
                             AupReviewAssignmentMapper assignmentMapper,
@@ -383,13 +384,13 @@ public class AupReviewService {
     // ===================== 专家候选 / 名册配置 =====================
 
     public List<ExpertCandidate> listExperts() {
-        return toCandidates(tagUserIds(expertTag));
+        return toCandidates(tagUserIds(expertCode));
     }
 
     public ReviewerConfigResponse reviewerConfig() {
         ReviewerConfigResponse resp = new ReviewerConfigResponse();
-        resp.setFormatReviewers(toCandidates(tagUserIds(secretaryTag)));
-        resp.setExpertCandidates(toCandidates(tagUserIds(expertTag)));
+        resp.setFormatReviewers(toCandidates(tagUserIds(secretaryCode)));
+        resp.setExpertCandidates(toCandidates(tagUserIds(expertCode)));
         return resp;
     }
 
@@ -536,28 +537,28 @@ public class AupReviewService {
         }
     }
 
-    /** STAFF 视角下命中指定身份标签的 userId（保持身份标识返回顺序）。 */
-    private List<String> tagUserIds(String tagLabel) {
-        if (!StringUtils.hasText(tagLabel)) {
+    /** STAFF 视角下命中指定身份 code 的 userId（保持身份标识返回顺序）。 */
+    private List<String> tagUserIds(String tagCode) {
+        if (!StringUtils.hasText(tagCode)) {
             return List.of();
         }
         List<String> result = new ArrayList<>();
         for (Map.Entry<String, List<IdentityTagVO>> entry
                 : personIdentityService.listByScope(PersonIdentityService.SCOPE_STAFF, null).entrySet()) {
-            if (hasTag(entry.getValue(), tagLabel)) {
+            if (hasTag(entry.getValue(), tagCode)) {
                 result.add(entry.getKey());
             }
         }
         return result;
     }
 
-    /** 标签列表是否命中目标 label（null 安全，语义与 AupAccessPolicy 一致）。 */
+    /** 标签列表是否命中目标 code（null 安全，语义与 AupAccessPolicy 一致）。 */
     private boolean hasTag(List<IdentityTagVO> tags, String target) {
         if (tags == null || target == null) {
             return false;
         }
         for (IdentityTagVO tag : tags) {
-            if (tag != null && target.equals(tag.getLabel())) {
+            if (tag != null && Objects.equals(tag.getCode(), target)) {
                 return true;
             }
         }
