@@ -105,6 +105,10 @@ public class AupService {
     @Value("${aup.attachment.max-count:10}")
     private int maxAttachmentCount;
 
+    /** 组长身份标识 code（STUDENT 视角），与 AupAccessPolicy 同键、不硬编码 */
+    @Value("${aup.identity.pi-code:GROUP_LEADER}")
+    private String piCode;
+
     public AupService(AupRecordMapper recordMapper,
                       AupDataMapper dataMapper,
                       AupAuditLogMapper auditLogMapper,
@@ -236,8 +240,8 @@ public class AupService {
             persistDraftData(aupId, cleaned, null, user.getId());
         }
 
-        // 3. 回填项目冗余字段（组长 = 提交者本人）
-        applyProjectMeta(record, cleaned, user);
+        // 3. 回填项目冗余字段（组长 = 课题组 GROUP_LEADER 身份标识者）
+        applyProjectMeta(record, cleaned);
 
         // 4. 提交鉴权 + 按提交者身份决定目标阶段：组长/管理员直接进格式审查，实验员/同组进组长审核
         accessPolicy.assertCanSubmit(record, user);
@@ -1317,15 +1321,37 @@ public class AupService {
 
     // ---- 项目冗余字段回填 ----
 
-    private void applyProjectMeta(AupRecord record, String dataJson, User submitter) {
+    private void applyProjectMeta(AupRecord record, String dataJson) {
         Map<String, Object> map = parseMap(dataJson);
         String projectName = firstValue(map, "A1.name", "projectName", "A1.项目名称");
         String dept = firstValue(map, "A2.department", "dept", "A2.单位", "A2.dept");
         String projectSource = firstValue(map, "A1.source", "projectSource", "A2.projectSource", "A2.项目来源");
-        // 组长 = 提交者本人（Task I-2：不再按课题组名反查，避免取到任意成员导致越权）
-        String piUserId = submitter == null ? null : submitter.getId();
-        String piName = submitter == null ? null : resolveName(submitter.getId());
+        // 组长 = 计划书所属课题组的 GROUP_LEADER 身份标识者（非提交者，避免实验员提交时把自己写成组长）
+        String piUserId = resolveGroupLeader(record.getProjectGroupName());
+        String piName = piUserId == null ? null : resolveName(piUserId);
         recordMapper.updateProjectMeta(record.getId(), projectName, piUserId, piName, dept, projectSource);
+    }
+
+    /** 按课题组名解析组长 userId：该课题组中挂 GROUP_LEADER（STUDENT 视角）身份标签的人；找不到返回 null。 */
+    private String resolveGroupLeader(String projectGroupName) {
+        if (!StringUtils.hasText(projectGroupName)) {
+            return null;
+        }
+        try {
+            List<String> ids = jdbcTemplate.queryForList(
+                    "SELECT p.user_id " +
+                    "FROM aro_personnel p " +
+                    "JOIN person_identity pi ON pi.user_id = p.user_id AND pi.scope = 'STUDENT' " +
+                    "JOIN person_identity_tag t ON t.id = pi.tag_id AND t.code = ? AND t.active = 1 " +
+                    "WHERE p.project_group_name = ? " +
+                    "ORDER BY pi.id ASC " +
+                    "LIMIT 1",
+                    String.class, piCode, projectGroupName.trim());
+            return (ids == null || ids.isEmpty()) ? null : ids.get(0);
+        } catch (Exception e) {
+            log.warn("[aup] 解析课题组长失败 group={} err={}", projectGroupName, e.getMessage());
+            return null;
+        }
     }
 
     // ---- 取值辅助 ----
