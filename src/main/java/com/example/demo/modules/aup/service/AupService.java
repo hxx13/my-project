@@ -440,11 +440,12 @@ public class AupService {
                     if (!(row instanceof Map<?, ?> m)) {
                         continue;
                     }
-                    for (String col : f.tableRequiredColumns) {
-                        Object cell = m.get(col);
+                    for (Map.Entry<String, String> e : f.tableColumnLabels.entrySet()) {
+                        Object cell = m.get(e.getKey());
                         if (isBlankValue(cell)) {
+                            String colLabel = (e.getValue() != null && !e.getValue().isBlank()) ? e.getValue() : e.getKey();
                             errors.add(new AupValidationErrorDTO(f.fieldKey, "ROW_INCOMPLETE",
-                                    "「" + f.label + "」第 " + (ri + 1) + " 行「" + col + "」未填写", ri + 1));
+                                    "「" + f.label + "」第 " + (ri + 1) + " 行「" + colLabel + "」未填写", ri + 1));
                         }
                     }
                 }
@@ -1124,7 +1125,7 @@ public class AupService {
         String dictKey;
         Integer maxLength;
         String showWhen;
-        List<String> tableRequiredColumns = new ArrayList<>();
+        Map<String, String> tableColumnLabels = new LinkedHashMap<>();
     }
 
     private List<FieldDef> loadFieldDefs(Long templateId) {
@@ -1148,7 +1149,7 @@ public class AupService {
             f.dictKey = str(row.get("dict_key"));
             f.showWhen = str(row.get("show_when"));
             f.maxLength = parseMaxLength(str(row.get("config")));
-            f.tableRequiredColumns = parseTableRequiredColumns(str(row.get("config")));
+            f.tableColumnLabels = parseTableColumns(str(row.get("config")));
             out.add(f);
         }
         return out;
@@ -1167,17 +1168,21 @@ public class AupService {
     }
 
     @SuppressWarnings("unchecked")
-    private List<String> parseTableRequiredColumns(String config) {
-        List<String> cols = new ArrayList<>();
+    private Map<String, String> parseTableColumns(String config) {
+        Map<String, String> cols = new LinkedHashMap<>();
         try {
             Map<String, Object> c = parseMap(config);
             Object columns = c.get("columns");
             if (columns instanceof List<?> list) {
                 for (Object col : list) {
-                    if (col instanceof Map<?, ?> m && m.get("key") != null) {
-                        cols.add(String.valueOf(m.get("key")));
-                    } else if (col != null) {
-                        cols.add(String.valueOf(col));
+                    if (col instanceof Map<?, ?> m) {
+                        String key = str(m.get("fieldKey"));
+                        if (key == null || key.isBlank()) {
+                            key = str(m.get("key"));
+                        }
+                        if (key != null && !key.isBlank()) {
+                            cols.put(key, str(m.get("label")));
+                        }
                     }
                 }
             }
