@@ -66,16 +66,21 @@ export default function StudentAupPage() {
             const isPi = !!currentUserId && item.piUserId === currentUserId;
             const isOwn = !!currentUserId && item.createdBy === currentUserId;
             const sameGroup = !!projectGroupName;
+            const isPiReview = item.currentStage === "piReview" && isPi;
             // draft 阶段：组长 → 填写 + 提交；实验员（本人或同组）→ 填写/继续；其余 → 查看
-            const primary = isDraft && (isPi || isOwn || sameGroup);
-            const label = !isDraft
-              ? "查看"
-              : isPi
-                ? "填写 + 提交"
-                : isOwn || sameGroup
-                  ? "填写/继续"
-                  : "查看";
-            const go = () => navigate(`/aup/fill/${item.id}`);
+            // piReview 阶段：组长 → 审核
+            const primary = isPiReview || (isDraft && (isPi || isOwn || sameGroup));
+            const label = isPiReview
+              ? "审核"
+              : !isDraft
+                ? "查看"
+                : isPi
+                  ? "填写 + 提交"
+                  : isOwn || sameGroup
+                    ? "填写/继续"
+                    : "查看";
+            const go = () =>
+              navigate(isPiReview ? `/student/aup/review/${item.id}` : `/aup/fill/${item.id}`);
             return (
               <div
                 key={item.id}
