@@ -269,6 +269,7 @@ public class AupService {
 
         String act = action == null ? "" : action;
         boolean isReturn = STAGE_DRAFT.equals(toStage) && !STAGE_DRAFT.equals(fromStage);
+        boolean isReassign = "reassign".equals(act);
         boolean isSubmit = "submit".equals(act);
         boolean isApprove = STAGE_APPROVED.equals(toStage);
         boolean isExpire = "expire".equals(act);
@@ -285,6 +286,11 @@ public class AupService {
         if (isReturn) {
             roundNo += 1;
             draftSource = returnSourceOf(fromStage);
+        }
+        if (isReassign) {
+            // 全弃权/全回避重分配（expertReview→formatReview）也递增轮次，
+            // 避免新分配 assignment 仍写同一 (aup_id, round_no, reviewer_id) 撞唯一键。
+            roundNo += 1;
         }
         if (isSubmit) {
             draftSource = "first";

@@ -322,7 +322,7 @@ public class AupReviewService {
     public ReviewProgressResponse progress(User user, long aupId, Integer roundNoParam) {
         AupRecordView record = requireRecord(aupId);
         assertCanViewReview(user, record);
-        int roundNo = roundNoParam != null ? roundNoParam : roundOf(record);
+        int roundNo = roundNoParam != null ? roundNoParam : defaultReviewRound(record);
         VoteAggregate agg = reviewMapper.aggregateVotes(aupId, roundNo);
 
         int agree = nz(agg.getAgreeCount());
@@ -348,7 +348,7 @@ public class AupReviewService {
     public ReviewItemsResponse reviewItems(User user, long aupId, Integer roundNoParam, String fieldKey) {
         AupRecordView record = requireRecord(aupId);
         assertCanViewReview(user, record);
-        int roundNo = roundNoParam != null ? roundNoParam : roundOf(record);
+        int roundNo = roundNoParam != null ? roundNoParam : defaultReviewRound(record);
 
         List<AupReviewItem> items = StringUtils.hasText(fieldKey)
                 ? reviewItemMapper.selectByAupRoundFieldKey(aupId, roundNo, fieldKey.trim())
@@ -604,6 +604,21 @@ public class AupReviewService {
 
     private static int roundOf(AupRecordView record) {
         return record.getRoundNo() == null ? 1 : record.getRoundNo();
+    }
+
+    /**
+     * 默认轮次：记录处于返修草稿（formatReturn/expertReturn）时回查上一轮（产生这批意见的那一轮），
+     * 否则用当前轮。显式传 roundNo 的调用走调用方，不经过这里。
+     */
+    private static int defaultReviewRound(AupRecordView record) {
+        int current = roundOf(record);
+        if (STAGE_DRAFT.equals(record.getCurrentStage())) {
+            String ds = record.getDraftSource();
+            if ("formatReturn".equals(ds) || "expertReturn".equals(ds)) {
+                return Math.max(1, current - 1);
+            }
+        }
+        return current;
     }
 
     private static int nz(Long v) {
