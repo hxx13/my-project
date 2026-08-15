@@ -197,7 +197,7 @@ public class AupAccessPolicy {
         throw TwinBusinessException.of(403, "仅申请人或同课题组成员可编辑该计划书");
     }
 
-    /** 提交鉴权：组长（PI）或管理员可提交；组长「提交」即通过，直接进入格式审查 */
+    /** 提交鉴权：申请人（createdBy）/同课题组/组长（PI）/管理员均可提交；提交后目标阶段由 AupService.submit 按身份区分 */
     public void assertCanSubmit(AupRecord record, User user) {
         if (record == null || user == null) {
             throw TwinBusinessException.of(403, "无权提交该计划书");
@@ -208,7 +208,14 @@ public class AupAccessPolicy {
         if (isPi(user)) {
             return;
         }
-        throw TwinBusinessException.of(403, "仅组长或管理员可提交计划书");
+        String uid = user.getId();
+        if (uid != null && uid.equals(record.getCreatedBy())) {
+            return;
+        }
+        if (sameProjectGroup(record, user)) {
+            return;
+        }
+        throw TwinBusinessException.of(403, "仅申请人、同课题组、组长或管理员可提交计划书");
     }
 
     /** 列表作用域角色：admin > secretary > expert > PI > lab */

@@ -60,6 +60,7 @@ public class AupService {
 
     // 状态机
     public static final String STAGE_DRAFT = "draft";
+    public static final String STAGE_PI_REVIEW = "piReview";
     public static final String STAGE_FORMAT_REVIEW = "formatReview";
     public static final String STAGE_EXPERT_REVIEW = "expertReview";
     public static final String STAGE_APPROVED = "approved";
@@ -68,6 +69,7 @@ public class AupService {
 
     // 通知源
     private static final String SRC_SUBMITTED = "AUP_SUBMITTED";
+    private static final String SRC_PI_RETURNED = "AUP_PI_RETURNED";
     private static final String SRC_TO_FORMAT = "AUP_TO_FORMAT";
     private static final String SRC_FORMAT_RETURNED = "AUP_FORMAT_RETURNED";
     private static final String SRC_ASSIGNED = "AUP_ASSIGNED";
@@ -237,10 +239,12 @@ public class AupService {
         // 3. 回填项目冗余字段（组长 = 提交者本人）
         applyProjectMeta(record, cleaned, user);
 
-        // 4. 提交鉴权（组长或管理员）+ 流转 draft→formatReview
+        // 4. 提交鉴权 + 按提交者身份决定目标阶段：组长/管理员直接进格式审查，实验员/同组进组长审核
         accessPolicy.assertCanSubmit(record, user);
         String role = accessPolicy.resolveOperatorRole(record, user);
-        return transition(aupId, STAGE_DRAFT, STAGE_FORMAT_REVIEW, "submit", user.getId(), role, null);
+        String targetStage = (accessPolicy.isAdmin(user) || accessPolicy.isPi(user))
+                ? STAGE_FORMAT_REVIEW : STAGE_PI_REVIEW;
+        return transition(aupId, STAGE_DRAFT, targetStage, "submit", user.getId(), role, null);
     }
 
     // ======================================================================
@@ -342,6 +346,9 @@ public class AupService {
     }
 
     private String returnSourceOf(String fromStage) {
+        if (STAGE_PI_REVIEW.equals(fromStage)) {
+            return "piReturn";
+        }
         if (STAGE_FORMAT_REVIEW.equals(fromStage)) {
             return "formatReturn";
         }
@@ -1019,13 +1026,19 @@ public class AupService {
                                      String operatorId, String comment) {
         String source = null;
         Set<String> related = new LinkedHashSet<>();
-        if ("submit".equals(action)) {
+        if ("submit".equals(action) && STAGE_PI_REVIEW.equals(toStage)) {
+            // 实验员提交 draft→piReview：通知组长
+            source = SRC_SUBMITTED;
+            related.addAll(resolvePiRecipientIds(record));
+        } else if ("submit".equals(action)) {
             // 组长提交 draft→formatReview：通知秘书
             source = SRC_SUBMITTED;
             related.addAll(accessPolicy.listSecretaryUserIds());
         } else if (STAGE_DRAFT.equals(toStage)) {
-            // 退回 draft（秘书格式退回/专家返修）：通知组长 + 全组
-            if (STAGE_FORMAT_REVIEW.equals(fromStage)) {
+            // 退回 draft（组长退回/秘书格式退回/专家返修）：通知申请人 + 全组
+            if (STAGE_PI_REVIEW.equals(fromStage)) {
+                source = SRC_PI_RETURNED;
+            } else if (STAGE_FORMAT_REVIEW.equals(fromStage)) {
                 source = SRC_FORMAT_RETURNED;
             } else if (STAGE_EXPERT_REVIEW.equals(fromStage)) {
                 source = SRC_EXPERT_RETURNED;
@@ -1034,7 +1047,7 @@ public class AupService {
                 related.addAll(resolveGroupRecipientIds(record));
             }
         } else if (STAGE_FORMAT_REVIEW.equals(toStage)) {
-            // 全弃权重分配 expertReview→formatReview：通知秘书
+            // 组长通过 piReview→formatReview 或 全弃权重分配 expertReview→formatReview：通知秘书
             source = SRC_TO_FORMAT;
             related.addAll(accessPolicy.listSecretaryUserIds());
         } else if (STAGE_TERMINATED.equals(toStage)) {
@@ -1055,6 +1068,15 @@ public class AupService {
             return;
         }
         publish(source, record, operatorId, null, related, comment);
+    }
+
+    /** 「组长」通知对象：以 piUserId 为准（通知失败不影响主流程） */
+    private Set<String> resolvePiRecipientIds(AupRecord record) {
+        Set<String> out = new LinkedHashSet<>();
+        if (StringUtils.hasText(record.getPiUserId())) {
+            out.add(record.getPiUserId());
+        }
+        return out;
     }
 
     /** 「组长 + 全组」通知对象：组长 + 同课题组全体成员 userId（通知失败不影响主流程） */
@@ -1587,18 +1609,19 @@ public class AupService {
     }
 
     private String buildMiniSteps(AupListItem item) {
-        String[] keys = {STAGE_DRAFT, STAGE_FORMAT_REVIEW, STAGE_EXPERT_REVIEW, STAGE_APPROVED};
-        // 返修阶段首步显示从哪里退回（格式审查/专家审查/回退）
+        String[] keys = {STAGE_DRAFT, STAGE_PI_REVIEW, STAGE_FORMAT_REVIEW, STAGE_EXPERT_REVIEW, STAGE_APPROVED};
+        // 返修阶段首步显示从哪里退回（组长审核/格式审查/专家审查/回退）
         String draftLabel = "填写";
         if (STAGE_DRAFT.equals(item.getCurrentStage()) && item.getDraftSource() != null) {
             switch (item.getDraftSource()) {
+                case "piReturn": draftLabel = "返修(组长审核)"; break;
                 case "formatReturn": draftLabel = "返修(格式审查)"; break;
                 case "expertReturn": draftLabel = "返修(专家审查)"; break;
                 case "rollback": draftLabel = "返修(回退)"; break;
                 default: draftLabel = "填写";
             }
         }
-        String[] labels = {draftLabel, "格式", "专家", "通过"};
+        String[] labels = {draftLabel, "组长", "格式", "专家", "通过"};
         int current = indexOf(keys, item.getCurrentStage());
         List<Map<String, Object>> steps = new ArrayList<>();
         for (int i = 0; i < keys.length; i++) {

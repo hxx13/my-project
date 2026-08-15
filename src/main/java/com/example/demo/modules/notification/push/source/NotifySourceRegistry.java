@@ -111,6 +111,8 @@ public class NotifySourceRegistry implements ApplicationRunner {
         // ========== IACUC AUP 计划书 ==========
         register("AUP_SUBMITTED", "AUP-计划书提交", "组长提交计划书，通知秘书",
                 Map.of("registerNo", "注册号", "projectName", "项目名称", "comment", "备注", "targetUserId", "课题组长ID（自动索引）"));
+        register("AUP_PI_RETURNED", "AUP-组长退回", "组长审核退回，通知申请人+全组",
+                Map.of("registerNo", "注册号", "projectName", "项目名称", "comment", "退回意见", "targetUserId", "实验员ID（自动索引）"));
         register("AUP_TO_FORMAT", "AUP-送格式审查", "全弃权重分配回格式审查，通知秘书",
                 Map.of("registerNo", "注册号", "projectName", "项目名称", "comment", "备注"));
         register("AUP_FORMAT_RETURNED", "AUP-格式退回", "秘书格式审查退回，通知组长+全组",

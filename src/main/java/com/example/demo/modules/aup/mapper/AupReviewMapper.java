@@ -42,4 +42,8 @@ public interface AupReviewMapper {
     List<ReviewTodoItem> selectSecretaryTodo();
 
     List<ReviewTodoItem> selectExpertTodo(@Param("reviewerId") String reviewerId);
+
+    List<ReviewTodoItem> selectPiTodo(@Param("piUserId") String piUserId);
+
+    List<ReviewTodoItem> selectPiTodoAll();
 }

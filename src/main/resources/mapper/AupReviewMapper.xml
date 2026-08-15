@@ -95,4 +95,18 @@
         WHERE r.current_stage = 'expertReview'
         ORDER BY r.submitted_at DESC, r.id DESC
     </select>
+
+    <select id="selectPiTodo" resultType="com.example.demo.modules.aup.dto.ReviewTodoItem">
+        SELECT <include refid="TodoColumns"/>
+        FROM aup_record
+        WHERE current_stage = 'piReview' AND pi_user_id = #{piUserId}
+        ORDER BY submitted_at DESC, id DESC
+    </select>
+
+    <select id="selectPiTodoAll" resultType="com.example.demo.modules.aup.dto.ReviewTodoItem">
+        SELECT <include refid="TodoColumns"/>
+        FROM aup_record
+        WHERE current_stage = 'piReview'
+        ORDER BY submitted_at DESC, id DESC
+    </select>
 </mapper>

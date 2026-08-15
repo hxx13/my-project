@@ -5,6 +5,7 @@ import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.aup.dto.AupRecordView;
 import com.example.demo.modules.aup.dto.ExpertCandidate;
 import com.example.demo.modules.aup.dto.FormatReviewRequest;
+import com.example.demo.modules.aup.dto.PiReviewRequest;
 import com.example.demo.modules.aup.dto.ReviewItemsResponse;
 import com.example.demo.modules.aup.dto.ReviewItemsSummary;
 import com.example.demo.modules.aup.dto.ReviewProgressResponse;
@@ -48,6 +49,7 @@ import java.util.Set;
 public class AupReviewService {
 
     // 阶段
+    private static final String STAGE_PI_REVIEW = "piReview";
     private static final String STAGE_FORMAT_REVIEW = "formatReview";
     private static final String STAGE_EXPERT_REVIEW = "expertReview";
     private static final String STAGE_DRAFT = "draft";
@@ -121,6 +123,11 @@ public class AupReviewService {
         return StringUtils.hasText(userId) && reviewerMapper.countByUserIdRole(userId, R_SECRETARY) > 0;
     }
 
+    /** 组长（PI）：走身份标识 GROUP_LEADER，语义与 AupAccessPolicy.isPi 一致 */
+    public boolean isPi(User user) {
+        return accessPolicy.isPi(user);
+    }
+
     public boolean isExpert(String userId) {
         return StringUtils.hasText(userId) && reviewerMapper.countByUserIdRole(userId, R_EXPERT) > 0;
     }
@@ -132,6 +139,7 @@ public class AupReviewService {
         switch (role == null ? "" : role.trim().toLowerCase()) {
             case "secretary" -> all = reviewMapper.selectSecretaryTodo();
             case "expert" -> all = reviewMapper.selectExpertTodo(user.getId());
+            case "pi" -> all = isAdmin(user) ? reviewMapper.selectPiTodoAll() : reviewMapper.selectPiTodo(user.getId());
             default -> throw TwinBusinessException.of(400, "未知的角色分片: " + role);
         }
         int total = all.size();
@@ -143,6 +151,38 @@ public class AupReviewService {
         out.put("total", total);
         out.put("items", all.subList(from, to));
         return out;
+    }
+
+    // ===================== 组长审核 =====================
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> piReview(User user, long aupId, PiReviewRequest req) {
+        if (req == null || !StringUtils.hasText(req.getAction())) {
+            throw TwinBusinessException.of(400, "缺少 action");
+        }
+        String action = req.getAction().trim().toLowerCase();
+        if (!"approve".equals(action) && !"return".equals(action)) {
+            throw TwinBusinessException.of(400, "action 仅支持 approve/return");
+        }
+        if (!isAdmin(user) && !accessPolicy.isPi(user)) {
+            throw TwinBusinessException.of(403, "仅组长或管理员可执行组长审核");
+        }
+        AupRecordView record = requireRecord(aupId);
+        if (!STAGE_PI_REVIEW.equals(record.getCurrentStage())) {
+            throw TwinBusinessException.of(409, "当前阶段非组长审核，无法操作");
+        }
+        String comment = req.getComment();
+        if ("approve".equals(action)) {
+            aupService.transition(aupId, STAGE_PI_REVIEW, STAGE_FORMAT_REVIEW, "approve",
+                    user.getId(), "PI", comment);
+            return stageResult(aupId, STAGE_FORMAT_REVIEW);
+        }
+        if (!StringUtils.hasText(comment)) {
+            throw TwinBusinessException.of(400, "退回必须填写意见");
+        }
+        aupService.transition(aupId, STAGE_PI_REVIEW, STAGE_DRAFT, "return",
+                user.getId(), "PI", comment);
+        return stageResult(aupId, STAGE_DRAFT);
     }
 
     // ===================== 格式审查（分配专家） =====================

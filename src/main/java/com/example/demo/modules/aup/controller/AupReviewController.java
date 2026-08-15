@@ -3,6 +3,7 @@ package com.example.demo.modules.aup.controller;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.aup.dto.FormatReviewRequest;
+import com.example.demo.modules.aup.dto.PiReviewRequest;
 import com.example.demo.modules.aup.dto.ReviewVoteRequest;
 import com.example.demo.modules.aup.dto.ReviewerConfigRequest;
 import com.example.demo.modules.aup.service.AupReviewService;
@@ -29,7 +30,7 @@ public class AupReviewController {
     }
 
     @GetMapping("/review/todo")
-    @Operation(summary = "按角色返回待审（秘书 formatReview / 专家 被分配 expertReview）")
+    @Operation(summary = "按角色返回待审（组长 piReview / 秘书 formatReview / 专家 被分配 expertReview）")
     public Result<?> todo(@RequestHeader(value = "Authorization", required = false) String authorization,
                           @RequestParam(defaultValue = "secretary") String role,
                           @RequestParam(defaultValue = "1") int page,
@@ -48,11 +49,31 @@ public class AupReviewController {
             case "expert" -> {
                 // 允许任意登录用户查询：结果仅含其本人被分配的待审项，无越权泄露
             }
+            case "pi" -> {
+                if (!reviewService.isAdmin(user) && !reviewService.isPi(user)) {
+                    return Result.fail(403, "无权限查看组长待办");
+                }
+            }
             default -> {
                 return Result.fail(400, "未知的角色分片: " + role);
             }
         }
         return Result.success(reviewService.todo(user, r, page, size));
+    }
+
+    @PostMapping("/{id}/pi-review")
+    @Operation(summary = "组长审核（approve 通过进格式审查 / return 退回申请人）")
+    public Result<?> piReview(@RequestHeader(value = "Authorization", required = false) String authorization,
+                              @PathVariable long id,
+                              @RequestBody PiReviewRequest body) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        if (user == null) {
+            return Result.fail(401, "未登录或令牌无效");
+        }
+        if (!reviewService.isAdmin(user) && !reviewService.isPi(user)) {
+            return Result.fail(403, "无权限执行组长审核");
+        }
+        return Result.success(reviewService.piReview(user, id, body));
     }
 
     @PostMapping("/{id}/format-review")
