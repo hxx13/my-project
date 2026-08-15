@@ -37,7 +37,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(adminAuthInterceptor)
                 .addPathPatterns("/api/admin/**", "/api/portal/admin/**",
-                        "/api/aup-dict/**",
                         "/api/person-identity/**");
 
         registry.addInterceptor(apiAuthInterceptor)
@@ -58,9 +57,17 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/v1/twin/speech/file/**",
                         "/api/v1/twin/speech/scan-auto-play");
 
-        // AUP 模板：只读 GET 仅需登录（学生填表/审核加载表单结构），写操作仍需 STAFF 门禁
+        // AUP 模板：只读 GET 仅需登录（学生填表/审核加载表单结构），写操作收紧为 sys_user 底座 + ADMIN
         registry.addInterceptor(aupTemplateWriteGuard())
                 .addPathPatterns("/api/aup-template/**");
+
+        // AUP 字典：后台配置数据，读+写均不外泄，仅 sys_user 底座 + ADMIN
+        registry.addInterceptor(aupDictConfigGuard())
+                .addPathPatterns("/api/aup-dict/**");
+
+        // AUP 名册配置：写操作 sys_user 底座 + ADMIN；读操作仅 sys_user 底座（角色仍由控制器按 admin/secretary 裁决）
+        registry.addInterceptor(aupReviewerConfigGuard())
+                .addPathPatterns("/api/aup/reviewer-config");
 
         registry.addInterceptor(requestMetricsInterceptor)
                 .addPathPatterns("/api/**")
@@ -73,7 +80,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     /**
      * AUP 模板写操作守卫：GET（只读，学生加载结构）放行给 {@link ApiAuthInterceptor} 校验登录，
-     * 其余写方法（POST/PUT/DELETE）转发 {@link AdminAuthInterceptor} 校验 STAFF。
+     * 其余写方法（POST/PUT/DELETE）转发 {@link AdminAuthInterceptor#preHandleAupConfigAdmin} 校验
+     * 「sys_user 底座 + RoleEnum≥ADMIN」。
      *
      * 不能用 excludePathPatterns 拆分，因为 /api/aup-template/{id} 同时承载 GET 详情与 PUT/DELETE 写，
      * 纯路径无法区分 HTTP 方法，故按方法门禁。
@@ -86,7 +94,40 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 if ("OPTIONS".equalsIgnoreCase(method) || "GET".equalsIgnoreCase(method)) {
                     return true;
                 }
-                return adminAuthInterceptor.preHandle(request, response, handler);
+                return adminAuthInterceptor.preHandleAupConfigAdmin(request, response, handler);
+            }
+        };
+    }
+
+    /** AUP 字典整条（读+写）门禁：后台配置数据不外泄，仅 sys_user 底座 + ADMIN。 */
+    private HandlerInterceptor aupDictConfigGuard() {
+        return new HandlerInterceptor() {
+            @Override
+            public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+                if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+                    return true;
+                }
+                return adminAuthInterceptor.preHandleAupConfigAdmin(request, response, handler);
+            }
+        };
+    }
+
+    /**
+     * AUP 名册配置门禁：PUT 收紧为 sys_user 底座 + ADMIN；GET 仅 sys_user 底座，
+     * admin/secretary 角色判断继续由 {@code AupReviewController} 执行（秘书读名册以判定自身身份）。
+     */
+    private HandlerInterceptor aupReviewerConfigGuard() {
+        return new HandlerInterceptor() {
+            @Override
+            public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+                String method = request.getMethod();
+                if ("OPTIONS".equalsIgnoreCase(method)) {
+                    return true;
+                }
+                if ("PUT".equalsIgnoreCase(method)) {
+                    return adminAuthInterceptor.preHandleAupConfigAdmin(request, response, handler);
+                }
+                return adminAuthInterceptor.preHandleStaffBase(request, response, handler);
             }
         };
     }

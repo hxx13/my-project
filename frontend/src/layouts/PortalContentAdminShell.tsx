@@ -3,21 +3,53 @@ import { cn } from "@/lib/utils";
 import { PortalHeader } from "@/features/portal/PortalHeader";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
+import { useGoBack } from "@/features/aup/hooks/useGoBack";
 
 const NAV_ITEMS = [
   { path: "/content-manager/content", label: "内容管理", icon: "📋" },
   { path: "/content-manager/categories", label: "分类管理", icon: "📂" },
   { path: "/content-manager/pages", label: "页面管理", icon: "📄" },
+  { path: "/content-manager/student-faq", label: "学生Q&A", icon: "❓" },
+  { path: "/content-manager/aup-template", label: "AUP 模板", icon: "🧬" },
+  { path: "/content-manager/aup-dict", label: "AUP 字典", icon: "📚" },
+  { path: "/content-manager/aup-reviewers", label: "AUP 审查人", icon: "👥" },
 ] as const;
+
+/** AUP config 三页：仅「教职工 sys_user 底座 + ADMIN」可见，学生库账号即使被授予 ADMIN 也不可见 */
+const AUP_CONFIG_NAV_PATHS = new Set([
+  "/content-manager/aup-template",
+  "/content-manager/aup-dict",
+  "/content-manager/aup-reviewers",
+]);
+
+/** 学生库账号判定，与 postLoginNavigation / AuthGuard 约定一致 */
+function isStudentAccount(): boolean {
+  const source = authStorage.getUserInfo()?.accountSource;
+  if (source === "STUDENT") return true;
+  if (source === "STAFF") return false;
+  // accountSource 为空时按角色兜底：MEMBER 即学生
+  const role = authStorage.getRole() ?? "MEMBER";
+  return !hasMinRole(role, "STAFF");
+}
 
 export default function PortalContentAdminShell() {
   const location = useLocation();
+  const goBack = useGoBack("/content-manager/content");
 
   // 鉴权：未登录 → 首页，非 ADMIN → 首页
   if (!authStorage.hasToken()) return <Navigate to="/" replace />;
   if (!hasMinRole(authStorage.getRole(), "ADMIN")) return <Navigate to="/" replace />;
 
   const pathname = location.pathname.replace(/\/+$/, "") || "/";
+
+  // config 三页（模板/字典/审查人）收紧：学生库账号即便带 ADMIN 角色也不放行
+  const studentAccount = isStudentAccount();
+  const onAupConfigPage = [...AUP_CONFIG_NAV_PATHS].some((p) => pathname.startsWith(p));
+  if (studentAccount && onAupConfigPage) return <Navigate to="/" replace />;
+  const navItems = studentAccount
+    ? NAV_ITEMS.filter((item) => !AUP_CONFIG_NAV_PATHS.has(item.path))
+    : NAV_ITEMS;
+
   const isEditor = pathname.includes("/content/new") || pathname.includes("/edit") || pathname.match(/\/content-manager\/pages\/(about|faq|contact|service-guide)$/);
   const isSpecial = pathname.includes("/content/recycle");
 
@@ -35,9 +67,13 @@ export default function PortalContentAdminShell() {
       <div className="flex shrink-0 items-center gap-3 bg-[#1e293b] border-t border-white/10 px-6 py-2">
         {isEditor ? (
           <>
-            <Link to={backTo} className="inline-flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors">
-              ← {backLabel}
-            </Link>
+            <button
+              type="button"
+              onClick={goBack}
+              className="inline-flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
+            >
+              ← 返回
+            </button>
             <span className="h-4 w-px bg-white/15" />
             <span className="text-xs font-semibold text-white/80">编辑内容</span>
           </>
@@ -46,9 +82,6 @@ export default function PortalContentAdminShell() {
             <span className="text-xs font-semibold text-white/80">内容管理</span>
           </>
         )}
-        <a href="/#/" className="ml-auto inline-flex items-center gap-1 text-[11px] text-white/35 hover:text-white/60 transition-colors">
-          ← 返回门户首页
-        </a>
       </div>
 
       {/* 主体 */}
@@ -67,7 +100,7 @@ export default function PortalContentAdminShell() {
               门户与内容
             </div>
             <nav style={{ flex: 1, padding: "0 8px" }}>
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <Link
                   key={item.path}
                   to={item.path}
