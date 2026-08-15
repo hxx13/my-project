@@ -10,7 +10,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -232,6 +232,7 @@ export default function AupReviewPage() {
 
 function ReviewContent({ id }: { id: string }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const currentUserId = authStorage.getUserInfo()?.id;
 
   const detailQuery = useAupDetail(id);
@@ -446,7 +447,7 @@ function ReviewContent({ id }: { id: string }) {
 
       {/* 工具栏 */}
       <div className="ar-toolbar">
-        <button type="button" className="ar-btn ghost small" onClick={() => navigate("/console/admin/aup")}>
+        <button type="button" className="ar-btn ghost small" onClick={() => navigate(location.pathname.startsWith("/student/") ? "/student/aup" : "/console/admin/aup")}>
           ← 返回列表
         </button>
         <span style={{ fontSize: 15, fontWeight: 700 }}>计划书审核</span>
