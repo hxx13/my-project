@@ -133,12 +133,9 @@ export default function AupFillPage() {
   // 是否已填写任何内容（用于提交/保存按钮禁用，排除固定默认值）
   const hasContent = useMemo(() => Object.values(draft.values).some((v) => hasValue(v)), [draft.values]);
 
-  // 提交权限：仅组长（PI）或管理员可提交；实验员仅可保存草稿
-  const myRoles = useAupMyRoles();
-  const isAdmin = hasMinRole(authStorage.getRole() || "", "ADMIN");
-  const isPi = myRoles.data?.isPi ?? false;
-  const maySubmit = isPi || isAdmin;
-  const canSubmit = hasContent && maySubmit;
+  // 提交权限：草稿阶段所有可编辑人均可提交（申请人/同组/组长/教职工/管理员）。
+  // 提交后按身份分流：组长/教职工直通格式审查，实验员进组长审核；后端 assertCanSubmit 兜底鉴权。
+  const canSubmit = hasContent;
 
   // 逐字段评审意见（批注），按 fieldKey 分组，供题目旁展示
   const reviewQuery = useReviewItems(id);
