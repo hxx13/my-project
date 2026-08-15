@@ -60,7 +60,6 @@ public class AupService {
 
     // 状态机
     public static final String STAGE_DRAFT = "draft";
-    public static final String STAGE_PI_REVIEW = "piReview";
     public static final String STAGE_FORMAT_REVIEW = "formatReview";
     public static final String STAGE_EXPERT_REVIEW = "expertReview";
     public static final String STAGE_APPROVED = "approved";
@@ -69,7 +68,6 @@ public class AupService {
 
     // 通知源
     private static final String SRC_SUBMITTED = "AUP_SUBMITTED";
-    private static final String SRC_PI_RETURNED = "AUP_PI_RETURNED";
     private static final String SRC_TO_FORMAT = "AUP_TO_FORMAT";
     private static final String SRC_FORMAT_RETURNED = "AUP_FORMAT_RETURNED";
     private static final String SRC_ASSIGNED = "AUP_ASSIGNED";
@@ -200,7 +198,7 @@ public class AupService {
         return save(aupId, dataJson, expectedVersion, user);
     }
 
-    /** 提交：校验 + 签名 + CAS 流转 draft→piReview + 快照 + 审计 + 通知组长 */
+    /** 提交：校验 + 签名 + CAS 流转 draft→formatReview + 快照 + 审计 + 通知秘书 */
     @Transactional
     public AupRecord submit(Long aupId, User user) {
         AupRecord record = requireRecord(aupId);
@@ -566,8 +564,8 @@ public class AupService {
         if (rows == 0) {
             throw TwinBusinessException.of(409, "计划书状态已变更，请刷新后重试");
         }
-        // 解锁回 draft 后清空通过时间与到期时间；注册号已锁定为该计划书，作废不复用，不清空
-        jdbcTemplate.update("UPDATE aup_record SET expire_at = NULL, approved_at = NULL WHERE id = ?", aupId);
+        // 解锁回 draft 后清空提交时间、通过时间与到期时间；注册号已锁定为该计划书，作废不复用，不清空
+        jdbcTemplate.update("UPDATE aup_record SET expire_at = NULL, approved_at = NULL, submitted_at = NULL WHERE id = ?", aupId);
         AupData data = dataMapper.selectByAupId(aupId);
         snapshotService.createSnapshot(record, STAGE_DRAFT, data == null ? null : data.getData(), user.getId());
         audit(aupId, user.getId(), "admin", "unlock", stage, STAGE_DRAFT, "管理员解锁，重新打开计划书");
@@ -576,7 +574,7 @@ public class AupService {
 
     /**
      * 续期：计划书 expired 后，申请人/组长/管理员基于旧计划书新建一条 draft 草稿，
-     * 引用原注册号（originRegisterNo）、结转未用动物数（carriedOverCount）、复制填报数据，
+     * 引用原注册号（originRegisterNo）、结转未用动物数置 0（carriedOverCount，暂不支持自动结转）、复制填报数据，
      * 重新走完整审核（新注册号在提交时重新生成）。
      */
     @Transactional
@@ -611,7 +609,7 @@ public class AupService {
         fresh.setRoundNo(1);
         fresh.setDraftSource("first");
         fresh.setOriginRegisterNo(record.getRegisterNo());
-        fresh.setCarriedOverCount(record.getCarriedOverCount() == null ? 0 : record.getCarriedOverCount());
+        fresh.setCarriedOverCount(0);
         fresh.setCreatedBy(user.getId());
         fresh.setProjectGroupName(resolveProjectGroupName(user.getId()));
         fresh.setIsDemo(0);
@@ -1013,10 +1011,8 @@ public class AupService {
             source = SRC_SUBMITTED;
             related.addAll(accessPolicy.listSecretaryUserIds());
         } else if (STAGE_DRAFT.equals(toStage)) {
-            // 退回 draft（秘书格式退回/专家返修/组长退回）：通知组长 + 全组
-            if (STAGE_PI_REVIEW.equals(fromStage)) {
-                source = SRC_PI_RETURNED;
-            } else if (STAGE_FORMAT_REVIEW.equals(fromStage)) {
+            // 退回 draft（秘书格式退回/专家返修）：通知组长 + 全组
+            if (STAGE_FORMAT_REVIEW.equals(fromStage)) {
                 source = SRC_FORMAT_RETURNED;
             } else if (STAGE_EXPERT_REVIEW.equals(fromStage)) {
                 source = SRC_EXPERT_RETURNED;

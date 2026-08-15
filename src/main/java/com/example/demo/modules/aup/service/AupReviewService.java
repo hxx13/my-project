@@ -47,7 +47,6 @@ import java.util.Set;
 public class AupReviewService {
 
     // 阶段
-    private static final String STAGE_PI_REVIEW = "piReview";
     private static final String STAGE_FORMAT_REVIEW = "formatReview";
     private static final String STAGE_EXPERT_REVIEW = "expertReview";
     private static final String STAGE_DRAFT = "draft";
