@@ -792,9 +792,18 @@ public class AupService {
 
     private boolean hasHandSignature(String dataJson) {
         Map<String, Object> map = parseMap(dataJson);
-        Object v = map.get("signature");
-        return v != null && StringUtils.hasText(String.valueOf(v))
-                && !String.valueOf(v).startsWith("EMAIL_TRUSTED:");
+        for (Map.Entry<String, Object> e : map.entrySet()) {
+            String key = e.getKey() == null ? "" : e.getKey().toLowerCase();
+            if (!key.endsWith("signature")) {
+                continue; // 只认签名字段（F.leaderSignature 等），跳过 signSource 等元数据
+            }
+            Object v = e.getValue();
+            if (v != null && StringUtils.hasText(String.valueOf(v))
+                    && !String.valueOf(v).startsWith("EMAIL_TRUSTED:")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 续期复制旧填报数据时剥离签名相关字段：旧签名跨计划书沿用会导致提交时误判已签名而跳过重新签名。 */
