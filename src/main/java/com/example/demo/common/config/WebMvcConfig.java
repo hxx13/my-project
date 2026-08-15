@@ -57,7 +57,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/v1/twin/speech/file/**",
                         "/api/v1/twin/speech/scan-auto-play");
 
-        // AUP 模板：只读 GET 仅需登录（学生填表/审核加载表单结构），写操作收紧为 sys_user 底座 + ADMIN
+        // AUP 模板：GET 默认收紧为 sys_user 底座 + ADMIN，仅 /published（新填）与 /{id}（续填/审核）放行登录态；写操作收紧为 ADMIN
         registry.addInterceptor(aupTemplateWriteGuard())
                 .addPathPatterns("/api/aup-template/**");
 
@@ -79,9 +79,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
     }
 
     /**
-     * AUP 模板写操作守卫：GET（只读，学生加载结构）放行给 {@link ApiAuthInterceptor} 校验登录，
-     * 其余写方法（POST/PUT/DELETE）转发 {@link AdminAuthInterceptor#preHandleAupConfigAdmin} 校验
-     * 「sys_user 底座 + RoleEnum≥ADMIN」。
+     * AUP 模板门禁：写方法（POST/PUT/DELETE）转发 {@link AdminAuthInterceptor#preHandleAupConfigAdmin}
+     * 校验「sys_user 底座 + RoleEnum≥ADMIN」。
+     *
+     * GET 默认同样收紧为 ADMIN（避免学生枚举版本列表 /、按版本反查 /resolve、
+     * 版本历史 /{id}/versions、内置种子 /default-seed 等配置面），仅放行学生
+     * 填表/续填/审核必需的结构读取：/published（新填）与 /{id}（续填/审核读取记录冻结模板）。
      *
      * 不能用 excludePathPatterns 拆分，因为 /api/aup-template/{id} 同时承载 GET 详情与 PUT/DELETE 写，
      * 纯路径无法区分 HTTP 方法，故按方法门禁。
@@ -91,12 +94,48 @@ public class WebMvcConfig implements WebMvcConfigurer {
             @Override
             public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
                 String method = request.getMethod();
-                if ("OPTIONS".equalsIgnoreCase(method) || "GET".equalsIgnoreCase(method)) {
+                if ("OPTIONS".equalsIgnoreCase(method)) {
                     return true;
+                }
+                if ("GET".equalsIgnoreCase(method)) {
+                    return isStudentReadableTemplatePath(request)
+                            ? true
+                            : adminAuthInterceptor.preHandleAupConfigAdmin(request, response, handler);
                 }
                 return adminAuthInterceptor.preHandleAupConfigAdmin(request, response, handler);
             }
         };
+    }
+
+    /**
+     * 学生可读的 GET /api/aup-template 子路径：
+     * {@code /published}（新填当前 PUBLISHED 结构）与 {@code /{id}}（单段数字，续填/审核读取记录冻结模板）。
+     * 其余（版本列表、/resolve、/{id}/versions、/default-seed）返回 false → ADMIN 门禁。
+     */
+    private boolean isStudentReadableTemplatePath(HttpServletRequest request) {
+        String sub = subPath(request);
+        if (sub == null || sub.isEmpty()) {
+            return false; // GET /api/aup-template —— 版本列表，ADMIN
+        }
+        if ("published".equals(sub)) {
+            return true;
+        }
+        return sub.matches("\\d+"); // /{id} 单段数字
+    }
+
+    /** 返回 /api/aup-template 之后的子路径（不含前导斜杠）；非该前缀返回 null。 */
+    private String subPath(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        String ctx = request.getContextPath();
+        String path = (ctx != null && !ctx.isEmpty() && uri.startsWith(ctx)) ? uri.substring(ctx.length()) : uri;
+        String prefix = "/api/aup-template";
+        if (path.equals(prefix)) {
+            return "";
+        }
+        if (path.startsWith(prefix + "/")) {
+            return path.substring(prefix.length() + 1);
+        }
+        return null;
     }
 
     /** AUP 字典整条（读+写）门禁：后台配置数据不外泄，仅 sys_user 底座 + ADMIN。 */

@@ -128,7 +128,7 @@
                (SELECT COUNT(*) FROM aup_snapshot s WHERE s.aup_id = r.id) AS snapshot_count,
                (SELECT COUNT(*) FROM aup_review_item ri WHERE ri.aup_id = r.id) AS review_count,
                (SELECT COUNT(*) FROM aup_review_item ri WHERE ri.aup_id = r.id AND ri.verdict = 'nonCompliant') AS non_compliant_count,
-               (SELECT COUNT(*) FROM aup_review_assignment a WHERE a.aup_id = r.id AND a.reviewer_id = #{scopeUserId}) AS assigned_expert_count
+               (SELECT COUNT(*) FROM aup_review_assignment a WHERE a.aup_id = r.id AND a.reviewer_id = #{scopeUserId} AND a.round_no = r.round_no) AS assigned_expert_count
         FROM aup_record r
         <include refid="pageWhere"/>
         ORDER BY

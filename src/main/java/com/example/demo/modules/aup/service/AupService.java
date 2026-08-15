@@ -1574,19 +1574,18 @@ public class AupService {
     }
 
     private String buildMiniSteps(AupListItem item) {
-        String[] keys = {STAGE_DRAFT, STAGE_PI_REVIEW, STAGE_FORMAT_REVIEW, STAGE_EXPERT_REVIEW, STAGE_APPROVED};
-        // 返修阶段首步显示从哪里退回（组长审核/格式审查/专家审查/回退）
+        String[] keys = {STAGE_DRAFT, STAGE_FORMAT_REVIEW, STAGE_EXPERT_REVIEW, STAGE_APPROVED};
+        // 返修阶段首步显示从哪里退回（格式审查/专家审查/回退）
         String draftLabel = "填写";
         if (STAGE_DRAFT.equals(item.getCurrentStage()) && item.getDraftSource() != null) {
             switch (item.getDraftSource()) {
-                case "piReturn": draftLabel = "返修(组长审核)"; break;
                 case "formatReturn": draftLabel = "返修(格式审查)"; break;
                 case "expertReturn": draftLabel = "返修(专家审查)"; break;
                 case "rollback": draftLabel = "返修(回退)"; break;
                 default: draftLabel = "填写";
             }
         }
-        String[] labels = {draftLabel, "组长", "格式", "专家", "通过"};
+        String[] labels = {draftLabel, "格式", "专家", "通过"};
         int current = indexOf(keys, item.getCurrentStage());
         List<Map<String, Object>> steps = new ArrayList<>();
         for (int i = 0; i < keys.length; i++) {
