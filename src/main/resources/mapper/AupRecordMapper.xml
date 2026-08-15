@@ -109,7 +109,7 @@
                 AND r.project_group_name = #{projectGroupName}
             </if>
             <if test="excludeDraft">
-                AND (r.current_stage != 'draft' OR r.is_demo = 1)
+                AND (r.current_stage != 'draft' OR r.draft_source != 'first' OR r.is_demo = 1)
             </if>
             <if test="draftSource != null and draftSource != ''">
                 AND r.draft_source = #{draftSource}
