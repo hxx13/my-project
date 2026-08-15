@@ -388,11 +388,17 @@ public class AupReviewService {
     public ReviewItemsResponse reviewItems(User user, long aupId, Integer roundNoParam, String fieldKey) {
         AupRecordView record = requireRecord(aupId);
         assertCanViewReview(user, record);
-        int roundNo = roundNoParam != null ? roundNoParam : defaultReviewRound(record);
 
-        List<AupReviewItem> items = StringUtils.hasText(fieldKey)
-                ? reviewItemMapper.selectByAupRoundFieldKey(aupId, roundNo, fieldKey.trim())
-                : reviewItemMapper.selectByAupRound(aupId, roundNo);
+        List<AupReviewItem> items;
+        if (roundNoParam != null && roundNoParam == 0) {
+            // roundNoParam == 0 约定为「取全部轮次」：不按 round_no 过滤，供状态总览按轮展示
+            items = reviewMapper.selectByAup(aupId);
+        } else {
+            int roundNo = roundNoParam != null ? roundNoParam : defaultReviewRound(record);
+            items = StringUtils.hasText(fieldKey)
+                    ? reviewItemMapper.selectByAupRoundFieldKey(aupId, roundNo, fieldKey.trim())
+                    : reviewItemMapper.selectByAupRound(aupId, roundNo);
+        }
 
         Set<String> reviewedFields = new LinkedHashSet<>();
         Set<String> nonCompliantFields = new LinkedHashSet<>();

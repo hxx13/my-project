@@ -291,8 +291,12 @@ public class AupService {
         Integer registerSeq = null;
 
         if (isReturn) {
-            roundNo += 1;
-            draftSource = returnSourceOf(fromStage);
+            String src = returnSourceOf(fromStage);
+            draftSource = src;
+            // piReturn（组长退回给实验员）是内部打回，不算委员会轮次，不递增 roundNo
+            if (!"piReturn".equals(src)) {
+                roundNo += 1;
+            }
         }
         if (isReassign) {
             // 全弃权/全回避重分配（expertReview→formatReview）也递增轮次，

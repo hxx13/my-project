@@ -5,6 +5,7 @@ import com.example.demo.modules.aup.dto.ReviewTodoItem;
 import com.example.demo.modules.aup.dto.ReviewVoteVO;
 import com.example.demo.modules.aup.dto.VoteAggregate;
 import com.example.demo.modules.aup.entity.AupReview;
+import com.example.demo.modules.aup.entity.AupReviewItem;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -24,6 +25,9 @@ public interface AupReviewMapper {
 
     /** 某轮次已投专家逐人记录（role=expert），投票进度卡逐人展示用 */
     List<ReviewVoteVO> selectVotesByAupRound(@Param("aupId") long aupId, @Param("roundNo") int roundNo);
+
+    /** 取某计划书全部轮次的逐字段意见（不按 round_no 过滤），状态总览按轮展示用 */
+    List<AupReviewItem> selectByAup(@Param("aupId") long aupId);
 
     /** 某模板版本下的全部 field_key（逐字段评审合法性校验） */
     List<String> selectFieldKeysByTemplate(@Param("templateId") long templateId);

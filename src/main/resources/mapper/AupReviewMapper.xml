@@ -33,6 +33,13 @@
         ORDER BY id ASC
     </select>
 
+    <select id="selectByAup" resultType="com.example.demo.modules.aup.entity.AupReviewItem">
+        SELECT *
+        FROM aup_review_item
+        WHERE aup_id = #{aupId}
+        ORDER BY round_no ASC, id ASC
+    </select>
+
     <select id="selectFieldKeysByTemplate" resultType="string">
         SELECT f.field_key
         FROM form_field f
