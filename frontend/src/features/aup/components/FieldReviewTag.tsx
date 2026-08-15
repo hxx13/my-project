@@ -59,8 +59,10 @@ const ROLE_BADGE: Record<string, { text: string; bg: string; fg: string }> = {
 export interface FieldReviewTagProps {
   fieldKey: string;
   fieldLabel: string;
-  /** true=专家可编辑；false=只读查看（申请人返修 / 已投票 / 非专家） */
+  /** true=可编辑；false=只读查看（申请人返修 / 已投票 / 非专家） */
   editable: boolean;
+  /** 编辑角色：expert=专家三态（合规/不合规/建议）；secretary=秘书单档（仅格式建议） */
+  reviewerRole?: "expert" | "secretary";
   /** 编辑态的草稿（受控） */
   draft?: FieldReviewDraft;
   onDraftChange?: (next: FieldReviewDraft) => void;
@@ -74,6 +76,7 @@ export function FieldReviewTag({
   fieldKey,
   fieldLabel,
   editable,
+  reviewerRole = "expert",
   draft,
   onDraftChange,
   existing,
@@ -189,7 +192,12 @@ export function FieldReviewTag({
             </div>
 
             {editable ? (
-              <EditablePopover fieldKey={fieldKey} draft={draft ?? emptyFieldReviewDraft()} patch={patch} />
+              <EditablePopover
+                fieldKey={fieldKey}
+                reviewerRole={reviewerRole}
+                draft={draft ?? emptyFieldReviewDraft()}
+                patch={patch}
+              />
             ) : (
               <ReadonlyPopover existing={existing} reviewerNames={reviewerNames} />
             )}
@@ -208,14 +216,21 @@ const VERDICT_OPTIONS: Array<{ verdict: ReviewItemVerdict; label: string }> = [
 
 function EditablePopover({
   fieldKey,
+  reviewerRole,
   draft,
   patch,
 }: {
   fieldKey: string;
+  reviewerRole: "expert" | "secretary";
   draft: FieldReviewDraft;
   patch: (p: Partial<FieldReviewDraft>) => void;
 }) {
   const verdict = draft.verdict ?? null;
+
+  if (reviewerRole === "secretary") {
+    return <SecretaryEditable draft={draft} patch={patch} />;
+  }
+
   return (
     <div>
       <FieldLabel>评审结论</FieldLabel>
@@ -294,6 +309,58 @@ function EditablePopover({
       ) : (
         <div style={{ marginTop: 8, fontSize: 11, color: "#8a94a6", lineHeight: 1.5 }}>
           选择结论后：不合规需填写原因、建议需填写修改建议；未选择的字段不计入逐字段评审。
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SecretaryEditable({
+  draft,
+  patch,
+}: {
+  draft: FieldReviewDraft;
+  patch: (p: Partial<FieldReviewDraft>) => void;
+}) {
+  const marked = draft.verdict === "suggest";
+  return (
+    <div>
+      <FieldLabel>格式建议</FieldLabel>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "7px 10px",
+          border: `1px solid ${marked ? "#d97706" : "#d5dbe3"}`,
+          borderRadius: 8,
+          cursor: "pointer",
+          background: marked ? "#fdf3e3" : "#fff",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={marked}
+          onChange={(e) => patch(e.target.checked ? { verdict: "suggest" } : { verdict: null, suggestion: "" })}
+          style={{ accentColor: "#d97706" }}
+        />
+        <span style={{ fontSize: 12, fontWeight: 600, color: marked ? "#d97706" : "#1a2233" }}>
+          标记为「格式建议」（退回返修）
+        </span>
+      </label>
+      {marked ? (
+        <>
+          <FieldLabel>建议内容</FieldLabel>
+          <textarea
+            value={draft.suggestion ?? ""}
+            onChange={(e) => patch({ suggestion: e.target.value })}
+            placeholder="填写该字段的格式修改建议"
+            style={textareaStyle}
+          />
+        </>
+      ) : (
+        <div style={{ marginTop: 8, fontSize: 11, color: "#8a94a6", lineHeight: 1.5 }}>
+          勾选后填写格式修改建议；未勾选的字段不计入格式建议。
         </div>
       )}
     </div>

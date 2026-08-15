@@ -1,8 +1,8 @@
 /**
  * AupReviewPage —— IACUC AUP 审批页（按角色渲染）。
  *
- * 秘书(secretary) → submitFormatReview（approve/return + reviewForm + expertIds[]）
- * 专家(expert) → submitExpertReview（verdict + comment + items[] 逐字段）
+ * 秘书(secretary) → submitFormatReview（items 非空→退回；空→分配专家 + reviewForm + expertIds[]）
+ * 专家(expert) → submitExpertReview（弃权/回避传 verdict；正常评审仅 items[] 逐字段，后端推导整体结论）
  *
  * 组长审核已迁移至学生端，此处不再渲染组长操作区。
  *
@@ -36,11 +36,12 @@ import type {
   ReviewVerdict,
   ReviewItem,
   ReviewItemInput,
+  FormatReviewItemInput,
   ReviewProgress,
   Expert,
   ReviewerConfig,
 } from "@/features/aup/schema/review";
-import type { FormatReviewBody, ReviewItemsSummary, TemplateDetailVO } from "@/features/aup/api/aup.api";
+import type { ReviewItemsSummary, TemplateDetailVO } from "@/features/aup/api/aup.api";
 import { FieldReviewTag, emptyFieldReviewDraft } from "../components/FieldReviewTag";
 import { displayTitle } from "../components/FormField";
 import type { FieldReviewDraft } from "../components/FieldReviewTag";
@@ -284,7 +285,9 @@ function ReviewContent({ id }: { id: string }) {
     role === "expert" && !!progress && !(progress.unvoted ?? []).includes(currentUserId ?? "");
 
   const canVoteExpert = stage === "expertReview" && role === "expert" && !alreadyVoted;
-  const fieldTagEditable = canVoteExpert;
+  const secretaryCanAct = stage === "formatReview" && role === "secretary";
+  const fieldTagEditable = canVoteExpert || secretaryCanAct;
+  const fieldTagRole: "expert" | "secretary" = secretaryCanAct ? "secretary" : "expert";
 
   const reviewerNames = useMemo(() => {
     const m: Record<string, string> = {};
@@ -304,10 +307,25 @@ function ReviewContent({ id }: { id: string }) {
     return m;
   }, [overviewItems]);
 
-  // 专家逐字段草稿
-  const [drafts, setDrafts] = useState<Record<string, FieldReviewDraft>>({});
-  const updateDraft = (fieldKey: string, next: FieldReviewDraft) =>
-    setDrafts((prev) => ({ ...prev, [fieldKey]: next }));
+  // 专家逐字段草稿（三态）
+  const [expertDrafts, setExpertDrafts] = useState<Record<string, FieldReviewDraft>>({});
+  const updateExpertDraft = (fieldKey: string, next: FieldReviewDraft) =>
+    setExpertDrafts((prev) => ({ ...prev, [fieldKey]: next }));
+
+  // 秘书逐字段格式建议草稿（仅「建议」档）
+  const [secretaryDrafts, setSecretaryDrafts] = useState<Record<string, FieldReviewDraft>>({});
+  const updateSecretaryDraft = (fieldKey: string, next: FieldReviewDraft) =>
+    setSecretaryDrafts((prev) => ({ ...prev, [fieldKey]: next }));
+
+  // 当前编辑态对应的草稿集合与写入器（按阶段/角色二选一）
+  const activeDrafts = secretaryCanAct ? secretaryDrafts : expertDrafts;
+  const updateActiveDraft = secretaryCanAct ? updateSecretaryDraft : updateExpertDraft;
+
+  // 秘书已标格式建议的字段数（>0 即退回）
+  const secretarySuggestionCount = useMemo(
+    () => flatFields.filter((f) => secretaryDrafts[f.key]?.verdict).length,
+    [flatFields, secretaryDrafts]
+  );
 
   // 总览抽屉
   const [overviewOpen, setOverviewOpen] = useState(false);
@@ -321,7 +339,7 @@ function ReviewContent({ id }: { id: string }) {
   const buildItems = (): ReviewItemInput[] => {
     const out: ReviewItemInput[] = [];
     for (const f of flatFields) {
-      const d = drafts[f.key];
+      const d = expertDrafts[f.key];
       if (!d?.verdict) continue;
       out.push({
         fieldKey: f.key,
@@ -335,37 +353,56 @@ function ReviewContent({ id }: { id: string }) {
     return out;
   };
 
-  const handleExpertSubmit = (verdict: ReviewVerdict, comment: string) => {
-    if (verdict === "disagree" && !comment.trim()) {
-      toast.error("整体结论为「不合格」时，请填写不合格原因与具体内容");
+  const buildSecretaryItems = (): FormatReviewItemInput[] => {
+    const out: FormatReviewItemInput[] = [];
+    for (const f of flatFields) {
+      const d = secretaryDrafts[f.key];
+      if (!d?.verdict) continue; // 秘书仅「suggest」档
+      out.push({
+        fieldKey: f.key,
+        sectionKey: f.sectionKey,
+        fieldLabel: f.label,
+        suggestion: d.suggestion?.trim() || undefined,
+      });
+    }
+    return out;
+  };
+
+  const handleExpertSubmit = (verdict: "abstain" | "recuse" | null, comment: string) => {
+    // 弃权/回避：直接传 verdict，不标字段
+    if (verdict === "abstain" || verdict === "recuse") {
+      review.expertReview.mutate({ verdict, comment: comment.trim() || undefined });
       return;
     }
-    // 逐字段「不合规」必填原因
+    // 正常评审：逐字段「不合规」必填原因
     for (const f of flatFields) {
-      const d = drafts[f.key];
+      const d = expertDrafts[f.key];
       if (d?.verdict === "nonCompliant" && !d.reason?.trim()) {
         toast.error(`字段「${f.label}」标记为不合规，请填写不合格原因`);
         return;
       }
     }
-    review.expertReview.mutate({ verdict, comment: comment.trim() || undefined, items: buildItems() });
+    // 只传 items，整体结论由后端逐字段推导
+    review.expertReview.mutate({ comment: comment.trim() || undefined, items: buildItems() });
   };
 
-  const handleFormatSubmit = (body: FormatReviewBody) => {
-    if (body.action === "approve") {
-      if (!body.reviewForm) {
-        toast.error("请选择专家审查形式");
-        return;
-      }
-      if (!body.expertIds || body.expertIds.length === 0) {
-        toast.error("通过并流转下一步时至少选择 1 名专家");
-        return;
-      }
-    } else if (!body.comment?.trim()) {
-      toast.error("退回需填写退回意见");
+  const handleFormatSubmit = (comment: string, reviewForm: ReviewForm, expertIds: string[]) => {
+    const items = buildSecretaryItems();
+    if (items.length > 0) {
+      // 有格式建议 → 退回返修（后端判为 return）
+      review.formatReview.mutate({ comment: comment.trim() || undefined, items });
       return;
     }
-    review.formatReview.mutate(body);
+    // 无格式建议 → 分配专家（后端判为 approve 并流转）
+    if (!reviewForm) {
+      toast.error("请选择专家审查形式");
+      return;
+    }
+    if (expertIds.length === 0) {
+      toast.error("分配专家至少选择 1 名专家");
+      return;
+    }
+    review.formatReview.mutate({ reviewForm, expertIds });
   };
 
   /* ---------- 渲染 ---------- */
@@ -482,6 +519,7 @@ function ReviewContent({ id }: { id: string }) {
               canAct={role === "secretary"}
               experts={experts}
               submitting={review.formatReview.isPending}
+              suggestionCount={secretarySuggestionCount}
               onSubmit={handleFormatSubmit}
             />
           )}
@@ -504,8 +542,9 @@ function ReviewContent({ id }: { id: string }) {
                 sectionLabel={sectionLabel}
                 fields={fields}
                 editable={fieldTagEditable}
-                drafts={drafts}
-                onDraftChange={updateDraft}
+                reviewerRole={fieldTagRole}
+                drafts={activeDrafts}
+                onDraftChange={updateActiveDraft}
                 itemsByFieldKey={itemsByFieldKey}
                 reviewerNames={reviewerNames}
               />
@@ -584,6 +623,7 @@ function SectionCard({
   sectionLabel,
   fields,
   editable,
+  reviewerRole,
   drafts,
   onDraftChange,
   itemsByFieldKey,
@@ -593,6 +633,7 @@ function SectionCard({
   sectionLabel: string;
   fields: FlatField[];
   editable: boolean;
+  reviewerRole: "expert" | "secretary";
   drafts: Record<string, FieldReviewDraft>;
   onDraftChange: (fieldKey: string, next: FieldReviewDraft) => void;
   itemsByFieldKey: Map<string, ReviewItem[]>;
@@ -620,6 +661,7 @@ function SectionCard({
                   fieldKey={f.key}
                   fieldLabel={f.label}
                   editable={editable}
+                  reviewerRole={reviewerRole}
                   draft={drafts[f.key] ?? emptyFieldReviewDraft()}
                   onDraftChange={(next) => onDraftChange(f.key, next)}
                   existing={itemsByFieldKey.get(f.key)}
@@ -676,14 +718,15 @@ function FormatReviewPanel({
   canAct,
   experts,
   submitting,
+  suggestionCount,
   onSubmit,
 }: {
   canAct: boolean;
   experts: Expert[];
   submitting: boolean;
-  onSubmit: (b: FormatReviewBody) => void;
+  suggestionCount: number;
+  onSubmit: (comment: string, reviewForm: ReviewForm, expertIds: string[]) => void;
 }) {
-  const [action, setAction] = useState<"approve" | "return">("approve");
   const [comment, setComment] = useState("");
   const [reviewForm, setReviewForm] = useState<ReviewForm>("member");
   const [expertIds, setExpertIds] = useState<string[]>([]);
@@ -695,20 +738,29 @@ function FormatReviewPanel({
   const toggleExpert = (userId: string) =>
     setExpertIds((prev) => (prev.includes(userId) ? prev.filter((x) => x !== userId) : [...prev, userId]));
 
+  const hasSuggestions = suggestionCount > 0;
+  const submit = () => onSubmit(comment, reviewForm, expertIds);
+
   return (
     <div className="ar-card" style={{ marginBottom: 16, borderColor: "#eef1fd" }}>
       <h3>格式审查</h3>
-      <div className="sub">通过时选择专家审查形式并分配专家；退回则回到草稿</div>
-      <div className="ar-radio-group" style={{ marginBottom: 12 }}>
-        {(["approve", "return"] as const).map((a) => (
-          <label key={a} className={`ar-choice ${action === a ? "chosen" : ""}`}>
-            <input type="radio" checked={action === a} onChange={() => setAction(a)} />
-            {a === "approve" ? "通过并流转" : "退回修改"}
-          </label>
-        ))}
-      </div>
+      <div className="sub">在下方字段旁点徽标标「格式建议」即退回返修；未标建议则选择审查形式并分配专家流转</div>
 
-      {action === "approve" ? (
+      {hasSuggestions ? (
+        <div
+          style={{
+            padding: "12px 14px",
+            borderRadius: 8,
+            border: "1px solid #fdf3e3",
+            background: "#fffaf0",
+            color: "#d97706",
+            fontSize: 13,
+            marginBottom: 12,
+          }}
+        >
+          已标记 <b>{suggestionCount}</b> 条格式建议，提交后将退回申请人修改。
+        </div>
+      ) : (
         <>
           <div className="ar-form-label">专家审查形式</div>
           <div className="ar-radio-group" style={{ marginBottom: 12 }}>
@@ -744,28 +796,19 @@ function FormatReviewPanel({
             )}
           </div>
         </>
-      ) : null}
+      )}
 
-      <div className="ar-form-label" style={{ marginTop: 12 }}>
-        审查意见{action === "return" ? "（退回必填）" : ""}
-      </div>
-      <textarea className="ar-form-control" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="填写格式审查/退回意见" />
+      <div className="ar-form-label" style={{ marginTop: 12 }}>审查意见（可选）</div>
+      <textarea
+        className="ar-form-control"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder={hasSuggestions ? "填写整体退回说明（可选）" : "填写格式审查意见（可选）"}
+      />
 
       <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-        <button
-          type="button"
-          className={`ar-btn ${action === "approve" ? "primary" : "danger"}`}
-          disabled={submitting}
-          onClick={() =>
-            onSubmit({
-              action,
-              comment,
-              reviewForm: action === "approve" ? reviewForm : undefined,
-              expertIds: action === "approve" ? expertIds : undefined,
-            })
-          }
-        >
-          {submitting ? "提交中…" : action === "approve" ? "通过并流转" : "退回"}
+        <button type="button" className={`ar-btn ${hasSuggestions ? "danger" : "primary"}`} disabled={submitting} onClick={submit}>
+          {submitting ? "提交中…" : hasSuggestions ? "退回（含格式建议）" : "通过并分配专家"}
         </button>
       </div>
     </div>
@@ -783,9 +826,9 @@ function ExpertReviewPanel({
   canVote: boolean;
   alreadyVoted: boolean;
   submitting: boolean;
-  onSubmit: (verdict: ReviewVerdict, comment: string) => void;
+  onSubmit: (verdict: "abstain" | "recuse" | null, comment: string) => void;
 }) {
-  const [verdict, setVerdict] = useState<ReviewVerdict | null>(null);
+  const [specialVerdict, setSpecialVerdict] = useState<"abstain" | "recuse" | null>(null);
   const [comment, setComment] = useState("");
 
   if (!canVote) {
@@ -800,27 +843,33 @@ function ExpertReviewPanel({
     );
   }
 
-  const submit = () => {
-    if (!verdict) {
-      toast.error("请选择整体审查结论");
-      return;
-    }
-    onSubmit(verdict, comment);
-  };
+  const submit = () => onSubmit(specialVerdict, comment);
 
   return (
     <div className="ar-card" style={{ marginBottom: 16, borderColor: "#eef1fd" }}>
       <h3>专家审查 · 投票</h3>
-      <div className="sub">逐字段评审请在下方表单字段旁点「未评审/合规…」徽标逐条打标；整体结论与逐字段意见一并提交</div>
+      <div className="sub">正常评审请在下方表单字段旁点徽标逐条打标（合规/不合规/建议），整体结论由系统自动推导；弃权或回避请直接选择下方选项</div>
 
       <div className="ar-form-label">整体结论</div>
+      <div style={{ fontSize: 12, color: "#8a94a6", marginBottom: 8, lineHeight: 1.5 }}>
+        由逐字段三态自动推导（含不合规 → 不合格；含建议且无不合规 → 修改；否则 → 同意），无需手动选择。
+      </div>
+
+      <div className="ar-form-label">弃权 / 回避（特殊情况，直接提交结论）</div>
       <div className="ar-radio-group" style={{ marginBottom: 12 }}>
-        {(Object.keys(VERDICT_LABELS) as ReviewVerdict[]).map((v) => (
-          <label key={v} className={`ar-choice ${verdict === v ? "chosen" : ""}`}>
-            <input type="radio" checked={verdict === v} onChange={() => setVerdict(v)} />
-            {VERDICT_LABELS[v]}
-          </label>
-        ))}
+        <label className={`ar-choice ${specialVerdict === "abstain" ? "chosen" : ""}`}>
+          <input type="radio" checked={specialVerdict === "abstain"} onChange={() => setSpecialVerdict("abstain")} />
+          弃权（拒评）
+        </label>
+        <label className={`ar-choice ${specialVerdict === "recuse" ? "chosen" : ""}`}>
+          <input type="radio" checked={specialVerdict === "recuse"} onChange={() => setSpecialVerdict("recuse")} />
+          回避
+        </label>
+        {specialVerdict ? (
+          <button type="button" className="ar-btn ghost small" onClick={() => setSpecialVerdict(null)}>
+            取消选择（回到正常评审）
+          </button>
+        ) : null}
       </div>
 
       <div className="ar-form-label">整体意见（可选）</div>
@@ -828,7 +877,7 @@ function ExpertReviewPanel({
 
       <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" className="ar-btn primary" disabled={submitting} onClick={submit}>
-          {submitting ? "提交中…" : "提交投票"}
+          {submitting ? "提交中…" : specialVerdict ? "提交投票" : "提交逐字段评审"}
         </button>
       </div>
     </div>

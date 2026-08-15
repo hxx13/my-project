@@ -27,6 +27,7 @@ import type {
 } from "@/features/aup/schema/aup";
 import type {
   Expert,
+  FormatReviewItemInput,
   ReviewItem,
   ReviewProgress,
   ReviewTodoItem,
@@ -319,13 +320,12 @@ export function fetchReviewTodo(params: ReviewTodoParams): Promise<AupPage<Revie
   return authHttp.get<Result<AupPage<ReviewTodoItem>>>("/aup/review/todo", { params }).then(({ data }) => data.data);
 }
 
-export type ReviewAction = "approve" | "return";
-
 export interface FormatReviewBody {
-  action: ReviewAction;
   comment?: string;
   reviewForm?: ReviewForm;
   expertIds?: string[];
+  /** 逐字段格式建议（非空 → 退回返修；空 → 通过并分配专家） */
+  items?: FormatReviewItemInput[];
 }
 
 /** POST /aup/{id}/format-review —— 格式审查（approve 时选专家） */
@@ -568,5 +568,5 @@ export function markAupNotificationRead(id: string): Promise<void> {
  * ================================================================== */
 
 export type { AupAttachment, AupAttachmentUpload, AupDetailVO, AupListItem, AupPrintData, AupSnapshot, AupSnapshotMeta, AupStage, AupTrace, DraftSource, ReviewForm } from "@/features/aup/schema/aup";
-export type { Assignment, Expert, ReviewItem, ReviewProgress, ReviewTodoItem, Reviewer, ReviewerConfig, ReviewVO, VoteRequest } from "@/features/aup/schema/review";
+export type { Assignment, Expert, FormatReviewItemInput, ReviewItem, ReviewProgress, ReviewTodoItem, Reviewer, ReviewerConfig, ReviewVO, VoteRequest } from "@/features/aup/schema/review";
 export type { FormField, FormSection, FormSubSection } from "@/features/aup/schema/formTemplate";
