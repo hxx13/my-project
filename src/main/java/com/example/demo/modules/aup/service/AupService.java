@@ -236,8 +236,8 @@ public class AupService {
             persistDraftData(aupId, cleaned, null, user.getId());
         }
 
-        // 3. 回填项目冗余字段
-        applyProjectMeta(record, cleaned);
+        // 3. 回填项目冗余字段（组长 = 提交者本人）
+        applyProjectMeta(record, cleaned, user);
 
         // 4. 提交鉴权（组长或管理员）+ 流转 draft→formatReview
         accessPolicy.assertCanSubmit(record, user);
@@ -1253,25 +1253,14 @@ public class AupService {
 
     // ---- 项目冗余字段回填 ----
 
-    private void applyProjectMeta(AupRecord record, String dataJson) {
+    private void applyProjectMeta(AupRecord record, String dataJson, User submitter) {
         Map<String, Object> map = parseMap(dataJson);
         String projectName = firstValue(map, "A1.name", "projectName", "A1.项目名称");
-        String piName = firstValue(map, "A2.leader", "A1.pi", "piName", "A2.负责人");
         String dept = firstValue(map, "A2.department", "dept", "A2.单位", "A2.dept");
         String projectSource = firstValue(map, "A1.source", "projectSource", "A2.projectSource", "A2.项目来源");
-        String piUserId = null;
-        // 组长 userId 按课题组解析（复用 AroService.findUserIdsByProjectGroup）
-        String projectGroup = firstValue(map, "A2.group", "projectGroup", "A2.课题组");
-        if (StringUtils.hasText(projectGroup)) {
-            try {
-                List<String> ids = aroService.findUserIdsByProjectGroup(projectGroup);
-                if (ids != null && !ids.isEmpty()) {
-                    piUserId = ids.get(0);
-                }
-            } catch (Exception e) {
-                log.debug("[AUP] 解析组长失败 group={} err={}", projectGroup, e.getMessage());
-            }
-        }
+        // 组长 = 提交者本人（Task I-2：不再按课题组名反查，避免取到任意成员导致越权）
+        String piUserId = submitter == null ? null : submitter.getId();
+        String piName = submitter == null ? null : resolveName(submitter.getId());
         recordMapper.updateProjectMeta(record.getId(), projectName, piUserId, piName, dept, projectSource);
     }
 
