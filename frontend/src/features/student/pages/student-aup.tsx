@@ -29,7 +29,10 @@ export default function StudentAupPage() {
     size: 100,
   });
   const renewMut = useRenewAup();
-  const items = data?.items ?? [];
+  const rawItems = data?.items ?? [];
+  // demo 记录（isDemo === 1）在有真实记录时自动隐藏；若全是 demo 则保留以便演示
+  const hasRealRecord = rawItems.some((i) => i.isDemo !== 1);
+  const items = hasRealRecord ? rawItems.filter((i) => i.isDemo !== 1) : rawItems;
 
   const handleRenew = async (id: number) => {
     if (!window.confirm("续期将基于该已过期计划书新建一份草稿（引用原注册号、结转未用动物数），重新走审核流程。确定续期？")) return;

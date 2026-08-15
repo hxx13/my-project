@@ -21,10 +21,19 @@ function stageBadge(item: AupListItem): { text: string; cls: string } {
     case "expired":
       return { text: "已过期", cls: "terminated" };
     case "draft":
-      if (item.draftSource && item.draftSource !== "first") {
-        return { text: `修回(第${item.roundNo}轮)`, cls: "modify" };
+      switch (item.draftSource) {
+        case "piReturn":
+          return { text: "退回给实验员", cls: "modify" };
+        case "formatReturn":
+          return { text: "返修(第1轮)", cls: "modify" };
+        case "expertReturn":
+          return { text: "返修(第2轮)", cls: "modify" };
+        case "rollback":
+          return { text: "已回退", cls: "modify" };
+        case "first":
+        default:
+          return { text: "草稿", cls: "draft" };
       }
-      return { text: "草稿", cls: "draft" };
     case "piReview":
       return { text: "组长审核中", cls: "review" };
     case "formatReview":
@@ -83,7 +92,10 @@ export default function AupListPage() {
 
   const { data, isLoading, isError, refetch } = useAupList(params);
 
-  const items = data?.items ?? [];
+  const rawItems = data?.items ?? [];
+  // demo 记录（isDemo === 1）在有真实记录时自动隐藏；若全是 demo 则保留以便演示
+  const hasRealRecord = rawItems.some((i) => i.isDemo !== 1);
+  const items = hasRealRecord ? rawItems.filter((i) => i.isDemo !== 1) : rawItems;
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 

@@ -338,6 +338,18 @@ export function submitFormatReview(id: string, body: FormatReviewBody): Promise<
   return authHttp.post<Result<StageChangeResult>>(`/aup/${id}/format-review`, body).then(({ data }) => data.data);
 }
 
+export interface PiReviewBody {
+  /** approve 通过进格式审查 / return 退回申请人 */
+  action: "approve" | "return";
+  /** 退回意见（return 时必填） */
+  comment?: string;
+}
+
+/** POST /aup/{id}/pi-review —— 组长审核（approve 通过 / return 退回） */
+export function submitPiReview(id: string, body: PiReviewBody): Promise<StageChangeResult> {
+  return authHttp.post<Result<StageChangeResult>>(`/aup/${id}/pi-review`, body).then(({ data }) => data.data);
+}
+
 /** POST /aup/{id}/review —— 专家投票（幂等；逐字段意见） */
 export function submitExpertReview(id: string, body: VoteRequest): Promise<StageChangeResult> {
   return authHttp.post<Result<StageChangeResult>>(`/aup/${id}/review`, body).then(({ data }) => data.data);

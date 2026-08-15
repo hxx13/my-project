@@ -54,6 +54,7 @@ import {
   submitAup,
   submitExpertReview,
   submitFormatReview,
+  submitPiReview,
   unlockAup,
   updateAupDict,
   updateAupDictItem,
@@ -68,6 +69,7 @@ import {
   type CreateDictItemBody,
   type CreateTemplateBody,
   type FormatReviewBody,
+  type PiReviewBody,
   type PickerType,
   type ReviewItemsParams,
   type ReviewItemsResult,
@@ -430,6 +432,18 @@ export function useFormatReview(id?: string) {
   });
 }
 
+export function usePiReview(id?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PiReviewBody): Promise<StageChangeResult> => {
+      if (!id) throw new Error("缺少计划书 id");
+      return submitPiReview(id, body);
+    },
+    onSuccess: () => invalidateReview(id, qc),
+    onError: (e: Error) => toast.error(e.message || "组长审核失败"),
+  });
+}
+
 export function useExpertReview(id?: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -470,13 +484,14 @@ export function useUpdateReviewerConfig() {
   });
 }
 
-/** 单个计划书的审查上下文（进度 + 逐字段意见 + 格式/专家两处流转） */
+/** 单个计划书的审查上下文（进度 + 逐字段意见 + 组长/格式/专家三处流转） */
 export function useAupReview(id?: string) {
   const progressQuery = useReviewProgress(id);
   const itemsQuery = useReviewItems(id);
   const formatReview = useFormatReview(id);
   const expertReview = useExpertReview(id);
-  return { progressQuery, itemsQuery, formatReview, expertReview };
+  const piReview = usePiReview(id);
+  return { progressQuery, itemsQuery, formatReview, expertReview, piReview };
 }
 
 /* =====================================================================
