@@ -85,6 +85,7 @@ public class AupReviewService {
     private final AupService aupService;
     private final NotificationService notificationService;
     private final PersonIdentityService personIdentityService;
+    private final AupAccessPolicy accessPolicy;
 
     @Value("${aup.identity.secretary-tag:秘书}")
     private String secretaryTag;
@@ -98,7 +99,8 @@ public class AupReviewService {
                             AupReviewerMapper reviewerMapper,
                             AupService aupService,
                             NotificationService notificationService,
-                            PersonIdentityService personIdentityService) {
+                            PersonIdentityService personIdentityService,
+                            AupAccessPolicy accessPolicy) {
         this.reviewMapper = reviewMapper;
         this.assignmentMapper = assignmentMapper;
         this.reviewItemMapper = reviewItemMapper;
@@ -106,6 +108,7 @@ public class AupReviewService {
         this.aupService = aupService;
         this.notificationService = notificationService;
         this.personIdentityService = personIdentityService;
+        this.accessPolicy = accessPolicy;
     }
 
     // ===================== 鉴权辅助（供 Controller 调用） =====================
@@ -175,6 +178,11 @@ public class AupReviewService {
             expertIds = assignmentMapper.selectReviewerIdsByAupRound(aupId, roundNo - 1);
             if (expertIds.isEmpty()) {
                 throw TwinBusinessException.of(400, "格式通过必须至少选择 1 名专家");
+            }
+        }
+        for (String eid : expertIds) {
+            if (!accessPolicy.isExpert(eid)) {
+                throw TwinBusinessException.of(400, "所选人员不是合法专家: " + eid);
             }
         }
         reviewMapper.updateReviewForm(aupId, reviewForm);
