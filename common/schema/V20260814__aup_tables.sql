@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS aup_record (
     register_no        VARCHAR(64)  NULL COMMENT 'JUMC{年}-{序}[-字母]，提交时生成并锁定，unlock 不清空',
     register_year      INT          NULL COMMENT '注册号年份（冗余，支撑 年份+序号 唯一）',
     register_seq       INT          NULL COMMENT '注册号序号（每年从 1 递增）',
-    current_stage      VARCHAR(32)  NOT NULL DEFAULT 'draft' COMMENT 'draft/piReview/formatReview/expertReview/approved/terminated/expired（唯一状态字段）',
+    current_stage      VARCHAR(32)  NOT NULL DEFAULT 'draft' COMMENT 'draft/formatReview/expertReview/approved/terminated/expired（唯一状态字段）',
     round_no           INT          NOT NULL DEFAULT 1 COMMENT '第几轮（≥1）',
     draft_source       VARCHAR(32)  NOT NULL DEFAULT 'first' COMMENT 'first/piReturn/formatReturn/expertReturn',
     review_form        VARCHAR(16)  NULL COMMENT '专家审查形式 member/meeting',

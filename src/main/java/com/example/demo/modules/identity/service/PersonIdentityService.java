@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 
 /**
  * 人员身份标识服务：下游业务复用的统一入口（可注入、不经 HTTP、无鉴权）。
- * scope 仅允许 STUDENT / STAFF 两个视角；标签由管理员自由配置（无种子），id 由后端自增生成。
+ * scope 仅允许 STUDENT / STAFF 两个视角；内置组长/秘书/专家三个默认标签种子（code 稳定，环境变量可配），其余管理员配置，id 由后端自增生成。
  */
 @Service
 public class PersonIdentityService {

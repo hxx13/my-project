@@ -41,7 +41,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * AUP 审批链路：组长审核 / 格式审查（分配专家）/ 专家投票（逐字段 + 全员同意结算）/ 终止。
+ * AUP 审批链路：格式审查（分配专家）/ 专家投票（逐字段 + 全员同意结算）/ 终止。
  * 主记录 current_stage 变更一律委托 {@link AupService#transition}（接缝），本服务不直接改 stage。
  */
 @Service

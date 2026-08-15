@@ -4,7 +4,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-/** 人员身份标识字典（无种子，管理员通过字典自由配置）。id 由数据库自增生成。 */
+/** 人员身份标识字典（内置组长/秘书/专家三个默认标签种子（code 稳定，环境变量可配），其余管理员配置）。id 由数据库自增生成。 */
 @Data
 public class PersonIdentityTag {
     private Long id;

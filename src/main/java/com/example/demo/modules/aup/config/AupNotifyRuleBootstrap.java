@@ -36,7 +36,6 @@ public class AupNotifyRuleBootstrap implements ApplicationRunner {
     /** 与 NotifySourceRegistry 注册的 AUP_* 源、AupService / AupReviewService 发布事件一一对应 */
     private static final List<String> AUP_EVENT_TYPES = List.of(
             "AUP_SUBMITTED",
-            "AUP_PI_RETURNED",
             "AUP_TO_FORMAT",
             "AUP_FORMAT_RETURNED",
             "AUP_ASSIGNED",
