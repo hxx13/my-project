@@ -914,13 +914,13 @@ public class AupService {
     private void notifyForTransition(AupRecord record, String fromStage, String toStage, String action,
                                      String operatorId, String comment) {
         String source = null;
-        String targetUserId = null;
         Set<String> related = new LinkedHashSet<>();
         if ("submit".equals(action)) {
+            // 组长提交 draft→formatReview：通知秘书
             source = SRC_SUBMITTED;
-            targetUserId = record.getPiUserId();
+            related.addAll(accessPolicy.listSecretaryUserIds());
         } else if (STAGE_DRAFT.equals(toStage)) {
-            targetUserId = record.getCreatedBy();
+            // 退回 draft（秘书格式退回/专家返修/组长退回）：通知组长 + 全组
             if (STAGE_PI_REVIEW.equals(fromStage)) {
                 source = SRC_PI_RETURNED;
             } else if (STAGE_FORMAT_REVIEW.equals(fromStage)) {
@@ -928,34 +928,58 @@ public class AupService {
             } else if (STAGE_EXPERT_REVIEW.equals(fromStage)) {
                 source = SRC_EXPERT_RETURNED;
             }
+            if (source != null) {
+                related.addAll(resolveGroupRecipientIds(record));
+            }
         } else if (STAGE_FORMAT_REVIEW.equals(toStage)) {
+            // 全弃权重分配 expertReview→formatReview：通知秘书
             source = SRC_TO_FORMAT;
             related.addAll(accessPolicy.listSecretaryUserIds());
         } else if (STAGE_TERMINATED.equals(toStage)) {
+            // 专家终止 expertReview→terminated：通知组长 + 全组
             source = SRC_TERMINATED;
-            if (record.getCreatedBy() != null) {
-                related.add(record.getCreatedBy());
-            }
-            if (record.getPiUserId() != null) {
-                related.add(record.getPiUserId());
-            }
+            related.addAll(resolveGroupRecipientIds(record));
         } else if (STAGE_APPROVED.equals(toStage)) {
+            // 专家通过 expertReview→approved：通知组长 + 全组
             source = SRC_APPROVED;
-            if (record.getCreatedBy() != null) {
-                related.add(record.getCreatedBy());
-            }
-            if (record.getPiUserId() != null) {
-                related.add(record.getPiUserId());
-            }
+            related.addAll(resolveGroupRecipientIds(record));
         } else if (STAGE_EXPIRED.equals(toStage)) {
+            // 到期 approved→expired：通知组长 + 全组
             source = SRC_EXPIRED;
-            targetUserId = record.getCreatedBy();
+            related.addAll(resolveGroupRecipientIds(record));
         }
-        // AUP_ASSIGNED（expertReview）由审批子模块在持有 expertIds 时精准发布，此处不重复
+        // AUP_ASSIGNED（formatReview→expertReview）由审批子模块在持有 expertIds 时精准发布，此处不重复
         if (source == null) {
             return;
         }
-        publish(source, record, operatorId, targetUserId, related, comment);
+        publish(source, record, operatorId, null, related, comment);
+    }
+
+    /** 「组长 + 全组」通知对象：组长 + 同课题组全体成员 userId（通知失败不影响主流程） */
+    private Set<String> resolveGroupRecipientIds(AupRecord record) {
+        Set<String> out = new LinkedHashSet<>();
+        if (StringUtils.hasText(record.getPiUserId())) {
+            out.add(record.getPiUserId());
+        }
+        if (StringUtils.hasText(record.getCreatedBy())) {
+            out.add(record.getCreatedBy());
+        }
+        String group = record.getProjectGroupName();
+        if (StringUtils.hasText(group)) {
+            try {
+                List<String> ids = aroService.findUserIdsByProjectGroup(group);
+                if (ids != null) {
+                    for (String id : ids) {
+                        if (StringUtils.hasText(id)) {
+                            out.add(id.trim());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[AUP] 查询课题组成员失败 aupId={} group={} err={}", record.getId(), group, e.getMessage());
+            }
+        }
+        return out;
     }
 
     private void publish(String source, AupRecord record, String senderId, String targetUserId,
