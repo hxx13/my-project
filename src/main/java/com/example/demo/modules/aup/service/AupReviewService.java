@@ -135,52 +135,94 @@ public class AupReviewService {
 
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> formatReview(User user, long aupId, FormatReviewRequest req) {
-        if (req == null || !StringUtils.hasText(req.getAction())) {
-            throw TwinBusinessException.of(400, "缺少 action");
-        }
-        String action = req.getAction().trim().toLowerCase();
-        if (!"approve".equals(action) && !"return".equals(action)) {
-            throw TwinBusinessException.of(400, "action 仅支持 approve/return");
+        if (req == null) {
+            throw TwinBusinessException.of(400, "缺少请求体");
         }
         AupRecordView record = requireRecord(aupId);
         if (!STAGE_FORMAT_REVIEW.equals(record.getCurrentStage())) {
             throw TwinBusinessException.of(409, "当前阶段非格式审查，无法操作");
         }
         String comment = req.getComment();
-        String to;
-        if ("approve".equals(action)) {
-            String reviewForm = req.getReviewForm();
-            if (!REVIEW_FORMS.contains(reviewForm)) {
-                throw TwinBusinessException.of(400, "reviewForm 仅支持 member/meeting");
-            }
-            List<String> expertIds = normalizeIds(req.getExpertIds());
+        int roundNo = roundOf(record);
+        List<FormatReviewRequest.Item> items = req.getItems() == null ? List.of() : req.getItems();
+
+        // 有格式建议 → 返修
+        if (!items.isEmpty()) {
+            persistSecretaryItems(user, aupId, roundNo, comment, items);
+            aupService.transition(aupId, STAGE_FORMAT_REVIEW, STAGE_DRAFT, "return", user.getId(), "secretary", comment);
+            return stageResult(aupId, STAGE_DRAFT);
+        }
+
+        // 无格式建议 → 通过并分配专家
+        String reviewForm = req.getReviewForm();
+        if (!REVIEW_FORMS.contains(reviewForm)) {
+            throw TwinBusinessException.of(400, "reviewForm 仅支持 member/meeting");
+        }
+        List<String> expertIds = normalizeIds(req.getExpertIds());
+        if (expertIds.isEmpty()) {
+            // 默认沿用上一轮专家（秘书可改选）
+            expertIds = assignmentMapper.selectReviewerIdsByAupRound(aupId, roundNo - 1);
             if (expertIds.isEmpty()) {
                 throw TwinBusinessException.of(400, "格式通过必须至少选择 1 名专家");
             }
-            int roundNo = roundOf(record);
-            reviewMapper.updateReviewForm(aupId, reviewForm);
-            List<AupReviewAssignment> assigns = new ArrayList<>(expertIds.size());
-            for (String eid : expertIds) {
-                AupReviewAssignment a = new AupReviewAssignment();
-                a.setAupId(aupId);
-                a.setRoundNo(roundNo);
-                a.setReviewerId(eid);
-                a.setStatus(AS_PENDING);
-                a.setAssignedBy(user.getId());
-                assigns.add(a);
-            }
-            assignmentMapper.insertBatch(assigns);
-            to = STAGE_EXPERT_REVIEW;
-            aupService.transition(aupId, STAGE_FORMAT_REVIEW, to, "approve", user.getId(), "secretary", comment);
-            notifyAssignedExperts(record, expertIds);
-        } else {
-            if (!StringUtils.hasText(comment)) {
-                throw TwinBusinessException.of(400, "退回必须填写意见");
-            }
-            to = STAGE_DRAFT;
-            aupService.transition(aupId, STAGE_FORMAT_REVIEW, to, "return", user.getId(), "secretary", comment);
         }
-        return stageResult(aupId, to);
+        reviewMapper.updateReviewForm(aupId, reviewForm);
+        List<AupReviewAssignment> assigns = new ArrayList<>(expertIds.size());
+        for (String eid : expertIds) {
+            AupReviewAssignment a = new AupReviewAssignment();
+            a.setAupId(aupId);
+            a.setRoundNo(roundNo);
+            a.setReviewerId(eid);
+            a.setStatus(AS_PENDING);
+            a.setAssignedBy(user.getId());
+            assigns.add(a);
+        }
+        assignmentMapper.insertBatch(assigns);
+        aupService.transition(aupId, STAGE_FORMAT_REVIEW, STAGE_EXPERT_REVIEW, "approve", user.getId(), "secretary", comment);
+        notifyAssignedExperts(record, expertIds);
+        return stageResult(aupId, STAGE_EXPERT_REVIEW);
+    }
+
+    /**
+     * 秘书格式建议落库：aup_review_item.review_id 非空，故先写一条 role=secretary 的 aup_review
+     * （verdict=modify），逐字段意见以其 id 关联，reviewerRole=secretary、verdict=suggest（格式建议）。
+     */
+    private void persistSecretaryItems(User user, long aupId, int roundNo, String comment,
+                                       List<FormatReviewRequest.Item> items) {
+        AupReview review = new AupReview();
+        review.setAupId(aupId);
+        review.setRoundNo(roundNo);
+        review.setReviewer(user.getId());
+        review.setRole(R_SECRETARY);
+        review.setVerdict(V_MODIFY);
+        review.setComment(comment);
+        reviewMapper.insert(review);
+
+        List<AupReviewItem> rows = new ArrayList<>(items.size());
+        for (FormatReviewRequest.Item it : items) {
+            if (it == null) {
+                continue;
+            }
+            if (!StringUtils.hasText(it.getFieldKey())) {
+                throw TwinBusinessException.of(400, "格式建议缺少 fieldKey");
+            }
+            AupReviewItem ri = new AupReviewItem();
+            ri.setReviewId(review.getId());
+            ri.setAupId(aupId);
+            ri.setRoundNo(roundNo);
+            ri.setFieldKey(it.getFieldKey());
+            ri.setSectionKey(it.getSectionKey());
+            ri.setFieldLabel(it.getFieldLabel());
+            ri.setVerdict(IV_SUGGEST);
+            ri.setReason(it.getReason());
+            ri.setSuggestion(it.getSuggestion());
+            ri.setReviewer(user.getId());
+            ri.setReviewerRole(R_SECRETARY);
+            rows.add(ri);
+        }
+        if (!rows.isEmpty()) {
+            reviewItemMapper.insertBatch(rows);
+        }
     }
 
     // ===================== 专家投票（逐字段 + 全员同意结算） =====================
