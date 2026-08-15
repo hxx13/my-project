@@ -382,8 +382,14 @@ function ReviewContent({ id }: { id: string }) {
         return;
       }
     }
+    const items = buildItems();
+    // 误操作防护：一个字段都不标即提交，后端会推导为「同意」并可能推动整本计划书通过，必须拦截
+    if (items.length === 0) {
+      toast.error("未标记任何字段，提交将视为同意，请先标记评审意见或选择弃权/回避");
+      return;
+    }
     // 只传 items，整体结论由后端逐字段推导
-    review.expertReview.mutate({ comment: comment.trim() || undefined, items: buildItems() });
+    review.expertReview.mutate({ comment: comment.trim() || undefined, items });
   };
 
   const handleFormatSubmit = (comment: string, reviewForm: ReviewForm, expertIds: string[]) => {
