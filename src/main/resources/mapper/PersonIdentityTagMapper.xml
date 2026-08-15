@@ -24,6 +24,10 @@
         SELECT * FROM person_identity_tag WHERE id = #{id}
     </select>
 
+    <select id="findByCode" resultType="com.example.demo.modules.identity.entity.PersonIdentityTag">
+        SELECT * FROM person_identity_tag WHERE code = #{code}
+    </select>
+
     <select id="listActive" resultType="com.example.demo.modules.identity.entity.PersonIdentityTag">
         SELECT * FROM person_identity_tag WHERE active = 1 ORDER BY sort_order ASC, id ASC
     </select>
