@@ -4,15 +4,21 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.aup.entity.AupRecord;
+import com.example.demo.modules.identity.dto.IdentityTagVO;
+import com.example.demo.modules.identity.service.PersonIdentityService;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 /**
  * AUP 数据级权限（统一 where 作用域 + 阶段/操作人校验）。
  *
- * IACUC 角色不依赖 RoleEnum（其单值 role 无法表达「既是 PI 又是专家」），
- * 秘书/专家用 aup_reviewer 名册承载；此处直接以 JdbcTemplate 读取，
- * 避免与并行开发的审批/授权子模块的 Mapper 耦合。
+ * IACUC 角色不依赖 RoleEnum（其单值 role 无法表达「既是 PI 又是专家」）；
+ * 组长/秘书/专家改由人员身份标识系统（PersonIdentityService）按 label 动态判定，
+ * 留痕/课题组/专家指派仍以 JdbcTemplate 读取。
  */
 @Service
 public class AupAccessPolicy {
@@ -24,9 +30,20 @@ public class AupAccessPolicy {
     public static final String ROLE_ADMIN = "admin";
 
     private final JdbcTemplate jdbcTemplate;
+    private final PersonIdentityService personIdentityService;
 
-    public AupAccessPolicy(JdbcTemplate jdbcTemplate) {
+    @Value("${aup.identity.pi-tag:组长}")
+    private String piTag;
+
+    @Value("${aup.identity.secretary-tag:秘书}")
+    private String secretaryTag;
+
+    @Value("${aup.identity.expert-tag:专家}")
+    private String expertTag;
+
+    public AupAccessPolicy(JdbcTemplate jdbcTemplate, PersonIdentityService personIdentityService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.personIdentityService = personIdentityService;
     }
 
     public boolean isAdmin(User user) {
@@ -37,26 +54,50 @@ public class AupAccessPolicy {
         return role != null && role.getLevel() >= RoleEnum.ADMIN.getLevel();
     }
 
+    /** 组长（PI）：STUDENT 视角下持有「组长」标签（学号）。 */
+    public boolean isPi(User user) {
+        if (user == null) {
+            return false;
+        }
+        String uid = user.getId();
+        if (uid == null || uid.isBlank()) {
+            return false;
+        }
+        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STUDENT, uid), piTag);
+    }
+
+    /** 秘书：STAFF 视角下持有「秘书」标签（sys_user.id）。 */
     public boolean isSecretary(String userId) {
-        return isReviewer(userId, "secretary");
-    }
-
-    public boolean isExpert(String userId) {
-        return isReviewer(userId, "expert");
-    }
-
-    private boolean isReviewer(String userId, String reviewerRole) {
         if (userId == null || userId.isBlank()) {
             return false;
         }
-        try {
-            Integer n = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM aup_reviewer WHERE user_id = ? AND reviewer_role = ? AND enabled = 1",
-                    Integer.class, userId, reviewerRole);
-            return n != null && n > 0;
-        } catch (Exception e) {
+        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STAFF, userId), secretaryTag);
+    }
+
+    /** 专家：STAFF 视角下持有「专家」标签（sys_user.id）。 */
+    public boolean isExpert(String userId) {
+        if (userId == null || userId.isBlank()) {
             return false;
         }
+        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STAFF, userId), expertTag);
+    }
+
+    /** 用户身份所属 scope：账号来源 STAFF → STAFF，其余（含 null）→ STUDENT。 */
+    private String scopeOf(User user) {
+        return "STAFF".equals(user.getAccountSource()) ? "STAFF" : "STUDENT";
+    }
+
+    /** 标签列表是否命中目标 label（null 安全）。 */
+    private boolean hasTag(List<IdentityTagVO> tags, String target) {
+        if (tags == null || target == null) {
+            return false;
+        }
+        for (IdentityTagVO tag : tags) {
+            if (tag != null && target.equals(tag.getLabel())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean isAssignedExpert(Long aupId, String userId) {
@@ -163,8 +204,7 @@ public class AupAccessPolicy {
         if (isAdmin(user)) {
             return;
         }
-        String uid = user.getId();
-        if (uid != null && uid.equals(record.getPiUserId())) {
+        if (isPi(user)) {
             return;
         }
         throw TwinBusinessException.of(403, "仅组长或管理员可提交计划书");
@@ -197,7 +237,7 @@ public class AupAccessPolicy {
         if (uid != null && uid.equals(record.getCreatedBy())) {
             return ROLE_LAB;
         }
-        if (uid != null && uid.equals(record.getPiUserId())) {
+        if (isPi(user)) {
             return ROLE_PI;
         }
         if (isSecretary(uid)) {
@@ -209,14 +249,20 @@ public class AupAccessPolicy {
         return ROLE_LAB;
     }
 
-    /** 全量秘书 userId（通知用） */
-    public java.util.List<String> listSecretaryUserIds() {
+    /** 全量秘书 userId（通知用，来自 STAFF 视角身份标识） */
+    public List<String> listSecretaryUserIds() {
         try {
-            return jdbcTemplate.queryForList(
-                    "SELECT DISTINCT user_id FROM aup_reviewer WHERE reviewer_role = 'secretary' AND enabled = 1",
-                    String.class);
+            Map<String, List<IdentityTagVO>> byScope =
+                    personIdentityService.listByScope(PersonIdentityService.SCOPE_STAFF, null);
+            List<String> result = new ArrayList<>();
+            for (Map.Entry<String, List<IdentityTagVO>> entry : byScope.entrySet()) {
+                if (hasTag(entry.getValue(), secretaryTag)) {
+                    result.add(entry.getKey());
+                }
+            }
+            return result;
         } catch (Exception e) {
-            return java.util.List.of();
+            return List.of();
         }
     }
 }
