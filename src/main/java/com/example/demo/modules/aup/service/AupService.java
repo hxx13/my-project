@@ -1167,13 +1167,13 @@ public class AupService {
 
     private void applyProjectMeta(AupRecord record, String dataJson) {
         Map<String, Object> map = parseMap(dataJson);
-        String projectName = firstValue(map, "A1.projectName", "projectName", "A1.项目名称");
-        String piName = firstValue(map, "A2.piName", "piName", "A2.负责人", "A2.responsible");
-        String dept = firstValue(map, "A2.dept", "dept", "A2.单位", "A2.department");
-        String projectSource = firstValue(map, "A2.projectSource", "projectSource", "A2.项目来源");
+        String projectName = firstValue(map, "A1.name", "projectName", "A1.项目名称");
+        String piName = firstValue(map, "A2.leader", "A1.pi", "piName", "A2.负责人");
+        String dept = firstValue(map, "A2.department", "dept", "A2.单位", "A2.dept");
+        String projectSource = firstValue(map, "A1.source", "projectSource", "A2.projectSource", "A2.项目来源");
         String piUserId = null;
         // 组长 userId 按课题组解析（复用 AroService.findUserIdsByProjectGroup）
-        String projectGroup = firstValue(map, "A2.projectGroup", "projectGroup", "A2.课题组");
+        String projectGroup = firstValue(map, "A2.group", "projectGroup", "A2.课题组");
         if (StringUtils.hasText(projectGroup)) {
             try {
                 List<String> ids = aroService.findUserIdsByProjectGroup(projectGroup);
