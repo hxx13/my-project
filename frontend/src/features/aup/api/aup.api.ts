@@ -159,6 +159,11 @@ export function unlockAup(id: string): Promise<StageChangeResult> {
   return authHttp.post<Result<StageChangeResult>>(`/aup/${id}/unlock`).then(({ data }) => data.data);
 }
 
+/** POST /aup/{id}/renew —— 续期（expired 后基于旧计划书新建草稿，引用原注册号、结转未用动物数） */
+export function renewAup(id: string): Promise<CreateAupResult> {
+  return authHttp.post<Result<CreateAupResult>>(`/aup/${id}/renew`).then(({ data }) => data.data);
+}
+
 /** GET /aup/{id}/snapshots —— 轻量列表（不返 data） */
 export function fetchAupSnapshots(id: string): Promise<AupSnapshotMeta[]> {
   return authHttp.get<Result<AupSnapshotMeta[]>>(`/aup/${id}/snapshots`).then(({ data }) => data.data);

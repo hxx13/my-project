@@ -511,6 +511,10 @@ public class AupService {
         if (!admin) {
             accessPolicy.assertDraftWritable(record, user);
         }
+        // 阶段守卫：仅草稿可回退快照；已批准/终止/专家审查等状态回退走 unlock（管理员）或重新提交
+        if (!STAGE_DRAFT.equals(record.getCurrentStage())) {
+            throw TwinBusinessException.of(409, "仅草稿阶段可回退快照");
+        }
         AupSnapshot target = snapshotService.get(aupId, snapshotId);
         if (target == null) {
             throw TwinBusinessException.of(404, "快照不存在");
@@ -562,6 +566,64 @@ public class AupService {
         snapshotService.createSnapshot(record, STAGE_DRAFT, data == null ? null : data.getData(), user.getId());
         audit(aupId, user.getId(), "admin", "unlock", stage, STAGE_DRAFT, "管理员解锁，重新打开计划书");
         return recordMapper.selectById(aupId);
+    }
+
+    /**
+     * 续期：计划书 expired 后，申请人/组长/管理员基于旧计划书新建一条 draft 草稿，
+     * 引用原注册号（originRegisterNo）、结转未用动物数（carriedOverCount）、复制填报数据，
+     * 重新走完整审核（新注册号在提交时重新生成）。
+     */
+    @Transactional
+    public AupRecord renew(Long aupId, User user) {
+        AupRecord record = requireRecord(aupId);
+        if (!STAGE_EXPIRED.equals(record.getCurrentStage())) {
+            throw TwinBusinessException.of(409, "仅已过期状态的计划书可续期");
+        }
+        if (isDemo(record)) {
+            throw TwinBusinessException.of(409, "演示示例不可续期");
+        }
+        boolean admin = accessPolicy.isAdmin(user);
+        if (!admin) {
+            String uid = user.getId();
+            boolean applicant = uid != null && uid.equals(record.getCreatedBy());
+            boolean pi = uid != null && uid.equals(record.getPiUserId());
+            if (!applicant && !pi) {
+                throw TwinBusinessException.of(403, "仅申请人、组长或管理员可发起续期");
+            }
+        }
+
+        // 复用当前 PUBLISHED 模板（与 createDraft 一致），复制旧填报数据
+        long[] tpl = resolvePublishedTemplate();
+        AupData oldData = dataMapper.selectByAupId(aupId);
+        String copiedData = oldData == null ? "{}" : oldData.getData();
+
+        AupRecord fresh = new AupRecord();
+        fresh.setTemplateId(tpl[0]);
+        fresh.setTemplateVersion(String.valueOf(tpl[1]));
+        fresh.setVersion(0L);
+        fresh.setCurrentStage(STAGE_DRAFT);
+        fresh.setRoundNo(1);
+        fresh.setDraftSource("first");
+        fresh.setOriginRegisterNo(record.getRegisterNo());
+        fresh.setCarriedOverCount(record.getCarriedOverCount() == null ? 0 : record.getCarriedOverCount());
+        fresh.setCreatedBy(user.getId());
+        fresh.setProjectGroupName(resolveProjectGroupName(user.getId()));
+        fresh.setIsDemo(0);
+        recordMapper.insert(fresh);
+
+        AupData data = new AupData();
+        data.setAupId(fresh.getId());
+        data.setData(copiedData);
+        data.setVersion(0L);
+        data.setUpdatedBy(user.getId());
+        dataMapper.insert(data);
+
+        // 快照 + 审计（沿用现有写法，留痕在新记录上）
+        snapshotService.createSnapshot(fresh, STAGE_DRAFT, copiedData, user.getId());
+        audit(fresh.getId(), user.getId(), accessPolicy.resolveOperatorRole(record, user),
+                "renew", record.getCurrentStage(), STAGE_DRAFT,
+                "续期自注册号 " + (record.getRegisterNo() == null ? "" : record.getRegisterNo()));
+        return fresh;
     }
 
     public List<AupSnapshotVO> listSnapshots(Long aupId, User user) {
