@@ -18,7 +18,7 @@ public class AupRecord {
     private String templateVersion;
     /** 乐观锁（流转/保存 CAS 用） */
     private Long version;
-    /** JUMC{年}-{序}[-字母]，approved 时发放 */
+    /** JUMC{年}-{序}[-字母]，提交时生成并锁定，unlock 不清空 */
     private String registerNo;
     private Integer registerYear;
     private Integer registerSeq;

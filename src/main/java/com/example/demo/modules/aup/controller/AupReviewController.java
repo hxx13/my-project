@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/api/aup")
-@Tag(name = "AUP 审查", description = "组长审核 / 格式审查（分配专家）/ 专家投票 / 终止")
+@Tag(name = "AUP 审查", description = "格式审查（分配专家）/ 专家投票 / 终止")
 public class AupReviewController {
 
     private final AupReviewService reviewService;
@@ -29,7 +29,7 @@ public class AupReviewController {
     }
 
     @GetMapping("/review/todo")
-    @Operation(summary = "按角色返回待审（组长 piReview / 秘书 formatReview / 专家 被分配 expertReview）")
+    @Operation(summary = "按角色返回待审（秘书 formatReview / 专家 被分配 expertReview）")
     public Result<?> todo(@RequestHeader(value = "Authorization", required = false) String authorization,
                           @RequestParam(defaultValue = "secretary") String role,
                           @RequestParam(defaultValue = "1") int page,

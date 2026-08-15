@@ -46,7 +46,7 @@ export interface AupRecord {
   templateVersion?: string;
   /** 乐观锁版本（流转/保存 CAS 用） */
   version: number;
-  /** 注册号 JUMC{年}-{序}[-字母]，approved 时发放 */
+  /** 注册号 JUMC{年}-{序}[-字母]，提交时生成并锁定，unlock 不清空 */
   registerNo?: string;
   registerYear?: number;
   registerSeq?: number;

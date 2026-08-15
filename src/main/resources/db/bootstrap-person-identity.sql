@@ -1,4 +1,4 @@
--- 人员身份标识：身份标签字典（无种子，管理员配置）+ 人员身份映射（多选，学生/员工双视角独立）。
+-- 人员身份标识：身份标签字典（内置组长/秘书/专家三个默认标签种子（code 稳定，环境变量可配），其余管理员配置）+ 人员身份映射（多选，学生/员工双视角独立）。
 -- 与 common/schema/V20260815__person_identity.sql 同源。
 -- 幂等：CREATE TABLE IF NOT EXISTS，重复执行无副作用。
 CREATE TABLE IF NOT EXISTS person_identity_tag (
@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS person_identity_tag (
     sort_order INT          NOT NULL DEFAULT 0,
     active     TINYINT      NOT NULL DEFAULT 1,
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人员身份标识字典（无种子，管理员配置）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人员身份标识字典（内置组长/秘书/专家三个默认标签种子（code 稳定，环境变量可配），其余管理员配置）';
 
 CREATE TABLE IF NOT EXISTS person_identity (
     id         BIGINT      NOT NULL AUTO_INCREMENT PRIMARY KEY,
