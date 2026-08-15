@@ -57,7 +57,7 @@
     </update>
 
     <select id="selectMaxSeqByYear" resultType="int">
-        SELECT COALESCE(MAX(register_seq), 0) FROM aup_record WHERE register_year = #{year}
+        SELECT COALESCE(MAX(register_seq), 0) FROM aup_record WHERE register_year = #{year} FOR UPDATE
     </select>
 
     <select id="selectExpiringApproved" resultType="com.example.demo.modules.aup.entity.AupRecord">

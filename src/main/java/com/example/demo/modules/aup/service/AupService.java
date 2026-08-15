@@ -601,7 +601,7 @@ public class AupService {
         // 复用当前 PUBLISHED 模板（与 createDraft 一致），复制旧填报数据
         long[] tpl = resolvePublishedTemplate();
         AupData oldData = dataMapper.selectByAupId(aupId);
-        String copiedData = oldData == null ? "{}" : oldData.getData();
+        String copiedData = stripSignatureFields(oldData == null ? "{}" : oldData.getData());
 
         AupRecord fresh = new AupRecord();
         fresh.setTemplateId(tpl[0]);
@@ -796,6 +796,29 @@ public class AupService {
         Object v = map.get("signature");
         return v != null && StringUtils.hasText(String.valueOf(v))
                 && !String.valueOf(v).startsWith("EMAIL_TRUSTED:");
+    }
+
+    /** 续期复制旧填报数据时剥离签名相关字段：旧签名跨计划书沿用会导致提交时误判已签名而跳过重新签名。 */
+    private String stripSignatureFields(String dataJson) {
+        if (dataJson == null || dataJson.isBlank()) {
+            return dataJson;
+        }
+        Map<String, Object> map = parseMap(dataJson);
+        if (map.isEmpty()) {
+            return dataJson;
+        }
+        boolean removed = map.keySet().removeIf(this::isSignatureField);
+        return removed ? toJson(map) : dataJson;
+    }
+
+    /** 签名相关字段：提交时写入的 signature/signSource，以及模板签名字段 F.leaderSignature/F.coLeaderSignature 等 *Signature/signSource。 */
+    private boolean isSignatureField(String key) {
+        if (key == null) {
+            return false;
+        }
+        String k = key.trim().toLowerCase();
+        return k.equals("signature") || k.equals("signsource")
+                || k.endsWith("signature") || k.endsWith("signsource");
     }
 
     // ======================================================================
