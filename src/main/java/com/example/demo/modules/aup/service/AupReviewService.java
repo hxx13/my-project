@@ -406,10 +406,11 @@ public class AupReviewService {
         VoteAggregate agg = reviewMapper.aggregateVotes(aupId, roundNo);
         int assign = nz(agg.getAssignCount());
         int recused = nz(agg.getRecusedCount());
+        int abstained = nz(agg.getAbstainCount());
         int agree = nz(agg.getAgreeCount());
         int disagree = nz(agg.getDisagreeCount());
         int modify = nz(agg.getModifyCount());
-        int effective = assign - recused; // 应投 = 分配数 - 回避数
+        int effective = assign - recused - abstained; // 应投 = 分配数 - 回避数 - 弃权数
 
         if (disagree > 0) {
             aupService.transition(aupId, STAGE_EXPERT_REVIEW, STAGE_TERMINATED, "disapprove",
@@ -420,6 +421,11 @@ public class AupReviewService {
             aupService.transition(aupId, STAGE_EXPERT_REVIEW, STAGE_DRAFT, "return",
                     operatorId, "expert", "专家评审建议修改，退回返修");
             return STAGE_DRAFT;
+        }
+        if (effective == 0) {
+            aupService.transition(aupId, STAGE_EXPERT_REVIEW, STAGE_FORMAT_REVIEW, "reassign",
+                    operatorId, "expert", "全员弃权或回避，退回重新分配专家");
+            return STAGE_FORMAT_REVIEW;
         }
         if (effective > 0 && agree == effective) {
             aupService.transition(aupId, STAGE_EXPERT_REVIEW, STAGE_APPROVED, "approve",
