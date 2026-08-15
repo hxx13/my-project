@@ -218,12 +218,15 @@ export default function AupListPage() {
                   const isFormatAction = item.currentStage === "formatReview" && isSecretary;
                   const isExpertAction =
                     item.currentStage === "expertReview" && (item.assignedExpertCount ?? 0) > 0;
-                  const reviewLabel = isFormatAction
-                    ? "格式审查"
-                    : isExpertAction
-                      ? "内容审查"
-                      : "查看";
-                  const reviewPrimary = isFormatAction || isExpertAction;
+                  const isOwnDraft = item.currentStage === "draft" && item.createdBy === currentUserId;
+                  const reviewLabel = isOwnDraft
+                    ? "填写/继续"
+                    : isFormatAction
+                      ? "格式审查"
+                      : isExpertAction
+                        ? "内容审查"
+                        : "查看";
+                  const reviewPrimary = isOwnDraft || isFormatAction || isExpertAction;
                   return (
                     <TableRows
                       key={item.id}
@@ -234,7 +237,7 @@ export default function AupListPage() {
                       reviewPrimary={reviewPrimary}
                       onToggle={() => toggle(item.id)}
                       onSnap={() => setSnapAupId(item.id)}
-                      onReview={() => openReview(item.id)}
+                      onReview={() => (isOwnDraft ? navigate(`/aup/fill/${item.id}`) : openReview(item.id))}
                       onRestore={item.isDemo === 1 ? () => handleRestore(item.id) : undefined}
                       onDelete={item.currentStage === "draft" && item.draftSource === "first" && item.isDemo !== 1 ? () => handleDelete(item.id) : undefined}
                       onUnlock={
