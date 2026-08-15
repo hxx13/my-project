@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupReviewerMapper">
+
+    <insert id="insert" parameterType="com.example.demo.modules.aup.entity.AupReviewer"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO aup_reviewer (user_id, reviewer_role, scope, enabled)
+        VALUES (#{userId}, #{reviewerRole}, #{scope}, #{enabled})
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM aup_reviewer
+    </delete>
+
+    <select id="countByUserIdRole" resultType="int">
+        SELECT COUNT(*)
+        FROM aup_reviewer
+        WHERE user_id = #{userId} AND reviewer_role = #{reviewerRole} AND enabled = 1
+    </select>
+
+    <select id="selectExpertCandidates" resultType="com.example.demo.modules.aup.dto.ExpertCandidate">
+        SELECT r.user_id AS userId, COALESCE(p.name, r.user_id) AS name, p.department_name AS dept
+        FROM aup_reviewer r
+        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
+        WHERE r.reviewer_role = 'expert' AND r.enabled = 1
+        ORDER BY r.id ASC
+    </select>
+
+    <select id="selectSecretaryCandidates" resultType="com.example.demo.modules.aup.dto.ExpertCandidate">
+        SELECT r.user_id AS userId, COALESCE(p.name, r.user_id) AS name, p.department_name AS dept
+        FROM aup_reviewer r
+        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
+        WHERE r.reviewer_role = 'secretary' AND r.enabled = 1
+        ORDER BY r.id ASC
+    </select>
+
+    <select id="selectCandidatesByUserIds" resultType="com.example.demo.modules.aup.dto.ExpertCandidate">
+        SELECT p.user_id AS userId, COALESCE(p.name, p.user_id) AS name, p.department_name AS dept
+        FROM aro_personnel p
+        WHERE p.user_id IN
+        <foreach collection="userIds" item="uid" open="(" separator="," close=")">
+            #{uid}
+        </foreach>
+    </select>
+</mapper>

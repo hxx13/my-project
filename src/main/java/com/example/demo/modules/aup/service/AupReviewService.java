@@ -16,14 +16,16 @@ import com.example.demo.modules.aup.dto.VoteAggregate;
 import com.example.demo.modules.aup.entity.AupReview;
 import com.example.demo.modules.aup.entity.AupReviewAssignment;
 import com.example.demo.modules.aup.entity.AupReviewItem;
-import com.example.demo.modules.aup.entity.AupReviewer;
 import com.example.demo.modules.aup.mapper.AupReviewAssignmentMapper;
 import com.example.demo.modules.aup.mapper.AupReviewItemMapper;
 import com.example.demo.modules.aup.mapper.AupReviewMapper;
 import com.example.demo.modules.aup.mapper.AupReviewerMapper;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.identity.dto.IdentityTagVO;
+import com.example.demo.modules.identity.service.PersonIdentityService;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
 import com.example.demo.modules.notification.service.NotificationService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -82,19 +84,28 @@ public class AupReviewService {
     private final AupReviewerMapper reviewerMapper;
     private final AupService aupService;
     private final NotificationService notificationService;
+    private final PersonIdentityService personIdentityService;
+
+    @Value("${aup.identity.secretary-tag:秘书}")
+    private String secretaryTag;
+
+    @Value("${aup.identity.expert-tag:专家}")
+    private String expertTag;
 
     public AupReviewService(AupReviewMapper reviewMapper,
                             AupReviewAssignmentMapper assignmentMapper,
                             AupReviewItemMapper reviewItemMapper,
                             AupReviewerMapper reviewerMapper,
                             AupService aupService,
-                            NotificationService notificationService) {
+                            NotificationService notificationService,
+                            PersonIdentityService personIdentityService) {
         this.reviewMapper = reviewMapper;
         this.assignmentMapper = assignmentMapper;
         this.reviewItemMapper = reviewItemMapper;
         this.reviewerMapper = reviewerMapper;
         this.aupService = aupService;
         this.notificationService = notificationService;
+        this.personIdentityService = personIdentityService;
     }
 
     // ===================== 鉴权辅助（供 Controller 调用） =====================
@@ -365,28 +376,19 @@ public class AupReviewService {
     // ===================== 专家候选 / 名册配置 =====================
 
     public List<ExpertCandidate> listExperts() {
-        return reviewerMapper.selectExpertCandidates();
+        return toCandidates(tagUserIds(expertTag));
     }
 
     public ReviewerConfigResponse reviewerConfig() {
         ReviewerConfigResponse resp = new ReviewerConfigResponse();
-        resp.setFormatReviewers(reviewerMapper.selectSecretaryCandidates());
-        resp.setExpertCandidates(reviewerMapper.selectExpertCandidates());
+        resp.setFormatReviewers(toCandidates(tagUserIds(secretaryTag)));
+        resp.setExpertCandidates(toCandidates(tagUserIds(expertTag)));
         return resp;
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    /** 秘书/专家身份已统一在人员页身份字典维护，AUP 侧不再写 aup_reviewer。 */
     public void updateReviewerConfig(ReviewerConfigRequest req) {
-        if (req == null) {
-            throw TwinBusinessException.of(400, "请求体为空");
-        }
-        reviewerMapper.deleteAll();
-        for (String uid : normalizeIds(req.getFormatReviewers())) {
-            insertReviewer(uid, R_SECRETARY);
-        }
-        for (String uid : normalizeIds(req.getExpertCandidates())) {
-            insertReviewer(uid, R_EXPERT);
-        }
+        throw TwinBusinessException.of(400, "身份请在人员页身份标识维护");
     }
 
     // ===================== 内部 =====================
@@ -527,13 +529,56 @@ public class AupReviewService {
         }
     }
 
-    private void insertReviewer(String userId, String role) {
-        AupReviewer r = new AupReviewer();
-        r.setUserId(userId);
-        r.setReviewerRole(role);
-        r.setScope(null);
-        r.setEnabled(1);
-        reviewerMapper.insert(r);
+    /** STAFF 视角下命中指定身份标签的 userId（保持身份标识返回顺序）。 */
+    private List<String> tagUserIds(String tagLabel) {
+        if (!StringUtils.hasText(tagLabel)) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (Map.Entry<String, List<IdentityTagVO>> entry
+                : personIdentityService.listByScope(PersonIdentityService.SCOPE_STAFF, null).entrySet()) {
+            if (hasTag(entry.getValue(), tagLabel)) {
+                result.add(entry.getKey());
+            }
+        }
+        return result;
+    }
+
+    /** 标签列表是否命中目标 label（null 安全，语义与 AupAccessPolicy 一致）。 */
+    private boolean hasTag(List<IdentityTagVO> tags, String target) {
+        if (tags == null || target == null) {
+            return false;
+        }
+        for (IdentityTagVO tag : tags) {
+            if (tag != null && target.equals(tag.getLabel())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** userId 列表 → ExpertCandidate：补 name/dept；无人员档案时 name 回退为 userId。 */
+    private List<ExpertCandidate> toCandidates(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        Map<String, ExpertCandidate> byId = new LinkedHashMap<>();
+        for (ExpertCandidate c : reviewerMapper.selectCandidatesByUserIds(userIds)) {
+            if (c != null && c.getUserId() != null) {
+                byId.put(c.getUserId(), c);
+            }
+        }
+        List<ExpertCandidate> out = new ArrayList<>(userIds.size());
+        for (String uid : userIds) {
+            ExpertCandidate c = byId.get(uid);
+            if (c == null) {
+                c = new ExpertCandidate();
+                c.setUserId(uid);
+                c.setName(uid);
+            }
+            out.add(c);
+        }
+        return out;
     }
 
     private List<String> normalizeIds(List<String> ids) {
