@@ -17,6 +17,15 @@ import {
   useResetPersonnelAccount,
   useResetPersonnelPassword,
 } from "@/api/hooks/usePersonnel";
+import {
+  useIdentityTags,
+  usePersonIdentityMap,
+  useSetPersonIdentity,
+  useCreateIdentityTag,
+  useUpdateIdentityTag,
+  useDeleteIdentityTag,
+} from "@/api/hooks/usePersonIdentity";
+import type { PersonIdentityScope } from "@/api/domains/personIdentity.api";
 import type { PersonnelAuthRecord, SystemUserRecord } from "@/api/domains/admin.api";
 import { viewUserPassword } from "@/api/domains/admin.api";
 import { authStorage } from "@/features/auth/authStorage";
@@ -77,6 +86,13 @@ export default function AdminPersonnelPage() {
   const [detailRowId, setDetailRowId] = useState("");
   const [detailPasswordPlaintext, setDetailPasswordPlaintext] = useState<string | null>(null);
   const [detailPasswordLoading, setDetailPasswordLoading] = useState(false);
+  const [identityEdit, setIdentityEdit] = useState<{ scope: PersonIdentityScope; userId: string } | null>(null);
+  const [identityDraft, setIdentityDraft] = useState<Set<number>>(new Set());
+  const [dictOpen, setDictOpen] = useState(false);
+  const [newTagCode, setNewTagCode] = useState("");
+  const [newTagLabel, setNewTagLabel] = useState("");
+  const [tagEditId, setTagEditId] = useState<number | null>(null);
+  const [tagEditLabel, setTagEditLabel] = useState("");
 
   const {
     data: personnelData,
@@ -105,6 +121,15 @@ export default function AdminPersonnelPage() {
   const deleteSystemUserMut = useDeleteSystemUser();
   const resetPersonnelAccountMut = useResetPersonnelAccount();
   const resetPersonnelPasswordMut = useResetPersonnelPassword();
+
+  // 身份标识（SUPER_ADMIN 专属接口，非超管不拉取）
+  const { data: identityTags = [] } = useIdentityTags(isSuperAdmin);
+  const studentIdentityMap = usePersonIdentityMap("STUDENT", isSuperAdmin);
+  const staffIdentityMap = usePersonIdentityMap("STAFF", isSuperAdmin);
+  const setPersonIdentityMut = useSetPersonIdentity();
+  const createIdentityTagMut = useCreateIdentityTag();
+  const updateIdentityTagMut = useUpdateIdentityTag();
+  const deleteIdentityTagMut = useDeleteIdentityTag();
 
   useEffect(() => {
     if (activeTab !== "system") return;
@@ -369,6 +394,126 @@ export default function AdminPersonnelPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / size));
 
+  // ── 身份标识 ──
+  const identityMapForScope = (scope: PersonIdentityScope) =>
+    scope === "STUDENT" ? studentIdentityMap.data : staffIdentityMap.data;
+
+  const openIdentityDialog = (scope: PersonIdentityScope, userId: string) => {
+    if (!isSuperAdmin) return;
+    const map = identityMapForScope(scope);
+    const current = map?.get(userId) ?? [];
+    setIdentityEdit({ scope, userId });
+    setIdentityDraft(new Set(current.map((t) => t.id)));
+  };
+
+  const closeIdentityDialog = () => {
+    setIdentityEdit(null);
+    setIdentityDraft(new Set());
+  };
+
+  const toggleIdentityDraft = (id: number) => {
+    setIdentityDraft((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const saveIdentity = () => {
+    if (!identityEdit) return;
+    setPersonIdentityMut.mutate(
+      { scope: identityEdit.scope, userId: identityEdit.userId, tagIds: Array.from(identityDraft) },
+      {
+        onSuccess: () => closeIdentityDialog(),
+      }
+    );
+  };
+
+  const personNameForId = (userId: string) => {
+    const r = personnelRows.find((p) => p.id === userId) ?? systemRows.find((s) => s.id === userId);
+    return r ? ((r as any).name || (r as any).username || userId) : userId;
+  };
+
+  const renderIdentityCell = (userId: string, scope: PersonIdentityScope) => {
+    const tags = identityMapForScope(scope)?.get(userId) ?? [];
+    if (!isSuperAdmin) {
+      return (
+        <td className="px-2 py-1.5 align-middle">
+          <span className="text-[11px] text-[var(--twin-mute)]">—</span>
+        </td>
+      );
+    }
+    return (
+      <td className="px-2 py-1.5 align-middle">
+        <button
+          type="button"
+          onClick={() => openIdentityDialog(scope, userId)}
+          className="group flex max-w-[14rem] flex-wrap items-center gap-1 text-left"
+          title="点击编辑身份标识"
+        >
+          {tags.length === 0 ? (
+            <span className="text-[11px] text-[var(--twin-mute)] group-hover:text-[var(--twin-link)]">无</span>
+          ) : (
+            tags.map((t) => (
+              <span
+                key={t.id}
+                className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-800"
+              >
+                {t.label}
+              </span>
+            ))
+          )}
+        </button>
+      </td>
+    );
+  };
+
+  const submitNewTag = () => {
+    const code = newTagCode.trim();
+    const label = newTagLabel.trim();
+    if (!code) {
+      toast.error("请填写身份标识 code");
+      return;
+    }
+    if (!label) {
+      toast.error("请填写身份名称");
+      return;
+    }
+    createIdentityTagMut.mutate(
+      { code, label },
+      {
+        onSuccess: () => {
+          setNewTagCode("");
+          setNewTagLabel("");
+        },
+      }
+    );
+  };
+
+  const submitTagLabelEdit = () => {
+    if (!tagEditId) return;
+    const label = tagEditLabel.trim();
+    if (!label) {
+      toast.error("标签名称不能为空");
+      return;
+    }
+    updateIdentityTagMut.mutate(
+      { id: tagEditId, body: { label } },
+      {
+        onSuccess: () => {
+          setTagEditId(null);
+          setTagEditLabel("");
+        },
+      }
+    );
+  };
+
+  const handleDeleteTag = (tag: { id: number; label: string }) => {
+    if (!window.confirm(`确认删除身份标签「${tag.label}」吗？被引用时后端会拒绝删除。`)) return;
+    deleteIdentityTagMut.mutate(tag.id);
+  };
+
   const location = useLocation();
   const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
 
@@ -474,6 +619,11 @@ export default function AdminPersonnelPage() {
                   新建
                 </AdminButton>
               ) : null}
+              {isSuperAdmin ? (
+                <AdminButton type="button" tone="secondary" size="sm" onClick={() => setDictOpen(true)}>
+                  身份字典管理
+                </AdminButton>
+              ) : null}
               <AdminButton type="button" tone="secondary" size="sm" onClick={() => { activeTab === "personnel" ? refetchPersonnel() : refetchSystem(); }}>
                 刷新
               </AdminButton>
@@ -552,6 +702,7 @@ export default function AdminPersonnelPage() {
               <th className="px-2 py-2 text-left font-medium">微信通知</th>
               <th className="px-2 py-2 text-left font-medium">WxPusher</th>
               <th className="px-2 py-2 text-left font-medium">角色</th>
+              <th className="px-2 py-2 text-left font-medium">身份标识</th>
               <th className="px-2 py-2 text-left font-medium">密码</th>
               {isSuperAdmin ? (
                 <th className="px-2 py-2 text-left font-medium">个人密码</th>
@@ -561,7 +712,7 @@ export default function AdminPersonnelPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={activeTab === "personnel" ? (isSuperAdmin ? 8 : 7) : activeTab === "system" && isSuperAdmin ? 6 : 5}>
+                <td className="px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={isSuperAdmin ? 11 : 9}>
                   加载中…
                 </td>
               </tr>
@@ -735,6 +886,7 @@ export default function AdminPersonnelPage() {
                       ))}
                     </select>
                   </td>
+                  {renderIdentityCell(row.id, "STUDENT")}
                   <td className="px-2 py-1.5 align-middle">{renderPasswordCell(row)}</td>
                   {/*
                     个人密码（PIN）列 — 仅 SUPER_ADMIN 可见
@@ -969,6 +1121,7 @@ export default function AdminPersonnelPage() {
                       ))}
                     </select>
                   </td>
+                  {renderIdentityCell(row.id, "STAFF")}
                   <td className="px-2 py-1.5 align-middle">{renderPasswordCell(row)}</td>
                   {isSuperAdmin ? (
                     <td className="px-2 py-1.5 align-middle text-[var(--twin-mute)] text-[11px]">—</td>
@@ -1287,6 +1440,125 @@ export default function AdminPersonnelPage() {
           refetchPersonnel();
         }}
       />
+
+      {/* ═══ 身份标识多选编辑弹窗 ═══ */}
+      {identityEdit ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+        <div className="w-full max-w-md rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-twin-level-4">
+          <h3 className="mb-1 text-base font-semibold text-[var(--twin-ink)]">身份标识</h3>
+          <p className="mb-3 text-xs text-[var(--twin-mute)]">
+            为 <strong>{personNameForId(identityEdit.userId)}</strong> 配置{identityEdit.scope === "STUDENT" ? "学生" : "员工"}身份标签（可多选，保存后全量替换）。
+          </p>
+          {identityTags.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-[var(--twin-hairline)] px-3 py-6 text-center text-xs text-[var(--twin-mute)]">
+              暂无可配置的身份标签，请先在身份字典管理中新增
+            </div>
+          ) : (
+            <div className="max-h-[50vh] space-y-1 overflow-y-auto rounded-lg border border-[var(--twin-hairline)] p-2">
+              {identityTags.map((t) => (
+                <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-[var(--twin-canvas-soft)]">
+                  <input
+                    type="checkbox"
+                    checked={identityDraft.has(t.id)}
+                    onChange={() => toggleIdentityDraft(t.id)}
+                    className="h-3.5 w-3.5 accent-[var(--twin-ink)]"
+                  />
+                  <span className="text-xs text-[var(--twin-body)]">{t.label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" className="rounded-md border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" onClick={closeIdentityDialog}>取消</button>
+            <button
+              type="button"
+              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-700 disabled:opacity-50"
+              disabled={setPersonIdentityMut.isPending}
+              onClick={saveIdentity}
+            >
+              {setPersonIdentityMut.isPending ? "保存中…" : "保存"}
+            </button>
+          </div>
+        </div>
+      </div></Portal> : null}
+
+      {/* ═══ 身份字典管理弹窗 ═══ */}
+      {dictOpen ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+        <div className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-4">
+          <div className="flex shrink-0 items-center justify-between border-b border-[var(--twin-hairline)] px-4 py-3">
+            <h3 className="text-sm font-semibold text-[var(--twin-ink)]">身份字典管理</h3>
+            <button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-body)]" onClick={() => setDictOpen(false)}>关闭</button>
+          </div>
+
+          {/* 新增表单 */}
+          <div className="shrink-0 border-b border-[var(--twin-hairline)] px-4 py-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="block">
+                <span className="text-[11px] text-[var(--twin-mute)]">身份标识 code</span>
+                <input value={newTagCode} onChange={(e) => setNewTagCode(e.target.value)} placeholder="例如：GROUP_LEADER" autoComplete="off" className="mt-0.5 block w-44 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1.5 font-mono text-xs text-[var(--twin-ink)]" />
+              </label>
+              <label className="block">
+                <span className="text-[11px] text-[var(--twin-mute)]">身份名称</span>
+                <input value={newTagLabel} onChange={(e) => setNewTagLabel(e.target.value)} placeholder="例如：组长" autoComplete="off" className="mt-0.5 block w-44 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1.5 text-xs text-[var(--twin-ink)]" />
+              </label>
+              <AdminButton type="button" tone="primary" size="sm" loading={createIdentityTagMut.isPending} onClick={submitNewTag}>新增</AdminButton>
+            </div>
+          </div>
+
+          {/* 标签列表 */}
+          <div className="flex-1 overflow-y-auto px-4 py-3">
+            {identityTags.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-[var(--twin-hairline)] px-3 py-8 text-center text-xs text-[var(--twin-mute)]">
+                暂无身份标签，请在上方新增
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[var(--twin-hairline)] text-[var(--twin-mute)]">
+                    <th className="py-1.5 pr-2 font-medium">名称</th>
+                    <th className="py-1.5 font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {identityTags.map((t) => (
+                    <tr key={t.id} className="border-b border-[var(--twin-hairline)]">
+                      <td className="py-1.5 pr-2">
+                        {tagEditId === t.id ? (
+                          <input
+                            value={tagEditLabel}
+                            onChange={(e) => setTagEditLabel(e.target.value)}
+                            className="w-32 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs text-[var(--twin-ink)]"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") submitTagLabelEdit();
+                              if (e.key === "Escape") { setTagEditId(null); setTagEditLabel(""); }
+                            }}
+                          />
+                        ) : (
+                          <span className="text-[var(--twin-ink)]">{t.label}</span>
+                        )}
+                      </td>
+                      <td className="py-1.5">
+                        <div className="flex items-center gap-1">
+                          {tagEditId === t.id ? (
+                            <>
+                              <button type="button" className={inkBtn} onClick={submitTagLabelEdit}>保存</button>
+                              <button type="button" className={inkBtn} onClick={() => { setTagEditId(null); setTagEditLabel(""); }}>取消</button>
+                            </>
+                          ) : (
+                            <button type="button" className={inkBtn} onClick={() => { setTagEditId(t.id); setTagEditLabel(t.label); }}>编辑</button>
+                          )}
+                          <button type="button" className={`${inkBtn} border-rose-200 text-rose-700 hover:bg-rose-50`} onClick={() => handleDeleteTag(t)}>
+                            删除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div></Portal> : null}
 
     </AdminPageShell>
   );
