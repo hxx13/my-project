@@ -224,7 +224,7 @@ export default function AupListPage() {
                       onSnap={() => setSnapAupId(item.id)}
                       onReview={() => openReview(item.id)}
                       onRestore={item.isDemo === 1 ? () => handleRestore(item.id) : undefined}
-                      onDelete={item.currentStage === "draft" && item.isDemo !== 1 ? () => handleDelete(item.id) : undefined}
+                      onDelete={item.currentStage === "draft" && item.draftSource === "first" && item.isDemo !== 1 ? () => handleDelete(item.id) : undefined}
                       onUnlock={
                         isAdmin &&
                         (item.currentStage === "terminated" || item.currentStage === "approved" || item.currentStage === "expired")

@@ -961,6 +961,9 @@ public class AupService {
         if (!STAGE_DRAFT.equals(record.getCurrentStage())) {
             throw TwinBusinessException.of(409, "仅草稿状态的计划书可删除");
         }
+        if (record.getDraftSource() != null && !"first".equals(record.getDraftSource())) {
+            throw TwinBusinessException.of(409, "该计划书已提交过（返修/回退），不可删除");
+        }
         boolean admin = accessPolicy.isAdmin(user);
         if (!admin && (user.getId() == null || !user.getId().equals(record.getCreatedBy()))) {
             throw TwinBusinessException.of(403, "仅申请人或管理员可删除");
