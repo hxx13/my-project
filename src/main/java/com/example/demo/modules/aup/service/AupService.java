@@ -655,17 +655,19 @@ public class AupService {
                                     boolean excludeDraft, String draftSource, Integer roundNo,
                                     String sortBy, String sortDir) {
         String scopeRole = accessPolicy.resolveScopeRole(user);
+        String scopeUserId = user.getId();
+        String scopeProjectGroup = resolveProjectGroupName(scopeUserId);
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 100);
         int offset = (safePage - 1) * safeSize;
-        List<AupListItem> items = recordMapper.selectPage(scopeRole, user.getId(), keyword, registerNo,
+        List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo,
                 stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo, sortBy, sortDir, offset, safeSize);
         Map<Long, String> speciesByAup = loadSpeciesByAup(items);
         for (AupListItem item : items) {
             item.setSummaryJson(buildSummaryJson(item, speciesByAup.get(item.getId())));
             item.setMiniSteps(buildMiniSteps(item));
         }
-        int total = recordMapper.countPage(scopeRole, user.getId(), keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo);
+        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo);
         Map<String, Object> data = new HashMap<>();
         data.put("total", total);
         data.put("items", items);

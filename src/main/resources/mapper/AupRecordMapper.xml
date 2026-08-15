@@ -71,7 +71,11 @@
         <where>
             <choose>
                 <when test="scopeRole == 'lab'">
-                    AND r.created_by = #{scopeUserId}
+                    AND (r.created_by = #{scopeUserId}
+                    <if test="scopeProjectGroup != null and scopeProjectGroup != ''">
+                         OR r.project_group_name = #{scopeProjectGroup}
+                    </if>
+                    )
                 </when>
                 <when test="scopeRole == 'PI'">
                     AND (r.pi_user_id = #{scopeUserId}
@@ -120,9 +124,11 @@
         SELECT r.id, r.register_no, r.project_name, r.pi_name, r.dept,
                r.current_stage, r.round_no, r.draft_source,
                r.submitted_at, r.approved_at, r.created_at, r.is_demo AS is_demo,
+               r.created_by AS created_by, r.pi_user_id AS pi_user_id,
                (SELECT COUNT(*) FROM aup_snapshot s WHERE s.aup_id = r.id) AS snapshot_count,
                (SELECT COUNT(*) FROM aup_review_item ri WHERE ri.aup_id = r.id) AS review_count,
-               (SELECT COUNT(*) FROM aup_review_item ri WHERE ri.aup_id = r.id AND ri.verdict = 'nonCompliant') AS non_compliant_count
+               (SELECT COUNT(*) FROM aup_review_item ri WHERE ri.aup_id = r.id AND ri.verdict = 'nonCompliant') AS non_compliant_count,
+               (SELECT COUNT(*) FROM aup_review_assignment a WHERE a.aup_id = r.id AND a.reviewer_id = #{scopeUserId}) AS assigned_expert_count
         FROM aup_record r
         <include refid="pageWhere"/>
         ORDER BY

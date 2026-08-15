@@ -51,6 +51,7 @@ public interface AupRecordMapper {
 
     List<AupListItem> selectPage(@Param("scopeRole") String scopeRole,
                                  @Param("scopeUserId") String scopeUserId,
+                                 @Param("scopeProjectGroup") String scopeProjectGroup,
                                  @Param("keyword") String keyword,
                                  @Param("registerNo") String registerNo,
                                  @Param("stage") String stage,
@@ -69,6 +70,7 @@ public interface AupRecordMapper {
 
     int countPage(@Param("scopeRole") String scopeRole,
                   @Param("scopeUserId") String scopeUserId,
+                  @Param("scopeProjectGroup") String scopeProjectGroup,
                   @Param("keyword") String keyword,
                   @Param("registerNo") String registerNo,
                   @Param("stage") String stage,
