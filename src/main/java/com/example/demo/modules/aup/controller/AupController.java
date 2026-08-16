@@ -73,11 +73,13 @@ public class AupController {
                           @RequestParam(defaultValue = "false") boolean excludeDraft,
                           @RequestParam(required = false) String draftSource,
                           @RequestParam(required = false) Integer roundNo,
+                          @RequestParam(required = false) String submitterId,
+                          @RequestParam(required = false) String reviewerId,
                           @RequestParam(required = false) String sortBy,
                           @RequestParam(required = false) String sortDir) {
         User user = requireUser(authorization);
         return Result.success(aupService.list(user, page, size, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft,
-                draftSource, roundNo, sortBy, sortDir));
+                draftSource, roundNo, submitterId, reviewerId, sortBy, sortDir));
     }
 
     @PostMapping

@@ -682,6 +682,7 @@ public class AupService {
     public Map<String, Object> list(User user, int page, int size, String keyword, String registerNo,
                                     String stage, String excludeStage, String projectGroupName,
                                     boolean excludeDraft, String draftSource, Integer roundNo,
+                                    String submitterId, String reviewerId,
                                     String sortBy, String sortDir) {
         String scopeRole = accessPolicy.resolveScopeRole(user);
         String scopeUserId = user.getId();
@@ -690,13 +691,15 @@ public class AupService {
         int safeSize = Math.min(Math.max(size, 1), 100);
         int offset = (safePage - 1) * safeSize;
         List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo,
-                stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo, sortBy, sortDir, offset, safeSize);
+                stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo,
+                submitterId, reviewerId, sortBy, sortDir, offset, safeSize);
         Map<Long, String> speciesByAup = loadSpeciesByAup(items);
         for (AupListItem item : items) {
             item.setSummaryJson(buildSummaryJson(item, speciesByAup.get(item.getId())));
             item.setMiniSteps(buildMiniSteps(item));
         }
-        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo);
+        fillNames(items);
+        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo, submitterId, reviewerId);
         Map<String, Object> data = new HashMap<>();
         data.put("total", total);
         data.put("items", items);
@@ -1653,6 +1656,155 @@ public class AupService {
             }
         }
         return out;
+    }
+
+    /**
+     * 批量填充提交人姓名与当前阶段审核人姓名（避免逐条 N+1）：
+     * 先一次性查专家分配与格式审查秘书 actor，再对去重后的 userId 批量 resolveName。
+     */
+    private void fillNames(List<AupListItem> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        // 1) 收集需要额外查询的阶段项
+        Map<Long, Integer> expertRounds = new LinkedHashMap<>(); // aupId -> 当前轮次
+        List<Long> formatIds = new ArrayList<>();
+        for (AupListItem item : items) {
+            if (item.getId() == null) {
+                continue;
+            }
+            if (STAGE_EXPERT_REVIEW.equals(item.getCurrentStage())) {
+                expertRounds.put(item.getId(), item.getRoundNo() == null ? 1 : item.getRoundNo());
+            } else if (STAGE_FORMAT_REVIEW.equals(item.getCurrentStage())) {
+                formatIds.add(item.getId());
+            }
+        }
+
+        // 2) 批量查专家分配 reviewer_id 与格式审查秘书 actor
+        Map<Long, List<String>> expertReviewers = loadExpertReviewers(expertRounds);
+        Map<Long, String> formatActors = loadFormatReviewActors(formatIds);
+
+        // 3) 汇总待解析姓名 userId（提交人 + 专家 + 秘书），去重后批量 resolveName
+        Set<String> userIds = new LinkedHashSet<>();
+        for (AupListItem item : items) {
+            if (StringUtils.hasText(item.getCreatedBy())) {
+                userIds.add(item.getCreatedBy());
+            }
+        }
+        for (List<String> ids : expertReviewers.values()) {
+            for (String id : ids) {
+                if (StringUtils.hasText(id)) {
+                    userIds.add(id);
+                }
+            }
+        }
+        for (String actor : formatActors.values()) {
+            if (StringUtils.hasText(actor)) {
+                userIds.add(actor);
+            }
+        }
+        Map<String, String> names = new HashMap<>();
+        for (String id : userIds) {
+            names.put(id, resolveName(id));
+        }
+
+        // 4) 回填
+        for (AupListItem item : items) {
+            item.setSubmitterName(names.get(item.getCreatedBy()));
+            String stage = item.getCurrentStage();
+            if (STAGE_EXPERT_REVIEW.equals(stage)) {
+                item.setReviewerNames(joinReviewerNames(expertReviewers.get(item.getId()), names));
+            } else if (STAGE_FORMAT_REVIEW.equals(stage)) {
+                String actor = formatActors.get(item.getId());
+                item.setReviewerNames(actor == null ? null : names.get(actor));
+            } else if (STAGE_PI_REVIEW.equals(stage)) {
+                item.setReviewerNames(item.getPiName());
+            }
+        }
+    }
+
+    /** 批量查各计划当前轮的专家 reviewer_id（保持分配顺序，供姓名拼接） */
+    private Map<Long, List<String>> loadExpertReviewers(Map<Long, Integer> rounds) {
+        Map<Long, List<String>> out = new LinkedHashMap<>();
+        if (rounds.isEmpty()) {
+            return out;
+        }
+        StringBuilder where = new StringBuilder();
+        List<Object> args = new ArrayList<>();
+        for (Map.Entry<Long, Integer> e : rounds.entrySet()) {
+            if (where.length() > 0) {
+                where.append(" OR ");
+            }
+            where.append("(aup_id = ? AND round_no = ?)");
+            args.add(e.getKey());
+            args.add(e.getValue());
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT aup_id, reviewer_id FROM aup_review_assignment WHERE " + where
+                        + " ORDER BY aup_id, id ASC", args.toArray());
+        for (Map<String, Object> row : rows) {
+            Object aupIdRaw = row.get("aup_id");
+            if (aupIdRaw == null) {
+                continue;
+            }
+            Long aupId = ((Number) aupIdRaw).longValue();
+            Object reviewer = row.get("reviewer_id");
+            String rid = reviewer == null ? null : String.valueOf(reviewer);
+            if (!StringUtils.hasText(rid)) {
+                continue;
+            }
+            out.computeIfAbsent(aupId, k -> new ArrayList<>()).add(rid);
+        }
+        return out;
+    }
+
+    /** 批量查各计划最近一次格式审查动作的 actor（秘书），每计划取 id 最大的一条 */
+    private Map<Long, String> loadFormatReviewActors(List<Long> aupIds) {
+        Map<Long, String> out = new LinkedHashMap<>();
+        if (aupIds.isEmpty()) {
+            return out;
+        }
+        StringBuilder in = new StringBuilder();
+        for (Long id : aupIds) {
+            if (in.length() > 0) {
+                in.append(",");
+            }
+            in.append("?");
+        }
+        String sql = "SELECT l.aup_id, l.actor FROM aup_audit_log l "
+                + "JOIN (SELECT aup_id, MAX(id) AS max_id FROM aup_audit_log "
+                + "WHERE from_stage = 'formatReview' AND aup_id IN (" + in + ") GROUP BY aup_id) m "
+                + "ON m.max_id = l.id";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, aupIds.toArray());
+        for (Map<String, Object> row : rows) {
+            Object aupIdRaw = row.get("aup_id");
+            if (aupIdRaw == null) {
+                continue;
+            }
+            Long aupId = ((Number) aupIdRaw).longValue();
+            Object actor = row.get("actor");
+            String act = actor == null ? null : String.valueOf(actor);
+            if (StringUtils.hasText(act)) {
+                out.put(aupId, act);
+            }
+        }
+        return out;
+    }
+
+    /** 将专家 userId 列表按姓名去重拼接为「张三, 李四」 */
+    private String joinReviewerNames(List<String> ids, Map<String, String> names) {
+        if (ids == null || ids.isEmpty()) {
+            return null;
+        }
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        for (String id : ids) {
+            String name = names.get(id);
+            if (StringUtils.hasText(name)) {
+                seen.add(name);
+            }
+        }
+        return seen.isEmpty() ? null : String.join(", ", seen);
     }
 
     private String extractSpecies(String dataJson) {

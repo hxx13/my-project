@@ -68,6 +68,10 @@ export interface AupListParams {
   excludeDraft?: boolean;
   draftSource?: DraftSource;
   roundNo?: number;
+  /** 提交人（申请人 userId） */
+  submitterId?: string;
+  /** 审核人（被分配专家或留痕 actor 的 userId） */
+  reviewerId?: string;
   sortBy?: string;
   sortDir?: "asc" | "desc";
 }

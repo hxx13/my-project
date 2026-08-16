@@ -119,6 +119,13 @@
             <if test="roundNo != null">
                 AND r.round_no = #{roundNo}
             </if>
+            <if test="submitterId != null and submitterId != ''">
+                AND r.created_by = #{submitterId}
+            </if>
+            <if test="reviewerId != null and reviewerId != ''">
+                AND (EXISTS (SELECT 1 FROM aup_review_assignment a WHERE a.aup_id = r.id AND a.reviewer_id = #{reviewerId})
+                     OR EXISTS (SELECT 1 FROM aup_audit_log l WHERE l.aup_id = r.id AND l.actor = #{reviewerId}))
+            </if>
         </where>
     </sql>
 

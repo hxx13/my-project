@@ -34,6 +34,10 @@ public class AupListItem {
     private String piUserId;
     /** 当前用户是否被分配为该计划书的审查专家（0/1 计数，>0 即被分配） */
     private Integer assignedExpertCount;
+    /** 提交人姓名（resolveName(createdBy)） */
+    private String submitterName;
+    /** 当前阶段审核人姓名（逗号分隔，如「张三, 李四」；draft/approved/terminated/expired 为空） */
+    private String reviewerNames;
     /** 列表展示摘要 JSON */
     private String summaryJson;
     /** 迷你阶段指示 JSON */

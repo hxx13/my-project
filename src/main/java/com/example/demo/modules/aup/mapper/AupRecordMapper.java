@@ -60,6 +60,8 @@ public interface AupRecordMapper {
                                  @Param("excludeDraft") boolean excludeDraft,
                                  @Param("draftSource") String draftSource,
                                  @Param("roundNo") Integer roundNo,
+                                 @Param("submitterId") String submitterId,
+                                 @Param("reviewerId") String reviewerId,
                                  @Param("sortBy") String sortBy,
                                  @Param("sortDir") String sortDir,
                                  @Param("offset") int offset,
@@ -78,5 +80,7 @@ public interface AupRecordMapper {
                   @Param("projectGroupName") String projectGroupName,
                   @Param("excludeDraft") boolean excludeDraft,
                   @Param("draftSource") String draftSource,
-                  @Param("roundNo") Integer roundNo);
+                  @Param("roundNo") Integer roundNo,
+                  @Param("submitterId") String submitterId,
+                  @Param("reviewerId") String reviewerId);
 }
