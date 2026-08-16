@@ -280,8 +280,10 @@ function ReviewContent({ id }: { id: string }) {
   const config = configQuery.data;
   const experts = expertsQuery.data ?? [];
   const progress = review.progressQuery.data;
-  const overviewItems = review.itemsQuery.data?.items ?? [];
-  const overviewSummary: ReviewItemsSummary | undefined = review.itemsQuery.data?.summary;
+  // 评审总览用全轮 items（按轮分组展示历史）；字段旁批注/投票进度仍用当前轮
+  const overviewItems = review.allItemsQuery.data?.items ?? [];
+  const overviewSummary: ReviewItemsSummary | undefined = review.allItemsQuery.data?.summary;
+  const currentRoundItems = review.itemsQuery.data?.items ?? [];
 
   const role: ReviewRole = resolveReviewRole(
     config,
@@ -310,13 +312,13 @@ function ReviewContent({ id }: { id: string }) {
 
   const itemsByFieldKey = useMemo(() => {
     const m = new Map<string, ReviewItem[]>();
-    for (const it of overviewItems) {
+    for (const it of currentRoundItems) {
       const arr = m.get(it.fieldKey) ?? [];
       arr.push(it);
       m.set(it.fieldKey, arr);
     }
     return m;
-  }, [overviewItems]);
+  }, [currentRoundItems]);
 
   // 专家逐字段草稿（三态）
   const [expertDrafts, setExpertDrafts] = useState<Record<string, FieldReviewDraft>>({});
@@ -340,10 +342,6 @@ function ReviewContent({ id }: { id: string }) {
 
   // 总览抽屉
   const [overviewOpen, setOverviewOpen] = useState(false);
-
-  const jumpToField = (fieldKey: string) => {
-    document.getElementById(`field-${fieldKey}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-  };
 
   /* ---------- 提交逻辑 ---------- */
 
@@ -586,7 +584,7 @@ function ReviewContent({ id }: { id: string }) {
 
         <div className="ar-side">
           {stage === "expertReview" ? (
-            <ProgressCard progress={progress} names={reviewerNames} items={overviewItems} />
+            <ProgressCard progress={progress} names={reviewerNames} items={currentRoundItems} />
           ) : null}
           <ReviewHistoryCard traces={detail?.traces} />
         </div>
@@ -597,9 +595,7 @@ function ReviewContent({ id }: { id: string }) {
         onClose={() => setOverviewOpen(false)}
         summary={overviewSummary}
         items={overviewItems}
-        fields={flatFields}
         reviewerNames={reviewerNames}
-        onJumpToField={jumpToField}
       />
     </div>
   );

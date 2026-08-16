@@ -488,10 +488,12 @@ export function useUpdateReviewerConfig() {
 export function useAupReview(id?: string) {
   const progressQuery = useReviewProgress(id);
   const itemsQuery = useReviewItems(id);
+  // 全轮次逐字段意见（roundNo=0 → 后端返回全部轮次），供「评审总览」按轮分组展示历史
+  const allItemsQuery = useReviewItems(id, { roundNo: 0 });
   const formatReview = useFormatReview(id);
   const expertReview = useExpertReview(id);
   const piReview = usePiReview(id);
-  return { progressQuery, itemsQuery, formatReview, expertReview, piReview };
+  return { progressQuery, itemsQuery, allItemsQuery, formatReview, expertReview, piReview };
 }
 
 /* =====================================================================
