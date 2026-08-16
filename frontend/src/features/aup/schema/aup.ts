@@ -101,6 +101,10 @@ export interface AupListItem {
   piUserId?: string;
   /** 当前用户是否被分配为该计划书的审查专家（>0 即被分配） */
   assignedExpertCount?: number;
+  /** 提交人姓名（resolveName(createdBy)） */
+  submitterName?: string;
+  /** 当前阶段审核人姓名（逗号分隔，如「张三, 李四」；draft/approved/terminated/expired 为空） */
+  reviewerNames?: string;
   /** 阶段过程迷你指示器 JSON 字符串（需 JSON.parse 为 AupMiniStepsPayload） */
   miniSteps?: string | null;
   /** 演示示例标记 0/1 */

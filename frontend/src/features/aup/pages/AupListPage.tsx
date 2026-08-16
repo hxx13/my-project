@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAupList, useRestoreAupDemo, useDeleteAup, useUnlockAup, useRenewAup, useReviewerConfig } from "../hooks/useAup";
 import { authStorage } from "@/features/auth/authStorage";
@@ -10,6 +10,18 @@ import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShangha
 import "../aup.css";
 
 const PAGE_SIZE = 10;
+
+/** 筛选卡片「小标签 + 输入框」通用样式（沿用 aup.css 变量，紧凑布局） */
+const FILTER_FIELD_STYLE: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  fontSize: 12,
+  color: "var(--muted)",
+};
+
+/** 筛选控件紧凑样式（沿用 .input/.select 类，仅收紧内边距与字号） */
+const FILTER_CONTROL_STYLE: CSSProperties = { padding: "6px 10px", fontSize: 12 };
 
 /** 阶段 → 状态徽标 */
 function stageBadge(item: AupListItem): { text: string; cls: string } {
@@ -64,6 +76,9 @@ export default function AupListPage() {
   const [keyword, setKeyword] = useState("");
   const [stage, setStage] = useState<AupStage | "">("");
   const [tab, setTab] = useState<"approved" | "pending">("pending");
+  const [projectGroupName, setProjectGroupName] = useState("");
+  const [submitterId, setSubmitterId] = useState("");
+  const [reviewerId, setReviewerId] = useState("");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [snapAupId, setSnapAupId] = useState<number | null>(null);
@@ -86,8 +101,11 @@ export default function AupListPage() {
       stage: tab === "approved" ? ("approved" as AupStage) : stage || undefined,
       excludeStage: tab === "approved" ? undefined : ("approved" as AupStage),
       excludeDraft: true,
+      projectGroupName: projectGroupName.trim() || undefined,
+      submitterId: submitterId.trim() || undefined,
+      reviewerId: reviewerId.trim() || undefined,
     }),
-    [page, keyword, stage, tab]
+    [page, keyword, stage, tab, projectGroupName, submitterId, reviewerId]
   );
 
   const { data, isLoading, isError, refetch } = useAupList(params);
@@ -127,62 +145,84 @@ export default function AupListPage() {
 
   return (
     <div className="aup-app aup-list-fixed">
-      {/* 上卡片：标题 + 阶段筛选 + 搜索 */}
+      {/* 上卡片：紧凑筛选 */}
       <div className="list-card list-card-top">
-        <div className="page-hd" style={{ marginBottom: 14 }}>
-          <div>
-            <h1>计划书列表</h1>
-            <div className="sub">展示计划书生成过程与各时刻快照；填写需使用已发布的模板版本</div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
           <button
-            className={tab === "pending" ? "btn primary" : "btn ghost"}
+            className={tab === "pending" ? "btn primary small" : "btn ghost small"}
             onClick={() => { setTab("pending"); setPage(1); }}
           >
             未通过
           </button>
           <button
-            className={tab === "approved" ? "btn primary" : "btn ghost"}
+            className={tab === "approved" ? "btn primary small" : "btn ghost small"}
             onClick={() => { setTab("approved"); setStage(""); setPage(1); }}
           >
             已通过
           </button>
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>共 {total} 条</span>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <input
-            className="input"
-            style={{ maxWidth: 260 }}
-            placeholder="搜索编号 / 项目名称"
-            value={keyword}
-            onChange={(e) => {
-              setKeyword(e.target.value);
-              setPage(1);
-            }}
-          />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+          <label style={FILTER_FIELD_STYLE}>
+            关键词
+            <input
+              className="input"
+              style={FILTER_CONTROL_STYLE}
+              placeholder="编号 / 项目名称 / 负责人"
+              value={keyword}
+              onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
+            />
+          </label>
           {tab === "pending" && (
-            <select
-              className="select"
-              style={{ maxWidth: 160 }}
-              value={stage}
-              onChange={(e) => {
-                setStage(e.target.value as AupStage | "");
-                setPage(1);
-              }}
-            >
-              <option value="">全部未通过</option>
-              <option value="draft">草稿</option>
-              <option value="piReview">组长审核中</option>
-              <option value="formatReview">格式审查中</option>
-              <option value="expertReview">专家审查中</option>
-              <option value="terminated">已终止</option>
-              <option value="expired">已过期</option>
-            </select>
+            <label style={FILTER_FIELD_STYLE}>
+              阶段
+              <select
+                className="select"
+                style={FILTER_CONTROL_STYLE}
+                value={stage}
+                onChange={(e) => { setStage(e.target.value as AupStage | ""); setPage(1); }}
+              >
+                <option value="">全部</option>
+                <option value="draft">草稿</option>
+                <option value="piReview">组长审核中</option>
+                <option value="formatReview">格式审查中</option>
+                <option value="expertReview">专家审查中</option>
+                <option value="terminated">已终止</option>
+                <option value="expired">已过期</option>
+              </select>
+            </label>
           )}
-          <button className="btn ghost" onClick={() => refetch()}>查询</button>
-          <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>共 {total} 条</span>
+          <label style={FILTER_FIELD_STYLE}>
+            课题组
+            <input
+              className="input"
+              style={FILTER_CONTROL_STYLE}
+              placeholder="课题组名称"
+              value={projectGroupName}
+              onChange={(e) => { setProjectGroupName(e.target.value); setPage(1); }}
+            />
+          </label>
+          <label style={FILTER_FIELD_STYLE}>
+            提交人
+            <input
+              className="input"
+              style={FILTER_CONTROL_STYLE}
+              placeholder="提交人 userId"
+              value={submitterId}
+              onChange={(e) => { setSubmitterId(e.target.value); setPage(1); }}
+            />
+          </label>
+          <label style={FILTER_FIELD_STYLE}>
+            审核人
+            <input
+              className="input"
+              style={FILTER_CONTROL_STYLE}
+              placeholder="审核人 userId"
+              value={reviewerId}
+              onChange={(e) => { setReviewerId(e.target.value); setPage(1); }}
+            />
+          </label>
         </div>
       </div>
 
@@ -437,6 +477,19 @@ function TableRows({
                       </div>
                     ))
                   )}
+                </div>
+              </div>
+              <div style={{ flex: "0 0 auto", minWidth: 200 }}>
+                <div className="k">提交 / 审核</div>
+                <div className="kv">
+                  <div className="kv-row">
+                    <b>提交人：</b>
+                    <span>{item.submitterName || "—"}</span>
+                  </div>
+                  <div className="kv-row">
+                    <b>审核人：</b>
+                    <span>{item.reviewerNames || "—"}</span>
+                  </div>
                 </div>
               </div>
             </div>
