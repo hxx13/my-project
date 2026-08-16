@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -54,6 +54,9 @@ export default function AupFillPage() {
   const publishedQuery = usePublishedTemplate(id ? undefined : "aup");
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  // 程序化定位锁：点击章节跳转期间锁定高亮，避免滚动监听反复覆盖导致横跳
+  const scrollLockRef = useRef(false);
+  const scrollLockTimerRef = useRef<number | null>(null);
   const [snapOpen, setSnapOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
@@ -92,7 +95,8 @@ export default function AupFillPage() {
     const secs = rawSections;
     if (!secs) return;
     const onScroll = () => {
-      const offset = 148;
+      if (scrollLockRef.current) return; // 点击跳转期间不覆盖高亮
+      const offset = 136;
       let current: string | null = null;
       for (const s of secs) {
         const secEl = document.getElementById(`aup-section-${s.code}`);
@@ -245,6 +249,11 @@ export default function AupFillPage() {
 
   const handleSelect = (sid: string) => {
     setActiveId(sid);
+    scrollLockRef.current = true;
+    if (scrollLockTimerRef.current != null) window.clearTimeout(scrollLockTimerRef.current);
+    scrollLockTimerRef.current = window.setTimeout(() => {
+      scrollLockRef.current = false;
+    }, 600);
     const el =
       document.getElementById(`aup-subsection-${sid}`) ?? document.getElementById(`aup-section-${sid}`);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
