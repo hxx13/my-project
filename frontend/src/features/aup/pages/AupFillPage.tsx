@@ -92,7 +92,7 @@ export default function AupFillPage() {
     const secs = rawSections;
     if (!secs) return;
     const onScroll = () => {
-      const offset = 136;
+      const offset = 148;
       let current: string | null = null;
       for (const s of secs) {
         const secEl = document.getElementById(`aup-section-${s.code}`);
