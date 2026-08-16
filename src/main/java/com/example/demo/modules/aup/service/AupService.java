@@ -5,6 +5,7 @@ import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.aup.dto.AupAttachmentVO;
 import com.example.demo.modules.aup.dto.AupDetailVO;
 import com.example.demo.modules.aup.dto.AupListItem;
@@ -89,6 +90,7 @@ public class AupService {
     private final UploadFileRecordService uploadFileRecordService;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final AroService aroService;
+    private final UserMapper userMapper;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final AupDemoSeeder aupDemoSeeder;
@@ -120,6 +122,7 @@ public class AupService {
                       UploadFileRecordService uploadFileRecordService,
                       AroPersonnelMapper aroPersonnelMapper,
                       AroService aroService,
+                      UserMapper userMapper,
                       JdbcTemplate jdbcTemplate,
                       ObjectMapper objectMapper,
                       AupDemoSeeder aupDemoSeeder) {
@@ -134,6 +137,7 @@ public class AupService {
         this.uploadFileRecordService = uploadFileRecordService;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.aroService = aroService;
+        this.userMapper = userMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.aupDemoSeeder = aupDemoSeeder;
@@ -416,6 +420,10 @@ public class AupService {
         List<AupValidationErrorDTO> errors = new ArrayList<>();
         List<FieldDef> fields = loadFieldDefs(templateId);
         for (FieldDef f : fields) {
+            // 被三层 showWhen 条件隐藏的字段不参与校验（必填/类型/字典/表格）
+            if (isFieldHidden(f, data)) {
+                continue;
+            }
             Object value = valueOf(data, f.fieldKey);
             // 必填
             if (f.required && isBlankValue(value)) {
@@ -1168,6 +1176,8 @@ public class AupService {
         String dictKey;
         Integer maxLength;
         String showWhen;
+        String subsectionShowWhen;
+        String sectionShowWhen;
         Map<String, String> tableColumnLabels = new LinkedHashMap<>();
     }
 
@@ -1177,8 +1187,11 @@ public class AupService {
             return out;
         }
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT f.field_key, f.label, f.type, f.required, f.dict_key, f.config, f.show_when "
+                "SELECT f.field_key, f.label, f.type, f.required, f.dict_key, f.config, f.show_when, "
+                        + "sub.show_when AS subsection_show_when, sec.show_when AS section_show_when "
                         + "FROM form_field f "
+                        + "LEFT JOIN form_subsection sub ON f.subsection_id = sub.id "
+                        + "LEFT JOIN form_section sec ON sec.id = COALESCE(f.section_id, sub.section_id) "
                         + "WHERE f.section_id IN (SELECT id FROM form_section WHERE template_id = ?) "
                         + "   OR f.subsection_id IN (SELECT id FROM form_subsection "
                         + "       WHERE section_id IN (SELECT id FROM form_section WHERE template_id = ?))",
@@ -1191,6 +1204,8 @@ public class AupService {
             f.required = row.get("required") != null && ((Number) row.get("required")).intValue() == 1;
             f.dictKey = str(row.get("dict_key"));
             f.showWhen = str(row.get("show_when"));
+            f.subsectionShowWhen = str(row.get("subsection_show_when"));
+            f.sectionShowWhen = str(row.get("section_show_when"));
             f.maxLength = parseMaxLength(str(row.get("config")));
             f.tableColumnLabels = parseTableColumns(str(row.get("config")));
             out.add(f);
@@ -1278,7 +1293,7 @@ public class AupService {
     private List<String> stripMap(Long templateId, Map<String, Object> map) {
         List<String> stripped = new ArrayList<>();
         for (FieldDef f : loadFieldDefs(templateId)) {
-            if (StringUtils.hasText(f.showWhen) && !evaluateShowWhen(f.showWhen, map)) {
+            if (isFieldHidden(f, map)) {
                 Object v = map.get(f.fieldKey);
                 if (v != null && !isBlankValue(v)) {
                     map.remove(f.fieldKey);
@@ -1287,6 +1302,20 @@ public class AupService {
             }
         }
         return stripped;
+    }
+
+    /** 字段可见当且仅当字段级 + 父小章节级 + 父大段级三层 showWhen 全部满足；任一层不满足即隐藏。 */
+    private boolean isFieldHidden(FieldDef f, Map<String, Object> data) {
+        if (StringUtils.hasText(f.sectionShowWhen) && !evaluateShowWhen(f.sectionShowWhen, data)) {
+            return true;
+        }
+        if (StringUtils.hasText(f.subsectionShowWhen) && !evaluateShowWhen(f.subsectionShowWhen, data)) {
+            return true;
+        }
+        if (StringUtils.hasText(f.showWhen) && !evaluateShowWhen(f.showWhen, data)) {
+            return true;
+        }
+        return false;
     }
 
     private boolean evaluateShowWhen(String showWhenJson, Map<String, Object> data) {
@@ -1528,6 +1557,19 @@ public class AupService {
             AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
             if (p != null && StringUtils.hasText(p.getName())) {
                 return p.getName();
+            }
+        } catch (Exception ignored) {
+        }
+        // 教职工（sys_user）回退：显示昵称 → 用户名，兜底返回原始 userId
+        try {
+            User u = userMapper.findById(userId);
+            if (u != null) {
+                if (StringUtils.hasText(u.getDisplayNickname())) {
+                    return u.getDisplayNickname().trim();
+                }
+                if (StringUtils.hasText(u.getUsername())) {
+                    return u.getUsername().trim();
+                }
             }
         } catch (Exception ignored) {
         }
