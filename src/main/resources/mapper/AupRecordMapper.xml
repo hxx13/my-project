@@ -126,6 +126,22 @@
                 AND (EXISTS (SELECT 1 FROM aup_review_assignment a WHERE a.aup_id = r.id AND a.reviewer_id = #{reviewerId})
                      OR EXISTS (SELECT 1 FROM aup_audit_log l WHERE l.aup_id = r.id AND l.actor = #{reviewerId}))
             </if>
+            <if test="submitterName != null and submitterName != ''">
+                AND (r.created_by IN (SELECT user_id FROM aro_personnel WHERE name LIKE CONCAT('%', #{submitterName}, '%'))
+                     OR r.created_by IN (SELECT id FROM sys_user WHERE display_nickname LIKE CONCAT('%', #{submitterName}, '%') OR username LIKE CONCAT('%', #{submitterName}, '%')))
+            </if>
+            <if test="reviewerName != null and reviewerName != ''">
+                AND (
+                  EXISTS (SELECT 1 FROM aup_review_assignment a WHERE a.aup_id = r.id AND (
+                    a.reviewer_id IN (SELECT user_id FROM aro_personnel WHERE name LIKE CONCAT('%', #{reviewerName}, '%'))
+                    OR a.reviewer_id IN (SELECT id FROM sys_user WHERE display_nickname LIKE CONCAT('%', #{reviewerName}, '%') OR username LIKE CONCAT('%', #{reviewerName}, '%'))
+                  ))
+                  OR EXISTS (SELECT 1 FROM aup_audit_log l WHERE l.aup_id = r.id AND (
+                    l.actor IN (SELECT user_id FROM aro_personnel WHERE name LIKE CONCAT('%', #{reviewerName}, '%'))
+                    OR l.actor IN (SELECT id FROM sys_user WHERE display_nickname LIKE CONCAT('%', #{reviewerName}, '%') OR username LIKE CONCAT('%', #{reviewerName}, '%'))
+                  ))
+                )
+            </if>
         </where>
     </sql>
 

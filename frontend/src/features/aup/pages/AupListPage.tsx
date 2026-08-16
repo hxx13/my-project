@@ -77,8 +77,8 @@ export default function AupListPage() {
   const [stage, setStage] = useState<AupStage | "">("");
   const [tab, setTab] = useState<"approved" | "pending">("pending");
   const [projectGroupName, setProjectGroupName] = useState("");
-  const [submitterId, setSubmitterId] = useState("");
-  const [reviewerId, setReviewerId] = useState("");
+  const [submitterName, setSubmitterName] = useState("");
+  const [reviewerName, setReviewerName] = useState("");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [snapAupId, setSnapAupId] = useState<number | null>(null);
@@ -102,10 +102,10 @@ export default function AupListPage() {
       excludeStage: tab === "approved" ? undefined : ("approved" as AupStage),
       excludeDraft: true,
       projectGroupName: projectGroupName.trim() || undefined,
-      submitterId: submitterId.trim() || undefined,
-      reviewerId: reviewerId.trim() || undefined,
+      submitterName: submitterName.trim() || undefined,
+      reviewerName: reviewerName.trim() || undefined,
     }),
-    [page, keyword, stage, tab, projectGroupName, submitterId, reviewerId]
+    [page, keyword, stage, tab, projectGroupName, submitterName, reviewerName]
   );
 
   const { data, isLoading, isError, refetch } = useAupList(params);
@@ -208,9 +208,9 @@ export default function AupListPage() {
             <input
               className="input"
               style={FILTER_CONTROL_STYLE}
-              placeholder="提交人 userId"
-              value={submitterId}
-              onChange={(e) => { setSubmitterId(e.target.value); setPage(1); }}
+              placeholder="提交人姓名"
+              value={submitterName}
+              onChange={(e) => { setSubmitterName(e.target.value); setPage(1); }}
             />
           </label>
           <label style={FILTER_FIELD_STYLE}>
@@ -218,9 +218,9 @@ export default function AupListPage() {
             <input
               className="input"
               style={FILTER_CONTROL_STYLE}
-              placeholder="审核人 userId"
-              value={reviewerId}
-              onChange={(e) => { setReviewerId(e.target.value); setPage(1); }}
+              placeholder="审核人姓名"
+              value={reviewerName}
+              onChange={(e) => { setReviewerName(e.target.value); setPage(1); }}
             />
           </label>
         </div>

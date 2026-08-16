@@ -72,6 +72,10 @@ export interface AupListParams {
   submitterId?: string;
   /** 审核人（被分配专家或留痕 actor 的 userId） */
   reviewerId?: string;
+  /** 提交人姓名（模糊匹配） */
+  submitterName?: string;
+  /** 审核人姓名（模糊匹配） */
+  reviewerName?: string;
   sortBy?: string;
   sortDir?: "asc" | "desc";
 }

@@ -62,6 +62,8 @@ public interface AupRecordMapper {
                                  @Param("roundNo") Integer roundNo,
                                  @Param("submitterId") String submitterId,
                                  @Param("reviewerId") String reviewerId,
+                                 @Param("submitterName") String submitterName,
+                                 @Param("reviewerName") String reviewerName,
                                  @Param("sortBy") String sortBy,
                                  @Param("sortDir") String sortDir,
                                  @Param("offset") int offset,
@@ -82,5 +84,7 @@ public interface AupRecordMapper {
                   @Param("draftSource") String draftSource,
                   @Param("roundNo") Integer roundNo,
                   @Param("submitterId") String submitterId,
-                  @Param("reviewerId") String reviewerId);
+                  @Param("reviewerId") String reviewerId,
+                  @Param("submitterName") String submitterName,
+                  @Param("reviewerName") String reviewerName);
 }

@@ -683,6 +683,7 @@ public class AupService {
                                     String stage, String excludeStage, String projectGroupName,
                                     boolean excludeDraft, String draftSource, Integer roundNo,
                                     String submitterId, String reviewerId,
+                                    String submitterName, String reviewerName,
                                     String sortBy, String sortDir) {
         String scopeRole = accessPolicy.resolveScopeRole(user);
         String scopeUserId = user.getId();
@@ -692,14 +693,14 @@ public class AupService {
         int offset = (safePage - 1) * safeSize;
         List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo,
                 stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo,
-                submitterId, reviewerId, sortBy, sortDir, offset, safeSize);
+                submitterId, reviewerId, submitterName, reviewerName, sortBy, sortDir, offset, safeSize);
         Map<Long, String> speciesByAup = loadSpeciesByAup(items);
         for (AupListItem item : items) {
             item.setSummaryJson(buildSummaryJson(item, speciesByAup.get(item.getId())));
             item.setMiniSteps(buildMiniSteps(item));
         }
         fillNames(items);
-        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo, submitterId, reviewerId);
+        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName);
         Map<String, Object> data = new HashMap<>();
         data.put("total", total);
         data.put("items", items);
