@@ -68,6 +68,8 @@ export interface ReviewItem {
   reason?: string;
   suggestion?: string;
   reviewer?: string;
+  /** 评审人姓名（后端解析，优先用于展示） */
+  reviewerName?: string;
   /** 评审角色 secretary（格式）/ expert（内容） */
   reviewerRole?: string;
   roundNo: number;

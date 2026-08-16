@@ -421,10 +421,32 @@ public class AupReviewService {
         summary.setTotalFields(record.getTemplateId() != null
                 ? reviewMapper.countTemplateFields(record.getTemplateId()) : 0);
 
+        fillReviewerNames(items);
+
         ReviewItemsResponse resp = new ReviewItemsResponse();
         resp.setSummary(summary);
         resp.setItems(items);
         return resp;
+    }
+
+    /** 批量解析逐字段意见的评审人姓名：去重 userId 后逐人 resolveName，回填 reviewerName，避免逐条 N+1。 */
+    private void fillReviewerNames(List<AupReviewItem> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        Set<String> userIds = new LinkedHashSet<>();
+        for (AupReviewItem it : items) {
+            if (StringUtils.hasText(it.getReviewer())) {
+                userIds.add(it.getReviewer());
+            }
+        }
+        Map<String, String> names = new HashMap<>();
+        for (String id : userIds) {
+            names.put(id, aupService.resolveName(id));
+        }
+        for (AupReviewItem it : items) {
+            it.setReviewerName(names.get(it.getReviewer()));
+        }
     }
 
     // ===================== 专家候选 / 名册配置 =====================

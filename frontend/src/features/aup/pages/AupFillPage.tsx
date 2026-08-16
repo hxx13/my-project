@@ -23,6 +23,7 @@ import FormField, { displayTitle, evaluateShowWhen, hasValue, normalizeOptions }
 import TracePanel from "../components/TracePanel";
 import SnapshotDrawer from "../components/SnapshotDrawer";
 import { FieldReviewTag } from "../components/FieldReviewTag";
+import { ReviewOverviewPanel } from "../components/ReviewOverviewPanel";
 import ScrollButtons from "../components/ScrollButtons";
 import { PortalHeader } from "@/features/portal/PortalHeader";
 import { authStorage } from "@/features/auth/authStorage";
@@ -54,6 +55,7 @@ export default function AupFillPage() {
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [snapOpen, setSnapOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [exitDialog, setExitDialog] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -146,6 +148,11 @@ export default function AupFillPage() {
     }
     return map;
   }, [reviewQuery.data]);
+
+  // 全轮次逐字段意见（roundNo=0），供「评审总览」按轮分组展示历史评审
+  const overviewQuery = useReviewItems(id, { roundNo: 0 });
+  // 是否已提交过（返修 / 已进入评审链）：draftSource≠first 或已离开 draft 阶段
+  const hasSubmitted = !!record && (record.draftSource !== "first" || record.currentStage !== "draft");
 
   if (isLoading) {
     if (id) {
@@ -421,6 +428,7 @@ export default function AupFillPage() {
         canSubmit={canSubmit}
         onOpenAttachments={id ? () => setAttachOpen((v) => !v) : undefined}
         onPrint={id ? handlePrint : undefined}
+        onOpenReview={hasSubmitted ? () => setOverviewOpen(true) : undefined}
       />
 
       <StageStepper currentStage={currentStage} draftSource={record?.draftSource} />
@@ -434,6 +442,14 @@ export default function AupFillPage() {
       </div>
 
       <SnapshotDrawer open={snapOpen} aupId={id} onClose={() => setSnapOpen(false)} />
+
+      <ReviewOverviewPanel
+        open={overviewOpen}
+        onClose={() => setOverviewOpen(false)}
+        summary={overviewQuery.data?.summary}
+        items={overviewQuery.data?.items}
+        reviewerNames={{}}
+      />
 
       {exitDialog && (
         <div className="aup-modal-mask" onClick={() => setExitDialog(false)}>

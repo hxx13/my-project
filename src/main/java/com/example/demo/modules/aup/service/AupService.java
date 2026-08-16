@@ -1556,7 +1556,8 @@ public class AupService {
         }
     }
 
-    private String resolveName(String userId) {
+    /** 解析人员姓名（供本服务留痕/组长名，及 AupReviewService 批量填充逐字段评审人姓名复用） */
+    public String resolveName(String userId) {
         if (!StringUtils.hasText(userId)) {
             return null;
         }

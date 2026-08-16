@@ -197,7 +197,7 @@ function ReviewerBreakdown({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {itemsByReviewer.map(([reviewer, its]) => {
-        const name = (reviewer && reviewerNames?.[reviewer]) || reviewer || "匿名";
+        const name = its[0]?.reviewerName || (reviewer && reviewerNames?.[reviewer]) || reviewer || "匿名";
         const role = its[0]?.reviewerRole ? ROLE_BADGE[its[0].reviewerRole] : undefined;
         const nonCompliant = its.filter((i) => i.verdict === "nonCompliant").length;
         const suggest = its.filter((i) => i.verdict === "suggest").length;
