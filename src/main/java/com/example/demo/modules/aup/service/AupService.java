@@ -1331,7 +1331,7 @@ public class AupService {
             if (op == null || op.isBlank() || "eq".equals(op) || "equals".equals(op)) {
                 return equalsValue(actual, expected);
             }
-            if ("neq".equals(op)) {
+            if ("neq".equals(op) || "notEquals".equals(op)) {
                 return !equalsValue(actual, expected);
             }
             if ("in".equals(op) || "notIn".equals(op)) {
@@ -1340,6 +1340,9 @@ public class AupService {
             }
             if ("contains".equals(op)) {
                 return actual != null && String.valueOf(actual).contains(String.valueOf(expected));
+            }
+            if ("notContains".equals(op)) {
+                return actual == null || !String.valueOf(actual).contains(String.valueOf(expected));
             }
             if ("exists".equals(op) || "notEmpty".equals(op)) {
                 return actual != null && !isBlankValue(actual);
