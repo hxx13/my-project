@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Result;
 import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -18,6 +19,9 @@ public interface AroPersonnelMapper {
             @Param("text") String text,
             @Param("hasOfficialRoomPermission") int hasOfficialRoomPermission,
             @Param("currentTime") String currentTime);
+
+    @Update("UPDATE aro_personnel SET allowed_rooms_json = #{json}, update_time = #{currentTime} WHERE user_id = #{userId}")
+    int updateAllowedRoomsJson(@Param("userId") String userId, @Param("json") String json, @Param("currentTime") String currentTime);
 
     @Select("SELECT * FROM aro_personnel WHERE user_id = #{userId}")
     @Results({

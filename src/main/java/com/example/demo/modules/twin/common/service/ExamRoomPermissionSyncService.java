@@ -5,6 +5,7 @@ import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
 import com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,8 @@ public class ExamRoomPermissionSyncService {
     private RoomMappingRoomMapper roomMappingRoomMapper;
     @Autowired
     private AroPersonnelMapper aroPersonnelMapper;
+    @Autowired
+    private ObjectMapper objectMapper;
 
     public void persistLevelsFromOfficialRoomPayload(List<Map<String, Object>> officialRooms) {
         if (officialRooms == null || officialRooms.isEmpty()) {
@@ -81,37 +85,82 @@ public class ExamRoomPermissionSyncService {
     }
 
     public String buildAllowedRoomsDisplayZh(String userId) {
+        return buildAllowedRoomsDisplayZhFromSnapshot(buildAllowedRoomsSnapshot(userId));
+    }
+
+    /**
+     * 将官方「可进房间」翻译成结构化快照，字段与 {@code TwinScanService.translateAndFilterRooms} 输出完全一致，
+     * 供本地读取侧 {@code loadAllowedRoomsFromSnapshot} 消费。一次 {@code getExamOfflineRoom} 供 zh + json 两用。
+     */
+    public List<Map<String, Object>> buildAllowedRoomsSnapshot(String userId) {
+        List<Map<String, Object>> snapshot = new ArrayList<>();
         if (userId == null || userId.isBlank()) {
-            return "";
+            return snapshot;
         }
-        List<Map<String, Object>> rooms = aroService.getExamOfflineRoom(userId);
-        if (rooms == null || rooms.isEmpty()) {
+        try {
+            List<Map<String, Object>> rooms = aroService.getExamOfflineRoom(userId);
+            if (rooms == null || rooms.isEmpty()) {
+                return snapshot;
+            }
+            for (Map<String, Object> room : rooms) {
+                if (room == null) {
+                    continue;
+                }
+                Object idObj = room.get("id");
+                if (idObj == null) {
+                    continue;
+                }
+                String roomId = String.valueOf(idObj).trim();
+                if (roomId.isEmpty()) {
+                    continue;
+                }
+                RoomDictionaryManager.RoomMapping dict = roomDictionaryManager.translate(roomId);
+                if (dict == null) {
+                    continue;
+                }
+                RoomMappingRoom rm = roomMappingRoomMapper.selectByRoomId(roomId);
+                Map<String, Object> entry = new HashMap<>();
+                entry.put("officialRoomId", roomId);
+                entry.put("displayName", dict.displayName);
+                entry.put("floorName", dict.floorName);
+                entry.put("officialRoomName", room.get("name"));
+                if (rm != null && rm.getRegionName() != null) {
+                    entry.put("regionName", rm.getRegionName());
+                }
+                String campus = resolveCampusTag(rm, dict.displayName);
+                if (!campus.isEmpty()) {
+                    entry.put("campusTag", campus);
+                }
+                Integer level = parseLevel(room.get("level"));
+                if (level != null) {
+                    entry.put("officialPermissionLevel", level);
+                }
+                snapshot.add(entry);
+            }
+        } catch (Exception e) {
+            log.warn("[personnel-rooms] buildAllowedRoomsSnapshot userId={} err={}", userId, e.getMessage());
+            return new ArrayList<>();
+        }
+        return snapshot;
+    }
+
+    private String buildAllowedRoomsDisplayZhFromSnapshot(List<Map<String, Object>> snapshot) {
+        if (snapshot == null || snapshot.isEmpty()) {
             return "";
         }
         record RatedLine(int level, String line) {
         }
         List<RatedLine> list = new ArrayList<>();
-        for (Map<String, Object> room : rooms) {
-            Object idObj = room.get("id");
-            if (idObj == null) {
-                continue;
-            }
-            String roomId = String.valueOf(idObj).trim();
-            if (roomId.isEmpty()) {
-                continue;
-            }
-            RoomDictionaryManager.RoomMapping dict = roomDictionaryManager.translate(roomId);
-            if (dict == null) {
-                continue;
-            }
-            Integer level = parseLevel(room.get("level"));
-            RoomMappingRoom rm = roomMappingRoomMapper.selectByRoomId(roomId);
-            String campus = resolveCampusTag(rm, dict.displayName);
+        for (Map<String, Object> entry : snapshot) {
+            String displayName = entry.get("displayName") != null ? String.valueOf(entry.get("displayName")) : "";
+            String campus = entry.get("campusTag") != null ? String.valueOf(entry.get("campusTag")) : "";
             if (campus.isEmpty()) {
                 campus = "未知院区";
             }
-            String line = campus + "·" + dict.displayName;
-            list.add(new RatedLine(level == null ? Integer.MAX_VALUE : level, line));
+            String line = campus + "·" + displayName;
+            Object lvlObj = entry.get("officialPermissionLevel");
+            int level = lvlObj instanceof Number ? ((Number) lvlObj).intValue() : Integer.MAX_VALUE;
+            list.add(new RatedLine(level, line));
         }
         list.sort(Comparator.comparingInt(RatedLine::level));
         Set<String> seen = new LinkedHashSet<>();
@@ -154,9 +203,17 @@ public class ExamRoomPermissionSyncService {
                 continue;
             }
             try {
-                String zh = buildAllowedRoomsDisplayZh(p.getId());
-                int hasPerm = computeHasOfficialRoomPermission(zh, p.getAllowedRoomsJson());
+                List<Map<String, Object>> snapshot = buildAllowedRoomsSnapshot(p.getId());
+                String json;
+                try {
+                    json = objectMapper.writeValueAsString(snapshot);
+                } catch (Exception e) {
+                    json = "[]";
+                }
+                String zh = buildAllowedRoomsDisplayZhFromSnapshot(snapshot);
+                int hasPerm = computeHasOfficialRoomPermission(zh, json);
                 aroPersonnelMapper.updateAllowedRoomsDisplayZh(p.getId(), zh, hasPerm, now);
+                aroPersonnelMapper.updateAllowedRoomsJson(p.getId(), json, now);
                 ok++;
             } catch (Exception e) {
                 log.warn("[personnel-rooms] userId={} err={}", p.getId(), e.getMessage());
