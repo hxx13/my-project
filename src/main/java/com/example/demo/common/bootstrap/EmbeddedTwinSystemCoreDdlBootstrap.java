@@ -4,10 +4,13 @@ import com.example.demo.common.logging.annotation.StartupPhase;
 import com.example.demo.common.logging.model.StartupContext;
 import com.example.demo.common.logging.model.StartupResult;
 import com.example.demo.common.logging.model.StartupRunner;
+import com.example.demo.modules.aup.service.AupDefaultTemplateSeeder;
+import com.example.demo.modules.aup.service.AupDemoSeeder;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.DatabasePopulatorUtils;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.stereotype.Component;
@@ -16,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.sql.DataSource;
+import java.util.List;
 
 /**
  * 启动阶段：幂等执行 classpath:db/bootstrap-*.sql。
@@ -42,12 +46,21 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
     private static final Logger log = LoggerFactory.getLogger(EmbeddedTwinSystemCoreDdlBootstrap.class);
 
     private final DataSource dataSource;
+    private final JdbcTemplate jdbcTemplate;
     private final TwinStudentViolationService twinStudentViolationService;
+    private final AupDefaultTemplateSeeder aupDefaultTemplateSeeder;
+    private final AupDemoSeeder aupDemoSeeder;
 
     public EmbeddedTwinSystemCoreDdlBootstrap(DataSource dataSource,
-                                               TwinStudentViolationService twinStudentViolationService) {
+                                               JdbcTemplate jdbcTemplate,
+                                               TwinStudentViolationService twinStudentViolationService,
+                                               AupDefaultTemplateSeeder aupDefaultTemplateSeeder,
+                                               AupDemoSeeder aupDemoSeeder) {
         this.dataSource = dataSource;
+        this.jdbcTemplate = jdbcTemplate;
         this.twinStudentViolationService = twinStudentViolationService;
+        this.aupDefaultTemplateSeeder = aupDefaultTemplateSeeder;
+        this.aupDemoSeeder = aupDemoSeeder;
     }
 
     /**
@@ -68,6 +81,10 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
     /** 执行全部 DDL 脚本，返回统计结果。传入 null 时跳过 progress tracing。 */
     private StartupResult runAllScripts(StartupContext ctx) {
         int success = 0, total = 0;
+
+        // 先统一 collation：外部建表默认 utf8mb4_0900_ai_ci，join 项目内 unicode_ci 表会报
+        // Illegal mix of collations；必须先于任何含 JOIN/UPDATE 的 bootstrap 脚本执行。
+        unifyCollations();
 
         // --- 核心表 ---
         total++; if (runScript("db/bootstrap-system-config.sql", ctx)) success++;
@@ -109,6 +126,25 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-twin-exp-record-anomaly-review.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-report-form.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-report-form-source.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-dict-category.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-field-description.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-section-highlight.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-subsection-tone.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-project-group.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-demo-flag.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-review-item-role.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-snapshot-draft-source.sql", ctx)) success++;
+        total++; if (runScript("db/migration/V20260815__person_identity_recreate.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-person-identity.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-drop-person-identity-scope.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-migrate-pi-role.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-unify.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-drop-personnel-student-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-migrate-student-notify-keys.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-room-authorization.sql", ctx)) success++;
+        total++; if (seedAupDefaultTemplate(ctx)) success++;
+        total++; if (seedAupDemo(ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_baseline_multi.sql", ctx)) success++;
         total++; if (runScript("db/migration/V20260616__face_verify_audit.sql", ctx)) success++;
@@ -122,6 +158,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-aro-password-col.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aro-training-favorite.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aro-training-reviewed-at.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aro-access-log-index.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-notify-push.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-wx-pusher-uid.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-telemetry-alarm-config.sql", ctx)) success++;
@@ -142,6 +179,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-agv-analytics-hourly.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-stats-pipeline.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-stats-config.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-inventory.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-inventory-item-images.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");
@@ -153,7 +192,56 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
                 + (total - success) + " 个失败 (权限不足或表已存在)", null);
     }
 
+    /** AUP 默认模板种子（环境变量/资源）；幂等，未配置或已有版本时为空操作，不算失败。 */
+    private boolean seedAupDefaultTemplate(StartupContext ctx) {
+        try {
+            if (ctx == null) {
+                aupDefaultTemplateSeeder.seedIfNeeded();
+            } else {
+                ctx.subtask("aup-default-template", aupDefaultTemplateSeeder::seedIfNeeded);
+            }
+            return true;
+        } catch (Exception ex) {
+            log.warn("AUP default template seed skipped: {}", ex.getMessage());
+            return true;
+        }
+    }
+
+    /** AUP 演示示例种子；幂等，已存在演示记录时为空操作，失败不阻塞启动。 */
+    private boolean seedAupDemo(StartupContext ctx) {
+        try {
+            if (ctx == null) {
+                aupDemoSeeder.seedIfNeeded();
+            } else {
+                ctx.subtask("aup-demo", aupDemoSeeder::seedIfNeeded);
+            }
+            return true;
+        } catch (Exception ex) {
+            log.warn("AUP demo seed skipped: {}", ex.getMessage());
+            return true;
+        }
+    }
+
     /** 执行单个脚本，通过 subtask 追踪进度。返回是否成功。 */
+    /** 统一当前库所有含 utf8mb4_0900_ai_ci 列的表为 unicode_ci，根治 join 冲突。幂等。 */
+    private void unifyCollations() {
+        try {
+            List<String> tables = jdbcTemplate.queryForList(
+                    "SELECT DISTINCT TABLE_NAME FROM information_schema.COLUMNS " +
+                            "WHERE TABLE_SCHEMA = DATABASE() AND COLLATION_NAME = 'utf8mb4_0900_ai_ci'", String.class);
+            for (String table : tables) {
+                try {
+                    jdbcTemplate.execute("ALTER TABLE `" + table + "` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+                    log.info("[collation] 表 {} 已统一为 utf8mb4_unicode_ci", table);
+                } catch (Exception e) {
+                    log.warn("[collation] 表 {} 统一跳过: {}", table, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[collation] 批量统一 0900 表跳过: {}", e.getMessage());
+        }
+    }
+
     private boolean runScript(String classpath, StartupContext ctx) {
         if (ctx == null) {
             return doRunSilently(classpath);
