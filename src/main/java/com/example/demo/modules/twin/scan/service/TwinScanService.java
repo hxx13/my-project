@@ -355,7 +355,7 @@ public class TwinScanService {
         rec.setFeedSummaryZh(accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）");
         rec.setFeedDetailZh("本地数据源模式：由孪生 Web 扫码直写本地流水，切回官方后自动对齐溯源。");
         try {
-            aroDatabaseService.batchInsert(java.util.List.of(rec));
+            aroDatabaseService.batchInsert(List.of(rec));
         } catch (Exception e) {
             log.error("[scan·本地直写] userId={} 写入失败 err={}", userId, e.getMessage(), e);
             return false;

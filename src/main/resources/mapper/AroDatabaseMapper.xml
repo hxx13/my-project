@@ -178,6 +178,8 @@
         FROM aro_access_log log
         WHERE log.user_id = #{userId}
           AND log.accessType = 1
+          AND log.id NOT LIKE 'LOCAL-%'
+          AND log.id NOT LIKE 'reconcile-%'
           AND log.create_time &gt;= CONCAT(CURDATE(), ' 00:00:00')
           AND NOT EXISTS (
               SELECT 1
