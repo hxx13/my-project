@@ -2,12 +2,10 @@ package com.example.demo.modules.twin.dahua.service;
 
 import com.example.demo.common.config.DebugToggleService;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchService;
-import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.card.service.TwinAccessLogCorrelationService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
-import com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService;
 import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.common.support.TwinSwingLinkageDetailBuilder;
 import com.example.demo.modules.twin.scan.state.ScanDataSource;
@@ -23,7 +21,6 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -48,8 +45,6 @@ public class DahuaAutoSignoutService {
     private final DahuaSwingRuleConfigService dahuaSwingRuleConfigService;
     private final AccessRuleDispatchService accessRuleDispatchService;
     private final TwinAutomationLogService automationLogService;
-    private final AroMiniPenetrationSyncService miniPenetrationSyncService;
-    private final TwinAccessLogCorrelationService twinAccessLogCorrelationService;
     private final TwinAccessRuleScanConfigService twinAccessRuleScanConfigService;
     private final DahuaSwingRuleEngineService dahuaSwingRuleEngineService;
     private final DebugToggleService debugToggleService;
@@ -62,8 +57,6 @@ public class DahuaAutoSignoutService {
             DahuaSwingRuleConfigService dahuaSwingRuleConfigService,
             AccessRuleDispatchService accessRuleDispatchService,
             TwinAutomationLogService automationLogService,
-            AroMiniPenetrationSyncService miniPenetrationSyncService,
-            TwinAccessLogCorrelationService twinAccessLogCorrelationService,
             TwinAccessRuleScanConfigService twinAccessRuleScanConfigService,
             @Lazy DahuaSwingRuleEngineService dahuaSwingRuleEngineService,
             DebugToggleService debugToggleService,
@@ -75,8 +68,6 @@ public class DahuaAutoSignoutService {
         this.dahuaSwingRuleConfigService = dahuaSwingRuleConfigService;
         this.accessRuleDispatchService = accessRuleDispatchService;
         this.automationLogService = automationLogService;
-        this.miniPenetrationSyncService = miniPenetrationSyncService;
-        this.twinAccessLogCorrelationService = twinAccessLogCorrelationService;
         this.twinAccessRuleScanConfigService = twinAccessRuleScanConfigService;
         this.dahuaSwingRuleEngineService = dahuaSwingRuleEngineService;
         this.debugToggleService = debugToggleService;
@@ -272,25 +263,6 @@ public class DahuaAutoSignoutService {
         }
     }
 
-    private void registerSignoutCorrelation(String userId, String roomId, Long automationLogId,
-                                             String detailForMatch, String triggerType) {
-        if (automationLogId == null) {
-            return;
-        }
-        String sourceTag = "STRANDED_VIOLATION".equalsIgnoreCase(triggerType)
-                ? TwinAccessLogCorrelationService.SOURCE_STRANDED_VIOLATION
-                : TwinAccessLogCorrelationService.SOURCE_AUTO_SIGNOUT;
-        twinAccessLogCorrelationService.registerPending(
-                2,
-                userId,
-                roomId,
-                sourceTag,
-                automationLogId,
-                "孪生·自动离开（ARO 离开登记）",
-                detailForMatch != null ? detailForMatch : ""
-        );
-    }
-
     /** 仅用于面向人的日志文案，不附带 roomId 等技术标识 */
     private String resolveRoomDisplayLabel(Map<String, Object> row, String roomId) {
         if (row != null) {
@@ -451,25 +423,4 @@ public class DahuaAutoSignoutService {
         }
     }
 
-    /**
-     * 离开闭环后的轻量穿甲请求（异步，不阻塞主流程）。
-     * 小请求接口说明：
-     * GET /jtu/api/access/record/list?pageNum=1&pageSize=20
-     * 项目内统一由 AroService.fetchLatestRecordsForRealtime(20) 发起。
-     */
-    private void triggerMiniAroPenetrationRequest(String userId, Integer expectedAccessType) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                AroRecord target = miniPenetrationSyncService.syncLatestForUser(userId, expectedAccessType, 20, true);
-                if (target == null) {
-                    log.info("[auto-signout] mini-penetration requested userId={} fetched=0", userId);
-                    return;
-                }
-                log.info("[auto-signout] mini-penetration requested userId={} expectedAccessType={} targetRecordId={}",
-                        userId, expectedAccessType, target.getId());
-            } catch (Exception e) {
-                log.warn("[auto-signout] mini-penetration failed userId={} err={}", userId, e.getMessage());
-            }
-        });
-    }
 }
