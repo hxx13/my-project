@@ -63,6 +63,17 @@ class PersonnelSqlProviderTest {
     }
 
     @Test
+    void from_joins_use_staff_and_aro_keys_respectively() {
+        String sql = PersonnelSqlProvider.search(base());
+        // 教职工账号：sys_user.id = p.staff_id（STAFF_ 前缀）
+        assertTrue(sql.contains("LEFT JOIN sys_user su_staff ON su_staff.id = p.staff_id"));
+        // ARO 侧学生数据：aro_personnel.user_id = p.aro_user_id（19 位 ARO id，与 staff_id 不同源）
+        assertTrue(sql.contains("LEFT JOIN aro_personnel ap_student ON ap_student.user_id = p.aro_user_id"));
+        // 学生 sys_user 账号：id = p.aro_user_id（StudentAccountProvisioner 以 ARO id 建号）
+        assertTrue(sql.contains("LEFT JOIN sys_user su_student ON su_student.id = p.aro_user_id"));
+    }
+
+    @Test
     void count_contains_same_filter_fragments_as_search() {
         PersonnelFilter f = base();
         f.setKeyword("李");

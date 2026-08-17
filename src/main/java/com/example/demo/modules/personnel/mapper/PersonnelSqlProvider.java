@@ -14,13 +14,13 @@ public class PersonnelSqlProvider {
             "su_student.username AS studentUsername, su_staff.open_id AS staffOpenId, " +
             "su_staff.account_source AS staffAccountSource, su_staff.display_nickname AS staffDisplayNickname, " +
             "su_staff.create_time AS staffCreateTime, " +
-            "COALESCE(su_staff.contact_email, ap_staff.contact_email, su_student.contact_email) AS contactEmail, " +
-            "COALESCE(su_staff.send_key, ap_staff.send_key, su_student.send_key) AS sendKey, " +
-            "COALESCE(su_staff.wx_pusher_uid, ap_staff.wx_pusher_uid, su_student.wx_pusher_uid) AS wxPusherUid ";
+            "COALESCE(su_staff.contact_email, ap_student.contact_email, su_student.contact_email) AS contactEmail, " +
+            "COALESCE(su_staff.send_key, ap_student.send_key, su_student.send_key) AS sendKey, " +
+            "COALESCE(su_staff.wx_pusher_uid, ap_student.wx_pusher_uid, su_student.wx_pusher_uid) AS wxPusherUid ";
 
     private static final String FROM = "FROM personnel p " +
             "LEFT JOIN sys_user su_staff ON su_staff.id = p.staff_id " +
-            "LEFT JOIN aro_personnel ap_staff ON ap_staff.user_id = p.staff_id " +
+            "LEFT JOIN aro_personnel ap_student ON ap_student.user_id = p.aro_user_id " +
             "LEFT JOIN sys_user su_student ON su_student.id = p.aro_user_id ";
 
     public static String search(PersonnelFilter f) {
