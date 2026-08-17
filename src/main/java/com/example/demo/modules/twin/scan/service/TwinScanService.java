@@ -363,11 +363,13 @@ public class TwinScanService {
         rec.setRoomId(roomId);
         try {
             RoomMappingRoom catalog = roomMappingRoomMapper.selectByRoomId(roomId);
-            if (catalog != null && catalog.getRoomName() != null) {
-                rec.setRoomName(catalog.getRoomName());
+            if (catalog != null) {
+                if (catalog.getRoomName() != null) rec.setRoomName(catalog.getRoomName());
+                if (catalog.getRegionName() != null) rec.setAreaName(catalog.getRegionName());
+                if (catalog.getFloorName() != null) rec.setFloorName(catalog.getFloorName());
             }
         } catch (Exception e) {
-            // 房间名查不到不影响直写
+            // 房间信息查不到不影响直写
         }
         try {
             AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
