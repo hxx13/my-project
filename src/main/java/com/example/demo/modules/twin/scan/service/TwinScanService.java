@@ -1,12 +1,15 @@
 package com.example.demo.modules.twin.scan.service; // 请核对一下你的真实包名
 
 import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.common.config.DebugToggleService;
 import com.example.demo.common.dto.UniversalEvent;
+import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.service.AroDatabaseService;
 import com.example.demo.modules.aro.service.RealtimeEventDedupService;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
 import com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper;
+import com.example.demo.modules.twin.scan.state.ScanDataSource;
 import com.example.demo.modules.twin.scan.support.ScanAnalyzeTimingTrace;
 import com.example.demo.modules.twin.scan.support.ScanCampusTagResolver;
 import com.example.demo.modules.twin.scan.support.ScanPopupFlowLog;
@@ -22,11 +25,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -60,6 +66,9 @@ public class TwinScanService {
 
     @Autowired
     private TwinAccessLogCorrelationService twinAccessLogCorrelationService;
+
+    @Autowired
+    private DebugToggleService debugToggleService;
 
     @Autowired
     private ExamRoomPermissionSyncService examRoomPermissionSyncService;
@@ -232,6 +241,10 @@ public class TwinScanService {
      */
     // 💥 方法入参增加了 isShared 和 isKeep
     public boolean executeAccessAction(String userId, String officialRoomId, int accessType, boolean isShared, boolean isKeep, String dahuaSeq, boolean isBorrowedCard) {
+        if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
+            return executeLocalAccess(userId, officialRoomId, accessType);
+        }
+
         // 0. 离开前预同步本地流水，确保后续 predictActionReward 能找到今日 ENTER 记录
         if (accessType == 2) {
             try {
@@ -321,6 +334,42 @@ public class TwinScanService {
         }
 
         return success;
+    }
+
+    private boolean executeLocalAccess(String userId, String roomId, int accessType) {
+        AroRecord rec = new AroRecord();
+        rec.setId("LOCAL-" + UUID.randomUUID().toString().replace("-", ""));
+        rec.setAccessType(accessType);
+        rec.setCreateTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        rec.setUserId(userId);
+        rec.setRoomId(roomId);
+        try {
+            RoomMappingRoom catalog = roomMappingRoomMapper.selectByRoomId(roomId);
+            if (catalog != null && catalog.getRoomName() != null) {
+                rec.setRoomName(catalog.getRoomName());
+            }
+        } catch (Exception e) {
+            // 房间名查不到不影响直写
+        }
+        rec.setFeedSource("LOCAL_SCAN");
+        rec.setFeedSummaryZh(accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）");
+        rec.setFeedDetailZh("本地数据源模式：由孪生 Web 扫码直写本地流水，切回官方后自动对齐溯源。");
+        try {
+            aroDatabaseService.batchInsert(java.util.List.of(rec));
+        } catch (Exception e) {
+            log.error("[scan·本地直写] userId={} 写入失败 err={}", userId, e.getMessage(), e);
+            return false;
+        }
+        try {
+            twinAccessLogCorrelationService.registerPending(
+                    accessType, userId, roomId,
+                    TwinAccessLogCorrelationService.SOURCE_WEB_SCAN, null,
+                    accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）",
+                    "本地数据源模式：本地直写流水，切回官方后自动对齐溯源。");
+        } catch (Exception e) {
+            log.debug("[scan] local registerPending skip: {}", e.getMessage());
+        }
+        return true;
     }
 
     /**
