@@ -624,6 +624,6 @@
 .ap-sheet-group { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
 .ap-sheet-label { font-size: 13px; color: #475569; }
 .ap-sheet-picker { font-size: 13px; color: #1d4ed8; display: flex; align-items: center; gap: 6px; }
-.ap-sheet-actions { display: flex; gap: 12px; margin-top: 16px; }
+.ap-sheet-actions { display: flex; flex-direction: row; gap: 12px; margin-top: 16px; }
 .ap-sheet-actions van-button { flex: 1; }
 .ap-tab { flex: 1; text-align: center; }
