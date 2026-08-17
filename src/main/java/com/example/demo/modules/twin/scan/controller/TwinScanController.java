@@ -3,6 +3,8 @@ package com.example.demo.modules.twin.scan.controller;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.entity.UserAroBinding;
+import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchHintHelper;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchResult;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchService;
@@ -506,11 +508,30 @@ public class TwinScanController {
     @Autowired
     private AroService aroService;
 
+    @Autowired
+    private UserAroBindingMapper userAroBindingMapper;
+
     // 查询人员状态
     @GetMapping("/user-status")
     public Result<?> getUserStatus(@RequestParam String userId) {
-        Map<String, Object> data = aroService.getUserDetailAndDisciplinary(userId);
+        Map<String, Object> data = aroService.getUserDetailAndDisciplinary(resolveAroUserId(userId));
         return Result.success(data);
+    }
+
+    /** 教职工（STAFF_ 前缀）转成 aro_user_id（ARO 接口只认 19 位数字）；学生/无绑定则原样返回。 */
+    private String resolveAroUserId(String userId) {
+        if (userId == null || userId.isBlank()) return userId;
+        String uid = userId.trim();
+        if (!uid.startsWith("STAFF_")) return uid;
+        try {
+            UserAroBinding binding = userAroBindingMapper.selectByUserId(uid);
+            if (binding != null && binding.getAroUserId() != null && !binding.getAroUserId().isBlank()) {
+                return binding.getAroUserId();
+            }
+        } catch (Exception e) {
+            log.warn("[scan] staff_id→aro 转换失败 id={} err={}", uid, e.getMessage());
+        }
+        return uid;
     }
 
     // 修改人员状态
