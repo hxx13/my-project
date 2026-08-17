@@ -3,13 +3,17 @@ package com.example.demo.modules.twin.scan.service; // 请核对一下你的真�
 import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.config.DebugToggleService;
 import com.example.demo.common.dto.UniversalEvent;
+import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.dto.AroRecord;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroDatabaseService;
 import com.example.demo.modules.aro.service.RealtimeEventDedupService;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
 import com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper;
 import com.example.demo.modules.twin.scan.state.ScanDataSource;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyState;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyStateService;
 import com.example.demo.modules.twin.scan.support.ScanAnalyzeTimingTrace;
 import com.example.demo.modules.twin.scan.support.ScanCampusTagResolver;
 import com.example.demo.modules.twin.scan.support.ScanPopupFlowLog;
@@ -82,12 +86,22 @@ public class TwinScanService {
     @Autowired
     private ScanAnalyzeTimingTrace analyzeTimingTrace;
 
+    @Autowired
+    private ScanOccupancyStateService scanOccupancyStateService;
+
+    @Autowired
+    private AroPersonnelMapper aroPersonnelMapper;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 扫码阶段 1：探测状态与权限（日志由 traceId 串联为 3/5、4/5 步）。
      */
     public Map<String, Object> processScanStatus(String userId, String traceId) {
+        if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
+            return processScanStatusLocal(userId, traceId);
+        }
+
         long aroParallelStart = System.currentTimeMillis();
 
         CompletableFuture<List<Map<String, Object>>> noLeaveFuture = CompletableFuture.supplyAsync(() -> {
@@ -369,7 +383,69 @@ public class TwinScanService {
         } catch (Exception e) {
             log.debug("[scan] local registerPending skip: {}", e.getMessage());
         }
+        try {
+            if (accessType == 1) {
+                scanOccupancyStateService.markInside(userId, roomId, rec.getRoomName(), rec.getId());
+            } else {
+                scanOccupancyStateService.markOutside(userId);
+            }
+        } catch (Exception e) {
+            log.warn("[scan·本地直写] 状态机更新失败 userId={} err={}", userId, e.getMessage());
+        }
         return true;
+    }
+
+    private Map<String, Object> processScanStatusLocal(String userId, String traceId) {
+        ScanOccupancyState occ = scanOccupancyStateService.getByUserId(userId);
+        boolean inside = occ != null && ScanOccupancyStateService.STATE_INSIDE.equals(occ.getState());
+
+        List<Map<String, Object>> allowedRooms = loadAllowedRoomsFromSnapshot(userId);
+
+        try {
+            String todayStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            applyDayTrajectoryRoomLocks(userId, todayStr + "%", allowedRooms, traceId);
+            applyCampusEnterAdminLocks(allowedRooms, traceId);
+        } catch (Exception e) {
+            log.warn("[scan-status] day-trajectory-lock failed userId={} err={}", userId, e.getMessage());
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        if (inside) {
+            List<Map<String, Object>> pendingRooms = new ArrayList<>();
+            if (occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank()) {
+                Map<String, Object> pr = new HashMap<>();
+                pr.put("officialRoomId", occ.getCurrentRoomId());
+                pr.put("displayName", occ.getCurrentRoomName());
+                pr.put("officialRoomName", occ.getCurrentRoomName());
+                pendingRooms.add(pr);
+            }
+            response.put("currentState", "INSIDE");
+            response.put("pendingRooms", pendingRooms);
+            response.put("allowedRooms", allowedRooms);
+        } else {
+            response.put("currentState", "OUTSIDE");
+            response.put("allowedRooms", allowedRooms);
+        }
+        return response;
+    }
+
+    private List<Map<String, Object>> loadAllowedRoomsFromSnapshot(String userId) {
+        List<Map<String, Object>> rooms = new ArrayList<>();
+        try {
+            AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
+            String json = p == null ? null : p.getAllowedRoomsJson();
+            if (json == null || json.isBlank()) {
+                return rooms;
+            }
+            List<Map<String, Object>> list = objectMapper.readValue(
+                    json, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+            if (list != null) {
+                rooms.addAll(list);
+            }
+        } catch (Exception e) {
+            log.warn("[scan-status] 加载可进房间快照失败 userId={} err={}", userId, e.getMessage());
+        }
+        return rooms;
     }
 
     /**

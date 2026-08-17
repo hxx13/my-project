@@ -1,10 +1,14 @@
 package com.example.demo.modules.twin.common.service;
 
+import com.example.demo.common.config.DebugToggleService;
 import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.mapper.AroDatabaseMapper;
 import com.example.demo.modules.aro.service.AroDatabaseService;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.twin.card.mapper.TwinCardMappingMapper;
+import com.example.demo.modules.twin.scan.state.ScanDataSource;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyState;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,21 +44,32 @@ public class AroOccupancyAuthorityService {
     private final AroDatabaseMapper aroDatabaseMapper;
     private final AroDatabaseService aroDatabaseService;
     private final TwinAutomationLogService automationLogService;
+    private final DebugToggleService debugToggleService;
+    private final ScanOccupancyStateService scanOccupancyStateService;
 
     public AroOccupancyAuthorityService(
             AroService aroService,
             TwinCardMappingMapper mappingMapper,
             AroDatabaseMapper aroDatabaseMapper,
             AroDatabaseService aroDatabaseService,
-            TwinAutomationLogService automationLogService) {
+            TwinAutomationLogService automationLogService,
+            DebugToggleService debugToggleService,
+            ScanOccupancyStateService scanOccupancyStateService) {
         this.aroService = aroService;
         this.mappingMapper = mappingMapper;
         this.aroDatabaseMapper = aroDatabaseMapper;
         this.aroDatabaseService = aroDatabaseService;
         this.automationLogService = automationLogService;
+        this.debugToggleService = debugToggleService;
+        this.scanOccupancyStateService = scanOccupancyStateService;
     }
 
     public OfficialPresence queryOfficialPresence(String userId) {
+        if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
+            com.example.demo.modules.twin.scan.state.ScanOccupancyState occ = scanOccupancyStateService.getByUserId(userId);
+            return (occ != null && ScanOccupancyStateService.STATE_INSIDE.equals(occ.getState()))
+                    ? OfficialPresence.INSIDE : OfficialPresence.NOT_INSIDE;
+        }
         if (userId == null || userId.isBlank()) {
             return OfficialPresence.QUERY_FAILED;
         }

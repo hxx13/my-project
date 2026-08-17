@@ -16,6 +16,9 @@ import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleEngineService;
 import com.example.demo.modules.twin.rpg.service.RpgEngineService;
 import com.example.demo.modules.twin.rpg.service.TwinExpStatsService;
 import com.example.demo.modules.twin.scan.service.TwinScanService;
+import com.example.demo.modules.twin.scan.state.ScanDataSource;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyState;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyStateService;
 import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleConfigService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
@@ -117,6 +120,9 @@ public class TwinScanController {
 
     @Autowired
     private com.example.demo.common.config.DebugToggleService debugToggleService;
+
+    @Autowired
+    private ScanOccupancyStateService scanOccupancyStateService;
 
     @Autowired
     private TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService;
@@ -662,6 +668,13 @@ public class TwinScanController {
     }
 
     private String resolveOfficialRoomIdFromAro(String userId, String localRoomId, String roomName) {
+        if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
+            com.example.demo.modules.twin.scan.state.ScanOccupancyState occ = scanOccupancyStateService.getByUserId(userId);
+            if (occ != null && occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank()) {
+                return occ.getCurrentRoomId();
+            }
+            return null;
+        }
         List<Map<String, Object>> noLeaveRooms = aroService.getNoLeaveRoom(userId);
         if (noLeaveRooms == null || noLeaveRooms.isEmpty()) {
             return null;
