@@ -137,6 +137,7 @@ Page({
     roleOptions: ['MEMBER', 'STAFF', 'SENIOR', 'ADMIN', 'SUPER_ADMIN', 'PLATFORM_OWNER'],
     roleLabels: ['学生', '普通员工', '高级员工', '管理员', '超级管理员', '平台所有者'],
     roleNames: ['全部', '学生', '普通员工', '高级员工', '管理员', '超级管理员', '平台所有者'],
+    roleIdxMap: { MEMBER: 0, STAFF: 1, SENIOR: 2, ADMIN: 3, SUPER_ADMIN: 4, PLATFORM_OWNER: 5 },
     filterGroupId: 0,
     filterGroupIdx: 0,
     filterIdentityTagId: 0,
