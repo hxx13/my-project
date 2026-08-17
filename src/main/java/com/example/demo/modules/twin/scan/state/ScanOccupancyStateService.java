@@ -1,5 +1,6 @@
 package com.example.demo.modules.twin.scan.state;
 
+import com.example.demo.modules.twin.scan.mapper.ScanOccupancyStateMapper;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;

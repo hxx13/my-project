@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.modules.twin.scan.state.ScanOccupancyStateMapper">
+<mapper namespace="com.example.demo.modules.twin.scan.mapper.ScanOccupancyStateMapper">
 
     <select id="selectByUserId" resultType="com.example.demo.modules.twin.scan.state.ScanOccupancyState">
         SELECT user_id AS userId, state, current_room_id AS currentRoomId, current_room_name AS currentRoomName,

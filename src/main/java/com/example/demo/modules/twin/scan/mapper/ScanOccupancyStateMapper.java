@@ -1,5 +1,6 @@
-package com.example.demo.modules.twin.scan.state;
+package com.example.demo.modules.twin.scan.mapper;
 
+import com.example.demo.modules.twin.scan.state.ScanOccupancyState;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
