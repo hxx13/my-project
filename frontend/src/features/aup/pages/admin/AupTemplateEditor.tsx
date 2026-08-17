@@ -14,6 +14,7 @@ import type {
   ChoiceType,
   FieldConfig,
   FieldType,
+  NoteTone,
   OptionItem,
   ShowWhen,
   ShowWhenOp,
@@ -21,9 +22,18 @@ import type {
   FormSection,
   FormSubSection,
 } from "@/features/aup/schema/formTemplate";
-import FormField, { evaluateShowWhen, normalizeOptions } from "@/features/aup/components/FormField";
+import FormField, { displayTitle, evaluateShowWhen, normalizeOptions } from "@/features/aup/components/FormField";
 import ScrollButtons from "@/features/aup/components/ScrollButtons";
 import { FIELD_TEMPLATES, type FieldTemplate } from "@/features/aup/schema/fieldTemplates";
+import {
+  FIELD_TYPE_GROUP_LABELS,
+  FIELD_TYPES,
+  TYPES_NESTABLE,
+  TYPES_WITH_OPTIONS,
+  TYPE_ICONS,
+  TYPE_REGISTRY,
+  typeMetaOf,
+} from "@/features/aup/schema/typeRegistry";
 import "../../aup.css";
 
 /* =====================================================================
@@ -44,9 +54,9 @@ type StructRef =
   | { kind: "subsection"; si: number; ui: number };
 
 type TargetNode =
-  | { kind: "section"; si: number; code: string; label: string }
-  | { kind: "subsection"; si: number; ui: number; code: string; label: string }
-  | { kind: "field"; si: number; ui?: number; fi: number; code: string; label: string };
+  | { kind: "section"; si: number; code: string; label: string; secCode: string; secLabel: string }
+  | { kind: "subsection"; si: number; ui: number; code: string; label: string; secCode: string; secLabel: string }
+  | { kind: "field"; si: number; ui?: number; fi: number; code: string; label: string; secCode: string; secLabel: string };
 
 function targetKey(t: TargetNode): string {
   return t.kind === "section"
@@ -138,15 +148,58 @@ function collectAllFields(tree: FormSection[]): { key: string; label: string }[]
   return out;
 }
 
+/** 条件配置用的字段目录：按板块/小节分组、以中文名为首选，附带题型与手填选项（值下拉用）。 */
+interface FieldCatalogEntry {
+  key: string;
+  label: string;
+  /** 所属容器编码（板块或小节） */
+  containerCode: string;
+  /** 所属容器中文（如「板块 A · 计划信息」） */
+  containerLabel: string;
+  type?: FieldType;
+  /** 手填选项值（choice/select/checkbox 且未引用字典时可用） */
+  optionValues: string[];
+}
+
+function buildFieldCatalog(tree: FormSection[]): FieldCatalogEntry[] {
+  const out: FieldCatalogEntry[] = [];
+  const push = (f: FormFieldDef, containerCode: string, containerLabel: string) => {
+    out.push({
+      key: f.fieldKey,
+      label: f.label || f.fieldKey,
+      containerCode,
+      containerLabel,
+      type: f.type,
+      optionValues: normalizeOptions(f.options)
+        .map((o) => o.value)
+        .filter(Boolean),
+    });
+  };
+  tree.forEach((s) => {
+    const secLabel = displayTitle(s.code, s.label) || `板块 ${s.code}`;
+    (s.fields ?? []).forEach((f) => push(f, s.code, secLabel));
+    (s.subsections ?? []).forEach((u) => {
+      const subLabel = displayTitle(u.code, u.label) || `小节 ${u.code}`;
+      u.fields.forEach((f) => push(f, u.code, subLabel));
+    });
+  });
+  return out;
+}
+
 function collectTargets(tree: FormSection[]): TargetNode[] {
   const out: TargetNode[] = [];
   tree.forEach((s, si) => {
-    out.push({ kind: "section", si, code: s.code, label: s.label });
+    const secLabel = displayTitle(s.code, s.label) || `板块 ${s.code}`;
+    out.push({ kind: "section", si, code: s.code, label: s.label, secCode: s.code, secLabel });
     (s.subsections ?? []).forEach((u, ui) => {
-      out.push({ kind: "subsection", si, ui, code: u.code, label: u.label });
-      u.fields.forEach((f, fi) => out.push({ kind: "field", si, ui, fi, code: u.code, label: f.label }));
+      out.push({ kind: "subsection", si, ui, code: u.code, label: u.label, secCode: s.code, secLabel });
+      u.fields.forEach((f, fi) =>
+        out.push({ kind: "field", si, ui, fi, code: u.code, label: f.label, secCode: s.code, secLabel })
+      );
     });
-    (s.fields ?? []).forEach((f, fi) => out.push({ kind: "field", si, fi, code: s.code, label: f.label }));
+    (s.fields ?? []).forEach((f, fi) =>
+      out.push({ kind: "field", si, fi, code: s.code, label: f.label, secCode: s.code, secLabel })
+    );
   });
   return out;
 }
@@ -165,12 +218,13 @@ function buildRevealMap(tree: FormSection[]): Map<string, TargetNode[]> {
     m.set(key, arr);
   };
   tree.forEach((s, si) => {
-    add({ kind: "section", si, code: s.code, label: s.label }, s.showWhen);
+    const secLabel = displayTitle(s.code, s.label) || `板块 ${s.code}`;
+    add({ kind: "section", si, code: s.code, label: s.label, secCode: s.code, secLabel }, s.showWhen);
     (s.subsections ?? []).forEach((u, ui) => {
-      add({ kind: "subsection", si, ui, code: u.code, label: u.label }, u.showWhen);
-      u.fields.forEach((f, fi) => add({ kind: "field", si, ui, fi, code: u.code, label: f.label }, f.showWhen));
+      add({ kind: "subsection", si, ui, code: u.code, label: u.label, secCode: s.code, secLabel }, u.showWhen);
+      u.fields.forEach((f, fi) => add({ kind: "field", si, ui, fi, code: u.code, label: f.label, secCode: s.code, secLabel }, f.showWhen));
     });
-    (s.fields ?? []).forEach((f, fi) => add({ kind: "field", si, fi, code: s.code, label: f.label }, f.showWhen));
+    (s.fields ?? []).forEach((f, fi) => add({ kind: "field", si, fi, code: s.code, label: f.label, secCode: s.code, secLabel }, f.showWhen));
   });
   return m;
 }
@@ -219,57 +273,15 @@ function nextChildKey(parentKey: string, existing: string[]): string {
   return `${base}c${i}`;
 }
 
+/** 块内相对键（repeatGroup）：无父前缀，如 c1 / c2 */
+function nextRelKey(existing: string[]): string {
+  const used = new Set(existing);
+  let i = 1;
+  while (used.has(`c${i}`)) i++;
+  return `c${i}`;
+}
+
 const statusLabel = (s: string) => (s === "DRAFT" ? "草稿" : s === "PUBLISHED" ? "已发布" : "已归档");
-
-const FIELD_TYPES: { value: FieldType; label: string }[] = [
-  { value: "text", label: "输入框" },
-  { value: "textarea", label: "多行输入框" },
-  { value: "number", label: "数字输入框" },
-  { value: "date", label: "日期选择" },
-  { value: "dateRange", label: "日期区间" },
-  { value: "time", label: "时间选择" },
-  { value: "choice", label: "选择题" },
-  { value: "checkbox", label: "是否勾选" },
-  { value: "cascade", label: "级联选择" },
-  { value: "table", label: "表格" },
-  { value: "group", label: "字段组" },
-  { value: "file", label: "附件上传" },
-  { value: "image", label: "图片上传" },
-  { value: "personPicker", label: "人员选择" },
-  { value: "departmentPicker", label: "部门选择" },
-  { value: "cagePicker", label: "笼位选择" },
-  { value: "animalPicker", label: "动物选择" },
-  { value: "signature", label: "签名" },
-  { value: "richText", label: "富文本" },
-  { value: "divider", label: "分隔线" },
-  { value: "description", label: "说明文字" },
-];
-
-const TYPE_ICONS: Record<FieldType, string> = {
-  text: "文",
-  textarea: "多",
-  number: "数",
-  date: "日",
-  dateRange: "区",
-  time: "时",
-  choice: "选",
-  checkbox: "勾",
-  cascade: "级",
-  table: "表",
-  group: "组",
-  file: "附",
-  image: "图",
-  personPicker: "人",
-  departmentPicker: "部",
-  cagePicker: "笼",
-  animalPicker: "动",
-  signature: "签",
-  richText: "富",
-  divider: "分",
-  description: "说",
-};
-
-const typeLabelOf = (t: FieldType) => FIELD_TYPES.find((x) => x.value === t)?.label ?? t;
 
 const CSS = `
 .aup{--p:#002FA7;--pw:#EEF2FF;--s:#15803D;--sw:#E8F7EE;--w:#B45309;--ww:#FEF3C7;--d:#DC2626;--dw:#FDEAEA;
@@ -350,12 +362,17 @@ const CSS = `
 .aup .aup-sub-hd{display:flex;align-items:center;gap:8px;margin:14px 0 4px;font-size:14px;font-weight:700;color:#1f2937}
 .aup .aup-sub-code{color:var(--p);font-weight:700;flex-shrink:0}
 .aup .aup-sub-desc{font-size:12px;color:var(--mu);margin:-2px 0 8px}
+.aup .aup-sub-desc.warn{color:#8a5a00}
+.aup .aup-sub-desc.danger{color:#b03a3a}
+.aup .aup-sub-desc.muted{color:var(--mu)}
 .aup .aup-sec-acts .aup-hint-link{color:var(--mu)}
 
 /* 条件横幅（写在目标上，人话） */
 .aup .aup-cond-banner{display:flex;align-items:center;gap:8px;border:1px dashed #b45309;background:var(--ww);border-radius:6px;padding:6px 12px;font-size:12px;color:#7c4a03;margin:8px 0}
 .aup .aup-cond-banner .aup-btn{color:#7c4a03;border-color:#b45309;padding:1px 8px;font-size:11px}
 .aup .aup-cond-banner.small{margin:6px 0 0}
+.aup .aup-cond-banner.action{width:100%;text-align:left;font-family:inherit;cursor:pointer}
+.aup .aup-cond-banner.action:hover{border-color:#b45309;background:#fdf3d9}
 
 /* 题目容器：悬浮出操作 */
 .aup .aup-fw{position:relative;border-radius:8px;margin:0 -6px;padding:6px 6px 2px}
@@ -368,7 +385,10 @@ const CSS = `
 .aup .aup-add-row{margin-top:10px;padding-top:8px;border-top:1px dashed #d5dbe3}
 .aup .aup-add-link{color:var(--p);font-size:13px;cursor:pointer;background:none;border:none;padding:2px 4px}
 .aup .aup-add-link:hover{text-decoration:underline}
-.aup .aup-type-menu{border:1px solid var(--bd);border-radius:10px;background:#fff;padding:12px;box-shadow:0 8px 28px rgba(16,24,40,.14);max-height:min(620px,78vh);overflow-y:auto}
+/* 题型选择：视口居中模态框（遮罩 + 自适应宽高，不再内联占位溢出屏幕） */
+.aup .aup-type-mask{position:fixed;inset:0;background:rgba(17,24,39,.4);z-index:90;display:flex;justify-content:center;align-items:flex-start;padding:6vh 16px 24px;overflow-y:auto}
+.aup .aup-type-menu{width:min(720px,100%);border:1px solid var(--bd);border-radius:10px;background:#fff;padding:12px;box-shadow:0 8px 28px rgba(16,24,40,.14);max-height:calc(100vh - 6vh - 24px);overflow-y:auto}
+.aup .aup-type-menu .aup-type-grid:last-of-type{margin-bottom:2px}
 .aup .aup-type-menu-hd{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:700;margin-bottom:10px}
 .aup .aup-type-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .aup .aup-type-grid button{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid #e2e6ec;border-radius:8px;background:#fff;cursor:pointer;font-size:12.5px;text-align:left}
@@ -456,16 +476,29 @@ const CSS = `
 function ShowWhenEditor({
   value,
   onChange,
-  fieldOptions,
+  fieldCatalog,
 }: {
   value: ShowWhen | null | undefined;
   onChange: (v: ShowWhen | null) => void;
-  fieldOptions?: { key: string; label: string }[];
+  fieldCatalog: FieldCatalogEntry[];
 }) {
   const showWhen: ShowWhen | null = value ?? null;
   const op = showWhen?.op ?? "";
   const needValue = op === "equals" || op === "notEquals" || op === "contains" || op === "notContains";
-  const options = fieldOptions ?? [];
+  const selected = fieldCatalog.find((c) => c.key === showWhen?.field);
+  const hasOptions = needValue && !!selected && selected.optionValues.length > 0;
+
+  // 按所属板块/小节分组，中文名为首选、字段键收进括号作附注（降低代码索引门槛）
+  const groups = useMemo(() => {
+    const m = new Map<string, FieldCatalogEntry[]>();
+    fieldCatalog.forEach((c) => {
+      const arr = m.get(c.containerLabel) ?? [];
+      arr.push(c);
+      m.set(c.containerLabel, arr);
+    });
+    return Array.from(m.entries());
+  }, [fieldCatalog]);
+
   return (
     <div>
       <div className="aup-row">
@@ -488,43 +521,70 @@ function ShowWhenEditor({
           }}
         >
           <option value="">无（始终显示）</option>
-          <option value="equals">当某字段 = 某值时显示</option>
-          <option value="notEquals">当某字段 ≠ 某值时显示</option>
-          <option value="contains">当某字段包含某值时显示</option>
-          <option value="notContains">当某字段不含某值时显示</option>
-          <option value="notEmpty">当某字段非空时显示</option>
-          <option value="empty">当某字段为空时显示</option>
+          <option value="equals">当某题选择某选项时显示</option>
+          <option value="notEquals">当某题不是某选项时显示</option>
+          <option value="contains">当某题包含某选项时显示</option>
+          <option value="notContains">当某题不含某选项时显示</option>
+          <option value="notEmpty">当某题已填写时显示</option>
+          <option value="empty">当某题未填写时显示</option>
         </select>
       </div>
       {showWhen && (
         <>
           <div className="aup-row">
-            <label>依赖字段</label>
+            <label>依赖题目</label>
             <select
               className="aup-select"
               value={showWhen.field}
               onChange={(e) => onChange({ ...showWhen, field: e.target.value })}
             >
-              <option value="">选择字段…</option>
-              {options.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.key}
-                  {o.label ? ` · ${o.label}` : ""}
-                </option>
+              <option value="">选择题目…</option>
+              {groups.map(([gl, items]) => (
+                <optgroup key={gl} label={gl}>
+                  {items.map((c) => (
+                    <option key={c.key} value={c.key}>
+                      {c.label}（{c.key}）
+                    </option>
+                  ))}
+                </optgroup>
               ))}
-              {showWhen.field && !options.some((o) => o.key === showWhen.field) && (
+              {showWhen.field && !fieldCatalog.some((c) => c.key === showWhen.field) && (
                 <option value={showWhen.field}>{showWhen.field}（手动）</option>
               )}
             </select>
           </div>
           {needValue && (
             <div className="aup-row">
-              <label>比较值</label>
-              <input
-                className="aup-input"
-                value={String(showWhen.value ?? "")}
-                onChange={(e) => onChange({ ...showWhen, value: e.target.value })}
-              />
+              <label>选项值</label>
+              {hasOptions ? (
+                <select
+                  className="aup-select"
+                  value={String(showWhen.value ?? "")}
+                  onChange={(e) => onChange({ ...showWhen, value: e.target.value })}
+                >
+                  <option value="">选择选项…</option>
+                  {selected!.optionValues.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                  {String(showWhen.value ?? "") && !selected!.optionValues.includes(String(showWhen.value)) && (
+                    <option value={String(showWhen.value)}>{String(showWhen.value)}（保留原值）</option>
+                  )}
+                </select>
+              ) : (
+                <input
+                  className="aup-input"
+                  value={String(showWhen.value ?? "")}
+                  placeholder="手动填写值"
+                  onChange={(e) => onChange({ ...showWhen, value: e.target.value })}
+                />
+              )}
+            </div>
+          )}
+          {needValue && !hasOptions && (
+            <div className="aup-hint" style={{ marginTop: -4, marginBottom: 4 }}>
+              该题目没有可选项，需手动输入与填写值完全一致的文字。
             </div>
           )}
         </>
@@ -546,31 +606,34 @@ function TypeMenu({
   onClose: () => void;
 }) {
   return (
-    <div className="aup-type-menu">
-      <div className="aup-type-menu-hd">
-        <span>选择题目类型</span>
-        <button className="aup-iconbtn" onClick={onClose} title="关闭">×</button>
-      </div>
-      <div className="aup-type-grid">
-        {FIELD_TYPES.map((t) => (
-          <button key={t.value} onClick={() => onPick(t.value)}>
-            <span className="aup-type-ic">{TYPE_ICONS[t.value]}</span>
-            <span>{t.label}</span>
-          </button>
-        ))}
-      </div>
-      <div className="aup-type-tpl-hd">复合模板（一键插入整组题目）</div>
-      <div className="aup-type-grid tpl">
-        {FIELD_TEMPLATES.map((t) => (
-          <button key={t.key} onClick={() => onPickTemplate(t)} title={t.desc}>
-            <span className="tpl-name">
+    <div className="aup-type-mask" onClick={onClose}>
+      <div className="aup-type-menu" onClick={(e) => e.stopPropagation()}>
+        <div className="aup-type-menu-hd">
+          <span>选择题目类型</span>
+          <span className="aup-muted" style={{ fontWeight: 400 }}>点空白处或 Esc 关闭</span>
+          <button className="aup-iconbtn" onClick={onClose} title="关闭">×</button>
+        </div>
+        <div className="aup-type-grid">
+          {TYPE_REGISTRY.map((t) => (
+            <button key={t.value} onClick={() => onPick(t.value)} title={FIELD_TYPE_GROUP_LABELS[t.group]}>
               <span className="aup-type-ic">{t.icon}</span>
               <span>{t.label}</span>
-              <span className="cnt">{t.count} 项</span>
-            </span>
-            <span className="tpl-desc">{t.desc}</span>
-          </button>
-        ))}
+            </button>
+          ))}
+        </div>
+        <div className="aup-type-tpl-hd">复合模板（一键插入整组题目）</div>
+        <div className="aup-type-grid tpl">
+          {FIELD_TEMPLATES.map((t) => (
+            <button key={t.key} onClick={() => onPickTemplate(t)} title={t.desc}>
+              <span className="tpl-name">
+                <span className="aup-type-ic">{t.icon}</span>
+                <span>{t.label}</span>
+                <span className="cnt">{t.count} 项</span>
+              </span>
+              <span className="tpl-desc">{t.desc}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -623,6 +686,17 @@ function OptionsEditor({
                 disabled={!editable}
                 onChange={(e) => onChangeOptionText(i, e.target.value)}
               />
+              <input
+                className="aup-input"
+                style={{ width: 110, flex: "0 0 110px" }}
+                placeholder="分组（可选）"
+                title="排版选「分组标题」时，同分组选项聚在一组"
+                value={o.group ?? ""}
+                disabled={!editable}
+                onChange={(e) =>
+                  onChangeOptions(options.map((x, j) => (j === i ? { ...x, group: e.target.value || undefined } : x)))
+                }
+              />
               <button
                 className={`aup-expand-pill ${revealed.length > 0 ? "on" : "off"}`}
                 disabled={!editable}
@@ -671,10 +745,22 @@ function OptionsEditor({
                       }}
                     >
                       <option value="">选择板块 / 小节 / 题目…</option>
-                      {pickable.map((t) => (
-                        <option key={targetKey(t)} value={targetKey(t)}>
-                          {targetLabel(t)}
-                        </option>
+                      {Array.from(
+                        pickable.reduce((m, t) => {
+                          const g = `${t.secLabel}`;
+                          const arr = m.get(g) ?? [];
+                          arr.push(t);
+                          m.set(g, arr);
+                          return m;
+                        }, new Map<string, TargetNode[]>())
+                      ).map(([gl, items]) => (
+                        <optgroup key={gl} label={gl}>
+                          {items.map((t) => (
+                            <option key={targetKey(t)} value={targetKey(t)}>
+                              {targetLabel(t)}
+                            </option>
+                          ))}
+                        </optgroup>
                       ))}
                     </select>
                   </div>
@@ -706,93 +792,312 @@ function OptionsEditor({
 }
 
 /* =====================================================================
- * 子字段列表（table 的 columns / group 的 fields）
+ * 表格列 / 组子字段的选项编辑（紧凑版：无选项侧展开，单元格选项直接渲染）
  * ================================================================== */
+function ColumnOptions({
+  field,
+  patch,
+  editable,
+}: {
+  field: FormFieldDef;
+  patch: (p: Partial<FormFieldDef>) => void;
+  editable: boolean;
+}) {
+  const opts = normalizeOptions(field.options);
+  const setOpts = (o: OptionItem[]) => patch({ options: o });
+  const setOpt = (i: number, text: string) =>
+    setOpts(opts.map((o, j) => (j === i ? { value: text, label: text } : o)));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {opts.map((o, i) => (
+        <div key={i} className="aup-row" style={{ marginBottom: 0 }}>
+          <span className="aup-type-ic" style={{ flex: "0 0 auto" }}>•</span>
+          <input
+            className="aup-input"
+            placeholder="选项文字"
+            value={o.label}
+            disabled={!editable}
+            onChange={(e) => setOpt(i, e.target.value)}
+          />
+          <button className="aup-iconbtn" title="上移" disabled={!editable} onClick={() => setOpts(move(opts, i, -1))}>↑</button>
+          <button className="aup-iconbtn" title="下移" disabled={!editable} onClick={() => setOpts(move(opts, i, 1))}>↓</button>
+          <button className="aup-iconbtn danger" title="删除" disabled={!editable} onClick={() => setOpts(opts.filter((_, j) => j !== i))}>×</button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          className="aup-btn small ghost"
+          disabled={!editable}
+          onClick={() => setOpts([...opts, { value: "", label: "" }])}
+        >
+          ＋ 选项
+        </button>
+        <button
+          className="aup-btn small ghost"
+          disabled={!editable}
+          title="一键生成 是/否 两项"
+          onClick={() => setOpts([{ value: "是", label: "是" }, { value: "否", label: "否" }])}
+        >
+          ⚡ 是/否
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================================
+ * 子字段列表（table 的 columns / group 的 fields）
+ * 补齐：choice/checkbox 的选项编辑、选择方式（单选/多选）、字典引用。
+ * ================================================================== */
+function ChildFieldRow({
+  field,
+  patch,
+  onMove,
+  onDelete,
+  editable,
+  dicts,
+  categories,
+}: {
+  field: FormFieldDef;
+  patch: (p: Partial<FormFieldDef>) => void;
+  onMove: (dir: -1 | 1) => void;
+  onDelete: () => void;
+  editable: boolean;
+  dicts: { dictKey: string; name: string; category?: string; itemCount?: number }[];
+  categories: string[];
+}) {
+  const c = field;
+  const [open, setOpen] = useState(false);
+  const [selCat, setSelCat] = useState<string>(c.dictKey ? dicts.find((d) => d.dictKey === c.dictKey)?.category ?? "" : "");
+  const [selDict, setSelDict] = useState<string>(c.dictKey ?? "");
+  const cfg = c.config ?? {};
+  const setCfg = (p: Partial<FieldConfig>) => patch({ config: { ...cfg, ...p } });
+  const meta = typeMetaOf(c.type);
+  const useDict = !!c.dictKey;
+  const dictsInCat = selCat ? dicts.filter((d) => (d.category || "未分类") === selCat) : dicts;
+
+  return (
+    <div style={{ border: "1px dashed #d5dbe3", borderRadius: 8, padding: 8 }}>
+      <div className="aup-row" style={{ marginBottom: 0 }}>
+        <input
+          className="aup-input"
+          style={{ width: 140, flex: "0 0 140px" }}
+          title="字段键"
+          value={c.fieldKey}
+          disabled={!editable}
+          onChange={(e) => patch({ fieldKey: e.target.value })}
+        />
+        <input
+          className="aup-input"
+          placeholder="名称"
+          value={c.label}
+          disabled={!editable}
+          onChange={(e) => patch({ label: e.target.value })}
+        />
+        <select
+          className="aup-select"
+          style={{ width: 150, flex: "0 0 150px" }}
+          value={c.type}
+          disabled={!editable}
+          onChange={(e) => {
+            const nt = e.target.value as FieldType;
+            patch({ type: nt, config: { ...cfg, ...(typeMetaOf(nt)?.defaultConfig ?? {}) } });
+          }}
+        >
+          {TYPE_REGISTRY.map((t) => (
+            <option key={t.value} value={t.value}>
+              {FIELD_TYPE_GROUP_LABELS[t.group]} · {t.label}
+            </option>
+          ))}
+        </select>
+        <label className="aup-check" style={{ paddingTop: 0 }}>
+          <input
+            type="checkbox"
+            checked={!!c.required}
+            disabled={!editable}
+            onChange={(e) => patch({ required: e.target.checked })}
+          />
+          必填
+        </label>
+        <button className="aup-btn small ghost" style={{ padding: "0 8px" }} disabled={!editable} onClick={() => setOpen(!open)}>
+          配置
+        </button>
+        <button className="aup-iconbtn" title="上移" disabled={!editable} onClick={() => onMove(-1)}>↑</button>
+        <button className="aup-iconbtn" title="下移" disabled={!editable} onClick={() => onMove(1)}>↓</button>
+        <button className="aup-iconbtn danger" title="删除" disabled={!editable} onClick={onDelete}>×</button>
+      </div>
+
+      {open && (
+        <div style={{ borderTop: "1px dashed #d5dbe3", marginTop: 8, paddingTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          {meta?.hasOptions && (
+            <>
+              <div className="aup-row" style={{ marginBottom: 0, alignItems: "center" }}>
+                <label>选项来源</label>
+                <button
+                  type="button"
+                  className={`aup-btn small ${useDict ? "ghost" : ""}`}
+                  style={useDict ? undefined : { background: "var(--pw)", color: "var(--p)", borderColor: "var(--p)" }}
+                  disabled={!editable}
+                  onClick={() => {
+                    const opts = normalizeOptions(c.options);
+                    patch({ dictKey: undefined, options: opts.length ? opts : [{ value: "", label: "" }] });
+                    setSelDict("");
+                  }}
+                >
+                  手动填写
+                </button>
+                <button
+                  type="button"
+                  className={`aup-btn small ${!useDict ? "ghost" : ""}`}
+                  style={!useDict ? undefined : { background: "var(--pw)", color: "var(--p)", borderColor: "var(--p)" }}
+                  disabled={!editable}
+                  onClick={() => {
+                    patch({ dictKey: "", options: undefined });
+                    setSelCat("");
+                    setSelDict("");
+                  }}
+                >
+                  从字典选择
+                </button>
+              </div>
+              {useDict ? (
+                <>
+                  <div className="aup-row" style={{ marginBottom: 0 }}>
+                    <label>分类</label>
+                    <select
+                      className="aup-select"
+                      value={selCat}
+                      disabled={!editable}
+                      onChange={(e) => {
+                        setSelCat(e.target.value);
+                        setSelDict("");
+                        patch({ dictKey: undefined });
+                      }}
+                    >
+                      <option value="">选择分类…</option>
+                      {categories.map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="aup-row" style={{ marginBottom: 0 }}>
+                    <label>字典</label>
+                    <select
+                      className="aup-select"
+                      value={selDict}
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const dk = e.target.value;
+                        setSelDict(dk);
+                        patch({ dictKey: dk || undefined });
+                      }}
+                    >
+                      <option value="">选择字典…</option>
+                      {dictsInCat.map((d) => (
+                        <option key={d.dictKey} value={d.dictKey}>
+                          {d.name}
+                          {d.itemCount ? `（${d.itemCount} 项）` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <ColumnOptions field={c} patch={patch} editable={editable} />
+                  {c.type === "choice" && (
+                    <div className="aup-row" style={{ marginBottom: 0, alignItems: "center" }}>
+                      <label>选择方式</label>
+                      <select
+                        className="aup-select"
+                        value={String(cfg.choiceType ?? "single")}
+                        disabled={!editable}
+                        onChange={(e) => setCfg({ choiceType: e.target.value as ChoiceType })}
+                      >
+                        <option value="single">单选</option>
+                        <option value="multiple">多选</option>
+                      </select>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+          {c.type === "number" && (
+            <div className="aup-row" style={{ marginBottom: 0, alignItems: "center" }}>
+              <label>单位</label>
+              <input
+                className="aup-input"
+                value={String(cfg.unit ?? "")}
+                disabled={!editable}
+                onChange={(e) => setCfg({ unit: e.target.value })}
+              />
+            </div>
+          )}
+          <div className="aup-row" style={{ marginBottom: 0, alignItems: "center" }}>
+            <label>列宽</label>
+            <input
+              className="aup-input"
+              type="number"
+              value={String(cfg.width ?? "")}
+              disabled={!editable}
+              placeholder="px，留空自适应"
+              onChange={(e) => setCfg({ width: e.target.value ? Number(e.target.value) : undefined })}
+            />
+          </div>
+          {meta?.nestable && (
+            <div className="aup-hint">暂不支持嵌套 table/group，请改用基础类型。</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChildFieldList({
   fields,
   onChange,
   editable,
   parentKey,
+  relativeKeys,
+  dicts,
+  categories,
 }: {
   fields: FormFieldDef[];
   onChange: (f: FormFieldDef[]) => void;
   editable: boolean;
   parentKey: string;
+  /** repeatGroup 块内子字段：生成无父前缀的相对键 */
+  relativeKeys?: boolean;
+  /** 字典列表（引用选项来源用；与 FieldEditorInline 同一数据源） */
+  dicts: { dictKey: string; name: string; category?: string; itemCount?: number }[];
+  categories: string[];
 }) {
   const addChild = () => {
-    const key = nextChildKey(parentKey, fields.map((f) => f.fieldKey));
+    const key = relativeKeys
+      ? nextRelKey(fields.map((f) => f.fieldKey))
+      : nextChildKey(parentKey, fields.map((f) => f.fieldKey));
     onChange([...fields, { fieldKey: key, label: "", type: "text", required: false }]);
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {fields.map((c, i) => {
-        const patch = (p: Partial<FormFieldDef>) => {
-          const n = [...fields];
-          n[i] = { ...n[i], ...p };
-          onChange(n);
-        };
-        return (
-          <div key={`${i}-${c.fieldKey}`} style={{ border: "1px dashed #d5dbe3", borderRadius: 8, padding: 8 }}>
-            <div className="aup-row" style={{ marginBottom: 0 }}>
-              <input
-                className="aup-input"
-                style={{ width: 140, flex: "0 0 140px" }}
-                title="字段键"
-                value={c.fieldKey}
-                disabled={!editable}
-                onChange={(e) => patch({ fieldKey: e.target.value })}
-              />
-              <input
-                className="aup-input"
-                placeholder="名称"
-                value={c.label}
-                disabled={!editable}
-                onChange={(e) => patch({ label: e.target.value })}
-              />
-              <select
-                className="aup-select"
-                style={{ width: 140, flex: "0 0 140px" }}
-                value={c.type}
-                disabled={!editable}
-                onChange={(e) => patch({ type: e.target.value as FieldType })}
-              >
-                {FIELD_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-              <label className="aup-check" style={{ paddingTop: 0 }}>
-                <input
-                  type="checkbox"
-                  checked={!!c.required}
-                  disabled={!editable}
-                  onChange={(e) => patch({ required: e.target.checked })}
-                />
-                必填
-              </label>
-              <button className="aup-iconbtn" title="上移" disabled={!editable} onClick={() => onChange(move(fields, i, -1))}>↑</button>
-              <button className="aup-iconbtn" title="下移" disabled={!editable} onClick={() => onChange(move(fields, i, 1))}>↓</button>
-              <button className="aup-iconbtn danger" title="删除" disabled={!editable} onClick={() => onChange(fields.filter((_, j) => j !== i))}>×</button>
-            </div>
-            {c.type === "number" && (
-              <div className="aup-row" style={{ margin: "8px 0 0", alignItems: "center" }}>
-                <label>单位</label>
-                <input
-                  className="aup-input"
-                  value={String(c.config?.unit ?? "")}
-                  disabled={!editable}
-                  onChange={(e) => patch({ config: { ...c.config, unit: e.target.value } })}
-                />
-              </div>
-            )}
-            {(c.type === "table" || c.type === "group") && (
-              <div className="aup-hint">暂不支持嵌套 table/group，请改用基础类型。</div>
-            )}
-          </div>
-        );
-      })}
+      {fields.map((c, i) => (
+        <ChildFieldRow
+          key={`${i}-${c.fieldKey}`}
+          field={c}
+          patch={(p) => {
+            const n = [...fields];
+            n[i] = { ...n[i], ...p };
+            onChange(n);
+          }}
+          onMove={(dir) => onChange(move(fields, i, dir))}
+          onDelete={() => onChange(fields.filter((_, j) => j !== i))}
+          editable={editable}
+          dicts={dicts}
+          categories={categories}
+        />
+      ))}
       <button className="aup-btn small ghost" disabled={!editable} onClick={addChild}>
         ＋ 添加
       </button>
@@ -807,30 +1112,35 @@ function FieldEditorInline({
   field,
   patch,
   editable,
-  fieldOptions,
+  fieldCatalog,
   targets,
   revealMap,
   onChangeOptionText,
   onApplyExpand,
   onClearExpand,
   onClose,
+  focusShowWhen,
 }: {
   field: FormFieldDef;
   patch: (p: Partial<FormFieldDef>) => void;
   editable: boolean;
-  fieldOptions: { key: string; label: string }[];
+  fieldCatalog: FieldCatalogEntry[];
   targets: TargetNode[];
   revealMap: Map<string, TargetNode[]>;
   onChangeOptionText: (i: number, text: string) => void;
   onApplyExpand: (optionValue: string, target: TargetNode) => void;
   onClearExpand: (target: TargetNode) => void;
   onClose: () => void;
+  /** 打开时自动展开「高级设置」定位到显示条件（点题目卡片上的条件横幅触发） */
+  focusShowWhen?: boolean;
 }) {
   const cfg: FieldConfig = field.config ?? {};
   const options = normalizeOptions(field.options);
   const useDict = !!field.dictKey;
   const setCfg = (p: Partial<FieldConfig>) => patch({ config: { ...cfg, ...p } });
   const multiple = field.type === "choice" && cfg.choiceType === "multiple";
+  // 点题目卡片上的条件横幅进入时，自动展开「高级设置」定位到显示条件
+  const [advOpen, setAdvOpen] = useState(Boolean(focusShowWhen));
 
   /* 字典选择：分类 → 字典 */
   const dictsQuery = useQuery({ queryKey: ["aup", "dicts", "all"], queryFn: () => fetchAupDicts({ size: 500 }) });
@@ -848,8 +1158,9 @@ function FieldEditorInline({
 
   const renderTypeConfig = () => {
     const t = field.type;
+    const meta = typeMetaOf(t);
 
-    if (t === "choice" || t === "checkbox") {
+    if (meta?.hasOptions) {
       return (
         <>
           <div className="aup-divider" />
@@ -944,18 +1255,48 @@ function FieldEditorInline({
                 editable={editable}
               />
               {t === "choice" && (
-                <div className="aup-row" style={{ marginTop: 8, alignItems: "center" }}>
-                  <label>选择方式</label>
-                  <select
-                    className="aup-select"
-                    value={String(cfg.choiceType ?? "single")}
-                    disabled={!editable}
-                    onChange={(e) => setCfg({ choiceType: e.target.value as ChoiceType })}
-                  >
-                    <option value="single">单选</option>
-                    <option value="multiple">多选（可多选并触发补充表）</option>
-                  </select>
-                </div>
+                <>
+                  <div className="aup-row" style={{ marginTop: 8, alignItems: "center" }}>
+                    <label>选择方式</label>
+                    <select
+                      className="aup-select"
+                      value={String(cfg.choiceType ?? "single")}
+                      disabled={!editable}
+                      onChange={(e) => setCfg({ choiceType: e.target.value as ChoiceType })}
+                    >
+                      <option value="single">单选</option>
+                      <option value="multiple">多选（可多选并触发补充表）</option>
+                    </select>
+                  </div>
+                  <div className="aup-row" style={{ marginTop: 8, alignItems: "center" }}>
+                    <label>选项排版</label>
+                    <select
+                      className="aup-select"
+                      value={String(cfg.layout ?? "list")}
+                      disabled={!editable}
+                      onChange={(e) => setCfg({ layout: e.target.value as FieldConfig["layout"] })}
+                    >
+                      <option value="list">竖排（默认）</option>
+                      <option value="grid">多列网格</option>
+                      <option value="grouped">分组标题（选项填「分组」时生效）</option>
+                    </select>
+                  </div>
+                  {cfg.layout === "grid" && (
+                    <div className="aup-row" style={{ marginTop: 8, alignItems: "center" }}>
+                      <label>列数</label>
+                      <select
+                        className="aup-select"
+                        value={String(cfg.cols ?? 3)}
+                        disabled={!editable}
+                        onChange={(e) => setCfg({ cols: Number(e.target.value) })}
+                      >
+                        <option value="2">2 列</option>
+                        <option value="3">3 列</option>
+                        <option value="4">4 列</option>
+                      </select>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
@@ -1064,23 +1405,69 @@ function FieldEditorInline({
             editable={editable}
             parentKey={field.fieldKey}
             onChange={(cols) => setCfg({ columns: cols })}
+            dicts={dicts}
+            categories={categories}
           />
         </>
       );
     }
 
-    if (t === "group") {
+    if (t === "group" || t === "repeatGroup") {
       return (
         <>
+          <div className="aup-divider" />
+          {t === "repeatGroup" && (
+            <div className="aup-row" style={{ alignItems: "center" }}>
+              <label>说明</label>
+              <span className="aup-muted-tip">可重复块：填写页可增删多份同构块，每块内字段 key 用相对名（如 species），块内联动只在本块内生效。</span>
+            </div>
+          )}
+          <div className="aup-divider" />
+          <div className="aup-row" style={{ alignItems: "center" }}>
+            <label>子字段排版</label>
+            <select
+              className="aup-select"
+              value={String(cfg.cols ?? 1)}
+              disabled={!editable}
+              onChange={(e) => setCfg({ cols: Number(e.target.value) })}
+            >
+              <option value="1">竖排（默认）</option>
+              <option value="2">2 列</option>
+              <option value="3">3 列</option>
+              <option value="4">4 列</option>
+            </select>
+          </div>
           <div className="aup-divider" />
           <div className="aup-subh">子字段</div>
           <ChildFieldList
             fields={cfg.fields ?? []}
             editable={editable}
             parentKey={field.fieldKey}
+            relativeKeys={t === "repeatGroup"}
             onChange={(fs) => setCfg({ fields: fs })}
+            dicts={dicts}
+            categories={categories}
           />
         </>
+      );
+    }
+
+    if (t === "description" || t === "richText") {
+      return (
+        <div className="aup-row" style={{ marginTop: 8 }}>
+          <label>说明样式</label>
+          <select
+            className="aup-select"
+            value={String(cfg.tone ?? "info")}
+            disabled={!editable}
+            onChange={(e) => setCfg({ tone: e.target.value as NoteTone })}
+          >
+            <option value="info">信息（蓝色，默认）</option>
+            <option value="warn">警示（琥珀色）</option>
+            <option value="danger">危险/红色强调</option>
+            <option value="muted">弱化（灰色）</option>
+          </select>
+        </div>
       );
     }
 
@@ -1166,7 +1553,7 @@ function FieldEditorInline({
 
       {renderTypeConfig()}
 
-      <details className="aup-adv">
+      <details className="aup-adv" open={advOpen} onToggle={(e) => setAdvOpen(e.currentTarget.open)}>
         <summary>高级设置</summary>
         <div className="aup-row">
           <label>字段键</label>
@@ -1175,11 +1562,12 @@ function FieldEditorInline({
             value={field.fieldKey}
             disabled={!editable}
             placeholder="自动生成"
+            title="字段键：条件联动与数据存储的唯一标识"
             onChange={(e) => patch({ fieldKey: e.target.value })}
           />
         </div>
-        <div className="aup-hint" style={{ marginBottom: 8 }}>字段键用于条件显示与数据存储，建议保持自动生成值。</div>
-        <ShowWhenEditor value={field.showWhen} onChange={(v) => patch({ showWhen: v ?? null })} fieldOptions={fieldOptions} />
+        <div className="aup-hint" style={{ marginBottom: 8 }}>字段键由系统自动生成，用于条件联动与数据存储；无需手动修改。</div>
+        <ShowWhenEditor value={field.showWhen} onChange={(v) => patch({ showWhen: v ?? null })} fieldCatalog={fieldCatalog} />
       </details>
     </div>
   );
@@ -1193,14 +1581,14 @@ function StructEditor({
   tree,
   patchSection,
   patchSubsection,
-  fieldOptions,
+  fieldCatalog,
   editable,
 }: {
   ref: StructRef;
   tree: FormSection[];
   patchSection: (si: number, patch: Partial<FormSection>) => void;
   patchSubsection: (si: number, ui: number, patch: Partial<FormSubSection>) => void;
-  fieldOptions: { key: string; label: string }[];
+  fieldCatalog: FieldCatalogEntry[];
   editable: boolean;
 }) {
   const s = tree[ref.si];
@@ -1262,7 +1650,7 @@ function StructEditor({
               作为前置说明等强调卡片突出显示
             </span>
           </div>
-          <ShowWhenEditor value={s.showWhen} onChange={(v) => patchSection(ref.si, { showWhen: v ?? null })} fieldOptions={fieldOptions} />
+          <ShowWhenEditor value={s.showWhen} onChange={(v) => patchSection(ref.si, { showWhen: v ?? null })} fieldCatalog={fieldCatalog} />
         </>
       ) : u ? (
         <>
@@ -1297,7 +1685,21 @@ function StructEditor({
               onChange={(e) => patchSubsection(ref.si, ref.ui, { description: e.target.value })}
             />
           </div>
-          <ShowWhenEditor value={u.showWhen} onChange={(v) => patchSubsection(ref.si, ref.ui, { showWhen: v ?? null })} fieldOptions={fieldOptions} />
+          <div className="aup-row">
+            <label>说明样式</label>
+            <select
+              className="aup-select"
+              value={u.descriptionTone ?? "info"}
+              disabled={!editable}
+              onChange={(e) => patchSubsection(ref.si, ref.ui, { descriptionTone: e.target.value as NoteTone })}
+            >
+              <option value="info">信息（蓝色，默认）</option>
+              <option value="warn">警示（琥珀色）</option>
+              <option value="danger">危险/红色强调</option>
+              <option value="muted">弱化（灰色）</option>
+            </select>
+          </div>
+          <ShowWhenEditor value={u.showWhen} onChange={(v) => patchSubsection(ref.si, ref.ui, { showWhen: v ?? null })} fieldCatalog={fieldCatalog} />
         </>
       ) : null}
     </div>
@@ -1316,6 +1718,7 @@ export default function AupTemplateEditor() {
   const [editingField, setEditingField] = useState<FieldPath | null>(null);
   const [editingStruct, setEditingStruct] = useState<StructRef | null>(null);
   const [addMenu, setAddMenu] = useState<{ si: number; ui?: number } | null>(null);
+  const [focusShowWhen, setFocusShowWhen] = useState(false);
   const [search, setSearch] = useState("");
 
   const detailQuery = useQuery({
@@ -1325,8 +1728,22 @@ export default function AupTemplateEditor() {
   });
 
   const fieldOptions = useMemo(() => collectAllFields(tree), [tree]);
+  const fieldCatalog = useMemo(() => buildFieldCatalog(tree), [tree]);
   const targets = useMemo(() => collectTargets(tree), [tree]);
   const revealMap = useMemo(() => buildRevealMap(tree), [tree]);
+
+  // Esc 关闭当前模态（题型选择 / 字段抽屉 / 结构编辑）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setAddMenu(null);
+      setEditingField(null);
+      setEditingStruct(null);
+      setFocusShowWhen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     const d = detailQuery.data;
@@ -1431,7 +1848,14 @@ export default function AupTemplateEditor() {
     const sec = tree[si];
     const parentCode = ui == null ? sec.code : (sec.subsections ?? [])[ui]?.code ?? sec.code;
     const key = nextFieldKey(parentCode, collectFieldKeys(sec));
-    const nf: FormFieldDef = { fieldKey: key, label: "", type, required: false };
+    const meta = typeMetaOf(type);
+    const nf: FormFieldDef = {
+      fieldKey: key,
+      label: "",
+      type,
+      required: false,
+      config: meta?.defaultConfig ? { ...meta.defaultConfig } : undefined,
+    };
     const fi = ui == null ? (sec.fields ?? []).length : (sec.subsections ?? [])[ui]?.fields.length ?? 0;
     setTree((t) =>
       t.map((s, i) => {
@@ -1616,7 +2040,21 @@ export default function AupTemplateEditor() {
         <button className="aup-iconbtn" title="下移" disabled={!editable || isLast} onClick={() => moveField({ si, ui, fi }, 1)}>↓</button>
         <button className="aup-iconbtn danger" title="删除" disabled={!editable} onClick={() => removeField({ si, ui, fi })}>×</button>
       </span>
-      {f.showWhen && <div className="aup-cond-banner small">{describeShowWhen(f.showWhen, fieldOptions)}</div>}
+      {f.showWhen && (
+        <button
+          type="button"
+          className="aup-cond-banner small action"
+          disabled={!editable}
+          title="修改显示条件"
+          onClick={() => {
+            setFocusShowWhen(true);
+            setEditingField({ si, ui, fi });
+          }}
+        >
+          <span>{describeShowWhen(f.showWhen, fieldOptions)}</span>
+          <span style={{ marginLeft: "auto", fontSize: 11 }}>修改 ▸</span>
+        </button>
+      )}
     </div>
   );
 
@@ -1631,17 +2069,27 @@ export default function AupTemplateEditor() {
     if (!f) return null;
     const { si, ui, fi } = editingField;
     return (
-      <div className="aup-drawer-mask" onClick={() => setEditingField(null)}>
+      <div className="aup-drawer-mask" onClick={() => { setEditingField(null); setFocusShowWhen(false); }}>
         <div className="aup-drawer" onClick={(e) => e.stopPropagation()}>
           <div className="aup-drawer-hd">
             <span className="aup-drawer-title">
               <span className="aup-type-ic">{TYPE_ICONS[f.type] ?? "?"}</span>
               编辑题目
-              <span className="aup-muted" style={{ fontWeight: 400, fontSize: 12 }}>
-                {f.fieldKey}
+              <span
+                className="aup-muted"
+                style={{ fontWeight: 400, fontSize: 12 }}
+                title="字段键：条件联动与数据存储的唯一标识"
+              >
+                {f.label || "未命名"}
+                {f.fieldKey ? `（${f.fieldKey}）` : ""}
               </span>
             </span>
-            <button className="aup-btn small primary" onClick={() => setEditingField(null)}>✓ 完成</button>
+            <button
+              className="aup-btn small primary"
+              onClick={() => { setEditingField(null); setFocusShowWhen(false); }}
+            >
+              ✓ 完成
+            </button>
           </div>
           <div className="aup-drawer-body">
             <div className="aup-drawer-hint">修改即时生效到表单，点「✓ 完成」或点遮罩关闭。</div>
@@ -1649,13 +2097,14 @@ export default function AupTemplateEditor() {
               field={f}
               patch={(p) => patchField({ si, ui, fi }, p)}
               editable={editable}
-              fieldOptions={fieldOptions}
+              fieldCatalog={fieldCatalog}
               targets={targets}
               revealMap={revealMap}
               onChangeOptionText={(i, text) => handleOptionTextChange({ si, ui, fi }, i, text)}
               onApplyExpand={(val, t) => applyExpand(f.fieldKey, (f.config?.choiceType ?? "single") as ChoiceType, val, t)}
               onClearExpand={clearExpand}
-              onClose={() => setEditingField(null)}
+              onClose={() => { setEditingField(null); setFocusShowWhen(false); }}
+              focusShowWhen={focusShowWhen}
             />
           </div>
         </div>
@@ -1679,7 +2128,7 @@ export default function AupTemplateEditor() {
             <button className="aup-iconbtn danger" title="删除小节" disabled={!editable} onClick={() => removeSubsection(si, ui)}>×</button>
           </span>
         </div>
-        {u.description && <div className="aup-sub-desc">{u.description}</div>}
+        {u.description && <div className={"aup-sub-desc" + (u.descriptionTone ? " " + u.descriptionTone : "")}>{u.description}</div>}
         {u.showWhen && <div className="aup-cond-banner small">{describeShowWhen(u.showWhen, fieldOptions)}</div>}
         {isEditingStruct && (
           <StructEditor
@@ -1687,7 +2136,7 @@ export default function AupTemplateEditor() {
             tree={tree}
             patchSection={patchSection}
             patchSubsection={patchSubsection}
-            fieldOptions={fieldOptions}
+            fieldCatalog={fieldCatalog}
             editable={editable}
           />
         )}
@@ -1742,7 +2191,7 @@ export default function AupTemplateEditor() {
             tree={tree}
             patchSection={patchSection}
             patchSubsection={patchSubsection}
-            fieldOptions={fieldOptions}
+            fieldCatalog={fieldCatalog}
             editable={editable}
           />
         )}
@@ -1779,7 +2228,7 @@ export default function AupTemplateEditor() {
                   <span className="aup-sub-code">{u.code}</span>
                   <span>{u.label}</span>
                 </div>
-                {u.description && <div className="aup-sub-desc">{u.description}</div>}
+                {u.description && <div className={"aup-sub-desc" + (u.descriptionTone ? " " + u.descriptionTone : "")}>{u.description}</div>}
                 {(u.fields ?? []).map(renderFieldPreview)}
               </div>
             ))

@@ -88,7 +88,7 @@ export function PersonnelRichList({
   }, { scope: listRef, dependencies: [rows, page] });
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
       <div className="personnel-list min-h-0 flex-1 overflow-auto">
         {isLoading ? (
           <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--twin-mute)]">加载中…</div>

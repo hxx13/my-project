@@ -3,6 +3,7 @@ package com.example.demo.modules.aup.dto;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 计划书列表项。summaryJson / miniSteps 由 Service 计算填充。
@@ -15,6 +16,7 @@ public class AupListItem {
     private String projectName;
     private String piName;
     private String dept;
+    private String projectSource;
     private String currentStage;
     private Integer roundNo;
     private String draftSource;
@@ -38,6 +40,12 @@ public class AupListItem {
     private String submitterName;
     /** 当前阶段审核人姓名（逗号分隔，如「张三, 李四」；draft/approved/terminated/expired 为空） */
     private String reviewerNames;
+    /** 同意（agree）专家姓名列表 */
+    private List<String> agreeNames;
+    /** 要求修改（modify）专家姓名列表 */
+    private List<String> modifyNames;
+    /** 不同意（disagree）专家姓名列表 */
+    private List<String> disagreeNames;
     /** 列表展示摘要 JSON */
     private String summaryJson;
     /** 迷你阶段指示 JSON */

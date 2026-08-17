@@ -9,6 +9,7 @@ import com.example.demo.modules.cageshelf.entity.CageCellIndex;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.service.CageCellIndexService;
+import com.example.demo.modules.student.service.StudentCageShelfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -31,19 +32,22 @@ public class CageCellIndexController {
     private final CageCellIndexMapper indexMapper;
     private final com.example.demo.modules.cageshelf.service.OutboxService outboxService;
     private final com.example.demo.modules.cageshelf.service.CageCellDetailService detailService;
+    private final StudentCageShelfService studentCageShelfService;
 
     public CageCellIndexController(AuthContextService authContextService,
                                    CageCellIndexService cellIndexService,
                                    CageCellDetailMapper detailMapper,
                                    CageCellIndexMapper indexMapper,
                                    com.example.demo.modules.cageshelf.service.OutboxService outboxService,
-                                   com.example.demo.modules.cageshelf.service.CageCellDetailService detailService) {
+                                   com.example.demo.modules.cageshelf.service.CageCellDetailService detailService,
+                                   StudentCageShelfService studentCageShelfService) {
         this.authContextService = authContextService;
         this.cellIndexService = cellIndexService;
         this.detailMapper = detailMapper;
         this.indexMapper = indexMapper;
         this.outboxService = outboxService;
         this.detailService = detailService;
+        this.studentCageShelfService = studentCageShelfService;
     }
 
     private User resolveUser(String authorization) {
@@ -60,6 +64,19 @@ public class CageCellIndexController {
         return null;
     }
 
+    /** 非 admin 用户对本地 DB 网格按课题组脱敏（复用 StudentCageShelfService.maskGridForUser）。 */
+    private void applyGroupMask(User user, Map<String, Object> result) {
+        if (user == null || user.getRole() == null || user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
+            return;
+        }
+        Object gridObj = result.get("grid");
+        if (gridObj instanceof List<?> list) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> grid = (List<Map<String, Object>>) list;
+            result.put("grid", studentCageShelfService.maskGridForUser(user, grid));
+        }
+    }
+
     // ── 架子汇总列表 ──
 
     @GetMapping("/summary")
@@ -71,7 +88,7 @@ public class CageCellIndexController {
             @RequestParam(defaultValue = "30") int pageSize,
             HttpServletRequest request) {
         User user = resolveUser(request.getHeader("Authorization"));
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) return Result.fail(403, denied.getMessage());
         Map<String, Object> data = cellIndexService.shelfCellSummary(roomId, keyword, page, pageSize);
         return Result.success(data);
@@ -85,7 +102,7 @@ public class CageCellIndexController {
             @PathVariable Long shelfIndexId,
             HttpServletRequest request) {
         User user = resolveUser(request.getHeader("Authorization"));
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) return Result.fail(403, denied.getMessage());
         List<CageCellIndex> cells = cellIndexService.getCellsByShelfIndexId(shelfIndexId);
         return Result.success(cells);
@@ -265,7 +282,7 @@ public class CageCellIndexController {
             @RequestParam Long animalCageId,
             HttpServletRequest request) {
         User user = resolveUser(request.getHeader("Authorization"));
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) return Result.fail(403, denied.getMessage());
         Map<String, Object> result = cellIndexService.lookupByAnimalCageId(animalCageId);
         if (result == null || result.isEmpty()) {
@@ -282,11 +299,13 @@ public class CageCellIndexController {
             @PathVariable Long animalCageId,
             HttpServletRequest request) {
         User user = resolveUser(request.getHeader("Authorization"));
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) return Result.fail(403, denied.getMessage());
 
         CageCellDetail detail = detailMapper.selectByAnimalCageId(animalCageId);
         if (detail == null) return Result.error("未找到该笼位详情: " + animalCageId);
+        // 非 admin 按课题组脱敏（PI/部门/AUP/实验员等敏感字段）
+        detail = studentCageShelfService.maskDetailForUser(user, detail);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("detail", detail);
@@ -302,10 +321,11 @@ public class CageCellIndexController {
             @PathVariable Long shelfIndexId,
             HttpServletRequest request) {
         User user = resolveUser(request.getHeader("Authorization"));
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) return Result.fail(403, denied.getMessage());
         Map<String, Object> grid = cellIndexService.getLocalShelfGrid(shelfIndexId);
         if (grid.containsKey("error")) return Result.error(String.valueOf(grid.get("error")));
+        applyGroupMask(user, grid);
         return Result.success(grid);
     }
 
@@ -315,10 +335,11 @@ public class CageCellIndexController {
             @PathVariable Long shelveId,
             HttpServletRequest request) {
         User user = resolveUser(request.getHeader("Authorization"));
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) return Result.fail(403, denied.getMessage());
         Map<String, Object> grid = cellIndexService.getLocalShelfGridByShelveId(shelveId);
         if (grid.containsKey("error")) return Result.error(String.valueOf(grid.get("error")));
+        applyGroupMask(user, grid);
         return Result.success(grid);
     }
 
@@ -330,9 +351,15 @@ public class CageCellIndexController {
             @PathVariable Long shelfIndexId,
             HttpServletRequest request) {
         User user = resolveUser(request.getHeader("Authorization"));
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) return Result.fail(403, denied.getMessage());
         List<CageCellDetail> details = detailMapper.selectByShelfIndexId(shelfIndexId);
+        // 非 admin 按课题组脱敏
+        if (user.getRole() != null && user.getRole().getLevel() < RoleEnum.ADMIN.getLevel()) {
+            details = details.stream()
+                    .map(d -> studentCageShelfService.maskDetailForUser(user, d))
+                    .toList();
+        }
         return Result.success(details);
     }
 

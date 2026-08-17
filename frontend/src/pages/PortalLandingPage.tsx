@@ -27,6 +27,12 @@ export default function PortalLandingPage() {
   const location = useLocation();
   const [casProcessedRef] = useState({ current: false });
 
+  /* ── 仅首页隐藏主滚动条：挂载打标记、卸载移除，避免全局隐藏 ── */
+  useEffect(() => {
+    document.documentElement.classList.add("portal-landing-scroll-hidden");
+    return () => document.documentElement.classList.remove("portal-landing-scroll-hidden");
+  }, []);
+
   /* ── CAS ticket 回调处理 ── */
   useEffect(() => {
     if (casProcessedRef.current) return;

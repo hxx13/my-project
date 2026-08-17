@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { usePrefersReducedMotion } from "@/hooks/useTypewriterText";
@@ -8,6 +8,9 @@ import type { UnifiedPersonnelRecord } from "@/api/domains/admin.api";
 import type { IdentityTag } from "@/api/domains/personIdentity.api";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { Avatar, SysBadge, StatusPill, ROLE_LABEL_MAP } from "./PersonnelRichList";
+
+// 直接进入本页（不经 AUP 页面）也能保证 useGSAP 生效；registerPlugin 幂等
+gsap.registerPlugin(useGSAP);
 
 export const BUILTIN_SUPER_ADMIN_ID = "SYS_SUPER_ROOT";
 export const ROLE_OPTIONS = ["MEMBER", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
@@ -39,20 +42,63 @@ export function PersonnelDetailCard({
   onResetOpenId, onDelete, onSaveField, onEditEmail, onEditSendKey, onEditWx,
   onOpenIdentityPicker, onViewPassword,
 }: Props) {
-  const cardRef = useRef<HTMLDivElement>(null);
+  // ── 主从并排「挤压」：外层 wrapper 动画 flexBasis 0→target，列表宽度同步收缩；
+  //    内层卡片填充 wrapper（overflow:hidden 裁剪），面板从右边缘向左抽出揭示 ──
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const tlRef = useRef<gsap.core.Timeline | null>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const closingRef = useRef(false);
 
   useGSAP(() => {
-    if (!cardRef.current) return;
+    if (!wrapRef.current || !innerRef.current) return;
+    closingRef.current = false;
+    tlRef.current?.kill();
+    tlRef.current = null;
+
+    // 50/50 平分：抽屉占行容器 50% 宽，列表留 50%
+    const TARGET = "50%";
+
     if (reducedMotion) {
-      gsap.set(cardRef.current, { xPercent: 0, opacity: 1 });
+      gsap.set(wrapRef.current, { flexBasis: TARGET });
+      gsap.set(innerRef.current, { opacity: 1 });
       return;
     }
-    gsap.fromTo(cardRef.current,
-      { xPercent: 100, opacity: 0 },
-      { xPercent: 0, opacity: 1, duration: 0.45, ease: "power3.out" }
-    );
-  }, { scope: cardRef, dependencies: [row.id] });
+    gsap.set(wrapRef.current, { flexBasis: "0%" });
+    tlRef.current = gsap
+      .timeline()
+      .to(wrapRef.current, { flexBasis: TARGET, duration: 0.45, ease: "power3.out" })
+      .fromTo(innerRef.current, { opacity: 0 }, { opacity: 1, duration: 0.3 }, 0);
+    return () => {
+      tlRef.current?.kill();
+      tlRef.current = null;
+    };
+  }, { scope: wrapRef, dependencies: [row.id] });
+
+  const handleClose = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    if (reducedMotion || !wrapRef.current || !innerRef.current) {
+      onClose();
+      return;
+    }
+    tlRef.current?.kill();
+    // 存入 tlRef：切换行时 useGSAP cleanup 会 kill 掉进行中的退场，避免覆盖新选中
+    tlRef.current = gsap
+      .timeline({ onComplete: onClose })
+      .to(wrapRef.current, { flexBasis: "0%", duration: 0.35, ease: "power2.inOut" })
+      .to(innerRef.current, { opacity: 0, duration: 0.25 }, 0);
+  };
+
+  // Esc 关闭详情
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row.id]);
 
   const uid = row.staffId || "";
   const isBuiltin = uid === BUILTIN_SUPER_ADMIN_ID;
@@ -63,7 +109,12 @@ export function PersonnelDetailCard({
   const inkBtn =
     "inline-flex shrink-0 items-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)] disabled:cursor-not-allowed disabled:opacity-40";
   return (
-    <div ref={cardRef} className="flex h-full min-h-0 min-w-[380px] max-w-[720px] flex-[0_0_50%] flex-col overflow-hidden rounded-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-4">
+    <div
+      ref={wrapRef}
+      className="relative overflow-hidden rounded-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-4"
+      style={{ flexGrow: 0, flexShrink: 0, flexBasis: "0%", minHeight: 0 }}
+    >
+      <div ref={innerRef} className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* 头部 */}
       <header className="flex items-start gap-4 border-b border-[var(--twin-hairline)] p-4">
         <Avatar name={row.name} head={row.head} size="lg" />
@@ -77,7 +128,7 @@ export function PersonnelDetailCard({
             {[row.userTypeNames, row.departmentName, row.projectGroupName].filter(Boolean).join(" · ") || "—"}
           </div>
         </div>
-        <button type="button" onClick={onClose}
+        <button type="button" onClick={handleClose}
           className="shrink-0 rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">✕</button>
       </header>
 
@@ -211,6 +262,7 @@ export function PersonnelDetailCard({
             </>
           ) : null}
         </section>
+        </div>
       </div>
     </div>
   );

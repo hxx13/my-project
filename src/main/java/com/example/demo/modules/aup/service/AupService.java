@@ -107,8 +107,8 @@ public class AupService {
     @Value("${aup.attachment.max-count:10}")
     private int maxAttachmentCount;
 
-    /** 组长身份标识 code（STUDENT 视角），与 AupAccessPolicy 同键、不硬编码 */
-    @Value("${aup.identity.pi-code:GROUP_LEADER}")
+    /** PI 身份标识 code（统一体系，key=staff_id），与 AupAccessPolicy 同键、不硬编码 */
+    @Value("${aup.identity.pi-code:PI}")
     private String piCode;
 
     public AupService(AupRecordMapper recordMapper,
@@ -177,14 +177,19 @@ public class AupService {
         return record;
     }
 
-    /** 从 aro_personnel 取用户课题组名（学生端按课题组协作查看用） */
+    /** 从 aro_personnel 取用户课题组名（学生端按课题组协作查看用）；学生库没有时回退 sys_user.project_group_name（教职工账号） */
     private String resolveProjectGroupName(String userId) {
         if (userId == null || userId.isBlank()) {
             return null;
         }
         try {
             AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
-            return p != null ? p.getProjectGroupName() : null;
+            if (p != null && StringUtils.hasText(p.getProjectGroupName())) {
+                return p.getProjectGroupName();
+            }
+            List<String> rows = jdbcTemplate.queryForList(
+                    "SELECT project_group_name FROM sys_user WHERE id = ?", String.class, userId);
+            return rows.isEmpty() ? null : rows.get(0);
         } catch (Exception e) {
             return null;
         }
@@ -198,7 +203,9 @@ public class AupService {
         if (!STAGE_DRAFT.equals(record.getCurrentStage())) {
             throw TwinBusinessException.of(403, "计划书非草稿状态，仅可查看");
         }
-        String cleaned = stripHiddenFields(record.getTemplateId(), aupId, dataJson, user.getId());
+        // 保存/自动保存用静默剥离（不落审计）：隐藏区块值清洗是保存期的常规动作，
+        // 若在此写审计，提交前的 flushSave 会与 submit 各留一条重复 strip 留痕。
+        String cleaned = stripHiddenFieldsQuiet(record.getTemplateId(), dataJson);
         return persistDraftData(aupId, cleaned, expectedVersion, user.getId());
     }
 
@@ -251,7 +258,7 @@ public class AupService {
         accessPolicy.assertCanSubmit(record, user);
         String role = accessPolicy.resolveOperatorRole(record, user);
         boolean skipPiReview = accessPolicy.isAdmin(user) || accessPolicy.isPi(user)
-                || "STAFF".equals(user.getAccountSource());
+                || "STAFF".equalsIgnoreCase(user.getAccountSource());
         String targetStage = skipPiReview ? STAGE_FORMAT_REVIEW : STAGE_PI_REVIEW;
         return transition(aupId, STAGE_DRAFT, targetStage, "submit", user.getId(), role, null);
     }
@@ -279,7 +286,7 @@ public class AupService {
         }
 
         String act = action == null ? "" : action;
-        boolean isReturn = STAGE_DRAFT.equals(toStage) && !STAGE_DRAFT.equals(fromStage);
+        boolean isReturn = (STAGE_DRAFT.equals(toStage) || STAGE_PI_REVIEW.equals(toStage)) && !STAGE_DRAFT.equals(fromStage);
         boolean isReassign = "reassign".equals(act);
         boolean isSubmit = "submit".equals(act);
         boolean isApprove = STAGE_APPROVED.equals(toStage);
@@ -346,7 +353,9 @@ public class AupService {
         // 快照（到期动作不写快照，§3.2）
         if (!isExpire) {
             AupData data = dataMapper.selectByAupId(aupId);
-            snapshotService.createSnapshot(record, toStage, data == null ? null : data.getData(), operatorId);
+            // 草稿来源：退回/提交时用本次流转算出的新值，其余（通过/终止等）沿用 record 现值
+            String snapDraftSource = draftSource != null ? draftSource : record.getDraftSource();
+            snapshotService.createSnapshot(record, toStage, snapDraftSource, data == null ? null : data.getData(), operatorId);
         }
 
         // 审计
@@ -474,6 +483,37 @@ public class AupService {
                     }
                 }
             }
+            // 可重复块逐项校验（块内必填/字数，showWhen 对块对象求值）
+            if ("repeatGroup".equals(f.type) && value instanceof List<?> blocks) {
+                for (int bi = 0; bi < blocks.size(); bi++) {
+                    Object blk = blocks.get(bi);
+                    if (!(blk instanceof Map<?, ?> bm)) {
+                        continue;
+                    }
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> block = (Map<String, Object>) bm;
+                    for (FieldDef c : f.repeatGroupChildren) {
+                        if (c.fieldKey == null) {
+                            continue;
+                        }
+                        if (StringUtils.hasText(c.showWhen) && !evaluateShowWhen(c.showWhen, block)) {
+                            continue;
+                        }
+                        Object cv = block.get(c.fieldKey);
+                        String cLabel = (c.label != null && !c.label.isBlank()) ? c.label : c.fieldKey;
+                        if (c.required && isBlankValue(cv)) {
+                            errors.add(new AupValidationErrorDTO(f.fieldKey, "BLOCK_INCOMPLETE",
+                                    "「" + f.label + "」第 " + (bi + 1) + " 项「" + cLabel + "」未填写", bi + 1));
+                            continue;
+                        }
+                        Integer cMax = c.maxLength;
+                        if (cMax != null && cv instanceof String s && s.length() > cMax) {
+                            errors.add(new AupValidationErrorDTO(f.fieldKey, "MAX_LENGTH_EXCEEDED",
+                                    "「" + f.label + "」第 " + (bi + 1) + " 项「" + cLabel + "」超出字数上限 " + cMax + " 字"));
+                        }
+                    }
+                }
+            }
         }
         // B6 数量 > 1000 → B7 必选「依据充分」
         checkB6Threshold(data, errors);
@@ -494,8 +534,8 @@ public class AupService {
 
     /** 联动一致性（auto-set 后端兜底）。数据形状未定，仅做可确定的断言，不确定则跳过。 */
     private void checkLinkage(Map<String, Object> data, List<AupValidationErrorDTO> errors) {
-        // B6 目录D → A8 勾 I
-        if (containsAnyValue(data, "B6", "目录D", "目录 D", "catalogD", "D")
+        // B6 目录D → A8 勾 I（关键词用「目录D」，不可用裸 D——会误伤「SD 大鼠」等品种名）
+        if (containsAnyValue(data, "B6", "目录D", "目录 D", "catalogD")
                 && !containsAnyValue(data, "A8", "I", "i")) {
             errors.add(new AupValidationErrorDTO("A8", "LINKAGE_REQUIRED", "B6 含目录D，须在 A8 勾选 I"));
         }
@@ -550,7 +590,7 @@ public class AupService {
         }
         // 先给当前状态打新快照（可逆）
         AupData current = dataMapper.selectByAupId(aupId);
-        snapshotService.createSnapshot(record, record.getCurrentStage(),
+        snapshotService.createSnapshot(record, record.getCurrentStage(), record.getDraftSource(),
                 current == null ? null : current.getData(), user.getId());
         // 覆盖草稿数据
         AupData d = dataMapper.selectByAupId(aupId);
@@ -592,7 +632,7 @@ public class AupService {
         // 解锁回 draft 后清空提交时间、通过时间与到期时间；注册号已锁定为该计划书，作废不复用，不清空
         jdbcTemplate.update("UPDATE aup_record SET expire_at = NULL, approved_at = NULL, submitted_at = NULL WHERE id = ?", aupId);
         AupData data = dataMapper.selectByAupId(aupId);
-        snapshotService.createSnapshot(record, STAGE_DRAFT, data == null ? null : data.getData(), user.getId());
+        snapshotService.createSnapshot(record, STAGE_DRAFT, "rollback", data == null ? null : data.getData(), user.getId());
         audit(aupId, user.getId(), "admin", "unlock", stage, STAGE_DRAFT, "管理员解锁，重新打开计划书");
         return recordMapper.selectById(aupId);
     }
@@ -648,7 +688,7 @@ public class AupService {
         dataMapper.insert(data);
 
         // 快照 + 审计（沿用现有写法，留痕在新记录上）
-        snapshotService.createSnapshot(fresh, STAGE_DRAFT, copiedData, user.getId());
+        snapshotService.createSnapshot(fresh, STAGE_DRAFT, "first", copiedData, user.getId());
         audit(fresh.getId(), user.getId(), accessPolicy.resolveOperatorRole(record, user),
                 "renew", record.getCurrentStage(), STAGE_DRAFT,
                 "续期自注册号 " + (record.getRegisterNo() == null ? "" : record.getRegisterNo()));
@@ -684,6 +724,7 @@ public class AupService {
                                     boolean excludeDraft, String draftSource, Integer roundNo,
                                     String submitterId, String reviewerId,
                                     String submitterName, String reviewerName,
+                                    boolean relatedToMe,
                                     String sortBy, String sortDir) {
         String scopeRole = accessPolicy.resolveScopeRole(user);
         String scopeUserId = user.getId();
@@ -693,18 +734,25 @@ public class AupService {
         int offset = (safePage - 1) * safeSize;
         List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo,
                 stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo,
-                submitterId, reviewerId, submitterName, reviewerName, sortBy, sortDir, offset, safeSize);
+                submitterId, reviewerId, submitterName, reviewerName, relatedToMe, sortBy, sortDir, offset, safeSize);
         Map<Long, String> speciesByAup = loadSpeciesByAup(items);
         for (AupListItem item : items) {
             item.setSummaryJson(buildSummaryJson(item, speciesByAup.get(item.getId())));
             item.setMiniSteps(buildMiniSteps(item));
         }
-        fillNames(items);
-        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName);
+        Map<Long, Integer> expertRounds = resolveExpertRounds(items);
+        fillNames(items, expertRounds);
+        fillVoteNames(items, expertRounds);
+        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe);
         Map<String, Object> data = new HashMap<>();
         data.put("total", total);
         data.put("items", items);
         return data;
+    }
+
+    /** 列表筛选用：去重课题组名称（下拉选项） */
+    public List<String> listProjectGroups() {
+        return recordMapper.selectDistinctProjectGroups();
     }
 
     public AupDetailVO detail(Long aupId, User user) {
@@ -984,17 +1032,22 @@ public class AupService {
 
     /** 删除草稿状态计划书（申请人本人或管理员），级联清理相关数据。 */
     @Transactional
-    public void delete(Long aupId, User user) {
+    public void delete(Long aupId, User user, User impersonator) {
         AupRecord record = requireRecord(aupId);
-        if (!STAGE_DRAFT.equals(record.getCurrentStage())) {
-            throw TwinBusinessException.of(409, "仅草稿状态的计划书可删除");
-        }
-        if (record.getDraftSource() != null && !"first".equals(record.getDraftSource())) {
-            throw TwinBusinessException.of(409, "该计划书已提交过（返修/回退），不可删除");
-        }
-        boolean admin = accessPolicy.isAdmin(user);
-        if (!admin && (user.getId() == null || !user.getId().equals(record.getCreatedBy()))) {
-            throw TwinBusinessException.of(403, "仅申请人或管理员可删除");
+        // 模拟学生视图时，删除权限沿用教职工（impersonator）角色；否则用当前用户
+        User adminUser = impersonator != null ? impersonator : user;
+        boolean platformOwner = accessPolicy.isPlatformOwner(adminUser);
+        if (!platformOwner) {
+            // 非平台管理者：仅申请人本人可删自己的首次草稿（未提交过的）
+            if (!STAGE_DRAFT.equals(record.getCurrentStage())) {
+                throw TwinBusinessException.of(409, "仅草稿状态的计划书可删除");
+            }
+            if (record.getDraftSource() != null && !"first".equals(record.getDraftSource())) {
+                throw TwinBusinessException.of(409, "该计划书已提交过（返修/回退），不可删除");
+            }
+            if (user.getId() == null || !user.getId().equals(record.getCreatedBy())) {
+                throw TwinBusinessException.of(403, "仅申请人或平台管理者可删除");
+            }
         }
         jdbcTemplate.update("DELETE FROM aup_review_item WHERE aup_id = ?", aupId);
         jdbcTemplate.update("DELETE FROM aup_review WHERE aup_id = ?", aupId);
@@ -1183,6 +1236,8 @@ public class AupService {
         String subsectionShowWhen;
         String sectionShowWhen;
         Map<String, String> tableColumnLabels = new LinkedHashMap<>();
+        /** repeatGroup 块内子字段（config.fields 解析；fieldKey 为块内相对键） */
+        List<FieldDef> repeatGroupChildren = new ArrayList<>();
     }
 
     private List<FieldDef> loadFieldDefs(Long templateId) {
@@ -1212,6 +1267,7 @@ public class AupService {
             f.sectionShowWhen = str(row.get("section_show_when"));
             f.maxLength = parseMaxLength(str(row.get("config")));
             f.tableColumnLabels = parseTableColumns(str(row.get("config")));
+            f.repeatGroupChildren = parseRepeatGroupChildren(str(row.get("config")));
             out.add(f);
         }
         return out;
@@ -1251,6 +1307,46 @@ public class AupService {
         } catch (Exception ignored) {
         }
         return cols;
+    }
+
+    /** repeatGroup 的 config.fields 解析为子字段定义（块内相对键；showWhen 对块对象求值） */
+    private List<FieldDef> parseRepeatGroupChildren(String config) {
+        List<FieldDef> out = new ArrayList<>();
+        try {
+            Map<String, Object> c = parseMap(config);
+            Object fields = c.get("fields");
+            if (fields instanceof List<?> list) {
+                for (Object child : list) {
+                    if (child instanceof Map<?, ?> m) {
+                        FieldDef cd = new FieldDef();
+                        cd.fieldKey = str(m.get("fieldKey"));
+                        cd.label = str(m.get("label"));
+                        cd.type = str(m.get("type"));
+                        cd.required = Boolean.TRUE.equals(m.get("required"))
+                                || (m.get("required") instanceof Number n && n.intValue() == 1);
+                        cd.dictKey = str(m.get("dictKey"));
+                        cd.maxLength = parseMaxLength(jsonOf(m.get("config")));
+                        if (m.get("showWhen") instanceof Map<?, ?> sw) {
+                            cd.showWhen = jsonOf(sw);
+                        }
+                        out.add(cd);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    private String jsonOf(Object o) {
+        if (o == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(o);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private Set<String> loadDictValues(String dictKey) {
@@ -1500,38 +1596,37 @@ public class AupService {
         return false;
     }
 
-    /** 求和 B6 动物数量（非负、单位「只」），解析失败返回 null（跳过校验） */
+    /** 求和 B6 动物数量（非负、单位「只」），解析失败返回 null（跳过校验）。
+     *  块化后（B6.blocks）每个块只统计「所需数量 count」，分级数量 countB/C/D/E 不再累加（避免重复计数）；
+     *  旧扁平草稿回退到 B6.count 单键。 */
     private Double sumAnimalCount(Map<String, Object> data) {
         double sum = 0;
         boolean found = false;
-        for (Map.Entry<String, Object> e : data.entrySet()) {
-            if (!e.getKey().startsWith("B6")) {
-                continue;
-            }
-            Object v = e.getValue();
-            if (v instanceof Number n) {
-                sum += n.doubleValue();
-                found = true;
-            } else if (v instanceof String s && isNumeric(s)) {
-                sum += Double.parseDouble(s.trim());
-                found = true;
-            } else if (v instanceof List<?> rows) {
-                for (Object row : rows) {
-                    if (row instanceof Map<?, ?> m) {
-                        for (Object cell : m.values()) {
-                            if (cell instanceof Number n) {
-                                sum += n.doubleValue();
-                                found = true;
-                            } else if (cell instanceof String cs && isNumeric(cs)) {
-                                sum += Double.parseDouble(cs.trim());
-                                found = true;
-                            }
-                        }
-                    }
+        Object blocks = data.get("B6.blocks");
+        if (blocks instanceof List<?> bl && !bl.isEmpty()) {
+            for (Object block : bl) {
+                if (!(block instanceof Map<?, ?> m)) {
+                    continue;
+                }
+                Object c = m.get("count");
+                if (c instanceof Number n) {
+                    sum += n.doubleValue();
+                    found = true;
+                } else if (c instanceof String s && isNumeric(s)) {
+                    sum += Double.parseDouble(s.trim());
+                    found = true;
                 }
             }
+            return found ? sum : null;
         }
-        return found ? sum : null;
+        // 无 B6.blocks：兼容块化前保存的扁平草稿，B6.count 即「所需数量」
+        Object flatCount = data.get("B6.count");
+        if (flatCount instanceof Number n) {
+            return n.doubleValue();
+        } else if (flatCount instanceof String s && isNumeric(s)) {
+            return Double.parseDouble(s.trim());
+        }
+        return null;
     }
 
     // ---- JSON / 名称 / 组装 ----
@@ -1589,6 +1684,7 @@ public class AupService {
         vo.setSnapshotId(s.getId());
         vo.setVersionNo(s.getVersionNo());
         vo.setStage(s.getStage());
+        vo.setDraftSource(s.getDraftSource());
         if (withData) {
             vo.setData(s.getData());
         }
@@ -1661,24 +1757,67 @@ public class AupService {
     }
 
     /**
-     * 批量填充提交人姓名与当前阶段审核人姓名（避免逐条 N+1）：
-     * 先一次性查专家分配与格式审查秘书 actor，再对去重后的 userId 批量 resolveName。
+     * 解析每条计划书「应展示的专家轮次」：expertReview 用当前轮；其余阶段（含返修）取最近一次有专家投票的轮次。
+     * 这样返修（退回/返修草稿）阶段仍能看到已分配专家及其投票。
      */
-    private void fillNames(List<AupListItem> items) {
-        if (items == null || items.isEmpty()) {
-            return;
-        }
-
-        // 1) 收集需要额外查询的阶段项
-        Map<Long, Integer> expertRounds = new LinkedHashMap<>(); // aupId -> 当前轮次
-        List<Long> formatIds = new ArrayList<>();
+    private Map<Long, Integer> resolveExpertRounds(List<AupListItem> items) {
+        Map<Long, Integer> rounds = new LinkedHashMap<>();
+        List<Long> needLatest = new ArrayList<>();
         for (AupListItem item : items) {
             if (item.getId() == null) {
                 continue;
             }
             if (STAGE_EXPERT_REVIEW.equals(item.getCurrentStage())) {
-                expertRounds.put(item.getId(), item.getRoundNo() == null ? 1 : item.getRoundNo());
-            } else if (STAGE_FORMAT_REVIEW.equals(item.getCurrentStage())) {
+                rounds.put(item.getId(), item.getRoundNo() == null ? 1 : item.getRoundNo());
+            } else {
+                needLatest.add(item.getId());
+            }
+        }
+        rounds.putAll(loadLatestExpertVoteRounds(needLatest));
+        return rounds;
+    }
+
+    /** aupId → 最近一次有专家投票的轮次（无专家投票则不返回该 id） */
+    private Map<Long, Integer> loadLatestExpertVoteRounds(List<Long> aupIds) {
+        Map<Long, Integer> out = new LinkedHashMap<>();
+        if (aupIds.isEmpty()) {
+            return out;
+        }
+        StringBuilder ph = new StringBuilder();
+        for (int i = 0; i < aupIds.size(); i++) {
+            if (i > 0) {
+                ph.append(",");
+            }
+            ph.append("?");
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT aup_id, MAX(round_no) AS r FROM aup_review WHERE role = 'expert' AND aup_id IN (" + ph + ") GROUP BY aup_id",
+                aupIds.toArray());
+        for (Map<String, Object> row : rows) {
+            if (row.get("aup_id") == null || row.get("r") == null) {
+                continue;
+            }
+            out.put(((Number) row.get("aup_id")).longValue(), ((Number) row.get("r")).intValue());
+        }
+        return out;
+    }
+
+    /**
+     * 批量填充提交人姓名与当前阶段审核人姓名（避免逐条 N+1）：
+     * 先一次性查专家分配与格式审查秘书 actor，再对去重后的 userId 批量 resolveName。
+     */
+    private void fillNames(List<AupListItem> items, Map<Long, Integer> expertRounds) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        // 1) 收集格式审查阶段项（秘书 actor；专家轮次已由 resolveExpertRounds 提供）
+        List<Long> formatIds = new ArrayList<>();
+        for (AupListItem item : items) {
+            if (item.getId() == null) {
+                continue;
+            }
+            if (STAGE_FORMAT_REVIEW.equals(item.getCurrentStage())) {
                 formatIds.add(item.getId());
             }
         }
@@ -1715,7 +1854,8 @@ public class AupService {
         for (AupListItem item : items) {
             item.setSubmitterName(names.get(item.getCreatedBy()));
             String stage = item.getCurrentStage();
-            if (STAGE_EXPERT_REVIEW.equals(stage)) {
+            if (expertRounds.containsKey(item.getId())) {
+                // 有专家轮次（正在审查或返修后），审核人显示已分配专家
                 item.setReviewerNames(joinReviewerNames(expertReviewers.get(item.getId()), names));
             } else if (STAGE_FORMAT_REVIEW.equals(stage)) {
                 String actor = formatActors.get(item.getId());
@@ -1723,6 +1863,36 @@ public class AupService {
             } else if (STAGE_PI_REVIEW.equals(stage)) {
                 item.setReviewerNames(item.getPiName());
             }
+        }
+    }
+
+    /** 聚合同意/修改专家姓名（expert 投票，当前轮），供列表「同意人/修改人」一人一行展示 */
+    private void fillVoteNames(List<AupListItem> items, Map<Long, Integer> expertRounds) {
+        for (AupListItem item : items) {
+            List<String> agrees = new ArrayList<>();
+            List<String> modifies = new ArrayList<>();
+            List<String> disagrees = new ArrayList<>();
+            Integer round = expertRounds.get(item.getId());
+            if (round != null) {
+                List<Map<String, Object>> votes = jdbcTemplate.queryForList(
+                        "SELECT reviewer, verdict FROM aup_review WHERE aup_id = ? AND round_no = ? AND role = 'expert'",
+                        item.getId(), round);
+                for (Map<String, Object> v : votes) {
+                    String reviewer = v.get("reviewer") == null ? null : String.valueOf(v.get("reviewer"));
+                    String verdict = v.get("verdict") == null ? null : String.valueOf(v.get("verdict"));
+                    String name = resolveName(reviewer);
+                    if ("agree".equals(verdict)) {
+                        agrees.add(name);
+                    } else if ("modify".equals(verdict)) {
+                        modifies.add(name);
+                    } else if ("disagree".equals(verdict)) {
+                        disagrees.add(name);
+                    }
+                }
+            }
+            item.setAgreeNames(agrees);
+            item.setModifyNames(modifies);
+            item.setDisagreeNames(disagrees);
         }
     }
 
@@ -1811,7 +1981,13 @@ public class AupService {
 
     private String extractSpecies(String dataJson) {
         Map<String, Object> m = parseMap(dataJson);
-        Object v = firstNonBlank(m.get("B5.species"), m.get("B6.species"), m.get("B6.line"));
+        // B5/B6 均可重复块：取第一个块内 species（B5 优先于 B6），兼容扁平旧键
+        Object v = firstNonBlank(
+                firstBlockValue(m, "B5.blocks", "species"),
+                firstBlockValue(m, "B6.blocks", "species"),
+                m.get("B5.species"),
+                m.get("B6.species"),
+                m.get("B6.line"));
         if (v == null) {
             return null;
         }
@@ -1820,6 +1996,17 @@ public class AupService {
         }
         String s = String.valueOf(v).trim();
         return s.isEmpty() ? null : s;
+    }
+
+    /** 取可重复块列表第一个块内的指定子字段值（块空/不存在返回 null） */
+    private Object firstBlockValue(Map<String, Object> data, String key, String childKey) {
+        if (data.get(key) instanceof List<?> blocks && !blocks.isEmpty()) {
+            Object b0 = blocks.get(0);
+            if (b0 instanceof Map<?, ?> block) {
+                return block.get(childKey);
+            }
+        }
+        return null;
     }
 
     private Object firstNonBlank(Object... vals) {

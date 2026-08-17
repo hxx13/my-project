@@ -33,13 +33,14 @@ CREATE TABLE IF NOT EXISTS form_section (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AUP表单大段';
 
 CREATE TABLE IF NOT EXISTS form_subsection (
-    id          BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    section_id  BIGINT       NOT NULL COMMENT 'FK→form_section.id',
-    code        VARCHAR(16)  NOT NULL COMMENT 'A1/A2…',
-    label       VARCHAR(128) NOT NULL,
-    sort_order  INT          NOT NULL DEFAULT 0,
-    description VARCHAR(512) NULL,
-    show_when   TEXT         NULL,
+    id               BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    section_id       BIGINT       NOT NULL COMMENT 'FK→form_section.id',
+    code             VARCHAR(16)  NOT NULL COMMENT 'A1/A2…',
+    label            VARCHAR(128) NOT NULL,
+    sort_order       INT          NOT NULL DEFAULT 0,
+    description      VARCHAR(512) NULL,
+    description_tone VARCHAR(16)  NULL COMMENT '小节说明高亮变体 info/warn/danger/muted',
+    show_when        TEXT         NULL,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_subsection_section_code (section_id, code), KEY idx_subsection_section (section_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AUP表单小章节';

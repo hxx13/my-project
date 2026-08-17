@@ -15,12 +15,10 @@
             confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearch" />
         </view>
         <view class="ap-toolbar-btns">
+          <view class="ap-tool-btn ap-tool-btn--ghost" hover-class="ap-tool-btn--hover" bindtap="onOpenCreateSheet">新建</view>
           <view class="ap-tool-btn ap-tool-btn--ghost" hover-class="ap-tool-btn--hover" bindtap="onOpenFilterSheet">筛选</view>
           <view class="ap-tool-btn ap-tool-btn--primary" hover-class="ap-tool-btn--hover" bindtap="onSearch">查询</view>
         </view>
-      </view>
-      <view class="ap-toolbar-row" style="margin-top:8px;">
-        <view class="ap-tool-btn ap-tool-btn--ghost" hover-class="ap-tool-btn--hover" bindtap="onOpenCreateSheet">新建</view>
       </view>
       <view wx:if="{{ filterGroupId || filterIdentityTagId || filterRoomName || filterRole }}" class="ap-filter-active">
         已筛选：

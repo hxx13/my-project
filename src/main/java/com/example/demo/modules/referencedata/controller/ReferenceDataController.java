@@ -232,6 +232,18 @@ public class ReferenceDataController {
         return referenceDataService.submitOrder(user.getId(), body);
     }
 
+    @GetMapping("/orders/all")
+    @Operation(summary = "全部订单（后台审核页，分页）")
+    public Result<Map<String, Object>> listAllOrders(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int pageSize) {
+        User user = resolveUser(authorization);
+        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        return Result.success(referenceDataService.listAllOrders(page, pageSize));
+    }
+
     @GetMapping("/orders/{id}")
     @Operation(summary = "订单详情")
     public Result<RefOrderView> getOrder(

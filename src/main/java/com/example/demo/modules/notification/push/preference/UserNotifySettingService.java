@@ -85,12 +85,13 @@ public class UserNotifySettingService {
         muteMapper.insertOrUpdate(body);
     }
 
-    /** role to perspective: STAFF prefix -> STAFF, MEMBER -> STUDENT, other -> ALL */
+    /** role to perspective: 教职工侧角色(STAFF/SENIOR/ADMIN/SUPER_ADMIN/PLATFORM_OWNER) -> STAFF，学生(MEMBER/STUDENT) -> STUDENT，其它 -> ALL */
     static String resolvePerspective(String roleCode) {
         if (roleCode == null) return "ALL";
         String u = roleCode.trim().toUpperCase();
-        if (u.startsWith("STAFF_") || u.startsWith("ADMIN") || u.startsWith("SUPER") || u.contains("SYS")) return "STAFF";
         if ("MEMBER".equals(u) || "STUDENT".equals(u)) return "STUDENT";
+        if ("STAFF".equals(u) || "SENIOR".equals(u) || "ADMIN".equals(u)
+                || "SUPER_ADMIN".equals(u) || "PLATFORM_OWNER".equals(u)) return "STAFF";
         return "ALL";
     }
 

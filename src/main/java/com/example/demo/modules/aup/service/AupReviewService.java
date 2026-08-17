@@ -13,6 +13,8 @@ import com.example.demo.modules.aup.dto.ReviewTodoItem;
 import com.example.demo.modules.aup.dto.ReviewVoteRequest;
 import com.example.demo.modules.aup.dto.ReviewerConfigRequest;
 import com.example.demo.modules.aup.dto.ReviewerConfigResponse;
+import com.example.demo.modules.aup.dto.ReviewSessionVO;
+import com.example.demo.modules.aup.dto.ReviewSessionsResponse;
 import com.example.demo.modules.aup.dto.VoteAggregate;
 import com.example.demo.modules.aup.entity.AupReview;
 import com.example.demo.modules.aup.entity.AupReviewAssignment;
@@ -120,7 +122,7 @@ public class AupReviewService {
     }
 
     public boolean isSecretary(String userId) {
-        return StringUtils.hasText(userId) && reviewerMapper.countByUserIdRole(userId, R_SECRETARY) > 0;
+        return accessPolicy.isSecretary(userId);
     }
 
     /** 组长（PI）：走身份标识 GROUP_LEADER，语义与 AupAccessPolicy.isPi 一致 */
@@ -129,7 +131,7 @@ public class AupReviewService {
     }
 
     public boolean isExpert(String userId) {
-        return StringUtils.hasText(userId) && reviewerMapper.countByUserIdRole(userId, R_EXPERT) > 0;
+        return accessPolicy.isExpert(userId);
     }
 
     // ===================== 待办 =====================
@@ -203,8 +205,8 @@ public class AupReviewService {
         // 有格式建议 → 返修
         if (!items.isEmpty()) {
             persistSecretaryItems(user, aupId, roundNo, comment, items);
-            aupService.transition(aupId, STAGE_FORMAT_REVIEW, STAGE_DRAFT, "return", user.getId(), "secretary", comment);
-            return stageResult(aupId, STAGE_DRAFT);
+            aupService.transition(aupId, STAGE_FORMAT_REVIEW, STAGE_PI_REVIEW, "return", user.getId(), "secretary", comment);
+            return stageResult(aupId, STAGE_PI_REVIEW);
         }
 
         // 无格式建议 → 通过并分配专家
@@ -429,6 +431,82 @@ public class AupReviewService {
         return resp;
     }
 
+    /**
+     * 评审总览：全轮次每次评审记录（aup_review 整体结论 + 关联的逐字段意见）。
+     * 与 review/items 不同：该接口以「评审会话」为单位返回——整体同意/弃权/回避且无逐条批注的评审人也会出现，
+     * 解决「合格专家在总览中无记录」的问题。
+     */
+    public ReviewSessionsResponse reviewSessions(User user, long aupId) {
+        AupRecordView record = requireRecord(aupId);
+        assertCanViewReview(user, record);
+
+        List<AupReview> reviews = reviewMapper.selectReviewsByAup(aupId);
+        List<AupReviewItem> allItems = reviewMapper.selectByAup(aupId);
+
+        // 逐字段意见按 review_id 关联到所属评审会话
+        Map<Long, List<AupReviewItem>> byReviewId = new HashMap<>();
+        for (AupReviewItem it : allItems) {
+            if (it.getReviewId() == null) {
+                continue;
+            }
+            byReviewId.computeIfAbsent(it.getReviewId(), k -> new ArrayList<>()).add(it);
+        }
+
+        // 去重解析评审人姓名（整体结论 + 逐字段意见共用）
+        Map<String, String> names = new HashMap<>();
+        for (AupReview r : reviews) {
+            if (StringUtils.hasText(r.getReviewer())) {
+                names.put(r.getReviewer(), aupService.resolveName(r.getReviewer()));
+            }
+        }
+        for (AupReviewItem it : allItems) {
+            if (StringUtils.hasText(it.getReviewer())) {
+                it.setReviewerName(names.get(it.getReviewer()));
+            }
+        }
+
+        // 汇总：全轮次逐字段（已评审字段数 / 不合规字段数 / 建议字段数）
+        Set<String> reviewedFields = new LinkedHashSet<>();
+        Set<String> nonCompliantFields = new LinkedHashSet<>();
+        Set<String> suggestFields = new LinkedHashSet<>();
+        for (AupReviewItem it : allItems) {
+            if (it.getFieldKey() == null) {
+                continue;
+            }
+            reviewedFields.add(it.getFieldKey());
+            if (IV_NON_COMPLIANT.equals(it.getVerdict())) {
+                nonCompliantFields.add(it.getFieldKey());
+            } else if (IV_SUGGEST.equals(it.getVerdict())) {
+                suggestFields.add(it.getFieldKey());
+            }
+        }
+        ReviewItemsSummary summary = new ReviewItemsSummary();
+        summary.setReviewedCount(reviewedFields.size());
+        summary.setNonCompliantCount(nonCompliantFields.size());
+        summary.setSuggestCount(suggestFields.size());
+        summary.setTotalFields(record.getTemplateId() != null
+                ? reviewMapper.countTemplateFields(record.getTemplateId()) : 0);
+
+        List<ReviewSessionVO> sessions = new ArrayList<>(reviews.size());
+        for (AupReview r : reviews) {
+            ReviewSessionVO vo = new ReviewSessionVO();
+            vo.setReviewer(r.getReviewer());
+            vo.setReviewerName(names.get(r.getReviewer()));
+            vo.setRole(r.getRole());
+            vo.setVerdict(r.getVerdict());
+            vo.setComment(r.getComment());
+            vo.setRoundNo(r.getRoundNo());
+            vo.setCreatedAt(r.getCreatedAt());
+            vo.setItems(byReviewId.getOrDefault(r.getId(), List.of()));
+            sessions.add(vo);
+        }
+
+        ReviewSessionsResponse resp = new ReviewSessionsResponse();
+        resp.setSummary(summary);
+        resp.setSessions(sessions);
+        return resp;
+    }
+
     /** 批量解析逐字段意见的评审人姓名：去重 userId 后逐人 resolveName，回填 reviewerName，避免逐条 N+1。 */
     private void fillReviewerNames(List<AupReviewItem> items) {
         if (items == null || items.isEmpty()) {
@@ -511,9 +589,9 @@ public class AupReviewService {
             return STAGE_TERMINATED;
         }
         if (modify > 0) {
-            aupService.transition(aupId, STAGE_EXPERT_REVIEW, STAGE_DRAFT, "return",
+            aupService.transition(aupId, STAGE_EXPERT_REVIEW, STAGE_PI_REVIEW, "return",
                     operatorId, "expert", "专家评审建议修改，退回返修");
-            return STAGE_DRAFT;
+            return STAGE_PI_REVIEW;
         }
         if (effective == 0) {
             aupService.transition(aupId, STAGE_EXPERT_REVIEW, STAGE_FORMAT_REVIEW, "reassign",
@@ -612,7 +690,7 @@ public class AupReviewService {
         }
         List<String> result = new ArrayList<>();
         for (Map.Entry<String, List<IdentityTagVO>> entry
-                : personIdentityService.listByScope(PersonIdentityService.SCOPE_STAFF, null).entrySet()) {
+                : personIdentityService.listByUserIds(null).entrySet()) {
             if (hasTag(entry.getValue(), tagCode)) {
                 result.add(entry.getKey());
             }

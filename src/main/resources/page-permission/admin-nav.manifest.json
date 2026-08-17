@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-13T09:42:46.858Z",
+  "generatedAt": "2026-08-17T15:11:27.775Z",
   "pages": [
     {
       "path": "/about",
@@ -45,6 +45,13 @@
       "registryId": "animal-order"
     },
     {
+      "path": "/admin/animal-order-review",
+      "label": "动物订购审核",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "AI 实验室",
+      "registryId": "animal-order-review"
+    },
+    {
       "path": "/admin/api-docs",
       "label": "接口中心",
       "fallbackMinRole": "SUPER_ADMIN",
@@ -78,6 +85,13 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "资产与运维",
       "registryId": "asset-xfer"
+    },
+    {
+      "path": "/admin/aup",
+      "label": "AUP 计划书",
+      "fallbackMinRole": "STAFF",
+      "groupTitle": "资产与运维",
+      "registryId": "aup"
     },
     {
       "path": "/admin/automation-logs",
@@ -197,6 +211,13 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "资产与运维",
       "registryId": "file-templates"
+    },
+    {
+      "path": "/admin/inventory",
+      "label": "物品台账",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "资产与运维",
+      "registryId": "inventory"
     },
     {
       "path": "/admin/knowledge",

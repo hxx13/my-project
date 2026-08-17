@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.DictItemMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO dict_item (dict_id, value, label, sort_order)
+        VALUES (#{dictId}, #{value}, #{label}, #{sortOrder})
+    </insert>
+
+    <update id="update">
+        UPDATE dict_item
+        <set>
+            <if test="value != null">value = #{value},</if>
+            <if test="label != null">label = #{label},</if>
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultType="com.example.demo.modules.aup.entity.DictItem">
+        SELECT * FROM dict_item WHERE id = #{id}
+    </select>
+
+    <select id="listByDictId" resultType="com.example.demo.modules.aup.entity.DictItem">
+        SELECT * FROM dict_item WHERE dict_id = #{dictId} ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM dict_item WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByDictId">
+        DELETE FROM dict_item WHERE dict_id = #{dictId}
+    </delete>
+
+    <select id="countByDictId" resultType="int">
+        SELECT COUNT(1) FROM dict_item WHERE dict_id = #{dictId}
+    </select>
+
+    <select id="countByDictIdAndValue" resultType="int">
+        SELECT COUNT(1) FROM dict_item WHERE dict_id = #{dictId} AND value = #{value}
+    </select>
+
+    <select id="countByDictIdAndValueExclude" resultType="int">
+        SELECT COUNT(1) FROM dict_item
+        WHERE dict_id = #{dictId} AND value = #{value} AND id != #{excludeItemId}
+    </select>
+
+    <update id="updateSortOrder">
+        UPDATE dict_item SET sort_order = #{sortOrder} WHERE id = #{id}
+    </update>
+
+</mapper>

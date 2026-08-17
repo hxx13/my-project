@@ -85,56 +85,43 @@ public class PersonIdentityController {
     }
 
     @GetMapping
-    @Operation(summary = "按 scope 批量查询人员身份（userIds 缺省返回该 scope 下全部有身份的人）")
-    public Result<List<PersonIdentityVO>> listByScope(@RequestParam String scope,
-                                                      @RequestParam(required = false) String userIds,
-                                                      HttpServletRequest request) {
+    @Operation(summary = "批量查询人员身份（userIds 缺省返回全部有身份的人）")
+    public Result<List<PersonIdentityVO>> listByIds(@RequestParam(required = false) String userIds,
+                                                    HttpServletRequest request) {
         Result<?> denied = requireSuperAdmin(request);
         if (denied != null) return (Result<List<PersonIdentityVO>>) (Object) denied;
-        try {
-            Map<String, List<IdentityTagVO>> map = personIdentityService.listByScope(scope, splitUserIds(userIds));
-            List<PersonIdentityVO> result = new ArrayList<>();
-            map.forEach((uid, tags) -> {
-                PersonIdentityVO vo = new PersonIdentityVO();
-                vo.setUserId(uid);
-                vo.setScope(scope);
-                vo.setTags(tags);
-                result.add(vo);
-            });
-            return Result.success(result);
-        } catch (IllegalArgumentException e) {
-            return Result.error(e.getMessage());
-        }
+        Map<String, List<IdentityTagVO>> map = personIdentityService.listByUserIds(splitUserIds(userIds));
+        List<PersonIdentityVO> result = new ArrayList<>();
+        map.forEach((uid, tags) -> {
+            PersonIdentityVO vo = new PersonIdentityVO();
+            vo.setUserId(uid);
+            vo.setTags(tags);
+            result.add(vo);
+        });
+        return Result.success(result);
     }
 
-    @GetMapping("/{scope}/{userId}")
+    @GetMapping("/{userId}")
     @Operation(summary = "查询单个人员的身份")
-    public Result<PersonIdentityVO> getByUser(@PathVariable String scope,
-                                              @PathVariable String userId,
+    public Result<PersonIdentityVO> getByUser(@PathVariable String userId,
                                               HttpServletRequest request) {
         Result<?> denied = requireSuperAdmin(request);
         if (denied != null) return (Result<PersonIdentityVO>) (Object) denied;
-        try {
-            PersonIdentityVO vo = new PersonIdentityVO();
-            vo.setUserId(userId);
-            vo.setScope(scope);
-            vo.setTags(personIdentityService.getByUser(scope, userId));
-            return Result.success(vo);
-        } catch (IllegalArgumentException e) {
-            return Result.error(e.getMessage());
-        }
+        PersonIdentityVO vo = new PersonIdentityVO();
+        vo.setUserId(userId);
+        vo.setTags(personIdentityService.getByUser(userId));
+        return Result.success(vo);
     }
 
-    @PutMapping("/{scope}/{userId}")
+    @PutMapping("/{userId}")
     @Operation(summary = "全量写入人员身份标签（先删后插）")
-    public Result<?> setByUser(@PathVariable String scope,
-                               @PathVariable String userId,
+    public Result<?> setByUser(@PathVariable String userId,
                                @RequestBody(required = false) SetIdentityRequest body,
                                HttpServletRequest request) {
         Result<?> denied = requireSuperAdmin(request);
         if (denied != null) return denied;
         try {
-            personIdentityService.setByUser(scope, userId, body != null ? body.getTagIds() : null);
+            personIdentityService.setByUser(userId, body != null ? body.getTagIds() : null);
             return Result.success();
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());

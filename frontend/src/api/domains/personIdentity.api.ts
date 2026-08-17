@@ -14,15 +14,11 @@ export interface IdentityTag {
   label: string;
 }
 
-/** 某人在某个 scope 下持有的身份标签集合 */
+/** 某人持有的身份标签集合 */
 export interface PersonIdentity {
   userId: string;
-  scope: string;
   tags: IdentityTag[];
 }
-
-/** 身份标识只区分学生 / 员工两个维度 */
-export type PersonIdentityScope = "STUDENT" | "STAFF";
 
 export async function fetchIdentityTags(): Promise<IdentityTag[]> {
   const res = await authHttp.get<Result<IdentityTag[]>>("/person-identity/tags");
@@ -48,11 +44,10 @@ export async function deleteIdentityTag(id: number): Promise<void> {
   await authHttp.delete<Result<unknown>>(`/person-identity/tags/${id}`);
 }
 
-export async function fetchPersonIdentityByScope(
-  scope: PersonIdentityScope,
+export async function fetchPersonIdentity(
   userIds?: string[]
 ): Promise<PersonIdentity[]> {
-  const params: Record<string, string> = { scope };
+  const params: Record<string, string> = {};
   if (userIds && userIds.length > 0) {
     params.userIds = userIds.join(",");
   }
@@ -63,12 +58,11 @@ export async function fetchPersonIdentityByScope(
 }
 
 export async function setPersonIdentity(
-  scope: PersonIdentityScope,
   userId: string,
   tagIds: number[]
 ): Promise<void> {
   await authHttp.put<Result<unknown>>(
-    `/person-identity/${scope}/${encodeURIComponent(userId)}`,
+    `/person-identity/${encodeURIComponent(userId)}`,
     { tagIds }
   );
 }

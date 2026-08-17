@@ -26,6 +26,9 @@ public interface AupReviewMapper {
     /** 某轮次已投专家逐人记录（role=expert），投票进度卡逐人展示用 */
     List<ReviewVoteVO> selectVotesByAupRound(@Param("aupId") long aupId, @Param("roundNo") int roundNo);
 
+    /** 某计划书全部轮次的评审投票（aup_review 全量，含专家 agree/disagree/modify/abstain/recuse 与秘书格式审查），评审总览按专家+轮次分组用 */
+    List<AupReview> selectReviewsByAup(@Param("aupId") long aupId);
+
     /** 取某计划书全部轮次的逐字段意见（不按 round_no 过滤），状态总览按轮展示用 */
     List<AupReviewItem> selectByAup(@Param("aupId") long aupId);
 

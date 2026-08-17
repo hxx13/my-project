@@ -1,1 +1,1 @@
-export { default } from "@/features/digital-twin-screen/DigitalTwinScreenPage";
+export { default } from "@/features/digital-twin/DigitalTwinPage";

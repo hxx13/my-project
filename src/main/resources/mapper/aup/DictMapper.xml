@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.DictMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO dict (dict_key, name, category) VALUES (#{dictKey}, #{name}, #{category})
+    </insert>
+
+    <update id="update">
+        UPDATE dict
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="category != null">category = #{category},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="findByKey" resultType="com.example.demo.modules.aup.entity.Dict">
+        SELECT * FROM dict WHERE dict_key = #{dictKey}
+    </select>
+
+    <select id="findById" resultType="com.example.demo.modules.aup.entity.Dict">
+        SELECT * FROM dict WHERE id = #{id}
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM dict WHERE id = #{id}
+    </delete>
+
+    <select id="listByKeyword" resultType="com.example.demo.modules.aup.entity.Dict">
+        SELECT * FROM dict
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (dict_key LIKE CONCAT('%',#{keyword},'%') OR name LIKE CONCAT('%',#{keyword},'%'))
+            </if>
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+        </where>
+        ORDER BY id ASC LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByKeyword" resultType="int">
+        SELECT COUNT(1) FROM dict
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (dict_key LIKE CONCAT('%',#{keyword},'%') OR name LIKE CONCAT('%',#{keyword},'%'))
+            </if>
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+        </where>
+    </select>
+
+</mapper>

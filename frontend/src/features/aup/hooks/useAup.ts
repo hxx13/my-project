@@ -31,6 +31,7 @@ import {
   fetchAupMyRoles,
   fetchAupPrintData,
   fetchAupPickers,
+  fetchAupProjectGroups,
   fetchAupSignatureContext,
   fetchAupSnapshot,
   fetchAupSnapshots,
@@ -43,6 +44,7 @@ import {
   fetchReviewerConfig,
   fetchReviewItems,
   fetchReviewProgress,
+  fetchReviewSessions,
   fetchReviewTodo,
   publishAupTemplate,
   renewAup,
@@ -73,6 +75,7 @@ import {
   type PickerType,
   type ReviewItemsParams,
   type ReviewItemsResult,
+  type ReviewSessionsResult,
   type ReviewTodoParams,
   type SaveAupResult,
   type StageChangeResult,
@@ -88,6 +91,7 @@ import type { ReviewerConfig, ReviewerConfigRequest, ReviewProgress, VoteRequest
 export const aupQueryKeys = {
   all: ["aup"] as const,
   list: (params?: AupListParams) => ["aup", "list", params ?? {}] as const,
+  projectGroups: () => ["aup", "projectGroups"] as const,
   detail: (id: string) => ["aup", "detail", id] as const,
   snapshots: (id: string) => ["aup", "snapshots", id] as const,
   snapshot: (id: string, snapshotId: number | string) => ["aup", "snapshot", id, snapshotId] as const,
@@ -96,6 +100,7 @@ export const aupQueryKeys = {
   reviewTodo: (params?: ReviewTodoParams) => ["aup", "reviewTodo", params ?? {}] as const,
   reviewProgress: (id: string) => ["aup", "reviewProgress", id] as const,
   reviewItems: (id: string, params?: ReviewItemsParams) => ["aup", "reviewItems", id, params ?? {}] as const,
+  reviewSessions: (id: string) => ["aup", "reviewSessions", id] as const,
   experts: () => ["aup", "experts"] as const,
   reviewerConfig: () => ["aup", "reviewerConfig"] as const,
   attachments: (id: string) => ["aup", "attachments", id] as const,
@@ -118,6 +123,15 @@ export function useAupList(params: AupListParams = {}) {
   return useQuery({
     queryKey: aupQueryKeys.list(params),
     queryFn: () => fetchAupList(params),
+  });
+}
+
+/** 列表筛选用去重课题组名称 */
+export function useAupProjectGroups() {
+  return useQuery({
+    queryKey: aupQueryKeys.projectGroups(),
+    queryFn: () => fetchAupProjectGroups(),
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -415,6 +429,15 @@ export function useReviewItems(id?: string, params: ReviewItemsParams = {}) {
   });
 }
 
+/** 评审总览：全轮次每次评审记录（含整体同意/拒评/回避等无逐条批注的评审人） */
+export function useReviewSessions(id?: string) {
+  return useQuery<ReviewSessionsResult>({
+    queryKey: aupQueryKeys.reviewSessions(id ?? ""),
+    queryFn: () => fetchReviewSessions(id!),
+    enabled: !!id,
+  });
+}
+
 function invalidateReview(id: string | undefined, qc: ReturnType<typeof useQueryClient>) {
   if (id) qc.invalidateQueries({ queryKey: aupQueryKeys.detail(id) });
   qc.invalidateQueries({ queryKey: aupQueryKeys.all });
@@ -488,12 +511,10 @@ export function useUpdateReviewerConfig() {
 export function useAupReview(id?: string) {
   const progressQuery = useReviewProgress(id);
   const itemsQuery = useReviewItems(id);
-  // 全轮次逐字段意见（roundNo=0 → 后端返回全部轮次），供「评审总览」按轮分组展示历史
-  const allItemsQuery = useReviewItems(id, { roundNo: 0 });
   const formatReview = useFormatReview(id);
   const expertReview = useExpertReview(id);
   const piReview = usePiReview(id);
-  return { progressQuery, itemsQuery, allItemsQuery, formatReview, expertReview, piReview };
+  return { progressQuery, itemsQuery, formatReview, expertReview, piReview };
 }
 
 /* =====================================================================

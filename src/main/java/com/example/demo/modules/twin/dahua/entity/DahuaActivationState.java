@@ -16,6 +16,5 @@ public class DahuaActivationState {
     private String lastSwipeAt;
     private String scheduledExitAt;
     private String debounceUntil;
-    private String lastRecordId;
     private String updatedAt;
 }

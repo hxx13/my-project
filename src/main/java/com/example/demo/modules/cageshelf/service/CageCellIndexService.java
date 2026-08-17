@@ -376,21 +376,17 @@ public class CageCellIndexService {
                                 mapped.get("lab_assistant_name"));
                     }
 
-                    // 跳过已有动物信息的
-                    if (d.getAnimalStrainName() != null && d.getAnimalSex() != null) {
-                        totalSkipped++; continue;
-                    }
-
+                    // 覆盖：ARO 返回空也视为该笼位该项信息为空，直接清空本地旧值（而非保留）
                     boolean changed = false;
-                    if (mapped.get("animal_strain_name") != null) { d.setAnimalStrainName((String) mapped.get("animal_strain_name")); changed = true; }
-                    if (mapped.get("animal_sex") != null) { d.setAnimalSex((String) mapped.get("animal_sex")); changed = true; }
-                    if (mapped.get("animal_week_age") != null) { d.setAnimalWeekAge((String) mapped.get("animal_week_age")); changed = true; }
-                    if (mapped.get("animal_male_number") != null) { d.setAnimalMaleNumber((Integer) mapped.get("animal_male_number")); changed = true; }
-                    if (mapped.get("animal_female_number") != null) { d.setAnimalFemaleNumber((Integer) mapped.get("animal_female_number")); changed = true; }
-                    if (mapped.get("animal_come_from") != null) { d.setAnimalComeFrom((String) mapped.get("animal_come_from")); changed = true; }
-                    if (mapped.get("experimenter_name") != null) { d.setExperimenterName((String) mapped.get("experimenter_name")); changed = true; }
-                    if (mapped.get("lab_assistant_name") != null) { d.setLabAssistantName((String) mapped.get("lab_assistant_name")); changed = true; }
-                    if (mapped.get("cage_box_name") != null && d.getCageBoxName() == null) { d.setCageBoxName((String) mapped.get("cage_box_name")); changed = true; }
+                    if (!Objects.equals(mapped.get("animal_strain_name"), d.getAnimalStrainName())) { d.setAnimalStrainName((String) mapped.get("animal_strain_name")); changed = true; }
+                    if (!Objects.equals(mapped.get("animal_sex"), d.getAnimalSex())) { d.setAnimalSex((String) mapped.get("animal_sex")); changed = true; }
+                    if (!Objects.equals(mapped.get("animal_week_age"), d.getAnimalWeekAge())) { d.setAnimalWeekAge((String) mapped.get("animal_week_age")); changed = true; }
+                    if (!Objects.equals(mapped.get("animal_male_number"), d.getAnimalMaleNumber())) { d.setAnimalMaleNumber((Integer) mapped.get("animal_male_number")); changed = true; }
+                    if (!Objects.equals(mapped.get("animal_female_number"), d.getAnimalFemaleNumber())) { d.setAnimalFemaleNumber((Integer) mapped.get("animal_female_number")); changed = true; }
+                    if (!Objects.equals(mapped.get("animal_come_from"), d.getAnimalComeFrom())) { d.setAnimalComeFrom((String) mapped.get("animal_come_from")); changed = true; }
+                    if (!Objects.equals(mapped.get("experimenter_name"), d.getExperimenterName())) { d.setExperimenterName((String) mapped.get("experimenter_name")); changed = true; }
+                    if (!Objects.equals(mapped.get("lab_assistant_name"), d.getLabAssistantName())) { d.setLabAssistantName((String) mapped.get("lab_assistant_name")); changed = true; }
+                    if (!Objects.equals(mapped.get("cage_box_name"), d.getCageBoxName())) { d.setCageBoxName((String) mapped.get("cage_box_name")); changed = true; }
 
                     if (changed) {
                         // 合并详情到 raw_data
@@ -510,11 +506,12 @@ public class CageCellIndexService {
                     Integer rent = (Integer) mapped.get("rent_type");
                     String label = (String) mapped.get("state_label");
 
+                    // 覆盖：/book 返回空也清空本地旧状态（空=该笼位无此状态）
                     boolean changed = isNew;
-                    if (type != null && !type.equals(d.getCageTypeCode())) { d.setCageTypeCode(type); changed = true; }
-                    if (state != null && !state.equals(d.getState())) { d.setState(state); changed = true; }
-                    if (rent != null && !rent.equals(d.getRentType())) { d.setRentType(rent); changed = true; }
-                    if (label != null && !label.equals(d.getStateLabel())) { d.setStateLabel(label); changed = true; }
+                    if (!Objects.equals(type, d.getCageTypeCode())) { d.setCageTypeCode(type); changed = true; }
+                    if (!Objects.equals(state, d.getState())) { d.setState(state); changed = true; }
+                    if (!Objects.equals(rent, d.getRentType())) { d.setRentType(rent); changed = true; }
+                    if (!Objects.equals(label, d.getStateLabel())) { d.setStateLabel(label); changed = true; }
 
                     if (changed) {
                         d.setSyncedAt(DT_FMT.format(LocalDateTime.now()));

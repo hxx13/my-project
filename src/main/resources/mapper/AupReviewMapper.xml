@@ -33,6 +33,14 @@
         ORDER BY id ASC
     </select>
 
+    <select id="selectReviewsByAup" resultType="com.example.demo.modules.aup.entity.AupReview">
+        SELECT id, aup_id AS aupId, round_no AS roundNo, reviewer, role, verdict, comment,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM aup_review
+        WHERE aup_id = #{aupId}
+        ORDER BY round_no ASC, id ASC
+    </select>
+
     <select id="selectByAup" resultType="com.example.demo.modules.aup.entity.AupReviewItem">
         SELECT *
         FROM aup_review_item

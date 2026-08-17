@@ -1,6 +1,7 @@
 package com.example.demo.modules.cageshelf.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.mapper.CageShelfBookmarkMapper;
@@ -44,7 +45,8 @@ public class CageShelfDataController {
 
     /** GET /api/cage-shelves/{roomId}/{shelveId}/cells — 单个笼架的80个笼位快照 */
     @GetMapping("/{roomId}/{shelveId}/cells")
-    public Result<?> getCells(@PathVariable Long roomId, @PathVariable Long shelveId) {
+    public Result<?> getCells(@PathVariable Long roomId, @PathVariable Long shelveId, HttpServletRequest request) {
+        if (resolveUser(request) == null) return Result.fail(401, "未登录");
         log.info("[CageShelf] GET cells roomId={} shelveId={}", roomId, shelveId);
         List<Map<String, Object>> cells = cellMapper.selectLatestByRoomAndShelve(roomId, shelveId);
         if (cells.isEmpty()) {
@@ -60,7 +62,8 @@ public class CageShelfDataController {
 
     /** GET /api/cage-shelves/cells/batch?pairs=1:2,3:4 — 批量查多个笼架 */
     @GetMapping("/cells/batch")
-    public Result<?> getCellsBatch(@RequestParam String pairs) {
+    public Result<?> getCellsBatch(@RequestParam String pairs, HttpServletRequest request) {
+        if (resolveUser(request) == null) return Result.fail(401, "未登录");
         log.info("[CageShelf] GET cells/batch pairs={}", pairs);
         List<Map<String, Object>> pairList = new ArrayList<>();
         for (String p : pairs.split(",")) {
@@ -79,14 +82,20 @@ public class CageShelfDataController {
 
     /** GET /api/cage-shelves/full-tree — 全量校区→区域→楼层→房间→笼架树，前端一次拉取无需级联 */
     @GetMapping("/full-tree")
-    public Result<?> getFullTree() {
+    public Result<?> getFullTree(HttpServletRequest request) {
+        if (resolveUser(request) == null) return Result.fail(401, "未登录");
         List<Map<String, Object>> rows = shelfMapper.listFullTree();
         return Result.success(rows == null ? List.of() : rows);
     }
 
     /** GET /api/cage-shelves/snapshot-batches — 列出所有扫描批次（快照数据源列表） */
     @GetMapping("/snapshot-batches")
-    public Result<?> getSnapshotBatches() {
+    public Result<?> getSnapshotBatches(HttpServletRequest request) {
+        User user = resolveUser(request);
+        if (user == null) return Result.fail(401, "未登录");
+        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
+            return Result.fail(403, "无权限");
+        }
         snapshotMapper.ensureTable();
         List<Map<String, Object>> rows = snapshotMapper.selectBatchList();
         return Result.success(rows == null ? List.of() : rows);

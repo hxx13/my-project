@@ -45,7 +45,7 @@ public class PushRetryScheduler {
             if (channel == null || !channel.isEnabled()) continue;
 
             String userId = entry.getRecipientUserId();
-            boolean isStaff = userId != null && (userId.startsWith("staff_") || "SYS_SUPER_ROOT".equals(userId));
+            boolean isStaff = userId != null && (userId.toUpperCase().startsWith("USR_") || userId.toUpperCase().startsWith("STAFF_") || "SYS_SUPER_ROOT".equals(userId));
             String target = PushConstants.CHANNEL_EMAIL.equals(channel.getCode())
                     ? (isStaff ? userMapper.findContactEmailById(userId) : personnelMapper.findContactEmailByUserId(userId))
                     : (isStaff ? userMapper.findSendKeyById(userId) : personnelMapper.findSendKeyByUserId(userId));

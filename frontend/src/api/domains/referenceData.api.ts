@@ -202,3 +202,13 @@ export async function fetchOrderLogs(id: number) {
   const res = await authHttp.get<Result<RefOrderLog[]>>(`/reference-data/orders/${id}/logs`);
   return res.data.data;
 }
+
+export async function fetchAllOrders(page = 1, pageSize = 50) {
+  const res = await authHttp.get<Result<{ list: RefOrder[]; total: number }>>("/reference-data/orders/all", { params: { page, pageSize } });
+  return res.data.data;
+}
+
+export async function updateOrderStatus(id: number, status: string) {
+  const res = await authHttp.put<Result<RefOrder>>(`/reference-data/orders/${id}/status`, null, { params: { status } });
+  return res.data.data;
+}

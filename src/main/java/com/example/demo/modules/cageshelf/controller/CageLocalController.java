@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -38,19 +39,34 @@ public class CageLocalController {
     private final CageCellIndexMapper indexMapper;
     private final CageCellHistoryMapper historyMapper;
     private final OutboxService outboxService;
+    private final JdbcTemplate jdbcTemplate;
 
     public CageLocalController(AuthContextService authContextService,
                                CageCellDetailService detailService,
                                CageCellDetailMapper detailMapper,
                                CageCellIndexMapper indexMapper,
                                CageCellHistoryMapper historyMapper,
-                               OutboxService outboxService) {
+                               OutboxService outboxService,
+                               JdbcTemplate jdbcTemplate) {
         this.authContextService = authContextService;
         this.detailService = detailService;
         this.detailMapper = detailMapper;
         this.indexMapper = indexMapper;
         this.historyMapper = historyMapper;
         this.outboxService = outboxService;
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    /** 本地 AUP 注册计划号：aupId → aup_record.register_no（打通本地注册号与笼架）。 */
+    private String resolveLocalRegisterNo(Long aupId) {
+        if (aupId == null) return null;
+        try {
+            List<String> rows = jdbcTemplate.queryForList(
+                    "SELECT register_no FROM aup_record WHERE id = ?", String.class, aupId);
+            return rows.isEmpty() || rows.get(0) == null ? null : rows.get(0);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private User resolveUser(String auth) {
@@ -132,6 +148,11 @@ public class CageLocalController {
         Long shelveId = toLong(body.get("shelveId"));
         String piName = str(body, "piName");
         String aupNumber = str(body, "aupNumber");
+        // 优先用本地 AUP 注册计划号（打通本地 JUMC 号与笼架），回退 ARO aupNumber
+        String localNo = resolveLocalRegisterNo(aupId);
+        if (localNo != null && !localNo.isBlank()) {
+            aupNumber = localNo;
+        }
 
         // ① 本地DB逐笼更新（含PI姓名、AUP编号、院系）
         List<Long> cageIds = new ArrayList<>();
@@ -262,7 +283,8 @@ public class CageLocalController {
 
     @GetMapping("/annotate/{animalCageId}")
     @Operation(summary = "读取笼位实验记录和照片")
-    public Result<?> getAnnotate(@PathVariable Long animalCageId) {
+    public Result<?> getAnnotate(@PathVariable Long animalCageId, HttpServletRequest req) {
+        if (resolveUser(req.getHeader("Authorization")) == null) return Result.fail(401, "未登录");
         CageCellDetail d = detailMapper.selectByAnimalCageId(animalCageId);
         if (d == null) return Result.success(Map.of("experimentDesc", "", "imagesJson", "[]", "statusPhotos", "{}"));
         return Result.success(Map.of(
@@ -276,7 +298,7 @@ public class CageLocalController {
     @Operation(summary = "写入笼位实验记录和照片")
     public Result<?> annotate(@RequestBody Map<String, Object> body, HttpServletRequest req) {
         User u = resolveUser(req.getHeader("Authorization"));
-        Result<?> denied = requireRole(u, RoleEnum.STAFF);
+        Result<?> denied = requireRole(u, RoleEnum.MEMBER);
         if (denied != null) return denied;
 
         Long animalCageId = toLong(body.get("animalCageId"));
@@ -289,7 +311,12 @@ public class CageLocalController {
         }
         if (body.containsKey("experimentDesc")) d.setExperimentDesc(str(body, "experimentDesc"));
         if (body.containsKey("imagesJson")) d.setImagesJson(str(body, "imagesJson"));
-        if (body.containsKey("statusPhotos")) d.setExtraData(str(body, "statusPhotos"));
+        if (body.containsKey("statusPhotos")) {
+            // 特殊状态照片仅教职工（STAFF+）可写，学生只能写实验记录/照片
+            if (u.getRole() != null && u.getRole().getLevel() >= RoleEnum.STAFF.getLevel()) {
+                d.setExtraData(str(body, "statusPhotos"));
+            }
+        }
         detailMapper.batchUpsert(List.of(d));
 
         // 同时写入历史归档（标注类操作，statusField="_annotation"）
@@ -312,7 +339,8 @@ public class CageLocalController {
 
     @GetMapping("/history/{animalCageId}")
     @Operation(summary = "读取笼位图片笔记归档历史")
-    public Result<?> getHistory(@PathVariable Long animalCageId) {
+    public Result<?> getHistory(@PathVariable Long animalCageId, HttpServletRequest req) {
+        if (resolveUser(req.getHeader("Authorization")) == null) return Result.fail(401, "未登录");
         List<CageCellHistory> list = historyMapper.selectByAnimalCageId(animalCageId);
         return Result.success(list);
     }
@@ -333,7 +361,8 @@ public class CageLocalController {
 
     @GetMapping("/scan-lookup")
     @Operation(summary = "本地DB扫码检索：先查 cage_box_code，再查 animal_cage_id")
-    public Result<?> scanLookup(@RequestParam String code) {
+    public Result<?> scanLookup(@RequestParam String code, HttpServletRequest req) {
+        if (resolveUser(req.getHeader("Authorization")) == null) return Result.fail(401, "未登录");
         if (code == null || code.isBlank()) return Result.fail(400, "code 不能为空");
         String q = code.trim();
 

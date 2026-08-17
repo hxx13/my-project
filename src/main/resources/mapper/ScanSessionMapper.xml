@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.inventory.mapper.ScanSessionMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO inv_scan_session (space_id, operator_user_id, status, started_at)
+        VALUES (#{spaceId}, #{operatorUserId}, 'IN_PROGRESS', NOW())
+    </insert>
+    <select id="selectById" resultType="com.example.demo.modules.inventory.entity.InvScanSession">
+        SELECT * FROM inv_scan_session WHERE id = #{id}
+    </select>
+    <select id="selectLastCommitted" resultType="com.example.demo.modules.inventory.entity.InvScanSession">
+        SELECT * FROM inv_scan_session WHERE space_id = #{spaceId} AND status = 'COMMITTED'
+        ORDER BY committed_at DESC LIMIT 1
+    </select>
+    <update id="updateStatus">
+        UPDATE inv_scan_session SET status = #{status} WHERE id = #{id} AND status = 'IN_PROGRESS'
+    </update>
+    <update id="markCommitted">
+        UPDATE inv_scan_session SET status = 'COMMITTED', committed_at = NOW() WHERE id = #{id} AND status = 'IN_PROGRESS'
+    </update>
+    <update id="updateStats">
+        UPDATE inv_scan_session
+        SET scanned_count = #{scannedCount}, found_count = #{foundCount},
+            new_count = #{newCount}, missing_count = #{missingCount}
+        WHERE id = #{id}
+    </update>
+    <select id="selectBySpace" resultType="com.example.demo.modules.inventory.entity.InvScanSession">
+        SELECT * FROM inv_scan_session WHERE space_id = #{spaceId} ORDER BY id DESC
+    </select>
+</mapper>

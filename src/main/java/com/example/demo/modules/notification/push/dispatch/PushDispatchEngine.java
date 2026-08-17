@@ -191,8 +191,11 @@ public class PushDispatchEngine {
         Map<String, User> userCache = userMapper.findByIds(idList).stream()
                 .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
         Map<String, String> nameMap = displayNameService.resolveDisplayNames(idList);
-        // 分表查询：STAFF_* / SYS_SUPER_ROOT → sys_user；其余 → aro_personnel
-        List<String> staffIds = idList.stream().filter(id -> id.toUpperCase().startsWith("STAFF_") || "SYS_SUPER_ROOT".equals(id)).toList();
+        // 分表查询：USR_* / STAFF_* / SYS_SUPER_ROOT → sys_user；其余 → aro_personnel
+        List<String> staffIds = idList.stream().filter(id -> {
+            String up = id == null ? "" : id.toUpperCase();
+            return up.startsWith("USR_") || up.startsWith("STAFF_") || "SYS_SUPER_ROOT".equals(id);
+        }).toList();
         List<String> aroIds = idList.stream().filter(id -> !staffIds.contains(id)).toList();
 
         Map<String, String> emailMap = new HashMap<>();

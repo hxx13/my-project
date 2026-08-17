@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
+import toast from "react-hot-toast";
 import { useUpdateContent } from "@/api/hooks/usePortalContent";
 import { usePageVersions } from "./usePageVersions";
+import { uploadSingleImage } from "@/api/domains/upload.api";
 import type { PortalContentView } from "@/api/domains/portalContent.api";
 
 interface ContactItem { label: string; icon: string; value: string }
@@ -21,6 +23,13 @@ function parseExt(row: PortalContentView): Record<string, unknown> {
   } catch { return {}; }
 }
 
+function toPhotos(ext: Record<string, unknown>): string[] {
+  if (Array.isArray(ext.photos)) {
+    return (ext.photos as unknown[]).filter((p): p is string => typeof p === "string" && p.length > 0);
+  }
+  return [];
+}
+
 export default function ContactPageEditor() {
   const { versions, published, isFetching, createDraft, publishVersion, deleteVersion, createMut } = usePageVersions("contact");
   const updateMut = useUpdateContent();
@@ -31,6 +40,8 @@ export default function ContactPageEditor() {
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [contacts, setContacts] = useState<ContactItem[]>([]);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!selected) return;
@@ -55,6 +66,7 @@ export default function ContactPageEditor() {
         ]);
       }
     }
+    setPhotos(toPhotos(ext));
   }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -63,9 +75,26 @@ export default function ContactPageEditor() {
     }
   }, [versions, published, selectedId]);
 
+  const handleUpload = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const file of Array.from(files)) {
+        const r = await uploadSingleImage(file);
+        urls.push(r.publicUrl);
+      }
+      setPhotos((prev) => [...prev, ...urls]);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "上传失败");
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
   const saveDraft = useCallback(() => {
     if (!selected) return;
-    const ext = { page_key: "contact", contacts };
+    const ext = { page_key: "contact", contacts, photos };
     const newSummary = contacts.map((c) => `${c.label}：${c.value}`).join(" | ");
     if (selected.status === "DRAFT") {
       updateMut.mutate({
@@ -73,13 +102,20 @@ export default function ContactPageEditor() {
         body: { title, summary: newSummary, extensionJson: ext },
       });
     } else {
-      createDraft(selected, (newId) => setSelectedId(newId));
+      // 在已发布版本上「保存草稿」：以当前编辑态（含照片）新建草稿，而不是复制旧发布版本
+      createMut.mutate({
+        contentType: "PAGE",
+        title,
+        summary: newSummary,
+        status: "DRAFT",
+        extensionJson: ext,
+      }, { onSuccess: (created) => setSelectedId(created.id) });
     }
-  }, [selected, title, contacts]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, title, contacts, photos, createMut, updateMut]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const publish = useCallback(() => {
     if (!selected) return;
-    const ext = { page_key: "contact", contacts };
+    const ext = { page_key: "contact", contacts, photos };
     const newSummary = contacts.map((c) => `${c.label}：${c.value}`).join(" | ");
     updateMut.mutate({
       id: selected.id,
@@ -87,7 +123,7 @@ export default function ContactPageEditor() {
     }, {
       onSuccess: () => { publishVersion(selected.id); },
     });
-  }, [selected, title, contacts]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, title, contacts, photos, updateMut, publishVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const card: React.CSSProperties = {
     background: "white", border: "1px solid #e8e4df", borderRadius: 14,
@@ -103,7 +139,7 @@ export default function ContactPageEditor() {
     fontFamily: "inherit", width: "100%", boxSizing: "border-box",
   };
   const selectStyle: React.CSSProperties = { ...inputStyle, cursor: "pointer" };
-  const pending = createMut.isPending || updateMut.isPending;
+  const pending = createMut.isPending || updateMut.isPending || uploading;
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 24, background: "#f5f3f0" }}>
@@ -179,6 +215,40 @@ export default function ContactPageEditor() {
                   </div>
                 ))}
                 <button style={{ fontSize: 11, color: "#d97706", fontWeight: 600, cursor: "pointer", background: "none", border: "none", marginTop: 4 }} onClick={() => setContacts([...contacts, { label: "", icon: "MapPin", value: "" }])}>+ 添加联系方式</button>
+              </div>
+
+              <div style={card}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>🗺️ 地图指引（{photos.length} 张）</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
+                  {photos.map((url, i) => (
+                    <div key={i} style={{ position: "relative", aspectRatio: "4 / 3", borderRadius: 10, overflow: "hidden", border: "1px solid #e8e4df", background: "#fafaf9" }}>
+                      <img src={url} alt={`照片${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      <button
+                        onClick={() => setPhotos(photos.filter((_, j) => j !== i))}
+                        style={{ position: "absolute", top: 5, right: 5, width: 24, height: 24, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 13, cursor: "pointer", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <label
+                    style={{
+                      aspectRatio: "4 / 3", borderRadius: 10, border: "1px dashed #d97706",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      cursor: uploading ? "not-allowed" : "pointer", color: "#d97706",
+                      fontSize: 12, fontWeight: 600, background: "white", opacity: uploading ? 0.5 : 1,
+                    }}
+                  >
+                    {uploading ? "上传中…" : "+ 上传照片"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      hidden
+                      onChange={(e) => { handleUpload(e.target.files); e.target.value = ""; }}
+                    />
+                  </label>
+                </div>
               </div>
 
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", paddingTop: 4 }}>

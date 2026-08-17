@@ -562,56 +562,6 @@ export interface CageShelfDetail {
   latestBatchId?: string | null;
 }
 
-/**
- * 获取笼架筛选选项（按课题组范围过滤，支持级联参数）
- * GET /api/student/cage-shelves/filter-options
- */
-export async function fetchStudentCageShelfFilterOptions(
-  params: CageShelfFilterOptionsParams = {}
-): Promise<CageShelfFilterOptions> {
-  const res = await authHttp.get<Result<CageShelfFilterOptions>>(
-    "/student/cage-shelves/filter-options",
-    { params }
-  );
-  if (!res.data?.success) {
-    throw new Error(res.data?.message || "获取筛选选项失败");
-  }
-  return res.data.data;
-}
-
-/**
- * 获取笼架详情（含 8x10 网格数据）
- * GET /api/student/cage-shelves/:shelveId/detail
- */
-export async function fetchStudentCageShelfDetail(
-  shelveId: string
-): Promise<CageShelfDetail> {
-  const res = await authHttp.get<Result<CageShelfDetail>>(
-    `/student/cage-shelves/${shelveId}/detail`
-  );
-  if (!res.data?.success) {
-    throw new Error(res.data?.message || "获取笼架详情失败");
-  }
-  return res.data.data;
-}
-
-/**
- * 触发笼架快照刷新
- * POST /api/student/cage-shelves/refresh
- */
-export async function refreshStudentCageShelf(): Promise<{
-  message: string;
-  refreshedShelves: number;
-}> {
-  const res = await authHttp.post<
-    Result<{ message: string; refreshedShelves: number }>
-  >("/student/cage-shelves/refresh");
-  if (!res.data?.success) {
-    throw new Error(res.data?.message || "刷新失败");
-  }
-  return res.data.data;
-}
-
 // ======================== 房间在室人员 API ========================
 
 /** 房间在室人员条目 */
@@ -716,49 +666,3 @@ export async function fetchStudentActivity(): Promise<StudentActivityResponse> {
   return res.data.data!;
 }
 
-// ======================== 笼位标注 API ========================
-
-/**
- * 获取笼位标注信息
- * GET /api/student/cage-shelves/{shelveId}/cells/{x}/{y}/annotation
- */
-export async function fetchCellAnnotation(
-  shelveId: string,
-  x: number,
-  y: number,
-): Promise<CageCellAnnotation | null> {
-  const res = await authHttp.get<Result<CageCellAnnotation | null>>(
-    `/student/cage-shelves/${shelveId}/cells/${x}/${y}/annotation`,
-  );
-  if (!res.data?.success) {
-    throw new Error(res.data?.message || "获取标注失败");
-  }
-  return res.data.data ?? null;
-}
-
-/**
- * 保存笼位标注
- * PUT /api/student/cage-shelves/{shelveId}/cells/{x}/{y}/annotation
- */
-export async function saveCellAnnotation(
-  shelveId: string,
-  x: number,
-  y: number,
-  position: string,
-  data: { richText?: string; images?: string; aroRawData?: string },
-): Promise<void> {
-  const res = await authHttp.put<Result<void>>(
-    `/student/cage-shelves/${shelveId}/cells/${x}/${y}/annotation`,
-    { position, ...data },
-  );
-  if (!res.data?.success) {
-    throw new Error(res.data?.message || "保存标注失败");
-  }
-}
-
-/** 学生端特殊状态总览（仅本课题组可见的笼位） */
-export async function fetchStudentSpecialStatusOverview() {
-  const res = await authHttp.get<Result<any>>("/student/cage-shelves/special-status-overview");
-  if (!res.data?.success) throw new Error(res.data?.message || "加载失败");
-  return res.data.data;
-}

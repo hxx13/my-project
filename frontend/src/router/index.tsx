@@ -56,6 +56,8 @@ import MaterialReviewPage from "@/pages/MaterialReviewPage";
 import MaterialManagePage from "@/pages/MaterialManagePage";
 import MaterialAuditExportPage from "@/pages/MaterialAuditExportPage";
 import AdminAssetRecordPage from "@/pages/AdminAssetRecordPage";
+import AdminInventoryPage from "@/pages/AdminInventoryPage";
+import ScanSessionPage from "@/features/inventory/ScanSessionPage";
 import AdminFacilityMaintenancePage from "@/pages/AdminFacilityMaintenancePage";
 import AdminFileTemplatesPage from "@/pages/AdminFileTemplatesPage";
 import AdminAssetTransferRecordPage from "@/pages/AdminAssetTransferRecordPage";
@@ -99,6 +101,8 @@ import AdminNotificationDigestPage from "@/pages/AdminNotificationDigestPage";
 import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
 import ReferenceDataPage from "@/pages/ReferenceDataPage";
+import AdminOrderReviewPage from "@/pages/AdminOrderReviewPage";
+import StudentCageClaimReviewPage from "@/features/student/pages/student-cage-claim-review";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
 import AppearanceSettings from "@/features/admin/settings/AppearanceSettings";
 import NotificationsSettings from "@/features/admin/settings/NotificationsSettings";
@@ -219,6 +223,7 @@ export const router = createHashRouter([
       { path: "feedback", element: <StudentFeedbackPage /> },
       { path: "settings", element: <StudentSettingsPage /> },
       { path: "cage-shelf", element: <StudentCageShelfPage /> },
+      { path: "cage-claim-review", element: <StudentCageClaimReviewPage /> },
       { path: "material", element: <StudentMaterialPage /> },
       { path: "material/requests", element: <Navigate to="/student/material?view=requests" replace /> },
       { path: "animal-order", element: <ReferenceDataPage /> },
@@ -348,6 +353,9 @@ export const router = createHashRouter([
                   { path: "login-branding", element: <Navigate to={`${STAFF_NS}/admin/settings/appearance`} replace /> },
                   { path: "conversation-archive", element: <AdminConversationArchivePage /> },
                   { path: "animal-order", element: <ReferenceDataPage /> },
+                  { path: "animal-order-review", element: <AdminOrderReviewPage /> },
+                  { path: "inventory", element: <AdminInventoryPage /> },
+                  { path: "inventory/scan", element: <ScanSessionPage /> },
                 ],
               },
               {

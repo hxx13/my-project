@@ -71,11 +71,14 @@
         <where>
             <choose>
                 <when test="scopeRole == 'lab'">
-                    AND (r.created_by = #{scopeUserId}
-                    <if test="scopeProjectGroup != null and scopeProjectGroup != ''">
-                         OR r.project_group_name = #{scopeProjectGroup}
-                    </if>
-                    )
+                    <choose>
+                        <when test="scopeProjectGroup != null and scopeProjectGroup != ''">
+                            AND r.project_group_name = #{scopeProjectGroup}
+                        </when>
+                        <otherwise>
+                            AND r.created_by = #{scopeUserId}
+                        </otherwise>
+                    </choose>
                 </when>
                 <when test="scopeRole == 'PI'">
                     AND (r.pi_user_id = #{scopeUserId}
@@ -93,6 +96,12 @@
                 </when>
                 <!-- admin / null：不过滤 -->
             </choose>
+            <if test="relatedToMe">
+                AND (r.created_by = #{scopeUserId}
+                     OR r.pi_user_id = #{scopeUserId}
+                     OR EXISTS (SELECT 1 FROM aup_review_assignment a WHERE a.aup_id = r.id AND a.reviewer_id = #{scopeUserId})
+                     OR EXISTS (SELECT 1 FROM aup_audit_log l WHERE l.aup_id = r.id AND l.actor = #{scopeUserId}))
+            </if>
             <if test="keyword != null and keyword != ''">
                 AND (r.project_name LIKE CONCAT('%', #{keyword}, '%')
                      OR r.register_no LIKE CONCAT('%', #{keyword}, '%')
@@ -146,7 +155,7 @@
     </sql>
 
     <select id="selectPage" resultType="com.example.demo.modules.aup.dto.AupListItem">
-        SELECT r.id, r.register_no, r.project_name, r.pi_name, r.dept,
+        SELECT r.id, r.register_no, r.project_name, r.pi_name, r.dept, r.project_source AS project_source,
                r.current_stage, r.round_no, r.draft_source,
                r.submitted_at, r.approved_at, r.created_at, r.is_demo AS is_demo,
                r.created_by AS created_by, r.pi_user_id AS pi_user_id,
@@ -177,6 +186,12 @@
 
     <select id="countByTemplateId" resultType="int">
         SELECT COUNT(*) FROM aup_record WHERE template_id = #{templateId}
+    </select>
+
+    <select id="selectDistinctProjectGroups" resultType="string">
+        SELECT DISTINCT project_group_name FROM aup_record
+        WHERE project_group_name IS NOT NULL AND project_group_name != ''
+        ORDER BY project_group_name
     </select>
 
 </mapper>

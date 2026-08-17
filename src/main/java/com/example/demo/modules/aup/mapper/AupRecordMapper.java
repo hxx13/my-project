@@ -64,6 +64,7 @@ public interface AupRecordMapper {
                                  @Param("reviewerId") String reviewerId,
                                  @Param("submitterName") String submitterName,
                                  @Param("reviewerName") String reviewerName,
+                                 @Param("relatedToMe") boolean relatedToMe,
                                  @Param("sortBy") String sortBy,
                                  @Param("sortDir") String sortDir,
                                  @Param("offset") int offset,
@@ -86,5 +87,9 @@ public interface AupRecordMapper {
                   @Param("submitterId") String submitterId,
                   @Param("reviewerId") String reviewerId,
                   @Param("submitterName") String submitterName,
-                  @Param("reviewerName") String reviewerName);
+                  @Param("reviewerName") String reviewerName,
+                  @Param("relatedToMe") boolean relatedToMe);
+
+    /** 列表筛选用：去重课题组名称 */
+    List<String> selectDistinctProjectGroups();
 }

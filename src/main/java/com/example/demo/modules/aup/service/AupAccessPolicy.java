@@ -33,7 +33,7 @@ public class AupAccessPolicy {
     private final JdbcTemplate jdbcTemplate;
     private final PersonIdentityService personIdentityService;
 
-    @Value("${aup.identity.pi-code:GROUP_LEADER}")
+    @Value("${aup.identity.pi-code:PI}")
     private String piCode;
 
     @Value("${aup.identity.secretary-code:SECRETARY}")
@@ -55,7 +55,16 @@ public class AupAccessPolicy {
         return role != null && role.getLevel() >= RoleEnum.ADMIN.getLevel();
     }
 
-    /** 组长（PI）：STUDENT 视角下持有「组长」标签 code（学号）。 */
+    /** 平台管理者（最高权限）：删除已提交计划书等敏感操作需此权限。 */
+    public boolean isPlatformOwner(User user) {
+        if (user == null) {
+            return false;
+        }
+        RoleEnum role = user.getRole();
+        return role != null && role.getLevel() >= RoleEnum.PLATFORM_OWNER.getLevel();
+    }
+
+    /** 组长（PI）：身份标识统一体系持有「组长」标签（key=staff_id）。 */
     public boolean isPi(User user) {
         if (user == null) {
             return false;
@@ -64,7 +73,7 @@ public class AupAccessPolicy {
         if (uid == null || uid.isBlank()) {
             return false;
         }
-        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STUDENT, uid), piCode);
+        return hasTag(personIdentityService.getByUser(uid), piCode);
     }
 
     /** 秘书：STAFF 视角下持有「秘书」标签 code（sys_user.id）。 */
@@ -72,7 +81,7 @@ public class AupAccessPolicy {
         if (userId == null || userId.isBlank()) {
             return false;
         }
-        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STAFF, userId), secretaryCode);
+        return hasTag(personIdentityService.getByUser(userId), secretaryCode);
     }
 
     /** 专家：STAFF 视角下持有「专家」标签 code（sys_user.id）。 */
@@ -80,12 +89,7 @@ public class AupAccessPolicy {
         if (userId == null || userId.isBlank()) {
             return false;
         }
-        return hasTag(personIdentityService.getByUser(PersonIdentityService.SCOPE_STAFF, userId), expertCode);
-    }
-
-    /** 用户身份所属 scope：账号来源 STAFF → STAFF，其余（含 null）→ STUDENT。 */
-    private String scopeOf(User user) {
-        return "STAFF".equals(user.getAccountSource()) ? "STAFF" : "STUDENT";
+        return hasTag(personIdentityService.getByUser(userId), expertCode);
     }
 
     /** 标签列表是否命中目标 code（null 安全）。 */
@@ -230,7 +234,7 @@ public class AupAccessPolicy {
         if (isExpert(uid)) {
             return ROLE_EXPERT;
         }
-        if (user.getRole() == RoleEnum.PI) {
+        if (isPi(user)) {
             return ROLE_PI;
         }
         return ROLE_LAB;
@@ -261,7 +265,7 @@ public class AupAccessPolicy {
     public List<String> listSecretaryUserIds() {
         try {
             Map<String, List<IdentityTagVO>> byScope =
-                    personIdentityService.listByScope(PersonIdentityService.SCOPE_STAFF, null);
+                    personIdentityService.listByUserIds(null);
             List<String> result = new ArrayList<>();
             for (Map.Entry<String, List<IdentityTagVO>> entry : byScope.entrySet()) {
                 if (hasTag(entry.getValue(), secretaryCode)) {

@@ -119,7 +119,7 @@ public class DahuaSwingRuleEngineService {
         }
         int activationExpire = intv(rules.get("activationExpireSeconds"), 120);
         LocalDateTime now = LocalDateTime.now();
-        // 新一次权限下发 = 新激活窗口：软清理旧计时器，保留行以维持 last_record_id 去重引用
+        // 新一次权限下发 = 新激活窗口：软清理旧计时器
         dahuaSwingMapper.deactivateExpiredOrPendingStatesByUserId(uid);
         DahuaActivationState pending = new DahuaActivationState();
         pending.setTaskId(GLOBAL_RULE_TASK_ID);
@@ -130,7 +130,6 @@ public class DahuaSwingRuleEngineService {
         pending.setLastSwipeAt(fmt(now));
         pending.setScheduledExitAt(fmt(now.plusSeconds(Math.max(1, activationExpire))));
         pending.setDebounceUntil(null);
-        pending.setLastRecordId(null);
         dahuaSwingMapper.upsertActivationState(pending);
         debug(TwinAutomationLogService.SWING_DEBUG_PENDING_CREATED, uid, PENDING_ACTIVATION_CHANNEL,
                 "待激活计时器创建：userId=" + uid
@@ -198,10 +197,10 @@ public class DahuaSwingRuleEngineService {
                 userId, channelCode, recordId, str(record.getSwingTime()),
                 hitEnterActivation, hitAgnosticActivation, hitSignoff);
         if (!recordId.isBlank()) {
-            int dup = dahuaSwingMapper.countActivationByUserAndLastRecordId(
-                    GLOBAL_RULE_TASK_ID, userId, recordId);
-            if (dup > 0) {
-                log.debug("[swing-rule] skip-duplicate-record linkage userId={} recordId={} channel={}",
+            // 原子认领：首次处理标记 processed_at，重复记录（已处理过）返回 0 直接跳过
+            int claimed = dahuaSwingMapper.markRecordProcessed(recordId);
+            if (claimed == 0) {
+                log.debug("[swing-rule] skip-already-processed userId={} recordId={} channel={}",
                         userId, recordId, channelCode);
                 return;
             }
@@ -220,8 +219,9 @@ public class DahuaSwingRuleEngineService {
             processSignoff(record, userId, channelCode, recordId, exitDelay);
             return;
         }
-        // 方向不匹配或方向缺失（非方向无关门）→ 忽略，标记已见防重拉
-        markRecordSeen(userId, channelCode, recordId);
+        // 方向不匹配或方向缺失（非方向无关门）→ 忽略（已标记 processed_at，不会被重拉）
+        log.debug("[swing-rule] ignore-direction-mismatch userId={} channel={} recordId={}",
+                userId, channelCode, recordId);
     }
 
     /** 激活流程：进入方向激活门 / 方向无关激活门命中 */
@@ -230,7 +230,6 @@ public class DahuaSwingRuleEngineService {
         if (dahuaSwingMapper.countAutoExitScheduledForUser(GLOBAL_RULE_TASK_ID, userId) > 0) {
             log.debug("[swing-rule] skip-activation-during-exit-scheduled userId={} channel={} recordId={}",
                     userId, channelCode, recordId);
-            markRecordSeen(userId, channelCode, recordId);
             return;
         }
         boolean alreadyActivated = dahuaSwingMapper.countActivatedStatesForUser(GLOBAL_RULE_TASK_ID, userId) > 0;
@@ -240,7 +239,6 @@ public class DahuaSwingRuleEngineService {
         if (!alreadyActivated && !hasPending) {
             log.debug("[swing-rule] skip-activation-without-pending userId={} channel={} recordId={}",
                     userId, channelCode, recordId);
-            markRecordSeen(userId, channelCode, recordId);
             return;
         }
         // 时间方向校验：刷卡时间必须晚于待激活计时器创建时间（幽灵激活防护）
@@ -253,7 +251,6 @@ public class DahuaSwingRuleEngineService {
                 if (pendingSince != null && recordTime != null && recordTime.isBefore(pendingSince)) {
                     log.debug("[swing-rule] skip-stale-record-for-pending-activation userId={} channel={} recordTime={} pendingSince={}",
                             userId, channelCode, record.getSwingTime(), pendingRow.getLastSwipeAt());
-                    markRecordSeen(userId, channelCode, recordId);
                     return;
                 }
             }
@@ -275,7 +272,6 @@ public class DahuaSwingRuleEngineService {
         counter++;
         state.setCounter(counter);
         state.setLastSwipeAt(fmt(now));
-        state.setLastRecordId(recordId);
         // 已激活（任意门）→ 跳过，防止换门重复通知
         if (alreadyActivated) {
             dahuaSwingMapper.upsertActivationState(state);
@@ -290,7 +286,6 @@ public class DahuaSwingRuleEngineService {
         dahuaSwingMapper.upsertActivationState(state);
         debug(TwinAutomationLogService.SWING_DEBUG_STATE_TRANSITION, userId, channelCode,
                 "[recordId=" + recordId + "] 状态变更：→ ACTIVATED"
-                + " | last_record_id=" + recordId
                 + " | activated_at=" + fmt(now)
                 + " | 原PENDING_ACTIVATION已清除=" + (pendingRemoved > 0 ? "是" : "否")
                 + " | 当前状态快照：" + buildStateSnapshot(userId));
@@ -317,27 +312,34 @@ public class DahuaSwingRuleEngineService {
         if (!activated) {
             log.debug("[swing-rule] skip-signoff-until-activated userId={} channel={} recordId={}",
                     userId, channelCode, recordId);
-            markRecordSeen(userId, channelCode, recordId);
             return;
         }
         LocalDateTime now = LocalDateTime.now();
-        // 激活后 N 秒内禁止签退（防激活后立刻签退；环境变量 app.dahua-swing.min-signoff-after-activation-seconds，默认 0=不限制）
-        if (minSignoffAfterActivationSeconds > 0) {
-            String maxActivatedAt = dahuaSwingMapper.maxActivatedAtForUser(GLOBAL_RULE_TASK_ID, userId);
-            if (maxActivatedAt != null && !maxActivatedAt.isBlank()) {
-                LocalDateTime activatedAt = parse(maxActivatedAt);
-                if (activatedAt != null && now.isBefore(activatedAt.plusSeconds(minSignoffAfterActivationSeconds))) {
-                    log.info("[swing-rule] skip-signoff-min-interval userId={} channel={} activatedAt={} minSeconds={}",
-                            userId, channelCode, maxActivatedAt, minSignoffAfterActivationSeconds);
-                    markRecordSeen(userId, channelCode, recordId);
+        String maxActivatedAt = dahuaSwingMapper.maxActivatedAtForUser(GLOBAL_RULE_TASK_ID, userId);
+        if (maxActivatedAt != null && !maxActivatedAt.isBlank()) {
+            LocalDateTime activatedAt = parse(maxActivatedAt);
+            // 旧会话残留防护：刷卡时间早于最近一次激活时间 → 上一轮的旧记录，禁止签退。
+            // （旧一轮的离开记录可能在 re-enter 后仍被 pull 重拉，靠时间方向拦截）
+            if (activatedAt != null && record.getSwingTime() != null) {
+                LocalDateTime swingTime = parse(record.getSwingTime());
+                if (swingTime != null && swingTime.isBefore(activatedAt)) {
+                    log.debug("[swing-rule] skip-signoff-stale-record userId={} channel={} swingTime={} activatedAt={}",
+                            userId, channelCode, record.getSwingTime(), maxActivatedAt);
                     return;
                 }
+            }
+            // 激活后 N 秒内禁止签退（防激活后立刻签退；环境变量 app.dahua-swing.min-signoff-after-activation-seconds，默认 0=不限制）
+            if (activatedAt != null && minSignoffAfterActivationSeconds > 0
+                    && now.isBefore(activatedAt.plusSeconds(minSignoffAfterActivationSeconds))) {
+                log.info("[swing-rule] skip-signoff-min-interval userId={} channel={} activatedAt={} minSeconds={}",
+                        userId, channelCode, maxActivatedAt, minSignoffAfterActivationSeconds);
+                return;
             }
         }
         // 清理残留待激活计时器（防御性）
         dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
                 GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
-        // 软清理：保留行以维持 last_record_id 去重引用，避免旧记录被重拉触发误签退
+        // 软清理：将激活状态标记为 CLEANED（记录去重已由 processed_at 负责）
         dahuaSwingMapper.deactivateActivationStatesByUserId(userId);
         log.debug("[swing-rule] signoff-soft-clear userId={} channel={} recordId={}",
                 userId, channelCode, recordId);
@@ -345,14 +347,12 @@ public class DahuaSwingRuleEngineService {
         exitState.setState("AUTO_EXIT_SCHEDULED");
         exitState.setScheduledExitAt(fmt(now.plusSeconds(Math.max(0, exitDelay))));
         exitState.setLastSwipeAt(fmt(now));
-        exitState.setLastRecordId(recordId);
         exitState.setCounter(0);
         dahuaSwingMapper.upsertActivationState(exitState);
         debug(TwinAutomationLogService.SWING_DEBUG_TIMER_CREATED, userId, channelCode,
                 "[recordId=" + recordId + "] 签退计时器创建：state=AUTO_EXIT_SCHEDULED"
                 + " | 延迟=" + exitDelay + "秒"
                 + " | 到期时间=" + exitState.getScheduledExitAt()
-                + " | last_record_id=" + recordId
                 + " | 触发规则=signoff（离开方向签退）"
                 + " | 当前状态快照：" + buildStateSnapshot(userId));
         String doorLabelEx = resolveChannelDisplayName(channelCode);
@@ -378,22 +378,6 @@ public class DahuaSwingRuleEngineService {
         if (exitChannels != null) merged.addAll(exitChannels);
         if (activatedReswipeExitChannels != null) merged.addAll(activatedReswipeExitChannels);
         return new ArrayList<>(merged);
-    }
-
-    /** 标记记录已见（写 last_record_id），防 pull 路径反复重拉；不改变既有状态 */
-    private void markRecordSeen(String userId, String channelCode, String recordId) {
-        if (recordId == null || recordId.isBlank()) {
-            return;
-        }
-        DahuaActivationState state = dahuaSwingMapper.findActivationState(GLOBAL_RULE_TASK_ID, userId, channelCode);
-        if (state == null) {
-            state = newStateRow(userId, channelCode);
-            state.setCounter(0);
-            state.setState("IDLE");
-        }
-        state.setLastRecordId(recordId);
-        state.setLastSwipeAt(fmt(LocalDateTime.now()));
-        dahuaSwingMapper.upsertActivationState(state);
     }
 
     /**
@@ -444,13 +428,12 @@ public class DahuaSwingRuleEngineService {
             if (userId.isBlank() || !processedUsers.add(userId)) {
                 continue;
             }
-            log.info("[swing-rule] due-auto-signout-trigger userId={} state={} channel={} scheduledExitAt={} lastSwipeAt={} lastRecordId={}",
+            log.info("[swing-rule] due-auto-signout-trigger userId={} state={} channel={} scheduledExitAt={} lastSwipeAt={}",
                     userId,
                     state.getState(),
                     state.getChannelCode(),
                     state.getScheduledExitAt(),
-                    state.getLastSwipeAt(),
-                    state.getLastRecordId());
+                    state.getLastSwipeAt());
             Map<String, Object> rules = dahuaSwingRuleConfigService.getConfig();
             int activationExpire = intv(rules.get("activationExpireSeconds"), 120);
             int exitDelay = intv(rules.get("autoExitDelaySeconds"), 10);
@@ -505,7 +488,7 @@ public class DahuaSwingRuleEngineService {
                 if (attempt > 5) {
                     log.warn("[swing-rule] due-auto-signout-max-retries userId={} attempts={} state={} channel={} — force-clean to prevent infinite retry",
                             userId, attempt, state.getState(), state.getChannelCode());
-                    // autoSignout 失败且超过重试上限，软清理避免残留（保留 last_record_id 去重引用）
+                    // autoSignout 失败且超过重试上限，软清理避免残留
                     dahuaSwingMapper.deactivateActivationStatesByUserId(userId);
                     notifyTimerCleared(userId, "auto_signout_failed");
                 } else {
@@ -524,7 +507,7 @@ public class DahuaSwingRuleEngineService {
 
     /**
      * 清理用户所有激活状态。使用软清理（state=CLEANED）而非物理删除，
-     * 以保留 last_record_id 去重引用，防止旧刷卡记录被重新拉取触发误签退。
+     * 防止旧刷卡记录被重新拉取触发误签退。
      */
     public int clearActivationStatesForUser(String userId) {
         String uid = str(userId);
@@ -545,7 +528,7 @@ public class DahuaSwingRuleEngineService {
         return updated;
     }
 
-    /** 软清理到期/待激活状态（PENDING + AUTO_EXIT_SCHEDULED），保留行以维持 last_record_id 去重引用 */
+    /** 软清理到期/待激活状态（PENDING + AUTO_EXIT_SCHEDULED） */
     public int clearCompletedStatesForUser(String userId) {
         String uid = str(userId);
         if (uid.isBlank()) {
@@ -672,9 +655,6 @@ public class DahuaSwingRuleEngineService {
                 DahuaActivationState r = rows.get(i);
                 if (i > 0) sb.append("；");
                 sb.append(r.getChannelCode()).append("=").append(r.getState());
-                if (r.getLastRecordId() != null && !r.getLastRecordId().isBlank()) {
-                    sb.append("(rid=").append(r.getLastRecordId()).append(")");
-                }
                 if (r.getScheduledExitAt() != null && !r.getScheduledExitAt().isBlank()) {
                     sb.append("(到期=").append(r.getScheduledExitAt()).append(")");
                 }

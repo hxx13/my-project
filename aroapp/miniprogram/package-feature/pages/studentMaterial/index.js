@@ -248,7 +248,7 @@ Page({
     }
     const cart = mat.loadLocalCart();
     const isStudent = isStudentAccount();
-    const canManageItems = !isStudent && hasMinRole(role, 'STAFF');
+    const canManageItems = hasMinRole(role, 'STAFF');
     this.setData({
       pageGateOk: true,
       cart,
@@ -283,8 +283,8 @@ Page({
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     const isStudent = isStudentAccount();
     this.setData({
-      showSuppliesSwitch: !isStudent && hasMinRole(role, 'STAFF') && canShowSuppliesSwitch(role),
-      canManageItems: !isStudent && hasMinRole(role, 'STAFF'),
+      showSuppliesSwitch: hasMinRole(role, 'STAFF') && canShowSuppliesSwitch(role),
+      canManageItems: hasMinRole(role, 'STAFF'),
     });
     this.applyTopBadges(peekPendingBadges());
     void refreshPendingBadges().then((c) => this.applyTopBadges(c));

@@ -1,6 +1,6 @@
 /* 富列表容器查询：行宽自适应隐藏次要信息 */
 .personnel-list { container-type: inline-size; }
-.personnel-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.personnel-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; transition: background 0.15s ease, box-shadow 0.15s ease; }
 .personnel-row:hover { background: var(--app-color-surface-hover); }
 .personnel-row.is-selected { background: #eef2ff; box-shadow: inset 3px 0 0 #4f46e5; }
 .personnel-row-main { flex: 1; min-width: 0; }

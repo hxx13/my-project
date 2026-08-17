@@ -5,6 +5,7 @@ import com.example.demo.modules.identity.entity.PersonIdentity;
 import com.example.demo.modules.identity.entity.PersonIdentityTag;
 import com.example.demo.modules.identity.mapper.PersonIdentityMapper;
 import com.example.demo.modules.identity.mapper.PersonIdentityTagMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,13 +23,16 @@ import java.util.stream.Collectors;
 
 /**
  * 人员身份标识服务：下游业务复用的统一入口（可注入、不经 HTTP、无鉴权）。
- * scope 仅允许 STUDENT / STAFF 两个视角；内置组长/秘书/专家三个默认标签种子（code 稳定，环境变量可配），其余管理员配置，id 由后端自增生成。
+ * 统一一套、不分视角，key = staff_id；内置组长/秘书/专家三个默认标签种子（code 稳定，环境变量可配），其余管理员配置，id 由后端自增生成。
  */
 @Service
 public class PersonIdentityService {
 
-    public static final String SCOPE_STUDENT = "STUDENT";
-    public static final String SCOPE_STAFF = "STAFF";
+    @Value("${aup.identity.pi-code:PI}")
+    private String piCode;
+
+    @Value("${aup.identity.secretary-code:SECRETARY}")
+    private String secretaryCode;
 
     private final PersonIdentityTagMapper tagMapper;
     private final PersonIdentityMapper identityMapper;
@@ -45,14 +49,13 @@ public class PersonIdentityService {
                 .collect(Collectors.toList());
     }
 
-    /** 批量：返回 userId → 标签列表；userIds 为空时返回该 scope 下全部有身份的人。 */
-    public Map<String, List<IdentityTagVO>> listByScope(String scope, Collection<String> userIds) {
-        validateScope(scope);
+    /** 批量：返回 userId → 标签列表；userIds 为空时返回全部有身份的人。 */
+    public Map<String, List<IdentityTagVO>> listByUserIds(Collection<String> userIds) {
         List<PersonIdentity> rows;
         if (userIds == null || userIds.isEmpty()) {
-            rows = identityMapper.listByScope(scope);
+            rows = identityMapper.listAll();
         } else {
-            rows = identityMapper.listByScopeAndUserIds(scope, new ArrayList<>(userIds));
+            rows = identityMapper.listByUserIds(new ArrayList<>(userIds));
         }
         Map<Long, PersonIdentityTag> tags = tagMap(rows);
         Map<String, List<IdentityTagVO>> result = new LinkedHashMap<>();
@@ -63,19 +66,50 @@ public class PersonIdentityService {
         return result;
     }
 
-    public List<IdentityTagVO> getByUser(String scope, String userId) {
-        validateScope(scope);
-        List<PersonIdentity> rows = identityMapper.listByUser(scope, userId);
+    public List<IdentityTagVO> getByUser(String userId) {
+        List<PersonIdentity> rows = identityMapper.listByUser(userId);
         Map<Long, PersonIdentityTag> tags = tagMap(rows);
         return rows.stream()
                 .map(r -> toVO(r.getTagId(), tags.get(r.getTagId())))
                 .collect(Collectors.toList());
     }
 
+    /** 是否 PI：身份标识统一体系持有「PI」标签（key=staff_id）。下游业务复用，替代已废弃的 RoleEnum.PI。 */
+    public boolean isPi(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return false;
+        }
+        for (IdentityTagVO tag : getByUser(userId)) {
+            if (tag != null && Objects.equals(tag.getCode(), piCode)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 持有指定标签 code 的全部 userId（通知/接收人用）。 */
+    public List<String> listUserIdsByCode(String code) {
+        Map<String, List<IdentityTagVO>> byUser = listByUserIds(null);
+        List<String> result = new ArrayList<>();
+        for (Map.Entry<String, List<IdentityTagVO>> e : byUser.entrySet()) {
+            for (IdentityTagVO tag : e.getValue()) {
+                if (tag != null && Objects.equals(tag.getCode(), code)) {
+                    result.add(e.getKey());
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
+    /** 全部秘书 userId（持有「秘书」标签，动物订购订单接收人默认值）。 */
+    public List<String> listSecretaryUserIds() {
+        return listUserIdsByCode(secretaryCode);
+    }
+
     /** 全量替换（先删后插）；校验 tagIds 均存在于字典，否则抛 IllegalArgumentException。 */
     @Transactional
-    public void setByUser(String scope, String userId, List<Long> tagIds) {
-        validateScope(scope);
+    public void setByUser(String userId, List<Long> tagIds) {
         List<Long> normalized = normalizeIds(tagIds);
         if (!normalized.isEmpty()) {
             Set<Long> existing = tagMapper.listByIds(normalized).stream()
@@ -87,12 +121,11 @@ public class PersonIdentityService {
                 }
             }
         }
-        identityMapper.deleteByUser(scope, userId);
+        identityMapper.deleteByUser(userId);
         for (Long tagId : normalized) {
             PersonIdentity row = new PersonIdentity();
             row.setUserId(userId);
             row.setTagId(tagId);
-            row.setScope(scope);
             identityMapper.insert(row);
         }
     }
@@ -202,12 +235,6 @@ public class PersonIdentityService {
             vo.setLabel(String.valueOf(id));
         }
         return vo;
-    }
-
-    private void validateScope(String scope) {
-        if (!SCOPE_STUDENT.equals(scope) && !SCOPE_STAFF.equals(scope)) {
-            throw new IllegalArgumentException("scope 仅支持 STUDENT / STAFF");
-        }
     }
 
     private String trimToNull(String s) {

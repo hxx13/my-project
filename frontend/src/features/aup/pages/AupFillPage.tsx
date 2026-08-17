@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   useAupAttachments,
@@ -11,6 +11,7 @@ import {
   useCreateAup,
   usePublishedTemplate,
   useReviewItems,
+  useReviewSessions,
 } from "../hooks/useAup";
 import { useGoBack } from "../hooks/useGoBack";
 import { fetchAupPrintData, fetchAupValidate, saveAup, submitAup } from "../api/aup.api";
@@ -44,6 +45,9 @@ export default function AupFillPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const goBack = useGoBack("/");
+  // 打开历史快照（?snapshot=）时只读：仅查看该版本，禁止编辑/保存/提交
+  const [searchParams] = useSearchParams();
+  const snapshotId = searchParams.get("snapshot");
 
   const createMut = useCreateAup();
   const draft = useAupDraft(id);
@@ -83,7 +87,7 @@ export default function AupFillPage() {
   const rawSections = id ? templateQuery.data?.sections : publishedQuery.data?.sections;
   const templateName = id ? templateQuery.data?.name : publishedQuery.data?.name;
   const currentStage = record?.currentStage ?? "draft";
-  const readOnly = id ? currentStage !== "draft" : false;
+  const readOnly = id ? (currentStage !== "draft" || !!snapshotId) : false;
 
   const isLoading = id
     ? draft.detail.isLoading || templateQuery.isLoading || !rawSections
@@ -106,7 +110,17 @@ export default function AupFillPage() {
           if (subEl && subEl.getBoundingClientRect().top <= offset) current = sub.code;
         }
       }
-      if (current) setActiveId(current);
+      if (current) {
+        setActiveId(current);
+      } else {
+        // 页首：尚无任何章节越过阈值 → 高亮第一个可见章节（避免残留上一个滚动位置的高亮）
+        for (const s of secs) {
+          if (document.getElementById(`aup-section-${s.code}`)) {
+            setActiveId(s.code);
+            break;
+          }
+        }
+      }
     };
     document.addEventListener("scroll", onScroll, { capture: true, passive: true });
     onScroll();
@@ -152,9 +166,19 @@ export default function AupFillPage() {
     }
     return map;
   }, [reviewQuery.data]);
+  // 有负面评审意见（建议修改/不合规）的字段键集合，供左侧章节导航红叉标记
+  const negativeKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of reviewQuery.data?.items ?? []) {
+      if (it.verdict === "nonCompliant" || it.verdict === "suggest") {
+        set.add(it.fieldKey);
+      }
+    }
+    return set;
+  }, [reviewQuery.data]);
 
-  // 全轮次逐字段意见（roundNo=0），供「评审总览」按轮分组展示历史评审
-  const overviewQuery = useReviewItems(id, { roundNo: 0 });
+  // 评审总览：每次评审记录（整体结论 + 逐字段意见，含整体同意/拒评/回避）
+  const overviewQuery = useReviewSessions(id);
   // 是否已提交过（返修 / 已进入评审链）：draftSource≠first 或已离开 draft 阶段
   const hasSubmitted = !!record && (record.draftSource !== "first" || record.currentStage !== "draft");
 
@@ -393,7 +417,11 @@ export default function AupFillPage() {
     return (
       <div key={sub.code} id={`aup-subsection-${sub.code}`} className="aup-subsection">
         <div className="aup-subhead">{displayTitle(sub.code, sub.label)}</div>
-        {sub.description && <div className="aup-subdesc">{sub.description}</div>}
+        {sub.description && (
+          <div className={"aup-subdesc" + (sub.descriptionTone ? " " + sub.descriptionTone : "")}>
+            {sub.description}
+          </div>
+        )}
         {(sub.fields ?? []).map(renderField)}
       </div>
     );
@@ -445,7 +473,7 @@ export default function AupFillPage() {
       {attachOpen && id && <AttachmentPanel aupId={id} onClose={() => setAttachOpen(false)} />}
 
       <div className="layout">
-        <SectionNav sections={sections} values={effectiveValues} activeId={activeId} onSelect={handleSelect} errorKeys={errorKeys} />
+        <SectionNav sections={sections} values={effectiveValues} activeId={activeId} onSelect={handleSelect} errorKeys={errorKeys} negativeKeys={negativeKeys} />
         <main className="main">{sections.map(renderSection)}</main>
         <TracePanel traces={tracesQuery.data ?? []} />
       </div>
@@ -455,9 +483,7 @@ export default function AupFillPage() {
       <ReviewOverviewPanel
         open={overviewOpen}
         onClose={() => setOverviewOpen(false)}
-        summary={overviewQuery.data?.summary}
-        items={overviewQuery.data?.items}
-        reviewerNames={{}}
+        sessions={overviewQuery.data?.sessions}
       />
 
       {exitDialog && (

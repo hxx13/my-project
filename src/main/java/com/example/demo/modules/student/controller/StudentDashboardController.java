@@ -26,13 +26,13 @@ public class StudentDashboardController {
     }
 
     @GetMapping("/dashboard")
-    @Operation(summary = "获取学生仪表盘聚合数据")
+    @Operation(summary = "获取学生首页档案（Web 首页仅渲染 profile，其余数据走各自接口，避免阻塞）")
     public Result<StudentDashboardResponse> getDashboard(HttpServletRequest request) {
         User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
         if (user == null) {
             return Result.fail(401, "未登录或登录已过期");
         }
-        StudentDashboardResponse dashboard = studentDashboardService.buildDashboard(user);
+        StudentDashboardResponse dashboard = studentDashboardService.buildDashboardProfile(user);
         return Result.success(dashboard);
     }
 

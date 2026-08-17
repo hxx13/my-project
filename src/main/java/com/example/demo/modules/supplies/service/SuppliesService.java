@@ -1627,7 +1627,7 @@ public class SuppliesService {
             PDFont loaded = loadCjkFontFromFile(document, new File(configured));
             if (loaded != null) return loaded;
         }
-        try (InputStream in = getClass().getResourceAsStream("/fonts/NotoSansSC-Regular.otf")) {
+        try (InputStream in = getClass().getResourceAsStream("/fonts/NotoSansSC-Regular.ttf")) {
             if (in != null) return PDType0Font.load(document, in, true);
         }
         for (String p : List.of(

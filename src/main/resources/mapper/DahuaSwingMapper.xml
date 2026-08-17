@@ -178,10 +178,7 @@
           AND r.swing_time &gt;= #{startTime}
           AND r.swing_time &lt;= #{endTime}
           AND r.swing_time &gt;= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
-          AND NOT EXISTS (
-              SELECT 1 FROM twin_dahua_activation_state a
-              WHERE a.last_record_id = r.record_id
-          )
+          AND r.processed_at IS NULL
         ORDER BY r.swing_time ASC
         <if test="limit != null and limit > 0">
             LIMIT #{limit}
@@ -251,13 +248,12 @@
         LIMIT 1
     </select>
 
-    <select id="countActivationByUserAndLastRecordId" resultType="int">
-        SELECT COUNT(1)
-        FROM twin_dahua_activation_state
-        WHERE task_id = #{taskId}
-          AND user_id = #{userId}
-          AND last_record_id = #{recordId}
-    </select>
+    <update id="markRecordProcessed">
+        UPDATE twin_dahua_swing_record
+        SET processed_at = NOW()
+        WHERE record_id = #{recordId}
+          AND processed_at IS NULL
+    </update>
 
     <select id="countRecordsMissingEnterExit" resultType="int">
         SELECT COUNT(1)
@@ -500,7 +496,6 @@
                DATE_FORMAT(last_swipe_at, '%Y-%m-%d %H:%i:%s') AS lastSwipeAt,
                DATE_FORMAT(scheduled_exit_at, '%Y-%m-%d %H:%i:%s') AS scheduledExitAt,
                DATE_FORMAT(debounce_until, '%Y-%m-%d %H:%i:%s') AS debounceUntil,
-               last_record_id AS lastRecordId,
                DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
         FROM twin_dahua_activation_state
         WHERE task_id = #{taskId}
@@ -512,10 +507,10 @@
     <insert id="upsertActivationState" parameterType="com.example.demo.modules.twin.dahua.entity.DahuaActivationState">
         INSERT INTO twin_dahua_activation_state (
             task_id, user_id, channel_code, state, counter, activated_at, last_swipe_at,
-            scheduled_exit_at, debounce_until, last_record_id
+            scheduled_exit_at, debounce_until
         ) VALUES (
             #{taskId}, #{userId}, #{channelCode}, #{state}, #{counter}, #{activatedAt}, #{lastSwipeAt},
-            #{scheduledExitAt}, #{debounceUntil}, #{lastRecordId}
+            #{scheduledExitAt}, #{debounceUntil}
         )
         ON DUPLICATE KEY UPDATE
             state = VALUES(state),
@@ -524,7 +519,6 @@
             last_swipe_at = VALUES(last_swipe_at),
             scheduled_exit_at = VALUES(scheduled_exit_at),
             debounce_until = VALUES(debounce_until),
-            last_record_id = VALUES(last_record_id),
             updated_at = NOW()
     </insert>
 
@@ -539,7 +533,6 @@
                DATE_FORMAT(last_swipe_at, '%Y-%m-%d %H:%i:%s') AS lastSwipeAt,
                DATE_FORMAT(scheduled_exit_at, '%Y-%m-%d %H:%i:%s') AS scheduledExitAt,
                DATE_FORMAT(debounce_until, '%Y-%m-%d %H:%i:%s') AS debounceUntil,
-               last_record_id AS lastRecordId,
                DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
         FROM twin_dahua_activation_state
         WHERE scheduled_exit_at IS NOT NULL
@@ -554,7 +547,7 @@
         DELETE FROM twin_dahua_activation_state WHERE user_id = #{userId}
     </delete>
 
-    <!-- 软清理：保留行以维持 last_record_id 去重引用，避免旧刷卡记录被重新拉取触发误签退 -->
+    <!-- 软清理：将激活状态标记为 CLEANED，避免旧刷卡记录被重新拉取触发误签退 -->
     <update id="deactivateActivationStatesByUserId">
         UPDATE twin_dahua_activation_state
         SET state = 'CLEANED',
@@ -569,7 +562,7 @@
           AND state IN ('PENDING_ACTIVATION', 'AUTO_EXIT_SCHEDULED')
     </delete>
 
-    <!-- 软清理到期/待激活：保留行以维持 last_record_id 去重引用 -->
+    <!-- 软清理到期/待激活 -->
     <update id="deactivateExpiredOrPendingStatesByUserId">
         UPDATE twin_dahua_activation_state
         SET state = 'CLEANED',
@@ -639,7 +632,6 @@
                DATE_FORMAT(last_swipe_at, '%Y-%m-%d %H:%i:%s') AS lastSwipeAt,
                DATE_FORMAT(scheduled_exit_at, '%Y-%m-%d %H:%i:%s') AS scheduledExitAt,
                DATE_FORMAT(debounce_until, '%Y-%m-%d %H:%i:%s') AS debounceUntil,
-               last_record_id AS lastRecordId,
                DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
         FROM twin_dahua_activation_state
         WHERE user_id = #{userId}
@@ -658,7 +650,6 @@
                DATE_FORMAT(last_swipe_at, '%Y-%m-%d %H:%i:%s') AS lastSwipeAt,
                DATE_FORMAT(scheduled_exit_at, '%Y-%m-%d %H:%i:%s') AS scheduledExitAt,
                DATE_FORMAT(debounce_until, '%Y-%m-%d %H:%i:%s') AS debounceUntil,
-               last_record_id AS lastRecordId,
                DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
         FROM twin_dahua_activation_state
         WHERE user_id = #{userId}

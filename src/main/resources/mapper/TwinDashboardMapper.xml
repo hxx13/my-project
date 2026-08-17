@@ -861,12 +861,12 @@
                e.area_name AS areaName,
                e.is_borrowed_card,
                e.project_group_names AS projectGroup,
-               DATE_FORMAT(CAST(e.create_time AS DATETIME), '%H:%i:%s') AS entryTime,
+               DATE_FORMAT(e.create_time, '%H:%i:%s') AS entryTime,
                e.create_time AS enterTimeFull
         FROM aro_access_log e
         WHERE e.accessType = 1
-          AND CAST(e.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
-          AND CAST(e.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)
+          AND e.create_time &gt;= #{todayStart}
+          AND e.create_time &lt; #{todayEnd}
           AND e.room_name IS NOT NULL
           AND NOT EXISTS (
               SELECT 1
@@ -874,9 +874,9 @@
               WHERE out_log.user_id = e.user_id
                 AND out_log.room_id = e.room_id
                 AND out_log.accessType IN (2, 3)
-                AND CAST(out_log.create_time AS DATETIME) &gt; CAST(e.create_time AS DATETIME)
-                AND CAST(out_log.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
-                AND CAST(out_log.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)
+                AND out_log.create_time &gt; e.create_time
+                AND out_log.create_time &gt;= #{todayStart}
+                AND out_log.create_time &lt; #{todayEnd}
           )
         ORDER BY e.area_name, e.room_name, e.create_time DESC
     </select>

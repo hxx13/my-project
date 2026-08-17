@@ -128,6 +128,17 @@ public class AupReviewController {
         return Result.success(reviewService.reviewItems(user, id, roundNo, fieldKey));
     }
 
+    @GetMapping("/{id}/review/sessions")
+    @Operation(summary = "评审总览：全轮次每次评审记录（整体结论 + 逐字段意见；含整体同意/拒评/回避等无逐条批注的场景）")
+    public Result<?> reviewSessions(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @PathVariable long id) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        if (user == null) {
+            return Result.fail(401, "未登录或令牌无效");
+        }
+        return Result.success(reviewService.reviewSessions(user, id));
+    }
+
     @GetMapping("/experts")
     @Operation(summary = "专家候选（aup_reviewer 关联 aro_personnel）")
     public Result<?> experts(@RequestHeader(value = "Authorization", required = false) String authorization) {

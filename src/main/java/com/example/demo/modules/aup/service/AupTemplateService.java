@@ -419,6 +419,7 @@ public class AupTemplateService {
                     subVO.setLabel(sub.getLabel());
                     subVO.setSortOrder(sub.getSortOrder());
                     subVO.setDescription(sub.getDescription());
+                    subVO.setDescriptionTone(sub.getDescriptionTone());
                     subVO.setShowWhen(fromJson(sub.getShowWhen()));
                     subVO.setFields(toFieldVOs(fieldsBySub.get(sub.getId())));
                     subVOs.add(subVO);
@@ -471,6 +472,7 @@ public class AupTemplateService {
                     sub.setLabel(subVO.getLabel());
                     sub.setSortOrder(subVO.getSortOrder() != null ? subVO.getSortOrder() : subi);
                     sub.setDescription(subVO.getDescription());
+                    sub.setDescriptionTone(subVO.getDescriptionTone());
                     sub.setShowWhen(toJson(subVO.getShowWhen()));
                     subsectionMapper.insert(sub);
                     insertFields(subVO.getFields(), null, sub.getId());

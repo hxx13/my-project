@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.identity.mapper.PersonIdentityMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO person_identity (user_id, tag_id)
+        VALUES (#{userId}, #{tagId})
+    </insert>
+
+    <delete id="deleteByUser">
+        DELETE FROM person_identity WHERE user_id = #{userId}
+    </delete>
+
+    <select id="listByUser" resultType="com.example.demo.modules.identity.entity.PersonIdentity">
+        SELECT * FROM person_identity WHERE user_id = #{userId}
+        ORDER BY id ASC
+    </select>
+
+    <select id="listAll" resultType="com.example.demo.modules.identity.entity.PersonIdentity">
+        SELECT * FROM person_identity
+        ORDER BY user_id ASC, id ASC
+    </select>
+
+    <select id="listByUserIds" resultType="com.example.demo.modules.identity.entity.PersonIdentity">
+        SELECT * FROM person_identity
+        WHERE user_id IN
+        <foreach collection="userIds" item="u" open="(" separator="," close=")">
+            #{u}
+        </foreach>
+        ORDER BY user_id ASC, id ASC
+    </select>
+
+    <select id="countByTagId" resultType="int">
+        SELECT COUNT(1) FROM person_identity WHERE tag_id = #{tagId}
+    </select>
+
+</mapper>

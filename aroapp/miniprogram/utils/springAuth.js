@@ -25,6 +25,8 @@ const KEYS = {
   ROLE_DESC: 'springRoleDesc',
   USER_INFO: 'springUserInfo',
   PENDING_OPENID: 'springPendingOpenId',
+  /** 切换学生视图前的原教职工会话（用于返回） */
+  PREV_SESSION: 'springPrevSession',
   /** 管理端 network.upload.publicBaseUrl，用于把 /api/upload/... 拼成小程序可加载的绝对 HTTPS */
   UPLOAD_PUBLIC_BASE: 'springUploadPublicBaseUrl',
   /** 管理端 network.frontend.apiBaseUrl，用于把 /api/** 拼成可直开的完整地址 */
@@ -585,6 +587,52 @@ function resolveCloudUrls(urls) {
   }).catch(() => ({ mappings: {}, unresolved: urls ? urls.length : 0, _failed: true }));
 }
 
+/**
+ * 保存当前教职工会话到「原会话」槽（切换学生视图前调用）。
+ * userInfo 存原始字符串，恢复时原样写回，避免二次 stringify。
+ */
+function savePreviousSession() {
+  const prev = {
+    token: wx.getStorageSync(KEYS.TOKEN),
+    role: wx.getStorageSync(KEYS.ROLE),
+    roleLevel: wx.getStorageSync(KEYS.ROLE_LEVEL),
+    roleDesc: wx.getStorageSync(KEYS.ROLE_DESC),
+    userInfo: wx.getStorageSync(KEYS.USER_INFO),
+  };
+  wx.setStorageSync(KEYS.PREV_SESSION, JSON.stringify(prev));
+}
+
+function hasPreviousSession() {
+  return !!wx.getStorageSync(KEYS.PREV_SESSION);
+}
+
+/** 恢复原教职工会话；无原会话返回 false */
+function restorePreviousSession() {
+  try {
+    const raw = wx.getStorageSync(KEYS.PREV_SESSION);
+    if (!raw) return false;
+    const prev = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (prev.token) wx.setStorageSync(KEYS.TOKEN, prev.token);
+    if (prev.role != null && prev.role !== '') wx.setStorageSync(KEYS.ROLE, prev.role);
+    if (prev.roleLevel != null) wx.setStorageSync(KEYS.ROLE_LEVEL, String(prev.roleLevel));
+    if (prev.roleDesc) wx.setStorageSync(KEYS.ROLE_DESC, prev.roleDesc);
+    if (prev.userInfo) wx.setStorageSync(KEYS.USER_INFO, prev.userInfo);
+    else wx.removeStorageSync(KEYS.USER_INFO);
+    wx.removeStorageSync(KEYS.PREV_SESSION);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function clearPreviousSession() {
+  try {
+    wx.removeStorageSync(KEYS.PREV_SESSION);
+  } catch (e) {
+    /* ignore */
+  }
+}
+
 module.exports = {
   getEffectiveCloudEnvId: envConfig.getEffectiveCloudEnvId,
   KEYS,
@@ -601,6 +649,10 @@ module.exports = {
   updateDisplayNickname,
   persistSpringSession,
   clearSpringSession,
+  savePreviousSession,
+  hasPreviousSession,
+  restorePreviousSession,
+  clearPreviousSession,
   getUploadPublicBaseUrl,
   setUploadPublicBaseUrl,
   getApiPublicBaseUrl,

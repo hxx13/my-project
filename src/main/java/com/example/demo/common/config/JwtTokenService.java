@@ -2,7 +2,9 @@ package com.example.demo.common.config;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.entity.UserAroBinding;
 import com.example.demo.modules.auth.mapper.UserMapper;
+import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -30,10 +32,12 @@ public class JwtTokenService {
     private String configuredSecret;
 
     private final UserMapper userMapper;
+    private final UserAroBindingMapper userAroBindingMapper;
     private SecretKey secretKey;
 
-    public JwtTokenService(UserMapper userMapper) {
+    public JwtTokenService(UserMapper userMapper, UserAroBindingMapper userAroBindingMapper) {
         this.userMapper = userMapper;
+        this.userAroBindingMapper = userAroBindingMapper;
     }
 
     @PostConstruct
@@ -96,9 +100,6 @@ public class JwtTokenService {
                 return null;
             }
 
-            // Standard token: look up from User table.
-            // Impersonation tokens also resolved here — the ARO user's sys_user
-            // row is auto-created during binding.
             User user = userMapper.findById(userId);
             if (user == null) {
                 return null;
@@ -106,10 +107,72 @@ public class JwtTokenService {
             if (user.getStatus() != null && user.getStatus() == 0) {
                 return null;
             }
+            // 统一权限：一个人合并后有教职工/学生两个 id，取两者最高角色
+            resolveUnifiedRole(user);
             return user;
         } catch (JwtException e) {
             log.debug("[JWT] Token 校验失败: {}", e.getMessage());
             return null;
+        }
+    }
+
+    /** 解析模拟学生 token 里的教职工（impersonatedBy）身份；非模拟 token 返回 null */
+    public User resolveImpersonator(String token) {
+        if (token == null || token.isBlank() || token.startsWith(LEGACY_MOCK_PREFIX)) {
+            return null;
+        }
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(secretKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+            String impersonatedBy = claims.get("impersonatedBy", String.class);
+            if (impersonatedBy == null || impersonatedBy.isBlank()) {
+                return null;
+            }
+            return userMapper.findById(impersonatedBy);
+        } catch (JwtException e) {
+            log.debug("[JWT] 解析教职工身份失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 统一权限：一个人合并后有教职工(sys_user.userId)与学生(aroUserId)两个 id，
+     * 通过 user_aro_binding 找到对端身份，取两者最高角色。
+     */
+    public void resolveUnifiedRole(User user) {
+        if (user == null) {
+            return;
+        }
+        try {
+            UserAroBinding binding = userAroBindingMapper.selectByUserId(user.getId());
+            String counterpartId;
+            if (binding != null) {
+                counterpartId = binding.getAroUserId();
+            } else {
+                UserAroBinding byAro = userAroBindingMapper.selectByAroUserId(user.getId());
+                if (byAro == null) {
+                    return;
+                }
+                counterpartId = byAro.getUserId();
+            }
+            if (counterpartId == null || counterpartId.isBlank() || counterpartId.equals(user.getId())) {
+                return;
+            }
+            User counterpart = userMapper.findById(counterpartId);
+            if (counterpart == null) {
+                return;
+            }
+            RoleEnum current = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
+            RoleEnum other = counterpart.getRole() == null ? RoleEnum.MEMBER : counterpart.getRole();
+            if (other.getLevel() > current.getLevel()) {
+                user.setRole(other);
+            }
+        } catch (Exception e) {
+            // 合并角色失败不阻断登录
+            log.debug("[JWT] 合并角色失败: {}", e.getMessage());
         }
     }
 

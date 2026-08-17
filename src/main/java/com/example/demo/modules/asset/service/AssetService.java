@@ -2024,7 +2024,7 @@ public class AssetService {
                 }
             }
         }
-        try (InputStream in = getClass().getResourceAsStream("/fonts/NotoSansSC-Regular.otf")) {
+        try (InputStream in = getClass().getResourceAsStream("/fonts/NotoSansSC-Regular.ttf")) {
             if (in != null) {
                 return PDType0Font.load(document, in, true);
             }

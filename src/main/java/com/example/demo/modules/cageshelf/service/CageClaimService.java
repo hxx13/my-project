@@ -11,6 +11,7 @@ import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.mapper.ApprovalRecordMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
+import com.example.demo.modules.identity.service.PersonIdentityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -34,17 +35,20 @@ public class CageClaimService {
     private final ApprovalRecordMapper approvalMapper;
     private final UserMapper userMapper;
     private final NotificationSettingsService notificationSettingsService;
+    private final PersonIdentityService personIdentityService;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
                             ApprovalRecordMapper approvalMapper,
                             UserMapper userMapper,
-                            NotificationSettingsService notificationSettingsService) {
+                            NotificationSettingsService notificationSettingsService,
+                            PersonIdentityService personIdentityService) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
         this.userMapper = userMapper;
         this.notificationSettingsService = notificationSettingsService;
+        this.personIdentityService = personIdentityService;
     }
 
     // ═══════════════════════════════════════════
@@ -131,7 +135,7 @@ public class CageClaimService {
         claim.setAnimalCageId(animalCageId);
         claim.setClaimStatus(initStatus);
         claim.setClaimantId(studentId);
-        claim.setClaimantName(student.getUsername());
+        claim.setClaimantName(student.getName());
         claim.setClaimantDept(detail.getDepartmentName());
         claim.setConfirmRequired(confirmReq);
         claim.setRetryCount(0);
@@ -242,7 +246,7 @@ public class CageClaimService {
         if (toUser == null) throw new TwinBusinessException(400, "目标用户不存在");
 
         claim.setClaimantId(toStudentUserId);
-        claim.setClaimantName(toUser.getUsername());
+        claim.setClaimantName(toUser.getName());
         claim.setNote("转自 " + student.getUsername() + "：" + (reason != null ? reason : ""));
         claimMapper.update(claim);
 
@@ -268,8 +272,9 @@ public class CageClaimService {
             throw new TwinBusinessException(400, "当前状态不可审批: " + current);
         }
 
-        if (approver.getRole() == null || approver.getRole().getLevel() < RoleEnum.PI.getLevel()) {
-            throw new TwinBusinessException(403, "无审批权限");
+        boolean isAdmin = approver.getRole() != null && approver.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        if (!isAdmin && !personIdentityService.isPi(approver.getId())) {
+            throw new TwinBusinessException(403, "无审批权限（仅管理员或组长）");
         }
 
         if ("rejected".equals(decision)) {
@@ -304,7 +309,7 @@ public class CageClaimService {
         ar.setTargetType(isClaimApproval ? "cage_claim" : "cage_release");
         ar.setTargetId(claimId);
         ar.setApproverId(approver.getId());
-        ar.setApproverName(approver.getUsername());
+        ar.setApproverName(approver.getName());
         ar.setApproverRole(approver.getRole() != null ? approver.getRole().name() : "UNKNOWN");
         ar.setDecision(decision);
         ar.setRejectReason("rejected".equals(decision) ? reason : null);
@@ -341,11 +346,11 @@ public class CageClaimService {
         claim.setAnimalCageId(animalCageId);
         claim.setClaimStatus("locked");
         claim.setClaimantId(studentUserId);
-        claim.setClaimantName(student.getUsername());
+        claim.setClaimantName(student.getName());
         claim.setClaimantDept(detail.getDepartmentName());
         claim.setAupId(aupId);
         claim.setAssignerId(admin.getId());
-        claim.setAssignerName(admin.getUsername());
+        claim.setAssignerName(admin.getName());
         claim.setConfirmRequired(getConfirmRequired());
         claim.setRetryCount(0);
         claim.setNote("管理员手动分配");

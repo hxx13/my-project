@@ -38,6 +38,15 @@
           {{ currentWxPusher ? 'WxPusher推送' : '绑定WxPusher' }}
         </view>
       </view>
+      <view wx:if="{{ springBound && springUserId }}" class="mine-badge-actions">
+        <view wx:if="{{ canGoAiPortrait }}" class="mine-archive-action mine-archive-action--ghost" bindtap="goAiPortrait">
+          <text class="mine-archive-action-text mine-archive-action-text--ghost">AI画像</text>
+        </view>
+        <view class="mine-archive-action" bindtap="openProfileDetail">
+          <text class="mine-archive-action-text">详情</text>
+          <text class="mine-archive-action-arrow">›</text>
+        </view>
+      </view>
     </view>
     <view class="mine-header-main">
       <view class="mine-avatar-ring">
@@ -71,15 +80,6 @@
         <view class="mine-archive-title-block">
           <text class="mine-archive-title">个人信息</text>
           <text class="mine-archive-sub">点击详情查看档案</text>
-        </view>
-        <view class="mine-archive-actions">
-          <view wx:if="{{ canGoAiPortrait }}" class="mine-archive-action mine-archive-action--ghost" bindtap="goAiPortrait">
-            <text class="mine-archive-action-text mine-archive-action-text--ghost">AI画像</text>
-          </view>
-          <view class="mine-archive-action" bindtap="openProfileDetail">
-            <text class="mine-archive-action-text">详情</text>
-            <text class="mine-archive-action-arrow">›</text>
-          </view>
         </view>
       </view>
     </view>

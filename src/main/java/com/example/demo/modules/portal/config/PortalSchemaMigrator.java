@@ -93,26 +93,38 @@ public class PortalSchemaMigrator implements ApplicationRunner {
                  'PUBLISHED', 0, NOW()),
                 (1003, 'PAGE', '联系我们',
                  '上海市浦东新区 · 上海交通大学医学院实验动物大楼 | 电话：021-XXXX-XXXX | 邮箱：aro@shsmu.edu.cn | 办公时间：周一至周五 8:30—17:00',
-                 '<p>如有任何疑问，请通过以下方式联系我们：</p><p>📍 地址：上海市浦东新区 · 上海交通大学医学院实验动物大楼</p><p>📞 电话：021-XXXX-XXXX（工作日 8:30-17:00）</p><p>📧 邮箱：aro@shsmu.edu.cn</p><p>🕐 办公时间：周一至周五 8:30—17:00</p>',
+                 NULL,
                  'PUBLISHED', 0, NOW()),
                 (1004, 'PAGE', '服务指南',
                  '实验动物使用流程与收费标准',
                  '<h2>使用流程</h2><ol><li>提交实验动物使用申请表</li><li>管理办公室审核</li><li>签订使用协议</li><li>办理门禁卡及相关培训</li><li>按计划进行实验</li></ol><h2>收费标准</h2><p>具体费用按照品系、饲养级别和服务类型分档计算，详情请咨询管理办公室或查阅平台公示。</p>',
+                 'PUBLISHED', 0, NOW()),
+                (1005, 'PAGE', '学生Q&A',
+                 '学生常见问题',
+                 NULL,
                  'PUBLISHED', 0, NOW())
                 """);
 
-            // 为已有 PAGE 记录补设 extension_json（INSERT IGNORE 不覆盖，用 UPDATE 确保生效）
+            // 为已有 PAGE 记录补设默认 extension_json（仅在字段为空时填充，避免重启覆盖管理员已编辑的内容）
             jdbcTemplate.execute("""
-                UPDATE portal_content SET extension_json = '{"page_key":"about","stats":[{"label":"建筑面积","value":"17,602","unit":"m²"},{"label":"设计笼位","value":"5.2","unit":"万笼"},{"label":"基因编辑品系","value":"2,122","unit":"个"},{"label":"服务课题组","value":"302","unit":"个"}],"sections":[{"heading":"依托平台","body":"依托胚胎生物技术平台，保有2,122个基因编辑动物品系。坚持临床科研一体化，服务302个课题组及13家附属医院。"},{"heading":"国际认证","body":"全国高校唯一同时拥有CNAS和AAALAC国际认可的实验动物设施。建设有20多个实验动物研究平台。"},{"heading":"服务范围","body":"普通动物饲养品种包括犬、猴、猪、兔、仓鼠、豚鼠、小鼠、大鼠。特殊实验动物品种包括裸鼹鼠、地松鼠等。"}]}' WHERE id = 1001 AND content_type = 'PAGE'
+                UPDATE portal_content SET extension_json = '{"page_key":"about","stats":[{"label":"建筑面积","value":"17,602","unit":"m²"},{"label":"设计笼位","value":"5.2","unit":"万笼"},{"label":"基因编辑品系","value":"2,122","unit":"个"},{"label":"服务课题组","value":"302","unit":"个"}],"sections":[{"heading":"依托平台","body":"依托胚胎生物技术平台，保有2,122个基因编辑动物品系。坚持临床科研一体化，服务302个课题组及13家附属医院。"},{"heading":"国际认证","body":"全国高校唯一同时拥有CNAS和AAALAC国际认可的实验动物设施。建设有20多个实验动物研究平台。"},{"heading":"服务范围","body":"普通动物饲养品种包括犬、猴、猪、兔、仓鼠、豚鼠、小鼠、大鼠。特殊实验动物品种包括裸鼹鼠、地松鼠等。"}]}' WHERE id = 1001 AND content_type = 'PAGE' AND extension_json IS NULL
                 """);
             jdbcTemplate.execute("""
-                UPDATE portal_content SET extension_json = '{"page_key":"faq","faqs":[{"question":"如何申请使用实验动物？","answer":"请登录实验动物信息化管理平台，进入「动物订购」模块提交申请。首次使用需联系管理办公室开通账号。"},{"question":"实验动物的收费标准是什么？","answer":"收费标准按照品系、饲养级别和服务类型分档。具体费用请查阅平台公示的收费标准表。"},{"question":"如何预约使用仪器设备？","answer":"通过平台「仪器预约」模块在线预约。部分大型设备需提前培训并取得操作资质后方可预约使用。"},{"question":"动物房进出有哪些要求？","answer":"需完成生物安全培训，持有效门禁卡，按SOP要求穿戴防护装备。"},{"question":"如何获取基因编辑小鼠模型？","answer":"可通过平台「模型资源」浏览现有品系并提交使用申请。"},{"question":"忘记平台密码怎么办？","answer":"登录页面点击「忘记密码」，通过绑定邮箱或手机号重置。"}]}' WHERE id = 1002 AND content_type = 'PAGE'
+                UPDATE portal_content SET extension_json = '{"page_key":"faq","faqs":[{"question":"如何申请使用实验动物？","answer":"请登录实验动物信息化管理平台，进入「动物订购」模块提交申请。首次使用需联系管理办公室开通账号。"},{"question":"实验动物的收费标准是什么？","answer":"收费标准按照品系、饲养级别和服务类型分档。具体费用请查阅平台公示的收费标准表。"},{"question":"如何预约使用仪器设备？","answer":"通过平台「仪器预约」模块在线预约。部分大型设备需提前培训并取得操作资质后方可预约使用。"},{"question":"动物房进出有哪些要求？","answer":"需完成生物安全培训，持有效门禁卡，按SOP要求穿戴防护装备。"},{"question":"如何获取基因编辑小鼠模型？","answer":"可通过平台「模型资源」浏览现有品系并提交使用申请。"},{"question":"忘记平台密码怎么办？","answer":"登录页面点击「忘记密码」，通过绑定邮箱或手机号重置。"}]}' WHERE id = 1002 AND content_type = 'PAGE' AND extension_json IS NULL
                 """);
             jdbcTemplate.execute("""
-                UPDATE portal_content SET extension_json = '{"page_key":"contact","contacts":[{"label":"地址","icon":"MapPin","value":"上海市浦东新区 · 上海交通大学医学院实验动物大楼"},{"label":"电话","icon":"Phone","value":"021-XXXX-XXXX（工作日 8:30-17:00）"},{"label":"邮箱","icon":"Mail","value":"aro@shsmu.edu.cn"},{"label":"办公时间","icon":"Clock","value":"周一至周五 8:30—17:00"}]}' WHERE id = 1003 AND content_type = 'PAGE'
+                UPDATE portal_content SET extension_json = '{"page_key":"contact","contacts":[{"label":"地址","icon":"MapPin","value":"上海市浦东新区 · 上海交通大学医学院实验动物大楼"},{"label":"电话","icon":"Phone","value":"021-XXXX-XXXX（工作日 8:30-17:00）"},{"label":"邮箱","icon":"Mail","value":"aro@shsmu.edu.cn"},{"label":"办公时间","icon":"Clock","value":"周一至周五 8:30—17:00"}],"photos":[]}' WHERE id = 1003 AND content_type = 'PAGE' AND extension_json IS NULL
                 """);
             jdbcTemplate.execute("""
-                UPDATE portal_content SET extension_json = '{"page_key":"service_guide"}' WHERE id = 1004 AND content_type = 'PAGE'
+                UPDATE portal_content SET extension_json = '{"page_key":"service_guide"}' WHERE id = 1004 AND content_type = 'PAGE' AND extension_json IS NULL
+                """);
+            jdbcTemplate.execute("""
+                UPDATE portal_content SET extension_json = '{"page_key":"student_faq","groups":[{"category":"门禁与进出","items":[{"question":"如何查看我的门禁权限？","answer":"登录后在首页仪表盘可查看可进房间数量，点击「快捷操作」中的「我的门禁权限」可查看详情（即将开放）。"},{"question":"门禁刷卡失败怎么办？","answer":"请确认卡片是否有效、是否在规定时间段内、该房间是否在您的授权范围内。如仍有问题，请联系管理员。"}]},{"category":"违规记录","items":[{"question":"违规记录是如何产生的？","answer":"系统根据进出记录的异常情况（如未授权进入、超时未离开等）自动生成违规记录。"},{"question":"如何申诉违规记录？","answer":"在「出入记录」页面的「违规记录」标签页中可查看详情，申诉功能即将上线。"}]},{"category":"账户与注册","items":[{"question":"如何注册学生账号？","answer":"使用您的工号/学号和 QR 码在登录页面选择「学生注册」进行注册。"},{"question":"忘记密码怎么办？","answer":"请联系管理员重置密码。自助找回密码功能即将上线。"}]}]}' WHERE id = 1005 AND content_type = 'PAGE' AND extension_json IS NULL
+                """);
+
+            // 联系我们页联系方式已改由 contacts + photos 承载，清理历史种子的冗余富文本（与顶部联系方式重复）
+            jdbcTemplate.execute("""
+                UPDATE portal_content SET content_html = NULL WHERE id = 1003 AND content_type = 'PAGE' AND content_html LIKE '%如有任何疑问%'
                 """);
 
             log.info("[portal-schema] 门户内容表结构已就绪");

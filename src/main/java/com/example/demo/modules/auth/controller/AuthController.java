@@ -800,7 +800,9 @@ public class AuthController {
     }
 
     private boolean isStaffId(String userId) {
-        return userId != null && (userId.toUpperCase().startsWith("STAFF_") || "SYS_SUPER_ROOT".equals(userId));
+        if (userId == null) return false;
+        String up = userId.toUpperCase();
+        return up.startsWith("USR_") || up.startsWith("STAFF_") || "SYS_SUPER_ROOT".equals(userId);
     }
 
     private Result<?> bindStudent(WechatBindRequest request, HttpServletRequest httpRequest) {

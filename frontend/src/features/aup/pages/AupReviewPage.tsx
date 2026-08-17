@@ -25,6 +25,7 @@ import {
   useUnlockAup,
   useExperts,
   useAupMyRoles,
+  useReviewSessions,
 } from "@/features/aup/hooks/useAup";
 import type {
   AupRecord,
@@ -41,7 +42,7 @@ import type {
   Expert,
   ReviewerConfig,
 } from "@/features/aup/schema/review";
-import type { ReviewItemsSummary, TemplateDetailVO } from "@/features/aup/api/aup.api";
+import type { TemplateDetailVO } from "@/features/aup/api/aup.api";
 import { FieldReviewTag, emptyFieldReviewDraft } from "../components/FieldReviewTag";
 import { displayTitle } from "../components/FormField";
 import type { FieldReviewDraft } from "../components/FieldReviewTag";
@@ -179,6 +180,20 @@ function formatFieldValue(field: FormField, value: unknown): string {
     case "table":
       if (Array.isArray(value)) return `${value.length} 行`;
       return typeof value === "string" ? value : JSON.stringify(value);
+    case "repeatGroup": {
+      if (!Array.isArray(value)) return typeof value === "string" ? value : JSON.stringify(value);
+      const firstLabels: string[] = [];
+      for (const blk of value) {
+        if (typeof blk === "object" && blk != null) {
+          const first = (blk as Record<string, unknown>).species ?? (blk as Record<string, unknown>).line;
+          if (typeof first === "string" && first.trim()) {
+            firstLabels.push(first);
+          }
+        }
+      }
+      const suffix = firstLabels.length ? `（${firstLabels.join("、")}）` : "";
+      return `${value.length} 项${suffix}`;
+    }
     case "file":
     case "image":
       if (Array.isArray(value)) return value.map(fileLabel).filter(Boolean).join("、");
@@ -280,9 +295,9 @@ function ReviewContent({ id }: { id: string }) {
   const config = configQuery.data;
   const experts = expertsQuery.data ?? [];
   const progress = review.progressQuery.data;
-  // 评审总览用全轮 items（按轮分组展示历史）；字段旁批注/投票进度仍用当前轮
-  const overviewItems = review.allItemsQuery.data?.items ?? [];
-  const overviewSummary: ReviewItemsSummary | undefined = review.allItemsQuery.data?.summary;
+  // 评审总览用「评审会话」（每次评审 = 整体结论 + 逐字段意见，含整体同意/拒评/回避）；字段旁批注/投票进度仍用当前轮
+  const overviewQuery = useReviewSessions(id);
+  const overviewSessions = overviewQuery.data?.sessions ?? [];
   const currentRoundItems = review.itemsQuery.data?.items ?? [];
 
   const role: ReviewRole = resolveReviewRole(
@@ -593,9 +608,7 @@ function ReviewContent({ id }: { id: string }) {
       <ReviewOverviewPanel
         open={overviewOpen}
         onClose={() => setOverviewOpen(false)}
-        summary={overviewSummary}
-        items={overviewItems}
-        reviewerNames={reviewerNames}
+        sessions={overviewSessions}
       />
     </div>
   );

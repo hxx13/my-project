@@ -27,7 +27,7 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             writeUnauthorized(response, "未登录或 Token 缺失");
             return false;
         }
-        if (roleLevel(user) < ADMIN_BASE_MIN_LEVEL) {
+        if (!isStaffBase(user) || roleLevel(user) < ADMIN_BASE_MIN_LEVEL) {
             writeForbidden(response);
             return false;
         }
@@ -36,8 +36,7 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
     }
 
     /**
-     * AUP config 三页（模板写 / 字典 / 名册写）门禁：教职工 sys_user 底座 + RoleEnum≥ADMIN。
-     * 学生库账号（accountSource=STUDENT）即使被授予 ADMIN 角色也不放行。
+     * AUP config 三页（模板写 / 字典 / 名册写）门禁：RoleEnum≥ADMIN（统一角色等级）。
      */
     public boolean preHandleAupConfigAdmin(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         User user = resolveUser(request);
@@ -54,7 +53,7 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
     }
 
     /**
-     * 仅校验「教职工 sys_user 底座」（登录 + 非学生库账号），角色仍交由控制器按业务（admin/secretary）裁决。
+     * 仅校验「教职工底座」（role≥STAFF），角色仍交由控制器按业务（admin/secretary）裁决。
      * 用于名册配置 GET：秘书（非 ADMIN）需读取 reviewer-config 以判定自身身份。
      */
     public boolean preHandleStaffBase(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -72,19 +71,12 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
     }
 
     /**
-     * 教职工 sys_user 底座判定（与学生库账号互斥）：
-     * accountSource=STAFF 明确为教职工；accountSource=STUDENT 明确为学生库；
-     * 来源为空的历史账号按角色兜底（role≥STAFF 视为教职工），与前端 postLoginNavigation 约定一致。
+     * 教职工 sys_user 底座判定：统一按角色等级判定（role≥STAFF 即视为教职工），
+     * 不再用 accountSource 区分学生库/教职工库 —— 两视角合并为一套权限体系，
+     * 学生库账号若被授予高角色同样按角色放行。
      */
     public boolean isStaffBase(User user) {
         if (user == null) {
-            return false;
-        }
-        String source = user.getAccountSource();
-        if ("STAFF".equalsIgnoreCase(source)) {
-            return true;
-        }
-        if ("STUDENT".equalsIgnoreCase(source)) {
             return false;
         }
         return roleLevel(user) >= RoleEnum.STAFF.getLevel();

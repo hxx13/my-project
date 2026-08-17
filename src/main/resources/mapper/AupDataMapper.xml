@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupDataMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO aup_data (aup_id, data, version, updated_by, created_at, updated_at)
+        VALUES (#{aupId}, #{data}, #{version}, #{updatedBy}, NOW(), NOW())
+    </insert>
+
+    <select id="selectByAupId" resultType="com.example.demo.modules.aup.entity.AupData">
+        SELECT * FROM aup_data WHERE aup_id = #{aupId}
+    </select>
+
+    <!-- 草稿保存 CAS：0 行 = 乐观锁冲突 409 -->
+    <update id="updateCas">
+        UPDATE aup_data
+        SET data = #{data},
+            version = version + 1,
+            updated_by = #{updatedBy},
+            updated_at = NOW()
+        WHERE aup_id = #{aupId}
+          AND version = #{expectedVersion}
+    </update>
+
+</mapper>

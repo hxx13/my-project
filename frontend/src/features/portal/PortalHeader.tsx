@@ -46,6 +46,7 @@ function useNavEntries(modelCats: { name: string }[]): NavEntry[] {
         { label: "服务指南", href: "#", route: "/services", desc: "使用流程与收费标准" },
         { label: "常见问题", href: "#", route: "/faq", desc: "使用帮助与 FAQ" },
         { label: "联系我们", href: "#", route: "/contact", desc: "地址与联系方式" },
+        { label: "填写计划书", href: "#", route: "/aup/fill", desc: "IACUC 实验动物研究及使用计划（暂）" },
       ],
     },
   ], [modelCats]);

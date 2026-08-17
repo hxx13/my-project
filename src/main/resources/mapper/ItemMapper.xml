@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.inventory.mapper.ItemMapper">
+
+    <sql id="listWhere">
+        WHERE i.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (i.name LIKE CONCAT('%',#{keyword},'%')
+                 OR i.rfid_code LIKE CONCAT('%',#{keyword},'%')
+                 OR i.brand LIKE CONCAT('%',#{keyword},'%')
+                 OR i.model LIKE CONCAT('%',#{keyword},'%')
+                 OR i.spec LIKE CONCAT('%',#{keyword},'%'))
+        </if>
+        <if test="spaceIds != null and spaceIds.size() > 0">
+            AND i.space_id IN
+            <foreach collection="spaceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+        </if>
+        <if test="categoryId != null">
+            AND i.category_id = #{categoryId}
+        </if>
+        <if test="granularity != null and granularity != ''">
+            AND i.granularity = #{granularity}
+        </if>
+        <if test="status != null and status != ''">
+            AND i.status = #{status}
+        </if>
+        <if test="hasCode != null">
+            <if test="hasCode == true">AND i.rfid_code IS NOT NULL AND i.rfid_code != ''</if>
+            <if test="hasCode == false">AND (i.rfid_code IS NULL OR i.rfid_code = '')</if>
+        </if>
+    </sql>
+
+    <select id="selectById" resultType="com.example.demo.modules.inventory.entity.InvItem">
+        SELECT * FROM inv_item WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectByRfidCode" resultType="com.example.demo.modules.inventory.entity.InvItem">
+        SELECT * FROM inv_item WHERE rfid_code = #{rfidCode} AND deleted = 0 LIMIT 1
+    </select>
+
+    <select id="selectList" resultType="com.example.demo.modules.inventory.entity.InvItem">
+        SELECT i.* FROM inv_item i
+        <include refid="listWhere"/>
+        ORDER BY i.id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(1) FROM inv_item i
+        <include refid="listWhere"/>
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO inv_item (rfid_code, name, category_id, space_id, granularity, qty, status,
+                              icon_type, icon_value, cover_url, detail_images, brand, model, spec, expire_at, supplier,
+                              purchase_no, price, purchase_date, warranty_until, fund_source, ext, created_by, deleted)
+        VALUES (#{rfidCode}, #{name}, #{categoryId}, #{spaceId}, #{granularity}, #{qty}, #{status},
+                #{iconType}, #{iconValue}, #{coverUrl}, #{detailImages}, #{brand}, #{model}, #{spec}, #{expireAt}, #{supplier},
+                #{purchaseNo}, #{price}, #{purchaseDate}, #{warrantyUntil}, #{fundSource}, #{ext}, #{createdBy}, 0)
+    </insert>
+
+    <update id="updateById">
+        UPDATE inv_item
+        SET name = #{name}, category_id = #{categoryId}, space_id = #{spaceId},
+            granularity = #{granularity}, qty = #{qty}, status = #{status},
+            icon_type = #{iconType}, icon_value = #{iconValue}, cover_url = #{coverUrl}, detail_images = #{detailImages}, brand = #{brand}, model = #{model},
+            spec = #{spec}, expire_at = #{expireAt}, supplier = #{supplier}, purchase_no = #{purchaseNo},
+            price = #{price}, purchase_date = #{purchaseDate}, warranty_until = #{warrantyUntil},
+            fund_source = #{fundSource}, ext = #{ext}
+            <if test="rfidCode != null">, rfid_code = #{rfidCode}</if>
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateSpace">
+        UPDATE inv_item SET space_id = #{spaceId} WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE inv_item SET status = #{status} WHERE id = #{id}
+    </update>
+
+    <update id="updateLastScannedAt">
+        UPDATE inv_item SET last_scanned_at = NOW(), status = IF(status='RETIRED', 'RETIRED', 'IN_USE') WHERE id = #{id}
+    </update>
+
+    <update id="updateQty">
+        UPDATE inv_item SET qty = #{qty} WHERE id = #{id}
+    </update>
+
+    <update id="softDelete">
+        UPDATE inv_item SET deleted = 1, rfid_code = NULL WHERE id = #{id}
+    </update>
+
+    <select id="selectBySpaceIds" resultType="com.example.demo.modules.inventory.entity.InvItem">
+        SELECT * FROM inv_item
+        WHERE deleted = 0 AND status != 'RETIRED'
+        <if test="spaceIds != null and spaceIds.size() > 0">
+            AND space_id IN
+            <foreach collection="spaceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+        </if>
+        <if test="spaceIds == null or spaceIds.size() == 0">
+            AND 1 = 0
+        </if>
+    </select>
+</mapper>

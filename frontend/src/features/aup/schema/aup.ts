@@ -82,6 +82,7 @@ export interface AupListItem {
   projectName?: string;
   piName?: string;
   dept?: string;
+  projectSource?: string;
   currentStage: AupStage;
   roundNo: number;
   draftSource: DraftSource;
@@ -105,6 +106,12 @@ export interface AupListItem {
   submitterName?: string;
   /** 当前阶段审核人姓名（逗号分隔，如「张三, 李四」；draft/approved/terminated/expired 为空） */
   reviewerNames?: string;
+  /** 同意（agree）专家姓名列表 */
+  agreeNames?: string[];
+  /** 要求修改（modify）专家姓名列表 */
+  modifyNames?: string[];
+  /** 不同意（disagree）专家姓名列表 */
+  disagreeNames?: string[];
   /** 阶段过程迷你指示器 JSON 字符串（需 JSON.parse 为 AupMiniStepsPayload） */
   miniSteps?: string | null;
   /** 演示示例标记 0/1 */
@@ -116,6 +123,8 @@ export interface AupSnapshotMeta {
   snapshotId: number;
   versionNo: number;
   stage: AupStage;
+  /** 草稿来源（stage=draft 时有效），用于区分返修来源 first/piReturn/formatReturn/expertReturn/rollback */
+  draftSource?: DraftSource;
   createdAt: string;
   createdBy?: string;
 }

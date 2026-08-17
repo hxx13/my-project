@@ -25,7 +25,36 @@ public class TwinDashboardAggregationService {
     @Autowired
     private TwinCardStatusController twinCardStatusController;
 
+    /** 「全部校区」聚合结果的短 TTL 缓存：同一请求内 getWechatMiniProgramData(null) 会被调 2~3 次，
+     *  且多个学生端并发进首页；缓存几秒即可显著减少对 getTodayActiveUsersForRoomStatus 的重查询。 */
+    private static final long ALL_CACHE_TTL_MS = 3_000L;
+    private volatile List<RoomDashboardRenderDTO> cachedAllRooms;
+    private volatile long cachedAllRoomsAt = 0L;
+
     public List<RoomDashboardRenderDTO> getWechatMiniProgramData(String campus) {
+        boolean all = (campus == null || campus.isEmpty());
+        if (!all) {
+            return computeWechatMiniProgramData(campus);
+        }
+        long now = System.currentTimeMillis();
+        List<RoomDashboardRenderDTO> cached = cachedAllRooms;
+        if (cached != null && now - cachedAllRoomsAt < ALL_CACHE_TTL_MS) {
+            return cached;
+        }
+        synchronized (this) {
+            now = System.currentTimeMillis();
+            cached = cachedAllRooms;
+            if (cached != null && now - cachedAllRoomsAt < ALL_CACHE_TTL_MS) {
+                return cached;
+            }
+            List<RoomDashboardRenderDTO> result = computeWechatMiniProgramData(null);
+            cachedAllRooms = result;
+            cachedAllRoomsAt = System.currentTimeMillis();
+            return result;
+        }
+    }
+
+    private List<RoomDashboardRenderDTO> computeWechatMiniProgramData(String campus) {
         // 1. 获取防腐层静态配置字典
         List<RoomConfig> configs = roomConfigService.getAllActiveRooms();
 

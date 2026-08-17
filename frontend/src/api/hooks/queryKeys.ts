@@ -159,6 +159,8 @@ export const queryKeys = {
       ["referenceData", "orderDetail", id] as const,
     orderLogs: (id: number) =>
       ["referenceData", "orderLogs", id] as const,
+    allOrders: (page?: number, pageSize?: number) =>
+      ["referenceData", "allOrders", page ?? 1, pageSize ?? 50] as const,
   },
 } as const;
 

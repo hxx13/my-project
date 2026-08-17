@@ -77,11 +77,19 @@ public class AupController {
                           @RequestParam(required = false) String reviewerId,
                           @RequestParam(required = false) String submitterName,
                           @RequestParam(required = false) String reviewerName,
+                          @RequestParam(defaultValue = "false") boolean relatedToMe,
                           @RequestParam(required = false) String sortBy,
                           @RequestParam(required = false) String sortDir) {
         User user = requireUser(authorization);
         return Result.success(aupService.list(user, page, size, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft,
-                draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, sortBy, sortDir));
+                draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe, sortBy, sortDir));
+    }
+
+    /** 列表筛选用：去重课题组名称（下拉选项） */
+    @GetMapping("/project-groups")
+    public Result<?> projectGroups(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        requireUser(authorization);
+        return Result.success(aupService.listProjectGroups());
     }
 
     @PostMapping
@@ -206,7 +214,9 @@ public class AupController {
     public Result<?> delete(@RequestHeader(value = "Authorization", required = false) String authorization,
                             @PathVariable("id") Long id) {
         User user = requireUser(authorization);
-        aupService.delete(id, user);
+        // 模拟学生视图时，删除等管理动作沿用教职工身份做权限判断
+        User impersonator = authContextService.resolveImpersonator(authorization);
+        aupService.delete(id, user, impersonator);
         return Result.success();
     }
 

@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -19,6 +20,16 @@ public class StudentRoomService {
 
     private static final Logger log = LoggerFactory.getLogger(StudentRoomService.class);
     private static final int DEFAULT_CAPACITY = 20;
+
+    /** 用户可进入房间 ID 的短 TTL 缓存：避免每次进首页/我的房间都现查 ARO examOfflineRoom 接口 */
+    private static final long ARO_ROOM_IDS_TTL_MS = 180_000L; // 3 分钟
+    private final ConcurrentHashMap<String, CachedRoomIds> aroRoomIdsCache = new ConcurrentHashMap<>();
+
+    private static final class CachedRoomIds {
+        final Set<String> ids;
+        final long at;
+        CachedRoomIds(Set<String> ids, long at) { this.ids = ids; this.at = at; }
+    }
 
     private final TwinDashboardAggregationService aggregationService;
     private final StudentRoomPinMapper pinMapper;
@@ -85,6 +96,12 @@ public class StudentRoomService {
      * Returns a set of ARO room ID strings (e.g. "1374909123426246657").
      */
     private Set<String> resolveAllowedAroRoomIds(String userId) {
+        if (userId == null || userId.isBlank()) return Set.of();
+        long now = System.currentTimeMillis();
+        CachedRoomIds cached = aroRoomIdsCache.get(userId);
+        if (cached != null && now - cached.at < ARO_ROOM_IDS_TTL_MS) {
+            return cached.ids;
+        }
         Set<String> ids = new LinkedHashSet<>();
         try {
             List<Map<String, Object>> rooms = aroService.getExamOfflineRoom(userId);
@@ -96,7 +113,9 @@ public class StudentRoomService {
             }
         } catch (Exception e) {
             log.warn("[student-room] ARO examOfflineRoom failed for userId={}: {}", userId, e.getMessage());
+            return Set.of(); // 失败不缓存，下次重试
         }
+        aroRoomIdsCache.put(userId, new CachedRoomIds(Set.copyOf(ids), System.currentTimeMillis()));
         return ids;
     }
 

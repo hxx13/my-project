@@ -33,6 +33,7 @@ import type {
   ReviewTodoItem,
   ReviewerConfig,
   ReviewerConfigRequest,
+  ReviewVerdict,
   VoteRequest,
 } from "@/features/aup/schema/review";
 
@@ -76,6 +77,8 @@ export interface AupListParams {
   submitterName?: string;
   /** 审核人姓名（模糊匹配） */
   reviewerName?: string;
+  /** 只看与我相关（我是提交人 / 组长PI / 被分配专家 / 留痕操作人） */
+  relatedToMe?: boolean;
   sortBy?: string;
   sortDir?: "asc" | "desc";
 }
@@ -83,6 +86,11 @@ export interface AupListParams {
 /** GET /aup/list */
 export function fetchAupList(params: AupListParams = {}): Promise<AupPage<AupListItem>> {
   return authHttp.get<Result<AupPage<AupListItem>>>("/aup/list", { params }).then(({ data }) => data.data);
+}
+
+/** GET /aup/project-groups —— 列表筛选用去重课题组名称 */
+export function fetchAupProjectGroups(): Promise<string[]> {
+  return authHttp.get<Result<string[]>>("/aup/project-groups").then(({ data }) => data.data);
 }
 
 export interface CreateAupBody {
@@ -390,6 +398,34 @@ export function fetchReviewItems(id: string, params: ReviewItemsParams = {}): Pr
   return authHttp.get<Result<ReviewItemsResult>>(`/aup/${id}/review/items`, { params }).then(({ data }) => data.data);
 }
 
+/** 单次评审记录（一次专家投票 / 一次秘书格式审查 = 整体结论 + 逐字段意见） */
+export interface ReviewSessionVO {
+  /** 评审人 userId */
+  reviewer: string;
+  /** 评审人姓名（后端解析） */
+  reviewerName?: string;
+  /** secretary（格式）/ expert（内容） */
+  role?: string;
+  /** agree/disagree/modify/recuse/abstain（整体结论） */
+  verdict: ReviewVerdict;
+  /** 整体审核反馈 */
+  comment?: string;
+  roundNo: number;
+  createdAt: string;
+  /** 逐字段意见（整体同意/弃权/回避时可能为空） */
+  items: ReviewItem[];
+}
+
+export interface ReviewSessionsResult {
+  summary: ReviewItemsSummary;
+  sessions: ReviewSessionVO[];
+}
+
+/** GET /aup/{id}/review/sessions —— 评审总览：全轮次每次评审记录（含整体同意/拒评/回避等无逐条批注的评审人） */
+export function fetchReviewSessions(id: string): Promise<ReviewSessionsResult> {
+  return authHttp.get<Result<ReviewSessionsResult>>(`/aup/${id}/review/sessions`).then(({ data }) => data.data);
+}
+
 /** GET /aup/experts —— 专家候选（供格式审查选择器） */
 export function fetchExperts(): Promise<Expert[]> {
   return authHttp.get<Result<Expert[]>>("/aup/experts").then(({ data }) => data.data);
@@ -604,5 +640,5 @@ export function markAupNotificationRead(id: string): Promise<void> {
  * ================================================================== */
 
 export type { AupAttachment, AupAttachmentUpload, AupDetailVO, AupListItem, AupPrintData, AupSnapshot, AupSnapshotMeta, AupStage, AupTrace, DraftSource, ReviewForm } from "@/features/aup/schema/aup";
-export type { Assignment, Expert, FormatReviewItemInput, ReviewItem, ReviewProgress, ReviewTodoItem, Reviewer, ReviewerConfig, ReviewVO, VoteRequest } from "@/features/aup/schema/review";
+export type { Assignment, Expert, FormatReviewItemInput, ReviewItem, ReviewProgress, ReviewTodoItem, Reviewer, ReviewerConfig, ReviewVerdict, ReviewVO, VoteRequest } from "@/features/aup/schema/review";
 export type { FormField, FormSection, FormSubSection } from "@/features/aup/schema/formTemplate";

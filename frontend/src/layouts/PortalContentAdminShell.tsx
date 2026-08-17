@@ -15,23 +15,6 @@ const NAV_ITEMS = [
   { path: "/content-manager/aup-reviewers", label: "AUP 审查人", icon: "👥" },
 ] as const;
 
-/** AUP config 三页：仅「教职工 sys_user 底座 + ADMIN」可见，学生库账号即使被授予 ADMIN 也不可见 */
-const AUP_CONFIG_NAV_PATHS = new Set([
-  "/content-manager/aup-template",
-  "/content-manager/aup-dict",
-  "/content-manager/aup-reviewers",
-]);
-
-/** 学生库账号判定，与 postLoginNavigation / AuthGuard 约定一致 */
-function isStudentAccount(): boolean {
-  const source = authStorage.getUserInfo()?.accountSource;
-  if (source === "STUDENT") return true;
-  if (source === "STAFF") return false;
-  // accountSource 为空时按角色兜底：MEMBER 即学生
-  const role = authStorage.getRole() ?? "MEMBER";
-  return !hasMinRole(role, "STAFF");
-}
-
 export default function PortalContentAdminShell() {
   const location = useLocation();
   const goBack = useGoBack("/content-manager/content");
@@ -42,13 +25,7 @@ export default function PortalContentAdminShell() {
 
   const pathname = location.pathname.replace(/\/+$/, "") || "/";
 
-  // config 三页（模板/字典/审查人）收紧：学生库账号即便带 ADMIN 角色也不放行
-  const studentAccount = isStudentAccount();
-  const onAupConfigPage = [...AUP_CONFIG_NAV_PATHS].some((p) => pathname.startsWith(p));
-  if (studentAccount && onAupConfigPage) return <Navigate to="/" replace />;
-  const navItems = studentAccount
-    ? NAV_ITEMS.filter((item) => !AUP_CONFIG_NAV_PATHS.has(item.path))
-    : NAV_ITEMS;
+  const navItems = NAV_ITEMS;
 
   const isEditor = pathname.includes("/content/new") || pathname.includes("/edit") || pathname.match(/\/content-manager\/pages\/(about|faq|contact|service-guide)$/);
   const isSpecial = pathname.includes("/content/recycle");

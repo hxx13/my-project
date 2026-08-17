@@ -162,7 +162,8 @@ export default function AdminPersonnelPage() {
 
   return (
     <AdminPageShell>
-      <div className="flex h-full min-h-0 flex-col gap-3">
+      {/* 固定高度容器：h 确定高度（max-h 会让 flex-1 子项在内容不足时塌缩），列表在内部滚动、整页不滚 */}
+      <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] flex-col gap-3">
         {/* 筛选卡 */}
         <AdminFormCard className="shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
@@ -196,8 +197,8 @@ export default function AdminPersonnelPage() {
           />
         </AdminFormCard>
 
-        {/* 列表 + 卡片 */}
-        <div className="flex min-h-0 flex-1 gap-3">
+        {/* 列表 + 卡片（overflow-hidden：挤压动画期间卡片不外溢） */}
+        <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
           <PersonnelRichList
             rows={rows}
             total={total}

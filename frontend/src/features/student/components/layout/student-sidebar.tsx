@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import {
   Home, DoorOpen, Bell,
   MessageSquare, Settings, LayoutGrid, Package, ShoppingCart,
   ChevronsLeft, ChevronsRight, ChevronDown, ChevronRight,
-  Search, Star, Lock, History,
+  Search, Star, Lock, History, FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
@@ -20,6 +20,7 @@ import {
   appendStudentNavRecent,
   isStudentNavStarred,
   isStudentNavLocked,
+  STUDENT_NAV_PERSONALIZATION_EVENT,
 } from "./student-nav-personalization";
 
 /* Re-export for command palette and layout */
@@ -74,6 +75,13 @@ const navGroups: NavGroup[] = [
     label: "订购",
     items: [
       { to: "/student/animal-order", icon: ShoppingCart, label: "实验动物订购" },
+    ],
+  },
+  {
+    id: "aup",
+    label: "计划书",
+    items: [
+      { to: "/student/aup", icon: FileText, label: "AUP 计划书" },
     ],
   },
 ];
@@ -270,7 +278,6 @@ function SidebarGroup({
 /* ------------------------------------------------------------------ */
 
 export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSidebarProps) {
-  const { pathname } = useLocation();
   /** 镜像模式 / 模拟模式（教职工预览学生页）下，隐藏返回门户（/）的“首页”按钮 */
   const isMirrorMode = useMemo(() => authStorage.isMirrorMode(), []);
   const isImpersonating = useMemo(() => Boolean(getImpersonationState()?.isImpersonating), []);
@@ -280,24 +287,36 @@ export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSi
     stars: true, recent: true, space: true, material: true,
   }));
 
-  /* ── Hydrate from backend on mount ── */
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => {
-    hydrateStudentNavPersonalization().then(() => setHydrated(true));
-  }, []);
-
   /* ── Persistent state (backend → localStorage fallback) ── */
   const [starPaths, setStarPaths] = useState<string[]>(() => readStudentNavStars());
   const [lockedPath, setLockedPath] = useState<string | null>(() => readStudentNavLock());
   const [recentPaths, setRecentPaths] = useState<string[]>(() => readStudentNavRecent());
 
+  /* ── 挂载时 hydrate + 后续个性化变更（收藏/常用/锁定）触发重新读取 ──
+   *  与后台 AdminLayout 的 personalBump 一致：仅挂载时读一次会导致
+   *  hydrate 回写或 appendStudentNavRecent 之后「常用/收藏」永远为空而消失。 */
+  const [personalBump, setPersonalBump] = useState(0);
+  useEffect(() => {
+    hydrateStudentNavPersonalization().then(() => setPersonalBump((n) => n + 1));
+  }, []);
+  useEffect(() => {
+    const onChanged = () => setPersonalBump((n) => n + 1);
+    window.addEventListener(STUDENT_NAV_PERSONALIZATION_EVENT, onChanged);
+    return () => window.removeEventListener(STUDENT_NAV_PERSONALIZATION_EVENT, onChanged);
+  }, []);
+  useEffect(() => {
+    setStarPaths(readStudentNavStars());
+    setLockedPath(readStudentNavLock());
+    setRecentPaths(readStudentNavRecent());
+  }, [personalBump]);
+
   const pathMap = buildPathMap();
 
   /* Resolve starred / recent to actual NavItems */
   const starredItems = starPaths.map((p) => pathMap.get(p)).filter(Boolean) as NavItem[];
-  // Recent excludes starred + current page + home
+  // Recent excludes starred + home（与后台侧栏一致：保留当前页，点击常用入口后不消失）
   const recentItems = recentPaths
-    .filter((p) => !starPaths.includes(p) && p !== pathname && p !== "/student/home")
+    .filter((p) => !starPaths.includes(p) && p !== "/student/home")
     .map((p) => pathMap.get(p))
     .filter(Boolean) as NavItem[];
 

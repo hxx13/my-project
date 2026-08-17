@@ -97,7 +97,7 @@ public class AdminService {
         if (nick.isEmpty()) {
             nick = username;
         }
-        String id = "USR_" + UUID.randomUUID().toString().replace("-", "");
+        String id = "STAFF_" + UUID.randomUUID().toString().replace("-", "");
         String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
         User u = new User();
         u.setId(id);

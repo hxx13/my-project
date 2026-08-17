@@ -59,12 +59,8 @@ public interface DahuaSwingMapper {
      */
     DahuaSwingRecord findRecordByRecordId(@Param("recordId") String recordId);
 
-    /** 是否已有联动行引用该刷卡记录（防重复入队） */
-    int countActivationByUserAndLastRecordId(
-            @Param("taskId") Long taskId,
-            @Param("userId") String userId,
-            @Param("recordId") String recordId
-    );
+    /** 标记刷卡记录已被规则引擎处理（原子认领，返回影响行数：1=本次认领，0=已处理过） */
+    int markRecordProcessed(@Param("recordId") String recordId);
 
     List<DahuaSwingRecord> listRecords(
             @Param("taskId") Long taskId,
@@ -152,13 +148,13 @@ public interface DahuaSwingMapper {
 
     int deleteActivationStatesByUserId(@Param("userId") String userId);
 
-    /** 将用户所有激活状态标记为 CLEANED（保留行以维持 last_record_id 去重引用），而非物理删除 */
+    /** 将用户所有激活状态标记为 CLEANED，而非物理删除 */
     int deactivateActivationStatesByUserId(@Param("userId") String userId);
 
     /** 仅清理到期/待激活（PENDING_ACTIVATION / AUTO_EXIT_SCHEDULED），保留已激活 */
     int deleteExpiredOrPendingStatesByUserId(@Param("userId") String userId);
 
-    /** 将用户到期/待激活状态标记为 CLEANED（保留行以维持 last_record_id 去重引用） */
+    /** 将用户到期/待激活状态标记为 CLEANED */
     int deactivateExpiredOrPendingStatesByUserId(@Param("userId") String userId);
 
     int deleteActivationStateByUserTaskAndChannel(

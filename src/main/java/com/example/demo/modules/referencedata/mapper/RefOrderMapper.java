@@ -24,4 +24,9 @@ public interface RefOrderMapper {
                                 @Param("offset") int offset);
 
     int countByStatus(@Param("status") String status);
+
+    List<RefOrder> listAll(@Param("limit") int limit,
+                           @Param("offset") int offset);
+
+    int countAll();
 }

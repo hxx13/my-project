@@ -3,7 +3,6 @@ const { hasMinRole, isStudentAccount } = require('../../utils/roleAccess.js');
 const pagePermission = require('../../utils/pagePermission.js');
 
 function canShowStudentMaterialSwitch(role) {
-  if (isStudentAccount()) return false;
   const token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
   if (!token) return false;
   return pagePermission.canShowMiniEntry('mine', '/package-feature/pages/studentMaterial/index', role || 'STUDENT', 'STUDENT');
@@ -23,7 +22,6 @@ function resolveSuppliesUrl(role) {
 }
 
 function canShowSuppliesSwitch(role) {
-  if (isStudentAccount()) return false;
   return !!resolveSuppliesUrl(role);
 }
 
