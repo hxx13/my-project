@@ -3,6 +3,8 @@ import { queryKeys } from "./queryKeys";
 import {
   fetchAdminPersonnel,
   fetchSystemOnlyUsers,
+  fetchUnifiedPersonnel,
+  fetchPersonnelRooms,
   updateUserRole,
   updateUserStatus,
   resetUserPassword,
@@ -14,6 +16,7 @@ import {
   resetPersonnelAccount,
   resetPersonnelPassword,
 } from "@/api/domains/admin.api";
+import type { UnifiedPersonnelFilter } from "@/api/domains/admin.api";
 import { toast } from "react-hot-toast";
 
 export function usePersonnelList(page = 1, size = 20, keyword = "") {
@@ -29,6 +32,26 @@ export function useSystemUsersList(page = 1, size = 20, keyword = "") {
     queryKey: [...queryKeys.personnel.all, "systemOnly", page, size, keyword] as const,
     queryFn: () => fetchSystemOnlyUsers(page, size, keyword),
     placeholderData: (prev) => prev,
+  });
+}
+
+export function useUnifiedPersonnel(
+  page = 1,
+  size = 20,
+  filter: UnifiedPersonnelFilter = {}
+) {
+  return useQuery({
+    queryKey: [...queryKeys.personnel.all, "unified", page, size, filter] as const,
+    queryFn: () => fetchUnifiedPersonnel(page, size, filter),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function usePersonnelRooms() {
+  return useQuery({
+    queryKey: [...queryKeys.personnel.all, "rooms"] as const,
+    queryFn: fetchPersonnelRooms,
+    staleTime: 60_000,
   });
 }
 
