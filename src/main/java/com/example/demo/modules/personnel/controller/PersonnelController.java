@@ -8,6 +8,7 @@ import com.example.demo.modules.personnel.dto.PersonnelFilter;
 import com.example.demo.modules.personnel.service.PersonnelService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -92,6 +93,7 @@ public class PersonnelController {
     @Operation(summary = "手动触发统一人员聚合（aro_personnel + sys_user → personnel）")
     public Result<Map<String, Object>> sync(@RequestHeader(value = "Authorization", required = false) String authorization) {
         User u = resolveUser(authorization);
+        if (u == null) return Result.fail(401, "未登录");
         Result<?> denied = requireAdmin(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         return Result.success(personnelService.syncUnified());
@@ -103,6 +105,7 @@ public class PersonnelController {
                                  @PathVariable Long id,
                                  @RequestBody Map<String, Object> body) {
         User u = resolveUser(authorization);
+        if (u == null) return Result.fail(401, "未登录");
         Result<?> denied = requireAdmin(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         String field = String.valueOf(body.get("field"));
@@ -133,7 +136,7 @@ public class PersonnelController {
         try {
             return jdbcTemplate.queryForObject(
                     "SELECT name FROM " + table + " WHERE id = ?", String.class, id);
-        } catch (Exception e) {
+        } catch (EmptyResultDataAccessException e) {
             return null;
         }
     }
