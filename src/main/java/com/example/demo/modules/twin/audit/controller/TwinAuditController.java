@@ -13,6 +13,9 @@ import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.audit.service.TwinAuditService;
 import com.example.demo.modules.twin.scan.service.TwinScanService;
 import com.example.demo.modules.twin.scan.service.WebScanExitDahuaLinkageService;
+import com.example.demo.modules.twin.scan.state.ScanDataSource;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyState;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyStateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -44,6 +47,8 @@ public class TwinAuditController {
     private final com.example.demo.modules.twin.rpg.service.RpgEngineService rpgEngineService;
     private final com.example.demo.modules.twin.rpg.service.TwinExpStatsService twinExpStatsService;
     private final com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService aroMiniPenetrationSyncService;
+    private final com.example.demo.common.config.DebugToggleService debugToggleService;
+    private final com.example.demo.modules.twin.scan.state.ScanOccupancyStateService scanOccupancyStateService;
 
     public TwinAuditController(
             AuthContextService authContextService,
@@ -55,7 +60,9 @@ public class TwinAuditController {
             WebScanExitDahuaLinkageService webScanExitDahuaLinkageService,
             com.example.demo.modules.twin.rpg.service.RpgEngineService rpgEngineService,
             com.example.demo.modules.twin.rpg.service.TwinExpStatsService twinExpStatsService,
-            com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService aroMiniPenetrationSyncService) {
+            com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService aroMiniPenetrationSyncService,
+            com.example.demo.common.config.DebugToggleService debugToggleService,
+            com.example.demo.modules.twin.scan.state.ScanOccupancyStateService scanOccupancyStateService) {
         this.authContextService = authContextService;
         this.twinAuditService = twinAuditService;
         this.aroService = aroService;
@@ -66,6 +73,8 @@ public class TwinAuditController {
         this.rpgEngineService = rpgEngineService;
         this.twinExpStatsService = twinExpStatsService;
         this.aroMiniPenetrationSyncService = aroMiniPenetrationSyncService;
+        this.debugToggleService = debugToggleService;
+        this.scanOccupancyStateService = scanOccupancyStateService;
     }
 
     @GetMapping("/pending-by-floor")
@@ -137,6 +146,13 @@ public class TwinAuditController {
     }
 
     private String resolveOfficialRoomIdFromAro(String userId, String localRoomId, String roomName) {
+        if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
+            com.example.demo.modules.twin.scan.state.ScanOccupancyState occ = scanOccupancyStateService.getByUserId(userId);
+            if (occ != null && occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank()) {
+                return occ.getCurrentRoomId();
+            }
+            return null;
+        }
         List<Map<String, Object>> noLeaveRooms = aroService.getNoLeaveRoom(userId);
         if (noLeaveRooms == null || noLeaveRooms.isEmpty()) {
             return null;
