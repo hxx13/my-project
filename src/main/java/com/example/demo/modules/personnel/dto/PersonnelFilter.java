@@ -23,6 +23,9 @@ public class PersonnelFilter {
     private String roomName;
     /** 身份标签 id（EXISTS join person_identity on staff_id） */
     private Long identityTagId;
+    /** 分页（Service 使用） */
+    private Integer page = 1;
+    private Integer pageSize = 20;
     /** 分页（Provider 使用） */
     private int limit = 20;
     private int offset = 0;
