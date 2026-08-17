@@ -66,6 +66,8 @@ public class PersonnelController {
                                             @RequestParam(defaultValue = "20") int pageSize) {
         User u = resolveUser(authorization);
         if (u == null) return Result.fail(401, "未登录");
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
         PersonnelFilter filter = new PersonnelFilter();
         filter.setKeyword(trimToNull(keyword));
         filter.setAccountType(normalizeAccountType(accountType));
@@ -86,6 +88,8 @@ public class PersonnelController {
     public Result<List<String>> rooms(@RequestHeader(value = "Authorization", required = false) String authorization) {
         User u = resolveUser(authorization);
         if (u == null) return Result.fail(401, "未登录");
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
         return Result.success(personnelService.listRooms());
     }
 
