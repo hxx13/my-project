@@ -190,6 +190,18 @@ public class TwinScanService {
             response.put("currentState", "INSIDE");
             response.put("pendingRooms", finalPending);
             response.put("allowedRooms", finalAllowed);
+
+            // ARO 在馆 → 覆盖本地状态机（单房间，取第一个翻译后房间）
+            try {
+                if (!finalPending.isEmpty()) {
+                    Map<String, Object> firstRoom = finalPending.get(0);
+                    String rid = firstRoom.get("officialRoomId") != null ? String.valueOf(firstRoom.get("officialRoomId")) : "";
+                    String rname = firstRoom.get("displayName") != null ? String.valueOf(firstRoom.get("displayName")) : "";
+                    scanOccupancyStateService.markInside(userId, rid, rname, null);
+                }
+            } catch (Exception e) {
+                log.warn("[scan-status] 覆盖状态机 INSIDE 失败 userId={} err={}", userId, e.getMessage());
+            }
         } else {
             long tTranslate = System.currentTimeMillis();
             List<Map<String, Object>> finalAllowed = translateAndFilterRooms(allowedRooms);
@@ -211,8 +223,39 @@ public class TwinScanService {
             }
 
             // 审查完毕，组装并放行给前端
-            response.put("currentState", "OUTSIDE");
-            response.put("allowedRooms", finalAllowed);
+            // 锁定判断：本地模式进入的人（LOCAL- INSIDE），切回 ARO 后 ARO 无滞留仍按 INSIDE，保证现场能离开
+            ScanOccupancyState occ = null;
+            try {
+                occ = scanOccupancyStateService.getByUserId(userId);
+            } catch (Exception e) {
+                log.warn("[scan-status] 读状态机失败 userId={} err={}", userId, e.getMessage());
+            }
+            boolean lockedLocalInside = occ != null
+                    && ScanOccupancyStateService.STATE_INSIDE.equals(occ.getState())
+                    && occ.getEnterLogId() != null
+                    && occ.getEnterLogId().startsWith("LOCAL-")
+                    && occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank();
+
+            if (lockedLocalInside) {
+                List<Map<String, Object>> lockedPending = new ArrayList<>();
+                Map<String, Object> pr = new HashMap<>();
+                pr.put("officialRoomId", occ.getCurrentRoomId());
+                pr.put("displayName", occ.getCurrentRoomName());
+                pr.put("officialRoomName", occ.getCurrentRoomName());
+                lockedPending.add(pr);
+                response.put("currentState", "INSIDE");
+                response.put("pendingRooms", lockedPending);
+                response.put("allowedRooms", finalAllowed);
+            } else {
+                response.put("currentState", "OUTSIDE");
+                response.put("allowedRooms", finalAllowed);
+                // ARO 无滞留 → 覆盖本地状态机 OUTSIDE
+                try {
+                    scanOccupancyStateService.markOutside(userId);
+                } catch (Exception e) {
+                    log.warn("[scan-status] 覆盖状态机 OUTSIDE 失败 userId={} err={}", userId, e.getMessage());
+                }
+            }
 
             if (!finalAllowed.isEmpty()) {
                 CompletableFuture.runAsync(() -> {
@@ -280,6 +323,11 @@ public class TwinScanService {
             if (noLeaveRooms != null && noLeaveRooms.isEmpty()) {
                 noLeaveBypassUntilMap.put(userId, System.currentTimeMillis() + 30_000L);
                 log.debug("[扫码·登记] id={} 离开状态自愈（官方确认已无待离房间）", userId);
+                try {
+                    scanOccupancyStateService.markOutside(userId);
+                } catch (Exception e) {
+                    log.warn("[扫码·登记] 自愈后清状态机失败 userId={} err={}", userId, e.getMessage());
+                }
                 return true;
             }
             return false;
@@ -290,6 +338,13 @@ public class TwinScanService {
         }
 
         if (success) {
+            if (accessType == 2) {
+                try {
+                    scanOccupancyStateService.markOutside(userId);
+                } catch (Exception e) {
+                    log.warn("[扫码·登记] 离开后清状态机失败 userId={} err={}", userId, e.getMessage());
+                }
+            }
             try {
                 twinAccessLogCorrelationService.registerPending(
                         accessType,
