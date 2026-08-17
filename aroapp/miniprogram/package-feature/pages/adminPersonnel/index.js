@@ -297,8 +297,8 @@ Page({
 
   onOpenNickPopup(e) {
     const id = e.currentTarget.dataset.id;
-    if (!id || this.data.activeTab !== 'system') return;
-    const row = (this.data.rows || []).find((x) => x.id === id);
+    if (!id) return;
+    const row = (this.data.rows || []).find((x) => x.staffId === id || x.aroUserId === id);
     if (!row) return;
     const v =
       row.displayNickname != null && String(row.displayNickname) !== ''
@@ -358,7 +358,7 @@ Page({
       wx.showToast({ title: '已保存', icon: 'success' });
       // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
       const rows = this.data.rows.map((r) =>
-        r.id === id ? { ...r, displayNickname: v, nickDraft: v } : r
+        (r.staffId === id || r.aroUserId === id) ? { ...r, displayNickname: v, nickDraft: v } : r
       );
       this.setData({
         rows,
@@ -380,7 +380,6 @@ Page({
   },
 
   onOpenCreateSheet() {
-    if (this.data.activeTab !== 'system') return;
     this.setData({
       showCreateSheet: true,
       createUsername: '',
@@ -492,8 +491,8 @@ Page({
 
   onDeleteStaffStep1(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((x) => x.id === id);
-    if (!row || row.id === BUILTIN_SUPER_ID) return;
+    const row = (this.data.rows || []).find((x) => x.staffId === id || x.aroUserId === id);
+    if (!row || row.staffId === BUILTIN_SUPER_ID) return;
     const name = row.username || row.id;
     wx.showModal({
       title: '删除账号',
@@ -562,7 +561,7 @@ Page({
       if (!parsed.ok) throw new Error(parsed.message);
       wx.showToast({ title: '已删除', icon: 'success' });
       // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
-      const rows = this.data.rows.filter((r) => r.id !== id);
+      const rows = this.data.rows.filter((r) => r.staffId !== id && r.aroUserId !== id);
       this.setData({
         rows,
         total: Math.max(0, (this.data.total || 0) - 1),
@@ -641,17 +640,17 @@ Page({
 
   async onTogglePwd(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.id === id);
-    if (!row || row.id === BUILTIN_SUPER_ID) return;
+    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
+    if (!row || row.staffId === BUILTIN_SUPER_ID) return;
     // 已显示则隐藏
     if (row._pwdVisible) {
-      const rows = this.data.rows.map((r) => (r.id === id ? { ...r, _pwdVisible: false } : r));
+      const rows = this.data.rows.map((r) => ((r.staffId === id || r.aroUserId === id) ? { ...r, _pwdVisible: false } : r));
       this.setData({ rows });
       return;
     }
     // 已有缓存的明文则直接显示
     if (row._pwdPlaintext !== undefined) {
-      const rows = this.data.rows.map((r) => (r.id === id ? { ...r, _pwdVisible: true } : r));
+      const rows = this.data.rows.map((r) => ((r.staffId === id || r.aroUserId === id) ? { ...r, _pwdVisible: true } : r));
       this.setData({ rows });
       return;
     }
@@ -666,7 +665,7 @@ Page({
       const parsed = parseResponse(res);
       const plaintext = parsed.ok && parsed.body && parsed.body.data ? (parsed.body.data.password || '（暂不可查看）') : '（暂不可查看）';
       const rows = this.data.rows.map((r) =>
-        r.id === id ? { ...r, _pwdVisible: true, _pwdPlaintext: plaintext, password: plaintext } : r
+        (r.staffId === id || r.aroUserId === id) ? { ...r, _pwdVisible: true, _pwdPlaintext: plaintext, password: plaintext } : r
       );
       this.setData({ rows });
     } catch (e) {
@@ -680,8 +679,7 @@ Page({
     if (this._adminMutating) return;
     const id = e.currentTarget.dataset.id;
     const idx = Number(e.detail.value);
-    const tab = this.data.activeTab;
-    const role = tab === 'system' ? STAFF_EDIT_ROLE_CODES[idx] : ROLE_CODES[idx];
+    const role = ROLE_CODES[idx];
     if (!id || !role) return;
     this._adminMutating = true;
     wx.showLoading({ title: '更新中…', mask: true });
@@ -694,10 +692,10 @@ Page({
       const parsed = parseResponse(res);
       if (!parsed.ok) throw new Error(parsed.message);
       wx.showToast({ title: '角色已更新', icon: 'success' });
-      const row = (this.data.rows || []).find((x) => x.id === id);
+      const row = (this.data.rows || []).find((x) => x.staffId === id || x.aroUserId === id);
       const merged = row ? { ...pickRow(row), role } : { role };
       const rows = this.data.rows.map((r) => {
-        if (r.id !== id) return r;
+        if (r.staffId !== id && r.aroUserId !== id) return r;
         return this.decorateRow({ ...pickRow(r), ...merged });
       });
       this.setData({ rows });
@@ -736,7 +734,7 @@ Page({
           if (!parsed.ok) throw new Error(parsed.message);
           wx.showToast({ title: enabled ? '已启用' : '已禁用', icon: 'success' });
           const rows = this.data.rows.map((it) =>
-            it.id === id ? { ...it, status: enabled ? 1 : 0 } : it
+            (it.staffId === id || it.aroUserId === id) ? { ...it, status: enabled ? 1 : 0 } : it
           );
           this.setData({ rows });
         } catch (err) {
@@ -770,7 +768,7 @@ Page({
           const parsed = parseResponse(res);
           if (!parsed.ok) throw new Error(parsed.message);
           wx.showToast({ title: '已重置', icon: 'success' });
-          const rows = this.data.rows.map((it) => (it.id === id ? { ...it, openId: null } : it));
+          const rows = this.data.rows.map((it) => ((it.staffId === id || it.aroUserId === id) ? { ...it, openId: null } : it));
           this.setData({ rows });
         } catch (err) {
           wx.showToast({
@@ -809,7 +807,7 @@ Page({
             showCancel: false,
           });
           const rows = this.data.rows.map((it) =>
-            it.id === id ? { ...it, password: defPwd || it.password, _pwdVisible: !!defPwd } : it
+            (it.staffId === id || it.aroUserId === id) ? { ...it, password: defPwd || it.password, _pwdVisible: !!defPwd } : it
           );
           this.setData({ rows });
         } catch (err) {
@@ -828,7 +826,7 @@ Page({
   // ═══ 人员库操作：重置登录账号 ═══
   onResetPersonnelAccount(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.id === id);
+    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
     if (!row) return;
     const currentUsername = row.username || '';
     wx.showModal({
@@ -851,7 +849,7 @@ Page({
           const parsed = parseResponse(res);
           if (!parsed.ok) throw new Error(parsed.message);
           wx.showToast({ title: '账号已重置', icon: 'success' });
-          const rows = this.data.rows.map((it) => (it.id === id ? { ...it, username: newUsername } : it));
+          const rows = this.data.rows.map((it) => ((it.staffId === id || it.aroUserId === id) ? { ...it, username: newUsername } : it));
           this.setData({ rows });
         } catch (err) {
           wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '失败', icon: 'none' });
@@ -866,7 +864,7 @@ Page({
   // ═══ 人员库操作：重置登录密码（学生） ═══
   onResetPersonnelPassword(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.id === id);
+    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
     if (!row) return;
     wx.showModal({
       title: '重置登录密码',
@@ -890,7 +888,7 @@ Page({
             showCancel: false,
           });
           const rows = this.data.rows.map((it) =>
-            it.id === id ? { ...it, password: defPwd || it.password, _pwdVisible: !!defPwd, _pwdPlaintext: defPwd } : it
+            (it.staffId === id || it.aroUserId === id) ? { ...it, password: defPwd || it.password, _pwdVisible: !!defPwd, _pwdPlaintext: defPwd } : it
           );
           this.setData({ rows });
         } catch (err) {
@@ -906,7 +904,7 @@ Page({
   // ═══ 人员库 PIN 操作 ═══
   onResetPin(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.id === id);
+    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
     const label = row ? (row.displayName || id) : id;
     wx.showModal({
       title: '重置个人密码（PIN）',
@@ -925,7 +923,7 @@ Page({
           if (!parsed.ok) throw new Error(parsed.message);
           wx.showToast({ title: 'PIN 已重置', icon: 'success' });
           const rows = this.data.rows.map((it) =>
-            it.id === id ? { ...it, personalPin: null, pinText: '未设置' } : it
+            (it.staffId === id || it.aroUserId === id) ? { ...it, personalPin: null, pinText: '未设置' } : it
           );
           this.setData({ rows });
         } catch (err) {
@@ -982,7 +980,7 @@ Page({
   // ═══ 邮箱编辑 ═══
   onOpenEmailPopup(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.id === id);
+    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
     this.setData({
       showEmailPopup: true,
       emailEditId: id,
@@ -1015,7 +1013,7 @@ Page({
       const parsed = parseResponse(res);
       if (!parsed.ok) throw new Error(parsed.message);
       wx.showToast({ title: '邮箱已更新', icon: 'success' });
-      const rows = this.data.rows.map((r) => (r.id === id ? { ...r, contactEmail: email, emailText: email } : r));
+      const rows = this.data.rows.map((r) => ((r.staffId === id || r.aroUserId === id) ? { ...r, contactEmail: email, emailText: email } : r));
       this.setData({ rows, showEmailPopup: false, emailEditId: '', emailEditValue: '', emailSubmitting: false });
     } catch (err) {
       wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '失败', icon: 'none' });
