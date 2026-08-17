@@ -103,6 +103,8 @@
     <select id="getLatestAccessLogCreateTime" resultType="string">
         SELECT MAX(create_time)
         FROM aro_access_log
+        WHERE id NOT LIKE 'LOCAL-%'
+          AND id NOT LIKE 'reconcile-%'
     </select>
 
     <select id="findPersonnelNameByUserId" resultType="string">
