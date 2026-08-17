@@ -130,6 +130,12 @@ public class CredentialsConfigSeed implements ApplicationRunner {
                 "cleaned=清洗后门禁数据, aro=ARO 原始数据", "STRING",
                 "[\"access_package\",\"aro\"]",
                 "access_package", 0, 0, 0);
+
+        // ---- 扫码进出数据源 ----
+        def("integration", "scan.data_source", "扫码进出数据源",
+                "aro=实时拉取 ARO 官方，local=本地状态机（不依赖 ARO）", "STRING",
+                "[\"aro\",\"local\"]",
+                "aro", 0, 0, 0);
     }
 
     private void def(String module, String configKey, String labelZh, String description,
