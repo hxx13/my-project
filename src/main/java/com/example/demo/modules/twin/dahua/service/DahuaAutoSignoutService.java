@@ -95,52 +95,69 @@ public class DahuaAutoSignoutService {
             return false;
         }
         log.info("[auto-signout] start userId={}", userId);
+        String roomId = null;
+        String roomLabel = null;
         if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
-            return autoSignoutLocal(userId, triggerType, triggerReason, detail);
-        }
-        List<Map<String, Object>> noLeaveRooms = aroService.getNoLeaveRoom(userId);
-        // null 代表上游请求失败（如 TLS/握手异常），不要当作“已离开”处理
-        if (noLeaveRooms == null) {
-            log.warn("[auto-signout] no-leave-room query failed userId={}", userId);
-            writeAutoLog(userId, triggerType, triggerReason, false,
-                    augmentLinkageSignoutDetail(triggerReason, mergeDetail(detail, "ARO「未离开房间」查询失败（网络或上游异常）"), false, userId));
-            return false;
-        }
-        // 空列表代表官方已无滞留，视为状态已同步，可清理本地待签退状态
-        if (noLeaveRooms.isEmpty()) {
-            log.info("[auto-signout] no-leave-room empty userId={} treatAsSynced=true", userId);
-            String reasonForLog = triggerReason;
-            if ("ACTIVATION_EXPIRE_AUTO_SIGNOUT".equalsIgnoreCase(triggerReason)) {
-                reasonForLog = "LINKAGE_TIMER_ARO_ALREADY_CLEAR";
+            ScanOccupancyState occ = scanOccupancyStateService.getByUserId(userId);
+            boolean hasRoom = occ != null
+                    && ScanOccupancyStateService.STATE_INSIDE.equals(occ.getState())
+                    && occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank();
+            if (!hasRoom) {
+                log.info("[auto-signout] local no-room userId={} treatAsSynced=true", userId);
+                clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
+                writeAutoLog(userId, triggerType, triggerReason, true,
+                        "本地状态机已无在馆记录，本次不重复签退，仅清理联动占位。"
+                                + (detail != null && !detail.isBlank() ? " 原计划说明：" + detail : ""));
+                return true;
             }
-            String shortDetail = "查询官方滞留：已无待离开房间；本次不重复提交离馆登记，仅清理本地联动占位。"
-                    + (detail != null && !detail.isBlank() ? " 原计划说明：" + detail : "");
-            if (isSwingLinkageStyleReason(triggerReason)) {
-                shortDetail = shortDetail + " " + linkageTimerClearOutcome(triggerReason);
+            roomId = occ.getCurrentRoomId();
+            roomLabel = occ.getCurrentRoomName() != null && !occ.getCurrentRoomName().isBlank()
+                    ? occ.getCurrentRoomName() : roomId;
+        } else {
+            List<Map<String, Object>> noLeaveRooms = aroService.getNoLeaveRoom(userId);
+            // null 代表上游请求失败（如 TLS/握手异常），不要当作“已离开”处理
+            if (noLeaveRooms == null) {
+                log.warn("[auto-signout] no-leave-room query failed userId={}", userId);
+                writeAutoLog(userId, triggerType, triggerReason, false,
+                        augmentLinkageSignoutDetail(triggerReason, mergeDetail(detail, "ARO「未离开房间」查询失败（网络或上游异常）"), false, userId));
+                return false;
             }
-            long nowMs = System.currentTimeMillis();
-            Long last = EMPTY_ARO_SYNC_LOG_AT_MS.get(userId);
-            boolean debounce = last != null && (nowMs - last) < EMPTY_ARO_SYNC_LOG_COOLDOWN_MS
-                    && "LINKAGE_TIMER_ARO_ALREADY_CLEAR".equals(reasonForLog);
-            if (!debounce) {
-                EMPTY_ARO_SYNC_LOG_AT_MS.put(userId, nowMs);
-                writeAutoLog(userId, triggerType, reasonForLog, true, shortDetail);
+            // 空列表代表官方已无滞留，视为状态已同步，可清理本地待签退状态
+            if (noLeaveRooms.isEmpty()) {
+                log.info("[auto-signout] no-leave-room empty userId={} treatAsSynced=true", userId);
+                String reasonForLog = triggerReason;
+                if ("ACTIVATION_EXPIRE_AUTO_SIGNOUT".equalsIgnoreCase(triggerReason)) {
+                    reasonForLog = "LINKAGE_TIMER_ARO_ALREADY_CLEAR";
+                }
+                String shortDetail = "查询官方滞留：已无待离开房间；本次不重复提交离馆登记，仅清理本地联动占位。"
+                        + (detail != null && !detail.isBlank() ? " 原计划说明：" + detail : "");
+                if (isSwingLinkageStyleReason(triggerReason)) {
+                    shortDetail = shortDetail + " " + linkageTimerClearOutcome(triggerReason);
+                }
+                long nowMs = System.currentTimeMillis();
+                Long last = EMPTY_ARO_SYNC_LOG_AT_MS.get(userId);
+                boolean debounce = last != null && (nowMs - last) < EMPTY_ARO_SYNC_LOG_COOLDOWN_MS
+                        && "LINKAGE_TIMER_ARO_ALREADY_CLEAR".equals(reasonForLog);
+                if (!debounce) {
+                    EMPTY_ARO_SYNC_LOG_AT_MS.put(userId, nowMs);
+                    writeAutoLog(userId, triggerType, reasonForLog, true, shortDetail);
+                }
+                clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
+                return true;
             }
-            clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
-            return true;
+            Map<String, Object> first = noLeaveRooms.get(0);
+            roomId = asString(first.get("roomId"));
+            if (roomId.isBlank()) {
+                roomId = asString(first.get("id"));
+            }
+            if (roomId.isBlank()) {
+                log.warn("[auto-signout] resolve roomId failed userId={} firstRow={}", userId, first);
+                writeAutoLog(userId, triggerType, triggerReason, false,
+                        augmentLinkageSignoutDetail(triggerReason, mergeDetail(detail, "未能从滞留记录解析房间"), false, userId));
+                return false;
+            }
+            roomLabel = resolveRoomDisplayLabel(first, roomId);
         }
-        Map<String, Object> first = noLeaveRooms.get(0);
-        String roomId = asString(first.get("roomId"));
-        if (roomId.isBlank()) {
-            roomId = asString(first.get("id"));
-        }
-        if (roomId.isBlank()) {
-            log.warn("[auto-signout] resolve roomId failed userId={} firstRow={}", userId, first);
-            writeAutoLog(userId, triggerType, triggerReason, false,
-                    augmentLinkageSignoutDetail(triggerReason, mergeDetail(detail, "未能从滞留记录解析房间"), false, userId));
-            return false;
-        }
-        String roomLabel = resolveRoomDisplayLabel(first, roomId);
         log.info("[auto-signout] resolved room userId={} roomId={}", userId, roomId);
 
         // 签退去重：同一用户 + 同一房间 + 同一动作在冷却窗口内不重复提交 ARO
@@ -158,7 +175,10 @@ public class DahuaAutoSignoutService {
             return true;
         }
 
-        boolean signoutOk = aroService.submitAccessRecord(userId, roomId, 2);
+        String sourceTag = "STRANDED_VIOLATION".equalsIgnoreCase(triggerType)
+                ? TwinAccessLogCorrelationService.SOURCE_STRANDED_VIOLATION
+                : TwinAccessLogCorrelationService.SOURCE_AUTO_SIGNOUT;
+        boolean signoutOk = twinScanService.executeAccessAction(userId, roomId, 2, false, false, null, false, sourceTag);
         if (signoutOk) {
             RECENT_SIGNOUT_AT_MS.put(dedupKey, System.currentTimeMillis());
         }
@@ -183,9 +203,7 @@ public class DahuaAutoSignoutService {
                         "仅 ARO 签退完成：" + roomLabel
                                 + "；未撤销大华门禁权限、未冻结（门禁联动规则 autoRiskActionEnabled=关闭）");
             }
-            Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
-            registerSignoutCorrelation(userId, roomId, auditId, msg, triggerType);
-            triggerMiniAroPenetrationRequest(userId, 2);
+            writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
             return true;
         }
 
@@ -234,71 +252,7 @@ public class DahuaAutoSignoutService {
         } else {
             msg = mergeDetail(detail, "自动离开完成：已尝试撤销大华门禁权限并执行冻结检查（" + roomLabel + "）");
         }
-        Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
-        registerSignoutCorrelation(userId, roomId, auditId, msg, triggerType);
-        triggerMiniAroPenetrationRequest(userId, 2);
-        return true;
-    }
-
-    /**
-     * LOCAL 数据源下的自动签退：定位房间走本地状态机，签退走本地直写，不碰 ARO 接口。
-     */
-    private boolean autoSignoutLocal(String userId, String triggerType, String triggerReason, String detail) {
-        ScanOccupancyState occ = scanOccupancyStateService.getByUserId(userId);
-        boolean hasRoom = occ != null
-                && ScanOccupancyStateService.STATE_INSIDE.equals(occ.getState())
-                && occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank();
-
-        if (!hasRoom) {
-            // 本地状态机已无在馆记录 → 等价于「官方已无滞留」，仅清理联动占位，不重复签退
-            clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
-            writeAutoLog(userId, triggerType, triggerReason, true,
-                    "本地状态机已无在馆记录，本次不重复签退，仅清理联动占位。"
-                            + (detail != null && !detail.isBlank() ? " 原计划说明：" + detail : ""));
-            return true;
-        }
-
-        String roomId = occ.getCurrentRoomId();
-        String roomLabel = occ.getCurrentRoomName() != null && !occ.getCurrentRoomName().isBlank()
-                ? occ.getCurrentRoomName() : roomId;
-
-        // 签退去重（复用现有 RECENT_SIGNOUT_AT_MS 冷却）
-        String dedupKey = userId.trim() + "|" + roomId + "|2";
-        long nowMs = System.currentTimeMillis();
-        Long lastSignoutMs = RECENT_SIGNOUT_AT_MS.get(dedupKey);
-        if (lastSignoutMs != null && (nowMs - lastSignoutMs) < RECENT_SIGNOUT_COOLDOWN_MS) {
-            clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
-            writeAutoLog(userId, triggerType, triggerReason, true,
-                    "签退去重：冷却窗口内已签退过（" + roomLabel + "），本次跳过。");
-            return true;
-        }
-
-        // 本地签退：复用 executeAccessAction（LOCAL 分支 → 本地写 exit + markOutside + registerPending）
-        boolean ok = twinScanService.executeAccessAction(userId, roomId, 2, false, false, null, false);
-        if (!ok) {
-            writeAutoLog(userId, triggerType, triggerReason, false,
-                    "本地自动签退失败（" + roomLabel + "）。");
-            return false;
-        }
-        RECENT_SIGNOUT_AT_MS.put(dedupKey, System.currentTimeMillis());
-        clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
-
-        // 后续大华回收/冻结（对齐现有 ARO 路径的 postAutoLeaveLinkageEnabled 分支）
-        if (postAutoLeaveLinkageEnabled()) {
-            if (twinAccessRuleScanConfigService.isExitDispatchEnabled()) {
-                try {
-                    accessRuleDispatchService.tryRevokeAccessForScanExit(roomId, userId);
-                } catch (Exception e) {
-                    log.warn("[auto-signout-local] 大华 revoke 异常 userId={} roomId={}: {}", userId, roomId, e.getMessage());
-                }
-            }
-            if (twinAccessRuleScanConfigService.isExitFreezeEnabled()) {
-                runRiskActions(userId);
-            }
-        }
-
-        writeAutoLog(userId, triggerType, triggerReason, true,
-                "本地自动签退完成（" + roomLabel + "）。LOCAL 模式不拉取 ARO 流水。");
+        writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
         return true;
     }
 

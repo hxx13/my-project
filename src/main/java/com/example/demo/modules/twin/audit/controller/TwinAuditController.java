@@ -10,6 +10,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleEngineService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
+import com.example.demo.modules.twin.card.service.TwinAccessLogCorrelationService;
 import com.example.demo.modules.twin.audit.service.TwinAuditService;
 import com.example.demo.modules.twin.scan.service.TwinScanService;
 import com.example.demo.modules.twin.scan.service.WebScanExitDahuaLinkageService;
@@ -121,7 +122,7 @@ public class TwinAuditController {
         String physicalCardNo = mapping != null ? mapping.getCardNo() : null;
 
         // 对齐 web 扫码离开：ARO 登记 + 预同步 + 经验值计算（全部在 executeAccessAction 核心层完成）
-        boolean ok = twinScanService.executeAccessAction(userId, officialRoomId, 2, false, false, dahuaSeq, false);
+        boolean ok = twinScanService.executeAccessAction(userId, officialRoomId, 2, false, false, dahuaSeq, false, TwinAccessLogCorrelationService.SOURCE_WEB_SCAN);
         if (!ok) {
             log.warn("[twin] audit manual-exit rejected by aro operator={} userId={} officialRoomId={} roomName={}",
                     operator.getId(), userId, officialRoomId, roomName);

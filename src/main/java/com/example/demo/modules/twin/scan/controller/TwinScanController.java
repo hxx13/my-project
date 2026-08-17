@@ -12,6 +12,7 @@ import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.twin.scan.service.TwinScanAppService;
 import com.example.demo.modules.twin.scan.service.TwinScanNoticeAutoSuppressService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
+import com.example.demo.modules.twin.card.service.TwinAccessLogCorrelationService;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleEngineService;
 import com.example.demo.modules.twin.rpg.service.RpgEngineService;
 import com.example.demo.modules.twin.rpg.service.TwinExpStatsService;
@@ -316,7 +317,7 @@ public class TwinScanController {
             // =================================================================
             // 💥 第一关：ARO 官方登记 + 预同步本地流水 + 经验值计算（全部在 executeAccessAction 内完成）
             // =================================================================
-            boolean aroSuccess = twinScanService.executeAccessAction(userId, effectiveRoomId, accessType, isSharedCard, isKeepCard, dahuaSeq, isBorrowedCard);
+            boolean aroSuccess = twinScanService.executeAccessAction(userId, effectiveRoomId, accessType, isSharedCard, isKeepCard, dahuaSeq, isBorrowedCard, TwinAccessLogCorrelationService.SOURCE_WEB_SCAN);
             boolean healedNoLeaveConflict = (accessType == 2 && aroService.isNoLeaveRoomError());
 
             if (!aroSuccess) {
@@ -644,7 +645,7 @@ public class TwinScanController {
         String physicalCardNo = mapping != null ? mapping.getCardNo() : null;
 
         // 对齐 web 扫码离开：ARO 登记 + 预同步 + 经验值计算（全部在 executeAccessAction 核心层完成）
-        boolean ok = twinScanService.executeAccessAction(userId, officialRoomId, 2, false, false, dahuaSeq, false);
+        boolean ok = twinScanService.executeAccessAction(userId, officialRoomId, 2, false, false, dahuaSeq, false, TwinAccessLogCorrelationService.SOURCE_WEB_SCAN);
         if (!ok) {
             return Result.error("离开登记失败，官方系统拒绝操作");
         }

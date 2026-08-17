@@ -254,9 +254,9 @@ public class TwinScanService {
      * 调用方在 accessType=2 且登记成功后，必须执行 clearActivationStatesForUser(userId)。
      */
     // 💥 方法入参增加了 isShared 和 isKeep
-    public boolean executeAccessAction(String userId, String officialRoomId, int accessType, boolean isShared, boolean isKeep, String dahuaSeq, boolean isBorrowedCard) {
+    public boolean executeAccessAction(String userId, String officialRoomId, int accessType, boolean isShared, boolean isKeep, String dahuaSeq, boolean isBorrowedCard, String sourceTag) {
         if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
-            return executeLocalAccess(userId, officialRoomId, accessType);
+            return executeLocalAccess(userId, officialRoomId, accessType, sourceTag);
         }
 
         // 0. 离开前预同步本地流水，确保后续 predictActionReward 能找到今日 ENTER 记录
@@ -291,7 +291,7 @@ public class TwinScanService {
                         accessType,
                         userId,
                         officialRoomId,
-                        TwinAccessLogCorrelationService.SOURCE_WEB_SCAN,
+                        sourceTag,
                         null,
                         accessType == 1 ? "Web扫码进入（待官方流水对齐）" : "Web扫码离开（待官方流水对齐）",
                         "由孪生 Web 扫码发起 ARO 登记；官方流水批量入库后将自动合并溯源。"
@@ -350,7 +350,7 @@ public class TwinScanService {
         return success;
     }
 
-    private boolean executeLocalAccess(String userId, String roomId, int accessType) {
+    private boolean executeLocalAccess(String userId, String roomId, int accessType, String sourceTag) {
         AroRecord rec = new AroRecord();
         rec.setId("LOCAL-" + UUID.randomUUID().toString().replace("-", ""));
         rec.setAccessType(accessType);
@@ -377,7 +377,7 @@ public class TwinScanService {
         try {
             twinAccessLogCorrelationService.registerPending(
                     accessType, userId, roomId,
-                    TwinAccessLogCorrelationService.SOURCE_WEB_SCAN, null,
+                    sourceTag, null,
                     accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）",
                     "本地数据源模式：本地直写流水，切回官方后自动对齐溯源。");
         } catch (Exception e) {
