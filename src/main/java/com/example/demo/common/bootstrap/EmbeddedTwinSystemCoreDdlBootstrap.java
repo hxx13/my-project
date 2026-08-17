@@ -10,6 +10,7 @@ import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationServi
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.DatabasePopulatorUtils;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
@@ -229,14 +230,23 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             List<String> tables = jdbcTemplate.queryForList(
                     "SELECT DISTINCT TABLE_NAME FROM information_schema.COLUMNS " +
                             "WHERE TABLE_SCHEMA = DATABASE() AND COLLATION_NAME = 'utf8mb4_0900_ai_ci'", String.class);
-            for (String table : tables) {
-                try {
-                    jdbcTemplate.execute("ALTER TABLE `" + table + "` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-                    log.info("[collation] 表 {} 已统一为 utf8mb4_unicode_ci", table);
-                } catch (Exception e) {
-                    log.warn("[collation] 表 {} 统一跳过: {}", table, e.getMessage());
+            if (tables.isEmpty()) return;
+            // 同一连接内先禁用外键检查，避免 CONVERT 单表时与外键关联表 collation 不一致报 3780
+            jdbcTemplate.execute((ConnectionCallback<Void>) con -> {
+                try (java.sql.Statement st = con.createStatement()) {
+                    st.execute("SET FOREIGN_KEY_CHECKS = 0");
+                    for (String table : tables) {
+                        try {
+                            st.execute("ALTER TABLE `" + table + "` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+                            log.info("[collation] 表 {} 已统一为 utf8mb4_unicode_ci", table);
+                        } catch (Exception e) {
+                            log.warn("[collation] 表 {} 统一跳过: {}", table, e.getMessage());
+                        }
+                    }
+                    st.execute("SET FOREIGN_KEY_CHECKS = 1");
                 }
-            }
+                return null;
+            });
         } catch (Exception e) {
             log.warn("[collation] 批量统一 0900 表跳过: {}", e.getMessage());
         }
