@@ -4,7 +4,6 @@ import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { usePrefersReducedMotion } from "@/hooks/useTypewriterText";
 import { Briefcase, GraduationCap, Mail, Send, Smartphone, Building2, IdCard, ShieldCheck } from "lucide-react";
-import { AdminButton } from "@/components/admin/AdminButton";
 import type { UnifiedPersonnelRecord } from "@/api/domains/admin.api";
 import type { IdentityTag } from "@/api/domains/personIdentity.api";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -63,25 +62,6 @@ export function PersonnelDetailCard({
 
   const inkBtn =
     "inline-flex shrink-0 items-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)] disabled:cursor-not-allowed disabled:opacity-40";
-  const PwdCell = ({ userId }: { userId: string }) => {
-    const [plain, setPlain] = React.useState<string | null | undefined>(undefined);
-    const [loading, setLoading] = React.useState(false);
-    const toggle = async () => {
-      if (plain !== undefined) { setPlain(undefined); return; }
-      setLoading(true);
-      try { setPlain(await onViewPassword(userId)); } catch { setPlain(null); } finally { setLoading(false); }
-    };
-    return (
-      <div className="inline-flex items-center gap-1 text-[11px]">
-        <span className="font-mono text-[var(--twin-body)]">{plain === undefined ? "******" : plain ?? "（暂不可查看）"}</span>
-        <button type="button" disabled={loading} onClick={toggle}
-          className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1 text-[10px] text-[var(--twin-mute)] hover:bg-[var(--twin-canvas-soft)] disabled:opacity-50">
-          {loading ? "…" : plain === undefined ? "查看" : "隐藏"}
-        </button>
-      </div>
-    );
-  };
-
   return (
     <div ref={cardRef} className="flex h-full min-h-0 min-w-[380px] max-w-[720px] flex-[0_0_50%] flex-col overflow-hidden rounded-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-4">
       {/* 头部 */}
@@ -110,7 +90,7 @@ export function PersonnelDetailCard({
               <div className="space-y-1.5 text-[11px]">
                 <div className="flex justify-between gap-2"><span className="shrink-0 text-[var(--twin-mute)]">ID</span><span className="break-all text-right font-mono text-[var(--twin-body)]">{row.staffId}</span></div>
                 <div className="flex justify-between gap-2"><span className="shrink-0 text-[var(--twin-mute)]">账号名</span><span className="break-all text-right font-mono text-[var(--twin-body)]">{row.staffUsername || row.staffId}</span></div>
-                <div className="flex items-center justify-between gap-2"><span className="shrink-0 text-[var(--twin-mute)]">密码</span>{isBuiltin ? <span className="text-[var(--twin-mute)]">受保护</span> : <PwdCell userId={row.staffId} />}</div>
+                <div className="flex items-center justify-between gap-2"><span className="shrink-0 text-[var(--twin-mute)]">密码</span>{isBuiltin ? <span className="text-[var(--twin-mute)]">受保护</span> : <PwdCell userId={row.staffId} onViewPassword={onViewPassword} />}</div>
               </div>
               {isSuperAdmin && !isBuiltin ? (
                 <div className="mt-2 flex gap-1 border-t border-blue-100 pt-2">
@@ -126,7 +106,7 @@ export function PersonnelDetailCard({
               <div className="space-y-1.5 text-[11px]">
                 <div className="flex justify-between gap-2"><span className="shrink-0 text-[var(--twin-mute)]">认证 ID</span><span className="break-all text-right font-mono text-[var(--twin-body)]">{row.aroUserId}</span></div>
                 <div className="flex justify-between gap-2"><span className="shrink-0 text-[var(--twin-mute)]">账号名</span><span className="break-all text-right font-mono text-[var(--twin-body)]">{row.studentUsername && row.studentUsername !== row.aroUserId ? row.studentUsername : "未注册"}</span></div>
-                <div className="flex items-center justify-between gap-2"><span className="shrink-0 text-[var(--twin-mute)]">密码</span>{row.aroUserId === BUILTIN_SUPER_ADMIN_ID ? <span className="text-[var(--twin-mute)]">受保护</span> : <PwdCell userId={row.aroUserId} />}</div>
+                <div className="flex items-center justify-between gap-2"><span className="shrink-0 text-[var(--twin-mute)]">密码</span>{row.aroUserId === BUILTIN_SUPER_ADMIN_ID ? <span className="text-[var(--twin-mute)]">受保护</span> : <PwdCell userId={row.aroUserId} onViewPassword={onViewPassword} />}</div>
               </div>
               <div className="mt-2 flex items-center justify-between gap-2 border-t border-amber-100 pt-2 text-[11px]">
                 <span className="text-[var(--twin-mute)]">扫码 PIN（独立验证密码）</span>
@@ -232,6 +212,25 @@ export function PersonnelDetailCard({
           ) : null}
         </section>
       </div>
+    </div>
+  );
+}
+
+function PwdCell({ userId, onViewPassword }: { userId: string; onViewPassword: (userId: string) => Promise<string | null> }) {
+  const [plain, setPlain] = React.useState<string | null | undefined>(undefined);
+  const [loading, setLoading] = React.useState(false);
+  const toggle = async () => {
+    if (plain !== undefined) { setPlain(undefined); return; }
+    setLoading(true);
+    try { setPlain(await onViewPassword(userId)); } catch { setPlain(null); } finally { setLoading(false); }
+  };
+  return (
+    <div className="inline-flex items-center gap-1 text-[11px]">
+      <span className="font-mono text-[var(--twin-body)]">{plain === undefined ? "******" : plain ?? "（暂不可查看）"}</span>
+      <button type="button" disabled={loading} onClick={toggle}
+        className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1 text-[10px] text-[var(--twin-mute)] hover:bg-[var(--twin-canvas-soft)] disabled:opacity-50">
+        {loading ? "…" : plain === undefined ? "查看" : "隐藏"}
+      </button>
     </div>
   );
 }
