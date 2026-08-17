@@ -227,7 +227,10 @@ public class PersonnelService {
         fillStr(p.getEmail(), p::setEmail, str(r.get("email")));
         if (p.getIsSchool() == null) p.setIsSchool(toInt(r.get("is_school")));
         fillStr(p.getAllowedRoomsDisplayZh(), p::setAllowedRoomsDisplayZh, str(r.get("allowed_rooms_display_zh")));
-        if (p.getHasOfficialRoomPermission() == null) p.setHasOfficialRoomPermission(toInt(r.get("has_official_room_permission")));
+        if (p.getHasOfficialRoomPermission() == null) {
+            Integer v = toInt(r.get("has_official_room_permission"));
+            p.setHasOfficialRoomPermission(v == null ? 0 : v);
+        }
     }
 
     /** 仅当目标尚未设置且源非空时赋值，避免 str(null)="" 污染（保证同名合并时后者的非空值可覆盖）。 */
