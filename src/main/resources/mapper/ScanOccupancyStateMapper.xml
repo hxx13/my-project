@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.scan.state.ScanOccupancyStateMapper">
+
+    <select id="selectByUserId" resultType="com.example.demo.modules.twin.scan.state.ScanOccupancyState">
+        SELECT user_id AS userId, state, current_room_id AS currentRoomId, current_room_name AS currentRoomName,
+               enter_log_id AS enterLogId, updated_at AS updatedAt
+        FROM scan_occupancy_state
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="upsert" parameterType="com.example.demo.modules.twin.scan.state.ScanOccupancyState">
+        INSERT INTO scan_occupancy_state (
+            user_id, state, current_room_id, current_room_name, enter_log_id, updated_at
+        ) VALUES (
+            #{userId}, #{state}, #{currentRoomId}, #{currentRoomName}, #{enterLogId}, #{updatedAt}
+        )
+        ON DUPLICATE KEY UPDATE
+            state = VALUES(state),
+            current_room_id = VALUES(current_room_id),
+            current_room_name = VALUES(current_room_name),
+            enter_log_id = VALUES(enter_log_id),
+            updated_at = VALUES(updated_at)
+    </insert>
+</mapper>
