@@ -35,4 +35,14 @@ class ScanDataSourceTest {
     void resolve_unknown_returnsAro() {
         assertEquals(ScanDataSource.ARO, ScanDataSource.resolve("随便"));
     }
+
+    @Test
+    void resolve_trimmedLocal_returnsLocal() {
+        assertEquals(ScanDataSource.LOCAL, ScanDataSource.resolve(" local "));
+    }
+
+    @Test
+    void resolve_whitespaceOnly_returnsAro() {
+        assertEquals(ScanDataSource.ARO, ScanDataSource.resolve("  "));
+    }
 }
