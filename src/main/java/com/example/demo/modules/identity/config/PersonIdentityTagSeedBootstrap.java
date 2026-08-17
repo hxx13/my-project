@@ -9,6 +9,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,10 +31,11 @@ public class PersonIdentityTagSeedBootstrap implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(PersonIdentityTagSeedBootstrap.class);
 
     private final PersonIdentityTagMapper tagMapper;
+    private final JdbcTemplate jdbcTemplate;
 
-    @Value("${person.identity.seed.pi-code:GROUP_LEADER}")
+    @Value("${person.identity.seed.pi-code:PI}")
     private String piCode;
-    @Value("${person.identity.seed.pi-label:组长}")
+    @Value("${person.identity.seed.pi-label:PI}")
     private String piLabel;
 
     @Value("${person.identity.seed.secretary-code:SECRETARY}")
@@ -46,17 +48,37 @@ public class PersonIdentityTagSeedBootstrap implements ApplicationRunner {
     @Value("${person.identity.seed.expert-label:专家}")
     private String expertLabel;
 
-    public PersonIdentityTagSeedBootstrap(PersonIdentityTagMapper tagMapper) {
+    public PersonIdentityTagSeedBootstrap(PersonIdentityTagMapper tagMapper, JdbcTemplate jdbcTemplate) {
         this.tagMapper = tagMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
     public void run(ApplicationArguments args) {
         try {
             int created = 0;
-            created += seed(piCode, piLabel, 1);
-            created += seed(secretaryCode, secretaryLabel, 2);
-            created += seed(expertCode, expertLabel, 3);
+            created += seed("LAB_MEMBER", "实验员", 1);
+            created += seed(piCode, piLabel, 2);
+            created += seed("BREEDING_GROUP_LEADER", "饲养组长", 3);
+            created += seed("BREEDER", "饲养员", 4);
+            created += seed(secretaryCode, secretaryLabel, 5);
+            created += seed(expertCode, expertLabel, 6);
+            created += seed("DEPUTY_DIRECTOR", "副主任", 7);
+            created += seed("DIRECTOR", "主任", 8);
+            created += seed("VETERINARIAN", "兽医", 9);
+            created += seed("GROUP_STEWARD", "课题组管家", 10);
+            // 默认「实验员」：给所有无身份标识的 STAFF 账号补 LAB_MEMBER 标签（幂等）
+            try {
+                int assigned = jdbcTemplate.update(
+                        "INSERT INTO person_identity (user_id, tag_id) " +
+                                "SELECT p.staff_id, t.id FROM personnel p " +
+                                "JOIN person_identity_tag t ON t.code = 'LAB_MEMBER' " +
+                                "WHERE p.staff_id IS NOT NULL " +
+                                "AND NOT EXISTS (SELECT 1 FROM person_identity pi WHERE pi.user_id = p.staff_id)");
+                if (assigned > 0) log.info("[person-identity-seed] 默认实验员身份已补齐 {} 人", assigned);
+            } catch (Exception e) {
+                log.warn("[person-identity-seed] 默认实验员身份初始化失败: {}", e.getMessage());
+            }
             log.info("[person-identity-seed] 默认身份标签就绪（本次新增 {} 条）", created);
         } catch (Exception e) {
             log.warn("[person-identity-seed] 默认身份标签初始化失败: {}", e.getMessage());
