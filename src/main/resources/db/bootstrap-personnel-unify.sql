@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS institution (
     sort_order INT          NOT NULL DEFAULT 0,
     active     TINYINT      NOT NULL DEFAULT 1,
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='院校字典（学院/机构/医院，用户选择所属）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='院校字典（学院/机构/医院，用户选择所属）';
 
 -- ② 部门字典（即「院校」，从 aro_personnel.department_name 自动聚合，含校内/校外归属）
 CREATE TABLE IF NOT EXISTS department (
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS department (
     active     TINYINT      NOT NULL DEFAULT 1,
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_department_name (name)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='部门字典（院校，从 aro_personnel 聚合）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='部门字典（院校，从 aro_personnel 聚合）';
 
 -- ③ 课题组字典（归部门，层级：部门 → 课题组 → 人员）
 CREATE TABLE IF NOT EXISTS project_group (
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS project_group (
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_project_group_name (name),
     KEY idx_pg_department (department_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课题组字典（归部门）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='课题组字典（归部门）';
 
 -- ③ sys_user 加资料字段（幂等逐列）
 SET @col = (SELECT COUNT(*) FROM information_schema.COLUMNS

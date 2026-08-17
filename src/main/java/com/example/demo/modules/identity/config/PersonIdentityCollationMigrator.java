@@ -33,6 +33,12 @@ public class PersonIdentityCollationMigrator implements ApplicationRunner {
         convert("person_identity_tag");
         convert("person_identity");
         convert("personnel");
+        // personnel join aro_personnel（aro_user_id = user_id）需要两侧 collation 一致，
+        // 否则报 Illegal mix of collations；字典表一并统一，防止后续 join/比较再冲突。
+        convert("aro_personnel");
+        convert("institution");
+        convert("department");
+        convert("project_group");
     }
 
     private void convert(String table) {
