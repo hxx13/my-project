@@ -41,4 +41,13 @@ class PersonnelServiceTest {
         ));
         assertEquals(List.of(), service.listRooms());
     }
+
+    @Test
+    void listRooms_splits_fullwidth_semicolon_and_skips_whitespace_tokens() {
+        PersonnelService service = new PersonnelService(personnelMapper, jdbcTemplate);
+        when(jdbcTemplate.queryForList(anyString())).thenReturn(List.of(
+                Map.of("allowed_rooms_display_zh", "B5-101；B6-202,   ,B5-102；  ")
+        ));
+        assertEquals(List.of("B5-101", "B6-202", "B5-102"), service.listRooms());
+    }
 }

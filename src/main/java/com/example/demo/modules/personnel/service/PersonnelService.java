@@ -31,6 +31,7 @@ public class PersonnelService {
     public Map<String, Object> listUnified(PersonnelFilter filter) {
         int page = filter.getPage() == null || filter.getPage() < 1 ? 1 : filter.getPage();
         int pageSize = filter.getPageSize() == null || filter.getPageSize() < 1 ? 20 : filter.getPageSize();
+        pageSize = Math.min(pageSize, 200);
         filter.setLimit(pageSize);
         filter.setOffset((page - 1) * pageSize);
         return Map.of(
