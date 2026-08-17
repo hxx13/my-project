@@ -274,8 +274,10 @@ Page({
 
   onTabChange(e) {
     const tab = e.currentTarget.dataset.tab;
-    if (!tab || tab === this.data.activeTab) return;
-    this.setData({ activeTab: tab, page: 1, hasMore: true });
+    // 兼容旧 WXML 的 personnel/system（Task 10 改 WXML 为 all/sys/nosys 后此映射仍兼容）
+    const legacyMap = { personnel: 'nosys', system: 'sys' };
+    const activeTab = legacyMap[tab] || (['all', 'sys', 'nosys'].indexOf(tab) >= 0 ? tab : 'all');
+    this.setData({ activeTab, page: 1, hasMore: true });
     this.loadData({ reset: true, showLoading: true });
   },
 
