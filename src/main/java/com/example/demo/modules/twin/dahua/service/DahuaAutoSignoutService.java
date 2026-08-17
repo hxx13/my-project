@@ -1,5 +1,6 @@
 package com.example.demo.modules.twin.dahua.service;
 
+import com.example.demo.common.config.DebugToggleService;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchService;
 import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.service.AroService;
@@ -9,7 +10,11 @@ import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService;
 import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.common.support.TwinSwingLinkageDetailBuilder;
+import com.example.demo.modules.twin.scan.state.ScanDataSource;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyState;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyStateService;
 import com.example.demo.modules.twin.scan.service.TwinAccessRuleScanConfigService;
+import com.example.demo.modules.twin.scan.service.TwinScanService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
@@ -47,6 +52,9 @@ public class DahuaAutoSignoutService {
     private final TwinAccessLogCorrelationService twinAccessLogCorrelationService;
     private final TwinAccessRuleScanConfigService twinAccessRuleScanConfigService;
     private final DahuaSwingRuleEngineService dahuaSwingRuleEngineService;
+    private final DebugToggleService debugToggleService;
+    private final ScanOccupancyStateService scanOccupancyStateService;
+    private final TwinScanService twinScanService;
 
     public DahuaAutoSignoutService(
             AroService aroService,
@@ -57,7 +65,10 @@ public class DahuaAutoSignoutService {
             AroMiniPenetrationSyncService miniPenetrationSyncService,
             TwinAccessLogCorrelationService twinAccessLogCorrelationService,
             TwinAccessRuleScanConfigService twinAccessRuleScanConfigService,
-            @Lazy DahuaSwingRuleEngineService dahuaSwingRuleEngineService
+            @Lazy DahuaSwingRuleEngineService dahuaSwingRuleEngineService,
+            DebugToggleService debugToggleService,
+            ScanOccupancyStateService scanOccupancyStateService,
+            @Lazy TwinScanService twinScanService
     ) {
         this.aroService = aroService;
         this.twinCardMappingService = twinCardMappingService;
@@ -68,6 +79,9 @@ public class DahuaAutoSignoutService {
         this.twinAccessLogCorrelationService = twinAccessLogCorrelationService;
         this.twinAccessRuleScanConfigService = twinAccessRuleScanConfigService;
         this.dahuaSwingRuleEngineService = dahuaSwingRuleEngineService;
+        this.debugToggleService = debugToggleService;
+        this.scanOccupancyStateService = scanOccupancyStateService;
+        this.twinScanService = twinScanService;
     }
 
     public boolean autoSignout(String userId) {
@@ -81,6 +95,9 @@ public class DahuaAutoSignoutService {
             return false;
         }
         log.info("[auto-signout] start userId={}", userId);
+        if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
+            return autoSignoutLocal(userId, triggerType, triggerReason, detail);
+        }
         List<Map<String, Object>> noLeaveRooms = aroService.getNoLeaveRoom(userId);
         // null 代表上游请求失败（如 TLS/握手异常），不要当作“已离开”处理
         if (noLeaveRooms == null) {
@@ -220,6 +237,68 @@ public class DahuaAutoSignoutService {
         Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
         registerSignoutCorrelation(userId, roomId, auditId, msg, triggerType);
         triggerMiniAroPenetrationRequest(userId, 2);
+        return true;
+    }
+
+    /**
+     * LOCAL 数据源下的自动签退：定位房间走本地状态机，签退走本地直写，不碰 ARO 接口。
+     */
+    private boolean autoSignoutLocal(String userId, String triggerType, String triggerReason, String detail) {
+        ScanOccupancyState occ = scanOccupancyStateService.getByUserId(userId);
+        boolean hasRoom = occ != null
+                && ScanOccupancyStateService.STATE_INSIDE.equals(occ.getState())
+                && occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank();
+
+        if (!hasRoom) {
+            // 本地状态机已无在馆记录 → 等价于「官方已无滞留」，仅清理联动占位，不重复签退
+            clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
+            writeAutoLog(userId, triggerType, triggerReason, true,
+                    "本地状态机已无在馆记录，本次不重复签退，仅清理联动占位。"
+                            + (detail != null && !detail.isBlank() ? " 原计划说明：" + detail : ""));
+            return true;
+        }
+
+        String roomId = occ.getCurrentRoomId();
+        String roomLabel = occ.getCurrentRoomName() != null && !occ.getCurrentRoomName().isBlank()
+                ? occ.getCurrentRoomName() : roomId;
+
+        // 签退去重（复用现有 RECENT_SIGNOUT_AT_MS 冷却）
+        String dedupKey = userId.trim() + "|" + roomId + "|2";
+        long nowMs = System.currentTimeMillis();
+        Long lastSignoutMs = RECENT_SIGNOUT_AT_MS.get(dedupKey);
+        if (lastSignoutMs != null && (nowMs - lastSignoutMs) < RECENT_SIGNOUT_COOLDOWN_MS) {
+            clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
+            writeAutoLog(userId, triggerType, triggerReason, true,
+                    "签退去重：冷却窗口内已签退过（" + roomLabel + "），本次跳过。");
+            return true;
+        }
+
+        // 本地签退：复用 executeAccessAction（LOCAL 分支 → 本地写 exit + markOutside + registerPending）
+        boolean ok = twinScanService.executeAccessAction(userId, roomId, 2, false, false, null, false);
+        if (!ok) {
+            writeAutoLog(userId, triggerType, triggerReason, false,
+                    "本地自动签退失败（" + roomLabel + "）。");
+            return false;
+        }
+        RECENT_SIGNOUT_AT_MS.put(dedupKey, System.currentTimeMillis());
+        clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
+
+        // 后续大华回收/冻结（对齐现有 ARO 路径的 postAutoLeaveLinkageEnabled 分支）
+        if (postAutoLeaveLinkageEnabled()) {
+            if (twinAccessRuleScanConfigService.isExitDispatchEnabled()) {
+                try {
+                    accessRuleDispatchService.tryRevokeAccessForScanExit(roomId, userId);
+                } catch (Exception e) {
+                    log.warn("[auto-signout-local] 大华 revoke 异常 userId={} roomId={}: {}", userId, roomId, e.getMessage());
+                }
+            }
+            if (twinAccessRuleScanConfigService.isExitFreezeEnabled()) {
+                runRiskActions(userId);
+            }
+        }
+
+        writeAutoLog(userId, triggerType, triggerReason, true,
+                "本地自动签退完成（" + roomLabel + "）。LOCAL 模式不拉取 ARO 流水。");
         return true;
     }
 
