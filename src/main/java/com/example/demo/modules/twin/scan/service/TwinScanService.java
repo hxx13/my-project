@@ -8,6 +8,7 @@ import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroDatabaseService;
 import com.example.demo.modules.aro.service.RealtimeEventDedupService;
+import com.example.demo.modules.aro.service.RealtimeFeedPushService;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
 import com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper;
@@ -57,6 +58,9 @@ public class TwinScanService {
 
     @Autowired
     private AroDatabaseService aroDatabaseService;
+
+    @Autowired
+    private RealtimeFeedPushService realtimeFeedPushService;
 
     // 💥 引入 WebSocket 发射器
     @Autowired
@@ -385,6 +389,11 @@ public class TwinScanService {
         } catch (Exception e) {
             log.error("[scan·本地直写] userId={} 写入失败 err={}", userId, e.getMessage(), e);
             return false;
+        }
+        try {
+            realtimeFeedPushService.pushRecords(java.util.List.of(rec));
+        } catch (Exception e) {
+            log.warn("[scan·本地直写] 瀑布流推送失败 userId={} err={}", userId, e.getMessage());
         }
         try {
             twinAccessLogCorrelationService.registerPending(
