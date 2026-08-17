@@ -77,9 +77,9 @@ export default function AdminPersonnelPage() {
   const resetPersonnelPasswordMut = useResetPersonnelPassword();
   const deleteUserMut = useDeleteSystemUser();
 
-  const applyFilters = (next?: UnifiedPersonnelFilter) => {
-    if (next) setFilters(next);
-    setApplied(next ?? filters);
+  const applyFilters = (next: UnifiedPersonnelFilter) => {
+    setFilters(next);
+    setApplied(next);
     setPage(1);
   };
 
@@ -189,7 +189,7 @@ export default function AdminPersonnelPage() {
           <PersonnelFilterBar
             value={filters}
             onChange={setFilters}
-            onApply={() => applyFilters()}
+            onApply={applyFilters}
             onReset={resetFilters}
             options={{ departments, groups, identityTags, rooms }}
             total={total}

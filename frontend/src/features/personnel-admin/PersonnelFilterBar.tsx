@@ -24,7 +24,7 @@ const ROLE_OPTIONS = [
 interface Props {
   value: UnifiedPersonnelFilter;
   onChange: (next: UnifiedPersonnelFilter) => void;
-  onApply: () => void;
+  onApply: (next: UnifiedPersonnelFilter) => void;
   onReset: () => void;
   options: FilterBarOptions;
   total: number;
@@ -44,7 +44,7 @@ export function PersonnelFilterBar({ value, onChange, onApply, onReset, options,
           <button
             key={t}
             type="button"
-            onClick={() => { set({ accountType: t }); onApply(); }}
+            onClick={() => onApply({ ...value, accountType: t })}
             className={cn(
               "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
               (value.accountType ?? "all") === t
@@ -62,7 +62,7 @@ export function PersonnelFilterBar({ value, onChange, onApply, onReset, options,
         <input
           value={value.keyword ?? ""}
           onChange={(e) => set({ keyword: e.target.value })}
-          onKeyDown={(e) => { if (e.key === "Enter") onApply(); }}
+          onKeyDown={(e) => { if (e.key === "Enter") onApply({ ...value }); }}
           placeholder="姓名 / 工号 / 账号 / 手机号 / 邮箱"
           className="min-w-0 flex-1 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5 text-xs text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:outline-none"
         />
@@ -86,7 +86,7 @@ export function PersonnelFilterBar({ value, onChange, onApply, onReset, options,
           <option value="">房间：全部</option>
           {options.rooms.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
-        <AdminButton type="button" tone="primary" size="sm" onClick={onApply}>筛选</AdminButton>
+        <AdminButton type="button" tone="primary" size="sm" onClick={() => onApply({ ...value })}>筛选</AdminButton>
         <AdminButton type="button" tone="ghost" size="sm" onClick={() => {
           onChange({ accountType: value.accountType ?? "all" });
           onReset();
