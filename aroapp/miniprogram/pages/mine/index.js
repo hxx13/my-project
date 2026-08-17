@@ -474,6 +474,7 @@ Page({
       const headerDisplayName = springBound
         ? authDisplay || (roleLabel !== '—' ? roleLabel : '校内用户')
         : '访客';
+      const springUserId = springBound ? twinScan.readSpringUserId() : '';
       this.setData({
         springBound,
         springPending,
@@ -482,6 +483,8 @@ Page({
         springRoleLabel: roleLabel,
         springRoleLabelZh: springBound ? roleCodeToZh(role) : '',
         profileAvatarLetter: pickAvatarLetter(headerDisplayName, roleLabel),
+        springUserId,
+        isStudentView: isStudentAccount(),
       });
     }
   },
