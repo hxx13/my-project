@@ -26,6 +26,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.example.demo.common.time.BusinessTimeWindow;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
+import com.example.demo.modules.auth.entity.UserAroBinding;
+import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +63,9 @@ public class TwinApiController {
 
     @Autowired
     private AroService aroService;
+
+    @Autowired
+    private UserAroBindingMapper userAroBindingMapper;
 
     @Autowired
     private AroPersonnelDatabaseService personnelDbService;
@@ -434,8 +439,24 @@ public class TwinApiController {
         // 💥 加上这一行探针
         log.info("前端成功呼叫风控接口，拿到的 userId 是: {}", userId);
 
-        Map<String, Object> data = aroService.getUserDetailAndDisciplinary(userId);
+        Map<String, Object> data = aroService.getUserDetailAndDisciplinary(resolveAroUserId(userId));
         return Result.success(data);
+    }
+
+    /** 教职工（STAFF_ 前缀）转成 aro_user_id（ARO 接口只认 19 位数字）；学生/无绑定则原样返回。 */
+    private String resolveAroUserId(String userId) {
+        if (userId == null || userId.isBlank()) return userId;
+        String uid = userId.trim();
+        if (!uid.startsWith("STAFF_")) return uid;
+        try {
+            UserAroBinding binding = userAroBindingMapper.selectByUserId(uid);
+            if (binding != null && binding.getAroUserId() != null && !binding.getAroUserId().isBlank()) {
+                return binding.getAroUserId();
+            }
+        } catch (Exception e) {
+            log.warn("[dashboard] staff_id→aro 转换失败 id={} err={}", uid, e.getMessage());
+        }
+        return uid;
     }
 
     // 💥 核武器：已废弃，请使用 GET /api/v1/twin/rpg/recalculate-all
