@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupAuditLogMapper">
+
+    <!-- 审计只 insert/select，禁 update/delete -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO aup_audit_log (aup_id, actor, role, action, from_stage, to_stage, comment, created_at)
+        VALUES (#{aupId}, #{actor}, #{role}, #{action}, #{fromStage}, #{toStage}, #{comment}, NOW())
+    </insert>
+
+    <select id="selectByAupId" resultType="com.example.demo.modules.aup.entity.AupAuditLog">
+        SELECT * FROM aup_audit_log WHERE aup_id = #{aupId} ORDER BY created_at DESC, id DESC
+    </select>
+
+</mapper>

@@ -2,18 +2,15 @@ package com.example.demo.modules.aro.task;
 
 import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.component.SocketRoomAssigner;
-import com.example.demo.common.dto.UniversalEvent;
 import com.example.demo.modules.aro.dto.AroIncrementalSyncResult;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.mapper.AroDatabaseMapper;
 import com.example.demo.modules.aro.service.AroDatabaseService;
 import com.example.demo.modules.aro.service.AroPersonnelDatabaseService;
-import com.example.demo.modules.aro.service.RealtimeEventDedupService;
+import com.example.demo.modules.aro.service.RealtimeFeedPushService;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.aro.service.AroStartupAsyncService;
-import com.example.demo.modules.twin.common.component.RoomNormalizer;
-import com.example.demo.modules.twin.common.support.AccessLogFeedProvenanceBuilder;
 import com.example.demo.modules.twin.common.support.FreezeReaperAuditContext;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import org.slf4j.Logger;
@@ -38,10 +35,9 @@ public class AroSyncTask {
     @Autowired private AroDatabaseService aroDatabaseService;
     @Autowired private AroPersonnelDatabaseService aroPersonnelDatabaseService;
     @Autowired private SocketIOServer socketServer;
-    @Autowired private RoomNormalizer roomNormalizer;
     @Autowired private AroDatabaseMapper aroDatabaseMapper;
-    @Autowired private RealtimeEventDedupService realtimeEventDedupService;
     @Autowired private AroStartupAsyncService aroStartupAsyncService;
+    @Autowired private RealtimeFeedPushService realtimeFeedPushService;
     @Autowired private com.example.demo.modules.twin.dashboard.service.TwinDashboardService dashboardService;
     @Autowired private TwinDashboardMapper dashboardMapper;
     @Autowired private com.example.demo.modules.twin.card.service.TwinCardMappingService twinCardMappingService;
@@ -187,7 +183,7 @@ public class AroSyncTask {
                 if (!allNewRecords.isEmpty()) {
                     aroDatabaseService.batchInsert(allNewRecords);
                     newInserted = allNewRecords.size();
-                    pushToFrontend(allNewRecords);
+                    realtimeFeedPushService.pushRecords(allNewRecords);
                     pushPieChartUpdate();
                 }
             }
@@ -464,51 +460,4 @@ public class AroSyncTask {
         }
     }
 
-    // ==========================================================
-    // 📢 瀑布流推送组件 (代码保持你的原样，完美适配大屏)
-    // ==========================================================
-    private void pushToFrontend(List<AroRecord> records) {
-        for (AroRecord record : records) {
-            String recordId = String.valueOf(record.getId());
-            if (realtimeEventDedupService.shouldSkipSyncPush(recordId)) {
-                continue;
-            }
-            UniversalEvent event = new UniversalEvent();
-            event.setEventId("ARO-" + record.getId());
-            event.setSource("ARO");
-            event.setCategory("ACCESS");
-            event.setTimestamp(record.getCreateTime());
-
-            String standardAction = "UNKNOWN";
-            String rawMessage = "未知状态";
-            if (record.getAccessType() != null) {
-                if (record.getAccessType() == 1) { standardAction = "ENTER"; rawMessage = "合法进入"; }
-                else if (record.getAccessType() == 2) { standardAction = "EXIT"; rawMessage = "合法离开"; }
-                else if (record.getAccessType() == 0) { standardAction = "WARN"; rawMessage = "进入未离开"; }
-            }
-            event.setAction(standardAction);
-
-            UniversalEvent.PersonInfo person = new UniversalEvent.PersonInfo();
-            person.setUserId(record.getUserId());
-            person.setName(record.getName());
-            person.setRole(record.getUserTypeNames());
-            person.setGroup(record.getProjectGroupNames());
-            event.setPerson(person);
-
-            UniversalEvent.LocationInfo location = new UniversalEvent.LocationInfo();
-            location.setCampus(record.getAreaName());
-            location.setFloor(record.getFloorName());
-            location.setRoom(roomNormalizer.normalize(record.getRoomName()));
-            location.setRoomId(record.getRoomId());
-            event.setLocation(location);
-
-            UniversalEvent.OriginalData original = new UniversalEvent.OriginalData();
-            original.setRawStatusCode(String.valueOf(record.getAccessType()));
-            original.setMessage(rawMessage);
-            event.setOriginalData(original);
-            event.setFeedProvenance(AccessLogFeedProvenanceBuilder.fromAroRecord(record));
-
-            socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("TWIN_GLOBAL_EVENT", event);
-        }
-    }
 }

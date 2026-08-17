@@ -19,6 +19,9 @@ const RECENT_KEY = "student-sidebar-recent";
 const LOCK_KEY = "student-sidebar-lock";
 const RECENT_MAX = 8;
 
+/** 个性化变更事件：收藏/常用/锁定写入后广播，供侧栏、命令面板重新读取 */
+export const STUDENT_NAV_PERSONALIZATION_EVENT = "aro-student-nav-personalization";
+
 /* ------------------------------------------------------------------ */
 /*  Internal helpers                                                    */
 /* ------------------------------------------------------------------ */
@@ -60,6 +63,14 @@ function writeLocal(key: string, value: string | null) {
     if (value) localStorage.setItem(key, value);
     else localStorage.removeItem(key);
   } catch { /* noop */ }
+}
+
+function dispatchPersonalizationChanged() {
+  try {
+    window.dispatchEvent(new Event(STUDENT_NAV_PERSONALIZATION_EVENT));
+  } catch {
+    /* ignore */
+  }
 }
 
 async function persistServer() {
@@ -112,6 +123,7 @@ export async function hydrateStudentNavPersonalization(): Promise<boolean> {
     writeLocal(LOCK_KEY, lock);
 
     cachedPrefs = prefs;
+    dispatchPersonalizationChanged();
     return true;
   } catch {
     return false;
@@ -134,6 +146,7 @@ export function appendStudentNavRecent(path: string): void {
   const prev = readStudentNavRecent().filter((p) => p !== path);
   const next = [path, ...prev].slice(0, RECENT_MAX);
   writeLocalList(RECENT_KEY, next);
+  dispatchPersonalizationChanged();
   persistServer();
 }
 
@@ -142,6 +155,7 @@ export function toggleStudentNavStar(path: string): boolean {
   const was = set.has(path);
   if (was) set.delete(path); else set.add(path);
   writeLocalList(STARS_KEY, [...set]);
+  dispatchPersonalizationChanged();
   persistServer();
   return !was;
 }
@@ -154,10 +168,12 @@ export function toggleStudentNavLock(path: string): boolean {
   const current = readStudentNavLock();
   if (current === path) {
     writeLocal(LOCK_KEY, null);
+    dispatchPersonalizationChanged();
     persistServer();
     return false;
   }
   writeLocal(LOCK_KEY, path);
+  dispatchPersonalizationChanged();
   persistServer();
   return true;
 }
@@ -168,5 +184,6 @@ export function isStudentNavLocked(path: string): boolean {
 
 export function clearStudentNavLock(): void {
   writeLocal(LOCK_KEY, null);
+  dispatchPersonalizationChanged();
   persistServer();
 }

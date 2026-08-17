@@ -73,4 +73,39 @@ public class User {
 
     /** WxPusher UID（用于微信App推送通知） */
     private String wxPusherUid;
+
+    // ── 统一人员资料字段（从 aro_personnel 同步 / 教职工本地填充）──
+
+    /** 姓名 */
+    private String name;
+
+    /** 工号/学号 */
+    private String jobNumber;
+
+    /** 部门 */
+    private String departmentName;
+
+    /** 课题组名称 */
+    private String projectGroupName;
+
+    /** 归属院校 institution.id */
+    private Long institutionId;
+
+    /** 人员类型 */
+    private String userTypeNames;
+
+    /** 头像 */
+    private String head;
+
+    /** 性别 */
+    private Integer gender;
+
+    /** 手机号 */
+    private String mobilePhone;
+
+    /** 邮箱 */
+    private String email;
+
+    /** 是否校内 0/1 */
+    private Integer isSchool;
 }

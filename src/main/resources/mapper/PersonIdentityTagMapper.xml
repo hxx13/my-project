@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.identity.mapper.PersonIdentityTagMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO person_identity_tag (code, label, sort_order, active)
+        VALUES (#{code}, #{label}, #{sortOrder}, #{active})
+    </insert>
+
+    <update id="update">
+        UPDATE person_identity_tag
+        <set>
+            <if test="code != null">code = #{code},</if>
+            <if test="label != null">label = #{label},</if>
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            <if test="active != null">active = #{active},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultType="com.example.demo.modules.identity.entity.PersonIdentityTag">
+        SELECT * FROM person_identity_tag WHERE id = #{id}
+    </select>
+
+    <select id="findByCode" resultType="com.example.demo.modules.identity.entity.PersonIdentityTag">
+        SELECT * FROM person_identity_tag WHERE code = #{code}
+    </select>
+
+    <select id="listActive" resultType="com.example.demo.modules.identity.entity.PersonIdentityTag">
+        SELECT * FROM person_identity_tag WHERE active = 1 ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="listByIds" resultType="com.example.demo.modules.identity.entity.PersonIdentityTag">
+        SELECT * FROM person_identity_tag
+        WHERE id IN
+        <foreach collection="ids" item="i" open="(" separator="," close=")">
+            #{i}
+        </foreach>
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM person_identity_tag WHERE id = #{id}
+    </delete>
+
+</mapper>

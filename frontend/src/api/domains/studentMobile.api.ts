@@ -14,11 +14,8 @@ import type {
   MobileCageShelvesAllData,
   MobileNoticeAutoSuppressPayload,
   MobileNoticeAutoSuppressResult,
-  MobileCageCellAnnotation,
   ExemptStatus,
 } from "./mobileStudent.api";
-import type { CageShelfDetail } from "@/features/student/api/student.api";
-import { normalizeMobileCageShelfDetail } from "@/pages/mobile/mobileCageShelfGrid";
 import type {
   StudentActivitySummary,
   StudentActivityResult,
@@ -180,54 +177,6 @@ export async function fetchStudentMobileCageShelvesAll(): Promise<MobileCageShel
     totalCount: data?.totalCount ?? 0,
     scannedAt: data?.scannedAt,
   };
-}
-
-export async function fetchStudentMobileCageShelfDetail(
-  shelveId: string,
-  realtime?: boolean
-): Promise<CageShelfDetail> {
-  const params = realtime ? { realtime: true } : {};
-  const resp = await authHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: Record<string, unknown>;
-  }>(`/student/mobile/cage-shelves/${encodeURIComponent(shelveId)}/detail`, { params });
-  if (!resp.data.success) throw new Error(resp.data.message || "加载笼架详情失败");
-  return normalizeMobileCageShelfDetail(resp.data.data ?? {});
-}
-
-export async function fetchStudentMobileCageCellAnnotation(
-  shelveId: string,
-  x: number,
-  y: number
-): Promise<MobileCageCellAnnotation | null> {
-  const resp = await authHttp.get<{
-    success: boolean;
-    message?: string;
-    data: MobileCageCellAnnotation | null;
-  }>(
-    `/student/mobile/cage-shelves/${encodeURIComponent(shelveId)}/cells/${x}/${y}/annotation`
-  );
-  if (!resp.data.success) throw new Error(resp.data.message || "获取标注失败");
-  return resp.data.data ?? null;
-}
-
-export async function saveStudentMobileCageCellAnnotation(
-  shelveId: string,
-  x: number,
-  y: number,
-  position: string,
-  data: { richText?: string; images?: string; aroRawData?: string }
-): Promise<void> {
-  const resp = await authHttp.put<{
-    success: boolean;
-    message?: string;
-  }>(
-    `/student/mobile/cage-shelves/${encodeURIComponent(shelveId)}/cells/${x}/${y}/annotation`,
-    { position, ...data }
-  );
-  if (!resp.data.success) throw new Error(resp.data.message || "保存标注失败");
 }
 
 export async function fetchStudentMobileSpecialStatusOverview(): Promise<import("@/api/domains/cageShelf.api").SpecialStatusOverview> {

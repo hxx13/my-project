@@ -10,6 +10,7 @@
     "build:nav": "node ../scripts/export-admin-nav-manifest.mjs",
     "build:assets": "node ../scripts/copy-mini-assets.mjs",
     "export:nav-manifest": "node ../scripts/export-admin-nav-manifest.mjs",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -39,6 +40,7 @@
     "@visactor/vtable-editors": "^1.26.1",
     "@visactor/vtable-export": "^1.26.1",
     "@visactor/vtable-search": "^1.26.1",
+    "@xyflow/react": "^12.11.3",
     "axios": "^1.13.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -90,6 +92,7 @@
     "tailwindcss": "^3.4.19",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",
-    "vite": "^8.0.1"
+    "vite": "^8.0.1",
+    "vitest": "^4.1.10"
   }
 }

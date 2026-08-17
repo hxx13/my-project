@@ -10,13 +10,21 @@ const FALLBACK_CONTACTS = [
   { label: "办公时间", icon: "Clock", value: "周一至周五 8:30—17:00" },
 ];
 
-function parseContacts(page: { extensionJson?: Record<string, unknown> | null; summary?: string | null } | undefined): { label: string; icon: string; value: string }[] {
+function parseExtensionJson(page: { extensionJson?: unknown } | undefined): Record<string, unknown> {
+  const raw = page?.extensionJson;
+  if (!raw) return {};
+  // 后端返回的 extension_json 是 JSON 字符串，需先解析；兼容已是对象的情况
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+  }
+  return raw as Record<string, unknown>;
+}
+
+function parseContacts(page: { extensionJson?: unknown; summary?: string | null } | undefined): { label: string; icon: string; value: string }[] {
   // 优先 extension_json.contacts
-  if (page?.extensionJson) {
-    const ext = page.extensionJson as Record<string, unknown>;
-    if (Array.isArray(ext.contacts) && ext.contacts.length > 0) {
-      return ext.contacts as typeof FALLBACK_CONTACTS;
-    }
+  const ext = parseExtensionJson(page);
+  if (Array.isArray(ext.contacts) && ext.contacts.length > 0) {
+    return ext.contacts as typeof FALLBACK_CONTACTS;
   }
   // fallback: summary | 分割
   if (page?.summary) {
@@ -31,10 +39,19 @@ function parseContacts(page: { extensionJson?: Record<string, unknown> | null; s
   return FALLBACK_CONTACTS;
 }
 
+function parsePhotos(page: { extensionJson?: unknown } | undefined): string[] {
+  const ext = parseExtensionJson(page);
+  if (Array.isArray(ext.photos)) {
+    return (ext.photos as unknown[]).filter((p): p is string => typeof p === "string" && p.length > 0);
+  }
+  return [];
+}
+
 export default function ContactPage() {
   const { data } = usePublicContents({ type: "PAGE", search: "联系我们", size: 1 });
   const page = data?.data?.[0];
   const contacts = parseContacts(page);
+  const photos = parsePhotos(page);
 
   return (
     <div className="min-h-screen bg-[#f7f5f2]">
@@ -62,13 +79,18 @@ export default function ContactPage() {
           })}
         </div>
 
-        {page?.contentHtml && (
-          <div className="prose prose-neutral max-w-none text-neutral-600 leading-relaxed" dangerouslySetInnerHTML={{ __html: page.contentHtml }} />
+        {photos.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-sm font-semibold text-neutral-700 mb-4">地图指引</h2>
+            <div className="space-y-5">
+              {photos.map((url, i) => (
+                <div key={i} className="bg-white border border-neutral-200 rounded-2xl overflow-hidden shadow-sm">
+                  <img src={url} alt={`地图指引 ${i + 1}`} className="w-full h-auto" loading="lazy" />
+                </div>
+              ))}
+            </div>
+          </div>
         )}
-
-        <div className="bg-white border border-neutral-200 rounded-2xl overflow-hidden shadow-sm h-64 flex items-center justify-center mt-8">
-          <p className="text-neutral-300 text-sm">地图位置（待配置）</p>
-        </div>
       </div>
     </div>
   );

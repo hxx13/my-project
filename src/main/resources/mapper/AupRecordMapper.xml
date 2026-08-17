@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupRecordMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO aup_record (
+            template_id, template_version, version, register_no, register_year, register_seq,
+            current_stage, round_no, draft_source, review_form, origin_register_no, carried_over_count,
+            expire_at, project_name, pi_user_id, pi_name, dept, project_source, project_group_name,
+            submitted_at, approved_at, created_by, is_demo, created_at, updated_at
+        ) VALUES (
+            #{templateId}, #{templateVersion}, #{version}, #{registerNo}, #{registerYear}, #{registerSeq},
+            #{currentStage}, #{roundNo}, #{draftSource}, #{reviewForm}, #{originRegisterNo}, #{carriedOverCount},
+            #{expireAt}, #{projectName}, #{piUserId}, #{piName}, #{dept}, #{projectSource}, #{projectGroupName},
+            #{submittedAt}, #{approvedAt}, #{createdBy}, #{isDemo}, NOW(), NOW()
+        )
+    </insert>
+
+    <select id="selectById" resultType="com.example.demo.modules.aup.entity.AupRecord">
+        SELECT * FROM aup_record WHERE id = #{id}
+    </select>
+
+    <select id="selectForUpdateById" resultType="com.example.demo.modules.aup.entity.AupRecord">
+        SELECT * FROM aup_record WHERE id = #{id} FOR UPDATE
+    </select>
+
+    <!-- 状态机流转 CAS：COALESCE 保留未传字段，0 行 = 并发冲突 409 -->
+    <update id="updateStageCas">
+        UPDATE aup_record
+        SET current_stage = #{toStage},
+            version = version + 1,
+            draft_source = COALESCE(#{draftSource}, draft_source),
+            round_no = COALESCE(#{roundNo}, round_no),
+            register_no = COALESCE(#{registerNo}, register_no),
+            register_year = COALESCE(#{registerYear}, register_year),
+            register_seq = COALESCE(#{registerSeq}, register_seq),
+            expire_at = COALESCE(#{expireAt}, expire_at),
+            approved_at = COALESCE(#{approvedAt}, approved_at),
+            submitted_at = COALESCE(#{submittedAt}, submitted_at),
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND current_stage = #{fromStage}
+          AND version = #{expectedVersion}
+    </update>
+
+    <update id="updateProjectMeta">
+        UPDATE aup_record
+        SET project_name = COALESCE(#{projectName}, project_name),
+            pi_user_id = COALESCE(#{piUserId}, pi_user_id),
+            pi_name = COALESCE(#{piName}, pi_name),
+            dept = COALESCE(#{dept}, dept),
+            project_source = COALESCE(#{projectSource}, project_source),
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectMaxSeqByYear" resultType="int">
+        SELECT COALESCE(MAX(register_seq), 0) FROM aup_record WHERE register_year = #{year} FOR UPDATE
+    </select>
+
+    <select id="selectExpiringApproved" resultType="com.example.demo.modules.aup.entity.AupRecord">
+        SELECT * FROM aup_record
+        WHERE current_stage = 'approved'
+          AND expire_at IS NOT NULL
+          AND expire_at &lt;= #{now}
+    </select>
+
+    <sql id="pageWhere">
+        <where>
+            <choose>
+                <when test="scopeRole == 'lab'">
+                    <choose>
+                        <when test="scopeProjectGroup != null and scopeProjectGroup != ''">
+                            AND r.project_group_name = #{scopeProjectGroup}
+                        </when>
+                        <otherwise>
+                            AND r.created_by = #{scopeUserId}
+                        </otherwise>
+                    </choose>
+                </when>
+                <when test="scopeRole == 'PI'">
+                    AND (r.pi_user_id = #{scopeUserId}
+                         OR EXISTS (SELECT 1 FROM aup_audit_log l WHERE l.aup_id = r.id AND l.actor = #{scopeUserId}))
+                </when>
+                <when test="scopeRole == 'secretary'">
+                    AND (r.current_stage = 'formatReview'
+                         OR r.created_by = #{scopeUserId}
+                         OR EXISTS (SELECT 1 FROM aup_audit_log l WHERE l.aup_id = r.id AND l.actor = #{scopeUserId}))
+                </when>
+                <when test="scopeRole == 'expert'">
+                    AND (r.created_by = #{scopeUserId}
+                         OR EXISTS (SELECT 1 FROM aup_review_assignment a
+                                WHERE a.aup_id = r.id AND a.reviewer_id = #{scopeUserId}))
+                </when>
+                <!-- admin / null：不过滤 -->
+            </choose>
+            <if test="relatedToMe">
+                AND (r.created_by = #{scopeUserId}
+                     OR r.pi_user_id = #{scopeUserId}
+                     OR EXISTS (SELECT 1 FROM aup_review_assignment a WHERE a.aup_id = r.id AND a.reviewer_id = #{scopeUserId})
+                     OR EXISTS (SELECT 1 FROM aup_audit_log l WHERE l.aup_id = r.id AND l.actor = #{scopeUserId}))
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (r.project_name LIKE CONCAT('%', #{keyword}, '%')
+                     OR r.register_no LIKE CONCAT('%', #{keyword}, '%')
+                     OR r.pi_name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="registerNo != null and registerNo != ''">
+                AND r.register_no = #{registerNo}
+            </if>
+            <if test="stage != null and stage != ''">
+                AND r.current_stage = #{stage}
+            </if>
+            <if test="excludeStage != null and excludeStage != ''">
+                AND r.current_stage != #{excludeStage}
+            </if>
+            <if test="projectGroupName != null and projectGroupName != ''">
+                AND r.project_group_name = #{projectGroupName}
+            </if>
+            <if test="excludeDraft">
+                AND (r.current_stage != 'draft' OR r.draft_source != 'first' OR r.is_demo = 1)
+            </if>
+            <if test="draftSource != null and draftSource != ''">
+                AND r.draft_source = #{draftSource}
+            </if>
+            <if test="roundNo != null">
+                AND r.round_no = #{roundNo}
+            </if>
+            <if test="submitterId != null and submitterId != ''">
+                AND r.created_by = #{submitterId}
+            </if>
+            <if test="reviewerId != null and reviewerId != ''">
+                AND (EXISTS (SELECT 1 FROM aup_review_assignment a WHERE a.aup_id = r.id AND a.reviewer_id = #{reviewerId})
+                     OR EXISTS (SELECT 1 FROM aup_audit_log l WHERE l.aup_id = r.id AND l.actor = #{reviewerId}))
+            </if>
+            <if test="submitterName != null and submitterName != ''">
+                AND (r.created_by IN (SELECT user_id FROM aro_personnel WHERE name LIKE CONCAT('%', #{submitterName}, '%'))
+                     OR r.created_by IN (SELECT id FROM sys_user WHERE display_nickname LIKE CONCAT('%', #{submitterName}, '%') OR username LIKE CONCAT('%', #{submitterName}, '%')))
+            </if>
+            <if test="reviewerName != null and reviewerName != ''">
+                AND (
+                  EXISTS (SELECT 1 FROM aup_review_assignment a WHERE a.aup_id = r.id AND (
+                    a.reviewer_id IN (SELECT user_id FROM aro_personnel WHERE name LIKE CONCAT('%', #{reviewerName}, '%'))
+                    OR a.reviewer_id IN (SELECT id FROM sys_user WHERE display_nickname LIKE CONCAT('%', #{reviewerName}, '%') OR username LIKE CONCAT('%', #{reviewerName}, '%'))
+                  ))
+                  OR EXISTS (SELECT 1 FROM aup_audit_log l WHERE l.aup_id = r.id AND (
+                    l.actor IN (SELECT user_id FROM aro_personnel WHERE name LIKE CONCAT('%', #{reviewerName}, '%'))
+                    OR l.actor IN (SELECT id FROM sys_user WHERE display_nickname LIKE CONCAT('%', #{reviewerName}, '%') OR username LIKE CONCAT('%', #{reviewerName}, '%'))
+                  ))
+                )
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectPage" resultType="com.example.demo.modules.aup.dto.AupListItem">
+        SELECT r.id, r.register_no, r.project_name, r.pi_name, r.dept, r.project_source AS project_source,
+               r.current_stage, r.round_no, r.draft_source,
+               r.submitted_at, r.approved_at, r.created_at, r.is_demo AS is_demo,
+               r.created_by AS created_by, r.pi_user_id AS pi_user_id,
+               (SELECT COUNT(*) FROM aup_snapshot s WHERE s.aup_id = r.id) AS snapshot_count,
+               (SELECT COUNT(*) FROM aup_review_item ri WHERE ri.aup_id = r.id) AS review_count,
+               (SELECT COUNT(*) FROM aup_review_item ri WHERE ri.aup_id = r.id AND ri.verdict = 'nonCompliant') AS non_compliant_count,
+               (SELECT COUNT(*) FROM aup_review_assignment a WHERE a.aup_id = r.id AND a.reviewer_id = #{scopeUserId} AND a.round_no = r.round_no) AS assigned_expert_count
+        FROM aup_record r
+        <include refid="pageWhere"/>
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'submittedAt'">r.submitted_at</when>
+            <when test="sortBy == 'approvedAt'">r.approved_at</when>
+            <when test="sortBy == 'registerNo'">r.register_no</when>
+            <otherwise>r.updated_at</otherwise>
+        </choose>
+        <choose>
+            <when test="sortDir == 'asc'">ASC</when>
+            <otherwise>DESC</otherwise>
+        </choose>
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countPage" resultType="int">
+        SELECT COUNT(*) FROM aup_record r
+        <include refid="pageWhere"/>
+    </select>
+
+    <select id="countByTemplateId" resultType="int">
+        SELECT COUNT(*) FROM aup_record WHERE template_id = #{templateId}
+    </select>
+
+    <select id="selectDistinctProjectGroups" resultType="string">
+        SELECT DISTINCT project_group_name FROM aup_record
+        WHERE project_group_name IS NOT NULL AND project_group_name != ''
+        ORDER BY project_group_name
+    </select>
+
+</mapper>

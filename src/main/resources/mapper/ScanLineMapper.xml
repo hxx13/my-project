@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.inventory.mapper.ScanLineMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO inv_scan_line (session_id, rfid_code, matched_item_id, line_type, scanned_at)
+        VALUES (#{sessionId}, #{rfidCode}, #{matchedItemId}, #{lineType}, NOW())
+    </insert>
+    <select id="selectBySessionId" resultType="com.example.demo.modules.inventory.entity.InvScanLine">
+        SELECT * FROM inv_scan_line WHERE session_id = #{sessionId} ORDER BY id ASC
+    </select>
+    <delete id="deleteBySessionId">
+        DELETE FROM inv_scan_line WHERE session_id = #{sessionId}
+    </delete>
+    <select id="selectBySessionAndCode" resultType="com.example.demo.modules.inventory.entity.InvScanLine">
+        SELECT * FROM inv_scan_line WHERE session_id = #{sessionId} AND rfid_code = #{rfidCode} LIMIT 1
+    </select>
+</mapper>

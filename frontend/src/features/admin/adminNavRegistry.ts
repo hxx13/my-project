@@ -12,6 +12,7 @@ import {
   PieChart,
   Bell,
   BookOpen,
+  Boxes,
   CircleCheck,
   ClipboardCheck,
   ClipboardList,
@@ -81,6 +82,7 @@ export type AdminNavContext = {
     canSuppliesAdmin: boolean;
     canSuppliesProcess: boolean;
     canAssetOps: boolean;
+    canItemLedger: boolean;
   };
 };
 
@@ -566,6 +568,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/asset-records", "STAFF"),
       },
       {
+        id: "inventory",
+        path: "/admin/inventory",
+        label: "物品台账",
+        icon: Boxes,
+        homeTone: "from-emerald-400 to-teal-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canItemLedger && show(ctx, "/admin/inventory", "ADMIN"),
+      },
+      {
         id: "asset-xfer",
         path: "/admin/asset-transfer-records",
         label: "转移记录",
@@ -600,6 +611,16 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-violet-400 to-purple-500",
         fallbackMinRole: "STAFF",
         sidebarVisible: (ctx) => show(ctx, "/admin/report-fill", "STAFF"),
+      },
+      {
+        id: "aup",
+        path: "/admin/aup",
+        label: "AUP 计划书",
+        icon: ClipboardList,
+        homeTone: "from-emerald-400 to-teal-500",
+        fallbackMinRole: "STAFF",
+        alias: ["AUP", "伦理", "实验动物计划", "IACUC", "aup"],
+        sidebarVisible: (ctx) => show(ctx, "/admin/aup", "STAFF"),
       },
       {
         id: "analytics",
@@ -755,6 +776,16 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         fallbackMinRole: "STAFF",
         alias: ["实验动物订购", "动物订购", "品种", "品系", "规格", "供应商", "订购", "animal", "order"],
         sidebarVisible: (ctx) => show(ctx, "/admin/animal-order", "STAFF"),
+      },
+      {
+        id: "animal-order-review",
+        path: "/admin/animal-order-review",
+        label: "动物订购审核",
+        icon: Database,
+        homeTone: "from-cyan-500 to-blue-500",
+        fallbackMinRole: "ADMIN",
+        alias: ["动物订购审核", "订单审核", "订购审核", "order review"],
+        sidebarVisible: (ctx) => show(ctx, "/admin/animal-order-review", "ADMIN"),
       },
     ],
   },

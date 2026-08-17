@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupReviewAssignmentMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO aup_review_assignment (aup_id, round_no, reviewer_id, status, assigned_by)
+        VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.aupId}, #{r.roundNo}, #{r.reviewerId}, #{r.status}, #{r.assignedBy})
+        </foreach>
+    </insert>
+
+    <select id="selectByAupRoundReviewer" resultType="com.example.demo.modules.aup.entity.AupReviewAssignment">
+        SELECT id, aup_id AS aupId, round_no AS roundNo, reviewer_id AS reviewerId,
+               status, assigned_by AS assignedBy, created_at AS createdAt
+        FROM aup_review_assignment
+        WHERE aup_id = #{aupId} AND round_no = #{roundNo} AND reviewer_id = #{reviewerId}
+        LIMIT 1
+    </select>
+
+    <update id="updateStatus">
+        UPDATE aup_review_assignment
+        SET status = #{status}
+        WHERE aup_id = #{aupId} AND round_no = #{roundNo} AND reviewer_id = #{reviewerId}
+    </update>
+
+    <select id="selectPendingReviewerIds" resultType="string">
+        SELECT reviewer_id
+        FROM aup_review_assignment
+        WHERE aup_id = #{aupId} AND round_no = #{roundNo} AND status = 'pending'
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectReviewerIdsByAupRound" resultType="string">
+        SELECT DISTINCT reviewer_id
+        FROM aup_review_assignment
+        WHERE aup_id = #{aupId} AND round_no = #{roundNo}
+        ORDER BY reviewer_id ASC
+    </select>
+</mapper>

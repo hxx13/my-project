@@ -56,6 +56,8 @@ import MaterialReviewPage from "@/pages/MaterialReviewPage";
 import MaterialManagePage from "@/pages/MaterialManagePage";
 import MaterialAuditExportPage from "@/pages/MaterialAuditExportPage";
 import AdminAssetRecordPage from "@/pages/AdminAssetRecordPage";
+import AdminInventoryPage from "@/pages/AdminInventoryPage";
+import ScanSessionPage from "@/features/inventory/ScanSessionPage";
 import AdminFacilityMaintenancePage from "@/pages/AdminFacilityMaintenancePage";
 import AdminFileTemplatesPage from "@/pages/AdminFileTemplatesPage";
 import AdminAssetTransferRecordPage from "@/pages/AdminAssetTransferRecordPage";
@@ -99,6 +101,8 @@ import AdminNotificationDigestPage from "@/pages/AdminNotificationDigestPage";
 import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
 import ReferenceDataPage from "@/pages/ReferenceDataPage";
+import AdminOrderReviewPage from "@/pages/AdminOrderReviewPage";
+import StudentCageClaimReviewPage from "@/features/student/pages/student-cage-claim-review";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
 import AppearanceSettings from "@/features/admin/settings/AppearanceSettings";
 import NotificationsSettings from "@/features/admin/settings/NotificationsSettings";
@@ -115,11 +119,13 @@ import AboutPageEditor from "@/features/portal/pages/editors/AboutPageEditor";
 import FAQPageEditor from "@/features/portal/pages/editors/FAQPageEditor";
 import ContactPageEditor from "@/features/portal/pages/editors/ContactPageEditor";
 import ServiceGuidePageEditor from "@/features/portal/pages/editors/ServiceGuidePageEditor";
+import StudentQaEditor from "@/features/portal/pages/editors/StudentQaEditor";
 import StudentRegisterPage from "@/features/student/pages/student-register";
 import StudentLoginPage from "@/features/student/pages/student-login";
 import StudentLayout from "@/features/student/components/layout/student-layout";
 import StudentHomePage from "@/features/student/pages/student-home";
 import StudentRoomsPage from "@/features/student/pages/student-rooms";
+import StudentAupPage from "@/features/student/pages/student-aup";
 import StudentNotificationsPage from "@/features/student/pages/student-notifications";
 import StudentFeedbackPage from "@/features/student/pages/student-feedback";
 import StudentSettingsPage from "@/features/student/pages/student-settings";
@@ -130,6 +136,13 @@ import ReportFormDesignPage from "@/features/report-form/pages/ReportFormDesignP
 import ReportFillHubPage from "@/features/report-form/pages/ReportFillHubPage";
 import ReportFillPage from "@/features/report-form/pages/ReportFillPage";
 import SubmissionManagePage from "@/features/report-form/pages/SubmissionManagePage";
+import AupFillPage from "@/features/aup/pages/AupFillPage";
+import AupListPage from "@/features/aup/pages/AupListPage";
+import AupReviewPage from "@/features/aup/pages/AupReviewPage";
+import AupTemplateEditor from "@/features/aup/pages/admin/AupTemplateEditor";
+import AupTemplateListPage from "@/features/aup/pages/admin/AupTemplateListPage";
+import AupDictPage from "@/features/aup/pages/admin/AupDictPage";
+import AupReviewerConfigPage from "@/features/aup/pages/admin/AupReviewerConfigPage";
 import MobileStudentCenterRoute from "@/pages/mobile/MobileStudentCenterRoute";
 import MobileStudentCenterInvalidPage from "@/pages/mobile/MobileStudentCenterInvalidPage";
 import MobileLoginPage from "@/pages/mobile/auth/MobileLoginPage";
@@ -210,11 +223,20 @@ export const router = createHashRouter([
       { path: "feedback", element: <StudentFeedbackPage /> },
       { path: "settings", element: <StudentSettingsPage /> },
       { path: "cage-shelf", element: <StudentCageShelfPage /> },
+      { path: "cage-claim-review", element: <StudentCageClaimReviewPage /> },
       { path: "material", element: <StudentMaterialPage /> },
       { path: "material/requests", element: <Navigate to="/student/material?view=requests" replace /> },
       { path: "animal-order", element: <ReferenceDataPage /> },
+      { path: "aup", element: <StudentAupPage /> },
+      { path: "aup/review/:id", element: <AupReviewPage /> },
     ],
   },
+
+  // ═══════════════════════════════════════════════════════
+  //  AUP 计划书（填写入口暂挂门户「关于我们」下拉）
+  // ═══════════════════════════════════════════════════════
+  { path: "/aup/fill", element: <AuthGuard><AupFillPage /></AuthGuard> },
+  { path: "/aup/fill/:id", element: <AuthGuard><AupFillPage /></AuthGuard> },
 
   // ═══════════════════════════════════════════════════════
   //  教职工路由 — 统一在 /console 命名空间下
@@ -274,6 +296,8 @@ export const router = createHashRouter([
               { path: "knowledge", element: <AdminKnowledgeHomePage /> },
               { path: "report-fill", element: <ReportFillHubPage /> },
               { path: "report-fill/:id", element: <ReportFillPage /> },
+              { path: "aup", element: <AupListPage /> },
+              { path: "aup/review/:id", element: <AupReviewPage /> },
               { path: "analytics", element: <AdminAnalyticsPage /> },
               { path: "asset-records", element: <AdminAssetRecordPage /> },
               { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage /> },
@@ -329,6 +353,9 @@ export const router = createHashRouter([
                   { path: "login-branding", element: <Navigate to={`${STAFF_NS}/admin/settings/appearance`} replace /> },
                   { path: "conversation-archive", element: <AdminConversationArchivePage /> },
                   { path: "animal-order", element: <ReferenceDataPage /> },
+                  { path: "animal-order-review", element: <AdminOrderReviewPage /> },
+                  { path: "inventory", element: <AdminInventoryPage /> },
+                  { path: "inventory/scan", element: <ScanSessionPage /> },
                 ],
               },
               {
@@ -392,6 +419,11 @@ export const router = createHashRouter([
       { path: "pages/faq", element: <FAQPageEditor /> },
       { path: "pages/contact", element: <ContactPageEditor /> },
       { path: "pages/service-guide", element: <ServiceGuidePageEditor /> },
+      { path: "student-faq", element: <StudentQaEditor /> },
+      { path: "aup-template", element: <AupTemplateListPage /> },
+      { path: "aup-template/edit/:id", element: <AupTemplateEditor /> },
+      { path: "aup-dict", element: <AupDictPage /> },
+      { path: "aup-reviewers", element: <AupReviewerConfigPage /> },
     ],
   },
 

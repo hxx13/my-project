@@ -1212,3 +1212,23 @@ export async function fetchClaimHistory(id: number): Promise<ApprovalRecordItem[
   if (!res.data?.success) throw new Error(res.data?.message || "加载审批历史失败");
   return res.data.data ?? [];
 }
+
+// ── 学生端审批（组长入口）──
+
+/** 学生端待审批列表（组长） */
+export async function fetchStudentPendingClaims(
+  status?: string, keyword?: string, page = 1, pageSize = 20,
+): Promise<{ list: CageClaimItem[]; total: number; page: number; pageSize: number }> {
+  const res = await authHttp.get<Result<{ list: CageClaimItem[]; total: number; page: number; pageSize: number }>>(
+    "/student/cage-claims/pending",
+    { params: { status, keyword, page, pageSize } },
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "加载待审批列表失败");
+  return res.data.data ?? { list: [], total: 0, page: 1, pageSize: 20 };
+}
+
+/** 学生端审批（组长） */
+export async function approveStudentClaim(id: number, decision: "approved" | "rejected", reason?: string): Promise<void> {
+  const res = await authHttp.post<Result<any>>(`/student/cage-claims/${id}/approve`, { decision, reason });
+  if (!res.data?.success) throw new Error(res.data?.message || "审批失败");
+}

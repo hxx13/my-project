@@ -23,6 +23,17 @@
         <result property="contactEmail" column="contact_email"/>
         <result property="sendKey" column="send_key"/>
         <result property="wxPusherUid" column="wx_pusher_uid"/>
+        <result property="name" column="name"/>
+        <result property="jobNumber" column="job_number"/>
+        <result property="departmentName" column="department_name"/>
+        <result property="projectGroupName" column="project_group_name"/>
+        <result property="institutionId" column="institution_id"/>
+        <result property="userTypeNames" column="user_type_names"/>
+        <result property="head" column="head"/>
+        <result property="gender" column="gender"/>
+        <result property="mobilePhone" column="mobile_phone"/>
+        <result property="email" column="email"/>
+        <result property="isSchool" column="is_school"/>
     </resultMap>
 
     <sql id="User_Column_List">

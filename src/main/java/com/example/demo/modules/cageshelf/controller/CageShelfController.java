@@ -99,7 +99,7 @@ public class CageShelfController {
                                    @RequestParam(required = false) String roomId,
                                    @RequestParam(required = false) String roomName) {
         User user = resolveUser(authorization);
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) {
             return denied;
         }
@@ -116,12 +116,15 @@ public class CageShelfController {
                             @PathVariable String shelveId,
                             @RequestParam(required = false) String batchId) {
         User user = resolveUser(authorization);
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) {
             return denied;
         }
         try {
-            return Result.success(cageShelfService.fetchShelfDetail(shelveId, batchId));
+            if (user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
+                return Result.success(cageShelfService.fetchShelfDetail(shelveId, batchId));
+            }
+            return Result.success(studentCageShelfService.getShelfDetail(user, shelveId));
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
@@ -177,12 +180,15 @@ public class CageShelfController {
     public Result<?> specialStatusOverview(@RequestHeader(value = "Authorization", required = false) String authorization,
                                            @RequestParam(required = false) String batchId) {
         User user = resolveUser(authorization);
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) {
             return denied;
         }
         try {
-            return Result.success(cageShelfService.getSpecialStatusOverview(batchId));
+            if (user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
+                return Result.success(cageShelfService.getSpecialStatusOverview(batchId));
+            }
+            return Result.success(studentCageShelfService.getSpecialStatusOverview(user));
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
@@ -199,7 +205,7 @@ public class CageShelfController {
                              @RequestParam(defaultValue = "1") int page,
                              @RequestParam(defaultValue = "50") int size) {
         User user = resolveUser(authorization);
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) {
             return denied;
         }
@@ -391,7 +397,10 @@ public class CageShelfController {
     /** 一次性：从 cage_shelf_grid_cache 的 grid_json 解析 animalCageType 回填 cage_shelf_cell_snapshot */
     @PostMapping("/seed-cell-snapshot")
     @Operation(summary = "从 grid_cache 回填 cell_snapshot（一次性）")
-    public Result<?> seedCellSnapshot() {
+    public Result<?> seedCellSnapshot(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.ADMIN);
+        if (denied != null) return denied;
         return Result.success(cageShelfService.seedCellSnapshotFromGridCache());
     }
 
@@ -511,6 +520,9 @@ public class CageShelfController {
                                                   jakarta.servlet.http.HttpServletRequest request) {
         User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
         if (user == null) return Result.fail(401, "未登录");
+        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
+            return Result.fail(403, "无权限");
+        }
 
         Object idObj = body.get("id");
         if (idObj == null) return Result.fail(400, "笼位 id 不能为空");

@@ -6,6 +6,7 @@ import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
+import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.mapper.CageShelfGridCacheMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
@@ -101,7 +102,7 @@ public class StudentCageShelfService {
         } else {
             Set<String> ownGroupShelveIds = resolveOwnGroupShelveIds(user);
             if (ownGroupShelveIds.isEmpty()) {
-                return List.of();
+                throw new IllegalStateException("您还没有课题组，无法选笼认领。课题组绑定 AUP，请先联系管理员绑定课题组");
             }
             rows = cageShelfMapper.listAllShelfSummaries();
             if (rows == null || rows.isEmpty()) {
@@ -216,6 +217,9 @@ public class StudentCageShelfService {
     public Map<String, Object> getShelfDetail(User user, String shelveId, boolean mobileHtml5PrivilegeBypass, boolean realtime) {
         boolean isAdmin = isAdminUser(user) || mobileHtml5PrivilegeBypass;
         if (!isAdmin && !canAccessShelve(user, shelveId)) {
+            if (resolveUserGroupNames(user.getId()).isEmpty()) {
+                throw new IllegalStateException("您还没有课题组，无法选笼认领。课题组绑定 AUP，请先联系管理员绑定课题组");
+            }
             throw new IllegalStateException("无权限查看该笼架");
         }
 
@@ -278,6 +282,73 @@ public class StudentCageShelfService {
         out.remove("fromCache");
         out.remove("cachedAt");
         return out;
+    }
+
+    /**
+     * 对本地 DB 笼架网格按课题组可见性脱敏：admin 全量；其余角色仅本课题组可见，
+     * 非本组 cell 置 visible=false 并对 PI/部门脱敏为 ***。供降级后的共享读接口复用。
+     */
+    public List<Map<String, Object>> maskGridForUser(User user, List<Map<String, Object>> grid) {
+        if (grid == null) {
+            return List.of();
+        }
+        boolean isAdmin = isAdminUser(user);
+        List<String> groupNames = isAdmin ? List.of() : resolveUserGroupNames(user.getId());
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> cell : grid) {
+            Map<String, Object> c = new LinkedHashMap<>(cell);
+            Boolean empty = cell.get("empty") instanceof Boolean b ? b : false;
+            if (Boolean.TRUE.equals(empty)) {
+                c.put("visible", true);
+            } else {
+                boolean visible = isAdmin || isCellVisible(c, groupNames);
+                c.put("visible", visible);
+                if (!visible) {
+                    c.put("projectPiName", "***");
+                    c.put("piName", "***");
+                    c.put("departmentName", "***");
+                    c.put("aupNumber", "");
+                    c.put("specialStatuses", List.of());
+                    Map<String, Object> detail = castMap(c.get("detail"));
+                    if (detail != null) {
+                        detail.put("projectPiName", "***");
+                        detail.put("piName", "***");
+                        detail.put("departmentName", "***");
+                        detail.put("aupNumber", "");
+                    }
+                }
+            }
+            out.add(c);
+        }
+        return out;
+    }
+
+    /**
+     * 对单个笼位详情按课题组脱敏：admin 全量；其余角色非本组时，PI/部门/AUP/实验员/实验记录置 *** 或空。
+     * 供降级后的 detail/{animalCageId}、shelf/{id}/details 接口复用，避免学生读到非本组敏感数据。
+     */
+    public CageCellDetail maskDetailForUser(User user, CageCellDetail detail) {
+        if (detail == null || isAdminUser(user)) {
+            return detail;
+        }
+        List<String> groupNames = resolveUserGroupNames(user.getId());
+        String pi = detail.getProjectPiName() != null && !detail.getProjectPiName().isBlank()
+                ? detail.getProjectPiName()
+                : detail.getPiName();
+        boolean visible = PersonnelProjectGroupUtil.cellBelongsToAnyUserGroup(groupNames, pi, detail.getDepartmentName());
+        if (visible) {
+            return detail;
+        }
+        detail.setPiName("***");
+        detail.setProjectPiName("***");
+        detail.setProjectName("***");
+        detail.setDepartmentName("***");
+        detail.setAupNumber("");
+        detail.setExperimenterName("***");
+        detail.setLabAssistantName("***");
+        detail.setExperimentDesc("");
+        detail.setImagesJson("[]");
+        return detail;
     }
 
     // ---- refresh ----

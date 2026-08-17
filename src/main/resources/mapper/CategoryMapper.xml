@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.inventory.mapper.CategoryMapper">
+    <select id="selectAll" resultType="com.example.demo.modules.inventory.entity.InvCategory">
+        SELECT * FROM inv_category WHERE deleted = 0 ORDER BY sort_order ASC, id ASC
+    </select>
+    <select id="selectById" resultType="com.example.demo.modules.inventory.entity.InvCategory">
+        SELECT * FROM inv_category WHERE id = #{id} AND deleted = 0
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO inv_category (parent_id, name, icon_type, icon_value, sort_order, deleted)
+        VALUES (#{parentId}, #{name}, #{iconType}, #{iconValue}, #{sortOrder}, 0)
+    </insert>
+    <update id="updateById">
+        UPDATE inv_category
+        SET parent_id = #{parentId}, name = #{name}, icon_type = #{iconType}, icon_value = #{iconValue}, sort_order = #{sortOrder}
+        WHERE id = #{id}
+    </update>
+    <update id="softDelete">
+        UPDATE inv_category SET deleted = 1 WHERE id = #{id}
+    </update>
+    <select id="countChildren" resultType="int">
+        SELECT COUNT(1) FROM inv_category WHERE parent_id = #{parentId} AND deleted = 0
+    </select>
+    <select id="countItemsInCategory" resultType="int">
+        SELECT COUNT(1) FROM inv_item WHERE category_id = #{categoryId} AND deleted = 0
+    </select>
+</mapper>

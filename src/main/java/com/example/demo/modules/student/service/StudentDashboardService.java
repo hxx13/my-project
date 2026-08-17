@@ -74,33 +74,7 @@ public class StudentDashboardService {
         StudentDashboardResponse resp = new StudentDashboardResponse();
 
         // 1. ProfileSummary — full profile from personnel database
-        StudentProfileResponse profile = studentProfileService.buildProfile(user);
-        StudentDashboardResponse.ProfileSummary profileSummary = new StudentDashboardResponse.ProfileSummary();
-        if (profile.getPersonnel() != null) {
-            StudentProfilePersonnelInfo personnel = profile.getPersonnel();
-            profileSummary.setName(personnel.getName());
-            profileSummary.setDepartmentName(personnel.getDepartmentName());
-            profileSummary.setProjectGroupName(personnel.getProjectGroupName());
-            profileSummary.setRoleLabel(personnel.getUserTypeNames());
-            profileSummary.setHead(personnel.getHead());
-            profileSummary.setGender(personnel.getGender());
-            profileSummary.setMobilePhone(personnel.getMobilePhone());
-            profileSummary.setEmail(personnel.getEmail());
-            profileSummary.setTotalExp(personnel.getTotalExp());
-            profileSummary.setAllowedRoomsDisplayZh(personnel.getAllowedRoomsDisplayZh());
-        }
-        // authStatus: check real official room permission
-        AroPersonnel aroPersonnel = null;
-        try {
-            aroPersonnel = aroPersonnelMapper.findByUserId(user.getId());
-        } catch (Exception e) {
-            log.warn("Failed to query AroPersonnel for user {}", user.getId(), e);
-        }
-        boolean hasPerm = aroPersonnel != null
-                && aroPersonnel.getHasOfficialRoomPermission() != null
-                && aroPersonnel.getHasOfficialRoomPermission() == 1;
-        profileSummary.setAuthStatus(hasPerm ? "已授权" : "待授权");
-        resp.setProfile(profileSummary);
+        resp.setProfile(buildProfileSummary(user));
 
         // 2. StatsSummary — real data from DB
         String todayStart = LocalDate.now().toString();
@@ -185,6 +159,48 @@ public class StudentDashboardService {
         resp.setRecentNotices(recentNotices);
 
         return resp;
+    }
+
+    /**
+     * 轻量版：仅构建档案摘要 + 授权状态，供 Web 学生首页（/api/student/dashboard）使用。
+     * Web 首页只渲染 profile；统计/收藏房间/最近记录/最近通知各自有独立接口加载，
+     * 避免整页阻塞在外部 ARO 调用与房间聚合重查询上。
+     */
+    public StudentDashboardResponse buildDashboardProfile(User user) {
+        StudentDashboardResponse resp = new StudentDashboardResponse();
+        resp.setProfile(buildProfileSummary(user));
+        return resp;
+    }
+
+    /** 构建档案摘要 + 授权状态（buildDashboard 与 buildDashboardProfile 共用） */
+    private StudentDashboardResponse.ProfileSummary buildProfileSummary(User user) {
+        StudentProfileResponse profile = studentProfileService.buildProfile(user);
+        StudentDashboardResponse.ProfileSummary profileSummary = new StudentDashboardResponse.ProfileSummary();
+        if (profile.getPersonnel() != null) {
+            StudentProfilePersonnelInfo personnel = profile.getPersonnel();
+            profileSummary.setName(personnel.getName());
+            profileSummary.setDepartmentName(personnel.getDepartmentName());
+            profileSummary.setProjectGroupName(personnel.getProjectGroupName());
+            profileSummary.setRoleLabel(personnel.getUserTypeNames());
+            profileSummary.setHead(personnel.getHead());
+            profileSummary.setGender(personnel.getGender());
+            profileSummary.setMobilePhone(personnel.getMobilePhone());
+            profileSummary.setEmail(personnel.getEmail());
+            profileSummary.setTotalExp(personnel.getTotalExp());
+            profileSummary.setAllowedRoomsDisplayZh(personnel.getAllowedRoomsDisplayZh());
+        }
+        // authStatus: check real official room permission
+        AroPersonnel aroPersonnel = null;
+        try {
+            aroPersonnel = aroPersonnelMapper.findByUserId(user.getId());
+        } catch (Exception e) {
+            log.warn("Failed to query AroPersonnel for user {}", user.getId(), e);
+        }
+        boolean hasPerm = aroPersonnel != null
+                && aroPersonnel.getHasOfficialRoomPermission() != null
+                && aroPersonnel.getHasOfficialRoomPermission() == 1;
+        profileSummary.setAuthStatus(hasPerm ? "已授权" : "待授权");
+        return profileSummary;
     }
 
     /**

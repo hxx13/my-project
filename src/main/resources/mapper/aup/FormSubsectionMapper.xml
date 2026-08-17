@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.FormSubsectionMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO form_subsection (section_id, code, label, sort_order, description, description_tone, show_when)
+        VALUES (#{sectionId}, #{code}, #{label}, #{sortOrder}, #{description}, #{descriptionTone}, #{showWhen})
+    </insert>
+
+    <select id="listBySectionIds" resultType="com.example.demo.modules.aup.entity.FormSubsection">
+        SELECT * FROM form_subsection
+        WHERE section_id IN
+        <foreach collection="sectionIds" item="sid" open="(" separator="," close=")">
+            #{sid}
+        </foreach>
+        ORDER BY section_id ASC, sort_order ASC, id ASC
+    </select>
+
+    <delete id="deleteBySectionIds">
+        DELETE FROM form_subsection
+        WHERE section_id IN
+        <foreach collection="sectionIds" item="sid" open="(" separator="," close=")">
+            #{sid}
+        </foreach>
+    </delete>
+
+</mapper>

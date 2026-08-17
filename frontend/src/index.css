@@ -592,13 +592,12 @@ html[data-modal-scroll-lock] body {
     transform: translateY(0);
   }
 }
-/* ── 页面主滚动条隐藏 ── */
-html, body {
+/* ── 门户首页主滚动条隐藏（仅 /#/ 首页，避免影响其它页面） ── */
+html.portal-landing-scroll-hidden {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-html::-webkit-scrollbar,
-body::-webkit-scrollbar {
+html.portal-landing-scroll-hidden::-webkit-scrollbar {
   display: none;
 }
 

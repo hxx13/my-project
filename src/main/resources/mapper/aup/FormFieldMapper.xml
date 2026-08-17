@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.FormFieldMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO form_field (section_id, subsection_id, field_key, label, description, type, options, dict_key,
+            required, show_when, sort_order, config)
+        VALUES (#{sectionId}, #{subsectionId}, #{fieldKey}, #{label}, #{description}, #{type}, #{options}, #{dictKey},
+            #{required}, #{showWhen}, #{sortOrder}, #{config})
+    </insert>
+
+    <select id="listBySectionIds" resultType="com.example.demo.modules.aup.entity.FormField">
+        SELECT * FROM form_field
+        WHERE section_id IN
+        <foreach collection="sectionIds" item="sid" open="(" separator="," close=")">
+            #{sid}
+        </foreach>
+        ORDER BY section_id ASC, sort_order ASC, id ASC
+    </select>
+
+    <select id="listBySubsectionIds" resultType="com.example.demo.modules.aup.entity.FormField">
+        SELECT * FROM form_field
+        WHERE subsection_id IN
+        <foreach collection="subsectionIds" item="sid" open="(" separator="," close=")">
+            #{sid}
+        </foreach>
+        ORDER BY subsection_id ASC, sort_order ASC, id ASC
+    </select>
+
+    <delete id="deleteBySectionIds">
+        DELETE FROM form_field
+        WHERE section_id IN
+        <foreach collection="sectionIds" item="sid" open="(" separator="," close=")">
+            #{sid}
+        </foreach>
+    </delete>
+
+    <delete id="deleteBySubsectionIds">
+        DELETE FROM form_field
+        WHERE subsection_id IN
+        <foreach collection="subsectionIds" item="sid" open="(" separator="," close=")">
+            #{sid}
+        </foreach>
+    </delete>
+
+    <select id="countByDictKey" resultType="int">
+        SELECT COUNT(1) FROM form_field WHERE dict_key = #{dictKey}
+    </select>
+
+</mapper>

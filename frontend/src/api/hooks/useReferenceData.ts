@@ -20,6 +20,8 @@ import {
   submitOrder,
   fetchOrderDetail,
   fetchOrderLogs,
+  fetchAllOrders,
+  updateOrderStatus,
 } from "@/api/domains/referenceData.api";
 import { toast } from "react-hot-toast";
 
@@ -89,6 +91,25 @@ export function useOrderLogs(id: number) {
     queryKey: queryKeys.referenceData.orderLogs(id),
     queryFn: () => fetchOrderLogs(id),
     enabled: !!id,
+  });
+}
+
+export function useAllOrders(page = 1, pageSize = 50) {
+  return useQuery({
+    queryKey: queryKeys.referenceData.allOrders(page, pageSize),
+    queryFn: () => fetchAllOrders(page, pageSize),
+  });
+}
+
+export function useUpdateOrderStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) => updateOrderStatus(id, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.referenceData.all });
+      toast.success("订单状态已更新");
+    },
+    onError: (e: Error) => toast.error(e.message || "更新失败"),
   });
 }
 

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupAttachmentMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO aup_attachment (aup_id, file_id, file_name, created_by, deleted, created_at)
+        VALUES (#{aupId}, #{fileId}, #{fileName}, #{createdBy}, #{deleted}, NOW())
+    </insert>
+
+    <select id="selectById" resultType="com.example.demo.modules.aup.entity.AupAttachment">
+        SELECT * FROM aup_attachment WHERE id = #{id}
+    </select>
+
+    <select id="selectByAupIdAndFileId" resultType="com.example.demo.modules.aup.entity.AupAttachment">
+        SELECT * FROM aup_attachment WHERE aup_id = #{aupId} AND file_id = #{fileId} LIMIT 1
+    </select>
+
+    <select id="selectByFileId" resultType="com.example.demo.modules.aup.entity.AupAttachment">
+        SELECT * FROM aup_attachment WHERE file_id = #{fileId} ORDER BY id DESC LIMIT 1
+    </select>
+
+    <select id="selectActiveByAupId" resultType="com.example.demo.modules.aup.entity.AupAttachment">
+        SELECT * FROM aup_attachment WHERE aup_id = #{aupId} AND deleted = 0 ORDER BY created_at ASC, id ASC
+    </select>
+
+    <select id="countActiveByAupId" resultType="int">
+        SELECT COUNT(*) FROM aup_attachment WHERE aup_id = #{aupId} AND deleted = 0
+    </select>
+
+    <update id="softDeleteById">
+        UPDATE aup_attachment SET deleted = 1 WHERE id = #{id} AND deleted = 0
+    </update>
+
+</mapper>

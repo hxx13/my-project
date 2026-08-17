@@ -31,6 +31,8 @@ public class AuthService {
     }
 
     public Result<AuthData> generateAuthResult(User user) {
+        // 统一权限：登录即合并两个 id（教职工/学生）的最高角色，返回与 Token 解析一致
+        jwtTokenService.resolveUnifiedRole(user);
         AuthData data = new AuthData();
         data.setToken(jwtTokenService.generateToken(user));
         data.setRole(user.getRole().getCode());

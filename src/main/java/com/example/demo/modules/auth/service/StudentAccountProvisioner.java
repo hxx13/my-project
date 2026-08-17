@@ -24,35 +24,42 @@ public class StudentAccountProvisioner {
         this.userMapper = userMapper;
     }
 
-    @Scheduled(fixedDelay = 300_000)  // 每 5 分钟
+    @Scheduled(cron = "0 30 3 * * *")  // 每天 03:30 扫一次
     public void provision() {
         List<String> userIds = jdbcTemplate.queryForList(
                 "SELECT user_id FROM aro_personnel", String.class
         );
         int created = 0;
-        int skipped = 0;
         for (String userId : userIds) {
-            try {
-                User existing = userMapper.findById(userId);
-                if (existing != null) {
-                    skipped++;
-                    continue;
-                }
-                User user = new User();
-                user.setId(userId);
-                user.setUsername(userId);
-                user.setRole(RoleEnum.MEMBER);
-                user.setStatus(1);
-                user.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
-                user.setAccountSource("STUDENT");
-                userMapper.insertUser(user);
-                created++;
-            } catch (Exception ex) {
-                log.error("[special-channel] provision failed userId={}: {}", userId, ex.getMessage());
-            }
+            if (provisionOne(userId)) created++;
         }
-        if (created > 0 || skipped > 0) {
-            log.info("[special-channel] account provision: created={} skipped={}", created, skipped);
+        if (created > 0) {
+            log.info("[special-channel] account provision: created={}", created);
+        }
+    }
+
+    /** 现场补建单个学生账号（幂等：已存在则跳过）。返回是否新建。 */
+    public boolean provisionOne(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return false;
+        }
+        try {
+            User existing = userMapper.findById(userId);
+            if (existing != null) {
+                return false;
+            }
+            User user = new User();
+            user.setId(userId);
+            user.setUsername(userId);
+            user.setRole(RoleEnum.MEMBER);
+            user.setStatus(1);
+            user.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
+            user.setAccountSource("STUDENT");
+            userMapper.insertUser(user);
+            return true;
+        } catch (Exception ex) {
+            log.error("[special-channel] provision failed userId={}: {}", userId, ex.getMessage());
+            return false;
         }
     }
 }

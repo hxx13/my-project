@@ -1335,9 +1335,14 @@ export default function AdminLayout() {
                           if (!res.ok) throw new Error("Impersonation failed");
                           const wrapper = await res.json() as { code: number; data: { token: string; aroUserId: string } };
                           const { token, aroUserId } = wrapper.data;
-                          // 保存 ARO 姓名用于学生端头像显示
                           const aroName = aroBinding?.name || aroUserId;
-                          authStorage.setAuth(token, "MEMBER", { displayName: aroName, username: aroUserId } as any);
+                          // 统一权限：角色沿用教职工最高权限；身份 id 切到学生（数据 scope）
+                          authStorage.setAuth(token, currentRole, {
+                            ...(currentUserInfo ?? {}),
+                            id: aroUserId,
+                            username: aroUserId,
+                            displayName: aroName,
+                          } as any);
                           toast.success("已切换至学生视图");
                           navigate("/student/home");
                         } catch {
@@ -1506,7 +1511,9 @@ export default function AdminLayout() {
         <main
           data-admin-main-scroll
           className={cn(
-            "relative z-[1] flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden",
+            // overflow-x 用 clip 而非 hidden：hidden 会把 overflow-y 计算成 auto，令 main 成为滚动容器，
+            // 使页面内 position:sticky 元素（评审页吸顶工具栏等）失效，点击吸顶按钮会把整页锚点带回顶部。
+            "relative z-[1] flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-clip",
             isDark ? "bg-transparent" : "bg-[var(--twin-canvas-soft)]"
           )}
         >

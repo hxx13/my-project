@@ -6,6 +6,7 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.service.CageClaimService;
+import com.example.demo.modules.identity.service.PersonIdentityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -27,11 +28,14 @@ public class StudentCageClaimController {
 
     private final AuthContextService authContextService;
     private final CageClaimService claimService;
+    private final PersonIdentityService personIdentityService;
 
     public StudentCageClaimController(AuthContextService authContextService,
-                                       CageClaimService claimService) {
+                                       CageClaimService claimService,
+                                       PersonIdentityService personIdentityService) {
         this.authContextService = authContextService;
         this.claimService = claimService;
+        this.personIdentityService = personIdentityService;
     }
 
     private User resolveUser(HttpServletRequest req) {
@@ -45,6 +49,15 @@ public class StudentCageClaimController {
         if (u == null) return Result.error("未登录");
         if (u.getStatus() != null && u.getStatus() == 0) return Result.error("账号已禁用");
         return null;
+    }
+
+    /** 审批人 = 组长（GROUP_LEADER）或管理员。学生端审批入口（组长看待审/审批本组申请）。 */
+    private Result<?> requireApprover(User u) {
+        if (u == null) return Result.error("未登录");
+        if (u.getStatus() != null && u.getStatus() == 0) return Result.error("账号已禁用");
+        if (u.getRole() != null && u.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) return null;
+        if (personIdentityService.isPi(u.getId())) return null;
+        return Result.error("无审批权限（仅组长或管理员）");
     }
 
     // ── 池查询 ──
@@ -182,6 +195,45 @@ public class StudentCageClaimController {
         Result<?> denied = requireLogin(u);
         if (denied != null) return Result.fail(401, denied.getMessage());
         return Result.success(claimService.getMyClaims(u.getId(), status));
+    }
+
+    // ── 组长审批（学生端审批入口）──
+
+    @GetMapping("/pending")
+    @Operation(summary = "组长看待审批列表（学生端审批入口）")
+    public Result<Map<String, Object>> pending(@RequestParam(required = false) String status,
+                                                @RequestParam(required = false) String keyword,
+                                                @RequestParam(defaultValue = "1") int page,
+                                                @RequestParam(defaultValue = "20") int pageSize,
+                                                HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireApprover(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        return Result.success(claimService.getPendingList(status, keyword, page, pageSize));
+    }
+
+    @PostMapping("/{id}/approve")
+    @Operation(summary = "组长审批申请/释放（学生端审批入口）")
+    public Result<Map<String, Object>> approve(@PathVariable Long id,
+                                                @RequestBody Map<String, Object> body,
+                                                HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireApprover(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+
+        String decision = str(body, "decision");
+        String reason = str(body, "reason");
+        if (decision == null || decision.isBlank())
+            return Result.fail(400, "decision 必填（approved / rejected）");
+        if (!"approved".equals(decision) && !"rejected".equals(decision))
+            return Result.fail(400, "decision 必须为 approved 或 rejected");
+
+        try {
+            CageClaim claim = claimService.approve(u, id, decision, reason);
+            return Result.success(Map.of("id", claim.getId(), "status", claim.getClaimStatus()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
     }
 
     // ── helpers ──

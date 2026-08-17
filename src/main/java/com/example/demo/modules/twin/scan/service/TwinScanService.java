@@ -1,12 +1,20 @@
 package com.example.demo.modules.twin.scan.service; // 请核对一下你的真实包名
 
 import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.common.config.DebugToggleService;
 import com.example.demo.common.dto.UniversalEvent;
+import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.dto.AroRecord;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroDatabaseService;
 import com.example.demo.modules.aro.service.RealtimeEventDedupService;
+import com.example.demo.modules.aro.service.RealtimeFeedPushService;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
 import com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper;
+import com.example.demo.modules.twin.scan.state.ScanDataSource;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyState;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyStateService;
 import com.example.demo.modules.twin.scan.support.ScanAnalyzeTimingTrace;
 import com.example.demo.modules.twin.scan.support.ScanCampusTagResolver;
 import com.example.demo.modules.twin.scan.support.ScanPopupFlowLog;
@@ -22,11 +30,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -48,6 +59,9 @@ public class TwinScanService {
     @Autowired
     private AroDatabaseService aroDatabaseService;
 
+    @Autowired
+    private RealtimeFeedPushService realtimeFeedPushService;
+
     // 💥 引入 WebSocket 发射器
     @Autowired
     private SocketIOServer socketIOServer;
@@ -62,6 +76,9 @@ public class TwinScanService {
     private TwinAccessLogCorrelationService twinAccessLogCorrelationService;
 
     @Autowired
+    private DebugToggleService debugToggleService;
+
+    @Autowired
     private ExamRoomPermissionSyncService examRoomPermissionSyncService;
 
     @Autowired
@@ -73,12 +90,22 @@ public class TwinScanService {
     @Autowired
     private ScanAnalyzeTimingTrace analyzeTimingTrace;
 
+    @Autowired
+    private ScanOccupancyStateService scanOccupancyStateService;
+
+    @Autowired
+    private AroPersonnelMapper aroPersonnelMapper;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 扫码阶段 1：探测状态与权限（日志由 traceId 串联为 3/5、4/5 步）。
      */
     public Map<String, Object> processScanStatus(String userId, String traceId) {
+        if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
+            return processScanStatusLocal(userId, traceId);
+        }
+
         long aroParallelStart = System.currentTimeMillis();
 
         CompletableFuture<List<Map<String, Object>>> noLeaveFuture = CompletableFuture.supplyAsync(() -> {
@@ -163,6 +190,18 @@ public class TwinScanService {
             response.put("currentState", "INSIDE");
             response.put("pendingRooms", finalPending);
             response.put("allowedRooms", finalAllowed);
+
+            // ARO 在馆 → 覆盖本地状态机（单房间，取第一个翻译后房间）
+            try {
+                if (!finalPending.isEmpty()) {
+                    Map<String, Object> firstRoom = finalPending.get(0);
+                    String rid = firstRoom.get("officialRoomId") != null ? String.valueOf(firstRoom.get("officialRoomId")) : "";
+                    String rname = firstRoom.get("displayName") != null ? String.valueOf(firstRoom.get("displayName")) : "";
+                    scanOccupancyStateService.markInside(userId, rid, rname, null);
+                }
+            } catch (Exception e) {
+                log.warn("[scan-status] 覆盖状态机 INSIDE 失败 userId={} err={}", userId, e.getMessage());
+            }
         } else {
             long tTranslate = System.currentTimeMillis();
             List<Map<String, Object>> finalAllowed = translateAndFilterRooms(allowedRooms);
@@ -184,8 +223,39 @@ public class TwinScanService {
             }
 
             // 审查完毕，组装并放行给前端
-            response.put("currentState", "OUTSIDE");
-            response.put("allowedRooms", finalAllowed);
+            // 锁定判断：本地模式进入的人（LOCAL- INSIDE），切回 ARO 后 ARO 无滞留仍按 INSIDE，保证现场能离开
+            ScanOccupancyState occ = null;
+            try {
+                occ = scanOccupancyStateService.getByUserId(userId);
+            } catch (Exception e) {
+                log.warn("[scan-status] 读状态机失败 userId={} err={}", userId, e.getMessage());
+            }
+            boolean lockedLocalInside = occ != null
+                    && ScanOccupancyStateService.STATE_INSIDE.equals(occ.getState())
+                    && occ.getEnterLogId() != null
+                    && occ.getEnterLogId().startsWith("LOCAL-")
+                    && occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank();
+
+            if (lockedLocalInside) {
+                List<Map<String, Object>> lockedPending = new ArrayList<>();
+                Map<String, Object> pr = new HashMap<>();
+                pr.put("officialRoomId", occ.getCurrentRoomId());
+                pr.put("displayName", occ.getCurrentRoomName());
+                pr.put("officialRoomName", occ.getCurrentRoomName());
+                lockedPending.add(pr);
+                response.put("currentState", "INSIDE");
+                response.put("pendingRooms", lockedPending);
+                response.put("allowedRooms", finalAllowed);
+            } else {
+                response.put("currentState", "OUTSIDE");
+                response.put("allowedRooms", finalAllowed);
+                // ARO 无滞留 → 覆盖本地状态机 OUTSIDE
+                try {
+                    scanOccupancyStateService.markOutside(userId);
+                } catch (Exception e) {
+                    log.warn("[scan-status] 覆盖状态机 OUTSIDE 失败 userId={} err={}", userId, e.getMessage());
+                }
+            }
 
             if (!finalAllowed.isEmpty()) {
                 CompletableFuture.runAsync(() -> {
@@ -231,7 +301,11 @@ public class TwinScanService {
      * 调用方在 accessType=2 且登记成功后，必须执行 clearActivationStatesForUser(userId)。
      */
     // 💥 方法入参增加了 isShared 和 isKeep
-    public boolean executeAccessAction(String userId, String officialRoomId, int accessType, boolean isShared, boolean isKeep, String dahuaSeq, boolean isBorrowedCard) {
+    public boolean executeAccessAction(String userId, String officialRoomId, int accessType, boolean isShared, boolean isKeep, String dahuaSeq, boolean isBorrowedCard, String sourceTag) {
+        if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
+            return executeLocalAccess(userId, officialRoomId, accessType, sourceTag);
+        }
+
         // 0. 离开前预同步本地流水，确保后续 predictActionReward 能找到今日 ENTER 记录
         if (accessType == 2) {
             try {
@@ -249,6 +323,11 @@ public class TwinScanService {
             if (noLeaveRooms != null && noLeaveRooms.isEmpty()) {
                 noLeaveBypassUntilMap.put(userId, System.currentTimeMillis() + 30_000L);
                 log.debug("[扫码·登记] id={} 离开状态自愈（官方确认已无待离房间）", userId);
+                try {
+                    scanOccupancyStateService.markOutside(userId);
+                } catch (Exception e) {
+                    log.warn("[扫码·登记] 自愈后清状态机失败 userId={} err={}", userId, e.getMessage());
+                }
                 return true;
             }
             return false;
@@ -259,12 +338,19 @@ public class TwinScanService {
         }
 
         if (success) {
+            if (accessType == 2) {
+                try {
+                    scanOccupancyStateService.markOutside(userId);
+                } catch (Exception e) {
+                    log.warn("[扫码·登记] 离开后清状态机失败 userId={} err={}", userId, e.getMessage());
+                }
+            }
             try {
                 twinAccessLogCorrelationService.registerPending(
                         accessType,
                         userId,
                         officialRoomId,
-                        TwinAccessLogCorrelationService.SOURCE_WEB_SCAN,
+                        sourceTag,
                         null,
                         accessType == 1 ? "Web扫码进入（待官方流水对齐）" : "Web扫码离开（待官方流水对齐）",
                         "由孪生 Web 扫码发起 ARO 登记；官方流水批量入库后将自动合并溯源。"
@@ -321,6 +407,123 @@ public class TwinScanService {
         }
 
         return success;
+    }
+
+    private boolean executeLocalAccess(String userId, String roomId, int accessType, String sourceTag) {
+        AroRecord rec = new AroRecord();
+        rec.setId("LOCAL-" + UUID.randomUUID().toString().replace("-", ""));
+        rec.setAccessType(accessType);
+        rec.setCreateTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        rec.setUserId(userId);
+        rec.setRoomId(roomId);
+        try {
+            RoomMappingRoom catalog = roomMappingRoomMapper.selectByRoomId(roomId);
+            if (catalog != null) {
+                if (catalog.getRoomName() != null) rec.setRoomName(catalog.getRoomName());
+                if (catalog.getRegionName() != null) rec.setAreaName(catalog.getRegionName());
+                if (catalog.getFloorName() != null) rec.setFloorName(catalog.getFloorName());
+            }
+        } catch (Exception e) {
+            // 房间信息查不到不影响直写
+        }
+        try {
+            AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
+            if (p != null) {
+                rec.setName(p.getName());
+                rec.setProjectGroupNames(p.getResolvedProjectGroupNames());
+                rec.setUserTypeNames(p.getUserTypeNames());
+                if (p.getMobilePhone() != null) rec.setMobilePhone(p.getMobilePhone());
+                if (p.getEmail() != null) rec.setEmail(p.getEmail());
+            }
+        } catch (Exception e) {
+            // 人员信息查不到不影响直写
+        }
+        rec.setFeedSource("LOCAL_SCAN");
+        rec.setFeedSummaryZh(accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）");
+        rec.setFeedDetailZh("本地数据源模式：由孪生 Web 扫码直写本地流水，切回官方后自动对齐溯源。");
+        try {
+            aroDatabaseService.batchInsert(List.of(rec));
+        } catch (Exception e) {
+            log.error("[scan·本地直写] userId={} 写入失败 err={}", userId, e.getMessage(), e);
+            return false;
+        }
+        try {
+            realtimeFeedPushService.pushRecords(java.util.List.of(rec));
+        } catch (Exception e) {
+            log.warn("[scan·本地直写] 瀑布流推送失败 userId={} err={}", userId, e.getMessage());
+        }
+        try {
+            twinAccessLogCorrelationService.registerPending(
+                    accessType, userId, roomId,
+                    sourceTag, null,
+                    accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）",
+                    "本地数据源模式：本地直写流水，切回官方后自动对齐溯源。");
+        } catch (Exception e) {
+            log.debug("[scan] local registerPending skip: {}", e.getMessage());
+        }
+        try {
+            if (accessType == 1) {
+                scanOccupancyStateService.markInside(userId, roomId, rec.getRoomName(), rec.getId());
+            } else {
+                scanOccupancyStateService.markOutside(userId);
+            }
+        } catch (Exception e) {
+            log.warn("[scan·本地直写] 状态机更新失败 userId={} err={}", userId, e.getMessage());
+        }
+        return true;
+    }
+
+    private Map<String, Object> processScanStatusLocal(String userId, String traceId) {
+        ScanOccupancyState occ = scanOccupancyStateService.getByUserId(userId);
+        boolean inside = occ != null && ScanOccupancyStateService.STATE_INSIDE.equals(occ.getState());
+
+        List<Map<String, Object>> allowedRooms = loadAllowedRoomsFromSnapshot(userId);
+
+        try {
+            String todayStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            applyDayTrajectoryRoomLocks(userId, todayStr + "%", allowedRooms, traceId);
+            applyCampusEnterAdminLocks(allowedRooms, traceId);
+        } catch (Exception e) {
+            log.warn("[scan-status] day-trajectory-lock failed userId={} err={}", userId, e.getMessage());
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        if (inside) {
+            List<Map<String, Object>> pendingRooms = new ArrayList<>();
+            if (occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank()) {
+                Map<String, Object> pr = new HashMap<>();
+                pr.put("officialRoomId", occ.getCurrentRoomId());
+                pr.put("displayName", occ.getCurrentRoomName());
+                pr.put("officialRoomName", occ.getCurrentRoomName());
+                pendingRooms.add(pr);
+            }
+            response.put("currentState", "INSIDE");
+            response.put("pendingRooms", pendingRooms);
+            response.put("allowedRooms", allowedRooms);
+        } else {
+            response.put("currentState", "OUTSIDE");
+            response.put("allowedRooms", allowedRooms);
+        }
+        return response;
+    }
+
+    private List<Map<String, Object>> loadAllowedRoomsFromSnapshot(String userId) {
+        List<Map<String, Object>> rooms = new ArrayList<>();
+        try {
+            AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
+            String json = p == null ? null : p.getAllowedRoomsJson();
+            if (json == null || json.isBlank()) {
+                return rooms;
+            }
+            List<Map<String, Object>> list = objectMapper.readValue(
+                    json, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+            if (list != null) {
+                rooms.addAll(list);
+            }
+        } catch (Exception e) {
+            log.warn("[scan-status] 加载可进房间快照失败 userId={} err={}", userId, e.getMessage());
+        }
+        return rooms;
     }
 
     /**

@@ -36,7 +36,6 @@ export { ThemePicker, THEMES } from "./theme-picker";
 export { RoomCard } from "./room-card";
 export type { RoomCardProps } from "./room-card";
 
-export { CellDetailModal } from "./cell-detail-modal";
 export { ViewToggle } from "./view-toggle";
 export type { ViewToggleProps } from "./view-toggle";
 export { BarChart } from "./bar-chart";

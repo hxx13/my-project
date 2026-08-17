@@ -10,9 +10,13 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleEngineService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
+import com.example.demo.modules.twin.card.service.TwinAccessLogCorrelationService;
 import com.example.demo.modules.twin.audit.service.TwinAuditService;
 import com.example.demo.modules.twin.scan.service.TwinScanService;
 import com.example.demo.modules.twin.scan.service.WebScanExitDahuaLinkageService;
+import com.example.demo.modules.twin.scan.state.ScanDataSource;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyState;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyStateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -44,6 +48,8 @@ public class TwinAuditController {
     private final com.example.demo.modules.twin.rpg.service.RpgEngineService rpgEngineService;
     private final com.example.demo.modules.twin.rpg.service.TwinExpStatsService twinExpStatsService;
     private final com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService aroMiniPenetrationSyncService;
+    private final com.example.demo.common.config.DebugToggleService debugToggleService;
+    private final com.example.demo.modules.twin.scan.state.ScanOccupancyStateService scanOccupancyStateService;
 
     public TwinAuditController(
             AuthContextService authContextService,
@@ -55,7 +61,9 @@ public class TwinAuditController {
             WebScanExitDahuaLinkageService webScanExitDahuaLinkageService,
             com.example.demo.modules.twin.rpg.service.RpgEngineService rpgEngineService,
             com.example.demo.modules.twin.rpg.service.TwinExpStatsService twinExpStatsService,
-            com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService aroMiniPenetrationSyncService) {
+            com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService aroMiniPenetrationSyncService,
+            com.example.demo.common.config.DebugToggleService debugToggleService,
+            com.example.demo.modules.twin.scan.state.ScanOccupancyStateService scanOccupancyStateService) {
         this.authContextService = authContextService;
         this.twinAuditService = twinAuditService;
         this.aroService = aroService;
@@ -66,6 +74,8 @@ public class TwinAuditController {
         this.rpgEngineService = rpgEngineService;
         this.twinExpStatsService = twinExpStatsService;
         this.aroMiniPenetrationSyncService = aroMiniPenetrationSyncService;
+        this.debugToggleService = debugToggleService;
+        this.scanOccupancyStateService = scanOccupancyStateService;
     }
 
     @GetMapping("/pending-by-floor")
@@ -112,7 +122,7 @@ public class TwinAuditController {
         String physicalCardNo = mapping != null ? mapping.getCardNo() : null;
 
         // 对齐 web 扫码离开：ARO 登记 + 预同步 + 经验值计算（全部在 executeAccessAction 核心层完成）
-        boolean ok = twinScanService.executeAccessAction(userId, officialRoomId, 2, false, false, dahuaSeq, false);
+        boolean ok = twinScanService.executeAccessAction(userId, officialRoomId, 2, false, false, dahuaSeq, false, TwinAccessLogCorrelationService.SOURCE_WEB_SCAN);
         if (!ok) {
             log.warn("[twin] audit manual-exit rejected by aro operator={} userId={} officialRoomId={} roomName={}",
                     operator.getId(), userId, officialRoomId, roomName);
@@ -137,6 +147,13 @@ public class TwinAuditController {
     }
 
     private String resolveOfficialRoomIdFromAro(String userId, String localRoomId, String roomName) {
+        if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
+            com.example.demo.modules.twin.scan.state.ScanOccupancyState occ = scanOccupancyStateService.getByUserId(userId);
+            if (occ != null && occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank()) {
+                return occ.getCurrentRoomId();
+            }
+            return null;
+        }
         List<Map<String, Object>> noLeaveRooms = aroService.getNoLeaveRoom(userId);
         if (noLeaveRooms == null || noLeaveRooms.isEmpty()) {
             return null;

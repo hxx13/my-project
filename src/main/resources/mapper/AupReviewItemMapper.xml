@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupReviewItemMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO aup_review_item (review_id, aup_id, round_no, field_key, section_key, field_label,
+                                     verdict, reason, suggestion, reviewer, reviewer_role)
+        VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.reviewId}, #{r.aupId}, #{r.roundNo}, #{r.fieldKey}, #{r.sectionKey}, #{r.fieldLabel},
+             #{r.verdict}, #{r.reason}, #{r.suggestion}, #{r.reviewer}, #{r.reviewerRole})
+        </foreach>
+    </insert>
+
+    <sql id="ItemColumns">
+        id, review_id AS reviewId, aup_id AS aupId, round_no AS roundNo, field_key AS fieldKey,
+        section_key AS sectionKey, field_label AS fieldLabel, verdict, reason, suggestion,
+        reviewer, reviewer_role AS reviewerRole, created_at AS createdAt
+    </sql>
+
+    <select id="selectByAupRound" resultType="com.example.demo.modules.aup.entity.AupReviewItem">
+        SELECT <include refid="ItemColumns"/>
+        FROM aup_review_item
+        WHERE aup_id = #{aupId} AND round_no = #{roundNo}
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectByAupRoundFieldKey" resultType="com.example.demo.modules.aup.entity.AupReviewItem">
+        SELECT <include refid="ItemColumns"/>
+        FROM aup_review_item
+        WHERE aup_id = #{aupId} AND round_no = #{roundNo} AND field_key = #{fieldKey}
+        ORDER BY id ASC
+    </select>
+</mapper>

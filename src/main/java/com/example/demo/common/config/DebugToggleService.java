@@ -6,6 +6,7 @@ import com.example.demo.common.event.CredentialsChangedEvent;
 import com.example.demo.common.logging.registry.LogCategory;
 import com.example.demo.common.logging.registry.LogCategoryRegistry;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
+import com.example.demo.modules.twin.scan.state.ScanDataSource;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 集中管理所有 debug/logging 开关，支持运行时热切换（无需重启）。
@@ -48,6 +50,7 @@ public class DebugToggleService {
     private final AtomicLong scanTimingConsoleMinMs = new AtomicLong(300);
     private final AtomicBoolean accessRuleDahuaDebugEnabled = new AtomicBoolean(true);
     private final AtomicBoolean telemetryArchiveEnabled = new AtomicBoolean(true);
+    private final AtomicReference<ScanDataSource> scanDataSource = new AtomicReference<>(ScanDataSource.ARO);
 
     /** category key (e.g. "twin") → true=DEBUG, false=INFO */
     private final Map<String, Boolean> categoryEnabled = new LinkedHashMap<>();
@@ -84,6 +87,10 @@ public class DebugToggleService {
 
     public boolean isTelemetryArchiveEnabled() {
         return telemetryArchiveEnabled.get();
+    }
+
+    public ScanDataSource getScanDataSource() {
+        return scanDataSource.get();
     }
 
     public boolean isCategoryEnabled(String categoryKey) {
@@ -125,6 +132,7 @@ public class DebugToggleService {
                 toBool(settingsService.getEffectiveValue("integration", "access_rule_dahua_debug", "true")));
         telemetryArchiveEnabled.set(
                 toBool(settingsService.getEffectiveValue("integration", "telemetry.archive.enabled", "true")));
+        scanDataSource.set(ScanDataSource.resolve(settingsService.getEffectiveValue("integration", "scan.data_source", "aro")));
     }
 
     private void refreshLoggingCategories() {

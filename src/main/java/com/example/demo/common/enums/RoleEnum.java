@@ -6,10 +6,9 @@ public enum RoleEnum {
     MEMBER("MEMBER", "学生", 1),
     STAFF("STAFF", "普通员工", 2),
     SENIOR("SENIOR", "高级员工", 3),
-    PI("PI", "课题组负责人", 4),
-    ADMIN("ADMIN", "管理员", 5),
-    SUPER_ADMIN("SUPER_ADMIN", "超级管理员", 6),
-    PLATFORM_OWNER("PLATFORM_OWNER", "平台所有者", 7);
+    ADMIN("ADMIN", "管理员", 4),
+    SUPER_ADMIN("SUPER_ADMIN", "超级管理员", 5),
+    PLATFORM_OWNER("PLATFORM_OWNER", "平台所有者", 6);
 
     private final String code;
     private final String descZh;

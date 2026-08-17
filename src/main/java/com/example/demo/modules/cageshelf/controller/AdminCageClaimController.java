@@ -6,6 +6,7 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.service.CageClaimService;
+import com.example.demo.modules.identity.service.PersonIdentityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -29,11 +30,14 @@ public class AdminCageClaimController {
 
     private final AuthContextService authContextService;
     private final CageClaimService claimService;
+    private final PersonIdentityService personIdentityService;
 
     public AdminCageClaimController(AuthContextService authContextService,
-                                     CageClaimService claimService) {
+                                     CageClaimService claimService,
+                                     PersonIdentityService personIdentityService) {
         this.authContextService = authContextService;
         this.claimService = claimService;
+        this.personIdentityService = personIdentityService;
     }
 
     private User resolveUser(HttpServletRequest req) {
@@ -50,6 +54,15 @@ public class AdminCageClaimController {
         return null;
     }
 
+    /** 审批人 = 管理员及以上，或组长（GROUP_LEADER 身份标识，替代已废弃的 RoleEnum.PI）。 */
+    private Result<?> requireApprover(User u) {
+        if (u == null) return Result.error("未登录");
+        if (u.getStatus() != null && u.getStatus() == 0) return Result.error("账号已禁用");
+        if (u.getRole() != null && u.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) return null;
+        if (personIdentityService.isPi(u.getId())) return null;
+        return Result.error("无审批权限（仅管理员或组长）");
+    }
+
     // ── 待审批列表 ──
 
     @GetMapping("/pending")
@@ -61,7 +74,7 @@ public class AdminCageClaimController {
             @RequestParam(defaultValue = "20") int pageSize,
             HttpServletRequest req) {
         User u = resolveUser(req);
-        Result<?> denied = requireMinRole(u, RoleEnum.PI);
+        Result<?> denied = requireApprover(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         return Result.success(claimService.getPendingList(status, keyword, page, pageSize));
     }
@@ -74,7 +87,7 @@ public class AdminCageClaimController {
                                                 @RequestBody Map<String, Object> body,
                                                 HttpServletRequest req) {
         User u = resolveUser(req);
-        Result<?> denied = requireMinRole(u, RoleEnum.PI);
+        Result<?> denied = requireApprover(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
 
         String decision = str(body, "decision");

@@ -21,7 +21,7 @@ const PAGE_TYPES = [
   {
     key: "contact",
     title: "联系我们",
-    desc: "地址、电话、邮箱、办公时间等联系方式",
+    desc: "地址、电话、邮箱、办公时间等联系方式与地图指引",
     icon: Phone,
     color: "#059669",
     bg: "#d1fae5",

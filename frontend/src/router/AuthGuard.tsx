@@ -20,14 +20,10 @@ export default function AuthGuard({ requireRole, children }: AuthGuardProps) {
     return <Navigate to={loginPath} replace state={{ from: location }} />;
   }
 
-  // ── 学生库账号不能进教职工视角 ──
+  // ── 教职工视角门禁：统一按角色判定（role≥STAFF 才可进 /console），不再用 accountSource 区分学生库 ──
   if (currentPath.startsWith("/console")) {
-    const source = authStorage.getUserInfo()?.accountSource;
     const role = authStorage.getRole() ?? "MEMBER";
-    // 明确标记为学生库 → 拦截；来源不明时按角色兜底
-    const isStudentLike = source === "STUDENT"
-      || (source == null && !hasMinRole(role, "STAFF"));
-    if (isStudentLike) {
+    if (!hasMinRole(role, "STAFF")) {
       return <Navigate to="/student/home" replace />;
     }
   }

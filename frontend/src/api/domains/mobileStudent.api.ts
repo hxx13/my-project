@@ -10,8 +10,6 @@ import type {
 } from "@/api/domains/analytics.api";
 import type { ScanDelayRequestResult } from "@/api/domains/scanDelay.api";
 import type { ScanDelayOptionSummary } from "@/api/types/scanner";
-import type { CageShelfDetail } from "@/features/student/api/student.api";
-import { normalizeMobileCageShelfDetail } from "@/pages/mobile/mobileCageShelfGrid";
 
 // ======================== 类型 ========================
 
@@ -476,26 +474,6 @@ export async function fetchMobileCageShelvesAll(token: string): Promise<MobileCa
   };
 }
 
-/** 笼架 8×10 网格详情（公开 token 接口） */
-export async function fetchMobileCageShelfDetail(
-  token: string,
-  shelveId: string,
-): Promise<CageShelfDetail> {
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: Record<string, unknown>;
-  }>(
-    `/public/mobile-center/${encodeURIComponent(token)}/cage-shelves/${encodeURIComponent(shelveId)}/detail`,
-  );
-
-  if (!resp.data.success) {
-    throw new Error(resp.data.message || "加载笼架详情失败");
-  }
-  return normalizeMobileCageShelfDetail(resp.data.data ?? {});
-}
-
 export interface MobileCageCellAnnotation {
   shelveId?: string;
   positionX?: number;
@@ -507,44 +485,6 @@ export interface MobileCageCellAnnotation {
   updatedBy?: string;
   createdAt?: string;
   updatedAt?: string;
-}
-
-/** 获取笼位标注（手机 token） */
-export async function fetchMobileCageCellAnnotation(
-  token: string,
-  shelveId: string,
-  x: number,
-  y: number,
-): Promise<MobileCageCellAnnotation | null> {
-  const resp = await publicHttp.get<{
-    success: boolean;
-    message?: string;
-    data: MobileCageCellAnnotation | null;
-  }>(
-    `/public/mobile-center/${encodeURIComponent(token)}/cage-shelves/${encodeURIComponent(shelveId)}/cells/${x}/${y}/annotation`,
-  );
-  if (!resp.data.success) {
-    throw new Error(resp.data.message || "获取标注失败");
-  }
-  return resp.data.data ?? null;
-}
-
-/** 保存笼位标注（手机 token） */
-export async function saveMobileCageCellAnnotation(
-  token: string,
-  shelveId: string,
-  x: number,
-  y: number,
-  position: string,
-  data: { richText?: string; images?: string; aroRawData?: string },
-): Promise<void> {
-  const resp = await publicHttp.put<{ success: boolean; message?: string }>(
-    `/public/mobile-center/${encodeURIComponent(token)}/cage-shelves/${encodeURIComponent(shelveId)}/cells/${x}/${y}/annotation`,
-    { position, ...data },
-  );
-  if (!resp.data.success) {
-    throw new Error(resp.data.message || "保存标注失败");
-  }
 }
 
 /** 特殊状态总览（公开 token 接口） */

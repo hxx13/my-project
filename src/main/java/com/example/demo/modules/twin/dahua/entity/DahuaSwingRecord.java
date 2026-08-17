@@ -34,4 +34,6 @@ public class DahuaSwingRecord {
     private Integer freezeExemptFlag;
     private String rawJson;
     private String ingestedAt;
+    /** 规则引擎处理时间（去重标记，NULL=未处理） */
+    private String processedAt;
 }

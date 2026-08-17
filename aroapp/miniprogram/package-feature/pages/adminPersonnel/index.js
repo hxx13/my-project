@@ -3,13 +3,13 @@ const { hasMinRole } = require('../../../utils/roleAccess.js');
 const pagePermission = require('../../../utils/pagePermission.js');
 const { shouldRefreshOnShow } = require('../../../utils/pageShowRefresh.js');
 
-const ROLE_CODES = ['STUDENT', 'STAFF', 'SENIOR', 'ADMIN', 'SUPER_ADMIN', 'PLATFORM_OWNER'];
+const ROLE_CODES = ['MEMBER', 'STAFF', 'SENIOR', 'ADMIN', 'SUPER_ADMIN', 'PLATFORM_OWNER'];
 const ROLE_LABELS = ['学生', '普通员工', '高级员工', '管理员', '超级管理员', '平台所有者'];
-/** 新建员工账号可选角色（后端禁止直接创建 STUDENT） */
+/** 新建员工账号可选角色（后端禁止直接创建 MEMBER） */
 const STAFF_ROLE_CODES = ['STAFF', 'SENIOR', 'ADMIN', 'SUPER_ADMIN'];
 const STAFF_ROLE_LABELS = ['普通员工', '高级员工', '管理员', '超级管理员'];
 /** 员工视窗内修改角色：含学生，权限与视窗分类解耦 */
-const STAFF_EDIT_ROLE_CODES = ['STUDENT', ...STAFF_ROLE_CODES];
+const STAFF_EDIT_ROLE_CODES = ['MEMBER', ...STAFF_ROLE_CODES];
 const STAFF_EDIT_ROLE_LABELS = ['学生', ...STAFF_ROLE_LABELS];
 const BUILTIN_SUPER_ID = 'SYS_SUPER_ROOT';
 const PAGE_SIZE = 20;
@@ -19,20 +19,21 @@ function pickRow(r) {
   return {
     id: r.id,
     name: r.name,
-    username: r.username,
-    password: r.password,
-    role: r.role,
-    openId: r.openId != null ? r.openId : r.open_id,
-    status: r.status != null ? Number(r.status) : 1,
+    staffId: r.staffId != null ? r.staffId : r.staff_id,
+    aroUserId: r.aroUserId != null ? r.aroUserId : r.aro_user_id,
     jobNumber: r.jobNumber != null ? r.jobNumber : r.job_number,
-    createTime: r.createTime != null ? r.createTime : r.create_time,
     departmentName: r.departmentName != null ? r.departmentName : r.department_name,
     projectGroupName: r.projectGroupName != null ? r.projectGroupName : r.project_group_name,
-    displayNickname:
-      r.displayNickname != null ? r.displayNickname : r.display_nickname != null ? r.display_nickname : '',
-    personalPin: r.personalPin != null ? r.personalPin : r.personal_pin,
+    userTypeNames: r.userTypeNames != null ? r.userTypeNames : r.user_type_names,
+    role: r.role,
+    status: r.status != null ? Number(r.status) : null,
+    staffUsername: r.staffUsername != null ? r.staffUsername : r.staff_username,
+    studentUsername: r.studentUsername != null ? r.studentUsername : r.student_username,
+    mobilePhone: r.mobilePhone != null ? r.mobilePhone : r.mobile_phone,
+    allowedRoomsDisplayZh: r.allowedRoomsDisplayZh != null ? r.allowedRoomsDisplayZh : r.allowed_rooms_display_zh,
     contactEmail: r.contactEmail != null ? String(r.contactEmail) : (r.contact_email != null ? String(r.contact_email) : ''),
     sendKey: r.sendKey != null ? String(r.sendKey) : (r.send_key != null ? String(r.send_key) : ''),
+    wxPusherUid: r.wxPusherUid != null ? String(r.wxPusherUid) : (r.wx_pusher_uid != null ? String(r.wx_pusher_uid) : ''),
   };
 }
 
@@ -82,7 +83,7 @@ function fieldDetailValue(detail) {
 
 Page({
   data: {
-    activeTab: 'personnel',
+    activeTab: 'all',
     keyword: '',
     page: 1,
     size: PAGE_SIZE,
@@ -125,6 +126,26 @@ Page({
     emailEditId: '',
     emailEditValue: '',
     emailSubmitting: false,
+    // 筛选面板
+    showFilterSheet: false,
+    groupOptions: [],
+    groupNames: ['全部'],
+    identityTagOptions: [],
+    identityTagNames: ['全部'],
+    roomOptions: [],
+    roomNames: ['全部'],
+    roleOptions: ['MEMBER', 'STAFF', 'SENIOR', 'ADMIN', 'SUPER_ADMIN', 'PLATFORM_OWNER'],
+    roleLabels: ['学生', '普通员工', '高级员工', '管理员', '超级管理员', '平台所有者'],
+    roleNames: ['全部', '学生', '普通员工', '高级员工', '管理员', '超级管理员', '平台所有者'],
+    roleIdxMap: { MEMBER: 0, STAFF: 1, SENIOR: 2, ADMIN: 3, SUPER_ADMIN: 4, PLATFORM_OWNER: 5 },
+    filterGroupId: 0,
+    filterGroupIdx: 0,
+    filterIdentityTagId: 0,
+    filterIdentityIdx: 0,
+    filterRoomName: '',
+    filterRoomIdx: 0,
+    filterRole: '',
+    filterRoleIdx: 0,
   },
 
   onShow() {
@@ -167,44 +188,24 @@ Page({
   },
 
   decorateRow(r) {
-    const tab = this.data.activeTab;
     const base = pickRow(r);
-    const code = String(base.role || (tab === 'personnel' ? 'STUDENT' : 'STAFF')).toUpperCase();
-    let idx = ROLE_CODES.indexOf(code);
-    if (idx < 0) idx = 0;
-    let staffIdx = STAFF_EDIT_ROLE_CODES.indexOf(code);
-    if (staffIdx < 0) staffIdx = 0;
-    let roleLabel = ROLE_LABELS[idx];
-    if (tab === 'system') {
-      if (STAFF_EDIT_ROLE_CODES.indexOf(code) >= 0) roleLabel = STAFF_EDIT_ROLE_LABELS[staffIdx];
-      else if (code === 'PLATFORM_OWNER') roleLabel = '平台所有者';
-    }
-    const displayName = tab === 'personnel' ? base.name || base.username || '-' : base.username || '-';
-    const idDisp = shortenDisplay(base.id, 22);
-    const openDisp = shortenDisplay(base.openId || '', 20);
-    const userDisp = tab === 'personnel' ? shortenDisplay(base.username || '', 18) : { text: '', truncated: false };
-    const nickSrc =
-      base.displayNickname != null && String(base.displayNickname) !== '' ? String(base.displayNickname) : '';
+    const hasAccount = !!base.staffId;
+    const code = String(base.role || 'MEMBER').toUpperCase();
+    const idx = ROLE_CODES.indexOf(code);
+    const roleLabel = idx >= 0 ? ROLE_LABELS[idx] : code;
+    const displayName = base.name || base.staffUsername || base.aroUserId || '-';
     const letter = String(displayName || '?').trim().charAt(0) || '?';
-    const pinVal = base.personalPin;
-    const pinText = pinVal !== undefined && pinVal !== null ? (pinVal ? '已设置' : '未设置') : null;
-    const emailText = base.contactEmail || '';
-    const sendKeyText = base.sendKey ? '已绑定' : '未绑定';
+    const rooms = (base.allowedRoomsDisplayZh || '').split(/[、，,;；]/).map((s) => s.trim()).filter(Boolean);
     return {
       ...base,
-      _roleIdx: idx,
-      _staffRoleIdx: staffIdx,
+      hasAccount,
       roleLabel,
       displayName,
-      nickDraft: tab === 'system' ? nickSrc : '',
-      _pwdVisible: false,
       _avatarLetter: letter,
-      idListText: idDisp.text,
-      openIdListText: base.openId ? openDisp.text : '—',
-      usernameListText: tab === 'personnel' ? userDisp.text : '',
-      pinText,
-      emailText,
-      sendKeyText,
+      _pwdVisible: false,
+      roomsText: rooms.join(' / '),
+      emailText: base.contactEmail || '',
+      sendKeyText: base.sendKey ? '已绑定' : '未绑定',
     };
   },
 
@@ -212,49 +213,38 @@ Page({
     const id = e.currentTarget.dataset.id;
     const row = (this.data.rows || []).find((x) => x.id === id);
     if (!row) return;
-    const tab = this.data.activeTab;
     const lines = [];
-    lines.push({ k: '用户 ID', v: row.id || '—' });
-    lines.push({ k: tab === 'personnel' ? '姓名' : '账号', v: row.displayName || '—' });
-    if (tab === 'personnel') {
-      lines.push({ k: '登录账号', v: row.username || '—' });
-      lines.push({ k: '工号', v: row.jobNumber || '—' });
-      lines.push({ k: '部门', v: row.departmentName || '—' });
-      lines.push({ k: '项目组', v: row.projectGroupName || '—' });
-    } else {
-      lines.push({ k: '展示昵称', v: row.displayNickname ? String(row.displayNickname) : '—' });
-      lines.push({ k: '创建时间', v: row.createTime ? String(row.createTime) : '—' });
+    lines.push({ k: '姓名', v: row.displayName || '—' });
+    lines.push({ k: '账号情况', v: row.hasAccount ? '有系统账号' : '无系统账号' });
+    if (row.hasAccount) {
+      lines.push({ k: '教职工ID', v: row.staffId || '—' });
+      lines.push({ k: '账号名', v: row.staffUsername || row.staffId || '—' });
+      lines.push({ k: '状态', v: row.status === 0 ? '禁用' : '启用' });
     }
-    if (tab === 'personnel') {
-      lines.push({ k: '已绑定账号', v: row.username ? `${row.username}（${row.roleLabel || '—'}）` : '—' });
-      lines.push({ k: '邮箱', v: row.contactEmail || '未绑定' });
-      lines.push({ k: '微信通知', v: row.sendKey ? '已绑定' : '未绑定' });
+    if (row.aroUserId) {
+      lines.push({ k: '认证ID', v: row.aroUserId || '—' });
     }
-    if (tab === 'system') {
-      const aro = this.data.aroBindings[row.id];
-      lines.push({ k: 'ARO绑定', v: aro ? `${aro.name || aro.aroUserId}（${aro.aroUserId}）` : '—' });
-      if (row.role === 'MEMBER') {
-        lines.push({ k: '扫码PIN', v: aro ? `归属人员库 ${aro.aroUserId}` : 'PIN 见人员库' });
-      }
-    }
-    lines.push({ k: '角色代码', v: row.role || '—' });
+    lines.push({ k: '部门', v: row.departmentName || '—' });
+    lines.push({ k: '课题组', v: row.projectGroupName || '—' });
+    lines.push({ k: '工号', v: row.jobNumber || '—' });
+    lines.push({ k: '手机', v: row.mobilePhone || '—' });
+    lines.push({ k: '房间授权', v: row.roomsText || '—' });
     lines.push({ k: '角色', v: row.roleLabel || '—' });
-    lines.push({ k: '状态', v: row.status === 0 ? '禁用' : '启用' });
-    lines.push({ k: '密码', v: row.id === BUILTIN_SUPER_ID ? '******（受保护）' : '加载中…' });
-    if (tab === 'personnel' && row.pinText !== null) {
-      lines.push({ k: '个人密码 PIN', v: row.pinText || '未设置' });
+    lines.push({ k: '邮箱', v: row.contactEmail || '未绑定' });
+    lines.push({ k: '微信通知', v: row.sendKeyText || '未绑定' });
+    if (row.hasAccount && row.staffId !== BUILTIN_SUPER_ID) {
+      lines.push({ k: '密码', v: '加载中…' });
     }
     this.setData({
       showDetailPopup: true,
-      detailTitle: row.displayName || row.id || '人员详情',
+      detailTitle: row.displayName || '人员详情',
       detailLines: lines,
-      detailRowId: id,
-      detailPwdLoading: row.id !== BUILTIN_SUPER_ID,
+      detailRowId: row.staffId || row.aroUserId || '',
+      detailPwdLoading: row.hasAccount && row.staffId !== BUILTIN_SUPER_ID,
       detailPwdPlaintext: null,
     });
-    // 异步加载明文密码
-    if (row.id !== BUILTIN_SUPER_ID) {
-      this.loadDetailPassword(id);
+    if (row.hasAccount && row.staffId !== BUILTIN_SUPER_ID) {
+      this.loadDetailPassword(row.staffId);
     }
   },
 
@@ -285,8 +275,11 @@ Page({
 
   onTabChange(e) {
     const tab = e.currentTarget.dataset.tab;
-    if (!tab || tab === this.data.activeTab) return;
-    this.setData({ activeTab: tab }, () => this.loadData({ reset: true, showLoading: true }));
+    // 兼容旧 WXML 的 personnel/system（Task 10 改 WXML 为 all/sys/nosys 后此映射仍兼容）
+    const legacyMap = { personnel: 'nosys', system: 'sys' };
+    const activeTab = legacyMap[tab] || (['all', 'sys', 'nosys'].indexOf(tab) >= 0 ? tab : 'all');
+    this.setData({ activeTab, page: 1, hasMore: true });
+    this.loadData({ reset: true, showLoading: true });
   },
 
   onKeywordInput(e) {
@@ -304,8 +297,8 @@ Page({
 
   onOpenNickPopup(e) {
     const id = e.currentTarget.dataset.id;
-    if (!id || this.data.activeTab !== 'system') return;
-    const row = (this.data.rows || []).find((x) => x.id === id);
+    if (!id) return;
+    const row = (this.data.rows || []).find((x) => x.staffId === id || x.aroUserId === id);
     if (!row) return;
     const v =
       row.displayNickname != null && String(row.displayNickname) !== ''
@@ -365,7 +358,7 @@ Page({
       wx.showToast({ title: '已保存', icon: 'success' });
       // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
       const rows = this.data.rows.map((r) =>
-        r.id === id ? { ...r, displayNickname: v, nickDraft: v } : r
+        (r.staffId === id || r.aroUserId === id) ? { ...r, displayNickname: v, nickDraft: v } : r
       );
       this.setData({
         rows,
@@ -387,7 +380,6 @@ Page({
   },
 
   onOpenCreateSheet() {
-    if (this.data.activeTab !== 'system') return;
     this.setData({
       showCreateSheet: true,
       createUsername: '',
@@ -499,8 +491,8 @@ Page({
 
   onDeleteStaffStep1(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((x) => x.id === id);
-    if (!row || row.id === BUILTIN_SUPER_ID) return;
+    const row = (this.data.rows || []).find((x) => x.staffId === id || x.aroUserId === id);
+    if (!row || row.staffId === BUILTIN_SUPER_ID) return;
     const name = row.username || row.id;
     wx.showModal({
       title: '删除账号',
@@ -569,7 +561,7 @@ Page({
       if (!parsed.ok) throw new Error(parsed.message);
       wx.showToast({ title: '已删除', icon: 'success' });
       // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
-      const rows = this.data.rows.filter((r) => r.id !== id);
+      const rows = this.data.rows.filter((r) => r.staffId !== id && r.aroUserId !== id);
       this.setData({
         rows,
         total: Math.max(0, (this.data.total || 0) - 1),
@@ -603,13 +595,16 @@ Page({
     if (showLoading) this.setData({ loading: true });
     if (append) this.setData({ loadingMore: true });
     try {
-      const path =
-        this.data.activeTab === 'personnel' ? '/api/admin/personnel' : '/api/admin/system-users';
+      const reqData = { page: nextPage, pageSize: PAGE_SIZE }; // 后端契约是 pageSize（原代码发 size 会被忽略）
       const kw = (this.data.keyword || '').trim();
-      const reqData = { page: nextPage, size: PAGE_SIZE };
       if (kw) reqData.keyword = kw;
+      if (this.data.activeTab !== 'all') reqData.accountType = this.data.activeTab;
+      if (this.data.filterGroupId) reqData.groupId = this.data.filterGroupId;
+      if (this.data.filterIdentityTagId) reqData.identityTagId = this.data.filterIdentityTagId;
+      if (this.data.filterRoomName) reqData.roomName = this.data.filterRoomName;
+      if (this.data.filterRole) reqData.role = this.data.filterRole;
       const res = await springAuth.springRequest({
-        url: path,
+        url: '/api/personnel',
         method: 'GET',
         data: reqData,
       });
@@ -617,8 +612,8 @@ Page({
       if (!parsed.ok) {
         throw new Error(parsed.message);
       }
-      const payload = parsed.body.data;
-      const list = (payload && Array.isArray(payload.data) ? payload.data : []).map((row) =>
+      const payload = parsed.body ? parsed.body.data : (res && res.data ? res.data : {});
+      const list = (payload && Array.isArray(payload.list) ? payload.list : []).map((row) =>
         this.decorateRow(row)
       );
       const total = payload && typeof payload.total === 'number' ? payload.total : 0;
@@ -645,17 +640,17 @@ Page({
 
   async onTogglePwd(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.id === id);
-    if (!row || row.id === BUILTIN_SUPER_ID) return;
+    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
+    if (!row || row.staffId === BUILTIN_SUPER_ID) return;
     // 已显示则隐藏
     if (row._pwdVisible) {
-      const rows = this.data.rows.map((r) => (r.id === id ? { ...r, _pwdVisible: false } : r));
+      const rows = this.data.rows.map((r) => ((r.staffId === id || r.aroUserId === id) ? { ...r, _pwdVisible: false } : r));
       this.setData({ rows });
       return;
     }
     // 已有缓存的明文则直接显示
     if (row._pwdPlaintext !== undefined) {
-      const rows = this.data.rows.map((r) => (r.id === id ? { ...r, _pwdVisible: true } : r));
+      const rows = this.data.rows.map((r) => ((r.staffId === id || r.aroUserId === id) ? { ...r, _pwdVisible: true } : r));
       this.setData({ rows });
       return;
     }
@@ -670,7 +665,7 @@ Page({
       const parsed = parseResponse(res);
       const plaintext = parsed.ok && parsed.body && parsed.body.data ? (parsed.body.data.password || '（暂不可查看）') : '（暂不可查看）';
       const rows = this.data.rows.map((r) =>
-        r.id === id ? { ...r, _pwdVisible: true, _pwdPlaintext: plaintext, password: plaintext } : r
+        (r.staffId === id || r.aroUserId === id) ? { ...r, _pwdVisible: true, _pwdPlaintext: plaintext, password: plaintext } : r
       );
       this.setData({ rows });
     } catch (e) {
@@ -684,8 +679,7 @@ Page({
     if (this._adminMutating) return;
     const id = e.currentTarget.dataset.id;
     const idx = Number(e.detail.value);
-    const tab = this.data.activeTab;
-    const role = tab === 'system' ? STAFF_EDIT_ROLE_CODES[idx] : ROLE_CODES[idx];
+    const role = ROLE_CODES[idx];
     if (!id || !role) return;
     this._adminMutating = true;
     wx.showLoading({ title: '更新中…', mask: true });
@@ -698,10 +692,10 @@ Page({
       const parsed = parseResponse(res);
       if (!parsed.ok) throw new Error(parsed.message);
       wx.showToast({ title: '角色已更新', icon: 'success' });
-      const row = (this.data.rows || []).find((x) => x.id === id);
+      const row = (this.data.rows || []).find((x) => x.staffId === id || x.aroUserId === id);
       const merged = row ? { ...pickRow(row), role } : { role };
       const rows = this.data.rows.map((r) => {
-        if (r.id !== id) return r;
+        if (r.staffId !== id && r.aroUserId !== id) return r;
         return this.decorateRow({ ...pickRow(r), ...merged });
       });
       this.setData({ rows });
@@ -740,7 +734,7 @@ Page({
           if (!parsed.ok) throw new Error(parsed.message);
           wx.showToast({ title: enabled ? '已启用' : '已禁用', icon: 'success' });
           const rows = this.data.rows.map((it) =>
-            it.id === id ? { ...it, status: enabled ? 1 : 0 } : it
+            (it.staffId === id || it.aroUserId === id) ? { ...it, status: enabled ? 1 : 0 } : it
           );
           this.setData({ rows });
         } catch (err) {
@@ -774,7 +768,7 @@ Page({
           const parsed = parseResponse(res);
           if (!parsed.ok) throw new Error(parsed.message);
           wx.showToast({ title: '已重置', icon: 'success' });
-          const rows = this.data.rows.map((it) => (it.id === id ? { ...it, openId: null } : it));
+          const rows = this.data.rows.map((it) => ((it.staffId === id || it.aroUserId === id) ? { ...it, openId: null } : it));
           this.setData({ rows });
         } catch (err) {
           wx.showToast({
@@ -813,7 +807,7 @@ Page({
             showCancel: false,
           });
           const rows = this.data.rows.map((it) =>
-            it.id === id ? { ...it, password: defPwd || it.password, _pwdVisible: !!defPwd } : it
+            (it.staffId === id || it.aroUserId === id) ? { ...it, password: defPwd || it.password, _pwdVisible: !!defPwd } : it
           );
           this.setData({ rows });
         } catch (err) {
@@ -832,7 +826,7 @@ Page({
   // ═══ 人员库操作：重置登录账号 ═══
   onResetPersonnelAccount(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.id === id);
+    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
     if (!row) return;
     const currentUsername = row.username || '';
     wx.showModal({
@@ -855,7 +849,7 @@ Page({
           const parsed = parseResponse(res);
           if (!parsed.ok) throw new Error(parsed.message);
           wx.showToast({ title: '账号已重置', icon: 'success' });
-          const rows = this.data.rows.map((it) => (it.id === id ? { ...it, username: newUsername } : it));
+          const rows = this.data.rows.map((it) => ((it.staffId === id || it.aroUserId === id) ? { ...it, username: newUsername } : it));
           this.setData({ rows });
         } catch (err) {
           wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '失败', icon: 'none' });
@@ -870,7 +864,7 @@ Page({
   // ═══ 人员库操作：重置登录密码（学生） ═══
   onResetPersonnelPassword(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.id === id);
+    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
     if (!row) return;
     wx.showModal({
       title: '重置登录密码',
@@ -894,7 +888,7 @@ Page({
             showCancel: false,
           });
           const rows = this.data.rows.map((it) =>
-            it.id === id ? { ...it, password: defPwd || it.password, _pwdVisible: !!defPwd, _pwdPlaintext: defPwd } : it
+            (it.staffId === id || it.aroUserId === id) ? { ...it, password: defPwd || it.password, _pwdVisible: !!defPwd, _pwdPlaintext: defPwd } : it
           );
           this.setData({ rows });
         } catch (err) {
@@ -910,7 +904,7 @@ Page({
   // ═══ 人员库 PIN 操作 ═══
   onResetPin(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.id === id);
+    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
     const label = row ? (row.displayName || id) : id;
     wx.showModal({
       title: '重置个人密码（PIN）',
@@ -929,7 +923,7 @@ Page({
           if (!parsed.ok) throw new Error(parsed.message);
           wx.showToast({ title: 'PIN 已重置', icon: 'success' });
           const rows = this.data.rows.map((it) =>
-            it.id === id ? { ...it, personalPin: null, pinText: '未设置' } : it
+            (it.staffId === id || it.aroUserId === id) ? { ...it, personalPin: null, pinText: '未设置' } : it
           );
           this.setData({ rows });
         } catch (err) {
@@ -986,7 +980,7 @@ Page({
   // ═══ 邮箱编辑 ═══
   onOpenEmailPopup(e) {
     const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.id === id);
+    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
     this.setData({
       showEmailPopup: true,
       emailEditId: id,
@@ -1019,7 +1013,7 @@ Page({
       const parsed = parseResponse(res);
       if (!parsed.ok) throw new Error(parsed.message);
       wx.showToast({ title: '邮箱已更新', icon: 'success' });
-      const rows = this.data.rows.map((r) => (r.id === id ? { ...r, contactEmail: email, emailText: email } : r));
+      const rows = this.data.rows.map((r) => ((r.staffId === id || r.aroUserId === id) ? { ...r, contactEmail: email, emailText: email } : r));
       this.setData({ rows, showEmailPopup: false, emailEditId: '', emailEditValue: '', emailSubmitting: false });
     } catch (err) {
       wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '失败', icon: 'none' });
@@ -1028,5 +1022,55 @@ Page({
       wx.hideLoading();
       this._adminMutating = false;
     }
+  },
+
+  // ═══ 筛选面板 ═══
+  loadFilterOptions() {
+    const that = this;
+    if (this._filterOptionsLoaded) return;
+    this._filterOptionsLoaded = true;
+    springAuth.springRequest({ url: '/api/personnel-dict/project-groups', method: 'GET', data: {} })
+      .then((res) => { const p = parseResponse(res); if (p.ok) { const gs = (p.body.data || []).filter((g) => g.active !== 0); that.setData({ groupOptions: gs, groupNames: ['全部'].concat(gs.map((g) => g.name)) }); } })
+      .catch(() => {});
+    springAuth.springRequest({ url: '/api/person-identity/tags', method: 'GET', data: {} })
+      .then((res) => { const p = parseResponse(res); if (p.ok) { const ts = p.body.data || []; that.setData({ identityTagOptions: ts, identityTagNames: ['全部'].concat(ts.map((t) => t.label)) }); } })
+      .catch(() => {});
+    springAuth.springRequest({ url: '/api/personnel/rooms', method: 'GET', data: {} })
+      .then((res) => { const p = parseResponse(res); if (p.ok) { const rs = p.body.data || []; that.setData({ roomOptions: rs, roomNames: ['全部'].concat(rs) }); } })
+      .catch(() => {});
+  },
+  onOpenFilterSheet() { this.loadFilterOptions(); this.setData({ showFilterSheet: true }); },
+  onCloseFilterSheet() { this.setData({ showFilterSheet: false }); },
+  onGroupFilterChange(e) {
+    const idx = Number(e.detail.value);
+    const g = idx > 0 ? this.data.groupOptions[idx - 1] : undefined;
+    this.setData({ filterGroupIdx: idx, filterGroupId: g ? g.id : 0 });
+  },
+  onIdentityFilterChange(e) {
+    const idx = Number(e.detail.value);
+    const t = idx > 0 ? this.data.identityTagOptions[idx - 1] : undefined;
+    this.setData({ filterIdentityIdx: idx, filterIdentityTagId: t ? t.id : 0 });
+  },
+  onRoomFilterChange(e) {
+    const idx = Number(e.detail.value);
+    this.setData({ filterRoomIdx: idx, filterRoomName: idx === 0 ? '' : (this.data.roomOptions[idx - 1] || '') });
+  },
+  onRoleFilterChange(e) {
+    const idx = Number(e.detail.value);
+    this.setData({ filterRoleIdx: idx, filterRole: idx === 0 ? '' : this.data.roleOptions[idx - 1] });
+  },
+  onApplyFilter() {
+    this.setData({ showFilterSheet: false, page: 1, hasMore: true });
+    this.loadData({ reset: true, showLoading: true });
+  },
+  onClearFilter() {
+    this.setData({
+      filterGroupIdx: 0, filterGroupId: 0,
+      filterIdentityIdx: 0, filterIdentityTagId: 0,
+      filterRoomIdx: 0, filterRoomName: '',
+      filterRoleIdx: 0, filterRole: '',
+      page: 1, hasMore: true,
+    });
+    this.loadData({ reset: true, showLoading: true });
   },
 });

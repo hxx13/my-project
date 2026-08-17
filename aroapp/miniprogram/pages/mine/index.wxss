@@ -64,8 +64,8 @@ page {
 
 .mine-chip-row {
   display: flex;
-  flex-direction: row;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 8rpx;
 }
 
@@ -184,9 +184,9 @@ page {
 }
 
 .mine-chip {
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 600;
-  padding: 8rpx 20rpx;
+  padding: 6rpx 16rpx;
   border-radius: 999rpx;
   background: rgba(148, 163, 184, 0.15);
   color: #475569;
@@ -225,7 +225,7 @@ page {
 .mine-archive-head {
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 20rpx;
   padding: 8rpx 8rpx 20rpx;
 }
@@ -251,15 +251,23 @@ page {
   gap: 12rpx;
 }
 
+/* 头部右上角操作按钮（AI画像 / 详情），与上方指示 chip 右对齐成列 */
+.mine-badge-actions {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 2rpx;
+}
+
 .mine-archive-action {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 4rpx;
-  padding: 12rpx 22rpx;
+  padding: 8rpx 18rpx;
   border-radius: 999rpx;
   background: linear-gradient(135deg, #6366f1, #4f46e5);
-  box-shadow: 0 8rpx 24rpx rgba(79, 70, 229, 0.35);
+  box-shadow: 0 6rpx 16rpx rgba(79, 70, 229, 0.28);
 }
 
 .mine-archive-action--ghost {
@@ -269,7 +277,7 @@ page {
 }
 
 .mine-archive-action-text {
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 700;
   color: #fff;
 }

@@ -66,6 +66,7 @@ public class TwinDahuaSwingSchemaMigrator {
                     freeze_exempt_flag INT NULL,
                     raw_json LONGTEXT NULL,
                     ingested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    processed_at DATETIME NULL,
                     UNIQUE KEY uk_dahua_record_id (record_id),
                     KEY idx_dahua_task (task_id),
                     KEY idx_dahua_card_num (card_number),
@@ -93,7 +94,6 @@ public class TwinDahuaSwingSchemaMigrator {
                     last_swipe_at DATETIME NULL,
                     scheduled_exit_at DATETIME NULL,
                     debounce_until DATETIME NULL,
-                    last_record_id VARCHAR(64) NULL,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     UNIQUE KEY uk_activation_user_channel (task_id, user_id, channel_code),
                     KEY idx_activation_state (state),
@@ -145,6 +145,10 @@ public class TwinDahuaSwingSchemaMigrator {
                 "twin_dahua_swing_record",
                 "audience_type",
                 "ALTER TABLE twin_dahua_swing_record ADD COLUMN audience_type VARCHAR(16) NULL COMMENT 'STUDENT|STAFF' AFTER department_name");
+        ensureColumnExists(
+                "twin_dahua_swing_record",
+                "processed_at",
+                "ALTER TABLE twin_dahua_swing_record ADD COLUMN processed_at DATETIME NULL COMMENT '规则引擎处理时间（去重标记）'");
         ensureIndexExists(
                 "twin_dahua_swing_record",
                 "idx_dahua_swing_dept_time",

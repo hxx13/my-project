@@ -1,0 +1,15 @@
+/* 富列表容器查询：行宽自适应隐藏次要信息 */
+.personnel-list { container-type: inline-size; }
+.personnel-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; transition: background 0.15s ease, box-shadow 0.15s ease; }
+.personnel-row:hover { background: var(--app-color-surface-hover); }
+.personnel-row.is-selected { background: #eef2ff; box-shadow: inset 3px 0 0 #4f46e5; }
+.personnel-row-main { flex: 1; min-width: 0; }
+.personnel-row-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; font-weight: 600; }
+.personnel-row-sub { font-size: 10px; color: var(--twin-mute); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 容器宽度 > 600px：全量展示 */
+.personnel-extra { display: inline-flex; }
+/* < 600px：隐藏身份 chips 与房间授权 */
+@container (max-width: 600px) { .personnel-extra { display: none; } }
+/* < 460px：只保留姓名 + 徽章 */
+@container (max-width: 460px) { .personnel-row-sub { display: none; } }

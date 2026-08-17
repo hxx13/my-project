@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.inventory.mapper.ItemLogMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO inv_item_log (item_id, log_type, from_space_id, to_space_id, operator_user_id, remark, extra)
+        VALUES (#{itemId}, #{logType}, #{fromSpaceId}, #{toSpaceId}, #{operatorUserId}, #{remark}, #{extra})
+    </insert>
+    <select id="selectByItemId" resultType="com.example.demo.modules.inventory.entity.InvItemLog">
+        SELECT * FROM inv_item_log WHERE item_id = #{itemId} ORDER BY id DESC
+    </select>
+</mapper>

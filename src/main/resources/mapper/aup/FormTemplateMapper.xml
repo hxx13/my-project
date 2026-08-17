@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.FormTemplateMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO form_template (form_key, name, version, status, description, published_at, created_by)
+        VALUES (#{formKey}, #{name}, #{version}, #{status}, #{description}, #{publishedAt}, #{createdBy})
+    </insert>
+
+    <update id="update">
+        UPDATE form_template
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="publishedAt != null">published_at = #{publishedAt},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultType="com.example.demo.modules.aup.entity.FormTemplate">
+        SELECT * FROM form_template WHERE id = #{id}
+    </select>
+
+    <select id="listAll" resultType="com.example.demo.modules.aup.entity.FormTemplate">
+        SELECT * FROM form_template ORDER BY form_key ASC, version DESC, updated_at DESC
+    </select>
+
+    <select id="listByFormKey" resultType="com.example.demo.modules.aup.entity.FormTemplate">
+        SELECT * FROM form_template WHERE form_key = #{formKey} ORDER BY version DESC
+    </select>
+
+    <select id="findPublishedByFormKey" resultType="com.example.demo.modules.aup.entity.FormTemplate">
+        SELECT * FROM form_template
+        WHERE form_key = #{formKey} AND status = 'PUBLISHED'
+        ORDER BY version DESC LIMIT 1
+    </select>
+
+    <select id="findMaxVersionByFormKey" resultType="int">
+        SELECT COALESCE(MAX(version), 0) FROM form_template WHERE form_key = #{formKey}
+    </select>
+
+    <select id="findLatestByFormKey" resultType="com.example.demo.modules.aup.entity.FormTemplate">
+        SELECT * FROM form_template WHERE form_key = #{formKey} ORDER BY version DESC LIMIT 1
+    </select>
+
+    <update id="archivePublished">
+        UPDATE form_template SET status = 'ARCHIVED'
+        WHERE form_key = #{formKey} AND status = 'PUBLISHED' AND id != #{excludeId}
+    </update>
+
+    <update id="publish">
+        UPDATE form_template SET status = 'PUBLISHED', published_at = #{publishedAt}
+        WHERE id = #{id}
+    </update>
+
+    <update id="archive">
+        UPDATE form_template SET status = 'ARCHIVED'
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM form_template WHERE id = #{id}
+    </delete>
+
+</mapper>

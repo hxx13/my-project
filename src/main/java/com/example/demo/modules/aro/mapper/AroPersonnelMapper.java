@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Result;
 import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -13,11 +14,22 @@ import java.util.List;
 public interface AroPersonnelMapper {
     int upsertPersonnelBatch(@Param("list") List<AroPersonnel> list, @Param("currentTime") String currentTime);
 
+    /** 将 aro_personnel 的资料字段同步到 sys_user（id=user_id 匹配），仅资料字段、不碰账号字段。 */
+    @Update("UPDATE sys_user u INNER JOIN aro_personnel a ON u.id = a.user_id " +
+            "SET u.name = a.name, u.job_number = a.job_number, u.department_name = a.department_name, " +
+            "u.project_group_name = a.project_group_name, u.user_type_names = a.user_type_names, " +
+            "u.head = a.head, u.gender = a.gender, u.mobile_phone = a.mobile_phone, u.email = a.email, " +
+            "u.is_school = a.is_school, u.display_nickname = a.name")
+    int syncProfileToSysUser();
+
     int updateAllowedRoomsDisplayZh(
             @Param("userId") String userId,
             @Param("text") String text,
             @Param("hasOfficialRoomPermission") int hasOfficialRoomPermission,
             @Param("currentTime") String currentTime);
+
+    @Update("UPDATE aro_personnel SET allowed_rooms_json = #{json}, update_time = #{currentTime} WHERE user_id = #{userId}")
+    int updateAllowedRoomsJson(@Param("userId") String userId, @Param("json") String json, @Param("currentTime") String currentTime);
 
     @Select("SELECT * FROM aro_personnel WHERE user_id = #{userId}")
     @Results({

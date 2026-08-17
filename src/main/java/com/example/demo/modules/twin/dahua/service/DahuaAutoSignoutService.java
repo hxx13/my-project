@@ -1,15 +1,18 @@
 package com.example.demo.modules.twin.dahua.service;
 
+import com.example.demo.common.config.DebugToggleService;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchService;
-import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.card.service.TwinAccessLogCorrelationService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
-import com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService;
 import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.common.support.TwinSwingLinkageDetailBuilder;
+import com.example.demo.modules.twin.scan.state.ScanDataSource;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyState;
+import com.example.demo.modules.twin.scan.state.ScanOccupancyStateService;
 import com.example.demo.modules.twin.scan.service.TwinAccessRuleScanConfigService;
+import com.example.demo.modules.twin.scan.service.TwinScanService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
@@ -18,7 +21,6 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -43,10 +45,11 @@ public class DahuaAutoSignoutService {
     private final DahuaSwingRuleConfigService dahuaSwingRuleConfigService;
     private final AccessRuleDispatchService accessRuleDispatchService;
     private final TwinAutomationLogService automationLogService;
-    private final AroMiniPenetrationSyncService miniPenetrationSyncService;
-    private final TwinAccessLogCorrelationService twinAccessLogCorrelationService;
     private final TwinAccessRuleScanConfigService twinAccessRuleScanConfigService;
     private final DahuaSwingRuleEngineService dahuaSwingRuleEngineService;
+    private final DebugToggleService debugToggleService;
+    private final ScanOccupancyStateService scanOccupancyStateService;
+    private final TwinScanService twinScanService;
 
     public DahuaAutoSignoutService(
             AroService aroService,
@@ -54,20 +57,22 @@ public class DahuaAutoSignoutService {
             DahuaSwingRuleConfigService dahuaSwingRuleConfigService,
             AccessRuleDispatchService accessRuleDispatchService,
             TwinAutomationLogService automationLogService,
-            AroMiniPenetrationSyncService miniPenetrationSyncService,
-            TwinAccessLogCorrelationService twinAccessLogCorrelationService,
             TwinAccessRuleScanConfigService twinAccessRuleScanConfigService,
-            @Lazy DahuaSwingRuleEngineService dahuaSwingRuleEngineService
+            @Lazy DahuaSwingRuleEngineService dahuaSwingRuleEngineService,
+            DebugToggleService debugToggleService,
+            ScanOccupancyStateService scanOccupancyStateService,
+            @Lazy TwinScanService twinScanService
     ) {
         this.aroService = aroService;
         this.twinCardMappingService = twinCardMappingService;
         this.dahuaSwingRuleConfigService = dahuaSwingRuleConfigService;
         this.accessRuleDispatchService = accessRuleDispatchService;
         this.automationLogService = automationLogService;
-        this.miniPenetrationSyncService = miniPenetrationSyncService;
-        this.twinAccessLogCorrelationService = twinAccessLogCorrelationService;
         this.twinAccessRuleScanConfigService = twinAccessRuleScanConfigService;
         this.dahuaSwingRuleEngineService = dahuaSwingRuleEngineService;
+        this.debugToggleService = debugToggleService;
+        this.scanOccupancyStateService = scanOccupancyStateService;
+        this.twinScanService = twinScanService;
     }
 
     public boolean autoSignout(String userId) {
@@ -81,49 +86,69 @@ public class DahuaAutoSignoutService {
             return false;
         }
         log.info("[auto-signout] start userId={}", userId);
-        List<Map<String, Object>> noLeaveRooms = aroService.getNoLeaveRoom(userId);
-        // null 代表上游请求失败（如 TLS/握手异常），不要当作“已离开”处理
-        if (noLeaveRooms == null) {
-            log.warn("[auto-signout] no-leave-room query failed userId={}", userId);
-            writeAutoLog(userId, triggerType, triggerReason, false,
-                    augmentLinkageSignoutDetail(triggerReason, mergeDetail(detail, "ARO「未离开房间」查询失败（网络或上游异常）"), false, userId));
-            return false;
-        }
-        // 空列表代表官方已无滞留，视为状态已同步，可清理本地待签退状态
-        if (noLeaveRooms.isEmpty()) {
-            log.info("[auto-signout] no-leave-room empty userId={} treatAsSynced=true", userId);
-            String reasonForLog = triggerReason;
-            if ("ACTIVATION_EXPIRE_AUTO_SIGNOUT".equalsIgnoreCase(triggerReason)) {
-                reasonForLog = "LINKAGE_TIMER_ARO_ALREADY_CLEAR";
+        String roomId = null;
+        String roomLabel = null;
+        if (debugToggleService.getScanDataSource() == ScanDataSource.LOCAL) {
+            ScanOccupancyState occ = scanOccupancyStateService.getByUserId(userId);
+            boolean hasRoom = occ != null
+                    && ScanOccupancyStateService.STATE_INSIDE.equals(occ.getState())
+                    && occ.getCurrentRoomId() != null && !occ.getCurrentRoomId().isBlank();
+            if (!hasRoom) {
+                log.info("[auto-signout] local no-room userId={} treatAsSynced=true", userId);
+                clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
+                writeAutoLog(userId, triggerType, triggerReason, true,
+                        "本地状态机已无在馆记录，本次不重复签退，仅清理联动占位。"
+                                + (detail != null && !detail.isBlank() ? " 原计划说明：" + detail : ""));
+                return true;
             }
-            String shortDetail = "查询官方滞留：已无待离开房间；本次不重复提交离馆登记，仅清理本地联动占位。"
-                    + (detail != null && !detail.isBlank() ? " 原计划说明：" + detail : "");
-            if (isSwingLinkageStyleReason(triggerReason)) {
-                shortDetail = shortDetail + " " + linkageTimerClearOutcome(triggerReason);
+            roomId = occ.getCurrentRoomId();
+            roomLabel = occ.getCurrentRoomName() != null && !occ.getCurrentRoomName().isBlank()
+                    ? occ.getCurrentRoomName() : roomId;
+        } else {
+            List<Map<String, Object>> noLeaveRooms = aroService.getNoLeaveRoom(userId);
+            // null 代表上游请求失败（如 TLS/握手异常），不要当作“已离开”处理
+            if (noLeaveRooms == null) {
+                log.warn("[auto-signout] no-leave-room query failed userId={}", userId);
+                writeAutoLog(userId, triggerType, triggerReason, false,
+                        augmentLinkageSignoutDetail(triggerReason, mergeDetail(detail, "ARO「未离开房间」查询失败（网络或上游异常）"), false, userId));
+                return false;
             }
-            long nowMs = System.currentTimeMillis();
-            Long last = EMPTY_ARO_SYNC_LOG_AT_MS.get(userId);
-            boolean debounce = last != null && (nowMs - last) < EMPTY_ARO_SYNC_LOG_COOLDOWN_MS
-                    && "LINKAGE_TIMER_ARO_ALREADY_CLEAR".equals(reasonForLog);
-            if (!debounce) {
-                EMPTY_ARO_SYNC_LOG_AT_MS.put(userId, nowMs);
-                writeAutoLog(userId, triggerType, reasonForLog, true, shortDetail);
+            // 空列表代表官方已无滞留，视为状态已同步，可清理本地待签退状态
+            if (noLeaveRooms.isEmpty()) {
+                log.info("[auto-signout] no-leave-room empty userId={} treatAsSynced=true", userId);
+                String reasonForLog = triggerReason;
+                if ("ACTIVATION_EXPIRE_AUTO_SIGNOUT".equalsIgnoreCase(triggerReason)) {
+                    reasonForLog = "LINKAGE_TIMER_ARO_ALREADY_CLEAR";
+                }
+                String shortDetail = "查询官方滞留：已无待离开房间；本次不重复提交离馆登记，仅清理本地联动占位。"
+                        + (detail != null && !detail.isBlank() ? " 原计划说明：" + detail : "");
+                if (isSwingLinkageStyleReason(triggerReason)) {
+                    shortDetail = shortDetail + " " + linkageTimerClearOutcome(triggerReason);
+                }
+                long nowMs = System.currentTimeMillis();
+                Long last = EMPTY_ARO_SYNC_LOG_AT_MS.get(userId);
+                boolean debounce = last != null && (nowMs - last) < EMPTY_ARO_SYNC_LOG_COOLDOWN_MS
+                        && "LINKAGE_TIMER_ARO_ALREADY_CLEAR".equals(reasonForLog);
+                if (!debounce) {
+                    EMPTY_ARO_SYNC_LOG_AT_MS.put(userId, nowMs);
+                    writeAutoLog(userId, triggerType, reasonForLog, true, shortDetail);
+                }
+                clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
+                return true;
             }
-            clearSwingLinkageAfterAroLeaveResolved(userId, triggerType);
-            return true;
+            Map<String, Object> first = noLeaveRooms.get(0);
+            roomId = asString(first.get("roomId"));
+            if (roomId.isBlank()) {
+                roomId = asString(first.get("id"));
+            }
+            if (roomId.isBlank()) {
+                log.warn("[auto-signout] resolve roomId failed userId={} firstRow={}", userId, first);
+                writeAutoLog(userId, triggerType, triggerReason, false,
+                        augmentLinkageSignoutDetail(triggerReason, mergeDetail(detail, "未能从滞留记录解析房间"), false, userId));
+                return false;
+            }
+            roomLabel = resolveRoomDisplayLabel(first, roomId);
         }
-        Map<String, Object> first = noLeaveRooms.get(0);
-        String roomId = asString(first.get("roomId"));
-        if (roomId.isBlank()) {
-            roomId = asString(first.get("id"));
-        }
-        if (roomId.isBlank()) {
-            log.warn("[auto-signout] resolve roomId failed userId={} firstRow={}", userId, first);
-            writeAutoLog(userId, triggerType, triggerReason, false,
-                    augmentLinkageSignoutDetail(triggerReason, mergeDetail(detail, "未能从滞留记录解析房间"), false, userId));
-            return false;
-        }
-        String roomLabel = resolveRoomDisplayLabel(first, roomId);
         log.info("[auto-signout] resolved room userId={} roomId={}", userId, roomId);
 
         // 签退去重：同一用户 + 同一房间 + 同一动作在冷却窗口内不重复提交 ARO
@@ -141,7 +166,10 @@ public class DahuaAutoSignoutService {
             return true;
         }
 
-        boolean signoutOk = aroService.submitAccessRecord(userId, roomId, 2);
+        String sourceTag = "STRANDED_VIOLATION".equalsIgnoreCase(triggerType)
+                ? TwinAccessLogCorrelationService.SOURCE_STRANDED_VIOLATION
+                : TwinAccessLogCorrelationService.SOURCE_AUTO_SIGNOUT;
+        boolean signoutOk = twinScanService.executeAccessAction(userId, roomId, 2, false, false, null, false, sourceTag);
         if (signoutOk) {
             RECENT_SIGNOUT_AT_MS.put(dedupKey, System.currentTimeMillis());
         }
@@ -166,9 +194,7 @@ public class DahuaAutoSignoutService {
                         "仅 ARO 签退完成：" + roomLabel
                                 + "；未撤销大华门禁权限、未冻结（门禁联动规则 autoRiskActionEnabled=关闭）");
             }
-            Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
-            registerSignoutCorrelation(userId, roomId, auditId, msg, triggerType);
-            triggerMiniAroPenetrationRequest(userId, 2);
+            writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
             return true;
         }
 
@@ -217,9 +243,7 @@ public class DahuaAutoSignoutService {
         } else {
             msg = mergeDetail(detail, "自动离开完成：已尝试撤销大华门禁权限并执行冻结检查（" + roomLabel + "）");
         }
-        Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
-        registerSignoutCorrelation(userId, roomId, auditId, msg, triggerType);
-        triggerMiniAroPenetrationRequest(userId, 2);
+        writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
         return true;
     }
 
@@ -237,25 +261,6 @@ public class DahuaAutoSignoutService {
         } catch (Exception e) {
             log.warn("[auto-signout] clear swing linkage failed userId={} err={}", userId, e.getMessage());
         }
-    }
-
-    private void registerSignoutCorrelation(String userId, String roomId, Long automationLogId,
-                                             String detailForMatch, String triggerType) {
-        if (automationLogId == null) {
-            return;
-        }
-        String sourceTag = "STRANDED_VIOLATION".equalsIgnoreCase(triggerType)
-                ? TwinAccessLogCorrelationService.SOURCE_STRANDED_VIOLATION
-                : TwinAccessLogCorrelationService.SOURCE_AUTO_SIGNOUT;
-        twinAccessLogCorrelationService.registerPending(
-                2,
-                userId,
-                roomId,
-                sourceTag,
-                automationLogId,
-                "孪生·自动离开（ARO 离开登记）",
-                detailForMatch != null ? detailForMatch : ""
-        );
     }
 
     /** 仅用于面向人的日志文案，不附带 roomId 等技术标识 */
@@ -418,25 +423,4 @@ public class DahuaAutoSignoutService {
         }
     }
 
-    /**
-     * 离开闭环后的轻量穿甲请求（异步，不阻塞主流程）。
-     * 小请求接口说明：
-     * GET /jtu/api/access/record/list?pageNum=1&pageSize=20
-     * 项目内统一由 AroService.fetchLatestRecordsForRealtime(20) 发起。
-     */
-    private void triggerMiniAroPenetrationRequest(String userId, Integer expectedAccessType) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                AroRecord target = miniPenetrationSyncService.syncLatestForUser(userId, expectedAccessType, 20, true);
-                if (target == null) {
-                    log.info("[auto-signout] mini-penetration requested userId={} fetched=0", userId);
-                    return;
-                }
-                log.info("[auto-signout] mini-penetration requested userId={} expectedAccessType={} targetRecordId={}",
-                        userId, expectedAccessType, target.getId());
-            } catch (Exception e) {
-                log.warn("[auto-signout] mini-penetration failed userId={} err={}", userId, e.getMessage());
-            }
-        });
-    }
 }

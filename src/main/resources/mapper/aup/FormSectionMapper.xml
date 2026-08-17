@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.FormSectionMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO form_section (template_id, code, label, sort_order, subdivisible, show_when, highlight)
+        VALUES (#{templateId}, #{code}, #{label}, #{sortOrder}, #{subdivisible}, #{showWhen}, #{highlight})
+    </insert>
+
+    <select id="listByTemplateId" resultType="com.example.demo.modules.aup.entity.FormSection">
+        SELECT * FROM form_section WHERE template_id = #{templateId} ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <delete id="deleteByTemplateId">
+        DELETE FROM form_section WHERE template_id = #{templateId}
+    </delete>
+
+</mapper>

@@ -7,6 +7,9 @@ import com.example.demo.modules.referencedata.dto.*;
 import com.example.demo.modules.referencedata.entity.*;
 import com.example.demo.modules.referencedata.mapper.*;
 import com.example.demo.modules.referencedata.registry.ReferenceFieldRegistry;
+import com.example.demo.modules.identity.service.PersonIdentityService;
+import com.example.demo.modules.notification.dto.PublishNotificationEvent;
+import com.example.demo.modules.notification.service.NotificationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -31,6 +34,8 @@ public class ReferenceDataService {
     private final RefOrderLogMapper orderLogMapper;
     private final ReferenceFieldRegistry fieldRegistry;
     private final ObjectMapper objectMapper;
+    private final PersonIdentityService personIdentityService;
+    private final NotificationService notificationService;
 
     public ReferenceDataService(ReferenceDataMapper referenceDataMapper,
                                 RefSpecTemplateMapper specTemplateMapper,
@@ -39,7 +44,9 @@ public class ReferenceDataService {
                                 RefOrderLineMapper orderLineMapper,
                                 RefOrderLogMapper orderLogMapper,
                                 ReferenceFieldRegistry fieldRegistry,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                PersonIdentityService personIdentityService,
+                                NotificationService notificationService) {
         this.referenceDataMapper = referenceDataMapper;
         this.specTemplateMapper = specTemplateMapper;
         this.cartMapper = cartMapper;
@@ -48,6 +55,8 @@ public class ReferenceDataService {
         this.orderLogMapper = orderLogMapper;
         this.fieldRegistry = fieldRegistry;
         this.objectMapper = objectMapper;
+        this.personIdentityService = personIdentityService;
+        this.notificationService = notificationService;
     }
 
     // ==================== RefData CRUD ====================
@@ -254,6 +263,10 @@ public class ReferenceDataService {
         if (req == null || !StringUtils.hasText(req.getGroupId())) {
             return Result.error("参数无效，缺少 groupId");
         }
+        // 仅组长（GROUP_LEADER 身份标识）可提交订单，组员只能加购
+        if (!personIdentityService.isPi(userId)) {
+            return Result.error("仅组长可提交订单（组员请先加购，由组长统一提交）");
+        }
         List<RefCart> cartItems = cartMapper.listByGroupId(req.getGroupId());
         if (cartItems.isEmpty() && (req.getLines() == null || req.getLines().isEmpty())) {
             return Result.error("购物车为空，无法提交订单");
@@ -261,7 +274,8 @@ public class ReferenceDataService {
         // Create order
         RefOrder order = new RefOrder();
         order.setGroupId(req.getGroupId());
-        order.setSubmitterId(req.getSubmitterId() != null ? req.getSubmitterId() : userId);
+        // 提交人以服务端登录人为准，不信任客户端传入的 submitterId
+        order.setSubmitterId(userId);
         order.setSubmitterName(req.getSubmitterName());
         order.setProjectGroupName(req.getProjectGroupName());
         order.setStatus("PENDING");
@@ -292,7 +306,34 @@ public class ReferenceDataService {
         // Log
         logOrderAction(order.getId(), "CREATED", userId,
                 "提交订单，共 " + itemsToProcess.size() + " 项");
+        // 通知接收人（秘书）
+        notifyReceivers(order, userId, itemNames);
         return Result.success(toOrderView(orderMapper.findById(order.getId())));
+    }
+
+    private void notifyReceivers(RefOrder order, String senderId, List<String> itemNames) {
+        try {
+            List<String> receivers = personIdentityService.listSecretaryUserIds();
+            if (receivers.isEmpty()) {
+                return;
+            }
+            PublishNotificationEvent event = new PublishNotificationEvent();
+            event.setEventType("REF_ORDER_SUBMITTED");
+            event.setBizType("REF_ORDER");
+            event.setBizId(String.valueOf(order.getId()));
+            event.setSenderId(senderId);
+            event.setApplicantId(senderId);
+            event.setRelatedUserIds(new LinkedHashSet<>(receivers));
+            Map<String, String> vars = new LinkedHashMap<>();
+            vars.put("orderId", String.valueOf(order.getId()));
+            vars.put("projectGroupName", order.getProjectGroupName() != null ? order.getProjectGroupName() : "");
+            vars.put("itemCount", String.valueOf(itemNames != null ? itemNames.size() : 0));
+            vars.put("items", itemNames != null ? String.join("、", itemNames) : "");
+            event.setVariables(vars);
+            notificationService.publish(event);
+        } catch (Exception e) {
+            log.warn("[reference-data] 订单通知发送失败 orderId={} err={}", order.getId(), e.getMessage());
+        }
     }
 
     public RefOrderView getOrder(Long orderId) {
@@ -303,6 +344,13 @@ public class ReferenceDataService {
 
     public List<RefOrderView> listOrders(String groupId) {
         return orderMapper.listByGroupId(groupId).stream().map(this::toOrderView).toList();
+    }
+
+    /** 全部订单（后台审核页：按状态 tab 前端过滤） */
+    public Map<String, Object> listAllOrders(int page, int pageSize) {
+        int offset = (page - 1) * pageSize;
+        List<RefOrderView> list = orderMapper.listAll(pageSize, offset).stream().map(this::toOrderView).toList();
+        return Map.of("list", list, "total", orderMapper.countAll(), "page", page, "pageSize", pageSize);
     }
 
     @Transactional(rollbackFor = Exception.class)

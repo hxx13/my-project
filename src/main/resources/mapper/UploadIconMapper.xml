@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.inventory.mapper.UploadIconMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO inv_upload_icon (name, url, mime, uploaded_by)
+        VALUES (#{name}, #{url}, #{mime}, #{uploadedBy})
+    </insert>
+    <select id="selectAll" resultType="com.example.demo.modules.inventory.entity.InvUploadIcon">
+        SELECT * FROM inv_upload_icon ORDER BY id DESC
+    </select>
+    <select id="selectById" resultType="com.example.demo.modules.inventory.entity.InvUploadIcon">
+        SELECT * FROM inv_upload_icon WHERE id = #{id}
+    </select>
+    <delete id="deleteById">
+        DELETE FROM inv_upload_icon WHERE id = #{id}
+    </delete>
+</mapper>

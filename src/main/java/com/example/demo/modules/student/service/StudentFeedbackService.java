@@ -4,8 +4,12 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.student.dto.StudentFeedbackTicketRequest;
 import com.example.demo.modules.student.entity.StudentFeedbackTicket;
 import com.example.demo.modules.student.mapper.StudentFeedbackTicketMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -17,39 +21,42 @@ public class StudentFeedbackService {
     private static final Logger log = LoggerFactory.getLogger(StudentFeedbackService.class);
 
     private final StudentFeedbackTicketMapper ticketMapper;
+    private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
 
-    public StudentFeedbackService(StudentFeedbackTicketMapper ticketMapper) {
+    public StudentFeedbackService(StudentFeedbackTicketMapper ticketMapper,
+                                  JdbcTemplate jdbcTemplate,
+                                  ObjectMapper objectMapper) {
         this.ticketMapper = ticketMapper;
+        this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
     }
 
+    /**
+     * 学生 FAQ 分组：从 portal_content 读取（page_key = student_faq，已发布版本）。
+     * 内容由后台「学生Q&A」编辑器维护，此处不再硬编码。
+     */
     public List<Map<String, Object>> getFaqGroups() {
-        List<Map<String, Object>> groups = new ArrayList<>();
-
-        Map<String, Object> g1 = new LinkedHashMap<>();
-        g1.put("category", "门禁与进出");
-        g1.put("items", List.of(
-                Map.of("question", "如何查看我的门禁权限？", "answer", "登录后在首页仪表盘可查看可进房间数量，点击「快捷操作」中的「我的门禁权限」可查看详情（即将开放）。"),
-                Map.of("question", "门禁刷卡失败怎么办？", "answer", "请确认卡片是否有效、是否在规定时间段内、该房间是否在您的授权范围内。如仍有问题，请联系管理员。")
-        ));
-        groups.add(g1);
-
-        Map<String, Object> g2 = new LinkedHashMap<>();
-        g2.put("category", "违规记录");
-        g2.put("items", List.of(
-                Map.of("question", "违规记录是如何产生的？", "answer", "系统根据进出记录的异常情况（如未授权进入、超时未离开等）自动生成违规记录。"),
-                Map.of("question", "如何申诉违规记录？", "answer", "在「出入记录」页面的「违规记录」标签页中可查看详情，申诉功能即将上线。")
-        ));
-        groups.add(g2);
-
-        Map<String, Object> g3 = new LinkedHashMap<>();
-        g3.put("category", "账户与注册");
-        g3.put("items", List.of(
-                Map.of("question", "如何注册学生账号？", "answer", "使用您的工号/学号和 QR 码在登录页面选择「学生注册」进行注册。"),
-                Map.of("question", "忘记密码怎么办？", "answer", "请联系管理员重置密码。自助找回密码功能即将上线。")
-        ));
-        groups.add(g3);
-
-        return groups;
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT extension_json FROM portal_content"
+                            + " WHERE content_type = 'PAGE' AND status = 'PUBLISHED' AND deleted = 0"
+                            + " AND JSON_UNQUOTE(JSON_EXTRACT(extension_json, '$.page_key')) = 'student_faq'"
+                            + " ORDER BY updated_at DESC LIMIT 1");
+            if (!rows.isEmpty()) {
+                Object ext = rows.get(0).get("extension_json");
+                if (ext != null) {
+                    JsonNode root = objectMapper.readTree(ext.toString());
+                    JsonNode groupsNode = root.get("groups");
+                    if (groupsNode != null && groupsNode.isArray()) {
+                        return objectMapper.convertValue(groupsNode, new TypeReference<List<Map<String, Object>>>() {});
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[student-feedback] 读取学生FAQ失败，返回空列表: {}", e.getMessage());
+        }
+        return Collections.emptyList();
     }
 
     public Map<String, Object> getTickets(User user, int page, int size) {

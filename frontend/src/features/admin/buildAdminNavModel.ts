@@ -182,6 +182,7 @@ export function createAdminNavContext(role: string, permNodes: PublicPagePermiss
       canSuppliesAdmin: hasMinRole(role, "SUPER_ADMIN"),
       canSuppliesProcess: hasMinRole(role, "SUPER_ADMIN"),
       canAssetOps: hasMinRole(role, "STAFF"),
+      canItemLedger: hasMinRole(role, "ADMIN"),
     },
   };
 }
