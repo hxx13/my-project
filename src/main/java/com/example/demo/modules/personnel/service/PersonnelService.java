@@ -217,17 +217,24 @@ public class PersonnelService {
     }
 
     private void fillProfile(Personnel p, Map<String, Object> r) {
-        if (p.getJobNumber() == null) p.setJobNumber(str(r.get("job_number")));
-        if (p.getDepartmentName() == null) p.setDepartmentName(str(r.get("department_name")));
-        if (p.getProjectGroupName() == null) p.setProjectGroupName(str(r.get("project_group_name")));
-        if (p.getUserTypeNames() == null) p.setUserTypeNames(str(r.get("user_type_names")));
-        if (p.getHead() == null) p.setHead(str(r.get("head")));
+        fillStr(p.getJobNumber(), p::setJobNumber, str(r.get("job_number")));
+        fillStr(p.getDepartmentName(), p::setDepartmentName, str(r.get("department_name")));
+        fillStr(p.getProjectGroupName(), p::setProjectGroupName, str(r.get("project_group_name")));
+        fillStr(p.getUserTypeNames(), p::setUserTypeNames, str(r.get("user_type_names")));
+        fillStr(p.getHead(), p::setHead, str(r.get("head")));
         if (p.getGender() == null) p.setGender(toInt(r.get("gender")));
-        if (p.getMobilePhone() == null) p.setMobilePhone(str(r.get("mobile_phone")));
-        if (p.getEmail() == null) p.setEmail(str(r.get("email")));
+        fillStr(p.getMobilePhone(), p::setMobilePhone, str(r.get("mobile_phone")));
+        fillStr(p.getEmail(), p::setEmail, str(r.get("email")));
         if (p.getIsSchool() == null) p.setIsSchool(toInt(r.get("is_school")));
-        if (p.getAllowedRoomsDisplayZh() == null) p.setAllowedRoomsDisplayZh(str(r.get("allowed_rooms_display_zh")));
+        fillStr(p.getAllowedRoomsDisplayZh(), p::setAllowedRoomsDisplayZh, str(r.get("allowed_rooms_display_zh")));
         if (p.getHasOfficialRoomPermission() == null) p.setHasOfficialRoomPermission(toInt(r.get("has_official_room_permission")));
+    }
+
+    /** 仅当目标尚未设置且源非空时赋值，避免 str(null)="" 污染（保证同名合并时后者的非空值可覆盖）。 */
+    private static void fillStr(String current, java.util.function.Consumer<String> setter, String value) {
+        if ((current == null || current.isEmpty()) && value != null && !value.isEmpty()) {
+            setter.accept(value);
+        }
     }
 
     /** 不空值覆盖：把 src 的非空字段覆盖到 target（保留 target 已有非空值，不被空值覆盖）。 */
