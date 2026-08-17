@@ -321,6 +321,9 @@ Page({
     springRoleLabel: '',
     springRoleLevel: '',
     isStudentView: false,
+    hasAroBinding: false,
+    aroBindingName: '',
+    isImpersonating: false,
     canManagePersonnel: false,
     canStaffOps: false,
     canSeniorOps: false,
@@ -356,9 +359,6 @@ Page({
     badgeNotifyText: '',
     badgeRepairText: '',
     badgePurchaseText: '',
-    canEditDisplayName: false,
-    showNicknameEditor: false,
-    nicknameDraft: '',
 
     showLoginForm: false,
     loginUsername: '',
@@ -593,9 +593,6 @@ Page({
     const springUserId = springBound ? twinScan.readSpringUserId() : '';
     const roleLabel = role || '—';
     const authDisplay = springBound ? displayNameFromSpringSession() : '';
-    const ui = readSpringUserInfoObject();
-    const canEdit =
-      springBound && ui && ui.canEditDisplayNickname === true;
     const headerDisplayName = springBound
       ? authDisplay || (roleLabel !== '—' ? roleLabel : '校内用户')
       : '访客';
@@ -607,7 +604,6 @@ Page({
       springRoleLabel: roleLabel,
       springRoleLevel: level != null && level !== '' ? String(level) : '',
       springRoleLabelZh,
-      canEditDisplayName: canEdit,
       isStudentView: isStudentAccount(),
       canManagePersonnel: hasMinRole(role, 'SUPER_ADMIN'),
       canStaffOps: hasMinRole(role, 'STAFF'),
@@ -662,7 +658,79 @@ Page({
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
     if (tabBar && typeof tabBar.refreshTabs === 'function') tabBar.refreshTabs();
     void this.refreshPendingBadges();
-    if (springBound) { this.fetchCurrentEmail(); this.fetchCurrentSendKey(); this.fetchCurrentWxPusher(); }
+    if (springBound) {
+      this.fetchCurrentEmail();
+      this.fetchCurrentSendKey();
+      this.fetchCurrentWxPusher();
+      this.refreshAroBinding();
+    } else {
+      this.setData({ hasAroBinding: false, isImpersonating: false });
+    }
+  },
+
+  /** 查询当前教职工的 ARO 绑定（双 id），决定是否展示「切换学生视图」 */
+  refreshAroBinding() {
+    return springAuth.springRequest({
+      url: '/api/admin/account/binding',
+      method: 'GET',
+      data: {},
+    }).then((res) => {
+      const body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      const binding = (body && body.data) || null;
+      this.setData({
+        hasAroBinding: !!(binding && binding.aroUserId),
+        aroBindingName: (binding && binding.name) || '',
+        isImpersonating: springAuth.hasPreviousSession(),
+      });
+    }).catch(() => {
+      this.setData({ hasAroBinding: false, isImpersonating: springAuth.hasPreviousSession() });
+    });
+  },
+
+  /** 切换学生视图：用绑定的 ARO 19 位 id 跳过账号密码登录 */
+  onSwitchToStudent() {
+    springAuth.springRequest({
+      url: '/api/auth/impersonate',
+      method: 'POST',
+      data: {},
+    }).then((res) => {
+      const body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      const token = body && body.data && body.data.token;
+      const aroUserId = body && body.data && body.data.aroUserId;
+      if (!token || !aroUserId) {
+        wx.showToast({ title: '切换失败', icon: 'none' });
+        return;
+      }
+      // 保存原教职工会话，供「返回教职工视角」恢复
+      springAuth.savePreviousSession();
+      // 角色沿用教职工（最高权限），身份 id 切到学生（19 位）
+      springAuth.persistSpringSession({
+        token,
+        role: wx.getStorageSync(springAuth.KEYS.ROLE) || '',
+        roleLevel: wx.getStorageSync(springAuth.KEYS.ROLE_LEVEL) || '',
+        roleDesc: wx.getStorageSync(springAuth.KEYS.ROLE_DESC) || '',
+        userInfo: {
+          id: aroUserId,
+          username: aroUserId,
+          displayName: this.data.aroBindingName || aroUserId,
+          accountSource: 'STUDENT',
+        },
+      });
+      wx.showToast({ title: '已切换学生视图', icon: 'success' });
+      this.refreshSpringUiState();
+    }).catch((err) => {
+      wx.showToast({ title: (err && err.message) || '切换失败', icon: 'none' });
+    });
+  },
+
+  /** 返回教职工视角 */
+  onReturnToStaff() {
+    if (springAuth.restorePreviousSession()) {
+      wx.showToast({ title: '已返回教职工视角', icon: 'success' });
+      this.refreshSpringUiState();
+    } else {
+      wx.showToast({ title: '无原会话', icon: 'none' });
+    }
   },
 
   onProfileAvatarError() {
@@ -791,39 +859,6 @@ Page({
         profileAvatarFailed: false,
         headerDisplayName,
         profileAvatarLetter: pickAvatarLetter(headerDisplayName, roleLabel),
-      });
-    }
-  },
-
-  onOpenNicknameEditor() {
-    const u = readSpringUserInfoObject();
-    const cur = u && u.displayNickname != null ? String(u.displayNickname) : '';
-    this.setData({ showNicknameEditor: true, nicknameDraft: cur });
-  },
-
-  onCloseNicknameEditor() {
-    this.setData({ showNicknameEditor: false });
-  },
-
-  onNicknameDraftInput(e) {
-    this.setData({ nicknameDraft: e.detail.value });
-  },
-
-  async submitNicknameDraft() {
-    const v = (this.data.nicknameDraft || '').trim();
-    wx.showLoading({ title: '保存中…', mask: true });
-    try {
-      await springAuth.updateDisplayNickname(v);
-      wx.hideLoading();
-      wx.showToast({ title: '已保存', icon: 'success' });
-      this.setData({ showNicknameEditor: false });
-      this.refreshSpringUiState();
-    } catch (err) {
-      wx.hideLoading();
-      wx.showToast({
-        title: err && err.message ? String(err.message).slice(0, 18) : '保存失败',
-        icon: 'none',
-        duration: 3000,
       });
     }
   },

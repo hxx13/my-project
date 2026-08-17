@@ -13,14 +13,6 @@
       >
         {{ springRoleLabelZh }}
       </view>
-      <view
-        wx:if="{{ springBound && canEditDisplayName }}"
-        class="mine-chip mine-chip--ok mine-chip--role-tap"
-        hover-class="mine-chip--role-tap-hover"
-        bindtap="onOpenNicknameEditor"
-      >
-        修改姓名
-      </view>
       <view class="mine-chip-row">
         <view
           class="mine-chip {{ currentEmail ? 'mine-chip--ok' : 'mine-chip--warn' }} mine-chip--role-tap"
@@ -100,6 +92,26 @@
     <view class="mine-section-head">
       <text class="mine-section-title">常用功能</text>
       <text class="mine-section-tag">MENU</text>
+    </view>
+  </view>
+
+  <view wx:if="{{ springBound && ((!isStudentView && hasAroBinding) || isImpersonating) }}" class="mine-menu-group">
+    <text class="mine-menu-group-title">视角切换</text>
+    <view class="mine-list-card">
+      <van-cell-group inset="{{ false }}" border="{{ false }}">
+        <van-cell wx:if="{{ !isStudentView && hasAroBinding }}" is-link bind:click="onSwitchToStudent">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="exchange" size="28rpx" color="#16a34a" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">切换学生视图</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ isImpersonating }}" is-link bind:click="onReturnToStaff">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="exchange" size="28rpx" color="#ea580c" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">返回教职工视角</text>
+          </view>
+        </van-cell>
+      </van-cell-group>
     </view>
   </view>
 
@@ -317,28 +329,6 @@
       <view wx:if="{{ profileDetailRows.length === 0 && profileDetailHeadRows.length === 0 }}" class="profile-popup-empty">暂无更多明细字段</view>
       </block>
     </scroll-view>
-  </view>
-</van-popup>
-
-<van-popup
-  show="{{ showNicknameEditor }}"
-  position="center"
-  round
-  closeable
-  custom-class="mine-bind-popup"
-  bind:close="onCloseNicknameEditor"
->
-  <view class="bind-panel bind-panel--center">
-    <view class="bind-title">修改展示姓名</view>
-    <text class="bind-tip">用于报修、采购、物资领用等场景的申请人展示名；留空则使用登录账号。</text>
-    <input
-      class="bind-input bind-input-block"
-      value="{{ nicknameDraft }}"
-      maxlength="32"
-      bindinput="onNicknameDraftInput"
-      placeholder="请输入昵称，最多32字"
-    />
-    <van-button block type="primary" round custom-class="bind-submit" bindtap="submitNicknameDraft">保存</van-button>
   </view>
 </van-popup>
 
