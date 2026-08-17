@@ -365,6 +365,18 @@ public class TwinScanService {
         } catch (Exception e) {
             // 房间名查不到不影响直写
         }
+        try {
+            AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
+            if (p != null) {
+                rec.setName(p.getName());
+                rec.setProjectGroupNames(p.getResolvedProjectGroupNames());
+                rec.setUserTypeNames(p.getUserTypeNames());
+                if (p.getMobilePhone() != null) rec.setMobilePhone(p.getMobilePhone());
+                if (p.getEmail() != null) rec.setEmail(p.getEmail());
+            }
+        } catch (Exception e) {
+            // 人员信息查不到不影响直写
+        }
         rec.setFeedSource("LOCAL_SCAN");
         rec.setFeedSummaryZh(accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）");
         rec.setFeedDetailZh("本地数据源模式：由孪生 Web 扫码直写本地流水，切回官方后自动对齐溯源。");
