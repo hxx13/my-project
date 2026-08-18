@@ -34,7 +34,20 @@ export function useMaterialCart() {
 }
 export function useSaveMaterialCart() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: saveMaterialCart, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.cart() }) });
+  return useMutation({
+    mutationFn: saveMaterialCart,
+    // 购物车是全量替换 PUT：每次提交的 payload 就是目标状态，乐观写入缓存即权威。
+    // 不再 invalidate——连续保存（如规格确认的多键循环）的中间 refetch 会用旧快照覆盖乐观值，造成丢物品。
+    onMutate: async (cart) => {
+      await qc.cancelQueries({ queryKey: materialQueryKeys.cart() });
+      const prev = qc.getQueryData(materialQueryKeys.cart());
+      qc.setQueryData(materialQueryKeys.cart(), cart);
+      return { prev };
+    },
+    onError: (_err, _cart, ctx) => {
+      if (ctx?.prev) qc.setQueryData(materialQueryKeys.cart(), ctx.prev);
+    },
+  });
 }
 export function useCreateMaterialRequest() {
   const qc = useQueryClient();
@@ -43,7 +56,8 @@ export function useCreateMaterialRequest() {
       createMaterialRequest(params.lines, params.applicantGroup, params.scheduledPickupTime),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: materialQueryKeys.requests() });
-      qc.invalidateQueries({ queryKey: materialQueryKeys.cart() });
+      // 后端 createRequest 不清空购物车：invalidate cart 会把提交前的旧购物车 refetch 回来。
+      // 提交成功后购物车由页面显式 saveCart({}) 清空（乐观写入缓存即可，无需 refetch）。
       const count = Array.isArray(data) ? data.length : 1;
       return count;
     },
@@ -88,41 +102,41 @@ export function useAdminMaterialItems(categoryId?: number) {
 }
 export function useCreateAdminMaterialItem() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: createAdminMaterialItem, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+  return useMutation({ mutationFn: createAdminMaterialItem, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItemsPrefix() }) });
 }
 export function useUpdateAdminMaterialItem() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: Partial<Record<string, unknown>> }) => updateAdminMaterialItem(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItemsPrefix() }),
   });
 }
 export function useDeleteAdminMaterialItem() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: deleteAdminMaterialItem, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+  return useMutation({ mutationFn: deleteAdminMaterialItem, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItemsPrefix() }) });
 }
 export function useAdminMaterialRecycle(params: { page: number; size: number }) {
   return useQuery({ queryKey: [...materialQueryKeys.adminItems(), "recycle", params], queryFn: () => fetchAdminMaterialRecycle(params) });
 }
 export function useRestoreAdminMaterialRecycle() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: restoreAdminMaterialRecycle, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+  return useMutation({ mutationFn: restoreAdminMaterialRecycle, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItemsPrefix() }) });
 }
 export function usePurgeAdminMaterialRecycle() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (ids: number[]) => purgeAdminMaterialRecycleByIds(ids), onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+  return useMutation({ mutationFn: (ids: number[]) => purgeAdminMaterialRecycleByIds(ids), onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItemsPrefix() }) });
 }
 export function usePurgeAllAdminMaterialRecycle() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: purgeAllAdminMaterialRecycle, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+  return useMutation({ mutationFn: purgeAllAdminMaterialRecycle, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItemsPrefix() }) });
 }
 export function useAdjustMaterialStock() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: ({ id, newQty }: { id: number; newQty: number }) => adjustMaterialStock(id, newQty), onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+  return useMutation({ mutationFn: ({ id, newQty }: { id: number; newQty: number }) => adjustMaterialStock(id, newQty), onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItemsPrefix() }) });
 }
 export function useInboundMaterialItem() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: inboundMaterialItem, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+  return useMutation({ mutationFn: inboundMaterialItem, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItemsPrefix() }) });
 }
 export function usePendingMaterialRequests() {
   return useQuery({

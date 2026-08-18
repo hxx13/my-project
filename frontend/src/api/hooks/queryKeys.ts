@@ -176,6 +176,7 @@ export const materialQueryKeys = {
   myStats: () => [...materialQueryKeys.all, "stats", "mine"] as const,
   adminCategories: () => [...materialQueryKeys.all, "admin", "categories"] as const,
   adminItems: (categoryId?: number) => [...materialQueryKeys.all, "admin", "items", { categoryId }] as const,
+  adminItemsPrefix: () => [...materialQueryKeys.all, "admin", "items"] as const,
   pendingRequests: () => [...materialQueryKeys.requests(), "pending"] as const,
   allRequests: (params: Record<string, unknown>) => [...materialQueryKeys.requests(), "all", params] as const,
   finishedRequests: (params: Record<string, unknown>) => [...materialQueryKeys.requests(), "finished", params] as const,
