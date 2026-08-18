@@ -20,7 +20,7 @@ declare global {
   }
 }
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
-import { resolvePostLoginTarget } from "@/features/auth/postLoginNavigation";
+import { resolvePostLoginTarget, isStudentAccount } from "@/features/auth/postLoginNavigation";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -302,7 +302,7 @@ export default function LoginPage() {
       try {
         const data = await loginCas(ticket, window.location.origin);
         authStorage.setAuth(data.token, data.role, data.userInfo);
-        const isStudent = data.userInfo?.accountSource === "STUDENT" || (data.userInfo?.accountSource == null && data.role === "MEMBER");
+        const isStudent = isStudentAccount();
         if (isStudent) {
           authStorage.markLoginPortal("student");
           setShowLogin(false);
@@ -351,9 +351,8 @@ export default function LoginPage() {
       authStorage.setAuth(data.token, data.role, data.userInfo);
 
       // 学生库账号（或 MEMBER 角色）不能进入教职工视角 → 自动跳转学生中心
-      const isStudentAccount = data.userInfo?.accountSource === "STUDENT"
-        || (data.userInfo?.accountSource == null && data.role === "MEMBER");
-      if (isStudentAccount) {
+      const isStudent = isStudentAccount();
+      if (isStudent) {
         authStorage.markLoginPortal("student");
         setShowLogin(false);
         setUsername("");
