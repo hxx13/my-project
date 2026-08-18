@@ -117,19 +117,15 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                     item_badge_key VARCHAR(64) NULL COMMENT 'ITEM类型：PendingBadges字段key',
                     sort_order INT NOT NULL DEFAULT 0,
                     visible TINYINT NOT NULL DEFAULT 1,
+                    scope VARCHAR(16) NOT NULL DEFAULT 'ADMIN',
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     KEY idx_nav_parent (parent_id),
-                    KEY idx_nav_sort (sort_order)
+                    KEY idx_nav_sort (sort_order),
+                    UNIQUE KEY idx_nav_path (scope, item_path)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台侧边栏导航配置'
                 """);
-        // 清理并防止 ITEM 路径重复（root cause of nav-manager duplicates）
-        jdbcTemplate.update("""
-                DELETE t1 FROM admin_nav_config t1
-                INNER JOIN admin_nav_config t2
-                ON t1.item_path = t2.item_path AND t1.type = 'ITEM' AND t2.type = 'ITEM'
-                WHERE t1.id > t2.id
-                """);
+        // 兼容既有库：补充 scope 列（幂等）
         try {
             jdbcTemplate.execute(
                 "ALTER TABLE admin_nav_config ADD COLUMN scope VARCHAR(16) NOT NULL DEFAULT 'ADMIN'");
@@ -137,9 +133,25 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         } catch (Exception e) {
             log.debug("[admin-nav-config] scope column may already exist: {}", e.getMessage());
         }
+        // 清理并防止 ITEM 路径重复（root cause of nav-manager duplicates），按 scope 区分
+        jdbcTemplate.update("""
+                DELETE t1 FROM admin_nav_config t1
+                INNER JOIN admin_nav_config t2
+                ON t1.item_path = t2.item_path AND t1.scope = t2.scope AND t1.type = 'ITEM' AND t2.type = 'ITEM'
+                WHERE t1.id > t2.id
+                """);
+        // 唯一键幂等重建：仅当 idx_nav_path 尚未为复合 (scope, item_path) 时才重建
+        Integer composite = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM information_schema.STATISTICS " +
+                "WHERE table_schema = DATABASE() AND table_name = 'admin_nav_config' " +
+                "AND index_name = 'idx_nav_path' AND column_name = 'scope'", Integer.class);
+        if (composite != null && composite > 0) {
+            log.info("[admin-nav-config] UNIQUE(scope, item_path) already exists, skip rebuild");
+            return;
+        }
         try {
             jdbcTemplate.execute("ALTER TABLE admin_nav_config DROP KEY idx_nav_path");
-            log.info("[admin-nav-config] dropped UNIQUE(item_path)");
+            log.info("[admin-nav-config] dropped legacy UNIQUE(item_path)");
         } catch (Exception e) {
             log.debug("[admin-nav-config] UNIQUE(item_path) may not exist: {}", e.getMessage());
         }
