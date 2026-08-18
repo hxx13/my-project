@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
+import { isStudentAccount } from "@/features/auth/postLoginNavigation";
 
 interface AuthGuardProps {
   requireRole?: string;
@@ -20,10 +21,9 @@ export default function AuthGuard({ requireRole, children }: AuthGuardProps) {
     return <Navigate to={loginPath} replace state={{ from: location }} />;
   }
 
-  // ── 教职工视角门禁：统一按角色判定（role≥STAFF 才可进 /console），不再用 accountSource 区分学生库 ──
+  // ── 教职工视角门禁：按「是否学生」（id 前缀）判定，学生不进 /console；MEMBER 教职工可进 dashboard（admin 由 AdminAccessGuard 再拦）──
   if (currentPath.startsWith("/console")) {
-    const role = authStorage.getRole() ?? "MEMBER";
-    if (!hasMinRole(role, "STAFF")) {
+    if (isStudentAccount()) {
       return <Navigate to="/student/home" replace />;
     }
   }
