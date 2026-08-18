@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-18T03:19:35.538Z",
+  "generatedAt": "2026-08-18T09:24:53.783Z",
   "pages": [
     {
       "path": "/about",
@@ -504,6 +504,62 @@
       "label": "/services",
       "fallbackMinRole": null,
       "groupTitle": null,
+      "registryId": null
+    },
+    {
+      "path": "/student/animal-order",
+      "label": "实验动物订购",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "订购",
+      "registryId": null
+    },
+    {
+      "path": "/student/aup",
+      "label": "AUP 计划书",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "计划书",
+      "registryId": null
+    },
+    {
+      "path": "/student/cage-shelf",
+      "label": "笼架信息",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "空间",
+      "registryId": null
+    },
+    {
+      "path": "/student/feedback",
+      "label": "帮助反馈",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "消息",
+      "registryId": null
+    },
+    {
+      "path": "/student/material",
+      "label": "申领物品",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "物品",
+      "registryId": null
+    },
+    {
+      "path": "/student/notifications",
+      "label": "通知",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "消息",
+      "registryId": null
+    },
+    {
+      "path": "/student/rooms",
+      "label": "我的房间",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "空间",
+      "registryId": null
+    },
+    {
+      "path": "/student/settings",
+      "label": "设置",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "账号",
       "registryId": null
     }
   ],

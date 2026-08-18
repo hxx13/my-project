@@ -1,5 +1,5 @@
 /**
- * 从 adminNavRegistry.ts + router/index.tsx 导出页面权限 manifest。
+ * 从 adminNavRegistry.ts + studentNavRegistry.ts + router/index.tsx 导出页面权限 manifest。
  * 输出：src/main/resources/page-permission/admin-nav.manifest.json
  *
  * 用法：node scripts/export-admin-nav-manifest.mjs
@@ -16,6 +16,10 @@ const registryTs = fs.readFileSync(
   "utf8"
 );
 const routerTs = fs.readFileSync(path.join(root, "frontend/src/router/index.tsx"), "utf8");
+const studentRegistryTs = fs.readFileSync(
+  path.join(root, "frontend/src/features/student/nav/studentNavRegistry.ts"),
+  "utf8"
+);
 
 function norm(p) {
   if (!p) return "";
@@ -24,8 +28,8 @@ function norm(p) {
 }
 
 /** 全局扫描注册项，再按位置归属到最近的分组 title */
-function parseRegistry(registry) {
-  const arrayStart = registry.indexOf("export const ADMIN_NAV_REGISTRY");
+function parseRegistry(registry, constName = "ADMIN_NAV_REGISTRY") {
+  const arrayStart = registry.indexOf(`export const ${constName}`);
   const slice = arrayStart >= 0 ? registry.slice(arrayStart) : registry;
 
   const groupSpans = [];
@@ -111,6 +115,8 @@ function parseTwinRootRoutes(router) {
 const registryItems = parseRegistry(registryTs);
 const registryByPath = new Map(registryItems.map((it) => [it.path, it]));
 
+const studentItems = parseRegistry(studentRegistryTs, "STUDENT_NAV_REGISTRY");
+
 const adminPages = parseAdminRoutes(routerTs);
 const twinPages = parseTwinRootRoutes(routerTs);
 
@@ -134,6 +140,13 @@ function addPage(p, meta = {}) {
 for (const p of adminPages) addPage(p);
 for (const p of twinPages) addPage(p);
 for (const it of registryItems) addPage(it.path, it);
+for (const it of studentItems) {
+  addPage(it.path, {
+    label: it.label,
+    fallbackMinRole: it.fallbackMinRole || "MEMBER",
+    groupTitle: it.groupTitle,
+  });
+}
 
 // 只输出 pages 中未覆盖的 sidebar 条目（pages 已包含所有 registry 路径，避免 nav-manager 重复显示）
 const sidebarEntries = registryItems
