@@ -169,7 +169,7 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         jdbcTemplate.update("DELETE FROM admin_nav_config WHERE item_path = '/admin/student-activity'");
 
         Integer cnt = jdbcTemplate.queryForObject(
-                "SELECT COUNT(1) FROM admin_nav_config", Integer.class);
+                "SELECT COUNT(1) FROM admin_nav_config WHERE scope = 'ADMIN'", Integer.class);
         if (cnt != null && cnt > 0) {
             log.info("[admin-nav-config] 已有 {} 条配置，跳过种子数据", cnt);
             return;

@@ -64,6 +64,9 @@ public class AdminNavConfigService {
             if (parent == null) {
                 throw new IllegalArgumentException("父文件夹不存在");
             }
+            if (!scope.equals(parent.getScope())) {
+                throw new IllegalArgumentException("父文件夹 scope 不一致");
+            }
             if (!"GROUP".equals(parent.getType()) && !"SUBGROUP".equals(parent.getType())) {
                 throw new IllegalArgumentException("只能在文件夹下创建子文件夹");
             }
@@ -213,8 +216,8 @@ public class AdminNavConfigService {
 
         // 获取当前最大 sort_order
         Integer maxSort = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id = ?",
-                Integer.class, groupId);
+                "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id = ? AND scope = ?",
+                Integer.class, groupId, scope);
         int sortOrder = (maxSort != null ? maxSort : -1) + 1;
 
         // INSERT ... ON DUPLICATE KEY UPDATE —— UNIQUE(scope, item_path) 保证无竞态重复
