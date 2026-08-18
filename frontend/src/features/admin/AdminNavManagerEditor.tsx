@@ -111,7 +111,7 @@ export function AdminNavManagerEditor({ node, tree, allNodes, registryPaths, sco
 
   const handleReset = async () => {
     if (!confirm("确定要重置为默认配置？这将清空所有自定义修改，需要重启应用后生效。")) return;
-    await resetNavConfig();
+    await resetNavConfig(scope);
     onRefresh();
   };
 

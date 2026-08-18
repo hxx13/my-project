@@ -75,8 +75,8 @@ export async function reorderNavItems(orders: { id: string; sortOrder: number }[
   return res.data?.success ?? false;
 }
 
-export async function resetNavConfig(): Promise<boolean> {
-  const res = await authHttp.post<ApiResult<null>>("/admin-nav/reset");
+export async function resetNavConfig(scope: "ADMIN" | "STUDENT" = "ADMIN"): Promise<boolean> {
+  const res = await authHttp.post<ApiResult<null>>("/admin-nav/reset", { scope });
   return res.data?.success ?? false;
 }
 
