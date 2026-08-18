@@ -184,8 +184,8 @@ export default function AdminNavManager() {
   return (
     <div className="flex h-[calc(100vh-4rem)] bg-white">
       {/* Left: folder tree */}
-      <div className="w-80 shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col">
-        <div className="px-4 py-3 border-b border-gray-200">
+      <div className="w-80 shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col min-h-0 overflow-hidden">
+        <div className="shrink-0 px-4 py-3 border-b border-gray-200">
           <button
             onClick={() => navigate(-1)}
             className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"
@@ -196,7 +196,7 @@ export default function AdminNavManager() {
         </div>
 
         {/* 作用域切换：后台导航 / 学生端导航 */}
-        <div className="px-4 py-2 border-b border-gray-200 bg-white">
+        <div className="shrink-0 px-4 py-2 border-b border-gray-200 bg-white">
           <div className="inline-flex w-full rounded-lg bg-gray-100 p-1">
             <button
               type="button"
@@ -231,10 +231,13 @@ export default function AdminNavManager() {
             setCreateOpen(true);
           }}
         />
+      </div>
 
+      {/* Right: 未入库/已隐藏面板 + 编辑器 */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-0">
         {/* 注册表中未入库的条目 */}
         {missingRegistryItems.length > 0 ? (
-          <div className="border-t border-amber-200 bg-amber-50/60 px-3 py-2">
+          <div className="shrink-0 border-b border-amber-200 bg-amber-50/60 px-4 py-2">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-semibold text-amber-800">
                 未入库条目 ({missingRegistryItems.length})
@@ -266,7 +269,7 @@ export default function AdminNavManager() {
 
         {/* 已隐藏的注册表条目 */}
         {hiddenRegistryItems.length > 0 && (
-          <div className="border-t border-gray-200 bg-gray-50/80 px-3 py-2">
+          <div className="shrink-0 border-b border-gray-200 bg-gray-50/80 px-4 py-2">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-semibold text-gray-600">
                 已隐藏条目 ({hiddenRegistryItems.length})
@@ -293,18 +296,18 @@ export default function AdminNavManager() {
             </div>
           </div>
         )}
-      </div>
 
-      {/* Right: editor */}
-      <div className="flex-1 overflow-y-auto">
-        <AdminNavManagerEditor
-          node={selectedNode ?? null}
-          tree={tree}
-          allNodes={allNodes}
-          registryPaths={allRegistryPaths}
-          scope={scope}
-          onRefresh={loadTree}
-        />
+        {/* Editor（可滚动） */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <AdminNavManagerEditor
+            node={selectedNode ?? null}
+            tree={tree}
+            allNodes={allNodes}
+            registryPaths={allRegistryPaths}
+            scope={scope}
+            onRefresh={loadTree}
+          />
+        </div>
       </div>
 
       <AdminNavManagerCreateDialog
