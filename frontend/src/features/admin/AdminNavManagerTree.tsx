@@ -12,7 +12,7 @@ interface Props {
 
 export function AdminNavManagerTree({ tree, selectedId, onSelect, onAddClick }: Props) {
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
         <span className="font-semibold text-sm text-gray-700">文件夹结构</span>
         <button
