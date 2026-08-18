@@ -17,6 +17,7 @@ import {
 } from "@/features/student/materialApplicant";
 import { MaterialSpecPickControl } from "@/components/material/MaterialSpecPickerSheet";
 import { hasSpecSchema } from "@/utils/materialSpecHelpers";
+import { cartAdd } from "@/utils/cartMath";
 import { webImageSrc } from "@/utils/mediaUrl";
 import { FillHeightScroll } from "@/components/layout/ScrollFillLayout";
 import { cn } from "@/lib/utils";
@@ -117,15 +118,8 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
   }, [cart, items]);
 
   const updateQty = (key: string, delta: number, maxStock?: number) => {
-    setCart((prev) => {
-      const next = { ...prev };
-      const cur = next[key] || 0;
-      const cap = maxStock != null ? Math.min(999, maxStock) : 999;
-      const nv = Math.max(0, Math.min(cap, cur + delta));
-      if (nv === 0) delete next[key];
-      else next[key] = nv;
-      return next;
-    });
+    // 函数式更新 + cartMath 统一语义：同一 tick 多次调用基于最新态累加，归零自动删除。
+    setCart((prev) => cartAdd(prev, key, delta, maxStock));
   };
 
   const handleSubmit = useCallback(async () => {

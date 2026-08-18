@@ -1,6 +1,6 @@
 /**
- * 学生物品申领商城 — 布局对齐管理后台物资商城（AdminSuppliesMallPage）
- * 底部栏 + 上滑Sheet 模式，保留学生独有：预约领取、需求建议、审核流程
+ * 学生物品申领商城 — 购物车对齐管理后台物资商城（AdminSuppliesMallPage）
+ * 悬浮球(FAB) + 右下浮出抽屉模式，保留学生独有：预约领取、需求建议、审核流程
  */
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -9,6 +9,8 @@ import {
   Loader2, X, Clock, Pencil, Search, ClipboardList, ChevronRight,
 } from "lucide-react";
 import { useMaterialCategories, useMaterialItems, useMaterialCart, useSaveMaterialCart, useCreateMaterialRequest } from "@/api/hooks/useMaterial";
+import { useCartSync } from "@/hooks/useCartSync";
+import { cartAdd } from "@/utils/cartMath";
 import { createMaterialDemand } from "@/api/domains/material.api";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { resolveMaterialApplicantGroupForStudentSession } from "@/features/student/materialApplicant";
@@ -86,8 +88,8 @@ function MaterialItemCard({
 
   return (
     <StudentCard className="relative flex flex-col overflow-hidden hover:shadow-md hover:border-[var(--student-primary)]/20 transition-all duration-150" style={{ minHeight: "14rem" }}>
-      {/* Cover image — full width top area */}
-      <button type="button" className="relative w-full h-32 bg-[var(--student-canvas-soft)] flex items-center justify-center overflow-hidden"
+      {/* Cover image — 大卡片通栏头图，16:9 与源图一致（原 h-32 长条会裁切图片，改为 aspect-video 完整显示） */}
+      <button type="button" className="relative w-full aspect-video bg-[var(--student-canvas-soft)] flex items-center justify-center overflow-hidden"
         onClick={() => cover && onPreviewCover(cover)} disabled={!cover}>
         {cover ? <img src={cover} alt={item.name} className="w-full h-full object-cover" />
           : <span className="text-3xl font-bold text-[var(--student-primary)]/20">{coverChar}</span>}
@@ -147,12 +149,23 @@ export default function StudentMaterialPage() {
 
   /* ── Remote state ── */
   const { data: categories } = useMaterialCategories();
-  const [activeCategoryId, setActiveCategoryId] = useState<number | undefined>(initialCat ? Number(initialCat) : undefined);
-  const { data: items, isLoading: itemsLoading } = useMaterialItems(activeCategoryId);
+  /* 分类视图：root=分类卡片根层 / all=全部物资 / number=下钻到指定分类 */
+  const [activeCategoryId, setActiveCategoryId] = useState<number | "root" | "all">(initialCat ? Number(initialCat) : "root");
+  const { data: items, isLoading: itemsLoading } = useMaterialItems(activeCategoryId === "root" || activeCategoryId === "all" ? undefined : activeCategoryId);
   const { data: allItems } = useMaterialItems(undefined);
   const { data: cart } = useMaterialCart();
   const saveCart = useSaveMaterialCart();
   const createRequest = useCreateMaterialRequest();
+
+  /* ── 购物车写回标准件：最新态 ref + 串行 PUT（全端共享 useCartSync） ── */
+  // 同一 tick 内多次 updateCartQty（如规格确认对多组合的循环）基于最新态累加，
+  // 串行队列保证连续 PUT 按序落库，杜绝并发全量替换互相覆盖。
+  // 乐观缓存由 useSaveMaterialCart.onMutate 同步写入，UI 即时反映。
+  const sync = useCartSync({
+    commit: (next) => saveCart.mutateAsync(next),
+    mode: "serialize",
+  });
+  useEffect(() => { sync.setLatest(cart ?? {}); }, [cart, sync.setLatest]);
 
   /* ── Local UI state ── */
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -242,22 +255,19 @@ export default function StudentMaterialPage() {
 
   /* ── Cart actions ── */
   const updateCartQty = useCallback((key: string, delta: number, maxStock?: number) => {
-    if (!cart) return;
-    const next = { ...cart };
-    const cap = maxStock != null ? Math.min(999, maxStock) : 999;
-    const nv = Math.max(0, Math.min(cap, (next[key] || 0) + delta));
-    if (nv <= 0) { delete next[key]; setRemarkMap(p => { const r = { ...p }; delete r[key]; return r; }); }
-    else next[key] = nv;
-    saveCart.mutate(next);
-  }, [cart, saveCart]);
+    if (cart === undefined) return; // 购物车未水合前不写入
+    const next = cartAdd(sync.cartRef.current ?? {}, key, delta, maxStock);
+    if (!(key in next)) setRemarkMap(p => { const r = { ...p }; delete r[key]; return r; });
+    sync.schedule(next);
+  }, [cart, sync]);
 
   const handleClearCart = useCallback(() => {
     setClearCartOpen(false);
-    saveCart.mutate({});
+    sync.schedule({});
     setRemarkMap({});
     setCartSheetOpen(false);
     toast.success("已清空申领栏");
-  }, [saveCart]);
+  }, [sync]);
 
   const buildCartLines = () =>
     Object.entries(cart || {}).filter(([, qty]) => qty > 0).map(([key, qty]) => {
@@ -270,11 +280,11 @@ export default function StudentMaterialPage() {
     const group = resolveMaterialApplicantGroupForStudentSession();
     try {
       const data = await createRequest.mutateAsync({ lines: buildCartLines(), applicantGroup: group, scheduledPickupTime: pickupTime ?? null });
-      saveCart.mutate({}); setRemarkMap({}); setScheduledPickupTime(null); setShowPickupPicker(false);
+      sync.schedule({}); setRemarkMap({}); setScheduledPickupTime(null); setShowPickupPicker(false);
       toast.success(`已提交 ${Array.isArray(data) ? data.length : 1} 张申领单`);
       setView("requests");
     } catch (e) { toast.error(e instanceof Error ? e.message : "提交失败"); }
-  }, [cart, cartCount, remarkMap, createRequest, saveCart, navigate]);
+  }, [cart, cartCount, remarkMap, createRequest, sync, navigate]);
 
   /* ── Render ── */
   return (
@@ -308,36 +318,65 @@ export default function StudentMaterialPage() {
         {view === "requests" ? (
           <StudentMaterialRequestsView onBack={() => setView("shop")} />
         ) : (
-        <div className="flex min-h-0 flex-1 relative">
-          {/* Category sidebar */}
-          <aside className="w-[128px] shrink-0 overflow-y-auto border-r border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] py-2">
-            <button onClick={() => setActiveCategoryId(undefined)}
-              className={cn("block w-full px-3 py-2 text-left text-xs leading-snug border-l-[3px]",
-                !activeCategoryId ? "border-l-[var(--student-primary)] bg-[var(--student-canvas)] font-semibold text-[var(--student-primary)]"
-                                  : "text-[var(--student-body)] hover:bg-[var(--student-canvas)]/80 border-l-transparent")}>
-              全部
-            </button>
-            {categories?.map(c => (
-              <button key={c.id} onClick={() => setActiveCategoryId(c.id)}
-                className={cn("block w-full px-3 py-2 text-left text-xs leading-snug border-l-[3px]",
-                  activeCategoryId === c.id ? "border-l-[var(--student-primary)] bg-[var(--student-canvas)] font-semibold text-[var(--student-primary)]"
-                                            : "text-[var(--student-body)] hover:bg-[var(--student-canvas)]/80 border-l-transparent")}>
-                {c.name}
+        <div className="flex min-h-0 flex-1">
+          {/* Sidebar — only shown when drilled (all-items or specific category)，对齐 admin 下钻 */}
+          {activeCategoryId !== "root" && (
+            <aside className="w-[128px] shrink-0 overflow-y-auto border-r border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] py-2">
+              <button type="button" onClick={() => setActiveCategoryId("root")}
+                className="mb-1 flex w-full items-center gap-1 border-b border-[var(--student-hairline)] px-3 py-2 text-xs font-medium text-[var(--student-primary)] transition-colors hover:bg-[var(--student-canvas)]">
+                <span className="text-sm leading-none">←</span>
+                <span>返回分类</span>
               </button>
-            ))}
-          </aside>
+              <button onClick={() => setActiveCategoryId("all")}
+                className={cn("block w-full px-3 py-2 text-left text-xs leading-snug border-l-[3px]",
+                  activeCategoryId === "all" ? "border-l-[var(--student-primary)] bg-[var(--student-canvas)] font-semibold text-[var(--student-primary)]"
+                                             : "text-[var(--student-body)] hover:bg-[var(--student-canvas)]/80 border-l-transparent")}>
+                全部
+              </button>
+              <div className="px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--student-mute)]">分类</div>
+              {categories?.map(c => (
+                <button key={c.id} onClick={() => setActiveCategoryId(c.id)}
+                  className={cn("block w-full px-3 py-2 text-left text-xs leading-snug border-l-[3px]",
+                    activeCategoryId === c.id ? "border-l-[var(--student-primary)] bg-[var(--student-canvas)] font-semibold text-[var(--student-primary)]"
+                                              : "text-[var(--student-body)] hover:bg-[var(--student-canvas)]/80 border-l-transparent")}>
+                  {c.name}
+                </button>
+              ))}
+            </aside>
+          )}
 
-          {/* Items grid */}
+          {/* Main area — category cards (root) or item cards (drilled) */}
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-2">
-            {itemsLoading ? (
+            {activeCategoryId !== "root" && itemsLoading ? (
               <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))" }}>
                 {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[120px]" />)}
               </div>
-            ) : filteredItems.length === 0 ? (
+            ) : null}
+
+            {/* Root level: category cards（"全部"入口保留在左侧边栏，此处仅展示分类卡片） */}
+            {activeCategoryId === "root" && (
+              <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))" }}>
+                {categories?.map((c, i) => (
+                  <div key={c.id} className="relative min-h-[9rem] rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)] p-5 shadow-sm animate-[card-in_0.4s_ease-out_both]" style={{ animationDelay: `${i * 60}ms` }}>
+                    <button type="button" onClick={() => setActiveCategoryId(c.id)}
+                      className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-3 transition-colors hover:text-[var(--student-primary)]">
+                      <div className="relative flex aspect-square w-24 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[var(--student-canvas-soft)]">
+                        <span className="select-none px-1 text-center text-xl font-bold leading-tight break-words text-[var(--student-mute)]">{String(c.name || "?")}</span>
+                      </div>
+                      <span className="text-base font-semibold text-[var(--student-ink)]">{c.name}</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Drilled: item cards */}
+            {activeCategoryId !== "root" && !itemsLoading && filteredItems.length === 0 && (
               <div className="flex items-center justify-center h-full">
                 <EmptyState icon={Package} title={searchKeyword.trim() ? "未找到匹配物品" : "暂无上架物品"} />
               </div>
-            ) : (
+            )}
+            {activeCategoryId !== "root" && !itemsLoading && filteredItems.length > 0 && (
               <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))" }}>
                 {filteredItems.map(item => (
                   <MaterialItemCard key={item.id} item={item} cart={cart || {}}
@@ -353,23 +392,6 @@ export default function StudentMaterialPage() {
 
         {view === "shop" && (
         <div className="contents">
-        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--student-hairline)] bg-[var(--student-surface)] px-3 py-2 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-          <button type="button" onClick={() => { if (cartCount === 0) { toast.error("申领栏是空的"); return; } setCartSheetOpen(true); }}
-            className="relative rounded-full border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-4 py-2 text-xs font-medium text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)]">
-            申领栏
-            {cartCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--student-error)] px-1 text-[10px] font-bold text-white ring-2 ring-white">
-                {cartCount > 99 ? "99+" : cartCount}
-              </span>
-            )}
-          </button>
-          <button type="button" disabled={cartCount === 0}
-            onClick={() => setConfirmOpen(true)}
-            className="rounded-full bg-[var(--student-primary)] px-5 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50 hover:opacity-90 whitespace-nowrap">
-            提交申领
-          </button>
-        </footer>
-
         {/* ════════════ Demand suggestion footer ════════════ */}
         {demandEntryVisible && (
           <div className="shrink-0 px-3 py-2 border-t border-[var(--student-hairline)] bg-[var(--student-surface)]">
@@ -394,34 +416,34 @@ export default function StudentMaterialPage() {
           </div>
         )}
 
-        {/* ════════════ Cart slide-up sheet (对齐 admin) ════════════ */}
-        {cartSheetOpen && (
-          <div className="absolute inset-0 z-40 flex flex-col justify-end bg-black/35" onClick={() => setCartSheetOpen(false)}>
-            <div className="mx-2 mb-2 flex min-h-0 max-h-[85%] flex-col overflow-hidden rounded-xl bg-[var(--student-surface)] shadow-[0_-8px_28px_rgba(0,0,0,0.15)] sm:mx-3 sm:mb-3" onClick={e => e.stopPropagation()}>
-              {/* Sheet header */}
-              <div className="shrink-0 flex items-center justify-between border-b border-[var(--student-hairline)] px-4 py-3">
-                <span className="text-sm font-semibold text-[var(--student-ink)]">申领栏{cartCount > 0 ? ` · ${cartCount} 件` : ""}</span>
-                <button onClick={() => setCartSheetOpen(false)} className="p-1 rounded hover:bg-[var(--student-canvas-soft)] text-[var(--student-mute)]"><X className="size-4" /></button>
+        {/* ════════════ Floating cart (对齐 admin supplies: 悬浮球 + 抽屉) ════════════ */}
+        <style>{`
+          @keyframes card-in { from { opacity: 0; transform: scale(0.9) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+          @keyframes cart-pop { 0% { transform: scale(0.8); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
+        `}</style>
+        <div className="fixed right-16 z-50 flex flex-col items-end gap-2" style={{ bottom: "max(72px, env(safe-area-inset-bottom, 0px) + 56px)" }}>
+          {/* Drawer — 右下浮出，悬浮于 FAB 之上 */}
+          {cartSheetOpen && (
+            <div className="flex max-h-[60vh] w-80 flex-col overflow-hidden rounded-[var(--student-radius-lg)] border border-[var(--student-hairline)] bg-[var(--student-surface)] shadow-[0_8px_32px_rgba(0,0,0,0.18)]">
+              {/* Drawer header */}
+              <div className="flex shrink-0 items-center justify-between border-b border-[var(--student-hairline)] px-4 py-3">
+                <span className="text-sm font-semibold text-[var(--student-ink)]">购物车{cartCount > 0 ? ` · ${cartCount} 件` : ""}</span>
+                <button type="button" onClick={() => setCartSheetOpen(false)} className="rounded p-1 text-[var(--student-mute)] hover:bg-[var(--student-canvas-soft)]"><X className="size-4" /></button>
               </div>
 
-              {/* Sheet body */}
-              <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 space-y-2">
+              {/* Drawer body */}
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2">
                 {cartLines.length === 0 ? (
-                  <div className="py-16 text-center text-[13px] text-[var(--student-mute)]">申领栏是空的</div>
+                  <div className="py-12 text-center text-[13px] text-[var(--student-mute)]">购物车是空的</div>
                 ) : (
                   cartLines.map(line => {
                     const item = items?.find(x => x.id === line.itemId);
                     const itemMax = item?.stockMode === "UNLIMITED" ? undefined : (item?.stockQty || 0);
                     return (
-                      <div key={line.key} className="flex gap-2 rounded-lg border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] p-2">
-                        {line.cover ? (
-                          <img src={line.cover} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
-                        ) : (
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-[var(--student-canvas)] text-xs font-bold text-[var(--student-mute)]">{line.initial}</div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] font-medium text-[var(--student-ink)]">{line.name}</div>
-                          <div className="mt-1 flex items-center gap-0.5">
+                      <div key={line.key} className="rounded-lg border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--student-ink)]">{line.name}</div>
+                          <div className="flex shrink-0 items-center gap-0.5">
                             <button type="button" onClick={() => updateCartQty(line.key, -1, itemMax)}
                               className="h-7 w-7 rounded border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-sm">−</button>
                             <input type="number" min={0} value={line.qty}
@@ -432,35 +454,35 @@ export default function StudentMaterialPage() {
                                 const cur = line.qty;
                                 if (safe !== cur) updateCartQty(line.key, safe - cur, itemMax);
                               }}
-                              className="h-7 w-12 rounded border border-[var(--student-hairline)] text-center text-xs" />
+                              className="h-7 w-10 rounded border border-[var(--student-hairline)] text-center text-xs tabular-nums" />
                             <button type="button" onClick={() => updateCartQty(line.key, 1, itemMax)}
                               disabled={itemMax != null && line.qty >= itemMax}
                               className="h-7 w-7 rounded bg-[var(--student-primary)] text-sm font-bold text-white disabled:opacity-40 hover:opacity-90">+</button>
                           </div>
-                          <input type="text" placeholder="备注（可选，将计入审计）" value={remarkMap[line.key] || ""}
-                            onChange={e => setRemarkMap(p => ({ ...p, [line.key]: e.target.value }))}
-                            className="mt-1.5 w-full rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-2 py-1 text-[11px] text-[var(--student-ink)] placeholder:text-[var(--student-mute)]" />
                         </div>
+                        <input type="text" placeholder="备注（可选，将计入审计）" value={remarkMap[line.key] || ""}
+                          onChange={e => setRemarkMap(p => ({ ...p, [line.key]: e.target.value }))}
+                          className="mt-1.5 w-full rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-2 py-1 text-[11px] text-[var(--student-ink)] placeholder:text-[var(--student-mute)]" />
                       </div>
                     );
                   })
                 )}
               </div>
 
-              {/* Sheet footer: pickup mode + actions */}
+              {/* Drawer footer: pickup mode + actions */}
               {cartCount > 0 && (
                 <div className="shrink-0 border-t border-[var(--student-hairline)]">
                   {/* Pickup mode */}
-                  <div className="px-4 py-2 space-y-1.5">
+                  <div className="space-y-1.5 px-4 py-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-[var(--student-mute)] shrink-0">领取方式</span>
-                      <div className="flex rounded-md border border-[var(--student-hairline)] overflow-hidden">
+                      <span className="shrink-0 text-[11px] text-[var(--student-mute)]">领取方式</span>
+                      <div className="flex overflow-hidden rounded-md border border-[var(--student-hairline)]">
                         <button onClick={() => { setScheduledPickupTime(null); setShowPickupPicker(false); }}
-                          className={cn("px-3 py-1 text-[11px] font-medium transition-colors", !scheduledPickupTime ? "bg-[var(--student-primary)] text-white" : "text-[var(--student-mute)] hover:text-[var(--student-ink)] hover:bg-[var(--student-canvas-soft)]")}>立即领取</button>
+                          className={cn("px-3 py-1 text-[11px] font-medium transition-colors", !scheduledPickupTime ? "bg-[var(--student-primary)] text-white" : "text-[var(--student-mute)] hover:bg-[var(--student-canvas-soft)] hover:text-[var(--student-ink)]")}>立即领取</button>
                         <button onClick={() => { if (!scheduledPickupTime && pickupPresets[0]) { setScheduledPickupTime(pickupPresets[0].iso); } else { setShowPickupPicker(!showPickupPicker); } }}
-                          className={cn("px-3 py-1 text-[11px] font-medium transition-colors", scheduledPickupTime ? "bg-[var(--student-primary)] text-white" : "text-[var(--student-mute)] hover:text-[var(--student-ink)] hover:bg-[var(--student-canvas-soft)]")}>预约日期</button>
+                          className={cn("px-3 py-1 text-[11px] font-medium transition-colors", scheduledPickupTime ? "bg-[var(--student-primary)] text-white" : "text-[var(--student-mute)] hover:bg-[var(--student-canvas-soft)] hover:text-[var(--student-ink)]")}>预约日期</button>
                       </div>
-                      {scheduledPickupTime && <button onClick={() => setShowPickupPicker(true)} className="text-[11px] text-[var(--student-primary)] ml-auto hover:underline flex items-center gap-1">{pickupTimeLabel(scheduledPickupTime)} <Pencil className="size-3" /></button>}
+                      {scheduledPickupTime && <button onClick={() => setShowPickupPicker(true)} className="ml-auto flex items-center gap-1 text-[11px] text-[var(--student-primary)] hover:underline">{pickupTimeLabel(scheduledPickupTime)} <Pencil className="size-3" /></button>}
                     </div>
                     {showPickupPicker && (
                       <div className="space-y-1.5">
@@ -471,10 +493,10 @@ export default function StudentMaterialPage() {
                           ))}
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-[var(--student-mute)] shrink-0">自定义</span>
+                          <span className="shrink-0 text-[11px] text-[var(--student-mute)]">自定义</span>
                           <input type="date" min={pickupPresets[0]?.iso}
                             onChange={e => { if (e.target.value) { setScheduledPickupTime(e.target.value); setShowPickupPicker(false); } }}
-                            className="flex-1 rounded border border-[var(--student-hairline)] px-2 py-1 text-[11px] text-[var(--student-ink)] bg-[var(--student-canvas)]" />
+                            className="flex-1 rounded border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-2 py-1 text-[11px] text-[var(--student-ink)]" />
                         </div>
                       </div>
                     )}
@@ -482,19 +504,32 @@ export default function StudentMaterialPage() {
                   {/* Action buttons */}
                   <div className="flex items-center justify-between px-4 py-3">
                     <button type="button" onClick={() => setClearCartOpen(true)}
-                      className="rounded-full border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-3 py-1 text-[12px] text-[var(--student-error)] hover:bg-[var(--student-error-soft)] transition-colors">清空</button>
+                      className="rounded-full border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-3 py-1 text-[12px] text-[var(--student-error)] transition-colors hover:bg-[var(--student-error-soft)]">清空</button>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-[var(--student-mute)]">共 <strong className="text-[var(--student-ink)]">{cartCount}</strong> 件</span>
-                      <button onClick={() => setCartSheetOpen(false)} className="rounded-full border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-3 py-1 text-xs text-[var(--student-body)]">收起</button>
-                      <button onClick={() => { setCartSheetOpen(false); setConfirmOpen(true); }}
+                      <button type="button" onClick={() => { setCartSheetOpen(false); setConfirmOpen(true); }}
                         className="rounded-full bg-[var(--student-primary)] px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90">去提交</button>
                     </div>
                   </div>
                 </div>
               )}
             </div>
-          </div>
-        )}
+          )}
+
+          {/* FAB — 橙色悬浮球，开合切换 */}
+          <button type="button" onClick={() => setCartSheetOpen(o => !o)}
+            className={cn("relative flex items-center justify-center rounded-full shadow-lg transition-all duration-300",
+              cartSheetOpen
+                ? "h-10 w-10 border border-[var(--student-hairline)] bg-[var(--student-surface)]"
+                : "h-14 w-14 bg-orange-500 hover:scale-110 hover:bg-orange-600 animate-[cart-pop_0.5s_ease-out]")}>
+            {cartSheetOpen ? <X className="size-5 text-[var(--student-mute)]" /> : <ShoppingCart className="size-6 text-white" />}
+            {!cartSheetOpen && cartCount > 0 && (
+              <span key={cartCount} className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white animate-[cart-pop_0.3s_ease-out]">
+                {cartCount > 99 ? "99+" : cartCount}
+              </span>
+            )}
+          </button>
+        </div>
 
         </div>
         )}

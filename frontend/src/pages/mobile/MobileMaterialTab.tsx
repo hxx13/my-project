@@ -34,6 +34,8 @@ import { MobileMaterialQtyStepper } from "@/components/material/MobileMaterialQt
 import { SplitSidebarScrollLayout } from "@/components/layout/ScrollFillLayout";
 import { MobileMaterialCategoryRail } from "./components/MobileMaterialCategoryRail";
 import { MobileMaterialCartBar } from "./components/MobileMaterialCartBar";
+import { useCartSync } from "@/hooks/useCartSync";
+import { cartAdd, cartSetQty } from "@/utils/cartMath";
 
 /* ---- localStorage 购物车（学生中心 token / JWT） ---- */
 const JWT_CART_KEY = "mobile_material_cart_jwt";
@@ -93,6 +95,21 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
   const [searchKeyword, setSearchKeyword] = useState("");
   const [cart, setCart] = useState<Record<string, number>>({});
 
+  /* ── 购物车写回标准件：最新态 ref + 串行持久化（全端共享 useCartSync） ── */
+  const sync = useCartSync({
+    commit: (next) => persistCartForTab(token, next, jwtMode),
+    mode: "serialize",
+  });
+  /** 统一变更入口：更新渲染态 + 最新态 + 持久化（同一 tick 多次变更基于最新态累加）。 */
+  const applyCart = useCallback(
+    (next: Record<string, number>) => {
+      setCart(next);
+      sync.setLatest(next);
+      sync.schedule(next);
+    },
+    [sync.setLatest, sync.schedule],
+  );
+
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmLines, setConfirmLines] = useState<CartLine[]>([]);
@@ -121,10 +138,11 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
         const reconciled = reconcileCartWithStock(local, decorated);
         if (reconciled !== local) persistCartForTab(token!, reconciled, jwtMode);
         setCart(reconciled);
+        sync.setLatest(reconciled);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setLoading(false));
-  }, [token, jwtMode]);
+  }, [token, jwtMode, sync.setLatest]);
 
   useEffect(() => {
     load();
@@ -216,14 +234,6 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
     return rows;
   }, [myRequestsRaw, requestStatusFilter]);
 
-  const syncCart = useCallback(
-    (next: Record<string, number>) => {
-      persistCartForTab(token, next, jwtMode);
-      setCart(next);
-    },
-    [token, jwtMode],
-  );
-
   const addCartKey = (key: string) => {
     const parsed = parseSpecCartKey(key);
     const item = allDecorated.find((x) => x.id === parsed.itemId);
@@ -232,18 +242,13 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
       toast.error("暂无库存");
       return;
     }
-    const cur = cart[key] || 0;
-    syncCart({ ...cart, [key]: Math.min(cur + 1, max) });
+    // 基于最新态累加（cartRef 同步更新）：规格确认在同一 tick 内多次调用 onAddKey 时
+    // 不会用闭包旧 cart 互相覆盖——cartMath + useCartSync 统一保证。
+    applyCart(cartAdd(sync.cartRef.current, key, 1, max));
   };
 
   const decCartKey = (key: string) => {
-    const cur = cart[key] || 0;
-    if (cur <= 0) return;
-    const next = { ...cart };
-    const nv = cur - 1;
-    if (nv <= 0) delete next[key];
-    else next[key] = nv;
-    syncCart(next);
+    applyCart(cartAdd(sync.cartRef.current, key, -1));
   };
 
   const addCart = (id: number) => addCartKey(String(id));
@@ -260,16 +265,12 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
     }
     const trimmed = String(raw || "").trim();
     const num = Number(trimmed);
-    const next = { ...cart };
     if (!trimmed || Number.isNaN(num) || num <= 0) {
-      delete next[key];
-      syncCart(next);
+      applyCart(cartSetQty(sync.cartRef.current, key, 0, max));
       return;
     }
-    const v = Math.min(Math.floor(num), max);
     if (num > max) toast.error(`最多 ${max}`);
-    next[key] = v;
-    syncCart(next);
+    applyCart(cartSetQty(sync.cartRef.current, key, Math.floor(num), max));
   };
 
   const openCartSheet = () => {
@@ -320,6 +321,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
       }
       toast.success("已提交");
       clearCartStorage(token, jwtMode);
+      sync.setLatest({});
       setCart({});
       setScheduledPickupTime(null);
       setShowPickupPicker(false);

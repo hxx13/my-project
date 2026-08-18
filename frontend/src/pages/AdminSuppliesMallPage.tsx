@@ -20,6 +20,8 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/api/hooks/queryKeys";
 import { useSupplyCategories, useSupplyItems } from "@/api/hooks/useSupplies";
+import { useCartSync } from "@/hooks/useCartSync";
+import { cartAdd, cartSetQty } from "@/utils/cartMath";
 import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -148,8 +150,6 @@ export default function AdminSuppliesMallPage() {
    * 保证修订态仅存在于本页（对齐小程序的页面本地修订设计）。
    */
   const reviseActiveRef = useRef(false);
-  const cartRef = useRef<Record<string, number>>({});
-  const remoteSaveTimerRef = useRef<number | null>(null);
   const [authUserId, setAuthUserId] = useState(() => authStorage.getUserInfo()?.id?.trim() || "");
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [remarkMap, setRemarkMap] = useState<Record<string, string>>({});
@@ -215,32 +215,34 @@ export default function AdminSuppliesMallPage() {
     }
   }, []);
 
-  const syncCartImmediate = useCallback(
-    (next: Record<string, number>) => {
-      cartRef.current = next;
-      setCart(next);
-      if (remoteSaveTimerRef.current != null) {
-        window.clearTimeout(remoteSaveTimerRef.current);
-        remoteSaveTimerRef.current = null;
-      }
-      void flushRemoteCart(next);
-    },
-    [flushRemoteCart],
-  );
+  /**
+   * 购物车写回标准件（全端共享 useCartSync）：最新态 ref + 防抖合并提交 + 修订模式闸门。
+   * 修订闸门在 commit（flushRemoteCart）内部：修订期间只更新本地、绝不冲刷云端。
+   */
+  const sync = useCartSync({
+    commit: flushRemoteCart,
+    mode: "debounce",
+    debounceMs: 420,
+  });
 
+  /** 防抖变更：更新渲染态 + 最新态 + 防抖提交（提交/清空前需 flushNow 确保落库）。 */
   const syncCart = useCallback(
     (next: Record<string, number>) => {
-      cartRef.current = next;
+      sync.setLatest(next);
       setCart(next);
-      if (remoteSaveTimerRef.current != null) {
-        window.clearTimeout(remoteSaveTimerRef.current);
-      }
-      remoteSaveTimerRef.current = window.setTimeout(() => {
-        remoteSaveTimerRef.current = null;
-        void flushRemoteCart(cartRef.current);
-      }, 420);
+      sync.schedule(next);
     },
-    [flushRemoteCart],
+    [sync],
+  );
+
+  /** 立即变更：更新渲染态 + 最新态 + 立即提交（提交/清空/修订入口用）。 */
+  const syncCartImmediate = useCallback(
+    (next: Record<string, number>) => {
+      sync.setLatest(next);
+      setCart(next);
+      void sync.flushNow();
+    },
+    [sync],
   );
 
   const hydrateCartFromServer = useCallback(async () => {
@@ -248,7 +250,7 @@ export default function AdminSuppliesMallPage() {
     if (reviseActiveRef.current) return;
     const uid = authUserId.trim();
     if (!uid) {
-      cartRef.current = {};
+      sync.setLatest({});
       setCart({});
       return;
     }
@@ -265,16 +267,16 @@ export default function AdminSuppliesMallPage() {
         // 迁移写入期间可能已进入修订模式：不得覆盖修订购物车
         if (reviseActiveRef.current) return;
       }
-      cartRef.current = merged;
+      sync.setLatest(merged);
       setCart(merged);
     } catch (e) {
       if (reviseActiveRef.current) return;
       const legacy = readLegacyWebSuppliesCart(uid);
-      cartRef.current = legacy;
+      sync.setLatest(legacy);
       setCart(legacy);
       toast.error(e instanceof Error ? e.message : "无法从云端加载购物车，已暂用本机旧数据");
     }
-  }, [authUserId]);
+  }, [authUserId, sync.setLatest]);
 
   useEffect(() => {
     const sync = () => setAuthUserId(authStorage.getUserInfo()?.id?.trim() || "");
@@ -286,14 +288,6 @@ export default function AdminSuppliesMallPage() {
   useEffect(() => {
     void hydrateCartFromServer();
   }, [hydrateCartFromServer]);
-
-  useEffect(() => {
-    return () => {
-      if (remoteSaveTimerRef.current != null) {
-        window.clearTimeout(remoteSaveTimerRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -383,7 +377,7 @@ export default function AdminSuppliesMallPage() {
 
   const reconcileCartWithStock = useCallback(
     (list: SupplyItem[]) => {
-      const next = { ...cartRef.current };
+      const next = { ...sync.cartRef.current };
       let changed = false;
       for (const key of Object.keys(next)) {
         const iid = itemIdFromCartKey(key);
@@ -428,17 +422,13 @@ export default function AdminSuppliesMallPage() {
           }
         }
         // 冲刷尚未落盘的防抖写入（此时仍非修订态），确保云端快照包含最后一次编辑
-        if (remoteSaveTimerRef.current != null) {
-          window.clearTimeout(remoteSaveTimerRef.current);
-          remoteSaveTimerRef.current = null;
-          await flushRemoteCart(cartRef.current);
-        }
+        await sync.flushNow();
         // 快照用户自己的购物车：取云端副本（云端从未被修订态污染，且不受初始水合竞态影响），失败回落本地状态
         let snapshot: Record<string, number>;
         try {
           snapshot = await fetchSupplyCart();
         } catch {
-          snapshot = { ...cartRef.current };
+          snapshot = { ...sync.cartRef.current };
         }
         preReviseCartRef.current = { ...snapshot };
         // 先置修订态：随后的工单行载入与修订期间的一切编辑都只更新本地，不冲刷云端
@@ -454,7 +444,7 @@ export default function AdminSuppliesMallPage() {
         toast.error(e instanceof Error ? e.message : "载入工单失败");
       }
     },
-    [searchParams, setSearchParams, syncCartImmediate, flushRemoteCart],
+    [searchParams, setSearchParams, syncCartImmediate, sync.flushNow],
   );
 
   useEffect(() => {
@@ -476,16 +466,13 @@ export default function AdminSuppliesMallPage() {
    */
   const restoreOwnCartAfterRevise = useCallback(() => {
     // 取消修订期间残留的防抖写入，避免退出后陈旧快照被冲刷到云端
-    if (remoteSaveTimerRef.current != null) {
-      window.clearTimeout(remoteSaveTimerRef.current);
-      remoteSaveTimerRef.current = null;
-    }
+    sync.cancelPending();
     const snapshot = { ...preReviseCartRef.current };
     preReviseCartRef.current = {};
-    cartRef.current = snapshot;
+    sync.setLatest(snapshot);
     setCart(snapshot);
     void hydrateCartFromServer();
-  }, [hydrateCartFromServer]);
+  }, [hydrateCartFromServer, sync.cancelPending, sync.setLatest]);
 
   /** 退出修订模式：清除修订态与 URL 参数（如仍存在），可选恢复进入修订前的原购物车 */
   const exitReviseMode = useCallback(
@@ -617,9 +604,7 @@ export default function AdminSuppliesMallPage() {
     const key = cartKey || String(item.id);
     const max = maxForItem(item);
     if (max <= 0) { toast.error("暂无库存"); return; }
-    const cur = cart[key] || 0;
-    const nextQty = Math.min(cur + 1, max);
-    syncCart({ ...cart, [key]: nextQty });
+    syncCart(cartAdd(sync.cartRef.current, key, 1, max));
   };
 
   const addToCartWithFly = (item: SupplyItem, cartKey?: string) => (e: React.MouseEvent) => {
@@ -645,11 +630,7 @@ export default function AdminSuppliesMallPage() {
   };
 
   const decFromCart = (cartKey: string) => {
-    const cur = (cart[cartKey] || 0) - 1;
-    const next = { ...cart };
-    if (cur <= 0) delete next[cartKey];
-    else next[cartKey] = cur;
-    syncCart(next);
+    syncCart(cartAdd(sync.cartRef.current, cartKey, -1));
   };
 
   const inputCartQty = (item: SupplyItem, raw: string, cartKey?: string) => {
@@ -657,10 +638,7 @@ export default function AdminSuppliesMallPage() {
     const max = maxForItem(item);
     const n = Number.parseInt(raw || "0", 10);
     const safe = Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
-    const next = { ...cart };
-    if (safe <= 0) delete next[key];
-    else next[key] = safe;
-    syncCart(next);
+    syncCart(cartSetQty(sync.cartRef.current, key, safe, max));
     if (Number.isFinite(n) && n > max) toast.error(`最多可下单 ${max}`);
   };
 
@@ -715,7 +693,7 @@ export default function AdminSuppliesMallPage() {
     const lookup = allRawItems.length > 0 ? allRawItems : items;
     const regularCartIds = new Set<number>();
     const independentCartIds: number[] = [];
-    for (const [key, qty] of Object.entries(cartRef.current)) {
+    for (const [key, qty] of Object.entries(sync.cartRef.current)) {
       if (!(Number(qty) > 0)) continue;
       const iid = itemIdFromCartKey(key);
       if (!Number.isFinite(iid) || iid <= 0) continue;
