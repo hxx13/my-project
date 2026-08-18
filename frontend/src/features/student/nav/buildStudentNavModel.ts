@@ -136,7 +136,7 @@ export async function buildStudentNavModel(ctx: StudentNavContext): Promise<{
       items: g.items
         .filter((it) => it.sidebarVisible(ctx))
         .map((it) => ({ key: it.id, to: it.path, label: it.label, icon: it.icon })),
-    }));
+    })).filter((g) => g.items.length > 0);
 
     // 后台自动播种：表为空时从注册表恢复，避免必须重启应用
     const registryItems = STUDENT_NAV_REGISTRY.flatMap((g) =>

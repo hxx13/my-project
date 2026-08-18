@@ -191,6 +191,19 @@ public class AdminNavConfigService {
 
     @Transactional
     public void moveItem(String itemId, String newParentId) {
+        AdminNavConfigNode item = getById(itemId);
+        if (item == null) {
+            throw new IllegalArgumentException("节点不存在");
+        }
+        if (newParentId != null && !newParentId.isBlank()) {
+            AdminNavConfigNode parent = getById(newParentId);
+            if (parent == null) {
+                throw new IllegalArgumentException("目标文件夹不存在");
+            }
+            if (!item.getScope().equals(parent.getScope())) {
+                throw new IllegalArgumentException("目标文件夹 scope 不一致");
+            }
+        }
         jdbcTemplate.update(
                 "UPDATE admin_nav_config SET parent_id = ?, updated_at = NOW() WHERE id = ? AND type = 'ITEM'",
                 newParentId, itemId);
