@@ -1,15 +1,24 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { NavLink } from "react-router-dom";
 import {
-  Home, DoorOpen, Bell,
-  MessageSquare, Settings, LayoutGrid, Package, ShoppingCart,
+  Home,
   ChevronsLeft, ChevronsRight, ChevronDown, ChevronRight,
-  Search, Star, Lock, History, FileText,
+  Search, Star, Lock, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import { authStorage } from "@/features/auth/authStorage";
 import { getImpersonationState } from "@/features/auth/impersonation";
+import {
+  fetchPublicPagePermissions,
+  WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED,
+  type PublicPagePermissionNode,
+} from "@/api/domains/pagePermission.api";
+import { buildStudentNavModel } from "@/features/student/nav/buildStudentNavModel";
+import {
+  createStudentNavContext,
+  STUDENT_NAV_REGISTRY,
+} from "@/features/student/nav/studentNavRegistry";
 import {
   hydrateStudentNavPersonalization,
   readStudentNavStars,
@@ -54,57 +63,17 @@ interface NavGroup {
 /*  Navigation data                                                     */
 /* ------------------------------------------------------------------ */
 
-const navGroups: NavGroup[] = [
-  {
-    id: "space",
-    label: "空间",
-    items: [
-      { to: "/student/cage-shelf", icon: LayoutGrid, label: "笼架信息" },
-      { to: "/student/rooms", icon: DoorOpen, label: "我的房间" },
-    ],
-  },
-  {
-    id: "material",
-    label: "物品",
-    items: [
-      { to: "/student/material", icon: Package, label: "申领物品" },
-    ],
-  },
-  {
-    id: "reference",
-    label: "订购",
-    items: [
-      { to: "/student/animal-order", icon: ShoppingCart, label: "实验动物订购" },
-    ],
-  },
-  {
-    id: "aup",
-    label: "计划书",
-    items: [
-      { to: "/student/aup", icon: FileText, label: "AUP 计划书" },
-    ],
-  },
-];
-
-const bottomItems: NavItem[] = [
-  { to: "/student/notifications", icon: Bell, label: "通知" },
-  { to: "/student/feedback", icon: MessageSquare, label: "帮助反馈" },
-  { to: "/student/settings", icon: Settings, label: "设置" },
-];
-
-/** All nav items for command palette + recent/star lookup */
+/**
+ * 扁平导航项（命令面板检索用）：由学生端注册表（单一数据源）派生 + 首页入口。
+ * 侧栏分组由 `buildStudentNavModel` 依据角色 / 页面权限过滤后生成；
+ * 命令面板保留全量注册项以便搜索跳转（与旧版全量硬编码行为一致）。
+ */
 const ALL_NAV_ITEMS: NavItem[] = [
   { to: "/student/home", icon: Home, label: "首页", end: true },
-  ...navGroups.flatMap(g => g.items),
-  ...bottomItems,
+  ...STUDENT_NAV_REGISTRY.flatMap((g) =>
+    g.items.map((it) => ({ to: it.path, icon: it.icon, label: it.label })),
+  ),
 ];
-
-/** Build a path→NavItem map for quick lookup */
-function buildPathMap(): Map<string, NavItem> {
-  const m = new Map<string, NavItem>();
-  for (const it of ALL_NAV_ITEMS) m.set(it.to, it);
-  return m;
-}
 
 export { ALL_NAV_ITEMS };
 export type { NavItem };
@@ -287,6 +256,44 @@ export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSi
     stars: true, recent: true, space: true, material: true,
   }));
 
+  /* ── 导航模型：读取 STUDENT 导航配置 + 页面权限，产出侧栏分组（空间/物品/订购/计划书/消息/账号） ── */
+  const role = authStorage.getRole() ?? "MEMBER";
+  const [navGroups, setNavGroups] = useState<NavGroup[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      let permNodes: PublicPagePermissionNode[] = [];
+      try {
+        permNodes = (await fetchPublicPagePermissions("WEB")) || [];
+      } catch {
+        permNodes = [];
+      }
+      if (cancelled) return;
+      try {
+        const ctx = createStudentNavContext(role, permNodes);
+        const model = await buildStudentNavModel(ctx);
+        if (cancelled) return;
+        setNavGroups(
+          model.sidebarGroups.map((g) => ({
+            id: g.id,
+            label: g.title,
+            items: g.items.map((it) => ({ to: it.to, icon: it.icon, label: it.label, end: it.end })),
+          })),
+        );
+      } catch {
+        if (!cancelled) setNavGroups([]);
+      }
+    };
+    void load();
+    const onPermUpdated = () => void load();
+    window.addEventListener(WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, onPermUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, onPermUpdated);
+    };
+  }, [role]);
+
   /* ── Persistent state (backend → localStorage fallback) ── */
   const [starPaths, setStarPaths] = useState<string[]>(() => readStudentNavStars());
   const [lockedPath, setLockedPath] = useState<string | null>(() => readStudentNavLock());
@@ -310,7 +317,13 @@ export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSi
     setRecentPaths(readStudentNavRecent());
   }, [personalBump]);
 
-  const pathMap = buildPathMap();
+  /* 路径 → NavItem 查找表：基于模型分组（含权限过滤）构建，保证收藏/常用能解析到侧栏同源项 */
+  const pathMap = useMemo(() => {
+    const m = new Map<string, NavItem>();
+    m.set("/student/home", { to: "/student/home", icon: Home, label: "首页", end: true });
+    for (const g of navGroups) for (const it of g.items) m.set(it.to, it);
+    return m;
+  }, [navGroups]);
 
   /* Resolve starred / recent to actual NavItems */
   const starredItems = starPaths.map((p) => pathMap.get(p)).filter(Boolean) as NavItem[];
@@ -408,7 +421,6 @@ export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSi
             {collapsed ? (
               <div className="space-y-3">
                 {navGroups.map((g) => <div key={g.id} className="space-y-1">{g.items.map((it) => renderNavItem(it))}</div>)}
-                <div className="space-y-1">{bottomItems.map((it) => renderNavItem(it))}</div>
               </div>
             ) : (
               <div className="space-y-1">
@@ -424,16 +436,13 @@ export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSi
                   collapsed={false} starred={isStarred} onToggleStar={handleToggleStar}
                   lockedPath={lockedPath} onToggleLock={handleToggleLock} amber inGroupItems />
 
-                {/* 导航分组 */}
+                {/* 导航分组（空间/物品/订购/计划书/消息/账号，由导航模型供给） */}
                 {navGroups.map((g) => (
                   <SidebarGroup key={g.id} id={g.id} label={g.label} items={g.items}
                     open={openGroups[g.id] === true} onToggle={toggleGroup}
                     collapsed={false} starred={isStarred} onToggleStar={handleToggleStar}
                     lockedPath={lockedPath} onToggleLock={handleToggleLock} inGroupItems />
                 ))}
-
-                {/* 底部工具项 */}
-                <div className="pt-1 space-y-0.5">{bottomItems.map((it) => renderNavItem(it))}</div>
               </div>
             )}
             <div className="min-h-[50vh] shrink-0 pointer-events-none" aria-hidden />
