@@ -13,12 +13,14 @@ import {
 } from "@/api/domains/adminNavConfig.api";
 import { getNavFolderSiblings, getNavNodeSiblingIndex } from "@/features/admin/adminNavManagerUtils";
 import { normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import { normalizeStudentPath } from "@/features/student/nav/buildStudentNavModel";
 
 interface Props {
   node: AdminNavConfigNode | null;
   tree: AdminNavConfigNode[];
   allNodes: AdminNavConfigNode[];
   registryPaths: Set<string>;
+  scope?: "ADMIN" | "STUDENT";
   onRefresh: () => void;
 }
 
@@ -42,7 +44,7 @@ function typeAccent(node: AdminNavConfigNode): string {
   }
 }
 
-export function AdminNavManagerEditor({ node, tree, allNodes, registryPaths, onRefresh }: Props) {
+export function AdminNavManagerEditor({ node, tree, allNodes, registryPaths, scope = "ADMIN", onRefresh }: Props) {
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [togglingVis, setTogglingVis] = useState(false);
@@ -63,7 +65,8 @@ export function AdminNavManagerEditor({ node, tree, allNodes, registryPaths, onR
   const isSubgroup = node.type === "SUBGROUP";
   const isFolder = isGroup || isSubgroup;
   const isItem = node.type === "ITEM";
-  const isRegistryItem = isItem && node.itemPath ? registryPaths.has(normalizeAdminPath(node.itemPath)) : false;
+  const normalizePath = scope === "STUDENT" ? normalizeStudentPath : normalizeAdminPath;
+  const isRegistryItem = isItem && node.itemPath ? registryPaths.has(normalizePath(node.itemPath)) : false;
 
   const handleSaveTitle = async () => {
     if (!title.trim() || title === node.title) return;

@@ -38,6 +38,7 @@ export async function createNavGroup(body: {
   type?: "GROUP" | "SUBGROUP";
   title: string;
   sortOrder?: number;
+  scope?: "ADMIN" | "STUDENT";
 }): Promise<AdminNavConfigNode | null> {
   const res = await authHttp.post<ApiResult<AdminNavConfigNode>>("/admin-nav/groups", body);
   return res.data?.success ? res.data.data : null;
