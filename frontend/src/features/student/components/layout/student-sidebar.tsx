@@ -281,6 +281,13 @@ export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSi
             items: g.items.map((it) => ({ to: it.to, icon: it.icon, label: it.label, end: it.end })),
           })),
         );
+        // 首次加载默认展开全部分组：旧版「通知/帮助反馈/设置」为常驻底栏必须始终可见，
+        // 而 DB 种子生成的分组 id（如 stu-message/stu-account）不会命中初始 openGroups 键。
+        setOpenGroups((prev) => {
+          const next: Record<string, boolean> = { ...prev, stars: true, recent: true };
+          for (const g of model.sidebarGroups) next[g.id] = true;
+          return next;
+        });
       } catch {
         if (!cancelled) setNavGroups([]);
       }
