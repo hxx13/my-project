@@ -60,6 +60,8 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
             hideMergedDahuaSwingHubEntries();
             hideObsoleteNavEntries();
 
+            seedStudentBranch();
+
             log.info("[admin-nav-config] 表结构已就绪，种子数据已检查");
         } catch (Exception e) {
             log.error("[admin-nav-config] 迁移失败: {}", e.getMessage());
@@ -130,10 +132,23 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                 """);
         try {
             jdbcTemplate.execute(
-                "ALTER TABLE admin_nav_config ADD UNIQUE KEY idx_nav_path (item_path)");
-            log.info("[admin-nav-config] added UNIQUE(item_path)");
+                "ALTER TABLE admin_nav_config ADD COLUMN scope VARCHAR(16) NOT NULL DEFAULT 'ADMIN'");
+            log.info("[admin-nav-config] added scope column");
         } catch (Exception e) {
-            log.debug("[admin-nav-config] UNIQUE(item_path) may already exist: {}", e.getMessage());
+            log.debug("[admin-nav-config] scope column may already exist: {}", e.getMessage());
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE admin_nav_config DROP KEY idx_nav_path");
+            log.info("[admin-nav-config] dropped UNIQUE(item_path)");
+        } catch (Exception e) {
+            log.debug("[admin-nav-config] UNIQUE(item_path) may not exist: {}", e.getMessage());
+        }
+        try {
+            jdbcTemplate.execute(
+                "ALTER TABLE admin_nav_config ADD UNIQUE KEY idx_nav_path (scope, item_path)");
+            log.info("[admin-nav-config] added UNIQUE(scope, item_path)");
+        } catch (Exception e) {
+            log.debug("[admin-nav-config] UNIQUE(scope, item_path) may already exist: {}", e.getMessage());
         }
     }
 
@@ -227,21 +242,64 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         log.info("[admin-nav-config] 种子数据已写入");
     }
 
+    /** 播种学生端侧边栏分支（scope='STUDENT'），使用固定 ID + INSERT IGNORE 保证幂等 */
+    private void seedStudentBranch() {
+        // 空间
+        seedGroup("STUDENT", null, 0, "stu-space", "空间");
+        seedItem("STUDENT", "stu-space", 0, "item-stu-cage-shelf", "/student/cage-shelf", "笼架信息", "LayoutGrid", null);
+        seedItem("STUDENT", "stu-space", 1, "item-stu-rooms", "/student/rooms", "我的房间", "DoorOpen", null);
+
+        // 物品
+        seedGroup("STUDENT", null, 1, "stu-material", "物品");
+        seedItem("STUDENT", "stu-material", 0, "item-stu-material", "/student/material", "申领物品", "Package", null);
+
+        // 订购
+        seedGroup("STUDENT", null, 2, "stu-order", "订购");
+        seedItem("STUDENT", "stu-order", 0, "item-stu-animal-order", "/student/animal-order", "实验动物订购", "ShoppingCart", null);
+
+        // 计划书
+        seedGroup("STUDENT", null, 3, "stu-aup", "计划书");
+        seedItem("STUDENT", "stu-aup", 0, "item-stu-aup", "/student/aup", "AUP 计划书", "FileText", null);
+
+        // 消息
+        seedGroup("STUDENT", null, 4, "stu-message", "消息");
+        seedItem("STUDENT", "stu-message", 0, "item-stu-notifications", "/student/notifications", "通知", "Bell", null);
+        seedItem("STUDENT", "stu-message", 1, "item-stu-feedback", "/student/feedback", "帮助反馈", "MessageSquare", null);
+
+        // 账号
+        seedGroup("STUDENT", null, 5, "stu-account", "账号");
+        seedItem("STUDENT", "stu-account", 0, "item-stu-settings", "/student/settings", "设置", "Settings", null);
+
+        log.info("[admin-nav-config] STUDENT 种子数据已写入");
+    }
+
     private void seedGroup(String parentId, int sortOrder, String id, String title) {
+        seedGroup("ADMIN", parentId, sortOrder, id, title);
+    }
+
+    private void seedGroup(String scope, String parentId, int sortOrder, String id, String title) {
         jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) VALUES (?, ?, 'GROUP', ?, ?)",
-                id, parentId, title, sortOrder);
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order, scope) VALUES (?, ?, 'GROUP', ?, ?, ?)",
+                id, parentId, title, sortOrder, scope);
     }
 
     private void seedSubgroup(String parentId, int sortOrder, String id, String title) {
+        seedSubgroup("ADMIN", parentId, sortOrder, id, title);
+    }
+
+    private void seedSubgroup(String scope, String parentId, int sortOrder, String id, String title) {
         jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) VALUES (?, ?, 'SUBGROUP', ?, ?)",
-                id, parentId, title, sortOrder);
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order, scope) VALUES (?, ?, 'SUBGROUP', ?, ?, ?)",
+                id, parentId, title, sortOrder, scope);
     }
 
     private void seedItem(String parentId, int sortOrder, String id, String path, String label, String icon, String badgeKey) {
+        seedItem("ADMIN", parentId, sortOrder, id, path, label, icon, badgeKey);
+    }
+
+    private void seedItem(String scope, String parentId, int sortOrder, String id, String path, String label, String icon, String badgeKey) {
         jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, item_badge_key, sort_order) VALUES (?, ?, 'ITEM', ?, ?, ?, ?, ?)",
-                id, parentId, label, path, icon, badgeKey, sortOrder);
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, item_badge_key, sort_order, scope) VALUES (?, ?, 'ITEM', ?, ?, ?, ?, ?, ?)",
+                id, parentId, label, path, icon, badgeKey, sortOrder, scope);
     }
 }
