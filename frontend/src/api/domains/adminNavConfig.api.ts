@@ -19,9 +19,11 @@ interface ApiResult<T> {
   message?: string;
 }
 
-export async function fetchAdminNavConfig(): Promise<AdminNavConfigNode[]> {
+export async function fetchAdminNavConfig(
+  scope: "ADMIN" | "STUDENT" = "ADMIN"
+): Promise<AdminNavConfigNode[]> {
   try {
-    const res = await authHttp.get<ApiResult<AdminNavConfigNode[]>>("/admin-nav/config");
+    const res = await authHttp.get<ApiResult<AdminNavConfigNode[]>>(`/admin-nav/config?scope=${scope}`);
     if (res.data?.success && Array.isArray(res.data.data)) {
       return res.data.data;
     }
@@ -78,10 +80,11 @@ export async function resetNavConfig(): Promise<boolean> {
 }
 
 export async function ensureNavItems(
-  items: { path: string; label: string; icon: string; groupTitle: string }[]
+  items: { path: string; label: string; icon: string; groupTitle: string }[],
+  scope: "ADMIN" | "STUDENT" = "ADMIN"
 ): Promise<{ created: number; existed: number }> {
   try {
-    const res = await authHttp.post<ApiResult<{ created: number; existed: number }>>("/admin-nav/ensure-items", { items });
+    const res = await authHttp.post<ApiResult<{ created: number; existed: number }>>("/admin-nav/ensure-items", { items, scope });
     return res.data?.success ? res.data.data ?? { created: 0, existed: 0 } : { created: 0, existed: 0 };
   } catch {
     return { created: 0, existed: 0 };
