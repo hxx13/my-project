@@ -92,16 +92,19 @@ export function convertStudentConfigToModel(
       if (child.type !== "ITEM" || child.visible === false) continue;
       if (!child.itemPath) continue;
 
+      const itemPath = normalizeStudentPath(child.itemPath);
+
       // 若注册表有对应条目，以注册表的 sidebarVisible 为准（防止 DB config 绕过）
-      const regItem = registryByPath.get(normalizeStudentPath(child.itemPath));
+      const regItem = registryByPath.get(itemPath);
       if (regItem && !regItem.sidebarVisible(ctx)) continue;
 
-      if (!hasMinRole(ctx.role, "MEMBER")) continue;
-      if (!canShowWebEntry(ctx.permNodes, child.itemPath, "sidebar", ctx.role, "MEMBER")) continue;
+      const minRole = regItem?.fallbackMinRole ?? "MEMBER";
+      if (!hasMinRole(ctx.role, minRole)) continue;
+      if (!canShowWebEntry(ctx.permNodes, itemPath, "sidebar", ctx.role, minRole)) continue;
 
       items.push({
         key: child.id,
-        to: child.itemPath,
+        to: itemPath,
         label: child.title,
         icon: resolveIconByName(child.itemIcon),
       });
@@ -126,11 +129,13 @@ export async function buildStudentNavModel(ctx: StudentNavContext): Promise<{
   if (nodes.length > 0) {
     sidebarGroups = convertStudentConfigToModel(nodes, ctx);
   } else {
-    // 回退到硬编码注册表
+    // 回退到硬编码注册表（同样受 sidebarVisible 权限门控）
     sidebarGroups = STUDENT_NAV_REGISTRY.map((g) => ({
       id: g.id,
       title: g.title,
-      items: g.items.map((it) => ({ key: it.id, to: it.path, label: it.label, icon: it.icon })),
+      items: g.items
+        .filter((it) => it.sidebarVisible(ctx))
+        .map((it) => ({ key: it.id, to: it.path, label: it.label, icon: it.icon })),
     }));
 
     // 后台自动播种：表为空时从注册表恢复，避免必须重启应用
