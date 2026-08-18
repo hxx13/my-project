@@ -190,17 +190,6 @@ public class AuthController {
         if (refreshed != null) {
             user = refreshed;
         }
-        // 教职工账号（staff_id）：role 至少 STAFF + accountSource 兜底 STAFF，
-        // 避免 role/account_source 为空时前端误判为学生、导向 student/home。
-        if (isStaffId(user.getId())) {
-            if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
-                user.setRole(RoleEnum.STAFF);
-                userMapper.updateRoleById(user.getId(), RoleEnum.STAFF.getCode());
-            }
-            if (user.getAccountSource() == null || user.getAccountSource().isBlank()) {
-                user.setAccountSource("STAFF");
-            }
-        }
         user.setRole(authService.normalizeRole(user.getRole()));
         return authService.generateAuthResult(user);
     }
