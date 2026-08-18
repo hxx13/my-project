@@ -261,12 +261,6 @@ public class AuthController {
             return Result.fail(403, "账号已被禁用，请联系管理员");
         }
 
-        // ⑥ Ensure role is at least STAFF + persist
-        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
-            user.setRole(RoleEnum.STAFF);
-            userMapper.updateRoleById(user.getId(), RoleEnum.STAFF.getCode());
-        }
-
         // ⑦ Set auth profile to CAS_LOGIN (DB + in-memory)
         userMapper.updateAuthProfileById(user.getId(), AuthProfileConstants.CAS_LOGIN);
         user.setAuthProfile(AuthProfileConstants.CAS_LOGIN);
@@ -278,10 +272,6 @@ public class AuthController {
     private Result<?> loginAsUser(User user) {
         if (isDisabled(user)) {
             return Result.fail(403, "账号已被禁用，请联系管理员");
-        }
-        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
-            user.setRole(RoleEnum.STAFF);
-            userMapper.updateRoleById(user.getId(), RoleEnum.STAFF.getCode());
         }
         userMapper.updateAuthProfileById(user.getId(), AuthProfileConstants.CAS_LOGIN);
         user.setAuthProfile(AuthProfileConstants.CAS_LOGIN);

@@ -139,41 +139,11 @@ public class JwtTokenService {
     }
 
     /**
-     * 统一权限：一个人合并后有教职工(sys_user.userId)与学生(aroUserId)两个 id，
-     * 通过 user_aro_binding 找到对端身份，取两者最高角色。
+     * 角色保持数据库原值，不再自动取对端最高角色。
+     * MEMBER（最低权限）学生不得进管理后台是特制设计；绑定只用于「切换视角」，不抬升 role。
      */
     public void resolveUnifiedRole(User user) {
-        if (user == null) {
-            return;
-        }
-        try {
-            UserAroBinding binding = userAroBindingMapper.selectByUserId(user.getId());
-            String counterpartId;
-            if (binding != null) {
-                counterpartId = binding.getAroUserId();
-            } else {
-                UserAroBinding byAro = userAroBindingMapper.selectByAroUserId(user.getId());
-                if (byAro == null) {
-                    return;
-                }
-                counterpartId = byAro.getUserId();
-            }
-            if (counterpartId == null || counterpartId.isBlank() || counterpartId.equals(user.getId())) {
-                return;
-            }
-            User counterpart = userMapper.findById(counterpartId);
-            if (counterpart == null) {
-                return;
-            }
-            RoleEnum current = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
-            RoleEnum other = counterpart.getRole() == null ? RoleEnum.MEMBER : counterpart.getRole();
-            if (other.getLevel() > current.getLevel()) {
-                user.setRole(other);
-            }
-        } catch (Exception e) {
-            // 合并角色失败不阻断登录
-            log.debug("[JWT] 合并角色失败: {}", e.getMessage());
-        }
+        // no-op：role 以 sys_user.role 为准，登录/解析 token 时不自动升级
     }
 
     private static final int REFRESH_WINDOW_DAYS = 60;
