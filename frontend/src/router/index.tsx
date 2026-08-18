@@ -102,7 +102,6 @@ import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
 import ReferenceDataPage from "@/pages/ReferenceDataPage";
 import AdminOrderReviewPage from "@/pages/AdminOrderReviewPage";
-import StudentCageClaimReviewPage from "@/features/student/pages/student-cage-claim-review";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
 import AppearanceSettings from "@/features/admin/settings/AppearanceSettings";
 import NotificationsSettings from "@/features/admin/settings/NotificationsSettings";
@@ -223,7 +222,6 @@ export const router = createHashRouter([
       { path: "feedback", element: <StudentFeedbackPage /> },
       { path: "settings", element: <StudentSettingsPage /> },
       { path: "cage-shelf", element: <StudentCageShelfPage /> },
-      { path: "cage-claim-review", element: <StudentCageClaimReviewPage /> },
       { path: "material", element: <StudentMaterialPage /> },
       { path: "material/requests", element: <Navigate to="/student/material?view=requests" replace /> },
       { path: "animal-order", element: <ReferenceDataPage /> },
