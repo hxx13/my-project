@@ -207,14 +207,21 @@ export default function StudentMaterialPage() {
     return items.filter(it => String(it.name || "").toLowerCase().includes(kw) || String(it.subtitle || "").toLowerCase().includes(kw));
   }, [items, searchKeyword]);
 
+  /** 全量物品索引（跨分类）：购物车是全局的，明细须以全量物资为准。
+      否则切换分区后，其他分区的购物车条目会退化成"物品"并丢失库存上限/封面 */
+  const cartItemLookup = useMemo(() => {
+    const src = allItems && allItems.length > 0 ? allItems : items || [];
+    return new Map(src.map(it => [it.id, it]));
+  }, [allItems, items]);
+
   /** Cart lines for sheet */
   const cartLines = useMemo(() => {
-    if (!cart || !items) return [];
+    if (!cart) return [];
     const out: { key: string; itemId: number; specLabel: string; name: string; cover?: string; initial: string; qty: number }[] = [];
     for (const [k, qty] of Object.entries(cart)) {
       if (qty <= 0) continue;
       const { itemId, specKey } = parseCartKey(k);
-      const it = items.find(x => x.id === itemId);
+      const it = cartItemLookup.get(itemId);
       const nm = it?.name || "物品";
       out.push({
         key: k, itemId, qty,
@@ -225,7 +232,7 @@ export default function StudentMaterialPage() {
       });
     }
     return out;
-  }, [cart, items]);
+  }, [cart, cartItemLookup]);
 
   /** Independent-order split warning */
   const { willSplit, multiIndependent } = useMemo(() => {
@@ -437,7 +444,7 @@ export default function StudentMaterialPage() {
                   <div className="py-12 text-center text-[13px] text-[var(--student-mute)]">购物车是空的</div>
                 ) : (
                   cartLines.map(line => {
-                    const item = items?.find(x => x.id === line.itemId);
+                    const item = cartItemLookup.get(line.itemId);
                     const itemMax = item?.stockMode === "UNLIMITED" ? undefined : (item?.stockQty || 0);
                     return (
                       <div key={line.key} className="rounded-lg border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] p-2">
