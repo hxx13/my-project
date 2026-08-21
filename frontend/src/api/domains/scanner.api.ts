@@ -343,11 +343,27 @@ export type ViolationInteractiveAckResponse = {
 export const acknowledgeViolationInteractive = async (body: {
     violationId: number;
     userId: string;
+    answer: string;
 }): Promise<ViolationInteractiveAckResponse> => {
     const response = await http.post<ApiResponse<ViolationInteractiveAckResponse> | ViolationInteractiveAckResponse>(
         "/scan/violation-interactive-ack",
         body
     );
+    const envelope =
+        response.data && typeof response.data === "object"
+            ? (response.data as unknown as Record<string, unknown>)
+            : {};
+    // 后端失败时 Result.error(msg) 仍以 HTTP 200 返回，success=false/code!=200，须显式抛错，
+    // 否则界面会把「确认短语不正确 / 已达解禁上限」误判为成功。
+    const failedByCode = typeof envelope.code === "number" && envelope.code !== 200;
+    const failedBySuccess = envelope.success === false;
+    if (failedByCode || failedBySuccess) {
+        const message =
+            (typeof envelope.message === "string" && envelope.message) ||
+            (typeof envelope.msg === "string" && envelope.msg) ||
+            "交互确认失败";
+        throw new Error(message);
+    }
     const raw = unwrapData(response.data, {} as ViolationInteractiveAckResponse);
     const idNum = typeof raw.violationId === "number" ? raw.violationId : Number(raw.violationId);
     return {

@@ -27,7 +27,7 @@
         />
       </view>
       <view class="meta">申请人：{{ item.applicantName || item.applicantId }} · 创建：{{ item.createTimeText }}</view>
-      <view wx:if="{{ item.processorId }}" class="meta">处理人：{{ item.processorId }}</view>
+      <view wx:if="{{ item.processorName || item.processorId }}" class="meta">处理人：{{ item.processorName || item.processorId }}</view>
       <view wx:if="{{ item.resultRemark }}" class="meta">处理结果：{{ item.resultRemark }}</view>
       <view wx:if="{{ item.resultImages.length }}" class="image-grid">
         <image

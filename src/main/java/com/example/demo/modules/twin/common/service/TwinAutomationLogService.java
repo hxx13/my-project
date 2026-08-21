@@ -1,6 +1,7 @@
 package com.example.demo.modules.twin.common.service;
 
 import com.example.demo.modules.aro.mapper.AroDatabaseMapper;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.dahua.mapper.DahuaDeviceChannelCacheMapper;
 import com.example.demo.modules.twin.audit.entity.TwinAutomationDisplayMap;
 import com.example.demo.modules.twin.common.entity.TwinAutomationLog;
@@ -43,8 +44,6 @@ public class TwinAutomationLogService {
     public static final String TRIGGER_SCAN_DELAY_DIRECT = "SCAN_DELAY_DIRECT";
     /** 长期保管卡登记授予豁免 */
     public static final String TRIGGER_KEEP_CARD_GRANT = "KEEP_CARD_GRANT";
-    /** 扫码离开联动自动收回豁免 */
-    public static final String TRIGGER_SCAN_EXIT_REVOKE = "SCAN_EXIT_REVOKE";
     /** 豁免时效到期，定时自动收回 */
     public static final String TRIGGER_EXEMPT_EXPIRE_TIMER = "EXEMPT_EXPIRE_TIMER";
     /** 豁免次数耗尽（COUNT/BOTH 模式）自动收回 */
@@ -107,8 +106,8 @@ public class TwinAutomationLogService {
     private final DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper;
     private final AroDatabaseMapper aroDatabaseMapper;
     private final com.example.demo.modules.facerecognition.service.FaceVerifyAuditAdminService faceVerifyAuditAdminService;
-    /** 解析台账 detail 中"操作人=<用户ID>"为用户名展示 */
-    private final com.example.demo.modules.auth.mapper.UserMapper userMapper;
+    /** 解析台账 detail 中"操作人=<用户ID>"为统一展示名 */
+    private final UserDisplayNameService userDisplayNameService;
 
     public TwinAutomationLogService(
             TwinAutomationLogMapper mapper,
@@ -117,7 +116,7 @@ public class TwinAutomationLogService {
             DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper,
             AroDatabaseMapper aroDatabaseMapper,
             com.example.demo.modules.facerecognition.service.FaceVerifyAuditAdminService faceVerifyAuditAdminService,
-            com.example.demo.modules.auth.mapper.UserMapper userMapper
+            UserDisplayNameService userDisplayNameService
     ) {
         this.mapper = mapper;
         this.jobExecutionRegistry = jobExecutionRegistry;
@@ -125,7 +124,7 @@ public class TwinAutomationLogService {
         this.dahuaDeviceChannelCacheMapper = dahuaDeviceChannelCacheMapper;
         this.aroDatabaseMapper = aroDatabaseMapper;
         this.faceVerifyAuditAdminService = faceVerifyAuditAdminService;
-        this.userMapper = userMapper;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     /**
@@ -394,10 +393,13 @@ public class TwinAutomationLogService {
         }
         Set<String> channelCodes = new LinkedHashSet<>();
         Set<String> roomIds = new LinkedHashSet<>();
-        Set<String> operatorIds = new LinkedHashSet<>();
+        Set<String> personIds = new LinkedHashSet<>();
         for (TwinAutomationLog row : list) {
             if (row == null) {
                 continue;
+            }
+            if (row.getUserId() != null && !row.getUserId().isBlank()) {
+                personIds.add(row.getUserId().trim());
             }
             String d = row.getDetail();
             if (d == null || d.isBlank()) {
@@ -405,7 +407,8 @@ public class TwinAutomationLogService {
             }
             channelCodes.addAll(TwinAutomationLogDetailHumanizer.extractChannelCodes(d));
             roomIds.addAll(TwinAutomationLogDetailHumanizer.extractRoomIds(d));
-            operatorIds.addAll(TwinAutomationLogDetailHumanizer.extractOperatorIds(d));
+            personIds.addAll(TwinAutomationLogDetailHumanizer.extractOperatorIds(d));
+            personIds.addAll(TwinAutomationLogDetailHumanizer.extractPersonBracketIds(d));
         }
         Map<String, String> channelMap = new HashMap<>();
         if (!channelCodes.isEmpty()) {
@@ -442,25 +445,18 @@ public class TwinAutomationLogService {
                 }
             }
         }
-        // 操作人 ID → 昵称（豁免台账等 detail 含"操作人="时展示；无昵称退用户名，解析失败降级显示原 ID）
-        Map<String, String> operatorMap = new HashMap<>();
-        for (String opId : operatorIds) {
-            try {
-                com.example.demo.modules.auth.entity.User u = userMapper.findById(opId);
-                if (u == null) {
-                    continue;
-                }
-                String label = u.getDisplayNickname() != null && !u.getDisplayNickname().isBlank()
-                        ? u.getDisplayNickname().trim()
-                        : (u.getUsername() != null ? u.getUsername().trim() : "");
-                if (!label.isEmpty()) {
-                    operatorMap.put(opId, label);
-                }
-            } catch (Exception ignored) {
-                // 单个操作人解析失败不影响其余展示
+        // 操作人 / 门禁 personCode / userId → 统一展示名（库存仍保留技术码，不改解锁逻辑）
+        Map<String, String> personNameMap = userDisplayNameService.resolveDisplayNames(personIds);
+        TwinAutomationLogDetailHumanizer.applyDetailDisplayZh(list, channelMap, roomMap, personNameMap);
+        for (TwinAutomationLog row : list) {
+            if (row == null || row.getUserId() == null || row.getUserId().isBlank()) {
+                continue;
+            }
+            String resolved = personNameMap.get(row.getUserId().trim());
+            if (resolved != null && !resolved.isBlank()) {
+                row.setUserName(resolved);
             }
         }
-        TwinAutomationLogDetailHumanizer.applyDetailDisplayZh(list, channelMap, roomMap, operatorMap);
     }
 
     private List<TwinAutomationDisplayMap> safeListDisplayMaps() {

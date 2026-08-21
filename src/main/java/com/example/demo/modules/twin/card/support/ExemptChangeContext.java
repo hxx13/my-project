@@ -99,14 +99,6 @@ public final class ExemptChangeContext {
                 null, null, null, null);
     }
 
-    /** 扫码离开联动自动收回豁免 */
-    public static ExemptChangeContext scanExit() {
-        return new ExemptChangeContext(
-                TwinAutomationLogService.TRIGGER_USER,
-                TwinAutomationLogService.TRIGGER_SCAN_EXIT_REVOKE,
-                null, null, null, null);
-    }
-
     /** 豁免时效到期，定时自动收回 */
     public static ExemptChangeContext expireTimer() {
         return new ExemptChangeContext(

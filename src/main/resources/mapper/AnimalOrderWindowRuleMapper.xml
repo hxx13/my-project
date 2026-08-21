@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.animalorder.mapper.AnimalOrderWindowRuleMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.animalorder.entity.AnimalOrderWindowRule">
+        <id property="id" column="id"/>
+        <result property="scope" column="scope"/>
+        <result property="categoryKey" column="category_key"/>
+        <result property="effect" column="effect"/>
+        <result property="shape" column="shape"/>
+        <result property="weekdays" column="weekdays"/>
+        <result property="startWeekday" column="start_weekday"/>
+        <result property="endWeekday" column="end_weekday"/>
+        <result property="dailyStartTime" column="daily_start_time"/>
+        <result property="dailyEndTime" column="daily_end_time"/>
+        <result property="rangeStartAt" column="range_start_at"/>
+        <result property="rangeEndAt" column="range_end_at"/>
+        <result property="label" column="label"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="active" column="active"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="listActive" resultMap="Base">
+        SELECT * FROM animal_order_window_rule
+        WHERE active = 1
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="listActiveByScope" resultMap="Base">
+        SELECT * FROM animal_order_window_rule
+        WHERE active = 1
+          AND scope = #{scope}
+        <if test="categoryKey != null">
+          AND category_key = #{categoryKey}
+        </if>
+        <if test="categoryKey == null">
+          AND category_key IS NULL
+        </if>
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO animal_order_window_rule (
+            scope, category_key, effect, shape, weekdays,
+            start_weekday, end_weekday,
+            daily_start_time, daily_end_time,
+            range_start_at, range_end_at,
+            label, sort_order, active
+        ) VALUES (
+            #{scope}, #{categoryKey}, #{effect}, #{shape}, #{weekdays},
+            #{startWeekday}, #{endWeekday},
+            #{dailyStartTime}, #{dailyEndTime},
+            #{rangeStartAt}, #{rangeEndAt},
+            #{label}, #{sortOrder}, #{active}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE animal_order_window_rule
+        SET scope = #{scope},
+            category_key = #{categoryKey},
+            effect = #{effect},
+            shape = #{shape},
+            weekdays = #{weekdays},
+            start_weekday = #{startWeekday},
+            end_weekday = #{endWeekday},
+            daily_start_time = #{dailyStartTime},
+            daily_end_time = #{dailyEndTime},
+            range_start_at = #{rangeStartAt},
+            range_end_at = #{rangeEndAt},
+            label = #{label},
+            sort_order = #{sortOrder},
+            active = #{active}
+        WHERE id = #{id}
+    </update>
+
+    <update id="softDelete">
+        UPDATE animal_order_window_rule SET active = 0 WHERE id = #{id}
+    </update>
+
+</mapper>

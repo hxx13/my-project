@@ -22,7 +22,7 @@ public class CageCellIndexService {
 
     private static final Logger log = LoggerFactory.getLogger(CageCellIndexService.class);
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final String MAPPING_VERSION = "3";
+    private static final String MAPPING_VERSION = "5";
 
     private final CageCellIndexMapper cellIndexMapper;
     private final CageCellDetailMapper detailMapper;
@@ -211,6 +211,18 @@ public class CageCellIndexService {
         Map<Long, CageCellDetail> detailMap = new LinkedHashMap<>();
         for (CageCellDetail d : details) detailMap.put(d.getAnimalCageId(), d);
 
+        // JOIN 漏载兜底：索引有 animalCageId 但详情未进 JOIN 结果时，按主键补查
+        List<Long> missingIds = new ArrayList<>();
+        for (CageCellIndex cell : cells) {
+            Long id = cell.getAnimalCageId();
+            if (id != null && !detailMap.containsKey(id)) missingIds.add(id);
+        }
+        if (!missingIds.isEmpty()) {
+            for (CageCellDetail d : detailMapper.selectByAnimalCageIds(missingIds)) {
+                detailMap.put(d.getAnimalCageId(), d);
+            }
+        }
+
         // 构建 grid
         List<Map<String, Object>> grid = new ArrayList<>();
         for (CageCellIndex cell : cells) {
@@ -232,10 +244,12 @@ public class CageCellIndexService {
                 gc.put("animalCageType", detail.getCageTypeCode()); // 前端网格图例渲染
                 gc.put("rentType", detail.getRentType());
                 gc.put("stateLabel", detail.getStateLabel());
-                gc.put("piName", detail.getPiName());
-                gc.put("projectPiName", detail.getProjectPiName());
-                gc.put("departmentName", detail.getDepartmentName());
-                gc.put("aupNumber", detail.getAupNumber());
+                // 对齐 ARO simplifyCell：projectGroup=项目名；PI 优先课题PI
+                gc.put("projectGroup", trimStr(detail.getProjectName()));
+                gc.put("piName", trimStr(detail.getPiName()));
+                gc.put("projectPiName", trimStr(detail.getProjectPiName()));
+                gc.put("departmentName", trimStr(detail.getDepartmentName()));
+                gc.put("aupNumber", trimStr(detail.getAupNumber()));
                 gc.put("needsDivision", detail.getNeedsDivision());
                 gc.put("needsSpecialFeeding", detail.getNeedsSpecialFeeding());
                 gc.put("hasHealthAbnormality", detail.getHasHealthAbnormality());
@@ -288,7 +302,7 @@ public class CageCellIndexService {
 
     /**
      * 补全详情字段 — 按架子调 /admin/animalCage/list 批量获取完整 cageBoxVo，
-     * 填充 animalStrain/Sex/Experimenter 等 /back 不返回的字段。
+     * 填充 PI/课题组/AUP 以及 animalStrain/Sex/Experimenter 等 /back 常不完整的字段。
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> syncDetailFields(Long roomId) {
@@ -359,13 +373,24 @@ public class CageCellIndexService {
 
                     Long animalCageId = (Long) mapped.get("animal_cage_id");
                     if (animalCageId == null) continue;
+                    boolean isNew = false;
                     CageCellDetail d = detailMap.get(animalCageId);
-                    if (d == null) continue;
+                    if (d == null) {
+                        // JOIN 可能漏载：先按主键查，避免新建空对象 upsert 冲掉实验备注/照片
+                        d = detailMapper.selectByAnimalCageId(animalCageId);
+                        if (d == null) {
+                            d = new CageCellDetail();
+                            d.setAnimalCageId(animalCageId);
+                            isNew = true;
+                        }
+                    }
 
-                    // DEBUG：打印第一条映射后的动物字段
+                    // DEBUG：打印第一条映射后的动物/PI字段
                     if (totalUpdated == 0) {
-                        log.info("[detail-sync-debug-mapped] animalCageId={} mapped fields: strain={} sex={} weekAge={} male={} female={} comeFrom={} exprName={} labName={}",
+                        log.info("[detail-sync-debug-mapped] animalCageId={} mapped fields: pi={} projectPi={} strain={} sex={} weekAge={} male={} female={} comeFrom={} exprName={} labName={}",
                                 animalCageId,
+                                mapped.get("pi_name"),
+                                mapped.get("project_pi_name"),
                                 mapped.get("animal_strain_name"),
                                 mapped.get("animal_sex"),
                                 mapped.get("animal_week_age"),
@@ -377,7 +402,19 @@ public class CageCellIndexService {
                     }
 
                     // 覆盖：ARO 返回空也视为该笼位该项信息为空，直接清空本地旧值（而非保留）
-                    boolean changed = false;
+                    // 关键：补全 PI/课题组/部门/AUP（/back 常缺完整 cageBoxVo，此前未写入导致网格无 PI）
+                    boolean changed = isNew;
+                    if (!Objects.equals(mapped.get("pi_name"), d.getPiName())) { d.setPiName((String) mapped.get("pi_name")); changed = true; }
+                    if (!Objects.equals(mapped.get("project_pi_name"), d.getProjectPiName())) { d.setProjectPiName((String) mapped.get("project_pi_name")); changed = true; }
+                    if (!Objects.equals(mapped.get("project_name"), d.getProjectName())) { d.setProjectName((String) mapped.get("project_name")); changed = true; }
+                    if (!Objects.equals(mapped.get("department_name"), d.getDepartmentName())) { d.setDepartmentName((String) mapped.get("department_name")); changed = true; }
+                    if (!Objects.equals(mapped.get("aup_number"), d.getAupNumber())) { d.setAupNumber((String) mapped.get("aup_number")); changed = true; }
+                    if (!Objects.equals(mapped.get("cage_box_code"), d.getCageBoxCode())) {
+                        String cbc = (String) mapped.get("cage_box_code");
+                        d.setCageBoxCode(cbc);
+                        d.setHasCageBox(cbc != null && !cbc.isBlank());
+                        changed = true;
+                    }
                     if (!Objects.equals(mapped.get("animal_strain_name"), d.getAnimalStrainName())) { d.setAnimalStrainName((String) mapped.get("animal_strain_name")); changed = true; }
                     if (!Objects.equals(mapped.get("animal_sex"), d.getAnimalSex())) { d.setAnimalSex((String) mapped.get("animal_sex")); changed = true; }
                     if (!Objects.equals(mapped.get("animal_week_age"), d.getAnimalWeekAge())) { d.setAnimalWeekAge((String) mapped.get("animal_week_age")); changed = true; }
@@ -396,7 +433,9 @@ public class CageCellIndexService {
                         }
                         merged.put("_detail", c);
                         d.setAroRawData(JSON.toJSONString(merged));
+                        d.setMappingVersion(MAPPING_VERSION);
                         batch.add(d);
+                        detailMap.put(animalCageId, d);
                     }
                 }
 
@@ -473,10 +512,17 @@ public class CageCellIndexService {
                 }
 
 
-                // 加载已有 detail
-                List<CageCellDetail> existingDetails = detailMapper.selectByShelfIndexId(shelfIdxId);
+                // 按索引 animalCageId 直接查详情（JOIN 可能漏载；状态同步勿整行 upsert）
+                List<Long> indexIds = new ArrayList<>();
+                for (Long id : posToAnimalCageId.values()) {
+                    if (id != null) indexIds.add(id);
+                }
                 Map<Long, CageCellDetail> detailById = new LinkedHashMap<>();
-                for (CageCellDetail d : existingDetails) detailById.put(d.getAnimalCageId(), d);
+                if (!indexIds.isEmpty()) {
+                    for (CageCellDetail d : detailMapper.selectByAnimalCageIds(indexIds)) {
+                        detailById.put(d.getAnimalCageId(), d);
+                    }
+                }
 
                 List<CageCellDetail> batch = new ArrayList<>();
                 for (Object bi : bl) {
@@ -498,7 +544,7 @@ public class CageCellIndexService {
                     if (d == null) {
                         d = new CageCellDetail();
                         d.setAnimalCageId(animalCageId);
-                        isNew = true; // 新记录直接写入
+                        isNew = true; // 新记录只写状态列；PI/课题组由 /back 或 /list 详情补全
                     }
 
                     Integer type = (Integer) mapped.get("cage_type_code");
@@ -506,7 +552,7 @@ public class CageCellIndexService {
                     Integer rent = (Integer) mapped.get("rent_type");
                     String label = (String) mapped.get("state_label");
 
-                    // 覆盖：/book 返回空也清空本地旧状态（空=该笼位无此状态）
+                    // /book 映射仅含状态列：空也写空；不整行 upsert，避免无关列被缺省 null 冲掉
                     boolean changed = isNew;
                     if (!Objects.equals(type, d.getCageTypeCode())) { d.setCageTypeCode(type); changed = true; }
                     if (!Objects.equals(state, d.getState())) { d.setState(state); changed = true; }
@@ -516,11 +562,13 @@ public class CageCellIndexService {
                     if (changed) {
                         d.setSyncedAt(DT_FMT.format(LocalDateTime.now()));
                         batch.add(d);
+                        detailById.put(animalCageId, d);
                     }
                 }
 
                 if (!batch.isEmpty()) {
-                    detailMapper.batchUpsert(batch);
+                    // /book 无 PI/课题组映射，只更新状态列（非「保护本地 PI 免被空值覆盖」）
+                    detailMapper.batchUpdateStatus(batch);
                     totalUpdated += batch.size();
                 }
                 successShelves++;

@@ -66,7 +66,7 @@ public class AdminController {
     }
 
     @PostMapping("/system-users")
-    @Operation(summary = "新增员工账号（账号密码，无人员库绑定；不可创建平台所有者）")
+    @Operation(summary = "新建员工账号（无需推荐码；须填真实姓名并写入 personnel；不可创建平台所有者）")
     public Result<?> createSystemStaffUser(@RequestBody CreateSystemStaffRequest request, HttpServletRequest httpRequest) {
         Result<?> denied = requireSuperAdmin(httpRequest);
         if (denied != null) return denied;
@@ -101,6 +101,21 @@ public class AdminController {
         if (denied != null) return denied;
         try {
             adminService.updateRole(id, request != null ? request.getRole() : null);
+            return Result.success();
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PatchMapping("/personnel/{id}/role")
+    @Operation(summary = "修改人员角色（personnel.role 唯一权威，写透 sys_user.role）")
+    public Result<?> updatePersonnelRole(@PathVariable Long id,
+                                         @RequestBody UpdateRoleRequest request,
+                                         HttpServletRequest httpRequest) {
+        Result<?> denied = requireSuperAdmin(httpRequest);
+        if (denied != null) return denied;
+        try {
+            adminService.updatePersonnelRole(id, request != null ? request.getRole() : null);
             return Result.success();
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());

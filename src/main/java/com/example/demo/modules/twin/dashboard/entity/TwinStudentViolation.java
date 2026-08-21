@@ -11,6 +11,8 @@ public class TwinStudentViolation {
     private Long id;
     private String targetUserId;
     private String violationText;
+    /** ProseMirror/TipTap JSON 真源；violationText 为派生 HTML 缓存 */
+    private String contentJson;
     /** JSON array string */
     private String imageUrls;
     private Integer forbidEnter;

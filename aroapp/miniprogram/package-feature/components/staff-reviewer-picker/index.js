@@ -11,7 +11,7 @@ function parseReviewerIds(json) {
 
 function displayName(r) {
   if (!r) return '';
-  return r.displayNickname || r.username || r.id || '';
+  return r.displayName || r.displayNickname || r.username || r.id || '';
 }
 
 Component({

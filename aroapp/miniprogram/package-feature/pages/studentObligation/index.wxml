@@ -1,0 +1,81 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="muted">加载中…</view>
+  <view wx:elif="{{error}}" class="error">{{error}}</view>
+  <block wx:else>
+    <view wx:if="{{!list.length}}" class="muted">暂无待办</view>
+    <scroll-view wx:else scroll-x class="chips">
+      <view
+        wx:for="{{list}}"
+        wx:key="id"
+        class="chip {{active && active.id === item.id ? 'chip-on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="selectItem"
+      >{{item.title || ('待办#' + item.id)}}</view>
+    </scroll-view>
+
+    <view wx:if="{{active}}" class="card">
+      <view class="title">{{active.title}}</view>
+      <rich-text wx:if="{{active.contentHtml}}" nodes="{{active.contentHtml}}"></rich-text>
+
+      <view wx:if="{{active.deliveryMode === 'GUIDE_ONLY'}}" class="guide">
+        <text>{{active.guideMessage || '请前往互动渠道完成确认'}}</text>
+      </view>
+
+      <block wx:elif="{{active.dispositionType === 'SHOW_ONLY' || active.dispositionType === 'ACK_READ'}}">
+        <button class="btn" loading="{{submitting}}" bindtap="onAck">我已阅读并确认</button>
+      </block>
+
+      <block wx:elif="{{active.dispositionType === 'ACK_PUZZLE'}}">
+        <view wx:if="{{!puzzle}}" class="muted">拼图加载中…</view>
+        <view wx:else class="puzzle">
+          <view class="puzzle-hint">请按顺序点击下列文字</view>
+          <view class="puzzle-phrase">{{puzzle.phrase}}</view>
+          <view class="puzzle-progress">
+            <view class="puzzle-bar">
+              <view
+                class="puzzle-fill {{puzzle.errorFlash ? 'fill-err' : (puzzle.done ? 'fill-ok' : '')}}"
+                style="width: {{puzzle.total ? (puzzle.progress / puzzle.total * 100) : 0}}%;"
+              ></view>
+            </view>
+            <text class="puzzle-count">{{puzzle.progress}}/{{puzzle.total}}</text>
+          </view>
+          <view class="puzzle-tiles {{puzzle.errorFlash ? 'shake' : ''}}">
+            <view
+              wx:for="{{puzzle.tiles}}"
+              wx:key="pos"
+              class="tile {{item.clicked ? 'tile-on' : ''}} {{puzzle.done ? 'tile-done' : ''}}"
+              data-pos="{{item.pos}}"
+              bindtap="onPuzzleTileTap"
+            >{{item.char}}</view>
+          </view>
+          <view wx:if="{{puzzle.done}}" class="puzzle-ok">验证通过</view>
+        </view>
+      </block>
+
+      <block wx:elif="{{active.dispositionType === 'QUIZ'}}">
+        <view wx:if="{{!quiz}}" class="muted">抽题中…</view>
+        <block wx:else>
+          <view wx:for="{{quiz.questions}}" wx:key="id" class="q">
+            <view class="q-prompt">{{item.prompt}}</view>
+            <view
+              wx:for="{{item.options}}"
+              wx:for-item="opt"
+              wx:for-index="idx"
+              wx:key="*this"
+              class="opt {{answers[item.id] === idx ? 'opt-on' : ''}}"
+              data-qid="{{item.id}}"
+              data-idx="{{idx}}"
+              bindtap="onPickAnswer"
+            >{{opt}}</view>
+          </view>
+          <button class="btn" loading="{{submitting}}" bindtap="onSubmitQuiz">提交答卷</button>
+        </block>
+      </block>
+
+      <block wx:elif="{{active.dispositionType === 'SIGNATURE'}}">
+        <input class="input" placeholder="请输入姓名作为签名" value="{{signature}}" bindinput="onSignatureInput" />
+        <button class="btn" loading="{{submitting}}" bindtap="onSubmitSignature">签名确认</button>
+      </block>
+    </view>
+  </block>
+</view>

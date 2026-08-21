@@ -11,6 +11,7 @@ import {
   isBackfillRangeComplete,
 } from "./statsTaskModel";
 
+import { appConfirm } from "@/lib/appDialog";
 export type BackfillAutoProgress = {
   taskId: number;
   taskName: string;
@@ -84,7 +85,7 @@ export async function startBackfillAuto(taskId: number, taskName = "") {
   const initialForm = fromPayload(initialRow);
   if (isBackfillRangeComplete(initialForm)) {
     if (
-      !window.confirm(
+      !await appConfirm(
         "该任务已标记「回溯完成」，按游标将无法继续。是否改为按回溯总范围强制全量重拉（覆盖）？选「取消」则中止。"
       )
     ) {

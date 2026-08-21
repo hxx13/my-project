@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageCellHistory;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
@@ -40,6 +41,7 @@ public class CageLocalController {
     private final CageCellHistoryMapper historyMapper;
     private final OutboxService outboxService;
     private final JdbcTemplate jdbcTemplate;
+    private final UserDisplayNameService userDisplayNameService;
 
     public CageLocalController(AuthContextService authContextService,
                                CageCellDetailService detailService,
@@ -47,7 +49,8 @@ public class CageLocalController {
                                CageCellIndexMapper indexMapper,
                                CageCellHistoryMapper historyMapper,
                                OutboxService outboxService,
-                               JdbcTemplate jdbcTemplate) {
+                               JdbcTemplate jdbcTemplate,
+                               UserDisplayNameService userDisplayNameService) {
         this.authContextService = authContextService;
         this.detailService = detailService;
         this.detailMapper = detailMapper;
@@ -55,6 +58,15 @@ public class CageLocalController {
         this.historyMapper = historyMapper;
         this.outboxService = outboxService;
         this.jdbcTemplate = jdbcTemplate;
+        this.userDisplayNameService = userDisplayNameService;
+    }
+
+    private String operatorDisplayName(User u) {
+        if (u == null || u.getId() == null) {
+            return "unknown";
+        }
+        String name = userDisplayNameService.resolveDisplayName(u.getId());
+        return (name != null && !name.isBlank()) ? name : u.getId();
     }
 
     /** 本地 AUP 注册计划号：aupId → aup_record.register_no（打通本地注册号与笼架）。 */
@@ -99,7 +111,7 @@ public class CageLocalController {
 
         detailService.bindCageBox(animalCageId, code);
         String pos = buildPositionLabel(animalCageId);
-        String summary = String.format("%s 绑定笼盒 %s → 笼位 %d %s", u.getUsername(), code, animalCageId, pos);
+        String summary = String.format("%s 绑定笼盒 %s → 笼位 %d %s", operatorDisplayName(u), code, animalCageId, pos);
         // 使用 canonical 命名（与 aro_field_mapping.json 对齐）
         outboxService.enqueue("cage_cell", String.valueOf(animalCageId), "bind",
                 Map.of("animal_cage_id", animalCageId, "cage_box_code", code), "cageRelatedBox", summary);
@@ -120,7 +132,7 @@ public class CageLocalController {
 
         detailService.unbindCageBox(animalCageId);
         String pos = buildPositionLabel(animalCageId);
-        String summary = String.format("%s 解绑笼盒 → 笼位 %d %s", u.getUsername(), animalCageId, pos);
+        String summary = String.format("%s 解绑笼盒 → 笼位 %d %s", operatorDisplayName(u), animalCageId, pos);
         outboxService.enqueue("cage_cell", String.valueOf(animalCageId), "unbind",
                 Map.of("animal_cage_id", animalCageId), "unbindCageBox", summary);
 
@@ -169,7 +181,7 @@ public class CageLocalController {
         payload.put("aupId", aupId);
         payload.put("roomId", roomId);
         payload.put("shelveId", shelveId);
-        String summary = String.format("%s 分配 %d 个笼位到 AUP %s", u.getUsername(), cageIds.size(),
+        String summary = String.format("%s 分配 %d 个笼位到 AUP %s", operatorDisplayName(u), cageIds.size(),
                 aupId != null ? String.valueOf(aupId) : "?");
         outboxService.enqueue("cage_cell", String.valueOf(cageIds.size()) + "_cages", "allocate",
                 payload, "cageBook", summary);
@@ -201,7 +213,7 @@ public class CageLocalController {
         // ② 一条 outbox 批量推 ARO
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("animalCageIds", cageIds);
-        String summary = String.format("%s 取消 %d 个笼位分配", u.getUsername(), cageIds.size());
+        String summary = String.format("%s 取消 %d 个笼位分配", operatorDisplayName(u), cageIds.size());
         outboxService.enqueue("cage_cell", String.valueOf(cageIds.size()) + "_cages", "cancel_allocate",
                 payload, "cancelBook", summary);
 
@@ -226,7 +238,7 @@ public class CageLocalController {
         if (animalCageId == null || toggle == null)
             return Result.fail(400, "animalCageId 和 toggle 必填");
 
-        detailService.toggleStatus(animalCageId, toggle, u.getUsername());
+        detailService.toggleStatus(animalCageId, toggle, operatorDisplayName(u));
         String cageBoxCode = body.get("cageBoxCode") != null ? str(body, "cageBoxCode") : null;
         if (cageBoxCode == null || cageBoxCode.isEmpty()) {
             var detail = detailMapper.selectByAnimalCageId(animalCageId);
@@ -270,7 +282,7 @@ public class CageLocalController {
         };
         String action = Boolean.TRUE.equals(enable) ? "标记" : "取消";
         String pos = buildPositionLabel(animalCageId);
-        String summary = String.format("%s %s [%s] → 笼位 %d %s", u.getUsername(), action, toggleLabel, animalCageId, pos);
+        String summary = String.format("%s %s [%s] → 笼位 %d %s", operatorDisplayName(u), action, toggleLabel, animalCageId, pos);
         outboxService.enqueue("cage_cell", String.valueOf(animalCageId), "edit", payload, endpoint, summary);
 
         log.info("[local/edit] {}", summary);
@@ -325,11 +337,11 @@ public class CageLocalController {
         h.setStatusField("_annotation");
         h.setImagesJson(d.getImagesJson());
         h.setExperimentDesc(d.getExperimentDesc());
-        h.setToggledBy(u.getUsername());
+        h.setToggledBy(operatorDisplayName(u));
         h.setAction("annotated");
         historyMapper.insert(h);
 
-        log.info("[local/annotate] user={} animalCageId={}", u.getUsername(), animalCageId);
+        log.info("[local/annotate] user={} animalCageId={}", operatorDisplayName(u), animalCageId);
         return Result.success(Map.of("ok", true));
     }
 

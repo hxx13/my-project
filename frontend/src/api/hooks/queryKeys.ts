@@ -152,7 +152,8 @@ export const queryKeys = {
     options: (typeKey: string) =>
       ["referenceData", "options", typeKey] as const,
     specTemplates: ["referenceData", "specTemplates"] as const,
-    cart: ["referenceData", "cart"] as const,
+    cart: (groupId?: string) =>
+      ["referenceData", "cart", groupId ?? ""] as const,
     orders: (params?: Record<string, unknown>) =>
       ["referenceData", "orders", params ?? {}] as const,
     orderDetail: (id: number) =>
@@ -161,6 +162,14 @@ export const queryKeys = {
       ["referenceData", "orderLogs", id] as const,
     allOrders: (page?: number, pageSize?: number) =>
       ["referenceData", "allOrders", page ?? 1, pageSize ?? 50] as const,
+  },
+
+  animalOrderTime: {
+    all: ["animalOrderTime"] as const,
+    summary: (categoryKey?: string) =>
+      ["animalOrderTime", "summary", categoryKey ?? "global"] as const,
+    admin: ["animalOrderTime", "admin"] as const,
+    holidays: (year: number) => ["animalOrderTime", "holidays", year] as const,
   },
 } as const;
 

@@ -16,6 +16,8 @@ public class ItemLogView {
     private Long fromSpaceId;
     private Long toSpaceId;
     private String operatorUserId;
+    /** 操作人展示名（UserDisplayNameService） */
+    private String operatorName;
     private String remark;
     private String extra;
     private LocalDateTime createdAt;

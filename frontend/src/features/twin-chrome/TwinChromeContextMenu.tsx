@@ -26,6 +26,7 @@ import {
     adminChromeSelectAllInContext,
 } from "@/features/admin/adminChromeClipboard";
 import { authStorage } from "@/features/auth/authStorage";
+import { isIamAuthProfile, redirectIamGlobalLogout } from "@/features/auth/iamOAuth";
 import { cn } from "@/lib/utils";
 import { fitMenuAtPoint, fitSubPanelNextToRoot, TWIN_CHROME_MENU_Z } from "./twinChromeMenuGeometry";
 import { useTheme } from "@/features/theme/ThemeProvider";
@@ -42,6 +43,7 @@ import { TwinThemePickerPanel } from "./TwinThemePickerPanel";
 import { TWIN_THEME_MENU_ROWS } from "./twinChromeMenu.config";
 import type { TwinWebChromeThemeId } from "@/api/domains/me.api";
 
+import { appConfirm } from "@/lib/appDialog";
 type TwinChromeSubPanel = "schedule" | "twinTheme";
 
 const CTX_SCROLL_NONE =
@@ -288,15 +290,19 @@ export function TwinChromeContextMenu({
         }
     };
 
-    const handleRefresh = () => {
-        if (window.confirm("确认刷新当前页？")) window.location.reload();
+    const handleRefresh = async () => {
+        if (await appConfirm("确认刷新当前页？")) window.location.reload();
     };
 
     const handleLogout = () => {
+        const profile = authStorage.getUserInfo()?.authProfile;
         authStorage.clear();
         onClose();
-        window.location.href = 'https://auth2.shsmu.edu.cn/cas/logout?service='
-            + encodeURIComponent(window.location.origin + '/#/');
+        if (isIamAuthProfile(profile)) {
+            redirectIamGlobalLogout();
+            return;
+        }
+        window.location.href = window.location.origin + "/#/";
     };
 
     const themeToggleLabel = effectiveMode === "light" ? "切换为暗色" : "切换为亮色";

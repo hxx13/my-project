@@ -34,6 +34,7 @@ import {
   TYPE_REGISTRY,
   typeMetaOf,
 } from "@/features/aup/schema/typeRegistry";
+import { appConfirm } from "@/lib/appDialog";
 import "../../aup.css";
 
 /* =====================================================================
@@ -1826,9 +1827,27 @@ export default function AupTemplateEditor() {
     setEditingField(null);
     setAddMenu(null);
   };
-  const removeSubsection = (si: number, ui: number) => {
+  const removeSubsection = async (si: number, ui: number) => {
+    const sec = tree[si];
+    const sub = (sec?.subsections ?? [])[ui];
+    if (!sub) return;
+    const fieldCount = sub.fields?.length ?? 0;
+    const name = sub.label || sub.code || "该小节";
+    const tip =
+      fieldCount > 0
+        ? `删除小节「${name}」？其下 ${fieldCount} 道题目将一并删除。`
+        : `删除小节「${name}」？`;
+    if (!await appConfirm(tip)) return;
     setTree((t) =>
-      t.map((s, i) => (i === si ? { ...s, subsections: (s.subsections ?? []).filter((_, j) => j !== ui) } : s))
+      t.map((s, i) => {
+        if (i !== si) return s;
+        const subsections = (s.subsections ?? []).filter((_, j) => j !== ui);
+        return {
+          ...s,
+          subsections,
+          subdivisible: subsections.length > 0,
+        };
+      })
     );
     setEditingStruct(null);
     setEditingField(null);
@@ -2014,8 +2033,8 @@ export default function AupTemplateEditor() {
     },
     onError: (e: Error) => toast.error(e.message || "导入内置模板失败"),
   });
-  const doImportSeed = () => {
-    if (!window.confirm("用内置 IACUC 模板内容替换当前草稿？当前草稿内容将丢失。")) return;
+  const doImportSeed = async () => {
+    if (!await appConfirm("用内置 IACUC 模板内容替换当前草稿？当前草稿内容将丢失。")) return;
     seedMutation.mutate();
   };
 
@@ -2023,9 +2042,9 @@ export default function AupTemplateEditor() {
     if (selectedId == null) return;
     saveMutation.mutate({ id: selectedId, body: buildSaveBody() });
   };
-  const doPublish = () => {
+  const doPublish = async () => {
     if (selectedId == null) return;
-    if (!window.confirm("发布后将冻结当前草稿并使其对填写人生效，上一发布版本将归档。确认发布？")) return;
+    if (!await appConfirm("发布后将冻结当前草稿并使其对填写人生效，上一发布版本将归档。确认发布？")) return;
     publishMutation.mutate(selectedId);
   };
   const busy = saveMutation.isPending || publishMutation.isPending || seedMutation.isPending;
@@ -2243,13 +2262,13 @@ export default function AupTemplateEditor() {
   /* ---- 目录 ---- */
   const tocEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const out: { code: string; label: string; sub: boolean; cond: boolean }[] = [];
-    tree.forEach((s) => {
+    const out: { code: string; label: string; sub: boolean; cond: boolean; si?: number; ui?: number }[] = [];
+    tree.forEach((s, si) => {
       const secMatch = !q || s.label.toLowerCase().includes(q) || s.code.toLowerCase().includes(q);
-      if (secMatch || q) out.push({ code: s.code, label: s.label, sub: false, cond: !!s.showWhen });
-      (s.subsections ?? []).forEach((u) => {
+      if (secMatch || q) out.push({ code: s.code, label: s.label, sub: false, cond: !!s.showWhen, si });
+      (s.subsections ?? []).forEach((u, ui) => {
         const subMatch = !q || u.label.toLowerCase().includes(q) || u.code.toLowerCase().includes(q);
-        if (subMatch) out.push({ code: u.code, label: u.label, sub: true, cond: !!u.showWhen });
+        if (subMatch) out.push({ code: u.code, label: u.label, sub: true, cond: !!u.showWhen, si, ui });
       });
     });
     return out;
@@ -2330,6 +2349,19 @@ export default function AupTemplateEditor() {
                 <span className="aup-code-badge">{e.code}</span>
                 <span className="lbl">{e.label || "未命名"}</span>
                 {e.cond && <span className="cond-tag">条件</span>}
+                {editable && e.sub && e.si != null && e.ui != null && (
+                  <button
+                    type="button"
+                    className="aup-iconbtn danger"
+                    title="删除小节"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      removeSubsection(e.si!, e.ui!);
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -11,8 +11,14 @@ public interface TwinStudentViolationMapper {
 
     int expireActivePastDue();
 
+    /** 即将被 expireActivePastDue 命中的 id（同步镜像通知用） */
+    List<Long> selectIdsDueToExpire();
+
     /** 交互验证完成后，若已超过 expire_at 则立即结束 */
     int expireByIdIfPastDue(@Param("id") long id);
+
+    /** 指定用户当前 ACTIVE 记录 id（supersede 前回撤镜像通知） */
+    List<Long> selectActiveIdsByTargetUserId(@Param("targetUserId") String targetUserId);
 
     int supersedeActiveByTargetUserId(@Param("targetUserId") String targetUserId);
 

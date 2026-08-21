@@ -31,6 +31,7 @@ import {
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
+import { appConfirm } from "@/lib/appDialog";
 type TabKey = "announcements" | "releases";
 
 const ANN_QUERY_KEY = ["mpAnnouncements"] as const;
@@ -131,7 +132,7 @@ export default function AdminContentHubPage() {
   };
 
   const removeAnn = async (id: string) => {
-    if (!window.confirm("确认删除该公告？")) return;
+    if (!await appConfirm("确认删除该公告？")) return;
     try {
       await deleteMpAnnouncement(id);
       qc.setQueryData(ANN_QUERY_KEY, (prev: MpAnnouncementAdminView[] | undefined) =>
@@ -203,7 +204,7 @@ export default function AdminContentHubPage() {
 
   const removeRel = async (id: string) => {
     if (!canOwnerRelease) return;
-    if (!window.confirm("确认删除该版本记录？")) return;
+    if (!await appConfirm("确认删除该版本记录？")) return;
     try {
       await deleteMpRelease(id);
       qc.setQueryData(REL_QUERY_KEY, (prev: MiniProgramReleaseView[] | undefined) =>

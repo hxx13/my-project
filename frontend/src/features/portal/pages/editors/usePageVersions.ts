@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useAdminContents, useCreateContent, useUpdateContent, useDeleteContent } from "@/api/hooks/usePortalContent";
 import type { PortalContentView } from "@/api/domains/portalContent.api";
 
+import { appConfirm } from "@/lib/appDialog";
 /** 按 page_key 加载所有版本（DRAFT + PUBLISHED），提供版本管理操作 */
 export function usePageVersions(pageKey: string) {
   const { data: pageData, isFetching } = useAdminContents({ type: "PAGE", size: 100 });
@@ -61,8 +62,8 @@ export function usePageVersions(pageKey: string) {
   };
 
   /** 删除一个草稿版本 */
-  const deleteVersion = (versionId: number) => {
-    if (!confirm("确定删除此版本？")) return;
+  const deleteVersion = async (versionId: number) => {
+    if (!await appConfirm("确定删除此版本？")) return;
     deleteMut.mutate(versionId);
   };
 

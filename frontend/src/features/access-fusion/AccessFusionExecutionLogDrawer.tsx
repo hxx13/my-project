@@ -16,6 +16,7 @@ import {
 } from "@/api/domains/accessFusion.api";
 import { listDahuaSwingStatsTasks, type DahuaSwingStatsPullTask } from "@/api/domains/dahuaSwingStats.api";
 
+import { appConfirm } from "@/lib/appDialog";
 const toApiDt = (v: string) => (v ? `${v.replace("T", " ")}:00` : "");
 
 type Props = {
@@ -181,7 +182,7 @@ export function AccessFusionExecutionLogDrawer({
 
   const handleDeleteLog = async () => {
     if (!detail?.id) return;
-    if (!window.confirm("确定删除该条入库执行日志？不可恢复。")) return;
+    if (!await appConfirm("确定删除该条入库执行日志？不可恢复。")) return;
     setDeleting(true);
     try {
       await deleteAccessExecutionLog(detail.id);

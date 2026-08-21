@@ -147,10 +147,10 @@
           wx:if="{{ scanDelayEnabled && delayOptions.length && subjectUserId }}"
           class="delay-section"
         >
-          <view class="delay-toggle-btn {{ delayStatus === 'pending' ? 'delay-toggle-pending' : delayStatus === 'approved' ? 'delay-toggle-approved' : '' }}" bindtap="{{ delayStatus === 'none' ? 'toggleDelayPanel' : '' }}">
-            <text class="delay-toggle-icon">{{ delayStatus === 'approved' ? '✅' : '⏱' }}</text>
-            <text class="delay-toggle-label">{{ delayStatus === 'pending' ? '审核中' : delayStatus === 'approved' ? (delayApprovedLabel || '已通过') : scanDelayButtonLabel }}</text>
-            <text wx:if="{{ delayStatus === 'none' }}" class="delay-toggle-arrow">{{ showDelayPanel ? '▴' : '▾' }}</text>
+          <view class="delay-toggle-btn" bindtap="toggleDelayPanel">
+            <text class="delay-toggle-icon">⏱</text>
+            <text class="delay-toggle-label">{{ scanDelayButtonLabel }}</text>
+            <text class="delay-toggle-arrow">{{ showDelayPanel ? '▴' : '▾' }}</text>
           </view>
 
           <view wx:if="{{ showDelayPanel }}" class="delay-option-list">

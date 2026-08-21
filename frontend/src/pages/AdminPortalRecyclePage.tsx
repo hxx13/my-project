@@ -1,6 +1,7 @@
 import { useRecycleContents, useRestoreContent, usePurgeContent } from "@/api/hooks/usePortalContent";
 import { RotateCcw, Trash2 } from "lucide-react";
 
+import { appConfirm } from "@/lib/appDialog";
 export default function AdminPortalRecyclePage() {
   const { data, isFetching } = useRecycleContents({ page: 1, size: 100 });
   const restoreMut = useRestoreContent();
@@ -35,7 +36,7 @@ export default function AdminPortalRecyclePage() {
                       style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, cursor: "pointer", border: "1px solid #d4c9b8", background: "white", color: "#666" }}>
                       <RotateCcw className="size-3 inline mr-1" />恢复
                     </button>
-                    <button onClick={() => { if (confirm("彻底删除？不可恢复。")) purgeMut.mutate(row.id); }}
+                    <button onClick={async () => { if (await appConfirm("彻底删除？不可恢复。")) purgeMut.mutate(row.id); }}
                       style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, cursor: "pointer", border: "1px solid #d4c9b8", background: "white", color: "#dc2626" }}>
                       <Trash2 className="size-3 inline mr-1" />彻底删除
                     </button>

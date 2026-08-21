@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { PortalHero } from "@/features/portal/PortalHero";
@@ -7,9 +7,16 @@ import { ModelResourceSection } from "@/features/portal/ModelResourceSection";
 import { NewsSection } from "@/features/portal/NewsSection";
 import { AboutSection } from "@/features/portal/AboutSection";
 import { FadeInSection } from "@/components/scroll-reveal";
-import { loginCas } from "@/api/domains/auth.api";
+import { loginOAuth } from "@/api/domains/auth.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { resolvePostLoginTarget } from "@/features/auth/postLoginNavigation";
+import {
+  clearOAuthQueryFromUrl,
+  consumeIamOAuthCallback,
+  getIamOAuthPublicConfig,
+  redactOAuthSecretsInText,
+  validateAndClearIamState,
+} from "@/features/auth/iamOAuth";
 
 function Divider() {
   return (
@@ -25,7 +32,7 @@ function Divider() {
 export default function PortalLandingPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [casProcessedRef] = useState({ current: false });
+  const [oauthProcessedRef] = useState({ current: false });
 
   /* ── 仅首页隐藏主滚动条：挂载打标记、卸载移除，避免全局隐藏 ── */
   useEffect(() => {
@@ -33,37 +40,38 @@ export default function PortalLandingPage() {
     return () => document.documentElement.classList.remove("portal-landing-scroll-hidden");
   }, []);
 
-  /* ── CAS ticket 回调处理 ── */
+  /* ── IAM OAuth 回调：根路径 ?code=&state=（Hash 外）；URL 已在 main 中 early-strip ── */
   useEffect(() => {
-    if (casProcessedRef.current) return;
+    if (oauthProcessedRef.current) return;
 
-    const ticketMatch = window.location.href.match(/[?&]ticket=([^&#]+)/);
-    const ticket = ticketMatch ? decodeURIComponent(ticketMatch[1]) : null;
-    // 也可能由旧 LoginPage 存入 sessionStorage
-    const pendingTicket = sessionStorage.getItem("cas_pending_ticket");
-    const finalTicket = ticket || pendingTicket;
+    const cb = consumeIamOAuthCallback();
+    if (!cb) return;
 
-    if (!finalTicket) return;
+    oauthProcessedRef.current = true;
+    // 成功换票前/失败收尾都保证地址栏无 code（early-strip 后再清一次）
+    clearOAuthQueryFromUrl();
 
-    sessionStorage.removeItem("cas_pending_ticket");
-    casProcessedRef.current = true;
+    if (cb.kind === "error") {
+      oauthProcessedRef.current = false;
+      const detail = cb.errorDescription ? `：${cb.errorDescription}` : "";
+      toast.error(redactOAuthSecretsInText(`统一认证已取消或失败（${cb.error}${detail}）`));
+      return;
+    }
 
-    // 清理 URL 中的 ticket 参数
-    window.history.replaceState(
-      null,
-      "",
-      window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "").replace(/#$/, ""),
-    );
+    const stateErr = validateAndClearIamState(cb.state);
+    if (stateErr) {
+      oauthProcessedRef.current = false;
+      toast.error(stateErr);
+      return;
+    }
 
-    // serviceUrl 必须与 CAS 登录入口使用的 service 参数一致
-    const serviceUrl =
-      sessionStorage.getItem("cas_service_url") || window.location.origin + "/#/";
-    sessionStorage.removeItem("cas_service_url");
+    const { redirectUri } = getIamOAuthPublicConfig();
 
     (async () => {
       try {
-        const data = await loginCas(finalTicket, serviceUrl);
+        const data = await loginOAuth(cb.code, cb.state, redirectUri);
         authStorage.setAuth(data.token, data.role, data.userInfo);
+        clearOAuthQueryFromUrl();
 
         const isStudent =
           data.userInfo?.accountSource === "STUDENT" ||
@@ -76,7 +84,7 @@ export default function PortalLandingPage() {
         }
 
         authStorage.markLoginPortal("staff");
-        toast.success("CAS 登录成功");
+        toast.success("统一认证登录成功");
         const target = await resolvePostLoginTarget({
           role: data.role,
           pendingTwin: null,
@@ -84,8 +92,10 @@ export default function PortalLandingPage() {
         });
         navigate(target, { replace: true });
       } catch (error) {
-        casProcessedRef.current = false;
-        toast.error(error instanceof Error ? error.message : "CAS 登录失败，请重试");
+        clearOAuthQueryFromUrl();
+        oauthProcessedRef.current = false;
+        const raw = error instanceof Error ? error.message : "统一认证登录失败，请重试";
+        toast.error(redactOAuthSecretsInText(raw));
       }
     })();
   }, [navigate]);
@@ -94,7 +104,6 @@ export default function PortalLandingPage() {
   useEffect(() => {
     const scrollTo = (location.state as { scrollTo?: string } | null)?.scrollTo;
     if (scrollTo) {
-      // 等页面渲染完成再滚动
       const timer = setTimeout(() => {
         document.querySelector(scrollTo)?.scrollIntoView({ behavior: "smooth" });
       }, 300);

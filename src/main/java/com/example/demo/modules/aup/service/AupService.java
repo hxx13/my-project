@@ -1,11 +1,13 @@
 package com.example.demo.modules.aup.service;
 
+import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.aup.dto.AupAttachmentVO;
 import com.example.demo.modules.aup.dto.AupDetailVO;
 import com.example.demo.modules.aup.dto.AupListItem;
@@ -91,6 +93,7 @@ public class AupService {
     private final AroPersonnelMapper aroPersonnelMapper;
     private final AroService aroService;
     private final UserMapper userMapper;
+    private final UserDisplayNameService userDisplayNameService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final AupDemoSeeder aupDemoSeeder;
@@ -123,6 +126,7 @@ public class AupService {
                       AroPersonnelMapper aroPersonnelMapper,
                       AroService aroService,
                       UserMapper userMapper,
+                      UserDisplayNameService userDisplayNameService,
                       JdbcTemplate jdbcTemplate,
                       ObjectMapper objectMapper,
                       AupDemoSeeder aupDemoSeeder) {
@@ -138,6 +142,7 @@ public class AupService {
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.aroService = aroService;
         this.userMapper = userMapper;
+        this.userDisplayNameService = userDisplayNameService;
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.aupDemoSeeder = aupDemoSeeder;
@@ -257,8 +262,9 @@ public class AupService {
         // 4. 提交鉴权 + 按提交者身份决定目标阶段：组长/教职工/管理员直接进格式审查，学生实验员/同组进组长审核
         accessPolicy.assertCanSubmit(record, user);
         String role = accessPolicy.resolveOperatorRole(record, user);
+        // 教职工判定统一按 role（切学生视角后 accountSource 变 STUDENT，id 变学号，仅 role 被 resolveUnifiedRole 统一）
         boolean skipPiReview = accessPolicy.isAdmin(user) || accessPolicy.isPi(user)
-                || "STAFF".equalsIgnoreCase(user.getAccountSource());
+                || (user.getRole() != null && user.getRole().getLevel() >= RoleEnum.STAFF.getLevel());
         String targetStage = skipPiReview ? STAGE_FORMAT_REVIEW : STAGE_PI_REVIEW;
         return transition(aupId, STAGE_DRAFT, targetStage, "submit", user.getId(), role, null);
     }
@@ -356,6 +362,13 @@ public class AupService {
             // 草稿来源：退回/提交时用本次流转算出的新值，其余（通过/终止等）沿用 record 现值
             String snapDraftSource = draftSource != null ? draftSource : record.getDraftSource();
             snapshotService.createSnapshot(record, toStage, snapDraftSource, data == null ? null : data.getData(), operatorId);
+        }
+
+        // 批准时固化动物白名单（B5 大类 SUBTREE + B6 品系 EXACT），供订购侧可购校验
+        if (isApprove) {
+            AupData approveData = dataMapper.selectByAupId(aupId);
+            String allowlist = buildAnimalAllowlist(approveData == null ? null : approveData.getData());
+            recordMapper.updateRegistryMeta(aupId, allowlist, "active");
         }
 
         // 审计
@@ -702,6 +715,7 @@ public class AupService {
         for (AupSnapshot s : snapshotService.listLight(aupId)) {
             out.add(toSnapshotVO(s, false));
         }
+        enrichSnapshotCreatedByNames(out);
         return out;
     }
 
@@ -712,7 +726,9 @@ public class AupService {
         if (s == null) {
             throw TwinBusinessException.of(404, "快照不存在");
         }
-        return toSnapshotVO(s, true);
+        AupSnapshotVO vo = toSnapshotVO(s, true);
+        enrichSnapshotCreatedByNames(List.of(vo));
+        return vo;
     }
 
     // ======================================================================
@@ -753,6 +769,23 @@ public class AupService {
     /** 列表筛选用：去重课题组名称（下拉选项） */
     public List<String> listProjectGroups() {
         return recordMapper.selectDistinctProjectGroups();
+    }
+
+    /** 订购侧：按课题组名列出已批准 AUP 下拉（含 projectGroupId），供下单必选 AUP 用。 */
+    public List<Map<String, Object>> listApprovedForOrder(String projectGroupName) {
+        return recordMapper.selectApprovedForOrder(projectGroupName);
+    }
+
+    /** 课题组下拉数据源（本地 project_group 字典表，active=1），返回 [{value: id, label: name}]。 */
+    public List<Map<String, Object>> listProjectGroupOptions() {
+        try {
+            return jdbcTemplate.queryForList(
+                    "SELECT CAST(id AS CHAR) AS value, name AS label FROM project_group "
+                            + "WHERE active = 1 ORDER BY sort_order ASC, id ASC");
+        } catch (Exception e) {
+            log.warn("[aup] 读取课题组下拉失败: {}", e.getMessage());
+            return List.of();
+        }
     }
 
     public AupDetailVO detail(Long aupId, User user) {
@@ -1028,6 +1061,16 @@ public class AupService {
             throw TwinBusinessException.of(403, "仅管理员可恢复演示示例");
         }
         aupDemoSeeder.restoreDemo(aupId);
+    }
+
+    /** 重新生成演示示例（按内置种子补齐缺失的 demo 计划书，幂等）。仅管理员。 */
+    @Transactional
+    public Map<String, Object> reseedDemo(User user) {
+        if (!accessPolicy.isAdmin(user)) {
+            throw TwinBusinessException.of(403, "仅管理员可重新生成演示示例");
+        }
+        aupDemoSeeder.seedIfNeeded();
+        return Map.of("ok", true);
     }
 
     /** 删除草稿状态计划书（申请人本人或管理员），级联清理相关数据。 */
@@ -1466,27 +1509,130 @@ public class AupService {
         // 组长 = 计划书所属课题组的 GROUP_LEADER 身份标识者（非提交者，避免实验员提交时把自己写成组长）
         String piUserId = resolveGroupLeader(record.getProjectGroupName());
         String piName = piUserId == null ? null : resolveName(piUserId);
-        recordMapper.updateProjectMeta(record.getId(), projectName, piUserId, piName, dept, projectSource);
+        // 课题组主键：按名称反查 project_group.id，落主键外键（关键枢纽，名称仅冗余留痕）
+        Long projectGroupId = resolveProjectGroupId(record.getProjectGroupName());
+        recordMapper.updateProjectMeta(record.getId(), projectName, piUserId, piName, dept, projectSource, projectGroupId);
     }
 
-    /** 按课题组名解析组长 userId：该课题组中挂 GROUP_LEADER（STUDENT 视角）身份标签的人；找不到返回 null。 */
+    /** 按课题组名反查 project_group.id；找不到返回 null（名称快照仍保留，主键待后续回填）。 */
+    private Long resolveProjectGroupId(String projectGroupName) {
+        if (!StringUtils.hasText(projectGroupName)) {
+            return null;
+        }
+        try {
+            List<Long> ids = jdbcTemplate.queryForList(
+                    "SELECT id FROM project_group WHERE name = ? LIMIT 1",
+                    Long.class, projectGroupName.trim());
+            return (ids == null || ids.isEmpty()) ? null : ids.get(0);
+        } catch (Exception e) {
+            log.warn("[aup] 解析课题组主键失败 group={} err={}", projectGroupName, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 按课题组名解析组长 staff_id：该课题组中挂 PI 身份标签的人（person_identity key=personnel.id）。返回 staff_id 供 aup_record.pi_user_id 匹配登录人；找不到返回 null。 */
     private String resolveGroupLeader(String projectGroupName) {
         if (!StringUtils.hasText(projectGroupName)) {
             return null;
         }
         try {
             List<String> ids = jdbcTemplate.queryForList(
-                    "SELECT p.user_id " +
-                    "FROM aro_personnel p " +
-                    "JOIN person_identity pi ON pi.user_id = p.user_id AND pi.scope = 'STUDENT' " +
+                    "SELECT per.staff_id " +
+                    "FROM personnel per " +
+                    "JOIN person_identity pi ON pi.user_id = CAST(per.id AS CHAR) " +
                     "JOIN person_identity_tag t ON t.id = pi.tag_id AND t.code = ? AND t.active = 1 " +
-                    "WHERE p.project_group_name = ? " +
+                    "WHERE per.project_group_name = ? AND per.staff_id IS NOT NULL " +
                     "ORDER BY pi.id ASC " +
                     "LIMIT 1",
                     String.class, piCode, projectGroupName.trim());
             return (ids == null || ids.isEmpty()) ? null : ids.get(0);
         } catch (Exception e) {
             log.warn("[aup] 解析课题组长失败 group={} err={}", projectGroupName, e.getMessage());
+            return null;
+        }
+    }
+
+    // ---- 动物白名单 ----
+
+    /**
+     * 从计划书正文解析动物白名单（结构化 JSON）。
+     * B5.blocks 每块 species → 物种大类 ANIMAL_BREED，scope=SUBTREE（整类含后代品系）；
+     * B6.blocks 每块 species → 品系 ANIMAL_STRAIN，scope=EXACT（仅该品系）。
+     * species 值可为纯名称字符串或 {label, refDataId} 对象，均解析到 ref_data.id。
+     */
+    private String buildAnimalAllowlist(String dataJson) {
+        Map<String, Object> map = parseMap(dataJson);
+        List<Map<String, Object>> entries = new ArrayList<>();
+        collectAllowlistEntries(map, "B5.blocks", "ANIMAL_BREED", "SUBTREE", entries);
+        collectAllowlistEntries(map, "B6.blocks", "ANIMAL_STRAIN", "EXACT", entries);
+        if (entries.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(entries);
+        } catch (Exception e) {
+            log.warn("[aup] 序列化动物白名单失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 解析某个 blocks 字段下每块的 species，映射到 ref_data.id 后加入 entries。 */
+    private void collectAllowlistEntries(Map<String, Object> data, String blocksKey, String refType, String scope,
+                                         List<Map<String, Object>> entries) {
+        Object blocks = data == null ? null : data.get(blocksKey);
+        if (!(blocks instanceof List<?> bl)) {
+            return;
+        }
+        for (Object block : bl) {
+            if (!(block instanceof Map<?, ?> m)) {
+                continue;
+            }
+            Long refDataId = resolveSpeciesRefDataId(m.get("species"), refType);
+            if (refDataId == null) {
+                continue;
+            }
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("refType", refType);
+            e.put("refDataId", refDataId);
+            e.put("scope", scope);
+            entries.add(e);
+        }
+    }
+
+    /** 解析单个 species 值到 ref_data.id：对象优先取 refDataId，否则按名称匹配。 */
+    private Long resolveSpeciesRefDataId(Object species, String refType) {
+        if (species == null) {
+            return null;
+        }
+        if (species instanceof Map<?, ?> sm) {
+            Object rid = sm.get("refDataId");
+            if (rid instanceof Number n) {
+                return n.longValue();
+            }
+            if (rid != null) {
+                try {
+                    return Long.parseLong(String.valueOf(rid).trim());
+                } catch (NumberFormatException ignore) {
+                }
+            }
+            Object label = sm.get("label");
+            return label == null ? null : resolveRefDataIdByTitle(refType, String.valueOf(label).trim());
+        }
+        return resolveRefDataIdByTitle(refType, String.valueOf(species).trim());
+    }
+
+    /** 按 ref_data.title 精确匹配解析 id（订购侧 ref_data 主标题即展示名）。 */
+    private Long resolveRefDataIdByTitle(String refType, String title) {
+        if (!StringUtils.hasText(title)) {
+            return null;
+        }
+        try {
+            List<Long> ids = jdbcTemplate.queryForList(
+                    "SELECT id FROM ref_data WHERE ref_type = ? AND JSON_UNQUOTE(JSON_EXTRACT(field_data, '$.title')) = ? LIMIT 1",
+                    Long.class, refType, title);
+            return (ids == null || ids.isEmpty()) ? null : ids.get(0);
+        } catch (Exception e) {
+            log.warn("[aup] 解析 ref_data id 失败 refType={} title={} err={}", refType, title, e.getMessage());
             return null;
         }
     }
@@ -1651,32 +1797,16 @@ public class AupService {
         }
     }
 
-    /** 解析人员姓名（供本服务留痕/组长名，及 AupReviewService 批量填充逐字段评审人姓名复用） */
+    /**
+     * 解析人员姓名（供本服务留痕/组长名，及 AupReviewService 批量填充逐字段评审人姓名复用）。
+     * 统一走 {@link UserDisplayNameService}（personnel 表 staffId / aro_user_id 双键）。
+     */
     public String resolveName(String userId) {
         if (!StringUtils.hasText(userId)) {
             return null;
         }
-        try {
-            AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
-            if (p != null && StringUtils.hasText(p.getName())) {
-                return p.getName();
-            }
-        } catch (Exception ignored) {
-        }
-        // 教职工（sys_user）回退：显示昵称 → 用户名，兜底返回原始 userId
-        try {
-            User u = userMapper.findById(userId);
-            if (u != null) {
-                if (StringUtils.hasText(u.getDisplayNickname())) {
-                    return u.getDisplayNickname().trim();
-                }
-                if (StringUtils.hasText(u.getUsername())) {
-                    return u.getUsername().trim();
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return userId;
+        String name = userDisplayNameService.resolveDisplayName(userId.trim());
+        return StringUtils.hasText(name) ? name : userId.trim();
     }
 
     private AupSnapshotVO toSnapshotVO(AupSnapshot s, boolean withData) {
@@ -1691,6 +1821,30 @@ public class AupService {
         vo.setCreatedAt(s.getCreatedAt());
         vo.setCreatedBy(s.getCreatedBy());
         return vo;
+    }
+
+    private void enrichSnapshotCreatedByNames(List<AupSnapshotVO> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (AupSnapshotVO vo : rows) {
+            if (vo != null && StringUtils.hasText(vo.getCreatedBy())) {
+                ids.add(vo.getCreatedBy().trim());
+            }
+        }
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(ids);
+        for (AupSnapshotVO vo : rows) {
+            if (vo == null || !StringUtils.hasText(vo.getCreatedBy())) {
+                continue;
+            }
+            String id = vo.getCreatedBy().trim();
+            String n = names.get(id);
+            vo.setCreatedByName(StringUtils.hasText(n) ? n : id);
+        }
     }
 
     private AupAttachmentVO toAttachmentVO(AupAttachment att, UploadFileRecord r) {
@@ -1845,14 +1999,12 @@ public class AupService {
                 userIds.add(actor);
             }
         }
-        Map<String, String> names = new HashMap<>();
-        for (String id : userIds) {
-            names.put(id, resolveName(id));
-        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(userIds);
 
         // 4) 回填
         for (AupListItem item : items) {
-            item.setSubmitterName(names.get(item.getCreatedBy()));
+            String submitter = names.get(item.getCreatedBy());
+            item.setSubmitterName(StringUtils.hasText(submitter) ? submitter : item.getCreatedBy());
             String stage = item.getCurrentStage();
             if (expertRounds.containsKey(item.getId())) {
                 // 有专家轮次（正在审查或返修后），审核人显示已分配专家

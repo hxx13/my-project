@@ -7,6 +7,7 @@ import com.example.demo.modules.auth.dto.RegisterStaffRequest;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.invite.RegistrationInviteService;
+import com.example.demo.modules.personnel.service.PersonnelService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -20,15 +21,18 @@ public class StaffRegistrationService {
     private final AuthService authService;
     private final PasswordCredentialService passwordCredentialService;
     private final RegistrationInviteService registrationInviteService;
+    private final PersonnelService personnelService;
 
     public StaffRegistrationService(UserMapper userMapper,
                                     AuthService authService,
                                     PasswordCredentialService passwordCredentialService,
-                                    RegistrationInviteService registrationInviteService) {
+                                    RegistrationInviteService registrationInviteService,
+                                    PersonnelService personnelService) {
         this.userMapper = userMapper;
         this.authService = authService;
         this.passwordCredentialService = passwordCredentialService;
         this.registrationInviteService = registrationInviteService;
+        this.personnelService = personnelService;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -39,6 +43,13 @@ public class StaffRegistrationService {
         String username = request.getUsername().trim();
         if (username.length() < 3 || username.length() > 64) {
             return Result.error("账号不合法");
+        }
+        String realName = request.getName() == null ? "" : request.getName().trim();
+        if (realName.isEmpty()) {
+            return Result.error("请填写真实姓名（与登录账号无关）");
+        }
+        if (realName.length() > 128) {
+            return Result.error("真实姓名不能超过128个字符");
         }
         String rawPwd = request.getPassword().trim();
         String pwError = PasswordPolicyValidator.validate(rawPwd);
@@ -71,6 +82,12 @@ public class StaffRegistrationService {
         user.setAccountSource("STAFF");
         userMapper.insertUser(user);
         userMapper.updatePasswordWithPlainById(id, hash, encryptedPlain, 0);
+        try {
+            // 真实姓名 → sys_user.name + personnel；绝不把姓名写成 username
+            personnelService.ensureStaffPersonnel(id, realName, RoleEnum.STAFF.getCode());
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
         user = userMapper.findById(user.getId());
         user.setRole(authService.normalizeRole(user.getRole()));
         return authService.generateAuthResult(user);

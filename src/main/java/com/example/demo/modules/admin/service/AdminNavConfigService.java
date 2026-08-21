@@ -219,6 +219,26 @@ public class AdminNavConfigService {
     }
 
     /**
+     * 按给定顺序重排某父级（或顶层）下的同级节点，sort_order 重排为连续序号 0..n-1。
+     * 兼容文件夹（GROUP/SUBGROUP）与入口（ITEM）混排；未出现在 orderedIds 中的同级兜底追加到末尾，
+     * 避免 sort_order 残留导致排序错乱。
+     */
+    @Transactional
+    public void reorderNodes(String scope, String parentId, List<String> orderedIds) {
+        if (orderedIds == null) return;
+        List<AdminNavConfigNode> siblings = listSiblings(scope, parentId);
+        Set<String> siblingIds = new HashSet<>();
+        for (AdminNavConfigNode s : siblings) siblingIds.add(s.getId());
+
+        LinkedHashSet<String> reordered = new LinkedHashSet<>();
+        for (String id : orderedIds) {
+            if (id != null && siblingIds.contains(id)) reordered.add(id);
+        }
+        for (AdminNavConfigNode s : siblings) reordered.add(s.getId());
+        reindexSortOrders(new ArrayList<>(reordered));
+    }
+
+    /**
      * 确保一个入口存在于 DB 中（如不存在则自动创建）。
      * 若所属 GROUP 不存在也自动创建。
      */

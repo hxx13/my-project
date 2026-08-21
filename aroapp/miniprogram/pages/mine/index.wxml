@@ -3,8 +3,9 @@
   <view class="mine-header-card">
     <view class="mine-header-mesh" />
     <view class="mine-header-badges">
-      <view wx:if="{{ !springBound && springPending }}" class="mine-chip mine-chip--warn">待绑定</view>
-      <view wx:elif="{{ !springBound && !springPending }}" class="mine-chip">未就绪</view>
+      <view wx:if="{{ springBound }}" class="mine-chip mine-chip--ok">已绑定</view>
+      <view wx:elif="{{ springPending }}" class="mine-chip mine-chip--warn">待绑定</view>
+      <view wx:else class="mine-chip">未就绪</view>
       <view
         wx:if="{{ springBound && springRoleLabelZh }}"
         class="mine-chip mine-chip--ok mine-chip--role-tap"
@@ -13,39 +14,13 @@
       >
         {{ springRoleLabelZh }}
       </view>
-      <view class="mine-chip-row">
-        <view
-          class="mine-chip {{ currentEmail ? 'mine-chip--ok' : 'mine-chip--warn' }} mine-chip--role-tap"
-          hover-class="mine-chip--role-tap-hover"
-          bindtap="onOpenEmailEditor"
-        >
-          {{ currentEmail ? '已绑定邮箱' : '绑定邮箱' }}
-        </view>
-        <view
-          wx:if="{{ springBound }}"
-          class="mine-chip {{ currentSendKey ? 'mine-chip--ok' : 'mine-chip--warn' }} mine-chip--role-tap"
-          hover-class="mine-chip--role-tap-hover"
-          bindtap="onOpenSendKeyEditor"
-        >
-          {{ currentSendKey ? '微信通知' : '绑定通知' }}
-        </view>
-        <view
-          wx:if="{{ springBound }}"
-          class="mine-chip {{ currentWxPusher ? 'mine-chip--ok' : 'mine-chip--warn' }} mine-chip--role-tap"
-          hover-class="mine-chip--role-tap-hover"
-          bindtap="onOpenWxPusherEditor"
-        >
-          {{ currentWxPusher ? 'WxPusher推送' : '绑定WxPusher' }}
-        </view>
-      </view>
-      <view wx:if="{{ springBound && springUserId }}" class="mine-badge-actions">
-        <view wx:if="{{ canGoAiPortrait }}" class="mine-archive-action mine-archive-action--ghost" bindtap="goAiPortrait">
-          <text class="mine-archive-action-text mine-archive-action-text--ghost">AI画像</text>
-        </view>
-        <view class="mine-archive-action" bindtap="openProfileDetail">
-          <text class="mine-archive-action-text">详情</text>
-          <text class="mine-archive-action-arrow">›</text>
-        </view>
+      <view
+        wx:if="{{ springBound && canEditDisplayName }}"
+        class="mine-chip mine-chip--ok mine-chip--role-tap"
+        hover-class="mine-chip--role-tap-hover"
+        bindtap="onOpenNicknameEditor"
+      >
+        修改姓名
       </view>
     </view>
     <view class="mine-header-main">
@@ -81,6 +56,15 @@
           <text class="mine-archive-title">个人信息</text>
           <text class="mine-archive-sub">点击详情查看档案</text>
         </view>
+        <view class="mine-archive-actions">
+          <view wx:if="{{ canGoAiPortrait }}" class="mine-archive-action mine-archive-action--ghost" bindtap="goAiPortrait">
+            <text class="mine-archive-action-text mine-archive-action-text--ghost">AI画像</text>
+          </view>
+          <view class="mine-archive-action" bindtap="openProfileDetail">
+            <text class="mine-archive-action-text">详情</text>
+            <text class="mine-archive-action-arrow">›</text>
+          </view>
+        </view>
       </view>
     </view>
     <view wx:elif="{{ springBound }}" class="mine-archive mine-archive--hint">
@@ -92,26 +76,6 @@
     <view class="mine-section-head">
       <text class="mine-section-title">常用功能</text>
       <text class="mine-section-tag">MENU</text>
-    </view>
-  </view>
-
-  <view wx:if="{{ springBound && ((!isStudentView && hasAroBinding) || isImpersonating) }}" class="mine-menu-group">
-    <text class="mine-menu-group-title">视角切换</text>
-    <view class="mine-list-card">
-      <van-cell-group inset="{{ false }}" border="{{ false }}">
-        <van-cell wx:if="{{ !isStudentView && hasAroBinding }}" is-link bind:click="onSwitchToStudent">
-          <view slot="icon" class="mine-slot-ico"><van-icon name="exchange" size="28rpx" color="#16a34a" /></view>
-          <view slot="title" class="mine-cell-title-wrap">
-            <text class="mine-cell-title-text">切换学生视图</text>
-          </view>
-        </van-cell>
-        <van-cell wx:if="{{ isImpersonating }}" is-link bind:click="onReturnToStaff">
-          <view slot="icon" class="mine-slot-ico"><van-icon name="exchange" size="28rpx" color="#ea580c" /></view>
-          <view slot="title" class="mine-cell-title-wrap">
-            <text class="mine-cell-title-text">返回教职工视角</text>
-          </view>
-        </van-cell>
-      </van-cell-group>
     </view>
   </view>
 
@@ -251,12 +215,6 @@
         <text class="mine-cell-title-text">生成 Web 注册推荐码</text>
       </view>
     </van-cell>
-    <van-cell wx:if="{{ springBound }}" is-link bind:click="onOpenPwdChange">
-      <view slot="icon" class="mine-slot-ico"><van-icon name="lock" size="28rpx" color="#6366f1" /></view>
-      <view slot="title" class="mine-cell-title-wrap">
-        <text class="mine-cell-title-text">修改密码</text>
-      </view>
-    </van-cell>
     <view class="mine-cell-footer">
       <block wx:if="{{ !springBound }}">
         <van-button
@@ -274,7 +232,7 @@
         round
         custom-class="mine-foot-btn mine-foot-btn--logout"
         bindtap="clearSpringBind"
-      >退出登录</van-button>
+      >注销</van-button>
     </view>
   </van-cell-group>
     </view>
@@ -329,6 +287,28 @@
       <view wx:if="{{ profileDetailRows.length === 0 && profileDetailHeadRows.length === 0 }}" class="profile-popup-empty">暂无更多明细字段</view>
       </block>
     </scroll-view>
+  </view>
+</van-popup>
+
+<van-popup
+  show="{{ showNicknameEditor }}"
+  position="center"
+  round
+  closeable
+  custom-class="mine-bind-popup"
+  bind:close="onCloseNicknameEditor"
+>
+  <view class="bind-panel bind-panel--center">
+    <view class="bind-title">修改展示姓名</view>
+    <text class="bind-tip">用于报修、采购、物资领用等场景的申请人展示名；留空则使用登录账号。</text>
+    <input
+      class="bind-input bind-input-block"
+      value="{{ nicknameDraft }}"
+      maxlength="32"
+      bindinput="onNicknameDraftInput"
+      placeholder="请输入昵称，最多32字"
+    />
+    <van-button block type="primary" round custom-class="bind-submit" bindtap="submitNicknameDraft">保存</van-button>
   </view>
 </van-popup>
 
@@ -399,7 +379,7 @@
       class="bind-input bind-input-block"
       value="{{ loginUsername }}"
       bindinput="onLoginUsernameInput"
-      placeholder="账号/邮箱"
+      placeholder="账号"
       maxlength="64"
     />
     <input
@@ -413,9 +393,6 @@
     <van-button block type="primary" round custom-class="bind-submit" bindtap="submitLogin" loading="{{ loginSubmitting }}" disabled="{{ loginSubmitting }}">登录</van-button>
     <view class="login-register-link" bindtap="onGoRegister">
       <text class="login-register-text">没有账号？去注册 →</text>
-    </view>
-    <view class="login-register-link" bindtap="onOpenForgotPwd">
-      <text class="login-register-text">忘记密码？</text>
     </view>
   </view>
 </van-popup>
@@ -450,7 +427,7 @@
 
       <!-- Step 2: 身份确认 -->
       <view hidden="{{ regStep !== 'confirm' }}">
-        <van-icon name="checked" size="48rpx" color="#16a34a" custom-class="reg-verified-icon" />
+        <view class="reg-verified-icon">&#x2705;</view>
         <text class="reg-verified-title">身份验证通过</text>
         <text class="bind-tip">请确认以下信息是否正确</text>
         <view wx:if="{{ regVerifiedData }}" class="reg-info-card">
@@ -476,6 +453,7 @@
     <!-- ====== 教职工注册 ====== -->
     <block wx:else>
       <input class="bind-input bind-input-block" value="{{ registerStaffInvite }}" bindinput="onRegStaffInviteInput" placeholder="邀请码" maxlength="64" />
+      <input class="bind-input bind-input-block" value="{{ registerStaffName }}" bindinput="onRegStaffNameInput" placeholder="真实姓名（≠ 登录账号）" maxlength="64" />
       <input class="bind-input bind-input-block" value="{{ registerStaffUser }}" bindinput="onRegStaffUserInput" placeholder="账号 / 工号" maxlength="64" />
       <input class="bind-input bind-input-block" value="{{ registerStaffPassword }}" bindinput="onRegStaffPwdInput" placeholder="密码（至少6位）" password="true" maxlength="64" />
       <input class="bind-input bind-input-block" value="{{ registerStaffPassword2 }}" bindinput="onRegStaffPwd2Input" placeholder="确认密码" password="true" maxlength="64" />
@@ -501,195 +479,3 @@
   style="width: 180px; height: 180px;"
   disable-scroll="{{ true }}"
 />
-
-<!-- 邮箱绑定弹窗 -->
-<van-popup
-  show="{{ showEmailEditor }}"
-  position="center"
-  round
-  closeable
-  custom-class="mine-bind-popup"
-  bind:close="onCloseEmailEditor"
->
-  <view class="bind-panel bind-panel--center">
-    <view class="bind-title">绑定邮箱</view>
-    <text class="bind-tip">设置用于接收通知的联系邮箱</text>
-    <input class="bind-input bind-input-block" type="text" value="{{ emailDraft }}" maxlength="128" placeholder="请输入邮箱地址" bindinput="onEmailInput" />
-    <view class="mine-email-code-row">
-      <input class="bind-input" style="flex:1" type="text" value="{{ emailCode }}" maxlength="6" placeholder="验证码" bindinput="onEmailCodeInput" />
-      <van-button size="small" type="primary" plain hairline custom-class="bind-scan-btn" bindtap="onSendEmailBindCode" loading="{{ emailCodeSending }}" disabled="{{ emailCodeCooldown > 0 || emailCodeSending }}">{{ emailCodeCooldown > 0 ? emailCodeCooldown + 's' : (emailCodeSending ? '发送中…' : '发送验证码') }}</van-button>
-    </view>
-    <van-button block type="primary" round custom-class="bind-submit" bindtap="onSubmitEmail" loading="{{ emailSaving }}" disabled="{{ emailSaving }}">{{ emailSaving ? '保存中…' : (currentEmail ? '更换邮箱' : '保存') }}</van-button>
-    <view wx:if="{{ currentEmail }}" class="login-register-link" bindtap="doUnbindEmail">
-      <text class="login-register-text">取消绑定</text>
-    </view>
-  </view>
-</van-popup>
-
-<!-- ====== 微信通知绑定弹窗 ====== -->
-<van-popup
-  show="{{ showSendKeyEditor }}"
-  position="center"
-  round
-  closeable
-  custom-class="mine-bind-popup"
-  bind:close="onCloseSendKeyEditor"
->
-  <view class="bind-panel bind-panel--center">
-    <view class="bind-title">绑定微信通知</view>
-    <text class="bind-tip">输入 Server酱 SendKey 以启用微信消息推送</text>
-    <view class="sendkey-link-hint" bindtap="copySendKeyUrl">
-      <text class="sendkey-link-text">还没有 SendKey？点此复制链接，转到浏览器打开 →</text>
-    </view>
-    <input class="bind-input bind-input-block" type="text" value="{{ sendKeyDraft }}" maxlength="256" placeholder="请输入 SendKey" bindinput="onSendKeyInput" />
-    <van-button block type="primary" round custom-class="bind-submit" bindtap="onSubmitSendKey" loading="{{ sendKeySaving }}" disabled="{{ sendKeySaving }}">{{ sendKeySaving ? '保存中…' : '保存' }}</van-button>
-  </view>
-</van-popup>
-
-<!-- ====== WxPusher 推送绑定弹窗 ====== -->
-<van-popup
-  show="{{ showWxPusherEditor }}"
-  position="center"
-  round
-  closeable
-  custom-class="mine-bind-popup"
-  bind:close="onCloseWxPusherEditor"
->
-  <view class="bind-panel bind-panel--center">
-    <view class="bind-title">绑定 WxPusher 推送</view>
-    <text class="bind-tip">关注公众号「WxPusher」（新消息服务）→ 我的 → 我的UID → 复制后填入下方</text>
-    <!-- 双二维码区 -->
-    <view class="wxpusher-qr-row">
-      <view class="wxpusher-qr-item">
-        <canvas canvas-id="wxpusherFollowQr" class="wxpusher-qr-canvas" />
-        <text class="wxpusher-qr-label">扫码关注公众号</text>
-      </view>
-      <view class="wxpusher-qr-item">
-        <canvas canvas-id="wxpusherDownloadQr" class="wxpusher-qr-canvas" />
-        <text class="wxpusher-qr-label">扫码下载 App</text>
-      </view>
-    </view>
-    <input class="bind-input bind-input-block" type="text" value="{{ wxPusherDraft }}" maxlength="128" placeholder="粘贴 WxPusher UID（如 UID_xxxx）" bindinput="onWxPusherInput" />
-    <van-button block type="primary" round custom-class="bind-submit" bindtap="onSubmitWxPusher" loading="{{ wxPusherSaving }}" disabled="{{ wxPusherSaving }}">{{ wxPusherSaving ? '保存中…' : '保存' }}</van-button>
-  </view>
-</van-popup>
-
-<!-- ====== 修改密码弹窗 ====== -->
-<van-popup
-  show="{{ showPwdChange }}"
-  position="center"
-  round
-  closeable
-  custom-class="mine-bind-popup"
-  bind:close="onClosePwdChange"
->
-  <view class="bind-panel bind-panel--center">
-    <view class="bind-title">修改密码</view>
-    <text class="bind-tip">请输入当前密码和要设置的新密码</text>
-    <input class="bind-input bind-input-block" value="{{ pwdOld }}" bindinput="onPwdOldInput" placeholder="当前密码" password="true" maxlength="64" />
-    <input class="bind-input bind-input-block" value="{{ pwdNew }}" bindinput="onPwdNewInput" placeholder="新密码（至少6位）" password="true" maxlength="64" />
-    <input class="bind-input bind-input-block" value="{{ pwdConfirm }}" bindinput="onPwdConfirmInput" placeholder="确认新密码" password="true" maxlength="64" />
-    <van-button block type="primary" round custom-class="bind-submit" bindtap="submitPwdChange" loading="{{ pwdSubmitting }}" disabled="{{ pwdSubmitting }}">确认修改</van-button>
-  </view>
-</van-popup>
-
-<!-- ====== 忘记密码弹窗 ====== -->
-<van-popup
-  show="{{ showForgotPwd }}"
-  position="center"
-  round
-  closeable
-  custom-class="mine-bind-popup"
-  bind:close="onCloseForgotPwd"
->
-  <view class="bind-panel bind-panel--center">
-    <!-- Step: 选择方式 -->
-    <view hidden="{{ forgotStep !== 'method' }}">
-      <view class="bind-title">找回密码</view>
-      <text class="bind-tip">请选择一种方式验证您的身份</text>
-      <view class="forgot-method-btn" bindtap="onForgotSelectQr">
-        <van-icon name="photograph" size="40rpx" color="#6366f1" class="forgot-method-icon" />
-        <view class="forgot-method-text">
-          <text class="forgot-method-title">人员二维码 + 手机号</text>
-          <text class="forgot-method-desc">上传您的身份二维码并输入绑定手机号</text>
-        </view>
-      </view>
-      <view class="forgot-method-btn" bindtap="onForgotSelectEmail">
-        <van-icon name="chat-o" size="40rpx" color="#0ea5e9" class="forgot-method-icon" />
-        <view class="forgot-method-text">
-          <text class="forgot-method-title">绑定邮箱 + 验证码</text>
-          <text class="forgot-method-desc">向您已绑定的邮箱发送验证码</text>
-        </view>
-      </view>
-      <view class="login-register-link" bindtap="onForgotBackToLogin">
-        <text class="login-register-text">返回登录</text>
-      </view>
-    </view>
-
-    <!-- QR+Phone: Step 1 -->
-    <view hidden="{{ forgotStep !== 'qrInput' }}">
-      <view class="bind-title">身份验证</view>
-      <text class="bind-tip">上传您的人员二维码以识别用户ID，并输入绑定手机号验证身份</text>
-      <input class="bind-input bind-input-block" value="{{ forgotUserId }}" bindinput="onForgotUserIdInput" placeholder="用户ID（上传QR码自动填入）" maxlength="64" />
-      <view class="forgot-qr-row">
-        <view class="forgot-qr-btn" bindtap="onForgotUploadQr">
-          <text class="forgot-qr-btn-text">{{ forgotQrUploading ? '识别中…' : '上传QR码' }}</text>
-        </view>
-        <text wx:if="{{ forgotUserId }}" class="forgot-qr-hint">已识别: {{ forgotUserId }}</text>
-      </view>
-      <input class="bind-input bind-input-block" value="{{ forgotPhone }}" bindinput="onForgotPhoneInput" placeholder="绑定手机号" type="number" maxlength="20" />
-      <view wx:if="{{ forgotError }}" class="reg-error-text">{{ forgotError }}</view>
-      <van-button block type="primary" round custom-class="bind-submit" bindtap="onForgotQrVerify" loading="{{ forgotSubmitting }}" disabled="{{ forgotSubmitting }}">验证身份</van-button>
-      <view class="login-register-link" bindtap="onForgotBackToMethod">
-        <text class="login-register-text">选择其他方式</text>
-      </view>
-    </view>
-
-    <!-- QR+Phone: Step 2 — 设置新密码 -->
-    <view hidden="{{ forgotStep !== 'qrReset' }}">
-      <view class="bind-title">设置新密码</view>
-      <text class="bind-tip">身份验证通过，请设置您的新密码</text>
-      <input class="bind-input bind-input-block" value="{{ forgotNewPwd }}" bindinput="onForgotNewPwdInput" placeholder="新密码（至少6位）" password="true" maxlength="64" />
-      <input class="bind-input bind-input-block" value="{{ forgotNewPwd2 }}" bindinput="onForgotNewPwd2Input" placeholder="确认新密码" password="true" maxlength="64" />
-      <view wx:if="{{ forgotError }}" class="reg-error-text">{{ forgotError }}</view>
-      <van-button block type="primary" round custom-class="bind-submit" bindtap="submitForgotReset" loading="{{ forgotSubmitting }}" disabled="{{ forgotSubmitting }}">重置密码</van-button>
-    </view>
-
-    <!-- Email: Step 1 — 输入邮箱 -->
-    <view hidden="{{ forgotStep !== 'emailInput' }}">
-      <view class="bind-title">邮箱验证</view>
-      <text class="bind-tip">输入您已绑定的邮箱，点击发送验证码</text>
-      <input class="bind-input bind-input-block" value="{{ forgotEmail }}" bindinput="onForgotEmailInput" placeholder="绑定邮箱" maxlength="128" />
-      <view class="forgot-email-send-row">
-        <view class="bind-input bind-input-block" style="flex:1;margin-bottom:0;">
-          <input style="width:100%;height:80rpx;border:none;background:transparent;padding:0 24rpx;font-size:28rpx;box-sizing:border-box;" value="{{ forgotEmailCode }}" bindinput="onForgotEmailCodeInput" placeholder="验证码" maxlength="6" />
-        </view>
-        <van-button
-          size="small"
-          type="primary"
-          plain
-          hairline
-          custom-class="bind-scan-btn"
-          bindtap="onForgotSendEmailCode"
-          loading="{{ forgotEmailSending }}"
-          disabled="{{ forgotEmailCooldown > 0 || forgotEmailSending }}"
-        >{{ forgotEmailCooldown > 0 ? forgotEmailCooldown + 's' : '发送验证码' }}</van-button>
-      </view>
-      <view wx:if="{{ forgotError }}" class="reg-error-text">{{ forgotError }}</view>
-      <van-button block type="primary" round custom-class="bind-submit" bindtap="onForgotEmailVerify" loading="{{ forgotSubmitting }}" disabled="{{ forgotSubmitting }}">验证邮箱</van-button>
-      <view class="login-register-link" bindtap="onForgotBackToMethod">
-        <text class="login-register-text">选择其他方式</text>
-      </view>
-    </view>
-
-    <!-- Email: Step 2 — 设置新密码 -->
-    <view hidden="{{ forgotStep !== 'emailReset' }}">
-      <view class="bind-title">设置新密码</view>
-      <text class="bind-tip">邮箱验证通过，请设置您的新密码</text>
-      <input class="bind-input bind-input-block" value="{{ forgotNewPwd }}" bindinput="onForgotNewPwdInput" placeholder="新密码（至少6位）" password="true" maxlength="64" />
-      <input class="bind-input bind-input-block" value="{{ forgotNewPwd2 }}" bindinput="onForgotNewPwd2Input" placeholder="确认新密码" password="true" maxlength="64" />
-      <view wx:if="{{ forgotError }}" class="reg-error-text">{{ forgotError }}</view>
-      <van-button block type="primary" round custom-class="bind-submit" bindtap="submitForgotReset" loading="{{ forgotSubmitting }}" disabled="{{ forgotSubmitting }}">重置密码</van-button>
-    </view>
-  </view>
-</van-popup>

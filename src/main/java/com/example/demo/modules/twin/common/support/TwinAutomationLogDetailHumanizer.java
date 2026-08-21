@@ -28,6 +28,8 @@ public final class TwinAutomationLogDetailHumanizer {
     private static final Pattern CHANNEL = Pattern.compile("channel=([^,\\s|）)]+)");
     private static final Pattern ROOM_ID = Pattern.compile("roomId=([0-9]{6,32})");
     private static final Pattern OPERATOR = Pattern.compile("操作人=([^，]+)");
+    /** 门禁临时解锁等 detail 中的「人员[personCode]」技术码 */
+    private static final Pattern PERSON_BRACKET = Pattern.compile("人员\\[([^\\]]+)\\]");
     private static final Pattern ROOM_NAME_JSON = Pattern.compile("\"roomName\"\\s*:\\s*\"([^\"]+)\"");
     private static final Pattern SECONDS = Pattern.compile("(\\d+)\\s*秒");
     private static final Pattern DATETIME = Pattern.compile("(\\d{4}-\\d{2}-\\d{2}\\s*T?\\d{2}:\\d{2}:\\d{2})");
@@ -61,7 +63,7 @@ public final class TwinAutomationLogDetailHumanizer {
                 row.setDetailDisplayZh("");
                 continue;
             }
-            row.setDetailDisplayZh(toStructuredLines(raw, ch, rm, op));
+            row.setDetailDisplayZh(replacePersonBrackets(toStructuredLines(raw, ch, rm, op), op));
         }
     }
 
@@ -75,6 +77,35 @@ public final class TwinAutomationLogDetailHumanizer {
             if (!id.isEmpty() && !id.equals("-") && !out.contains(id)) out.add(id);
         }
         return out;
+    }
+
+    /** 从 detail 中提取「人员[personCode]」（门禁临时解锁等，技术码保留在库内 userId/detail） */
+    public static List<String> extractPersonBracketIds(String detail) {
+        List<String> out = new ArrayList<>();
+        if (detail == null || detail.isBlank()) return out;
+        Matcher m = PERSON_BRACKET.matcher(detail);
+        while (m.find()) {
+            String id = m.group(1).trim();
+            if (!id.isEmpty() && !out.contains(id)) out.add(id);
+        }
+        return out;
+    }
+
+    /** 展示层把「人员[技术码]」替换为「人员[展示名]」，不改库存 detail。 */
+    public static String replacePersonBrackets(String text, Map<String, String> personNameById) {
+        if (text == null || text.isBlank() || personNameById == null || personNameById.isEmpty()) {
+            return text == null ? "" : text;
+        }
+        Matcher m = PERSON_BRACKET.matcher(text);
+        StringBuffer sb = new StringBuffer();
+        while (m.find()) {
+            String id = m.group(1).trim();
+            String name = personNameById.get(id);
+            String label = (name != null && !name.isBlank() && !name.equals(id)) ? name : id;
+            m.appendReplacement(sb, Matcher.quoteReplacement("人员[" + label + "]"));
+        }
+        m.appendTail(sb);
+        return sb.toString();
     }
 
     public static List<String> extractChannelCodes(String detail) {
@@ -222,6 +253,24 @@ public final class TwinAutomationLogDetailHumanizer {
         if (d.contains("冻结") || d.contains("FREEZE") || d.contains("REAPER")) {
             lines.add("当前状态：冻结跑批");
             if (!room.isEmpty()) lines.add("房间：" + room);
+            return join(lines);
+        }
+
+        // ── 门禁临时解锁（detail 仍含技术 personCode；展示名由外层 replacePersonBrackets 回填） ──
+        if (d.contains("人员[") && (d.contains("解锁") || d.contains("冷却") || d.contains("常闭")
+                || d.contains("恢复普通") || d.contains("刷卡失败"))) {
+            if (d.contains("冷却")) lines.add("当前状态：冷却中跳过");
+            else if (d.contains("常闭")) lines.add("当前状态：常闭模式跳过");
+            else if (d.contains("恢复普通")) lines.add("当前状态：恢复普通模式");
+            else if (d.contains("执行失败") || d.contains("执行常开失败")) lines.add("当前状态：解锁失败");
+            else lines.add("当前状态：临时解锁");
+            if (!chan.isEmpty()) lines.add("地点：" + chan);
+            Matcher pm = PERSON_BRACKET.matcher(d);
+            if (pm.find()) {
+                String pid = pm.group(1).trim();
+                String pname = operatorNameById.get(pid);
+                lines.add("人员：" + (pname != null && !pname.isBlank() ? pname : pid));
+            }
             return join(lines);
         }
 

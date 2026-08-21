@@ -149,6 +149,8 @@ public class JobExecutionRegistry {
     private final com.example.demo.modules.twin.dashboard.service.StrandedViolationService strandedViolationService;
     private final com.example.demo.modules.twin.dashboard.service.RankingSnapshotService rankingSnapshotService;
     @Autowired(required = false)
+    private com.example.demo.modules.twin.obligation.rule.ProductionRuleRegistry productionRuleRegistry;
+    @Autowired(required = false)
     private com.corundumstudio.socketio.SocketIOServer socketServer;
     @Autowired(required = false)
     private com.example.demo.modules.twin.scan.delay.service.ScanDelayAutoApproveService scanDelayAutoApproveService;
@@ -354,6 +356,16 @@ public class JobExecutionRegistry {
                     yield JobRunOutcome.ok(jobKey, "每日豁免回收已完成");
                 }
                 case JOB_STRANDED_VIOLATION_CHECK -> {
+                    if (productionRuleRegistry != null) {
+                        var r = productionRuleRegistry.execute(
+                                "STRANDED",
+                                new com.example.demo.modules.twin.obligation.rule.ProductionRule.ProductionContext(
+                                        preferSync ? "ui-manual" : "system-scheduler"));
+                        if (!r.ok()) {
+                            throw new IllegalStateException(r.message());
+                        }
+                        yield JobRunOutcome.ok(jobKey, r.message(), r.details());
+                    }
                     strandedViolationService.executeScheduledCheck();
                     yield JobRunOutcome.ok(jobKey, "滞留违规检测完成");
                 }
@@ -475,10 +487,20 @@ public class JobExecutionRegistry {
                     yield JobRunOutcome.ok(jobKey, "动物消耗排行榜刷新信号已广播");
                 }
                 case JOB_CAGE_STATUS_VIOLATION_CHECK -> {
+                    String triggeredBy = preferSync ? "ui-manual" : "system-scheduler";
+                    if (productionRuleRegistry != null) {
+                        var r = productionRuleRegistry.execute(
+                                "CAGE_STATUS",
+                                new com.example.demo.modules.twin.obligation.rule.ProductionRule.ProductionContext(
+                                        triggeredBy));
+                        if (!r.ok()) {
+                            throw new IllegalStateException(r.message());
+                        }
+                        yield JobRunOutcome.ok(jobKey, r.message(), r.details());
+                    }
                     if (cageStatusViolationCheckService == null) {
                         throw new IllegalStateException("CageStatusViolationCheckService 未就绪");
                     }
-                    String triggeredBy = preferSync ? "ui-manual" : "system-scheduler";
                     Map<String, Object> result = cageStatusViolationCheckService.executePureDaysCheck(triggeredBy);
                     yield JobRunOutcome.ok(jobKey, "笼架违规检测完成 rulesChecked="
                             + result.get("rulesChecked") + " triggered=" + result.get("totalTriggered"), result);

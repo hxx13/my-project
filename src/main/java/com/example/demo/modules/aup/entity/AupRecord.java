@@ -43,6 +43,12 @@ public class AupRecord {
     private String projectSource;
     /** 课题组名称（冗余自 aro_personnel.project_group_name，供学生端按课题组查看/协作编辑） */
     private String projectGroupName;
+    /** 课题组外键 → project_group.id（关键枢纽，计划文档 §6.1 补齐） */
+    private Long projectGroupId;
+    /** 动物类型白名单（结构化 JSON，后续补） */
+    private String animalAllowlist;
+    /** 有效期状态 active/expired（与 current_stage 流程状态互补） */
+    private String status;
     private LocalDateTime submittedAt;
     private LocalDateTime approvedAt;
     private String createdBy;

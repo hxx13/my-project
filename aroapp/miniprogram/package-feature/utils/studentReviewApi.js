@@ -152,59 +152,9 @@ async function fetchAdminMaterialItems() {
 }
 
 /** 与 Web fetchScanDelayOptions 同源（option 审核人映射） */
-/** 获取审核人列表，用于历史卡片显示审核人姓名 */
-async function fetchEligibleReviewers() {
-  const res = await springAuth.springRequest({
-    url: '/api/material/admin/eligible-reviewers',
-    method: 'GET',
-    data: {},
-  });
-  return unwrap(res.data) || [];
-}
-
 async function fetchScanDelayOptions() {
   const res = await springAuth.springRequest({
     url: '/api/v1/twin/scan-delay/options',
-    method: 'GET',
-    data: {},
-  });
-  return unwrap(res.data) || [];
-}
-
-/** 获取待审核培训场次及学员 */
-async function fetchPendingTrainingSessions() {
-  const res = await springAuth.springRequest({
-    url: '/api/admin/aro-training/sessions/pending',
-    method: 'GET',
-    data: {},
-  });
-  return unwrap(res.data) || [];
-}
-
-/** 审批学员 state: 1=通过, 2=拒绝 */
-async function auditTrainee(examSignId, state) {
-  const res = await springAuth.springRequest({
-    url: '/api/admin/aro-training/audit',
-    method: 'POST',
-    data: { examSignId, state },
-  });
-  return unwrap(res.data);
-}
-
-/** 评分学员 state: 1=合格, 2=不合格 */
-async function scoreTrainee(examSignId, state) {
-  const res = await springAuth.springRequest({
-    url: '/api/admin/aro-training/score',
-    method: 'POST',
-    data: { examSignId, state },
-  });
-  return unwrap(res.data);
-}
-
-/** 获取收藏列表 */
-async function fetchAroFavorites() {
-  const res = await springAuth.springRequest({
-    url: '/api/admin/aro-training/favorites',
     method: 'GET',
     data: {},
   });
@@ -221,7 +171,6 @@ module.exports = {
   fetchDemandEntryVisible,
   fetchAdminMaterialItems,
   fetchScanDelayOptions,
-  fetchEligibleReviewers,
   approveMaterialRequest,
   rejectMaterialRequest,
   deleteMaterialRequest,
@@ -229,8 +178,4 @@ module.exports = {
   reviewScanDelayRequest,
   resolveMaterialDemand,
   toggleDemandEntryVisible,
-  fetchPendingTrainingSessions,
-  auditTrainee,
-  scoreTrainee,
-  fetchAroFavorites,
 };

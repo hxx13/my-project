@@ -16,6 +16,7 @@ import {
 } from "@/api/domains/facilityMaintenance.api";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 
+import { appConfirm } from "@/lib/appDialog";
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -314,7 +315,7 @@ export default function DailyInspectionPanel() {
       return;
     }
     if (
-      !confirm(
+      !await appConfirm(
         "确定删除「当日巡查表」？删除后该业务日可重新选模板打开；若格子中已有内容将一并清除。（多人协作时请谨慎）"
       )
     ) {

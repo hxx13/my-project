@@ -5,7 +5,7 @@ import {
   fetchSystemOnlyUsers,
   fetchUnifiedPersonnel,
   fetchPersonnelRooms,
-  updateUserRole,
+  updatePersonnelRole,
   updateUserStatus,
   resetUserPassword,
   resetUserOpenId,
@@ -55,10 +55,10 @@ export function usePersonnelRooms() {
   });
 }
 
-export function useUpdateUserRole() {
+export function useUpdatePersonnelRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, role }: { id: string; role: string }) => updateUserRole(id, role),
+    mutationFn: ({ id, role }: { id: number; role: string }) => updatePersonnelRole(id, role),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.personnel.all });
       toast.success("角色已更新");

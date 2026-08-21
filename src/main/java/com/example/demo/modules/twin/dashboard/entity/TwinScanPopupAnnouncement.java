@@ -9,6 +9,8 @@ public class TwinScanPopupAnnouncement {
     private Long id;
     private String title;
     private String contentHtml;
+    /** ProseMirror/TipTap JSON 真源；contentHtml 为派生缓存 */
+    private String contentJson;
     private Integer enabled;
     private Integer sortOrder;
     private String status;

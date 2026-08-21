@@ -69,7 +69,7 @@ import AdminDahuaSwingRulesPage from "@/pages/AdminDahuaSwingRulesPage";
 import AdminAccessFusionPage from "@/pages/AdminAccessFusionPage";
 import AdminAccessCleanRuleProfilesPage from "@/pages/AdminAccessCleanRuleProfilesPage";
 import AdminAccessAuditSourcePage from "@/pages/AdminAccessAuditSourcePage";
-import AdminStudentViolationsPage from "@/pages/AdminStudentViolationsPage";
+import { AdminViolationsPage } from "@/features/admin/violations/AdminViolationsPage";
 import AdminDoorControlPage from "@/pages/AdminDoorControlPage";
 import AdminCageShelfPage from "@/pages/AdminCageShelfPage";
 import AdminSpecialStatusOverviewPage from "@/pages/AdminSpecialStatusOverviewPage";
@@ -126,6 +126,7 @@ import StudentHomePage from "@/features/student/pages/student-home";
 import StudentRoomsPage from "@/features/student/pages/student-rooms";
 import StudentAupPage from "@/features/student/pages/student-aup";
 import StudentNotificationsPage from "@/features/student/pages/student-notifications";
+import StudentObligationsPage from "@/features/student/pages/student-obligations";
 import StudentFeedbackPage from "@/features/student/pages/student-feedback";
 import StudentSettingsPage from "@/features/student/pages/student-settings";
 import StudentCageShelfPage from "@/features/student/pages/student-cage-shelf";
@@ -136,12 +137,23 @@ import ReportFillHubPage from "@/features/report-form/pages/ReportFillHubPage";
 import ReportFillPage from "@/features/report-form/pages/ReportFillPage";
 import SubmissionManagePage from "@/features/report-form/pages/SubmissionManagePage";
 import AupFillPage from "@/features/aup/pages/AupFillPage";
+import NhpFillPage from "@/features/nhp/pages/NhpFillPage";
 import AupListPage from "@/features/aup/pages/AupListPage";
 import AupReviewPage from "@/features/aup/pages/AupReviewPage";
 import AupTemplateEditor from "@/features/aup/pages/admin/AupTemplateEditor";
 import AupTemplateListPage from "@/features/aup/pages/admin/AupTemplateListPage";
 import AupDictPage from "@/features/aup/pages/admin/AupDictPage";
 import AupReviewerConfigPage from "@/features/aup/pages/admin/AupReviewerConfigPage";
+import NhpTemplateEditor from "@/features/nhp/pages/admin/NhpTemplateEditor";
+import NhpTemplateListPage from "@/features/nhp/pages/admin/NhpTemplateListPage";
+import NhpCodelistPage from "@/features/nhp/pages/admin/NhpCodelistPage";
+import NhpFieldDictListPage from "@/features/nhp/pages/admin/NhpFieldDictListPage";
+import NhpFieldPage from "@/features/nhp/pages/admin/NhpFieldPage";
+import NhpFieldReviewPage from "@/features/nhp/pages/admin/NhpFieldReviewPage";
+import NhpDataEntryPage from "@/features/nhp/pages/admin/NhpDataEntryPage";
+import NhpRecordsPage from "@/features/nhp/pages/admin/NhpRecordsPage";
+import NhpSubjectsPage from "@/features/nhp/pages/admin/NhpSubjectsPage";
+import NhpWorkflowHubPage from "@/features/nhp/pages/admin/NhpWorkflowHubPage";
 import MobileStudentCenterRoute from "@/pages/mobile/MobileStudentCenterRoute";
 import MobileStudentCenterInvalidPage from "@/pages/mobile/MobileStudentCenterInvalidPage";
 import MobileLoginPage from "@/pages/mobile/auth/MobileLoginPage";
@@ -219,6 +231,7 @@ export const router = createHashRouter([
       { path: "records", element: <Navigate to="/student/rooms?view=records" replace /> },
       { path: "rooms", element: <StudentRoomsPage /> },
       { path: "notifications", element: <StudentNotificationsPage /> },
+      { path: "obligations", element: <StudentObligationsPage /> },
       { path: "feedback", element: <StudentFeedbackPage /> },
       { path: "settings", element: <StudentSettingsPage /> },
       { path: "cage-shelf", element: <StudentCageShelfPage /> },
@@ -231,10 +244,13 @@ export const router = createHashRouter([
   },
 
   // ═══════════════════════════════════════════════════════
-  //  AUP 计划书（填写入口暂挂门户「关于我们」下拉）
+  //  AUP 计划书（填写入口：门户「实验动物 → 填写AUP计划书」）
+  //  NHP CRF（正式填写：门户「实验动物 → 手术 → NHP研究计划」→ /nhp/fill）
   // ═══════════════════════════════════════════════════════
   { path: "/aup/fill", element: <AuthGuard><AupFillPage /></AuthGuard> },
   { path: "/aup/fill/:id", element: <AuthGuard><AupFillPage /></AuthGuard> },
+  { path: "/nhp/fill", element: <AuthGuard><NhpFillPage /></AuthGuard> },
+  { path: "/nhp/fill/:id", element: <AuthGuard><NhpFillPage /></AuthGuard> },
 
   // ═══════════════════════════════════════════════════════
   //  教职工路由 — 统一在 /console 命名空间下
@@ -337,7 +353,7 @@ export const router = createHashRouter([
                   { path: "access-audit-source", element: <AdminAccessAuditSourcePage /> },
                   { path: "access-fusion", element: <AdminAccessFusionPage /> },
                   { path: "access-clean-rule-profiles", element: <AdminAccessCleanRuleProfilesPage /> },
-                  { path: "student-violations", element: <AdminStudentViolationsPage /> },
+                  { path: "student-violations", element: <AdminViolationsPage /> },
                   { path: "supplies", element: <AdminSuppliesMallPage /> },
                   { path: "supplies/mine", element: <Navigate to={`${STAFF_NS}/admin/supplies`} replace /> },
                   { path: "supplies/claim-export", element: <Navigate to={`${STAFF_NS}/admin/supplies`} replace /> },
@@ -422,6 +438,17 @@ export const router = createHashRouter([
       { path: "aup-template/edit/:id", element: <AupTemplateEditor /> },
       { path: "aup-dict", element: <AupDictPage /> },
       { path: "aup-reviewers", element: <AupReviewerConfigPage /> },
+      { path: "nhp-template", element: <NhpTemplateListPage /> },
+      { path: "nhp-template/edit/:formKey", element: <NhpTemplateEditor /> },
+      { path: "nhp-codelist", element: <NhpCodelistPage /> },
+      { path: "nhp-field", element: <NhpFieldDictListPage /> },
+      { path: "nhp-field/:dictKey", element: <NhpFieldPage /> },
+      { path: "nhp-field-review", element: <NhpFieldReviewPage /> },
+      { path: "nhp-hub", element: <NhpWorkflowHubPage /> },
+      { path: "nhp-subjects", element: <NhpSubjectsPage /> },
+      { path: "nhp-records", element: <NhpRecordsPage /> },
+      { path: "nhp-entry", element: <NhpDataEntryPage /> },
+      { path: "nhp-entry/:id", element: <NhpDataEntryPage /> },
     ],
   },
 

@@ -17,6 +17,7 @@ import {
   updateAupTemplateMeta,
 } from "../../api/aup.api";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
+import { appConfirm } from "@/lib/appDialog";
 import "../../aup.css";
 
 gsap.registerPlugin(useGSAP);
@@ -253,8 +254,8 @@ export default function AupTemplateListPage() {
                       {t.status === "DRAFT" && (
                         <button
                           className="btn primary small"
-                          onClick={() => {
-                            if (window.confirm("发布后将冻结该草稿并使其对填写人生效，上一发布版本将归档。确认发布？")) publishMutation.mutate(t.id);
+                          onClick={async () => {
+                            if (await appConfirm("发布后将冻结该草稿并使其对填写人生效，上一发布版本将归档。确认发布？")) publishMutation.mutate(t.id);
                           }}
                           disabled={publishMutation.isPending}
                         >
@@ -264,8 +265,8 @@ export default function AupTemplateListPage() {
                       {t.status === "PUBLISHED" && (
                         <button
                           className="btn ghost small"
-                          onClick={() => {
-                            if (window.confirm("归档后该版本将不再对填写人生效。确认归档？")) archiveMutation.mutate(t.id);
+                          onClick={async () => {
+                            if (await appConfirm("归档后该版本将不再对填写人生效。确认归档？")) archiveMutation.mutate(t.id);
                           }}
                           disabled={archiveMutation.isPending}
                         >
@@ -281,13 +282,13 @@ export default function AupTemplateListPage() {
                             复制
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => {
-                              if (window.confirm("删除该模板版本？其内容将被永久清除，且不可恢复。")) deleteMutation.mutate(t.id);
+                            onClick={async () => {
+                              if (await appConfirm("删除该模板版本？该模板下同步(ARO)/演示(demo)的计划书将一并删除；若仍有本地填写的计划书将被拒绝。此操作不可恢复。")) deleteMutation.mutate(t.id);
                             }}
-                            disabled={deleteMutation.isPending || t.status === "PUBLISHED"}
+                            disabled={deleteMutation.isPending}
                             className="text-red-600 focus:text-red-600"
                           >
-                            {t.status === "PUBLISHED" ? "删除（需先归档）" : "删除"}
+                            删除
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

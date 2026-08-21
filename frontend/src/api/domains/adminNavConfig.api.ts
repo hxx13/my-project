@@ -65,13 +65,22 @@ export async function deleteNavGroup(id: string): Promise<boolean> {
   return res.data?.success ?? false;
 }
 
-export async function moveNavItem(itemId: string, newParentId: string): Promise<boolean> {
+export async function moveNavItem(itemId: string, newParentId: string | null): Promise<boolean> {
   const res = await authHttp.put<ApiResult<null>>(`/admin-nav/items/${itemId}/move`, { newParentId });
   return res.data?.success ?? false;
 }
 
 export async function reorderNavItems(orders: { id: string; sortOrder: number }[]): Promise<boolean> {
   const res = await authHttp.put<ApiResult<null>>("/admin-nav/items/reorder", { orders });
+  return res.data?.success ?? false;
+}
+
+export async function reorderNavNodes(
+  parentId: string | null,
+  orderedIds: string[],
+  scope: "ADMIN" | "STUDENT" = "ADMIN"
+): Promise<boolean> {
+  const res = await authHttp.put<ApiResult<null>>("/admin-nav/nodes/reorder", { parentId, orderedIds, scope });
   return res.data?.success ?? false;
 }
 

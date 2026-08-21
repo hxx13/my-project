@@ -75,6 +75,16 @@ public class AdminNavConfigController {
         return Map.of("success", true);
     }
 
+    @PutMapping("/nodes/reorder")
+    public Map<String, Object> reorderNodes(@RequestBody Map<String, Object> body) {
+        String scope = (String) body.getOrDefault("scope", "ADMIN");
+        String parentId = (String) body.get("parentId");
+        @SuppressWarnings("unchecked")
+        List<String> orderedIds = (List<String>) body.get("orderedIds");
+        service.reorderNodes(scope, parentId, orderedIds);
+        return Map.of("success", true);
+    }
+
     @PostMapping("/ensure-items")
     public Map<String, Object> ensureItems(@RequestBody Map<String, Object> body) {
         @SuppressWarnings("unchecked")

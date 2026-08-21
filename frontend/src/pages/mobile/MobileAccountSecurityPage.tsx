@@ -6,6 +6,7 @@ import { checkPinStatus, selfResetPin } from "@/api/domains/specialChannel.api";
 import { authStorage } from "@/features/auth/authStorage";
 import toast from "react-hot-toast";
 
+import { appConfirm } from "@/lib/appDialog";
 export default function MobileAccountSecurityPage() {
   const navigate = useNavigate();
   const [hasPin, setHasPin] = useState<boolean | null>(null);
@@ -27,7 +28,7 @@ export default function MobileAccountSecurityPage() {
   }, [userId]);
 
   const handleReset = async () => {
-    if (!window.confirm("确认重置个人PIN码吗？重置后需要在扫码设备上重新设置新的PIN码。")) return;
+    if (!await appConfirm("确认重置个人PIN码吗？重置后需要在扫码设备上重新设置新的PIN码。")) return;
     try {
       setResetting(true);
       await selfResetPin();

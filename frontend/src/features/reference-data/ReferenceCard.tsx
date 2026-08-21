@@ -11,6 +11,7 @@ interface ReferenceCardProps {
   onDrillDown: (item: RefDataItem) => void;
   onAddToCart?: (item: RefDataItem) => void;
   onDelete?: (item: RefDataItem) => void;
+  orderingBlocked?: boolean;
 }
 
 function getFieldVal(item: RefDataItem, key: string): string {
@@ -28,7 +29,7 @@ const LINE_FONTS = [
 ];
 
 export default function ReferenceCard({
-  item, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete,
+  item, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, orderingBlocked,
 }: ReferenceCardProps) {
   // SUPER_ADMIN can always drill; non-admin blocked when next level is empty or nonexistent
   const childCount = item.childCount ?? 0;
@@ -98,8 +99,11 @@ export default function ReferenceCard({
       {/* Purchase button */}
       {showPurchase && (
         <button
-          type="button" onClick={(e) => { e.stopPropagation(); onAddToCart(item); }}
-          className="absolute right-2 bottom-2 z-10 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2.5 py-1 text-xs font-medium text-[var(--twin-body)] hover:border-[var(--twin-link)] hover:text-[var(--twin-link)] transition-all"
+          type="button"
+          disabled={orderingBlocked}
+          onClick={(e) => { e.stopPropagation(); onAddToCart(item); }}
+          className="absolute right-2 bottom-2 z-10 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2.5 py-1 text-xs font-medium text-[var(--twin-body)] hover:border-[var(--twin-link)] hover:text-[var(--twin-link)] transition-all disabled:cursor-not-allowed disabled:opacity-50"
+          title={orderingBlocked ? "当前不在可购时间窗口内" : undefined}
         >
           选购
         </button>

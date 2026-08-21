@@ -1,5 +1,5 @@
 import { adminHttp } from "@/api/core/adminHttp";
-import type { ApiResponse } from "@/api/types/common";
+import { unwrapList, type ApiResponse } from "@/api/types/common";
 
 export type StudentViolationStatus = "ACTIVE" | "CLEARED" | "EXPIRED" | "SUPERSEDED" | "PROCESSED";
 
@@ -32,14 +32,21 @@ export interface StudentViolationRow {
   status?: StudentViolationStatus;
   source?: string;  // MANUAL | AUTO_STRANDED
   createdByUserId?: string;
+  /** 创建人展示名（UserDisplayNameService） */
+  createdByDisplayName?: string;
   createdAt?: string;
   updatedAt?: string;
   clearedAt?: string | null;
   clearedByUserId?: string | null;
+  /** 解除人展示名 */
+  clearedByDisplayName?: string | null;
   /** 交互式确认短语；null 表示普通公告 */
   interactiveChallenge?: string | null;
   interactiveChallengeVerifiedAt?: string | null;
   interactiveUnlockOnVerify?: number;
+  /** Obligation 处置策略编码（期 3） */
+  dispositionType?: string | null;
+  dispositionConfigJson?: string | null;
   /** 当前是否禁止扫码进入（与扫码端 enterLocked 一致） */
   enterLocked?: boolean;
   ruleId?: number | null;
@@ -57,6 +64,8 @@ export interface StudentViolationRow {
 export interface CreateStudentViolationPayload {
   targetUserId: string;
   violationText: string;
+  /** 期 6：ProseMirror JSON 真源（可选；服务端也可从 HTML 反解析） */
+  contentJson?: string | null;
   imageUrls: string[];
   forbidEnter: boolean;
   maxEnterSuccess: number | null;
@@ -70,6 +79,9 @@ export interface CreateStudentViolationPayload {
   ruleId?: number | null;
   /** 关联笼架违规父记录ID */
   cageViolationId?: number | null;
+  /** 期 3 处置策略覆盖（写入 Obligation） */
+  dispositionType?: string | null;
+  dispositionConfigJson?: string | null;
 }
 
 export type BatchCreateStudentViolationPayload = Omit<CreateStudentViolationPayload, "targetUserId"> & {
@@ -82,14 +94,17 @@ export interface BatchCreateStudentViolationResult {
 }
 
 /** 人员档案库中的课题组名（已按逗号拆分去重） */
-export async function searchViolationProjectGroups(keyword: string, limit = 30) {
+export async function searchViolationProjectGroups(keyword: string, limit = 30): Promise<string[]> {
+  const q = keyword.trim();
+  if (!q) return [];
   const sp = new URLSearchParams();
-  sp.set("keyword", keyword.trim());
+  sp.set("keyword", q);
   sp.set("limit", String(limit));
   const res = await adminHttp.get<ApiResponse<string[]>>(
     `/twin/student-violations/personnel/project-groups/search?${sp.toString()}`
   );
-  return res.data?.data || [];
+  const list = unwrapList<string>(res.data, []);
+  return list.map((x) => String(x).trim()).filter(Boolean);
 }
 
 export interface ProjectGroupMemberRow {
@@ -99,14 +114,19 @@ export interface ProjectGroupMemberRow {
   project_group_name?: string;
 }
 
-export async function listViolationPersonnelByProjectGroup(projectGroupName: string, limit = 500) {
+export async function listViolationPersonnelByProjectGroup(
+  projectGroupName: string,
+  limit = 500
+): Promise<ProjectGroupMemberRow[]> {
+  const name = projectGroupName.trim();
+  if (!name) return [];
   const sp = new URLSearchParams();
-  sp.set("projectGroupName", projectGroupName.trim());
+  sp.set("projectGroupName", name);
   sp.set("limit", String(limit));
   const res = await adminHttp.get<ApiResponse<ProjectGroupMemberRow[]>>(
     `/twin/student-violations/personnel/by-project-group?${sp.toString()}`
   );
-  return res.data?.data || [];
+  return unwrapList<ProjectGroupMemberRow>(res.data, []);
 }
 
 export async function batchCreateStudentViolations(body: BatchCreateStudentViolationPayload) {
@@ -132,6 +152,7 @@ export async function createStudentViolation(body: CreateStudentViolationPayload
 
 export interface UpdateStudentViolationPayload {
   violationText: string;
+  contentJson?: string | null;
   imageUrls: string[];
   forbidEnter: boolean;
   maxEnterSuccess: number | null;
@@ -142,6 +163,8 @@ export interface UpdateStudentViolationPayload {
   /** 交互式确认短语；传 null 或空串=关闭，传非空=开启 */
   interactiveChallenge?: string | null;
   interactiveUnlockOnVerify?: boolean;
+  dispositionType?: string | null;
+  dispositionConfigJson?: string | null;
 }
 
 export async function updateStudentViolation(id: number, body: UpdateStudentViolationPayload) {
@@ -155,11 +178,6 @@ export async function deleteStudentViolation(id: number) {
 
 export async function clearStudentViolation(id: number) {
   await adminHttp.post<ApiResponse<unknown>>(`/twin/student-violations/${id}/clear`);
-}
-
-/** 标记已处理：后端置为 PROCESSED，扫码弹窗不再展示 */
-export async function markStudentViolationProcessed(id: number) {
-  await adminHttp.post<ApiResponse<unknown>>(`/twin/student-violations/${id}/mark-processed`);
 }
 
 /** 与后端 RoleEnum.code 一致 */
@@ -280,14 +298,6 @@ export async function listViolationRules(): Promise<ViolationRule[]> {
     "/twin/student-violations/rules"
   );
   return (res.data?.data || []).map(deserializeCageFields);
-}
-
-export async function getViolationRule(id: number): Promise<ViolationRule | null> {
-  const res = await adminHttp.get<ApiResponse<ViolationRule>>(
-    `/twin/student-violations/rules/${id}`
-  );
-  const data = res.data?.data ?? null;
-  return data ? deserializeCageFields(data) : null;
 }
 
 /** 将笼架联动规则的 JS 数组/对象字段序列化为 JSON 字符串，后端 Entity 为 String 类型 */

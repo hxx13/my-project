@@ -114,6 +114,8 @@ export interface AgvCoordFrame {
   rotationDeg: number;
   offsetX: number;
   offsetY: number;
+  /** 坐标系缩放系数（1=原始尺度）。与 rotation/offset 同为服务端权威值 */
+  scale: number;
 }
 
 export async function fetchCoordConfigs(): Promise<Record<string, AgvCoordFrame>> {
@@ -121,12 +123,58 @@ export async function fetchCoordConfigs(): Promise<Record<string, AgvCoordFrame>
   return res.data.data;
 }
 
-export async function updateCoordConfig(ip: string, deg?: number, offsetX?: number, offsetY?: number): Promise<void> {
+/** 更新坐标系配置。scale 省略时服务端保持原值不变，不会被重置为 1 */
+export async function updateCoordConfig(ip: string, deg?: number, offsetX?: number, offsetY?: number, scale?: number): Promise<void> {
   const params = new URLSearchParams();
   if (deg !== undefined) params.set("deg", String(deg));
   if (offsetX !== undefined) params.set("offsetX", String(offsetX));
   if (offsetY !== undefined) params.set("offsetY", String(offsetY));
+  if (scale !== undefined) params.set("scale", String(scale));
   await authHttp.put(`/v1/agv/coord-config/${ip}?${params.toString()}`);
+}
+
+/** 服务端归档的坐标系布局预设（与实时 coord-config 分离） */
+export interface AgvCoordPreset {
+  exists: boolean;
+  savedAt: number | null;
+  configs: Record<string, AgvCoordFrame>;
+}
+
+export async function fetchCoordPreset(): Promise<AgvCoordPreset> {
+  const res = await authHttp.get<{ data: AgvCoordPreset }>("/v1/agv/coord-config/preset");
+  const data = res.data.data;
+  return {
+    exists: !!data?.exists,
+    savedAt: data?.savedAt ?? null,
+    configs: data?.configs ?? {},
+  };
+}
+
+/** 将当前布局归档为服务端预设（可传 UI 快照；省略则服务端从实时表快照） */
+export async function saveCoordPreset(
+  configs?: Record<string, Pick<AgvCoordFrame, "rotationDeg" | "offsetX" | "offsetY" | "scale">>,
+): Promise<AgvCoordPreset> {
+  const res = await authHttp.put<{ data: AgvCoordPreset }>(
+    "/v1/agv/coord-config/preset",
+    configs ? { configs } : {},
+  );
+  const data = res.data.data;
+  return {
+    exists: !!data?.exists,
+    savedAt: data?.savedAt ?? null,
+    configs: data?.configs ?? {},
+  };
+}
+
+/** 将服务端预设写回实时 coord-config，并返回应用后的配置 */
+export async function restoreCoordPreset(): Promise<AgvCoordPreset> {
+  const res = await authHttp.post<{ data: AgvCoordPreset }>("/v1/agv/coord-config/preset/restore");
+  const data = res.data.data;
+  return {
+    exists: !!data?.exists,
+    savedAt: data?.savedAt ?? null,
+    configs: data?.configs ?? {},
+  };
 }
 
 // ── History Playback ──

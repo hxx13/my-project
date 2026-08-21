@@ -30,6 +30,8 @@ export interface PortalContentView {
   sortOrder: number;
   publishedAt: string | null;
   createdBy: string | null;
+  /** 创建人展示名（后端 UserDisplayNameService） */
+  createdByName?: string | null;
   createdAt: string;
   updatedAt: string;
 }

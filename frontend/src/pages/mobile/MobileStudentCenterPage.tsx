@@ -44,6 +44,7 @@ import {
   type MobileTabBarKey,
 } from "./mobileShellLayout";
 
+import { appAlert, appConfirm } from "@/lib/appDialog";
 /* ================================================================== */
 const PAGE_BG = "#eef0f6";
 const BRAND = "#ac1736";
@@ -82,7 +83,7 @@ async function loadJwtHomeData(): Promise<{
 }
 
 /** JWT 模式下加载公告 */
-async function loadJwtAlerts(): Promise<import("@/api/domains/mobileStudent.api").MobileAlertsData> {
+function loadJwtAlerts(): Promise<import("@/api/domains/mobileStudent.api").MobileAlertsData> {
   return studentMobileApi.fetchStudentMobileAlerts();
 }
 
@@ -134,10 +135,10 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   } | null>(null);
   const [scanLookupLoading, setScanLookupLoading] = useState(false);
 
-  const handleEmailChip = () => {
+  const handleEmailChip = async () => {
     if (!userIdForBind) return;
     if (currentEmail) {
-      if (!window.confirm(`已绑定 ${currentEmail}，是否取消绑定？`)) return;
+      if (!await appConfirm(`已绑定 ${currentEmail}，是否取消绑定？`)) return;
       const t = authStorage.getToken();
       fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/contact-email`, {
         method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
@@ -149,10 +150,10 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
     }
   };
 
-  const handleSendKeyChip = () => {
+  const handleSendKeyChip = async () => {
     if (!userIdForBind) return;
     if (currentSendKey) {
-      if (!window.confirm("已绑定微信通知，是否取消绑定？")) return;
+      if (!await appConfirm("已绑定微信通知，是否取消绑定？")) return;
       const t = authStorage.getToken();
       fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, {
         method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
@@ -164,10 +165,10 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
     }
   };
 
-  const handleWxPusherChip = () => {
+  const handleWxPusherChip = async () => {
     if (!userIdForBind) return;
     if (currentWxPusher) {
-      if (!window.confirm("已绑定 WxPusher 推送，是否取消绑定？")) return;
+      if (!await appConfirm("已绑定 WxPusher 推送，是否取消绑定？")) return;
       const t = authStorage.getToken();
       fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/wx-pusher-uid`, {
         method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
@@ -467,7 +468,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
                     await bindEmailWithCode(emailDraft.trim(), emailCode.trim());
                     setCurrentEmail(emailDraft.trim());
                     setShowEmailDialog(false);
-                  } catch (e: any) { alert(e?.message || "绑定失败"); }
+                  } catch (e: any) { await appAlert(e?.message || "绑定失败"); }
                   finally { setEmailSaving(false); }
                 }}
                 className="flex-1 rounded-full py-2.5 text-sm font-medium text-white disabled:opacity-50"
@@ -507,7 +508,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
                     });
                     if (!r.ok) throw new Error("保存失败");
                     setCurrentSendKey(true); setShowSendKeyDialog(false);
-                  } catch (e: any) { alert(e?.message || "保存失败"); }
+                  } catch (e: any) { await appAlert(e?.message || "保存失败"); }
                   finally { setSendKeySaving(false); }
                 }}
                 className="flex-1 rounded-full py-2.5 text-sm font-medium text-white disabled:opacity-50"
@@ -698,12 +699,12 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             } else if (result.type === "ASSET" && result.asset) {
               const assetCode = (result.asset as any).assetCode || trimmed;
               const assetName = (result.asset as any).assetName || "";
-              alert(`已识别资产: ${assetCode}${assetName ? " - " + assetName : ""}\n\n手机版暂不支持资产详情查看，请登录电脑端。`);
+              await appAlert(`已识别资产: ${assetCode}${assetName ? " - " + assetName : ""}\n\n手机版暂不支持资产详情查看，请登录电脑端。`);
             } else {
-              alert(result.message || "未识别到有效内容");
+              await appAlert(result.message || "未识别到有效内容");
             }
           } catch (e: any) {
-            alert(e?.message || "查询失败");
+            await appAlert(e?.message || "查询失败");
           } finally {
             setScanLookupLoading(false);
           }

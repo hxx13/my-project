@@ -4,7 +4,6 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
-import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.material.dto.*;
@@ -358,12 +357,24 @@ public class MaterialAdminController {
     @Operation(summary = "可选的审核人列表（STAFF及以上已启用账号）")
     public Result<List<Map<String, Object>>> eligibleReviewers() {
         List<User> users = userMapper.listEnabledUsersByMinRoleLevel(2); // STAFF level = 2
+        List<String> ids = new ArrayList<>();
+        for (User u : users) {
+            if (u != null && StringUtils.hasText(u.getId())) {
+                ids.add(u.getId().trim());
+            }
+        }
+        Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(ids);
         List<Map<String, Object>> list = new ArrayList<>();
         for (User u : users) {
+            if (u == null || !StringUtils.hasText(u.getId())) continue;
+            String id = u.getId().trim();
+            String resolved = displayNames.getOrDefault(id, id);
             Map<String, Object> m = new HashMap<>();
-            m.put("id", u.getId());
+            m.put("id", id);
             m.put("username", u.getUsername());
-            m.put("displayNickname", u.getDisplayNickname());
+            // 与 UserDisplayNameService 同源，便于选择器展示人员表姓名
+            m.put("displayNickname", resolved);
+            m.put("displayName", resolved);
             list.add(m);
         }
         return Result.success(list);

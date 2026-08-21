@@ -55,6 +55,21 @@
         UPDATE twin_cage_status_violation SET status = #{status}, updated_at = NOW() WHERE id = #{id}
     </update>
 
+    <update id="updateCageFields">
+        UPDATE twin_cage_status_violation
+        SET status_code = #{statusCode},
+            cage_shelve_id = #{cageShelveId},
+            position_x = #{positionX},
+            position_y = #{positionY},
+            position_label = #{positionLabel},
+            project_pi_name = #{projectPiName},
+            project_group_name = #{projectGroupName},
+            room_name = #{roomName},
+            campus_name = #{campusName},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
     <delete id="deleteById">
         DELETE FROM twin_cage_status_violation WHERE id = #{id}
     </delete>

@@ -35,9 +35,12 @@ import {
   shouldPasteAsMarkdown,
 } from "@/components/admin/richTextEditorPaste";
 
+import { appConfirm } from "@/lib/appDialog";
 type Props = {
   value: string;
   onChange: (html: string) => void;
+  /** 期 6：同步输出 TipTap/ProseMirror JSON 真源（与 HTML 同一次更新） */
+  onChangeJson?: (html: string, json: Record<string, unknown>) => void;
   disabled?: boolean;
   className?: string;
 } & RichTextImageConfigOverrides;
@@ -138,17 +141,27 @@ function applyImageWidthStyles(
   return changed;
 }
 
-export function RichTextEditor({ value, onChange, disabled, className, maxWidth, rowMax }: Props) {
+export function RichTextEditor({ value, onChange, onChangeJson, disabled, className, maxWidth, rowMax }: Props) {
   const lastEmittedHtmlRef = useRef<string | null>(null);
   const mdFileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onChangeJsonRef = useRef(onChangeJson);
+  onChangeJsonRef.current = onChangeJson;
 
   const emitEditorHtml = useCallback((editor: Editor) => {
     const html = editor.getHTML();
     lastEmittedHtmlRef.current = html;
     onChangeRef.current(html);
+    const emitJson = onChangeJsonRef.current;
+    if (emitJson) {
+      try {
+        emitJson(html, editor.getJSON() as Record<string, unknown>);
+      } catch {
+        /* ignore */
+      }
+    }
   }, []);
 
   const initialImageLayout = useMemo(
@@ -333,6 +346,13 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
       const html = ed.getHTML();
       lastEmittedHtmlRef.current = html;
       onChange(html);
+      if (onChangeJson) {
+        try {
+          onChangeJson(html, ed.getJSON() as Record<string, unknown>);
+        } catch {
+          /* ignore json emit errors */
+        }
+      }
     },
     onCreate: ({ editor: ed }) => {
       editorRef.current = ed;
@@ -385,7 +405,7 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
 
   const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([value, editor?.getHTML()]);
 
-  const insertImage = useCallback(async () => {
+  const insertImage = useCallback(() => {
     if (!editor || disabled) return;
     const input = document.createElement("input");
     input.type = "file";
@@ -415,7 +435,7 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
       }
       try {
         const md = await readMarkdownFile(file);
-        if (!isRichTextEmpty(editor.getHTML()) && !window.confirm("导入将替换当前正文，是否继续？")) {
+        if (!isRichTextEmpty(editor.getHTML()) && !await appConfirm("导入将替换当前正文，是否继续？")) {
           return;
         }
         applyMarkdownHtml(editor, md, "replace");

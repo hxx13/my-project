@@ -13,6 +13,7 @@ import { authHttp } from "@/api/core/authHttp";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import { Bell, Clock, Settings, Save, X, RotateCw, Plus, Undo2, ChevronDown, ChevronUp, Trash2, Send, UserPlus } from "lucide-react";
 
+import { appConfirm } from "@/lib/appDialog";
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
@@ -294,7 +295,7 @@ export default function AdminNotificationDigestPage() {
               </div>
               {mode === "personal" && hasPersonalConfigs && (
                 <AdminButton type="button" tone="ghost" size="sm"
-                  onClick={() => { if (confirm("恢复为平台默认配置？所有个性化设置将被清除。")) restoreAllMutation.mutate(); }}>
+                  onClick={async () => { if (await appConfirm("恢复为平台默认配置？所有个性化设置将被清除。")) restoreAllMutation.mutate(); }}>
                   <Undo2 className="h-3.5 w-3.5" /> 恢复默认
                 </AdminButton>
               )}
@@ -512,7 +513,7 @@ function ConfigGroupCard({ group, isPersonal, onEdit, onDelete, deleting }: {
           </span>
           <AdminButton type="button" tone="secondary" size="sm" onClick={() => onEdit(group)}>编辑</AdminButton>
           <AdminButton type="button" tone="ghost" size="sm" loading={deleting}
-            onClick={() => { if (confirm("将此聚合配置中的所有信息源恢复为即时通知？")) onDelete(group); }}>
+            onClick={async () => { if (await appConfirm("将此聚合配置中的所有信息源恢复为即时通知？")) onDelete(group); }}>
             <Trash2 className="h-3.5 w-3.5 text-[var(--app-color-feedback-error)]" />
           </AdminButton>
         </div>

@@ -83,7 +83,11 @@ public class CageFieldMappingService {
         }
     }
 
-    /** Pull 方向：从 ARO 原始 Map 提取规范字段 */
+    /**
+     * Pull 方向：从 ARO 原始 Map 提取规范字段。
+     * <p>别名按顺序取<strong>首个路径存在</strong>的值：路径存在且空串/空白 → 写入 null（本地应清空）；
+     * 仅当路径不存在时才试下一个别名。禁止「跳过空值去找非空别名」，避免假保留旧 PI。
+     */
     public Map<String, Object> applyPull(String endpoint, Map<String, Object> raw) {
         // 先检查过滤规则
         for (FilterRule f : filters) {
@@ -97,11 +101,15 @@ public class CageFieldMappingService {
             List<String> aliases = e.sources.get(endpoint);
             if (aliases == null) continue;
             for (String alias : aliases) {
-                Object val = resolveNested(raw, alias);
-                if (val != null && !"".equals(String.valueOf(val).trim())) {
+                NestedHit hit = resolveNestedHit(raw, alias);
+                if (!hit.present) continue;
+                Object val = hit.value;
+                if (val == null || "".equals(String.valueOf(val).trim())) {
+                    result.put(e.canonical, null);
+                } else {
                     result.put(e.canonical, convert(val, e.type));
-                    break;
                 }
+                break;
             }
         }
         return result;
@@ -130,16 +138,29 @@ public class CageFieldMappingService {
         return val;
     }
 
-    /** 解析 "cageBoxVo.needDivideYn" 这样的嵌套路径 */
-    @SuppressWarnings("unchecked")
+    /** 解析 "cageBoxVo.needDivideYn" 这样的嵌套路径（路径不存在时返回 null） */
     private Object resolveNested(Map<String, Object> root, String path) {
+        return resolveNestedHit(root, path).value;
+    }
+
+    /**
+     * 解析嵌套路径并区分「键不存在」与「键存在但值为空」。
+     * 中间节点为 null / 非 Map 时视为路径不存在，可回退下一别名。
+     */
+    @SuppressWarnings("unchecked")
+    private NestedHit resolveNestedHit(Map<String, Object> root, String path) {
+        if (root == null || path == null || path.isBlank()) return NestedHit.absent();
         String[] parts = path.split("\\.");
         Object current = root;
-        for (String part : parts) {
-            if (current instanceof Map<?, ?> m) current = ((Map<String, Object>) m).get(part);
-            else return null;
+        for (int i = 0; i < parts.length; i++) {
+            if (!(current instanceof Map<?, ?> m)) return NestedHit.absent();
+            Map<String, Object> map = (Map<String, Object>) m;
+            String key = parts[i];
+            if (!map.containsKey(key)) return NestedHit.absent();
+            current = map.get(key);
+            if (i < parts.length - 1 && current == null) return NestedHit.absent();
         }
-        return current;
+        return NestedHit.of(current);
     }
 
     @SuppressWarnings("unchecked")
@@ -175,5 +196,19 @@ public class CageFieldMappingService {
     static class FilterRule {
         String endpoint, field;
         Set<String> matches;
+    }
+
+    /** 嵌套路径解析结果：present=路径上每一段键都存在 */
+    private static final class NestedHit {
+        final boolean present;
+        final Object value;
+
+        private NestedHit(boolean present, Object value) {
+            this.present = present;
+            this.value = value;
+        }
+
+        static NestedHit absent() { return new NestedHit(false, null); }
+        static NestedHit of(Object value) { return new NestedHit(true, value); }
     }
 }

@@ -6,6 +6,7 @@ import { AdminToolbar, AdminToolbarActions } from "@/components/admin/AdminToolb
 import { DebugDangerousOpsMenu } from "@/components/admin/DebugDangerousOpsMenu";
 import { Crown, Mouse, Search } from "lucide-react";
 
+import { appAlert } from "@/lib/appDialog";
 type GroupOrderSummary = {
     projectName?: string;
     piName?: string;
@@ -82,14 +83,14 @@ export default function DebugOrderPage() {
         setIsSyncing(true);
         try {
             await syncAnimalOrders(ac.signal);
-            alert("✅ 订单同步已完成（若中途暂停则可能未全量）。");
+            await appAlert("✅ 订单同步已完成（若中途暂停则可能未全量）。");
             await refetch();
         } catch (error: unknown) {
             const err = error as { name?: string; code?: string };
             if (err?.name === "CanceledError" || err?.code === "ERR_CANCELED") {
                 /* 用户暂停 */
             } else {
-                alert("❌ 同步失败，请检查网络或后端。");
+                await appAlert("❌ 同步失败，请检查网络或后端。");
             }
         } finally {
             orderSyncAbortRef.current = null;

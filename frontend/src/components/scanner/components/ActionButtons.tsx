@@ -2,9 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AnimatedRoomButton } from "@/components/scanner/AnimatedRoomButton";
-import { ScanDelayButton, ScanDelayMenuPortal, type DelayButtonStatus } from "@/components/scanner/ScanDelayButtonMenu";
+import { ScanDelayButton, ScanDelayMenuPortal } from "@/components/scanner/ScanDelayButtonMenu";
 import { RoomEnterConfirmDialog } from "@/components/scanner/RoomEnterConfirmDialog";
-import { DisabledEnterHintButton } from "@/components/scanner/DisabledEnterHintButton";
 import type { RoomInfo, ScanDelayOptionSummary } from "@/api/types/scanner";
 import { resolveRoomActionDensity } from "@/components/scanner/roomActionDensity";
 import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
@@ -63,9 +62,7 @@ interface ActionButtonsProps {
     scanDelayButtonLabel?: string;
     getDelayOptions?: (roomId: string) => ScanDelayOptionSummary[];
     subjectUserId?: string;
-    onDelaySuccess?: (roomId: string, status: string, optionLabel?: string) => void;
-    getDelayStatusForRoom?: (roomId: string) => DelayButtonStatus | undefined;
-    getRejectedOptionIdsForRoom?: (roomId: string) => number[];
+    onDelaySuccess?: () => void;
     /** 当前刷卡人姓名，用于进入确认弹窗显示 */
     userName?: string;
     /** 打开离开确认弹窗（替代直接执行） */
@@ -78,8 +75,6 @@ interface ActionButtonsProps {
     confirmingExitRoom?: RoomInfo | null;
     /** 当前扫码人 userId，用于离开确认弹窗中的 QR 码 */
     studentUserId?: string;
-    /** 「进入房间」按钮被禁用时，左侧 ? 帮助按钮的提示文案（来自后台配置） */
-    enterDisabledHintText?: string;
 }
 
 export const ActionButtons = (props: ActionButtonsProps) => {
@@ -95,28 +90,23 @@ export const ActionButtons = (props: ActionButtonsProps) => {
         getDelayOptions,
         subjectUserId,
         onDelaySuccess,
-        getRejectedOptionIdsForRoom,
         userName,
         onRequestExit,
         onConfirmExit,
         onCancelExit,
         confirmingExitRoom,
         studentUserId,
-        enterDisabledHintText,
     } = props;
     const safeRooms = Array.isArray(targetRooms) ? targetRooms : [];
     const density = resolveRoomActionDensity(safeRooms.length);
     const gapClass = density === "normal" ? "gap-4" : density === "compact" ? "gap-2.5" : "gap-1.5";
     const maxWClass = density === "dense" ? "max-w-[min(360px,100%)]" : "max-w-[360px]";
-    const enterRowH = density === "normal" ? "h-[48px]" : density === "compact" ? "h-[42px]" : "h-[36px]";
+    const enterRowH = density === "normal" ? "h-[55px]" : density === "compact" ? "h-[48px]" : "h-[40px]";
     const exitRowMinH = density === "normal" ? "min-h-[7.5rem]" : density === "compact" ? "min-h-[6.5rem]" : "min-h-[5.5rem]";
 
     const [openDelayMenuKey, setOpenDelayMenuKey] = useState<string | null>(null);
     const delayAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({});
     const [openDelayAnchorEl, setOpenDelayAnchorEl] = useState<HTMLDivElement | null>(null);
-
-    // ──── 活跃延迟申请状态（从 hook 级 ref 读取，不受 onRefresh 影响） ────
-    const getDelayStatus = props.getDelayStatusForRoom;
 
     // ──── 进入二次确认 ────
     const [confirmingRoomIndex, setConfirmingRoomIndex] = useState<number | null>(null);
@@ -235,10 +225,9 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                                 </label>
                             </div>
                             {showDelay ? (
-                                <div className={`flex h-full shrink-0 items-center gap-1.5 ${density === "dense" ? "max-w-[140px]" : "max-w-[170px]"} pr-1`}>
+                                <div className={`flex h-full shrink-0 items-center gap-1 ${density === "dense" ? "max-w-[120px]" : "max-w-[140px]"}`}>
                                     {delayGroups.map((group) => {
                                         const menuKey = `${roomId}::${group.key}`;
-                                        const ds = getDelayStatus?.(roomId);
                                         return (
                                             <div
                                                 key={menuKey}
@@ -248,12 +237,11 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                                                         setOpenDelayAnchorEl(el);
                                                     }
                                                 }}
-                                                className="h-full min-w-0 flex-1"
+                                                className={`h-full min-w-0 flex-1 ${density === "dense" ? "max-w-[56px]" : "max-w-[68px]"}`}
                                             >
                                                 <ScanDelayButton
                                                     label={group.buttonLabel}
                                                     active={openDelayMenuKey === menuKey}
-                                                    delayStatus={ds as DelayButtonStatus | undefined}
                                                     onClick={() => {
                                                         setOpenDelayMenuKey((prev) => {
                                                             const next = prev === menuKey ? null : menuKey;
@@ -269,12 +257,6 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                                             </div>
                                         );
                                     })}
-                                </div>
-                            ) : null}
-                            {/* 禁入帮助提示按钮 — 仅当进入按钮被禁用且有文案时，显示在按钮左侧 */}
-                            {props.isEnterLocked(room) && enterDisabledHintText ? (
-                                <div className="shrink-0 flex items-center">
-                                    <DisabledEnterHintButton hintText={enterDisabledHintText} />
                                 </div>
                             ) : null}
                             <div className="flex-1 min-w-0 h-full">
@@ -304,10 +286,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                                                 setOpenDelayMenuKey(null);
                                                 setOpenDelayAnchorEl(null);
                                             }}
-                                            onSuccess={(status, optionLabel) => {
-                                                onDelaySuccess?.(roomId, status, optionLabel);
-                                            }}
-                                            rejectedOptionIds={getRejectedOptionIdsForRoom?.(roomId)}
+                                            onSuccess={() => onDelaySuccess?.()}
                                         />
                                     );
                                 })()

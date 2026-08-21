@@ -6,6 +6,8 @@ import com.example.demo.modules.mp.dto.MiniProgramReleaseUpsertRequest;
 import com.example.demo.modules.mp.dto.MiniProgramReleaseView;
 import com.example.demo.modules.mp.entity.MiniProgramRelease;
 import com.example.demo.modules.mp.mapper.MiniProgramReleaseMapper;
+import com.example.demo.modules.twin.obligation.content.ContentJsonSupport;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -26,9 +28,11 @@ public class MiniProgramReleaseService {
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final MiniProgramReleaseMapper mapper;
+    private final ObjectMapper objectMapper;
 
-    public MiniProgramReleaseService(MiniProgramReleaseMapper mapper) {
+    public MiniProgramReleaseService(MiniProgramReleaseMapper mapper, ObjectMapper objectMapper) {
         this.mapper = mapper;
+        this.objectMapper = objectMapper;
     }
 
     public MiniProgramReleaseView findSplashView() {
@@ -56,12 +60,15 @@ public class MiniProgramReleaseService {
         if (Boolean.TRUE.equals(req.getShowOnLaunch())) {
             mapper.clearShowOnLaunch();
         }
+        ContentJsonSupport.Resolved resolved = ContentJsonSupport.resolve(
+                objectMapper, req.getContentJson(), req.getBodyHtml(), true);
         MiniProgramRelease row = new MiniProgramRelease();
         row.setId("REL_" + UUID.randomUUID().toString().replace("-", ""));
         row.setVersionCode(req.getVersionCode().trim());
         row.setTitle(req.getTitle().trim());
         row.setSummary(trimToNull(req.getSummary()));
-        row.setBodyHtml(req.getBodyHtml() != null ? req.getBodyHtml() : "");
+        row.setBodyHtml(resolved.contentHtml());
+        row.setContentJson(resolved.contentJson());
         row.setPublishedAt(LocalDateTime.now());
         row.setShowOnLaunch(Boolean.TRUE.equals(req.getShowOnLaunch()) ? 1 : 0);
         row.setCreatedBy(operator.getId());
@@ -82,10 +89,13 @@ public class MiniProgramReleaseService {
         if (Boolean.TRUE.equals(req.getShowOnLaunch())) {
             mapper.clearShowOnLaunch();
         }
+        ContentJsonSupport.Resolved resolved = ContentJsonSupport.resolve(
+                objectMapper, req.getContentJson(), req.getBodyHtml(), true);
         existing.setVersionCode(req.getVersionCode().trim());
         existing.setTitle(req.getTitle().trim());
         existing.setSummary(trimToNull(req.getSummary()));
-        existing.setBodyHtml(req.getBodyHtml() != null ? req.getBodyHtml() : "");
+        existing.setBodyHtml(resolved.contentHtml());
+        existing.setContentJson(resolved.contentJson());
         existing.setShowOnLaunch(Boolean.TRUE.equals(req.getShowOnLaunch()) ? 1 : 0);
         mapper.update(existing);
         return toView(mapper.selectById(id.trim()));

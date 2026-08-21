@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { authStorage } from '@/features/auth/authStorage';
 import { canManageOptionSet, formatOptionSetLabel, parseOptionSetItems, optionSetItemLabels } from '../utils/optionSetLabels';
 
+import { appConfirm } from "@/lib/appDialog";
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -143,7 +144,7 @@ export default function OptionSetManager({ open, onClose, formId }: Props) {
                             className="p-1 rounded-[4px] hover:bg-[var(--app-color-surface-hover)]">
                             <Pencil className="w-3 h-3 text-[var(--app-color-text-tertiary)]" />
                           </button>
-                          <button onClick={() => { if (confirm(`删除预设「${os.name}」？`)) deleteMut.mutate(os.id); }}
+                          <button onClick={async () => { if (await appConfirm(`删除预设「${os.name}」？`)) deleteMut.mutate(os.id); }}
                             className="p-1 rounded-[4px] hover:bg-[var(--app-color-feedback-danger-soft)]">
                             <Trash2 className="w-3 h-3 text-[var(--app-color-feedback-danger)]" />
                           </button>

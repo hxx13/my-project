@@ -7,6 +7,7 @@ import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
+import { appConfirm } from "@/lib/appDialog";
 type TryState = {
   values: Record<string, string>;
   body: string;
@@ -146,7 +147,7 @@ export default function AdminApiDocsPage() {
   const runTryIt = async (it: ApiDocItem, key: string) => {
     const state = ensureTryState(it, key);
     if (isWriteMethod(it.method)) {
-      const ok = window.confirm(`将调用写接口 ${it.method} ${it.path}，是否继续？`);
+      const ok = await appConfirm(`将调用写接口 ${it.method} ${it.path}，是否继续？`);
       if (!ok) return;
     }
     let resolvedPath = it.path;

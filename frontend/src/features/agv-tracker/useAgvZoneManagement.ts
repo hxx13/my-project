@@ -6,7 +6,7 @@ import {
 import { AGV_ZONE_MAP, resolveZoneGroup } from "@/features/agv-tracker/zoneGrouping";
 import { AGV_ROBOTS, getAgvRobotsByZone } from "@/features/agv-tracker/agvRobotConfig";
 import { makeRectPolygon } from "@/features/agv-tracker/AgvZonePanel";
-import { type CustomTag } from "@/features/agv-tracker/tagConfig";
+import { type AgvTag } from "@/api/domains/agvTag.api";
 
 const ROBOTS = AGV_ROBOTS;
 
@@ -26,7 +26,7 @@ export function useAgvZoneManagement(
   deleteZoneMut: UseMutationResult<any, Error, number, unknown>,
   pendingPick: PendingPick,
   setPendingPick: (v: PendingPick) => void,
-  customTags: CustomTag[],
+  tags: AgvTag[],
 ) {
   const [zonePopover, setZonePopover] = useState<{
     id: number;
@@ -51,8 +51,8 @@ export function useAgvZoneManagement(
           [pendingPick.x - 0.8, pendingPick.y - 0.8],
         ]);
     // 标签 scope 决定坐标归属：world → 世界坐标系，agv → 绑定该车局部坐标系
-    const tagDef = customTags.find(t => t.name === tag);
-    const robotIp = tagDef?.scope === "agv" ? tagDef.agvIp : undefined;
+    const tagDef = tags.find(t => t.name === tag);
+    const robotIp = tagDef?.scope === "agv" ? (tagDef.robotIp ?? undefined) : undefined;
     // 归属触发 pick 的 panel——左边画归左边，右边画归右边
     const group = pickZoneRef.current;
     const element: AgvSpatialElement = {

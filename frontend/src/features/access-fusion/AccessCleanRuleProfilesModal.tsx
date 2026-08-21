@@ -22,6 +22,7 @@ import {
 import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import { labelSwingDirectionFilter } from "@/features/access-fusion/swingDirection";
 
+import { appConfirm } from "@/lib/appDialog";
 const DEBOUNCE_MIN = 5;
 const DEBOUNCE_MAX = 3600;
 const DEBOUNCE_DEFAULT = 45;
@@ -133,7 +134,7 @@ export function AccessCleanRuleProfilesModal({ open, onOpenChange }: Props) {
 
   const handleDelete = async (p: AccessCleanRuleProfile) => {
     if (!p.id) return;
-    if (!window.confirm(`确定删除方案「${p.name}」？已绑定该方案的审计任务需改选其他方案。`)) return;
+    if (!await appConfirm(`确定删除方案「${p.name}」？已绑定该方案的审计任务需改选其他方案。`)) return;
     try {
       await deleteAccessCleanRuleProfile(p.id);
       setList((prev) => prev.filter((r) => r.id !== p.id));

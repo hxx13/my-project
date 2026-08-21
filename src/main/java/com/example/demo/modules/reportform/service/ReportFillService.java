@@ -4,6 +4,7 @@ import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormSubmission;
 import com.example.demo.modules.reportform.entity.ReportFormSubmissionLog;
@@ -33,17 +34,20 @@ public class ReportFillService {
     private final ReportFormSubmissionLogMapper logMapper;
     private final ObjectMapper objectMapper;
     private final UserMapper userMapper;
+    private final UserDisplayNameService userDisplayNameService;
 
     public ReportFillService(ReportFormDefinitionMapper definitionMapper,
                              ReportFormSubmissionMapper submissionMapper,
                              ReportFormSubmissionLogMapper logMapper,
                              ObjectMapper objectMapper,
-                             UserMapper userMapper) {
+                             UserMapper userMapper,
+                             UserDisplayNameService userDisplayNameService) {
         this.definitionMapper = definitionMapper;
         this.submissionMapper = submissionMapper;
         this.logMapper = logMapper;
         this.objectMapper = objectMapper;
         this.userMapper = userMapper;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     /**
@@ -612,9 +616,12 @@ public class ReportFillService {
             if (user == null || !StringUtils.hasText(user.getId())) {
                 continue;
             }
-            String label = StringUtils.hasText(user.getDisplayNickname())
-                    ? user.getDisplayNickname().trim()
-                    : (StringUtils.hasText(user.getUsername()) ? user.getUsername().trim() : user.getId());
+            String label = userDisplayNameService.resolveDisplayName(user.getId());
+            if (!StringUtils.hasText(label)) {
+                label = StringUtils.hasText(user.getDisplayNickname())
+                        ? user.getDisplayNickname().trim()
+                        : (StringUtils.hasText(user.getUsername()) ? user.getUsername().trim() : user.getId());
+            }
             map.put(parseStoredUserId(user.getId()), label);
         }
         return map;

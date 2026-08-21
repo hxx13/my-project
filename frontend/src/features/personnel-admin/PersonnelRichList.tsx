@@ -98,7 +98,7 @@ export function PersonnelRichList({
           <div ref={listRef}>
             {rows.map((row) => {
               const hasAccount = Boolean(row.staffId);
-              const tags = hasAccount ? (identityMap.get(row.staffId ?? "") ?? []) : [];
+              const tags = identityMap.get(String(row.id)) ?? [];
               const rooms = (row.allowedRoomsDisplayZh || "").split(/[、，,;；]/).map((s) => s.trim()).filter(Boolean);
               return (
                 <div

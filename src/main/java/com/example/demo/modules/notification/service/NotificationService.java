@@ -216,6 +216,12 @@ public class NotificationService {
         }
     }
 
+    /**
+     * 分页查询当前用户通知。
+     * <p>senderName 在读取时经 {@link UserDisplayNameService} 补全。
+     * title/content 为发布时渲染的正文快照：若历史正文里已嵌入裸 userId，无法可靠回写（自由文本局限），
+     * 新发布路径已通过 {@link #enrichVariableDisplayNames} 写入展示名。
+     */
     public Map<String, Object> listForUser(String userId, int page, int size, boolean onlyUnread,
                                            String bizType, String excludeBizType, String excludeBizTypesCsv) {
         int safePage = Math.max(page, 1);
@@ -225,6 +231,7 @@ public class NotificationService {
         String ex = normalizeBizFilter(excludeBizType);
         List<String> exMulti = buildExcludeBizTypeList(excludeBizTypesCsv);
         List<NotificationView> rows = notificationMapper.listForUser(userId, onlyUnread, safeSize, offset, bt, ex, exMulti);
+        enrichSenderNames(rows);
         int total = notificationMapper.countForUser(userId, onlyUnread, bt, ex, exMulti);
         Map<String, Object> data = new HashMap<>();
         data.put("data", rows);
@@ -358,7 +365,9 @@ public class NotificationService {
             return List.of();
         }
         int lim = Math.min(Math.max(limit, 1), 50);
-        return notificationMapper.listUnreadCompletionReceipts(userId.trim(), lim);
+        List<NotificationView> rows = notificationMapper.listUnreadCompletionReceipts(userId.trim(), lim);
+        enrichSenderNames(rows);
+        return rows;
     }
 
     /**
@@ -379,27 +388,82 @@ public class NotificationService {
     }
 
     /**
-     * 将模板变量中的申请人/处理人等从裸 userId 补全为人员库姓名或账号名。
+     * 将模板变量中的申请人/处理人/发送人/操作人等从裸 userId 补全为人员库姓名或账号名。
+     * 始终以 UserDisplayNameService 实时解析为准，避免库内快照仍是 id/旧用户名。
      */
     private void enrichVariableDisplayNames(PublishNotificationEvent event, Map<String, String> variables) {
         if (StringUtils.hasText(event.getApplicantId())) {
             String aid = event.getApplicantId().trim();
             String resolved = userDisplayNameService.resolveDisplayName(aid);
-            String existing = variables.get("applicantName");
-            if (!StringUtils.hasText(existing) || existing.trim().equals(aid)) {
-                variables.put("applicantName", StringUtils.hasText(resolved) ? resolved : aid);
+            if (StringUtils.hasText(resolved) && !resolved.trim().equals(aid)) {
+                variables.put("applicantName", resolved.trim());
+            } else {
+                String existing = variables.get("applicantName");
+                if (!StringUtils.hasText(existing) || existing.trim().equals(aid)) {
+                    variables.put("applicantName", StringUtils.hasText(resolved) ? resolved.trim() : aid);
+                }
             }
         }
         if (StringUtils.hasText(event.getProcessorId())) {
             String pid = event.getProcessorId().trim();
             String resolved = userDisplayNameService.resolveDisplayName(pid);
-            String existing = variables.get("processorName");
-            if (!StringUtils.hasText(existing) || existing.trim().equals(pid)) {
-                variables.put("processorName", StringUtils.hasText(resolved) ? resolved : pid);
+            if (StringUtils.hasText(resolved) && !resolved.trim().equals(pid)) {
+                variables.put("processorName", resolved.trim());
+            } else {
+                String existing = variables.get("processorName");
+                if (!StringUtils.hasText(existing) || existing.trim().equals(pid)) {
+                    variables.put("processorName", StringUtils.hasText(resolved) ? resolved.trim() : pid);
+                }
             }
         }
         if (StringUtils.hasText(event.getSenderId())) {
-            variables.putIfAbsent("senderName", userDisplayNameService.resolveDisplayName(event.getSenderId()));
+            String sid = event.getSenderId().trim();
+            String resolved = userDisplayNameService.resolveDisplayName(sid);
+            if (StringUtils.hasText(resolved)) {
+                variables.put("senderName", resolved.trim());
+            } else {
+                variables.putIfAbsent("senderName", sid);
+            }
+        }
+        String operatorId = variables.get("operatorId");
+        if (!StringUtils.hasText(operatorId) && StringUtils.hasText(event.getSenderId())) {
+            // 部分业务把操作人写成 sender；仅当 operatorName 缺失或仍是裸 id 时补全
+            operatorId = event.getSenderId().trim();
+        }
+        if (StringUtils.hasText(operatorId)) {
+            String oid = operatorId.trim();
+            String existing = variables.get("operatorName");
+            if (!StringUtils.hasText(existing) || existing.trim().equals(oid)) {
+                String resolved = userDisplayNameService.resolveDisplayName(oid);
+                if (StringUtils.hasText(resolved)) {
+                    variables.put("operatorName", resolved.trim());
+                }
+            }
+        }
+    }
+
+    /** 列表读取时补全 senderName；不改写历史 title/content 正文快照。 */
+    private void enrichSenderNames(List<NotificationView> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (NotificationView row : rows) {
+            if (row != null && StringUtils.hasText(row.getSenderId())) {
+                ids.add(row.getSenderId().trim());
+            }
+        }
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(ids);
+        for (NotificationView row : rows) {
+            if (row == null || !StringUtils.hasText(row.getSenderId())) {
+                continue;
+            }
+            String id = row.getSenderId().trim();
+            String n = names.get(id);
+            row.setSenderName(StringUtils.hasText(n) ? n : id);
         }
     }
 

@@ -120,6 +120,8 @@ export interface FieldConfig {
   levels?: string[];
   /** 表格列：列宽（px） */
   width?: number;
+  /** select：下拉数据源改为本地 ref_data 类型（ANIMAL_BREED / ANIMAL_STRAIN），选项取 fieldData.title */
+  refDataSource?: string;
 }
 
 /** 字段（可配置的最小单元），对齐后端 FieldVO */

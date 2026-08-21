@@ -49,6 +49,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
+import { appConfirm } from "@/lib/appDialog";
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
@@ -222,7 +223,7 @@ export default function ConversationArchivePage() {
 
   const handleClear = useCallback(
     async (userId: string) => {
-      if (!window.confirm("确认清空该用户的对话记录？此操作不可恢复。")) return;
+      if (!await appConfirm("确认清空该用户的对话记录？此操作不可恢复。")) return;
       setClearingId(userId);
       try {
         await clearUserConversation(userId);

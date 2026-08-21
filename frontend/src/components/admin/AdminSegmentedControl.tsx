@@ -15,7 +15,7 @@ type Props<T extends string> = {
 };
 
 /**
- * 分段切换（如「单人 / 批量」），选中项白底+描边，aria-pressed 可访问。
+ * 分段切换（如「单人 / 批量」），选中项实色填充，未选中项浅底填充（无描边线条按钮）。
  */
 export function AdminSegmentedControl<T extends string>({
   options,
@@ -44,11 +44,11 @@ export function AdminSegmentedControl<T extends string>({
             aria-pressed={pressed}
             disabled={disabled}
             className={cn(
-              "min-h-[var(--admin-control-height,2.25rem)] rounded-md px-4 py-2 text-sm font-medium transition-all",
+              "min-h-[var(--admin-control-height,2.25rem)] rounded-md border-0 px-4 py-2 text-sm font-medium transition-all",
               "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)]/40",
               pressed
                 ? "bg-[var(--app-color-accent)] text-white shadow-sm"
-                : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-container)] hover:text-[var(--app-color-text-primary)]"
+                : "bg-transparent text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-container)] hover:text-[var(--app-color-text-primary)]"
             )}
             onClick={() => onChange(opt.value)}
           >

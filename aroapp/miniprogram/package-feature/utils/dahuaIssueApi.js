@@ -35,7 +35,7 @@ async function updateCardStatus(cardNo, status) {
 }
 
 async function updateExempt(cardNo, flag, durationMinutes, mode, maxCount, roomIds, extendUntilTime) {
-  const data = { cardNo, flag, client: 'miniapp' };
+  const data = { cardNo, flag };
   if (flag === 1) {
     if (mode) data.mode = mode;
     if (extendUntilTime) data.extendUntilTime = extendUntilTime;
@@ -58,26 +58,6 @@ async function deleteMapping(cardNo) {
     data: {},
   });
   return unwrap(res.data);
-}
-
-/** 删除大华侧卡片并清除本地映射 */
-async function deleteDahuaCard(cardNo) {
-  const res = await springAuth.springRequest({
-    url: `/api/v1/twin/mappings/${encodeURIComponent(cardNo)}/dahua-card`,
-    method: 'DELETE',
-    data: {},
-  });
-  return unwrap(res.data);
-}
-
-/** 为已有人员追加一张新卡 */
-async function addCardToExistingPerson(personId, personCode, cardNo, aroUserId) {
-  const res = await springAuth.springRequest({
-    url: '/api/v1/twin/mappings/dahua-issue/add-card',
-    method: 'POST',
-    data: { personId, personCode, cardNo, aroUserId },
-  });
-  return unwrap(res.data) || {};
 }
 
 async function searchPersonnel(keyword) {
@@ -115,10 +95,11 @@ async function searchPersonnel(keyword) {
   // 第一跳：对齐 web 端风格，query 直连且不附带 Authorization
   let rows = [];
   try {
-    const direct = await springAuth.callSpringDirect({
+    const direct = await springAuth.callSpringProxy({
       path: `/api/v1/twin/dashboard/personnel/search?keyword=${encodeURIComponent(keyword)}&limit=20&_t=${Date.now()}`,
       method: 'GET',
       data: {},
+      authorization: '',
     });
     debug.directStatus = direct && typeof direct.statusCode === 'number' ? direct.statusCode : null;
     rows = parseRows(direct);
@@ -196,8 +177,6 @@ module.exports = {
   updateCardStatus,
   updateExempt,
   deleteMapping,
-  deleteDahuaCard,
-  addCardToExistingPerson,
   searchPersonnel,
   fetchDepartments,
   fetchDoorGroups,

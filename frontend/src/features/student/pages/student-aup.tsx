@@ -6,6 +6,7 @@ import { useAupList, useRenewAup, useDeleteAup } from "@/features/aup/hooks/useA
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import type { AupListItem } from "@/features/aup/schema/aup";
+import { appConfirm } from "@/lib/appDialog";
 import "../../aup/aup.css";
 
 gsap.registerPlugin(useGSAP);
@@ -126,7 +127,7 @@ export default function StudentAupPage() {
   );
 
   const handleRenew = async (id: number) => {
-    if (!window.confirm("续期将基于该已过期计划书新建一份草稿（引用原注册号、结转未用动物数），重新走审核流程。确定续期？")) return;
+    if (!await appConfirm("续期将基于该已过期计划书新建一份草稿（引用原注册号、结转未用动物数），重新走审核流程。确定续期？")) return;
     try {
       const res = await renewMut.mutateAsync(id);
       if (res?.id) navigate(`/aup/fill/${res.id}`);
@@ -135,8 +136,8 @@ export default function StudentAupPage() {
     }
   };
 
-  const handleDelete = (id: number) => {
-    if (window.confirm("确定删除该计划书？删除后不可恢复。")) deleteMut.mutate(id);
+  const handleDelete = async (id: number) => {
+    if (await appConfirm("确定删除该计划书？删除后不可恢复。")) deleteMut.mutate(id);
   };
 
   return (

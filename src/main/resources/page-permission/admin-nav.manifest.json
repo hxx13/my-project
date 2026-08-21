@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-18T09:24:53.783Z",
+  "generatedAt": "2026-08-21T14:18:41.415Z",
   "pages": [
     {
       "path": "/about",
@@ -544,6 +544,13 @@
     {
       "path": "/student/notifications",
       "label": "通知",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "消息",
+      "registryId": null
+    },
+    {
+      "path": "/student/obligations",
+      "label": "待办确认",
       "fallbackMinRole": "MEMBER",
       "groupTitle": "消息",
       "registryId": null

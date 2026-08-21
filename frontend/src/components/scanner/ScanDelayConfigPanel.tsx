@@ -23,6 +23,7 @@ import { fetchRoomMappingRooms, type RoomMappingRoomRow } from "@/api/twinApi";
 import { DEFAULT_EXEMPT_UNTIL_TIME, EXEMPT_MODE_OPTIONS, formatExemptTimeRule, formatExemptUntilLabel } from "@/constants/exemptDurationPresets";
 import { ExemptUntilTimePicker } from "@/components/admin/ExemptUntilTimePicker";
 
+import { appConfirm } from "@/lib/appDialog";
 type TabKey = "menu" | "carriers" | "rooms";
 
 type BindingGroup = {
@@ -626,7 +627,7 @@ export function ScanDelayConfigPanel() {
   };
 
   const handleDeleteCarrier = async (id: number) => {
-    if (!window.confirm("确定删除该载体？房间绑定与菜单项分配将移除，菜单项库条目保留。")) return;
+    if (!await appConfirm("确定删除该载体？房间绑定与菜单项分配将移除，菜单项库条目保留。")) return;
     try {
       await deleteScanDelayCarrier(id);
       setCarriers((prev) => prev.filter((c) => c.id !== id));
@@ -706,7 +707,7 @@ export function ScanDelayConfigPanel() {
   };
 
   const handleDeleteOption = async (id: number) => {
-    if (!window.confirm("确定删除该菜单项？载体上的分配将一并移除。")) return;
+    if (!await appConfirm("确定删除该菜单项？载体上的分配将一并移除。")) return;
     try {
       await deleteScanDelayOption(id);
       setOptions((prev) => prev.filter((r) => r.id !== id));

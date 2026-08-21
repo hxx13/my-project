@@ -23,6 +23,7 @@ import { isRichTextEmpty } from "@/utils/announcementHtml";
 import { PAGE_HELP_DIALOG_CLASS, PAGE_HELP_SCROLL_CLASS } from "@/utils/pageHelpHtml";
 import { cn } from "@/lib/utils";
 
+import { appConfirm } from "@/lib/appDialog";
 export function normalizeAdminHelpPath(pathname: string) {
   return normalizePageHelpPath(pathname);
 }
@@ -158,7 +159,7 @@ export function AdminPageHelpDialog({ open, onOpenChange, pagePath }: Props) {
 
   const onDeleteVersion = async (v: AdminPageHelpVersion) => {
     if (!canEditTutorial) return;
-    const ok = window.confirm(`确定删除 ${v.versionLabel}？删除后不可恢复。`);
+    const ok = await appConfirm(`确定删除 ${v.versionLabel}？删除后不可恢复。`);
     if (!ok) return;
     setVersionDeletingId(v.id);
     try {
@@ -196,7 +197,7 @@ export function AdminPageHelpDialog({ open, onOpenChange, pagePath }: Props) {
   const displayMeta = bundle?.currentVersion
     ? `${bundle.currentVersion.versionLabel} · ${pageHelpVersionKindLabel(bundle.currentVersion.versionKind)}${bundle.updatedAt ? ` · ${bundle.updatedAt}` : ""}`
     : bundle?.updatedAt
-      ? `更新 ${bundle.updatedAt}${bundle.updatedBy ? ` · ${bundle.updatedBy}` : ""}`
+      ? `更新 ${bundle.updatedAt}${bundle.updatedByName || bundle.updatedBy ? ` · ${bundle.updatedByName || bundle.updatedBy}` : ""}`
       : "尚无正文";
 
   const tabBtnClass = (active: boolean) =>
@@ -394,7 +395,7 @@ export function AdminPageHelpDialog({ open, onOpenChange, pagePath }: Props) {
                           ) : null}
                           <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
                             {v.createdAt || ""}
-                            {v.createdBy ? ` · ${v.createdBy}` : ""}
+                            {v.createdByName || v.createdBy ? ` · ${v.createdByName || v.createdBy}` : ""}
                           </span>
                         </button>
                         {canEditTutorial ? (

@@ -7,6 +7,7 @@
         <result property="title" column="title"/>
         <result property="summary" column="summary"/>
         <result property="bodyHtml" column="body_html"/>
+        <result property="contentJson" column="content_json"/>
         <result property="publishedAt" column="published_at"/>
         <result property="enabled" column="enabled"/>
         <result property="sortOrder" column="sort_order"/>
@@ -30,8 +31,8 @@
     </select>
 
     <insert id="insert">
-        INSERT INTO mini_program_announcement (id, title, summary, body_html, published_at, enabled, sort_order, created_by)
-        VALUES (#{id}, #{title}, #{summary}, #{bodyHtml}, #{publishedAt}, IFNULL(#{enabled}, 1), IFNULL(#{sortOrder}, 0), #{createdBy})
+        INSERT INTO mini_program_announcement (id, title, summary, body_html, content_json, published_at, enabled, sort_order, created_by)
+        VALUES (#{id}, #{title}, #{summary}, #{bodyHtml}, #{contentJson}, #{publishedAt}, IFNULL(#{enabled}, 1), IFNULL(#{sortOrder}, 0), #{createdBy})
     </insert>
 
     <update id="update">
@@ -39,6 +40,7 @@
         SET title = #{title},
             summary = #{summary},
             body_html = #{bodyHtml},
+            content_json = #{contentJson},
             published_at = #{publishedAt},
             enabled = IFNULL(#{enabled}, 1),
             sort_order = IFNULL(#{sortOrder}, 0)

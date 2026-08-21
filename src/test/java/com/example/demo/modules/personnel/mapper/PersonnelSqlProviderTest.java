@@ -48,11 +48,11 @@ class PersonnelSqlProviderTest {
         assertTrue(where.contains("p.staff_id IS NOT NULL AND p.staff_id <> ''"));
         assertTrue(where.contains("p.project_group_name = #{projectGroupName}"));
         assertTrue(where.contains("p.department_name = #{departmentName}"));
-        assertTrue(where.contains("su_staff.role = #{role}"));
+        assertTrue(where.contains("p.role = #{role}"));
         assertTrue(where.contains("su_staff.status = #{status}"));
         assertTrue(where.contains("p.is_school = #{isSchool}"));
         assertTrue(where.contains("p.allowed_rooms_display_zh LIKE CONCAT('%', #{roomName}, '%')"));
-        assertTrue(where.contains("EXISTS (SELECT 1 FROM person_identity pi WHERE pi.user_id = p.staff_id AND pi.tag_id = #{identityTagId})"));
+        assertTrue(where.contains("EXISTS (SELECT 1 FROM person_identity pi WHERE pi.user_id = CAST(p.id AS CHAR) AND pi.tag_id = #{identityTagId})"));
     }
 
     @Test
@@ -84,8 +84,8 @@ class PersonnelSqlProviderTest {
         String count = PersonnelSqlProvider.count(f);
         assertTrue(count.contains("p.name LIKE CONCAT('%', #{keyword}, '%')"));
         assertTrue(count.contains("(p.staff_id IS NULL OR p.staff_id = '')"));
-        assertTrue(count.contains("su_staff.role = #{role}"));
-        assertTrue(count.contains("pi.user_id = p.staff_id AND pi.tag_id = #{identityTagId}"));
+        assertTrue(count.contains("p.role = #{role}"));
+        assertTrue(count.contains("pi.user_id = CAST(p.id AS CHAR) AND pi.tag_id = #{identityTagId}"));
         assertTrue(search.startsWith("SELECT p.id,"));
     }
 }

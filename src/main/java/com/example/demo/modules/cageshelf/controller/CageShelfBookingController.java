@@ -3,9 +3,8 @@ package com.example.demo.modules.cageshelf.controller;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
-import com.example.demo.modules.aro.AroPersonalTokenClient;
-import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.cageshelf.service.CageBookingLocalService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -13,13 +12,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
-import java.util.function.Supplier;
 
 /**
- * 笼位预约管理 — 代理 ARO 的 room/rent 相关 API。
+ * 笼位预约管理 — 本地化（读优先本地、写只写本地、同步手动触发）。
  * <p>
- * 只读端点优先使用个人 Token，未绑定时降级全局 Token。
- * 写操作（新增/编辑/删除）必须使用个人 Token。
+ * 原直连 ARO room/rent 系列接口已切换为本地三张表（cage_booking_room /
+ * cage_booking_room_aup / cage_booking_aup_dict）。写操作不再异步投递 ARO。
  */
 @RestController
 @RequestMapping("/api/v1/cage-shelves/booking")
@@ -29,142 +27,106 @@ public class CageShelfBookingController {
     private static final Logger log = LoggerFactory.getLogger(CageShelfBookingController.class);
 
     private final AuthContextService authContextService;
-    private final AroService aroService;
-    private final AroPersonalTokenClient aroPersonalTokenClient;
+    private final CageBookingLocalService bookingLocalService;
 
     public CageShelfBookingController(AuthContextService authContextService,
-                                       AroService aroService,
-                                       AroPersonalTokenClient aroPersonalTokenClient) {
+                                      CageBookingLocalService bookingLocalService) {
         this.authContextService = authContextService;
-        this.aroService = aroService;
-        this.aroPersonalTokenClient = aroPersonalTokenClient;
+        this.bookingLocalService = bookingLocalService;
     }
 
-    /** 只读操作：优先个人Token，失败降级全局Token */
-    @SuppressWarnings("unchecked")
-    private <T> T tryPersonalOrGlobal(java.util.function.Function<String, T> withToken, Supplier<T> globalFallback) {
+    // ── 手动同步（从 ARO 拉取落本地）──
+
+    @PostMapping("/sync")
+    @Operation(summary = "手动同步：从 ARO 拉取房间预约汇总 + AUP 明细 + AUP 字典，upsert 落本地")
+    public Result<?> sync(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.ADMIN);
+        if (denied != null) return denied;
         try {
-            return aroPersonalTokenClient.execute(withToken);
+            return Result.success(bookingLocalService.syncFromAro());
         } catch (Exception e) {
-            log.warn("[booking] 个人Token不可用，降级全局Token: {}", e.getMessage());
-            return globalFallback.get();
+            log.warn("[booking] 同步失败: {}", e.getMessage(), e);
+            return Result.error("同步失败: " + e.getMessage());
         }
     }
 
-    // ── 房间预约汇总列表（只读） ──
+    // ── 房间预约汇总列表（本地） ──
 
     @GetMapping("/rooms")
-    @Operation(summary = "房间预约汇总列表")
+    @Operation(summary = "房间预约汇总列表（本地）")
     public Result<?> listRooms(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                @RequestParam(defaultValue = "1") int pageNum,
-                                @RequestParam(defaultValue = "30") int pageSize) {
-        User user = resolveUser(authorization);
-        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
-        if (denied != null) return denied;
-
-        Map<String, Object> raw = tryPersonalOrGlobal(
-                token -> aroService.fetchRoomRentList(pageNum, pageSize, token),
-                () -> aroService.fetchRoomRentListGlobal(pageNum, pageSize));
-        return Result.success(raw);
-    }
-
-    // ── 房间内 AUP 分配明细（只读） ──
-
-    @GetMapping("/rooms/{roomId}/aups")
-    @Operation(summary = "房间内 AUP 分配明细")
-    public Result<?> listAups(@RequestHeader(value = "Authorization", required = false) String authorization,
-                               @PathVariable String roomId,
                                @RequestParam(defaultValue = "1") int pageNum,
                                @RequestParam(defaultValue = "30") int pageSize) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-
-        Map<String, Object> raw = tryPersonalOrGlobal(
-                token -> aroService.fetchRoomRentAups(roomId, pageNum, pageSize, token),
-                () -> aroService.fetchRoomRentAupsGlobal(roomId, pageNum, pageSize));
-        return Result.success(raw);
+        return Result.success(bookingLocalService.listRooms());
     }
 
-    // ── 新增/编辑 AUP 分配（写操作，需个人Token） ──
+    // ── 房间内 AUP 分配明细（本地） ──
 
-    @SuppressWarnings("unchecked")
-    @PostMapping("/rooms/{roomId}/aups")
-    @Operation(summary = "新增/编辑 AUP 分配（需CAS绑定）")
-    public Result<?> saveAup(@RequestHeader(value = "Authorization", required = false) String authorization,
+    @GetMapping("/rooms/{roomId}/aups")
+    @Operation(summary = "房间内 AUP 分配明细（本地）")
+    public Result<?> listAups(@RequestHeader(value = "Authorization", required = false) String authorization,
                               @PathVariable String roomId,
-                              @RequestBody Map<String, Object> body) {
+                              @RequestParam(defaultValue = "1") int pageNum,
+                              @RequestParam(defaultValue = "30") int pageSize) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        return Result.success(bookingLocalService.listRoomAups(roomId));
+    }
+
+    // ── 新增/编辑 AUP 分配（本地写） ──
+
+    @PostMapping("/rooms/{roomId}/aups")
+    @Operation(summary = "新增/编辑 AUP 分配（本地）")
+    public Result<?> saveAup(@RequestHeader(value = "Authorization", required = false) String authorization,
+                             @PathVariable String roomId,
+                             @RequestBody Map<String, Object> body) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.ADMIN);
         if (denied != null) return denied;
-
-        Map<String, Object> req = new LinkedHashMap<>(body);
-        req.put("roomId", roomId);
-
-        Map<String, Object> raw = aroPersonalTokenClient.execute(token ->
-                aroService.saveRoomRentPrepare(req, token));
-        return Result.success(raw);
+        return Result.success(bookingLocalService.saveRoomAup(roomId, body));
     }
 
-    // ── 删除 AUP 分配（写操作，需个人Token） ──
+    // ── 删除 AUP 分配（本地软删） ──
 
     @PostMapping("/aups/{id}/delete")
-    @Operation(summary = "删除 AUP 分配（需CAS绑定）")
+    @Operation(summary = "删除 AUP 分配（本地软删）")
     public Result<?> deleteAup(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                @PathVariable String id) {
+                               @PathVariable String id) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.ADMIN);
         if (denied != null) return denied;
-
-        Map<String, Object> body = Map.of("id", id);
-        Map<String, Object> raw = aroPersonalTokenClient.execute(token ->
-                aroService.deleteRoomRentPrepare(body, token));
-        return Result.success(raw);
+        return Result.success(bookingLocalService.deleteRoomAup(id));
     }
 
-    // ── AUP 下拉字典（只读） ──
+    // ── AUP 下拉字典（本地） ──
 
     @GetMapping("/aups/dict")
-    @Operation(summary = "AUP 下拉字典")
+    @Operation(summary = "AUP 下拉字典（本地）")
     public Result<?> aupDict(@RequestHeader(value = "Authorization", required = false) String authorization) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-
-        java.util.List<java.util.Map<String, Object>> list = tryPersonalOrGlobal(
-                token -> aroService.fetchAuditedAups(token),
-                () -> aroService.fetchAuditedAupsGlobal());
-
-        java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
-        for (java.util.Map<String, Object> aup : list) {
-            java.util.Map<String, Object> entry = new java.util.LinkedHashMap<>();
-            entry.put("id", String.valueOf(aup.getOrDefault("id", "")));
-            entry.put("title", String.valueOf(aup.getOrDefault("title", "")));
-            entry.put("registerNumber", String.valueOf(aup.getOrDefault("registerNumber", "")));
-            entry.put("projectPiName", String.valueOf(aup.getOrDefault("projectPiName", "")));
-            out.add(entry);
-        }
-        return Result.success(out);
+        return Result.success(bookingLocalService.aupDict());
     }
 
-    // ── AUP 跨房间搜索（只读） ──
+    // ── AUP 跨房间搜索（本地 JOIN） ──
 
     @GetMapping("/aups/search")
-    @Operation(summary = "跨房间搜索 AUP")
+    @Operation(summary = "跨房间搜索 AUP（本地）")
     public Result<?> searchAups(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                 @RequestParam("keyword") String keyword) {
+                                @RequestParam("keyword") String keyword) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-
         if (keyword == null || keyword.isBlank()) {
-            return Result.success(java.util.Collections.emptyList());
+            return Result.success(Collections.emptyList());
         }
-
-        java.util.List<java.util.Map<String, Object>> hits = tryPersonalOrGlobal(
-                token -> aroService.searchAupsAcrossRooms(keyword, token),
-                () -> aroService.searchAupsAcrossRoomsGlobal(keyword));
-        return Result.success(hits);
+        return Result.success(bookingLocalService.searchAups(keyword));
     }
 
     // ── helpers ──

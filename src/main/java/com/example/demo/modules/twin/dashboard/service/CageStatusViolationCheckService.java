@@ -11,6 +11,7 @@ import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
 import com.example.demo.modules.twin.dashboard.mapper.TwinCageStatusViolationMapper;
 import com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper;
+import com.example.demo.modules.twin.dashboard.support.ViolationTextTemplateRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -260,11 +261,15 @@ public class CageStatusViolationCheckService {
 
     private String renderTemplate(String tpl, CageEventLog evt, String userId) {
         if (tpl == null) return "";
-        return tpl
-                .replace("${name}", userId)
-                .replace("${status}", extractStatusCode(evt))
-                .replace("${cage}", evt.getCurrPosition() != null ? evt.getCurrPosition() : "?")
-                .replace("${date}", java.time.LocalDate.now().toString());
+        return ViolationTextTemplateRenderer.render(
+                tpl,
+                userId,
+                "",
+                ViolationTextTemplateRenderer.today(),
+                Map.of(
+                        "status", extractStatusCode(evt),
+                        "cage", evt.getCurrPosition() != null ? evt.getCurrPosition() : "?"
+                ));
     }
 
     /** 从 currPosition 解析 X/Y 坐标；格式如 "A-3" */

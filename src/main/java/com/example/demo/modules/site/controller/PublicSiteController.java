@@ -4,9 +4,6 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.modules.site.LoginBrandingService;
 import com.example.demo.modules.site.SiteConfigJdbcRepository;
 import com.example.demo.modules.site.dto.LoginBrandingVo;
-import com.example.demo.modules.site.dto.PortalFooterVo;
-import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
-import com.example.demo.modules.twin.dashboard.service.TwinDashboardService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,7 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -33,21 +29,15 @@ public class PublicSiteController {
 
     private final LoginBrandingService loginBrandingService;
     private final SiteConfigJdbcRepository siteConfigRepo;
-    private final TwinDashboardService twinDashboardService;
-    private final TwinDashboardMapper dashboardMapper;
     private final ObjectMapper objectMapper;
 
     public PublicSiteController(
             LoginBrandingService loginBrandingService,
             SiteConfigJdbcRepository siteConfigRepo,
-            TwinDashboardService twinDashboardService,
-            TwinDashboardMapper dashboardMapper,
             ObjectMapper objectMapper
     ) {
         this.loginBrandingService = loginBrandingService;
         this.siteConfigRepo = siteConfigRepo;
-        this.twinDashboardService = twinDashboardService;
-        this.dashboardMapper = dashboardMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -90,51 +80,5 @@ public class PublicSiteController {
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
         }
-    }
-
-    @GetMapping("/portal-footer")
-    @Operation(summary = "门户页脚配置（公开）")
-    public Result<PortalFooterVo> portalFooter() {
-        try {
-            String json = siteConfigRepo.findPortalFooterJson().orElse("{}");
-            PortalFooterVo vo = objectMapper.readValue(json, PortalFooterVo.class);
-            return Result.success(vo != null ? vo : new PortalFooterVo());
-        } catch (Exception ex) {
-            return Result.success(new PortalFooterVo());
-        }
-    }
-
-    @GetMapping("/portal-stats")
-    @Operation(summary = "门户首页统计（公开）：累计进入 + 浦东/浦西今日人次 + 高峰曲线")
-    public Result<Map<String, Object>> portalStats() {
-        Map<String, Object> stats = new HashMap<>();
-
-        // 今日浦东/浦西进入人次 + 房间饼图
-        try {
-            Map<String, Object> pie = twinDashboardService.getTodayRoomStats();
-            if (pie != null) {
-                stats.put("pudongTotal", pie.getOrDefault("pudongTotal", 0));
-                stats.put("puxiTotal", pie.getOrDefault("puxiTotal", 0));
-                stats.put("pudongPie", pie.getOrDefault("pudongPie", null));
-                stats.put("puxiPie", pie.getOrDefault("puxiPie", null));
-            }
-        } catch (Exception ignored) {}
-
-        // 进出高峰曲线
-        try {
-            Map<String, Object> line = twinDashboardService.getTodayLineChart();
-            if (line != null) stats.put("lineChart", line);
-        } catch (Exception ignored) {}
-
-        // 累计进入次数（全量，不过滤）
-        try {
-            Map<String, Object> debug = dashboardMapper.getFilteredDebugStats(
-                    null, null, null, null, null, null, null, true);
-            if (debug != null) {
-                stats.put("totalEnter", debug.getOrDefault("totalEnter", 0));
-            }
-        } catch (Exception ignored) {}
-
-        return Result.success(stats);
     }
 }

@@ -193,8 +193,6 @@ Page({
     delayOptions: [],
     activeDelayOptionId: null,
     delaySubmitting: false,
-    delayStatus: 'none',       // none | pending | approved
-    delayApprovedLabel: '',
     subjectUserId: '',
     showAuditEntry: false,
     showStudentReviewEntry: false,
@@ -436,16 +434,6 @@ Page({
     return mobileScanAccess.getRoomDelayOptions(analyze, scanId).map(formatDelayOption);
   },
 
-  /** 将 overview roomId（room_config PK）解析为扫码系统的 officialRoomId，用于延迟 API 调用 */
-  resolveDelayRoomId(overviewRoomId) {
-    const analyze = this._scanAnalyze;
-    const rows = this._overviewRows || this.data.allRooms || [];
-    if (!analyze || !overviewRoomId) return String(overviewRoomId);
-    const overviewIndex = mobileScanAccess.buildOverviewIndex(rows);
-    const scanId = mobileScanAccess.resolveScanOfficialRoomId(overviewRoomId, overviewIndex, analyze);
-    return scanId || String(overviewRoomId);
-  },
-
   onRoomTap(e) {
     const id = e.currentTarget.dataset.id;
     const room = this.data.currentRooms.find((r) => String(r.roomId) === String(id));
@@ -458,33 +446,7 @@ Page({
       activeDelayOptionId: null,
       delaySubmitting: false,
       delayOptions,
-      delayStatus: 'none',
-      delayApprovedLabel: '',
     });
-    this.refreshDelayStatus(room.roomId);
-  },
-
-  /** 查询该房间的活跃延迟申请状态 */
-  async refreshDelayStatus(roomId) {
-    const subjectUserId = this.data.subjectUserId;
-    if (!roomId || !subjectUserId) return;
-    const scanId = this.resolveDelayRoomId(roomId);
-    try {
-      const data = await scanDelayApi.fetchMyActiveDelayRequests(scanId, subjectUserId);
-      if (data.hasApproved) {
-        const approved = (data.requests || []).find((r) => r.status === 'APPROVED');
-        this.setData({
-          delayStatus: 'approved',
-          delayApprovedLabel: (approved && approved.optionLabel) || '',
-        });
-      } else if (data.hasPending) {
-        this.setData({ delayStatus: 'pending', delayApprovedLabel: '' });
-      } else {
-        this.setData({ delayStatus: 'none', delayApprovedLabel: '' });
-      }
-    } catch (_) {
-      // 查询失败不改变状态
-    }
   },
 
   closeDetail() {
@@ -534,10 +496,9 @@ Page({
 
     this.setData({ delaySubmitting: true });
     try {
-      const scanId = this.resolveDelayRoomId(String(detail.roomId));
       const res = await scanDelayApi.submitScanDelayRequest({
         subjectUserId,
-        roomId: scanId,
+        roomId: String(detail.roomId),
         optionId: opt.id,
       });
       const msg =
@@ -545,12 +506,9 @@ Page({
           ? (res.message || '已提交申请，等待确认')
           : (res && res.message) || '已授权';
       wx.showToast({ title: msg, icon: 'success' });
-      const nextStatus = res && res.status === 'PENDING' ? 'pending' : 'approved';
       this.setData({
         showDelayPanel: false,
         activeDelayOptionId: null,
-        delayStatus: nextStatus,
-        delayApprovedLabel: nextStatus === 'approved' ? (res.optionLabel || opt.optionLabel) : '',
       });
       // 保存后仅合并当前房间数据，禁止整表 load — post-save-no-full-refresh.mdc
       await this.refreshRoomPage({ silent: true, preserveSelection: true });

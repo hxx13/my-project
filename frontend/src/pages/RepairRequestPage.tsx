@@ -12,6 +12,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 
+import { appConfirm } from "@/lib/appDialog";
 const STATUS_TEXT: Record<string, string> = {
   PENDING: "待处理",
   PROCESSING: "处理中",
@@ -57,7 +58,7 @@ export default function RepairRequestPage() {
     }
   };
 
-  const onSubmit = async (e: FormEvent) => {
+  const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!location.trim() || !content.trim()) {
       toast.error("请填写报修位置和内容");
@@ -77,8 +78,8 @@ export default function RepairRequestPage() {
     );
   };
 
-  const handleWithdraw = (id: string) => {
-    if (!window.confirm("确认撤回该订单吗？处理中和已处理订单不可撤回。")) return;
+  const handleWithdraw = async (id: string) => {
+    if (!await appConfirm("确认撤回该订单吗？处理中和已处理订单不可撤回。")) return;
     withdrawMutation.mutate(id);
   };
 

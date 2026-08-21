@@ -32,6 +32,7 @@ import { authHttp } from "@/api/core/authHttp";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 
+import { appConfirm } from "@/lib/appDialog";
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -355,7 +356,7 @@ export default function AdminAssetTransferRecordPage() {
       toast.error("请先上传或追加转移后照片");
       return;
     }
-    if (!window.confirm("确认该资产已转移完毕？将写入目标地点并解锁资产。")) return;
+    if (!await appConfirm("确认该资产已转移完毕？将写入目标地点并解锁资产。")) return;
     setActionLoading(true);
     try {
       await completeTransferRequest(continueRow.id);
@@ -380,7 +381,7 @@ export default function AdminAssetTransferRecordPage() {
   };
 
   const doWithdrawRow = async (r: AssetTransferRecord) => {
-    if (!window.confirm(`确认撤回「${r.assetName}（${r.assetCode}）」的转移申请？资产将解锁，本条记录标记为已撤回。`)) return;
+    if (!await appConfirm(`确认撤回「${r.assetName}（${r.assetCode}）」的转移申请？资产将解锁，本条记录标记为已撤回。`)) return;
     setActionLoading(true);
     try {
       await withdrawTransferRequest(r.id);
@@ -409,7 +410,7 @@ export default function AdminAssetTransferRecordPage() {
       r.status === "COMPLETED" && (r.fromLocation == null || String(r.fromLocation).trim() === "")
         ? "该记录未保存「转移前所在地」，删除后不会自动回滚资产地点。"
         : "若为已完成的转移且系统保存了转移前所在地，将尝试把资产地点还原。";
-    if (!window.confirm(`管理员删除「${r.assetName}（${r.assetCode}）」的转移记录？将永久移除该条申请数据；${locHint}`)) return;
+    if (!await appConfirm(`管理员删除「${r.assetName}（${r.assetCode}）」的转移记录？将永久移除该条申请数据；${locHint}`)) return;
     setActionLoading(true);
     try {
       await deleteTransferRecordAdmin(r.id);
@@ -469,7 +470,7 @@ export default function AdminAssetTransferRecordPage() {
 
   const doRemoveAfterPhoto = async (requestId: string, photoUrl: string) => {
     if (deletingAfterPhoto) return;
-    if (!window.confirm("确认删除这张转移后照片？")) return;
+    if (!await appConfirm("确认删除这张转移后照片？")) return;
     setDeletingAfterPhoto(true);
     try {
       const updated = await removeTransferAfterPhoto(requestId, photoUrl);

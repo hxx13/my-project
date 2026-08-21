@@ -10,6 +10,7 @@ import {
   ShoppingCart,
   FileText,
   Bell,
+  ClipboardCheck,
   MessageSquare,
   Settings,
 } from "lucide-react";
@@ -123,6 +124,14 @@ export const STUDENT_NAV_REGISTRY: StudentNavRegistryGroup[] = [
         icon: Bell,
         fallbackMinRole: "MEMBER",
         sidebarVisible: (ctx) => show(ctx, "/student/notifications", "MEMBER"),
+      },
+      {
+        id: "obligations",
+        path: "/student/obligations",
+        label: "待办确认",
+        icon: ClipboardCheck,
+        fallbackMinRole: "MEMBER",
+        sidebarVisible: (ctx) => show(ctx, "/student/obligations", "MEMBER"),
       },
       {
         id: "feedback",

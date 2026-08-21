@@ -20,6 +20,7 @@ import {
 import { TelemetryVariablePicker } from "@/features/telemetry-insights/TelemetryVariablePicker";
 import { useWatchlistVariableCatalog } from "@/features/telemetry-insights/useWatchlistVariableCatalog";
 
+import { appConfirm } from "@/lib/appDialog";
 const GROUPS_KEY = ["admin", "telemetry-insights", "chart-groups"] as const;
 
 type GroupDraft = {
@@ -67,7 +68,7 @@ export default function AdminTelemetryInsightsConfigPage() {
   }, []);
 
   const saveM = useMutation({
-    mutationFn: async (body: GroupDraft) => {
+    mutationFn: (body: GroupDraft) => {
       const variableMetadata = buildVariableMetadataFromCatalog(body.variableNames, catalog);
       const payload: TelemetryChartGroup = {
         name: body.name.trim(),
@@ -178,8 +179,8 @@ export default function AdminTelemetryInsightsConfigPage() {
                       {g.id != null ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            if (window.confirm(`删除对比组「${g.name}」？`)) deleteM.mutate(g.id!);
+                          onClick={async () => {
+                            if (await appConfirm(`删除对比组「${g.name}」？`)) deleteM.mutate(g.id!);
                           }}
                           className="rounded-[var(--app-radius-control)] p-1.5 text-[var(--app-color-status-danger)] hover:bg-[var(--app-color-surface-page)]"
                           aria-label="删除"

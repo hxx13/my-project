@@ -13,7 +13,7 @@ import type { ReactNode } from "react";
  *     return <AdminFullWidthPage>...your content...</AdminFullWidthPage>;
  *   }
  *
- * Design standard: UI设计规范与主题标准.md 原则六 + 原则八
+ * 用于抵消 AdminLayout 的默认内边距，让内容真正通栏。
  */
 export function AdminFullWidthPage({ children }: { children: ReactNode }) {
   return <div className="page-full-bleed">{children}</div>;

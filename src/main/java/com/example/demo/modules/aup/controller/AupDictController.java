@@ -86,4 +86,10 @@ public class AupDictController {
     public Result<?> reorder(@PathVariable String dictKey, @RequestBody List<Long> itemIds) {
         return service.reorderItems(dictKey, itemIds);
     }
+
+    @PostMapping("/import-builtin")
+    @Operation(summary = "导入内置种子字典（幂等，按 dictKey/value 去重）")
+    public Result<Map<String, Object>> importBuiltin() {
+        return Result.success(service.importBuiltinDicts());
+    }
 }

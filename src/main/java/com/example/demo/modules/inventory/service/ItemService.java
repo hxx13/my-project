@@ -2,6 +2,7 @@ package com.example.demo.modules.inventory.service;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.inventory.dto.ItemLogView;
 import com.example.demo.modules.inventory.dto.ItemRetireReq;
 import com.example.demo.modules.inventory.dto.ItemTransferReq;
@@ -36,13 +37,16 @@ public class ItemService {
     private final ItemLogMapper itemLogMapper;
     private final SpaceMapper spaceMapper;
     private final CategoryMapper categoryMapper;
+    private final UserDisplayNameService userDisplayNameService;
 
     public ItemService(ItemMapper itemMapper, ItemLogMapper itemLogMapper,
-                       SpaceMapper spaceMapper, CategoryMapper categoryMapper) {
+                       SpaceMapper spaceMapper, CategoryMapper categoryMapper,
+                       UserDisplayNameService userDisplayNameService) {
         this.itemMapper = itemMapper;
         this.itemLogMapper = itemLogMapper;
         this.spaceMapper = spaceMapper;
         this.categoryMapper = categoryMapper;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     // ==================== 查询 ====================
@@ -73,7 +77,14 @@ public class ItemService {
 
     public Result<List<ItemLogView>> listLogs(Long id) {
         List<InvItemLog> logs = itemLogMapper.selectByItemId(id);
-        return Result.success(logs.stream().map(this::toLogView).collect(Collectors.toList()));
+        List<String> opIds = logs.stream()
+                .map(InvItemLog::getOperatorUserId)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(opIds);
+        return Result.success(logs.stream().map(l -> toLogView(l, names)).collect(Collectors.toList()));
     }
 
     // ==================== 写入 ====================
@@ -260,7 +271,7 @@ public class ItemService {
         return v;
     }
 
-    private ItemLogView toLogView(InvItemLog log) {
+    private ItemLogView toLogView(InvItemLog log, Map<String, String> names) {
         ItemLogView v = new ItemLogView();
         v.setId(log.getId());
         v.setItemId(log.getItemId());
@@ -268,6 +279,9 @@ public class ItemService {
         v.setFromSpaceId(log.getFromSpaceId());
         v.setToSpaceId(log.getToSpaceId());
         v.setOperatorUserId(log.getOperatorUserId());
+        String opId = log.getOperatorUserId() == null ? "" : log.getOperatorUserId().trim();
+        String n = names != null ? names.get(opId) : null;
+        v.setOperatorName(StringUtils.hasText(n) ? n : (StringUtils.hasText(opId) ? opId : null));
         v.setRemark(log.getRemark());
         v.setExtra(log.getExtra());
         v.setCreatedAt(log.getCreatedAt());

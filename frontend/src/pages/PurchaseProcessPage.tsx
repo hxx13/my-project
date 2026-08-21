@@ -21,6 +21,7 @@ import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 
+import { appConfirm } from "@/lib/appDialog";
 const STATUS_TEXT: Record<string, string> = {
   PENDING: "待处理",
   PROCESSING: "处理中",
@@ -78,21 +79,21 @@ export default function PurchaseProcessPage() {
     });
   };
 
-  const handleDelete = (id: string) => {
-    if (!window.confirm("确认删除该订单吗？将同步删除相关图片，且不可恢复。")) return;
+  const handleDelete = async (id: string) => {
+    if (!await appConfirm("确认删除该订单吗？将同步删除相关图片，且不可恢复。")) return;
     deleteMutation.mutate(id);
   };
 
-  const handlePurgeSelected = () => {
+  const handlePurgeSelected = async () => {
     if (selectedRecycleIds.length === 0) return toast.error("请先勾选回收站订单");
-    if (!window.confirm(`确认彻底删除 ${selectedRecycleIds.length} 条回收站订单吗？`)) return;
+    if (!await appConfirm(`确认彻底删除 ${selectedRecycleIds.length} 条回收站订单吗？`)) return;
     purgeSelectedMutation.mutate(selectedRecycleIds, {
       onSuccess: () => setSelectedRecycleIds([]),
     });
   };
 
-  const handlePurgeAll = () => {
-    if (!window.confirm("确认一键清空回收站吗？")) return;
+  const handlePurgeAll = async () => {
+    if (!await appConfirm("确认一键清空回收站吗？")) return;
     purgeAllMutation.mutate(undefined, {
       onSuccess: () => setSelectedRecycleIds([]),
     });

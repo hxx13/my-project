@@ -5,7 +5,7 @@ const { refreshPendingBadges } = require('../../../utils/badgeSnapshotStore.js')
 const { formatBadgeText } = require('../../../utils/pendingBadgeCounts.js');
 const api = require('../../utils/studentReviewApi.js');
 const mat = require('../../utils/materialStudentApi.js');
-const { formatBeijingDateTimeFull, parseToTimestamp } = require('../../utils/beijingTime.js');
+const { formatBeijingDateTimeFull, parseToTimestamp } = require('../../../utils/beijingTime.js');
 
 /** 与 Web studentReviewPoll.ts 同源 */
 const PENDING_POLL_MS = 15000;
@@ -13,7 +13,7 @@ const PENDING_POLL_MS = 15000;
 const TAB_LABELS = {
   material: '物资审核',
   scanDelay: '延迟免冻结',
-  aroTraining: '培训审核',
+  demands: '需求建议',
 };
 
 const STATUS_ZH = {
@@ -22,7 +22,6 @@ const STATUS_ZH = {
   FIRST_OK: '初审通过',
   APPROVED: '已通过',
   REJECTED: '已拒绝',
-  EXPIRED: '已过期',
   FULFILLED: '已出库',
   RECEIVED: '已完成',
 };
@@ -151,12 +150,19 @@ function isMaterialPending(s) {
 function mapMaterialRow(req) {
   const lines = Array.isArray(req.lines) ? req.lines : [];
   var firstLine = lines[0] || {};
+  var reviewerName = (
+    (req.fulfilledByName && String(req.fulfilledByName).trim())
+    || (req.firstReviewerName && String(req.firstReviewerName).trim())
+    || (req.secondReviewerName && String(req.secondReviewerName).trim())
+    || ''
+  );
   return {
     ...req,
     statusText: statusZh(req.status),
     statusTagClass: statusTagClass(req.status),
     createdAtText: fmtTime(req.createdAt),
     approveLabel: approveLabel(req),
+    reviewerName,
     lineSummary: lines.map((l) => {
       var base = `${l.snapshotName || '物品'}×${l.qty || 0}`;
       var spec = mat.formatSpecLabel(l.specSnapshot);
@@ -341,15 +347,27 @@ function mapScanPendingRow(req) {
 
 function mapScanHistoryRow(req) {
   const status = String(req.status || '').toUpperCase();
+  const reviewerName = (req.reviewedByName && String(req.reviewedByName).trim())
+    || (req.reviewedBy && String(req.reviewedBy).trim())
+    || '';
   return {
     ...req,
     _kind: 'history',
     createdAtText: fmtTime(req.createdAt),
     reviewedAtText: fmtTime(req.reviewedAt),
-    statusText: status === 'APPROVED' ? '已通过' : status === 'REJECTED' ? '已拒绝' : status === 'EXPIRED' ? '已过期' : status,
+    statusText: status === 'APPROVED' ? '已通过' : status === 'REJECTED' ? '已拒绝' : status,
     subjectLine: `${req.subjectDisplayName || req.subjectUserId || '-'} · ${req.subjectGroupName || '未标注课题组'}`,
+    reviewerName,
     isApproved: status === 'APPROVED',
-    isExpired: status === 'EXPIRED',
+  };
+}
+
+function mapDemandRow(d) {
+  return {
+    ...d,
+    createdAtText: fmtTime(d.createdAt),
+    statusText: Number(d.status) === 1 ? '已处理' : '未处理',
+    open: Number(d.status) !== 1,
   };
 }
 
@@ -445,7 +463,7 @@ function buildFilteredScanDelayLists(pendingRaw, historyRaw, optionReviewerMap, 
 
 function normalizeTab(raw) {
   const t = raw ? String(raw) : 'material';
-  if (t === 'scanDelay' || t === 'aroTraining') return t;
+  if (t === 'scanDelay' || t === 'demands') return t;
   return 'material';
 }
 
@@ -456,120 +474,18 @@ function syncTabMeta(rawCounts) {
     tabBadges: {
       material: formatBadgeText(c.filteredMaterialPending),
       scanDelay: formatBadgeText(c.filteredScanDelayPending),
-      aroTraining: formatBadgeText(c.aroTrainingPending),
+      demands: formatBadgeText(c.openDemand),
     },
   };
 }
 
+function demandEntryStatusText(visible, loading) {
+  if (loading) return '…';
+  return visible ? '已开启' : '已关闭';
+}
+
 function pushGlobalReviewBadges() {
   void refreshPendingBadges({ force: true });
-}
-
-/** ---- 培训审核：拍平场次学员、分组、折叠 ---- */
-
-function mapAroTraineeRow(trainee, session) {
-  const testYn = trainee.testYn != null ? Number(trainee.testYn) : 0;
-  const testFraction = trainee.testFraction != null ? Number(trainee.testFraction) : 0;
-  return {
-    ...trainee,
-    sessionId: session.id || session.sessionId || '',
-    sessionTitle: session.title || '',
-    sessionAddress: session.address || '',
-    sessionStartTime: session.startTime || '',
-    isAuditPending: testYn === 0,
-    isAuditPassed: testYn === 1,
-    isAuditRejected: testYn === 2,
-    auditStateText: testYn === 1 ? '已通过' : testYn === 2 ? '已拒绝' : '待审核',
-    auditTagClass: testYn === 1 ? 'tag-ok' : testYn === 2 ? 'tag-danger' : 'tag-warn',
-    isScorePending: testFraction === 0,
-    isScoreQualified: testFraction === 1,
-    isScoreUnqualified: testFraction === 2,
-    scoreStateText: testFraction === 1 ? '合格' : testFraction === 2 ? '不合格' : '待评分',
-    scoreTagClass: testFraction === 1 ? 'tag-ok' : testFraction === 2 ? 'tag-danger' : 'tag-muted',
-    _expandMore: false,
-  };
-}
-
-function flattenTrainingSessions(sessions) {
-  const list = [];
-  // 后端返回 { list: [...], total: N }，兼容直接传数组的情况
-  const sessionList = Array.isArray(sessions) ? sessions : (sessions && sessions.list ? sessions.list : []);
-  sessionList.forEach(function (session) {
-    (session.trainees || []).forEach(function (trainee) {
-      list.push(mapAroTraineeRow(trainee, session));
-    });
-  });
-  return list;
-}
-
-function groupAroTrainingBySession(list) {
-  if (!list || !list.length) return [];
-  const map = {};
-  list.forEach(function (trainee) {
-    const key = trainee.sessionId;
-    if (!map[key]) {
-      map[key] = {
-        sessionId: key,
-        title: trainee.sessionTitle || '',
-        address: trainee.sessionAddress || '',
-        startTime: trainee.sessionStartTime || '',
-        trainees: [],
-      };
-    }
-    map[key].trainees.push(trainee);
-  });
-  return Object.keys(map).map(function (k) {
-    const grp = map[k];
-    grp.trainees.sort(function (a, b) {
-      if (a.isAuditPending && !b.isAuditPending) return -1;
-      if (!a.isAuditPending && b.isAuditPending) return 1;
-      return 0;
-    });
-    return grp;
-  });
-}
-
-function splitAroSessionGroupsByStatus(groups) {
-  return (groups || []).map(function (grp) {
-    const pending = [];
-    const done = [];
-    (grp.trainees || []).forEach(function (t) {
-      // 必须审批 AND 评分都完成才进"已审核"收纳夹
-      const isFullyDone = !t.isAuditPending && !t.isScorePending;
-      if (isFullyDone) done.push(t); else pending.push(t);
-    });
-    return Object.assign({}, grp, {
-      _pendingTrainees: pending,
-      _doneTrainees: done,
-      _hasBoth: pending.length > 0 && done.length > 0,
-      _doneCollapsed: true,
-    });
-  });
-}
-
-function buildAroTrainingAutoCollapseMap(rawGroups) {
-  const map = {};
-  (rawGroups || []).forEach(function (grp) {
-    // 必须审批 AND 评分都完成才算无待处理
-    const hasPending = (grp.trainees || []).some(function (t) { return t.isAuditPending || t.isScorePending; });
-    if (!hasPending) map[grp.sessionId] = true;
-  });
-  return map;
-}
-
-function stampAroSessionGroupCollapse(groups, collapseMap) {
-  return (groups || []).map(function (grp) {
-    return Object.assign({}, grp, {
-      _collapsed: !!(collapseMap && collapseMap[grp.sessionId]),
-    });
-  });
-}
-
-function finalizeAroTrainingGrouped(rawGroups, collapseMap) {
-  const withStatusSplit = splitAroSessionGroupsByStatus(rawGroups);
-  const autoCollapse = buildAroTrainingAutoCollapseMap(rawGroups);
-  const mergedCollapse = Object.assign({}, autoCollapse, collapseMap || {});
-  return stampAroSessionGroupCollapse(withStatusSplit, mergedCollapse);
 }
 
 Page({
@@ -577,6 +493,9 @@ Page({
     activeTab: 'material',
     loading: false,
     canDelete: false,
+    demandEntryVisible: true,
+    demandEntryStatusText: '已开启',
+    toggleDemandLoading: false,
     materialList: [],
     materialToday: [],
     materialHistoryPending: [],
@@ -599,31 +518,21 @@ Page({
     scanDelayGroupedHistory: [],
     scanDelayGroupCollapseMap: {},
     scanDelayPendingCount: 0,
+    demands: [],
     counts: {
       pendingMaterialRaw: 0,
       finishedMaterialRaw: 0,
       scanDelayRaw: 0,
+      openDemand: 0,
     },
     tabLabels: { ...TAB_LABELS },
     tabBadges: {
       material: '',
       scanDelay: '',
-      aroTraining: '',
+      demands: '',
     },
     autoApproveVisible: false,
     autoApproveKind: 'scanDelay',
-    aroTrainingList: [],
-    aroTrainingToday: [],
-    aroTrainingHistoryPending: [],
-    aroTrainingHistoryDone: [],
-    aroTrainingTodayOpen: true,
-    aroTrainingHistoryPendingOpen: true,
-    aroTrainingHistoryDoneOpen: false,
-    aroTrainingGroupedToday: [],
-    aroTrainingGroupedHistoryPending: [],
-    aroTrainingGroupedHistoryDone: [],
-    aroTrainingSessionCollapseMap: {},
-    aroTrainingFavorites: [],
   },
 
   onLoad(options) {
@@ -806,92 +715,49 @@ Page({
         api.fetchFinishedMaterialRequests({ page: 1, size: 50 }),
         api.fetchPendingScanDelayRequests(),
         api.fetchScanDelayHistory(100),
+        api.fetchAllMaterialDemands({ page: 1, size: 200 }),
+        api.fetchDemandEntryVisible(),
         api.fetchAdminMaterialItems(),
         api.fetchScanDelayOptions(),
-        api.fetchPendingTrainingSessions(),
-        api.fetchAroFavorites(),
       ]);
       const pendingRaw = results[0];
       const finishedRes = results[1];
       const scanDelayRaw = results[2];
       const historyRaw = results[3];
-      const allItems = results[4];
-      const scanOptions = results[5];
-      const aroTrainingRaw = results[6];
-      const aroFavoritesRaw = results[7];
+      const demandsRes = results[4];
+      const demandEntryVisible = results[5];
+      const allItems = results[6];
+      const scanOptions = results[7];
 
-      // 审核人姓名映射（历史卡片显示）
-      let reviewerNameMap = {};
-      try {
-        const reviewers = await api.fetchEligibleReviewers();
-        (reviewers || []).forEach(function (r) {
-          if (r && r.userId) reviewerNameMap[String(r.userId)] = r.displayName || r.userName || r.userId;
-        });
-      } catch (e) { /* 非关键，静默失败 */ }
-
+      // 处理人姓名由后端 *Name 字段提供（UserDisplayNameService），不再拉 eligible-reviewers 做客户端映射
       const itemReviewerMap = buildItemReviewerMap(allItems);
       const optionReviewerMap = buildOptionReviewerMap(scanOptions);
 
       const materialView = buildFilteredMaterialLists(pendingRaw, finishedRes, itemReviewerMap, userId);
       const scanView = buildFilteredScanDelayLists(scanDelayRaw, historyRaw, optionReviewerMap, userId);
+      const demands = ((demandsRes && demandsRes.data) || []).map(mapDemandRow);
 
       const counts = {
         pendingMaterialRaw: (pendingRaw || []).length,
         finishedMaterialRaw: ((finishedRes && finishedRes.data) || []).length,
         scanDelayRaw: (scanDelayRaw || []).length,
+        openDemand: demands.filter((d) => d.open).length,
         /** 与 Web filteredMaterialPendingCount 同源：仅统计当前用户作为审核人的待审数量 */
         filteredMaterialPending: materialView.pendingFiltered.length,
         /** 与 Web filteredScanDelayPending.length 同源 */
         filteredScanDelayPending: scanView.pendingFiltered.length,
-        /** 培训审批待处理数（按学员维度统计待审核或待评分） */
-        aroTrainingPending: 0, // 下面 flatten 后重新计算
       };
-
-      // 培训审核数据（使用 sessionStartTime 代替不存在的 trainee.createdAt 做今天/历史分组）
-      const aroTrainingFlat = flattenTrainingSessions(aroTrainingRaw);
-      const aroTrainingToday = [];
-      const aroTrainingHistory = [];
-      aroTrainingFlat.forEach(function (t) {
-        if (isTodayBeijing(t.sessionStartTime)) {
-          aroTrainingToday.push(t);
-        } else {
-          aroTrainingHistory.push(t);
-        }
-      });
-      aroTrainingToday.sort(sortByCreatedDesc);
-      aroTrainingHistory.sort(sortByCreatedDesc);
-      const aroTrainingHistoryPending = aroTrainingHistory.filter(function (t) { return t.isAuditPending; });
-      const aroTrainingHistoryDone = aroTrainingHistory.filter(function (t) { return !t.isAuditPending; });
-      // 补正待处理学员数（非场次数）
-      counts.aroTrainingPending = aroTrainingFlat.filter(function (t) { return t.isAuditPending || t.isScorePending; }).length;
-      const aroTrainingFavorites = Array.isArray(aroFavoritesRaw) ? aroFavoritesRaw : [];
-      const aroTrainingGroupedToday = groupAroTrainingBySession(aroTrainingToday);
-      const aroTrainingGroupedHistoryPending = groupAroTrainingBySession(aroTrainingHistoryPending);
-      const aroTrainingGroupedHistoryDone = groupAroTrainingBySession(aroTrainingHistoryDone);
 
       if (!this._alive) return;
-
-      // 给历史项附加审核人姓名
-      var enrichReviewer = function (list) {
-        return (list || []).map(function (r) {
-          var ids = parseReviewerIds(r.reviewerIds);
-          var name = '';
-          for (var i = 0; i < ids.length; i++) {
-            var n = reviewerNameMap[ids[i]];
-            if (n) { name = n; break; }
-          }
-          return Object.assign({}, r, { reviewerName: name || (r.reviewedBy || '') });
-        });
-      };
 
       var expandMap = this.data.materialSpecExpand || {};
       var collapseMap = this.data.materialItemCollapseMap || {};
       this.setData({
         materialList: materialView.merged,
         materialToday: materialView.today,
-        materialHistoryPending: enrichReviewer(materialView.historyPending),
-        materialHistoryDone: enrichReviewer(materialView.historyDone),
-        materialHistory: enrichReviewer(materialView.history),
+        materialHistoryPending: materialView.historyPending,
+        materialHistoryDone: materialView.historyDone,
+        materialHistory: materialView.history,
         materialGroupedToday: finalizeMaterialGrouped(materialView.materialGroupedToday, expandMap, collapseMap),
         materialGroupedHistoryPending: finalizeMaterialGrouped(materialView.materialGroupedHistoryPending, expandMap, collapseMap),
         materialGroupedHistoryDone: finalizeMaterialGrouped(materialView.materialGroupedHistoryDone, {}, collapseMap),
@@ -901,16 +767,10 @@ Page({
         scanDelayGroupedToday: finalizeScanDelayGrouped(scanView.scanDelayGroupedToday, this.data.scanDelayGroupCollapseMap || {}),
         scanDelayGroupedHistory: finalizeScanDelayGrouped(scanView.scanDelayGroupedHistory, this.data.scanDelayGroupCollapseMap || {}),
         scanDelayPendingCount: scanView.pendingFiltered.length,
-        reviewerNameMap,
+        demands,
+        demandEntryVisible,
+        demandEntryStatusText: demandEntryStatusText(demandEntryVisible, false),
         counts,
-        aroTrainingList: aroTrainingFlat,
-        aroTrainingToday,
-        aroTrainingHistoryPending,
-        aroTrainingHistoryDone,
-        aroTrainingGroupedToday: finalizeAroTrainingGrouped(aroTrainingGroupedToday, this.data.aroTrainingSessionCollapseMap || {}),
-        aroTrainingGroupedHistoryPending: finalizeAroTrainingGrouped(aroTrainingGroupedHistoryPending, this.data.aroTrainingSessionCollapseMap || {}),
-        aroTrainingGroupedHistoryDone: finalizeAroTrainingGrouped(aroTrainingGroupedHistoryDone, {}),
-        aroTrainingFavorites,
         ...syncTabMeta(counts),
       });
       if (!silent) {
@@ -1005,12 +865,6 @@ Page({
     } finally {
       wx.hideLoading();
     }
-  },
-
-  reviewerNameFor(userId) {
-    const map = this.data.reviewerNameMap || {};
-    const uid = String(userId || '');
-    return map[uid] || uid || '—';
   },
 
   removeMaterialRow(id) {
@@ -1109,6 +963,31 @@ Page({
     pushGlobalReviewBadges();
   },
 
+  async onDemandResolve(e) {
+    const id = Number(e.currentTarget.dataset.id);
+    if (!id) return;
+    wx.showLoading({ title: '处理中…', mask: true });
+    try {
+      await api.resolveMaterialDemand(id);
+      const demands = (this.data.demands || []).map((d) =>
+        Number(d.id) === id ? { ...d, status: 1, statusText: '已处理', open: false } : d,
+      );
+      const openDemand = demands.filter((d) => d.open).length;
+      const counts = { ...this.data.counts, openDemand };
+      this.setData({
+        demands,
+        counts,
+        ...syncTabMeta(counts),
+      });
+      pushGlobalReviewBadges();
+      wx.showToast({ title: '已标记', icon: 'success' });
+    } catch (err) {
+      wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
   onOpenScanDelayAutoApprove() {
     this.setData({ autoApproveVisible: true, autoApproveKind: 'scanDelay' });
   },
@@ -1125,134 +1004,27 @@ Page({
     this.loadDashboard();
   },
 
-  /* ---- 培训审核 ---- */
-
-  onToggleAroTrainingToday() {
-    this.setData({ aroTrainingTodayOpen: !this.data.aroTrainingTodayOpen });
-  },
-
-  onToggleAroMore(e) {
-    const examSignId = e.currentTarget.dataset.examSignId;
-    if (!examSignId) return;
-    // 切换单个学员卡片的 … 展开状态
-    const toggleIn = function (groups) {
-      return (groups || []).map(function (grp) {
-        const toggleTrainees = function (list) {
-          return (list || []).map(function (t) {
-            if (String(t.examSignId) === String(examSignId)) {
-              return Object.assign({}, t, { _expandMore: !t._expandMore });
-            }
-            return t;
-          });
-        };
-        return Object.assign({}, grp, {
-          _pendingTrainees: toggleTrainees(grp._pendingTrainees),
-          _doneTrainees: toggleTrainees(grp._doneTrainees),
-        });
+  async onToggleDemandEntry() {
+    if (this.data.toggleDemandLoading) return;
+    this.setData({
+      toggleDemandLoading: true,
+      demandEntryStatusText: demandEntryStatusText(this.data.demandEntryVisible, true),
+    });
+    try {
+      const data = await api.toggleDemandEntryVisible();
+      const demandEntryVisible = !!(data && data.visible);
+      this.setData({
+        demandEntryVisible,
+        demandEntryStatusText: demandEntryStatusText(demandEntryVisible, false),
       });
-    };
-    this.setData({
-      aroTrainingGroupedToday: toggleIn(this.data.aroTrainingGroupedToday),
-      aroTrainingGroupedHistoryPending: toggleIn(this.data.aroTrainingGroupedHistoryPending),
-      aroTrainingGroupedHistoryDone: toggleIn(this.data.aroTrainingGroupedHistoryDone),
-    });
-  },
-
-  onToggleAroTrainingHistoryPending() {
-    this.setData({ aroTrainingHistoryPendingOpen: !this.data.aroTrainingHistoryPendingOpen });
-  },
-
-  onToggleAroTrainingHistoryDone() {
-    this.setData({ aroTrainingHistoryDoneOpen: !this.data.aroTrainingHistoryDoneOpen });
-  },
-
-  onToggleAroTrainingSession(e) {
-    const sessionId = e.currentTarget.dataset.sessionId;
-    if (!sessionId) return;
-    const map = Object.assign({}, this.data.aroTrainingSessionCollapseMap || {});
-    map[sessionId] = !map[sessionId];
-    const aroTrainingToday = this.data.aroTrainingToday || [];
-    const aroTrainingHistoryPending = this.data.aroTrainingHistoryPending || [];
-    const aroTrainingHistoryDone = this.data.aroTrainingHistoryDone || [];
-    this.setData({
-      aroTrainingSessionCollapseMap: map,
-      aroTrainingGroupedToday: finalizeAroTrainingGrouped(groupAroTrainingBySession(aroTrainingToday), map),
-      aroTrainingGroupedHistoryPending: finalizeAroTrainingGrouped(groupAroTrainingBySession(aroTrainingHistoryPending), map),
-      aroTrainingGroupedHistoryDone: finalizeAroTrainingGrouped(groupAroTrainingBySession(aroTrainingHistoryDone), map),
-    });
-  },
-
-  onToggleAroTrainingDone(e) {
-    const sessionId = e.currentTarget.dataset.sessionId;
-    if (!sessionId) return;
-    const self = this;
-    function toggleIn(groups) {
-      return (groups || []).map(function (grp) {
-        if (grp.sessionId !== sessionId) return grp;
-        return Object.assign({}, grp, { _doneCollapsed: !grp._doneCollapsed });
+      wx.showToast({ title: demandEntryVisible ? '入口已开启' : '入口已关闭', icon: 'none' });
+    } catch (e) {
+      wx.showToast({ title: e.message || '切换失败', icon: 'none' });
+    } finally {
+      this.setData({
+        toggleDemandLoading: false,
+        demandEntryStatusText: demandEntryStatusText(this.data.demandEntryVisible, false),
       });
     }
-    self.setData({
-      aroTrainingGroupedToday: toggleIn(self.data.aroTrainingGroupedToday),
-      aroTrainingGroupedHistoryPending: toggleIn(self.data.aroTrainingGroupedHistoryPending),
-      aroTrainingGroupedHistoryDone: toggleIn(self.data.aroTrainingGroupedHistoryDone),
-    });
-  },
-
-  async onAroAudit(e) {
-    const examSignId = e.currentTarget.dataset.examSignId;
-    const state = Number(e.currentTarget.dataset.state);
-    if (!examSignId || !state) return;
-    wx.showLoading({ title: '处理中…', mask: true });
-    try {
-      await api.auditTrainee(examSignId, state);
-      this.removeAroTraineeRow(examSignId);
-      wx.showToast({ title: state === 1 ? '已通过' : '已拒绝', icon: 'success' });
-    } catch (err) {
-      wx.showToast({ title: err.message || '操作失败', icon: 'none' });
-    } finally {
-      wx.hideLoading();
-    }
-  },
-
-  async onAroScore(e) {
-    const examSignId = e.currentTarget.dataset.examSignId;
-    const state = Number(e.currentTarget.dataset.state);
-    if (!examSignId || !state) return;
-    wx.showLoading({ title: '处理中…', mask: true });
-    try {
-      await api.scoreTrainee(examSignId, state);
-      this.removeAroTraineeRow(examSignId);
-      wx.showToast({ title: state === 1 ? '已评分：合格' : '已评分：不合格', icon: 'success' });
-    } catch (err) {
-      wx.showToast({ title: err.message || '操作失败', icon: 'none' });
-    } finally {
-      wx.hideLoading();
-    }
-  },
-
-  removeAroTraineeRow(examSignId) {
-    const filterOut = function (list) {
-      return (list || []).filter(function (r) { return String(r.examSignId) !== String(examSignId); });
-    };
-    const aroTrainingToday = filterOut(this.data.aroTrainingToday);
-    const aroTrainingHistoryPending = filterOut(this.data.aroTrainingHistoryPending);
-    const aroTrainingHistoryDone = filterOut(this.data.aroTrainingHistoryDone);
-    const aroTrainingList = filterOut(this.data.aroTrainingList);
-    const aroTrainingPendingCount = aroTrainingList.filter(function (t) { return t.isAuditPending || t.isScorePending; }).length;
-    const collapseMap = this.data.aroTrainingSessionCollapseMap || {};
-    const counts = { ...this.data.counts, aroTrainingPending: aroTrainingPendingCount };
-    this.setData({
-      aroTrainingList,
-      aroTrainingToday,
-      aroTrainingHistoryPending,
-      aroTrainingHistoryDone,
-      aroTrainingGroupedToday: finalizeAroTrainingGrouped(groupAroTrainingBySession(aroTrainingToday), collapseMap),
-      aroTrainingGroupedHistoryPending: finalizeAroTrainingGrouped(groupAroTrainingBySession(aroTrainingHistoryPending), collapseMap),
-      aroTrainingGroupedHistoryDone: finalizeAroTrainingGrouped(groupAroTrainingBySession(aroTrainingHistoryDone), collapseMap),
-      counts,
-      ...syncTabMeta(counts),
-    });
-    pushGlobalReviewBadges();
   },
 });

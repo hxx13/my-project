@@ -62,6 +62,10 @@ export interface MaterialRequest {
   secondReviewTime?: string;
   fulfilledAt?: string;
   fulfilledBy?: string;
+  /** 出库/处理人展示名 */
+  fulfilledByName?: string;
+  firstReviewerName?: string;
+  secondReviewerName?: string;
   receivedAt?: string;
   createdAt: string;
   scheduledPickupTime?: string; // ISO格式，预约领取时间

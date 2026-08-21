@@ -17,6 +17,7 @@ import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 
+import { appConfirm } from "@/lib/appDialog";
 const ROLE_OPTIONS: MinRole[] = ["MEMBER", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
 
 const ROLE_LABEL: Record<MinRole, string> = {
@@ -289,7 +290,7 @@ export default function AdminPagePermissionSettingsPage() {
   };
 
   const handleResetDefaults = async () => {
-    if (!window.confirm("确认重置当前平台为默认权限？")) return;
+    if (!await appConfirm("确认重置当前平台为默认权限？")) return;
     await resetPagePermissionDefaults(platform);
     toast.success("已重置默认");
     await qc.invalidateQueries({ queryKey: permQueryKey });

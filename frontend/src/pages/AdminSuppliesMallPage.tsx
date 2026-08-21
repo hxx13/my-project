@@ -34,6 +34,7 @@ import { Portal } from "@/components/Portal";
 import MySuppliesRecordsPanel from "@/components/supplies/MySuppliesRecordsPanel";
 import SuppliesItemEditDialog from "@/components/supplies/SuppliesItemEditDialog";
 import SuppliesCategoryEditDialog from "@/components/supplies/SuppliesCategoryEditDialog";
+import { formatSupplyStockLabel } from "@/utils/supplyStockLabel";
 
 const SUPPLIES_MALL_CARD_MIN_COL_PX = 300;
 /** 卡片最小高度（约为原版 2×） */
@@ -1160,11 +1161,7 @@ export default function AdminSuppliesMallPage() {
                       </div>
                     ) : null}
                     <div className="mt-0.5 truncate text-left text-xs text-[var(--twin-body)]">
-                      {item.stockMode === "QUANTIFIED"
-                        ? `库存 ${item.availableQty ?? item.stockQty}`
-                        : (item.availableQty ?? item.stockQty) >= 1
-                          ? "有货"
-                          : "缺货"}
+                      {formatSupplyStockLabel(item)}
                     </div>
                   </div>
                   </div>
@@ -1692,7 +1689,7 @@ export default function AdminSuppliesMallPage() {
       {/* 物资编辑弹窗 */}
       {editItem && (
         <SuppliesItemEditDialog
-          item={editItem}
+          item={items.find((x) => x.id === editItem.id) ?? editItem}
           categories={categories}
           open={!!editItem}
           onClose={() => setEditItem(null)}

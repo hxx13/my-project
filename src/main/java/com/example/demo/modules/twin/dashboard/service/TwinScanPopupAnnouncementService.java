@@ -1,14 +1,17 @@
 package com.example.demo.modules.twin.dashboard.service;
 
-import com.example.demo.modules.mp.util.MpHtmlSanitizer;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.twin.dashboard.dto.ScanPopupAnnouncementBundleDTO;
 import com.example.demo.modules.twin.dashboard.dto.ScanPopupAnnouncementItemDTO;
 import com.example.demo.modules.twin.dashboard.entity.TwinScanPopupAnnouncement;
 import com.example.demo.modules.twin.dashboard.mapper.TwinScanPopupAnnouncementMapper;
 import com.example.demo.modules.twin.scan.service.TwinScanNoticeAutoSuppressService;
+import com.example.demo.modules.twin.obligation.content.ContentJsonSupport;
+import com.example.demo.modules.twin.obligation.service.ObligationService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -27,17 +30,23 @@ public class TwinScanPopupAnnouncementService {
     private final TwinScanPopupAnnouncementMapper announcementMapper;
     private final TwinScanPopupAnnouncementConfigService configService;
     private final TwinScanNoticeAutoSuppressService noticeAutoSuppressService;
+    private final ObligationService obligationService;
+    private final ObjectMapper objectMapper;
 
     private final AtomicBoolean tableAbsent = new AtomicBoolean(false);
 
     public TwinScanPopupAnnouncementService(
             TwinScanPopupAnnouncementMapper announcementMapper,
             TwinScanPopupAnnouncementConfigService configService,
-            TwinScanNoticeAutoSuppressService noticeAutoSuppressService
+            TwinScanNoticeAutoSuppressService noticeAutoSuppressService,
+            ObjectMapper objectMapper,
+            @Autowired(required = false) ObligationService obligationService
     ) {
         this.announcementMapper = announcementMapper;
         this.configService = configService;
         this.noticeAutoSuppressService = noticeAutoSuppressService;
+        this.objectMapper = objectMapper;
+        this.obligationService = obligationService;
     }
 
     public ScanPopupAnnouncementBundleDTO buildBundleForScan(User operator, String operatorRoleHint) {
@@ -53,6 +62,7 @@ public class TwinScanPopupAnnouncementService {
             return null;
         }
         List<ScanPopupAnnouncementItemDTO> items = new ArrayList<>();
+        String subjectId = operator != null && StringUtils.hasText(operator.getId()) ? operator.getId().trim() : null;
         for (TwinScanPopupAnnouncement row : rows) {
             ScanPopupAnnouncementItemDTO item = new ScanPopupAnnouncementItemDTO();
             item.setId(row.getId());
@@ -60,6 +70,9 @@ public class TwinScanPopupAnnouncementService {
             item.setContentHtml(row.getContentHtml());
             item.setUpdatedAt(row.getUpdatedAt());
             items.add(item);
+            if (obligationService != null && subjectId != null) {
+                obligationService.syncAnnouncementForSubject(row, subjectId);
+            }
         }
         ScanPopupAnnouncementBundleDTO bundle = new ScanPopupAnnouncementBundleDTO();
         bundle.setEnabled(true);
@@ -102,6 +115,7 @@ public class TwinScanPopupAnnouncementService {
     public TwinScanPopupAnnouncement create(
             String title,
             String contentHtml,
+            String contentJson,
             boolean enabled,
             int sortOrder,
             LocalDateTime publishAt,
@@ -109,9 +123,11 @@ public class TwinScanPopupAnnouncementService {
             String operatorId
     ) {
         ensureTableReady();
+        ContentJsonSupport.Resolved resolved = ContentJsonSupport.resolve(objectMapper, contentJson, contentHtml, true);
         TwinScanPopupAnnouncement row = new TwinScanPopupAnnouncement();
         row.setTitle(trimTitle(title));
-        row.setContentHtml(MpHtmlSanitizer.sanitizeBodyHtml(contentHtml));
+        row.setContentHtml(resolved.contentHtml());
+        row.setContentJson(resolved.contentJson());
         row.setEnabled(enabled ? 1 : 0);
         row.setSortOrder(sortOrder);
         row.setStatus(STATUS_ACTIVE);
@@ -126,6 +142,7 @@ public class TwinScanPopupAnnouncementService {
             long id,
             String title,
             String contentHtml,
+            String contentJson,
             boolean enabled,
             int sortOrder,
             String status,
@@ -138,10 +155,12 @@ public class TwinScanPopupAnnouncementService {
         if (existing == null) {
             return new AnnouncementUpdateOutcome(null, 0);
         }
+        ContentJsonSupport.Resolved resolved = ContentJsonSupport.resolve(objectMapper, contentJson, contentHtml, true);
         TwinScanPopupAnnouncement row = new TwinScanPopupAnnouncement();
         row.setId(id);
         row.setTitle(trimTitle(title));
-        row.setContentHtml(MpHtmlSanitizer.sanitizeBodyHtml(contentHtml));
+        row.setContentHtml(resolved.contentHtml());
+        row.setContentJson(resolved.contentJson());
         row.setEnabled(enabled ? 1 : 0);
         row.setSortOrder(sortOrder);
         row.setStatus(StringUtils.hasText(status) ? status.trim().toUpperCase() : STATUS_ACTIVE);

@@ -7,6 +7,7 @@ import { AdminToolbar, AdminToolbarActions } from "@/components/admin/AdminToolb
 import {BrainCircuit} from "lucide-react";
 import {DebugPredictionPersonCard} from "@/features/twin-debug/DebugPredictionPersonCard";
 
+import { appAlert } from "@/lib/appDialog";
 export default function DebugPredictionPage() {
     const [page, setPage] = useState(1);
     const pageSize = 16;
@@ -35,7 +36,7 @@ export default function DebugPredictionPage() {
         setIsCalculating(true);
         try {
             await triggerModelCalculation("ALL");
-            alert("后端已启动全量模型推演，请稍后刷新。");
+            await appAlert("后端已启动全量模型推演，请稍后刷新。");
             setTimeout(() => refetch(), 2000);
         } catch {
             /* ignore */

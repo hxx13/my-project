@@ -11,6 +11,8 @@ public class MiniProgramRelease {
     private String title;
     private String summary;
     private String bodyHtml;
+    /** ProseMirror/TipTap JSON 真源；bodyHtml 为派生缓存 */
+    private String contentJson;
     private LocalDateTime publishedAt;
     private Integer showOnLaunch;
     private String createdBy;

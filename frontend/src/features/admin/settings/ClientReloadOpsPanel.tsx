@@ -5,12 +5,13 @@ import { broadcastClientReload } from "@/api/domains/clientVersion.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { cn } from "@/lib/utils";
 
+import { appConfirm } from "@/lib/appDialog";
 /** 页头紧凑操作：部署新静态资源后通知在线页刷新，不占主内容区 */
 export function ClientReloadOpsPanel() {
   const [pending, setPending] = useState(false);
 
   const onBroadcastReload = async () => {
-    const ok = window.confirm(
+    const ok = await appConfirm(
       "将向所有在线客户端发送刷新指令（双通道：WebSocket + HTTP 轮询）。\n\n" +
         "请确认已完成前端 build 并部署静态资源；未保存的表单可能丢失。\n\n是否继续？",
     );

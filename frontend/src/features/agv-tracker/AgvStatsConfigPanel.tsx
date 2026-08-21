@@ -8,6 +8,7 @@ import {
 } from "@/api/domains/agv-stats.api";
 import { AGV_ROBOTS } from "@/features/agv-tracker/agvRobotConfig";
 
+import { appConfirm } from "@/lib/appDialog";
 type TabKey = "STATION_GROUP" | "METRIC_PIPE" | "BUNDLE";
 
 const TABS: { key: TabKey; label: string }[] = [
@@ -125,8 +126,8 @@ export default function AgvStatsConfigPanel({ open, onClose }: Props) {
     }
   };
 
-  const handleDelete = (id: number) => {
-    if (window.confirm("确定删除此配置？")) deleteMut.mutate(id);
+  const handleDelete = async (id: number) => {
+    if (await appConfirm("确定删除此配置？")) deleteMut.mutate(id);
   };
 
   const toggle = (s: string, arr: string[], set: (v: string[]) => void) => {

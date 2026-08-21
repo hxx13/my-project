@@ -15,10 +15,11 @@ interface CardGridProps {
   isLoading?: boolean;
   isError?: boolean;
   errorMessage?: string;
+  orderingBlocked?: boolean;
 }
 
 export default function CardGrid({
-  items, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, onCreateNew, isLoading, isError, errorMessage,
+  items, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, onCreateNew, isLoading, isError, errorMessage, orderingBlocked,
 }: CardGridProps) {
   return (
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-2">
@@ -41,6 +42,7 @@ export default function CardGrid({
               onDrillDown={onDrillDown}
               onAddToCart={onAddToCart}
               onDelete={onDelete}
+              orderingBlocked={orderingBlocked}
             />
           ))}
           {isAdmin && onCreateNew && (

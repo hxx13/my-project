@@ -11,6 +11,7 @@ import com.example.demo.modules.aup.dto.AupValidationErrorDTO;
 import com.example.demo.modules.aup.dto.SignatureContextVO;
 import com.example.demo.modules.aup.entity.AupRecord;
 import com.example.demo.modules.aup.service.AupAccessPolicy;
+import com.example.demo.modules.aup.service.AupAroSyncService;
 import com.example.demo.modules.aup.service.AupService;
 import com.example.demo.modules.upload.entity.UploadFileRecord;
 import com.example.demo.modules.upload.service.UploadFileService;
@@ -48,15 +49,18 @@ public class AupController {
     private final AupService aupService;
     private final UploadFileService uploadFileService;
     private final AupAccessPolicy accessPolicy;
+    private final AupAroSyncService aupAroSyncService;
 
     public AupController(AuthContextService authContextService,
                          AupService aupService,
                          UploadFileService uploadFileService,
-                         AupAccessPolicy accessPolicy) {
+                         AupAccessPolicy accessPolicy,
+                         AupAroSyncService aupAroSyncService) {
         this.authContextService = authContextService;
         this.aupService = aupService;
         this.uploadFileService = uploadFileService;
         this.accessPolicy = accessPolicy;
+        this.aupAroSyncService = aupAroSyncService;
     }
 
     // ---- 计划书 ----
@@ -90,6 +94,21 @@ public class AupController {
     public Result<?> projectGroups(@RequestHeader(value = "Authorization", required = false) String authorization) {
         requireUser(authorization);
         return Result.success(aupService.listProjectGroups());
+    }
+
+    /** 订购侧：按课题组名列出已批准 AUP（下单必选 AUP 下拉） */
+    @GetMapping("/approved-for-order")
+    public Result<?> approvedForOrder(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                      @RequestParam(required = false) String projectGroupName) {
+        requireUser(authorization);
+        return Result.success(aupService.listApprovedForOrder(projectGroupName));
+    }
+
+    /** 课题组下拉数据源（本地 project_group 字典） */
+    @GetMapping("/project-group-options")
+    public Result<?> projectGroupOptions(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        requireUser(authorization);
+        return Result.success(aupService.listProjectGroupOptions());
     }
 
     @PostMapping
@@ -185,6 +204,13 @@ public class AupController {
         User user = requireUser(authorization);
         aupService.restoreDemo(id, user);
         return Result.success();
+    }
+
+    /** 重新生成演示示例（补齐缺失的 demo 计划书，幂等） */
+    @PostMapping("/demo/reseed")
+    public Result<?> reseedDemo(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = requireUser(authorization);
+        return Result.success(aupService.reseedDemo(user));
     }
 
     @PostMapping("/{id}/unlock")
@@ -294,6 +320,16 @@ public class AupController {
         data.put("isSecretary", accessPolicy.isSecretary(user.getId()));
         data.put("isExpert", accessPolicy.isExpert(user.getId()));
         return Result.success(data);
+    }
+
+    /** 管理员手动触发：从 ARO 全量同步计划书（正文 + 状态 + 评审记录）。 */
+    @PostMapping("/sync-from-aro")
+    public Result<?> syncFromAro(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = requireUser(authorization);
+        if (!accessPolicy.isAdmin(user)) {
+            throw TwinBusinessException.of(403, "仅管理员可同步 ARO 计划书");
+        }
+        return Result.success(aupAroSyncService.syncFromAro());
     }
 
     // ---- helpers ----

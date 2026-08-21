@@ -19,6 +19,7 @@ import {
 import { Archive, Database, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 
+import { appConfirm } from "@/lib/appDialog";
 type ArchiveRow = {
   id: number;
   sampleAt: string;
@@ -308,13 +309,13 @@ export default function AdminTelemetryArchivePage() {
               size="sm"
               loading={purgeNowM.isPending}
               disabled={!purgeForm.purgeEnabled || purgeRunning}
-              onClick={() => {
+              onClick={async () => {
                 const pending =
                   stats?.rowsOlderThanRetention != null && stats.rowsOlderThanRetention >= 0
                     ? stats.rowsOlderThanRetention.toLocaleString()
                     : "大量";
                 if (
-                  !window.confirm(
+                  !await appConfirm(
                     `将在后台持续删除过期数据（保留 ${purgeForm.retentionDays} 天，每批 ${purgeForm.batchDeleteSize} 行），` +
                       `待删约 ${pending} 行。进度条会自动更新，无需反复点击。继续？`
                   )

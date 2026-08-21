@@ -107,11 +107,21 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-stranded-config-interactive-challenge.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-stranded-config-violation-text-tpl-text.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-stranded-signout-config-row.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-status-violation-window-fix.sql", ctx)) success++;
+        // T1-2：孤儿父/断链子清理（FK 由 TwinViolationSchemaMigrator 幂等添加）
+        total++; if (runScript("db/bootstrap-cage-violation-fk-cascade.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-obligation-core.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-obligation-content-json.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-animal-order-time.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-animal-order-window-weekdays.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-animal-order-window-week-span.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-content-json-five-tables.sql", ctx)) success++;
 
         // --- 业务表 ---
         total++; if (runScript("db/bootstrap-twin-scan-popup-announcement.sql", ctx)) success++;
         total++; if (runScript("db/cage-shelf-cell-snapshot.sql", ctx)) success++;
         total++; if (runScript("db/cage-shelf-bookmark.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-booking.sql", ctx)) success++;
         total++; if (runScript("db/student-room-pin.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-twin-swipe-alert-rule.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-swipe-alert-notify-site.sql", ctx)) success++;
@@ -128,6 +138,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-report-form.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-report-form-source.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aup.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-record-registry-cols.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aup-dict-category.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aup-field-description.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aup-section-highlight.sql", ctx)) success++;
@@ -144,6 +155,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-drop-personnel-student-id.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-migrate-student-notify-keys.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-personnel-room-authorization.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-role.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-person-identity-migrate-to-personnel-id.sql", ctx)) success++;
         total++; if (seedAupDefaultTemplate(ctx)) success++;
         total++; if (seedAupDemo(ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;
@@ -154,6 +167,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/migration/V20260703__llm_conversation.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-password-plain.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cas-fields.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-user-auth-binding.sql", ctx)) success++;
         total++; if (runScript("db/migration/V20260731__cage_snapshot_add_cage_box_code.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aro-training-cache.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aro-password-col.sql", ctx)) success++;
@@ -170,6 +184,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-agv-trajectory-fields.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-coord-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-coord-config-offset.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-agv-coord-config-scale.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-agv-coord-preset.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-agv-tag.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-trajectory-partition.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-analysis.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-spatial-element-confidence.sql", ctx)) success++;
@@ -182,6 +199,24 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-agv-stats-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-inventory.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-inventory-item-images.sql", ctx)) success++;
+
+        // --- NHP 异种移植 CRF/EDC ---
+        total++; if (runScript("db/bootstrap-nhp-meta.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-nhp-data.sql", ctx)) success++;
+        // 已有库：CREATE IF NOT EXISTS 不会加列，单独幂等补齐 entry_pass（双录入）
+        total++; if (runScript("db/bootstrap-nhp-crf-record-value-entry-pass.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-nhp-import.sql", ctx)) success++;
+        // 原子模板 vs 组合模板：引用表 + form_type 澄清
+        total++; if (runScript("db/bootstrap-nhp-composite-atom.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-nhp-form-kind.sql", ctx)) success++;
+        // 研究对象身份标识列（D1.01/D2.01）
+        total++; if (runScript("db/bootstrap-nhp-subject-identity.sql", ctx)) success++;
+        // 字段字典套（猪/猴隔离）
+        total++; if (runScript("db/bootstrap-nhp-field-dictionary.sql", ctx)) success++;
+        // 码表整表版本（code+version 唯一；变更走版本流程）
+        total++; if (runScript("db/bootstrap-nhp-codelist-version.sql", ctx)) success++;
+        // 版号补位：唯一键仅约束 active=1，软删后可复用版号
+        total++; if (runScript("db/bootstrap-nhp-version-reuse.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");

@@ -1,4 +1,4 @@
-﻿import { COMPARE_CYCLE_OPTIONS, type AnalyticsCompareCycle } from "@/features/analytics/analyticsPipelineFilter";
+import { COMPARE_CYCLE_OPTIONS, type AnalyticsCompareCycle } from "@/features/analytics/analyticsPipelineFilter";
 import { analyticsChipActive, analyticsChipIdle } from "@/features/analytics/analyticsUiTokens";
 import { cn } from "@/lib/utils";
 

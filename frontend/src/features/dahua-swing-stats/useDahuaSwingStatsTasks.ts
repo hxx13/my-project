@@ -32,6 +32,7 @@ import {
   type BackfillAutoProgress,
 } from "./backfillAutoRunner";
 
+import { appConfirm } from "@/lib/appDialog";
 export type { BackfillAutoProgress };
 
 export type StatsTaskPageKind = "daily" | "backfill";
@@ -286,7 +287,7 @@ export function useDahuaSwingStatsTasks(kind: StatsTaskPageKind, defaultForm: ()
       return toast.error("请先保存回溯总范围（开始/结束时间）");
     }
     if (
-      !window.confirm(
+      !await appConfirm(
         "将按任务配置的回溯总时间范围，分段从大华强制重拉并 upsert 覆盖已有记录（不推进游标）。范围较大时可能耗时数分钟，是否继续？"
       )
     ) {
@@ -304,7 +305,7 @@ export function useDahuaSwingStatsTasks(kind: StatsTaskPageKind, defaultForm: ()
   };
 
   /** 回溯：仅执行下一段（按 backfillCursor 推进，与旧「自动连续」相同） */
-  const runBackfillNextSegment = async (id: number) => {
+  const runBackfillNextSegment = (id: number) => {
     const row = allRows.find((r) => r.id === id);
     void startBackfillAuto(id, row?.name || "");
   };
@@ -328,7 +329,7 @@ export function useDahuaSwingStatsTasks(kind: StatsTaskPageKind, defaultForm: ()
   };
 
   const remove = async (id: number) => {
-    if (!confirm("删除该任务？")) return;
+    if (!await appConfirm("删除该任务？")) return;
     try {
       await deleteDahuaSwingStatsTask(id);
       setAllRows((prev) => prev.filter((r) => r.id !== id));
@@ -339,8 +340,8 @@ export function useDahuaSwingStatsTasks(kind: StatsTaskPageKind, defaultForm: ()
     }
   };
 
-  const resetBackfillCursor = () => {
-    if (!confirm("将回溯进度重置为历史开始时间，下次从第一段重新拉取。确认？")) return;
+  const resetBackfillCursor = async () => {
+    if (!await appConfirm("将回溯进度重置为历史开始时间，下次从第一段重新拉取。确认？")) return;
     setForm((p) => ({ ...p, backfillCursor: "", backfillTotalSaved: 0 }));
     toast.success("已清除进度，保存任务后生效");
   };

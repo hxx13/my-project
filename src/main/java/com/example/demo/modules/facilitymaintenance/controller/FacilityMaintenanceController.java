@@ -299,7 +299,7 @@ public class FacilityMaintenanceController {
         Result<?> denied = requireStaff(authorization);
         if (denied != null) return denied;
         User user = resolveUser(authorization);
-        String opName = user != null && user.getDisplayNickname() != null ? user.getDisplayNickname() : (user != null ? user.getUsername() : null);
+        String opName = user != null ? service.resolveOperatorDisplayName(user.getId()) : null;
         try {
             service.submitDailyInspectionSheet(id, user != null ? user.getId() : null, opName);
             return Result.success();
@@ -462,7 +462,7 @@ public class FacilityMaintenanceController {
         LocalDateTime at = parseDateTime(body.get("inspectedAt"));
         @SuppressWarnings("unchecked")
         Map<String, String> values = (Map<String, String>) body.get("values");
-        String opName = user != null && user.getDisplayNickname() != null ? user.getDisplayNickname() : (user != null ? user.getUsername() : null);
+        String opName = user != null ? service.resolveOperatorDisplayName(user.getId()) : null;
         return Result.success(service.createInspectionRecord(siteId, templateId, at, values,
                 user != null ? user.getId() : null, opName));
     }

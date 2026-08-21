@@ -69,7 +69,7 @@ import {
   fetchRealtimeRefresh, forceRealtimeRefresh, type RealtimeRefreshResponse,
   fetchAllocationAups, type AupItem,
   assignCages, cancelCageAssignment,
-  fetchBookingRooms, type BookingRoom,
+  fetchBookingRooms, type BookingRoom, syncBookingData,
   executeCageBoxAction, type CageBoxAction, type CageBoxActionRequest,
   cancelCageBoxColor, ACTION_CANCEL_COLOR, type CancelColor,
   bindCageBox, unbindCageBox, updateAnimalCage, type AnimalCageUpdatePayload,
@@ -101,6 +101,7 @@ import CageScanProgressBanner from "@/features/cage-shelf/components/CageScanPro
 import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
 import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
 
+import { appConfirm } from "@/lib/appDialog";
 export default function AdminCageShelfPage(){return<CageColorProvider><Inner/></CageColorProvider>;}
 type ShelfTab="bookmarks"|"filter";
 
@@ -227,14 +228,26 @@ function Inner(){
   const[bookingRooms,setBookingRooms]=useState<BookingRoom[]>([]);
   const[bookingRoom,setBookingRoom]=useState<BookingRoom|null>(null);
   const[bookingLoading,setBookingLoading]=useState(false);
+  const[bookingSyncing,setBookingSyncing]=useState(false);
 
-  // 加载预约房间列表（全量，前端按 roomId 匹配）
+  // 加载预约房间列表（本地优先，全量，前端按 roomId 匹配）
   const loadBookingRooms=useCallback(async()=>{
     setBookingLoading(true);
     try{const r=await fetchBookingRooms(1,200);const list=r?.data?.list??[];setBookingRooms(list);}
     catch{setBookingRooms([]);}
     finally{setBookingLoading(false);}
   },[]);
+
+  // 手动同步：从 ARO 拉取预约数据落本地，成功后刷新列表
+  const handleBookingSync=useCallback(async()=>{
+    setBookingSyncing(true);
+    try{
+      const r=await syncBookingData();
+      toast.success(`同步完成：${r.rooms} 房间 / ${r.aups} 分配 / ${r.aupDict} AUP`);
+      await loadBookingRooms();
+    }catch(e:any){toast.error(e?.message||"同步失败");}
+    finally{setBookingSyncing(false);}
+  },[loadBookingRooms]);
 
   // booking 模式下进入房间时加载数据
   useEffect(()=>{
@@ -938,31 +951,31 @@ function Inner(){
             <button type="button" onClick={()=>setCollapsed(v=>!v)} className="shrink-0 rounded p-1 text-[var(--twin-mute)] hover:text-[var(--twin-ink)] hover:bg-[var(--twin-canvas)]" title={collapsed?"展开侧栏":"收起侧栏"}>{collapsed?<PanelLeft className="h-4 w-4"/>:<PanelLeftClose className="h-4 w-4"/>}</button>
             <div className="flex items-center gap-1 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1">
               <button type="button" onClick={()=>setTab("bookmarks")} className={`flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${tab==="bookmarks"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}><Star className="h-3 w-3"/>收藏</button>
-              <button type="button" onClick={()=>setTab("filter")} className={`flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${tab==="filter"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}><LayoutGrid className="h-3 w-3"/>筛选</button>
+              <button type="button" onClick={() =>setTab("filter")} className={`flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${tab==="filter"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}><LayoutGrid className="h-3 w-3"/>筛选</button>
             </div>
             {tab==="filter"&&pageMode!=="booking"&&<div className="flex items-center gap-1 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1">
-              <button type="button" onClick={()=>setViewMode("room")} className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${viewMode==="room"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>全房间</button>
-              <button type="button" onClick={()=>setViewMode("shelf")} className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${viewMode==="shelf"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>单笼架</button>
+              <button type="button" onClick={() =>setViewMode("room")} className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${viewMode==="room"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>全房间</button>
+              <button type="button" onClick={() =>setViewMode("shelf")} className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${viewMode==="shelf"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>单笼架</button>
             </div>}
             {/* ---- 笼位分配 / 笼位预约 / 编辑 / 绑定 (STAFF+) ---- */}
             {canEdit && <div className="flex items-center gap-1 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1">
-              <button type="button" onClick={()=>{
-                  if(bindMode&&bindPairCache.size>0){if(!window.confirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`))return;setBindPairCache(new Map());}
+              <button type="button" onClick={async () =>{
+                  if(bindMode&&bindPairCache.size>0){if(!await appConfirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`))return;setBindPairCache(new Map());}
                   const n=pageMode!=="allocate";setPageMode(n?"allocate":"view");setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);if(n){setEditMode(false);setBindMode(false);setScanCache(new Map());setLastScannedKey(null);setBindScannedCode("");setBindSelectedKey(null);setUnbindActive(false);}
                 }}
                 className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${pageMode==="allocate"?"bg-blue-600 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
                 笼位分配{pageMode==="allocate"?" ▾":""}
               </button>
-              <button type="button" onClick={()=>{
-                  if(bindMode&&bindPairCache.size>0){if(!window.confirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`))return;setBindPairCache(new Map());}
+              <button type="button" onClick={async () =>{
+                  if(bindMode&&bindPairCache.size>0){if(!await appConfirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`))return;setBindPairCache(new Map());}
                   const n=pageMode!=="booking";setPageMode(n?"booking":"view");setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);if(n){setEditMode(false);setBindMode(false);setScanCache(new Map());setLastScannedKey(null);setBindScannedCode("");setBindSelectedKey(null);setUnbindActive(false);}
                 }}
                 className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${pageMode==="booking"?"bg-emerald-600 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
                 笼位预约{pageMode==="booking"?" ▾":""}
               </button>
-              {!bindMode&&<button type="button" onClick={()=>{
+              {!bindMode&&<button type="button" onClick={async () =>{
                   if(bindMode&&bindPairCache.size>0){
-                    if(!window.confirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`))return;
+                    if(!await appConfirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`))return;
                     setBindPairCache(new Map());
                   }
                   const n=!editMode;setEditMode(n);setPageMode("view");if(!n){setScanCache(new Map());setLastScannedKey(null);}if(n){setBindMode(false);setBindScannedCode("");setBindSelectedKey(null);setUnbindActive(false);setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);}
@@ -970,10 +983,10 @@ function Inner(){
                 className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${editMode?"bg-[var(--twin-primary)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
                 编辑{editMode?" ▾":""}
               </button>}
-              {!editMode&&<button type="button" onClick={()=>{
+              {!editMode&&<button type="button" onClick={async () =>{
                   if(bindMode&&(bindPairCache.size>0||unbindPairCache.size>0)){
                     const total=bindPairCache.size+unbindPairCache.size;
-                    if(!window.confirm(`有 ${total} 个未提交的操作，是否放弃？\n\n「确定」放弃并退出\n「取消」继续`))return;
+                    if(!await appConfirm(`有 ${total} 个未提交的操作，是否放弃？\n\n「确定」放弃并退出\n「取消」继续`))return;
                     setBindPairCache(new Map());setUnbindPairCache(new Set());setUnbindCells(new Map());
                   }
                   const n=!bindMode;setBindMode(n);setPageMode("view");setBindScannedCode("");setBindSelectedKey(null);setUnbindActive(false);if(!n){setScanCache(new Map());}if(n){setEditMode(false);setScanCache(new Map());setLastScannedKey(null);setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);}
@@ -1014,6 +1027,10 @@ function Inner(){
                   className="rounded-twin-md px-1.5 py-0.5 text-[10px] font-bold bg-blue-500 text-white hover:bg-blue-600 ml-1" title="强制刷新房间数据">↻</button>
               </>)}
               {pageMode==="booking"&&<AupSearchBar onSelectRoom={(rid,rname)=>{onOpenRoom(rid,rname);expandToRoom(rid);}}/>}
+              {pageMode==="booking"&&<button type="button" onClick={handleBookingSync} disabled={bookingSyncing}
+                className="flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition">
+                {bookingSyncing?<Loader2 className="h-3 w-3 animate-spin"/>:null}🔄 同步 ARO
+              </button>}
               {pageMode==="allocate"&&<button type="button" onClick={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}}
                 className={`rounded-twin-md px-2 py-1 text-[11px] font-semibold transition ${boxSelectMode?"bg-amber-500 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)] border border-dashed border-[var(--twin-hairline)]"}`}>
                 {boxSelectMode?"框选中 · 点击两格":"⬜ 矩形框选"}
@@ -1177,12 +1194,13 @@ function Inner(){
         {tab==="filter"&&<>
           {/* BOOKING MODE: 笼位预约管理 — 左（预约数据）右（笼架实时预览） */}
           {pageMode==="booking"&&<>
-            {!aRid&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mx-auto mb-3 opacity-20"/>展开左侧目录，点击房间查看笼位预约<br/><span className="text-[11px]">选中房间后可查看和编辑 AUP 课题组分配，点击笼架预览笼位</span></div>}
+            {!bookingLoading&&bookingRooms.length===0&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mx-auto mb-3 opacity-20"/>暂无预约数据<br/><span className="text-[11px]">请点击顶部「🔄 同步 ARO」从远端拉取房间预约数据</span></div>}
+            {!aRid&&!(bookingRooms.length===0&&!bookingLoading)&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mx-auto mb-3 opacity-20"/>展开左侧目录，点击房间查看笼位预约<br/><span className="text-[11px]">选中房间后可查看和编辑 AUP 课题组分配，点击笼架预览笼位</span></div>}
             {aRid&&bookingLoading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] h-full flex items-center justify-center text-sm text-[var(--twin-mute)]"><Loader2 className="h-4 w-4 animate-spin mr-2"/>加载预约数据…</div>}
             {aRid&&!bookingLoading&&<div className="flex gap-3 min-h-0 h-full">
               {/* Left: booking data */}
               <div className="w-1/2 flex flex-col min-w-0">
-                <CageBookingPanel room={bookingRoom} roomId={aRid} ensureCasBinding={ensureCasBinding}/>
+                <CageBookingPanel room={bookingRoom} roomId={aRid}/>
               </div>
               {/* Right: shelf grid (realtime) */}
               <div className="w-1/2 flex flex-col min-w-0">
@@ -1496,9 +1514,9 @@ function Inner(){
                     <span className={h.action==="unmarked"?"text-red-600":h.action==="annotated"?"text-blue-600":"text-green-600"}>{h.action==="unmarked"?"✕":h.action==="annotated"?"📝":"✓"} {label}</span>
                     <div className="flex items-center gap-1">
                       <span className="text-[var(--twin-mute)]">{h.createdAt?.substring(0,16)||""}</span>
-                      <button onClick={()=>{
+                      <button onClick={async () =>{
                         if(!h.id) return;
-                        if(!confirm("确定删除该条历史记录？")) return;
+                        if(!await appConfirm("确定删除该条历史记录？")) return;
                         authHttp.delete(`/local/history/${h.id}`).then(()=>{
                           setEditHistory(p=>p.filter(x=>x.id!==h.id));
                           toast.success("已删除");

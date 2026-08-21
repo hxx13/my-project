@@ -384,16 +384,21 @@ public class ScanDelayRequestService {
     public List<Map<String, Object>> listReviewedHistoryEnriched(int limit) {
         List<TwinScanDelayRequest> rows = requestMapper.listReviewedHistory(Math.max(1, Math.min(limit, 200)));
         if (rows.isEmpty()) return List.of();
-        Set<String> subjectIds = rows.stream()
-                .map(TwinScanDelayRequest::getSubjectUserId)
-                .filter(StringUtils::hasText)
-                .map(String::trim)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(subjectIds);
+        Set<String> nameIds = new LinkedHashSet<>();
+        for (TwinScanDelayRequest req : rows) {
+            if (StringUtils.hasText(req.getSubjectUserId())) {
+                nameIds.add(req.getSubjectUserId().trim());
+            }
+            if (StringUtils.hasText(req.getReviewedBy())) {
+                nameIds.add(req.getReviewedBy().trim());
+            }
+        }
+        Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(nameIds);
         List<Map<String, Object>> out = new ArrayList<>();
         for (TwinScanDelayRequest req : rows) {
             TwinScanDelayOption opt = configService.requireOptionQuiet(req.getOptionId());
             String subjectId = req.getSubjectUserId() != null ? req.getSubjectUserId().trim() : "";
+            String reviewedBy = req.getReviewedBy() != null ? req.getReviewedBy().trim() : "";
             Map<String, Object> row = new HashMap<>();
             row.put("id", req.getId());
             row.put("subjectUserId", subjectId);
@@ -405,6 +410,8 @@ public class ScanDelayRequestService {
             row.put("createdAt", formatWallClock(req.getCreatedAt()));
             row.put("reviewedAt", formatWallClock(req.getReviewedAt()));
             row.put("reviewedBy", req.getReviewedBy());
+            row.put("reviewedByName", StringUtils.hasText(reviewedBy)
+                    ? displayNames.getOrDefault(reviewedBy, reviewedBy) : "");
             row.put("rejectReason", req.getRejectReason());
             row.put("optionLabel", opt != null ? opt.getOptionLabel() : "");
             row.put("roomName", resolveRoomDisplayName(req.getRoomId(), opt));

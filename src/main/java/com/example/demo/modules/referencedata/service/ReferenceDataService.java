@@ -3,6 +3,10 @@ package com.example.demo.modules.referencedata.service;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.animalorder.service.AnimalOrderTimePolicyService;
+import com.example.demo.modules.aup.entity.AupRecord;
+import com.example.demo.modules.aup.mapper.AupRecordMapper;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.referencedata.dto.*;
 import com.example.demo.modules.referencedata.entity.*;
 import com.example.demo.modules.referencedata.mapper.*;
@@ -18,13 +22,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class ReferenceDataService {
     private static final Logger log = LoggerFactory.getLogger(ReferenceDataService.class);
+
+    private static final ZoneId ORDER_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final ReferenceDataMapper referenceDataMapper;
     private final RefSpecTemplateMapper specTemplateMapper;
@@ -36,6 +45,9 @@ public class ReferenceDataService {
     private final ObjectMapper objectMapper;
     private final PersonIdentityService personIdentityService;
     private final NotificationService notificationService;
+    private final AupRecordMapper aupRecordMapper;
+    private final UserDisplayNameService userDisplayNameService;
+    private final AnimalOrderTimePolicyService animalOrderTimePolicyService;
 
     public ReferenceDataService(ReferenceDataMapper referenceDataMapper,
                                 RefSpecTemplateMapper specTemplateMapper,
@@ -46,7 +58,10 @@ public class ReferenceDataService {
                                 ReferenceFieldRegistry fieldRegistry,
                                 ObjectMapper objectMapper,
                                 PersonIdentityService personIdentityService,
-                                NotificationService notificationService) {
+                                NotificationService notificationService,
+                                AupRecordMapper aupRecordMapper,
+                                UserDisplayNameService userDisplayNameService,
+                                AnimalOrderTimePolicyService animalOrderTimePolicyService) {
         this.referenceDataMapper = referenceDataMapper;
         this.specTemplateMapper = specTemplateMapper;
         this.cartMapper = cartMapper;
@@ -57,6 +72,9 @@ public class ReferenceDataService {
         this.objectMapper = objectMapper;
         this.personIdentityService = personIdentityService;
         this.notificationService = notificationService;
+        this.aupRecordMapper = aupRecordMapper;
+        this.userDisplayNameService = userDisplayNameService;
+        this.animalOrderTimePolicyService = animalOrderTimePolicyService;
     }
 
     // ==================== RefData CRUD ====================
@@ -206,7 +224,7 @@ public class ReferenceDataService {
     // ==================== Cart ====================
 
     public List<RefCartView> listCart(String groupId) {
-        return cartMapper.listByGroupId(groupId).stream().map(this::toCartView).toList();
+        return toCartViews(cartMapper.listByGroupId(groupId));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -214,46 +232,123 @@ public class ReferenceDataService {
         if (req == null || req.getRefDataId() == null) {
             return Result.error("参数无效");
         }
+        if (req.getAupRecordId() == null) {
+            return Result.error("请先选择 AUP");
+        }
         RefData refData = referenceDataMapper.findById(req.getRefDataId());
         if (refData == null) {
             return Result.error("参考数据不存在");
         }
+        AupRecord aup = resolveAupForOrder(req.getAupRecordId(), null);
+        if (aup == null) {
+            return Result.error("所选 AUP 不存在或未获批准");
+        }
+        String allowErr = validateItemAgainstAllowlist(aup, req.getRefDataId());
+        if (allowErr != null) {
+            return Result.error("不符合当前AUP");
+        }
         RefCart entity = new RefCart();
         entity.setGroupId(groupId);
         entity.setRefDataId(req.getRefDataId());
+        entity.setAupRecordId(req.getAupRecordId());
         entity.setSpecSelections(toJson(req.getSpecSelections()));
         entity.setQuantity(req.getQuantity() != null ? req.getQuantity() : 1);
-        entity.setRemark(req.getRemark());
+        // 加购路径不再写入每规格备注
+        entity.setRemark(null);
+        entity.setPackageStatus("DRAFT");
+        entity.setPackageRemark(null);
         entity.setAddedBy(userId);
         cartMapper.insert(entity);
         return Result.success(toCartView(cartMapper.findById(entity.getId())));
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public Result<RefCartView> updateCartItem(Long id, RefCartUpsertRequest req) {
+    public Result<RefCartView> updateCartItem(Long id, String userId, RefCartUpsertRequest req) {
         RefCart existing = cartMapper.findById(id);
         if (existing == null) {
             return Result.error("购物车项不存在");
         }
+        boolean pi = personIdentityService.isPi(userId);
+        if (!pi && !Objects.equals(existing.getAddedBy(), userId)) {
+            return Result.error("只能修改本人加购的行");
+        }
         if (req.getSpecSelections() != null) existing.setSpecSelections(toJson(req.getSpecSelections()));
         if (req.getQuantity() != null) existing.setQuantity(req.getQuantity());
-        if (req.getRemark() != null) existing.setRemark(req.getRemark());
+        // READY 行实验员改数量时自动回退 DRAFT（需重新提交订单包）
+        if (!pi && "READY".equalsIgnoreCase(existing.getPackageStatus()) && req.getQuantity() != null) {
+            existing.setPackageStatus("DRAFT");
+            existing.setPackageRemark(null);
+        }
         cartMapper.update(existing);
         return Result.success(toCartView(cartMapper.findById(id)));
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public Result<?> removeFromCart(Long id) {
-        if (cartMapper.findById(id) == null) {
+    public Result<?> removeFromCart(Long id, String userId) {
+        RefCart existing = cartMapper.findById(id);
+        if (existing == null) {
             return Result.error("购物车项不存在");
+        }
+        boolean pi = personIdentityService.isPi(userId);
+        if (!pi && !Objects.equals(existing.getAddedBy(), userId)) {
+            return Result.error("只能删除本人加购的行");
         }
         cartMapper.deleteById(id);
         return Result.success();
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void clearCart(String groupId) {
+    public Result<?> clearCart(String groupId, String userId) {
+        if (!personIdentityService.isPi(userId)) {
+            return Result.error("仅组长可清空课题组共享购物车");
+        }
         cartMapper.deleteByGroupId(groupId);
+        return Result.success();
+    }
+
+    /**
+     * 实验员将本人行标为 READY 并写入统一 package_remark（订单包，非正式单）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Result<List<RefCartView>> markPackageReady(String groupId, String userId, RefCartPackageRequest req) {
+        if (!StringUtils.hasText(groupId)) {
+            return Result.error("缺少 groupId");
+        }
+        List<RefCart> targets = resolveOwnCartLines(groupId, userId, req != null ? req.getCartIds() : null);
+        if (targets.isEmpty()) {
+            return Result.error("没有可提交的购物车行");
+        }
+        String remark = req != null ? req.getPackageRemark() : null;
+        for (RefCart item : targets) {
+            cartMapper.updatePackageStatus(item.getId(), "READY", remark);
+        }
+        return Result.success(toCartViews(cartMapper.listByGroupId(groupId)));
+    }
+
+    /** 撤回订单包：本人 READY → DRAFT（非审批动作）。 */
+    @Transactional(rollbackFor = Exception.class)
+    public Result<List<RefCartView>> withdrawPackage(String groupId, String userId, RefCartPackageRequest req) {
+        if (!StringUtils.hasText(groupId)) {
+            return Result.error("缺少 groupId");
+        }
+        List<RefCart> targets = resolveOwnCartLines(groupId, userId, req != null ? req.getCartIds() : null);
+        if (targets.isEmpty()) {
+            return Result.error("没有可撤回的购物车行");
+        }
+        for (RefCart item : targets) {
+            if ("READY".equalsIgnoreCase(item.getPackageStatus())) {
+                cartMapper.updatePackageStatus(item.getId(), "DRAFT", null);
+            }
+        }
+        return Result.success(toCartViews(cartMapper.listByGroupId(groupId)));
+    }
+
+    private List<RefCart> resolveOwnCartLines(String groupId, String userId, List<Long> cartIds) {
+        List<RefCart> all = cartMapper.listByGroupId(groupId);
+        return all.stream()
+                .filter(c -> Objects.equals(c.getAddedBy(), userId))
+                .filter(c -> cartIds == null || cartIds.isEmpty() || cartIds.contains(c.getId()))
+                .toList();
     }
 
     // ==================== Orders ====================
@@ -263,29 +358,117 @@ public class ReferenceDataService {
         if (req == null || !StringUtils.hasText(req.getGroupId())) {
             return Result.error("参数无效，缺少 groupId");
         }
-        // 仅组长（GROUP_LEADER 身份标识）可提交订单，组员只能加购
+        // 仅组长（GROUP_LEADER 身份标识）可提交订单，组员只能加购 / 提交订单包
         if (!personIdentityService.isPi(userId)) {
-            return Result.error("仅组长可提交订单（组员请先加购，由组长统一提交）");
+            return Result.error("仅组长可提交订单（组员请先加购并提交订单包，由组长统一提交）");
         }
-        List<RefCart> cartItems = cartMapper.listByGroupId(req.getGroupId());
-        if (cartItems.isEmpty() && (req.getLines() == null || req.getLines().isEmpty())) {
-            return Result.error("购物车为空，无法提交订单");
+
+        List<RefCart> itemsToProcess;
+        List<Long> cartIdsToClear = new ArrayList<>();
+        if (req.getLines() != null && !req.getLines().isEmpty()) {
+            itemsToProcess = convertLinesToCart(req.getGroupId(), userId, req.getLines());
+            for (RefCart c : itemsToProcess) {
+                if (c.getAupRecordId() == null) {
+                    return Result.error("订单行缺少 aupRecordId，请升级客户端后按行归属 AUP 再提交");
+                }
+            }
+        } else {
+            List<RefCart> cartItems = cartMapper.listByGroupId(req.getGroupId());
+            if (req.getCartIds() != null && !req.getCartIds().isEmpty()) {
+                Set<Long> idSet = new HashSet<>(req.getCartIds());
+                itemsToProcess = cartItems.stream().filter(c -> idSet.contains(c.getId())).toList();
+            } else {
+                // 默认：全部 READY 行
+                itemsToProcess = cartItems.stream()
+                        .filter(c -> "READY".equalsIgnoreCase(c.getPackageStatus()))
+                        .toList();
+                // 若无 READY，兼容旧客户端：整车提交（要求每行有 aup）
+                if (itemsToProcess.isEmpty()) {
+                    itemsToProcess = cartItems;
+                }
+            }
+            if (itemsToProcess.isEmpty()) {
+                return Result.error("购物车为空或没有可提交的 READY 行");
+            }
+            for (RefCart c : itemsToProcess) {
+                if (c.getAupRecordId() == null) {
+                    return Result.error("购物车行缺少 AUP 归属，请清空后重新按 AUP 加购");
+                }
+                cartIdsToClear.add(c.getId());
+            }
         }
-        // Create order
+
+        // 按行校验 allowlist
+        String allowlistError = validateOrderLinesAgainstAllowlist(itemsToProcess);
+        if (allowlistError != null) {
+            throw new TwinBusinessException(400, allowlistError);
+        }
+
+        // 头 AUP：请求显式传入，或全部行同一 AUP 时写入展示字段
+        AupRecord headerAup = null;
+        if (req.getAupRecordId() != null) {
+            headerAup = resolveAupForOrder(req.getAupRecordId(), req.getProjectGroupName());
+            if (headerAup == null) {
+                return Result.error("所选 AUP 不存在或未获批准");
+            }
+        } else {
+            Set<Long> distinctAups = itemsToProcess.stream()
+                    .map(RefCart::getAupRecordId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            if (distinctAups.size() == 1) {
+                headerAup = resolveAupForOrder(distinctAups.iterator().next(), req.getProjectGroupName());
+            }
+        }
+
         RefOrder order = new RefOrder();
         order.setGroupId(req.getGroupId());
-        // 提交人以服务端登录人为准，不信任客户端传入的 submitterId
         order.setSubmitterId(userId);
-        order.setSubmitterName(req.getSubmitterName());
+        // 展示名以后端统一解析为准（兼容 staffId / 19 位 id），不依赖前端传入
+        String resolvedSubmitterName = userDisplayNameService.resolveDisplayName(userId);
+        order.setSubmitterName(StringUtils.hasText(resolvedSubmitterName)
+                ? resolvedSubmitterName
+                : (StringUtils.hasText(req.getSubmitterName()) ? req.getSubmitterName().trim() : userId));
         order.setProjectGroupName(req.getProjectGroupName());
+        if (headerAup != null) {
+            order.setProjectGroupId(headerAup.getProjectGroupId());
+            order.setAupRecordId(headerAup.getId());
+            order.setRegisterNo(headerAup.getRegisterNo());
+        } else {
+            // 多 AUP：尽量从行解析课题组 id
+            for (RefCart item : itemsToProcess) {
+                AupRecord a = aupRecordMapper.selectById(item.getAupRecordId());
+                if (a != null && a.getProjectGroupId() != null) {
+                    order.setProjectGroupId(a.getProjectGroupId());
+                    if (!StringUtils.hasText(order.getProjectGroupName())) {
+                        order.setProjectGroupName(a.getProjectGroupName());
+                    }
+                    break;
+                }
+            }
+        }
         order.setStatus("PENDING");
         order.setSubmitRemark(req.getSubmitRemark());
         order.setSubmittedAt(LocalDateTime.now());
+
+        ZonedDateTime orderAt = ZonedDateTime.now(ORDER_ZONE);
+        LocalDate maxEta = null;
+        for (RefCart item : itemsToProcess) {
+            String categoryKey = resolveBreedCategoryKey(item.getRefDataId());
+            if (!animalOrderTimePolicyService.canOrderAt(orderAt, categoryKey)) {
+                throw TwinBusinessException.of(
+                        ErrorCodeConstants.ANIMAL_ORDER_WINDOW_CLOSED,
+                        "当前不在可购时间窗口内");
+            }
+            LocalDate lineEta = animalOrderTimePolicyService.estimateDeliveryAt(orderAt, categoryKey);
+            if (maxEta == null || lineEta.isAfter(maxEta)) {
+                maxEta = lineEta;
+            }
+        }
+        order.setEstimatedDeliveryDate(maxEta);
+
         orderMapper.insert(order);
-        // Create order lines from cart or explicit lines
-        List<RefCart> itemsToProcess = (req.getLines() != null && !req.getLines().isEmpty())
-                ? convertLinesToCart(req.getGroupId(), userId, req.getLines())
-                : cartItems;
+
         List<String> itemNames = new ArrayList<>();
         for (RefCart item : itemsToProcess) {
             RefOrderLine line = new RefOrderLine();
@@ -294,21 +477,149 @@ public class ReferenceDataService {
             line.setSpecSelections(item.getSpecSelections());
             line.setHierarchyChain(resolveHierarchyChain(item.getRefDataId()));
             line.setQuantity(item.getQuantity());
-            line.setLineRemark(item.getRemark());
+            // 行备注：优先 package_remark 快照，不再依赖加购 remark
+            String lineRemark = StringUtils.hasText(item.getPackageRemark())
+                    ? item.getPackageRemark()
+                    : item.getRemark();
+            line.setLineRemark(lineRemark);
+            line.setAddedBy(item.getAddedBy());
+            line.setAupRecordId(item.getAupRecordId());
             orderLineMapper.insert(line);
             RefData refData = referenceDataMapper.findById(item.getRefDataId());
             if (refData != null) {
                 itemNames.add(extractDisplayName(refData));
             }
         }
-        // Clear cart
-        cartMapper.deleteByGroupId(req.getGroupId());
-        // Log
+
+        if (!cartIdsToClear.isEmpty()) {
+            cartMapper.deleteByIds(cartIdsToClear);
+        } else if (req.getLines() == null || req.getLines().isEmpty()) {
+            cartMapper.deleteByGroupId(req.getGroupId());
+        }
+
+        String aupNote = headerAup != null
+                ? "，AUP " + headerAup.getRegisterNo()
+                : "，多 AUP 行级归因";
         logOrderAction(order.getId(), "CREATED", userId,
-                "提交订单，共 " + itemsToProcess.size() + " 项");
-        // 通知接收人（秘书）
+                "提交订单，共 " + itemsToProcess.size() + " 项" + aupNote);
         notifyReceivers(order, userId, itemNames);
         return Result.success(toOrderView(orderMapper.findById(order.getId())));
+    }
+
+    /** 解析并校验下单 AUP：必须存在、已批准、属于本课题组。返回 null 表示未传或未命中。 */
+    private AupRecord resolveAupForOrder(Long aupRecordId, String projectGroupName) {
+        if (aupRecordId == null) {
+            return null;
+        }
+        AupRecord aup = aupRecordMapper.selectById(aupRecordId);
+        if (aup == null || !"approved".equals(aup.getCurrentStage())) {
+            return null;
+        }
+        if (StringUtils.hasText(projectGroupName) && StringUtils.hasText(aup.getProjectGroupName())
+                && !projectGroupName.equals(aup.getProjectGroupName())) {
+            return null;
+        }
+        return aup;
+    }
+
+    /** 按行用各自 aup_record_id 校验白名单。 */
+    private String validateOrderLinesAgainstAllowlist(List<RefCart> items) {
+        Map<Long, AupRecord> aupCache = new HashMap<>();
+        Map<Long, List<Map<String, Object>>> allowCache = new HashMap<>();
+        for (RefCart item : items) {
+            Long aupId = item.getAupRecordId();
+            if (aupId == null) {
+                return "订单行缺少 AUP 归属";
+            }
+            AupRecord aup = aupCache.computeIfAbsent(aupId, id -> aupRecordMapper.selectById(id));
+            if (aup == null || !"approved".equals(aup.getCurrentStage())) {
+                return "订单行关联的 AUP 无效或未获批准";
+            }
+            if (!StringUtils.hasText(aup.getAnimalAllowlist())) {
+                continue;
+            }
+            List<Map<String, Object>> entries = allowCache.computeIfAbsent(aupId,
+                    id -> parseAllowlist(aup.getAnimalAllowlist()));
+            if (entries.isEmpty()) {
+                continue;
+            }
+            if (!isAllowedByAllowlist(entries, item.getRefDataId())) {
+                String name = extractDisplayName(referenceDataMapper.findById(item.getRefDataId()));
+                return "动物「" + name + "」不符合当前AUP（" + aup.getRegisterNo() + "）";
+            }
+        }
+        return null;
+    }
+
+    private String validateItemAgainstAllowlist(AupRecord aup, Long refDataId) {
+        if (aup == null || !StringUtils.hasText(aup.getAnimalAllowlist())) {
+            return null;
+        }
+        List<Map<String, Object>> entries = parseAllowlist(aup.getAnimalAllowlist());
+        if (entries.isEmpty()) {
+            return null;
+        }
+        if (!isAllowedByAllowlist(entries, refDataId)) {
+            return "不符合当前AUP";
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> parseAllowlist(String json) {
+        try {
+            Object o = objectMapper.readValue(json, Object.class);
+            if (o instanceof List<?> l) {
+                List<Map<String, Object>> out = new ArrayList<>();
+                for (Object item : l) {
+                    if (item instanceof Map<?, ?> m) {
+                        out.add((Map<String, Object>) m);
+                    }
+                }
+                return out;
+            }
+        } catch (Exception e) {
+            log.warn("解析 AUP 白名单失败: {}", e.getMessage());
+        }
+        return List.of();
+    }
+
+    /** 判断 refDataId 是否命中白名单：SUBTREE 命中祖先链任一节点，EXACT 仅命中自身。 */
+    private boolean isAllowedByAllowlist(List<Map<String, Object>> entries, Long leafId) {
+        if (leafId == null) {
+            return false;
+        }
+        List<RefData> ancestors = referenceDataMapper.findAncestors(leafId);
+        if (ancestors == null || ancestors.isEmpty()) {
+            return false;
+        }
+        for (RefData node : ancestors) {
+            boolean isLeaf = node.getId().equals(leafId);
+            for (Map<String, Object> e : entries) {
+                Long rid = toLong(e.get("refDataId"));
+                if (rid != null && rid.equals(node.getId())) {
+                    String scope = e.get("scope") == null ? null : String.valueOf(e.get("scope"));
+                    if ("SUBTREE".equals(scope) || isLeaf) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private Long toLong(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            return n.longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(v).trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private void notifyReceivers(RefOrder order, String senderId, List<String> itemNames) {
@@ -370,7 +681,17 @@ public class ReferenceDataService {
     }
 
     public List<RefOrderLogView> getOrderLogs(Long orderId) {
-        return orderLogMapper.listByOrderId(orderId).stream().map(this::toLogView).toList();
+        List<RefOrderLog> rows = orderLogMapper.listByOrderId(orderId);
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        Set<String> operatorIds = rows.stream()
+                .map(RefOrderLog::getOperatorId)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<String, String> nameMap = userDisplayNameService.resolveDisplayNames(operatorIds);
+        return rows.stream().map(row -> toLogView(row, nameMap)).toList();
     }
 
     // ==================== Private helpers ====================
@@ -417,16 +738,69 @@ public class ReferenceDataService {
         return v;
     }
 
+    private List<RefCartView> toCartViews(List<RefCart> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        Set<String> userIds = rows.stream()
+                .map(RefCart::getAddedBy)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<String, String> nameMap = userDisplayNameService.resolveDisplayNames(userIds);
+
+        Set<Long> refIds = rows.stream()
+                .map(RefCart::getRefDataId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<Long, String> labelMap = new HashMap<>();
+        for (Long refId : refIds) {
+            labelMap.put(refId, extractDisplayName(referenceDataMapper.findById(refId)));
+        }
+        return rows.stream().map(row -> toCartView(row, nameMap, labelMap)).toList();
+    }
+
     private RefCartView toCartView(RefCart row) {
+        return toCartView(row, null, null);
+    }
+
+    private RefCartView toCartView(RefCart row, Map<String, String> nameMap, Map<Long, String> labelMap) {
         if (row == null) return null;
         RefCartView v = new RefCartView();
         v.setId(row.getId());
         v.setGroupId(row.getGroupId());
         v.setRefDataId(row.getRefDataId());
-        v.setSpecSelections(row.getSpecSelections());
+        v.setAupRecordId(row.getAupRecordId());
+        // 与 fieldData 一致：尽量解析为对象，避免前端拿到原始 JSON 字符串
+        if (StringUtils.hasText(row.getSpecSelections())) {
+            try {
+                v.setSpecSelections(objectMapper.readValue(row.getSpecSelections(), Object.class));
+            } catch (Exception e) {
+                v.setSpecSelections(row.getSpecSelections());
+            }
+        } else {
+            v.setSpecSelections(row.getSpecSelections());
+        }
         v.setQuantity(row.getQuantity());
         v.setRemark(row.getRemark());
+        v.setPackageStatus(row.getPackageStatus() != null ? row.getPackageStatus() : "DRAFT");
+        v.setPackageRemark(row.getPackageRemark());
         v.setAddedBy(row.getAddedBy());
+        if (StringUtils.hasText(row.getAddedBy())) {
+            String uid = row.getAddedBy().trim();
+            String name = nameMap != null ? nameMap.get(uid) : null;
+            if (!StringUtils.hasText(name)) {
+                name = userDisplayNameService.resolveDisplayName(uid);
+            }
+            v.setAddedByName(StringUtils.hasText(name) ? name : uid);
+        }
+        if (row.getRefDataId() != null) {
+            String label = labelMap != null ? labelMap.get(row.getRefDataId()) : null;
+            if (!StringUtils.hasText(label)) {
+                label = extractDisplayName(referenceDataMapper.findById(row.getRefDataId()));
+            }
+            v.setRefDataLabel(label);
+        }
         v.setAddedAt(row.getAddedAt());
         return v;
     }
@@ -437,17 +811,52 @@ public class ReferenceDataService {
         v.setId(row.getId());
         v.setGroupId(row.getGroupId());
         v.setSubmitterId(row.getSubmitterId());
-        v.setSubmitterName(row.getSubmitterName());
         v.setProjectGroupName(row.getProjectGroupName());
+        v.setProjectGroupId(row.getProjectGroupId());
+        v.setAupRecordId(row.getAupRecordId());
+        v.setRegisterNo(row.getRegisterNo());
         v.setStatus(row.getStatus());
         v.setSubmitRemark(row.getSubmitRemark());
         v.setSubmittedAt(row.getSubmittedAt());
+        v.setEstimatedDeliveryDate(row.getEstimatedDeliveryDate());
         v.setCreatedAt(row.getCreatedAt());
-        v.setLines(orderLineMapper.listByOrderId(row.getId()).stream().map(this::toOrderLineView).toList());
+
+        List<RefOrderLine> lines = orderLineMapper.listByOrderId(row.getId());
+        Set<String> nameIds = new LinkedHashSet<>();
+        if (StringUtils.hasText(row.getSubmitterId())) {
+            nameIds.add(row.getSubmitterId().trim());
+        }
+        if (lines != null) {
+            for (RefOrderLine line : lines) {
+                if (line != null && StringUtils.hasText(line.getAddedBy())) {
+                    nameIds.add(line.getAddedBy().trim());
+                }
+            }
+        }
+        Map<String, String> nameMap = userDisplayNameService.resolveDisplayNames(nameIds);
+
+        String submitterResolved = null;
+        if (StringUtils.hasText(row.getSubmitterId())) {
+            submitterResolved = nameMap.get(row.getSubmitterId().trim());
+        }
+        if (!StringUtils.hasText(submitterResolved) && StringUtils.hasText(row.getSubmitterId())) {
+            submitterResolved = userDisplayNameService.resolveDisplayName(row.getSubmitterId());
+        }
+        if (!StringUtils.hasText(submitterResolved)) {
+            submitterResolved = row.getSubmitterName();
+        }
+        v.setSubmitterName(submitterResolved);
+
+        Map<Long, String> aupRegisterNoCache = new HashMap<>();
+        v.setLines(lines == null ? List.of() : lines.stream()
+                .map(line -> toOrderLineView(line, aupRegisterNoCache, nameMap))
+                .toList());
         return v;
     }
 
-    private RefOrderLineView toOrderLineView(RefOrderLine row) {
+    private RefOrderLineView toOrderLineView(RefOrderLine row,
+                                            Map<Long, String> aupRegisterNoCache,
+                                            Map<String, String> nameMap) {
         if (row == null) return null;
         RefOrderLineView v = new RefOrderLineView();
         v.setId(row.getId());
@@ -463,10 +872,40 @@ public class ReferenceDataService {
         }
         v.setQuantity(row.getQuantity());
         v.setLineRemark(row.getLineRemark());
+        v.setAddedBy(row.getAddedBy());
+        if (StringUtils.hasText(row.getAddedBy())) {
+            String uid = row.getAddedBy().trim();
+            String name = nameMap != null ? nameMap.get(uid) : null;
+            if (!StringUtils.hasText(name)) {
+                name = userDisplayNameService.resolveDisplayName(uid);
+            }
+            v.setAddedByName(StringUtils.hasText(name) ? name : uid);
+        }
+        v.setAupRecordId(row.getAupRecordId());
+        if (row.getAupRecordId() != null && aupRegisterNoCache != null) {
+            String registerNo = aupRegisterNoCache.computeIfAbsent(row.getAupRecordId(), id -> {
+                AupRecord aup = aupRecordMapper.selectById(id);
+                return aup != null ? aup.getRegisterNo() : null;
+            });
+            v.setRegisterNo(registerNo);
+        }
         return v;
     }
 
     /** Walk parent_id chain upward from a leaf. Returns JSON array [{id, refType, displayName}] leaf-first. */
+    private String resolveBreedCategoryKey(Long refDataId) {
+        List<RefData> ancestors = referenceDataMapper.findAncestors(refDataId);
+        if (ancestors == null) {
+            return null;
+        }
+        for (RefData node : ancestors) {
+            if ("ANIMAL_BREED".equals(node.getRefType())) {
+                return String.valueOf(node.getId());
+            }
+        }
+        return null;
+    }
+
     private String resolveHierarchyChain(Long leafId) {
         List<RefData> ancestors = referenceDataMapper.findAncestors(leafId);
         if (ancestors == null || ancestors.isEmpty()) return null;
@@ -485,13 +924,21 @@ public class ReferenceDataService {
         }
     }
 
-    private RefOrderLogView toLogView(RefOrderLog row) {
+    private RefOrderLogView toLogView(RefOrderLog row, Map<String, String> nameMap) {
         if (row == null) return null;
         RefOrderLogView v = new RefOrderLogView();
         v.setId(row.getId());
         v.setOrderId(row.getOrderId());
         v.setAction(row.getAction());
         v.setOperatorId(row.getOperatorId());
+        if (StringUtils.hasText(row.getOperatorId())) {
+            String uid = row.getOperatorId().trim();
+            String name = nameMap != null ? nameMap.get(uid) : null;
+            if (!StringUtils.hasText(name)) {
+                name = userDisplayNameService.resolveDisplayName(uid);
+            }
+            v.setOperatorName(StringUtils.hasText(name) ? name : uid);
+        }
         v.setDetail(row.getDetail());
         v.setCreatedAt(row.getCreatedAt());
         return v;
@@ -512,10 +959,13 @@ public class ReferenceDataService {
             RefCart item = new RefCart();
             item.setGroupId(groupId);
             item.setRefDataId(line.getRefDataId());
+            item.setAupRecordId(line.getAupRecordId());
             item.setSpecSelections(toJson(line.getSpecSelections()));
             item.setQuantity(line.getQuantity() != null ? line.getQuantity() : 1);
             item.setRemark(line.getRemark());
-            item.setAddedBy(userId);
+            item.setPackageRemark(line.getPackageRemark() != null ? line.getPackageRemark() : line.getLineRemark());
+            item.setPackageStatus(line.getPackageStatus());
+            item.setAddedBy(StringUtils.hasText(line.getAddedBy()) ? line.getAddedBy() : userId);
             result.add(item);
         }
         return result;
@@ -528,7 +978,10 @@ public class ReferenceDataService {
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> fd = objectMapper.readValue(refData.getFieldData(), Map.class);
-            String[] candidateKeys = {"chineseName", "genotypeName", "supplierName", "englishName", "shortName"};
+            String[] candidateKeys = {
+                    "title", "subtitle",
+                    "chineseName", "genotypeName", "supplierName", "englishName", "shortName"
+            };
             for (String key : candidateKeys) {
                 Object val = fd.get(key);
                 if (val != null && StringUtils.hasText(val.toString())) {

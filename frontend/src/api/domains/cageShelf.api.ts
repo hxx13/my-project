@@ -807,6 +807,15 @@ export async function fetchBookingRooms(pageNum = 1, pageSize = 30): Promise<Boo
   return res.data.data!;
 }
 
+/** 手动同步：从 ARO 拉取房间预约汇总 + AUP 明细 + AUP 字典落本地 */
+export async function syncBookingData(): Promise<{ ok: boolean; rooms: number; aups: number; aupDict: number }> {
+  const res = await authHttp.post<Result<{ ok: boolean; rooms: number; aups: number; aupDict: number }>>(
+    "/v1/cage-shelves/booking/sync",
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "同步失败");
+  return res.data.data ?? { ok: false, rooms: 0, aups: 0, aupDict: 0 };
+}
+
 /** 房间内 AUP 分配明细 */
 export async function fetchBookingRoomAups(roomId: string, pageNum = 1, pageSize = 30): Promise<BookingAupsResponse> {
   const res = await authHttp.get<Result<BookingAupsResponse>>(
@@ -834,9 +843,9 @@ export async function deleteBookingAup(id: string): Promise<void> {
   if (!res.data?.success) throw new Error(res.data?.message || "删除AUP分配失败");
 }
 
-/** AUP 下拉字典 */
-export async function fetchAupDict(): Promise<{ id: string; title: string; registerNumber: string; projectPiName: string }[]> {
-  const res = await authHttp.get<Result<{ id: string; title: string; registerNumber: string; projectPiName: string }[]>>(
+/** AUP 下拉字典（自己的字段口径：id/registerNo/projectGroupName） */
+export async function fetchAupDict(): Promise<{ id: string; registerNo: string; projectGroupName: string }[]> {
+  const res = await authHttp.get<Result<{ id: string; registerNo: string; projectGroupName: string }[]>>(
     "/v1/cage-shelves/booking/aups/dict"
   );
   return res.data?.data ?? [];
@@ -1020,7 +1029,7 @@ export async function localAction(body: {
   return res.data.data ?? { ok: false, local: false, syncedToAro: false };
 }
 
-/** 补全详情字段 — 从 ARO /list 批量拉取动物品系/性别/周龄等 */
+/** 补全详情字段 — 从 ARO /list 批量拉取 PI/课题组/动物品系等 */
 export async function syncDetailFields(roomId?: number): Promise<CellSyncStats> {
   const res = await authHttp.post<Result<CellSyncStats>>("/cage-cell-index/sync-details", {
     roomId: roomId ?? undefined,

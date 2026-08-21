@@ -198,15 +198,6 @@
         </block>
         <!-- End spec config section -->
 
-        <view class="form-section-divider"></view>
-        <view class="form-switch-row">
-          <view class="form-switch-copy">
-            <text class="form-label-tight">独立下单</text>
-            <text class="form-hint-inline">该物资不能与其他物资合并下单</text>
-          </view>
-          <van-switch checked="{{ independentOrder }}" bind:change="onToggleIndependentOrder" active-color="#ac1736" size="20px" />
-        </view>
-
         <view class="form-label">审核流程</view>
         <picker mode="selector" range="{{ workflowLabels }}" value="{{ workflowIndex }}" bindchange="onPickWorkflow">
           <view class="form-picker">{{ workflowLabels[workflowIndex] }}</view>

@@ -45,10 +45,18 @@ export interface RefCartItem {
   id: number;
   groupId: string;
   refDataId: number;
-  specSelections?: Record<string, string>;
+  aupRecordId?: number | null;
+  /** 后端可能返回已解析对象，或历史 JSON 字符串 */
+  specSelections?: Record<string, string> | string;
   quantity: number;
   remark?: string;
+  packageStatus?: "DRAFT" | "READY" | string;
+  packageRemark?: string | null;
   addedBy: string;
+  /** 后端解析的加购人展示名 */
+  addedByName?: string;
+  /** 后端解析的参考数据展示名 */
+  refDataLabel?: string;
   addedAt?: string;
 }
 
@@ -58,9 +66,14 @@ export interface RefOrder {
   submitterId: string;
   submitterName?: string;
   projectGroupName?: string;
+  projectGroupId?: number | null;
+  aupRecordId?: number | null;
+  registerNo?: string;
   status: string;
   submitRemark?: string;
   submittedAt?: string;
+  /** 下单时计算的预计送达日（工作日） */
+  estimatedDeliveryDate?: string | null;
   createdAt?: string;
   lines?: RefOrderLine[];
 }
@@ -69,10 +82,16 @@ export interface RefOrderLine {
   id: number;
   orderId: number;
   refDataId: number;
-  specSelections?: Record<string, string>;
+  specSelections?: Record<string, string> | string;
   hierarchyChain?: Array<{ id: number; refType: string; displayName: string }>;
   quantity: number;
   lineRemark?: string;
+  addedBy?: string;
+  /** 后端统一解析的加购人展示名 */
+  addedByName?: string;
+  aupRecordId?: number | null;
+  /** 行级 AUP 编号（后端由 aupRecordId 解析） */
+  registerNo?: string | null;
 }
 
 export interface RefOrderLog {
@@ -80,6 +99,8 @@ export interface RefOrderLog {
   orderId: number;
   action: string;
   operatorId: string;
+  /** 后端统一解析的操作人展示名 */
+  operatorName?: string;
   detail?: string;
   createdAt?: string;
 }
@@ -146,12 +167,20 @@ export async function fetchCart(groupId: string) {
   return res.data.data;
 }
 
-export async function addToCart(body: { refDataId: number; specSelections?: Record<string, string>; quantity: number; remark?: string }, groupId: string) {
+export async function addToCart(
+  body: {
+    refDataId: number;
+    aupRecordId: number;
+    specSelections?: Record<string, string>;
+    quantity: number;
+  },
+  groupId: string,
+) {
   const res = await authHttp.post<Result<RefCartItem>>("/reference-data/cart", body, { params: { groupId } });
   return res.data.data;
 }
 
-export async function updateCartItem(id: number, body: { quantity?: number; specSelections?: Record<string, string>; remark?: string }) {
+export async function updateCartItem(id: number, body: { quantity?: number; specSelections?: Record<string, string> }) {
   const res = await authHttp.put<Result<RefCartItem>>(`/reference-data/cart/${id}`, body);
   return res.data.data;
 }
@@ -164,21 +193,47 @@ export async function clearCart(groupId: string) {
   await authHttp.delete("/reference-data/cart", { params: { groupId } });
 }
 
-/** Batch replace cart: clear then add all lines. Used for local→server sync. */
-export async function replaceCart(
+/** 实验员提交订单包：本人行 → READY + packageRemark */
+export async function markCartPackageReady(
   groupId: string,
-  lines: { refDataId: number; quantity: number; specSelections?: Record<string, string>; remark?: string; addedBy?: string }[],
+  body: { cartIds?: number[]; packageRemark?: string } = {},
 ) {
-  await authHttp.delete("/reference-data/cart", { params: { groupId } });
-  for (const line of lines) {
-    await authHttp.post("/reference-data/cart", {
-      refDataId: line.refDataId,
-      quantity: line.quantity,
-      specSelections: line.specSelections,
-      remark: line.remark,
-      addedBy: line.addedBy,
-    }, { params: { groupId } });
-  }
+  const res = await authHttp.post<Result<RefCartItem[]>>("/reference-data/cart/package-ready", body, {
+    params: { groupId },
+  });
+  return res.data.data ?? [];
+}
+
+/** 撤回订单包：本人 READY → DRAFT */
+export async function withdrawCartPackage(
+  groupId: string,
+  body: { cartIds?: number[] } = {},
+) {
+  const res = await authHttp.post<Result<RefCartItem[]>>("/reference-data/cart/package-draft", body, {
+    params: { groupId },
+  });
+  return res.data.data ?? [];
+}
+
+export async function submitOrder(body: {
+  groupId: string;
+  submitterId?: string;
+  submitterName?: string;
+  projectGroupName?: string;
+  aupRecordId?: number;
+  cartIds?: number[];
+  lines?: {
+    refDataId: number;
+    aupRecordId: number;
+    specSelections?: Record<string, string>;
+    quantity: number;
+    addedBy?: string;
+    packageRemark?: string;
+  }[];
+  submitRemark?: string;
+}) {
+  const res = await authHttp.post<Result<RefOrder>>("/reference-data/orders", body);
+  return res.data.data;
 }
 
 // ── Orders ──
@@ -188,9 +243,34 @@ export async function fetchOrders(groupId: string) {
   return res.data.data;
 }
 
-export async function submitOrder(body: { groupId: string; submitterId?: string; submitterName?: string; projectGroupName?: string; lines: { refDataId: number; specSelections?: Record<string, string>; quantity: number; lineRemark?: string }[]; submitRemark?: string }) {
-  const res = await authHttp.post<Result<RefOrder>>("/reference-data/orders", body);
-  return res.data.data;
+// ── AUP（下单必选：本课题组已批准 AUP） ──
+
+export interface AupOption {
+  id: string;
+  registerNo: string;
+  projectGroupName: string;
+  projectGroupId?: number | null;
+}
+
+/** 拉取本课题组已批准 AUP（下单必选 AUP 下拉；projectGroupName 为空则拉全部） */
+export async function fetchApprovedAups(projectGroupName?: string) {
+  const res = await authHttp.get<Result<AupOption[]>>("/aup/approved-for-order", {
+    params: { projectGroupName },
+  });
+  return res.data.data ?? [];
+}
+
+/** 课题组共享购物车 groupId：pg-{projectGroupId}，否则 pg-name-{归一化课题组名} */
+export function resolveSharedCartGroupId(
+  projectGroupId?: number | null,
+  projectGroupName?: string | null,
+): string {
+  if (projectGroupId != null && Number.isFinite(Number(projectGroupId))) {
+    return `pg-${Number(projectGroupId)}`;
+  }
+  const name = (projectGroupName || "").trim();
+  if (!name) return "";
+  return `pg-name-${name.replace(/\s+/g, "_")}`;
 }
 
 export async function fetchOrderDetail(id: number) {

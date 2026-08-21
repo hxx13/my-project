@@ -3,6 +3,7 @@ package com.example.demo.modules.analytics.service;
 import com.example.demo.modules.analytics.mapper.StudentActivitySnapshotMapper;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import org.slf4j.Logger;
@@ -27,13 +28,16 @@ public class StudentActivityService {
     private final TwinDashboardMapper dashboardMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final StudentActivitySnapshotMapper snapshotMapper;
+    private final UserDisplayNameService userDisplayNameService;
 
     public StudentActivityService(TwinDashboardMapper dashboardMapper,
                                    AroPersonnelMapper aroPersonnelMapper,
-                                   StudentActivitySnapshotMapper snapshotMapper) {
+                                   StudentActivitySnapshotMapper snapshotMapper,
+                                   UserDisplayNameService userDisplayNameService) {
         this.dashboardMapper = dashboardMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.snapshotMapper = snapshotMapper;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     /** 课题组搜索建议 */
@@ -183,11 +187,14 @@ public class StudentActivityService {
             logsByUser.computeIfAbsent(uid, k -> new ArrayList<>()).add(log);
         }
 
-        // 4. 每人配对 + 聚合指标
+        // 4. 每人配对 + 聚合指标（姓名统一走 UserDisplayNameService）
+        Map<String, String> nameMap = userDisplayNameService.resolveDisplayNames(userIds);
         List<MemberActivityRow> rows = new ArrayList<>();
         for (String uid : userIds) {
             List<Map<String, Object>> userLogs = logsByUser.getOrDefault(uid, List.of());
-            MemberActivityRow row = computeMemberRow(uid, userLogs, startTime, endTime);
+            String resolved = nameMap.get(uid);
+            MemberActivityRow row = computeMemberRow(uid, userLogs, startTime, endTime,
+                    (resolved != null && !resolved.isBlank()) ? resolved : uid);
             if (row != null) rows.add(row);
         }
 
@@ -231,10 +238,17 @@ public class StudentActivityService {
     /** 进出配对 + 指标计算 */
     private MemberActivityRow computeMemberRow(String userId, List<Map<String, Object>> userLogs,
                                                 String startTime, String endTime) {
+        String resolved = userDisplayNameService.resolveDisplayName(userId);
+        return computeMemberRow(userId, userLogs, startTime, endTime,
+                (resolved != null && !resolved.isBlank()) ? resolved : userId);
+    }
+
+    private MemberActivityRow computeMemberRow(String userId, List<Map<String, Object>> userLogs,
+                                                String startTime, String endTime, String displayName) {
         // 分离 entry(1) 和 exit(2)
         List<LocalDateTime> entries = new ArrayList<>();
         List<LocalDateTime> exits = new ArrayList<>();
-        String userName = userId;
+        String userName = (displayName != null && !displayName.isBlank()) ? displayName : userId;
 
         for (Map<String, Object> log : userLogs) {
             int accessType = parseAccessType(log);
@@ -243,8 +257,6 @@ public class StudentActivityService {
             if (dt == null) continue;
             if (accessType == 1) entries.add(dt);
             else if (accessType == 2) exits.add(dt);
-            String n = String.valueOf(log.getOrDefault("name", ""));
-            if (!n.isEmpty() && !"null".equals(n)) userName = n;
         }
 
         // 配对：每条 entry 找其后最近的 exit（24h内）

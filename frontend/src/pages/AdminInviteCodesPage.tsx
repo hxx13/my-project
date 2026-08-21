@@ -12,6 +12,7 @@ import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
+import { appConfirm } from "@/lib/appDialog";
 export default function AdminInviteCodesPage() {
   const [ttlDays, setTtlDays] = useState(3);
   const [maxUses, setMaxUses] = useState(1);
@@ -46,7 +47,7 @@ export default function AdminInviteCodesPage() {
   };
 
   const revoke = async (id: string) => {
-    if (!window.confirm("确认作废该推荐码？")) return;
+    if (!await appConfirm("确认作废该推荐码？")) return;
     try {
       await revokeRegistrationInvite(id);
       toast.success("已作废");

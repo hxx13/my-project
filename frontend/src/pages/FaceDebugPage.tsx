@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { randomUUID } from '@/utils/randomUUID';
 
+import { appConfirm } from "@/lib/appDialog";
 export default function FaceDebugPage() {
   useFaceModels();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -423,7 +424,7 @@ export default function FaceDebugPage() {
                 <button
                   type="button"
                   onClick={async () => {
-                    if (!window.confirm(`删除 "${p.label}"？`)) return;
+                    if (!await appConfirm(`删除 "${p.label}"？`)) return;
                     await deleteDebugPhoto(p.id);
                     setPhotos((prev) => prev.filter((x) => x.id !== p.id));
                   }}
@@ -444,7 +445,7 @@ export default function FaceDebugPage() {
         <FaceEnrollment
           userId={selectedUser.user_id}
           replaceExisting
-          uploadFn={async (file) => uploadBaselinePhoto(selectedUser.user_id, file)}
+          uploadFn={(file) => uploadBaselinePhoto(selectedUser.user_id, file)}
           onCaptured={async () => {
             setEnrollBaselineOpen(false);
             await loadBaselineForUser(selectedUser);

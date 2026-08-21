@@ -19,5 +19,7 @@ public interface TwinCageStatusViolationMapper {
         @Param("positionY") int positionY
     );
     int updateStatus(@Param("id") long id, @Param("status") String status);
+    /** 更新笼位/状态等可编辑字段（不改 status/triggered_at） */
+    int updateCageFields(TwinCageStatusViolation row);
     int deleteById(@Param("id") long id);
 }

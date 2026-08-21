@@ -6,7 +6,6 @@
  * 1. 必须使用 shadcn/ui `<Dialog>` 组件，禁止裸 `fixed` 定位。
  *    Dialog 组件自动处理：Portal 渲染、焦点管理、ESC 关闭、z-index（--z-modal 令牌）。
  *    裸 fixed 会导致：脱离 AdminLayout 的层叠上下文、z-index 冲突、焦点陷阱缺失。
- *    详见 docs/UI设计规范与主题标准.md § 6.3 对话框
  *
  * 2. 不要在此使用自建 overlay/backdrop。Dialog 组件已内置。
  */
@@ -16,6 +15,7 @@ import { importKnowledgePage } from "@/api/domains/knowledge.api";
 import { useKnowledgeCategories } from "@/features/knowledge/hooks/useKnowledgeCategories";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
+import { appAlert } from "@/lib/appDialog";
 interface Props { open: boolean; onClose: () => void; onImported: () => void }
 
 export function KnowledgeImportDialog({ open, onClose, onImported }: Props) {
@@ -34,7 +34,7 @@ export function KnowledgeImportDialog({ open, onClose, onImported }: Props) {
     try {
       await importKnowledgePage({ categoryId, title, content, format, author: "admin" });
       onImported(); onClose();
-    } catch (e: any) { alert(`导入失败: ${e.message}`); }
+    } catch (e: any) { await appAlert(`导入失败: ${e.message}`); }
     finally { setImporting(false); }
   }
 

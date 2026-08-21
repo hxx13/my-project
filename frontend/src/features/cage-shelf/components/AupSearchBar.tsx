@@ -11,13 +11,13 @@ export default function AupSearchBar({ onSelectRoom }: Props) {
   const [search, setSearch] = useState("");
   const [hits, setHits] = useState<AupSearchHit[]>([]);
   const [searching, setSearching] = useState(false);
-  const [aupOptions, setAupOptions] = useState<{ id: string; title: string; registerNumber: string; projectPiName: string }[]>([]);
+  const [aupOptions, setAupOptions] = useState<{ id: string; registerNo: string; projectGroupName: string }[]>([]);
   const [sortAsc, setSortAsc] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchAupDict().then(list => setAupOptions(list.filter(a => a.id && (a.title || a.registerNumber)))).catch(() => {});
+    fetchAupDict().then(list => setAupOptions(list.filter(a => a.id && a.registerNo))).catch(() => {});
   }, []);
 
   // click outside to close quick-select
@@ -66,7 +66,7 @@ export default function AupSearchBar({ onSelectRoom }: Props) {
           value={search}
           onChange={e => setSearch(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") doSearch(); }}
-          placeholder="搜索 AUP 编号 / 课题组长…"
+          placeholder="搜索 AUP 编号 / 课题组…"
           className="w-44 bg-transparent text-[11px] outline-none text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
         />
         {search && (
@@ -97,18 +97,18 @@ export default function AupSearchBar({ onSelectRoom }: Props) {
               )}
               {[...aupOptions].sort((a, b) => {
                 const parseNum = (s: string) => { const m = s.match(/(\d{4})-(\d+)/); return m ? [+m[1], +m[2]] : [0, 0]; };
-                const [ay, ai] = parseNum(a.registerNumber || "");
-                const [by, bi] = parseNum(b.registerNumber || "");
+                const [ay, ai] = parseNum(a.registerNo || "");
+                const [by, bi] = parseNum(b.registerNo || "");
                 const cmp = ay !== by ? ay - by : ai - bi;
                 return sortAsc ? cmp : -cmp;
               }).map(a => (
                 <button
                   key={a.id}
-                  onClick={() => quickSelect(a.registerNumber || a.title || "")}
+                  onClick={() => quickSelect(a.registerNo || "")}
                   className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)]"
                 >
-                  <span className="font-medium text-[var(--twin-ink)]">{a.projectPiName || "—"}</span>
-                  <span className="ml-2 text-[10px] text-[var(--twin-mute)]">{a.registerNumber}</span>
+                  <span className="font-medium text-[var(--twin-ink)]">{a.projectGroupName || "—"}</span>
+                  <span className="ml-2 text-[10px] text-[var(--twin-mute)]">{a.registerNo}</span>
                 </button>
               ))}
             </div>

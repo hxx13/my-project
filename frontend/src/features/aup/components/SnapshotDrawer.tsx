@@ -3,6 +3,7 @@ import { useAupSnapshots, useAupRollback } from "../hooks/useAup";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
 import type { AupSnapshotMeta } from "../schema/aup";
 
+import { appConfirm } from "@/lib/appDialog";
 interface SnapshotDrawerProps {
   open: boolean;
   aupId?: string;
@@ -37,15 +38,15 @@ export default function SnapshotDrawer({ open, aupId, onClose }: SnapshotDrawerP
           sorted.map((s) => (
             <div key={s.snapshotId} className={"snap" + (s.versionNo === maxVersion ? " cur" : "")} style={{ marginBottom: 10 }}>
               <div className="sn">v{s.versionNo} · {stageLabel(s)}</div>
-              <div className="m">{formatDateTimeAsiaShanghaiShort(s.createdAt)}{s.createdBy ? ` · ${s.createdBy}` : ""}</div>
+              <div className="m">{formatDateTimeAsiaShanghaiShort(s.createdAt)}{(s.createdByName || s.createdBy) ? ` · ${s.createdByName || s.createdBy}` : ""}</div>
               {s.versionNo === maxVersion ? (
                 <span className="tag" style={{ background: "var(--primary-weak)", color: "var(--primary)", marginTop: 8 }}>当前</span>
               ) : (
                 <button
                   className="btn ghost small"
                   disabled={rollback.isPending}
-                  onClick={() => {
-                    if (confirm(`确定回退到 v${s.versionNo}？当前草稿会被覆盖。`)) {
+                  onClick={async () => {
+                    if (await appConfirm(`确定回退到 v${s.versionNo}？当前草稿会被覆盖。`)) {
                       rollback.mutate(s.snapshotId, { onSuccess: onClose });
                     }
                   }}

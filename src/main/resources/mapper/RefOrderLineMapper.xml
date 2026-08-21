@@ -10,11 +10,13 @@
         <result property="hierarchyChain" column="hierarchy_chain"/>
         <result property="quantity" column="quantity"/>
         <result property="lineRemark" column="line_remark"/>
+        <result property="addedBy" column="added_by"/>
+        <result property="aupRecordId" column="aup_record_id"/>
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ref_order_line(order_id, ref_data_id, spec_selections, hierarchy_chain, quantity, line_remark)
-        VALUES (#{orderId}, #{refDataId}, #{specSelections}, #{hierarchyChain}, #{quantity}, #{lineRemark})
+        INSERT INTO ref_order_line(order_id, ref_data_id, spec_selections, hierarchy_chain, quantity, line_remark, added_by, aup_record_id)
+        VALUES (#{orderId}, #{refDataId}, #{specSelections}, #{hierarchyChain}, #{quantity}, #{lineRemark}, #{addedBy}, #{aupRecordId})
     </insert>
 
     <delete id="deleteByOrderId">
@@ -22,7 +24,7 @@
     </delete>
 
     <select id="listByOrderId" resultMap="Base">
-        SELECT id, order_id, ref_data_id, spec_selections, hierarchy_chain, quantity, line_remark
+        SELECT id, order_id, ref_data_id, spec_selections, hierarchy_chain, quantity, line_remark, added_by, aup_record_id
         FROM ref_order_line WHERE order_id = #{orderId} ORDER BY id ASC
     </select>
 

@@ -72,7 +72,6 @@ export function buildAgvInfo(
   dwellByIp: Record<string, { x: number; y: number; durationSec: number }[]>,
   getTrail: (ip: string) => TrailPoint[],
   coordConfigs: Record<string, any> | undefined,
-  getStoredScales: () => Record<string, number>,
   lastKnownRef: MutableRefObject<Record<string, Record<string, unknown>>>,
 ): AgvInfo {
   const s = getStatus(r.ip);
@@ -98,9 +97,7 @@ export function buildAgvInfo(
   const coordRotationDeg = coordFrame?.rotationDeg ?? last.coordRotationDeg ?? 0;
   const coordOffsetX = coordFrame?.offsetX ?? last.coordOffsetX ?? 0;
   const coordOffsetY = coordFrame?.offsetY ?? last.coordOffsetY ?? 0;
-  const storedScales = getStoredScales();
-  const coordScale =
-    (coordFrame as any)?.scale ?? storedScales[r.ip] ?? last.coordScale ?? 1;
+  const coordScale = coordFrame?.scale ?? last.coordScale ?? 1;
 
   const info: AgvInfo = {
     ip: r.ip,

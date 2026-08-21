@@ -1,13 +1,16 @@
-import { Fragment, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { useAupList, useRestoreAupDemo, useDeleteAup, useUnlockAup, useRenewAup, useReviewerConfig, useAupSnapshots, useAupProjectGroups } from "../hooks/useAup";
+import toast from "react-hot-toast";
+import { useAupListInfinite, useRestoreAupDemo, useDeleteAup, useUnlockAup, useRenewAup, useReviewerConfig, useAupSnapshots, useAupProjectGroups } from "../hooks/useAup";
+import { reseedAupDemo, syncAupFromAro } from "../api/aup.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import type { AupListItem, AupStage, DraftSource } from "../schema/aup";
 import MiniStageIndicator from "../components/MiniStageIndicator";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
+import { appConfirm } from "@/lib/appDialog";
 import "../aup.css";
 
 gsap.registerPlugin(useGSAP);
@@ -164,13 +167,48 @@ function SnapshotPanel({ itemId, onViewSnap }: { itemId: number; onViewSnap: (it
                 <td className="snapshot-v">v{s.versionNo}</td>
                 <td className="snapshot-stage">{stageLabel(s.stage, s.draftSource)}</td>
                 <td className="snapshot-time">{formatDateTimeAsiaShanghaiShort(s.createdAt)}</td>
-                <td className="snapshot-time">{s.createdBy || "—"}</td>
+                <td className="snapshot-time">{s.createdByName || s.createdBy || "—"}</td>
                 <td><button className="btn ghost small" onClick={() => onViewSnap(itemId, s.snapshotId)}>查看</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+/** 卡片「项目名称」：固定两行高度；超出两行时自动缩小字号（最多三行），保证卡片高度一致 */
+function ProjectNameTitle({ name, isDemo }: { name?: string; isDemo?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [shrunk, setShrunk] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const measure = () => {
+      // 以标准字号测量自然内容高度：超过两行（36.4px）则缩小字号
+      el.style.fontSize = "13px";
+      el.style.display = "block";
+      el.style.webkitLineClamp = "none";
+      const over = el.scrollHeight - el.clientHeight > 2;
+      el.style.fontSize = "";
+      el.style.display = "";
+      el.style.webkitLineClamp = "";
+      setShrunk(over);
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [name, isDemo]);
+
+  return (
+    <div ref={ref} className={"aup-f-v aup-f-v-title" + (shrunk ? " shrunk" : "")}>
+      {name || "（未命名）"}
+      {isDemo === 1 && <span className="demo-badge">演示示例</span>}
     </div>
   );
 }
@@ -189,7 +227,6 @@ function CardItem({
   onToggle: () => void;
   onViewSnap: (itemId: number, snapshotId: number) => void;
 }) {
-  const stackRef = useRef<HTMLDivElement>(null);
   const seal = stageSeal(item);
   const reviewers = (item.reviewerNames || "").split(/[,，]/).map((s) => s.trim()).filter(Boolean);
   const agreeList = item.agreeNames ?? [];
@@ -199,22 +236,9 @@ function CardItem({
   const showVoteBadges = item.currentStage === "expertReview" || hasExpertVotes;
   const registerNo = item.registerNo || "待编号";
 
-  const handleMove = (e: MouseEvent<HTMLDivElement>) => {
-    const el = stackRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const px = (e.clientX - rect.left) / rect.width - 0.5;
-    const py = (e.clientY - rect.top) / rect.height - 0.5;
-    gsap.to(el, { rotateY: px * 8, rotateX: -py * 8, y: -6, transformPerspective: 900, duration: 0.4, ease: "power2.out" });
-  };
-  const handleLeave = () => {
-    const el = stackRef.current;
-    if (el) gsap.to(el, { rotateY: 0, rotateX: 0, y: 0, duration: 0.6, ease: "power3.out" });
-  };
-
   return (
     <div className="aup-card-cell">
-      <div className="aup-doc-stack" ref={stackRef} onMouseMove={handleMove} onMouseLeave={handleLeave}>
+      <div className="aup-doc-stack">
         <div className="aup-doc" onClick={onToggle}>
           <div className="aup-doc-hd">
             <span className="aup-doc-title">实验动物使用计划书</span>
@@ -223,10 +247,7 @@ function CardItem({
           <div className="aup-doc-body">
             <div className="aup-f">
               <div className="aup-f-k">项目名称</div>
-              <div className="aup-f-v">
-                {item.projectName || "（未命名）"}
-                {item.isDemo === 1 && <span className="demo-badge">演示示例</span>}
-              </div>
+              <ProjectNameTitle name={item.projectName} isDemo={item.isDemo} />
             </div>
             <div className="aup-f2">
               <div className="aup-f">
@@ -292,17 +313,17 @@ function CardItem({
   );
 }
 
-/** 卡片网格：GSAP 淡入 + 上移交错入场 */
+/** 卡片网格：GSAP 淡入 + 上移交错入场。genKey 为筛选/标签重置标记，仅在其变化时重播动画（无限滚动追加不重播） */
 function CardGrid({
   items,
-  page,
+  genKey,
   getActions,
   expanded,
   onToggle,
   onViewSnap,
 }: {
   items: AupListItem[];
-  page: number;
+  genKey: string;
   getActions: (item: AupListItem) => ItemAction[];
   expanded: Set<number>;
   onToggle: (id: number) => void;
@@ -320,7 +341,7 @@ function CardGrid({
         { opacity: 1, y: 0, duration: 0.45, stagger: 0.06, ease: "power2.out", overwrite: true }
       );
     },
-    { scope: gridRef, dependencies: [items, page], revertOnUpdate: true }
+    { scope: gridRef, dependencies: [genKey], revertOnUpdate: true }
   );
 
   return (
@@ -470,17 +491,20 @@ export default function AupListPage() {
   const [registerNo, setRegisterNo] = useState("");
   const [draftSource, setDraftSource] = useState<DraftSource | "">("");
   const [roundNo, setRoundNo] = useState("");
-  const [sortBy, setSortBy] = useState("updatedAt");
+  const [sortBy, setSortBy] = useState("registerNo");
   const [desc, setDesc] = useState(true);
   const [relatedToMe, setRelatedToMe] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const prevGenKeyRef = useRef("");
   const projectGroupsQuery = useAupProjectGroups();
   const restoreMut = useRestoreAupDemo();
   const deleteMut = useDeleteAup();
   const unlockMut = useUnlockAup();
   const renewMut = useRenewAup();
+  const [syncing, setSyncing] = useState(false);
   const isAdmin = hasMinRole(authStorage.getRole() || "", "ADMIN");
   const isPlatformOwner = hasMinRole(authStorage.getRole() || "", "PLATFORM_OWNER");
   const currentUserId = authStorage.getUserInfo()?.id;
@@ -489,9 +513,8 @@ export default function AupListPage() {
     (r) => r.userId === currentUserId
   );
 
-  const params = useMemo(
+  const filters = useMemo(
     () => ({
-      page,
       size: PAGE_SIZE,
       keyword: keyword.trim() || undefined,
       registerNo: registerNo.trim() || undefined,
@@ -507,20 +530,48 @@ export default function AupListPage() {
       sortBy: sortBy || undefined,
       sortDir: (desc ? "desc" : "asc") as "asc" | "desc",
     }),
-    [page, keyword, registerNo, stage, tab, draftSource, roundNo, projectGroupName, submitterName, reviewerName, relatedToMe, sortBy, desc]
+    [keyword, registerNo, stage, tab, draftSource, roundNo, projectGroupName, submitterName, reviewerName, relatedToMe, sortBy, desc]
   );
 
-  const { data, isLoading, isError, refetch } = useAupList(params);
+  // 筛选/标签变化 → genKey 变化：重播入场动画 + 滚动回顶
+  const genKey = useMemo(() => JSON.stringify(filters), [filters]);
+
+  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useAupListInfinite(filters);
 
   const items = useMemo(() => {
-    const rawItems = data?.items ?? [];
+    const rawItems = (data?.pages ?? []).flatMap((p) => p.items ?? []);
     // demo 记录（isDemo === 1）在有真实记录时自动隐藏；若全是 demo 则保留以便演示
     const hasRealRecord = rawItems.some((i) => i.isDemo !== 1);
     return hasRealRecord ? rawItems.filter((i) => i.isDemo !== 1) : rawItems;
   }, [data]);
 
-  const total = data?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const total = data?.pages?.[0]?.total ?? 0;
+
+  // 滚动容器到底（提前 300px）时自动加载下一页
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    const sentinel = sentinelRef.current;
+    if (!scroller || !sentinel) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { root: scroller, rootMargin: "300px 0px" }
+    );
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // 筛选变化时滚动回顶部，避免停留在旧列表的底部
+  useEffect(() => {
+    if (prevGenKeyRef.current !== genKey) {
+      prevGenKeyRef.current = genKey;
+      scrollRef.current?.scrollTo({ top: 0 });
+    }
+  }, [genKey]);
 
   const toggle = (id: number) =>
     setExpanded((prev) => {
@@ -532,19 +583,44 @@ export default function AupListPage() {
 
   const openReview = (id: number) => navigate(`/console/admin/aup/review/${id}`);
   const handleRestore = (id: number) => restoreMut.mutate(id);
-  const handleDelete = (id: number) => {
-    if (window.confirm("确定删除该计划书？删除后不可恢复。")) deleteMut.mutate(id);
+  const handleDelete = async (id: number) => {
+    if (await appConfirm("确定删除该计划书？删除后不可恢复。")) deleteMut.mutate(id);
   };
-  const handleUnlock = (id: number) => {
-    if (window.confirm("解锁后计划书将回到返修（草稿）状态，可重新提交审核。确定解锁？")) unlockMut.mutate(id);
+  const handleUnlock = async (id: number) => {
+    if (await appConfirm("解锁后计划书将回到返修（草稿）状态，可重新提交审核。确定解锁？")) unlockMut.mutate(id);
   };
   const handleRenew = async (id: number) => {
-    if (!window.confirm("续期将基于该已过期计划书新建一份草稿（引用原注册号、结转未用动物数），重新走审核流程。确定续期？")) return;
+    if (!await appConfirm("续期将基于该已过期计划书新建一份草稿（引用原注册号、结转未用动物数），重新走审核流程。确定续期？")) return;
     try {
       const res = await renewMut.mutateAsync(id);
       if (res?.id) navigate(`/aup/fill/${res.id}`);
     } catch {
       /* toast 已由 hook 处理 */
+    }
+  };
+
+  const handleSync = async () => {
+    if (!await appConfirm("从 ARO 全量同步计划书（正文 + 状态 + 评审记录），可能耗时较久。确定同步？")) return;
+    setSyncing(true);
+    try {
+      const res = await syncAupFromAro();
+      toast.success(`同步完成：新增 ${res.inserted}，更新 ${res.updated}，评审 ${res.reviewCount}，失败 ${res.failed}`);
+      refetch();
+    } catch (e) {
+      toast.error(`同步失败：${e instanceof Error ? e.message : "未知错误"}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleReseedDemo = async () => {
+    if (!await appConfirm("按内置种子重新生成演示示例（补齐缺失的 demo 计划书，幂等）。确定？")) return;
+    try {
+      await reseedAupDemo();
+      toast.success("演示示例已重新生成");
+      refetch();
+    } catch (e) {
+      toast.error(`重新生成失败：${e instanceof Error ? e.message : "未知错误"}`);
     }
   };
 
@@ -600,18 +676,37 @@ export default function AupListPage() {
             <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>☰ 列表</button>
           </div>
           <div className="aup-view-toggle" role="tablist" aria-label="审核状态">
-            <button className={tab === "pending" ? "on" : ""} onClick={() => { setTab("pending"); setPage(1); }}>未通过</button>
-            <button className={tab === "approved" ? "on" : ""} onClick={() => { setTab("approved"); setStage(""); setPage(1); }}>已通过</button>
+            <button className={tab === "pending" ? "on" : ""} onClick={() => { setTab("pending"); }}>未通过</button>
+            <button className={tab === "approved" ? "on" : ""} onClick={() => { setTab("approved"); setStage(""); }}>已通过</button>
           </div>
           <button
             className={relatedToMe ? "btn primary small" : "btn ghost small"}
-            onClick={() => { setRelatedToMe((v) => !v); setPage(1); }}
+            onClick={() => { setRelatedToMe((v) => !v); }}
           >
             与我相关
           </button>
+          {isAdmin ? (
+            <>
+              <button
+                className="btn ghost small"
+                disabled={syncing}
+                onClick={handleSync}
+                title="从 ARO 全量同步计划书（正文 + 状态 + 评审记录）"
+              >
+                {syncing ? "同步中…" : "同步 ARO"}
+              </button>
+              <button
+                className="btn ghost small"
+                onClick={handleReseedDemo}
+                title="按内置种子重新生成演示示例"
+              >
+                重新生成示例
+              </button>
+            </>
+          ) : null}
           <button
             className="btn ghost small"
-            onClick={() => { setDesc((v) => !v); setPage(1); }}
+            onClick={() => { setDesc((v) => !v); }}
             title={desc ? "当前倒序（最新在前）" : "当前正序（最早在前）"}
           >
             {desc ? "↓ 倒序" : "↑ 正序"}
@@ -622,7 +717,7 @@ export default function AupListPage() {
               className="select"
               style={FILTER_CONTROL_STYLE}
               value={sortBy}
-              onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
+              onChange={(e) => { setSortBy(e.target.value); }}
             >
               <option value="updatedAt">更新时间</option>
               <option value="submittedAt">提交时间</option>
@@ -649,7 +744,7 @@ export default function AupListPage() {
               style={FILTER_CONTROL_STYLE}
               placeholder="编号 / 项目名称 / 负责人"
               value={keyword}
-              onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
+              onChange={(e) => { setKeyword(e.target.value); }}
             />
           </label>
           <label style={FILTER_FIELD_STYLE}>
@@ -659,7 +754,7 @@ export default function AupListPage() {
               style={FILTER_CONTROL_STYLE}
               placeholder="注册号精确匹配"
               value={registerNo}
-              onChange={(e) => { setRegisterNo(e.target.value); setPage(1); }}
+              onChange={(e) => { setRegisterNo(e.target.value); }}
             />
           </label>
           {tab === "pending" && (
@@ -669,7 +764,7 @@ export default function AupListPage() {
                 className="select"
                 style={FILTER_CONTROL_STYLE}
                 value={stage}
-                onChange={(e) => { setStage(e.target.value as AupStage | ""); setPage(1); }}
+                onChange={(e) => { setStage(e.target.value as AupStage | ""); }}
               >
                 <option value="">全部</option>
                 <option value="draft">草稿</option>
@@ -688,7 +783,7 @@ export default function AupListPage() {
                 className="select"
                 style={FILTER_CONTROL_STYLE}
                 value={draftSource}
-                onChange={(e) => { setDraftSource(e.target.value as DraftSource | ""); setPage(1); }}
+                onChange={(e) => { setDraftSource(e.target.value as DraftSource | ""); }}
               >
                 <option value="">全部</option>
                 <option value="first">首次提交</option>
@@ -706,7 +801,7 @@ export default function AupListPage() {
                 className="select"
                 style={FILTER_CONTROL_STYLE}
                 value={roundNo}
-                onChange={(e) => { setRoundNo(e.target.value); setPage(1); }}
+                onChange={(e) => { setRoundNo(e.target.value); }}
               >
                 <option value="">全部</option>
                 <option value="1">第 1 轮</option>
@@ -722,7 +817,7 @@ export default function AupListPage() {
               className="select"
               style={FILTER_CONTROL_STYLE}
               value={projectGroupName}
-              onChange={(e) => { setProjectGroupName(e.target.value); setPage(1); }}
+              onChange={(e) => { setProjectGroupName(e.target.value); }}
             >
               <option value="">全部课题组</option>
               {(projectGroupsQuery.data ?? []).map((g) => (
@@ -737,7 +832,7 @@ export default function AupListPage() {
               style={FILTER_CONTROL_STYLE}
               placeholder="提交人姓名"
               value={submitterName}
-              onChange={(e) => { setSubmitterName(e.target.value); setPage(1); }}
+              onChange={(e) => { setSubmitterName(e.target.value); }}
             />
           </label>
           <label style={FILTER_FIELD_STYLE}>
@@ -747,16 +842,16 @@ export default function AupListPage() {
               style={FILTER_CONTROL_STYLE}
               placeholder="审核人姓名"
               value={reviewerName}
-              onChange={(e) => { setReviewerName(e.target.value); setPage(1); }}
+              onChange={(e) => { setReviewerName(e.target.value); }}
             />
           </label>
         </div>
         )}
       </div>
 
-      {/* 下卡片：可滚动内容 + 分页 */}
+      {/* 下卡片：无限滚动内容 + 底部加载状态 */}
       <div className="list-card list-card-body">
-        <div className="list-card-scroll">
+        <div className="list-card-scroll" ref={scrollRef}>
           {isLoading ? (
             <div className="aup-empty">加载中…</div>
           ) : isError ? (
@@ -768,7 +863,7 @@ export default function AupListPage() {
           ) : view === "card" ? (
             <CardGrid
               items={items}
-              page={page}
+              genKey={genKey}
               getActions={getActions}
               expanded={expanded}
               onToggle={toggle}
@@ -783,14 +878,19 @@ export default function AupListPage() {
               onViewSnap={onViewSnap}
             />
           )}
+          {/* 滚动加载哨兵：接近底部时触发加载下一页 */}
+          {(hasNextPage || isFetchingNextPage) && items.length > 0 && (
+            <div ref={sentinelRef} className="aup-load-more">
+              {isFetchingNextPage ? "加载中…" : "下拉加载更多"}
+            </div>
+          )}
         </div>
 
-        {totalPages > 1 && (
+        {items.length > 0 && (
           <div className="list-pager">
-            <span>第 {page} / {totalPages} 页</span>
+            <span>已加载 {items.length} / 共 {total} 条</span>
             <span className="spacer" />
-            <button className="btn ghost small" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>上一页</button>
-            <button className="btn ghost small" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>下一页</button>
+            {!hasNextPage && <span style={{ color: "var(--muted)" }}>已加载全部</span>}
           </div>
         )}
       </div>

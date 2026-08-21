@@ -14,6 +14,8 @@ export interface NotificationRecord {
   title: string;
   content: string;
   senderId?: string;
+  /** 发送人展示名；title/content 为历史快照正文，可能仍含旧 id */
+  senderName?: string;
   bizType?: string;
   bizId?: string;
   isRead: number;

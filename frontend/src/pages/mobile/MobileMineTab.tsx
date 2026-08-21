@@ -27,6 +27,7 @@ import { toast } from "react-hot-toast";
 import RingAvatar from "./MobileRingAvatar";
 import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
 
+import { appConfirm } from "@/lib/appDialog";
 /* ================================================================== */
 function levelFromExp(exp: number) {
   return Math.max(1, Math.floor(Math.sqrt(Math.max(0, exp) / 50)));
@@ -212,10 +213,10 @@ export default function MobileMineTab({
             </button>
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 if (!personnelId) { toast.error("无法获取人员ID"); return; }
                 if (currentSendKey) {
-                  if (!window.confirm("已绑定微信通知，是否取消绑定？")) return;
+                  if (!await appConfirm("已绑定微信通知，是否取消绑定？")) return;
                   const token = authStorage.getToken();
                   fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/send-key`, {
                     method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
@@ -239,10 +240,10 @@ export default function MobileMineTab({
             </button>
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 if (!personnelId) { toast.error("无法获取人员ID"); return; }
                 if (currentWxPusher) {
-                  if (!window.confirm("已绑定 WxPusher 推送，是否取消绑定？")) return;
+                  if (!await appConfirm("已绑定 WxPusher 推送，是否取消绑定？")) return;
                   const token = authStorage.getToken();
                   fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/wx-pusher-uid`, {
                     method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },

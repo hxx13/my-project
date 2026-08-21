@@ -14,6 +14,7 @@ import com.example.demo.modules.aup.mapper.FormSubsectionMapper;
 import com.example.demo.modules.aup.mapper.FormTemplateMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,19 +40,22 @@ public class AupTemplateService {
     private final AupRecordMapper recordMapper;
     private final ObjectProvider<AupDefaultTemplateSeeder> defaultSeederProvider;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JdbcTemplate jdbc;
 
     public AupTemplateService(FormTemplateMapper templateMapper,
                               FormSectionMapper sectionMapper,
                               FormSubsectionMapper subsectionMapper,
                               FormFieldMapper fieldMapper,
                               AupRecordMapper recordMapper,
-                              ObjectProvider<AupDefaultTemplateSeeder> defaultSeederProvider) {
+                              ObjectProvider<AupDefaultTemplateSeeder> defaultSeederProvider,
+                              JdbcTemplate jdbc) {
         this.templateMapper = templateMapper;
         this.sectionMapper = sectionMapper;
         this.subsectionMapper = subsectionMapper;
         this.fieldMapper = fieldMapper;
         this.recordMapper = recordMapper;
         this.defaultSeederProvider = defaultSeederProvider;
+        this.jdbc = jdbc;
     }
 
     /* ── 查询 ── */
@@ -177,23 +181,43 @@ public class AupTemplateService {
         return templateMapper.findMaxVersionByFormKey(normalizeFormKey(formKey)) > 0;
     }
 
-    /** 删除版本（含整树结构）。已发布版本不可删除（需先归档）；草稿/归档可删。 */
+    /**
+     * 删除版本（含整树结构）。
+     * 允许删除已发布版本；删除时级联删除该模板下「同步（aro）/ 演示（demo）」计划书，
+     * 但若仍有「本地填写」计划书则拒绝（本地数据无法复原，不可删除）。
+     */
     @Transactional
     public Result<Void> deleteDraft(Long id) {
         FormTemplate t = templateMapper.findById(id);
         if (t == null) {
             return Result.error("模板不存在");
         }
-        if (STATUS_PUBLISHED.equals(t.getStatus())) {
-            return Result.fail(400, "已发布版本不可删除，请先归档");
+        // 本地填写的计划书不可删除（同步可再拉取、demo 可再种子，本地则无法复原）
+        int localRefs = recordMapper.countLocalRecords(id);
+        if (localRefs > 0) {
+            throw new TwinBusinessException(409, "该模板下还有 " + localRefs + " 份本地填写的计划书，禁止删除（仅同步/demo 可级联删除）");
         }
-        int refs = recordMapper.countByTemplateId(id);
-        if (refs > 0) {
-            throw new TwinBusinessException(409, "该模板版本仍被 " + refs + " 份计划书引用，不可删除");
+        // 级联删除同步/demo 计划书：先删子表，再删主记录
+        List<Long> deletableIds = recordMapper.listDeletableRecordIds(id);
+        if (!deletableIds.isEmpty()) {
+            for (Long aupId : deletableIds) {
+                deleteRecordRelated(aupId);
+            }
+            recordMapper.deleteByIds(deletableIds);
         }
         deleteTree(id);
         templateMapper.deleteById(id);
         return Result.success(null);
+    }
+
+    /** 删除计划书相关子表（aup_data / snapshot / review / assignment / audit_log / review_item）。 */
+    private void deleteRecordRelated(long aupId) {
+        jdbc.update("DELETE FROM aup_review_item WHERE aup_id = ?", aupId);
+        jdbc.update("DELETE FROM aup_review WHERE aup_id = ?", aupId);
+        jdbc.update("DELETE FROM aup_review_assignment WHERE aup_id = ?", aupId);
+        jdbc.update("DELETE FROM aup_audit_log WHERE aup_id = ?", aupId);
+        jdbc.update("DELETE FROM aup_snapshot WHERE aup_id = ?", aupId);
+        jdbc.update("DELETE FROM aup_data WHERE aup_id = ?", aupId);
     }
 
     /** 归档：已发布版本 → ARCHIVED（不再对填写人生效）。 */

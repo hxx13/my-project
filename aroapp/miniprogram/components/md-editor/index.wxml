@@ -1,0 +1,95 @@
+<view class="mde-root">
+  <view class="mde-mode-bar">
+    <view class="mde-mode-tab {{ formMode ? 'mde-mode-tab--on' : '' }}" bindtap="switchToForm">表单填写</view>
+    <view class="mde-mode-tab {{ !formMode ? 'mde-mode-tab--on' : '' }}" bindtap="switchToFree">自由编辑</view>
+  </view>
+
+  <block wx:if="{{ formMode }}">
+    <view class="mde-section-label">预设模板</view>
+    <view class="mde-chip-wrap">
+      <view class="mde-chip mde-chip--tpl" hover-class="mde-chip--active" bindtap="applyTemplate" data-key="update">更新公告</view>
+      <view class="mde-chip mde-chip--tpl" hover-class="mde-chip--active" bindtap="applyTemplate" data-key="maintenance">维护通知</view>
+      <view class="mde-chip mde-chip--tpl" hover-class="mde-chip--active" bindtap="applyTemplate" data-key="feature">新功能介绍</view>
+      <view class="mde-chip mde-chip--tpl" hover-class="mde-chip--active" bindtap="applyTemplate" data-key="general">通用公告</view>
+      <view class="mde-chip mde-chip--danger" hover-class="mde-chip--active" bindtap="clearAll">清空重填</view>
+    </view>
+
+    <view
+      wx:for="{{ sections }}"
+      wx:for-index="idx"
+      wx:key="_id"
+      class="mde-block"
+    >
+      <view class="mde-block-head">
+        <van-field
+          label="段落标题"
+          placeholder="如：更新内容、优化改进、注意事项"
+          value="{{ item.heading }}"
+          data-idx="{{ idx }}"
+          bind:change="onSectionHeading"
+        />
+        <view class="mde-block-del" data-idx="{{ idx }}" bindtap="removeSection">删除段落</view>
+      </view>
+      <view
+        wx:for="{{ item.items }}"
+        wx:for-item="line"
+        wx:for-index="li"
+        wx:key="li"
+        class="mde-item-row"
+      >
+        <text class="mde-item-num">{{ li + 1 }}</text>
+        <input
+          class="mde-item-input"
+          placeholder="输入一条内容"
+          value="{{ line }}"
+          disabled="{{ disabled }}"
+          data-idx="{{ idx }}"
+          data-li="{{ li }}"
+          bindinput="onItemInput"
+        />
+        <view class="mde-item-del" data-idx="{{ idx }}" data-li="{{ li }}" bindtap="removeItem">✕</view>
+      </view>
+      <view class="mde-add-item" data-idx="{{ idx }}" bindtap="addItem">+ 添加一条</view>
+    </view>
+
+    <view class="mde-add-section" bindtap="addSection">+ 添加新段落</view>
+    <view class="mde-img-bar">
+      <view class="mde-chip mde-chip--img" hover-class="mde-chip--active" bindtap="insertImage">插入图片</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <van-field
+      type="textarea"
+      autosize="{{ { minHeight: 240 } }}"
+      placeholder="支持 Markdown：## 标题、**加粗**、- 列表"
+      value="{{ freeMd }}"
+      disabled="{{ disabled }}"
+      bind:change="onFreeInput"
+    />
+    <text class="mde-body-hint">自由模式下可直接编写 Markdown，下方按钮可快速插入格式。</text>
+    <view class="mde-section-label">快捷插入</view>
+    <view class="mde-chip-wrap">
+      <view class="mde-chip" hover-class="mde-chip--active" bindtap="insertSnippet" data-key="h2">## 小标题</view>
+      <view class="mde-chip" hover-class="mde-chip--active" bindtap="insertSnippet" data-key="h3">### 子标题</view>
+      <view class="mde-chip" hover-class="mde-chip--active" bindtap="insertSnippet" data-key="bold">**加粗**</view>
+      <view class="mde-chip" hover-class="mde-chip--active" bindtap="insertSnippet" data-key="ul">- 列表</view>
+      <view class="mde-chip" hover-class="mde-chip--active" bindtap="insertSnippet" data-key="quote">> 引用</view>
+      <view class="mde-chip mde-chip--img" hover-class="mde-chip--active" bindtap="insertImage">插入图片</view>
+    </view>
+  </block>
+
+  <view class="mde-preview-wrap">
+    <view class="mde-preview-label-row">
+      <text class="mde-preview-label">内容预览</text>
+      <view class="mde-preview-btn" hover-class="mde-preview-btn--active" bindtap="onTogglePreview">
+        {{ showPreview ? '收起预览' : '查看效果' }}
+      </view>
+    </view>
+    <scroll-view wx:if="{{ showPreview }}" scroll-y class="mde-preview-scroll">
+      <rich-text wx:if="{{ previewHtml }}" nodes="{{ previewHtml }}" type="html" />
+      <text wx:else class="mde-preview-empty">（暂无内容）</text>
+    </scroll-view>
+    <text wx:else class="mde-preview-hint">点击「查看效果」预览渲染后的内容</text>
+  </view>
+</view>

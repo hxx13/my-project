@@ -13,6 +13,7 @@ import {
 } from "@/api/domains/analytics.api";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
 
+import { appConfirm } from "@/lib/appDialog";
 type Mode = "create" | "import";
 
 type Props = {
@@ -91,7 +92,7 @@ export function AnalyticsViewShareModal({
       toast.error("请先保存至少一条统计配置");
       return;
     }
-    if (shareMeta && !window.confirm("重新生成将使当前分享码作废，是否继续？")) {
+    if (shareMeta && !await appConfirm("重新生成将使当前分享码作废，是否继续？")) {
       return;
     }
     setCreating(true);

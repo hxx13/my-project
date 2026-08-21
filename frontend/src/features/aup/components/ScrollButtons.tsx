@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
+import type { CSSProperties, RefObject } from "react";
 
 const BTN_STYLE: CSSProperties = {
   width: 40,
@@ -19,14 +20,26 @@ const BTN_STYLE: CSSProperties = {
 
 /**
  * 右下角浮动「回顶部 / 滚到底部」按钮。
- * 填写页与模板编辑页复用，滚动容器默认为 window（document）。
+ * 默认滚动 window；内容管理壳内可传入 scrollRef（如主内容区）。
  */
-export default function ScrollButtons() {
-  const toTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
-  const toBottom = () =>
-    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+export default function ScrollButtons({
+  scrollRef,
+}: {
+  /** 嵌入壳内滚动容器；缺省为 window / document */
+  scrollRef?: RefObject<HTMLElement | null>;
+}) {
+  const toTop = () => {
+    const el = scrollRef?.current;
+    if (el) el.scrollTo({ top: 0, behavior: "smooth" });
+    else window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const toBottom = () => {
+    const el = scrollRef?.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    else window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+  };
 
-  return (
+  return createPortal(
     <div style={{ position: "fixed", right: 24, bottom: 24, zIndex: 40, display: "flex", flexDirection: "column", gap: 8 }}>
       <button
         type="button"
@@ -50,6 +63,7 @@ export default function ScrollButtons() {
       >
         ↓
       </button>
-    </div>
+    </div>,
+    document.body
   );
 }

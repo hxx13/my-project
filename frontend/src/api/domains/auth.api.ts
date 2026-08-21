@@ -1,5 +1,6 @@
 import axios from "axios";
 import { authHttp } from "@/api/core/authHttp";
+import { redactOAuthSecretsInText } from "@/features/auth/iamOAuth";
 
 /** 与后端 AuthUserInfo 对齐 */
 export interface AuthUserInfo {
@@ -51,19 +52,39 @@ export async function loginWeb(username: string, password: string, turnstileToke
   return response.data.data;
 }
 
-export async function loginCas(ticket: string, serviceUrl: string): Promise<AuthData> {
-  const response = await axios.post<Result<AuthData>>("/api/auth/login/cas", { ticket, serviceUrl });
-  if (!response.data?.success || !response.data?.data?.token) {
-    throw new Error(response.data?.message || "CAS登录失败");
+/** IAM OAuth2 授权码登录（替换原 CAS ticket 用户登录） */
+export async function loginOAuth(code: string, state: string, redirectUri: string): Promise<AuthData> {
+  const response = await axios.post<Result<AuthData & { errorCode?: string }>>("/api/auth/login/oauth", {
+    code,
+    state,
+    redirectUri,
+  });
+  if (!response.data?.success || !(response.data.data as AuthData | undefined)?.token) {
+    const errData = response.data?.data as { errorCode?: string } | undefined;
+    // errorCode 为业务码（如 PERSON_NOT_FOUND），不是授权码
+    const codeHint = errData?.errorCode ? ` [${errData.errorCode}]` : "";
+    const msg = (response.data?.message || "统一认证登录失败") + codeHint;
+    throw new Error(redactOAuthSecretsInText(msg));
   }
-  return response.data.data;
+  return response.data.data as AuthData;
 }
 
-export async function registerStaff(username: string, password: string, inviteCode: string): Promise<AuthData> {
+/** @deprecated 用户侧 CAS 已下线；保留类型常量兼容旧引用时请改 loginOAuth */
+export async function loginCas(_ticket: string, _serviceUrl: string): Promise<AuthData> {
+  throw new Error("CAS 用户登录已下线，请使用统一认证（IAM）登录");
+}
+
+export async function registerStaff(
+  username: string,
+  password: string,
+  inviteCode: string,
+  name: string,
+): Promise<AuthData> {
   const response = await axios.post<Result<AuthData>>("/api/auth/register/staff", {
     username,
     password,
     inviteCode,
+    name,
   });
 
   if (!response.data?.success || !response.data?.data?.token) {

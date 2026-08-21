@@ -43,6 +43,10 @@
                 <view wx:else class="expand-thumb expand-thumb-ph"><text>{{ line.snapshotName ? line.snapshotName.charAt(0) : '?' }}</text></view>
                 <view class="expand-line-main">
                   <text class="expand-name">{{ line.snapshotName }}</text>
+                  <view class="expand-apply-qty">
+                    <text>申请 ×{{ line.qty }}</text>
+                    <text wx:if="{{ line.fulfilledQty > 0 }}"> · 已发 ×{{ line.fulfilledQty }}</text>
+                  </view>
                   <!-- 发放数量 + 备注：常驻显示 -->
                   <view wx:if="{{ detailCache[item.id].status === 'PENDING' }}" class="expand-qty-row">
                     <text class="expand-qty-label">发放数量</text>
@@ -117,6 +121,10 @@
                 <view wx:else class="expand-thumb expand-thumb-ph"><text>{{ line.snapshotName ? line.snapshotName.charAt(0) : '?' }}</text></view>
                 <view class="expand-line-main">
                   <text class="expand-name">{{ line.snapshotName }}</text>
+                  <view class="expand-apply-qty">
+                    <text>申请 ×{{ line.qty }}</text>
+                    <text wx:if="{{ line.fulfilledQty > 0 }}"> · 已发 ×{{ line.fulfilledQty }}</text>
+                  </view>
                   <view wx:if="{{ remarkByLineCache[item.id][line.id] }}" class="expand-remark-readonly">
                     <text class="expand-remark-lbl">备注</text>
                     <text class="expand-remark-text">{{ remarkByLineCache[item.id][line.id] }}</text>
@@ -173,6 +181,10 @@
                 <view wx:else class="expand-thumb expand-thumb-ph"><text>{{ line.snapshotName ? line.snapshotName.charAt(0) : '?' }}</text></view>
                 <view class="expand-line-main">
                   <text class="expand-name">{{ line.snapshotName }}</text>
+                  <view class="expand-apply-qty">
+                    <text>申请 ×{{ line.qty }}</text>
+                    <text wx:if="{{ line.fulfilledQty > 0 }}"> · 已发 ×{{ line.fulfilledQty }}</text>
+                  </view>
                   <view wx:if="{{ remarkByLineCache[item.id][line.id] }}" class="expand-remark-readonly">
                     <text class="expand-remark-lbl">备注</text>
                     <text class="expand-remark-text">{{ remarkByLineCache[item.id][line.id] }}</text>

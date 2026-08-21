@@ -8,6 +8,9 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.PasswordCredentialService;
 import com.example.demo.modules.auth.service.PasswordPolicyValidator;
+import com.example.demo.modules.personnel.entity.Personnel;
+import com.example.demo.modules.personnel.mapper.PersonnelMapper;
+import com.example.demo.modules.personnel.service.PersonnelService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -23,15 +26,21 @@ public class AdminService {
     private final UserMapper userMapper;
     private final PasswordCredentialService passwordCredentialService;
     private final AroPersonnelMapper aroPersonnelMapper;
+    private final PersonnelMapper personnelMapper;
+    private final PersonnelService personnelService;
 
     public AdminService(AdminMapper adminMapper,
                         UserMapper userMapper,
                         PasswordCredentialService passwordCredentialService,
-                        AroPersonnelMapper aroPersonnelMapper) {
+                        AroPersonnelMapper aroPersonnelMapper,
+                        PersonnelMapper personnelMapper,
+                        PersonnelService personnelService) {
         this.adminMapper = adminMapper;
         this.userMapper = userMapper;
         this.passwordCredentialService = passwordCredentialService;
         this.aroPersonnelMapper = aroPersonnelMapper;
+        this.personnelMapper = personnelMapper;
+        this.personnelService = personnelService;
     }
 
     public Map<String, Object> listPersonnel(int page, int size, String keyword) {
@@ -90,13 +99,18 @@ public class AdminService {
         if (roleEnum == RoleEnum.MEMBER) {
             throw new IllegalArgumentException("员工账号不可为学生角色，请使用人员库同步学生");
         }
+        String realName = request.getName() != null ? request.getName().trim() : "";
+        if (realName.isEmpty()) {
+            throw new IllegalArgumentException("真实姓名必填（与登录账号无关）");
+        }
+        if (realName.length() > 128) {
+            throw new IllegalArgumentException("真实姓名不能超过128个字符");
+        }
         String nick = request.getDisplayNickname() != null ? request.getDisplayNickname().trim() : "";
         if (nick.length() > 32) {
             throw new IllegalArgumentException("展示昵称不能超过32个字符");
         }
-        if (nick.isEmpty()) {
-            nick = username;
-        }
+        // 展示昵称可选；空则保持空，绝不默认成账号名（避免把账号当成姓名）
         String id = "STAFF_" + UUID.randomUUID().toString().replace("-", "");
         String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
         User u = new User();
@@ -107,17 +121,20 @@ public class AdminService {
         u.setRole(roleEnum);
         u.setStatus(1);
         u.setPasswordResetRequired(1);
-        u.setDisplayNickname(nick);
+        u.setDisplayNickname(nick.isEmpty() ? null : nick);
         u.setMiniBindType(null);
         u.setMiniPreferencesJson(null);
         u.setAuthProfile("WEB_PASSWORD");
         u.setAccountSource("STAFF");
         userMapper.insertUser(u);
         userMapper.updatePasswordWithPlainById(id, u.getPassword(), encryptedPlain, 1);
+        // 立刻写入真实姓名并挂 personnel，避免仅系统账号、同步后「消失/对不上」
+        personnelService.ensureStaffPersonnel(id, realName, roleEnum.getCode());
         Map<String, Object> out = new HashMap<>();
         out.put("id", id);
         out.put("username", username);
-        out.put("displayNickname", nick);
+        out.put("name", realName);
+        out.put("displayNickname", nick.isEmpty() ? null : nick);
         out.put("role", roleEnum.getCode());
         return out;
     }
@@ -164,6 +181,40 @@ public class AdminService {
             throw new IllegalArgumentException("内置平台所有者账号角色不可降级");
         }
         userMapper.updateRoleById(id, roleEnum.getCode());
+        // 反向同步：该账号若有对应 personnel（按 staff_id），同步 personnel.role，避免双向漂移
+        Personnel p = personnelMapper.findByStaffId(id);
+        if (p != null) {
+            personnelMapper.updateRole(p.getId(), roleEnum.getCode());
+        }
+    }
+
+    /**
+     * 修改人员级角色（personnel.role 为唯一权威）。写透镜像：该人有 staff_id 时同步 sys_user.role，
+     * 兜住直接读 sys_user.role 的 SQL（通知角色广播等）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updatePersonnelRole(Long id, String roleCode) {
+        if (id == null) {
+            throw new IllegalArgumentException("人员 id 不能为空");
+        }
+        RoleEnum roleEnum;
+        try {
+            roleEnum = RoleEnum.valueOf(roleCode.trim().toUpperCase());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("角色参数不合法");
+        }
+        Personnel p = personnelMapper.findById(id);
+        if (p == null) {
+            throw new IllegalArgumentException("人员不存在");
+        }
+        if (BUILTIN_SUPER_ADMIN_ID.equals(p.getStaffId()) && roleEnum != RoleEnum.PLATFORM_OWNER) {
+            throw new IllegalArgumentException("内置平台所有者账号角色不可降级");
+        }
+        personnelMapper.updateRole(id, roleEnum.getCode());
+        // 写透镜像：有 staff_id 才同步 sys_user.role（best-effort）
+        if (StringUtils.hasText(p.getStaffId())) {
+            userMapper.updateRoleById(p.getStaffId(), roleEnum.getCode());
+        }
     }
 
     public void updateStatus(String id, Boolean enabled) {

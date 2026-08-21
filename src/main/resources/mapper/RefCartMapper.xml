@@ -6,23 +6,38 @@
         <id property="id" column="id"/>
         <result property="groupId" column="group_id"/>
         <result property="refDataId" column="ref_data_id"/>
+        <result property="aupRecordId" column="aup_record_id"/>
         <result property="specSelections" column="spec_selections"/>
         <result property="quantity" column="quantity"/>
         <result property="remark" column="remark"/>
+        <result property="packageStatus" column="package_status"/>
+        <result property="packageRemark" column="package_remark"/>
         <result property="addedBy" column="added_by"/>
         <result property="addedAt" column="added_at"/>
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ref_cart(group_id, ref_data_id, spec_selections, quantity, remark, added_by)
-        VALUES (#{groupId}, #{refDataId}, #{specSelections}, #{quantity}, #{remark}, #{addedBy})
+        INSERT INTO ref_cart(group_id, ref_data_id, aup_record_id, spec_selections, quantity, remark,
+                             package_status, package_remark, added_by)
+        VALUES (#{groupId}, #{refDataId}, #{aupRecordId}, #{specSelections}, #{quantity}, #{remark},
+                COALESCE(#{packageStatus}, 'DRAFT'), #{packageRemark}, #{addedBy})
     </insert>
 
     <update id="update">
         UPDATE ref_cart
         SET spec_selections = #{specSelections},
             quantity = #{quantity},
-            remark = #{remark}
+            remark = #{remark},
+            package_status = COALESCE(#{packageStatus}, package_status),
+            package_remark = #{packageRemark},
+            aup_record_id = COALESCE(#{aupRecordId}, aup_record_id)
+        WHERE id = #{id}
+    </update>
+
+    <update id="updatePackageStatus">
+        UPDATE ref_cart
+        SET package_status = #{packageStatus},
+            package_remark = #{packageRemark}
         WHERE id = #{id}
     </update>
 
@@ -34,12 +49,29 @@
         DELETE FROM ref_cart WHERE group_id = #{groupId}
     </delete>
 
+    <delete id="deleteByIds">
+        DELETE FROM ref_cart
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
     <select id="findById" resultMap="Base">
         SELECT * FROM ref_cart WHERE id = #{id} LIMIT 1
     </select>
 
     <select id="listByGroupId" resultMap="Base">
         SELECT * FROM ref_cart WHERE group_id = #{groupId} ORDER BY id ASC
+    </select>
+
+    <select id="listByIds" resultMap="Base">
+        SELECT * FROM ref_cart
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY id ASC
     </select>
 
 </mapper>

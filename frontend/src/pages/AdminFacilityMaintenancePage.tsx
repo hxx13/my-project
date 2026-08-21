@@ -47,6 +47,7 @@ import {
 } from "@/api/domains/facilityMaintenance.api";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 
+import { appConfirm, appPrompt } from "@/lib/appDialog";
 type TabKey = "inspection" | "consumables" | "replacements";
 type SettingsTabKey = "sites" | "options" | "templates" | "catalog" | "presets";
 
@@ -604,7 +605,7 @@ export default function AdminFacilityMaintenancePage() {
                               type="button"
                               className="text-amber-700 hover:underline"
                               onClick={async () => {
-                                if (!confirm("确定停用该机房？停用后下拉框中不再出现，可在设置中重新启用。")) return;
+                                if (!await appConfirm("确定停用该机房？停用后下拉框中不再出现，可在设置中重新启用。")) return;
                                 try {
                                   await patchFmSite(s.id, { disabled: 1 });
                                   toast.success("已停用");
@@ -642,7 +643,7 @@ export default function AdminFacilityMaintenancePage() {
                             className="text-rose-600 hover:underline"
                             onClick={async () => {
                               if (
-                                !confirm(
+                                !await appConfirm(
                                   "确定永久删除该机房？数据库中将删除该行；历史台账若引用该机房 ID 可能残留孤儿数据。此操作不可恢复。"
                                 )
                               )
@@ -699,7 +700,7 @@ export default function AdminFacilityMaintenancePage() {
                       type="button"
                       className="text-rose-600 text-sm"
                       onClick={async () => {
-                        if (!confirm("删除该选项集？")) return;
+                        if (!await appConfirm("删除该选项集？")) return;
                         try {
                           await deleteFmOptionSet(o.id);
                           toast.success("已删除");
@@ -750,7 +751,7 @@ export default function AdminFacilityMaintenancePage() {
                           type="button"
                           className="text-rose-600 hover:underline"
                           onClick={async () => {
-                            if (!confirm("删除模板？")) return;
+                            if (!await appConfirm("删除模板？")) return;
                             try {
                               await deleteFmTemplate(t.id);
                               toast.success("已删除");
@@ -841,7 +842,7 @@ export default function AdminFacilityMaintenancePage() {
                                 type="button"
                                 className="text-[var(--twin-link)] text-sm hover:underline"
                                 onClick={async () => {
-                                  const u = prompt("单位", c.unit || "");
+                                  const u = await appPrompt("单位", c.unit || "");
                                   if (u === null) return;
                                   try {
                                     await patchFmConsumableCatalog(c.id, { unit: u.trim() || null });
@@ -873,7 +874,7 @@ export default function AdminFacilityMaintenancePage() {
                                 type="button"
                                 className="text-rose-600 text-sm hover:underline"
                                 onClick={async () => {
-                                  if (!confirm("删除该耗材名目？")) return;
+                                  if (!await appConfirm("删除该耗材名目？")) return;
                                   try {
                                     await deleteFmConsumableCatalog(c.id);
                                     toast.success("已删除");
@@ -951,7 +952,7 @@ export default function AdminFacilityMaintenancePage() {
                                 type="button"
                                 className="text-[var(--twin-link)] text-sm hover:underline"
                                 onClick={async () => {
-                                  const n = prompt("名称", p.label);
+                                  const n = await appPrompt("名称", p.label);
                                   if (n === null || !n.trim()) return;
                                   try {
                                     await patchFmReplacementFilterPreset(p.id, { label: n.trim() });
@@ -983,7 +984,7 @@ export default function AdminFacilityMaintenancePage() {
                                 type="button"
                                 className="text-rose-600 text-sm hover:underline"
                                 onClick={async () => {
-                                  if (!confirm("删除该类型？")) return;
+                                  if (!await appConfirm("删除该类型？")) return;
                                   try {
                                     await deleteFmReplacementFilterPreset(p.id);
                                     toast.success("已删除");
@@ -1076,7 +1077,7 @@ export default function AdminFacilityMaintenancePage() {
                         type="button"
                         className="text-rose-600"
                         onClick={async () => {
-                          if (!confirm("删除？")) return;
+                          if (!await appConfirm("删除？")) return;
                           try {
                             await deleteFmConsumableLine(String(row.id));
                             toast.success("已删除");
@@ -1168,7 +1169,7 @@ export default function AdminFacilityMaintenancePage() {
                         type="button"
                         className="text-rose-600"
                         onClick={async () => {
-                          if (!confirm("删除？")) return;
+                          if (!await appConfirm("删除？")) return;
                           try {
                             await deleteFmReplacementRecord(String(row.id));
                             toast.success("已删除");

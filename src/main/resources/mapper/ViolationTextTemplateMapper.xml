@@ -6,6 +6,7 @@
         <id column="id" property="id"/>
         <result column="name" property="name"/>
         <result column="violation_text" property="violationText"/>
+        <result column="content_json" property="contentJson"/>
         <result column="sort_order" property="sortOrder"/>
         <result column="created_at" property="createdAt"/>
         <result column="updated_at" property="updatedAt"/>
@@ -20,14 +21,15 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        INSERT INTO twin_violation_text_template (name, violation_text, sort_order)
-        VALUES (#{name}, #{violationText}, #{sortOrder})
+        INSERT INTO twin_violation_text_template (name, violation_text, content_json, sort_order)
+        VALUES (#{name}, #{violationText}, #{contentJson}, #{sortOrder})
     </insert>
 
     <update id="update">
         UPDATE twin_violation_text_template
         SET name = #{name},
             violation_text = #{violationText},
+            content_json = #{contentJson},
             sort_order = #{sortOrder}
         WHERE id = #{id}
     </update>

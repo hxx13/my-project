@@ -8,6 +8,7 @@ import { authStorage } from "@/features/auth/authStorage";
 export default function RegisterStaffPage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
+  const [realName, setRealName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -15,8 +16,12 @@ export default function RegisterStaffPage() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!username.trim() || !password.trim() || !inviteCode.trim()) {
-      toast.error("请输入账号、密码与推荐码");
+    if (!username.trim() || !password.trim() || !inviteCode.trim() || !realName.trim()) {
+      toast.error("请输入真实姓名、账号、密码与推荐码");
+      return;
+    }
+    if (realName.trim().length > 128) {
+      toast.error("真实姓名过长");
       return;
     }
     if (password.length < 6) {
@@ -29,7 +34,7 @@ export default function RegisterStaffPage() {
     }
     try {
       setSubmitting(true);
-      const data = await registerStaff(username.trim(), password, inviteCode.trim());
+      const data = await registerStaff(username.trim(), password, inviteCode.trim(), realName.trim());
       authStorage.setAuth(data.token, data.role, data.userInfo);
       authStorage.markLoginPortal("staff");
       toast.success("注册成功");
@@ -47,7 +52,7 @@ export default function RegisterStaffPage() {
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900/80 backdrop-blur-xl p-8 shadow-2xl">
         <div className="mb-8">
           <h1 className="text-2xl font-semibold tracking-tight">教职工注册</h1>
-          <p className="mt-2 text-sm text-slate-400">需管理员发放的推荐码；账号与密码由本人设置</p>
+          <p className="mt-2 text-sm text-slate-400">需管理员发放的推荐码；真实姓名与登录账号分开填写</p>
         </div>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
@@ -61,12 +66,23 @@ export default function RegisterStaffPage() {
             />
           </div>
           <div>
+            <label className="mb-2 block text-sm text-slate-300">真实姓名</label>
+            <input
+              value={realName}
+              onChange={(e) => setRealName(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-slate-800/70 px-4 py-3 text-sm outline-none focus:border-blue-400"
+              placeholder="人员库显示用，≠ 登录账号"
+              autoComplete="name"
+            />
+          </div>
+          <div>
             <label className="mb-2 block text-sm text-slate-300">系统账号</label>
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full rounded-xl border border-white/10 bg-slate-800/70 px-4 py-3 text-sm outline-none focus:border-blue-400"
-              placeholder="请输入账号"
+              placeholder="请输入登录账号"
+              autoComplete="username"
             />
           </div>
           <div>

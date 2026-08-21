@@ -31,6 +31,7 @@ import {
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
+import { appConfirm } from "@/lib/appDialog";
 type TaskUiForm = {
   id?: number;
   name: string;
@@ -797,8 +798,8 @@ export default function AdminDahuaSwingTasksPage() {
                     <button
                       type="button"
                       className="text-rose-600"
-                      onClick={() => {
-                        if (!window.confirm("确定删除该任务吗？")) return;
+                      onClick={async () => {
+                        if (!await appConfirm("确定删除该任务吗？")) return;
                         deleteMut.mutate(Number(it.id));
                       }}
                     >

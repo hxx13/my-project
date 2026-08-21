@@ -1,6 +1,7 @@
 package com.example.demo.modules.portal.service;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.portal.dto.PortalCategoryView;
 import com.example.demo.modules.portal.dto.PortalContentView;
 import com.example.demo.modules.portal.dto.PortalContentUpsertRequest;
@@ -10,6 +11,7 @@ import com.example.demo.modules.portal.mapper.PortalCategoryMapper;
 import com.example.demo.modules.portal.mapper.PortalContentMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -20,10 +22,14 @@ public class PortalContentService {
 
     private final PortalContentMapper contentMapper;
     private final PortalCategoryMapper categoryMapper;
+    private final UserDisplayNameService userDisplayNameService;
 
-    public PortalContentService(PortalContentMapper contentMapper, PortalCategoryMapper categoryMapper) {
+    public PortalContentService(PortalContentMapper contentMapper,
+                                PortalCategoryMapper categoryMapper,
+                                UserDisplayNameService userDisplayNameService) {
         this.contentMapper = contentMapper;
         this.categoryMapper = categoryMapper;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     /* ── 分类 ── */
@@ -78,6 +84,7 @@ public class PortalContentService {
             if (c.getCategoryId() != null) v.setCategoryName(categoryNameMap.get(c.getCategoryId()));
             return v;
         }).collect(Collectors.toList());
+        enrichCreatedByNames(views);
 
         Map<String, Object> result = new HashMap<>();
         result.put("data", views);
@@ -93,6 +100,7 @@ public class PortalContentService {
             PortalCategory cat = categoryMapper.findById(c.getCategoryId());
             if (cat != null) v.setCategoryName(cat.getName());
         }
+        enrichCreatedByNames(List.of(v));
         return v;
     }
 
@@ -103,6 +111,7 @@ public class PortalContentService {
         List<PortalContent> list = contentMapper.listAdmin(type, status, search, size, offset);
         int total = contentMapper.countAdmin(type, status, search);
         List<PortalContentView> views = list.stream().map(this::toView).collect(Collectors.toList());
+        enrichCreatedByNames(views);
         Map<String, Object> result = new HashMap<>();
         result.put("data", views);
         result.put("total", total);
@@ -111,7 +120,10 @@ public class PortalContentService {
 
     public PortalContentView getAdmin(Long id) {
         PortalContent c = contentMapper.findById(id);
-        return c != null ? toView(c) : null;
+        if (c == null) return null;
+        PortalContentView v = toView(c);
+        enrichCreatedByNames(List.of(v));
+        return v;
     }
 
     @Transactional
@@ -122,7 +134,9 @@ public class PortalContentService {
             c.setPublishedAt(LocalDateTime.now());
         }
         contentMapper.insert(c);
-        return toView(c);
+        PortalContentView v = toView(c);
+        enrichCreatedByNames(List.of(v));
+        return v;
     }
 
     @Transactional
@@ -137,7 +151,10 @@ public class PortalContentService {
         }
         contentMapper.update(c);
         PortalContent updated = contentMapper.findById(id);
-        return updated != null ? toView(updated) : null;
+        if (updated == null) return null;
+        PortalContentView v = toView(updated);
+        enrichCreatedByNames(List.of(v));
+        return v;
     }
 
     @Transactional
@@ -157,6 +174,7 @@ public class PortalContentService {
         List<PortalContent> list = contentMapper.listRecycle(size, offset);
         int total = contentMapper.countRecycle();
         List<PortalContentView> views = list.stream().map(this::toView).collect(Collectors.toList());
+        enrichCreatedByNames(views);
         Map<String, Object> result = new HashMap<>();
         result.put("data", views);
         result.put("total", total);
@@ -227,5 +245,28 @@ public class PortalContentService {
     private Map<Long, String> buildCategoryNameMap() {
         return categoryMapper.listAll().stream()
                 .collect(Collectors.toMap(PortalCategory::getId, PortalCategory::getName));
+    }
+
+    private void enrichCreatedByNames(List<PortalContentView> views) {
+        if (views == null || views.isEmpty()) {
+            return;
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (PortalContentView v : views) {
+            if (v != null && StringUtils.hasText(v.getCreatedBy())) {
+                ids.add(v.getCreatedBy().trim());
+            }
+        }
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(ids);
+        for (PortalContentView v : views) {
+            if (v == null || !StringUtils.hasText(v.getCreatedBy())) {
+                continue;
+            }
+            String n = names.get(v.getCreatedBy().trim());
+            v.setCreatedByName(StringUtils.hasText(n) ? n : v.getCreatedBy().trim());
+        }
     }
 }

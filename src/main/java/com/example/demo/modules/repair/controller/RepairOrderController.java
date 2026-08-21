@@ -144,7 +144,7 @@ public class RepairOrderController {
             rows = repairOrderMapper.listVisible(user.getId(), statusValue, start, end, safeSize, offset);
             total = repairOrderMapper.countVisible(user.getId(), statusValue, start, end);
         }
-        List<RepairOrderView> views = rows.stream().map(repairOrderService::toView).toList();
+        List<RepairOrderView> views = repairOrderService.toViews(rows);
         Map<String, Object> data = new HashMap<>();
         data.put("data", views);
         data.put("total", total);
@@ -186,7 +186,11 @@ public class RepairOrderController {
         if (updated < 1) {
             return Result.error("接单失败，请刷新后重试");
         }
-        publishEvent("STARTED", user, order, Map.of("operatorName", StringUtils.hasText(user.getUsername()) ? user.getUsername() : user.getId()));
+        String operatorName = userDisplayNameService.resolveDisplayName(user.getId());
+        publishEvent("STARTED", user, order, Map.of(
+                "operatorName", StringUtils.hasText(operatorName) ? operatorName : user.getId(),
+                "processorName", StringUtils.hasText(operatorName) ? operatorName : user.getId()
+        ));
         return Result.success();
     }
 
@@ -211,8 +215,26 @@ public class RepairOrderController {
             return Result.error("完成处理失败，请刷新后重试");
         }
         String summary = buildCompletionSummary(order.getLocation(), order.getContent());
-        publishEvent("COMPLETED", user, order, Map.of("summary", summary));
-        try { pushService.send("REPAIR_COMPLETED", Map.of("applicantName", order.getApplicantName(), "location", order.getLocation(), "summary", summary, "bizId", order.getId(), "processorName", StringUtils.hasText(user.getUsername()) ? user.getUsername() : user.getId()), Set.of(order.getApplicantId())); } catch (Exception e) { log.warn("[Push] REPAIR_COMPLETED failed: {}", e.getMessage()); }
+        String applicantName = userDisplayNameService.resolveDisplayName(order.getApplicantId());
+        if (!StringUtils.hasText(applicantName)) {
+            applicantName = order.getApplicantName();
+        }
+        String processorName = userDisplayNameService.resolveDisplayName(user.getId());
+        if (!StringUtils.hasText(processorName)) {
+            processorName = user.getId();
+        }
+        publishEvent("COMPLETED", user, order, Map.of("summary", summary, "processorName", processorName));
+        try {
+            pushService.send("REPAIR_COMPLETED", Map.of(
+                    "applicantName", StringUtils.hasText(applicantName) ? applicantName : order.getApplicantId(),
+                    "location", order.getLocation(),
+                    "summary", summary,
+                    "bizId", order.getId(),
+                    "processorName", processorName
+            ), Set.of(order.getApplicantId()));
+        } catch (Exception e) {
+            log.warn("[Push] REPAIR_COMPLETED failed: {}", e.getMessage());
+        }
         return Result.success();
     }
 
@@ -259,7 +281,7 @@ public class RepairOrderController {
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 100);
         int offset = (safePage - 1) * safeSize;
-        List<RepairOrderView> views = repairOrderMapper.listRecycle(safeSize, offset).stream().map(repairOrderService::toView).toList();
+        List<RepairOrderView> views = repairOrderService.toViews(repairOrderMapper.listRecycle(safeSize, offset));
         Map<String, Object> data = new HashMap<>();
         data.put("data", views);
         data.put("total", repairOrderMapper.countRecycle());

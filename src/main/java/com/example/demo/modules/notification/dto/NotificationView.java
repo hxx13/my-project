@@ -11,6 +11,8 @@ public class NotificationView {
     private String title;
     private String content;
     private String senderId;
+    /** 发送人展示名（列表/详情时 UDNS 解析；title/content 为发布时正文快照，不回写） */
+    private String senderName;
     private String bizType;
     private String bizId;
     private Integer isRead;

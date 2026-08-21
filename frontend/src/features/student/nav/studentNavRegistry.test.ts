@@ -33,10 +33,10 @@ describe("studentNavRegistry", () => {
     expect(collectStudentRegistryItems(group)).toHaveLength(2);
   });
 
-  it("STUDENT_NAV_REGISTRY has 6 groups, 8 items, and the exact ordered paths", () => {
+  it("STUDENT_NAV_REGISTRY has 6 groups, 9 items, and the exact ordered paths", () => {
     expect(STUDENT_NAV_REGISTRY).toHaveLength(6);
     const allItems = STUDENT_NAV_REGISTRY.flatMap((g) => g.items);
-    expect(allItems).toHaveLength(8);
+    expect(allItems).toHaveLength(9);
     expect(allItems.map((i) => i.path)).toEqual([
       "/student/cage-shelf",
       "/student/rooms",
@@ -44,6 +44,7 @@ describe("studentNavRegistry", () => {
       "/student/animal-order",
       "/student/aup",
       "/student/notifications",
+      "/student/obligations",
       "/student/feedback",
       "/student/settings",
     ]);

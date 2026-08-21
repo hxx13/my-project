@@ -165,14 +165,13 @@ type AdminFormCardProps = {
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
-  style?: React.CSSProperties;
 };
 
 /** 长表单分区卡片。当 title / description / actions 均未传入时，不渲染 header 区域。 */
-export function AdminFormCard({ title, description, actions, children, className, style }: AdminFormCardProps) {
+export function AdminFormCard({ title, description, actions, children, className }: AdminFormCardProps) {
   const hasHeader = !!(title || description || actions);
   return (
-    <section className={cn("rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-sm", className)} style={style}>
+    <section className={cn("rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-sm", className)}>
       {hasHeader ? (
         <div className="mb-3 flex items-start justify-between border-b border-[var(--app-color-border-default)] pb-2">
           <div>

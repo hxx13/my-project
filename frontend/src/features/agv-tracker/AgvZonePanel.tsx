@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { useSpatialElements, useSaveSpatialElement, useDeleteSpatialElement, useDiscoverZones, useGenerateZonesFromTopology, type AgvSpatialElement } from "@/api/domains/agv-analysis.api";
 import { Plus, Edit3, Trash2, AlertTriangle, Search, Crosshair, Sparkles } from "lucide-react";
-import { BUILTIN_TAG_OPTIONS, BUILTIN_TAG_COLORS } from "@/features/agv-tracker/tagConfig";
 import { getAgvLabel } from "@/features/agv-tracker/agvRobotConfig";
+import { useAgvTags } from "@/api/domains/agvTag.api";
+import { getAllTagOptions, getAllTagColors } from "@/features/agv-tracker/tagConfig";
 
-const TAG_OPTIONS = [...BUILTIN_TAG_OPTIONS];
-const TAG_COLORS: Record<string, string> = { ...BUILTIN_TAG_COLORS };
+import { appConfirm } from "@/lib/appDialog";
 // 两点式矩形：以 (x1,y1) 和 (x2,y2) 为对角角点，生成矩形 polygon
 export function makeRectPolygon(x1: number, y1: number, x2: number, y2: number): string {
   const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
@@ -43,6 +43,12 @@ interface Props {
 
 export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pendingPick, onClearPick, focusZoneId, creatableTags, allTagColors }: Props) {
   const { data: zones = [], isLoading, isError, error } = useSpatialElements();
+  // 本面板也可脱离 AgvTrackerPage 使用（AgvAnalysisModal 就不透传标签），
+  // 此时直接取同一份服务端标签——回退绝不能再退回硬编码常量，那会成为第二处真相。
+  const { data: tagPayload } = useAgvTags();
+  const fallbackTags = tagPayload?.tags ?? [];
+  const tagOptions = creatableTags ?? getAllTagOptions(fallbackTags);
+  const tagColors = allTagColors ?? getAllTagColors(fallbackTags);
   const saveMut = useSaveSpatialElement();
   const deleteMut = useDeleteSpatialElement();
   const discoverMut = useDiscoverZones();
@@ -77,7 +83,7 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
 
   const handleQuickSave = (tag: string) => {
     if (!quickPick) return;
-    const color = (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6";
+    const color = tagColors[tag] || "#3b82f6";
     const polygonJson = isRectPick(quickPick)
       ? makeRectPolygon(quickPick.x1, quickPick.y1, quickPick.x2, quickPick.y2)
       : makeDiamondPolygon(quickPick.x, quickPick.y);
@@ -92,8 +98,8 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
     saveMut.mutate(element, { onSuccess: () => setQuickPick(null) });
   };
 
-  const handleDelete = (id: number) => {
-    if (window.confirm("确定要删除此区域吗？")) {
+  const handleDelete = async (id: number) => {
+    if (await appConfirm("确定要删除此区域吗？")) {
       deleteMut.mutate(id);
     }
   };
@@ -155,12 +161,12 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
             </button>
           </div>
           <div className="flex flex-wrap gap-1">
-            {(creatableTags ?? TAG_OPTIONS).map(tag => (
+            {tagOptions.map(tag => (
               <button key={tag}
                 onClick={() => handleQuickSave(tag)}
                 disabled={saveMut.isPending}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-                style={{ backgroundColor: (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6" }}>
+                style={{ backgroundColor: tagColors[tag] || "#3b82f6" }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-white/50" />
                 {tag}
               </button>
@@ -190,16 +196,16 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
 
       {/* 标签筛选 + 来源分类 + 批量操作 */}
       {zones.length > 0 && (
-        <TagsFilterBar zones={zones} activeTag={activeTag} onSetActiveTag={setActiveTag} activeSource={activeSource} onSetActiveSource={setActiveSource} allTagColors={allTagColors} onDeleteByTag={(tag) => {
+        <TagsFilterBar zones={zones} activeTag={activeTag} onSetActiveTag={setActiveTag} activeSource={activeSource} onSetActiveSource={setActiveSource} allTagColors={tagColors} onDeleteByTag={async (tag) => {
           const ids = zones.filter(z => {
             try { const tags: string[] = JSON.parse(z.semanticTags || "[]"); return tags.includes(tag); } catch { return false; }
           }).map(z => z.id!);
-          if (ids.length > 0 && window.confirm(`确定删除所有「${tag}」标签区域 (${ids.length}个)？`)) {
+          if (ids.length > 0 && await appConfirm(`确定删除所有「${tag}」标签区域 (${ids.length}个)？`)) {
             ids.forEach(id => deleteMut.mutate(id));
           }
-        }} onDeleteBySource={(source) => {
+        }} onDeleteBySource={async (source) => {
           const ids = zones.filter(z => z.source === source).map(z => z.id!);
-          if (ids.length > 0 && window.confirm(`确定删除所有来源「${source}」区域 (${ids.length}个)？`)) {
+          if (ids.length > 0 && await appConfirm(`确定删除所有来源「${source}」区域 (${ids.length}个)？`)) {
             ids.forEach(id => deleteMut.mutate(id));
           }
         }} />
@@ -293,14 +299,14 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
             </span>
           )}
             <span className="text-[9px] text-[var(--app-color-text-tertiary)] shrink-0">快捷任务:</span>
-            {(creatableTags ?? TAG_OPTIONS).map(tag => (
+            {tagOptions.map(tag => (
               <button key={tag} onClick={() => setEditing(prev => {
                 if (!prev) return prev;
                 const tags = [tag]; // 单选替换
-                return { ...prev, semanticTags: JSON.stringify(tags), color: (allTagColors ?? TAG_COLORS)[tag] || prev.color };
+                return { ...prev, semanticTags: JSON.stringify(tags), color: tagColors[tag] || prev.color };
               })}
                 className="px-1.5 py-0.5 rounded-full text-[9px] font-medium text-white hover:opacity-90"
-                style={{ backgroundColor: (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6" }}>
+                style={{ backgroundColor: tagColors[tag] || "#3b82f6" }}>
                 {tag}
               </button>
             ))}
@@ -376,7 +382,7 @@ export default function AgvZonePanel({ onRequestPick, onRequestRectPick, pending
           <div>
             <div className="text-[9px] text-[var(--app-color-text-tertiary)] mb-0.5">语义标签</div>
             <div className="flex flex-wrap gap-1">
-              {(creatableTags ?? TAG_OPTIONS).map(t => {
+              {tagOptions.map(t => {
                 let tags: string[] = [];
                 try { tags = editing.semanticTags ? JSON.parse(editing.semanticTags) : []; } catch { tags = []; }
                 const active = tags.includes(t);
@@ -448,7 +454,7 @@ function TagsFilterBar({ zones, activeTag, onSetActiveTag, activeSource, onSetAc
         {allTags.map(tag => (
           <button key={tag} onClick={() => onSetActiveTag(activeTag === tag ? null : tag)}
             className={`px-1.5 py-0.5 rounded-full text-[9px] ${activeTag === tag ? "text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}
-            style={activeTag === tag ? { backgroundColor: (allTagColors ?? TAG_COLORS)[tag] || "#3b82f6" } : {}}>
+            style={activeTag === tag ? { backgroundColor: (allTagColors ?? {})[tag] || "#3b82f6" } : {}}>
             {tag}({tagCounts[tag]})
           </button>
         ))}

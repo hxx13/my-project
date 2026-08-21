@@ -48,6 +48,7 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { formatBeijingDateTimeFull, formatBeijingDateTimeMedium } from "@/utils/beijingTime";
 import { webImageSrc } from "@/utils/mediaUrl";
 
+import { appConfirm } from "@/lib/appDialog";
 export type StaffInboxWorkTab = "notice" | "pending" | "done";
 
 type WorkKind = "claim" | "repair" | "purchase" | "material" | "scanDelay";
@@ -295,7 +296,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
             id: String(o.id),
             kindLabel: "延迟免冻结",
             title: `${o.roomName || o.roomId} · ${o.optionLabel || "申请"}`,
-            sub: `${o.subjectUserId} · 待审核`,
+            sub: `${(o.subjectDisplayName || "").trim() || o.subjectUserId || "-"} · 待审核`,
             sortAt: sortKeyFrom(o.createdAt),
           });
         });
@@ -615,7 +616,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
     ) : null;
 
   const handleReadAll = async () => {
-    if (!window.confirm("确认将全部通知标记已读？（含报修/采购/物资等所有状态）")) return;
+    if (!await appConfirm("确认将全部通知标记已读？（含报修/采购/物资等所有状态）")) return;
     try {
       await markAllNotificationsReadSynced();
       toast.success("已全部标记为已读");

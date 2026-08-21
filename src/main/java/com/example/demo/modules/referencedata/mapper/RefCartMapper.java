@@ -13,11 +13,19 @@ public interface RefCartMapper {
 
     int update(RefCart row);
 
+    int updatePackageStatus(@Param("id") Long id,
+                            @Param("packageStatus") String packageStatus,
+                            @Param("packageRemark") String packageRemark);
+
     int deleteById(@Param("id") Long id);
 
     int deleteByGroupId(@Param("groupId") String groupId);
 
+    int deleteByIds(@Param("ids") List<Long> ids);
+
     RefCart findById(@Param("id") Long id);
 
     List<RefCart> listByGroupId(@Param("groupId") String groupId);
+
+    List<RefCart> listByIds(@Param("ids") List<Long> ids);
 }

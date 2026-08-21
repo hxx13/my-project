@@ -13,6 +13,7 @@ export interface ScanPopupAnnouncementRow {
   id: number;
   title: string;
   contentHtml?: string;
+  contentJson?: string | null;
   enabled?: boolean;
   sortOrder?: number;
   status?: string;
@@ -34,6 +35,7 @@ export interface ScanPopupAnnouncementSettings {
 export interface ScanPopupAnnouncementUpsert {
   title: string;
   contentHtml: string;
+  contentJson?: string | null;
   enabled: boolean;
   sortOrder: number;
   status?: string;
@@ -70,15 +72,29 @@ export async function saveScanPopupAnnouncementSettings(
   };
 }
 
-export async function listScanPopupAnnouncements(): Promise<ScanPopupAnnouncementRow[]> {
-  const res = await adminHttp.get<ApiResponse<ScanPopupAnnouncementRow[]>>("/twin/scan-popup-announcements");
-  return (res.data?.data ?? []).map((row) => ({
+function normalizeAnnouncementRow(row: ScanPopupAnnouncementRow): ScanPopupAnnouncementRow {
+  return {
     ...row,
+    contentHtml: row.contentHtml ?? (row as { content_html?: string }).content_html ?? "",
+    contentJson: row.contentJson ?? (row as { content_json?: string | null }).content_json ?? null,
     autoSuppressCount:
       typeof row.autoSuppressCount === "number"
         ? row.autoSuppressCount
         : Number((row as { auto_suppress_count?: number }).auto_suppress_count ?? 0) || 0,
-  }));
+  };
+}
+
+export async function listScanPopupAnnouncements(): Promise<ScanPopupAnnouncementRow[]> {
+  const res = await adminHttp.get<ApiResponse<ScanPopupAnnouncementRow[]>>("/twin/scan-popup-announcements");
+  return (res.data?.data ?? []).map(normalizeAnnouncementRow);
+}
+
+/** 公告详情（编辑页用，避免只靠列表缓存命中） */
+export async function getScanPopupAnnouncement(id: number): Promise<ScanPopupAnnouncementRow> {
+  const res = await adminHttp.get<ApiResponse<ScanPopupAnnouncementRow>>(`/twin/scan-popup-announcements/${id}`);
+  const row = res.data?.data;
+  if (!row) throw new Error("公告不存在");
+  return normalizeAnnouncementRow(row);
 }
 
 export async function createScanPopupAnnouncement(body: ScanPopupAnnouncementUpsert): Promise<ScanPopupAnnouncementRow> {
@@ -107,17 +123,4 @@ export async function updateScanPopupAnnouncement(
 
 export async function deleteScanPopupAnnouncement(id: number): Promise<void> {
   await adminHttp.delete(`/twin/scan-popup-announcements/${id}`);
-}
-
-export async function clearScanPopupAnnouncementAutoSuppress(
-  id: number
-): Promise<{ announcementId: number; clearedCount: number }> {
-  const res = await adminHttp.post<
-    ApiResponse<{ announcementId: number; clearedCount: number }>
-  >(`/twin/scan-popup-announcements/${id}/clear-auto-suppress`);
-  const data = res.data?.data;
-  return {
-    announcementId: Number(data?.announcementId ?? id),
-    clearedCount: Number(data?.clearedCount ?? 0),
-  };
 }

@@ -189,18 +189,6 @@ public class TwinCardMappingService {
     }
 
     /**
-     * 是否持有有效免冻结标记（仅用于冻结跑批等；<b>不再</b>用于跳过大华激活/签退联动）。
-     * @deprecated 新代码请用 {@link #isFreezeExempt(TwinCardMapping)} 或 {@link #isRoomExemptForScanEntry(String, String)}。
-     */
-    @Deprecated
-    public boolean isLinkageRuleExempt(String aroUserId) {
-        if (aroUserId == null || aroUserId.isBlank()) {
-            return false;
-        }
-        return isFreezeExemptForPolicy(aroUserId);
-    }
-
-    /**
      * 返回用户当前有效的免冻结扫码进入授权房间 ID（与 freeze_exempt_room_ids 同源）。
      * 以 DB 为准（与 {@link #isFreezeExemptForPolicy} 一致），避免多实例缓存不一致导致豁免失效。
      */

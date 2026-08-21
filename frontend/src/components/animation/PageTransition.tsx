@@ -37,13 +37,16 @@ export function PageTransition({
       const el = containerRef.current;
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (reducedMotion) return;
+      // 动画结束后必须清掉 transform：残留的恒等 matrix 仍会让子孙 position:fixed
+      // 以本容器为 containing block（管理后台下拉/弹层会错位或被 overflow 裁切）。
       gsap.set(el, { willChange: "transform, opacity" });
+      const clearAnimProps = "transform,opacity,willChange";
       if (variant === "fadeUp") {
-        gsap.fromTo(el, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration, delay, ease: "power2.out", clearProps: "willChange" });
+        gsap.fromTo(el, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration, delay, ease: "power2.out", clearProps: clearAnimProps });
       } else if (variant === "fadeIn") {
-        gsap.fromTo(el, { opacity: 0 }, { opacity: 1, duration, delay, ease: "power2.out", clearProps: "willChange" });
+        gsap.fromTo(el, { opacity: 0 }, { opacity: 1, duration, delay, ease: "power2.out", clearProps: clearAnimProps });
       } else if (variant === "slideLeft") {
-        gsap.fromTo(el, { opacity: 0, x: -24 }, { opacity: 1, x: 0, duration, delay, ease: "power2.out", clearProps: "willChange" });
+        gsap.fromTo(el, { opacity: 0, x: -24 }, { opacity: 1, x: 0, duration, delay, ease: "power2.out", clearProps: clearAnimProps });
       }
     },
     { scope: containerRef, dependencies: animateKey ? [animateKey] : [] },

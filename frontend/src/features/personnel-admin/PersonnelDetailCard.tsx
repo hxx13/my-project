@@ -28,7 +28,7 @@ interface Props {
   onResetPin: (aroUserId: string, name: string) => void;
   onResetOpenId: (userId: string) => void;
   onDelete: (userId: string) => void;
-  onSaveField: (field: "job_number" | "department_name" | "project_group_name" | "user_type_names", value: string) => void;
+  onSaveField: (field: "name" | "job_number" | "department_name" | "project_group_name" | "user_type_names", value: string) => void;
   onEditEmail: (userId: string, current: string) => void;
   onEditSendKey: (userId: string, current: string) => void;
   onEditWx: (userId: string) => void;
@@ -101,10 +101,11 @@ export function PersonnelDetailCard({
   }, [row.id]);
 
   const uid = row.staffId || "";
+  const personId = String(row.id);
   const isBuiltin = uid === BUILTIN_SUPER_ADMIN_ID;
   const isStaff = hasMinRole(row.role || "MEMBER", "STAFF");
   const hasAccount = Boolean(row.staffId);
-  const tags = hasAccount ? (identityMap.get(row.staffId ?? "") ?? []) : [];
+  const tags = identityMap.get(personId) ?? [];
 
   const inkBtn =
     "inline-flex shrink-0 items-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)] disabled:cursor-not-allowed disabled:opacity-40";
@@ -120,7 +121,9 @@ export function PersonnelDetailCard({
         <Avatar name={row.name} head={row.head} size="lg" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-lg font-bold text-[var(--twin-ink)]">{row.name || "—"}</h3>
+            <div className="min-w-0 text-lg font-bold text-[var(--twin-ink)]">
+              <EditableText label="姓名" value={row.name || ""} onSave={(v) => onSaveField("name", v)} emphasize />
+            </div>
             <SysBadge hasAccount={hasAccount} />
             <StatusPill hasAccount={hasAccount} status={row.status} />
           </div>
@@ -225,25 +228,23 @@ export function PersonnelDetailCard({
         {isSuperAdmin ? (
           <section className="rounded-lg border border-[var(--twin-hairline)] p-3">
             <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--twin-mute)]"><ShieldCheck className="h-3.5 w-3.5" />身份标识</div>
-            {hasAccount ? (
-              <div className="mb-1.5 flex items-center gap-2">
-                <span className="flex flex-wrap gap-1">
-                  {tags.length === 0 ? (<span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">实验员（默认）</span>) : tags.map((t) => (<span key={t.id} className="rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[11px] font-medium text-indigo-800">{t.label}</span>))}
-                </span>
-                <button type="button" className="text-[11px] text-[var(--twin-link)] hover:underline"
-                  onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); onOpenIdentityPicker(row.staffId!, { x: r.left, y: r.bottom + 4 }); }}>
-                  设置
-                </button>
-              </div>
-            ) : <div className="text-[11px] text-[var(--twin-mute)]">无系统账号，身份标识不可用</div>}
+            <div className="mb-1.5 flex items-center gap-2">
+              <span className="flex flex-wrap gap-1">
+                {tags.length === 0 ? (<span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">实验员（默认）</span>) : tags.map((t) => (<span key={t.id} className="rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[11px] font-medium text-indigo-800">{t.label}</span>))}
+              </span>
+              <button type="button" className="text-[11px] text-[var(--twin-link)] hover:underline"
+                onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); onOpenIdentityPicker(personId, { x: r.left, y: r.bottom + 4 }); }}>
+                设置
+              </button>
+            </div>
           </section>
         ) : null}
 
         {/* 操作栏 */}
         <section className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
           <span className="text-[11px] text-[var(--twin-mute)]">角色</span>
-          <select disabled={isBuiltin || !hasAccount} value={row.role || "MEMBER"}
-            onChange={(e) => onRoleChange(uid, e.target.value)}
+          <select disabled={isBuiltin} value={row.role || "MEMBER"}
+            onChange={(e) => onRoleChange(personId, e.target.value)}
             className="h-7 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 text-[11px] text-[var(--twin-body)]">
             {ROLE_OPTIONS.map((r) => (<option key={r} value={r}>{ROLE_LABEL_MAP[r]}</option>))}
           </select>
@@ -288,26 +289,40 @@ function PwdCell({ userId, onViewPassword }: { userId: string; onViewPassword: (
 }
 
 /** 可点击编辑字段：点击进入输入，失焦/回车保存，空值不提交 */
-function EditableText({ label, value, onSave }: { label: string; value: string; onSave: (v: string) => void }) {
+function EditableText({
+  label,
+  value,
+  onSave,
+  emphasize = false,
+}: {
+  label: string;
+  value: string;
+  onSave: (v: string) => void;
+  emphasize?: boolean;
+}) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(value);
+  const valueCls = emphasize
+    ? "cursor-pointer border-b border-dashed border-[var(--twin-hairline)] text-lg font-bold text-[var(--twin-ink)] hover:border-[var(--twin-link)] hover:text-[var(--twin-link)]"
+    : "cursor-pointer border-b border-dashed border-[var(--twin-hairline)] text-[var(--twin-body)] hover:border-[var(--twin-link)] hover:text-[var(--twin-link)]";
   if (editing) {
     return (
-      <div className="flex justify-between gap-2 py-0.5 text-[11px]">
-        <span className="text-[var(--twin-mute)]">{label}</span>
+      <div className={`flex justify-between gap-2 py-0.5 ${emphasize ? "text-lg" : "text-[11px]"}`}>
+        {!emphasize ? <span className="text-[var(--twin-mute)]">{label}</span> : null}
         <input autoFocus value={draft}
+          aria-label={label}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => { setEditing(false); const v = draft.trim(); if (v && v !== value) onSave(v); }}
           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setDraft(value); setEditing(false); } }}
-          className="max-w-[16rem] rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1 py-0.5 text-[11px] text-[var(--twin-body)]" />
+          className={`rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1 py-0.5 text-[var(--twin-body)] ${emphasize ? "max-w-[14rem] text-lg font-bold" : "max-w-[16rem] text-[11px]"}`} />
       </div>
     );
   }
   return (
-    <div className="flex justify-between gap-2 py-0.5 text-[11px]">
-      <span className="text-[var(--twin-mute)]">{label}</span>
+    <div className={`flex justify-between gap-2 py-0.5 ${emphasize ? "" : "text-[11px]"}`}>
+      {!emphasize ? <span className="text-[var(--twin-mute)]">{label}</span> : null}
       <span onClick={() => { setDraft(value); setEditing(true); }}
-        className="cursor-pointer border-b border-dashed border-[var(--twin-hairline)] text-[var(--twin-body)] hover:border-[var(--twin-link)] hover:text-[var(--twin-link)]" title="点击编辑">
+        className={valueCls} title="点击编辑姓名（不等于账号名）">
         {value || "—"}
       </span>
     </div>

@@ -9,6 +9,7 @@ import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
 import com.example.demo.modules.twin.dashboard.mapper.StrandedViolationConfigMapper;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
+import com.example.demo.modules.twin.dashboard.support.ViolationTextTemplateRenderer;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -52,9 +53,6 @@ public class StrandedViolationService {
 
     private static final Logger log = LoggerFactory.getLogger(StrandedViolationService.class);
 
-    private static final String DEFAULT_VIOLATION_TPL =
-            "${name}(${dept})滞留未签退，系统自动登记";
-
     private final TwinCardMappingMapper mappingMapper;
     private final TwinCardMappingService cardMappingService;
     private final AroOccupancyAuthorityService occupancyAuthorityService;
@@ -88,7 +86,10 @@ public class StrandedViolationService {
         this.objectMapper = new ObjectMapper();
     }
 
-    /** 启动时幂等补全第二道签退配置行（无需手工执行 scripts/stranded_signout_config_row.ddl.sql） */
+    /**
+     * T2-7：id=2 行的规范创建路径是 SQL bootstrap；此处仅作启动兜底
+     *（旧库未跑过 bootstrap 时仍可自愈），与 TwinViolationSchemaMigrator 不再双写。
+     */
     @PostConstruct
     public void ensureSignoutConfigRowOnStartup() {
         try {
@@ -110,7 +111,7 @@ public class StrandedViolationService {
             return;
         }
         boolean autoSignout = Boolean.TRUE.equals(toBool(config.get("auto_signout_enabled")));
-        String tpl = Objects.toString(config.get("violation_text_tpl"), DEFAULT_VIOLATION_TPL);
+        String tpl = Objects.toString(config.get("violation_text_tpl"), ViolationTextTemplateRenderer.DEFAULT_STRANDED_TPL);
         int forbidEnter = Boolean.TRUE.equals(toBool(config.get("forbid_enter"))) ? 1 : 0;
         int expireDays = toInt(config.get("expire_after_days"), 1);
         List<String> whitelistDepts = parseJsonArray(
@@ -129,37 +130,9 @@ public class StrandedViolationService {
         log.info("[stranded-violation] 今日流水滞留候选 {} 人", candidates.size());
 
         // 提前过滤豁免用户和白名单部门，避免后续 getNoLeaveRoom() 触发 ARO 侧批量清理时波及
-        int skippedExempt = 0;
-        int skippedWhitelistDept = 0;
-        {
-            Set<String> exemptUserIds = new java.util.LinkedHashSet<>();
-            Set<String> whitelistUserIds = new java.util.LinkedHashSet<>();
-            for (String userId : candidates) {
-                try {
-                    if (cardMappingService.isFreezeExemptForPolicy(userId)) {
-                        exemptUserIds.add(userId);
-                        continue;
-                    }
-                } catch (Exception e) {
-                    log.warn("[stranded-violation] 豁免检查失败 userId={}: {}", userId, e.getMessage());
-                }
-                try {
-                    String dept = lookupDepartment(userId);
-                    if (!whitelistDepts.isEmpty() && whitelistDepts.contains(dept)) {
-                        whitelistUserIds.add(userId);
-                    }
-                } catch (Exception e) {
-                    log.warn("[stranded-violation] 部门查询失败 userId={}: {}", userId, e.getMessage());
-                }
-            }
-            skippedExempt = exemptUserIds.size();
-            for (String uid : exemptUserIds) {
-                log.info("[stranded-violation] 用户 {} 仍享有免冻结豁免(DB)，跳过", uid);
-            }
-            skippedWhitelistDept = whitelistUserIds.size();
-            candidates.removeAll(exemptUserIds);
-            candidates.removeAll(whitelistUserIds);
-        }
+        PreAroFilterStats preFilter = removeExemptAndWhitelistBeforeAro(candidates, whitelistDepts, "stranded-violation");
+        int skippedExempt = preFilter.skippedExempt;
+        int skippedWhitelistDept = preFilter.skippedWhitelistDept;
 
         int created = 0;
         int signedOut = 0;
@@ -227,11 +200,8 @@ public class StrandedViolationService {
                 // 8. 命名锁内去重并创建，避免并发重复插入
                 String name = lookupName(userId);
                 String dept = lookupDepartment(userId);
-                String text = tpl
-                        .replace("${name}", name)
-                        .replace("${dept}", dept)
-                        .replace("${date}",
-                                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
+                String text = ViolationTextTemplateRenderer.render(
+                        tpl, name, dept, ViolationTextTemplateRenderer.today());
 
                 String challenge = interactiveEnabled && !interactivePhrase.isBlank() ? interactivePhrase.trim() : null;
                 TwinStudentViolation newViolation = violationService.createAutoStrandedIfAbsent(
@@ -298,34 +268,9 @@ public class StrandedViolationService {
         log.info("[stranded-signout] 今日流水滞留候选 {} 人", candidates.size());
 
         // 提前过滤豁免用户和白名单部门，避免后续 getNoLeaveRoom() 触发 ARO 侧批量清理时波及
-        int skippedExempt = 0;
-        int skippedWhitelistDept = 0;
-        {
-            Set<String> exemptUserIds = new java.util.LinkedHashSet<>();
-            Set<String> whitelistUserIds = new java.util.LinkedHashSet<>();
-            for (String userId : candidates) {
-                try {
-                    if (cardMappingService.isFreezeExemptForPolicy(userId)) {
-                        exemptUserIds.add(userId);
-                        continue;
-                    }
-                } catch (Exception e) {
-                    log.warn("[stranded-signout] 豁免检查失败 userId={}: {}", userId, e.getMessage());
-                }
-                try {
-                    String dept = lookupDepartment(userId);
-                    if (!whitelistDepts.isEmpty() && whitelistDepts.contains(dept)) {
-                        whitelistUserIds.add(userId);
-                    }
-                } catch (Exception e) {
-                    log.warn("[stranded-signout] 部门查询失败 userId={}: {}", userId, e.getMessage());
-                }
-            }
-            skippedExempt = exemptUserIds.size();
-            skippedWhitelistDept = whitelistUserIds.size();
-            candidates.removeAll(exemptUserIds);
-            candidates.removeAll(whitelistUserIds);
-        }
+        PreAroFilterStats preFilter = removeExemptAndWhitelistBeforeAro(candidates, whitelistDepts, "stranded-signout");
+        int skippedExempt = preFilter.skippedExempt;
+        int skippedWhitelistDept = preFilter.skippedWhitelistDept;
 
         int signedOut = 0;
         int skippedNotInside = 0;
@@ -430,7 +375,7 @@ public class StrandedViolationService {
     @Transactional
     public void saveConfig(Map<String, Object> body) {
         String tpl = Objects.toString(body.get("violation_text_tpl"), "");
-        if (tpl.isBlank()) tpl = DEFAULT_VIOLATION_TPL;
+        if (tpl.isBlank()) tpl = ViolationTextTemplateRenderer.DEFAULT_STRANDED_TPL;
 
         String depts = Objects.toString(body.get("whitelist_depts"), "");
         if (depts.isBlank()) depts = "[]";
@@ -458,6 +403,7 @@ public class StrandedViolationService {
 
     /**
      * 对单个用户执行一次滞留检测（供管理端 POST /test 调用）。
+     * C-T2：与定时一道共用「豁免 → 白名单 → ARO」顺序，且规则启用态与定时一致。
      *
      * @return 描述执行结果的摘要
      */
@@ -471,7 +417,7 @@ public class StrandedViolationService {
         if (config == null || config.isEmpty()) {
             return "配置不存在";
         }
-        String tpl = Objects.toString(config.get("violation_text_tpl"), DEFAULT_VIOLATION_TPL);
+        String tpl = Objects.toString(config.get("violation_text_tpl"), ViolationTextTemplateRenderer.DEFAULT_STRANDED_TPL);
         int forbidEnter = Boolean.TRUE.equals(toBool(config.get("forbid_enter"))) ? 1 : 0;
         int expireDays = toInt(config.get("expire_after_days"), 1);
         List<String> whitelistDepts = parseJsonArray(
@@ -480,18 +426,25 @@ public class StrandedViolationService {
         String interactivePhrase = Objects.toString(config.get("interactive_challenge_phrase"), "");
         boolean interactiveUnlockOnVerify = toInt(config.get("interactive_unlock_on_verify"), 1) != 0;
 
-        // 解禁管控字段从规则表读取（仅叠加）
+        // 解禁管控字段从规则表读取（仅叠加）；未启用规则不挂 ruleId，与定时一道一致
         TwinViolationRule testRule = ruleService.getByCode("AUTO_STRANDED");
-        Long testRuleId = (testRule != null) ? testRule.getId() : null;
+        Long testRuleId = (testRule != null && (testRule.getEnabled() == null || testRule.getEnabled() == 1))
+                ? testRule.getId() : null;
 
         // 本地流水是否仍判定在馆
         if (!occupancyAuthorityService.isLocallyStrandedToday(userId)) {
             return "该用户今日流水未判定为滞留，无需处理";
         }
 
-        // 免冻结豁免（读 DB，与定时任务同源）
+        // 免冻结豁免（读 DB，与定时任务同源）——必须在 ARO 查询之前
         if (cardMappingService.isFreezeExemptForPolicy(userId)) {
             return "该用户仍享有免冻结豁免，跳过";
+        }
+
+        // 白名单——必须在 ARO 查询之前，避免触发上游副作用
+        String dept = lookupDepartment(userId);
+        if (!whitelistDepts.isEmpty() && whitelistDepts.contains(dept)) {
+            return "该用户所属部门 " + dept + " 在白名单中，跳过";
         }
 
         // ARO 官方是否仍在内
@@ -502,12 +455,6 @@ public class StrandedViolationService {
         }
         if (presence == AroOccupancyAuthorityService.OfficialPresence.NOT_INSIDE) {
             return "该用户官方已无滞留房间，无需处理";
-        }
-
-        // 白名单
-        String dept = lookupDepartment(userId);
-        if (!whitelistDepts.isEmpty() && whitelistDepts.contains(dept)) {
-            return "该用户所属部门 " + dept + " 在白名单中，跳过";
         }
 
         // 去重 + 创建（与定时任务同源：命名锁内判定）
@@ -533,12 +480,8 @@ public class StrandedViolationService {
 
         // 创建违规
         String name = lookupName(userId);
-
-        String text = tpl
-                .replace("${name}", name)
-                .replace("${dept}", dept)
-                .replace("${date}",
-                        LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
+        String text = ViolationTextTemplateRenderer.render(
+                tpl, name, dept, ViolationTextTemplateRenderer.today());
 
         String challenge = interactiveEnabled && !interactivePhrase.isBlank() ? interactivePhrase.trim() : null;
         TwinStudentViolation newViolation = violationService.createAutoStrandedIfAbsent(
@@ -557,6 +500,43 @@ public class StrandedViolationService {
     }
 
     // ---- internal helpers ----
+
+    /**
+     * C-T2：滞留候选在调用 ARO 前统一过滤豁免与部门白名单（一道/二道/手动测试共用顺序）。
+     * 就地修改 {@code candidates}。
+     */
+    private PreAroFilterStats removeExemptAndWhitelistBeforeAro(
+            Set<String> candidates, List<String> whitelistDepts, String logTag) {
+        Set<String> exemptUserIds = new LinkedHashSet<>();
+        Set<String> whitelistUserIds = new LinkedHashSet<>();
+        for (String userId : candidates) {
+            try {
+                if (cardMappingService.isFreezeExemptForPolicy(userId)) {
+                    exemptUserIds.add(userId);
+                    continue;
+                }
+            } catch (Exception e) {
+                log.warn("[{}] 豁免检查失败 userId={}: {}", logTag, userId, e.getMessage());
+            }
+            try {
+                String dept = lookupDepartment(userId);
+                if (!whitelistDepts.isEmpty() && whitelistDepts.contains(dept)) {
+                    whitelistUserIds.add(userId);
+                }
+            } catch (Exception e) {
+                log.warn("[{}] 部门查询失败 userId={}: {}", logTag, userId, e.getMessage());
+            }
+        }
+        for (String uid : exemptUserIds) {
+            log.info("[{}] 用户 {} 仍享有免冻结豁免(DB)，跳过", logTag, uid);
+        }
+        candidates.removeAll(exemptUserIds);
+        candidates.removeAll(whitelistUserIds);
+        return new PreAroFilterStats(exemptUserIds.size(), whitelistUserIds.size());
+    }
+
+    private record PreAroFilterStats(int skippedExempt, int skippedWhitelistDept) {
+    }
 
     private String lookupDepartment(String userId) {
         try {

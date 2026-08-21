@@ -37,6 +37,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { appConfirm } from "@/lib/appDialog";
 const PAGE_BG = "#eef0f6";
 const BRAND = "#ac1736";
 
@@ -1367,8 +1368,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     .finally(() => setEditHistoryLoading(false));
   }, []);
 
-  const handleEditHistoryDelete = useCallback((id: number) => {
-    if (!confirm("确定删除该条历史记录？")) return;
+  const handleEditHistoryDelete = useCallback(async (id: number) => {
+    if (!await appConfirm("确定删除该条历史记录？")) return;
     authHttp.delete(`/local/history/${id}`).then(() => {
       setEditHistory(p => p.filter(h => h.id !== id));
       toast.success("已删除");
@@ -1759,9 +1760,9 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   }, [selectedCell, selectedShelf, detail]);
 
   // ── 返回列表：检查未保存修改 ──
-  const goBackToList = useCallback(() => {
+  const goBackToList = useCallback(async () => {
     if (hasChanges) {
-      if (!window.confirm("有未提交的扫码修改，是否放弃？\n\n「确定」放弃并返回\n「取消」继续编辑")) return;
+      if (!await appConfirm("有未提交的扫码修改，是否放弃？\n\n「确定」放弃并返回\n「取消」继续编辑")) return;
     }
     setScanCache(new Map());
     setLastScannedKey(null);
@@ -1903,7 +1904,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                 const next = !editMode;
                 // 退出编辑模式且有未提交修改 → 弹窗确认
                 if (!next && hasChanges) {
-                  if (!window.confirm("有未提交的修改，是否放弃？\n\n「确定」放弃修改并退出\n「取消」继续编辑")) return;
+                  if (!await appConfirm("有未提交的修改，是否放弃？\n\n「确定」放弃修改并退出\n「取消」继续编辑")) return;
                 }
                 setEditMode(next);
                 if (next && selectedShelf) {
@@ -1913,10 +1914,10 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                   setLastScannedKey(null);
                 }
               }}
-              onToggleBindMode={() => {
+              onToggleBindMode={async () => {
                 if (bindMode) {
                   if (bindPairCache.size > 0) {
-                    if (!window.confirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`)) return;
+                    if (!await appConfirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`)) return;
                     setBindPairCache(new Map());
                   }
                   setBindMode(false); setBindScannedCode(""); setBindSelectedKey(null);

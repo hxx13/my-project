@@ -122,6 +122,25 @@ public class PersonnelController {
         }
     }
 
+    @PutMapping("/{id}/name")
+    @Operation(summary = "修改真实姓名（personnel.name；不改登录账号 username）")
+    public Result<?> updateName(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                 @PathVariable Long id,
+                                 @RequestBody Map<String, Object> body) {
+        User u = resolveUser(authorization);
+        if (u == null) return Result.fail(401, "未登录");
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        Object raw = body == null ? null : body.get("name");
+        String name = raw == null ? null : String.valueOf(raw);
+        try {
+            personnelService.updateName(id, name);
+            return Result.success();
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     private static String trimToNull(String s) {
         if (s == null) return null;
         String t = s.trim();

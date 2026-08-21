@@ -8,6 +8,7 @@
         <result property="title" column="title"/>
         <result property="summary" column="summary"/>
         <result property="bodyHtml" column="body_html"/>
+        <result property="contentJson" column="content_json"/>
         <result property="publishedAt" column="published_at"/>
         <result property="showOnLaunch" column="show_on_launch"/>
         <result property="createdBy" column="created_by"/>
@@ -36,8 +37,8 @@
     </select>
 
     <insert id="insert">
-        INSERT INTO mini_program_release (id, version_code, title, summary, body_html, published_at, show_on_launch, created_by)
-        VALUES (#{id}, #{versionCode}, #{title}, #{summary}, #{bodyHtml}, #{publishedAt}, IFNULL(#{showOnLaunch}, 0), #{createdBy})
+        INSERT INTO mini_program_release (id, version_code, title, summary, body_html, content_json, published_at, show_on_launch, created_by)
+        VALUES (#{id}, #{versionCode}, #{title}, #{summary}, #{bodyHtml}, #{contentJson}, #{publishedAt}, IFNULL(#{showOnLaunch}, 0), #{createdBy})
     </insert>
 
     <update id="update">
@@ -46,6 +47,7 @@
             title = #{title},
             summary = #{summary},
             body_html = #{bodyHtml},
+            content_json = #{contentJson},
             published_at = #{publishedAt},
             show_on_launch = IFNULL(#{showOnLaunch}, 0)
         WHERE id = #{id}

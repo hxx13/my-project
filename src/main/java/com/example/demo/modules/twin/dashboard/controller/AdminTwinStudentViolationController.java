@@ -47,6 +47,8 @@ public class AdminTwinStudentViolationController {
     private final TwinViolationRuleService ruleService;
     private final TwinStudentViolationMapper violationMapper;
     private final TwinCageStatusViolationMapper cageStatusViolationMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.example.demo.modules.twin.obligation.service.ObligationService obligationService;
 
     public AdminTwinStudentViolationController(
             TwinStudentViolationService violationService,
@@ -114,8 +116,15 @@ public class AdminTwinStudentViolationController {
         List<TwinStudentViolation> rows = violationService.listRecent(targetUserId, lim);
         Set<String> idSet = new HashSet<>();
         for (TwinStudentViolation v : rows) {
-            if (v != null && StringUtils.hasText(v.getTargetUserId())) {
+            if (v == null) continue;
+            if (StringUtils.hasText(v.getTargetUserId())) {
                 idSet.add(v.getTargetUserId().trim());
+            }
+            if (StringUtils.hasText(v.getCreatedByUserId())) {
+                idSet.add(v.getCreatedByUserId().trim());
+            }
+            if (StringUtils.hasText(v.getClearedByUserId())) {
+                idSet.add(v.getClearedByUserId().trim());
             }
         }
         Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(idSet);
@@ -154,6 +163,14 @@ public class AdminTwinStudentViolationController {
                     body.getInteractiveChallenge(),
                     body.getInteractiveUnlockOnVerify()
             );
+            applyDispositionOverride(row, body.getDispositionType(), body.getDispositionConfigJson());
+            if (Boolean.TRUE.equals(body.getRequireReconfirm()) && row != null && row.getId() != null
+                    && obligationService != null) {
+                var ob = obligationService.findByViolationId(row.getId());
+                if (ob != null && ob.getId() != null) {
+                    obligationService.requireReconfirm(ob.getId());
+                }
+            }
             return Result.success(toRow(row, null));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
@@ -256,7 +273,7 @@ public class AdminTwinStudentViolationController {
     }
 
     @PostMapping
-    @Operation(summary = "新建违规记录（同一人已有 ACTIVE 会先标为 SUPERSEDED 并完整保留；扫码仅展示最新 ACTIVE）")
+    @Operation(summary = "新建违规记录（每次 INSERT 独立 id；同人可并存多条 ACTIVE；扫码展示最新 ACTIVE）")
     public Result<?> create(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody CreateStudentViolationBody body
@@ -299,6 +316,7 @@ public class AdminTwinStudentViolationController {
                     effectiveRuleId,
                     body.getCageViolationId()
             );
+            applyDispositionOverride(row, body.getDispositionType(), body.getDispositionConfigJson());
             return Result.success(toRow(row, null));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
@@ -366,10 +384,22 @@ public class AdminTwinStudentViolationController {
         m.put("status", v.getStatus());
         m.put("source", v.getSource());
         m.put("createdByUserId", v.getCreatedByUserId());
+        String createdById = StringUtils.hasText(v.getCreatedByUserId()) ? v.getCreatedByUserId().trim() : "";
+        m.put("createdByDisplayName", StringUtils.hasText(createdById)
+                ? (displayNameCache != null && displayNameCache.containsKey(createdById)
+                    ? displayNameCache.get(createdById)
+                    : userDisplayNameService.resolveDisplayName(createdById))
+                : "");
         m.put("createdAt", v.getCreatedAt());
         m.put("updatedAt", v.getUpdatedAt());
         m.put("clearedAt", v.getClearedAt());
         m.put("clearedByUserId", v.getClearedByUserId());
+        String clearedById = StringUtils.hasText(v.getClearedByUserId()) ? v.getClearedByUserId().trim() : "";
+        m.put("clearedByDisplayName", StringUtils.hasText(clearedById)
+                ? (displayNameCache != null && displayNameCache.containsKey(clearedById)
+                    ? displayNameCache.get(clearedById)
+                    : userDisplayNameService.resolveDisplayName(clearedById))
+                : "");
         m.put("interactiveChallenge", v.getInteractiveChallenge());
         m.put("interactiveChallengeVerifiedAt", v.getInteractiveChallengeVerifiedAt());
         m.put("interactiveUnlockOnVerify", v.getInteractiveUnlockOnVerify());
@@ -391,6 +421,25 @@ public class AdminTwinStudentViolationController {
             m.put("cageParentStatus", null);
             m.put("cageParentPosition", null);
             m.put("cageParentGroup", null);
+        }
+        // Obligation 处置策略（列表详情与编辑器同源）
+        if (obligationService != null && v.getId() != null) {
+            try {
+                var ob = obligationService.findByViolationId(v.getId());
+                if (ob != null) {
+                    m.put("dispositionType", ob.getDispositionType());
+                    m.put("dispositionConfigJson", ob.getDispositionConfigJson());
+                } else {
+                    m.put("dispositionType", null);
+                    m.put("dispositionConfigJson", null);
+                }
+            } catch (Exception ignored) {
+                m.put("dispositionType", null);
+                m.put("dispositionConfigJson", null);
+            }
+        } else {
+            m.put("dispositionType", null);
+            m.put("dispositionConfigJson", null);
         }
         return m;
     }
@@ -416,6 +465,20 @@ public class AdminTwinStudentViolationController {
         if (v instanceof Number n) return n.intValue() != 0;
         String s = String.valueOf(v);
         return "1".equals(s) || "true".equalsIgnoreCase(s);
+    }
+
+    private void applyDispositionOverride(TwinStudentViolation row, String dispositionType, String configJson) {
+        if (row == null || row.getId() == null || obligationService == null || !StringUtils.hasText(dispositionType)) {
+            return;
+        }
+        String type = dispositionType.trim().toUpperCase();
+        // 默认短语路径已由 syncFromViolationCreated 写入，仅覆盖非默认策略
+        if ("SHOW_ONLY".equals(type) || "ACK_PUZZLE".equals(type)) {
+            if (!StringUtils.hasText(configJson) && "ACK_PUZZLE".equals(type)) {
+                return;
+            }
+        }
+        obligationService.applyDispositionOverride(row.getId(), type, configJson);
     }
 
     private static int toIntSafe(Object v, int def) {
@@ -460,6 +523,9 @@ public class AdminTwinStudentViolationController {
         private Long ruleId;
         /** 关联笼架违规父记录ID */
         private Long cageViolationId;
+        /** 期 3：Obligation 处置策略覆盖 */
+        private String dispositionType;
+        private String dispositionConfigJson;
     }
 
     @Data
@@ -477,6 +543,8 @@ public class AdminTwinStudentViolationController {
         private Long ruleId;
         /** 关联笼架违规父记录ID */
         private Long cageViolationId;
+        private String dispositionType;
+        private String dispositionConfigJson;
     }
 
     @Data
@@ -494,6 +562,10 @@ public class AdminTwinStudentViolationController {
         private String interactiveChallenge;
         /** 交互验证完成后是否自动解除禁入 */
         private Boolean interactiveUnlockOnVerify;
+        private String dispositionType;
+        private String dispositionConfigJson;
+        /** 内容变更后是否要求已完成者重新确认 */
+        private Boolean requireReconfirm;
     }
 
     // ---- 违规文案模板预设 ----
@@ -572,10 +644,14 @@ public class AdminTwinStudentViolationController {
     // ---- 滞留自动违规配置 ----
 
     /**
-     * @deprecated 使用 GET /api/admin/twin/student-violations/rules 代替。
-     *             配置已迁移至 twin_violation_rule 表（rule_code='AUTO_STRANDED'）。
+     * 滞留检测·行为配置（读取）。
+     *
+     * <p>注意：本端点未废弃。解禁管控字段（次数/窗口/解禁方式/关键公告文案）已迁至
+     * twin_violation_rule，但行为配置（violation_text_tpl / forbid_enter /
+     * expire_after_days / whitelist_depts / interactive_challenge_*）仍只存在
+     * stranded_violation_config 表，本端点是其唯一读写入口，前端在用。
+     * 迁移完成前不得删除。
      */
-    @Deprecated
     @GetMapping("/stranded-config")
     @Operation(summary = "获取滞留自动违规配置")
     public Result<?> getStrandedConfig(
@@ -589,10 +665,14 @@ public class AdminTwinStudentViolationController {
     }
 
     /**
-     * @deprecated 使用 PUT /api/admin/twin/student-violations/rules/{id} 代替。
-     *             配置已迁移至 twin_violation_rule 表（rule_code='AUTO_STRANDED'）。
+     * 滞留检测·行为配置（写入）。
+     *
+     * <p>注意：本端点未废弃。解禁管控字段（次数/窗口/解禁方式/关键公告文案）已迁至
+     * twin_violation_rule，但行为配置（violation_text_tpl / forbid_enter /
+     * expire_after_days / whitelist_depts / interactive_challenge_*）仍只存在
+     * stranded_violation_config 表，本端点是其唯一读写入口，前端在用。
+     * 迁移完成前不得删除。
      */
-    @Deprecated
     @PutMapping("/stranded-config")
     @Operation(summary = "保存滞留自动违规配置")
     public Result<?> saveStrandedConfig(
@@ -608,11 +688,14 @@ public class AdminTwinStudentViolationController {
     }
 
     /**
-     * @deprecated 测试逻辑已迁移至规则执行引擎。
-     *             请通过 POST /api/admin/twin/student-violations/rules 管理规则，
-     *             并通过触发条件验证行为。
+     * 滞留检测·单人手动测试。
+     *
+     * <p>注意：本端点未废弃。解禁管控字段（次数/窗口/解禁方式/关键公告文案）已迁至
+     * twin_violation_rule，但行为配置（violation_text_tpl / forbid_enter /
+     * expire_after_days / whitelist_depts / interactive_challenge_*）仍只存在
+     * stranded_violation_config 表，本端点是其唯一读写入口，前端在用。
+     * 迁移完成前不得删除。
      */
-    @Deprecated
     @PostMapping("/stranded-config/test")
     @Operation(summary = "对单个用户测试滞留检测（不写回 config execution result）")
     public Result<?> testStrandedSingle(

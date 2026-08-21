@@ -18,6 +18,8 @@ public class PortalContentView {
     private Integer sortOrder;
     private LocalDateTime publishedAt;
     private String createdBy;
+    /** 创建人展示名（UserDisplayNameService；createdBy 仍为技术 userId） */
+    private String createdByName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

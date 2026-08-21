@@ -3,7 +3,6 @@ package com.example.demo.modules.twin.scan.service;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchResult;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
-import com.example.demo.modules.twin.card.support.ExemptChangeContext;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,7 +62,7 @@ public class WebScanExitDahuaLinkageService {
     }
 
     /** 按当前全局开关生成延迟离开提示文案 */
-    public String buildDeferredExitHint(int deferSeconds, boolean isKeepCard) {
+    public String buildDeferredExitHint(int deferSeconds) {
         List<String> parts = new ArrayList<>();
         if (twinAccessRuleScanConfigService.isExitDispatchEnabled()) {
             parts.add("大华门禁权限回收");
@@ -71,16 +70,13 @@ public class WebScanExitDahuaLinkageService {
         if (twinAccessRuleScanConfigService.isExitFreezeEnabled()) {
             parts.add("物理卡冻结");
         }
-        if (!isKeepCard && parts.isEmpty()) {
-            return "离开联动（关闭豁免标记）将在 " + deferSeconds + " 秒后执行。";
-        }
         if (parts.isEmpty()) {
             return "";
         }
         return String.join("与", parts) + "将在 " + deferSeconds + " 秒后执行。";
     }
 
-    private boolean linkageHasPostExitWork(String physicalCardNo, boolean isKeepCard) {
+    private boolean linkageHasPostExitWork(String physicalCardNo) {
         if (twinAccessRuleScanConfigService.isExitDispatchEnabled()) {
             return true;
         }
@@ -89,11 +85,11 @@ public class WebScanExitDahuaLinkageService {
                 && !physicalCardNo.isBlank()) {
             return true;
         }
-        return !isKeepCard && physicalCardNo != null && !physicalCardNo.isBlank();
+        return false;
     }
 
     /**
-     * 执行大华回收 +（条件满足时）关闭豁免 + 冻结物理卡；若 deferSeconds&gt;0 则异步延后执行。
+     * 执行大华回收 + 冻结物理卡；若 deferSeconds&gt;0 则异步延后执行。
      *
      * @return 立即执行时的派发结果；延迟时为 {@code null}（调用方勿用于同步 hint）
      */
@@ -101,30 +97,28 @@ public class WebScanExitDahuaLinkageService {
             String userId,
             String effectiveRoomId,
             String physicalCardNo,
-            boolean isKeepCard,
             int deferSeconds) {
         String uid = userId != null ? userId.trim() : "";
         String card = physicalCardNo != null ? physicalCardNo.trim() : "";
         int d = deferSeconds < 0 ? 0 : Math.min(deferSeconds, MAX_DEFER_SECONDS);
         if (d <= 0) {
             cancelPendingDeferredExitForUser(uid);
-            return runLinkage(userId, effectiveRoomId, physicalCardNo, isKeepCard);
+            return runLinkage(userId, effectiveRoomId, physicalCardNo);
         }
-        if (!linkageHasPostExitWork(card, isKeepCard)) {
+        if (!linkageHasPostExitWork(card)) {
             cancelPendingDeferredExitForUser(uid);
             log.debug("[scan-exit-dahua] skip-deferred-linkage-no-work userId={}", uid);
             return AccessRuleDispatchResult.SCAN_LINKAGE_EXIT_DISABLED;
         }
 
         String rid = effectiveRoomId != null ? effectiveRoomId.trim() : "";
-        boolean keep = isKeepCard;
 
         cancelPendingDeferredExitForUser(uid);
 
         AtomicReference<ScheduledFuture<?>> selfRef = new AtomicReference<>();
         ScheduledFuture<?> fut = twinSwingTaskScheduler.schedule(() -> {
             try {
-                runLinkage(uid, rid, card, keep);
+                runLinkage(uid, rid, card);
                 log.debug("[scan-exit-dahua] deferred linkage done userId={} roomId={} delaySec={}", uid, rid, d);
             } catch (Exception e) {
                 log.warn("[scan-exit-dahua] deferred linkage failed userId={} roomId={} err={}", uid, rid, e.getMessage(), e);
@@ -161,20 +155,13 @@ public class WebScanExitDahuaLinkageService {
         }
     }
 
-    private AccessRuleDispatchResult runLinkage(String userId, String effectiveRoomId, String physicalCardNo, boolean isKeepCard) {
+    private AccessRuleDispatchResult runLinkage(String userId, String effectiveRoomId, String physicalCardNo) {
         AccessRuleDispatchResult dispatchResult;
         if (twinAccessRuleScanConfigService.isExitDispatchEnabled()) {
             dispatchResult = accessRuleDispatchService.tryRevokeAccessForScanExit(effectiveRoomId, userId);
         } else {
             dispatchResult = AccessRuleDispatchResult.SCAN_LINKAGE_EXIT_DISABLED;
             log.debug("[scan-exit-dahua] skip-revoke exit_dispatch_disabled userId={}", userId);
-        }
-        if (!isKeepCard) {
-            try {
-                twinCardMappingService.updateExemptFlagByUserId(userId, 0, ExemptChangeContext.scanExit());
-            } catch (Exception e) {
-                log.warn("[scan-exit-dahua] update exempt failed userId={} err={}", userId, e.getMessage());
-            }
         }
         if (twinAccessRuleScanConfigService.isExitFreezeEnabled()
                 && physicalCardNo != null

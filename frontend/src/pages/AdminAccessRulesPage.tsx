@@ -28,6 +28,7 @@ import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import { DahuaChannelListPicker } from "@/components/admin/DahuaChannelListPicker";
 import { TransferListPicker } from "@/components/admin/TransferListPicker";
 
+import { appConfirm } from "@/lib/appDialog";
 function emptyItem(): AccessRuleItemPayload {
   return { roomId: "", channelCodes: [], doorGroupIds: [], aroUserIds: [] };
 }
@@ -236,7 +237,7 @@ export default function AdminAccessRulesPage() {
   };
 
   const handleDelete = async (row: AccessRuleListRow) => {
-    if (!window.confirm(`确定删除规则「${row.name || row.ruleCode}」？`)) return;
+    if (!await appConfirm(`确定删除规则「${row.name || row.ruleCode}」？`)) return;
     deleteMut.mutate(row.id);
   };
 

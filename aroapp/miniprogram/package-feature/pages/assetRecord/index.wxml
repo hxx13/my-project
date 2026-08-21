@@ -8,108 +8,86 @@
           {{ campus || '校区' }} <text class="campus-arrow">▾</text>
         </view>
         <view class="ui-btn ui-btn-add" bindtap="openAddPanel">
-          <van-icon name="scan" size="16" /> 添加
+          <van-icon name="scan" size="16" /> 添加资产
         </view>
-        <view class="ui-btn ui-btn-export" bindtap="openExportPicker">导出</view>
+        <view class="ui-btn ui-btn-export" bindtap="exportXlsx">导出表格</view>
         <view class="ui-btn ui-btn-transfer" bindtap="openApplyPanel">申请转移</view>
-        <view class="ui-btn {{ batchAssets.length ? 'ui-btn-batch-entry' : 'ui-btn-batch-entry-empty' }}" bindtap="openBatchPanel">
-          批量
-          <text wx:if="{{ batchAssets.length }}" class="batch-entry-count">{{ batchAssets.length }}</text>
-        </view>
       </view>
     </view>
 
     <!-- 搜索栏 -->
     <view class="search-bar">
       <view class="search-input-wrap">
-        <input class="search-input" value="{{ keyword }}" bindinput="onKeywordInput" placeholder="检索编号/名称/地点" />
-        <cover-view wx:if="{{ keyword }}" class="clear-btn" bindtap="onClearKeyword">✕</cover-view>
+        <input class="search-input" value="{{ keyword }}" bindinput="onKeywordInput" placeholder="全局检索资产编号/名称/地点" />
         <view class="scan-btn" bindtap="onScanKeyword">
           <van-icon name="scan" size="18" />
         </view>
       </view>
       <view class="ui-btn ui-btn-search-main" bindtap="applySearch">查询</view>
-      <view class="ui-btn ui-btn-search-filter {{ showFilters ? 'filter-active' : '' }}" bindtap="onToggleFilters">筛选</view>
       <view class="ui-btn ui-btn-search-sub" bindtap="refreshList">刷新</view>
     </view>
 
-    <!-- Vant 下拉筛选（默认收起，紧凑尺寸） -->
-    <view wx:if="{{ showFilters }}" class="filter-drop">
-      <van-dropdown-menu active-color="#3b82f6" z-index="{{ 900 }}">
-        <van-dropdown-item
-          title="{{ filterAssetNameIndex > 0 ? assetNameOptions[filterAssetNameIndex] : '资产名称' }}"
-          value="{{ filterAssetNameIndex }}"
-          options="{{ assetNameDropdownOptions }}"
-          bind:change="onAssetNameDropdownChange"
-        />
-        <van-dropdown-item
-          title="{{ filterUserIndex > 0 ? userOptions[filterUserIndex] : '使用人' }}"
-          value="{{ filterUserIndex }}"
-          options="{{ userDropdownOptions }}"
-          bind:change="onUserDropdownChange"
-        />
-        <van-dropdown-item
-          title="{{ filterModelIndex > 0 ? modelOptions[filterModelIndex] : '规格型号' }}"
-          value="{{ filterModelIndex }}"
-          options="{{ modelDropdownOptions }}"
-          bind:change="onModelDropdownChange"
-        />
-      </van-dropdown-menu>
-    </view>
+    <!-- Vant 标准下拉筛选 -->
+    <van-dropdown-menu active-color="#3b82f6" z-index="{{ 900 }}">
+      <van-dropdown-item
+        title="{{ filterAssetNameIndex > 0 ? assetNameOptions[filterAssetNameIndex] : '资产名称' }}"
+        value="{{ filterAssetNameIndex }}"
+        options="{{ assetNameDropdownOptions }}"
+        bind:change="onAssetNameDropdownChange"
+      />
+      <van-dropdown-item
+        title="{{ filterUserIndex > 0 ? userOptions[filterUserIndex] : '使用人' }}"
+        value="{{ filterUserIndex }}"
+        options="{{ userDropdownOptions }}"
+        bind:change="onUserDropdownChange"
+      />
+      <van-dropdown-item
+        title="{{ filterModelIndex > 0 ? modelOptions[filterModelIndex] : '规格型号' }}"
+        value="{{ filterModelIndex }}"
+        options="{{ modelDropdownOptions }}"
+        bind:change="onModelDropdownChange"
+      />
+    </van-dropdown-menu>
   </view>
 
-  <!-- 资产列表（flex 填充剩余空间，内部 scroll-view 独立滚动） -->
-  <view class="list-panel">
-    <scroll-view
-      scroll-y
-      class="list-scroll"
-      enhanced
-      show-scrollbar="{{ false }}"
-      lower-threshold="120"
-      bindscrolltolower="onListReachBottom"
-    >
-      <view wx:if="{{ loading }}" class="meta">加载中…</view>
-      <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无资产记录" />
-      <view wx:else>
-        <view wx:for="{{ rows }}" wx:key="id" class="asset-item-card card-campus-{{ item.rowCampus === '浦东' ? 'pudong' : (item.rowCampus === '浦西' ? 'puxi' : 'unknown') }}">
-          <view class="item-row">
-            <text class="item-row-label">资产编号</text>
-            <text class="item-row-value">{{ item.assetCode || '-' }}</text>
-            <view
-              class="campus-tag {{ item.rowCampus === '浦东' ? 'campus-tag-pudong' : (item.rowCampus === '浦西' ? 'campus-tag-puxi' : 'campus-tag-unknown') }}"
-              data-id="{{ item.id }}"
-              catchtap="onRowCampusTap"
-            >
-              {{ item.rowCampus || '未识别' }}
-            </view>
-          </view>
-          <view class="item-row">
-            <text class="item-row-label">资产名称</text>
-            <text class="item-row-value">{{ item.assetName || '-' }}</text>
-          </view>
-          <view class="item-row">
-            <text class="item-row-label">存放地点</text>
-            <text class="item-row-value">{{ item.currentLocation || '-' }}</text>
-          </view>
-          <view class="item-row">
-            <text class="item-row-label">规格型号</text>
-            <text class="item-row-value">{{ item.specModel || '-' }}</text>
-          </view>
-          <view class="item-row item-row-with-actions">
-            <text class="item-row-label">使用人</text>
-            <text class="item-row-value item-row-value-with-actions">{{ item.assetUser || '-' }}</text>
-            <view class="inline-card-actions">
-              <view class="ui-btn ui-btn-plain ui-btn-mini {{ batchAssetIdMap[item.id] ? 'ui-btn-batch-remove' : 'ui-btn-batch-add' }}" data-id="{{ item.id }}" bindtap="onToggleBatchAsset">
-                {{ batchAssetIdMap[item.id] ? '−移除' : '+批量' }}
-              </view>
-              <view class="ui-btn ui-btn-plain ui-btn-mini ui-btn-transfer-card" data-id="{{ item.id }}" bindtap="openApplyForAsset">转移</view>
-              <view class="ui-btn ui-btn-plain ui-btn-mini ui-btn-detail-card" data-id="{{ item.id }}" bindtap="openDetailPanel">详情</view>
-            </view>
-          </view>
+  <!-- 列表 -->
+  <view wx:if="{{ loading }}" class="meta">加载中…</view>
+  <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无资产记录" />
+  <view wx:else>
+    <view wx:for="{{ rows }}" wx:key="id" class="card asset-item-card card-campus-{{ item.rowCampus === '浦东' ? 'pudong' : (item.rowCampus === '浦西' ? 'puxi' : 'unknown') }}">
+      <view class="item-row">
+        <text class="item-row-label">资产编号</text>
+        <text class="item-row-value">{{ item.assetCode || '-' }}</text>
+        <view
+          class="campus-tag {{ item.rowCampus === '浦东' ? 'campus-tag-pudong' : (item.rowCampus === '浦西' ? 'campus-tag-puxi' : 'campus-tag-unknown') }}"
+          data-id="{{ item.id }}"
+          catchtap="onRowCampusTap"
+        >
+          {{ item.rowCampus || '未识别' }}
         </view>
-        <view wx:if="{{ loadingMore }}" class="meta">加载更多中…</view>
       </view>
-    </scroll-view>
+      <view class="item-row">
+        <text class="item-row-label">资产名称</text>
+        <text class="item-row-value">{{ item.assetName || '-' }}</text>
+      </view>
+      <view class="item-row">
+        <text class="item-row-label">存放地点</text>
+        <text class="item-row-value">{{ item.currentLocation || '-' }}</text>
+      </view>
+      <view class="item-row">
+        <text class="item-row-label">规格型号</text>
+        <text class="item-row-value">{{ item.specModel || '-' }}</text>
+      </view>
+      <view class="item-row item-row-with-actions">
+        <text class="item-row-label">使用人</text>
+        <text class="item-row-value item-row-value-with-actions">{{ item.assetUser || '-' }}</text>
+        <view class="inline-card-actions">
+          <view class="ui-btn ui-btn-plain ui-btn-mini" data-id="{{ item.id }}" bindtap="openApplyForAsset">转移</view>
+          <view class="ui-btn ui-btn-plain ui-btn-mini" data-id="{{ item.id }}" bindtap="openDetailPanel">详情</view>
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{ loadingMore }}" class="meta">加载更多中…</view>
   </view>
 
   <!-- 资产详情面板（加宽 / 字号加大 / 空字段折叠） -->
@@ -118,13 +96,10 @@
       <view class="panel-head">
         <text class="panel-title">资产详情</text>
         <view class="panel-actions">
-          <view wx:if="{{ detailEditing }}" class="panel-act-btn panel-act-save" bindtap="saveDetailEdit">保存</view>
-          <view wx:else class="panel-act-btn panel-act-edit" bindtap="startDetailEdit">编辑</view>
-          <view wx:if="{{ detailEditing }}" class="panel-act-btn panel-act-scan" bindtap="openScanFill">扫码填充</view>
-          <view class="panel-act-btn {{ batchAssetIdMap[detailAsset.id] ? 'panel-act-remove' : 'panel-act-add' }}" bindtap="onToggleBatchAsset" data-id="{{ detailAsset.id }}">
-            {{ batchAssetIdMap[detailAsset.id] ? '− 移出' : '+ 批量' }}
-          </view>
-          <view class="panel-act-btn panel-act-close" bindtap="closeDetailPanel">关闭</view>
+          <text wx:if="{{ detailEditing }}" class="panel-close" bindtap="saveDetailEdit">保存</text>
+          <text wx:else class="panel-close" bindtap="startDetailEdit">编辑</text>
+          <text wx:if="{{ detailEditing }}" class="panel-close panel-close-primary" bindtap="openScanFill">扫码填充</text>
+          <text class="panel-close" bindtap="closeDetailPanel">关闭</text>
         </view>
       </view>
       <scroll-view scroll-y class="detail-scroll">
@@ -266,7 +241,6 @@
       </scroll-view>
       <view class="fill-actions">
         <view class="ui-btn ui-btn-primary ui-btn-mini" data-mode="all" bindtap="applyFillFields">全部填充</view>
-        <view class="ui-btn ui-btn-plain ui-btn-mini" data-mode="checked" bindtap="applyFillFields">填充选中</view>
         <view class="ui-btn ui-btn-plain ui-btn-mini" data-mode="empty" bindtap="applyFillFields">仅填空字段</view>
       </view>
     </view>
@@ -426,151 +400,6 @@
 
         <view class="ui-btn ui-btn-submit" bindtap="submitTransfer">提交转移申请</view>
       </block>
-    </view>
-  </view>
-
-  <!-- 扫码快捷入口（左下角） -->
-  <view class="scan-float-btn" bindtap="onScanKeyword">
-    <van-icon name="scan" size="22" color="#fff" />
-  </view>
-
-  <!-- 批量记录浮动入口（右下角） -->
-  <view wx:if="{{ batchAssets.length }}" class="batch-float-btn" bindtap="openBatchPanel">
-    <text class="batch-float-icon">⊞</text>
-    <text class="batch-float-count">{{ batchAssets.length }}</text>
-  </view>
-
-  <!-- 批量记录面板 -->
-  <view wx:if="{{ showBatchPanel }}" class="detail-mask" bindtap="closeBatchPanel" catchtouchmove="noop">
-    <view class="batch-panel" catchtap="noop">
-      <view class="panel-head">
-        <text class="panel-title">批量记录（{{ batchAssets.length }}条）</text>
-        <view class="panel-actions">
-          <text class="panel-close" bindtap="onBatchCheckAll">全选</text>
-          <text class="panel-close" bindtap="onBatchUncheckAll">取消全选</text>
-          <text class="panel-close" bindtap="closeBatchPanel">关闭</text>
-        </view>
-      </view>
-      <!-- 工具栏 -->
-      <view class="batch-toolbar">
-        <view class="ui-btn ui-btn-primary ui-btn-mini" bindtap="openBatchScanFill">扫码填充</view>
-        <view class="ui-btn ui-btn-plain ui-btn-mini" bindtap="openBatchEdit">编辑</view>
-        <view class="ui-btn ui-btn-plain ui-btn-mini ui-btn-clear-all" bindtap="onClearAllBatch">清空全部</view>
-        <text class="batch-hint">已勾选 {{ batchCheckedCount }} 项</text>
-      </view>
-      <!-- 资产列表 -->
-      <scroll-view scroll-y class="batch-scroll">
-        <view wx:for="{{ batchAssets }}" wx:key="id" class="batch-asset-row">
-          <view class="batch-checkbox {{ batchChecked[item.id] ? 'batch-checkbox-on' : '' }}" data-id="{{ item.id }}" bindtap="onBatchCheckToggle">
-            <text wx:if="{{ batchChecked[item.id] }}">✓</text>
-          </view>
-          <view class="batch-asset-info">
-            <text class="batch-asset-code">{{ item.assetCode || '-' }}</text>
-            <text class="batch-asset-name">{{ item.assetName || '-' }}<text class="batch-asset-location"> · {{ item.location || '-' }}</text></text>
-          </view>
-          <view class="batch-asset-remove" data-id="{{ item.id }}" bindtap="onToggleBatchAsset">−</view>
-        </view>
-      </scroll-view>
-
-      <!-- 批量扫码填充子面板 -->
-      <view wx:if="{{ showBatchFillPanel }}" class="batch-sub-mask" catchtap="closeBatchFillPanel" catchtouchmove="noop">
-        <view class="batch-sub-panel" catchtap="noop">
-          <view class="panel-head">
-            <text class="panel-title">扫码填充</text>
-            <view class="panel-actions">
-              <text class="panel-close panel-close-primary" bindtap="applyBatchFill">应用填充</text>
-              <text class="panel-close" bindtap="closeBatchFillPanel">关闭</text>
-            </view>
-          </view>
-          <view wx:if="{{ batchFillSourceAsset }}" class="batch-fill-source">
-            来源：{{ batchFillSourceAsset.assetName }}（{{ batchFillSourceAsset.assetCode }}）
-          </view>
-          <scroll-view scroll-y class="batch-fill-scroll">
-            <view wx:for="{{ batchFillFields }}" wx:for-item="field" wx:key="key" class="batch-fill-field">
-              <view class="batch-fill-field-head" data-key="{{ field.key }}" bindtap="onBatchFillFieldToggle">
-                <view class="fill-checkbox {{ batchFillChecked[field.key] ? 'fill-checkbox-on' : '' }}">✓</view>
-                <text class="batch-fill-label">{{ field.label }}</text>
-                <text class="batch-fill-arrow">→</text>
-                <text class="batch-fill-source-val">{{ field.sourceValue }}</text>
-              </view>
-              <!-- 预览：批量资产中该字段的现有值（去重） -->
-              <view wx:if="{{ batchFillChecked[field.key] && field.previews.length }}" class="batch-fill-previews">
-                <text class="batch-fill-previews-title">当前批量中的值：</text>
-                <view wx:for="{{ field.previews }}" wx:for-item="pv" wx:for-index="pvi" wx:key="pvi" class="batch-fill-preview-row">
-                  <text class="batch-fill-preview-val">{{ pv.value }}</text>
-                  <text class="batch-fill-preview-assets">（{{ pv.assetNamesStr }}）</text>
-                </view>
-              </view>
-            </view>
-          </scroll-view>
-        </view>
-      </view>
-
-      <!-- 批量编辑子面板 -->
-      <view wx:if="{{ showBatchEditPanel }}" class="batch-sub-mask" catchtap="closeBatchEditPanel" catchtouchmove="noop">
-        <view class="batch-sub-panel" catchtap="noop">
-          <view class="panel-head">
-            <text class="panel-title">批量编辑</text>
-            <view class="panel-actions">
-              <text class="panel-close panel-close-primary" bindtap="applyBatchEdit">应用编辑</text>
-              <text class="panel-close" bindtap="closeBatchEditPanel">关闭</text>
-            </view>
-          </view>
-          <scroll-view scroll-y class="batch-fill-scroll">
-            <view wx:for="{{ batchEditFields }}" wx:for-item="field" wx:key="key" class="batch-fill-field">
-              <view class="batch-fill-field-head" data-key="{{ field.key }}" bindtap="onBatchEditFieldToggle">
-                <view class="fill-checkbox {{ batchEditChecked[field.key] ? 'fill-checkbox-on' : '' }}">✓</view>
-                <text class="batch-fill-label">{{ field.label }}</text>
-              </view>
-              <block wx:if="{{ batchEditChecked[field.key] }}">
-                <input class="input batch-edit-input" value="{{ batchEditValues[field.key] || '' }}" data-key="{{ field.key }}" bindinput="onBatchEditValueInput" placeholder="输入新值" />
-                <view wx:if="{{ field.previews.length }}" class="batch-fill-previews">
-                  <text class="batch-fill-previews-title">当前批量中的值：</text>
-                  <view wx:for="{{ field.previews }}" wx:for-item="pv" wx:for-index="pvi" wx:key="pvi" class="batch-fill-preview-row">
-                    <text class="batch-fill-preview-val">{{ pv.value }}</text>
-                    <text class="batch-fill-preview-assets">（{{ pv.assetNamesStr }}）</text>
-                  </view>
-                </view>
-              </block>
-            </view>
-          </scroll-view>
-        </view>
-      </view>
-    </view>
-  </view>
-
-  <!-- 导出确认对话框 -->
-  <view wx:if="{{ showExportConfirm }}" class="detail-mask" bindtap="closeExportConfirm" catchtouchmove="noop">
-    <view class="export-confirm-dialog" catchtap="noop">
-      <text class="export-confirm-title">确认导出 Excel</text>
-      <text class="export-confirm-hint">将导出 {{ exportSavedCount }} 列，点击「导出」直接执行</text>
-      <view class="export-confirm-actions">
-        <text class="export-confirm-config" bindtap="onExportConfig">配置列</text>
-        <view class="export-confirm-right">
-          <text class="panel-close" bindtap="closeExportConfirm">取消</text>
-          <text class="panel-close panel-close-primary" bindtap="onExportNow">导出</text>
-        </view>
-      </view>
-    </view>
-  </view>
-
-  <!-- 导出列选择面板 -->
-  <view wx:if="{{ showExportPicker }}" class="detail-mask" bindtap="closeExportPicker" catchtouchmove="noop">
-    <view class="export-panel" catchtap="noop">
-      <view class="panel-head">
-        <text class="panel-title">配置导出列</text>
-        <view class="panel-actions">
-          <text class="panel-close" bindtap="onExportToggleAll">{{ exportAllChecked ? '取消全选' : '全选' }}</text>
-          <text class="panel-close panel-close-primary" bindtap="onSaveExportConfig">保存</text>
-          <text class="panel-close" bindtap="closeExportPicker">取消</text>
-        </view>
-      </view>
-      <scroll-view scroll-y class="export-scroll">
-        <view wx:for="{{ exportColumns }}" wx:key="key" class="export-col-row" data-key="{{ item.key }}" bindtap="onExportColumnToggle">
-          <view class="fill-checkbox {{ item.checked ? 'fill-checkbox-on' : '' }}">✓</view>
-          <text class="export-col-label">{{ item.label }}</text>
-        </view>
-      </scroll-view>
     </view>
   </view>
 </view>
