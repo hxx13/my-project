@@ -25,6 +25,7 @@ import {
 import { AutoApproveDailyTimeField } from "@/features/auto-approve/AutoApproveDailyTimeField";
 import { formatDailyScheduleLabel } from "@/features/auto-approve/scheduleTime";
 
+import { appConfirm } from "@/lib/appDialog";
 type TabKey = "trust" | "batch";
 
 type Props = {
@@ -403,7 +404,7 @@ export function MaterialAutoApprovePanel({ open, onClose }: Props) {
                     itemLabel={itemLabelMap.get(r.itemId) || r.itemName || `物资 #${r.itemId}`}
                     onEdit={() => editRule(r)}
                     onDelete={async () => {
-                      if (!r.id || !window.confirm("删除此规则？")) return;
+                      if (!r.id || !await appConfirm("删除此规则？")) return;
                       await deleteMaterialTrustRule(r.id);
                       reload();
                       toast.success("已删除");
@@ -423,7 +424,7 @@ export function MaterialAutoApprovePanel({ open, onClose }: Props) {
                     itemLabel={itemLabelMap.get(r.itemId) || r.itemName || `物资 #${r.itemId}`}
                     onEdit={() => editRule(r)}
                     onDelete={async () => {
-                      if (!r.id || !window.confirm("删除此规则？")) return;
+                      if (!r.id || !await appConfirm("删除此规则？")) return;
                       await deleteMaterialTrustRule(r.id);
                       reload();
                       toast.success("已删除");
@@ -501,7 +502,7 @@ export function MaterialAutoApprovePanel({ open, onClose }: Props) {
                     type="button"
                     className="text-xs text-red-500"
                     onClick={async () => {
-                      if (!r.id || !window.confirm("删除此批量规则？")) return;
+                      if (!r.id || !await appConfirm("删除此批量规则？")) return;
                       await deleteMaterialBatchRule(r.id);
                       reload();
                       toast.success("已删除");

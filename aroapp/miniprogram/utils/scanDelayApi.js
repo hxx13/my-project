@@ -21,21 +21,6 @@ async function submitScanDelayRequest(payload) {
   return unwrap(res.data);
 }
 
-/** 查询活跃申请状态（需传 subjectUserId 确保与提交时的刷卡人一致） */
-async function fetchMyActiveDelayRequests(roomId, subjectUserId) {
-  const params = { roomId };
-  if (subjectUserId) params.subjectUserId = subjectUserId;
-  const res = await springAuth.springRequest({
-    url: '/api/v1/twin/scan-delay/request/my-active',
-    method: 'GET',
-    data: params,
-  });
-  const body = res && res.data && typeof res.data === 'object' ? res.data : {};
-  if (body.success === true || Number(body.code) === 200) return body.data;
-  throw new Error(body.message || '查询失败');
-}
-
 module.exports = {
   submitScanDelayRequest,
-  fetchMyActiveDelayRequests,
 };

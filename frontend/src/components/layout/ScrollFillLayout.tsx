@@ -7,8 +7,12 @@ type LayoutProps = {
 };
 
 /**
- * 标准「顶栏固定 + 下方滚动」高度链（见 docs/UI设计规范与主题标准.md §高度链完整性）。
+ * 标准「顶栏固定 + 下方滚动」高度链。
  * 用于 filter/tab 切换后内容区被 flex min-height:auto 截断的场景。
+ *
+ * 规则：容器给 flex-1 时必须同时给 min-h-0（默认 min-height:auto 不缩，内容会顶破父容器
+ * 导致整页下滚）；固定区一律 shrink-0；滚动只发生在指定区域。
+ * 参照实现：src/pages/AdminInventoryPage.tsx
  */
 export function FillHeightColumn({ children, className }: LayoutProps) {
   return <div className={cn("flex h-full min-h-0 flex-col", className)}>{children}</div>;

@@ -67,14 +67,13 @@ public class PersonIdentityTagSeedBootstrap implements ApplicationRunner {
             created += seed("DIRECTOR", "主任", 8);
             created += seed("VETERINARIAN", "兽医", 9);
             created += seed("GROUP_STEWARD", "课题组管家", 10);
-            // 默认「实验员」：给所有无身份标识的 STAFF 账号补 LAB_MEMBER 标签（幂等）
+            // 默认「实验员」：给所有无身份标识的人员补 LAB_MEMBER 标签（幂等，key=personnel.id）
             try {
                 int assigned = jdbcTemplate.update(
                         "INSERT INTO person_identity (user_id, tag_id) " +
-                                "SELECT p.staff_id, t.id FROM personnel p " +
+                                "SELECT CAST(p.id AS CHAR), t.id FROM personnel p " +
                                 "JOIN person_identity_tag t ON t.code = 'LAB_MEMBER' " +
-                                "WHERE p.staff_id IS NOT NULL " +
-                                "AND NOT EXISTS (SELECT 1 FROM person_identity pi WHERE pi.user_id = p.staff_id)");
+                                "AND NOT EXISTS (SELECT 1 FROM person_identity pi WHERE pi.user_id = CAST(p.id AS CHAR))");
                 if (assigned > 0) log.info("[person-identity-seed] 默认实验员身份已补齐 {} 人", assigned);
             } catch (Exception e) {
                 log.warn("[person-identity-seed] 默认实验员身份初始化失败: {}", e.getMessage());

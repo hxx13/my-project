@@ -80,6 +80,12 @@ public interface AroPersonnelMapper {
     })
     AroPersonnel findByJobNumber(@Param("jobNumber") String jobNumber);
 
+    @Select("SELECT * FROM aro_personnel WHERE job_number = #{jobNumber}")
+    @Results({
+            @Result(property = "id", column = "user_id")
+    })
+    List<AroPersonnel> findAllByJobNumber(@Param("jobNumber") String jobNumber);
+
     int updateContactEmail(@Param("userId") String userId, @Param("contactEmail") String contactEmail);
     int updateSendKey(@Param("userId") String userId, @Param("sendKey") String sendKey);
     int updateWxPusherUid(@Param("userId") String userId, @Param("wxPusherUid") String wxPusherUid);

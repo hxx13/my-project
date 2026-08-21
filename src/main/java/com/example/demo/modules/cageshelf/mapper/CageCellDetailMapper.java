@@ -18,6 +18,12 @@ public interface CageCellDetailMapper {
     /** 批量 upsert */
     int batchUpsert(@Param("list") List<CageCellDetail> list);
 
+    /**
+     * 仅更新 /book 状态字段（cage_type_code/state/state_label/rent_type）。
+     * /book 响应不含 PI/课题组映射；用此方法避免整行 upsert 把未映射列写成 null。
+     */
+    int batchUpdateStatus(@Param("list") List<CageCellDetail> list);
+
     /** 按架子查所有笼位详情（JOIN cage_cell_index） */
     List<CageCellDetail> selectByShelfIndexId(@Param("shelfIndexId") Long shelfIndexId);
 

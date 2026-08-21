@@ -72,9 +72,13 @@ export function shouldShowAdminShellBack(pathname: string, permSidebarPaths: Set
   return !isAdminPrimarySidebarPath(pathname, permSidebarPaths);
 }
 
+/** 顶栏不展示标题的页面（页面自身已提供更强的视觉层级，重复标题属冗余） */
+const TITLE_SUPPRESSED_PATHS = new Set(["/admin/student-violations"]);
+
 export function adminChromeTitle(pathname: string): string {
   const p = stripPathQuery(pathname);
   if (p === "/admin") return "后台工作台";
+  if (TITLE_SUPPRESSED_PATHS.has(p)) return "";
   return SECONDARY_ROUTE_TITLE[p] ?? titleForUnknownAdminPath(p);
 }
 

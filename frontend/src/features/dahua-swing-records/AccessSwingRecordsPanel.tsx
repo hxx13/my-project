@@ -21,6 +21,7 @@ import {
 
 import { useSearchParams } from "react-router-dom";
 
+import { appConfirm } from "@/lib/appDialog";
 const toApiDateTime = (v: string) => (v ? `${v.replace("T", " ")}:00` : "");
 
 const todayRange = () => {
@@ -104,7 +105,7 @@ export function AccessSwingRecordsPanel() {
 
   const handleRecalculateAudience = async () => {
     if (
-      !window.confirm(
+      !await appConfirm(
         "将按当前筛选重算受众：部门 ID 或大华部门映射名称含「学生」→ 学生，其余 → 工作人员。已写入清洗总库的数据需清空后重新入库。是否继续？"
       )
     ) {

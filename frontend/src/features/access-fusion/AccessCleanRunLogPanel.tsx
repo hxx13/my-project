@@ -4,6 +4,7 @@ import type { AccessSwingCleanRunRow, CleanConfigSummary } from "@/api/domains/a
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
 import { cn } from "@/lib/utils";
 
+import { appConfirm } from "@/lib/appDialog";
 function triggerLabel(t: string) {
   if (t === "SCHEDULED") return "定时";
   if (t === "RERUN") return "重跑";
@@ -144,8 +145,8 @@ export function AccessCleanRunLogPanel({
                                 disabled={busy}
                                 className="rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                                 title="删除本批次"
-                                onClick={() => {
-                                  if (!window.confirm(`确定删除运行 #${run.id} 吗？将同时删除仅由本批次写入的总库行。`)) {
+                                onClick={async () => {
+                                  if (!await appConfirm(`确定删除运行 #${run.id} 吗？将同时删除仅由本批次写入的总库行。`)) {
                                     return;
                                   }
                                   onDelete(run.id);

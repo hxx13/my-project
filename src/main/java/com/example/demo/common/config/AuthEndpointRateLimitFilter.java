@@ -25,6 +25,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 public class AuthEndpointRateLimitFilter extends OncePerRequestFilter {
 
     private static final String LOGIN_PATH = "/api/auth/login/web";
+    private static final String OAUTH_LOGIN_PATH = "/api/auth/login/oauth";
     private static final String REGISTER_PATH = "/api/auth/register/staff";
     private static final String FORGOT_PWD_VERIFY = "/api/auth/forgot-password/verify";
     private static final String FORGOT_PWD_RESET = "/api/auth/forgot-password/reset";
@@ -39,6 +40,7 @@ public class AuthEndpointRateLimitFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
         return !LOGIN_PATH.equals(uri)
+            && !OAUTH_LOGIN_PATH.equals(uri)
             && !REGISTER_PATH.equals(uri)
             && !FORGOT_PWD_VERIFY.equals(uri)
             && !FORGOT_PWD_RESET.equals(uri)
@@ -50,7 +52,7 @@ public class AuthEndpointRateLimitFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String ip = clientIp(request);
         String uri = request.getRequestURI();
-        if (LOGIN_PATH.equals(uri)) {
+        if (LOGIN_PATH.equals(uri) || OAUTH_LOGIN_PATH.equals(uri)) {
             if (!allow(loginHits, ip, 60_000L, 40)) {
                 tooMany(response);
                 return;

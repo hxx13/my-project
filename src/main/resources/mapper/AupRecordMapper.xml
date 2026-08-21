@@ -52,6 +52,15 @@
             pi_name = COALESCE(#{piName}, pi_name),
             dept = COALESCE(#{dept}, dept),
             project_source = COALESCE(#{projectSource}, project_source),
+            project_group_id = COALESCE(#{projectGroupId}, project_group_id),
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateRegistryMeta">
+        UPDATE aup_record
+        SET animal_allowlist = #{animalAllowlist},
+            status = COALESCE(#{status}, status),
             updated_at = NOW()
         WHERE id = #{id}
     </update>
@@ -188,10 +197,73 @@
         SELECT COUNT(*) FROM aup_record WHERE template_id = #{templateId}
     </select>
 
+    <select id="countLocalRecords" resultType="int">
+        SELECT COUNT(*) FROM aup_record
+        WHERE template_id = #{templateId}
+          AND COALESCE(is_demo, 0) = 0
+          AND COALESCE(created_by, '') NOT IN ('aro', 'demo')
+    </select>
+
+    <select id="listDeletableRecordIds" resultType="long">
+        SELECT id FROM aup_record
+        WHERE template_id = #{templateId}
+          AND (COALESCE(is_demo, 0) = 1 OR COALESCE(created_by, '') IN ('aro', 'demo'))
+    </select>
+
+    <delete id="deleteByIds">
+        DELETE FROM aup_record WHERE id IN
+        <foreach collection="ids" item="i" open="(" separator="," close=")">#{i}</foreach>
+    </delete>
+
     <select id="selectDistinctProjectGroups" resultType="string">
         SELECT DISTINCT project_group_name FROM aup_record
         WHERE project_group_name IS NOT NULL AND project_group_name != ''
         ORDER BY project_group_name
+    </select>
+
+    <!-- 同步 ARO 已通过 AUP → aup_record(approved)：按 register_no 唯一键去重 upsert -->
+    <insert id="upsertSyncedApproved">
+        INSERT INTO aup_record (
+            template_id, template_version, version, register_no,
+            current_stage, round_no, draft_source, carried_over_count,
+            project_name, pi_user_id, pi_name, project_group_name, status,
+            approved_at, created_at, updated_at
+        ) VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.templateId}, #{r.templateVersion}, 0, #{r.registerNo},
+             'approved', 1, 'first', 0,
+             #{r.projectName}, #{r.piUserId}, #{r.piName}, #{r.projectGroupName}, 'active',
+             NOW(), NOW(), NOW())
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            project_name = VALUES(project_name),
+            pi_user_id = VALUES(pi_user_id),
+            pi_name = VALUES(pi_name),
+            project_group_name = VALUES(project_group_name),
+            status = 'active',
+            updated_at = NOW()
+    </insert>
+
+    <select id="selectApprovedForDict" resultType="map">
+        SELECT CAST(id AS CHAR) AS id,
+               register_no AS registerNo,
+               project_group_name AS projectGroupName
+        FROM aup_record
+        WHERE current_stage = 'approved'
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectApprovedForOrder" resultType="map">
+        SELECT CAST(id AS CHAR) AS id,
+               register_no AS registerNo,
+               project_group_name AS projectGroupName,
+               project_group_id AS projectGroupId
+        FROM aup_record
+        WHERE current_stage = 'approved'
+        <if test="projectGroupName != null and projectGroupName != ''">
+            AND project_group_name = #{projectGroupName}
+        </if>
+        ORDER BY id ASC
     </select>
 
 </mapper>

@@ -13,6 +13,7 @@ import { authStorage } from '@/features/auth/authStorage';
 import { canManageOptionSet, formatOptionSetLabel, parseOptionSetItems } from '../utils/optionSetLabels';
 import type { OptionItem } from '../utils/optionSetResolve';
 
+import { appConfirm } from "@/lib/appDialog";
 function normalizeOptions(items: OptionItem[]): OptionItem[] {
   return items
     .map(o => {
@@ -215,9 +216,9 @@ export default function OptionEditor({
     setSaveAsName('');
   };
 
-  const handleDeletePreset = () => {
+  const handleDeletePreset = async () => {
     if (!selectedPreset || !canDeletePreset) return;
-    if (!confirm(`删除预设「${selectedPreset.name}」？引用该预设的格子将变为未绑定。`)) return;
+    if (!await appConfirm(`删除预设「${selectedPreset.name}」？引用该预设的格子将变为未绑定。`)) return;
     deletePresetMut.mutate(selectedPreset.id);
   };
 

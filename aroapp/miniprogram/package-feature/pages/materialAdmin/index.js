@@ -35,10 +35,26 @@ function decorateItems(list) {
 }
 
 /**
- * @deprecated Cloud URL resolution no longer needed; all images go through direct HTTP (Phase 2C).
+ * CDN 优先：批量解析 items 中的 HTTP coverAbsUrl → cloud:// fileID。
+ * 在 setData 渲染前调用，避免 HTTP 域名白名单限制导致缩略图空白。
  */
-async function resolveItemsCloudUrls(_items) {
-  /* no-op */
+async function resolveItemsCloudUrls(items) {
+  if (!items || items.length === 0) return;
+  const httpUrls = items
+    .map((it) => it.coverAbsUrl)
+    .filter((u) => u && !u.startsWith('cloud://'));
+  if (httpUrls.length === 0) return;
+  try {
+    const { mappings } = await springAuth.resolveCloudUrls(httpUrls);
+    let hit = 0;
+    items.forEach((it) => {
+      const cloud = mappings[it.coverAbsUrl];
+      if (cloud) { it.coverAbsUrl = cloud; hit++; }
+    });
+    if (hit < httpUrls.length) springAuth.triggerCloudSync();
+  } catch (_) {
+    springAuth.triggerCloudSync();
+  }
 }
 
 Page({
@@ -86,8 +102,6 @@ Page({
     specRequired: false,
     specDimensions: [],
     specOptInputs: {},
-    /** 独立下单：该物资不能与其他物资合并下单 */
-    independentOrder: false,
   },
 
   /** 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc */
@@ -183,7 +197,7 @@ Page({
       const categories = Array.isArray(c.body.data) ? c.body.data : [];
       const rawItems = Array.isArray(i.body.data) ? i.body.data : [];
       const items = decorateItems(rawItems);
-      // 渲染前解析 coverAbsUrl（cloud:// 映射已移除，直接 HTTP）
+      // CDN 优先：渲染前解析 cloud:// 映射
       await resolveItemsCloudUrls(items);
       const recycleRows = ((r.body.data && r.body.data.data) || []).map((it) => ({
         ...it,
@@ -203,7 +217,7 @@ Page({
   },
 
   /**
-   * @deprecated Cloud URL resolution removed in Phase 2C.
+   * CDN 优先：批量解析 HTTP URL → cloud:// fileID（deprecated, replaced by resolveItemsCloudUrls）。
    */
   async applyCloudUrls(_items) { },
 
@@ -624,7 +638,6 @@ Page({
         specRequired: false,
         specDimensions: [],
         specOptInputs: {},
-        independentOrder: false,
       },
       () => this.syncCreatePickerLabels(),
     );
@@ -689,7 +702,6 @@ Page({
         specRequired: specForm.specRequired,
         specDimensions: specForm.specDimensions,
         specOptInputs: {},
-        independentOrder: item.independentOrder === 1,
       },
       () => this.syncCreatePickerLabels(),
     );
@@ -743,9 +755,15 @@ Page({
       wx.showLoading({ title: '上传中', mask: true });
       try {
         const path = f.tempFilePath;
-        const url = await springAuth.uploadFileDirect(path, {});
+        const fileID = await springAuth.uploadCloudMediaFile(path, 'material/covers');
+        const url = springAuth.toAbsoluteMediaUrl(fileID);
+        // 异步同步到后端，Web 端立即可看
+        wx.cloud.callFunction({
+          name: 'syncToBackend',
+          data: { wechatFileID: fileID, originalName: 'cover.jpg', mimeType: 'image/jpeg' },
+        }).catch(() => {});
         this.setData({
-          createCoverUrl: url,
+          createCoverUrl: fileID,
           createCoverPreview: url,
           coverExplicitlyCleared: false,
         });
@@ -787,11 +805,6 @@ Page({
   onToggleShowStockQty(e) {
     const checked = e && e.detail != null ? !!e.detail : !this.data.showStockQty;
     this.setData({ showStockQty: checked });
-  },
-
-  onToggleIndependentOrder(e) {
-    const checked = e && e.detail != null ? !!e.detail : !this.data.independentOrder;
-    this.setData({ independentOrder: checked });
   },
 
   onReviewerIdsChange(e) {
@@ -865,7 +878,6 @@ Page({
         var specSchemaStr = this._serializeSpecSchema();
         if (specSchemaStr) body.specSchema = specSchemaStr;
         body.specRequired = this.data.specEnabled && this.data.specRequired ? 1 : 0;
-        body.independentOrder = this.data.independentOrder ? 1 : 0;
         const cv = (createCoverUrl || '').trim();
         if (cv) body.coverUrl = cv;
         const res = await springAuth.springRequest({
@@ -904,7 +916,6 @@ Page({
       if (this.data.specEnabled && specSchemaStr2) body.specSchema = specSchemaStr2;
       else if (!this.data.specEnabled) body.specSchema = '';
       body.specRequired = this.data.specEnabled && this.data.specRequired ? 1 : 0;
-      body.independentOrder = this.data.independentOrder ? 1 : 0;
       if (coverExplicitlyCleared) {
         body.coverUrl = '';
       } else if ((createCoverUrl || '').trim()) {

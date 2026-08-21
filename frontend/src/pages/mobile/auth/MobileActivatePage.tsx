@@ -6,6 +6,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { activateStudent } from "@/features/student/api";
 import type { AuthUserInfo } from "@/api/domains/auth.api";
 
+import { appAlert } from "@/lib/appDialog";
 type Step = "qr" | "credentials" | "success";
 
 interface VerifiedData {
@@ -61,7 +62,7 @@ export default function MobileActivatePage() {
       setStep("success");
     } catch (err) {
       const message = err instanceof Error ? err.message : "激活失败，请重试";
-      alert(message);
+      await appAlert(message);
     } finally {
       setSubmitting(false);
     }

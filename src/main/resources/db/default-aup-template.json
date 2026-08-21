@@ -49,13 +49,7 @@
             {
               "fieldKey": "A1.source", "label": "项目来源", "type": "choice", "required": true, "sortOrder": 1,
               "config": { "choiceType": "single" },
-              "options": [
-                { "value": "国家专项", "label": "国家专项" },
-                { "value": "非国家专项", "label": "非国家专项" },
-                { "value": "上海市项目", "label": "上海市项目" },
-                { "value": "国家自然科学基金", "label": "国家自然科学基金" },
-                { "value": "其他科研项目", "label": "其他科研项目" }
-              ]
+              "dictKey": "projectSource"
             },
             {
               "fieldKey": "A1.sourceName", "label": "专项 / 项目具体名称", "type": "text", "sortOrder": 2,
@@ -82,10 +76,8 @@
             { "fieldKey": "A2.employeeNo", "label": "工号", "type": "text", "required": true, "sortOrder": 2 },
             { "fieldKey": "A2.department", "label": "部门", "type": "text", "required": true, "sortOrder": 3 },
             {
-              "fieldKey": "A2.group", "label": "课题组", "type": "choice", "sortOrder": 4,
-              "config": { "choiceType": "single" },
-              "options": [ "卢今课题组" ],
-              "description": "演示用示例选项，实际由后台课题组数据填充"
+              "fieldKey": "A2.group", "label": "课题组", "type": "select", "sortOrder": 4,
+              "config": { "refDataSource": "projectGroup" }
             },
             { "fieldKey": "A2.officePhone", "label": "办公电话", "type": "text", "required": true, "sortOrder": 5 },
             { "fieldKey": "A2.mobile", "label": "移动电话", "type": "text", "required": true, "sortOrder": 6 },
@@ -119,7 +111,7 @@
                   { "fieldKey": "col_no", "label": "学号/工号", "type": "text" },
                   {
                     "fieldKey": "col_type", "label": "人员类别", "type": "choice",
-                    "options": [ "本科生", "硕士研究生", "博士研究生", "实验师", "高级实验师", "助理研究员", "副研究员", "研究员", "其他" ]
+                    "dictKey": "userClass"
                   },
                   { "fieldKey": "col_name", "label": "姓名", "type": "text" },
                   { "fieldKey": "col_email", "label": "Email地址", "type": "text" },
@@ -317,7 +309,7 @@
                 "fields": [
                   {
                     "fieldKey": "species", "label": "实验动物（1）", "type": "select", "required": true, "sortOrder": 0,
-                    "options": [ "小鼠", "大鼠", "豚鼠", "兔", "犬", "猪", "其他" ]
+                    "config": { "refDataSource": "ANIMAL_BREED" }
                   },
                   {
                     "fieldKey": "basis", "label": "选择此种实验动物的依据", "type": "choice", "required": true, "sortOrder": 1,
@@ -365,13 +357,11 @@
                 "fields": [
                   {
                     "fieldKey": "species", "label": "品种", "type": "select", "required": true, "sortOrder": 0,
-                    "description": "演示用示例选项，实际由后台动物品种数据填充",
-                    "options": [ "C57BL/6J 小鼠", "BALB/c 小鼠", "KM 小鼠", "SD 大鼠", "Wistar 大鼠", "新西兰兔" ]
+                    "config": { "refDataSource": "ANIMAL_BREED" }
                   },
                   {
                     "fieldKey": "line", "label": "品系", "type": "select", "required": true, "sortOrder": 1,
-                    "description": "演示用示例选项，实际由后台动物品系数据填充",
-                    "options": [ "近交系", "封闭群", "远交系" ]
+                    "config": { "refDataSource": "ANIMAL_STRAIN" }
                   },
                   { "fieldKey": "age", "label": "年龄", "type": "text", "required": true, "sortOrder": 2 },
                   { "fieldKey": "weight", "label": "体重", "type": "text", "required": true, "sortOrder": 3 },
@@ -499,7 +489,7 @@
               "description": "动物饲养在医学院外其他单位时，请逐条填写以下单位信息：",
               "config": {
                 "columns": [
-                  { "fieldKey": "col_species", "label": "动物品种", "type": "choice", "required": true, "config": { "choiceType": "single" }, "options": [ "小鼠", "大鼠", "豚鼠", "兔", "犬", "猪", "其他" ] },
+                  { "fieldKey": "col_species", "label": "动物品种", "type": "select", "required": true, "config": { "refDataSource": "ANIMAL_BREED" } },
                   { "fieldKey": "col_org", "label": "附属医院/机构名称/高校", "type": "text", "required": true },
                   { "fieldKey": "col_contact", "label": "联系人", "type": "text", "required": true },
                   { "fieldKey": "col_email", "label": "联系方式（Email）", "type": "text", "required": true }
@@ -684,12 +674,12 @@
               "config": {
                 "columns": [
                   {
-                    "fieldKey": "col_species", "label": "动物品种", "type": "choice",
-                    "options": [ "小鼠", "大鼠", "豚鼠", "兔", "犬", "猪", "其他" ]
+                    "fieldKey": "col_species", "label": "动物品种", "type": "select",
+                    "config": { "refDataSource": "ANIMAL_BREED" }
                   },
                   {
-                    "fieldKey": "col_method", "label": "安乐死方法", "type": "choice",
-                    "options": [ "CO₂ 吸入", "颈椎脱位", "麻醉剂过量", "戊巴比妥钠注射", "其他" ]
+                    "fieldKey": "col_method", "label": "安乐死方法", "type": "select",
+                    "dictKey": "euthanasiaMethod"
                   },
                   { "fieldKey": "col_dose", "label": "药物注射剂量 / 给药途径", "type": "text" }
                 ]
@@ -714,12 +704,12 @@
               "config": {
                 "columns": [
                   {
-                    "fieldKey": "col_species", "label": "动物品种", "type": "choice",
-                    "options": [ "小鼠", "大鼠", "豚鼠", "兔", "犬", "猪", "其他" ]
+                    "fieldKey": "col_species", "label": "动物品种", "type": "select",
+                    "config": { "refDataSource": "ANIMAL_BREED" }
                   },
                   {
-                    "fieldKey": "col_method", "label": "安乐死方法", "type": "choice",
-                    "options": [ "CO₂ 吸入", "颈椎脱位", "麻醉剂过量", "戊巴比妥钠注射", "其他" ]
+                    "fieldKey": "col_method", "label": "安乐死方法", "type": "select",
+                    "dictKey": "euthanasiaMethod"
                   }
                 ]
               },
@@ -734,8 +724,8 @@
               "config": {
                 "columns": [
                   {
-                    "fieldKey": "col_species", "label": "动物品种", "type": "choice",
-                    "options": [ "小鼠", "大鼠", "豚鼠", "兔", "犬", "猪", "其他" ]
+                    "fieldKey": "col_species", "label": "动物品种", "type": "select",
+                    "config": { "refDataSource": "ANIMAL_BREED" }
                   },
                   { "fieldKey": "col_method", "label": "安乐死方法", "type": "text" }
                 ]
@@ -809,11 +799,9 @@
               ]
             },
             {
-              "fieldKey": "E4.coLeader", "label": "课题组长", "type": "choice", "required": true, "sortOrder": 1,
+              "fieldKey": "E4.coLeader", "label": "课题组长", "type": "select", "required": true, "sortOrder": 1,
               "showWhen": { "field": "E4.cooperate", "op": "equals", "value": "是" },
-              "config": { "choiceType": "single" },
-              "options": [ "卢今课题组" ],
-              "description": "演示用示例选项，实际由后台课题组数据填充"
+              "config": { "refDataSource": "projectGroup" }
             },
             { "fieldKey": "E4.coJobNo", "label": "工号", "type": "text", "required": true, "sortOrder": 2, "showWhen": { "field": "E4.cooperate", "op": "equals", "value": "是" } },
             { "fieldKey": "E4.coDept", "label": "部门", "type": "text", "required": true, "sortOrder": 3, "showWhen": { "field": "E4.cooperate", "op": "equals", "value": "是" } },

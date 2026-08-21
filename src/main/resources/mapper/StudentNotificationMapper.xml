@@ -66,4 +66,17 @@
         WHERE type = 'ARO' AND create_time &lt; #{beforeTime}
     </delete>
 
+    <delete id="deleteByBiz">
+        DELETE FROM sys_student_notification
+        WHERE biz_type = #{bizType} AND biz_id = #{bizId}
+    </delete>
+
+    <update id="updateContentByBiz">
+        UPDATE sys_student_notification
+        SET title = #{title},
+            summary = #{summary},
+            content = #{content}
+        WHERE biz_type = #{bizType} AND biz_id = #{bizId}
+    </update>
+
 </mapper>

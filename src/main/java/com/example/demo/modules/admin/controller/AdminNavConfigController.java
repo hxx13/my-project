@@ -18,8 +18,8 @@ public class AdminNavConfigController {
     }
 
     @GetMapping("/config")
-    public Map<String, Object> getConfig() {
-        List<AdminNavConfigNode> tree = service.getFullTree();
+    public Map<String, Object> getConfig(@RequestParam(defaultValue = "ADMIN") String scope) {
+        List<AdminNavConfigNode> tree = service.getFullTree(scope);
         return Map.of("success", true, "data", tree);
     }
 
@@ -28,8 +28,9 @@ public class AdminNavConfigController {
         String parentId = (String) body.get("parentId");
         String type = (String) body.getOrDefault("type", "GROUP");
         String title = (String) body.get("title");
+        String scope = (String) body.getOrDefault("scope", "ADMIN");
         int sortOrder = body.get("sortOrder") instanceof Number n ? n.intValue() : 0;
-        AdminNavConfigNode node = service.createGroup(parentId, type, title, sortOrder);
+        AdminNavConfigNode node = service.createGroup(scope, parentId, type, title, sortOrder);
         return Map.of("success", true, "data", node);
     }
 
@@ -74,10 +75,21 @@ public class AdminNavConfigController {
         return Map.of("success", true);
     }
 
+    @PutMapping("/nodes/reorder")
+    public Map<String, Object> reorderNodes(@RequestBody Map<String, Object> body) {
+        String scope = (String) body.getOrDefault("scope", "ADMIN");
+        String parentId = (String) body.get("parentId");
+        @SuppressWarnings("unchecked")
+        List<String> orderedIds = (List<String>) body.get("orderedIds");
+        service.reorderNodes(scope, parentId, orderedIds);
+        return Map.of("success", true);
+    }
+
     @PostMapping("/ensure-items")
     public Map<String, Object> ensureItems(@RequestBody Map<String, Object> body) {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
+        String scope = (String) body.getOrDefault("scope", "ADMIN");
         int created = 0;
         int existed = 0;
         for (Map<String, Object> item : items) {
@@ -88,7 +100,7 @@ public class AdminNavConfigController {
             if (path == null || path.isBlank() || label == null || label.isBlank() || groupTitle == null) {
                 continue;
             }
-            Map<String, Object> r = service.ensureItem(path, label, icon, groupTitle);
+            Map<String, Object> r = service.ensureItem(scope, path, label, icon, groupTitle);
             if (Boolean.TRUE.equals(r.get("created"))) created++;
             else existed++;
         }
@@ -96,8 +108,9 @@ public class AdminNavConfigController {
     }
 
     @PostMapping("/reset")
-    public Map<String, Object> reset() {
-        service.resetToDefault();
+    public Map<String, Object> reset(@RequestBody(required = false) Map<String, Object> body) {
+        String scope = body != null ? (String) body.getOrDefault("scope", "ADMIN") : "ADMIN";
+        service.resetToDefault(scope);
         return Map.of("success", true, "message", "配置已清空，重启应用后将自动播种默认值");
     }
 }

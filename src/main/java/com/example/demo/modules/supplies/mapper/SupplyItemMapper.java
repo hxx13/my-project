@@ -46,6 +46,14 @@ public interface SupplyItemMapper {
     /** 清零锁定量：stock_mode 由 QUANTIFIED 切为 FLAG 时调用，避免残留幽灵锁定压低可用库存 */
     int resetLockedQty(@Param("id") Long id);
 
+    /**
+     * 按未删除 PENDING 领用行重算锁定量（权威源）。用于修复幽灵锁定，以及软删/恢复/彻底删除后的校准。
+     */
+    int reconcileLockedQty(@Param("id") Long id);
+
+    /** 全表重算 QUANTIFIED 物资的 locked_qty（启动迁移幂等修复） */
+    int reconcileAllLockedQty();
+
     int increaseStock(@Param("id") Long id, @Param("qty") int qty);
 
     int adjustStock(@Param("id") Long id, @Param("newQty") int newQty);

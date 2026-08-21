@@ -5,6 +5,7 @@ import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.ApprovalRecord;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
@@ -36,19 +37,30 @@ public class CageClaimService {
     private final UserMapper userMapper;
     private final NotificationSettingsService notificationSettingsService;
     private final PersonIdentityService personIdentityService;
+    private final UserDisplayNameService userDisplayNameService;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
                             ApprovalRecordMapper approvalMapper,
                             UserMapper userMapper,
                             NotificationSettingsService notificationSettingsService,
-                            PersonIdentityService personIdentityService) {
+                            PersonIdentityService personIdentityService,
+                            UserDisplayNameService userDisplayNameService) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
         this.userMapper = userMapper;
         this.notificationSettingsService = notificationSettingsService;
         this.personIdentityService = personIdentityService;
+        this.userDisplayNameService = userDisplayNameService;
+    }
+
+    private String displayNameOf(User user) {
+        if (user == null || user.getId() == null) {
+            return "";
+        }
+        String n = userDisplayNameService.resolveDisplayName(user.getId());
+        return (n != null && !n.isBlank()) ? n : user.getId();
     }
 
     // ═══════════════════════════════════════════
@@ -135,7 +147,7 @@ public class CageClaimService {
         claim.setAnimalCageId(animalCageId);
         claim.setClaimStatus(initStatus);
         claim.setClaimantId(studentId);
-        claim.setClaimantName(student.getName());
+        claim.setClaimantName(displayNameOf(student));
         claim.setClaimantDept(detail.getDepartmentName());
         claim.setConfirmRequired(confirmReq);
         claim.setRetryCount(0);
@@ -246,8 +258,8 @@ public class CageClaimService {
         if (toUser == null) throw new TwinBusinessException(400, "目标用户不存在");
 
         claim.setClaimantId(toStudentUserId);
-        claim.setClaimantName(toUser.getName());
-        claim.setNote("转自 " + student.getUsername() + "：" + (reason != null ? reason : ""));
+        claim.setClaimantName(displayNameOf(toUser));
+        claim.setNote("转自 " + displayNameOf(student) + "：" + (reason != null ? reason : ""));
         claimMapper.update(claim);
 
         log.info("[cage-apply] transfer from={} to={} claimId={} animalCageId={}",
@@ -309,7 +321,7 @@ public class CageClaimService {
         ar.setTargetType(isClaimApproval ? "cage_claim" : "cage_release");
         ar.setTargetId(claimId);
         ar.setApproverId(approver.getId());
-        ar.setApproverName(approver.getName());
+        ar.setApproverName(displayNameOf(approver));
         ar.setApproverRole(approver.getRole() != null ? approver.getRole().name() : "UNKNOWN");
         ar.setDecision(decision);
         ar.setRejectReason("rejected".equals(decision) ? reason : null);
@@ -346,11 +358,11 @@ public class CageClaimService {
         claim.setAnimalCageId(animalCageId);
         claim.setClaimStatus("locked");
         claim.setClaimantId(studentUserId);
-        claim.setClaimantName(student.getName());
+        claim.setClaimantName(displayNameOf(student));
         claim.setClaimantDept(detail.getDepartmentName());
         claim.setAupId(aupId);
         claim.setAssignerId(admin.getId());
-        claim.setAssignerName(admin.getName());
+        claim.setAssignerName(displayNameOf(admin));
         claim.setConfirmRequired(getConfirmRequired());
         claim.setRetryCount(0);
         claim.setNote("管理员手动分配");

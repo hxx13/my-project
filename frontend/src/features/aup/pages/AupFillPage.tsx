@@ -29,6 +29,7 @@ import ScrollButtons from "../components/ScrollButtons";
 import { PortalHeader } from "@/features/portal/PortalHeader";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
+import { appConfirm } from "@/lib/appDialog";
 import "../aup.css";
 
 /** 乐观锁冲突判定：authHttp 把 409 转成 Error，仅保留 message */
@@ -44,7 +45,7 @@ function escapeHtml(s: string): string {
 export default function AupFillPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const goBack = useGoBack("/");
+  const goBack = useGoBack("/", { preferHistory: true });
   // 打开历史快照（?snapshot=）时只读：仅查看该版本，禁止编辑/保存/提交
   const [searchParams] = useSearchParams();
   const snapshotId = searchParams.get("snapshot");
@@ -247,13 +248,19 @@ export default function AupFillPage() {
       <>
         <PortalHeader onOpenLogin={() => navigate("/")} />
         <div className="aup-app" style={{ minHeight: "calc(100vh - 64px)" }}>
-          <div className="aup-landing">
-            <button className="btn ghost" onClick={goBack} style={{ margin: "0 0 16px 0" }}>← 返回</button>
-            <h2>实验动物研究及使用计划（AUP）</h2>
-            {publishedQuery.data?.description && (
-              <div className="aup-landing-desc" dangerouslySetInnerHTML={{ __html: publishedQuery.data.description }} />
-            )}
-            <button className="btn primary" onClick={() => setEntered(true)} style={{ display: "block", margin: "0 auto" }}>进入填写</button>
+          <div className="aup-landing-wrap">
+            <div className="aup-landing">
+              <button type="button" className="btn ghost small aup-landing-back" onClick={goBack}>
+                ← 返回
+              </button>
+              <h2>实验动物研究及使用计划（AUP）</h2>
+              {publishedQuery.data?.description && (
+                <div className="aup-landing-desc" dangerouslySetInnerHTML={{ __html: publishedQuery.data.description }} />
+              )}
+              <button type="button" className="btn primary" onClick={() => setEntered(true)}>
+                进入填写
+              </button>
+            </div>
           </div>
         </div>
       </>
@@ -320,7 +327,7 @@ export default function AupFillPage() {
       }
     } catch (e) {
       if (isConflict(e)) {
-        if (id && confirm("草稿已在其他端修改，是否刷新加载最新内容？")) draft.detail.refetch();
+        if (id && await appConfirm("草稿已在其他端修改，是否刷新加载最新内容？")) draft.detail.refetch();
         else toast.error("草稿已在其他端修改，请刷新后重试");
       } else {
         toast.error("保存失败：" + (e as Error).message);
@@ -352,7 +359,7 @@ export default function AupFillPage() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (isConflict(e)) {
-        if (id && confirm("草稿已在其他端修改，是否刷新加载最新内容？")) draft.detail.refetch();
+        if (id && await appConfirm("草稿已在其他端修改，是否刷新加载最新内容？")) draft.detail.refetch();
         else toast.error("草稿已在其他端修改，请刷新后重试");
       } else if (/校验未通过/i.test(msg)) {
         setValidationErrors([{ fieldKey: "", message: msg }]);

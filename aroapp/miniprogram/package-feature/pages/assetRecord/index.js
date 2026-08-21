@@ -10,7 +10,8 @@ function toTextTime(v) {
 
 function normalizeColumnLabel(label) {
   const text = (label || '').trim();
-  return text; // 不再把"存放地点N"映射为"当前存放地点"
+  if (/^存放地点\d+$/i.test(text)) return '当前存放地点';
+  return text;
 }
 
 function pickCurrentLocationColumn(columns) {
@@ -271,34 +272,6 @@ Page({
     locationFiltered: [],
     showLocationPicker: false,
     addExistingAsset: null,
-    showFilters: false,            // 筛选条件默认收起
-    // ── 批量记录 ──
-    batchAssets: [],               // 已加入批量的资产列表 [{ id, assetCode, assetName, location, dynamicValues, ... }]
-    batchAssetIdMap: {},           // { id: true } 快速查找，供 WXML 用
-    showBatchPanel: false,         // 批量面板
-    showBatchFillPanel: false,     // 批量扫码填充子面板
-    batchFillSourceAsset: null,    // 扫码源资产
-    batchFillFields: [],           // [{ key, label, sourceValue, previews: [{ value, assetNames:[] }] }]
-    batchFillChecked: {},          // { key: true/false }
-    showBatchEditPanel: false,     // 批量编辑子面板
-    batchEditFields: [],           // [{ key, label, editValue: '', previews: [{ value, assetNames:[] }] }]
-    batchEditChecked: {},          // { key: true/false }
-    batchEditValues: {},           // { key: 'user input' }
-    batchChecked: {},              // { assetId: true/false } 批量面板内复选框
-    batchCheckedCount: 0,          // 已勾选数量
-    // ── 导出列选择 ──
-    showExportPicker: false,
-    showExportConfirm: false,
-    exportSavedCount: 0,
-    exportColumns: [],             // [{ label, key, checked }]
-    exportAllChecked: true,
-  },
-
-  onLoad(options) {
-    // 扫码跳转：缓存 searchCode 供 onShow 使用
-    if (options && options.searchCode) {
-      this._pendingSearchCode = String(options.searchCode || '').trim();
-    }
   },
 
   onShow() {
@@ -309,17 +282,6 @@ Page({
       return;
     }
     if (!pagePermission.guardPageOnShow(this, '/package-feature/pages/assetRecord/index', role, 'STAFF')) return;
-
-    // 扫码跳转：自动搜索资产编号
-    const searchCode = this._pendingSearchCode;
-    if (searchCode) {
-      this._pendingSearchCode = null;
-      this.setData({ page: 1, rows: [], searchKeyword: searchCode }, () => this.loadData(1));
-      this.loadFacets();
-      this.loadAllLocations();
-      return;
-    }
-
     this.setData({ page: 1, rows: [] }, () => this.loadData(1));
     this.loadFacets();
     this.loadAllLocations();
@@ -330,11 +292,6 @@ Page({
   },
 
   onReachBottom() {
-    // 保留兼容页面级下拉，实际滚动由 scroll-view 驱动
-    this.onListReachBottom();
-  },
-
-  onListReachBottom() {
     const pages = Math.max(1, Math.ceil((this.data.total || 0) / this.data.size));
     if (this.data.page >= pages || this.data.loadingMore) return;
     const nextPage = this.data.page + 1;
@@ -485,10 +442,6 @@ Page({
     this.setData({ filterModelIndex: idx }, () => this.loadFacets());
   },
 
-  onToggleFilters() {
-    this.setData({ showFilters: !this.data.showFilters });
-  },
-
   applySearch() {
     const assetName = this.data.assetNameOptions[this.data.filterAssetNameIndex] || '全部';
     const user = this.data.userOptions[this.data.filterUserIndex] || '全部';
@@ -510,19 +463,11 @@ Page({
       onlyFromCamera: false,
       success: (res) => {
         const text = (res && (res.result || res.rawData)) ? String(res.result || res.rawData) : '';
-        this.setData({ keyword: text }, () => {
-          this.applySearch();
-        });
+        this.setData({ keyword: text });
       },
       fail: () => {
         wx.showToast({ title: '扫描已取消', icon: 'none' });
       },
-    });
-  },
-
-  onClearKeyword() {
-    this.setData({ keyword: '' }, () => {
-      this.applySearch();
     });
   },
 
@@ -704,7 +649,7 @@ Page({
       detailEditing: true,
       detailAssetName: detailAsset.assetName || this.data.detailAssetName || '',
       detailEditValues: values,
-      detailLocation: primaryLocationText(detailAsset, pickCurrentLocationColumn(this.data.columns)) || this.data.detailLocation || '',
+      detailLocation: detailAsset.location || this.data.detailLocation || '',
     });
   },
 
@@ -732,14 +677,10 @@ Page({
     const detailAsset = this.data.detailAsset;
     if (!detailAsset || !detailAsset.id) return;
     try {
-      // 同步写入动态位置列（与 primaryLocationText 读取一致，后端也会二次 sync）
-      const locKey = this.data.currentLocationColumnKey || '';
-      const dynamicValues = { ...(this.data.detailEditValues || {}) };
-      if (locKey) dynamicValues[locKey] = this.data.detailLocation || '';
       await assetApi.patchAssetRecord(detailAsset.id, {
         assetName: this.data.detailAssetName || '',
         location: this.data.detailLocation || '',
-        dynamicValues,
+        dynamicValues: this.data.detailEditValues || {},
       });
       wx.showToast({ title: '保存成功', icon: 'success' });
       this.setData({ detailEditing: false });
@@ -956,8 +897,19 @@ Page({
         arr.push({ tempPath: path, url: '' });
         this.setData({ addPhotoUrls: arr });
         try {
-          const url = await springAuth.uploadFileDirect(path, {});
-          arr[arr.length - 1] = { tempPath: '', url };
+          const fileID = await springAuth.uploadCloudMediaFile(path, 'asset/photos');
+          if (fileID) {
+            try {
+              const syncRes = await wx.cloud.callFunction({ name: 'syncToBackend', data: { wechatFileID: fileID, mimeType: 'image/jpeg' } });
+              const publicUrl = (syncRes && syncRes.result && syncRes.result.publicUrl) ? String(syncRes.result.publicUrl).trim() : '';
+              arr[arr.length - 1] = { tempPath: '', url: publicUrl || fileID };
+            } catch (_syncErr) {
+              arr[arr.length - 1] = { tempPath: '', url: fileID };
+            }
+          } else {
+            arr.pop();
+            failCount += 1;
+          }
         } catch (singleErr) {
           arr.pop();
           failCount += 1;
@@ -1007,18 +959,12 @@ Page({
       .filter(Boolean);
     wx.showLoading({ title: '创建中…', mask: true });
     try {
-      // 同步写入动态位置列
-      const addLocCol = pickCurrentLocationColumn(this.data.columns || []);
-      const addDynamicValues = {};
-      const addLocVal = (this.data.addLocation || '').trim();
-      if (addLocCol && addLocVal) addDynamicValues[addLocCol.columnKey] = addLocVal;
       await assetApi.createAsset({
         assetCode: code,
         assetName: name,
-        location: addLocVal || undefined,
+        location: (this.data.addLocation || '').trim() || undefined,
         status: 'NORMAL',
         note: (this.data.addNote || '').trim() || undefined,
-        dynamicValues: Object.keys(addDynamicValues).length ? addDynamicValues : undefined,
         photoUrls: photoUrls.length ? JSON.stringify(photoUrls) : undefined,
       });
       wx.showToast({ title: '创建成功', icon: 'success' });
@@ -1049,37 +995,24 @@ Page({
           }
           const fillFields = [];
           const fillChecked = {};
-          let isFirstSingle = true;
           const srcLocation = source.location || '';
+          // 列出 source 的非空动态字段
           const srcValues = source.dynamicValues || {};
           const columns = this.data.columns || [];
-          // 查找动态位置列（优先使用，与列表显示一致）
-          const locCol = pickCurrentLocationColumn(columns);
-          const locKey = locCol ? locCol.columnKey : '';
-          const dynLocVal = locKey ? (srcValues[locKey] || '').trim() : '';
-          if (dynLocVal) {
-            fillFields.push({ key: locKey, label: '存放地点', value: dynLocVal });
-            fillChecked[locKey] = isFirstSingle;
-            isFirstSingle = false;
-          } else if (srcLocation && srcLocation.trim()) {
-            fillFields.push({ key: '_location', label: '存放地点', value: srcLocation.trim() });
-            fillChecked['_location'] = isFirstSingle;
-            isFirstSingle = false;
-          }
-          // 动态字段（跳过空表头和存放地点类）
-          const skipLabels = ['存放地点', '当前存放地点'];
           for (let i = 0; i < columns.length; i += 1) {
             const col = columns[i];
             const label = col.displayLabel || col.columnLabel || '';
-            if (!label.trim()) continue;
-            if (skipLabels.some((s) => label.includes(s))) continue;
             const key = col.columnKey;
             const val = srcValues[key] || '';
             if (val && val.trim()) {
               fillFields.push({ key, label, value: val.trim() });
-              fillChecked[key] = isFirstSingle;
-              isFirstSingle = false;
+              fillChecked[key] = true;
             }
+          }
+          // 也把 location 加进去
+          if (srcLocation && srcLocation.trim()) {
+            fillFields.unshift({ key: '_location', label: '存放地点', value: srcLocation.trim() });
+            fillChecked['_location'] = true;
           }
           this.setData({
             showFillPanel: true,
@@ -1159,8 +1092,19 @@ Page({
         arr.push({ tempPath: path, url: '' });
         this.setData({ detailPhotoUrls: arr });
         try {
-          const url = await springAuth.uploadFileDirect(path, {});
-          arr[arr.length - 1] = { tempPath: '', url };
+          const fileID = await springAuth.uploadCloudMediaFile(path, 'asset/photos');
+          if (fileID) {
+            try {
+              const syncRes = await wx.cloud.callFunction({ name: 'syncToBackend', data: { wechatFileID: fileID, mimeType: 'image/jpeg' } });
+              const publicUrl = (syncRes && syncRes.result && syncRes.result.publicUrl) ? String(syncRes.result.publicUrl).trim() : '';
+              arr[arr.length - 1] = { tempPath: '', url: publicUrl || fileID };
+            } catch (_syncErr) {
+              arr[arr.length - 1] = { tempPath: '', url: fileID };
+            }
+          } else {
+            arr.pop();
+            failCount += 1;
+          }
         } catch (singleErr) {
           arr.pop();
           failCount += 1;
@@ -1401,8 +1345,21 @@ Page({
         arr.push({ tempPath: path, url: '' });
         this.setData({ [key]: arr });
         try {
-          const url = await springAuth.uploadFileDirect(path, {});
-          arr[idx] = { tempPath: '', url };
+          // 上传到云存储 → 同步到后端 → 拿到 publicUrl 存入业务表（对齐双端图片互通规范）
+          const fileID = await springAuth.uploadCloudMediaFile(path, `asset-transfer/${slot}`);
+          if (fileID) {
+            try {
+              const syncRes = await wx.cloud.callFunction({ name: 'syncToBackend', data: { wechatFileID: fileID, mimeType: 'image/jpeg' } });
+              const publicUrl = (syncRes && syncRes.result && syncRes.result.publicUrl) ? String(syncRes.result.publicUrl).trim() : '';
+              arr[idx] = { tempPath: '', url: publicUrl || fileID };
+            } catch (_syncErr) {
+              // 同步失败时保留 cloud:// 兜底（proxy-image 仍可尝试解析）
+              arr[idx] = { tempPath: '', url: fileID };
+            }
+          } else {
+            arr.splice(idx, 1);
+            failCount += 1;
+          }
         } catch (singleErr) {
           arr.splice(idx, 1);
           failCount += 1;
@@ -1500,514 +1457,10 @@ Page({
     }
   },
 
-  // ══════════════════════════════════════════════
-  // 批量记录
-  // ══════════════════════════════════════════════
-
-  _syncBatchIdMap(batchAssets) {
-    const map = {};
-    (batchAssets || []).forEach((a) => { map[a.id] = true; });
-    return map;
-  },
-
-  onToggleBatchAsset(e) {
-    const id = e.currentTarget.dataset.id;
-    // 优先用已有批量数据，否则从行数据构建
-    let row = null;
-    const existingInBatch = (this.data.batchAssets || []).find((a) => a.id === id);
-    if (existingInBatch) {
-      row = existingInBatch;
-    } else {
-      row = (this.data.rows || []).find((x) => x.id === id) || null;
-    }
-    if (!row) return;
-    const batchAssets = [...(this.data.batchAssets || [])];
-    const idx = batchAssets.findIndex((a) => a.id === id);
-    if (idx >= 0) {
-      batchAssets.splice(idx, 1);
-      wx.showToast({ title: '已移出批量', icon: 'success' });
-    } else {
-      batchAssets.push({
-        id: row.id,
-        assetCode: row.assetCode || '',
-        assetName: row.assetName || '',
-        location: row.currentLocation || row.location || '',
-        dynamicValues: { ...(row.dynamicValues || {}) },
-      });
-      wx.showToast({ title: '已加入批量', icon: 'success' });
-    }
-    // 最后一个资产移除时，若面板打开则自动关闭
-    if (batchAssets.length === 0 && this.data.showBatchPanel) {
-      this.closeBatchPanel();
-      this.setData({ batchAssets: [], batchAssetIdMap: {}, batchChecked: {}, batchCheckedCount: 0 });
-      return;
-    }
-    const batchChecked = { ...(this.data.batchChecked || {}) };
-    Object.keys(batchChecked).forEach((bid) => {
-      if (!batchAssets.some((a) => a.id === bid)) delete batchChecked[bid];
-    });
-    this.setData({
-      batchAssets,
-      batchAssetIdMap: this._syncBatchIdMap(batchAssets),
-      batchChecked,
-      batchCheckedCount: Object.values(batchChecked).filter(Boolean).length,
-    });
-  },
-
-  openBatchPanel() {
-    if (!(this.data.batchAssets || []).length) {
-      wx.showToast({ title: '批量列表为空', icon: 'none' });
-      return;
-    }
-    // 默认全选
-    const batchChecked = {};
-    (this.data.batchAssets || []).forEach((a) => { batchChecked[a.id] = true; });
-    this.setData({ showBatchPanel: true, batchChecked, batchCheckedCount: (this.data.batchAssets || []).length });
-  },
-
-  closeBatchPanel() {
-    this.setData({
-      showBatchPanel: false,
-      showBatchFillPanel: false,
-      showBatchEditPanel: false,
-      batchFillSourceAsset: null,
-      batchFillFields: [],
-      batchFillChecked: {},
-      batchEditFields: [],
-      batchEditChecked: {},
-      batchEditValues: {},
-    });
-  },
-
-  onBatchCheckToggle(e) {
-    const id = e.currentTarget.dataset.id;
-    const batchChecked = { ...(this.data.batchChecked || {}) };
-    batchChecked[id] = !batchChecked[id];
-    this.setData({ batchChecked, batchCheckedCount: Object.values(batchChecked).filter(Boolean).length });
-  },
-
-  onBatchCheckAll() {
-    const batchChecked = {};
-    (this.data.batchAssets || []).forEach((a) => { batchChecked[a.id] = true; });
-    this.setData({ batchChecked, batchCheckedCount: (this.data.batchAssets || []).length });
-  },
-
-  onBatchUncheckAll() {
-    this.setData({ batchChecked: {}, batchCheckedCount: 0 });
-  },
-
-  onClearAllBatch() {
-    if (!(this.data.batchAssets || []).length) return;
-    wx.showModal({
-      title: '清空批量列表',
-      content: `确定要清空全部 ${this.data.batchAssets.length} 条资产吗？`,
-      success: (res) => {
-        if (!res.confirm) return;
-        this.setData({
-          batchAssets: [],
-          batchAssetIdMap: {},
-          batchChecked: {},
-          batchCheckedCount: 0,
-          showBatchPanel: false,
-        });
-        wx.showToast({ title: '已清空', icon: 'success' });
-      },
-    });
-  },
-
-  // ── 构建字段预览：每个字段下列出批量资产中的现有值（去重） ──
-  buildBatchFieldPreviews(fieldKey) {
-    const batchAssets = this.data.batchAssets || [];
-    const previewMap = {}; // value → [assetCode1, assetCode2]
-    for (let i = 0; i < batchAssets.length; i += 1) {
-      const a = batchAssets[i];
-      let val = '';
-      if (fieldKey === '_location') {
-        val = (a.location || '').trim();
-      } else {
-        val = ((a.dynamicValues || {})[fieldKey] || '').trim();
-      }
-      const displayVal = val || '（空）';
-      if (!previewMap[displayVal]) previewMap[displayVal] = [];
-      previewMap[displayVal].push(a.assetCode || a.assetName || a.id);
-    }
-    return Object.entries(previewMap).map(([value, assetNames]) => ({
-      value,
-      assetNamesStr: assetNames.join('、'),
-    }));
-  },
-
-  // ── 批量扫码填充 ──
-  openBatchScanFill() {
-    const checkedIds = Object.keys(this.data.batchChecked || {}).filter((k) => this.data.batchChecked[k]);
-    if (!checkedIds.length) {
-      wx.showToast({ title: '请先勾选资产', icon: 'none' });
-      return;
-    }
-    wx.scanCode({
-      onlyFromCamera: false,
-      success: async (res) => {
-        const code = (res && (res.result || res.rawData)) ? String(res.result || res.rawData).trim() : '';
-        if (!code) return;
-        wx.showLoading({ title: '检索中…', mask: true });
-        try {
-          const source = await assetApi.fetchAssetByCode(code);
-          wx.hideLoading();
-          if (!source || !source.id) {
-            wx.showToast({ title: '未找到该资产', icon: 'none' });
-            return;
-          }
-          const srcLocation = source.location || '';
-          const srcValues = source.dynamicValues || {};
-          const columns = this.data.columns || [];
-          const batchFillFields = [];
-          const batchFillChecked = {};
-          let isFirst = true;
-          // 查找动态位置列（显示优先使用它，而非固定字段 asset.location）
-          const locationCol = pickCurrentLocationColumn(columns);
-          const locKey = locationCol ? locationCol.columnKey : '';
-          const dynLocVal = locKey ? (srcValues[locKey] || '').trim() : '';
-          // 优先用动态列位置，兜底用固定字段位置
-          if (dynLocVal) {
-            batchFillFields.push({
-              key: locKey,
-              label: '存放地点',
-              sourceValue: dynLocVal,
-              previews: this.buildBatchFieldPreviews(locKey),
-            });
-            batchFillChecked[locKey] = isFirst;
-            isFirst = false;
-          } else if (srcLocation && srcLocation.trim()) {
-            batchFillFields.push({
-              key: '_location',
-              label: '存放地点',
-              sourceValue: srcLocation.trim(),
-              previews: this.buildBatchFieldPreviews('_location'),
-            });
-            batchFillChecked['_location'] = isFirst;
-            isFirst = false;
-          }
-          // 动态字段（跳过空表头和已处理的位置列）
-          const skipLabels = ['存放地点', '当前存放地点'];
-          for (let i = 0; i < columns.length; i += 1) {
-            const col = columns[i];
-            const key = col.columnKey;
-            const label = col.displayLabel || col.columnLabel || '';
-            if (!label.trim()) continue;
-            if (skipLabels.some((s) => label.includes(s))) continue;
-            const val = srcValues[key] || '';
-            if (val && val.trim()) {
-              batchFillFields.push({
-                key,
-                label,
-                sourceValue: val.trim(),
-                previews: this.buildBatchFieldPreviews(key),
-              });
-              batchFillChecked[key] = isFirst;
-              isFirst = false;
-            }
-          }
-          if (!batchFillFields.length) {
-            wx.showToast({ title: '该资产没有可填充的字段', icon: 'none' });
-            return;
-          }
-          this.setData({
-            showBatchFillPanel: true,
-            batchFillSourceAsset: source,
-            batchFillFields,
-            batchFillChecked,
-          });
-        } catch (e) {
-          wx.hideLoading();
-          wx.showToast({ title: '检索失败', icon: 'none' });
-        }
-      },
-      fail: () => { wx.showToast({ title: '扫描已取消', icon: 'none' }); },
-    });
-  },
-
-  closeBatchFillPanel() {
-    this.setData({ showBatchFillPanel: false, batchFillSourceAsset: null, batchFillFields: [], batchFillChecked: {} });
-  },
-
-  onBatchFillFieldToggle(e) {
-    const key = e.currentTarget.dataset.key;
-    const batchFillChecked = { ...(this.data.batchFillChecked || {}) };
-    batchFillChecked[key] = !batchFillChecked[key];
-    this.setData({ batchFillChecked });
-  },
-
-  async applyBatchFill() {
-    const batchFillFields = this.data.batchFillFields || [];
-    const batchFillChecked = this.data.batchFillChecked || {};
-    const selectedFields = batchFillFields.filter((f) => batchFillChecked[f.key]);
-    if (!selectedFields.length) {
-      wx.showToast({ title: '请至少勾选一个字段', icon: 'none' });
-      return;
-    }
-    const checkedIds = Object.keys(this.data.batchChecked || {}).filter((k) => this.data.batchChecked[k]);
-    if (!checkedIds.length) {
-      wx.showToast({ title: '请先勾选资产', icon: 'none' });
-      return;
-    }
-    // 构建 fixedFields 和 dynamicValues（_location 兜底 → 动态列，与显示一致）
-    const locCol = pickCurrentLocationColumn(this.data.columns);
-    const locKey = locCol ? locCol.columnKey : '';
-    const fixedFields = {};
-    const dynamicValues = {};
-    for (let i = 0; i < selectedFields.length; i += 1) {
-      const f = selectedFields[i];
-      if (f.key === '_location') {
-        if (locKey) {
-          dynamicValues[locKey] = f.sourceValue;
-        } else {
-          fixedFields.location = f.sourceValue;
-        }
-      } else {
-        dynamicValues[f.key] = f.sourceValue;
-      }
-    }
-    wx.showModal({
-      title: '确认批量填充',
-      content: `将对 ${checkedIds.length} 条资产的 ${selectedFields.length} 个字段执行批量覆盖，确定继续？`,
-      success: async (modalRes) => {
-        if (!modalRes.confirm) return;
-        wx.showLoading({ title: '批量更新中…', mask: true });
-        try {
-          await assetApi.batchUpdateAssets({
-            ids: checkedIds,
-            fixedFields: Object.keys(fixedFields).length ? fixedFields : undefined,
-            dynamicValues: Object.keys(dynamicValues).length ? dynamicValues : undefined,
-          });
-          wx.showToast({ title: `已更新${checkedIds.length}条`, icon: 'success' });
-          // 清除批量快照 + 关闭面板 + 回第一页刷新列表
-          this.setData({
-            batchAssets: [], batchAssetIdMap: {}, batchChecked: {}, batchCheckedCount: 0,
-            showBatchPanel: false, showBatchFillPanel: false, showBatchEditPanel: false,
-            batchFillSourceAsset: null, batchFillFields: [], batchFillChecked: {},
-            batchEditFields: [], batchEditChecked: {}, batchEditValues: {},
-            page: 1, rows: [],
-          });
-          await this.loadData(1);
-        } finally {
-          wx.hideLoading();
-        }
-      },
-    });
-  },
-
-  // ── 批量编辑 ──
-  openBatchEdit() {
-    const checkedIds = Object.keys(this.data.batchChecked || {}).filter((k) => this.data.batchChecked[k]);
-    if (!checkedIds.length) {
-      wx.showToast({ title: '请先勾选资产', icon: 'none' });
-      return;
-    }
-    const transferSkipLabels = ['申请转移时间', '申请转移地点', '申请人', '申请备注', '转移时间', '转移地点', '是否锁定'];
-    const columns = (this.data.columns || []).filter((col) => {
-      const label = col.displayLabel || col.columnLabel || '';
-      return !transferSkipLabels.some((t) => label.includes(t));
-    });
-    const batchEditFields = [];
-    const batchEditChecked = {};
-    const batchEditValues = {};
-    // 存放地点：优先用动态列 key（与列表显示一致），兜底用固定字段
-    const locCol = pickCurrentLocationColumn(this.data.columns);
-    const editLocKey = locCol ? locCol.columnKey : '_location';
-    batchEditFields.push({
-      key: editLocKey,
-      label: '存放地点',
-      editValue: '',
-      previews: this.buildBatchFieldPreviews(editLocKey),
-    });
-    // 默认不勾选，用户自行选择（跳过空表头和存放地点类）
-    const skipLabels = ['存放地点', '当前存放地点'];
-    for (let i = 0; i < columns.length; i += 1) {
-      const col = columns[i];
-      const key = col.columnKey;
-      const label = col.displayLabel || col.columnLabel || '';
-      if (!label.trim()) continue;
-      if (skipLabels.some((s) => label.includes(s))) continue;
-      const previews = this.buildBatchFieldPreviews(key);
-      batchEditFields.push({ key, label, editValue: '', previews });
-    }
-    this.setData({
-      showBatchEditPanel: true,
-      batchEditFields,
-      batchEditChecked,
-      batchEditValues,
-    });
-  },
-
-  closeBatchEditPanel() {
-    this.setData({ showBatchEditPanel: false, batchEditFields: [], batchEditChecked: {}, batchEditValues: {} });
-  },
-
-  onBatchEditFieldToggle(e) {
-    const key = e.currentTarget.dataset.key;
-    const batchEditChecked = { ...(this.data.batchEditChecked || {}) };
-    batchEditChecked[key] = !batchEditChecked[key];
-    this.setData({ batchEditChecked });
-  },
-
-  onBatchEditValueInput(e) {
-    const key = e.currentTarget.dataset.key;
-    const value = e.detail.value || '';
-    this.setData({
-      batchEditValues: { ...(this.data.batchEditValues || {}), [key]: value },
-    });
-  },
-
-  async applyBatchEdit() {
-    const batchEditChecked = this.data.batchEditChecked || {};
-    const batchEditValues = this.data.batchEditValues || {};
-    const selectedKeys = Object.keys(batchEditChecked).filter((k) => batchEditChecked[k]);
-    if (!selectedKeys.length) {
-      wx.showToast({ title: '请至少勾选一个字段', icon: 'none' });
-      return;
-    }
-    // 检查勾选的字段是否都有值
-    for (let i = 0; i < selectedKeys.length; i += 1) {
-      if (!(batchEditValues[selectedKeys[i]] || '').trim()) {
-        wx.showToast({ title: '勾选的字段必须填写值', icon: 'none' });
-        return;
-      }
-    }
-    const checkedIds = Object.keys(this.data.batchChecked || {}).filter((k) => this.data.batchChecked[k]);
-    if (!checkedIds.length) {
-      wx.showToast({ title: '请先勾选资产', icon: 'none' });
-      return;
-    }
-    const locCol2 = pickCurrentLocationColumn(this.data.columns);
-    const locKey2 = locCol2 ? locCol2.columnKey : '';
-    const fixedFields = {};
-    const dynamicValues = {};
-    for (let i = 0; i < selectedKeys.length; i += 1) {
-      const key = selectedKeys[i];
-      const val = (batchEditValues[key] || '').trim();
-      if (key === '_location') {
-        if (locKey2) {
-          dynamicValues[locKey2] = val;
-        } else {
-          fixedFields.location = val;
-        }
-      } else {
-        dynamicValues[key] = val;
-      }
-    }
-    wx.showModal({
-      title: '确认批量编辑',
-      content: `将对 ${checkedIds.length} 条资产的 ${selectedKeys.length} 个字段执行批量覆盖，确定继续？`,
-      success: async (modalRes) => {
-        if (!modalRes.confirm) return;
-        wx.showLoading({ title: '批量更新中…', mask: true });
-        try {
-          await assetApi.batchUpdateAssets({
-            ids: checkedIds,
-            fixedFields: Object.keys(fixedFields).length ? fixedFields : undefined,
-            dynamicValues: Object.keys(dynamicValues).length ? dynamicValues : undefined,
-          });
-          wx.showToast({ title: `已更新${checkedIds.length}条`, icon: 'success' });
-          this.setData({
-            batchAssets: [], batchAssetIdMap: {}, batchChecked: {}, batchCheckedCount: 0,
-            showBatchPanel: false, showBatchFillPanel: false, showBatchEditPanel: false,
-            batchFillSourceAsset: null, batchFillFields: [], batchFillChecked: {},
-            batchEditFields: [], batchEditChecked: {}, batchEditValues: {},
-            page: 1, rows: [],
-          });
-          await this.loadData(1);
-        } catch (e) {
-          wx.showToast({ title: e && e.message ? String(e.message).slice(0, 18) : '更新失败', icon: 'none' });
-        } finally {
-          wx.hideLoading();
-        }
-      },
-    });
-  },
-
-  _buildExportColumns() {
-    const fixedLabels = ['资产编码', '资产名称', '状态', '存放地点', '标注', '是否锁定', '申请转移时间', '申请转移地点', '申请人', '申请备注'];
-    const columns = this.data.columns || [];
-    const exportColumns = fixedLabels.map((l) => ({ label: l, key: l, checked: true }));
-    for (let i = 0; i < columns.length; i++) {
-      const label = columns[i].displayLabel || columns[i].columnLabel || '';
-      if (!label.trim() || fixedLabels.includes(label)) continue;
-      exportColumns.push({ label, key: label, checked: true });
-    }
-    return exportColumns;
-  },
-
-  _getSavedExportColumns() {
-    try { const s = wx.getStorageSync('assetExportCols'); return s && Array.isArray(s) ? s : null; } catch (_) { return null; }
-  },
-
-  _saveExportColumns(cols) {
-    try { wx.setStorageSync('assetExportCols', cols); } catch (_) { /* ignore */ }
-  },
-
-  openExportPicker() {
-    const saved = this._getSavedExportColumns();
-    const all = this._buildExportColumns();
-    this.setData({
-      showExportConfirm: true,
-      exportSavedCount: saved ? saved.length : all.length,
-    });
-  },
-
-  onExportNow() {
-    this.setData({ showExportConfirm: false });
-    const saved = this._getSavedExportColumns();
-    if (saved) {
-      this._doExportWithColumns(saved);
-    } else {
-      this._doExportWithColumns(this._buildExportColumns().map((c) => c.label));
-    }
-  },
-
-  onExportConfig() {
-    this.setData({ showExportConfirm: false });
-    this._showExportPicker(this._getSavedExportColumns());
-  },
-
-  closeExportConfirm() {
-    this.setData({ showExportConfirm: false });
-  },
-
-  _showExportPicker(savedCols) {
-    if (savedCols) {
-      const set = new Set(savedCols);
-      const exportColumns = this._buildExportColumns().map((c) => ({ ...c, checked: set.has(c.label) }));
-      this.setData({ showExportPicker: true, exportColumns, exportAllChecked: exportColumns.every((c) => c.checked) });
-    } else {
-      const exportColumns = this._buildExportColumns();
-      this.setData({ showExportPicker: true, exportColumns, exportAllChecked: true });
-    }
-  },
-
-  closeExportPicker() { this.setData({ showExportPicker: false }); },
-
-  onExportToggleAll() {
-    const all = !this.data.exportAllChecked;
-    this.setData({ exportColumns: (this.data.exportColumns || []).map((c) => ({ ...c, checked: all })), exportAllChecked: all });
-  },
-
-  onExportColumnToggle(e) {
-    const key = e.currentTarget.dataset.key;
-    const cols = (this.data.exportColumns || []).map((c) => (c.key === key ? { ...c, checked: !c.checked } : c));
-    this.setData({ exportColumns: cols, exportAllChecked: cols.every((c) => c.checked) });
-  },
-
-  onSaveExportConfig() {
-    const selected = (this.data.exportColumns || []).filter((c) => c.checked).map((c) => c.label);
-    if (!selected.length) { wx.showToast({ title: '请至少选择一列', icon: 'none' }); return; }
-    this._saveExportColumns(selected);
-    this.setData({ showExportPicker: false });
-    wx.showToast({ title: '配置已保存', icon: 'success' });
-  },
-
-  async _doExportWithColumns(selectedCols) {
+  async exportXlsx() {
     const total = this.data.total || 0;
-    wx.showLoading({ title: `导出中（共${total}条）…`, mask: true });
+    const label = total > 0 ? `导出中（共${total}条）…` : '导出中…';
+    wx.showLoading({ title: label, mask: true });
     try {
       const fileBase64 = await assetApi.exportAssetExcel({
         keyword: this.data.appliedKeyword || undefined,
@@ -2015,19 +1468,27 @@ Page({
         assetName: this.data.appliedAssetName || undefined,
         user: this.data.appliedUser || undefined,
         model: this.data.appliedModel || undefined,
-        columns: selectedCols.join(','),
       });
       wx.showLoading({ title: '写入文件…', mask: true });
       const filePath = `${wx.env.USER_DATA_PATH}/asset_records_${Date.now()}.xlsx`;
       await new Promise((resolve, reject) => {
-        wx.getFileSystemManager().writeFile({ filePath, data: fileBase64, encoding: 'base64', success: resolve, fail: reject });
+        wx.getFileSystemManager().writeFile({
+          filePath,
+          data: fileBase64,
+          encoding: 'base64',
+          success: resolve,
+          fail: reject,
+        });
       });
       wx.hideLoading();
       wx.showToast({ title: `导出成功（${total}条）`, icon: 'success' });
-      setTimeout(() => { wx.openDocument({ filePath, fileType: 'xlsx', showMenu: true }); }, 600);
+      setTimeout(() => {
+        wx.openDocument({ filePath, fileType: 'xlsx', showMenu: true });
+      }, 600);
     } catch (e) {
       wx.hideLoading();
-      wx.showToast({ title: e && e.message ? String(e.message).slice(0, 30) : '导出失败', icon: 'none' });
+      const msg = e && e.message ? String(e.message).slice(0, 30) : '导出失败';
+      wx.showToast({ title: msg, icon: 'none' });
     }
   },
 });

@@ -37,7 +37,7 @@
     </resultMap>
 
     <sql id="User_Column_List">
-        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, account_source, create_time, login_fail_count, login_locked_until, contact_email, send_key, wx_pusher_uid
+        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, account_source, create_time, login_fail_count, login_locked_until, contact_email, send_key, wx_pusher_uid, name
     </sql>
 
     <select id="findByUsername" resultMap="UserResultMap">
@@ -161,6 +161,13 @@
     <update id="updateUsernameById">
         UPDATE sys_user
         SET username = #{username},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateNameById">
+        UPDATE sys_user
+        SET name = #{name},
             update_time = NOW()
         WHERE id = #{id}
     </update>

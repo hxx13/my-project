@@ -10,6 +10,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import toast from "react-hot-toast";
 import type { AuthUserInfo } from "@/api/domains/auth.api";
 
+import { appConfirm } from "@/lib/appDialog";
 const SETTINGS_CATEGORIES = [{ key: "account", label: "账户安全", icon: Shield }] as const;
 
 export default function StudentSettingsPage() {
@@ -23,7 +24,7 @@ export default function StudentSettingsPage() {
   const userInfo: AuthUserInfo | null = authStorage.getUserInfo();
   const userId = userInfo?.username || userInfo?.id || "";
   const authProfile = userInfo?.authProfile;
-  const isCasUser = authProfile === "CAS_LOGIN";
+  const isCasUser = authProfile === "CAS_LOGIN" || authProfile === "IAM_OAUTH";
 
   // 查询 PIN 状态
   useEffect(() => {
@@ -46,7 +47,7 @@ export default function StudentSettingsPage() {
 
   const handleResetPin = async () => {
     if (
-      !window.confirm(
+      !await appConfirm(
         "确认重置个人PIN码吗？重置后需要在扫码设备上重新设置新的PIN码。",
       )
     )
@@ -179,7 +180,7 @@ export default function StudentSettingsPage() {
                         统一认证用户
                       </p>
                       <p className="text-[11px] text-[var(--student-mute)] mt-0.5">
-                        你通过CAS统一认证登录，密码由校园统一认证中心管理。如需修改密码，请联系统一认证中心。
+                        你通过校园统一认证登录，密码由认证中心管理。如需修改密码，请联系统一认证中心。
                       </p>
                     </div>
                   </div>

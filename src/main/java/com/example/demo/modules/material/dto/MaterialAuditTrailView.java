@@ -15,8 +15,11 @@ public class MaterialAuditTrailView {
     private String createdAt;
     private String fulfilledAt;
     private String fulfilledBy;
+    private String fulfilledByName;
     private String firstReviewerId;
+    private String firstReviewerName;
     private String secondReviewerId;
+    private String secondReviewerName;
     private String firstReviewTime;
     private String secondReviewTime;
 }

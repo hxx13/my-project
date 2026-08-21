@@ -10,7 +10,7 @@ public class PersonnelSqlProvider {
             "p.institution_id AS institutionId, p.user_type_names AS userTypeNames, p.head, p.gender, " +
             "p.mobile_phone AS mobilePhone, p.email, p.is_school AS isSchool, " +
             "p.allowed_rooms_display_zh AS allowedRoomsDisplayZh, p.has_official_room_permission AS hasOfficialRoomPermission, " +
-            "su_staff.role AS role, su_staff.status AS status, su_staff.username AS staffUsername, " +
+            "p.role AS role, su_staff.status AS status, su_staff.username AS staffUsername, " +
             "su_student.username AS studentUsername, su_staff.open_id AS staffOpenId, " +
             "su_staff.account_source AS staffAccountSource, su_staff.display_nickname AS staffDisplayNickname, " +
             "su_staff.create_time AS staffCreateTime, " +
@@ -57,7 +57,7 @@ public class PersonnelSqlProvider {
             sb.append("AND p.department_name = #{departmentName} ");
         }
         if (hasText(f.getRole())) {
-            sb.append("AND su_staff.role = #{role} ");
+            sb.append("AND p.role = #{role} ");
         }
         if (f.getStatus() != null) {
             sb.append("AND su_staff.status = #{status} ");
@@ -69,7 +69,7 @@ public class PersonnelSqlProvider {
             sb.append("AND p.allowed_rooms_display_zh LIKE CONCAT('%', #{roomName}, '%') ");
         }
         if (f.getIdentityTagId() != null) {
-            sb.append("AND EXISTS (SELECT 1 FROM person_identity pi WHERE pi.user_id = p.staff_id AND pi.tag_id = #{identityTagId}) ");
+            sb.append("AND EXISTS (SELECT 1 FROM person_identity pi WHERE pi.user_id = CAST(p.id AS CHAR) AND pi.tag_id = #{identityTagId}) ");
         }
         return sb.toString();
     }

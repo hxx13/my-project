@@ -10,6 +10,7 @@ import com.example.demo.modules.asset.entity.AssetRecord;
 import com.example.demo.modules.asset.entity.AssetTransferExportFile;
 import com.example.demo.modules.asset.entity.AssetTransferRequest;
 import com.example.demo.modules.asset.mapper.AssetMapper;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.upload.service.UploadFileService;
 import org.apache.fontbox.ttf.TrueTypeCollection;
 import org.apache.fontbox.ttf.TrueTypeFont;
@@ -75,6 +76,7 @@ public class AssetService {
 
     private final AssetMapper assetMapper;
     private final UploadFileService uploadFileService;
+    private final UserDisplayNameService userDisplayNameService;
 
     @Value("${app.public.base-url:}")
     private String appPublicBaseUrl;
@@ -83,9 +85,12 @@ public class AssetService {
     @Value("${app.pdf.font-path:}")
     private String appPdfFontPath;
 
-    public AssetService(AssetMapper assetMapper, UploadFileService uploadFileService) {
+    public AssetService(AssetMapper assetMapper,
+                        UploadFileService uploadFileService,
+                        UserDisplayNameService userDisplayNameService) {
         this.assetMapper = assetMapper;
         this.uploadFileService = uploadFileService;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     public Map<String, Object> createColumn(String operatorId, String label) {
@@ -977,7 +982,10 @@ public class AssetService {
         row.setAssetCode(asset.getAssetCode());
         row.setAssetName(asset.getAssetName());
         row.setApplicantId(operatorId);
-        row.setApplicantName(StringUtils.hasText(operatorName) ? operatorName : operatorId);
+        row.setApplicantName(userDisplayNameService.resolveDisplayName(operatorId));
+        if (!StringUtils.hasText(row.getApplicantName())) {
+            row.setApplicantName(StringUtils.hasText(operatorName) ? operatorName : operatorId);
+        }
         row.setTransferTime(transferTime);
         row.setTransferLocation(request.getTransferLocation().trim());
         row.setFromLocation(StringUtils.hasText(asset.getLocation()) ? asset.getLocation().trim() : null);
@@ -1266,6 +1274,7 @@ public class AssetService {
         int safeSize = Math.min(Math.max(1, size), 200);
         int offset = (safePage - 1) * safeSize;
         List<AssetTransferRequest> rows = assetMapper.listTransferRequests(trimOrNull(keyword), safeSize, offset);
+        enrichTransferApplicantNames(rows);
         int total = assetMapper.countTransferRequests(trimOrNull(keyword));
         Map<String, Object> data = new HashMap<>();
         data.put("rows", rows);
@@ -1273,6 +1282,31 @@ public class AssetService {
         data.put("page", safePage);
         data.put("size", safeSize);
         return data;
+    }
+
+    private void enrichTransferApplicantNames(List<AssetTransferRequest> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (AssetTransferRequest row : rows) {
+            if (row != null && StringUtils.hasText(row.getApplicantId())) {
+                ids.add(row.getApplicantId().trim());
+            }
+        }
+        Map<String, String> nameMap = userDisplayNameService.resolveDisplayNames(ids);
+        for (AssetTransferRequest row : rows) {
+            if (row == null || !StringUtils.hasText(row.getApplicantId())) {
+                continue;
+            }
+            String id = row.getApplicantId().trim();
+            String resolved = nameMap.get(id);
+            if (StringUtils.hasText(resolved) && !resolved.trim().equals(id)) {
+                row.setApplicantName(resolved.trim());
+            } else if (!StringUtils.hasText(row.getApplicantName()) || row.getApplicantName().trim().equals(id)) {
+                row.setApplicantName(StringUtils.hasText(resolved) ? resolved.trim() : id);
+            }
+        }
     }
 
     @Transactional

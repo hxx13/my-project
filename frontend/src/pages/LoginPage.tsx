@@ -8,7 +8,8 @@ import { PortalHero } from "@/features/portal/PortalHero";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
-import { loginWeb, loginCas, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
+import { loginWeb, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
+import { startIamOAuthLogin } from "@/features/auth/iamOAuth";
 
 declare global {
   interface Window {
@@ -62,7 +63,6 @@ export default function LoginPage() {
   const [assetBroken, setAssetBroken] = useState<Record<string, boolean>>({});
   const [branding, setBranding] = useState<LoginBranding | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
-  const casProcessedRef = useRef(false);
   const [sessionUser, setSessionUser] = useState(() => authStorage.getUserInfo());
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
@@ -281,49 +281,6 @@ export default function LoginPage() {
       setTurnstileLoading(false);
     };
   }, [showLogin, forgotMode, effectiveMode, turnstileSiteKey, turnstileEnabled]);
-
-  // CAS ticket auto-extraction — serviceValidate works for any domain
-  useEffect(() => {
-    if (casProcessedRef.current) return;
-    // Try URL first, then sessionStorage (preserved from RootEntryRedirect)
-    let ticketMatch = window.location.href.match(/[?&]ticket=([^&#]+)/);
-    let ticket = ticketMatch ? decodeURIComponent(ticketMatch[1]) : null;
-    if (!ticket) {
-      ticket = sessionStorage.getItem('cas_pending_ticket');
-    }
-    if (!ticket) return;
-    sessionStorage.removeItem('cas_pending_ticket');
-    casProcessedRef.current = true;
-
-    // Clean ticket from URL immediately
-    window.history.replaceState(null, "", window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "").replace(/#$/, ""));
-
-    (async () => {
-      try {
-        const data = await loginCas(ticket, window.location.origin);
-        authStorage.setAuth(data.token, data.role, data.userInfo);
-        const isStudent = isStudentAccount();
-        if (isStudent) {
-          authStorage.markLoginPortal("student");
-          setShowLogin(false);
-          navigate("/", { replace: true });
-          return;
-        }
-        authStorage.markLoginPortal("staff");
-        toast.success("CAS 登录成功");
-        setShowLogin(false);
-        syncUserFromStorage();
-        const st = location.state as any;
-        const from = st?.from?.pathname;
-        const fromFull = from && from !== "/login" ? `${from}${st?.from?.search || ""}${st?.from?.hash || ""}` : null;
-        const target = await resolvePostLoginTarget({ role: data.role, pendingTwin: null, fromFull });
-        navigate(target, { replace: true });
-      } catch (error) {
-        casProcessedRef.current = false;
-        toast.error(error instanceof Error ? error.message : "CAS 登录失败，请重试");
-      }
-    })();
-  }, []);
 
   const headerPrimaryLabel = useMemo(() => {
     const dn = (sessionUser?.displayName || "").trim();
@@ -767,11 +724,7 @@ export default function LoginPage() {
                   <div className="mt-6 border-t border-[#f5d76a]/20 pt-5">
                     <button
                       type="button"
-                      onClick={() => {
-                        const service = window.location.origin;
-                        try { sessionStorage.setItem("cas_service_url", service); } catch {}
-                        window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${encodeURIComponent(service)}`;
-                      }}
+                      onClick={() => startIamOAuthLogin()}
                       className="w-full rounded border border-[#f5d76a]/40 bg-transparent px-4 py-3 text-sm font-medium text-[#e8c547] transition hover:border-[#f5d76a]/70 hover:bg-[#f5d76a]/10"
                     >
                       统一认证登录

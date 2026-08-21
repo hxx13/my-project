@@ -1,6 +1,7 @@
 package com.example.demo.modules.facilitymaintenance.service;
 
 import com.example.demo.common.excel.ExcelExportColumnAutosizer;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -33,10 +34,62 @@ public class FacilityMaintenanceService {
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final UserDisplayNameService userDisplayNameService;
 
-    public FacilityMaintenanceService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+    public FacilityMaintenanceService(JdbcTemplate jdbcTemplate,
+                                      ObjectMapper objectMapper,
+                                      UserDisplayNameService userDisplayNameService) {
         this.jdbc = jdbcTemplate;
         this.objectMapper = objectMapper;
+        this.userDisplayNameService = userDisplayNameService;
+    }
+
+    /** 列表行：createdBy / operatorUserId → 统一展示名覆盖 *Name 字段 */
+    private void enrichPersonDisplayNames(List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            Object cb = row.get("createdBy");
+            if (cb != null && String.valueOf(cb).trim().length() > 0) {
+                ids.add(String.valueOf(cb).trim());
+            }
+            Object op = row.get("operatorUserId");
+            if (op != null && String.valueOf(op).trim().length() > 0) {
+                ids.add(String.valueOf(op).trim());
+            }
+        }
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(ids);
+        for (Map<String, Object> row : rows) {
+            Object cb = row.get("createdBy");
+            if (cb != null) {
+                String id = String.valueOf(cb).trim();
+                String n = names.get(id);
+                if (n != null && !n.isBlank()) {
+                    row.put("createdByName", n);
+                }
+            }
+            Object op = row.get("operatorUserId");
+            if (op != null) {
+                String id = String.valueOf(op).trim();
+                String n = names.get(id);
+                if (n != null && !n.isBlank()) {
+                    row.put("operatorName", n);
+                }
+            }
+        }
+    }
+
+    public String resolveOperatorDisplayName(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return null;
+        }
+        String n = userDisplayNameService.resolveDisplayName(userId.trim());
+        return (n != null && !n.isBlank()) ? n : userId.trim();
     }
 
     public static String newId(String prefix) {
@@ -431,6 +484,7 @@ public class FacilityMaintenanceService {
         for (Map<String, Object> row : rows) {
             row.put("values", parseJsonMap(row.remove("valuesJson")));
         }
+        enrichPersonDisplayNames(rows);
         return Map.of(
                 "total", total == null ? 0 : total,
                 "page", p,
@@ -451,6 +505,7 @@ public class FacilityMaintenanceService {
                         """,
                 rowMapperSimple(), id);
         if (rows.isEmpty()) throw new IllegalArgumentException("记录不存在");
+        enrichPersonDisplayNames(rows);
         Map<String, Object> row = rows.get(0);
         row.put("values", parseJsonMap(row.remove("valuesJson")));
         return row;
@@ -518,6 +573,7 @@ public class FacilityMaintenanceService {
                         LEFT JOIN sys_user u ON u.id = c.created_by
                         """ + "WHERE " + where + " ORDER BY c.occurred_at DESC LIMIT ? OFFSET ?",
                 rowMapperSimple(), args.toArray());
+        enrichPersonDisplayNames(rows);
         return Map.of("total", total == null ? 0 : total, "page", p, "size", s, "rows", rows);
     }
 
@@ -589,6 +645,7 @@ public class FacilityMaintenanceService {
                 row.put("daysSincePrevious", null);
             }
         }
+        enrichPersonDisplayNames(rows);
         return Map.of("total", total == null ? 0 : total, "page", p, "size", s, "rows", rows);
     }
 

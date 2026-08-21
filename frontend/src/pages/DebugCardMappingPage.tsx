@@ -67,6 +67,7 @@ import { ExemptUntilTimePicker } from "@/components/admin/ExemptUntilTimePicker"
 import { ScanDelayConfigPanel } from "@/components/scanner/ScanDelayConfigPanel";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 
+import { appAlert, appConfirm } from "@/lib/appDialog";
 /** 自动冻结解释与保存均固定为中国时区 */
 const FREEZE_TIMEZONE_CN = "Asia/Shanghai";
 
@@ -251,12 +252,11 @@ export default function DebugCardMappingPage() {
     // 💥 物理映射解除引擎（仅本地，保留兼容）
     const deleteMappingMutation = useMutation({
         mutationFn: (cardNo: string) => deleteCardMapping(cardNo),
-        onSuccess: () => {
-            // 使用原生的 alert 阻断，或者替换为您项目中的 toast
-            alert("✅ 物理映射已彻底销毁！");
+        onSuccess: async () => {
+            await appAlert("✅ 物理映射已彻底销毁！");
             refetch(); // 瞬间重载大屏数据
         },
-        onError: (err: any) => alert("❌ 销毁失败: " + err.message)
+        onError: async (err: any) => { await appAlert("❌ 销毁失败: " + err.message); }
     });
 
     // 4. 真实人员搜索逻辑 (在弹窗里搜 ARO 的人)：
@@ -693,10 +693,10 @@ export default function DebugCardMappingPage() {
                 dailyExemptRevokeAutoSignoutEnabled: freezeForm.dailyExemptRevokeAutoSignoutEnabled,
                 timezone: FREEZE_TIMEZONE_CN,
             });
-            alert("自动冻结配置已保存");
+            await appAlert("自动冻结配置已保存");
             await loadFreezeForm();
         } catch (e: any) {
-            alert("保存冻结配置失败: " + (e?.message || "unknown"));
+            await appAlert("保存冻结配置失败: " + (e?.message || "unknown"));
         } finally {
             setFreezeSaving(false);
         }
@@ -716,7 +716,7 @@ export default function DebugCardMappingPage() {
             });
         } catch (e) {
             console.error(e);
-            alert("加载扫码门禁联动配置失败");
+            await appAlert("加载扫码门禁联动配置失败");
         } finally {
             setLinkageLoading(false);
         }
@@ -733,10 +733,10 @@ export default function DebugCardMappingPage() {
                 swipeExitSkipConfirm: linkageForm.swipeExitSkipConfirm,
             });
             setScanExitFreezeEnabled(linkageForm.exitFreezeEnabled);
-            alert("扫码门禁联动配置已保存");
+            await appAlert("扫码门禁联动配置已保存");
             setLinkageModalOpen(false);
         } catch (e: any) {
-            alert("保存失败: " + (e?.message || "unknown"));
+            await appAlert("保存失败: " + (e?.message || "unknown"));
         } finally {
             setLinkageSaving(false);
         }
@@ -850,13 +850,13 @@ export default function DebugCardMappingPage() {
 
     const runReaperMutation = useMutation({
         mutationFn: runManualReaper,
-        onSuccess: (stats: { frozenCount?: number; exemptCount?: number; totalChecked?: number }) => {
+        onSuccess: async (stats: { frozenCount?: number; exemptCount?: number; totalChecked?: number }) => {
             const frozenCount = stats?.frozenCount ?? 0;
             const exemptCount = stats?.exemptCount ?? 0;
-            alert(`🏁 风控跑批完成！\n\n🚫 强制冻结: ${frozenCount} 人\n🛡️ 豁免赦免: ${exemptCount} 人\n\n请检查表格状态是否已同步。`);
+            await appAlert(`🏁 风控跑批完成！\n\n🚫 强制冻结: ${frozenCount} 人\n🛡️ 豁免赦免: ${exemptCount} 人\n\n请检查表格状态是否已同步。`);
             refetch();
         },
-        onError: (err: any) => alert("❌ 跑批失败: " + err.message)
+        onError: async (err: any) => { await appAlert("❌ 跑批失败: " + err.message); }
     });
 
     const toggleStatusMutation = useMutation({
@@ -956,8 +956,8 @@ export default function DebugCardMappingPage() {
                                         <DropdownMenuItem
                                             className="text-cyan-700 focus:bg-cyan-50 focus:text-cyan-800"
                                             disabled={runReaperMutation.isPending}
-                                            onSelect={() => {
-                                                if (window.confirm("❄️ 警告：即将模拟系统自动风控逻辑！\n\n系统将自动冻结所有『在馆滞留』且『未获豁免』的人员卡片，并同步锁死大华门禁硬件。确认执行？")) {
+                                            onSelect={async () => {
+                                                if (await appConfirm("❄️ 警告：即将模拟系统自动风控逻辑！\n\n系统将自动冻结所有『在馆滞留』且『未获豁免』的人员卡片，并同步锁死大华门禁硬件。确认执行？")) {
                                                     runReaperMutation.mutate();
                                                 }
                                             }}
@@ -1116,8 +1116,8 @@ export default function DebugCardMappingPage() {
                                                         </button>
                                                         {/* 卡号即删卡按钮 */}
                                                         <button
-                                                            onClick={() => {
-                                                                if (window.confirm(`🗑 删除卡片\n\n将从大华平台删除卡号 [${card.cardNo}]。\n人员 [${info.userName || info.aroUserId}] 不受影响。\n\n确定继续？`)) {
+                                                            onClick={async () => {
+                                                                if (await appConfirm(`🗑 删除卡片\n\n将从大华平台删除卡号 [${card.cardNo}]。\n人员 [${info.userName || info.aroUserId}] 不受影响。\n\n确定继续？`)) {
                                                                     deleteDahuaCardMutation.mutate(card.cardNo);
                                                                 }
                                                             }}
@@ -1157,9 +1157,9 @@ export default function DebugCardMappingPage() {
                                                     {canGrantExempt ? (
                                                     <button
                                                         type="button"
-                                                        onClick={() => {
+                                                        onClick={async () => {
                                                             if (isExempt && exemptCard) {
-                                                                if (window.confirm(`取消卡号 ${exemptCard.cardNo} 的豁免？`)) {
+                                                                if (await appConfirm(`取消卡号 ${exemptCard.cardNo} 的豁免？`)) {
                                                                     toggleExemptMutation.mutate({ cardNo: exemptCard.cardNo, flag: 0 });
                                                                 }
                                                                 return;
@@ -1223,9 +1223,9 @@ export default function DebugCardMappingPage() {
                                                 </button>
                                             ) : null}
                                             <button
-                                                onClick={() => {
+                                                onClick={async () => {
                                                     const cardList = cards.map(c => c.cardNo).join('、');
-                                                    if (window.confirm(`🚨 删除人员与卡片信息\n\n将删除 [${info.userName || info.aroUserId}] 的全部卡片（${cardList}）并从大华平台清除。\n\n确定继续？`)) {
+                                                    if (await appConfirm(`🚨 删除人员与卡片信息\n\n将删除 [${info.userName || info.aroUserId}] 的全部卡片（${cardList}）并从大华平台清除。\n\n确定继续？`)) {
                                                         cards.forEach(card => deleteDahuaCardMutation.mutate(card.cardNo));
                                                     }
                                                 }}
@@ -1892,7 +1892,7 @@ export default function DebugCardMappingPage() {
                                     const deptRes = await fetchDahuaDepartments(1, 500, "");
                                     setDepartments(deptRes.list || []);
                                     setExpandedDeptIds(new Set());
-                                    alert("部门缓存已刷新");
+                                    await appAlert("部门缓存已刷新");
                                 }}
                             >
                                 刷新
@@ -2138,7 +2138,7 @@ export default function DebugCardMappingPage() {
                                     await refreshDahuaDoorGroups();
                                     const dgRes = await fetchDahuaDoorGroups(1, 500, "");
                                     setDoorGroups(dgRes.list || []);
-                                    alert("门组缓存已刷新");
+                                    await appAlert("门组缓存已刷新");
                                 }}
                             >
                                 刷新门组

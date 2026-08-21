@@ -16,6 +16,9 @@ interface Props {
   onCreate: (type: "GROUP" | "SUBGROUP", title: string, parentId: string | null) => void;
 }
 
+const inputClass =
+  "w-full rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] focus:outline-none focus:ring-1 focus:ring-[var(--twin-primary)]";
+
 export function AdminNavManagerCreateDialog({
   open,
   onOpenChange,
@@ -50,7 +53,7 @@ export function AdminNavManagerCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
         <DialogHeader>
           <DialogTitle>新建文件夹</DialogTitle>
           <DialogDescription>
@@ -62,14 +65,14 @@ export function AdminNavManagerCreateDialog({
         <div className="space-y-4 py-4">
           {!lockedParent && folderOptions.length > 0 && (
             <div>
-              <label className="text-sm font-medium mb-1 block">父文件夹</label>
+              <label className="text-sm font-medium mb-1 block text-[var(--twin-body)]">父文件夹</label>
               <select
                 value={selectedParentId ?? ""}
                 onChange={(e) => {
                   const v = e.target.value;
                   setSelectedParentId(v ? v : null);
                 }}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className={inputClass}
               >
                 <option value="">无（顶级分组）</option>
                 {folderOptions.map((f) => (
@@ -81,20 +84,21 @@ export function AdminNavManagerCreateDialog({
             </div>
           )}
           <div>
-            <label className="text-sm font-medium mb-1 block">类型</label>
-            <p className="text-sm text-gray-600 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+            <label className="text-sm font-medium mb-1 block text-[var(--twin-body)]">类型</label>
+            <p className="text-sm text-[var(--twin-body)] rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2">
               {effectiveType === "GROUP" ? "顶级分组" : "子分组"}
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium mb-1 block">名称</label>
+            <label className="text-sm font-medium mb-1 block text-[var(--twin-body)]">名称</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="输入文件夹名称..."
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className={inputClass}
               autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
             />
           </div>
         </div>

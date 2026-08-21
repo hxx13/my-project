@@ -1,9 +1,10 @@
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { Check, AlertTriangle } from "lucide-react";
 
 type Props = {
   phrase: string;
-  onComplete: () => void;
+  /** 传回用户实际拼出的字符串，供服务端校验 */
+  onComplete: (answer: string) => void;
 };
 
 /** Fisher-Yates 洗牌 */
@@ -31,6 +32,9 @@ export function InteractiveChallenge({ phrase, onComplete }: Props) {
   const [errorFlash, setErrorFlash] = useState(false);
   const [done, setDone] = useState(false);
   const [clicked, setClicked] = useState<Set<number>>(new Set());
+  // 一次性闸：setDone 是异步的，重渲染前快速双击最后一格会命中同一旧闭包，
+  // 依赖 state 防重会在 400ms 内触发两次 onComplete。用 ref 同步置位彻底阻断。
+  const firedRef = useRef(false);
 
   const handleClick = useCallback(
     (item: { char: string; index: number }, pos: number) => {
@@ -42,8 +46,11 @@ export function InteractiveChallenge({ phrase, onComplete }: Props) {
         const next = nextIdx + 1;
         setNextIdx(next);
         if (next >= chars.length) {
+          if (firedRef.current) return;
+          firedRef.current = true;
           setDone(true);
-          setTimeout(onComplete, 400);
+          const answer = chars.map((c) => c.char).join("");
+          setTimeout(() => onComplete(answer), 400);
         }
       } else {
         setErrorFlash(true);
@@ -52,7 +59,7 @@ export function InteractiveChallenge({ phrase, onComplete }: Props) {
         setTimeout(() => setErrorFlash(false), 600);
       }
     },
-    [nextIdx, done, clicked, chars.length, onComplete]
+    [nextIdx, done, clicked, chars, onComplete]
   );
 
   useEffect(() => {

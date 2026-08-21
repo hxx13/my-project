@@ -113,6 +113,7 @@ public class AdminTwinScanPopupAnnouncementController {
             TwinScanPopupAnnouncement row = announcementService.create(
                     body.getTitle(),
                     body.getContentHtml(),
+                    body.getContentJson(),
                     body.getEnabled() == null || body.getEnabled(),
                     body.getSortOrder() != null ? body.getSortOrder() : 0,
                     parseDateTime(body.getPublishAt()),
@@ -141,6 +142,7 @@ public class AdminTwinScanPopupAnnouncementController {
                     id,
                     body.getTitle(),
                     body.getContentHtml(),
+                    body.getContentJson(),
                     body.getEnabled() == null || body.getEnabled(),
                     body.getSortOrder() != null ? body.getSortOrder() : 0,
                     body.getStatus(),
@@ -208,6 +210,7 @@ public class AdminTwinScanPopupAnnouncementController {
         m.put("id", row.getId());
         m.put("title", row.getTitle());
         m.put("contentHtml", row.getContentHtml());
+        m.put("contentJson", row.getContentJson());
         m.put("enabled", row.getEnabled() != null && row.getEnabled() == 1);
         m.put("sortOrder", row.getSortOrder());
         m.put("status", row.getStatus());
@@ -250,8 +253,10 @@ public class AdminTwinScanPopupAnnouncementController {
     @Data
     public static class UpsertBody {
         private String title;
-        private String contentHtml;
-        private Boolean enabled;
+    private String contentHtml;
+    /** 期 6：ProseMirror/TipTap JSON 真源（可选） */
+    private String contentJson;
+    private Boolean enabled;
         private Integer sortOrder;
         private String status;
         private String publishAt;

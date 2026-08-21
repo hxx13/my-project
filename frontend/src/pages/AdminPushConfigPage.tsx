@@ -74,6 +74,7 @@ import {
   Thermometer,
 } from "lucide-react";
 
+import { appConfirm } from "@/lib/appDialog";
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
@@ -1399,7 +1400,7 @@ function FloorSuiteAlarmPanel() {
     });
   };
 
-  const applyPresetToSelected = async () => {
+  const applyPresetToSelected = () => {
     const preset = presets.find(p => p.id === activePresetId);
     if (!preset || selectedTags.size === 0) return;
     const newDrafts = { ...tagDrafts };
@@ -1711,7 +1712,7 @@ function FloorSuiteAlarmPanel() {
                   <div className="flex-1" />
                   <AdminButton type="button" tone="ghost" size="sm" onClick={() => setPresetEditor(p)}>编辑</AdminButton>
                   <AdminButton type="button" tone="ghost" size="sm" onClick={async () => {
-                    if (!p.id || !confirm(`删除模板「${p.name}」？`)) return;
+                    if (!p.id || !await appConfirm(`删除模板「${p.name}」？`)) return;
                     try {
                       await deleteAlarmPreset(p.id);
                       setPresets(prev => prev.filter(x => x.id !== p.id));
@@ -2007,7 +2008,7 @@ function DoorUnlockTab() {
   useEffect(() => { void load(); }, [refreshKey]);
 
   const onDelete = async (id: number) => {
-    if (!window.confirm("确定删除？")) return;
+    if (!await appConfirm("确定删除？")) return;
     try { await deleteDoorTempUnlockRule(id); toast.success("已删除"); setRows(prev => prev.filter(r => r.id !== id)); }
     catch (e) { toast.error(e instanceof Error ? e.message : "删除失败"); }
   };

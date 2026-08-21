@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageBookingMapper">
+
+    <!-- ══════════════ cage_booking_room ══════════════ -->
+
+    <select id="selectRooms" resultType="map">
+        SELECT room_id AS roomId,
+               name,
+               description,
+               shelve_number AS shelveNumber,
+               animal_cage_number AS animalCageNumber,
+               rent_animal_cage_number AS rentAnimalCageNumber,
+               used_animal_cage_number AS usedAnimalCageNumber,
+               last_rent_number AS lastRentNumber,
+               memo
+        FROM cage_booking_room
+        ORDER BY id ASC
+    </select>
+
+    <insert id="upsertRooms">
+        INSERT INTO cage_booking_room
+            (room_id, name, description, shelve_number, animal_cage_number,
+             rent_animal_cage_number, used_animal_cage_number, last_rent_number, memo, synced_at)
+        VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.roomId}, #{r.name}, #{r.description}, #{r.shelveNumber}, #{r.animalCageNumber},
+             #{r.rentAnimalCageNumber}, #{r.usedAnimalCageNumber}, #{r.lastRentNumber}, #{r.memo}, NOW())
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            name = VALUES(name),
+            description = VALUES(description),
+            shelve_number = VALUES(shelve_number),
+            animal_cage_number = VALUES(animal_cage_number),
+            rent_animal_cage_number = VALUES(rent_animal_cage_number),
+            used_animal_cage_number = VALUES(used_animal_cage_number),
+            last_rent_number = VALUES(last_rent_number),
+            memo = VALUES(memo),
+            synced_at = NOW()
+    </insert>
+
+    <!-- ══════════════ cage_booking_room_aup ══════════════ -->
+
+    <select id="selectRoomAups" resultType="map">
+        SELECT aro_id AS id,
+               room_id AS roomId,
+               name,
+               pi_name AS piName,
+               register_number AS registerNumber,
+               aup_id AS aupId,
+               rent_number AS rentNumber,
+               used_animal_cage_number AS usedAnimalCageNumber,
+               memo,
+               begin_time AS beginTime,
+               end_time AS endTime
+        FROM cage_booking_room_aup
+        WHERE room_id = #{roomId} AND deleted = 0
+        ORDER BY id ASC
+    </select>
+
+    <select id="searchAups" resultType="map">
+        SELECT a.aup_id AS aupId,
+               a.room_id AS roomId,
+               COALESCE(r.name, '') AS roomName,
+               a.pi_name AS piName,
+               a.register_number AS registerNumber,
+               a.rent_number AS rentNumber
+        FROM cage_booking_room_aup a
+        LEFT JOIN cage_booking_room r ON a.room_id = r.room_id
+        WHERE a.deleted = 0
+          AND (a.register_number LIKE CONCAT('%', #{keyword}, '%')
+               OR a.pi_name LIKE CONCAT('%', #{keyword}, '%'))
+        ORDER BY a.id ASC
+    </select>
+
+    <!-- 同步 upsert：不触碰 deleted 列，已软删记录不会复活 -->
+    <insert id="upsertRoomAups">
+        INSERT INTO cage_booking_room_aup
+            (aro_id, room_id, name, pi_name, register_number, aup_id,
+             rent_number, used_animal_cage_number, memo, begin_time, end_time, synced_at)
+        VALUES
+        <foreach collection="list" item="a" separator=",">
+            (#{a.aroId}, #{a.roomId}, #{a.name}, #{a.piName}, #{a.registerNumber}, #{a.aupId},
+             #{a.rentNumber}, #{a.usedAnimalCageNumber}, #{a.memo}, #{a.beginTime}, #{a.endTime}, NOW())
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            room_id = VALUES(room_id),
+            name = VALUES(name),
+            pi_name = VALUES(pi_name),
+            register_number = VALUES(register_number),
+            aup_id = VALUES(aup_id),
+            rent_number = VALUES(rent_number),
+            used_animal_cage_number = VALUES(used_animal_cage_number),
+            memo = VALUES(memo),
+            begin_time = VALUES(begin_time),
+            end_time = VALUES(end_time),
+            synced_at = NOW()
+    </insert>
+
+    <!-- 本地新增/编辑单条：写 deleted=0 -->
+    <insert id="upsertRoomAup">
+        INSERT INTO cage_booking_room_aup
+            (aro_id, room_id, name, pi_name, register_number, aup_id, rent_number, memo, deleted, synced_at)
+        VALUES
+            (#{aroId}, #{roomId}, #{name}, #{piName}, #{registerNumber}, #{aupId}, #{rentNumber}, #{memo}, 0, NOW())
+        ON DUPLICATE KEY UPDATE
+            room_id = VALUES(room_id),
+            name = VALUES(name),
+            pi_name = VALUES(pi_name),
+            register_number = VALUES(register_number),
+            aup_id = VALUES(aup_id),
+            rent_number = VALUES(rent_number),
+            memo = VALUES(memo),
+            deleted = 0,
+            synced_at = NOW()
+    </insert>
+
+    <update id="softDeleteRoomAup">
+        UPDATE cage_booking_room_aup
+        SET deleted = 1, synced_at = NOW()
+        WHERE aro_id = #{aroId}
+    </update>
+
+</mapper>

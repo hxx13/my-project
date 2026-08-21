@@ -5,7 +5,7 @@ import type { AgvConfigEntry } from "@/api/domains/agv.api";
 import { fetchAgvConfig, updateAgvConfig, fetchCoordConfigs, updateCoordConfig } from "@/api/domains/agv.api";
 import { Link } from "react-router-dom";
 import { FileText, LayoutGrid, Maximize2, Settings2, BarChart3, RotateCw, Map, Route, Crosshair, Zap, SquareDashed, Edit3, ChevronDown, Plus, Trash2, Undo2, Layers, Pencil, Tag } from "lucide-react";
-import { BUILTIN_TAG_OPTIONS, BUILTIN_TAG_COLORS, type CustomTag } from "@/features/agv-tracker/tagConfig";
+import type { AgvTag, AgvTagDraft } from "@/api/domains/agvTag.api";
 import { AGV_ROBOT_KEYS, AGV_ROBOT_SHORTS, AGV_ROBOT_LABELS, AGV_ROBOTS, getAgvLabel } from "@/features/agv-tracker/agvRobotConfig";
 interface Props {
   serverTime: string | null;
@@ -27,10 +27,13 @@ interface Props {
   /** 每台 AGV 的标签显隐配置 */
   hiddenTagsByIp?: Record<string, Set<string>>;
   onToggleHiddenTag?: (ip: string, tag: string) => void;
-  /** 自定义标签 */
-  customTags?: CustomTag[];
+  /** 标签字典（内置 + 自定义同构，均来自服务端） */
+  tags?: AgvTag[];
   onAddCustomTag?: (name: string, color: string, scope: "world" | "agv", agvIp?: string) => void;
-  onDeleteCustomTag?: (id: string) => void;
+  onUpdateTag?: (id: number, draft: AgvTagDraft) => void;
+  onDeleteCustomTag?: (id: number) => void;
+  /** 标签增删改的服务端报错（如重名、内置标签不可改名） */
+  tagMutationError?: string | null;
   allTagColors?: Record<string, string>;
   creatableTags?: string[];
   /** 撤回 */
@@ -43,7 +46,7 @@ interface Props {
   coordPresetSaved?: boolean;
 }
 
-export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpChange, selectedZone, onSelectedZoneChange, analysisOpen, onAnalysisToggle, showZones, onToggleZones, routeMode, onToggleRouteMode, followMode, onToggleFollowMode, coordEditMode, onToggleCoordEditMode, zoneEditMode, onToggleZoneEditMode, vehicleIcon, onToggleVehicleIcon, topologyGenerating, onGenerateTopology, onStartRectPick, hiddenTagsByIp, onToggleHiddenTag, customTags, onAddCustomTag, onDeleteCustomTag, allTagColors, creatableTags, undoLabel, onUndo, onSaveCoordPreset, onRestoreCoordPreset, onResetCoordZero, coordPresetSaved }: Props) {
+export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpChange, selectedZone, onSelectedZoneChange, analysisOpen, onAnalysisToggle, showZones, onToggleZones, routeMode, onToggleRouteMode, followMode, onToggleFollowMode, coordEditMode, onToggleCoordEditMode, zoneEditMode, onToggleZoneEditMode, vehicleIcon, onToggleVehicleIcon, topologyGenerating, onGenerateTopology, onStartRectPick, hiddenTagsByIp, onToggleHiddenTag, tags, onAddCustomTag, onUpdateTag, onDeleteCustomTag, tagMutationError, allTagColors, creatableTags, undoLabel, onUndo, onSaveCoordPreset, onRestoreCoordPreset, onResetCoordZero, coordPresetSaved }: Props) {
   const qc = useQueryClient();
   const [tagDropdownIp, setTagDropdownIp] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
@@ -62,6 +65,10 @@ export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpCha
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#f59e0b");
   const [newTagScope, setNewTagScope] = useState<"world" | "agv">("world");
+  // 编辑态：内置标签只开放颜色，名字属于系统语义（服务端会拒绝改名）
+  const [editingTagId, setEditingTagId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("#f59e0b");
   const { data: configs } = useQuery({ queryKey: ["agvConfig"], queryFn: fetchAgvConfig, refetchInterval: 30_000 });
   const { data: rotations } = useQuery({ queryKey: ["agvCoordConfigs"], queryFn: fetchCoordConfigs, staleTime: 60_000 });
   const master = configs?.find((c) => c.jobKey === "AGV_MASTER");
@@ -240,11 +247,13 @@ export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpCha
           {coordEditMode && onSaveCoordPreset && (
             <>
               <button onClick={() => { onSaveCoordPreset(); }}
-                className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
-                <RotateCw size={11} />{coordPresetSaved ? "✓已存预设" : "保存预设"}
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
+                title="将当前坐标系布局归档为预设快照（自动保存仍持续生效）">
+                <RotateCw size={11} />{coordPresetSaved ? "覆盖保存预设" : "保存预设"}
               </button>
               <button onClick={() => { onRestoreCoordPreset?.(); }}
-                className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
+                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] whitespace-nowrap hover:bg-[var(--app-color-surface-hover)] ${coordPresetSaved ? "text-[var(--app-color-text-secondary)]" : "text-[var(--app-color-text-tertiary)] opacity-60"}`}
+                title={coordPresetSaved ? "恢复到上次「保存预设」的快照" : "尚无预设，请先保存"}>
                 恢复预设
               </button>
               <button onClick={() => { onResetCoordZero?.(); }}
@@ -279,8 +288,8 @@ export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpCha
 
     {/* 标签下拉面板（fixed 定位脱离 bar overflow 限制） */}
     {tagDropdownIp && dropdownPos && hiddenTagsByIp && onToggleHiddenTag && (() => {
-      const colors = allTagColors ?? BUILTIN_TAG_COLORS;
-      const tags = creatableTags ?? [...BUILTIN_TAG_OPTIONS];
+      const colors = allTagColors ?? {};
+      const tagNames = creatableTags ?? [];
       const ip = tagDropdownIp;
       const hidden = hiddenTagsByIp[ip] ?? new Set<string>();
       return createPortal(
@@ -289,7 +298,7 @@ export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpCha
           <div className="fixed z-[var(--z-tooltip)] flex flex-wrap gap-0.5 px-2 py-1.5 rounded-lg bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-lg min-w-[130px]"
             style={{ top: dropdownPos.top, left: dropdownPos.left }}
             onClick={(e) => e.stopPropagation()}>
-            {tags.map(tag => {
+            {tagNames.map(tag => {
               const isHidden = hidden.has(tag);
               const tagColor = colors[tag] || "#6b7280";
               return (
@@ -299,20 +308,59 @@ export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpCha
                 >{tag}</button>
               );
             })}
-            {/* 自定义标签分隔线 + 标签列表 */}
-            {(customTags && customTags.filter(t => t.scope === "world" || t.agvIp === ip).length > 0) && (
-              <span className="w-full h-px bg-[var(--app-color-border-default)] my-0.5" />
+            {/* 标签管理：内置与自定义同一份列表，内置只开放改色 */}
+            {(() => {
+              const visible = (tags ?? []).filter(t => t.scope === "world" || t.robotIp === ip);
+              if (visible.length === 0) return null;
+              return (
+                <>
+                  <span className="w-full h-px bg-[var(--app-color-border-default)] my-0.5" />
+                  {visible.map(t => editingTagId === t.id ? (
+                    <div key={t.id} className="w-full space-y-1 py-0.5">
+                      <input value={editName} onChange={e => setEditName(e.target.value)}
+                        disabled={t.builtin}
+                        title={t.builtin ? "内置标签的名字是系统语义，自动标注依赖它，只能改颜色" : undefined}
+                        className="w-full px-1.5 py-0.5 rounded text-[10px] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] disabled:opacity-50 disabled:cursor-not-allowed" />
+                      <div className="flex items-center gap-1">
+                        <input type="color" value={editColor} onChange={e => setEditColor(e.target.value)}
+                          className="w-5 h-5 rounded cursor-pointer border-0 p-0" />
+                        <button onClick={() => {
+                          if (!onUpdateTag || !editName.trim()) return;
+                          onUpdateTag(t.id, {
+                            name: t.builtin ? t.name : editName.trim(),
+                            color: editColor,
+                            scope: t.scope,
+                            robotIp: t.robotIp ?? undefined,
+                          });
+                          setEditingTagId(null);
+                        }} disabled={!editName.trim()}
+                          className="flex-1 px-2 py-0.5 rounded text-[9px] bg-[var(--app-color-accent)] text-white disabled:opacity-40">保存</button>
+                        <button onClick={() => setEditingTagId(null)}
+                          className="px-2 py-0.5 rounded text-[9px] border border-[var(--app-color-border-default)] text-[var(--app-color-text-tertiary)]">取消</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <span key={t.id} className="flex items-center gap-1 px-1">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+                      <span className="text-[8px] text-[var(--app-color-text-tertiary)]">{t.name}</span>
+                      {onUpdateTag && (
+                        <button title={t.builtin ? "改颜色" : "改名 / 改颜色"}
+                          onClick={() => { setEditingTagId(t.id); setEditName(t.name); setEditColor(t.color); }}
+                          className="text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)]"><Pencil size={8} /></button>
+                      )}
+                      {onDeleteCustomTag && !t.builtin && (
+                        <button title="删除标签，并从所有区域移除该标签"
+                          onClick={() => onDeleteCustomTag(t.id)}
+                          className="text-[var(--app-color-text-tertiary)] hover:text-red-500"><Trash2 size={8} /></button>
+                      )}
+                    </span>
+                  ))}
+                </>
+              );
+            })()}
+            {tagMutationError && (
+              <span className="w-full px-1 text-[9px] text-red-500">{tagMutationError}</span>
             )}
-            {customTags?.filter(t => t.scope === "world" || t.agvIp === ip).map(ct => (
-              <span key={ct.id} className="flex items-center gap-1 px-1">
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ct.color }} />
-                <span className="text-[8px] text-[var(--app-color-text-tertiary)]">{ct.name}</span>
-                {onDeleteCustomTag && (
-                  <button onClick={() => onDeleteCustomTag(ct.id)}
-                    className="text-[var(--app-color-text-tertiary)] hover:text-red-500"><Trash2 size={8} /></button>
-                )}
-              </span>
-            ))}
             {/* 添加自定义标签 */}
             <span className="w-full h-px bg-[var(--app-color-border-default)] my-0.5" />
             {!showAddTag ? (

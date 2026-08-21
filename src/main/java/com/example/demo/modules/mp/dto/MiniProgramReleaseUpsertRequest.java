@@ -8,6 +8,8 @@ public class MiniProgramReleaseUpsertRequest {
     private String title;
     private String summary;
     private String bodyHtml;
+    /** 期 6：ProseMirror/TipTap JSON 真源（可选） */
+    private String contentJson;
     /** 是否作为打开小程序时的首屏公告（服务端会把其它记录此项清零） */
     private Boolean showOnLaunch;
 }

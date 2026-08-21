@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageCellIndex;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
@@ -33,6 +34,7 @@ public class CageCellIndexController {
     private final com.example.demo.modules.cageshelf.service.OutboxService outboxService;
     private final com.example.demo.modules.cageshelf.service.CageCellDetailService detailService;
     private final StudentCageShelfService studentCageShelfService;
+    private final UserDisplayNameService userDisplayNameService;
 
     public CageCellIndexController(AuthContextService authContextService,
                                    CageCellIndexService cellIndexService,
@@ -40,7 +42,8 @@ public class CageCellIndexController {
                                    CageCellIndexMapper indexMapper,
                                    com.example.demo.modules.cageshelf.service.OutboxService outboxService,
                                    com.example.demo.modules.cageshelf.service.CageCellDetailService detailService,
-                                   StudentCageShelfService studentCageShelfService) {
+                                   StudentCageShelfService studentCageShelfService,
+                                   UserDisplayNameService userDisplayNameService) {
         this.authContextService = authContextService;
         this.cellIndexService = cellIndexService;
         this.detailMapper = detailMapper;
@@ -48,6 +51,15 @@ public class CageCellIndexController {
         this.outboxService = outboxService;
         this.detailService = detailService;
         this.studentCageShelfService = studentCageShelfService;
+        this.userDisplayNameService = userDisplayNameService;
+    }
+
+    private String operatorDisplayName(User user) {
+        if (user == null || user.getId() == null) {
+            return "unknown";
+        }
+        String name = userDisplayNameService.resolveDisplayName(user.getId());
+        return (name != null && !name.isBlank()) ? name : user.getId();
     }
 
     private User resolveUser(String authorization) {
@@ -224,7 +236,7 @@ public class CageCellIndexController {
         }
 
         // ② 入队 Outbox
-        String operatorName = user.getUsername() != null ? user.getUsername() : String.valueOf(user.getId());
+        String operatorName = operatorDisplayName(user);
         String pos = buildPositionLabel(animalCageId);
         String summary = String.format("%s %s → 笼位 %d %s", operatorName, action, animalCageId, pos);
         outboxService.enqueue("cage_cell", String.valueOf(animalCageId),

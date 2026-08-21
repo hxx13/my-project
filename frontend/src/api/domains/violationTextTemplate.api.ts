@@ -33,17 +33,6 @@ export async function createViolationTextTemplate(
   return (res.data as any)?.data as ViolationTextTemplateRow;
 }
 
-export async function updateViolationTextTemplate(
-  id: number,
-  body: { name?: string; violationText?: string; sortOrder?: number }
-): Promise<ViolationTextTemplateRow> {
-  const res = await adminHttp.put<Result<ViolationTextTemplateRow>>(
-    `/twin/student-violations/text-templates/${id}`,
-    body
-  );
-  return (res.data as any)?.data as ViolationTextTemplateRow;
-}
-
 export async function deleteViolationTextTemplate(id: number): Promise<void> {
   await adminHttp.delete(`/twin/student-violations/text-templates/${id}`);
 }

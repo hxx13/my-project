@@ -12,6 +12,7 @@ import {
 } from "@/api/twinApi";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 
+import { appConfirm } from "@/lib/appDialog";
 type OfficialLevelSavedPatch = Pick<RoomMappingRoomRow, "officialPermissionLevel"> & {
   updatedAt?: string | number | null;
 };
@@ -186,7 +187,7 @@ export default function AdminRoomMappingPage() {
   };
 
   const handleRefreshCsv = async () => {
-    const ok = window.confirm(
+    const ok = await appConfirm(
       "将从 classpath 重新读取 src 内的 room_mapping.csv 并入库：\n" +
         "• 按「房间id」合并房间行；\n" +
         "• 若某行的「门禁通道编码」非空，将替换该房间下的全部通道；\n" +

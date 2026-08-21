@@ -1,5 +1,7 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useAupAttachments, useAupDictDetail, useAupPickers, useAupSignatureContext } from "../hooks/useAup";
+import { useRefDataOptions } from "../hooks/useRefDataOptions";
 import type { PickerType } from "../api/aup.api";
 import type { FieldOptions, FormField as FormFieldDef, OptionItem, ShowWhen } from "../schema/formTemplate";
 
@@ -294,13 +296,18 @@ function DateRange({ field, value, onChange, readOnly, error }: { field: FormFie
 function useResolvedOptions(field: FormFieldDef): OptionItem[] {
   const inline = normalizeOptions(field.options);
   const dict = useAupDictDetail(field.dictKey);
+  const refDataSource = field.config?.refDataSource;
+  const refData = useRefDataOptions(refDataSource);
   return useMemo(() => {
     if (inline.length > 0) return inline;
     if (field.dictKey && dict.data?.items) {
       return dict.data.items.map((i) => ({ value: i.value, label: i.label }));
     }
+    if (refDataSource && refData.data) {
+      return refData.data;
+    }
     return [];
-  }, [inline, field.dictKey, dict.data]);
+  }, [inline, field.dictKey, dict.data, refDataSource, refData.data]);
 }
 
 function Choice({ field, value, onChange, readOnly, error }: { field: FormFieldDef; value: unknown; onChange: (k: string, v: unknown) => void; readOnly?: boolean; error?: boolean }) {
@@ -370,24 +377,100 @@ function Choice({ field, value, onChange, readOnly, error }: { field: FormFieldD
   );
 }
 
-/** 下拉选择（原生 select）：复现真实站点 el-select 单选下拉，选项同 choice（内联 / 字典） */
+/** 可搜索下拉：输入关键字过滤 + 下拉选择，适配大量选项（课题组/品系/动物品种等），替代原生 select 全量展开 */
 function SelectField({ field, value, onChange, readOnly, error }: { field: FormFieldDef; value: unknown; onChange: (k: string, v: unknown) => void; readOnly?: boolean; error?: boolean }) {
   const options = useResolvedOptions(field);
+  const [open, setOpen] = useState(false);
+  const [kw, setKw] = useState("");
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const boxRef = useRef<HTMLDivElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const current = asStr(value);
+  const selected = useMemo(() => options.find((o) => o.value === current), [options, current]);
+
+  const toggle = () => {
+    if (open) {
+      setOpen(false);
+      setKw("");
+      return;
+    }
+    const rect = boxRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    }
+    setOpen(true);
+    setKw("");
+  };
+
+  // 点击外部关闭（排除输入框与 portal 下拉本体）
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (boxRef.current?.contains(t)) return;
+      if (dropRef.current?.contains(t)) return;
+      setOpen(false);
+      setKw("");
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = kw.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q));
+  }, [options, kw]);
+
+  if (readOnly) {
+    return (
+      <FieldWrap field={field} error={error}>
+        <div className="sselect-readonly">{selected?.label || current || "—"}</div>
+      </FieldWrap>
+    );
+  }
+
   return (
     <FieldWrap field={field} error={error}>
-      <select
-        className="select"
-        value={asStr(value)}
-        disabled={readOnly}
-        onChange={(e) => onChange(field.fieldKey, e.target.value)}
-      >
-        <option value="">请选择</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <div className={"sselect" + (open ? " open" : "")}>
+        <div className="sselect-box" ref={boxRef} onClick={toggle}>
+          <input
+            className="sselect-input"
+            value={open ? kw : selected?.label || ""}
+            placeholder="请选择"
+            autoComplete="off"
+            onChange={(e) => setKw(e.target.value)}
+            onFocus={() => {
+              if (!open) toggle();
+            }}
+          />
+          <span className="sselect-arrow">{open ? "▴" : "▾"}</span>
+        </div>
+        {open &&
+          createPortal(
+            <div className="sselect-drop" ref={dropRef} style={{ top: pos.top, left: pos.left, width: pos.width }}>
+              {filtered.length === 0 ? (
+                <div className="sselect-empty">无匹配选项</div>
+              ) : (
+                filtered.map((o) => (
+                  <div
+                    key={o.value}
+                    className={"sselect-item" + (o.value === current ? " active" : "")}
+                    onClick={() => {
+                      onChange(field.fieldKey, o.value);
+                      setOpen(false);
+                      setKw("");
+                    }}
+                  >
+                    {o.label}
+                  </div>
+                ))
+              )}
+            </div>,
+            document.body
+          )}
+      </div>
     </FieldWrap>
   );
 }
@@ -538,34 +621,36 @@ function TableField({ field, value, onChange, readOnly, aupId, error }: { field:
 
   return (
     <FieldWrap field={field} error={error}>
-      <table className="grid">
-        <thead>
-          <tr>
-            {columns.map((c) => (
-              <th key={c.fieldKey} style={c.config?.width ? { width: c.config.width } : undefined}>
-                {c.label}{c.required && <span className="req">*</span>}
-              </th>
-            ))}
-            {!readOnly && <th style={{ width: 40 }} />}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri}>
+      <div className="table-scroll">
+        <table className="grid">
+          <thead>
+            <tr>
               {columns.map((c) => (
-                <td key={c.fieldKey}>
-                  <CellField field={c} value={row[c.fieldKey]} onChange={(v) => patchRow(ri, c.fieldKey, v)} readOnly={readOnly} aupId={aupId} />
-                </td>
+                <th key={c.fieldKey} style={c.config?.width ? { width: c.config.width, minWidth: c.config.width } : undefined}>
+                  {c.label}{c.required && <span className="req">*</span>}
+                </th>
               ))}
-              {!readOnly && (
-                <td>
-                  <button type="button" className="row-del" onClick={() => delRow(ri)}>删</button>
-                </td>
-              )}
+              {!readOnly && <th style={{ width: 40 }} />}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri}>
+                {columns.map((c) => (
+                  <td key={c.fieldKey}>
+                    <CellField field={c} value={row[c.fieldKey]} onChange={(v) => patchRow(ri, c.fieldKey, v)} readOnly={readOnly} aupId={aupId} />
+                  </td>
+                ))}
+                {!readOnly && (
+                  <td>
+                    <button type="button" className="row-del" onClick={() => delRow(ri)}>删</button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {!readOnly && (
         <span className="add-row" onClick={addRow}>＋ 添加一行</span>
       )}
@@ -577,9 +662,12 @@ function TableField({ field, value, onChange, readOnly, aupId, error }: { field:
 function CellField({ field, value, onChange, readOnly, aupId }: { field: FormFieldDef; value: unknown; onChange: (v: unknown) => void; readOnly?: boolean; aupId?: string }) {
   switch (field.type) {
     case "text":
-      return <input className="input" type="text" value={asStr(value)} disabled={readOnly} onChange={(e) => onChange(e.target.value)} />;
+      // 只读态用可换行的纯文本，避免 disabled input 单行截断（表格单元格文字显示不全）
+      if (readOnly) return <span className="cell-text">{asStr(value) || "—"}</span>;
+      return <input className="input" type="text" value={asStr(value)} onChange={(e) => onChange(e.target.value)} />;
     case "textarea":
-      return <textarea className="textarea" value={asStr(value)} disabled={readOnly} onChange={(e) => onChange(e.target.value)} />;
+      if (readOnly) return <span className="cell-text">{asStr(value) || "—"}</span>;
+      return <textarea className="textarea" value={asStr(value)} onChange={(e) => onChange(e.target.value)} />;
     case "number":
       return (
         <input
@@ -605,7 +693,8 @@ function CellField({ field, value, onChange, readOnly, aupId }: { field: FormFie
     case "animalPicker":
       return <CellPicker type={pickerTypeOf(field.type)} value={value} onChange={onChange} readOnly={readOnly} />;
     default:
-      return <input className="input" type="text" value={asStr(value)} disabled={readOnly} onChange={(e) => onChange(e.target.value)} />;
+      if (readOnly) return <span className="cell-text">{asStr(value) || "—"}</span>;
+      return <input className="input" type="text" value={asStr(value)} onChange={(e) => onChange(e.target.value)} />;
   }
 }
 

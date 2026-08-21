@@ -53,6 +53,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { appConfirm, appPrompt } from "@/lib/appDialog";
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -490,7 +491,7 @@ export default function AdminAssetRecordPage() {
   };
 
   const onAddColumn = async () => {
-    const label = window.prompt("请输入新增表头名称");
+    const label = await appPrompt("请输入新增表头名称");
     if (!label || !label.trim()) return;
     try {
       await createAssetColumn(label.trim());
@@ -529,7 +530,7 @@ export default function AdminAssetRecordPage() {
   };
 
   const onClearTable = async () => {
-    const ok = window.confirm("确认清空当前资产表格的所有内容（资产、动态列、申请记录）吗？此操作不可撤销。");
+    const ok = await appConfirm("确认清空当前资产表格的所有内容（资产、动态列、申请记录）吗？此操作不可撤销。");
     if (!ok) return;
     try {
       const result = await clearAssetTable();
@@ -562,7 +563,7 @@ export default function AdminAssetRecordPage() {
       return;
     }
     const row = deleteCandidates.find((x) => x.id === selectedDeleteId);
-    const ok = window.confirm(`确认删除资产【${row?.assetCode || ""} ${row?.assetName || ""}】？删除后将进入回收站。`);
+    const ok = await appConfirm(`确认删除资产【${row?.assetCode || ""} ${row?.assetName || ""}】？删除后将进入回收站。`);
     if (!ok) return;
     try {
       await deleteAssetMut.mutateAsync(selectedDeleteId);
@@ -589,7 +590,7 @@ export default function AdminAssetRecordPage() {
   };
 
   const doPurge = async (id: string) => {
-    const ok = window.confirm("确认彻底删除该资产？彻底删除后不可恢复。");
+    const ok = await appConfirm("确认彻底删除该资产？彻底删除后不可恢复。");
     if (!ok) return;
     try {
       await purgeRecycleMut.mutateAsync(id);
@@ -1083,7 +1084,7 @@ export default function AdminAssetRecordPage() {
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           initialAsset={selectedAsset}
-          onSuccess={async () => {
+          onSuccess={() => {
             // query invalidation is handled by useCreateAssetTransfer hook internally
           }}
         />

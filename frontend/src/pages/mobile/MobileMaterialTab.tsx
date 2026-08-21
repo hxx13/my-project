@@ -37,6 +37,7 @@ import { MobileMaterialCartBar } from "./components/MobileMaterialCartBar";
 import { useCartSync } from "@/hooks/useCartSync";
 import { cartAdd, cartSetQty } from "@/utils/cartMath";
 
+import { appConfirm } from "@/lib/appDialog";
 /* ---- localStorage 购物车（学生中心 token / JWT） ---- */
 const JWT_CART_KEY = "mobile_material_cart_jwt";
 
@@ -346,7 +347,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
   };
 
   const handleRevoke = async (id: string) => {
-    if (!window.confirm("确定撤销此申领？已通过/出库的物品将被召回，审核记录将被清除。")) return;
+    if (!await appConfirm("确定撤销此申领？已通过/出库的物品将被召回，审核记录将被清除。")) return;
     try {
       await withdrawMaterialRequest(id);
       toast.success("已撤销，申领回到待审状态");

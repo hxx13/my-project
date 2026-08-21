@@ -127,6 +127,8 @@ export interface AupSnapshotMeta {
   draftSource?: DraftSource;
   createdAt: string;
   createdBy?: string;
+  /** 创建人展示名（UserDisplayNameService） */
+  createdByName?: string;
 }
 
 /** 单快照完整数据（GET /aup/{id}/snapshots/{snapId}，含 data） */

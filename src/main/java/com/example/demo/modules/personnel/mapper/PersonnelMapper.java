@@ -18,8 +18,32 @@ public interface PersonnelMapper {
     @Select("SELECT * FROM personnel WHERE staff_id = #{staffId} LIMIT 1")
     Personnel findByStaffId(@Param("staffId") String staffId);
 
+    @Select("SELECT * FROM personnel WHERE aro_user_id = #{aroUserId} LIMIT 1")
+    Personnel findByAroUserId(@Param("aroUserId") String aroUserId);
+
+    /**
+     * 按账号 id 批量查人员（staff_id 或 aro_user_id 命中均可），供展示名统一解析。
+     */
+    @Select({
+            "<script>",
+            "SELECT id, name, staff_id AS staffId, aro_user_id AS aroUserId",
+            "FROM personnel",
+            "WHERE staff_id IN",
+            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
+            "OR aro_user_id IN",
+            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
+            "</script>"
+    })
+    List<Personnel> findByAccountIds(@Param("ids") List<String> ids);
+
+    @Select("SELECT * FROM personnel WHERE id = #{id} LIMIT 1")
+    Personnel findById(@Param("id") Long id);
+
     @Select("SELECT * FROM personnel WHERE name = #{name} LIMIT 1")
     Personnel findByName(@Param("name") String name);
+
+    @Update("UPDATE personnel SET role = #{role} WHERE id = #{id}")
+    int updateRole(@Param("id") Long id, @Param("role") String role);
 
     @Insert("INSERT INTO personnel(name, staff_id, aro_user_id, job_number, department_name, project_group_name, institution_id, " +
             "user_type_names, head, gender, mobile_phone, email, is_school, allowed_rooms_display_zh, has_official_room_permission) " +

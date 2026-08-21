@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { createPortal } from "react-dom";
 import {
@@ -20,18 +20,22 @@ import {
 import type { SupplyItem } from "@/api/domains/supplies.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { webImageSrc } from "@/utils/mediaUrl";
+import { formatSupplyStockLabel } from "@/utils/supplyStockLabel";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
+import { appConfirm, appPrompt } from "@/lib/appDialog";
 type CardPanel = null | { itemId: number; kind: "inbound" | "stock" };
 
 type SpecDimension = { name: string; options: string[] };
 
 export default function AdminSuppliesManagePage() {
   const [filterCat, setFilterCat] = useState<number | "">("");
+  const [searchKeyword, setSearchKeyword] = useState("");
   const [newCatName, setNewCatName] = useState("");
+  const [createCatOpen, setCreateCatOpen] = useState(false);
   const [cardPanel, setCardPanel] = useState<CardPanel>(null);
   const [panelQty, setPanelQty] = useState("1");
   const [panelNewStock, setPanelNewStock] = useState("");
@@ -85,6 +89,17 @@ export default function AdminSuppliesManagePage() {
     }
   }, [categories, createCatId]);
 
+  const filteredItems = useMemo(() => {
+    const kw = searchKeyword.trim().toLowerCase();
+    if (!kw) return items;
+    return items.filter((item) => {
+      const name = String(item.name || "").toLowerCase();
+      const subtitle = String(item.subtitle || "").toLowerCase();
+      const idText = String(item.id || "").toLowerCase();
+      return name.includes(kw) || subtitle.includes(kw) || idText.includes(kw);
+    });
+  }, [items, searchKeyword]);
+
   const openInbound = (it: SupplyItem) => {
     setCardPanel({ itemId: it.id, kind: "inbound" });
     setPanelQty("1");
@@ -108,29 +123,64 @@ export default function AdminSuppliesManagePage() {
         description="维护分类与物资卡片、入库与库存；回收站与小程序管理端行为对齐。领用通知接收人请在「系统设置」→ supplies 中配置 supply.claim.notifyReceiverUserId。"
       />
       <section className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 space-y-3 shadow-twin-level-1">
-        <h3 className="font-medium text-[var(--twin-ink)]">分类</h3>
-        {catLoading ? <DataSkeleton variant="card" rows={3} /> : null}
-        <div className="flex flex-wrap gap-2">
-          <input
-            className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-sm text-[var(--twin-ink)]"
-            placeholder="新分类名称"
-            value={newCatName}
-            onChange={(e) => setNewCatName(e.target.value)}
-          />
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-medium text-[var(--twin-ink)]">分类</h3>
           <button
             type="button"
-            className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-1 text-sm font-medium text-[var(--twin-on-primary)]"
-            onClick={() => {
-              if (!newCatName.trim()) return toast.error("填写名称");
-              createCatMut.mutate(
-                { name: newCatName.trim(), sortOrder: 0, status: 1 },
-                { onSuccess: () => setNewCatName("") },
-              );
-            }}
+            className={`rounded-twin-sm px-2.5 py-1 text-xs font-medium border ${
+              createCatOpen
+                ? "border-[var(--twin-primary)] bg-[var(--twin-primary)]/10 text-[var(--twin-primary)]"
+                : "border-[var(--twin-hairline)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+            }`}
+            onClick={() => setCreateCatOpen((v) => !v)}
           >
-            新增分类
+            {createCatOpen ? "收起" : "新建分类"}
           </button>
         </div>
+        {catLoading ? <DataSkeleton variant="card" rows={3} /> : null}
+        {createCatOpen ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
+            <input
+              className="min-w-[140px] flex-1 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-sm text-[var(--twin-ink)]"
+              placeholder="新分类名称"
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                if (!newCatName.trim()) return toast.error("填写名称");
+                createCatMut.mutate(
+                  { name: newCatName.trim(), sortOrder: 0, status: 1 },
+                  {
+                    onSuccess: () => {
+                      setNewCatName("");
+                      setCreateCatOpen(false);
+                    },
+                  },
+                );
+              }}
+            />
+            <button
+              type="button"
+              className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-1 text-sm font-medium text-[var(--twin-on-primary)] disabled:opacity-50"
+              disabled={createCatMut.isPending}
+              onClick={() => {
+                if (!newCatName.trim()) return toast.error("填写名称");
+                createCatMut.mutate(
+                  { name: newCatName.trim(), sortOrder: 0, status: 1 },
+                  {
+                    onSuccess: () => {
+                      setNewCatName("");
+                      setCreateCatOpen(false);
+                    },
+                  },
+                );
+              }}
+            >
+              {createCatMut.isPending ? "创建中…" : "确认"}
+            </button>
+          </div>
+        ) : null}
         <div className="space-y-1 text-sm">
           {categories.map((c) => (
             <div key={c.id} className="flex items-center justify-between rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-1">
@@ -139,8 +189,8 @@ export default function AdminSuppliesManagePage() {
                 <button
                   type="button"
                   className="rounded-twin-sm px-2 py-0.5 text-xs font-medium text-[var(--twin-link-deep)]"
-                  onClick={() => {
-                    const name = window.prompt("分类名称", c.name);
+                  onClick={async () => {
+                    const name = await appPrompt("分类名称", c.name);
                     if (!name) return;
                     updateCatMut.mutate({ id: c.id, body: { name, status: c.status, sortOrder: c.sortOrder } });
                   }}
@@ -150,8 +200,8 @@ export default function AdminSuppliesManagePage() {
                 <button
                   type="button"
                   className="rounded-twin-sm px-2 py-0.5 text-xs font-medium text-red-600"
-                  onClick={() => {
-                    if (!window.confirm("删除分类？")) return;
+                  onClick={async () => {
+                    if (!await appConfirm("删除分类？")) return;
                     deleteCatMut.mutate(c.id);
                   }}
                 >
@@ -180,6 +230,13 @@ export default function AdminSuppliesManagePage() {
               </option>
             ))}
           </select>
+          <input
+            type="text"
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            placeholder="搜索名称 / 副标题 / ID"
+            className="h-8 min-w-[160px] flex-1 max-w-xs rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 text-sm text-[var(--twin-ink)] outline-none focus:ring-2 focus:ring-sky-500"
+          />
           <button
             type="button"
             className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs font-medium text-[var(--twin-body)]"
@@ -383,7 +440,7 @@ export default function AdminSuppliesManagePage() {
 
         {itemsLoading ? <DataSkeleton variant="card" rows={6} /> : null}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((it) => {
+          {filteredItems.map((it) => {
             const panelOpen = cardPanel?.itemId === it.id;
             const inboundOpen = panelOpen && cardPanel?.kind === "inbound";
             const stockOpen = panelOpen && cardPanel?.kind === "stock";
@@ -425,7 +482,7 @@ export default function AdminSuppliesManagePage() {
                   <div className="min-w-0">
                     <div className="font-medium text-[var(--twin-ink)] leading-snug truncate">{it.name}</div>
                     <div className="mt-1 text-xs text-[var(--twin-mute)]">
-                      ID {it.id} · {it.stockMode} · 库存 {it.stockQty} · {it.shelfStatus}
+                      ID {it.id} · {it.stockMode} · {formatSupplyStockLabel(it)} · {it.shelfStatus}
                     </div>
                   </div>
                 </div>
@@ -433,8 +490,8 @@ export default function AdminSuppliesManagePage() {
                   <button
                     type="button"
                     className="rounded-twin-sm px-2 py-1 text-xs font-medium text-[var(--twin-link-deep)]"
-                    onClick={() => {
-                      const name = window.prompt("名称", it.name);
+                    onClick={async () => {
+                      const name = await appPrompt("名称", it.name);
                       if (!name) return;
                       updateItemMut.mutate({ id: it.id, body: { name, shelfStatus: it.shelfStatus, stockMode: it.stockMode } });
                     }}
@@ -471,7 +528,7 @@ export default function AdminSuppliesManagePage() {
                   <button
                     type="button"
                     className="rounded-twin-sm px-2 py-1 text-xs font-medium text-[var(--twin-link-deep)]"
-                    onClick={async () => {
+                    onClick={() => {
                       const input = document.createElement('input');
                       input.type = 'file';
                       input.accept = 'image/*';
@@ -493,8 +550,8 @@ export default function AdminSuppliesManagePage() {
                   <button
                     type="button"
                     className="rounded-twin-sm px-2 py-1 text-xs font-medium text-red-600"
-                    onClick={() => {
-                      if (!window.confirm("删除该物资？")) return;
+                    onClick={async () => {
+                      if (!await appConfirm("删除该物资？")) return;
                       deleteItemMut.mutate(it.id, {
                         onSuccess: () => {
                           if (cardPanel?.itemId === it.id) closePanel();
@@ -579,7 +636,9 @@ export default function AdminSuppliesManagePage() {
             );
           })}
         </div>
-        {!itemsLoading && items.length === 0 ? <EmptyState title="当前筛选下暂无物资" /> : null}
+        {!itemsLoading && filteredItems.length === 0 ? (
+          <EmptyState title={items.length === 0 ? "当前筛选下暂无物资" : "无匹配物资"} description={items.length > 0 ? "试试其他关键词或清空搜索" : undefined} />
+        ) : null}
 
         {recycleOpen ? (
           <div className="mt-2 space-y-3 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
@@ -590,8 +649,8 @@ export default function AdminSuppliesManagePage() {
                   type="button"
                   className="rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
                   disabled={purgeAllMut.isPending}
-                  onClick={() => {
-                    if (!window.confirm("确认一键清空回收站？")) return;
+                  onClick={async () => {
+                    if (!await appConfirm("确认一键清空回收站？")) return;
                     purgeAllMut.mutate(undefined, {
                       onSuccess: () => setRecyclePage(1),
                     });
@@ -621,8 +680,8 @@ export default function AdminSuppliesManagePage() {
                     <button
                       type="button"
                       className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700"
-                      onClick={() => {
-                        if (!window.confirm(`确认彻底删除 ${it.name}？`)) return;
+                      onClick={async () => {
+                        if (!await appConfirm(`确认彻底删除 ${it.name}？`)) return;
                         purgeMut.mutate([it.id]);
                       }}
                       disabled={purgeMut.isPending}

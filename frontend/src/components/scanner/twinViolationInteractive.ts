@@ -87,9 +87,10 @@ export function violationEnterLocked(row: ViolationEnterLockedInput): boolean {
 /** 调用后端永久确认交互拼图，并广播完成事件供弹窗刷新进房按钮 */
 export async function ackViolationInteractivePermanent(
   violationId: number,
-  userId: string
+  userId: string,
+  answer: string
 ): Promise<ViolationInteractiveAckResult> {
-  const data = await acknowledgeViolationInteractive({ violationId, userId });
+  const data = await acknowledgeViolationInteractive({ violationId, userId, answer });
   const result: ViolationInteractiveAckResult = {
     violationId: data.violationId,
     interactiveChallengeVerified: Boolean(data.interactiveChallengeVerified),

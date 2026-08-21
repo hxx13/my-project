@@ -16,12 +16,15 @@ import {
   updateCartItem,
   removeCartItem,
   clearCart,
+  markCartPackageReady,
+  withdrawCartPackage,
   fetchOrders,
   submitOrder,
   fetchOrderDetail,
   fetchOrderLogs,
   fetchAllOrders,
   updateOrderStatus,
+  fetchApprovedAups,
 } from "@/api/domains/referenceData.api";
 import { toast } from "react-hot-toast";
 
@@ -63,9 +66,10 @@ export function useSpecTemplates() {
 
 export function useRefCart(groupId: string) {
   return useQuery({
-    queryKey: queryKeys.referenceData.cart,
+    queryKey: queryKeys.referenceData.cart(groupId),
     queryFn: () => fetchCart(groupId),
     enabled: !!groupId,
+    refetchInterval: 15_000,
   });
 }
 
@@ -197,8 +201,7 @@ export function useAddToCart() {
   return useMutation({
     mutationFn: ({ body, groupId }: { body: Parameters<typeof addToCart>[0]; groupId: string }) => addToCart(body, groupId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.referenceData.cart });
-      toast.success("已加入购物车");
+      qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
     },
     onError: (e: Error) => toast.error(e.message || "加入购物车失败"),
   });
@@ -207,11 +210,10 @@ export function useAddToCart() {
 export function useUpdateCartItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: { quantity?: number; specSelections?: Record<string, string>; remark?: string } }) =>
+    mutationFn: ({ id, body }: { id: number; body: { quantity?: number; specSelections?: Record<string, string> } }) =>
       updateCartItem(id, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.referenceData.cart });
-      toast.success("购物车已更新");
+      qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
     },
     onError: (e: Error) => toast.error(e.message || "更新失败"),
   });
@@ -222,7 +224,7 @@ export function useRemoveCartItem() {
   return useMutation({
     mutationFn: removeCartItem,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.referenceData.cart });
+      qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
       toast.success("已移除");
     },
     onError: (e: Error) => toast.error(e.message || "移除失败"),
@@ -234,10 +236,36 @@ export function useClearCart() {
   return useMutation({
     mutationFn: (groupId: string) => clearCart(groupId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.referenceData.cart });
+      qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
       toast.success("购物车已清空");
     },
     onError: (e: Error) => toast.error(e.message || "清空失败"),
+  });
+}
+
+export function useMarkCartPackageReady() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, body }: { groupId: string; body?: { cartIds?: number[]; packageRemark?: string } }) =>
+      markCartPackageReady(groupId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
+      toast.success("已提交给 PI");
+    },
+    onError: (e: Error) => toast.error(e.message || "提交订单包失败"),
+  });
+}
+
+export function useWithdrawCartPackage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, body }: { groupId: string; body?: { cartIds?: number[] } }) =>
+      withdrawCartPackage(groupId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
+      toast.success("已撤回订单包");
+    },
+    onError: (e: Error) => toast.error(e.message || "撤回失败"),
   });
 }
 
@@ -250,5 +278,15 @@ export function useSubmitOrder() {
       toast.success("订单已提交");
     },
     onError: (e: Error) => toast.error(e.message || "提交失败"),
+  });
+}
+
+/** 拉取本课题组已批准 AUP（下单必选 AUP 下拉） */
+export function useApprovedAups(projectGroupName?: string) {
+  return useQuery({
+    queryKey: ["approved-aups", projectGroupName],
+    queryFn: () => fetchApprovedAups(projectGroupName),
+    enabled: !!projectGroupName,
+    staleTime: 5 * 60 * 1000,
   });
 }

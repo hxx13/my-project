@@ -1,5 +1,6 @@
 package com.example.demo.modules.personnel.service;
 
+import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.personnel.dto.PersonnelFilter;
 import com.example.demo.modules.personnel.entity.Personnel;
 import com.example.demo.modules.personnel.mapper.PersonnelMapper;
@@ -8,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.*;
 
@@ -19,11 +21,15 @@ public class PersonnelService {
 
     private static final Logger log = LoggerFactory.getLogger(PersonnelService.class);
 
+    private static final int NAME_MAX_LEN = 128;
+
     private final PersonnelMapper personnelMapper;
+    private final UserMapper userMapper;
     private final JdbcTemplate jdbcTemplate;
 
-    public PersonnelService(PersonnelMapper personnelMapper, JdbcTemplate jdbcTemplate) {
+    public PersonnelService(PersonnelMapper personnelMapper, UserMapper userMapper, JdbcTemplate jdbcTemplate) {
         this.personnelMapper = personnelMapper;
+        this.userMapper = userMapper;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -71,6 +77,44 @@ public class PersonnelService {
             throw new RuntimeException("不能置空，如需清除请联系开发");
         }
         jdbcTemplate.update("UPDATE personnel SET " + field + " = ? WHERE id = ?", value.trim(), id);
+    }
+
+    /**
+     * 修改真实姓名（personnel.name），绝不改登录账号 username / display_nickname。
+     * 联动写 sys_user.name 与 aro_personnel.name，避免下次聚合同步用账号名盖回，
+     * 以及业务展示（UserDisplayNameService 优先读 aro_personnel）仍显示旧名。
+     * 注意：personnel 以姓名唯一；ARO 全量回灌仍可能覆盖 aro_personnel.name。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateName(Long id, String rawName) {
+        if (id == null) throw new RuntimeException("id 不能为空");
+        String name = rawName == null ? "" : rawName.trim();
+        if (name.isEmpty()) throw new RuntimeException("姓名不能为空");
+        if (name.length() > NAME_MAX_LEN) {
+            throw new RuntimeException("姓名长度不能超过 " + NAME_MAX_LEN);
+        }
+        Personnel row = personnelMapper.findById(id);
+        if (row == null) throw new RuntimeException("人员不存在");
+        if (name.equals(row.getName())) {
+            return;
+        }
+        Personnel clash = personnelMapper.findByName(name);
+        if (clash != null && !Objects.equals(clash.getId(), id)) {
+            throw new RuntimeException("姓名已被占用，请换一个或先处理同名人员");
+        }
+        int updated = jdbcTemplate.update("UPDATE personnel SET name = ? WHERE id = ?", name, id);
+        if (updated <= 0) throw new RuntimeException("更新姓名失败");
+
+        // 教职工侧：只写 name 列，保证 sync 的 COALESCE(name, …) 用真实姓名而非账号名
+        if (row.getStaffId() != null && !row.getStaffId().isBlank()) {
+            userMapper.updateNameById(row.getStaffId().trim(), name);
+        }
+        // 学生侧：业务展示读 aro_personnel.name；对应 sys_user 若存在也写 name
+        if (row.getAroUserId() != null && !row.getAroUserId().isBlank()) {
+            String aroUid = row.getAroUserId().trim();
+            jdbcTemplate.update("UPDATE aro_personnel SET name = ? WHERE user_id = ?", name, aroUid);
+            userMapper.updateNameById(aroUid, name);
+        }
     }
 
     /**
@@ -129,8 +173,15 @@ public class PersonnelService {
         }
         int depts = syncDepartments();
         int groups = syncProjectGroups();
-        log.info("[personnel-sync] 聚合完成，学生 {} 教职工 {} → 统一人员 {} 条，aro 绑定 {} 条，部门 {} 条，课题组 {} 条",
-                students.size(), staff.size(), count, bindings, depts, groups);
+        // role 回填：运行期同步的新人员 role 为空时，从 sys_user 兜底补（教职工侧优先，学生侧 MEMBER），幂等只填空值
+        int roleBackfill = jdbcTemplate.update(
+                "UPDATE personnel p " +
+                        "LEFT JOIN sys_user su_staff ON su_staff.id = p.staff_id " +
+                        "LEFT JOIN sys_user su_student ON su_student.id = p.aro_user_id " +
+                        "SET p.role = COALESCE(su_staff.role, su_student.role) " +
+                        "WHERE p.role IS NULL AND (su_staff.role IS NOT NULL OR su_student.role IS NOT NULL)");
+        log.info("[personnel-sync] 聚合完成，学生 {} 教职工 {} → 统一人员 {} 条，aro 绑定 {} 条，部门 {} 条，课题组 {} 条，role 回填 {} 条",
+                students.size(), staff.size(), count, bindings, depts, groups, roleBackfill);
         return Map.of("students", students.size(), "staff", staff.size(), "unified", count,
                 "bindings", bindings, "departments", depts, "groups", groups);
     }
@@ -230,6 +281,62 @@ public class PersonnelService {
         if (p.getHasOfficialRoomPermission() == null) {
             Integer v = toInt(r.get("has_official_room_permission"));
             p.setHasOfficialRoomPermission(v == null ? 0 : v);
+        }
+    }
+
+    /**
+     * 为新建/注册的教职工账号立刻挂上 personnel 行并写入真实姓名。
+     * 解决：仅写 sys_user、不同步 personnel 时，统一人员页看不见、后续按姓名同步又被账号名盖回或「过几天对不上」。
+     * 不改 username；name 冲突且已被其他 staff 占用时抛错。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void ensureStaffPersonnel(String staffUserId, String rawName, String roleCode) {
+        if (!StringUtils.hasText(staffUserId)) {
+            throw new IllegalArgumentException("staffUserId 不能为空");
+        }
+        String name = rawName == null ? "" : rawName.trim();
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("真实姓名不能为空");
+        }
+        if (name.length() > NAME_MAX_LEN) {
+            throw new IllegalArgumentException("真实姓名长度不能超过 " + NAME_MAX_LEN);
+        }
+        String staffId = staffUserId.trim();
+        userMapper.updateNameById(staffId, name);
+
+        Personnel byStaff = personnelMapper.findByStaffId(staffId);
+        if (byStaff != null) {
+            if (!name.equals(byStaff.getName())) {
+                Personnel clash = personnelMapper.findByName(name);
+                if (clash != null && !Objects.equals(clash.getId(), byStaff.getId())) {
+                    throw new IllegalArgumentException("姓名已被占用，请换一个或先处理同名人员");
+                }
+                jdbcTemplate.update("UPDATE personnel SET name = ? WHERE id = ?", name, byStaff.getId());
+            }
+            if (StringUtils.hasText(roleCode) && !StringUtils.hasText(byStaff.getRole())) {
+                personnelMapper.updateRole(byStaff.getId(), roleCode.trim());
+            }
+            return;
+        }
+
+        Personnel clash = personnelMapper.findByName(name);
+        if (clash != null) {
+            if (StringUtils.hasText(clash.getStaffId()) && !staffId.equals(clash.getStaffId().trim())) {
+                throw new IllegalArgumentException("姓名已被其他教职工账号占用");
+            }
+            personnelMapper.linkStaff(clash.getId(), staffId);
+            if (StringUtils.hasText(roleCode)) {
+                personnelMapper.updateRole(clash.getId(), roleCode.trim());
+            }
+            return;
+        }
+
+        Personnel p = new Personnel();
+        p.setName(name);
+        p.setStaffId(staffId);
+        personnelMapper.insert(p);
+        if (StringUtils.hasText(roleCode) && p.getId() != null) {
+            personnelMapper.updateRole(p.getId(), roleCode.trim());
         }
     }
 

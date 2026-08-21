@@ -4,6 +4,7 @@ import { RefreshCw, CheckCircle, AlertTriangle, Circle } from 'lucide-react';
 import { fetchClientVersionStats, broadcastClientReload, type ClientVersionStats } from '@/api/domains/clientVersion.api';
 import { AdminButton } from '@/components/admin/AdminButton';
 
+import { appConfirm } from "@/lib/appDialog";
 export function ClientVersionCard() {
     const [stats, setStats] = useState<ClientVersionStats | null>(null);
     const [loading, setLoading] = useState(true);
@@ -29,7 +30,7 @@ export function ClientVersionCard() {
 
     const handleBroadcast = async () => {
         const outdated = stats?.outdated ?? '?';
-        if (!window.confirm(`预计影响 ${outdated} 台客户端，建议先确认新版本已部署完成。\n\n是否继续？`)) return;
+        if (!await appConfirm(`预计影响 ${outdated} 台客户端，建议先确认新版本已部署完成。\n\n是否继续？`)) return;
         try {
             const result = await broadcastClientReload();
             toast.success(`已下发。${result.stats.totalClients} 台在线，${result.stats.outdated} 台待刷新。`);

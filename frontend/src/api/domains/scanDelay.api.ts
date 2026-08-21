@@ -115,6 +115,8 @@ export async function fetchPendingScanDelayRequests(): Promise<ScanDelayPendingR
 export type ScanDelayHistoryRequest = ScanDelayPendingRequest & {
   reviewedAt?: string;
   reviewedBy?: string;
+  /** 处理人展示名（UserDisplayNameService） */
+  reviewedByName?: string;
   rejectReason?: string;
 };
 
@@ -127,6 +129,7 @@ export async function fetchScanDelayHistory(limit = 100): Promise<ScanDelayHisto
     ...normalizePendingRequest(row),
     reviewedAt: str(row.reviewedAt ?? row.reviewed_at) || undefined,
     reviewedBy: str(row.reviewedBy ?? row.reviewed_by) || undefined,
+    reviewedByName: str(row.reviewedByName ?? row.reviewed_by_name) || undefined,
     rejectReason: str(row.rejectReason ?? row.reject_reason) || undefined,
   }));
 }

@@ -19,6 +19,7 @@ import {
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
 import { PageHelpHost } from "@/features/page-help/PageHelpHost";
 
+import { appConfirm } from "@/lib/appDialog";
 interface StudentHeaderProps {
   onMenuClick: () => void;
   onOpenCommand?: () => void;
@@ -296,10 +297,10 @@ export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps
             </DropdownMenuItem>
 
             {/* SendKey */}
-            <DropdownMenuItem onSelect={() => {
+            <DropdownMenuItem onSelect={async () => {
               if (!personnelId) { toast.error("无法获取人员ID"); return; }
               if (currentSendKey) {
-                if (!window.confirm("已绑定微信通知，是否取消绑定？")) return;
+                if (!await appConfirm("已绑定微信通知，是否取消绑定？")) return;
                 const token = authStorage.getToken();
                 fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/send-key`, {
                   method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
@@ -318,10 +319,10 @@ export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps
             </DropdownMenuItem>
 
             {/* WxPusher */}
-            <DropdownMenuItem onSelect={() => {
+            <DropdownMenuItem onSelect={async () => {
               if (!personnelId) { toast.error("无法获取人员ID"); return; }
               if (currentWxPusher) {
-                if (!window.confirm("已绑定 WxPusher 推送，是否取消绑定？")) return;
+                if (!await appConfirm("已绑定 WxPusher 推送，是否取消绑定？")) return;
                 const token = authStorage.getToken();
                 fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/wx-pusher-uid`, {
                   method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },

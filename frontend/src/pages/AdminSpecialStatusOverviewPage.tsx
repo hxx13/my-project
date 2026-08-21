@@ -17,6 +17,7 @@ import {
 } from "@/api/domains/cageShelf.api";
 import { STATUS_COLOR, STATUS_ABBR } from "@/features/cage-shelf/components/CageCellOverlays";
 
+import { appConfirm } from "@/lib/appDialog";
 /* ================================================================== */
 /*  Constants & Helpers                                                 */
 /* ================================================================== */
@@ -248,7 +249,7 @@ export default function AdminSpecialStatusOverviewPage() {
   /* ---- Snapshot delete ---- */
   const [deletingBatch, setDeletingBatch] = useState<string | null>(null);
   const handleDeleteBatch = async (batchId: string) => {
-    if (!confirm(`确定删除快照批次 ${batchId.substring(0, 8)}…？该操作同时清除关联事件日志且不可恢复。`)) return;
+    if (!await appConfirm(`确定删除快照批次 ${batchId.substring(0, 8)}…？该操作同时清除关联事件日志且不可恢复。`)) return;
     setDeletingBatch(batchId);
     try {
       const r = await deleteSnapshotBatch(batchId);

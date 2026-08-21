@@ -31,6 +31,7 @@ import { PageTransition } from "@/components/animation/PageTransition";
 import { BackfillAutoGlobalBanner } from "@/features/dahua-swing-stats/BackfillAutoGlobalBanner";
 import { toast } from "react-hot-toast";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
+import { isIamAuthProfile, redirectIamGlobalLogout } from "@/features/auth/iamOAuth";
 import {
   fetchPublicPagePermissions,
   notifyWebPublicPagePermissionsUpdated,
@@ -145,6 +146,7 @@ import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { NightSkyBackdropDecor } from "@/features/night-sky/NightSkyBackdropDecor";
 
+import { appConfirm } from "@/lib/appDialog";
 const SIDEBAR_COLLAPSED_KEY = "aro-admin-sidebar-collapsed";
 
 function routeMatches(pathname: string, to: string, end?: boolean) {
@@ -469,8 +471,9 @@ export default function AdminLayout() {
 
   /** 与侧栏一级入口一致的路径集合（注册表 ∪ 权限 sidebar ENTRY），供顶栏「返回」判定；视觉规范见 `frontend/docs/ADMIN_UI_STYLE.md` */
   const permSidebarPaths = useMemo(() => collectSidebarEntryPathsFromPerm(permNodes), [permNodes]);
+  /** 仅非侧栏一级入口展示「返回」；与 adminShellNavigation.shouldShowAdminShellBack 一致，避免一级页误出返回后 history -1 跳出控制台 */
   const showAdminShellBack = useMemo(
-    () => normalizeAdminPath(pathname) !== "/admin" || shouldShowAdminShellBack(pathname, permSidebarPaths),
+    () => shouldShowAdminShellBack(pathname, permSidebarPaths),
     [pathname, permSidebarPaths]
   );
   const adminHeaderTitle = useMemo(() => adminChromeTitle(pathname), [pathname]);
@@ -1097,7 +1100,7 @@ export default function AdminLayout() {
     finally { setCasRenewing(false); }
   };
   const handleCasUnbind = async () => {
-    if (!confirm("确定解绑ARO个人认证吗？")) return;
+    if (!await appConfirm("确定解绑ARO个人认证吗？")) return;
     try { await unbindCasAccount(); toast.success("已解绑"); setCasStatus(null); }
     catch (e: any) { toast.error(e?.message || "解绑失败"); }
   };
@@ -1175,7 +1178,7 @@ export default function AdminLayout() {
 
 {/* ⚠️ self-stretch + minHeight:100dvh 是必须的：父容器 items-start 导致子元素不拉伸，
     不加这两个属性会导致所有子页面的 h-full 失效（高度塌为 0）。
-    见 docs/UI设计规范与主题标准.md § 高度链完整性 */}
+    这是整条高度链的根，子页面用 AdminPageShell fillHeight 接续。 */}
       <section className="relative flex min-w-0 flex-1 flex-col self-stretch" style={{ minHeight: "100dvh" }}>
         {isDark ? (
           <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
@@ -1214,13 +1217,8 @@ export default function AdminLayout() {
                 title="返回上一页"
                 aria-label="返回上一页"
                 onClick={() => {
-                  const stateReturn = (location.state as { returnTo?: unknown } | null)?.returnTo;
-                  if (typeof stateReturn === "string" && stateReturn.startsWith("/") && !stateReturn.startsWith("//")) {
-                    navigateAdminReturnTo(navigate, stateReturn);
-                    return;
-                  }
-                  if (window.history.length > 1) navigate(-1);
-                  else navigateAdminReturnTo(navigate, resolveAdminShellBackTo(pathname, location.state));
+                  // 显式父级 / returnTo，不用 history -1：hash 路由下 length>1 几乎总真，常会退回门户 `/#/`
+                  navigateAdminReturnTo(navigate, resolveAdminShellBackTo(pathname, location.state));
                 }}
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)]"
               >
@@ -1394,8 +1392,8 @@ export default function AdminLayout() {
                   <>
                     <DropdownMenuSeparator />
                     {currentEmail ? (
-                      <DropdownMenuItem onSelect={() => {
-                        if (window.confirm(`已绑定邮箱 ${currentEmail}，是否取消绑定？`)) {
+                      <DropdownMenuItem onSelect={async () => {
+                        if (await appConfirm(`已绑定邮箱 ${currentEmail}，是否取消绑定？`)) {
                           const token = authStorage.getToken();
                           const userId = sessionUser?.id;
                           if (!userId) return;
@@ -1424,8 +1422,8 @@ export default function AdminLayout() {
                       </DropdownMenuItem>
                     )}
                     {currentSendKey ? (
-                      <DropdownMenuItem onSelect={() => {
-                        if (window.confirm("已绑定微信通知，是否取消绑定？")) {
+                      <DropdownMenuItem onSelect={async () => {
+                        if (await appConfirm("已绑定微信通知，是否取消绑定？")) {
                           const token = authStorage.getToken();
                           const userId = sessionUser?.id;
                           if (!userId) return;
@@ -1453,8 +1451,8 @@ export default function AdminLayout() {
                     )}
 
                     {currentWxPusher ? (
-                      <DropdownMenuItem onSelect={() => {
-                        if (window.confirm("已绑定 WxPusher 推送，是否取消绑定？")) {
+                      <DropdownMenuItem onSelect={async () => {
+                        if (await appConfirm("已绑定 WxPusher 推送，是否取消绑定？")) {
                           const token = authStorage.getToken();
                           const userId = sessionUser?.id;
                           if (!userId) return;
@@ -1574,11 +1572,14 @@ export default function AdminLayout() {
               type="button"
               className="rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-danger)] px-4 py-2 text-sm font-medium text-[var(--app-color-text-inverse)] transition-colors hover:bg-[var(--app-color-feedback-danger)]/85"
               onClick={() => {
+                const profile = authStorage.getUserInfo()?.authProfile;
                 authStorage.clear();
                 setLogoutDialogOpen(false);
-                // Redirect browser: CAS clears CASTGC → redirects back to login
-                window.location.href = 'https://auth2.shsmu.edu.cn/cas/logout?service='
-                    + encodeURIComponent(window.location.origin + '/#/');
+                if (isIamAuthProfile(profile)) {
+                  redirectIamGlobalLogout();
+                  return;
+                }
+                window.location.href = window.location.origin + "/#/";
               }}
             >
               退出登录

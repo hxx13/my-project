@@ -2,9 +2,9 @@ package com.example.demo.common.config;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
-import com.example.demo.modules.auth.entity.UserAroBinding;
 import com.example.demo.modules.auth.mapper.UserMapper;
-import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
+import com.example.demo.modules.personnel.entity.Personnel;
+import com.example.demo.modules.personnel.mapper.PersonnelMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -32,12 +32,12 @@ public class JwtTokenService {
     private String configuredSecret;
 
     private final UserMapper userMapper;
-    private final UserAroBindingMapper userAroBindingMapper;
+    private final PersonnelMapper personnelMapper;
     private SecretKey secretKey;
 
-    public JwtTokenService(UserMapper userMapper, UserAroBindingMapper userAroBindingMapper) {
+    public JwtTokenService(UserMapper userMapper, PersonnelMapper personnelMapper) {
         this.userMapper = userMapper;
-        this.userAroBindingMapper = userAroBindingMapper;
+        this.personnelMapper = personnelMapper;
     }
 
     @PostConstruct
@@ -87,6 +87,7 @@ public class JwtTokenService {
             User user = userMapper.findById(userId);
             if (user == null) return null;
             if (user.getStatus() != null && user.getStatus() == 0) return null;
+            resolveUnifiedRole(user);
             return user;
         }
         try {
@@ -131,7 +132,11 @@ public class JwtTokenService {
             if (impersonatedBy == null || impersonatedBy.isBlank()) {
                 return null;
             }
-            return userMapper.findById(impersonatedBy);
+            User impersonator = userMapper.findById(impersonatedBy);
+            if (impersonator != null) {
+                resolveUnifiedRole(impersonator);
+            }
+            return impersonator;
         } catch (JwtException e) {
             log.debug("[JWT] 解析教职工身份失败: {}", e.getMessage());
             return null;
@@ -139,11 +144,26 @@ public class JwtTokenService {
     }
 
     /**
-     * 角色保持数据库原值，不再自动取对端最高角色。
-     * MEMBER（最低权限）学生不得进管理后台是特制设计；绑定只用于「切换视角」，不抬升 role。
+     * 统一权限：personnel.role 是「人」的唯一角色权威值，不分视角、不取最高。
+     * 按 user.id（可能为 staff_id 或 aro_user_id）定位 personnel，用其 role 覆盖 User.role。
+     * personnel 不存在或 role 为空时保持 sys_user.role 不动（兜底独立账号 + 防 null 降权）。
      */
     public void resolveUnifiedRole(User user) {
-        // no-op：role 以 sys_user.role 为准，登录/解析 token 时不自动升级
+        if (user == null) {
+            return;
+        }
+        try {
+            Personnel p = personnelMapper.findByStaffId(user.getId());
+            if (p == null) {
+                p = personnelMapper.findByAroUserId(user.getId());
+            }
+            if (p != null && p.getRole() != null && !p.getRole().isBlank()) {
+                user.setRole(RoleEnum.fromCode(p.getRole()));
+            }
+            // else: 保持 sys_user.role，绝不置 null
+        } catch (Exception e) {
+            log.debug("[JWT] 统一角色解析失败: {}", e.getMessage());
+        }
     }
 
     private static final int REFRESH_WINDOW_DAYS = 60;

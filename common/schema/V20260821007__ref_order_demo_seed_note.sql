@@ -1,0 +1,3 @@
+-- DEMO: 动物订购审核页示例订单（运行时由 RefOrderDemoSeedBootstrap 幂等写入）。
+-- 本文件仅作变更说明；实际种子逻辑在 Java ApplicationRunner（group_id = DEMO-REF-ORDER）。
+-- 标记：[DEMO] 备注前缀 / DEMO-AUP-* 注册号 / ref_data.field_data.demoMarker。

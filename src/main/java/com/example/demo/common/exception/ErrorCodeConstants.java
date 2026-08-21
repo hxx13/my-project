@@ -102,4 +102,10 @@ public final class ErrorCodeConstants {
     public static final int AGV_STATS_CONFIG_NOT_FOUND = 1_012_008;
     public static final int AGV_STATS_PIPE_NOT_FOUND    = 1_012_009;
     public static final int AGV_STATS_INVALID_CONFIG    = 1_012_010;
+
+    /** 动物订购 animal-order 1-013-xxx */
+    public static final int ANIMAL_ORDER_WINDOW_CLOSED        = 1_013_001; // 当前不在可购时间窗口内
+    public static final int ANIMAL_ORDER_WINDOW_CONFLICT      = 1_013_002; // 时间窗口配置异常
+    public static final int ANIMAL_ORDER_WINDOW_RULE_CONFLICT = 1_013_003; // 相反效果重叠时间段
+    public static final int ANIMAL_ORDER_ETA_POLICY_INVALID   = 1_013_004; // 固定送达日未配置
 }

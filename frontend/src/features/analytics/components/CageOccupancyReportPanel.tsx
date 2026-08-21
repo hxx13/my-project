@@ -39,6 +39,7 @@ import {
 import { useGroupedAuditLogs } from "@/features/analytics/hooks/useGroupedAuditLogs";
 import { cn } from "@/lib/utils";
 
+import { appConfirm } from "@/lib/appDialog";
 const REPORT_KEY = "cage_occupancy";
 
 export function CageOccupancyReportPanel() {
@@ -241,12 +242,12 @@ export function CageOccupancyReportPanel() {
     const view = views.find((v) => v.id === id);
     if (!view) return;
     if (view?.isPublic) {
-      const confirmed = window.confirm(
+      const confirmed = await appConfirm(
         `删除「${view.name}」将同时删除所有用户通过分享码导入的副本。\n\n此操作不可撤销，是否继续？`
       );
       if (!confirmed) return;
     } else {
-      const confirmed = window.confirm(`确认删除「${view.name}」？`);
+      const confirmed = await appConfirm(`确认删除「${view.name}」？`);
       if (!confirmed) return;
     }
     try {

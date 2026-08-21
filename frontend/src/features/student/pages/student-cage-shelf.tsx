@@ -12,6 +12,7 @@ import { CellDetailPanel } from "./cage-shelf-detail-panel";
 import { useQuery } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 
+import { appAlert, appConfirm, appPrompt } from "@/lib/appDialog";
 /* ================================================================== */
 /*  Main Page — uses shared ShelfGrid / CampusTree / CellButton         */
 /* ================================================================== */
@@ -109,26 +110,26 @@ export default function StudentCageShelfPage() {
     }
     if (!poolCells.has(animalCageId)) {
       // 不在池中：该笼位不可申请（只有 cageTypeCode=2 已预约空笼盒才在池中）
-      alert("该笼位暂不可申请。\n\n仅「已预约(空笼盒)」状态的笼位可被申请。");
+      await appAlert("该笼位暂不可申请。\n\n仅「已预约(空笼盒)」状态的笼位可被申请。");
       return;
     }
-    if (!window.confirm(`确认申请笼位 ${cell.position}？\n\n课题组：${cell.projectPiName || "-"}\n申请后将进入审批流程。`)) return;
+    if (!await appConfirm(`确认申请笼位 ${cell.position}？\n\n课题组：${cell.projectPiName || "-"}\n申请后将进入审批流程。`)) return;
 
     // find shelfIndexId
     const row = fullTree.find(r => String(r.shelveId) === shelfId && String(r.roomId) === aRid);
     const shelfIndexId = row?.id;
     if (!shelfIndexId) {
-      alert("系统错误：未找到笼架索引ID，请联系管理员。");
+      await appAlert("系统错误：未找到笼架索引ID，请联系管理员。");
       return;
     }
 
     setClaimSubmitting(true);
     try {
       await claimCage(animalCageId, shelfIndexId);
-      alert("申请已提交！");
+      await appAlert("申请已提交！");
       setPoolCells(prev => { const n = new Map(prev); n.delete(animalCageId); return n; });
     } catch (e: any) {
-      alert(e.message || "申请失败");
+      await appAlert(e.message || "申请失败");
     } finally {
       setClaimSubmitting(false);
     }
@@ -273,15 +274,15 @@ export default function StudentCageShelfPage() {
                     </div>
                     <div className="flex gap-2 mt-2">
                       {(c.claimStatus === "pending_approval" || c.claimStatus === "locked") && (
-                        <button onClick={async () => { try { await cancelClaim(c.id); loadMyClaims(); } catch (e: any) { alert(e.message); } }}
+                        <button onClick={async () => { try { await cancelClaim(c.id); loadMyClaims(); } catch (e: any) { await appAlert(e.message); } }}
                           className="rounded-student-sm px-2.5 py-1 text-[10px] font-semibold border border-red-300 text-red-600 hover:bg-red-50">取消</button>
                       )}
                       {c.claimStatus === "locked" && (
-                        <button onClick={async () => { try { await confirmClaim(c.id); loadMyClaims(); } catch (e: any) { alert(e.message); } }}
+                        <button onClick={async () => { try { await confirmClaim(c.id); loadMyClaims(); } catch (e: any) { await appAlert(e.message); } }}
                           className="rounded-student-sm px-2.5 py-1 text-[10px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700">确认到位</button>
                       )}
                       {c.claimStatus === "confirmed" && (
-                        <button onClick={async () => { const reason = prompt("释放原因（可选）："); try { await releaseClaim(c.id, reason || undefined); loadMyClaims(); } catch (e: any) { alert(e.message); } }}
+                        <button onClick={async () => { const reason = await appPrompt("释放原因（可选）："); try { await releaseClaim(c.id, reason || undefined); loadMyClaims(); } catch (e: any) { await appAlert(e.message); } }}
                           className="rounded-student-sm px-2.5 py-1 text-[10px] font-semibold border border-orange-300 text-orange-600 hover:bg-orange-50">释放</button>
                       )}
                     </div>

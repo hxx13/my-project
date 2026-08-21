@@ -21,6 +21,7 @@ import type { ReportFormDefinition } from '../types';
 import { formatDateTimeAsiaShanghaiShort, compareApiDateTime } from '@/lib/formatDateTimeAsiaShanghai';
 import toast from 'react-hot-toast';
 
+import { appConfirm } from "@/lib/appDialog";
 export default function ReportFormListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -279,8 +280,8 @@ export default function ReportFormListPage() {
         )}
         {selected.size > 0 && (
           <button
-            onClick={() => {
-              if (confirm(`确定删除 ${selected.size} 个报表？`)) {
+            onClick={async () => {
+              if (await appConfirm(`确定删除 ${selected.size} 个报表？`)) {
                 bulkDeleteMut.mutate([...selected]);
               }
             }}
@@ -314,8 +315,8 @@ export default function ReportFormListPage() {
               })}
               onOpen={() => openForm(form)}
               onEdit={() => navigate(`/admin/report-form/${form.id}/design`)}
-              onDelete={() => {
-                if (confirm(`确定删除「${form.name}」？`)) deleteMut.mutate(form.id);
+              onDelete={async () => {
+                if (await appConfirm(`确定删除「${form.name}」？`)) deleteMut.mutate(form.id);
               }}
               onRename={name => renameMut.mutate({ id: form.id, name })}
               onDuplicate={() => duplicateMut.mutate(form.id)}
@@ -630,7 +631,7 @@ function FormRow({
               <MenuItem icon={Eye} label="预览（需先发布）" disabled onClick={() => setMenuOpen(false)} />
             )}
             <MenuItem icon={Link} label="复制链接" onClick={() => {
-              navigator.clipboard.writeText(`${window.location.origin}/console/admin/report-form/${form.id}/design`);
+              navigator.clipboard.writeText(`${window.location.origin}/admin/report-form/${form.id}/design`);
               toast.success('链接已复制');
               setMenuOpen(false);
             }} />

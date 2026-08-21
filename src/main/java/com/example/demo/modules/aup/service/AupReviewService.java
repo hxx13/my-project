@@ -24,6 +24,7 @@ import com.example.demo.modules.aup.mapper.AupReviewItemMapper;
 import com.example.demo.modules.aup.mapper.AupReviewMapper;
 import com.example.demo.modules.aup.mapper.AupReviewerMapper;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.identity.dto.IdentityTagVO;
 import com.example.demo.modules.identity.service.PersonIdentityService;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
@@ -90,6 +91,7 @@ public class AupReviewService {
     private final NotificationService notificationService;
     private final PersonIdentityService personIdentityService;
     private final AupAccessPolicy accessPolicy;
+    private final UserDisplayNameService userDisplayNameService;
 
     @Value("${aup.identity.secretary-code:SECRETARY}")
     private String secretaryCode;
@@ -104,7 +106,8 @@ public class AupReviewService {
                             AupService aupService,
                             NotificationService notificationService,
                             PersonIdentityService personIdentityService,
-                            AupAccessPolicy accessPolicy) {
+                            AupAccessPolicy accessPolicy,
+                            UserDisplayNameService userDisplayNameService) {
         this.reviewMapper = reviewMapper;
         this.assignmentMapper = assignmentMapper;
         this.reviewItemMapper = reviewItemMapper;
@@ -113,6 +116,7 @@ public class AupReviewService {
         this.notificationService = notificationService;
         this.personIdentityService = personIdentityService;
         this.accessPolicy = accessPolicy;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     // ===================== 鉴权辅助（供 Controller 调用） =====================
@@ -518,12 +522,10 @@ public class AupReviewService {
                 userIds.add(it.getReviewer());
             }
         }
-        Map<String, String> names = new HashMap<>();
-        for (String id : userIds) {
-            names.put(id, aupService.resolveName(id));
-        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(userIds);
         for (AupReviewItem it : items) {
-            it.setReviewerName(names.get(it.getReviewer()));
+            String n = names.get(it.getReviewer());
+            it.setReviewerName(StringUtils.hasText(n) ? n : it.getReviewer());
         }
     }
 
@@ -683,19 +685,19 @@ public class AupReviewService {
         }
     }
 
-    /** STAFF 视角下命中指定身份 code 的 userId（保持身份标识返回顺序）。 */
+    /** 命中指定身份 code 的 userId（保持身份标识返回顺序）。person_identity key 为 personnel.id，此处转回 staff_id 供指派/通知使用。 */
     private List<String> tagUserIds(String tagCode) {
         if (!StringUtils.hasText(tagCode)) {
             return List.of();
         }
-        List<String> result = new ArrayList<>();
+        List<String> personnelIds = new ArrayList<>();
         for (Map.Entry<String, List<IdentityTagVO>> entry
                 : personIdentityService.listByUserIds(null).entrySet()) {
             if (hasTag(entry.getValue(), tagCode)) {
-                result.add(entry.getKey());
+                personnelIds.add(entry.getKey());
             }
         }
-        return result;
+        return personIdentityService.resolveStaffIds(personnelIds);
     }
 
     /** 标签列表是否命中目标 code（null 安全，语义与 AupAccessPolicy 一致）。 */

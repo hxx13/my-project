@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Settings } from "lucide-react";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";

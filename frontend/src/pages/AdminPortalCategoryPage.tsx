@@ -5,6 +5,7 @@ import { portalContentQueryKeys } from "@/api/hooks/queryKeys";
 import toast from "react-hot-toast";
 import { Plus, Trash2, Check, X } from "lucide-react";
 
+import { appConfirm } from "@/lib/appDialog";
 const SCOPE_LABELS: Record<string, string> = {
   NEWS: "科研文章", NOTICE: "通知公告", MODEL_RESOURCE: "模型资源", ALL: "通用",
 };
@@ -86,7 +87,7 @@ export default function AdminPortalCategoryPage() {
                   <span style={{ fontSize: 10, color: "#b0a89a", background: "#f0ece6", padding: "2px 8px", borderRadius: 99 }}>{SCOPE_LABELS[cat.scope] || cat.scope}</span>
                   <button onClick={() => { setEditingId(cat.id); setEditName(cat.name); setEditScope(cat.scope); }}
                     style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid #d4c9b8", background: "white", cursor: "pointer", color: "#666" }}>编辑</button>
-                  <button onClick={() => { if (confirm(`删除"${cat.name}"？`)) deleteMut.mutate(cat.id); }}
+                  <button onClick={async () => { if (await appConfirm(`删除"${cat.name}"？`)) deleteMut.mutate(cat.id); }}
                     style={{ fontSize: 11, padding: "4px 8px", borderRadius: 6, border: "1px solid #d4c9b8", background: "white", cursor: "pointer", color: "#dc2626" }}><Trash2 className="size-3" /></button>
                 </>
               )}

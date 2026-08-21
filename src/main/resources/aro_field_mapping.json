@@ -1,6 +1,6 @@
 {
-  "version": "1",
-  "description": "ARO 字段名 → 本地规范名 双向映射。sources=拉取时ARO→本地, targets=推送时本地→ARO。",
+  "version": "5",
+  "description": "ARO 字段名 → 本地规范名 双向映射。sources=拉取时ARO→本地, targets=推送时本地→ARO。空串视为真实空（写 null 清空本地），别名仅在路径不存在时回退。",
   "endpoints": {
     "back":   { "path": "/admin/cageBox/{roomId}/{shelveId}/animalCages/back", "direction": "pull" },
     "book":   { "path": "/admin/book/{roomId}/{shelveId}/animalCages", "direction": "pull" },
@@ -83,18 +83,27 @@
     {
       "canonical": "pi_name",
       "sqlColumn": "pi_name",
+      "comment": "笼位顶层 PI / 课题组长 ← ARO animalCage.piName（与 simplifyCell.piName 一致）",
       "type": "string",
-      "sources": { "back": "piName", "list": "piName" }
+      "sources": {
+        "back": ["piName", "cageBoxVo.piName"],
+        "list": ["piName", "cageBoxVo.piName"]
+      }
     },
     {
       "canonical": "project_pi_name",
       "sqlColumn": "project_pi_name",
+      "comment": "项目/课题 PI ← ARO cageBoxVo.projectPiName（网格常用此字段作课题组标识）",
       "type": "string",
-      "sources": { "back": "cageBoxVo.projectPiName", "list": "cageBoxVo.projectPiName" }
+      "sources": {
+        "back": ["cageBoxVo.projectPiName", "projectPiName"],
+        "list": ["cageBoxVo.projectPiName", "projectPiName"]
+      }
     },
     {
       "canonical": "project_name",
       "sqlColumn": "project_name",
+      "comment": "项目名称 ← ARO cageBoxVo.projectName（API 网格字段名 projectGroup，不是独立课题组表）",
       "type": "string",
       "sources": { "back": "cageBoxVo.projectName", "list": "cageBoxVo.projectName" }
     },

@@ -9,7 +9,7 @@
  * 逐字段评审：FieldReviewTag（快捷入口）+ ReviewOverviewPanel（总览抽屉）。
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import { authStorage } from "@/features/auth/authStorage";
@@ -32,7 +32,7 @@ import type {
   ReviewForm,
   AupTrace,
 } from "@/features/aup/schema/aup";
-import type { FormSection, FormField } from "@/features/aup/schema/formTemplate";
+import type { FormField as FormFieldDef, FormSection, FormSubSection } from "@/features/aup/schema/formTemplate";
 import type {
   ReviewVerdict,
   ReviewItem,
@@ -42,12 +42,14 @@ import type {
   Expert,
   ReviewerConfig,
 } from "@/features/aup/schema/review";
-import type { TemplateDetailVO } from "@/features/aup/api/aup.api";
-import { FieldReviewTag, emptyFieldReviewDraft } from "../components/FieldReviewTag";
-import { displayTitle } from "../components/FormField";
+import { FieldReviewTag } from "../components/FieldReviewTag";
+import FormField, { displayTitle, evaluateShowWhen } from "../components/FormField";
+import SectionNav from "../components/SectionNav";
+import ScrollButtons from "../components/ScrollButtons";
+import StageStepper from "../components/StageStepper";
 import type { FieldReviewDraft } from "../components/FieldReviewTag";
 import { ReviewOverviewPanel } from "../components/ReviewOverviewPanel";
-import type { FlatField } from "../components/ReviewOverviewPanel";
+import "../aup.css";
 
 /* =====================================================================
  * 常量
@@ -79,14 +81,6 @@ const DRAFT_SOURCE_LABELS: Record<string, string> = {
   rollback: "回退",
 };
 
-const STAGES: Array<{ key: string; label: string }> = [
-  { key: "draft", label: "填写计划书" },
-  { key: "piReview", label: "组长审核" },
-  { key: "formatReview", label: "格式审查" },
-  { key: "expertReview", label: "专家审查" },
-  { key: "approved", label: "审核通过" },
-];
-
 /* =====================================================================
  * 工具函数
  * ================================================================== */
@@ -102,111 +96,6 @@ function parseFlatData(raw?: string | Record<string, unknown> | null): Record<st
     }
   }
   return raw;
-}
-
-function flattenSections(sections: FormSection[], data: Record<string, unknown>): FlatField[] {
-  const out: FlatField[] = [];
-  const push = (sec: FormSection, subLabel: string | undefined, f: FormField) => {
-    out.push({
-      key: f.fieldKey,
-      label: f.label,
-      type: f.type,
-      sectionKey: sec.code,
-      sectionLabel: displayTitle(sec.code, sec.label),
-      subsectionLabel: subLabel,
-      required: f.required,
-      value: data[f.fieldKey],
-      field: f,
-    });
-  };
-  for (const sec of sections) {
-    for (const sub of sec.subsections ?? []) {
-      for (const f of sub.fields ?? []) push(sec, sub.label, f);
-    }
-    for (const f of sec.fields ?? []) push(sec, undefined, f);
-  }
-  return out;
-}
-
-function flattenTemplate(
-  template: TemplateDetailVO | undefined,
-  data: Record<string, unknown>
-): FlatField[] {
-  return flattenSections(template?.sections ?? [], data);
-}
-
-function optionLabel(options: FormField["options"], v: unknown): string {
-  const s = String(v ?? "");
-  if (!options || options.length === 0) return s;
-  for (const opt of options) {
-    if (typeof opt === "string") {
-      if (opt === s) return opt;
-    } else if (opt.value === s) {
-      return opt.label;
-    }
-  }
-  return s;
-}
-
-function pickerLabel(v: unknown): string {
-  if (v == null) return "";
-  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
-  const o = v as { label?: unknown; name?: unknown; value?: unknown };
-  return String(o.label ?? o.name ?? o.value ?? "");
-}
-
-function fileLabel(v: unknown): string {
-  if (v == null) return "";
-  if (typeof v === "string") return v;
-  const o = v as { fileName?: unknown; name?: unknown };
-  return String(o.fileName ?? o.name ?? "");
-}
-
-function formatScalar(v: unknown): string {
-  if (v == null) return "";
-  if (typeof v === "string") return v;
-  if (typeof v === "boolean") return v ? "是" : "否";
-  return String(v);
-}
-
-function formatFieldValue(field: FormField, value: unknown): string {
-  if (value == null || value === "") return "";
-  switch (field.type) {
-    case "choice":
-    case "checkbox": {
-      if (Array.isArray(value)) return value.map((v) => optionLabel(field.options, v)).filter(Boolean).join("、");
-      return optionLabel(field.options, value);
-    }
-    case "table":
-      if (Array.isArray(value)) return `${value.length} 行`;
-      return typeof value === "string" ? value : JSON.stringify(value);
-    case "repeatGroup": {
-      if (!Array.isArray(value)) return typeof value === "string" ? value : JSON.stringify(value);
-      const firstLabels: string[] = [];
-      for (const blk of value) {
-        if (typeof blk === "object" && blk != null) {
-          const first = (blk as Record<string, unknown>).species ?? (blk as Record<string, unknown>).line;
-          if (typeof first === "string" && first.trim()) {
-            firstLabels.push(first);
-          }
-        }
-      }
-      const suffix = firstLabels.length ? `（${firstLabels.join("、")}）` : "";
-      return `${value.length} 项${suffix}`;
-    }
-    case "file":
-    case "image":
-      if (Array.isArray(value)) return value.map(fileLabel).filter(Boolean).join("、");
-      return fileLabel(value);
-    case "personPicker":
-    case "departmentPicker":
-    case "cagePicker":
-    case "animalPicker":
-      if (Array.isArray(value)) return value.map(pickerLabel).filter(Boolean).join("、");
-      return pickerLabel(value);
-    default:
-      return typeof value === "string" ? value : JSON.stringify(value);
-  }
 }
 
 type ReviewRole = "pi" | "secretary" | "expert" | "viewer";
@@ -280,17 +169,54 @@ function ReviewContent({ id }: { id: string }) {
     return parseFlatData(latestSnapshotQuery.data?.data);
   }, [detail?.draftData, latestSnapshotQuery.data?.data]);
 
-  const flatFields = useMemo(() => flattenTemplate(templateQuery.data, flatData), [templateQuery.data, flatData]);
+  const sections = templateQuery.data?.sections ?? [];
 
-  const sectionGroups = useMemo(() => {
-    const m = new Map<string, FlatField[]>();
-    for (const f of flatFields) {
-      const arr = m.get(f.sectionKey) ?? [];
-      arr.push(f);
-      m.set(f.sectionKey, arr);
+  // 可见字段平铺（尊重 showWhen），供逐字段评审提交/计数用（key/label/sectionKey）
+  const flatFields = useMemo(() => {
+    const out: Array<{ key: string; label: string; sectionKey: string }> = [];
+    for (const sec of sections) {
+      if (sec.showWhen && !evaluateShowWhen(sec.showWhen, flatData)) continue;
+      for (const sub of sec.subsections ?? []) {
+        if (sub.showWhen && !evaluateShowWhen(sub.showWhen, flatData)) continue;
+        for (const f of sub.fields ?? []) {
+          if (f.showWhen && !evaluateShowWhen(f.showWhen, flatData)) continue;
+          out.push({ key: f.fieldKey, label: f.label, sectionKey: sec.code });
+        }
+      }
+      for (const f of sec.fields ?? []) {
+        if (f.showWhen && !evaluateShowWhen(f.showWhen, flatData)) continue;
+        out.push({ key: f.fieldKey, label: f.label, sectionKey: sec.code });
+      }
     }
-    return [...m.entries()];
-  }, [flatFields]);
+    return out;
+  }, [sections, flatData]);
+
+  // 章节侧边栏：当前激活章节 + 点击跳转 + 滚动跟随高亮
+  const [activeSection, setActiveSection] = useState<string | null>(null);
+  const handleSelectSection = (code: string) => {
+    const el = document.getElementById(`aup-section-${code}`) ?? document.getElementById(`aup-subsection-${code}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActiveSection(code);
+  };
+  useEffect(() => {
+    const onScroll = () => {
+      let current: string | null = null;
+      for (const sec of sections) {
+        if (sec.showWhen && !evaluateShowWhen(sec.showWhen, flatData)) continue;
+        const secEl = document.getElementById(`aup-section-${sec.code}`);
+        if (secEl && secEl.getBoundingClientRect().top <= 136) current = sec.code;
+        for (const sub of sec.subsections ?? []) {
+          if (sub.showWhen && !evaluateShowWhen(sub.showWhen, flatData)) continue;
+          const subEl = document.getElementById(`aup-subsection-${sub.code}`);
+          if (subEl && subEl.getBoundingClientRect().top <= 136) current = sub.code;
+        }
+      }
+      setActiveSection(current);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [sections, flatData]);
 
   const config = configQuery.data;
   const experts = expertsQuery.data ?? [];
@@ -443,6 +369,57 @@ function ReviewContent({ id }: { id: string }) {
     review.piReview.mutate({ action, comment: comment.trim() || undefined });
   };
 
+  /* ---------- 复用填写页 FormField 渲染正文（readOnly + 字段评审标签） ---------- */
+
+  const renderField = (f: FormFieldDef) => (
+    <div key={f.fieldKey} id={`field-${f.fieldKey}`} style={{ position: "relative", scrollMarginTop: 90 }}>
+      <div style={{ position: "absolute", top: 0, right: 0, zIndex: 2 }}>
+        <FieldReviewTag
+          fieldKey={f.fieldKey}
+          fieldLabel={f.label}
+          editable={fieldTagEditable}
+          reviewerRole={fieldTagRole}
+          draft={activeDrafts[f.fieldKey]}
+          onDraftChange={(next) => updateActiveDraft(f.fieldKey, next)}
+          existing={itemsByFieldKey.get(f.fieldKey)}
+          reviewerNames={reviewerNames}
+        />
+      </div>
+      <FormField field={f} value={flatData[f.fieldKey]} values={flatData} onChange={() => {}} readOnly aupId={id} />
+    </div>
+  );
+
+  const renderSubSection = (sub: FormSubSection) => {
+    if (sub.showWhen && !evaluateShowWhen(sub.showWhen, flatData)) return null;
+    return (
+      <div key={sub.code} id={`aup-subsection-${sub.code}`} className="aup-subsection">
+        <div className="aup-subhead">{displayTitle(sub.code, sub.label)}</div>
+        {sub.description ? (
+          <div className={"aup-subdesc" + (sub.descriptionTone ? " " + sub.descriptionTone : "")}>{sub.description}</div>
+        ) : null}
+        {(sub.fields ?? []).map(renderField)}
+      </div>
+    );
+  };
+
+  const renderSection = (sec: FormSection) => {
+    if (sec.showWhen && !evaluateShowWhen(sec.showWhen, flatData)) return null;
+    const subs = sec.subdivisible ? sec.subsections : undefined;
+    return (
+      <section
+        key={sec.code}
+        id={`aup-section-${sec.code}`}
+        data-section-id={sec.code}
+        className={"card aup-section" + (sec.highlight ? " aup-section-highlight" : "")}
+        style={{ scrollMarginTop: 90 }}
+      >
+        <h2>{displayTitle(sec.code, sec.label)}</h2>
+        {subs && subs.length > 0 ? <div className="sub">{subs.map((s) => displayTitle(s.code, s.label)).join(" · ")}</div> : null}
+        {subs ? subs.map(renderSubSection) : (sec.fields ?? []).map(renderField)}
+      </section>
+    );
+  };
+
   /* ---------- 渲染 ---------- */
 
   if (detailQuery.isLoading) return <Centered text="加载中…" />;
@@ -452,10 +429,9 @@ function ReviewContent({ id }: { id: string }) {
 
   const stageMeta = STAGE_META[stage] ?? STAGE_META.draft;
   const terminal = stage === "terminated" || stage === "expired";
-  const currentStepIdx = terminal || stage === "approved" ? 4 : stage === "expertReview" ? 3 : stage === "formatReview" ? 2 : stage === "piReview" ? 1 : 0;
 
   return (
-    <div className="aup-review">
+    <div className="aup-review aup-app">
       <style dangerouslySetInnerHTML={{ __html: REVIEW_CSS }} />
 
       {/* 工具栏 */}
@@ -499,36 +475,16 @@ function ReviewContent({ id }: { id: string }) {
         </button>
       </div>
 
-      {/* 阶段指示 */}
-      <div className="ar-stepper-wrap">
-        <div className="ar-stepper">
-          {STAGES.map((s, i) => {
-            const state = terminal
-              ? i < 4
-                ? "done"
-                : i === 4
-                  ? "end"
-                  : "pending"
-              : i < currentStepIdx
-                ? "done"
-                : i === currentStepIdx
-                  ? "active"
-                  : "pending";
-            const label = terminal && i === 4 ? (stage === "terminated" ? "已终止" : "已过期") : s.label;
-            return (
-              <div key={s.key} style={{ display: "contents" }}>
-                {i > 0 ? <div className={`ar-connector ${i <= currentStepIdx && !terminal ? "done" : ""}`} /> : null}
-                <div className={`ar-step ${state}`}>
-                  <div className="ar-dot">{state === "done" ? "✓" : i + 1}</div>
-                  <div className="ar-label">{label}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* 阶段指示（复用填写页 StageStepper，统一返修/终态指示） */}
+      <StageStepper currentStage={stage} draftSource={record.draftSource} />
 
       <div className="ar-layout">
+        <SectionNav
+          sections={templateQuery.data?.sections ?? []}
+          values={flatData}
+          activeId={activeSection}
+          onSelect={handleSelectSection}
+        />
         <div className="ar-main">
           <InfoCard record={record} />
 
@@ -577,24 +533,8 @@ function ReviewContent({ id }: { id: string }) {
             />
           )}
 
-          {/* 只读表单 */}
-          {sectionGroups.map(([sectionKey, fields]) => {
-            const sectionLabel = fields[0]?.sectionLabel ?? sectionKey;
-            return (
-              <SectionCard
-                key={sectionKey}
-                sectionKey={sectionKey}
-                sectionLabel={sectionLabel}
-                fields={fields}
-                editable={fieldTagEditable}
-                reviewerRole={fieldTagRole}
-                drafts={activeDrafts}
-                onDraftChange={updateActiveDraft}
-                itemsByFieldKey={itemsByFieldKey}
-                reviewerNames={reviewerNames}
-              />
-            );
-          })}
+          {/* 只读表单（复用填写页 FormField 渲染） */}
+          {sections.map(renderSection)}
         </div>
 
         <div className="ar-side">
@@ -610,6 +550,7 @@ function ReviewContent({ id }: { id: string }) {
         onClose={() => setOverviewOpen(false)}
         sessions={overviewSessions}
       />
+      <ScrollButtons />
     </div>
   );
 }
@@ -657,100 +598,6 @@ function InfoCard({ record }: { record: AupRecord }) {
       </div>
     </div>
   );
-}
-
-function SectionCard({
-  sectionKey,
-  sectionLabel,
-  fields,
-  editable,
-  reviewerRole,
-  drafts,
-  onDraftChange,
-  itemsByFieldKey,
-  reviewerNames,
-}: {
-  sectionKey: string;
-  sectionLabel: string;
-  fields: FlatField[];
-  editable: boolean;
-  reviewerRole: "expert" | "secretary";
-  drafts: Record<string, FieldReviewDraft>;
-  onDraftChange: (fieldKey: string, next: FieldReviewDraft) => void;
-  itemsByFieldKey: Map<string, ReviewItem[]>;
-  reviewerNames: Record<string, string>;
-}) {
-  let lastSub: string | undefined;
-
-  return (
-    <div className="ar-card" style={{ marginBottom: 16 }}>
-      <h3>{sectionLabel}</h3>
-      <div className="sub">共 {fields.length} 个填写项</div>
-      {fields.map((f) => {
-        const subHeader = f.subsectionLabel && f.subsectionLabel !== lastSub ? f.subsectionLabel : undefined;
-        lastSub = f.subsectionLabel;
-        return (
-          <div key={f.key}>
-            {subHeader ? <div className="ar-subsection">{subHeader}</div> : null}
-            <div id={`field-${f.key}`} className="ar-field" style={{ scrollMarginTop: 80 }}>
-              <div className="ar-fl">
-                <span className="ar-lbl">
-                  {f.label}
-                  {f.required ? <span className="ar-req">*</span> : null}
-                </span>
-                <FieldReviewTag
-                  fieldKey={f.key}
-                  fieldLabel={f.label}
-                  editable={editable}
-                  reviewerRole={reviewerRole}
-                  draft={drafts[f.key] ?? emptyFieldReviewDraft()}
-                  onDraftChange={(next) => onDraftChange(f.key, next)}
-                  existing={itemsByFieldKey.get(f.key)}
-                  reviewerNames={reviewerNames}
-                />
-              </div>
-              <FieldValue field={f} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function FieldValue({ field }: { field: FlatField }) {
-  const value = field.value;
-  if (value == null || value === "") {
-    return <div className="ar-val empty">未填写</div>;
-  }
-  if (field.type === "table" && Array.isArray(value)) {
-    const columns = field.field.config?.columns ?? [];
-    const rows = value as Array<Record<string, unknown>>;
-    if (columns.length > 0 && rows.length > 0) {
-      return (
-        <table className="ar-grid">
-          <thead>
-            <tr>
-              {columns.map((c) => (
-                <th key={c.fieldKey}>{c.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i}>
-                {columns.map((c) => (
-                  <td key={c.fieldKey}>{formatScalar(r[c.fieldKey]) || "—"}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      );
-    }
-    return <div className="ar-val">{rows.length} 行</div>;
-  }
-  return <div className="ar-val">{formatFieldValue(field.field, value)}</div>;
 }
 
 /* ---------- 组长审核 ---------- */
@@ -980,8 +827,6 @@ function ExpertReviewPanel({
 
 function ProgressCard({ progress, names, items }: { progress?: ReviewProgress; names: Record<string, string>; items?: ReviewItem[] }) {
   if (!progress) return null;
-  const should = Math.max(0, (progress.assignCount ?? 0) - (progress.recusedCount ?? 0));
-  const by = progress.byVerdict ?? { agree: 0, modify: 0, disagree: 0, abstain: 0 };
 
   // 逐人批注计数（来自逐字段意见）
   const countByReviewer: Record<string, number> = {};
@@ -997,17 +842,6 @@ function ProgressCard({ progress, names, items }: { progress?: ReviewProgress; n
   return (
     <div className="ar-card" style={{ marginBottom: 16 }}>
       <h3>投票进度</h3>
-
-      {/* 汇总数字（辅助信息） */}
-      <div style={{ marginTop: 10, display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12, color: "#8a94a6" }}>
-        <span>应投 <b style={{ color: "#1a2233", fontSize: 15 }}>{should}</b></span>
-        <span>已投 <b style={{ color: "#1a2233", fontSize: 15 }}>{progress.votedCount ?? 0}</b></span>
-        <span>回避 <b style={{ color: "#1a2233", fontSize: 15 }}>{progress.recusedCount ?? 0}</b></span>
-        <span>同意 <b style={{ color: "#16a34a", fontSize: 15 }}>{by.agree}</b></span>
-        <span>不合格 <b style={{ color: "#dc2626", fontSize: 15 }}>{by.disagree}</b></span>
-        <span>修改 <b style={{ color: "#d97706", fontSize: 15 }}>{by.modify}</b></span>
-        <span>拒评 <b style={{ color: "#8a94a6", fontSize: 15 }}>{by.abstain}</b></span>
-      </div>
 
       {/* 流水式逐人投票 */}
       <div style={{ marginTop: 16 }}>
@@ -1063,7 +897,7 @@ function ReviewHistoryCard({
   return (
     <div className="ar-card">
       <h3>进行记录</h3>
-      <div style={{ marginTop: 10 }}>
+      <div style={{ marginTop: 10, maxHeight: "calc(100vh - 160px)", overflowY: "auto", paddingRight: 4 }}>
         {(traces ?? []).length === 0 ? (
           <div style={{ fontSize: 12, color: "#8a94a6" }}>暂无记录</div>
         ) : null}
@@ -1146,5 +980,23 @@ const REVIEW_CSS = `
 .aup-review .ar-trace::before{content:"";position:absolute;left:-6px;top:3px;width:10px;height:10px;border-radius:50%;background:var(--slate)}
 .aup-review .ar-trace-t{font-size:12px;font-weight:600}
 .aup-review .ar-trace-m{font-size:11px;color:var(--muted);margin-top:1px}
-@media (max-width:900px){.aup-review .ar-layout{flex-direction:column}.aup-review .ar-side{position:static;width:auto}}
+.aup-review .sidebar{position:sticky;top:96px;width:240px;max-height:calc(100vh - 120px);flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.aup-review .sidebar .hd{position:sticky;top:0;z-index:1;background:var(--card);padding:12px 16px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+.aup-review .sidebar .sidebar-body{overflow-y:auto;flex:1;min-height:0;scrollbar-width:none;-ms-overflow-style:none}
+.aup-review .sidebar .sidebar-body::-webkit-scrollbar{display:none}
+.aup-review .nav-item{display:flex;align-items:center;gap:8px;padding:10px 16px;cursor:pointer;font-size:13px;border-left:3px solid transparent}
+.aup-review .nav-item .nav-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aup-review .nav-item .nav-arrow{font-size:11px;color:var(--muted);flex-shrink:0}
+.aup-review .nav-item:hover{background:#f8fafc}
+.aup-review .nav-item.active{background:var(--primary-weak);border-left-color:var(--primary);font-weight:600}
+.aup-review .nav-item .mark{width:16px;height:16px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px}
+.aup-review .nav-item .mark.done{background:var(--success);color:#fff}
+.aup-review .nav-item .mark.todo{background:#e6eaf0;color:var(--muted)}
+.aup-review .nav-item .mark.cond{background:var(--warn-weak);color:var(--warn)}
+.aup-review .nav-item .mark.bad{background:var(--danger);color:#fff}
+.aup-review .nav-item.nav-sub{padding:7px 16px 7px 30px;font-size:12px;color:var(--slate)}
+.aup-review .nav-item.nav-sub .mark{width:12px;height:12px;font-size:9px}
+.aup-review .nav-item.nav-error .nav-label{color:var(--danger);font-weight:600}
+.aup-review .nav-group{font-size:11px;font-weight:700;color:var(--muted);padding:10px 16px 4px;text-transform:uppercase;letter-spacing:.05em}
+@media (max-width:900px){.aup-review .ar-layout{flex-direction:column}.aup-review .ar-side{position:static;width:auto}.aup-review .sidebar{position:static;width:auto;max-height:none}}
 `;

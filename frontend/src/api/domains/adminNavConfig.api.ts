@@ -19,9 +19,11 @@ interface ApiResult<T> {
   message?: string;
 }
 
-export async function fetchAdminNavConfig(): Promise<AdminNavConfigNode[]> {
+export async function fetchAdminNavConfig(
+  scope: "ADMIN" | "STUDENT" = "ADMIN"
+): Promise<AdminNavConfigNode[]> {
   try {
-    const res = await authHttp.get<ApiResult<AdminNavConfigNode[]>>("/admin-nav/config");
+    const res = await authHttp.get<ApiResult<AdminNavConfigNode[]>>(`/admin-nav/config?scope=${scope}`);
     if (res.data?.success && Array.isArray(res.data.data)) {
       return res.data.data;
     }
@@ -36,6 +38,7 @@ export async function createNavGroup(body: {
   type?: "GROUP" | "SUBGROUP";
   title: string;
   sortOrder?: number;
+  scope?: "ADMIN" | "STUDENT";
 }): Promise<AdminNavConfigNode | null> {
   const res = await authHttp.post<ApiResult<AdminNavConfigNode>>("/admin-nav/groups", body);
   return res.data?.success ? res.data.data : null;
@@ -62,7 +65,7 @@ export async function deleteNavGroup(id: string): Promise<boolean> {
   return res.data?.success ?? false;
 }
 
-export async function moveNavItem(itemId: string, newParentId: string): Promise<boolean> {
+export async function moveNavItem(itemId: string, newParentId: string | null): Promise<boolean> {
   const res = await authHttp.put<ApiResult<null>>(`/admin-nav/items/${itemId}/move`, { newParentId });
   return res.data?.success ?? false;
 }
@@ -72,16 +75,26 @@ export async function reorderNavItems(orders: { id: string; sortOrder: number }[
   return res.data?.success ?? false;
 }
 
-export async function resetNavConfig(): Promise<boolean> {
-  const res = await authHttp.post<ApiResult<null>>("/admin-nav/reset");
+export async function reorderNavNodes(
+  parentId: string | null,
+  orderedIds: string[],
+  scope: "ADMIN" | "STUDENT" = "ADMIN"
+): Promise<boolean> {
+  const res = await authHttp.put<ApiResult<null>>("/admin-nav/nodes/reorder", { parentId, orderedIds, scope });
+  return res.data?.success ?? false;
+}
+
+export async function resetNavConfig(scope: "ADMIN" | "STUDENT" = "ADMIN"): Promise<boolean> {
+  const res = await authHttp.post<ApiResult<null>>("/admin-nav/reset", { scope });
   return res.data?.success ?? false;
 }
 
 export async function ensureNavItems(
-  items: { path: string; label: string; icon: string; groupTitle: string }[]
+  items: { path: string; label: string; icon: string; groupTitle: string }[],
+  scope: "ADMIN" | "STUDENT" = "ADMIN"
 ): Promise<{ created: number; existed: number }> {
   try {
-    const res = await authHttp.post<ApiResult<{ created: number; existed: number }>>("/admin-nav/ensure-items", { items });
+    const res = await authHttp.post<ApiResult<{ created: number; existed: number }>>("/admin-nav/ensure-items", { items, scope });
     return res.data?.success ? res.data.data ?? { created: 0, existed: 0 } : { created: 0, existed: 0 };
   } catch {
     return { created: 0, existed: 0 };

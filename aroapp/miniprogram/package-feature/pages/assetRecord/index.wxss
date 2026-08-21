@@ -1,56 +1,15 @@
-/* ═══════════════════════════════════════════════════════════════
-   ⚠️  AI 复用须知 — 修改任何弹窗/面板 CSS 前务必阅读
-   ═══════════════════════════════════════════════════════════════
-
-   【面板高度规则】
-     凡 flex-direction: column + 子元素 flex: 1 的弹窗面板，
-     必须同时设置 height 和 max-height，禁止只设 max-height。
-     只设 max-height 会导致 flex 父元素高度 = 内容高度，
-     子元素 flex:1 的「剩余空间」恒为 0 → scroll-view 塌缩到 0×0。
-
-   【按钮颜色规则】
-     蓝 #3b82f6 = 主操作 / 绿 #10b981 = 成功/导出
-     红 #ef4444 = 危险/删除 / 灰 #6b7280 = 中性/取消
-     琥珀 #f59e0b = 编辑/转移 / 天蓝 #0ea5e9 = 详情
-
-   【保留不动】
-     悬浮扫码: #f97316 橙 / 浦东: #3b82f6 蓝 / 浦西: #f97316 橙
-
-     参考面板: .batch-panel (height + max-height 正确写法)
-   ═══════════════════════════════════════════════════════════════ */
-
 .page {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #f2f3f5;
   padding: 20rpx;
-  box-sizing: border-box;
+  background: #f6f7fb;
+  min-height: 100vh;
 }
 
 .card {
-  flex-shrink: 0;
   background: #fff;
   border-radius: 16rpx;
   padding: 20rpx;
   margin-bottom: 20rpx;
-  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.06);
-}
-
-/* ── 列表面板（flex 填充剩余空间） ── */
-.list-panel {
-  flex: 1;
-  min-height: 0;
-  background: #f6f7fb;
-  border-radius: 16rpx;
-  overflow: hidden;
-}
-
-.list-scroll {
-  height: 100%;
-  padding: 16rpx 20rpx 20rpx;
-  box-sizing: border-box;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.05);
 }
 
 /* ── 标题行 ── */
@@ -60,24 +19,19 @@
   justify-content: space-between;
   gap: 12rpx;
   margin-bottom: 16rpx;
-  flex-wrap: wrap;
 }
 
 .title {
   font-size: 32rpx;
   font-weight: 600;
   flex: 0 0 auto;
-  white-space: nowrap;
 }
 
 .title-right {
   display: flex;
   align-items: center;
-  gap: 6rpx;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  min-width: 0;
+  gap: 8rpx;
+  flex: 0 0 auto;
 }
 
 /* ── 基础按钮 ── */
@@ -118,19 +72,21 @@
   font-size: 14rpx;
 }
 
-/* ── 标题行按钮（市面标准配色） ── */
+/* ── 添加资产（蓝色实心 + 扫码图标） ── */
 .ui-btn-add {
   background: #3b82f6;
   color: #ffffff;
 }
 
+/* ── 导出表格（深灰实心） ── */
 .ui-btn-export {
-  background: #10b981;
+  background: #475569;
   color: #ffffff;
 }
 
+/* ── 申请转移（琥珀色实心） ── */
 .ui-btn-transfer {
-  background: #3b82f6;
+  background: #d97706;
   color: #ffffff;
 }
 
@@ -153,18 +109,11 @@
   height: 56rpx;
   border: 1rpx solid #dce3ef;
   border-radius: 10rpx;
-  padding: 0 106rpx 0 16rpx;
+  padding: 0 56rpx 0 16rpx;
   background: #fff;
   font-size: 28rpx;
   box-sizing: border-box;
   line-height: normal;
-}
-
-/* 降低 placeholder 透明度（不影响输入文字） */
-.search-input::placeholder,
-.search-input::-webkit-input-placeholder {
-  color: #b0b8c4;
-  opacity: 1;
 }
 
 .scan-btn {
@@ -183,23 +132,6 @@
   background: #f8fafc;
 }
 
-.clear-btn {
-  position: absolute;
-  right: 56rpx;
-  top: 50%;
-  width: 44rpx;
-  height: 44rpx;
-  margin-top: -22rpx;
-  border: 1rpx solid #dce3ef;
-  border-radius: 10rpx;
-  color: #94a3b8;
-  background: #f8fafc;
-  font-size: 24rpx;
-  line-height: 44rpx;
-  text-align: center;
-  overflow: hidden;
-}
-
 .ui-btn-search-main {
   background: #3b82f6;
   color: #ffffff;
@@ -210,58 +142,18 @@
 }
 
 .ui-btn-search-sub {
-  background: #6b7280;
+  background: #475569;
   color: #ffffff;
   height: 56rpx;
   padding: 0 16rpx;
   font-size: 26rpx;
   min-width: 80rpx;
-}
-
-.ui-btn-search-filter {
-  background: #6b7280;
-  color: #ffffff;
-  height: 56rpx;
-  padding: 0 16rpx;
-  font-size: 26rpx;
-  min-width: 80rpx;
-}
-
-.ui-btn-search-filter.filter-active {
-  background: #3b82f6;
-  color: #ffffff;
-}
-
-/* 筛选条件下拉区域 */
-.filter-drop {
-  margin-top: 2rpx;
-}
-
-/* Vant 筛选组件紧凑化 */
-.filter-drop .van-dropdown-menu__bar {
-  height: 56rpx !important;
-  box-shadow: none !important;
-}
-
-.filter-drop .van-dropdown-menu__title {
-  font-size: 22rpx !important;
-  line-height: 56rpx !important;
-  padding: 0 14rpx !important;
-}
-
-.filter-drop .van-dropdown-menu__title::after {
-  right: 2rpx !important;
-  margin-left: 2rpx !important;
 }
 
 /* ── 资产卡片 ── */
 .asset-item-card {
   position: relative;
-  background: #fff;
-  border-radius: 12rpx;
-  padding: 18rpx 20rpx;
-  margin-bottom: 12rpx;
-  box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.08);
+  padding-bottom: 20rpx;
 }
 
 /* 校区左边框色条 */
@@ -306,7 +198,7 @@
 }
 
 .item-row-value-with-actions {
-  padding-right: 304rpx;
+  padding-right: 166rpx;
 }
 
 .inline-card-actions {
@@ -321,34 +213,12 @@
 }
 
 .inline-card-actions .ui-btn {
-  background: #6b7280;
-  color: #ffffff;
-  font-size: 22rpx;
-  height: 52rpx;
-  min-width: 80rpx;
-  padding: 0 14rpx;
-  font-weight: 500;
-}
-
-/* 卡片按钮颜色（实心标准配色） */
-.inline-card-actions .ui-btn.ui-btn-batch-add {
-  background: #3b82f6;
-  color: #ffffff;
-}
-
-.inline-card-actions .ui-btn.ui-btn-batch-remove {
-  background: #ef4444;
-  color: #ffffff;
-}
-
-.inline-card-actions .ui-btn.ui-btn-transfer-card {
-  background: #f59e0b;
-  color: #ffffff;
-}
-
-.inline-card-actions .ui-btn.ui-btn-detail-card {
-  background: #0ea5e9;
-  color: #ffffff;
+  border: 1rpx solid #cbd5e1;
+  background: #fff;
+  color: #475569;
+  font-size: 20rpx;
+  height: 36rpx;
+  padding: 0 10rpx;
 }
 
 /* 校区标签 */
@@ -434,7 +304,6 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 14rpx;
-  flex-shrink: 0;
 }
 
 .panel-title {
@@ -442,90 +311,19 @@
   font-weight: 600;
 }
 
-.panel-actions {
-  display: flex;
-  align-items: center;
-  gap: 6rpx;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-/* 面板操作按钮统一基底 */
-.panel-act-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44rpx;
-  padding: 0 14rpx;
-  border-radius: 8rpx;
-  font-size: 22rpx;
-  font-weight: 500;
-  white-space: nowrap;
-  border: 1rpx solid transparent;
-  box-sizing: border-box;
-}
-
-/* 编辑 */
-.panel-act-edit {
-  background: #f59e0b;
-  color: #ffffff;
-  border-color: #d97706;
-}
-
-/* 保存 */
-.panel-act-save {
-  background: #10b981;
-  color: #ffffff;
-  border-color: #059669;
-}
-
-/* 扫码填充 */
-.panel-act-scan {
-  background: #3b82f6;
-  color: #ffffff;
-  border-color: #2563eb;
-}
-
-/* 关闭（中性灰） */
-.panel-act-close {
-  background: #6b7280;
-  color: #ffffff;
-  border-color: #4b5563;
-}
-
-/* 加入批量 */
-.panel-act-add {
-  background: #3b82f6;
-  color: #ffffff;
-  border-color: #2563eb;
-}
-
-/* 移出批量 */
-.panel-act-remove {
-  background: #ef4444;
-  color: #ffffff;
-  border-color: #dc2626;
-}
-
-/* 通用关闭/操作按钮（其他面板沿用） */
 .panel-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44rpx;
-  padding: 0 14rpx;
-  border-radius: 8rpx;
-  font-size: 22rpx;
-  font-weight: 500;
-  color: #ffffff;
-  background: #6b7280;
-  border: 1rpx solid #4b5563;
+  font-size: 26rpx;
+  color: #64748b;
 }
 
 .panel-close-primary {
-  color: #ffffff;
-  background: #3b82f6;
-  border-color: #2563eb;
+  color: #3b82f6;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
 }
 
 .field {
@@ -566,11 +364,8 @@
   padding: 20rpx;
 }
 
-/* ── 资产详情面板 ── */
-/* ⚠️ height + max-height 双写规则见文件顶部，禁止回退为仅 max-height */
 .detail-panel {
   width: 92vw;
-  height: 82vh;
   max-height: 82vh;
   background: #f6f7fb;
   border-radius: 16rpx;
@@ -858,10 +653,8 @@
 }
 
 /* ── 扫码填充面板 ── */
-/* ⚠️ height + max-height 双写规则见文件顶部，禁止回退为仅 max-height */
 .fill-panel {
   width: 86vw;
-  height: 68vh;
   max-height: 68vh;
   background: #fff;
   border-radius: 16rpx;
@@ -923,17 +716,12 @@
 .fill-actions {
   display: flex;
   gap: 14rpx;
-  margin-top: 0;
-  padding-top: 16rpx;
-  padding-bottom: 4rpx;
+  margin-top: 16rpx;
   justify-content: center;
-  border-top: 1rpx solid #e2e8f0;
-  background: #fff;
-  flex-shrink: 0;
 }
 
 .fill-actions .ui-btn {
-  height: 44rpx;
+  height: 40rpx;
   border: none;
 }
 
@@ -1006,6 +794,13 @@
 }
 
 /* ── 搜索/转移面板 ── */
+.search-box {
+  max-height: 320rpx;
+  border: 1rpx solid #e2e8f0;
+  border-radius: 10rpx;
+  margin-top: 8rpx;
+}
+
 .search-row {
   padding: 10rpx 12rpx;
   border-bottom: 1rpx solid #f1f5f9;
@@ -1051,373 +846,3 @@
 .picker-date {
   color: #1e293b;
 }
-
-/* ── 批量入口按钮（标题行） ── */
-.ui-btn-batch-entry {
-  background: #3b82f6;
-  color: #ffffff;
-  gap: 2rpx;
-}
-
-.ui-btn-batch-entry-empty {
-  background: #6b7280;
-  color: #ffffff;
-}
-
-.batch-entry-count {
-  background: #ffffff;
-  color: #3b82f6;
-  border-radius: 50%;
-  width: 32rpx;
-  height: 32rpx;
-  font-size: 18rpx;
-  font-weight: 700;
-  text-align: center;
-  line-height: 32rpx;
-  display: inline-block;
-}
-
-/* ── 扫码快捷浮动入口（右侧上方） ── */
-.scan-float-btn {
-  position: fixed;
-  right: 60rpx;
-  bottom: 290rpx;
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 48rpx;
-  background: #f97316;
-  box-shadow: 0 6rpx 20rpx rgba(249, 115, 22, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 950;
-}
-
-.scan-float-btn .van-icon {
-  color: #ffffff !important;
-}
-
-/* ── 批量记录浮动入口（右侧下方） ── */
-.batch-float-btn {
-  position: fixed;
-  right: 60rpx;
-  bottom: 180rpx;
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 48rpx;
-  background: #fed7aa;
-  box-shadow: 0 6rpx 20rpx rgba(254, 215, 170, 0.6);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 500;
-}
-
-.batch-float-icon {
-  font-size: 28rpx;
-  color: #fff;
-  line-height: 1;
-}
-
-.batch-float-count {
-  font-size: 22rpx;
-  color: #fff;
-  font-weight: 600;
-  line-height: 1;
-}
-
-/* ── 批量记录面板 ── */
-/* ✅ 正确示范：height + max-height 双写，flex column 子元素正常撑满 */
-.batch-panel {
-  position: relative;
-  width: 92vw;
-  height: 78vh;
-  max-height: 86vh;
-  background: #f6f7fb;
-  border-radius: 16rpx;
-  padding: 24rpx;
-  box-shadow: 0 20rpx 40rpx rgba(15, 23, 42, 0.2);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.batch-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 14rpx;
-  flex-wrap: wrap;
-}
-
-.batch-hint {
-  font-size: 22rpx;
-  color: #94a3b8;
-  margin-left: auto;
-}
-
-.ui-btn-plain {
-  background: #6b7280;
-  color: #ffffff;
-  border: 1rpx solid #4b5563;
-}
-
-.ui-btn-clear-all {
-  background: #ef4444;
-  color: #ffffff !important;
-  border: 1rpx solid #dc2626;
-}
-
-.batch-scroll {
-  flex: 1 1 0;
-  min-height: 0;
-  padding-bottom: 8rpx;
-}
-
-.batch-asset-row {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 14rpx 12rpx;
-  background: #fff;
-  border-radius: 10rpx;
-  margin-bottom: 8rpx;
-}
-
-.batch-checkbox {
-  width: 38rpx;
-  height: 38rpx;
-  border-radius: 8rpx;
-  border: 2rpx solid #cbd5e1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22rpx;
-  color: transparent;
-  flex: 0 0 38rpx;
-}
-
-.batch-checkbox-on {
-  background: #3b82f6;
-  border-color: #3b82f6;
-  color: #fff;
-}
-
-.batch-asset-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-}
-
-.batch-asset-code {
-  font-size: 22rpx;
-  color: #94a3b8;
-}
-
-.batch-asset-name {
-  font-size: 25rpx;
-  color: #1e293b;
-  word-break: break-all;
-  line-height: 1.4;
-}
-
-.batch-asset-location {
-  font-size: 21rpx;
-  color: #94a3b8;
-}
-
-.batch-asset-remove {
-  width: 56rpx;
-  height: 56rpx;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 36rpx;
-  color: #ffffff;
-  background: #ef4444;
-  border-radius: 8rpx;
-  flex: 0 0 auto;
-}
-
-/* ── 批量面板子面板（扫码填充/编辑） ── */
-.batch-sub-mask {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.35);
-  border-radius: 16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-}
-
-.batch-sub-panel {
-  width: 92%;
-  height: 90%;
-  background: #fff;
-  border-radius: 14rpx;
-  padding: 20rpx;
-  box-shadow: 0 16rpx 36rpx rgba(15, 23, 42, 0.2);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.batch-fill-source {
-  font-size: 24rpx;
-  color: #3b82f6;
-  background: #eff6ff;
-  border-radius: 8rpx;
-  padding: 8rpx 14rpx;
-  margin-bottom: 12rpx;
-}
-
-.batch-fill-scroll {
-  flex: 1 1 0;
-  min-height: 0;
-  padding-bottom: 8rpx;
-}
-
-.batch-fill-field {
-  border-bottom: 1rpx solid #f1f5f9;
-  padding: 10rpx 0;
-}
-
-.batch-fill-field-head {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-}
-
-.batch-fill-label {
-  font-size: 24rpx;
-  color: #475569;
-  font-weight: 500;
-  min-width: 100rpx;
-}
-
-.batch-fill-arrow {
-  font-size: 20rpx;
-  color: #3b82f6;
-}
-
-.batch-fill-source-val {
-  font-size: 24rpx;
-  color: #3b82f6;
-  font-weight: 500;
-}
-
-.batch-fill-previews {
-  margin-left: 48rpx;
-  margin-top: 6rpx;
-  padding: 8rpx 12rpx;
-  background: #f8fafc;
-  border-radius: 6rpx;
-  border-left: 3rpx solid #64748b;
-}
-
-.batch-fill-previews-title {
-  font-size: 21rpx;
-  color: #475569;
-  display: block;
-  margin-bottom: 4rpx;
-}
-
-.batch-fill-preview-row {
-  padding: 2rpx 0;
-  word-break: break-all;
-}
-
-.batch-fill-preview-val {
-  font-size: 22rpx;
-  color: #1e293b;
-}
-
-.batch-fill-preview-assets {
-  font-size: 20rpx;
-  color: #64748b;
-}
-
-/* ── 导出确认对话框 ── */
-.export-confirm-dialog {
-  width: 80vw;
-  background: #fff;
-  border-radius: 14rpx;
-  padding: 28rpx 24rpx 20rpx;
-  box-shadow: 0 16rpx 36rpx rgba(15, 23, 42, 0.2);
-}
-
-.export-confirm-title {
-  display: block;
-  font-size: 30rpx;
-  font-weight: 600;
-  margin-bottom: 8rpx;
-}
-
-.export-confirm-hint {
-  display: block;
-  font-size: 24rpx;
-  color: #94a3b8;
-  margin-bottom: 20rpx;
-}
-
-.export-confirm-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.export-confirm-config {
-  font-size: 22rpx;
-  color: #94a3b8;
-  text-decoration: underline;
-}
-
-.export-confirm-right {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-}
-
-/* ── 导出列选择面板 ── */
-/* ⚠️ height + max-height 双写规则见文件顶部注释，禁止回退为仅 max-height */
-.export-panel {
-  width: 88vw;
-  height: 70vh;
-  max-height: 70vh;
-  background: #fff;
-  border-radius: 14rpx;
-  padding: 20rpx;
-  box-shadow: 0 16rpx 36rpx rgba(15, 23, 42, 0.2);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.export-scroll {
-  flex: 1 1 0;
-  min-height: 0;
-}
-
-.export-col-row {
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-  padding: 14rpx 8rpx;
-  border-bottom: 1rpx solid #f1f5f9;
-}
-
-.export-col-label {
-  font-size: 26rpx;
-  color: #334155;
-}
-
-.batch-edit-input {
-  margin: 8rpx 0 8rpx 48rpx;
-  width: calc(100% - 48rpx);
-  box-sizing: border-box;
-}
-

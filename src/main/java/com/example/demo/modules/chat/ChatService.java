@@ -155,10 +155,41 @@ public class ChatService {
         if (!chatJdbcRepository.areChatCoreTablesPresent()) {
             return Collections.emptyList();
         }
-        if (chatJdbcRepository.areChatUserConversationPrefsTablesPresent()) {
-            return chatJdbcRepository.listConversationsForUserWithPrefs(me.getId());
+        List<Map<String, Object>> rows = chatJdbcRepository.areChatUserConversationPrefsTablesPresent()
+                ? chatJdbcRepository.listConversationsForUserWithPrefs(me.getId())
+                : chatJdbcRepository.listConversationsForUser(me.getId());
+        if (rows == null || rows.isEmpty()) {
+            return Collections.emptyList();
         }
-        return chatJdbcRepository.listConversationsForUser(me.getId());
+        List<String> peerIds = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Object peer = row.get("peerUserId");
+            if (peer == null) {
+                peer = row.get("peer_user_id");
+            }
+            if (peer != null && StringUtils.hasText(String.valueOf(peer))) {
+                peerIds.add(String.valueOf(peer).trim());
+            }
+        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(peerIds);
+        List<Map<String, Object>> out = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            HashMap<String, Object> m = new HashMap<>(row);
+            Object peer = row.get("peerUserId");
+            if (peer == null) {
+                peer = row.get("peer_user_id");
+            }
+            String peerId = peer != null ? String.valueOf(peer).trim() : "";
+            String dn = names.get(peerId);
+            if (StringUtils.hasText(dn)) {
+                m.put("peerDisplayName", dn);
+                m.put("peerDisplayNickname", dn);
+            } else if (StringUtils.hasText(peerId)) {
+                m.put("peerDisplayName", peerId);
+            }
+            out.add(m);
+        }
+        return out;
     }
 
     @Transactional(rollbackFor = Exception.class)

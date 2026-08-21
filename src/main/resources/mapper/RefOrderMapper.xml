@@ -8,15 +8,19 @@
         <result property="submitterId" column="submitter_id"/>
         <result property="submitterName" column="submitter_name"/>
         <result property="projectGroupName" column="project_group_name"/>
+        <result property="projectGroupId" column="project_group_id"/>
+        <result property="aupRecordId" column="aup_record_id"/>
+        <result property="registerNo" column="register_no"/>
         <result property="status" column="status"/>
         <result property="submitRemark" column="submit_remark"/>
         <result property="submittedAt" column="submitted_at"/>
+        <result property="estimatedDeliveryDate" column="estimated_delivery_date"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ref_order(group_id, submitter_id, submitter_name, project_group_name, status, submit_remark, submitted_at)
-        VALUES (#{groupId}, #{submitterId}, #{submitterName}, #{projectGroupName}, #{status}, #{submitRemark}, #{submittedAt})
+        INSERT INTO ref_order(group_id, submitter_id, submitter_name, project_group_name, project_group_id, aup_record_id, register_no, status, submit_remark, submitted_at, estimated_delivery_date)
+        VALUES (#{groupId}, #{submitterId}, #{submitterName}, #{projectGroupName}, #{projectGroupId}, #{aupRecordId}, #{registerNo}, #{status}, #{submitRemark}, #{submittedAt}, #{estimatedDeliveryDate})
     </insert>
 
     <update id="updateStatus">

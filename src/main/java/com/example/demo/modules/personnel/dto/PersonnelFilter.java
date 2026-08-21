@@ -13,7 +13,7 @@ public class PersonnelFilter {
     private String projectGroupName;
     /** 部门名称（controller 层由 departmentId 解析后传入） */
     private String departmentName;
-    /** 角色（仅账号人，su_staff.role） */
+    /** 角色（人级唯一权威，p.role） */
     private String role;
     /** 账号状态（仅账号人，su_staff.status） */
     private Integer status;
@@ -21,7 +21,7 @@ public class PersonnelFilter {
     private Integer isSchool;
     /** 房间授权（allowed_rooms_display_zh LIKE） */
     private String roomName;
-    /** 身份标签 id（EXISTS join person_identity on staff_id） */
+    /** 身份标签 id（EXISTS join person_identity on CAST(p.id AS CHAR)） */
     private Long identityTagId;
     /** 分页（Service 使用） */
     private Integer page = 1;

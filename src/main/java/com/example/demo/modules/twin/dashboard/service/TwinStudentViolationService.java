@@ -15,6 +15,12 @@ import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
 import com.example.demo.modules.twin.dashboard.mapper.TwinCageStatusViolationMapper;
 import com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper;
+import com.example.demo.modules.twin.dashboard.support.InteractiveChallengeVerifier;
+import com.example.demo.modules.twin.dashboard.support.ViolationMirrorNotificationSupport;
+import com.example.demo.modules.twin.dashboard.support.ViolationTextTemplateRenderer;
+import com.example.demo.modules.twin.obligation.content.ContentJsonSupport;
+import com.example.demo.modules.twin.obligation.service.ObligationService;
+import com.example.demo.modules.twin.obligation.support.ObligationSupport;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -24,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -78,6 +83,7 @@ public class TwinStudentViolationService {
     private final TwinCageStatusViolationMapper cageStatusViolationMapper;
     private final SocketIOServer socketServer;
     private final PushService pushService;
+    private final ObligationService obligationService;
 
     /** 检测到表不存在后短路，避免每次扫码/列表都打库抛错（执行 DDL 后需重启应用或等后续扩展热恢复） */
     private final AtomicBoolean violationTableAbsent = new AtomicBoolean(false);
@@ -91,7 +97,8 @@ public class TwinStudentViolationService {
                                        StudentNotificationMapper studentNotificationMapper,
                                        TwinCageStatusViolationMapper cageStatusViolationMapper,
                                        @org.springframework.beans.factory.annotation.Autowired(required = false) SocketIOServer socketServer,
-                                       PushService pushService) {
+                                       PushService pushService,
+                                       @org.springframework.beans.factory.annotation.Autowired(required = false) ObligationService obligationService) {
         this.violationMapper = violationMapper;
         this.objectMapper = objectMapper;
         this.userDisplayNameService = userDisplayNameService;
@@ -102,6 +109,7 @@ public class TwinStudentViolationService {
         this.cageStatusViolationMapper = cageStatusViolationMapper;
         this.socketServer = socketServer;
         this.pushService = pushService;
+        this.obligationService = obligationService;
     }
 
     private static boolean isTwinStudentViolationTableMissing(Throwable e) {
@@ -127,14 +135,37 @@ public class TwinStudentViolationService {
     public void markSchemaReady() {
         violationTableAbsent.set(false);
     }
-    /** 将到期记录标记为 EXPIRED，避免误判为仍生效 */
+    /** 将到期记录标记为 EXPIRED，避免误判为仍生效；并撤回对应镜像通知 */
     public void touchExpireStale() {
         if (violationTableAbsent.get()) {
             return;
         }
         try {
+            List<Long> dueIds = Collections.emptyList();
+            try {
+                dueIds = violationMapper.selectIdsDueToExpire();
+            } catch (Exception e) {
+                if (isTwinStudentViolationTableMissing(e)) {
+                    markTableAbsentOnce();
+                    return;
+                }
+                log.warn("[student-violation] 查询待过期 id 失败: {}", e.getMessage());
+            }
             int n = violationMapper.expireActivePastDue();
             if (n > 0) {
+                withdrawMirrorNotifications(dueIds);
+                for (Long vid : dueIds) {
+                    if (vid == null) continue;
+                    markObligationExpired(vid);
+                    try {
+                        TwinStudentViolation expired = violationMapper.selectById(vid);
+                        if (expired != null) {
+                            maybeClearOrphanCageParent(expired.getCageViolationId());
+                        }
+                    } catch (Exception ignored) {
+                        // 父记录清理失败不影响过期主路径
+                    }
+                }
                 log.info("[student-violation] 自动过期 {} 条违规记录", n);
             }
         } catch (Exception e) {
@@ -226,7 +257,7 @@ public class TwinStudentViolationService {
      * 扫码端完成交互拼图：写入验证时间；若 interactive_unlock_on_verify=1 则同步解除禁入（幂等）。
      */
     @Transactional(rollbackFor = Exception.class)
-    public TwinStudentViolation acknowledgeInteractiveChallenge(long violationId, String targetUserId) {
+    public TwinStudentViolation acknowledgeInteractiveChallenge(long violationId, String targetUserId, String answer) {
         if (violationTableAbsent.get()) {
             throw new IllegalStateException("库表 twin_student_violation 未创建");
         }
@@ -243,6 +274,12 @@ public class TwinStudentViolationService {
         if (!StringUtils.hasText(row.getInteractiveChallenge())) {
             throw new IllegalArgumentException("该违规无需交互确认");
         }
+        // 服务端校验答案。已验证过的记录走幂等返回路径，不重复校验。
+        if (row.getInteractiveChallengeVerifiedAt() == null
+                && !InteractiveChallengeVerifier.matches(row.getInteractiveChallenge(), answer)) {
+            log.warn("[student-violation] 交互确认答案不匹配 violationId={} userId={}", violationId, targetUserId);
+            throw new IllegalArgumentException("确认短语不正确");
+        }
         // 自助解禁规则才受窗口次数上限约束；记录级交互短语（含 MANUAL 默认规则）仍允许拼图确认
         if (row.getRuleId() != null && ruleService != null) {
             TwinViolationRule rule = ruleService.getById(row.getRuleId());
@@ -252,6 +289,7 @@ public class TwinStudentViolationService {
             }
         }
         if (row.getInteractiveChallengeVerifiedAt() != null) {
+            completeObligationDisposition(row.getId(), targetUserId.trim(), answer);
             return finalizeAfterInteractiveAck(row);
         }
         try {
@@ -273,12 +311,13 @@ public class TwinStudentViolationService {
             }
             throw new RuntimeException(e);
         }
-        return finalizeAfterInteractiveAck(getById(violationId));
+        TwinStudentViolation after = getById(violationId);
+        if (after != null && after.getInteractiveChallengeVerifiedAt() != null) {
+            completeObligationDisposition(after.getId(), targetUserId.trim(), answer);
+        }
+        return finalizeAfterInteractiveAck(after);
     }
 
-    /**
-     * 交互验证完成后：若已超过违规期限则立即 EXPIRED；期限内已完成则待 expire_at 由定时扫描结束。
-     */
     private TwinStudentViolation finalizeAfterInteractiveAck(TwinStudentViolation row) {
         if (row == null || row.getId() == null) {
             return row;
@@ -288,7 +327,11 @@ public class TwinStudentViolationService {
         }
         if (row.getExpireAt() != null && row.getExpireAt().isBefore(LocalDateTime.now())) {
             try {
-                violationMapper.expireByIdIfPastDue(row.getId());
+                int n = violationMapper.expireByIdIfPastDue(row.getId());
+                if (n > 0) {
+                    withdrawMirrorNotification(row.getId());
+                    markObligationExpired(row.getId());
+                }
             } catch (Exception e) {
                 if (isTwinStudentViolationTableMissing(e)) {
                     markTableAbsentOnce();
@@ -454,11 +497,7 @@ public class TwinStudentViolationService {
             name = tid;
         }
         String dept = resolveDepartmentName(tid);
-        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        return rawText
-                .replace("${name}", name)
-                .replace("${dept}", dept)
-                .replace("${date}", date);
+        return ViolationTextTemplateRenderer.render(rawText, name, dept, ViolationTextTemplateRenderer.today());
     }
 
     /** 笼位状态码 → 中文标签 */
@@ -761,27 +800,26 @@ public class TwinStudentViolationService {
             effectiveForbidEnter = effectiveForbidEnter || decision.isForbidEnter();
         }
 
-        try {
-            violationMapper.supersedeActiveByTargetUserId(tid);
-        } catch (Exception e) {
-            if (isTwinStudentViolationTableMissing(e)) {
-                markTableAbsentOnce();
-                throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
-            }
-            throw e;
-        }
+        // 每条提交独立 INSERT 新 id；不再把同人既有 ACTIVE 标为 SUPERSEDED（避免覆盖历史违规）。
+        // 扫码展示仍取最新 ACTIVE（ORDER BY id DESC LIMIT 1）；管理端列表可并列显示多条 ACTIVE。
 
         TwinStudentViolation row = new TwinStudentViolation();
         row.setTargetUserId(tid);
-        row.setViolationText(violationText);
+        ContentJsonSupport.Resolved content = ContentJsonSupport.resolve(objectMapper, null, violationText, true);
+        row.setViolationText(content.contentHtml());
+        row.setContentJson(content.contentJson());
         row.setImageUrls(serializeImageUrls(imageUrls));
         row.setInteractiveChallenge(normalizeInteractiveChallenge(interactiveChallenge));
-        row.setInteractiveUnlockOnVerify(resolveInteractiveUnlockOnVerify(row.getInteractiveChallenge(), interactiveUnlockOnVerify));
+        int unlockOnVerify = resolveInteractiveUnlockOnVerify(row.getInteractiveChallenge(), interactiveUnlockOnVerify);
+        row.setInteractiveUnlockOnVerify(unlockOnVerify);
         row.setForbidEnter(effectiveForbidEnter ? 1 : 0);
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setEnterSuccessCount(0);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
-        if (expireAfterDays != null && expireAfterDays > 0) {
+        // 与前端一致：验证后自动解除禁入时忽略封禁天数（二者互斥）
+        if (unlockOnVerify == 1) {
+            row.setExpireAt(null);
+        } else if (expireAfterDays != null && expireAfterDays > 0) {
             row.setExpireAt(LocalDateTime.now().plusDays(expireAfterDays));
         } else {
             row.setExpireAt(null);
@@ -808,6 +846,7 @@ public class TwinStudentViolationService {
         }
         // 同步写入 sys_student_notification，确保 /student/notifications 消息中心可见
         persistStudentNotification(row);
+        syncObligationFromCreated(row);
         try { String srcLabel = "CAGE_STATUS".equals(row.getSource()) ? "笼位状态异常" : row.getSource() != null ? row.getSource() : "管理员记录"; String enterLabel = row.getForbidEnter() != null && row.getForbidEnter() == 1 ? "已限制进入" : "未限制"; pushService.send("VIOLATION_CREATED", Map.of("title", "CAGE_STATUS".equals(row.getSource()) ? resolveCageNoticeTitle(row) : "违规提醒", "source", srcLabel, "summary", row.getViolationText() != null ? row.getViolationText().replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim() : "", "enterLocked", enterLabel), Set.of(row.getTargetUserId())); } catch (Exception e) { log.warn("[Push] VIOLATION_CREATED failed: {}", e.getMessage()); }
         return row;
     }
@@ -898,8 +937,8 @@ public class TwinStudentViolationService {
             sn.setSummary(trimmed.length() > 200 ? trimmed.substring(0, 200) + "..." : trimmed);
             sn.setContent(body);
             sn.setType("PLATFORM");
-            sn.setBizType("STUDENT_VIOLATION");
-            sn.setBizId(String.valueOf(row.getId()));
+            sn.setBizType(ViolationMirrorNotificationSupport.BIZ_TYPE);
+            sn.setBizId(ViolationMirrorNotificationSupport.bizId(row.getId()));
             sn.setRecipientUserId(row.getTargetUserId().trim());
             sn.setIsRead(0);
             sn.setCreateTime(row.getCreatedAt() != null ? row.getCreatedAt() : LocalDateTime.now());
@@ -910,8 +949,58 @@ public class TwinStudentViolationService {
         }
     }
 
+    /** C-T1：终态 / 硬删除时撤回镜像通知（按 bizType+bizId） */
+    private void withdrawMirrorNotification(long violationId) {
+        if (studentNotificationMapper == null || violationId <= 0) {
+            return;
+        }
+        try {
+            int n = studentNotificationMapper.deleteByBiz(
+                    ViolationMirrorNotificationSupport.BIZ_TYPE,
+                    ViolationMirrorNotificationSupport.bizId(violationId));
+            if (n > 0) {
+                log.info("[student-violation] 已撤回镜像通知 violationId={} rows={}", violationId, n);
+            }
+        } catch (Exception e) {
+            log.warn("[student-violation] 撤回镜像通知失败 id={}: {}", violationId, e.getMessage());
+        }
+    }
+
+    private void withdrawMirrorNotifications(List<Long> violationIds) {
+        if (violationIds == null || violationIds.isEmpty()) {
+            return;
+        }
+        for (Long id : violationIds) {
+            if (id != null) {
+                withdrawMirrorNotification(id);
+            }
+        }
+    }
+
+    /** ACTIVE 编辑：同步更新镜像正文，保留未读状态 */
+    private void syncMirrorNotificationContent(TwinStudentViolation row) {
+        if (studentNotificationMapper == null || row == null || row.getId() == null) {
+            return;
+        }
+        try {
+            String title = "CAGE_STATUS".equals(row.getSource()) ? resolveCageNoticeTitle(row) : "违规提醒";
+            String body = applyTemplateVariables(row.getViolationText(), row.getTargetUserId());
+            String plainText = body != null ? body.replaceAll("<[^>]+>", " ") : "";
+            String trimmed = plainText.replaceAll("\\s+", " ").trim();
+            String summary = trimmed.length() > 200 ? trimmed.substring(0, 200) + "..." : trimmed;
+            studentNotificationMapper.updateContentByBiz(
+                    ViolationMirrorNotificationSupport.BIZ_TYPE,
+                    ViolationMirrorNotificationSupport.bizId(row.getId()),
+                    title,
+                    summary,
+                    body);
+        } catch (Exception e) {
+            log.warn("[student-violation] 同步镜像通知正文失败 id={}: {}", row.getId(), e.getMessage());
+        }
+    }
+
     /**
-     * 批量新建违规：每人独立一条 ACTIVE（已有 ACTIVE 会先 SUPERSEDED）。
+     * 批量新建违规：每人独立 INSERT 一条 ACTIVE（不覆盖同人既有 ACTIVE）。
      *
      * @return createdCount、failed（userId + message）
      */
@@ -1065,7 +1154,15 @@ public class TwinStudentViolationService {
             return false;
         }
         try {
-            return violationMapper.updateClearById(id, clearedByUserId) > 0;
+            TwinStudentViolation existing = violationMapper.selectById(id);
+            Long cageParentId = existing != null ? existing.getCageViolationId() : null;
+            boolean ok = violationMapper.updateClearById(id, clearedByUserId) > 0;
+            if (ok) {
+                withdrawMirrorNotification(id);
+                markObligationRevoked(id);
+                maybeClearOrphanCageParent(cageParentId);
+            }
+            return ok;
         } catch (Exception e) {
             if (isTwinStudentViolationTableMissing(e)) {
                 markTableAbsentOnce();
@@ -1087,7 +1184,15 @@ public class TwinStudentViolationService {
             return false;
         }
         try {
-            return violationMapper.markProcessedById(id, operatorUserId != null ? operatorUserId : "ADMIN") > 0;
+            TwinStudentViolation existing = violationMapper.selectById(id);
+            Long cageParentId = existing != null ? existing.getCageViolationId() : null;
+            boolean ok = violationMapper.markProcessedById(id, operatorUserId != null ? operatorUserId : "ADMIN") > 0;
+            if (ok) {
+                withdrawMirrorNotification(id);
+                markObligationRevoked(id);
+                maybeClearOrphanCageParent(cageParentId);
+            }
+            return ok;
         } catch (Exception e) {
             if (isTwinStudentViolationTableMissing(e)) {
                 markTableAbsentOnce();
@@ -1141,13 +1246,16 @@ public class TwinStudentViolationService {
         }
         TwinStudentViolation row = new TwinStudentViolation();
         row.setId(id);
-        row.setViolationText(violationText != null ? violationText : "");
+        ContentJsonSupport.Resolved content = ContentJsonSupport.resolve(objectMapper, null, violationText, true);
+        row.setViolationText(content.contentHtml());
+        row.setContentJson(content.contentJson());
         row.setImageUrls(serializeImageUrls(imageUrls));
         String newChallenge = normalizeInteractiveChallenge(interactiveChallenge);
         String oldChallenge = normalizeInteractiveChallenge(existing.getInteractiveChallenge());
         boolean challengeChanged = !Objects.equals(newChallenge, oldChallenge);
         row.setInteractiveChallenge(newChallenge);
-        row.setInteractiveUnlockOnVerify(resolveInteractiveUnlockOnVerify(newChallenge, interactiveUnlockOnVerify));
+        int unlockOnVerify = resolveInteractiveUnlockOnVerify(newChallenge, interactiveUnlockOnVerify);
+        row.setInteractiveUnlockOnVerify(unlockOnVerify);
         boolean effectiveForbidEnter = resolveManualForbidEnter(forbidEnter, interactiveChallenge);
         if (challengeChanged) {
             row.setInteractiveChallengeVerifiedAt(null);
@@ -1161,7 +1269,10 @@ public class TwinStudentViolationService {
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
         String mode = expireMode != null ? expireMode.trim().toUpperCase() : "KEEP";
-        if ("CLEAR".equals(mode)) {
+        // 与前端一致：验证后自动解除禁入时清空 expire_at（忽略封禁天数）
+        if (unlockOnVerify == 1) {
+            row.setExpireAt(null);
+        } else if ("CLEAR".equals(mode)) {
             row.setExpireAt(null);
         } else if ("RELATIVE".equals(mode) && expireAfterDays != null && expireAfterDays > 0) {
             row.setExpireAt(LocalDateTime.now().plusDays(expireAfterDays));
@@ -1182,7 +1293,12 @@ public class TwinStudentViolationService {
             }
             throw new RuntimeException(e);
         }
-        return getById(id);
+        TwinStudentViolation updated = getById(id);
+        if (updated != null && STATUS_ACTIVE.equals(updated.getStatus())) {
+            syncMirrorNotificationContent(updated);
+            syncObligationFromCreated(updated);
+        }
+        return updated;
     }
 
     public boolean delete(long id) {
@@ -1194,7 +1310,15 @@ public class TwinStudentViolationService {
             return false;
         }
         try {
-            return violationMapper.deleteById(id) > 0;
+            TwinStudentViolation existing = violationMapper.selectById(id);
+            Long cageParentId = existing != null ? existing.getCageViolationId() : null;
+            boolean ok = violationMapper.deleteById(id) > 0;
+            if (ok) {
+                withdrawMirrorNotification(id);
+                markObligationRevoked(id);
+                maybeClearOrphanCageParent(cageParentId);
+            }
+            return ok;
         } catch (Exception e) {
             if (isTwinStudentViolationTableMissing(e)) {
                 markTableAbsentOnce();
@@ -1202,6 +1326,60 @@ public class TwinStudentViolationService {
             }
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * T1-2：删光子记录后，若父记录仍为 ACTIVE 且已无 ACTIVE 子记录，则清为 CLEARED，
+     * 避免去重命中导致该笼位永不重新判定。
+     */
+    private void maybeClearOrphanCageParent(Long cageParentId) {
+        if (cageParentId == null || cageStatusViolationMapper == null) {
+            return;
+        }
+        try {
+            TwinCageStatusViolation parent = cageStatusViolationMapper.selectById(cageParentId);
+            if (parent == null || !"ACTIVE".equals(parent.getStatus())) {
+                return;
+            }
+            List<TwinStudentViolation> children = violationMapper.selectByCageViolationId(cageParentId);
+            boolean anyActive = children != null && children.stream()
+                    .anyMatch(c -> c != null && STATUS_ACTIVE.equals(c.getStatus()));
+            if (!anyActive) {
+                cageStatusViolationMapper.updateStatus(cageParentId, "CLEARED");
+                log.info("[student-violation] 笼架父记录无 ACTIVE 子记录，已 CLEARED parentId={}", cageParentId);
+            }
+        } catch (Exception e) {
+            log.warn("[student-violation] 清理空笼架父记录失败 parentId={}: {}", cageParentId, e.getMessage());
+        }
+    }
+
+    private void syncObligationFromCreated(TwinStudentViolation row) {
+        if (obligationService == null || row == null) {
+            return;
+        }
+        obligationService.syncFromViolationCreated(row);
+    }
+
+    private void completeObligationDisposition(long violationId, String subjectUserId, String answer) {
+        if (obligationService == null) {
+            return;
+        }
+        obligationService.completeViolationDisposition(
+                violationId, subjectUserId, ObligationSupport.CHANNEL_SCAN, answer);
+    }
+
+    private void markObligationExpired(long violationId) {
+        if (obligationService == null) {
+            return;
+        }
+        obligationService.markViolationExpired(violationId);
+    }
+
+    private void markObligationRevoked(long violationId) {
+        if (obligationService == null) {
+            return;
+        }
+        obligationService.markViolationRevoked(violationId);
     }
 
     private List<String> parseImageUrls(String json) {

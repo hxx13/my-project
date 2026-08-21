@@ -25,6 +25,7 @@ import {
 } from "./utils/roomDashboard";
 import { useMobilePullToRefresh } from "./useMobilePullToRefresh";
 
+import { appConfirm, appPrompt } from "@/lib/appDialog";
 type ExemptFilter = "all" | "exempt" | "controlled";
 
 function entryTypeLabel(type?: string): string {
@@ -195,7 +196,7 @@ export default function MobileRoomAuditPanel({ onBack }: MobileRoomAuditPanelPro
   );
 
   const handleManualExit = async (person: DecoratedPerson) => {
-    if (!window.confirm(`${person.userName || person.userId} 将被登记为离开，是否继续？`)) return;
+    if (!await appConfirm(`${person.userName || person.userId} 将被登记为离开，是否继续？`)) return;
     try {
       await submitAuditManualExit({
         userId: person.userId,
@@ -214,7 +215,7 @@ export default function MobileRoomAuditPanel({ onBack }: MobileRoomAuditPanelPro
     if (!person.cardNo) return;
     const next = person.cardStatus === "FROZEN" ? "NORMAL" : "FROZEN";
     const label = next === "FROZEN" ? "冻结" : "解冻";
-    if (!window.confirm(`确认${label}卡号 ${person.cardNo}？`)) return;
+    if (!await appConfirm(`确认${label}卡号 ${person.cardNo}？`)) return;
     try {
       await updateCardStatus(person.cardNo, next);
       toast.success("已更新");
@@ -228,7 +229,7 @@ export default function MobileRoomAuditPanel({ onBack }: MobileRoomAuditPanelPro
     if (!person.cardNo) return;
     const flag = person.freezeExemptFlag === 1 ? 0 : 1;
     if (flag === 0) {
-      if (!window.confirm(`取消卡号 ${person.cardNo} 的豁免？`)) return;
+      if (!await appConfirm(`取消卡号 ${person.cardNo} 的豁免？`)) return;
       try {
         await updateExemptFlag(person.cardNo, 0, undefined, undefined, undefined, undefined, undefined, "room-audit-web");
         toast.success("已取消豁免");
@@ -248,9 +249,9 @@ export default function MobileRoomAuditPanel({ onBack }: MobileRoomAuditPanelPro
   };
 
   const handleBind = async (person: DecoratedPerson) => {
-    const cardNo = window.prompt("物理卡号", "")?.trim();
+    const cardNo = (await appPrompt("物理卡号", ""))?.trim();
     if (!cardNo) return;
-    const dahuaSeq = window.prompt("大华序号", "")?.trim();
+    const dahuaSeq = (await appPrompt("大华序号", ""))?.trim();
     if (!dahuaSeq) return;
     try {
       await addCardMapping({

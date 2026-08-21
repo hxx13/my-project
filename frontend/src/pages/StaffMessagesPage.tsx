@@ -60,6 +60,7 @@ import {
   sameCalendarDayBeijing,
 } from "@/utils/beijingTime";
 
+import { appConfirm } from "@/lib/appDialog";
 const FRIENDS_PATH = "/admin/staff-messages";
 
 type MainRail = "messages" | "friends";
@@ -132,8 +133,8 @@ function peerFromConversation(conv: ConvRow, unread: number): StaffContact {
   return {
     id: conv.peerUserId,
     username: conv.peerUsername,
-    displayNickname: conv.peerDisplayNickname,
-    displayName: "",
+    displayNickname: (conv.peerDisplayName || conv.peerDisplayNickname || "").trim() || conv.peerDisplayNickname,
+    displayName: (conv.peerDisplayName || "").trim(),
     contactGroupId: "",
     unreadFromPeer: unread,
   };
@@ -582,7 +583,7 @@ export default function StaffMessagesPage() {
   const onConvRemoveFromList = useCallback(
     async (conv: ConvRow) => {
       if (!canUseFriendsPage) return;
-      if (!window.confirm("从会话列表移除此对话？不会删除聊天记录；可在通讯录再次打开会话。")) return;
+      if (!await appConfirm("从会话列表移除此对话？不会删除聊天记录；可在通讯录再次打开会话。")) return;
       try {
         await hideConversationFromMyList(conv.id);
         toast.success("已从会话列表移除");
@@ -843,7 +844,7 @@ export default function StaffMessagesPage() {
                                       <Pin className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-label="已置顶" />
                                     ) : null}
                                     <span className="min-w-0 flex-1 truncate font-medium text-[var(--twin-ink)]">
-                                      {(conv.peerDisplayNickname || "").trim() || conv.peerUsername}
+                                      {(conv.peerDisplayName || conv.peerDisplayNickname || "").trim() || conv.peerUsername}
                                     </span>
                                     {unread > 0 ? (
                                       <span className="inline-flex h-[1.375rem] min-w-[1.375rem] shrink-0 items-center justify-center rounded-full bg-rose-600 px-1.5 text-center text-[10px] font-bold leading-none text-white tabular-nums shadow-twin-level-1 ring-1 ring-rose-800/25">
@@ -1005,6 +1006,11 @@ export default function StaffMessagesPage() {
                 {rightPanel?.kind === "notice" ? (
                   <div className="space-y-3 text-sm text-[var(--twin-ink)]">
                     <div className="text-xs text-[var(--twin-mute)]">{formatBeijingDateTimeFull(rightPanel.row.createTime)}</div>
+                    {rightPanel.row.senderName || rightPanel.row.senderId ? (
+                      <div className="text-xs text-[var(--twin-mute)]">
+                        发送人：{(rightPanel.row.senderName && rightPanel.row.senderName.trim()) || rightPanel.row.senderId}
+                      </div>
+                    ) : null}
                     <div className="whitespace-pre-wrap break-words text-base font-medium text-[var(--twin-ink)]">{rightPanel.row.title}</div>
                     <div className="whitespace-pre-wrap break-words leading-relaxed">{rightPanel.row.content}</div>
                     <div className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-xs text-[var(--twin-body)]">

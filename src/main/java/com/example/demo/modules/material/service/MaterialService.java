@@ -736,7 +736,7 @@ public class MaterialService {
         List<MaterialRequest> requests = requestMapper.selectByUserId(user.getId(), status, offset, size);
         int total = requestMapper.countByUserId(user.getId(), status);
         Map<String, Object> result = new HashMap<>();
-        result.put("data", requests.stream().map(this::toRequestView).collect(Collectors.toList()));
+        result.put("data", toRequestViews(requests));
         result.put("total", total);
         return Result.success(result);
     }
@@ -746,7 +746,7 @@ public class MaterialService {
         List<MaterialRequest> requests = requestMapper.selectAll(status, applicantUserId, applicantGroup, offset, size);
         int total = requestMapper.countAll(status, applicantUserId, applicantGroup);
         Map<String, Object> result = new HashMap<>();
-        result.put("data", requests.stream().map(this::toRequestView).collect(Collectors.toList()));
+        result.put("data", toRequestViews(requests));
         result.put("total", total);
         return Result.success(result);
     }
@@ -757,7 +757,7 @@ public class MaterialService {
         List<MaterialRequest> requests = requestMapper.selectFinished(applicantUserId, applicantGroup, offset, size);
         int total = requestMapper.countFinished(applicantUserId, applicantGroup);
         Map<String, Object> result = new HashMap<>();
-        result.put("data", requests.stream().map(this::toRequestView).collect(Collectors.toList()));
+        result.put("data", toRequestViews(requests));
         result.put("total", total);
         return Result.success(result);
     }
@@ -938,11 +938,10 @@ public class MaterialService {
 
     public Result<List<MaterialRequestView>> listPendingForReview(User reviewer) {
         List<MaterialRequest> pending = requestMapper.selectPendingByReviewer(reviewer.getId());
-        List<MaterialRequestView> views = pending.stream()
+        List<MaterialRequest> visible = pending.stream()
                 .filter(r -> canReview(r, reviewer))
-                .map(this::toRequestView)
                 .collect(Collectors.toList());
-        return Result.success(views);
+        return Result.success(toRequestViews(visible));
     }
 
     /** 物品是否显式指定了审核人列表（非空非[]） */
@@ -1350,7 +1349,7 @@ public class MaterialService {
         List<MaterialRequest> rows = requestMapper.selectRecycle(offset, size);
         int total = requestMapper.countRecycle();
         Map<String, Object> result = new HashMap<>();
-        result.put("data", rows.stream().map(this::toRequestView).collect(Collectors.toList()));
+        result.put("data", toRequestViews(rows));
         result.put("total", total);
         return Result.success(result);
     }
@@ -1529,6 +1528,7 @@ public class MaterialService {
         }
 
         List<MaterialRequestView> out = new ArrayList<>();
+        Map<String, String> nameMap = resolveNamesForRequests(candidates);
         for (MaterialRequest req : candidates) {
             if (req == null || isDraftStatus(req.getStatus())) continue;
             if (!dateInRangeDayFromDateTime(req.getCreatedAt(), fromDay, toDay)) continue;
@@ -1536,7 +1536,7 @@ public class MaterialService {
                 String g = req.getApplicantGroup() != null ? req.getApplicantGroup().trim() : "";
                 if (!applicantGroup.trim().equals(g)) continue;
             }
-            MaterialRequestView view = toRequestView(req);
+            MaterialRequestView view = toRequestView(req, nameMap);
             List<MaterialRequestLineView> visibleLines = new ArrayList<>();
             if (view.getLines() != null) {
                 for (MaterialRequestLineView line : view.getLines()) {
@@ -2055,6 +2055,7 @@ public class MaterialService {
         int offset = (page - 1) * size;
         List<MaterialRequest> requests = requestMapper.selectAuditTrail(from, to, categoryId, groupId, offset, size);
         int total = requestMapper.countAuditTrail(from, to, categoryId, groupId);
+        Map<String, String> nameMap = resolveNamesForRequests(requests);
         List<MaterialAuditTrailView> views = new ArrayList<>();
         for (MaterialRequest req : requests) {
             List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(req.getId());
@@ -2062,7 +2063,8 @@ public class MaterialService {
                 MaterialAuditTrailView v = new MaterialAuditTrailView();
                 v.setRequestId(req.getId());
                 v.setUserId(req.getUserId());
-                v.setApplicantName(req.getApplicantName());
+                String applicantResolved = displayNameOf(nameMap, req.getUserId());
+                v.setApplicantName(StringUtils.hasText(applicantResolved) ? applicantResolved : req.getApplicantName());
                 v.setApplicantGroup(req.getApplicantGroup());
                 v.setStatus(req.getStatus());
                 v.setItemName(line.getSnapshotName());
@@ -2071,8 +2073,11 @@ public class MaterialService {
                 v.setCreatedAt(toDisplayTime(req.getCreatedAt()));
                 v.setFulfilledAt(toDisplayTime(req.getFulfilledAt()));
                 v.setFulfilledBy(req.getFulfilledBy());
+                v.setFulfilledByName(displayNameOf(nameMap, req.getFulfilledBy()));
                 v.setFirstReviewerId(req.getFirstReviewerId());
+                v.setFirstReviewerName(displayNameOf(nameMap, req.getFirstReviewerId()));
                 v.setSecondReviewerId(req.getSecondReviewerId());
+                v.setSecondReviewerName(displayNameOf(nameMap, req.getSecondReviewerId()));
                 v.setFirstReviewTime(toDisplayTime(req.getFirstReviewTime()));
                 v.setSecondReviewTime(toDisplayTime(req.getSecondReviewTime()));
                 views.add(v);
@@ -2169,19 +2174,72 @@ public class MaterialService {
     }
 
     private MaterialRequestView toRequestView(MaterialRequest request) {
+        return toRequestView(request, null);
+    }
+
+    private List<MaterialRequestView> toRequestViews(List<MaterialRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            return List.of();
+        }
+        Map<String, String> nameMap = resolveNamesForRequests(requests);
+        List<MaterialRequestView> out = new ArrayList<>(requests.size());
+        for (MaterialRequest req : requests) {
+            if (req != null) {
+                out.add(toRequestView(req, nameMap));
+            }
+        }
+        return out;
+    }
+
+    private Map<String, String> resolveNamesForRequests(Collection<MaterialRequest> requests) {
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        if (requests != null) {
+            for (MaterialRequest r : requests) {
+                if (r == null) continue;
+                addAccountId(ids, r.getUserId());
+                addAccountId(ids, r.getFulfilledBy());
+                addAccountId(ids, r.getFirstReviewerId());
+                addAccountId(ids, r.getSecondReviewerId());
+            }
+        }
+        return userDisplayNameService.resolveDisplayNames(ids);
+    }
+
+    private static void addAccountId(Set<String> ids, String raw) {
+        if (!StringUtils.hasText(raw)) return;
+        String id = raw.trim();
+        if ("无".equals(id)) return;
+        ids.add(id);
+    }
+
+    private String displayNameOf(Map<String, String> nameMap, String userId) {
+        if (!StringUtils.hasText(userId)) return "";
+        String id = userId.trim();
+        if ("无".equals(id)) return "";
+        if (nameMap != null && nameMap.containsKey(id)) {
+            return nameMap.get(id);
+        }
+        return userDisplayNameService.resolveDisplayName(id);
+    }
+
+    private MaterialRequestView toRequestView(MaterialRequest request, Map<String, String> nameMap) {
         MaterialRequestView v = new MaterialRequestView();
         v.setId(request.getId());
         v.setUserId(request.getUserId());
-        v.setApplicantName(request.getApplicantName());
+        String applicantResolved = displayNameOf(nameMap, request.getUserId());
+        v.setApplicantName(StringUtils.hasText(applicantResolved) ? applicantResolved : request.getApplicantName());
         v.setApplicantGroup(request.getApplicantGroup());
         v.setStatus(request.getStatus());
         v.setWorkflowType(request.getWorkflowType());
         v.setFirstReviewerId(!StringUtils.hasText(request.getFirstReviewerId()) ? "无" : request.getFirstReviewerId());
         v.setSecondReviewerId(!StringUtils.hasText(request.getSecondReviewerId()) ? "无" : request.getSecondReviewerId());
+        v.setFirstReviewerName(displayNameOf(nameMap, request.getFirstReviewerId()));
+        v.setSecondReviewerName(displayNameOf(nameMap, request.getSecondReviewerId()));
         v.setFirstReviewTime(toDisplayTime(request.getFirstReviewTime()));
         v.setSecondReviewTime(toDisplayTime(request.getSecondReviewTime()));
         v.setFulfilledAt(toDisplayTime(request.getFulfilledAt()));
         v.setFulfilledBy(request.getFulfilledBy());
+        v.setFulfilledByName(displayNameOf(nameMap, request.getFulfilledBy()));
         v.setReceivedAt(toDisplayTime(request.getReceivedAt()));
         v.setCreatedAt(toDisplayTime(request.getCreatedAt()));
         v.setUpdatedAt(toDisplayTime(request.getUpdatedAt()));

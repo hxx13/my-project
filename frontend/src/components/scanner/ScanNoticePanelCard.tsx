@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import toast from "react-hot-toast";
 import { AlertTriangle, CreditCard, Megaphone, type LucideIcon } from "lucide-react";
 import type { ScanPopupAnnouncementItem, StudentViolationNotice } from "@/api/types/scanner";
 import { prepareAnnouncementHtml } from "@/utils/announcementHtml";
@@ -65,7 +66,12 @@ function persistAck(kind: NoticeKind, id: number, showEveryScan: boolean) {
   }
 }
 
-/** 单张原尺寸涂鸦便签卡（嵌入横向条带，不缩小） */
+/**
+ * 单张原尺寸涂鸦便签卡（嵌入横向条带，不缩小）
+ *
+ * showNoticeEveryScan 契约（T2-5）：服务端只存储/下发布尔值；本组件负责同会话
+ * 展开频次（sessionStorage ack）。跨会话「不再自动弹出」走 auto-suppress API。
+ */
 export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
   const { kind, panelKey, scannedUserId, autoOpenSuppressed = false, onAutoOpenSuppressed, onClose } =
     props;
@@ -91,6 +97,8 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
     Boolean(kind !== "announcement" && notice?.interactiveChallengeVerified)
   );
   const [interactiveSaving, setInteractiveSaving] = useState(false);
+  // ack 失败时递增，强制 InteractiveChallenge 重挂，退回可重试状态（否则其内部 done 已为 true，绿「验证通过」不再消失）
+  const [interactiveResetKey, setInteractiveResetKey] = useState(0);
   const [dismissCountdown, setDismissCountdown] = useState<number | null>(null);
   const [externalCloseTick, setExternalCloseTick] = useState(0);
   const [dismissSaving, setDismissSaving] = useState(false);
@@ -261,8 +269,9 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
         footerSlot={
           showInteractivePuzzle ? (
             <InteractiveChallenge
+              key={interactiveResetKey}
               phrase={interactivePhrase!}
-              onComplete={() => {
+              onComplete={(answer) => {
                 if (
                   kind === "announcement" ||
                   notice?.id == null ||
@@ -273,7 +282,7 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
                   return;
                 }
                 setInteractiveSaving(true);
-                void ackViolationInteractivePermanent(notice.id, targetUserId)
+                void ackViolationInteractivePermanent(notice.id, targetUserId, answer)
                   .then((ack) => {
                     setInteractiveDone(true);
                     onInteractiveVerified?.({
@@ -283,7 +292,11 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
                       violationExpired: ack.violationExpired,
                     });
                   })
-                  .catch(() => setInteractiveDone(false))
+                  .catch((e) => {
+                    setInteractiveDone(false);
+                    setInteractiveResetKey((k) => k + 1);
+                    toast.error(e instanceof Error ? e.message : "交互确认失败");
+                  })
                   .finally(() => setInteractiveSaving(false));
               }}
             />

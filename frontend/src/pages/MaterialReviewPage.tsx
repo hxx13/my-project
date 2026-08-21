@@ -41,6 +41,7 @@ import {
   type ScanDelayOptionGroup,
 } from "@/utils/scanDelayReviewDisplay";
 
+import { appConfirm, appPrompt } from "@/lib/appDialog";
 type TabKey = "material" | "scanDelay" | "demands" | "aroTraining" | "cageClaims";
 type MaterialSubTab = "today" | "scheduled" | "history";
 
@@ -231,23 +232,6 @@ export default function MaterialReviewPage() {
     queryFn: () => fetchAdminMaterialItems(),
     staleTime: 60_000,
   });
-
-  const { data: reviewerList = [] } = useQuery<{ id: string; username?: string; displayNickname?: string }[]>({
-    queryKey: ["material", "admin", "eligible-reviewers"],
-    queryFn: async () => {
-      const res = await authHttp.get<{ success: boolean; data: { id: string; username?: string; displayNickname?: string }[] }>("/material/admin/eligible-reviewers");
-      return res.data?.data ?? [];
-    },
-    staleTime: 120_000,
-  });
-
-  const reviewerNameMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const r of reviewerList) {
-      map.set(r.id, r.displayNickname || r.username || r.id);
-    }
-    return map;
-  }, [reviewerList]);
 
   const demands = demandData?.data ?? [];
 
@@ -488,7 +472,7 @@ export default function MaterialReviewPage() {
         const t = r?.scheduledPickupTime ? String(r.scheduledPickupTime).slice(0, 10) : "";
         return `${id}${t ? ` (${t})` : ""}`;
       }).join("\n");
-      if (!window.confirm(`以下 ${scheduledIds.length} 条为预约类申领，预约通知时间尚未到达：\n\n${labels}\n\n确定要提前审批通过吗？`)) return;
+      if (!await appConfirm(`以下 ${scheduledIds.length} 条为预约类申领，预约通知时间尚未到达：\n\n${labels}\n\n确定要提前审批通过吗？`)) return;
     }
     let ok = 0; let fail = 0;
     for (const id of ids) {
@@ -517,7 +501,7 @@ export default function MaterialReviewPage() {
   };
 
   const handleScanDelayDelete = async (req: { id: number; status: string }) => {
-    if (!window.confirm(`确定删除该申请（#${req.id}）？删除后不再参与防重复判定。`)) return;
+    if (!await appConfirm(`确定删除该申请（#${req.id}）？删除后不再参与防重复判定。`)) return;
     try {
       await deleteScanDelayRequest(req.id);
       if (req.status === "PENDING") {
@@ -809,7 +793,6 @@ export default function MaterialReviewPage() {
                         {historyItems.length > 0 && (
                           <ScanDelayHistorySection
                             items={historyItems}
-                            reviewerNameMap={reviewerNameMap}
                             onDelete={handleScanDelayDelete}
                           />
                         )}
@@ -875,8 +858,8 @@ export default function MaterialReviewPage() {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button
-                        onClick={() => {
-                          const reason = prompt("驳回理由（必填）：");
+                        onClick={async () => {
+                          const reason = await appPrompt("驳回理由（必填）：");
                           if (!reason) return;
                           cageClaimsApproveMutation.mutate({ id: c.id, decision: "rejected", reason });
                         }}
@@ -1231,8 +1214,8 @@ function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteRe
         <div className="flex items-center gap-1.5">
           <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${statusBadge(req.status)}`}>{statusLabel(req.status)}</span>
           <button onClick={() => handleExportPersonal(req.id)} className="text-[10px] text-blue-600 hover:underline shrink-0">导出</button>
-          {canRevoke && <button onClick={() => { if (!window.confirm("撤销此审核？申领将回到待审状态，库存将回退。")) return; revoke.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "撤销失败") }); }} className="text-[10px] text-amber-600 hover:underline shrink-0 font-medium">撤销</button>}
-          {canDelete && <button onClick={() => { if (!window.confirm("删除此申领？")) return; deleteReq.mutate(req.id); }} className="text-[10px] text-red-500 hover:underline shrink-0">删除</button>}
+          {canRevoke && <button onClick={async () => { if (!await appConfirm("撤销此审核？申领将回到待审状态，库存将回退。")) return; revoke.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "撤销失败") }); }} className="text-[10px] text-amber-600 hover:underline shrink-0 font-medium">撤销</button>}
+          {canDelete && <button onClick={async () => { if (!await appConfirm("删除此申领？")) return; deleteReq.mutate(req.id); }} className="text-[10px] text-red-500 hover:underline shrink-0">删除</button>}
         </div>
       </div>
       {/* 主体：横向双栏 — 左：人员+物品 | 右：时间+操作 */}
@@ -1258,12 +1241,21 @@ function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteRe
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1.5 min-w-[120px]">
           <span className="text-[11px] text-[var(--twin-mute)] text-right">{req.createdAt ? formatBeijingDateTimeFull(req.createdAt) : "—"}</span>
+          {!isPending && (() => {
+            const processor = (req.fulfilledByName && req.fulfilledByName.trim())
+              || (req.firstReviewerName && req.firstReviewerName.trim())
+              || (req.secondReviewerName && req.secondReviewerName.trim())
+              || "";
+            return processor ? (
+              <span className="text-[11px] text-[var(--twin-mute)] text-right">处理人 {processor}</span>
+            ) : null;
+          })()}
           {isPending && (
             <div className="flex gap-1.5">
-              <button onClick={() => {
+              <button onClick={async () => {
                 if (dimmed) {
                   const pickupInfo = hasScheduledTime ? `\n预约领取日期：${String((req as any).scheduledPickupTime).slice(0, 10)}` : "";
-                  if (!window.confirm(`此申领为预约类申领，预约通知时间尚未到达。${pickupInfo}\n\n确定要提前审批通过吗？`)) return;
+                  if (!await appConfirm(`此申领为预约类申领，预约通知时间尚未到达。${pickupInfo}\n\n确定要提前审批通过吗？`)) return;
                 }
                 approve.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "审核失败") });
               }} className="rounded-twin-sm bg-green-600 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">
@@ -1291,11 +1283,9 @@ function ScanDelayOptionAccentText({ label, color }: { label: string; color: str
 /** 已审核历史区：可折叠，默认收起 */
 function ScanDelayHistorySection({
   items,
-  reviewerNameMap,
   onDelete,
 }: {
   items: ScanDelayListItem[];
-  reviewerNameMap: Map<string, string>;
   onDelete: (req: { id: number; status: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1313,7 +1303,7 @@ function ScanDelayHistorySection({
       {open && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {items.map((item) => (
-            <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} onDelete={onDelete} />
+            <ScanDelayHistoryCard key={`h-${item.id}`} req={item} onDelete={onDelete} />
           ))}
         </div>
       )}
@@ -1387,8 +1377,10 @@ function ScanDelayPendingCard({ req, highlightRequestId, onReview, onDelete, isF
   );
 }
 
-function ScanDelayHistoryCard({ req, reviewerNameMap, onDelete }: { req: ScanDelayHistoryRequest; reviewerNameMap: Map<string, string>; onDelete: (req: { id: number; status: string }) => void }) {
-  const reviewerDisplay = req.reviewedBy ? (reviewerNameMap.get(req.reviewedBy) || req.reviewedBy) : null;
+function ScanDelayHistoryCard({ req, onDelete }: { req: ScanDelayHistoryRequest; onDelete: (req: { id: number; status: string }) => void }) {
+  const reviewerDisplay = req.reviewedBy
+    ? ((req.reviewedByName && req.reviewedByName.trim()) || req.reviewedBy)
+    : null;
   const optionLabel = scanDelayOptionDisplayLabel(req);
   const optionColor = scanDelayOptionWebColor(req);
   const statusApproved = req.status === "APPROVED";

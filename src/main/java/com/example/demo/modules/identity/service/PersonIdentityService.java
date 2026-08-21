@@ -5,6 +5,8 @@ import com.example.demo.modules.identity.entity.PersonIdentity;
 import com.example.demo.modules.identity.entity.PersonIdentityTag;
 import com.example.demo.modules.identity.mapper.PersonIdentityMapper;
 import com.example.demo.modules.identity.mapper.PersonIdentityTagMapper;
+import com.example.demo.modules.personnel.entity.Personnel;
+import com.example.demo.modules.personnel.mapper.PersonnelMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +25,9 @@ import java.util.stream.Collectors;
 
 /**
  * 人员身份标识服务：下游业务复用的统一入口（可注入、不经 HTTP、无鉴权）。
- * 统一一套、不分视角，key = staff_id；内置组长/秘书/专家三个默认标签种子（code 稳定，环境变量可配），其余管理员配置，id 由后端自增生成。
+ * 统一一套、不分视角，key = personnel.id（人级唯一）；内置组长/秘书/专家三个默认标签种子（code 稳定，环境变量可配），其余管理员配置，id 由后端自增生成。
+ * 鉴权侧传参为 sys_user.id（staff_id 或 aro_user_id），需先经 {@link #resolveIdByAccount} 转 personnel.id；
+ * 通知/指派侧收件人需经 {@link #resolveStaffIds} 转回 staff_id。
  */
 @Service
 public class PersonIdentityService {
@@ -36,10 +40,12 @@ public class PersonIdentityService {
 
     private final PersonIdentityTagMapper tagMapper;
     private final PersonIdentityMapper identityMapper;
+    private final PersonnelMapper personnelMapper;
 
-    public PersonIdentityService(PersonIdentityTagMapper tagMapper, PersonIdentityMapper identityMapper) {
+    public PersonIdentityService(PersonIdentityTagMapper tagMapper, PersonIdentityMapper identityMapper, PersonnelMapper personnelMapper) {
         this.tagMapper = tagMapper;
         this.identityMapper = identityMapper;
+        this.personnelMapper = personnelMapper;
     }
 
     /** 启用中的标签，按 sortOrder 升序（同序按 id）。 */
@@ -74,12 +80,16 @@ public class PersonIdentityService {
                 .collect(Collectors.toList());
     }
 
-    /** 是否 PI：身份标识统一体系持有「PI」标签（key=staff_id）。下游业务复用，替代已废弃的 RoleEnum.PI。 */
+    /** 是否 PI：入参为 sys_user.id（staff_id 或 aro_user_id），内部 resolve 到 personnel.id 后查标签。下游业务复用，替代已废弃的 RoleEnum.PI。 */
     public boolean isPi(String userId) {
         if (userId == null || userId.isBlank()) {
             return false;
         }
-        for (IdentityTagVO tag : getByUser(userId)) {
+        String pid = resolveIdByAccount(userId);
+        if (pid == null) {
+            return false;
+        }
+        for (IdentityTagVO tag : getByUser(pid)) {
             if (tag != null && Objects.equals(tag.getCode(), piCode)) {
                 return true;
             }
@@ -102,9 +112,43 @@ public class PersonIdentityService {
         return result;
     }
 
-    /** 全部秘书 userId（持有「秘书」标签，动物订购订单接收人默认值）。 */
+    /** 全部秘书 userId（持有「秘书」标签，动物订购订单接收人默认值）。返回 staff_id，供通知按 sys_user.id 发推送。 */
     public List<String> listSecretaryUserIds() {
-        return listUserIdsByCode(secretaryCode);
+        return resolveStaffIds(listUserIdsByCode(secretaryCode));
+    }
+
+    /** 鉴权侧：sys_user.id（staff_id 或 aro_user_id）→ personnel.id 字符串；personnel 不存在返回 null。 */
+    public String resolveIdByAccount(String accountId) {
+        if (accountId == null || accountId.isBlank()) {
+            return null;
+        }
+        Personnel p = personnelMapper.findByStaffId(accountId);
+        if (p == null) {
+            p = personnelMapper.findByAroUserId(accountId);
+        }
+        return p == null ? null : String.valueOf(p.getId());
+    }
+
+    /** 通知/指派侧：personnel.id 集合 → staff_id 列表（过滤 staff_id 空者，无账号人员不参与账号通知）。 */
+    public List<String> resolveStaffIds(Collection<String> personnelIds) {
+        if (personnelIds == null || personnelIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (String pid : personnelIds) {
+            if (pid == null || pid.isBlank()) {
+                continue;
+            }
+            try {
+                Personnel p = personnelMapper.findById(Long.parseLong(pid));
+                if (p != null && p.getStaffId() != null && !p.getStaffId().isBlank()) {
+                    result.add(p.getStaffId());
+                }
+            } catch (NumberFormatException ignore) {
+                // 非数字 id 忽略（迁移前残留 staff_id 不会出现在此处）
+            }
+        }
+        return result;
     }
 
     /** 全量替换（先删后插）；校验 tagIds 均存在于字典，否则抛 IllegalArgumentException。 */

@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
 import {
@@ -91,6 +91,7 @@ import type { ReviewerConfig, ReviewerConfigRequest, ReviewProgress, VoteRequest
 export const aupQueryKeys = {
   all: ["aup"] as const,
   list: (params?: AupListParams) => ["aup", "list", params ?? {}] as const,
+  listInfinite: (params?: AupListParams) => ["aup", "list-infinite", params ?? {}] as const,
   projectGroups: () => ["aup", "projectGroups"] as const,
   detail: (id: string) => ["aup", "detail", id] as const,
   snapshots: (id: string) => ["aup", "snapshots", id] as const,
@@ -123,6 +124,23 @@ export function useAupList(params: AupListParams = {}) {
   return useQuery({
     queryKey: aupQueryKeys.list(params),
     queryFn: () => fetchAupList(params),
+  });
+}
+
+/**
+ * 管理端列表无限滚动：复用 /aup/list 的 1-based 分页接口，
+ * 每次滚动到底追加下一页。queryKey 去掉 page 字段，筛选变化时自动重置到第 1 页。
+ */
+export function useAupListInfinite(filters: Omit<AupListParams, "page"> = {}) {
+  return useInfiniteQuery({
+    queryKey: aupQueryKeys.listInfinite(filters),
+    queryFn: ({ pageParam }) => fetchAupList({ ...filters, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((sum, p) => sum + (p.items?.length ?? 0), 0);
+      if (!lastPage.items?.length || loaded >= lastPage.total) return undefined;
+      return allPages.length + 1;
+    },
   });
 }
 

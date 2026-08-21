@@ -49,14 +49,6 @@ export async function deleteCageStatusViolation(id: number): Promise<void> {
   await adminHttp.delete(`/twin/cage-status-violations/${id}`);
 }
 
-export async function addCageViolationMember(id: number, userId: string): Promise<void> {
-  await adminHttp.post(`/twin/cage-status-violations/${id}/members`, { userId });
-}
-
-export async function removeCageViolationMember(id: number, userId: string): Promise<void> {
-  await adminHttp.delete(`/twin/cage-status-violations/${id}/members/${userId}`);
-}
-
 export interface CreateCageStatusViolationPayload {
   ruleId?: number | null;
   statusCode: string;
@@ -75,16 +67,26 @@ export async function createCageStatusViolation(body: CreateCageStatusViolationP
   return res.data?.data!;
 }
 
+export type UpdateCageStatusViolationPayload = {
+  statusCode: string;
+  positionLabel?: string;
+  projectGroupName?: string;
+  projectPiName?: string;
+  campusName?: string;
+  roomName?: string;
+  cageShelveId?: number | null;
+  positionX?: number | null;
+  positionY?: number | null;
+};
+
+export async function updateCageStatusViolation(
+  id: number,
+  body: UpdateCageStatusViolationPayload
+): Promise<CageStatusViolationRow> {
+  const res = await adminHttp.put<ApiResponse<CageStatusViolationRow>>(`/twin/cage-status-violations/${id}`, body);
+  return res.data?.data!;
+}
+
 export async function manualTriggerRule(ruleId: number): Promise<void> {
   await adminHttp.post(`/twin/cage-status-violations/trigger/${ruleId}`);
-}
-
-export async function batchClearCageViolationMembers(parentId: number, violationIds: number[]): Promise<{ cleared: number }> {
-  const res = await adminHttp.post<ApiResponse<{ cleared: number }>>(`/twin/cage-status-violations/${parentId}/members/batch-clear`, { violationIds });
-  return res.data?.data!;
-}
-
-export async function batchDeleteCageViolationMembers(parentId: number, violationIds: number[]): Promise<{ deleted: number }> {
-  const res = await adminHttp.post<ApiResponse<{ deleted: number }>>(`/twin/cage-status-violations/${parentId}/members/batch-delete`, { violationIds });
-  return res.data?.data!;
 }

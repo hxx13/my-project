@@ -18,4 +18,6 @@ public class AupSnapshotVO {
     private String data;
     private LocalDateTime createdAt;
     private String createdBy;
+    /** 创建人展示名（UserDisplayNameService；createdBy 仍为技术 id） */
+    private String createdByName;
 }

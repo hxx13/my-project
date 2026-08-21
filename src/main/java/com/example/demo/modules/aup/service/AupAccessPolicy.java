@@ -6,9 +6,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.aup.entity.AupRecord;
 import com.example.demo.modules.identity.dto.IdentityTagVO;
 import com.example.demo.modules.identity.service.PersonIdentityService;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -64,7 +62,7 @@ public class AupAccessPolicy {
         return role != null && role.getLevel() >= RoleEnum.PLATFORM_OWNER.getLevel();
     }
 
-    /** 组长（PI）：身份标识统一体系持有「组长」标签（key=staff_id）。 */
+    /** 组长（PI）：身份标识统一体系持有「组长」标签（key=personnel.id，入参先 resolve）。 */
     public boolean isPi(User user) {
         if (user == null) {
             return false;
@@ -73,23 +71,35 @@ public class AupAccessPolicy {
         if (uid == null || uid.isBlank()) {
             return false;
         }
-        return hasTag(personIdentityService.getByUser(uid), piCode);
+        String pid = personIdentityService.resolveIdByAccount(uid);
+        if (pid == null) {
+            return false;
+        }
+        return hasTag(personIdentityService.getByUser(pid), piCode);
     }
 
-    /** 秘书：STAFF 视角下持有「秘书」标签 code（sys_user.id）。 */
+    /** 秘书：持有「秘书」标签 code（入参为 sys_user.id，内部 resolve 到 personnel.id）。 */
     public boolean isSecretary(String userId) {
         if (userId == null || userId.isBlank()) {
             return false;
         }
-        return hasTag(personIdentityService.getByUser(userId), secretaryCode);
+        String pid = personIdentityService.resolveIdByAccount(userId);
+        if (pid == null) {
+            return false;
+        }
+        return hasTag(personIdentityService.getByUser(pid), secretaryCode);
     }
 
-    /** 专家：STAFF 视角下持有「专家」标签 code（sys_user.id）。 */
+    /** 专家：持有「专家」标签 code（入参为 sys_user.id，内部 resolve 到 personnel.id）。 */
     public boolean isExpert(String userId) {
         if (userId == null || userId.isBlank()) {
             return false;
         }
-        return hasTag(personIdentityService.getByUser(userId), expertCode);
+        String pid = personIdentityService.resolveIdByAccount(userId);
+        if (pid == null) {
+            return false;
+        }
+        return hasTag(personIdentityService.getByUser(pid), expertCode);
     }
 
     /** 标签列表是否命中目标 code（null 安全）。 */
@@ -261,18 +271,10 @@ public class AupAccessPolicy {
         return ROLE_LAB;
     }
 
-    /** 全量秘书 userId（通知用，来自 STAFF 视角身份标识） */
+    /** 全量秘书 userId（通知用）。返回 staff_id，供通知按 sys_user.id 发推送。 */
     public List<String> listSecretaryUserIds() {
         try {
-            Map<String, List<IdentityTagVO>> byScope =
-                    personIdentityService.listByUserIds(null);
-            List<String> result = new ArrayList<>();
-            for (Map.Entry<String, List<IdentityTagVO>> entry : byScope.entrySet()) {
-                if (hasTag(entry.getValue(), secretaryCode)) {
-                    result.add(entry.getKey());
-                }
-            }
-            return result;
+            return personIdentityService.listSecretaryUserIds();
         } catch (Exception e) {
             return List.of();
         }

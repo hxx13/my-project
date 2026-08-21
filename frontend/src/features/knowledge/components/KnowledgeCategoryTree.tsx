@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { createKnowledgeCategory, updateKnowledgeCategory, deleteKnowledgeCategory, updateKnowledgePage } from "@/api/domains/knowledge.api";
 import type { KnowledgeTreeNode } from "@/features/knowledge/types";
 
+import { appAlert, appConfirm } from "@/lib/appDialog";
 // ═══════════════════════════════════════════
 // 共享组件
 // ═══════════════════════════════════════════
@@ -122,7 +123,7 @@ export function KnowledgeCategoryTree({ tree, onSelectPage, activePageId, onRefr
     try {
       await createKnowledgeCategory({ name: newName.trim(), slug: newSlug.trim() || newName.trim().replace(/[^a-zA-Z0-9]/g, "-").toLowerCase() });
       setNewName(""); setNewSlug(""); setShowCreate(false); onRefresh();
-    } catch { alert("创建失败"); } finally { setCreating(false); }
+    } catch { await appAlert("创建失败"); } finally { setCreating(false); }
   }
 
   return (
@@ -167,13 +168,13 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
   async function handleSaveEdit() {
     if (!editName.trim()) return; setSaving(true);
     try { await updateKnowledgeCategory(node.categoryId, { name: editName.trim(), slug: editSlug.trim() || undefined }); setEditing(false); onRefresh(); }
-    catch { alert("保存失败"); } finally { setSaving(false); }
+    catch { await appAlert("保存失败"); } finally { setSaving(false); }
   }
 
   async function handleDelete(e: React.MouseEvent) {
-    e.stopPropagation(); if (!confirm(`删除「${node.categoryName}」？`)) return;
+    e.stopPropagation(); if (!await appConfirm(`删除「${node.categoryName}」？`)) return;
     setDeleting(true);
-    try { await deleteKnowledgeCategory(node.categoryId); onRefresh(); } catch { alert("删除失败"); } finally { setDeleting(false); }
+    try { await deleteKnowledgeCategory(node.categoryId); onRefresh(); } catch { await appAlert("删除失败"); } finally { setDeleting(false); }
   }
 
   async function handleMove(targetId: number | null) {
@@ -186,7 +187,7 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
         await updateKnowledgePage(moveTarget.pageId, { categoryId: targetId ?? 0, slug: moveTarget.slug, title: moveTarget.title });
       }
       setMoveAnchor(null); setMoveTarget(null); onRefresh();
-    } catch { alert("移动失败"); }
+    } catch { await appAlert("移动失败"); }
   }
 
   return (

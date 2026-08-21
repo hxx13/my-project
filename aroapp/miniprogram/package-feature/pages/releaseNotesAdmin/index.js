@@ -1,4 +1,4 @@
-﻿const springAuth = require('../../../utils/springAuth.js');
+const springAuth = require('../../../utils/springAuth.js');
 const { hasMinRole } = require('../../../utils/roleAccess.js');
 
 function parseResponse(res) {

@@ -20,6 +20,7 @@ import {
 import { resolveLedgerIsOwnCard } from "@/utils/cardLedgerBadges";
 import { AdminToolbar, AdminToolbarActions } from "@/components/admin/AdminToolbar";
 
+import { appAlert } from "@/lib/appDialog";
 export default function DebugTablePage() {
     const toBoolFlag = (value: unknown): boolean => {
         if (value === true || value === 1) return true;
@@ -111,7 +112,7 @@ export default function DebugTablePage() {
             await refetchList();
             await refetchStats();
         } catch (error) {
-            alert("❌ 同步失败，请检查网络或后端。");
+            await appAlert("❌ 同步失败，请检查网络或后端。");
         } finally {
             setIsSyncing(false);
         }

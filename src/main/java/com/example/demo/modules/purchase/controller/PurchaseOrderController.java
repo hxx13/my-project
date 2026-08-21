@@ -141,7 +141,7 @@ public class PurchaseOrderController {
             rows = purchaseOrderMapper.listVisible(user.getId(), statusValue, start, end, safeSize, offset);
             total = purchaseOrderMapper.countVisible(user.getId(), statusValue, start, end);
         }
-        List<PurchaseOrderView> views = rows.stream().map(purchaseOrderService::toView).toList();
+        List<PurchaseOrderView> views = purchaseOrderService.toViews(rows);
         Map<String, Object> data = new HashMap<>();
         data.put("data", views);
         data.put("total", total);
@@ -160,7 +160,11 @@ public class PurchaseOrderController {
         if (!PurchaseOrderStatusEnum.PENDING.name().equals(order.getStatus())) return Result.error("仅待处理状态可接单");
         int updated = purchaseOrderMapper.markProcessing(id, user.getId(), LocalDateTime.now());
         if (updated < 1) return Result.error("接单失败，请刷新后重试");
-        publishEvent("STARTED", user, order, Map.of("operatorName", StringUtils.hasText(user.getUsername()) ? user.getUsername() : user.getId()));
+        String operatorName = userDisplayNameService.resolveDisplayName(user.getId());
+        publishEvent("STARTED", user, order, Map.of(
+                "operatorName", StringUtils.hasText(operatorName) ? operatorName : user.getId(),
+                "processorName", StringUtils.hasText(operatorName) ? operatorName : user.getId()
+        ));
         return Result.success();
     }
 
@@ -180,8 +184,26 @@ public class PurchaseOrderController {
         int updated = purchaseOrderMapper.markCompleted(id, resultRemark, resultImagesJson, LocalDateTime.now());
         if (updated < 1) return Result.error("完成处理失败，请刷新后重试");
         String summary = buildCompletionSummary(order.getLocation(), order.getContent());
-        publishEvent("COMPLETED", user, order, Map.of("summary", summary));
-        try { pushService.send("PURCHASE_COMPLETED", Map.of("applicantName", order.getApplicantName(), "location", order.getLocation(), "summary", summary, "bizId", order.getId(), "processorName", StringUtils.hasText(user.getUsername()) ? user.getUsername() : user.getId()), Set.of(order.getApplicantId())); } catch (Exception e) { log.warn("[Push] PURCHASE_COMPLETED failed: {}", e.getMessage()); }
+        String applicantName = userDisplayNameService.resolveDisplayName(order.getApplicantId());
+        if (!StringUtils.hasText(applicantName)) {
+            applicantName = order.getApplicantName();
+        }
+        String processorName = userDisplayNameService.resolveDisplayName(user.getId());
+        if (!StringUtils.hasText(processorName)) {
+            processorName = user.getId();
+        }
+        publishEvent("COMPLETED", user, order, Map.of("summary", summary, "processorName", processorName));
+        try {
+            pushService.send("PURCHASE_COMPLETED", Map.of(
+                    "applicantName", StringUtils.hasText(applicantName) ? applicantName : order.getApplicantId(),
+                    "location", order.getLocation(),
+                    "summary", summary,
+                    "bizId", order.getId(),
+                    "processorName", processorName
+            ), Set.of(order.getApplicantId()));
+        } catch (Exception e) {
+            log.warn("[Push] PURCHASE_COMPLETED failed: {}", e.getMessage());
+        }
         return Result.success();
     }
 
@@ -228,7 +250,7 @@ public class PurchaseOrderController {
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 100);
         int offset = (safePage - 1) * safeSize;
-        List<PurchaseOrderView> views = purchaseOrderMapper.listRecycle(safeSize, offset).stream().map(purchaseOrderService::toView).toList();
+        List<PurchaseOrderView> views = purchaseOrderService.toViews(purchaseOrderMapper.listRecycle(safeSize, offset));
         Map<String, Object> data = new HashMap<>();
         data.put("data", views);
         data.put("total", purchaseOrderMapper.countRecycle());

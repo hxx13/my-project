@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { appConfirm } from "@/lib/appDialog";
 interface TrainingSession { id: string; title: string; testContent: string; address: string; startTime: string; endTime: string; signNumber: number; signed: number; totalNumber: number; examinerName: string; examinerNumber: string; examState: number; examCertType: number; state: number; }
 interface Trainee { examSignId: string; name: string; jobNumber: string; mobilePhone: string; projectGroupName: string; testYn: number; testFraction: number; userId: string; userJoinRooms: { areaName: string; floorName: string; name: string; id: string }[]; }
 interface Area { id: number; name: string; }
@@ -140,8 +141,8 @@ export default function AdminAroBindingPage() {
   const pgs = useMemo(() => { const s = new Set<string>(); trainees.forEach(t => { if (t.projectGroupName) s.add(t.projectGroupName); }); return [...s].sort(); }, [trainees]);
 
   const doPost = async (url: string, body: object, ok: string) => { try { await adminHttp.post(url, body); toast.success(ok); qc.invalidateQueries(); } catch (e: any) { toast.error(e?.response?.data?.message || e?.message || "失败"); } };
-  const handleAudit = (eid: string, st: 1 | 2) => { if (!ensureCasBinding()) return; if (!confirm(st === 1 ? "确定通过？" : "确定拒绝？")) return; doPost("/aro-training/audit", { examSignId: eid, state: st }, st === 1 ? "已通过" : "已拒绝"); };
-  const handleScore = (eid: string, yn: 1 | 2) => { if (!ensureCasBinding()) return; if (!confirm(yn === 1 ? "评分合格？" : "评分不合格？")) return; doPost("/aro-training/score", { examSignId: eid, state: yn }, yn === 1 ? "合格" : "不合格"); };
+  const handleAudit = async (eid: string, st: 1 | 2) => { if (!ensureCasBinding()) return; if (!await appConfirm(st === 1 ? "确定通过？" : "确定拒绝？")) return; doPost("/aro-training/audit", { examSignId: eid, state: st }, st === 1 ? "已通过" : "已拒绝"); };
+  const handleScore = async (eid: string, yn: 1 | 2) => { if (!ensureCasBinding()) return; if (!await appConfirm(yn === 1 ? "评分合格？" : "评分不合格？")) return; doPost("/aro-training/score", { examSignId: eid, state: yn }, yn === 1 ? "合格" : "不合格"); };
   const toggleSel = (uid: string) => setSelTrainees(p => { const n = new Set(p); n.has(uid) ? n.delete(uid) : n.add(uid); return n; });
   const ddAnchorRef = useRef<DOMRect | null>(null);
   const toggleRoom = (uid: string, cur: string[], e?: React.MouseEvent) => { if (expanded === uid) { setExpanded(null); return; } const btn = (e?.currentTarget as HTMLElement); ddAnchorRef.current = btn?.getBoundingClientRect() ?? null; setExpanded(uid); setRoomPickers(p => ({ ...p, [uid]: new Set(cur) })); const groups: Record<string, string[]> = {}; allRooms?.forEach(r => { const a = r.areaName || '其他'; const f = r.floorName || '其他'; if (!groups[a]) groups[a] = []; if (!groups[a].includes(f)) groups[a].push(f); }); const defArea = groups["浦东"] ? "浦东" : Object.keys(groups)[0] || ''; const defFloor = defArea ? (groups[defArea]?.[0] || '') : ''; setRoomNav(defArea ? { area: defArea, floor: defFloor } : null); };

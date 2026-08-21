@@ -53,6 +53,7 @@ import { canAccessWebPage } from "@/features/auth/pagePermissionAccess";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { cn } from "@/lib/utils";
 
+import { appConfirm } from "@/lib/appDialog";
 const FRIENDS_PATH = "/admin/staff-messages";
 
 const CTX_SCROLL_NONE =
@@ -464,7 +465,7 @@ export function AdminChromeContextMenu({
                   icon={Tags}
                   label={`删除「${g.name}」`}
                   onClick={async () => {
-                    if (!window.confirm(`删除分组「${g.name}」？组内联系人将变为未分组。`)) return;
+                    if (!await appConfirm(`删除分组「${g.name}」？组内联系人将变为未分组。`)) return;
                     try {
                       await deleteContactGroup(g.id);
                       toast.success("已删除分组");
@@ -557,8 +558,8 @@ export function AdminChromeContextMenu({
               <MenuRow
                 icon={RefreshCw}
                 label="刷新页面"
-                onClick={() => {
-                  if (window.confirm("确认刷新当前页？")) window.location.reload();
+                onClick={async () => {
+                  if (await appConfirm("确认刷新当前页？")) window.location.reload();
                 }}
               />
             </>

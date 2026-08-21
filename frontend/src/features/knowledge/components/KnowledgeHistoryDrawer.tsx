@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useKnowledgeHistory } from "@/features/knowledge/hooks/useKnowledgeHistory";
 import { rollbackKnowledgePage } from "@/api/domains/knowledge.api";
 
+import { appAlert, appConfirm } from "@/lib/appDialog";
 interface Props { open: boolean; pageId: number | null; onClose: () => void; onRollback: () => void }
 
 export function KnowledgeHistoryDrawer({ open, pageId, onClose, onRollback }: Props) {
@@ -12,9 +13,9 @@ export function KnowledgeHistoryDrawer({ open, pageId, onClose, onRollback }: Pr
   if (!open || !pageId) return null;
 
   async function handleRollback(v: number) {
-    if (!pageId || !confirm(`回滚到 v${v}？`)) return;
+    if (!pageId || !await appConfirm(`回滚到 v${v}？`)) return;
     setRolling(v);
-    try { await rollbackKnowledgePage(pageId, v); onRollback(); onClose(); } catch { alert("回滚失败"); } finally { setRolling(null); }
+    try { await rollbackKnowledgePage(pageId, v); onRollback(); onClose(); } catch { await appAlert("回滚失败"); } finally { setRolling(null); }
   }
 
   return (

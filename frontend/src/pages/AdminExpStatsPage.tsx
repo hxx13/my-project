@@ -15,6 +15,7 @@ import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
 import toast from "react-hot-toast";
 
+import { appConfirm } from "@/lib/appDialog";
 const SOURCE_TYPE_OPTIONS = [
   { value: "", label: "全部来源" },
   { value: "FIRST_ENTRY", label: "首次进入 +50（实时）" },
@@ -225,7 +226,7 @@ export default function AdminExpStatsPage() {
   };
 
   const handleFullRecalc = async () => {
-    if (!window.confirm("全量重算将清空全部经验流水并逐日重建，耗时较长。确认继续？")) return;
+    if (!await appConfirm("全量重算将清空全部经验流水并逐日重建，耗时较长。确认继续？")) return;
     setRecalculating(true);
     try {
       const res = await recalculateAllExp();

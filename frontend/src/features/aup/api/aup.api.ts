@@ -110,6 +110,20 @@ export function createAup(body: CreateAupBody = {}): Promise<CreateAupResult> {
   return authHttp.post<Result<CreateAupResult>>("/aup", body).then(({ data }) => data.data);
 }
 
+/** ARO 同步摘要 */
+export interface AupSyncResult {
+  total: number;
+  inserted: number;
+  updated: number;
+  reviewCount: number;
+  failed: number;
+}
+
+/** 管理员手动触发：从 ARO 全量同步计划书（正文 + 状态 + 评审记录）。 */
+export function syncAupFromAro(): Promise<AupSyncResult> {
+  return authHttp.post<Result<AupSyncResult>>("/aup/sync-from-aro").then(({ data }) => data.data);
+}
+
 /** GET /aup/{id} */
 export function fetchAupDetail(id: string): Promise<AupDetailVO> {
   return authHttp.get<Result<AupDetailVO>>(`/aup/${id}`).then(({ data }) => data.data);
@@ -163,6 +177,11 @@ export function fetchAupValidate(id: string): Promise<AupValidationError[]> {
 /** POST /aup/{id}/restore-demo —— 恢复单条演示示例到内置种子态（仅管理员） */
 export function restoreAupDemo(id: string): Promise<void> {
   return authHttp.post<Result<void>>(`/aup/${id}/restore-demo`).then(() => undefined);
+}
+
+/** POST /aup/demo/reseed —— 重新生成演示示例（补齐缺失 demo 计划书，幂等） */
+export function reseedAupDemo(): Promise<{ ok: boolean }> {
+  return authHttp.post<Result<{ ok: boolean }>>("/aup/demo/reseed").then(({ data }) => data.data);
 }
 
 /** DELETE /aup/{id} —— 删除草稿状态计划书（申请人本人或管理员） */
@@ -537,6 +556,11 @@ export function reorderAupDictItems(dictKey: string, itemIds: number[]): Promise
   return authHttp.put<Result<void>>(`/aup-dict/${dictKey}/items/reorder`, itemIds).then(() => undefined);
 }
 
+/** POST /aup-dict/import-builtin —— 导入内置种子字典（幂等） */
+export function importBuiltinAupDict(): Promise<{ createdDicts: number; createdItems: number }> {
+  return authHttp.post<Result<{ createdDicts: number; createdItems: number }>>("/aup-dict/import-builtin").then(({ data }) => data.data);
+}
+
 /* =====================================================================
  * 5.5 附件
  * ================================================================== */
@@ -613,6 +637,11 @@ export interface PickerOption {
 /** GET /aup/pickers/{type} —— 选择器数据源 */
 export function fetchAupPickers(type: PickerType, params: Record<string, unknown> = {}): Promise<PickerOption[]> {
   return authHttp.get<Result<PickerOption[]>>(`/aup/pickers/${type}`, { params }).then(({ data }) => data.data);
+}
+
+/** GET /aup/project-group-options —— 课题组下拉（本地 project_group 字典，动态，value=id label=name） */
+export function fetchAupProjectGroupOptions(): Promise<PickerOption[]> {
+  return authHttp.get<Result<PickerOption[]>>("/aup/project-group-options").then(({ data }) => data.data);
 }
 
 export interface AupNotification {

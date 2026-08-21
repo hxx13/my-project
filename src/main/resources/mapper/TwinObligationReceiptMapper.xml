@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.obligation.mapper.TwinObligationReceiptMapper">
+
+    <resultMap id="TwinObligationReceiptMap" type="com.example.demo.modules.twin.obligation.entity.TwinObligationReceipt">
+        <id column="id" property="id"/>
+        <result column="obligation_id" property="obligationId"/>
+        <result column="subject_user_id" property="subjectUserId"/>
+        <result column="channel" property="channel"/>
+        <result column="attempt_no" property="attemptNo"/>
+        <result column="answer_payload" property="answerPayload"/>
+        <result column="completed_at" property="completedAt"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insertIgnore" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT IGNORE INTO twin_obligation_receipt (
+            obligation_id, subject_user_id, channel, attempt_no, answer_payload, completed_at
+        ) VALUES (
+            #{obligationId}, #{subjectUserId}, #{channel}, #{attemptNo}, #{answerPayload}, #{completedAt}
+        )
+    </insert>
+
+    <select id="selectByObligationAndSubject" resultMap="TwinObligationReceiptMap">
+        SELECT * FROM twin_obligation_receipt
+        WHERE obligation_id = #{obligationId}
+          AND subject_user_id = #{subjectUserId}
+        LIMIT 1
+    </select>
+
+    <delete id="deleteByObligationId">
+        DELETE FROM twin_obligation_receipt WHERE obligation_id = #{obligationId}
+    </delete>
+</mapper>

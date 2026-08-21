@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { X } from "lucide-react";
 import { loginWeb } from "@/api/domains/auth.api";
+import { startIamOAuthLogin } from "@/features/auth/iamOAuth";
 import ForgotPasswordPanel from "@/components/shared/ForgotPasswordPanel";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { authStorage } from "@/features/auth/authStorage";
@@ -240,16 +241,11 @@ export function PortalLoginModal({ open, onClose }: PortalLoginModalProps) {
             </button>
           </form>
 
-          {/* CAS SSO */}
+          {/* IAM 统一认证（账密登录上方表单保留） */}
           <div className="mt-5 border-t border-white/10 pt-5">
             <button
               type="button"
-              onClick={() => {
-                const origin = window.location.origin;
-                const service = `${origin}/#/`;
-                try { sessionStorage.setItem("cas_service_url", service); } catch {}
-                window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${encodeURIComponent(service)}`;
-              }}
+              onClick={() => startIamOAuthLogin()}
               className="w-full rounded-lg border border-white/15 bg-transparent px-4 py-2.5 text-sm font-medium text-white/60 transition hover:border-white/30 hover:text-white/80"
             >
               统一认证登录

@@ -2,12 +2,17 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import type { SupplyItem, SupplyCategory } from "@/api/domains/supplies.api";
-import { useUpdateAdminSupplyItem } from "@/api/hooks/useSupplies";
+import {
+  useUpdateAdminSupplyItem,
+  useInboundSupplyItem,
+  useAdjustSupplyStock,
+} from "@/api/hooks/useSupplies";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { webImageSrc } from "@/utils/mediaUrl";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 
 type SpecDimension = { name: string; options: string[] };
+type StockPanel = null | "inbound" | "stock";
 
 interface SuppliesItemEditDialogProps {
   item: SupplyItem;
@@ -24,13 +29,21 @@ export default function SuppliesItemEditDialog({ item, categories, open, onClose
   const [coverUrl, setCoverUrl] = useState(item.coverUrl || "");
   const [uploading, setUploading] = useState(false);
   const [independentOrder, setIndependentOrder] = useState(item.independentOrder === 1);
+  const [stockQty, setStockQty] = useState(item.stockQty ?? 0);
 
   // Spec
   const [specEnabled, setSpecEnabled] = useState(false);
   const [specDimensions, setSpecDimensions] = useState<SpecDimension[]>([]);
   const [specRequired, setSpecRequired] = useState(false);
 
+  // 入库 / 改库存
+  const [stockPanel, setStockPanel] = useState<StockPanel>(null);
+  const [inboundQty, setInboundQty] = useState("1");
+  const [adjustQty, setAdjustQty] = useState("");
+
   const updateMut = useUpdateAdminSupplyItem();
+  const inboundMut = useInboundSupplyItem();
+  const adjustMut = useAdjustSupplyStock();
 
   useEffect(() => {
     if (!open) return;
@@ -40,6 +53,10 @@ export default function SuppliesItemEditDialog({ item, categories, open, onClose
     setStockMode(item.stockMode);
     setCoverUrl(item.coverUrl || "");
     setIndependentOrder(item.independentOrder === 1);
+    setStockQty(item.stockQty ?? 0);
+    setStockPanel(null);
+    setInboundQty("1");
+    setAdjustQty(String(item.stockQty ?? 0));
     if (item.specSchema) {
       try {
         const parsed = JSON.parse(item.specSchema);
@@ -100,6 +117,37 @@ export default function SuppliesItemEditDialog({ item, categories, open, onClose
     } finally {
       setUploading(false);
     }
+  };
+
+  const confirmInbound = () => {
+    if (inboundMut.isPending) return;
+    const q = stockMode === "FLAG" ? 1 : Number(inboundQty);
+    if (!q || q <= 0) return toast.error("数量无效");
+    inboundMut.mutate(
+      { itemId: item.id, qty: q },
+      {
+        onSuccess: () => {
+          setStockQty((prev) => (stockMode === "FLAG" ? 1 : prev + Math.floor(q)));
+          setStockPanel(null);
+          setInboundQty("1");
+        },
+      },
+    );
+  };
+
+  const confirmAdjust = () => {
+    if (adjustMut.isPending) return;
+    const n = Number(adjustQty);
+    if (Number.isNaN(n) || n < 0) return toast.error("无效库存");
+    adjustMut.mutate(
+      { id: item.id, newQty: n },
+      {
+        onSuccess: () => {
+          setStockQty(n);
+          setStockPanel(null);
+        },
+      },
+    );
   };
 
   return createPortal(
@@ -311,6 +359,131 @@ export default function SuppliesItemEditDialog({ item, categories, open, onClose
               </button>
             </div>
           )}
+        </div>
+
+        {/* 入库 / 改库存 */}
+        <div className="space-y-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs text-[var(--twin-body)]">
+              {stockMode === "FLAG" ? (
+                <>
+                  当前库存{" "}
+                  <span className="font-medium text-[var(--twin-ink)]">
+                    {stockQty >= 1 ? "有货" : "无货"}
+                  </span>
+                </>
+              ) : Number(item.lockedQty) > 0 ? (
+                <>
+                  库存{" "}
+                  <span className="font-medium text-[var(--twin-ink)]">{stockQty}</span>
+                  <span className="text-[var(--twin-mute)]">
+                    {" "}· 不含锁定 {Number(item.lockedQty || 0)}
+                  </span>
+                </>
+              ) : (
+                <>
+                  当前库存{" "}
+                  <span className="font-medium text-[var(--twin-ink)]">{stockQty}</span>
+                </>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                className={`rounded-twin-sm px-2 py-0.5 text-[11px] font-medium border ${
+                  stockPanel === "inbound"
+                    ? "border-sky-300 bg-sky-50 text-sky-700"
+                    : "border-[var(--twin-hairline)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"
+                }`}
+                onClick={() => {
+                  setStockPanel((p) => (p === "inbound" ? null : "inbound"));
+                  setInboundQty("1");
+                }}
+              >
+                入库
+              </button>
+              {stockMode === "QUANTIFIED" ? (
+                <button
+                  type="button"
+                  className={`rounded-twin-sm px-2 py-0.5 text-[11px] font-medium border ${
+                    stockPanel === "stock"
+                      ? "border-amber-300 bg-amber-50 text-amber-800"
+                      : "border-[var(--twin-hairline)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"
+                  }`}
+                  onClick={() => {
+                    setStockPanel((p) => (p === "stock" ? null : "stock"));
+                    setAdjustQty(String(stockQty));
+                  }}
+                >
+                  改库存
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {stockPanel === "inbound" ? (
+            <div className="rounded-twin-md border border-sky-100 bg-sky-50/60 p-2 text-sm space-y-2">
+              <div className="text-xs text-sky-900">
+                {stockMode === "FLAG" ? "有无型入库将标记为有货（与数量无关）。" : "按数量增加库存。"}
+              </div>
+              {stockMode === "QUANTIFIED" ? (
+                <input
+                  className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-sm text-[var(--twin-ink)]"
+                  type="number"
+                  min={1}
+                  value={inboundQty}
+                  onChange={(e) => setInboundQty(e.target.value)}
+                />
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={inboundMut.isPending}
+                  className="rounded-twin-sm bg-sky-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={confirmInbound}
+                >
+                  {inboundMut.isPending ? "入库中…" : "确认入库"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs font-medium text-[var(--twin-body)]"
+                  onClick={() => setStockPanel(null)}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {stockPanel === "stock" && stockMode === "QUANTIFIED" ? (
+            <div className="rounded-twin-md border border-amber-100 bg-amber-50/60 p-2 text-sm space-y-2">
+              <div className="text-xs text-amber-900">将库存直接设为新数值（非增量）。</div>
+              <input
+                className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-sm text-[var(--twin-ink)]"
+                type="number"
+                min={0}
+                value={adjustQty}
+                onChange={(e) => setAdjustQty(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={adjustMut.isPending}
+                  className="rounded-twin-sm bg-amber-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={confirmAdjust}
+                >
+                  {adjustMut.isPending ? "保存中…" : "保存"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs font-medium text-[var(--twin-body)]"
+                  onClick={() => setStockPanel(null)}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t border-[var(--twin-hairline)]">

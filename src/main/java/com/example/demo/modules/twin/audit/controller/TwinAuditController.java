@@ -131,7 +131,7 @@ public class TwinAuditController {
         // 对齐 web 扫码离开：规则命中后执行大华权限回收
         int defer = webScanExitDahuaLinkageService.resolveDeferSeconds();
         AccessRuleDispatchResult dispatchResult = webScanExitDahuaLinkageService.revokeAndFreezeAfterExit(
-                userId, officialRoomId, physicalCardNo, false, defer);
+                userId, officialRoomId, physicalCardNo, defer);
         // 文档约束：所有离开成功入口必须清理联动状态，避免后续定时任务重复签退
         dahuaSwingRuleEngineService.clearActivationStatesForUser(userId);
 

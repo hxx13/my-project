@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAdminContents, useDeleteContent } from "@/api/hooks/usePortalContent";
 import type { ContentType, ContentStatus, PortalContentView } from "@/api/domains/portalContent.api";
 
+import { appConfirm } from "@/lib/appDialog";
 export default function AdminPortalContentPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<ContentType | "">("");
@@ -19,8 +20,8 @@ export default function AdminPortalContentPage() {
   const rows: PortalContentView[] = (pageData?.data ?? []).filter((r) => r.contentType !== "PAGE");
   const deleteMut = useDeleteContent();
 
-  const handleDelete = (id: number) => {
-    if (!confirm("确定删除？将移入回收站。")) return;
+  const handleDelete = async (id: number) => {
+    if (!await appConfirm("确定删除？将移入回收站。")) return;
     deleteMut.mutate(id);
   };
 

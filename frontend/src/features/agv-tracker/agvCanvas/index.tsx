@@ -95,6 +95,23 @@ export default function AgvCanvas({
   const refFrameHitRef = useRef<
     { ip: string; left: number; top: number; right: number; bottom: number }[]
   >([]);
+  /** Live coord overrides during drag — avoid React/API until pointerup */
+  const liveCoordRef = useRef<
+    Record<string, { offsetX?: number; offsetY?: number; scale?: number }>
+  >({});
+  const coordDragActiveRef = useRef(false);
+  /** Fit camera snapshot — used while coord-edit / frame-drag so trail polls can't recenter */
+  const frozenFitRef = useRef<{
+    xMid: number;
+    yMid: number;
+    xRange: number;
+    yRange: number;
+  } | null>(null);
+  const wasCoordEditRef = useRef(false);
+  const layersRef = useRef(layers);
+  layersRef.current = layers;
+  const zoneOverlaysRef = useRef(zoneOverlays);
+  zoneOverlaysRef.current = zoneOverlays;
   const refFrameDragRef = useRef<{
     ip: string;
     startSx: number;
@@ -103,6 +120,7 @@ export default function AgvCanvas({
     origOffsetY: number;
     combinedRad: number;
     startViewScale: number;
+    startAgvScale: number;
   } | null>(null);
   const refFrameScaleRef = useRef<{
     ip: string;
@@ -116,6 +134,18 @@ export default function AgvCanvas({
     oldOffsetX: number;
     oldOffsetY: number;
     origDist: number;
+    localW: number;
+    localH: number;
+  } | null>(null);
+  /** Live scale readout while resizing (drawn in rAF; no React state) */
+  const scaleHudRef = useRef<{
+    ip: string;
+    sx: number;
+    sy: number;
+    scale: number;
+    origScale: number;
+    worldW: number;
+    worldH: number;
   } | null>(null);
   const refFrameHandleHitRef = useRef<
     { ip: string; sx: number; sy: number; w: number; h: number }[]
@@ -237,10 +267,33 @@ export default function AgvCanvas({
     return pts;
   }, [playbackActive, playbackTrail]);
 
+  // Resolve layer coords with live drag overrides (no React state mid-drag)
+  const resolveLayerCoord = (layer: AgvLayer) => {
+    const live = liveCoordRef.current[layer.ip];
+    return {
+      ox: live?.offsetX ?? layer.coordOffsetX ?? 0,
+      oy: live?.offsetY ?? layer.coordOffsetY ?? 0,
+      cs: live?.scale ?? layer.coordScale ?? 1,
+    };
+  };
+
   // ── Bounds from all visible layers + zones + routes ──
+  // Freeze while coord-edit mode OR frame dragging: trail polls / offset commits
+  // must not rebuild world bounds (that recenters/rescales mid-drag).
 
   const zonesLen =
     (zoneOverlays ?? []).length + (routeOverlays ?? []).length;
+
+  // Leaving edit mode → invalidate so live tracking can refit once.
+  if (wasCoordEditRef.current && !coordEditMode) {
+    boundsRef.current = null;
+    frozenFitRef.current = null;
+    prevLenRef.current = {};
+    prevCoordRef.current = {};
+    prevZonesLenRef.current = -1;
+    prevRouteFpRef.current = "";
+  }
+  wasCoordEditRef.current = !!coordEditMode;
 
   let trailChanged = false;
   for (const layer of layers) {
@@ -249,7 +302,12 @@ export default function AgvCanvas({
       trailChanged = true;
       prevLenRef.current[layer.ip] = layer.trail.length;
     }
-    const coordFp = `${layer.coordScale ?? 1}_${layer.coordOffsetX ?? 0}_${layer.coordOffsetY ?? 0}_${layer.coordRotationDeg ?? 0}`;
+    // Ignore live drag overrides for fingerprint — only committed layer props
+    // should mark coords dirty (avoids trailChanged thrash while dragging).
+    const ox = layer.coordOffsetX ?? 0;
+    const oy = layer.coordOffsetY ?? 0;
+    const cs = layer.coordScale ?? 1;
+    const coordFp = `${cs}_${ox}_${oy}_${layer.coordRotationDeg ?? 0}`;
     if (coordFp !== (prevCoordRef.current[layer.ip] ?? "")) {
       trailChanged = true;
       prevCoordRef.current[layer.ip] = coordFp;
@@ -265,13 +323,14 @@ export default function AgvCanvas({
     prevRouteFpRef.current = routeFp;
   }
 
-  if (trailChanged || !boundsRef.current) {
+  const freezeFit =
+    !!coordEditMode || coordDragActiveRef.current;
+  // Always allow the first bounds build; after that, freeze during edit/drag.
+  if ((!freezeFit || !boundsRef.current) && (trailChanged || !boundsRef.current)) {
     let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
     for (const layer of layers) {
       if (!layer.visible || hiddenAgvs?.has(layer.ip)) continue;
-      const cs = layer.coordScale ?? 1;
-      const ox = layer.coordOffsetX ?? 0;
-      const oy = layer.coordOffsetY ?? 0;
+      const { ox, oy, cs } = resolveLayerCoord(layer);
       const toWorld = (vx: number, vy: number) => ({ wx: (vx + ox) * cs, wy: (vy + oy) * cs });
 
       if (layer.currentX != null && layer.currentY != null) {
@@ -296,12 +355,10 @@ export default function AgvCanvas({
         const poly = z._poly;
         if (!poly) continue;
         const zLayer = z.robotIp ? layers.find((l) => l.ip === z.robotIp) : null;
-        const zcs = zLayer?.coordScale ?? 1;
-        const zox = zLayer?.coordOffsetX ?? 0;
-        const zoy = zLayer?.coordOffsetY ?? 0;
+        const zc = zLayer ? resolveLayerCoord(zLayer) : { ox: 0, oy: 0, cs: 1 };
         for (const p of poly) {
-          const wx = (p[0] + zox) * zcs;
-          const wy = (p[1] + zoy) * zcs;
+          const wx = (p[0] + zc.ox) * zc.cs;
+          const wy = (p[1] + zc.oy) * zc.cs;
           if (wx < xMin) xMin = wx; if (wx > xMax) xMax = wx;
           if (wy < yMin) yMin = wy; if (wy > yMax) yMax = wy;
         }
@@ -311,12 +368,10 @@ export default function AgvCanvas({
         const path = ro._path;
         if (!path) continue;
         const rLayer = ro.robotIp ? layers.find((l) => l.ip === ro.robotIp) : null;
-        const rcs = rLayer?.coordScale ?? 1;
-        const rox = rLayer?.coordOffsetX ?? 0;
-        const roy = rLayer?.coordOffsetY ?? 0;
+        const rc = rLayer ? resolveLayerCoord(rLayer) : { ox: 0, oy: 0, cs: 1 };
         for (const p of path) {
-          const wx = (p[0] + rox) * rcs;
-          const wy = (p[1] + roy) * rcs;
+          const wx = (p[0] + rc.ox) * rc.cs;
+          const wy = (p[1] + rc.oy) * rc.cs;
           if (wx < xMin) xMin = wx; if (wx > xMax) xMax = wx;
           if (wy < yMin) yMin = wy; if (wy > yMax) yMax = wy;
         }
@@ -347,11 +402,12 @@ export default function AgvCanvas({
       panX: number,
       panY: number,
     ) => {
-      const ox = layer.coordOffsetX ?? 0;
-      const oy = layer.coordOffsetY ?? 0;
+      const live = liveCoordRef.current[layer.ip];
+      const ox = live?.offsetX ?? layer.coordOffsetX ?? 0;
+      const oy = live?.offsetY ?? layer.coordOffsetY ?? 0;
       const agvRad = ((layer.coordRotationDeg ?? 0) * Math.PI) / 180;
       const combinedRad = totalRad + agvRad;
-      const agvScale = layer.coordScale ?? 1.0;
+      const agvScale = live?.scale ?? layer.coordScale ?? 1.0;
       return {
         toPx: (vx: number, vy: number) => {
           const r = M.rotPt((vx + ox) * agvScale, (vy + oy) * agvScale, combinedRad);
@@ -411,9 +467,12 @@ export default function AgvCanvas({
     const zoom = zoomRef.current;
     let panX = panRef.current.x, panY = panRef.current.y;
 
-    // ── Follow mode ──
+    const freezeFit =
+      !!coordEditMode || coordDragActiveRef.current;
+
+    // ── Follow mode (disabled during coord edit / frame drag — it recenters every frame) ──
     let followRad = 0;
-    const fullFollowMode = !!(followMode && followTargetIp);
+    const fullFollowMode = !!(followMode && followTargetIp) && !freezeFit;
     if (fullFollowMode) {
       const target = layers.find((l) => l.ip === followTargetIp);
       if (target && target.currentX != null && target.currentY != null) {
@@ -432,12 +491,31 @@ export default function AgvCanvas({
     const totalRad = rad + followRad;
 
     const xRange = (b.xMax - b.xMin) || 1, yRange = (b.yMax - b.yMin) || 1;
-    const scale =
+    let scale =
       Math.min(
         (w * (1 - 2 * pad)) / xRange,
         (h * (1 - 2 * pad)) / yRange,
       ) * zoom;
-    const xMid = (b.xMin + b.xMax) / 2, yMid = (b.yMin + b.yMax) / 2;
+    let xMid = (b.xMin + b.xMax) / 2, yMid = (b.yMin + b.yMax) / 2;
+
+    // Pin fit-derived mid/scale while editing so any bounds slip can't jump the camera.
+    // User pan (panRef) and zoom (zoomRef) still apply.
+    if (freezeFit) {
+      if (!frozenFitRef.current) {
+        frozenFitRef.current = { xMid, yMid, xRange, yRange };
+      } else {
+        const f = frozenFitRef.current;
+        xMid = f.xMid;
+        yMid = f.yMid;
+        scale =
+          Math.min(
+            (w * (1 - 2 * pad)) / f.xRange,
+            (h * (1 - 2 * pad)) / f.yRange,
+          ) * zoom;
+      }
+    } else {
+      frozenFitRef.current = null;
+    }
 
     // ── Per-layer transforms ──
     const layerTransforms = new Map<
@@ -1112,6 +1190,38 @@ export default function AgvCanvas({
       }
     }
 
+    // Live scale readout while resizing a reference frame
+    const hud = scaleHudRef.current;
+    if (hud) {
+      const line1 = `${hud.scale.toFixed(2)}x`;
+      const rel = hud.scale / (hud.origScale || 1);
+      const line2 = `Δ×${rel.toFixed(2)}  ·  ${hud.worldW.toFixed(2)}×${hud.worldH.toFixed(2)}`;
+      ctx.font = "bold 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+      const tw1 = ctx.measureText(line1).width;
+      ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+      const tw2 = ctx.measureText(line2).width;
+      const padX = 8, padY = 6, gap = 2;
+      const bw = Math.max(tw1, tw2) + padX * 2;
+      const bh = 12 + 10 + gap + padY * 2;
+      let bx = hud.sx + 14;
+      let by = hud.sy - bh - 8;
+      if (bx + bw > w - 4) bx = hud.sx - bw - 14;
+      if (by < 4) by = hud.sy + 14;
+      ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 6);
+      ctx.fill();
+      ctx.fillStyle = "#f59e0b";
+      ctx.font = "bold 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(line1, bx + padX, by + padY);
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+      ctx.fillText(line2, bx + padX, by + padY + 12 + gap);
+      ctx.textBaseline = "alphabetic";
+    }
+
     // ═══════════════════════════════════════════════
     // OFFLINE OVERLAY
     // ═══════════════════════════════════════════════
@@ -1216,7 +1326,12 @@ export default function AgvCanvas({
   const scheduleReset = () => {
     cancelReset();
     resetTimerRef.current = setTimeout(() => {
-      if (isMovingRef.current) {
+      // Never auto-recenter while editing coords — it fights frame placement.
+      if (
+        isMovingRef.current &&
+        !coordEditModeRef.current &&
+        !coordDragActiveRef.current
+      ) {
         panRef.current = { x: 0, y: 0 };
         zoomRef.current = 1;
       }
@@ -1297,7 +1412,7 @@ export default function AgvCanvas({
       // 2. Corner handle drag
       const handleHit = findHandleAt(sx, sy);
       if (handleHit && !pm && zoneEditModeRef.current) {
-        const zo = zoneOverlays?.find((z) => z.id === handleHit.zoneId);
+        const zo = zoneOverlaysRef.current?.find((z) => z.id === handleHit.zoneId);
         if (zo) {
           try {
             const origPoly: number[][] = JSON.parse(zo.polygonJson);
@@ -1318,7 +1433,7 @@ export default function AgvCanvas({
         (h) => Math.hypot(sx - h.cx, sy - h.cy) <= h.r,
       );
       if (refRotateHit && !pm && coordEditModeRef.current) {
-        const agv = layers.find((l) => l.ip === refRotateHit.ip);
+        const agv = layersRef.current.find((l) => l.ip === refRotateHit.ip);
         if (agv) {
           const curDeg = agv.coordRotationDeg ?? 0;
           const nextDeg = ((curDeg + 90) % 360 + 360) % 360;
@@ -1337,24 +1452,21 @@ export default function AgvCanvas({
           sy <= h.sy + h.h,
       );
       if (refHandleHit && !pm && coordEditModeRef.current) {
-        const agv = layers.find((l) => l.ip === refHandleHit.ip);
+        const agv = layersRef.current.find((l) => l.ip === refHandleHit.ip);
         const box = refFrameHitRef.current.find(
           (f) => f.ip === refHandleHit.ip,
         );
         const localBounds =
           refFrameLocalBoundsRef.current[refHandleHit.ip];
         if (agv && box && localBounds) {
-          const agvScale = agv.coordScale ?? 1.0;
-          const localDx = localBounds.bxMax - localBounds.bxMin;
-          const localDy = localBounds.byMax - localBounds.byMin;
-          const localDiag = Math.sqrt(
-            localDx * localDx + localDy * localDy,
-          );
+          const live = liveCoordRef.current[agv.ip];
+          const agvScale = live?.scale ?? agv.coordScale ?? 1.0;
+          const localW = localBounds.bxMax - localBounds.bxMin;
+          const localH = localBounds.byMax - localBounds.byMin;
+          const localDiag = Math.sqrt(localW * localW + localH * localH);
           const viewScale = transformRef.current?.scale ?? 1;
-          const origDist = Math.max(
-            localDiag * agvScale * viewScale,
-            1,
-          );
+          const origDist = Math.max(localDiag * agvScale * viewScale, 1);
+          coordDragActiveRef.current = true;
           refFrameScaleRef.current = {
             ip: refHandleHit.ip,
             startSx: e.clientX,
@@ -1364,9 +1476,20 @@ export default function AgvCanvas({
             anchorSy: box.bottom,
             anchorLocalX: localBounds.bxMax,
             anchorLocalY: localBounds.byMax,
-            oldOffsetX: agv.coordOffsetX ?? 0,
-            oldOffsetY: agv.coordOffsetY ?? 0,
+            oldOffsetX: live?.offsetX ?? agv.coordOffsetX ?? 0,
+            oldOffsetY: live?.offsetY ?? agv.coordOffsetY ?? 0,
             origDist,
+            localW,
+            localH,
+          };
+          scaleHudRef.current = {
+            ip: refHandleHit.ip,
+            sx,
+            sy,
+            scale: agvScale,
+            origScale: agvScale,
+            worldW: localW * agvScale,
+            worldH: localH * agvScale,
           };
         }
         dragStartRef.current = { x: e.clientX, y: e.clientY };
@@ -1382,18 +1505,22 @@ export default function AgvCanvas({
           sy <= f.bottom,
       );
       if (refFrame && !pm && coordEditModeRef.current) {
-        const agv = layers.find((l) => l.ip === refFrame.ip);
+        const agv = layersRef.current.find((l) => l.ip === refFrame.ip);
         if (agv) {
+          const live = liveCoordRef.current[agv.ip];
+          const agvScale = live?.scale ?? agv.coordScale ?? 1;
           const agvRad =
             ((agv.coordRotationDeg ?? 0) * Math.PI) / 180;
+          coordDragActiveRef.current = true;
           refFrameDragRef.current = {
             ip: refFrame.ip,
             startSx: e.clientX,
             startSy: e.clientY,
-            origOffsetX: agv.coordOffsetX ?? 0,
-            origOffsetY: agv.coordOffsetY ?? 0,
+            origOffsetX: live?.offsetX ?? agv.coordOffsetX ?? 0,
+            origOffsetY: live?.offsetY ?? agv.coordOffsetY ?? 0,
             combinedRad: (transformRef.current?.rad ?? 0) + agvRad,
             startViewScale: transformRef.current?.scale ?? 1,
+            startAgvScale: agvScale,
           };
           dragStartRef.current = { x: e.clientX, y: e.clientY };
           c.setPointerCapture(e.pointerId);
@@ -1404,7 +1531,7 @@ export default function AgvCanvas({
       // 3. Zone body click -> move drag
       const zoneHit = findZoneAt(sx, sy);
       if (zoneHit != null && !pm && zoneEditModeRef.current) {
-        const zo = zoneOverlays?.find((z) => z.id === zoneHit);
+        const zo = zoneOverlaysRef.current?.find((z) => z.id === zoneHit);
         if (zo) {
           try {
             const origPoly: number[][] = JSON.parse(zo.polygonJson);
@@ -1444,7 +1571,7 @@ export default function AgvCanvas({
         if (!t) return;
         const w = M.screenToWorld(sx, sy, t);
         const { zoneId, vertIdx } = handleDragRef.current;
-        const zo = zoneOverlays?.find((z) => z.id === zoneId);
+        const zo = zoneOverlaysRef.current?.find((z) => z.id === zoneId);
         if (zo) {
           try {
             const poly: number[][] = JSON.parse(zo.polygonJson);
@@ -1474,6 +1601,8 @@ export default function AgvCanvas({
           anchorLocalY,
           oldOffsetX,
           oldOffsetY,
+          localW,
+          localH,
         } = refFrameScaleRef.current;
         const newDist = Math.sqrt(
           (sx - anchorSx) ** 2 + (sy - anchorSy) ** 2,
@@ -1490,8 +1619,21 @@ export default function AgvCanvas({
           anchorWorldX / newScale - anchorLocalX;
         const newOffsetY =
           anchorWorldY / newScale - anchorLocalY;
-        const cfs = onCoordFrameScaleRef.current;
-        if (cfs) cfs(ip, newScale, newOffsetX, newOffsetY);
+        liveCoordRef.current[ip] = {
+          ...liveCoordRef.current[ip],
+          scale: newScale,
+          offsetX: newOffsetX,
+          offsetY: newOffsetY,
+        };
+        scaleHudRef.current = {
+          ip,
+          sx,
+          sy,
+          scale: newScale,
+          origScale,
+          worldW: localW * newScale,
+          worldH: localH * newScale,
+        };
         return;
       }
       if (refFrameDragRef.current) {
@@ -1505,6 +1647,7 @@ export default function AgvCanvas({
           Math.abs(dy) > DRAG_THRESHOLD
         ) {
           const tScale = refFrameDragRef.current.startViewScale;
+          const agvScale = refFrameDragRef.current.startAgvScale || 1;
           const worldDx = dx / tScale, worldDy = -dy / tScale;
           const invRad = -refFrameDragRef.current.combinedRad;
           const rotDx =
@@ -1514,12 +1657,15 @@ export default function AgvCanvas({
             worldDx * Math.sin(invRad) +
             worldDy * Math.cos(invRad);
           const newOx =
-            refFrameDragRef.current.origOffsetX + rotDx;
+            refFrameDragRef.current.origOffsetX + rotDx / agvScale;
           const newOy =
-            refFrameDragRef.current.origOffsetY + rotDy;
-          const cfm = onCoordFrameMoveRef.current;
-          if (cfm)
-            cfm(refFrameDragRef.current.ip, newOx, newOy);
+            refFrameDragRef.current.origOffsetY + rotDy / agvScale;
+          const ip = refFrameDragRef.current.ip;
+          liveCoordRef.current[ip] = {
+            ...liveCoordRef.current[ip],
+            offsetX: newOx,
+            offsetY: newOy,
+          };
         }
         return;
       }
@@ -1618,15 +1764,46 @@ export default function AgvCanvas({
         return;
       }
 
-      // 2.5 Ref frame scale complete
+      // 2.5 Ref frame scale complete — commit once
       if (refFrameScaleRef.current) {
+        const { ip } = refFrameScaleRef.current;
+        const live = liveCoordRef.current[ip];
         refFrameScaleRef.current = null;
+        scaleHudRef.current = null;
+        coordDragActiveRef.current = false;
+        if (
+          live &&
+          live.scale != null &&
+          live.offsetX != null &&
+          live.offsetY != null
+        ) {
+          const cfs = onCoordFrameScaleRef.current;
+          if (cfs) cfs(ip, live.scale, live.offsetX, live.offsetY);
+          // Keep live until React props catch optimistic update (avoid 1-frame snap-back)
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              delete liveCoordRef.current[ip];
+            });
+          });
+        }
         scheduleReset();
         return;
       }
-      // Ref frame drag complete
+      // Ref frame drag complete — commit once
       if (refFrameDragRef.current) {
+        const { ip } = refFrameDragRef.current;
+        const live = liveCoordRef.current[ip];
         refFrameDragRef.current = null;
+        coordDragActiveRef.current = false;
+        if (live && live.offsetX != null && live.offsetY != null) {
+          const cfm = onCoordFrameMoveRef.current;
+          if (cfm) cfm(ip, live.offsetX, live.offsetY);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              delete liveCoordRef.current[ip];
+            });
+          });
+        }
         scheduleReset();
         return;
       }
@@ -1739,7 +1916,8 @@ export default function AgvCanvas({
       c.removeEventListener("wheel", onWheel);
       c.removeEventListener("dblclick", onDbl);
     };
-  }, [zoneOverlays, selectedZoneId, layers]);
+    // Intentionally stable: layers/zones read via refs so trail refresh doesn't rebind mid-drag
+  }, [selectedZoneId]);
 
   const cursorClass = pickMode
     ? "cursor-crosshair"

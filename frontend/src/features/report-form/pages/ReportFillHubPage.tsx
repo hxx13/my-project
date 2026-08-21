@@ -20,6 +20,7 @@ import {
   writeReportFillHubSession,
 } from '../utils/reportFillHubSession';
 
+import { appConfirm } from "@/lib/appDialog";
 function fmtTime(raw: string | undefined | null): string {
   return formatDateTimeAsiaShanghaiShort(raw);
 }
@@ -204,8 +205,8 @@ function FormCard({ form, expanded, onToggle, onOpen }: {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handleDelete = (sub: ReportFormSubmission) => {
-    if (!confirm(`确定删除子文件「${instanceDisplayLabel(sub)}」？此操作不可恢复。`)) return;
+  const handleDelete = async (sub: ReportFormSubmission) => {
+    if (!await appConfirm(`确定删除子文件「${instanceDisplayLabel(sub)}」？此操作不可恢复。`)) return;
     deleteMut.mutate(sub.id);
   };
 

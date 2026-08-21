@@ -1,10 +1,13 @@
 package com.example.demo.modules.admin.pagehelp;
 
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.mp.util.MpHtmlSanitizer;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -16,9 +19,12 @@ public class PageHelpService {
     private static final Pattern VERSION_LABEL = Pattern.compile("^V\\d+\\.\\d+\\.\\d+$", Pattern.CASE_INSENSITIVE);
 
     private final AdminPageHelpRepository repository;
+    private final UserDisplayNameService userDisplayNameService;
 
-    public PageHelpService(AdminPageHelpRepository repository) {
+    public PageHelpService(AdminPageHelpRepository repository,
+                           UserDisplayNameService userDisplayNameService) {
         this.repository = repository;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     public Map<String, Object> loadBundleForAdmin(String pagePath) {
@@ -30,15 +36,17 @@ public class PageHelpService {
             data.put("bodyHtml", v.get("bodyHtml"));
             data.put("updatedAt", v.get("createdAt"));
             data.put("updatedBy", v.get("createdBy"));
-            data.put("currentVersion", v);
+            data.put("updatedByName", resolvePersonName(v.get("createdBy")));
+            data.put("currentVersion", enrichVersion(v));
         } else {
             data.put("bodyHtml", null);
             data.put("updatedAt", null);
             data.put("updatedBy", null);
+            data.put("updatedByName", null);
             data.put("currentVersion", null);
         }
-        data.put("versions", repository.listVersions(pagePath));
-        data.put("messages", repository.listMessages(pagePath));
+        data.put("versions", enrichVersions(repository.listVersions(pagePath)));
+        data.put("messages", enrichMessages(repository.listMessages(pagePath)));
         return data;
     }
 
@@ -209,5 +217,77 @@ public class PageHelpService {
             return "new";
         }
         return "update";
+    }
+
+    private String resolvePersonName(Object userIdObj) {
+        if (userIdObj == null) {
+            return null;
+        }
+        String id = String.valueOf(userIdObj).trim();
+        if (!StringUtils.hasText(id)) {
+            return null;
+        }
+        String n = userDisplayNameService.resolveDisplayName(id);
+        return StringUtils.hasText(n) ? n : id;
+    }
+
+    private Map<String, Object> enrichVersion(Map<String, Object> v) {
+        if (v == null) {
+            return null;
+        }
+        Map<String, Object> m = new HashMap<>(v);
+        Object by = v.get("createdBy");
+        m.put("createdByName", resolvePersonName(by));
+        return m;
+    }
+
+    private List<Map<String, Object>> enrichVersions(List<Map<String, Object>> versions) {
+        if (versions == null || versions.isEmpty()) {
+            return versions == null ? List.of() : versions;
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (Map<String, Object> v : versions) {
+            Object by = v.get("createdBy");
+            if (by != null && StringUtils.hasText(String.valueOf(by))) {
+                ids.add(String.valueOf(by).trim());
+            }
+        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(ids);
+        List<Map<String, Object>> out = new ArrayList<>(versions.size());
+        for (Map<String, Object> v : versions) {
+            Map<String, Object> m = new HashMap<>(v);
+            Object by = v.get("createdBy");
+            String id = by == null ? "" : String.valueOf(by).trim();
+            String n = names.get(id);
+            m.put("createdByName", StringUtils.hasText(n) ? n : (StringUtils.hasText(id) ? id : null));
+            out.add(m);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> enrichMessages(List<Map<String, Object>> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return messages == null ? List.of() : messages;
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (Map<String, Object> msg : messages) {
+            Object uid = msg.get("userId");
+            if (uid != null && StringUtils.hasText(String.valueOf(uid))) {
+                ids.add(String.valueOf(uid).trim());
+            }
+        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(ids);
+        List<Map<String, Object>> out = new ArrayList<>(messages.size());
+        for (Map<String, Object> msg : messages) {
+            Map<String, Object> m = new HashMap<>(msg);
+            Object uid = msg.get("userId");
+            String id = uid == null ? "" : String.valueOf(uid).trim();
+            String n = names.get(id);
+            if (StringUtils.hasText(n)) {
+                m.put("authorLabel", n);
+            }
+            out.add(m);
+        }
+        return out;
     }
 }

@@ -187,8 +187,9 @@ public class ReferenceDataController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable Long id,
             @RequestBody RefCartUpsertRequest body) {
-        resolveUser(authorization);
-        return referenceDataService.updateCartItem(id, body);
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return referenceDataService.updateCartItem(id, user.getId(), body);
     }
 
     @DeleteMapping("/cart/{id}")
@@ -196,8 +197,9 @@ public class ReferenceDataController {
     public Result<?> removeFromCart(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable Long id) {
-        resolveUser(authorization);
-        return referenceDataService.removeFromCart(id);
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return referenceDataService.removeFromCart(id, user.getId());
     }
 
     @DeleteMapping("/cart")
@@ -207,8 +209,29 @@ public class ReferenceDataController {
             @RequestParam String groupId) {
         User user = resolveUser(authorization);
         if (user == null) return Result.error("请先登录");
-        referenceDataService.clearCart(groupId);
-        return Result.success();
+        return referenceDataService.clearCart(groupId, user.getId());
+    }
+
+    @PostMapping("/cart/package-ready")
+    @Operation(summary = "实验员提交订单包（本人行 → READY + packageRemark）")
+    public Result<List<RefCartView>> markPackageReady(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam String groupId,
+            @RequestBody(required = false) RefCartPackageRequest body) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return referenceDataService.markPackageReady(groupId, user.getId(), body);
+    }
+
+    @PostMapping("/cart/package-draft")
+    @Operation(summary = "撤回订单包（本人 READY → DRAFT）")
+    public Result<List<RefCartView>> withdrawPackage(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam String groupId,
+            @RequestBody(required = false) RefCartPackageRequest body) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return referenceDataService.withdrawPackage(groupId, user.getId(), body);
     }
 
     // ==================== Orders ====================

@@ -25,6 +25,7 @@ import {
 import { AutoApproveDailyTimeField } from "@/features/auto-approve/AutoApproveDailyTimeField";
 import { formatDailyScheduleLabel } from "@/features/auto-approve/scheduleTime";
 
+import { appConfirm } from "@/lib/appDialog";
 type TabKey = "trust" | "batch";
 
 type Props = {
@@ -424,7 +425,7 @@ export function ScanDelayAutoApprovePanel({ open, onClose }: Props) {
                     dimension={ruleDimension(r)}
                     onEdit={() => editRule(r)}
                     onDelete={async () => {
-                      if (!r.id || !window.confirm("删除此规则？")) return;
+                      if (!r.id || !await appConfirm("删除此规则？")) return;
                       await deleteScanDelayTrustRule(r.id);
                       reload();
                       toast.success("已删除");
@@ -444,7 +445,7 @@ export function ScanDelayAutoApprovePanel({ open, onClose }: Props) {
                     dimension={ruleDimension(r)}
                     onEdit={() => editRule(r)}
                     onDelete={async () => {
-                      if (!r.id || !window.confirm("删除此规则？")) return;
+                      if (!r.id || !await appConfirm("删除此规则？")) return;
                       await deleteScanDelayTrustRule(r.id);
                       reload();
                       toast.success("已删除");
@@ -531,7 +532,7 @@ export function ScanDelayAutoApprovePanel({ open, onClose }: Props) {
                     type="button"
                     className="text-xs text-red-500"
                     onClick={async () => {
-                      if (!r.id || !window.confirm("删除此批量规则？")) return;
+                      if (!r.id || !await appConfirm("删除此批量规则？")) return;
                       await deleteScanDelayBatchRule(r.id);
                       reload();
                       toast.success("已删除");

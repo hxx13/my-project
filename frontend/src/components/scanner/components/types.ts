@@ -132,7 +132,7 @@ export interface PopupActions {
     getDelayOptionsForRoom: (roomId: string) => ScanDelayOptionSummary[];
     getDelayStatusForRoom: (roomId: string) => DelayButtonStatus | undefined;
     getRejectedOptionIdsForRoom: (roomId: string) => number[];
-    handleDelayGrantSuccess: (roomId: string, status: string, optionLabel?: string) => void;
+    handleDelayGrantSuccess: () => void;
     /** 打开离开确认弹窗（不执行离开） */
     requestExit: (room: RoomInfo, index: number) => void;
     /** 确认离开：执行待确认的房间操作 */

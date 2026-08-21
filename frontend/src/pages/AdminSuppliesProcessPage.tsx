@@ -28,6 +28,7 @@ import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { webImageSrc } from "@/utils/mediaUrl";
 
+import { appConfirm } from "@/lib/appDialog";
 type TabKey = "pending" | "done" | "recycle";
 
 function toTextTime(v?: string | null) {
@@ -281,10 +282,10 @@ export default function AdminSuppliesProcessPage() {
                     {canProcess && !isRecycle && (
                       <span
                         className="block w-full px-3 py-1.5 text-xs text-red-600 hover:bg-[var(--twin-canvas-soft)] cursor-pointer"
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
                           setMenuOpenId(null);
-                          if (!window.confirm("确认删除该申请单到回收站？")) return;
+                          if (!await appConfirm("确认删除该申请单到回收站？")) return;
                           deleteMut.mutate(row.id);
                         }}
                       >
@@ -294,10 +295,10 @@ export default function AdminSuppliesProcessPage() {
                     {canProcess && isRecycle && (
                       <span
                         className="block w-full px-3 py-1.5 text-xs text-red-600 hover:bg-[var(--twin-canvas-soft)] cursor-pointer"
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
                           setMenuOpenId(null);
-                          if (!window.confirm("确认彻底删除该申请单？")) return;
+                          if (!await appConfirm("确认彻底删除该申请单？")) return;
                           purgeByIdsMut.mutate([row.id]);
                         }}
                       >
@@ -354,7 +355,17 @@ export default function AdminSuppliesProcessPage() {
                                 </div>
                               )}
                               <div className="flex-1 min-w-0">
-                                <span className="text-[var(--twin-ink)] truncate block">{line.snapshotName}</span>
+                                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                  <span className="text-[var(--twin-ink)] truncate">{line.snapshotName}</span>
+                                  <span className="text-xs text-[var(--twin-mute)] shrink-0 tabular-nums">
+                                    申请 ×{line.qty}
+                                  </span>
+                                  {!isPending && Number(line.fulfilledQty) > 0 ? (
+                                    <span className="text-xs text-[var(--twin-mute)] shrink-0 tabular-nums">
+                                      已发 ×{line.fulfilledQty}
+                                    </span>
+                                  ) : null}
+                                </div>
                                 {canProcess && isPending ? (
                                   <div className="mt-1 flex items-center gap-1.5 text-xs flex-wrap">
                                     <span className="text-[var(--twin-mute)] shrink-0">发放数量</span>
@@ -581,9 +592,9 @@ export default function AdminSuppliesProcessPage() {
                   type="button"
                   className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 disabled:opacity-50"
                   disabled={purgeByIdsMut.isPending}
-                  onClick={() => {
+                  onClick={async () => {
                     if (!selectedRecycleIds.length) return toast.error("请先勾选回收站申请单");
-                    if (!window.confirm(`确认彻底删除 ${selectedRecycleIds.length} 条回收站申请单吗？`)) return;
+                    if (!await appConfirm(`确认彻底删除 ${selectedRecycleIds.length} 条回收站申请单吗？`)) return;
                     purgeByIdsMut.mutate(selectedRecycleIds, {
                       onSuccess: () => setSelectedRecycleIds([]),
                     });
@@ -595,8 +606,8 @@ export default function AdminSuppliesProcessPage() {
                   type="button"
                   className="rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
                   disabled={purgeAllMut.isPending}
-                  onClick={() => {
-                    if (!window.confirm("确认一键清空回收站吗？")) return;
+                  onClick={async () => {
+                    if (!await appConfirm("确认一键清空回收站吗？")) return;
                     purgeAllMut.mutate(undefined, {
                       onSuccess: () => setSelectedRecycleIds([]),
                     });

@@ -10,13 +10,13 @@ export type AdminButtonTone = "primary" | "secondary" | "ghost" | "destructive";
 const toneToVariant: Record<AdminButtonTone, VariantProps<typeof buttonVariants>["variant"]> = {
   primary: "default",
   secondary: "default",
-  ghost: "ghost",
+  ghost: "default",
   destructive: "default",
 };
 
-/** 管理端按钮统一：实色填充，一眼可辨为可点击。disabled 由 toneClassNames 自行控制透明度 */
+/** 管理端按钮统一：实色填充（禁止描边/线条+文字），一眼可辨为可点击。disabled 由 toneClassNames 自行控制透明度 */
 const adminButtonShell =
-  "rounded-[length:var(--admin-radius-md,0.375rem)] font-medium transition-colors disabled:opacity-100";
+  "rounded-[length:var(--admin-radius-md,0.375rem)] border-0 font-medium shadow-sm transition-colors hover:shadow disabled:opacity-100";
 
 const toneClassNames: Record<AdminButtonTone, string> = {
   primary:
@@ -24,7 +24,7 @@ const toneClassNames: Record<AdminButtonTone, string> = {
   secondary:
     "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-border-default)] focus-visible:ring-2 focus-visible:ring-[var(--app-color-border-default)]/60 focus-visible:ring-offset-2 disabled:bg-[var(--app-color-surface-container)] disabled:text-[var(--app-color-text-tertiary)]",
   ghost:
-    "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--app-color-border-default)]/40 focus-visible:ring-offset-2 disabled:text-[var(--app-color-text-tertiary)]",
+    "bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--app-color-border-default)]/40 focus-visible:ring-offset-2 disabled:text-[var(--app-color-text-tertiary)]",
   destructive:
     "bg-red-500 text-white hover:bg-red-600 focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 disabled:bg-red-500/60",
 };
@@ -41,30 +41,28 @@ export type AdminButtonProps = Omit<React.ComponentProps<typeof Button>, "varian
 export const adminPickableRowClass =
   "flex w-full cursor-pointer items-center gap-3 rounded-lg bg-[var(--app-color-surface-container)] p-2.5 text-left transition-colors hover:bg-[var(--app-color-surface-hover)]";
 
-export function AdminButton({
-  tone = "primary",
-  className,
-  loading,
-  active,
-  disabled,
-  children,
-  ...props
-}: AdminButtonProps) {
-  return (
-    <Button
-      variant={toneToVariant[tone]}
-      disabled={disabled || loading}
-      aria-busy={loading || undefined}
-      className={cn(
-        adminButtonShell,
-        toneClassNames[tone],
-        active && "ring-2 ring-[color:var(--admin-focus-ring)]/50 ring-offset-1",
-        className
-      )}
-      {...props}
-    >
-      {loading ? <Loader2 className="animate-spin" aria-hidden /> : null}
-      {children}
-    </Button>
-  );
-}
+export const AdminButton = React.forwardRef<HTMLButtonElement, AdminButtonProps>(
+  function AdminButton(
+    { tone = "primary", className, loading, active, disabled, children, ...props },
+    ref
+  ) {
+    return (
+      <Button
+        ref={ref}
+        variant={toneToVariant[tone]}
+        disabled={disabled || loading}
+        aria-busy={loading || undefined}
+        className={cn(
+          adminButtonShell,
+          toneClassNames[tone],
+          active && "ring-2 ring-[color:var(--admin-focus-ring)]/50 ring-offset-1",
+          className
+        )}
+        {...props}
+      >
+        {loading ? <Loader2 className="animate-spin" aria-hidden /> : null}
+        {children}
+      </Button>
+    );
+  }
+);

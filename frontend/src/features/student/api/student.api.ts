@@ -441,6 +441,68 @@ export async function fetchViolations(
   return res.data.data;
 }
 
+/** 学生端待办（Obligation） */
+export interface StudentObligationRow {
+  id: number;
+  sourceType?: string;
+  title?: string;
+  contentHtml?: string;
+  dispositionType?: string;
+  dispositionConfigJson?: string | null;
+  status?: string;
+  dueAt?: string | null;
+  deliveryMode?: "FULL_DISPOSITION" | "GUIDE_ONLY";
+  channelCapability?: string;
+  guideMessage?: string;
+  redirectPath?: string;
+}
+
+export interface QuizDrawPayload {
+  questionBankId: string;
+  questions: Array<{ id: string; prompt: string; options: string[] }>;
+}
+
+export async function fetchMyObligations(
+  params: { status?: string; channel?: string; limit?: number } = {}
+): Promise<StudentObligationRow[]> {
+  const res = await authHttp.get<Result<StudentObligationRow[]>>("/student/obligations/mine", {
+    params: { channel: "H5", ...params },
+  });
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取待办失败");
+  }
+  return res.data.data ?? [];
+}
+
+export async function markObligationDelivered(id: number): Promise<void> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>(`/student/obligations/${id}/delivered`);
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "标记送达失败");
+  }
+}
+
+export async function drawObligationQuiz(id: number): Promise<QuizDrawPayload> {
+  const res = await authHttp.get<Result<QuizDrawPayload>>(`/student/obligations/${id}/quiz-draw`);
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "抽题失败");
+  }
+  return res.data.data;
+}
+
+export async function completeObligation(
+  id: number,
+  answer: string,
+  channel = "H5"
+): Promise<void> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>(`/student/obligations/${id}/complete`, {
+    answer,
+    channel,
+  });
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "处置失败");
+  }
+}
+
 /**
  * 获取常见问题分组
  * GET /api/student/feedback/faq

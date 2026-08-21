@@ -674,16 +674,10 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         return rejectedOptionIdsMap[roomId] ?? [];
     }, [rejectedOptionIdsMap]);
 
-    const handleDelayGrantSuccess = useCallback((roomId: string, status: string, optionLabel?: string) => {
-        const nextStatus = status === "PENDING" ? "pending" : "approved";
-        setDelayStatusMap((prev) => ({
-            ...prev,
-            [roomId]: { status: nextStatus, optionLabel },
-        }));
-        // PENDING 时卡映射没有变化，不触发 re-analyze（否则 effect 重跑、API 异步覆盖刚设的状态）
-        if (nextStatus !== "pending") {
-            onRefresh?.();
-        }
+    const handleDelayGrantSuccess = useCallback(() => {
+        // 延迟申请成功后仅触发刷新：ScanDelayMenuPortal 已内部处理申请，
+        // 按钮状态由 re-analyze 的 effect 重新拉取活跃申请初始化。
+        onRefresh?.();
     }, [onRefresh]);
 
     // 弹窗打开 / analyze 刷新时，从后端拉取活跃延迟申请状态初始化按钮显示

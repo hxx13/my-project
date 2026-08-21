@@ -1,4 +1,4 @@
-﻿const mpBulletinApi = require('../../../utils/mpBulletinApi.js');
+const mpBulletinApi = require('../../../utils/mpBulletinApi.js');
 const studentAlerts = require('../../../utils/studentAlertHelpers.js');
 const { isStudentAccount } = require('../../../utils/roleAccess.js');
 const { applyRichTextTypography } = require('../../../utils/richTextTypography.js');

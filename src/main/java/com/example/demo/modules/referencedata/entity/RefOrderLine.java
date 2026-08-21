@@ -11,4 +11,7 @@ public class RefOrderLine {
     private String hierarchyChain;
     private Integer quantity;
     private String lineRemark;
+    private String addedBy;
+    /** 行级 AUP 合规归因 → aup_record.id */
+    private Long aupRecordId;
 }

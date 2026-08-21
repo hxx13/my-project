@@ -42,58 +42,50 @@ export async function fetchLoginBranding(): Promise<LoginBranding> {
   return response.data.data;
 }
 
-export type PortalLineChart = {
-  times: string[];
-  pudong: number[];
-  puxi: number[];
-};
+/* ── 页脚（公共站渲染，结构对齐 admin 的 PortalFooterConfig） ── */
 
-export type PortalStats = {
-  totalEnter: number;
-  pudongTotal: number;
-  puxiTotal: number;
-  lineChart?: PortalLineChart;
-};
-
-export type PortalFooterLink = {
+export interface PortalFooterLink {
   label: string;
   url: string;
-  requiresAuth: boolean;
+  requiresAuth?: boolean;
   sortOrder: number;
-};
+}
 
-export type PortalFooterGroup = {
-  id: string;
+export interface PortalFooterGroup {
   group: string;
   sortOrder: number;
   items: PortalFooterLink[];
-};
-
-export type PortalFooterContact = {
-  phone: string;
-  email: string;
-  address: string;
-  workHours: string;
-};
-
-export type PortalFooterData = {
-  contact: PortalFooterContact;
-  groups: PortalFooterGroup[];
-  copyright?: string;
-};
-
-export async function fetchPortalFooter(): Promise<PortalFooterData> {
-  const response = await axios.get<Result<PortalFooterData>>("/api/public/portal-footer");
-  if (!response.data?.success || !response.data?.data) {
-    throw new Error(response.data?.message || "加载页脚配置失败");
-  }
-  return response.data.data;
 }
 
-export async function fetchPortalStats(): Promise<PortalStats> {
-  const response = await axios.get<Result<PortalStats>>("/api/public/portal-stats");
-  if (!response.data?.success || !response.data?.data) {
-    throw new Error(response.data?.message || "加载首页统计失败");
-  }
-  return response.data.data;
+export interface PortalFooterData {
+  copyright?: string;
+  contact?: { phone?: string; email?: string; address?: string; workHours?: string };
+  groups: PortalFooterGroup[];
+}
+
+/** 获取页脚配置。返回 null 时前端回退默认页脚。 */
+export async function fetchPortalFooter(): Promise<PortalFooterData | null> {
+  // TODO: 接后端公共页脚端点（admin 已有 /api/admin/site/portal-footer，公共端尚未建）
+  return null;
+}
+
+/* ── 今日进出统计（首页数据大盘） ── */
+
+export interface PortalLineChart {
+  times: string[];
+  pudong: number[];
+  puxi: number[];
+}
+
+export interface PortalStats {
+  pudongTotal: number;
+  puxiTotal: number;
+  totalEnter: number;
+  lineChart?: PortalLineChart;
+}
+
+/** 获取今日进出统计。返回 null 时前端显示 0。 */
+export async function fetchPortalStats(): Promise<PortalStats | null> {
+  // TODO: 接后端统计端点（数据源：门禁/闸机进出记录）
+  return null;
 }

@@ -20,6 +20,7 @@ import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import StaffReviewerPicker from "@/components/admin/StaffReviewerPicker";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 
+import { appConfirm, appPrompt } from "@/lib/appDialog";
 /* ────── 小工具 ────── */
 const MODE_ZH: Record<string, string> = { QUANTIFIED: "数量型", FLAG: "有无型", LIMITED: "限量", UNLIMITED: "无限" };
 const SHELF_ZH: Record<string, string> = { DRAFT: "草稿", PUBLISHED: "已上架", ARCHIVED: "已归档" };
@@ -198,8 +199,8 @@ export default function MaterialManagePage() {
                     <span className={`text-[10px] px-1 rounded-full ${c.status === 1 ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"}`}>{c.status === 1 ? "启用" : "禁用"}</span>
                   </div>
                   <div className="flex gap-0.5 shrink-0 ml-2">
-                    <button type="button" className="rounded-twin-sm px-1.5 py-0.5 text-[11px] text-[var(--twin-link-deep)]" onClick={(e) => { e.stopPropagation(); const name = window.prompt("分类名称", c.name); if (!name) return; updateCatMut.mutate({ id: c.id, body: { name, status: c.status, sortOrder: c.sortOrder } }); }}>改</button>
-                    <button type="button" className="rounded-twin-sm px-1.5 py-0.5 text-[11px] text-red-500" onClick={(e) => { e.stopPropagation(); if (!window.confirm("删除分类？")) return; deleteCatMut.mutate(c.id); }}>删</button>
+                    <button type="button" className="rounded-twin-sm px-1.5 py-0.5 text-[11px] text-[var(--twin-link-deep)]" onClick={async (e) => { e.stopPropagation(); const name = await appPrompt("分类名称", c.name); if (!name) return; updateCatMut.mutate({ id: c.id, body: { name, status: c.status, sortOrder: c.sortOrder } }); }}>改</button>
+                    <button type="button" className="rounded-twin-sm px-1.5 py-0.5 text-[11px] text-red-500" onClick={async (e) => { e.stopPropagation(); if (!await appConfirm("删除分类？")) return; deleteCatMut.mutate(c.id); }}>删</button>
                   </div>
                 </div>
               ))}
@@ -401,7 +402,7 @@ export default function MaterialManagePage() {
                         <div className="flex items-center gap-0.5 text-[10px]">
                           <button className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => { setEditingItem(it); setEditCoverUrl(it.coverUrl || ""); setEditShowStockQty(it.showStockQty !== 0); setEditIndependentOrder(it.independentOrder === 1); setEditNotifyAdvanceHours(String(it.notifyAdvanceHours ?? 0)); setEditReviewerIds(it.reviewerIds || "[]"); setEditSecondReviewerIds(it.secondReviewerIds || "[]"); if (it.specSchema) { try { const parsed = JSON.parse(it.specSchema); setEditSpecEnabled(true); setEditSpecDimensions(parsed.dimensions || []); setEditSpecRequired(it.specRequired === 1); } catch { setEditSpecEnabled(false); setEditSpecDimensions([]); setEditSpecRequired(false); } } else { setEditSpecEnabled(false); setEditSpecDimensions([]); setEditSpecRequired(false); } }}>编辑</button>
                           <label className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer">图片<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadAndSet(f, (url) => { updateItemMut.mutate({ id: it.id, body: { coverUrl: url } }); }, setEditUploading); }} /></label>
-                          <button className="rounded-twin-sm px-1.5 py-0.5 text-red-500 hover:bg-red-50" onClick={() => { if (!window.confirm("删除？")) return; deleteItemMut.mutate(it.id); }}>删</button>
+                          <button className="rounded-twin-sm px-1.5 py-0.5 text-red-500 hover:bg-red-50" onClick={async () => { if (!await appConfirm("删除？")) return; deleteItemMut.mutate(it.id); }}>删</button>
                         </div>
                       </div>
                     </div>
@@ -568,11 +569,11 @@ export default function MaterialManagePage() {
       {/* ═══════════ 回收站 ═══════════ */}
       {recycleOpen && (
         <section className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-4 space-y-3 shadow-twin-level-1">
-          <div className="flex items-center justify-between"><h3 className="font-medium text-[var(--twin-ink)]">回收站</h3><button type="button" className="rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white" onClick={() => { if (!window.confirm("一键清空？")) return; purgeAllMut.mutate(undefined, { onSuccess: () => setRecyclePage(1) }); }}>一键清空</button></div>
+          <div className="flex items-center justify-between"><h3 className="font-medium text-[var(--twin-ink)]">回收站</h3><button type="button" className="rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white" onClick={async () => { if (!await appConfirm("一键清空？")) return; purgeAllMut.mutate(undefined, { onSuccess: () => setRecyclePage(1) }); }}>一键清空</button></div>
           {recycleRows.map(it => (
             <div key={it.id} className="flex items-center justify-between rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm">
               <div><div className="font-medium">{it.name}</div><div className="text-xs text-[var(--twin-mute)]">ID {it.id}</div></div>
-              <div className="flex gap-2"><button className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs text-emerald-700" onClick={() => restoreMut.mutate(it.id)}>恢复</button><button className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs text-red-700" onClick={() => { if (!window.confirm(`彻底删除 ${it.name}？`)) return; purgeMut.mutate([it.id]); }}>彻底删除</button></div>
+              <div className="flex gap-2"><button className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs text-emerald-700" onClick={() => restoreMut.mutate(it.id)}>恢复</button><button className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs text-red-700" onClick={async () => { if (!await appConfirm(`彻底删除 ${it.name}？`)) return; purgeMut.mutate([it.id]); }}>彻底删除</button></div>
             </div>
           ))}
           {recycleRows.length === 0 && <p className="text-center text-sm text-[var(--twin-mute)] py-4">回收站为空</p>}

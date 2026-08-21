@@ -141,7 +141,6 @@ public final class TwinAutomationLogDisplayHelper {
             case "APPROVED" -> "延迟申请审核通过（旧码）";
             case "DIRECT" -> "延迟申请免审直批（旧码）";
             case "KEEP_CARD_GRANT" -> "长期保管卡登记";
-            case "SCAN_EXIT_REVOKE" -> "扫码离开自动收回";
             case "EXEMPT_EXPIRE_TIMER" -> "豁免时效到期";
             case "EXEMPT_COUNT_EXHAUSTED" -> "豁免次数耗尽";
             case "EXEMPT_RECONCILE_REVOKE" -> "事件溯源纠偏收回";

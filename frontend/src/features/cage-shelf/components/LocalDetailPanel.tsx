@@ -115,8 +115,17 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
 
     {/* 二级：关键信息 icon+compact */}
     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-      {detail?.piName && <div className="truncate" title={detail.piName}>👤 <span className="text-[var(--twin-mute)]">PI</span> {detail.piName}</div>}
-      {detail?.projectPiName && detail.projectPiName !== detail.piName && <div className="truncate" title={detail.projectPiName}>👤 <span className="text-[var(--twin-mute)]">课题PI</span> {detail.projectPiName}</div>}
+      {(() => {
+        const projectPi = typeof detail?.projectPiName === "string" ? detail.projectPiName.trim() : "";
+        const topPi = typeof detail?.piName === "string" ? detail.piName.trim() : "";
+        const displayPi = projectPi || topPi;
+        if (!displayPi) return null;
+        return <div className="truncate" title={displayPi}>👤 <span className="text-[var(--twin-mute)]">PI</span> {displayPi}</div>;
+      })()}
+      {detail?.projectPiName && detail?.piName && detail.projectPiName !== detail.piName && (
+        <div className="truncate" title={detail.piName}>👤 <span className="text-[var(--twin-mute)]">笼位PI</span> {detail.piName}</div>
+      )}
+      {detail?.projectName && <div className="truncate col-span-2" title={detail.projectName}>📁 <span className="text-[var(--twin-mute)]">项目</span> {detail.projectName}</div>}
       {detail?.departmentName && <div className="truncate col-span-2" title={detail.departmentName}>🏢 <span className="text-[var(--twin-mute)]">部门</span> {detail.departmentName}</div>}
       {detail?.aupNumber && <div className="truncate">📋 <span className="text-[var(--twin-mute)]">AUP</span> {detail.aupNumber}</div>}
       {detail?.experimenterName && <div className="truncate">🔬 <span className="text-[var(--twin-mute)]">实验员</span> {detail.experimenterName}</div>}
@@ -125,7 +134,6 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
       {detail?.animalWeekAge && <div>🕐 {detail.animalWeekAge}周龄</div>}
       {(detail?.animalMaleNumber || detail?.animalFemaleNumber) && <div>🔢 {detail.animalMaleNumber ? detail.animalMaleNumber + "♂" : ""}{detail.animalMaleNumber && detail.animalFemaleNumber ? "+" : ""}{detail.animalFemaleNumber ? detail.animalFemaleNumber + "♀" : ""}</div>}
       {detail?.animalComeFrom && <div className="truncate col-span-2">📍 <span className="text-[var(--twin-mute)]">来源</span> {detail.animalComeFrom}</div>}
-      {detail?.projectName && <div className="truncate col-span-2">📁 <span className="text-[var(--twin-mute)]">项目</span> {detail.projectName}</div>}
       {detail?.labAssistantName && <div className="truncate">🧑‍🔬 <span className="text-[var(--twin-mute)]">实验人员</span> {detail.labAssistantName}</div>}
     </div>
 

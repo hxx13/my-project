@@ -13,7 +13,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -129,7 +128,7 @@ public class JobSchedulerService {
         if (cfg == null || cfg.getEnabled() == null || cfg.getEnabled() != 1) {
             return false;
         }
-        if (!matchesDay(cfg, LocalDateTime.now().getDayOfWeek())) {
+        if (!JobScheduleDueEvaluator.matchesDay(cfg, LocalDateTime.now().getDayOfWeek())) {
             return false;
         }
         return inWindow(cfg, LocalDateTime.now().toLocalTime());
@@ -166,7 +165,7 @@ public class JobSchedulerService {
                     existing.getRevokeAutoSignoutEnabled() != null ? existing.getRevokeAutoSignoutEnabled() : 0);
         }
 
-        if (isSingleTimeJob(input.getJobKey())) {
+        if (JobScheduleDueEvaluator.isSingleTimeJob(input.getJobKey())) {
             // 单次定时任务不使用时间段窗口，固定全天，避免误配窗口导致不触发。
             input.setScheduleStartTime("00:00");
             input.setScheduleEndTime("23:59");
@@ -230,7 +229,8 @@ public class JobSchedulerService {
             if (cfg.getEnabled() == null || cfg.getEnabled() != 1) {
                 continue;
             }
-            if (shouldRun(cfg, now)) {
+            // 整分命中 OR 错过补跑：避免长任务/线程争用跳过整分后周任务永远不跑
+            if (JobScheduleDueEvaluator.dueForRun(cfg, now)) {
                 runWithStatus(cfg.getJobKey(), "system-scheduler", true);
             }
         }
@@ -246,7 +246,7 @@ public class JobSchedulerService {
             if (cfg.getEnabled() == null || cfg.getEnabled() != 1) {
                 continue;
             }
-            if (isMissed(cfg, now)) {
+            if (JobScheduleDueEvaluator.isMissed(cfg, now)) {
                 runWithStatus(cfg.getJobKey(), "system-bootstrap", true);
             }
         }
@@ -377,122 +377,13 @@ public class JobSchedulerService {
         mapper.updateSchedule(row);
     }
 
-    private boolean shouldRun(TwinJobScheduleConfig cfg, LocalDateTime now) {
-        if (!matchesDay(cfg, now.getDayOfWeek())) {
-            return false;
-        }
-        String jobKey = cfg.getJobKey();
-        if (JobSchedulePolicy.isPollInWindow(jobKey)) {
-            if (!inWindow(cfg, now.toLocalTime())) {
-                return false;
-            }
-            return shouldRunByPollInterval(cfg, now);
-        }
-        if (!isSingleTimeJob(jobKey) && !inWindow(cfg, now.toLocalTime())) {
-            return false;
-        }
-        LocalTime plan = parseTime(cfg.getScheduleTime());
-        if (!plan.equals(now.toLocalTime())) {
-            return false;
-        }
-        LocalDateTime lastRun = cfg.getLastRunAt();
-        return lastRun == null || !lastRun.withSecond(0).withNano(0).equals(now);
-    }
-
-    private boolean shouldRunByPollInterval(TwinJobScheduleConfig cfg, LocalDateTime now) {
-        LocalDateTime lastRun = cfg.getLastRunAt();
-        if (lastRun == null) {
-            return true;
-        }
-        int pollSec = JobSchedulePolicy.clampPollInterval(cfg.getJobKey(), cfg.getPollIntervalSeconds());
-        return !lastRun.plusSeconds(pollSec).isAfter(now);
-    }
-
-    private boolean isMissed(TwinJobScheduleConfig cfg, LocalDateTime now) {
-        if (JobSchedulePolicy.isPollInWindow(cfg.getJobKey())) {
-            return false;
-        }
-        LocalDateTime latestPlan = latestPlannedTime(cfg, now);
-        if (latestPlan == null || latestPlan.isAfter(now)) {
-            return false;
-        }
-        // 配置变更保护：若计划点早于本条任务的最近配置更新时间，则视为历史旧计划，不做重启补跑。
-        LocalDateTime cfgUpdatedAt = cfg.getUpdateTime();
-        if (cfgUpdatedAt != null && latestPlan.isBefore(cfgUpdatedAt)) {
-            return false;
-        }
-        // 冻结类任务防重放：只要该计划点已经“执行过”(lastRunAt 达到计划点)，
-        // 即使状态是 FAILED，也不在重启补跑阶段重复执行，避免连续重启导致重复冻结/重复自动离开。
-        if (JobExecutionRegistry.JOB_RUN_REAPER.equals(cfg.getJobKey())
-                || JobExecutionRegistry.JOB_RUN_REAPER_SECOND.equals(cfg.getJobKey())
-                || JobExecutionRegistry.JOB_DAILY_EXEMPT_RESET.equals(cfg.getJobKey())) {
-            LocalDateTime lastRun = cfg.getLastRunAt();
-            return lastRun == null || lastRun.isBefore(latestPlan);
-        }
-        LocalDateTime successAt = cfg.getLastSuccessAt();
-        return successAt == null || successAt.isBefore(latestPlan);
-    }
-
-    private LocalDateTime latestPlannedTime(TwinJobScheduleConfig cfg, LocalDateTime now) {
-        LocalTime planTime = parseTime(cfg.getScheduleTime());
-        for (int i = 0; i <= 7; i++) {
-            LocalDateTime candidate = now.minusDays(i).with(planTime).withSecond(0).withNano(0);
-            if (!matchesDay(cfg, candidate.getDayOfWeek())) {
-                continue;
-            }
-            if (!candidate.isAfter(now)) {
-                return candidate;
-            }
-        }
-        return null;
-    }
-
-    private boolean matchesDay(TwinJobScheduleConfig cfg, DayOfWeek dayOfWeek) {
-        String type = cfg.getScheduleType() == null ? "DAILY" : cfg.getScheduleType().trim().toUpperCase(Locale.ROOT);
-        if ("DAILY".equals(type)) {
-            return true;
-        }
-        Set<Integer> days = parseWeekDays(cfg.getWeekDays());
-        if (days.isEmpty()) {
-            return true;
-        }
-        return days.contains(dayOfWeek.getValue());
-    }
-
-    private static Set<Integer> parseWeekDays(String weekDays) {
-        Set<Integer> out = new HashSet<>();
-        if (!StringUtils.hasText(weekDays)) {
-            return out;
-        }
-        for (String p : weekDays.split(",")) {
-            try {
-                int n = Integer.parseInt(p.trim());
-                if (n >= 1 && n <= 7) {
-                    out.add(n);
-                }
-            } catch (Exception ignored) {
-                log.debug("解析weekDays数值失败: {}", ignored.getMessage());
-            }
-        }
-        return out;
-    }
-
     private static LocalTime parseTime(String scheduleTime) {
-        try {
-            return LocalTime.parse(scheduleTime, HM);
-        } catch (Exception e) {
-            return LocalTime.of(2, 0);
-        }
+        return JobScheduleDueEvaluator.parseTime(scheduleTime);
     }
 
+    /** 供 WinCC 程序坞等读取时间窗；委托统一判定器。 */
     private boolean inWindow(TwinJobScheduleConfig cfg, LocalTime nowTime) {
-        LocalTime start = parseTime(StringUtils.hasText(cfg.getScheduleStartTime()) ? cfg.getScheduleStartTime() : "07:00");
-        LocalTime end = parseTime(StringUtils.hasText(cfg.getScheduleEndTime()) ? cfg.getScheduleEndTime() : "22:00");
-        if (end.equals(start)) return true;
-        if (end.isAfter(start)) {
-            return !nowTime.isBefore(start) && !nowTime.isAfter(end);
-        }
-        return !nowTime.isBefore(start) || !nowTime.isAfter(end);
+        return JobScheduleDueEvaluator.inWindow(cfg, nowTime);
     }
 
     private void validate(TwinJobScheduleConfig input) {
@@ -516,9 +407,17 @@ public class JobSchedulerService {
             row.setJobKey(e.getKey());
             row.setJobName(e.getValue());
             row.setEnabled(0);
-            row.setScheduleType("DAILY");
-            row.setScheduleTime("02:00");
-            if (isSingleTimeJob(e.getKey())) {
+            if (JobExecutionRegistry.JOB_CAGE_SPECIAL_STATUS_SCAN.equals(e.getKey())) {
+                // 名称即「每周」；首次插入用周日 03:30（违规检测 03:10 之后），由 init 再打开开关
+                row.setScheduleType("WEEKLY");
+                row.setScheduleTime("03:30");
+                row.setWeekDays("7");
+            } else {
+                row.setScheduleType("DAILY");
+                row.setScheduleTime("02:00");
+                row.setWeekDays("1,2,3,4,5,6,7");
+            }
+            if (JobScheduleDueEvaluator.isSingleTimeJob(e.getKey())) {
                 row.setScheduleStartTime("00:00");
                 row.setScheduleEndTime("23:59");
             } else if (e.getKey() != null && e.getKey().startsWith("AGV_")) {
@@ -529,7 +428,6 @@ public class JobSchedulerService {
                 row.setScheduleStartTime("07:00");
                 row.setScheduleEndTime("22:00");
             }
-            row.setWeekDays("1,2,3,4,5,6,7");
             row.setPollIntervalSeconds(JobSchedulePolicy.defaultPollIntervalSeconds(e.getKey()));
             row.setRevokeAutoSignoutEnabled(0);
             row.setUpdatedBy("system-init");
@@ -538,6 +436,8 @@ public class JobSchedulerService {
         disableDeprecatedScheduleJobs();
         migrateLegacyStatsPullScheduleJob();
         initTelemetryArchivePurgeSchedule();
+        initViolationDetectionSchedules();
+        initCageSpecialStatusScanSchedule();
         initRankingPollDefaults();
     }
 
@@ -589,6 +489,79 @@ public class JobSchedulerService {
         }
     }
 
+    /**
+     * 新装默认开启违规检测三件套：滞留一道 02:10、滞留二道 02:30、笼架违规 03:10。
+     *
+     * <p>ensureDefaults 对所有任务统一 enabled=0，导致这三项出厂不运行。
+     * 仅在「从未运行过且当前未启用」时开启，不覆盖管理员的显式关闭。
+     */
+    private void initViolationDetectionSchedules() {
+        enableViolationJobOnFreshInstall(
+                JobExecutionRegistry.JOB_STRANDED_VIOLATION_CHECK, "02:10");
+        enableViolationJobOnFreshInstall(
+                JobExecutionRegistry.JOB_STRANDED_SIGNOUT_CHECK, "02:30");
+        enableViolationJobOnFreshInstall(
+                JobExecutionRegistry.JOB_CAGE_STATUS_VIOLATION_CHECK, "03:10");
+    }
+
+    private void enableViolationJobOnFreshInstall(String jobKey, String scheduleTime) {
+        try {
+            TwinJobScheduleConfig cfg = mapper.selectByJobKey(jobKey);
+            if (cfg == null) {
+                return;
+            }
+            if (cfg.getLastRunAt() != null) {
+                return;
+            }
+            if (cfg.getEnabled() != null && cfg.getEnabled() == 1) {
+                return;
+            }
+            cfg.setEnabled(1);
+            cfg.setScheduleTime(scheduleTime);
+            cfg.setScheduleType("DAILY");
+            cfg.setWeekDays("1,2,3,4,5,6,7");
+            cfg.setUpdatedBy("system-init-violation-detection");
+            mapper.updateSchedule(cfg);
+            log.info("[scheduler] 新装默认开启违规检测任务 jobKey={} time={}", jobKey, scheduleTime);
+        } catch (Exception ignored) {
+            log.debug("初始化违规检测定时任务失败 jobKey={}: {}", jobKey, ignored.getMessage());
+        }
+    }
+
+    /**
+     * 新装默认开启「笼架·全量笼位数据同步（每周）」：周日 03:30。
+     *
+     * <p>ensureDefaults 对所有任务统一 enabled=0，且旧版插入为 DAILY/02:00，导致名称写「每周」却从不出厂运行。
+     * 仅在「从未运行过且当前未启用」时开启，不覆盖管理员显式关闭（有 lastRunAt 的）。
+     */
+    private void initCageSpecialStatusScanSchedule() {
+        try {
+            TwinJobScheduleConfig cfg =
+                    mapper.selectByJobKey(JobExecutionRegistry.JOB_CAGE_SPECIAL_STATUS_SCAN);
+            if (cfg == null) {
+                return;
+            }
+            if (cfg.getLastRunAt() != null) {
+                return;
+            }
+            if (cfg.getEnabled() != null && cfg.getEnabled() == 1) {
+                return;
+            }
+            cfg.setEnabled(1);
+            cfg.setScheduleType("WEEKLY");
+            cfg.setScheduleTime("03:30");
+            cfg.setWeekDays("7");
+            cfg.setScheduleStartTime("00:00");
+            cfg.setScheduleEndTime("23:59");
+            cfg.setUpdatedBy("system-init-cage-scan");
+            mapper.updateSchedule(cfg);
+            log.info("[scheduler] 新装默认开启笼架全量同步 jobKey={} weekly Sun 03:30",
+                    JobExecutionRegistry.JOB_CAGE_SPECIAL_STATUS_SCAN);
+        } catch (Exception ignored) {
+            log.debug("初始化笼架全量同步定时任务失败: {}", ignored.getMessage());
+        }
+    }
+
     /** 将已废弃的合并 Job 配置迁移到「昨日日批」独立 Job */
     private void migrateLegacyStatsPullScheduleJob() {
         try {
@@ -634,30 +607,7 @@ public class JobSchedulerService {
     }
 
     private boolean isSingleTimeJob(String jobKey) {
-        if (!StringUtils.hasText(jobKey)) {
-            return false;
-        }
-        return JobExecutionRegistry.JOB_PERSONNEL_SYNC.equals(jobKey)
-                || JobExecutionRegistry.JOB_MODEL_RECALC.equals(jobKey)
-                || JobExecutionRegistry.JOB_GROUP_RECALC.equals(jobKey)
-                || JobExecutionRegistry.JOB_ORDER_SYNC.equals(jobKey)
-                || JobExecutionRegistry.JOB_ORDER_SYNC_FULL.equals(jobKey)
-                || JobExecutionRegistry.JOB_ROOM_MAPPING_REFRESH.equals(jobKey)
-                || JobExecutionRegistry.JOB_DH_DEPT_REFRESH.equals(jobKey)
-                || JobExecutionRegistry.JOB_DH_GROUP_REFRESH.equals(jobKey)
-                || JobExecutionRegistry.JOB_DH_CHANNEL_REFRESH.equals(jobKey)
-                || JobExecutionRegistry.JOB_RUN_REAPER.equals(jobKey)
-                || JobExecutionRegistry.JOB_RUN_REAPER_SECOND.equals(jobKey)
-                || JobExecutionRegistry.JOB_DAILY_EXEMPT_RESET.equals(jobKey)
-                || JobExecutionRegistry.JOB_ACCESS_CLEAN_PACKAGE_DAILY.equals(jobKey)
-                || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_PREVIOUS_DAY.equals(jobKey)
-                || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_PREVIOUS_WEEK.equals(jobKey)
-                || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_SINCE_LAST.equals(jobKey)
-                || JobExecutionRegistry.JOB_TELEMETRY_ARCHIVE_PURGE.equals(jobKey)
-                || JobExecutionRegistry.JOB_CAGE_SPECIAL_STATUS_SCAN.equals(jobKey)
-                || JobExecutionRegistry.JOB_STRANDED_VIOLATION_CHECK.equals(jobKey)
-                || JobExecutionRegistry.JOB_STRANDED_SIGNOUT_CHECK.equals(jobKey)
-                || JobExecutionRegistry.JOB_EXP_RECONCILE.equals(jobKey);
+        return JobScheduleDueEvaluator.isSingleTimeJob(jobKey);
     }
 
     private void ensureTable() {

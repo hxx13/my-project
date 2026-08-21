@@ -10,7 +10,6 @@ const {
 const { calcMaterialMallLayout } = require('../../utils/materialMallLayout.js');
 const mat = require('../../utils/materialStudentApi.js');
 const specUtil = require('../../utils/specSchemaUtil.js');
-const dt = require('../../utils/datetimeBeijing.js');
 
 /**
  * Cartesian product of dimension options, returning an array of {key, label, dims} objects.
@@ -179,11 +178,6 @@ Page({
     canManageItems: false,
     confirmOpen: false,
     confirmLines: [],
-    willSplit: false,
-    multiIndependent: false,
-    mergeDialogShow: false,
-    mergePendingRequests: [],
-    mergeSelectedId: '',
     showSuppliesSwitch: false,
     navBarHeight: 64,
     pageHeight: 667,
@@ -206,16 +200,6 @@ Page({
     specSheetItemCartQty: 0,
     specSheetExpanded: {},
     listRefreshing: false,
-    /** 预约领取 */
-    scheduledPickupTime: null,
-    showPickupTimePicker: false,
-    pickupTimeLabel: '',
-    pickupPreset: '',
-    pickupDate: '',
-    pickupTime: '',
-    minPickupDate: '',
-    /** 合并弹窗预约领取面板 */
-    mergeShowPickupPicker: false,
   },
 
   _itemsCache: {},
@@ -248,7 +232,7 @@ Page({
     }
     const cart = mat.loadLocalCart();
     const isStudent = isStudentAccount();
-    const canManageItems = hasMinRole(role, 'STAFF');
+    const canManageItems = !isStudent && hasMinRole(role, 'STAFF');
     this.setData({
       pageGateOk: true,
       cart,
@@ -270,7 +254,6 @@ Page({
     this.setData({
       cartSheetShow: false,
       confirmOpen: false,
-      mergeDialogShow: false,
       specSheetOpen: false,
       specSheetItemId: 0,
     });
@@ -283,8 +266,8 @@ Page({
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     const isStudent = isStudentAccount();
     this.setData({
-      showSuppliesSwitch: hasMinRole(role, 'STAFF') && canShowSuppliesSwitch(role),
-      canManageItems: hasMinRole(role, 'STAFF'),
+      showSuppliesSwitch: !isStudent && hasMinRole(role, 'STAFF') && canShowSuppliesSwitch(role),
+      canManageItems: !isStudent && hasMinRole(role, 'STAFF'),
     });
     this.applyTopBadges(peekPendingBadges());
     void refreshPendingBadges().then((c) => this.applyTopBadges(c));
@@ -470,7 +453,7 @@ Page({
     if (!item) return 0;
     if (item.stockMode === 'UNLIMITED') return 999;
     if (item.stockMode === 'QUANTIFIED') return Math.max(0, Number(item.stockQty) || 0);
-    return Number(item.stockQty) >= 1 ? 9999 : 0;
+    return Number(item.stockQty) >= 1 ? 99 : 0;
   },
 
   refreshSpecSheetDisplay() {
@@ -705,7 +688,7 @@ Page({
     this.decCart(e);
   },
 
-  async submitOrder() {
+  submitOrder() {
     if (this.data.submitting || this.data.cartCount === 0) return;
 
     // 规格必选：有规格且 specRequired=1 的条目必须带完整 specSnapshot
@@ -750,103 +733,17 @@ Page({
       wx.showToast({ title: '请选择物品', icon: 'none' });
       return;
     }
-
-    // 独立下单拆分提示（对齐 supplies 页；按 itemId 去重，规格键属于同一物品；跨分类缓存查找）
-    var lookupById = {};
-    items.forEach(function (it) { lookupById[it.id] = it; });
-    var cache = this._itemsCache || {};
-    Object.keys(cache).forEach(function (ck) {
-      var cachedItems = (cache[ck] && cache[ck].items) || [];
-      cachedItems.forEach(function (it) {
-        if (!lookupById[it.id]) lookupById[it.id] = it;
-      });
-    });
-    var independentIds = {};
-    var regularIds = {};
-    Object.keys(cart).forEach(function (k) {
-      if (!cart[k]) return;
-      var iid = readItemIdFromKey(k);
-      var it = lookupById[iid];
-      if (!it) return;
-      if (Number(it.independentOrder) === 1) independentIds[iid] = true;
-      else regularIds[iid] = true;
-    });
-    var willSplit = Object.keys(independentIds).length > 0 && Object.keys(regularIds).length > 0;
-    var multiIndependent = Object.keys(independentIds).length > 1;
-
-    var hintPatch = { confirmLines: confirmLines, willSplit: willSplit, multiIndependent: multiIndependent };
-
-    // 查询本人待处理申领单；查询失败时放行走普通确认流程（fail open）
-    this.setData({ submitting: true });
-    var pendingRequests = [];
-    try {
-      const res = await springAuth.springRequest({
-        url: '/api/material/requests/mine',
-        method: 'GET',
-        data: { status: 'PENDING', page: 1, size: 50 },
-      });
-      const p = mat.parseResponse(res);
-      if (p.ok) {
-        const payload = p.body.data || {};
-        if (Array.isArray(payload.data)) pendingRequests = payload.data;
-      }
-    } catch (e) {
-      pendingRequests = [];
-    }
-    this.setData({ submitting: false });
-
-    if (!pendingRequests.length) {
-      this.setData(Object.assign({
-        confirmOpen: true,
-        showPickupTimePicker: false,
-        pickupTimeLabel: '',
-        scheduledPickupTime: null,
-        pickupPreset: '',
-        pickupDate: '',
-        pickupTime: '',
-      }, hintPatch));
-      return;
-    }
-
-    // 有待处理单：打开合并选择弹窗，默认选中最近一张
-    var sorted = pendingRequests.slice().sort(function (a, b) {
-      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
-    });
-    var mergeOptions = sorted.map(function (r) {
-      var lineCount = Array.isArray(r.lines) ? r.lines.length : 0;
-      var createdAtText = mat.toTime(r.createdAt);
-      var pickupText = r.scheduledPickupTime ? '预约 ' + String(r.scheduledPickupTime).slice(0, 10) + ' 领取' : '';
-      return {
-        idStr: String(r.id),
-        shortId: String(r.id || '').slice(-8),
-        metaText: createdAtText + (lineCount > 0 ? ' · ' + lineCount + ' 项' : ''),
-        scheduledPickupTime: r.scheduledPickupTime || null,
-        pickupText: pickupText,
-      };
-    });
-    this.setData(Object.assign({
-      mergeDialogShow: true,
-      mergePendingRequests: mergeOptions,
-      mergeSelectedId: mergeOptions[0].idStr,
-    }, hintPatch));
+    this.setData({ confirmOpen: true, confirmLines });
   },
 
   closeConfirm() {
-    this.setData({
-      confirmOpen: false,
-      showPickupTimePicker: false,
-      pickupTimeLabel: '',
-      scheduledPickupTime: null,
-      pickupPreset: '',
-      pickupDate: '',
-      pickupTime: '',
-    });
+    this.setData({ confirmOpen: false });
   },
 
-  /** 由购物车构建提交行（新建/合并两条提交路径共用，防止字段漂移） */
-  _buildSubmitLines() {
+  async confirmSubmit() {
+    if (this.data.submitting) return;
     var cart = this.data.cart;
-    return Object.keys(cart)
+    var lines = Object.keys(cart)
       .map(function (k) {
         var qty = cart[k];
         if (qty <= 0) return null;
@@ -863,21 +760,6 @@ Page({
         return { itemId: Number(k), qty: qty };
       })
       .filter(function (l) { return l != null; });
-  },
-
-  /** 提交成功后的统一清理：清空本地+远端购物车、刷新列表与角标、跳转记录页 */
-  async _afterSubmitSuccess() {
-    mat.persistLocalCart({});
-    void mat.saveRemoteCart({}).catch(() => null);
-    this.setData({ cart: {}, cartCount: 0, cartLines: [], cartSheetShow: false, specSelections: {} });
-    await this.loadItems({ forceRefresh: true });
-    void refreshPendingBadges({ force: true }).then((snap) => this.applyTopBadges(snap));
-    wx.navigateTo({ url: '/package-feature/pages/studentMaterialRequests/index' });
-  },
-
-  async confirmSubmit() {
-    if (this.data.submitting) return;
-    var lines = this._buildSubmitLines();
     if (!lines.length) {
       wx.showToast({ title: '请选择物品', icon: 'none' });
       return;
@@ -885,10 +767,7 @@ Page({
     const applicantGroup = mat.resolveApplicantGroup();
     const payload = { lines: lines };
     if (applicantGroup) payload.applicantGroup = applicantGroup;
-    if (this.data.scheduledPickupTime != null && this.data.scheduledPickupTime !== '') {
-      payload.scheduledPickupTime = this.data.scheduledPickupTime;
-    }
-    this.setData({ submitting: true, confirmOpen: false, showPickupTimePicker: false });
+    this.setData({ submitting: true, confirmOpen: false });
     try {
       const res = await springAuth.springRequest({
         url: '/api/material/requests',
@@ -898,240 +777,17 @@ Page({
       const p = mat.parseResponse(res);
       if (!p.ok) throw new Error(p.message);
       wx.showToast({ title: '已提交', icon: 'success' });
-      await this._afterSubmitSuccess();
+      mat.persistLocalCart({});
+      void mat.saveRemoteCart({}).catch(() => null);
+      this.setData({ cart: {}, cartCount: 0, cartLines: [], cartSheetShow: false, specSelections: {} });
+      await this.loadItems({ forceRefresh: true });
+      void refreshPendingBadges({ force: true }).then((snap) => this.applyTopBadges(snap));
+      wx.navigateTo({ url: '/package-feature/pages/studentMaterialRequests/index' });
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '提交失败', icon: 'none' });
     } finally {
       this.setData({ submitting: false });
     }
-  },
-
-  /* ---- 合并到待处理申领单 ---- */
-
-  onMergeSelect(e) {
-    const id = e.currentTarget.dataset.id;
-    if (id == null) return;
-    this.setData({ mergeSelectedId: String(id) });
-  },
-
-  closeMergeDialog() {
-    if (this.data.submitting) return;
-    this.setData({ mergeDialogShow: false });
-  },
-
-  onMergeCreateNew() {
-    if (this.data.submitting) return;
-    // 保留已选的预约时间（不清空），直接进入确认弹窗
-    this.setData({
-      mergeDialogShow: false,
-      mergeShowPickupPicker: false,
-      confirmOpen: true,
-      showPickupTimePicker: false,
-    });
-  },
-
-  async onMergeConfirm() {
-    if (this.data.submitting) return;
-    const targetId = this.data.mergeSelectedId;
-    if (!targetId) {
-      wx.showToast({ title: '请选择要合并的申领单', icon: 'none' });
-      return;
-    }
-    var lines = this._buildSubmitLines();
-    if (!lines.length) {
-      wx.showToast({ title: '请选择物品', icon: 'none' });
-      return;
-    }
-    const applicantGroup = mat.resolveApplicantGroup();
-    const payload = { lines: lines };
-    if (applicantGroup) payload.applicantGroup = applicantGroup;
-    // 合并时预约时间：优先目标单已有时间，其次本次选择的预约时间
-    var mergePickupTime = this._resolveMergePickupTime();
-    if (mergePickupTime != null && mergePickupTime !== '') {
-      payload.scheduledPickupTime = mergePickupTime;
-    }
-    this.setData({ submitting: true });
-    try {
-      const res = await springAuth.springRequest({
-        url: `/api/material/requests/${encodeURIComponent(targetId)}/merge`,
-        method: 'POST',
-        data: payload,
-      });
-      const p = mat.parseResponse(res);
-      if (!p.ok) throw new Error(p.message);
-      const list = Array.isArray(p.body.data) ? p.body.data : [];
-      const created = list.length > 1 ? list.length - 1 : 0;
-      wx.showToast({
-        title: created > 0 ? `已合并，并生成 ${created} 张新申领单` : '已合并到待处理申领单',
-        icon: 'none',
-      });
-      this.setData({ mergeDialogShow: false });
-      await this._afterSubmitSuccess();
-    } catch (e) {
-      // 合并失败：保持弹窗打开，仅提示并复位提交态
-      wx.showToast({ title: (e && e.message) || '合并失败', icon: 'none' });
-    } finally {
-      this.setData({ submitting: false });
-    }
-  },
-
-  /* ---- 预约领取 ---- */
-
-  /** 点击"预约领取"按钮：展开预约时间选择面板 */
-  onReservePickup() {
-    var now = new Date();
-    now.setDate(now.getDate() + 2);
-    var minDate = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-    this.setData({
-      showPickupTimePicker: true,
-      pickupPreset: '',
-      pickupDate: '',
-      pickupTime: '',
-      minPickupDate: minDate,
-    });
-  },
-
-  /** 选择预设日期 */
-  onPickupPreset(e) {
-    var preset = e.currentTarget.dataset.preset;
-    var now = new Date();
-    var targetDate = new Date(now);
-    switch (preset) {
-      case 'dayafter':
-        targetDate.setDate(targetDate.getDate() + 2);
-        break;
-      default:
-        return;
-    }
-    var year = targetDate.getFullYear();
-    var month = String(targetDate.getMonth() + 1).padStart(2, '0');
-    var day = String(targetDate.getDate()).padStart(2, '0');
-    var dateStr = year + '-' + month + '-' + day;
-    var monthDisplay = targetDate.getMonth() + 1;
-    var dayDisplay = targetDate.getDate();
-    this.setData({
-      pickupPreset: preset,
-      scheduledPickupTime: dateStr,
-      pickupTimeLabel: '预约 ' + monthDisplay + '月' + dayDisplay + '日 领取',
-      pickupDate: '',
-      pickupTime: '',
-    });
-  },
-
-  /** 自定义日期选择变化 */
-  onPickupDateChange(e) {
-    var dateVal = e.detail.value;
-    this.setData({ pickupDate: dateVal, pickupPreset: '' });
-    this._updatePickupFromDate();
-  },
-
-  /** 根据自定义日期更新 scheduledPickupTime */
-  _updatePickupFromDate() {
-    var dateVal = this.data.pickupDate;
-    if (!dateVal) return;
-    var parts = dateVal.split('-');
-    if (parts.length < 3) return;
-    var month = parseInt(parts[1], 10);
-    var day = parseInt(parts[2], 10);
-    this.setData({
-      scheduledPickupTime: dateVal,
-      pickupTimeLabel: '预约 ' + month + '月' + day + '日 领取',
-      pickupTime: '',
-    });
-  },
-
-  /** 从预约时间选择面板返回确认弹窗主界面 */
-  onPickupBack() {
-    this.setData({ showPickupTimePicker: false });
-  },
-
-  /** 修改已选预约日期：重新打开选择面板 */
-  onEditPickup() {
-    var now = new Date();
-    now.setDate(now.getDate() + 2);
-    var minDate = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-    this.setData({
-      showPickupTimePicker: true,
-      pickupPreset: '',
-      pickupDate: '',
-      pickupTime: '',
-      minPickupDate: minDate,
-    });
-  },
-
-  /** 确认弹窗主提交按钮：根据是否在预约模式决定行为 */
-  onConfirmFinal() {
-    if (this.data.showPickupTimePicker) {
-      this.confirmSubmit();
-    } else {
-      this.setData({ scheduledPickupTime: null }, function () {
-        this.confirmSubmit();
-      }.bind(this));
-    }
-  },
-
-  /* ---- 合并弹窗预约领取 ---- */
-
-  /** 合并时预约时间：目标单已有 > 本次选择的预约时间；都没有则为立即模式 */
-  _resolveMergePickupTime() {
-    var selected = this.data.scheduledPickupTime;
-    if (selected != null && selected !== '') return selected;
-    var targetReq = (this.data.mergePendingRequests || []).find(function (r) {
-      return r.idStr === this.data.mergeSelectedId;
-    }.bind(this));
-    return (targetReq && targetReq.scheduledPickupTime) || null;
-  },
-
-  /** 合并弹窗内点击"预约领取" */
-  onMergeReservePickup() {
-    var now = new Date();
-    now.setDate(now.getDate() + 2);
-    var minDate = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-    // 如果已有选择的预约时间，保留；否则从目标单继承
-    if (!this.data.scheduledPickupTime) {
-      var targetReq = (this.data.mergePendingRequests || []).find(function (r) {
-        return r.idStr === this.data.mergeSelectedId;
-      }.bind(this));
-      if (targetReq && targetReq.scheduledPickupTime) {
-        this.setData({ scheduledPickupTime: targetReq.scheduledPickupTime });
-      }
-    }
-    this.setData({
-      mergeShowPickupPicker: true,
-      pickupPreset: '',
-      pickupDate: '',
-      pickupTime: '',
-      minPickupDate: minDate,
-    });
-  },
-
-  /** 合并弹窗内选择预设日期（复用 onPickupPreset 逻辑） */
-  onMergePickupPreset(e) {
-    this.onPickupPreset(e);
-  },
-
-  /** 合并弹窗内日期变更 */
-  onMergePickupDateChange(e) {
-    this.onPickupDateChange(e);
-  },
-
-  /** 修改合并弹窗中已选预约日期：重新打开选择面板 */
-  onMergeEditPickup() {
-    var now = new Date();
-    now.setDate(now.getDate() + 2);
-    var minDate = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-    this.setData({
-      mergeShowPickupPicker: true,
-      pickupPreset: '',
-      pickupDate: '',
-      pickupTime: '',
-      minPickupDate: minDate,
-    });
-  },
-
-  /** 从合并弹窗预约面板返回 */
-  onMergePickupBack() {
-    this.setData({ mergeShowPickupPicker: false });
   },
 
   goMine() {

@@ -17,6 +17,7 @@ import {
 import { AdminDataTableWrap, AdminPageShell } from "@/components/admin/AdminPageShell";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 
+import { appConfirm } from "@/lib/appDialog";
 type RemarkFilterValue = "all" | "unset" | number;
 
 const CAT_QUERY_KEY = ["dahuaDeviceChannelRemarkCategories"] as const;
@@ -75,7 +76,7 @@ export default function AdminDeviceChannelPage() {
   };
 
   const handleDeleteCategory = async (c: DahuaDeviceChannelRemarkCategory) => {
-    if (!window.confirm(`确定删除分类「${c.name}」？关联通道将变为未分类。`)) return;
+    if (!await appConfirm(`确定删除分类「${c.name}」？关联通道将变为未分类。`)) return;
     try {
       await deleteDahuaDeviceChannelRemarkCategory(c.id);
       toast.success("已删除");

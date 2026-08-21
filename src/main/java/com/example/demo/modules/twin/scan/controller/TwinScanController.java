@@ -181,7 +181,8 @@ public class TwinScanController {
                 return Result.error("缺少 violationId");
             }
             String userId = body.get("userId") != null ? String.valueOf(body.get("userId")).trim() : "";
-            var row = twinStudentViolationService.acknowledgeInteractiveChallenge(violationId, userId);
+            String answer = body.get("answer") != null ? String.valueOf(body.get("answer")) : "";
+            var row = twinStudentViolationService.acknowledgeInteractiveChallenge(violationId, userId, answer);
             Map<String, Object> out = new HashMap<>();
             out.put("violationId", row.getId());
             out.put("interactiveChallengeVerified", row.getInteractiveChallengeVerifiedAt() != null);
@@ -373,7 +374,7 @@ public class TwinScanController {
                 } else if (accessType == 2) {
                     deferSec = webScanExitDahuaLinkageService.resolveDeferSeconds();
                     dispatchResult = webScanExitDahuaLinkageService.revokeAndFreezeAfterExit(
-                            userId, effectiveRoomId, physicalCardNo, isKeepCard, deferSec);
+                            userId, effectiveRoomId, physicalCardNo, deferSec);
                 }
                 // 门禁联动结果仅写入自动化日志，不在弹窗展示
                 if (accessType == 2 && deferSec > 0) {
@@ -673,7 +674,7 @@ public class TwinScanController {
         // 对齐 web 扫码离开：规则命中后执行大华权限回收（可配置延迟）
         int defer = webScanExitDahuaLinkageService.resolveDeferSeconds();
         AccessRuleDispatchResult dispatchResult = webScanExitDahuaLinkageService.revokeAndFreezeAfterExit(
-                userId, officialRoomId, physicalCardNo, false, defer);
+                userId, officialRoomId, physicalCardNo, defer);
         // 文档约束：所有离开成功入口必须清理联动状态，避免后续定时任务重复签退
         dahuaSwingRuleEngineService.clearActivationStatesForUser(userId);
 

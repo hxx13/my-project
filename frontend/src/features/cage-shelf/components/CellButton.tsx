@@ -85,7 +85,19 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   const style = combinedBg
     ? { ...singleStyle, background: combinedBg }
     : singleStyle;
-  const pi = nonEmptyText(cell.projectPiName) ? cell.projectPiName!.trim() : nonEmptyText(cell.piName) ? cell.piName!.trim() : "";
+  const pi = (() => {
+    if (nonEmptyText(cell.projectPiName)) return cell.projectPiName!.trim();
+    if (nonEmptyText(cell.piName)) return cell.piName!.trim();
+    // 本地 DB 网格偶发只把 PI 放在 detail 嵌套对象时兜底
+    const d = (cell as any).detail as Record<string, unknown> | undefined;
+    if (d) {
+      const projectPi = typeof d.projectPiName === "string" ? d.projectPiName.trim() : "";
+      if (projectPi) return projectPi;
+      const topPi = typeof d.piName === "string" ? d.piName.trim() : "";
+      if (topPi) return topPi;
+    }
+    return "";
+  })();
   const isSelectable = selectable && !cell.empty;
   const isToggleMode = clickMode === "toggle"; // full-room = card toggle; single-shelf = checkbox only
   const isInCross = (isCrossCol || isCrossRow) && !isLastScanned;

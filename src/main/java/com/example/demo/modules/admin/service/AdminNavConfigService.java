@@ -21,10 +21,10 @@ public class AdminNavConfigService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public List<AdminNavConfigNode> getFullTree() {
+    public List<AdminNavConfigNode> getFullTree(String scope) {
         List<AdminNavConfigNode> all = jdbcTemplate.query(
-                "SELECT id, parent_id, type, title, item_path, item_icon, item_badge_key, sort_order, visible FROM admin_nav_config ORDER BY sort_order",
-                new NodeRowMapper());
+                "SELECT id, parent_id, type, scope, title, item_path, item_icon, item_badge_key, sort_order, visible FROM admin_nav_config WHERE scope = ? ORDER BY sort_order",
+                new NodeRowMapper(), scope);
 
         Map<String, AdminNavConfigNode> map = new LinkedHashMap<>();
         for (AdminNavConfigNode n : all) {
@@ -57,12 +57,15 @@ public class AdminNavConfigService {
     }
 
     @Transactional
-    public AdminNavConfigNode createGroup(String parentId, String type, String title, int sortOrder) {
+    public AdminNavConfigNode createGroup(String scope, String parentId, String type, String title, int sortOrder) {
         boolean hasParent = parentId != null && !parentId.isBlank();
         if (hasParent) {
             AdminNavConfigNode parent = getById(parentId);
             if (parent == null) {
                 throw new IllegalArgumentException("父文件夹不存在");
+            }
+            if (!scope.equals(parent.getScope())) {
+                throw new IllegalArgumentException("父文件夹 scope 不一致");
             }
             if (!"GROUP".equals(parent.getType()) && !"SUBGROUP".equals(parent.getType())) {
                 throw new IllegalArgumentException("只能在文件夹下创建子文件夹");
@@ -74,14 +77,14 @@ public class AdminNavConfigService {
         }
         if (sortOrder <= 0) {
             Integer maxSort = jdbcTemplate.queryForObject(
-                    "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id <=> ?",
-                    Integer.class, parentId);
+                    "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id <=> ? AND scope = ?",
+                    Integer.class, parentId, scope);
             sortOrder = (maxSort != null ? maxSort : -1) + 1;
         }
         String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, title, sort_order) VALUES (?, ?, ?, ?, ?)",
-                id, parentId, type, title, sortOrder);
+                "INSERT INTO admin_nav_config (id, parent_id, type, scope, title, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
+                id, parentId, type, scope, title, sortOrder);
         return getById(id);
     }
 
@@ -97,7 +100,7 @@ public class AdminNavConfigService {
         if (!"GROUP".equals(node.getType()) && !"SUBGROUP".equals(node.getType())) {
             throw new IllegalArgumentException("仅文件夹可调整排序");
         }
-        List<AdminNavConfigNode> siblings = listSiblings(node.getParentId());
+        List<AdminNavConfigNode> siblings = listSiblings(node.getScope(), node.getParentId());
         List<Integer> folderIndices = new ArrayList<>();
         for (int i = 0; i < siblings.size(); i++) {
             AdminNavConfigNode s = siblings.get(i);
@@ -132,17 +135,17 @@ public class AdminNavConfigService {
         return getById(id);
     }
 
-    private List<AdminNavConfigNode> listSiblings(String parentId) {
+    private List<AdminNavConfigNode> listSiblings(String scope, String parentId) {
         if (parentId == null || parentId.isBlank()) {
             return jdbcTemplate.query(
-                    "SELECT id, parent_id, type, title, item_path, item_icon, item_badge_key, sort_order, visible "
-                            + "FROM admin_nav_config WHERE parent_id IS NULL ORDER BY sort_order, id",
-                    new NodeRowMapper());
+                    "SELECT id, parent_id, type, scope, title, item_path, item_icon, item_badge_key, sort_order, visible "
+                            + "FROM admin_nav_config WHERE parent_id IS NULL AND scope = ? ORDER BY sort_order, id",
+                    new NodeRowMapper(), scope);
         }
         return jdbcTemplate.query(
-                "SELECT id, parent_id, type, title, item_path, item_icon, item_badge_key, sort_order, visible "
-                        + "FROM admin_nav_config WHERE parent_id = ? ORDER BY sort_order, id",
-                new NodeRowMapper(), parentId);
+                "SELECT id, parent_id, type, scope, title, item_path, item_icon, item_badge_key, sort_order, visible "
+                        + "FROM admin_nav_config WHERE parent_id = ? AND scope = ? ORDER BY sort_order, id",
+                new NodeRowMapper(), parentId, scope);
     }
 
     private void reindexSortOrders(List<String> ids) {
@@ -188,6 +191,19 @@ public class AdminNavConfigService {
 
     @Transactional
     public void moveItem(String itemId, String newParentId) {
+        AdminNavConfigNode item = getById(itemId);
+        if (item == null) {
+            throw new IllegalArgumentException("节点不存在");
+        }
+        if (newParentId != null && !newParentId.isBlank()) {
+            AdminNavConfigNode parent = getById(newParentId);
+            if (parent == null) {
+                throw new IllegalArgumentException("目标文件夹不存在");
+            }
+            if (!item.getScope().equals(parent.getScope())) {
+                throw new IllegalArgumentException("目标文件夹 scope 不一致");
+            }
+        }
         jdbcTemplate.update(
                 "UPDATE admin_nav_config SET parent_id = ?, updated_at = NOW() WHERE id = ? AND type = 'ITEM'",
                 newParentId, itemId);
@@ -203,68 +219,88 @@ public class AdminNavConfigService {
     }
 
     /**
+     * 按给定顺序重排某父级（或顶层）下的同级节点，sort_order 重排为连续序号 0..n-1。
+     * 兼容文件夹（GROUP/SUBGROUP）与入口（ITEM）混排；未出现在 orderedIds 中的同级兜底追加到末尾，
+     * 避免 sort_order 残留导致排序错乱。
+     */
+    @Transactional
+    public void reorderNodes(String scope, String parentId, List<String> orderedIds) {
+        if (orderedIds == null) return;
+        List<AdminNavConfigNode> siblings = listSiblings(scope, parentId);
+        Set<String> siblingIds = new HashSet<>();
+        for (AdminNavConfigNode s : siblings) siblingIds.add(s.getId());
+
+        LinkedHashSet<String> reordered = new LinkedHashSet<>();
+        for (String id : orderedIds) {
+            if (id != null && siblingIds.contains(id)) reordered.add(id);
+        }
+        for (AdminNavConfigNode s : siblings) reordered.add(s.getId());
+        reindexSortOrders(new ArrayList<>(reordered));
+    }
+
+    /**
      * 确保一个入口存在于 DB 中（如不存在则自动创建）。
      * 若所属 GROUP 不存在也自动创建。
      */
     @Transactional
-    public Map<String, Object> ensureItem(String path, String label, String icon, String groupTitle) {
+    public Map<String, Object> ensureItem(String scope, String path, String label, String icon, String groupTitle) {
         // 找到或创建 GROUP
-        String groupId = findOrCreateGroup(groupTitle);
+        String groupId = findOrCreateGroup(scope, groupTitle);
 
         // 获取当前最大 sort_order
         Integer maxSort = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id = ?",
-                Integer.class, groupId);
+                "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id = ? AND scope = ?",
+                Integer.class, groupId, scope);
         int sortOrder = (maxSort != null ? maxSort : -1) + 1;
 
-        // INSERT ... ON DUPLICATE KEY UPDATE —— UNIQUE(item_path) 保证无竞态重复
+        // INSERT ... ON DUPLICATE KEY UPDATE —— UNIQUE(scope, item_path) 保证无竞态重复
         String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         int affected = jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order, visible) " +
-                "VALUES (?, ?, 'ITEM', ?, ?, ?, ?, 1) " +
+                "INSERT INTO admin_nav_config (id, parent_id, type, scope, title, item_path, item_icon, sort_order, visible) " +
+                "VALUES (?, ?, 'ITEM', ?, ?, ?, ?, ?, 1) " +
                 "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), " +
                 "item_icon = VALUES(item_icon), sort_order = VALUES(sort_order), visible = 1",
-                id, groupId, label, path, icon, sortOrder);
+                id, groupId, scope, label, path, icon, sortOrder);
         if (affected == 0) {
             // duplicate key hit an existing row but no update needed
             List<String> existing = jdbcTemplate.queryForList(
-                    "SELECT id FROM admin_nav_config WHERE item_path = ? AND type = 'ITEM'",
-                    String.class, path);
+                    "SELECT id FROM admin_nav_config WHERE item_path = ? AND type = 'ITEM' AND scope = ?",
+                    String.class, path, scope);
             if (!existing.isEmpty()) return Map.of("existed", true, "id", existing.get(0));
         }
-        log.info("[admin-nav-config] ensureItem created: path={} label={} group={}", path, label, groupTitle);
+        log.info("[admin-nav-config] ensureItem created: scope={} path={} label={} group={}", scope, path, label, groupTitle);
         return Map.of("existed", false, "id", id, "created", true);
     }
 
-    private String findOrCreateGroup(String title) {
+    private String findOrCreateGroup(String scope, String title) {
         List<String> existing = jdbcTemplate.queryForList(
-                "SELECT id FROM admin_nav_config WHERE title = ? AND type = 'GROUP'",
-                String.class, title);
+                "SELECT id FROM admin_nav_config WHERE title = ? AND type = 'GROUP' AND scope = ?",
+                String.class, title, scope);
         if (!existing.isEmpty()) {
             return existing.get(0);
         }
         // 创建 GROUP
         String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         Integer maxSort = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id IS NULL AND type = 'GROUP'",
-                Integer.class);
+                "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id IS NULL AND type = 'GROUP' AND scope = ?",
+                Integer.class, scope);
         int sortOrder = (maxSort != null ? maxSort : -1) + 1;
         jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, title, sort_order, visible) VALUES (?, NULL, 'GROUP', ?, ?, 1)",
-                id, title, sortOrder);
-        log.info("[admin-nav-config] findOrCreateGroup created: title={}", title);
+                "INSERT INTO admin_nav_config (id, parent_id, type, scope, title, sort_order, visible) VALUES (?, NULL, 'GROUP', ?, ?, ?, 1)",
+                id, scope, title, sortOrder);
+        log.info("[admin-nav-config] findOrCreateGroup created: scope={} title={}", scope, title);
         return id;
     }
 
     @Transactional
-    public void resetToDefault() {
-        jdbcTemplate.update("DELETE FROM admin_nav_config");
-        log.info("[admin-nav-config] 配置已清空，重启后将自动播种默认值");
+    public void resetToDefault(String scope) {
+        jdbcTemplate.update("DELETE FROM admin_nav_config WHERE scope = ?", scope);
+        log.info("[admin-nav-config] scope={} 配置已清空，重启后将自动播种默认值", scope);
     }
 
     private AdminNavConfigNode getById(String id) {
         List<AdminNavConfigNode> list = jdbcTemplate.query(
-                "SELECT id, parent_id, type, title, item_path, item_icon, item_badge_key, sort_order, visible FROM admin_nav_config WHERE id = ?",
+                "SELECT id, parent_id, type, scope, title, item_path, item_icon, item_badge_key, sort_order, visible FROM admin_nav_config WHERE id = ?",
                 new NodeRowMapper(), id);
         return list.isEmpty() ? null : list.get(0);
     }
@@ -276,6 +312,7 @@ public class AdminNavConfigService {
             n.setId(rs.getString("id"));
             n.setParentId(rs.getString("parent_id"));
             n.setType(rs.getString("type"));
+            n.setScope(rs.getString("scope"));
             n.setTitle(rs.getString("title"));
             n.setItemPath(rs.getString("item_path"));
             n.setItemIcon(rs.getString("item_icon"));

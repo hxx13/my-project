@@ -6,6 +6,7 @@
         <id property="id" column="id"/>
         <result property="title" column="title"/>
         <result property="contentHtml" column="content_html"/>
+        <result property="contentJson" column="content_json"/>
         <result property="enabled" column="enabled"/>
         <result property="sortOrder" column="sort_order"/>
         <result property="status" column="status"/>
@@ -17,7 +18,7 @@
     </resultMap>
 
     <sql id="Base_Column_List">
-        id, title, content_html, enabled, sort_order, status, publish_at, expire_at,
+        id, title, content_html, content_json, enabled, sort_order, status, publish_at, expire_at,
         created_by_user_id, created_at, updated_at
     </sql>
 
@@ -48,9 +49,9 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO twin_scan_popup_announcement (
-            title, content_html, enabled, sort_order, status, publish_at, expire_at, created_by_user_id
+            title, content_html, content_json, enabled, sort_order, status, publish_at, expire_at, created_by_user_id
         ) VALUES (
-            #{title}, #{contentHtml}, #{enabled}, #{sortOrder}, #{status}, #{publishAt}, #{expireAt}, #{createdByUserId}
+            #{title}, #{contentHtml}, #{contentJson}, #{enabled}, #{sortOrder}, #{status}, #{publishAt}, #{expireAt}, #{createdByUserId}
         )
     </insert>
 
@@ -58,6 +59,7 @@
         UPDATE twin_scan_popup_announcement
         SET title = #{title},
             content_html = #{contentHtml},
+            content_json = #{contentJson},
             enabled = #{enabled},
             sort_order = #{sortOrder},
             status = #{status},

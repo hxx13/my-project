@@ -17,6 +17,12 @@ public class MaterialRequestView {
     private String secondReviewTime;
     private String fulfilledAt;
     private String fulfilledBy;
+    /** 出库/处理人展示名（UserDisplayNameService） */
+    private String fulfilledByName;
+    /** 初审人展示名 */
+    private String firstReviewerName;
+    /** 复审人展示名 */
+    private String secondReviewerName;
     private String receivedAt;
     private String createdAt;
     private String updatedAt;

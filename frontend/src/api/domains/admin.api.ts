@@ -177,8 +177,13 @@ export async function updatePersonnelField(id: number, field: string, value: str
   await authHttp.put(`/personnel/${id}/field`, { field, value });
 }
 
-export async function updateUserRole(id: string, role: string) {
-  await adminHttp.patch(`/users/${id}/role`, { role });
+/** 修改真实姓名（personnel.name），不会改登录账号 username */
+export async function updatePersonnelName(id: number, name: string) {
+  await authHttp.put(`/personnel/${id}/name`, { name });
+}
+
+export async function updatePersonnelRole(id: number, role: string) {
+  await adminHttp.patch(`/personnel/${id}/role`, { role });
 }
 
 export async function updateUserStatus(id: string, enabled: boolean) {

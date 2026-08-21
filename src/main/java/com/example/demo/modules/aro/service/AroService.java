@@ -884,6 +884,106 @@ public class AroService {
     }
 
     /**
+     * 拉取 ARO 计划书全量列表（含正文 + 当前 state + 元数据）。
+     * GET /jtu/api/admin/aup/list?pageNum=&pageSize=
+     * 返回 PageVo&lt;AupMainVo&gt; 的 data.list（每条为计划书完整对象）。
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> fetchAupList(int pageNum, int pageSize) {
+        if (this.cachedToken == null && !login()) return Collections.emptyList();
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/aup/list?pageNum=" + pageNum
+                + "&pageSize=" + pageSize + "&isAll=true&_t=" + System.currentTimeMillis();
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Token", this.cachedToken);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object data = response.getBody().get("data");
+                if (data instanceof Map<?, ?> dm) {
+                    Object list = dm.get("list");
+                    if (list instanceof List<?> l) return (List<Map<String, Object>>) l;
+                }
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                this.cachedToken = null;
+                if (login()) return fetchAupList(pageNum, pageSize);
+            }
+            log.warn("[aro] AUP 列表拉取失败 err={}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] AUP 列表网络异常 err={}", e.getMessage());
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * 拉取某计划书的完整评审意见（返修意见）列表。
+     * GET /jtu/api/aup/motify/{aupId}/list
+     * 返回 data 直接为 List&lt;AupMotifyMainVo&gt;（每条 = 一个评审人一次评审）。
+     * aupId = /admin/aup/list 返回的计划书 id（雪花字符串），非评审记录 id。
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> fetchAupMotifyList(String aupId) {
+        if (aupId == null || aupId.isBlank()) return Collections.emptyList();
+        if (this.cachedToken == null && !login()) return Collections.emptyList();
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/aup/motify/" + aupId + "/list?_t=" + System.currentTimeMillis();
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Token", this.cachedToken);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object data = response.getBody().get("data");
+                if (data instanceof List<?> l) return (List<Map<String, Object>>) l;
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                this.cachedToken = null;
+                if (login()) return fetchAupMotifyList(aupId);
+            }
+            log.warn("[aro] AUP 评审意见拉取失败 aupId={} err={}", aupId, e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] AUP 评审意见网络异常 aupId={} err={}", aupId, e.getMessage());
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * 拉取单份计划书详情（含完整嵌套数据 aupB5s/aupB6s/aupA4s/aupC11s/aupC12s/aupE/aupF/aupGh/aupIj/aupKl）。
+     * list 接口这些嵌套字段是空的，只有详情接口才返回完整正文。
+     * GET /jtu/api/admin/aup/{id}
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> fetchAupDetail(String aupId) {
+        if (aupId == null || aupId.isBlank()) return null;
+        if (this.cachedToken == null && !login()) return null;
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/aup/" + aupId + "?_t=" + System.currentTimeMillis();
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Token", this.cachedToken);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object data = response.getBody().get("data");
+                if (data instanceof Map<?, ?> dm) return (Map<String, Object>) dm;
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                this.cachedToken = null;
+                if (login()) return fetchAupDetail(aupId);
+            }
+            log.warn("[aro] AUP 详情拉取失败 aupId={} err={}", aupId, e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] AUP 详情网络异常 aupId={} err={}", aupId, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
      * 使用全局 Token 拉取房间预约列表（降级方案）。
      */
     @SuppressWarnings("unchecked")

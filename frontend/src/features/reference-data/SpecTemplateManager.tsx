@@ -13,6 +13,7 @@ import { getAllTypeConfigs } from "./typeRegistry";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 
+import { appConfirm } from "@/lib/appDialog";
 interface SpecTemplateManagerProps {
   onClose: () => void;
 }
@@ -124,8 +125,8 @@ export default function SpecTemplateManager({ onClose }: SpecTemplateManagerProp
     }
   }
 
-  function handleDelete(id: number) {
-    if (!window.confirm("确认删除此规格模板？")) return;
+  async function handleDelete(id: number) {
+    if (!await appConfirm("确认删除此规格模板？")) return;
     deleteMut.mutate(id);
   }
 

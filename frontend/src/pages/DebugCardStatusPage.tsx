@@ -21,6 +21,7 @@ import { authHttp } from '@/api/core/authHttp';
 import { AdminToolbar, AdminToolbarActions, AdminToolbarPrimary } from "@/components/admin/AdminToolbar";
 import { DebugDangerousOpsMenu } from "@/components/admin/DebugDangerousOpsMenu";
 import { fetchMyRoomConfigs, createRoomConfig, deleteRoomConfig, updateRoomCapacityBindRoomId } from "@/api/twinApi";
+import { appAlert, appConfirm } from "@/lib/appDialog";
 import { useSocket } from '@/hooks/useSocket'; // 🚨 请确认路径是否正确
 
 // ==========================================
@@ -133,31 +134,31 @@ function RoomStatusCard({ config, activeStatus, activeTab }: { config: any, acti
             const res = await authHttp.put(`/v1/twin/config/rooms/${config.id}/capacity?capacity=${localCapacity}`);
             return res.data;
         },
-        onSuccess: () => {
+        onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: ["myRoomConfigs"] });
-            window.alert(`[${config.roomName}] 容量已持久化更新为 ${localCapacity}`);
+            await appAlert(`[${config.roomName}] 容量已持久化更新为 ${localCapacity}`);
         }
     });
 
     const saveBindRoomIdMutation = useMutation({
         mutationFn: () => updateRoomCapacityBindRoomId(config.id, localBindRoomId.trim()),
-        onSuccess: () => {
+        onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: ["myRoomConfigs"] });
             queryClient.invalidateQueries({ queryKey: ["roomOverview"] });
-            window.alert(`[${config.roomName}] 流水 room_id 已更新`);
+            await appAlert(`[${config.roomName}] 流水 room_id 已更新`);
         },
     });
 
     const deleteMutation = useMutation({
         mutationFn: () => deleteRoomConfig(config.id),
-        onSuccess: () => {
+        onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: ['myRoomConfigs'] });
-            window.alert(`[${config.roomName}] 已从雷达矩阵中抹除`);
+            await appAlert(`[${config.roomName}] 已从雷达矩阵中抹除`);
         }
     });
 
-    const handleDelete = () => {
-        if (window.confirm(`⚠️ 危险：确定要销毁 [${config.roomName}] 的监控坐标吗？`)) {
+    const handleDelete = async () => {
+        if (await appConfirm(`⚠️ 危险：确定要销毁 [${config.roomName}] 的监控坐标吗？`)) {
             deleteMutation.mutate();
         }
     };
@@ -379,14 +380,14 @@ export default function DebugCardStatusPage() {
 
     const addMutation = useMutation({
         mutationFn: () => createRoomConfig({ ...newRoom, campus: activeTab }),
-        onSuccess: () => {
+        onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: ['myRoomConfigs'] });
             setNewRoom({ roomName: '', capacity: 15, mappingAliases: '', capacityBindRoomId: '' });
-            window.alert('防腐空间坐标录入成功！');
+            await appAlert('防腐空间坐标录入成功！');
             setShowAddPanel(false); // 录入成功后自动折叠
         },
-        onError: (err: any) => {
-            window.alert(`添加失败：可能房间名重复。\n${err.message}`);
+        onError: async (err: any) => {
+            await appAlert(`添加失败：可能房间名重复。\n${err.message}`);
         }
     });
 

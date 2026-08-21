@@ -45,6 +45,7 @@ import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { randomUUID } from "@/utils/randomUUID";
 
+import { appConfirm } from "@/lib/appDialog";
 const ZONES_KEY = ["telemetry", "watchlists", "zones-with-tags"] as const;
 const METRIC_KINDS_KEY = ["telemetry", "watchlists", "metric-kinds"] as const;
 const GLOBAL_LIMITS_KEY = ["telemetry", "watchlists", "global-alarm-limits"] as const;
@@ -597,15 +598,15 @@ function ZoneEditor({
     [dragPaintActive, dragPaintEnabled, visibleRowsFlat, applyEnabledPaint]
   );
 
-  const onDeleteZone = () => {
-    if (window.confirm(`删除分区「${zone.bundle.displayName}」及其全部变量？`)) void deleteM.mutateAsync();
+  const onDeleteZone = async () => {
+    if (await appConfirm(`删除分区「${zone.bundle.displayName}」及其全部变量？`)) void deleteM.mutateAsync();
   };
 
-  const removeDraftRow = useCallback((row: TelemetryWatchlistTag) => {
+  const removeDraftRow = useCallback(async (row: TelemetryWatchlistTag) => {
     const persisted = row.id != null && String(row.id).trim() !== "";
     if (persisted) {
       const vn = (row.winccVariableName || "").trim() || "（未命名变量）";
-      if (!window.confirm(`从本表删除「${vn}」？保存本表后将从数据库移除该行。`)) return;
+      if (!await appConfirm(`从本表删除「${vn}」？保存本表后将从数据库移除该行。`)) return;
     }
     const key = tagRowKey(row);
     setDraftRows((prev) => prev.filter((x) => tagRowKey(x) !== key));
@@ -1200,8 +1201,8 @@ export default function AdminTelemetryWatchlistsPage() {
                 <button
                   type="button"
                   className="text-rose-600 hover:underline"
-                  onClick={() => {
-                    if (window.confirm(`删除指标类型「${k.code}」？`)) void deleteKindM.mutateAsync(k.code);
+                  onClick={async () => {
+                    if (await appConfirm(`删除指标类型「${k.code}」？`)) void deleteKindM.mutateAsync(k.code);
                   }}
                 >
                   删

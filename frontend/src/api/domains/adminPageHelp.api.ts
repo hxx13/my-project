@@ -31,6 +31,7 @@ export type AdminPageHelpVersion = {
   versionKind: "update" | "new";
   bodyHtml: string | null;
   createdBy: string | null;
+  createdByName?: string | null;
   createdAt: string | null;
 };
 
@@ -38,6 +39,7 @@ export type AdminPageHelpBundle = {
   bodyHtml: string | null;
   updatedAt: string | null;
   updatedBy: string | null;
+  updatedByName?: string | null;
   currentVersion: AdminPageHelpVersion | null;
   versions: AdminPageHelpVersion[];
   messages: AdminPageHelpMessage[];

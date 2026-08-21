@@ -11,7 +11,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import {
   useUnifiedPersonnel, usePersonnelRooms,
-  useUpdateUserRole, useUpdateUserStatus, useResetUserPassword, useResetUserOpenId,
+  useUpdatePersonnelRole, useUpdateUserStatus, useResetUserPassword, useResetUserOpenId,
   useResetPersonnelAccount, useResetPersonnelPassword, useDeleteSystemUser,
 } from "@/api/hooks/usePersonnel";
 import {
@@ -19,7 +19,7 @@ import {
   useCreateIdentityTag, useUpdateIdentityTag, useDeleteIdentityTag,
 } from "@/api/hooks/usePersonIdentity";
 import {
-  fetchDepartments, fetchProjectGroups, syncUnifiedPersonnel, updatePersonnelField,
+  fetchDepartments, fetchProjectGroups, syncUnifiedPersonnel, updatePersonnelField, updatePersonnelName,
   viewUserPassword, type UnifiedPersonnelRecord, type UnifiedPersonnelFilter,
 } from "@/api/domains/admin.api";
 import { resetStudentPin } from "@/api/domains/specialChannel.api";
@@ -28,6 +28,7 @@ import { PersonnelRichList } from "@/features/personnel-admin/PersonnelRichList"
 import { PersonnelDetailCard, BUILTIN_SUPER_ADMIN_ID } from "@/features/personnel-admin/PersonnelDetailCard";
 import { PersonnelDictModal } from "@/features/personnel-admin/PersonnelDictModal";
 
+import { appConfirm } from "@/lib/appDialog";
 export default function AdminPersonnelPage() {
   const role = authStorage.getRole() || "MEMBER";
   const isSuperAdmin = hasMinRole(role, "SUPER_ADMIN");
@@ -69,7 +70,7 @@ export default function AdminPersonnelPage() {
   const [detailPasswordCache, setDetailPasswordCache] = useState<Record<string, string | null>>({});
 
   // 各 mutation
-  const updateRoleMut = useUpdateUserRole();
+  const updateRoleMut = useUpdatePersonnelRole();
   const updateStatusMut = useUpdateUserStatus();
   const resetPasswordMut = useResetUserPassword();
   const resetOpenIdMut = useResetUserOpenId();
@@ -102,14 +103,14 @@ export default function AdminPersonnelPage() {
     }
   };
 
-  const handleToggleStatus = (userId: string) => {
+  const handleToggleStatus = async (userId: string) => {
     const row = selected;
     const curOn = (row?.status ?? 1) !== 0;
     if (curOn) {
-      if (!window.confirm("禁用后该账号将无法登录，是否继续？")) return;
+      if (!await appConfirm("禁用后该账号将无法登录，是否继续？")) return;
       updateStatusMut.mutate({ id: userId, enabled: false });
     } else {
-      if (!window.confirm("是否启用该账号？")) return;
+      if (!await appConfirm("是否启用该账号？")) return;
       updateStatusMut.mutate({ id: userId, enabled: true });
     }
   };
@@ -119,26 +120,36 @@ export default function AdminPersonnelPage() {
     setResetAccountDraft(current);
   };
 
-  const handleResetPassword = (userId: string) => {
+  const handleResetPassword = async (userId: string) => {
     if (userId === BUILTIN_SUPER_ADMIN_ID) return;
-    if (!window.confirm("确认重置该账号密码吗？")) return;
+    if (!await appConfirm("确认重置该账号密码吗？")) return;
     const isStaff = String(userId).startsWith("STAFF_");
     if (isStaff) resetPasswordMut.mutate(userId);
     else resetPersonnelPasswordMut.mutate(userId);
   };
 
-  const handleResetPin = (aroUserId: string, displayName: string) => {
+  const handleResetPin = async (aroUserId: string, displayName: string) => {
     if (!aroUserId) return;
-    if (!window.confirm(`确认重置人员库学号 ${displayName}（${aroUserId}）的扫码个人密码（PIN）吗？`)) return;
+    if (!await appConfirm(`确认重置人员库学号 ${displayName}（${aroUserId}）的扫码个人密码（PIN）吗？`)) return;
     resetStudentPin(aroUserId)
       .then(() => toast.success(`已重置 ${displayName} 的 PIN`))
       .catch((e) => toast.error(e instanceof Error ? e.message : "重置 PIN 失败"));
   };
 
-  const handleSaveField = (field: "job_number" | "department_name" | "project_group_name" | "user_type_names", value: string) => {
+  const handleSaveField = (field: "name" | "job_number" | "department_name" | "project_group_name" | "user_type_names", value: string) => {
     if (!selected) return;
-    updatePersonnelField(selected.id, field, value)
-      .then(() => { toast.success("已保存"); refetchUnified(); })
+    const trimmed = value.trim();
+    const save = field === "name"
+      ? updatePersonnelName(selected.id, trimmed)
+      : updatePersonnelField(selected.id, field, trimmed);
+    save
+      .then(() => {
+        toast.success("已保存");
+        if (field === "name") {
+          setSelected((prev) => (prev && prev.id === selected.id ? { ...prev, name: trimmed } : prev));
+        }
+        refetchUnified();
+      })
       .catch((e) => toast.error(e instanceof Error ? e.message : "保存失败"));
   };
 
@@ -219,18 +230,18 @@ export default function AdminPersonnelPage() {
               isSuperAdmin={isSuperAdmin}
               identityMap={identityMap.data ?? new Map()}
               onClose={() => setSelected(null)}
-              onRoleChange={(userId, r) => { updateRoleMut.mutate({ id: userId, role: r }); }}
+              onRoleChange={(userId, r) => { updateRoleMut.mutate({ id: Number(userId), role: r }); }}
               onToggleStatus={handleToggleStatus}
               onResetPassword={handleResetPassword}
               onResetAccount={handleResetAccount}
               onResetPin={handleResetPin}
-              onResetOpenId={(userId) => {
-                if (!window.confirm("确认重置该账号的 openId 绑定吗？")) return;
+              onResetOpenId={async (userId) => {
+                if (!await appConfirm("确认重置该账号的 openId 绑定吗？")) return;
                 resetOpenIdMut.mutate(userId);
               }}
-              onDelete={(userId) => {
-                if (!window.confirm("确定永久删除该账号吗？此操作不可恢复。")) return;
-                if (!window.confirm("请再次确认：删除后无法恢复，是否继续？")) return;
+              onDelete={async (userId) => {
+                if (!await appConfirm("确定永久删除该账号吗？此操作不可恢复。")) return;
+                if (!await appConfirm("请再次确认：删除后无法恢复，是否继续？")) return;
                 deleteUserMut.mutate(userId);
               }}
               onSaveField={handleSaveField}
@@ -249,8 +260,8 @@ export default function AdminPersonnelPage() {
         tags={identityTags}
         onCreate={(code, label) => createIdentityTagMut.mutate({ code, label })}
         onUpdate={(id, label) => updateIdentityTagMut.mutate({ id, body: { label } })}
-        onDelete={(t) => {
-          if (!window.confirm(`确认删除身份标签「${t.label}」吗？`)) return;
+        onDelete={async (t) => {
+          if (!await appConfirm(`确认删除身份标签「${t.label}」吗？`)) return;
           deleteIdentityTagMut.mutate(t.id);
         }}
       /> : null}

@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { loginWeb, loginCas, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
+import { loginWeb, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
+import { startIamOAuthLogin } from "@/features/auth/iamOAuth";
 import { authStorage } from "@/features/auth/authStorage";
 import { toast } from "react-hot-toast";
 
@@ -48,36 +49,6 @@ export default function MobileLoginPage() {
   useEffect(() => {
     return () => { if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current); };
   }, []);
-
-  /* ── CAS ticket 回调处理（MobileLoginPage 自身 CAS 入口的回调）── */
-  const casProcessedRef = useRef(false);
-  useEffect(() => {
-    if (casProcessedRef.current) return;
-    const ticketMatch = window.location.href.match(/[?&]ticket=([^&#]+)/);
-    const ticket = ticketMatch ? decodeURIComponent(ticketMatch[1]) : null;
-    if (!ticket) return;
-    casProcessedRef.current = true;
-
-    window.history.replaceState(
-      null, "",
-      window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "").replace(/#$/, ""),
-    );
-
-    const serviceUrl = sessionStorage.getItem("cas_service_url") || window.location.origin;
-    sessionStorage.removeItem("cas_service_url");
-
-    (async () => {
-      try {
-        const data = await loginCas(ticket, serviceUrl);
-        authStorage.setAuth(data.token, data.role, data.userInfo);
-        authStorage.markLoginPortal("mobile");
-        navigate("/m/home", { replace: true });
-      } catch (err) {
-        casProcessedRef.current = false;
-        setError(err instanceof Error ? err.message : "CAS 登录失败，请重试");
-      }
-    })();
-  }, [navigate]);
 
   const doLogin = useCallback(async () => {
     if (!username.trim() || !password.trim()) {
@@ -516,11 +487,7 @@ export default function MobileLoginPage() {
             <div className="mt-4 border-t pt-4" style={{ borderColor: "rgba(30,55,90,0.1)" }}>
               <button
                 type="button"
-                onClick={() => {
-                  const service = window.location.origin;
-                  try { sessionStorage.setItem("cas_service_url", service); } catch {}
-                  window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${encodeURIComponent(service)}`;
-                }}
+                onClick={() => startIamOAuthLogin()}
                 className="w-full rounded-[var(--app-radius-element)] border px-4 py-3 text-sm font-medium transition"
                 style={{ borderColor: accent, color: accent, background: "transparent" }}
               >

@@ -1,0 +1,122 @@
+.page { padding: 24rpx; }
+.muted { color: #888; font-size: 28rpx; padding: 40rpx 0; text-align: center; }
+.error { color: #c00; padding: 24rpx; }
+.chips { white-space: nowrap; margin-bottom: 20rpx; }
+.chip {
+  display: inline-block;
+  padding: 12rpx 24rpx;
+  margin-right: 12rpx;
+  border-radius: 999rpx;
+  background: #f2f3f5;
+  font-size: 26rpx;
+}
+.chip-on { background: #1989fa; color: #fff; }
+.card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 28rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,.04);
+}
+.title { font-size: 34rpx; font-weight: 600; margin-bottom: 16rpx; }
+.guide { color: #666; font-size: 28rpx; margin-top: 16rpx; }
+.btn {
+  margin-top: 28rpx;
+  background: #1989fa;
+  color: #fff;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+}
+.q { margin-top: 20rpx; }
+.q-prompt { font-size: 28rpx; font-weight: 500; margin-bottom: 8rpx; }
+.opt {
+  padding: 16rpx;
+  margin-top: 8rpx;
+  border-radius: 8rpx;
+  background: #f7f8fa;
+  font-size: 26rpx;
+}
+.opt-on { background: #e8f3ff; color: #1989fa; }
+.input {
+  margin-top: 20rpx;
+  padding: 16rpx;
+  border: 1px solid #ebedf0;
+  border-radius: 8rpx;
+  font-size: 28rpx;
+}
+
+/* 拼图 · 对齐 H5 InteractiveChallenge */
+.puzzle { margin-top: 28rpx; text-align: center; }
+.puzzle-hint { font-size: 28rpx; font-weight: 600; color: #323233; }
+.puzzle-phrase {
+  margin-top: 8rpx;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: #ed6a0c;
+}
+.puzzle-progress {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin: 24rpx auto 0;
+  max-width: 560rpx;
+}
+.puzzle-bar {
+  flex: 1;
+  height: 12rpx;
+  border-radius: 999rpx;
+  background: #fff7e8;
+  overflow: hidden;
+}
+.puzzle-fill {
+  height: 100%;
+  border-radius: 999rpx;
+  background: #ed6a0c;
+  transition: width 0.25s ease;
+}
+.fill-ok { background: #07c160; }
+.fill-err { background: #ee0a24; }
+.puzzle-count { font-size: 22rpx; color: #969799; font-weight: 700; }
+.puzzle-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16rpx;
+  margin-top: 28rpx;
+}
+.puzzle-tiles.shake { animation: shake 0.4s ease-in-out; }
+.tile {
+  width: 88rpx;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  border: 2rpx solid rgba(237, 106, 12, 0.35);
+  background: #fff7e8;
+  font-size: 36rpx;
+  font-weight: 800;
+  color: #323233;
+}
+.tile-on {
+  border-color: rgba(7, 193, 96, 0.55);
+  background: #e8f8ef;
+  color: #07c160;
+}
+.tile-done { opacity: 0.7; }
+.puzzle-ok {
+  margin-top: 20rpx;
+  display: inline-block;
+  padding: 8rpx 24rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid rgba(7, 193, 96, 0.4);
+  background: #e8f8ef;
+  color: #07c160;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-8rpx); }
+  75% { transform: translateX(8rpx); }
+}

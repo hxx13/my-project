@@ -1,13 +1,14 @@
-// CartDrawer is now inlined in ReferenceDataManager's footer.
-// Keeping this file as a re-export for CartLine type.
 export interface CartLine {
+  id: number;
   key: string;
   itemId: number;
   itemLabel: string;
   specLabel: string;
   qty: number;
-  remark: string;
+  aupRecordId?: number | null;
+  aupLabel?: string;
+  packageStatus?: string;
+  packageRemark?: string | null;
   addedBy: string;
-  icon: string;
-  imageUrl?: string;
+  addedByLabel?: string;
 }

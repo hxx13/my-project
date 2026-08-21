@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.animalorder.mapper.AnimalOrderTimePolicyMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.animalorder.entity.AnimalOrderTimePolicy">
+        <id property="id" column="id"/>
+        <result property="defaultMode" column="default_mode"/>
+        <result property="etaMode" column="eta_mode"/>
+        <result property="etaWorkdayOffset" column="eta_workday_offset"/>
+        <result property="etaWeekday" column="eta_weekday"/>
+        <result property="active" column="active"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findById" resultMap="Base">
+        SELECT * FROM animal_order_time_policy WHERE id = #{id} LIMIT 1
+    </select>
+
+    <update id="update">
+        UPDATE animal_order_time_policy
+        SET default_mode = #{defaultMode},
+            eta_mode = #{etaMode},
+            eta_workday_offset = #{etaWorkdayOffset},
+            eta_weekday = #{etaWeekday},
+            active = #{active}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

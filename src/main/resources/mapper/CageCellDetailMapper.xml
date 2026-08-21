@@ -120,6 +120,28 @@
             synced_at = NOW()
     </insert>
 
+    <!-- /book 状态同步：只写状态列（/book 无 PI 映射）；新行其余列保持 NULL，由 /back|/list 补全 -->
+    <insert id="batchUpdateStatus">
+        INSERT INTO cage_cell_detail (
+            animal_cage_id,
+            cage_type_code, state, state_label, rent_type,
+            synced_at
+        ) VALUES
+        <foreach collection="list" item="d" separator=",">
+        (
+            #{d.animalCageId},
+            #{d.cageTypeCode}, #{d.state}, #{d.stateLabel}, #{d.rentType},
+            NOW()
+        )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            cage_type_code = VALUES(cage_type_code),
+            state = VALUES(state),
+            state_label = VALUES(state_label),
+            rent_type = VALUES(rent_type),
+            synced_at = NOW()
+    </insert>
+
     <select id="selectByShelfIndexId" resultMap="CageCellDetailMap">
         SELECT d.* FROM cage_cell_detail d
         JOIN cage_cell_index i ON i.animal_cage_id = d.animal_cage_id

@@ -4,33 +4,32 @@ import com.example.demo.common.config.JwtTokenService;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
-import com.example.demo.modules.aro.client.CasClient;
 import com.example.demo.modules.aro.dto.AroPersonnel;
-import com.example.demo.modules.aro.dto.CasUserInfo;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
-import com.example.demo.modules.auth.dto.CasLoginRequest;
+import com.example.demo.modules.auth.AuthProfileConstants;
+import com.example.demo.modules.auth.dto.BindEmailRequest;
 import com.example.demo.modules.auth.dto.ChangePasswordRequest;
+import com.example.demo.modules.auth.dto.ForgotPasswordByEmailResetRequest;
+import com.example.demo.modules.auth.dto.ForgotPasswordByEmailVerifyRequest;
 import com.example.demo.modules.auth.dto.ForgotPasswordResetRequest;
 import com.example.demo.modules.auth.dto.ForgotPasswordVerifyRequest;
+import com.example.demo.modules.auth.dto.OAuthLoginRequest;
 import com.example.demo.modules.auth.dto.RegisterStaffRequest;
-import com.example.demo.modules.auth.dto.UpdateDisplayNicknameRequest;
 import com.example.demo.modules.auth.dto.SendVerificationCodeRequest;
-import com.example.demo.modules.auth.dto.BindEmailRequest;
-import com.example.demo.modules.auth.dto.ForgotPasswordByEmailVerifyRequest;
-import com.example.demo.modules.auth.dto.ForgotPasswordByEmailResetRequest;
-import com.example.demo.modules.auth.AuthProfileConstants;
+import com.example.demo.modules.auth.dto.UpdateDisplayNicknameRequest;
 import com.example.demo.modules.auth.dto.WechatBindRequest;
 import com.example.demo.modules.auth.dto.WechatLoginRequest;
 import com.example.demo.modules.auth.dto.WechatUnboundResponse;
 import com.example.demo.modules.auth.dto.WebLoginRequest;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.iam.IamOAuthLoginService;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.AuthService;
+import com.example.demo.modules.auth.service.EmailVerificationCodeService;
 import com.example.demo.modules.auth.service.PasswordCredentialService;
 import com.example.demo.modules.auth.service.PasswordPolicyValidator;
 import com.example.demo.modules.auth.service.StaffRegistrationService;
 import com.example.demo.modules.auth.service.TurnstileVerificationService;
-import com.example.demo.modules.auth.service.EmailVerificationCodeService;
 import com.example.demo.modules.invite.RegistrationInviteService;
 import com.example.demo.common.util.QrCodeUtils;
 import com.google.zxing.NotFoundException;
@@ -53,7 +52,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -77,7 +75,7 @@ public class AuthController {
     private final JwtTokenService jwtTokenService;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final TurnstileVerificationService turnstileVerificationService;
-    private final CasClient casClient;
+    private final IamOAuthLoginService iamOAuthLoginService;
     private final EmailVerificationCodeService emailVerificationCodeService;
     private final Object sendCodeLock = new Object();
 
@@ -90,7 +88,7 @@ public class AuthController {
                           JwtTokenService jwtTokenService,
                           AroPersonnelMapper aroPersonnelMapper,
                           TurnstileVerificationService turnstileVerificationService,
-                          CasClient casClient,
+                          IamOAuthLoginService iamOAuthLoginService,
                           EmailVerificationCodeService emailVerificationCodeService) {
         this.userMapper = userMapper;
         this.authService = authService;
@@ -101,7 +99,7 @@ public class AuthController {
         this.jwtTokenService = jwtTokenService;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.turnstileVerificationService = turnstileVerificationService;
-        this.casClient = casClient;
+        this.iamOAuthLoginService = iamOAuthLoginService;
         this.emailVerificationCodeService = emailVerificationCodeService;
     }
 
@@ -194,99 +192,18 @@ public class AuthController {
         return authService.generateAuthResult(user);
     }
 
+    @PostMapping("/login/oauth")
+    @Operation(summary = "IAM OAuth2 统一认证登录（授权码换票）")
+    public Result<?> loginOAuth(@RequestBody @Valid OAuthLoginRequest request) {
+        return iamOAuthLoginService.login(request);
+    }
+
+    /** @deprecated 用户侧 CAS SSO 已废弃，请使用 {@link #loginOAuth}。本接口下线，返回明确错误。 */
     @PostMapping("/login/cas")
-    @Operation(summary = "CAS 统一认证登录")
-    public Result<?> loginCas(@RequestBody @Valid CasLoginRequest request) {
-        // ① CAS serviceValidate — standard CAS protocol, works with any service URL
-        CasUserInfo casUser = casClient.validateTicket(request.getTicket(), request.getServiceUrl());
-        if (casUser == null) {
-            return Result.fail(403, "CAS 认证失败：ticket 无效或已过期");
-        }
-
-        String casAccount = casUser.getAccount(); // YF0408
-        String casName = casUser.getUsername();   // 位亚磊
-
-        // ② Cross-match aro_personnel (name + jobNumber dual verification)
-        AroPersonnel matched = aroPersonnelMapper.findByNameAndJobNumber(casName, casAccount);
-        if (matched == null) {
-            // Fallback: try job number only
-            matched = aroPersonnelMapper.findByJobNumber(casAccount);
-        }
-        if (matched == null) {
-            return Result.fail(403,
-                    "未在人员库中找到匹配记录（账号: " + casAccount +
-                    "，姓名: " + casName +
-                    "）。请联系管理员将您的信息录入人员库。");
-        }
-
-        // ③ If same person exists in both student & staff DBs, prefer staff view
-        //    First check by name+jobNumber, then by name alone (staff may have different jobNumber)
-        java.util.List<AroPersonnel> byNameAndJob = aroPersonnelMapper.findAllByNameAndJobNumber(casName, casAccount);
-        if (byNameAndJob.size() > 1) {
-            AroPersonnel best = pickHighestRole(byNameAndJob);
-            if (!best.getId().equals(matched.getId())) {
-                log.info("CAS多记录匹配(name+工号)：定向到教职工视角 account={} name={} from={} to={}",
-                        casAccount, casName, matched.getId(), best.getId());
-                matched = best;
-            }
-        }
-
-        // ③b Also check sys_user.display_nickname for staff account with same display name
-        //     Staff accounts may only exist in sys_user (not aro_personnel)
-        User staffByNickname = userMapper.findByDisplayNickname(casName);
-        if (staffByNickname != null && !staffByNickname.getId().equals(matched.getId())) {
-            User currUser = userMapper.findById(matched.getId());
-            int staffLevel = (staffByNickname.getRole() != null) ? staffByNickname.getRole().getLevel() : 0;
-            int currLevel = (currUser != null && currUser.getRole() != null) ? currUser.getRole().getLevel() : 0;
-            if (staffLevel >= currLevel) {
-                log.info("CAS display_nickname匹配到教职工视角 account={} name={} from={}(level={} id={}) to={}(level={} id={})",
-                        casAccount, casName, matched.getId(), currLevel, matched.getId(),
-                        staffByNickname.getId(), staffLevel);
-                // Direct login as staff sys_user (skip aro_personnel matching)
-                return loginAsUser(staffByNickname);
-            }
-        }
-
-        // ④ Look up sys_user (no auto-create)
-        String matchedUserId = matched.getId();
-        User user = userMapper.findById(matchedUserId);
-        if (user == null) {
-            return Result.fail(403,
-                    "您在人员库中有记录（" + casName + "，" + casAccount +
-                    "），但系统账号尚未开通。请联系管理员开通后再试。");
-        }
-
-        // ⑤ Check account status
-        if (isDisabled(user)) {
-            return Result.fail(403, "账号已被禁用，请联系管理员");
-        }
-
-        // ⑦ Set auth profile to CAS_LOGIN (DB + in-memory)
-        userMapper.updateAuthProfileById(user.getId(), AuthProfileConstants.CAS_LOGIN);
-        user.setAuthProfile(AuthProfileConstants.CAS_LOGIN);
-
-        return authService.generateAuthResult(user);
-    }
-
-    /** Direct login as a specific sys_user (skip aro_personnel matching) */
-    private Result<?> loginAsUser(User user) {
-        if (isDisabled(user)) {
-            return Result.fail(403, "账号已被禁用，请联系管理员");
-        }
-        userMapper.updateAuthProfileById(user.getId(), AuthProfileConstants.CAS_LOGIN);
-        user.setAuthProfile(AuthProfileConstants.CAS_LOGIN);
-        return authService.generateAuthResult(user);
-    }
-
-    /** Pick the personnel record with the highest sys_user role level */
-    private AroPersonnel pickHighestRole(java.util.List<AroPersonnel> candidates) {
-        return candidates.stream().max((a, b) -> {
-            User ua = userMapper.findById(a.getId());
-            User ub = userMapper.findById(b.getId());
-            int la = (ua != null && ua.getRole() != null) ? ua.getRole().getLevel() : 0;
-            int lb = (ub != null && ub.getRole() != null) ? ub.getRole().getLevel() : 0;
-            return Integer.compare(la, lb);
-        }).orElse(candidates.get(0));
+    @Operation(summary = "（已废弃）原 CAS 用户登录，请改用 /login/oauth")
+    @Deprecated
+    public Result<?> loginCasDeprecated() {
+        return Result.fail(410, "CAS 用户登录已下线，请使用统一认证（IAM OAuth）登录");
     }
 
     @PostMapping("/register/staff")

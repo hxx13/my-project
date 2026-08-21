@@ -11,11 +11,16 @@ import com.example.demo.modules.agv.service.AgvStatusCache;
 import com.example.demo.modules.agv.analysis.AgvRouteTopologyService;
 import com.example.demo.modules.twin.common.entity.TwinJobScheduleConfig;
 import com.example.demo.modules.twin.common.mapper.TwinJobScheduleConfigMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -29,6 +34,10 @@ import java.util.*;
 @RequestMapping("/api/v1/agv")
 @Tag(name = "AGV 小车追踪", description = "AGV 实时状态、轨迹查询、配置")
 public class AgvController {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+    /** 全局单槽预设键：覆盖保存即 upsert 此行 */
+    private static final String COORD_PRESET_KEY = "default";
 
     private final AgvProxyService agvProxyService;
     private final AgvStatusCache statusCache;
@@ -256,39 +265,197 @@ public class AgvController {
     @GetMapping("/coord-config")
     @Operation(summary = "获取所有小车坐标系配置（旋转+平移偏移）")
     public Result<Map<String, Object>> getCoordConfig() {
+        return Result.success(loadLiveCoordConfigs());
+    }
+
+    /**
+     * 读取已归档的坐标系布局预设（与实时 agv_coord_config 分离）。
+     * 无预设时 data.exists=false。
+     */
+    @GetMapping("/coord-config/preset")
+    @Operation(summary = "获取坐标系布局预设快照")
+    public Result<Map<String, Object>> getCoordPreset() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        try {
+            Map<String, Object> row = jdbc.queryForMap(
+                "SELECT configs_json, saved_at FROM agv_coord_preset WHERE preset_key = ?",
+                COORD_PRESET_KEY);
+            Map<String, Object> configs = parsePresetConfigs(String.valueOf(row.get("configs_json")));
+            payload.put("exists", !configs.isEmpty());
+            payload.put("savedAt", toEpochMillis(row.get("saved_at")));
+            payload.put("configs", configs);
+        } catch (EmptyResultDataAccessException e) {
+            payload.put("exists", false);
+            payload.put("savedAt", null);
+            payload.put("configs", Map.of());
+        } catch (Exception e) {
+            return Result.error("读取坐标系预设失败: " + e.getMessage());
+        }
+        return Result.success(payload);
+    }
+
+    /**
+     * 归档当前布局为预设。body.configs 可选；缺省则从 agv_coord_config 实时表快照。
+     * 覆盖保存 = upsert 单槽 default。
+     */
+    @PutMapping("/coord-config/preset")
+    @Operation(summary = "保存（覆盖）坐标系布局预设快照")
+    public Result<Map<String, Object>> saveCoordPreset(@RequestBody(required = false) Map<String, Object> body) {
+        try {
+            Map<String, Object> configs;
+            if (body != null && body.get("configs") instanceof Map<?, ?> raw) {
+                configs = normalizePresetConfigs(raw);
+            } else {
+                configs = loadLiveCoordConfigs();
+            }
+            if (configs.isEmpty()) {
+                return Result.error("当前没有可保存的坐标系数据");
+            }
+            String json = JSON.writeValueAsString(configs);
+            Timestamp savedAt = Timestamp.from(Instant.now());
+            jdbc.update(
+                "INSERT INTO agv_coord_preset (preset_key, configs_json, saved_at) VALUES (?, ?, ?) " +
+                "ON DUPLICATE KEY UPDATE configs_json = VALUES(configs_json), saved_at = VALUES(saved_at)",
+                COORD_PRESET_KEY, json, savedAt);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("exists", true);
+            payload.put("savedAt", savedAt.getTime());
+            payload.put("configs", configs);
+            return Result.success(payload);
+        } catch (Exception e) {
+            return Result.error("保存坐标系预设失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 将上次归档的预设写回实时 agv_coord_config，并返回应用后的配置。
+     */
+    @PostMapping("/coord-config/preset/restore")
+    @Operation(summary = "恢复坐标系布局预设到实时配置")
+    @Transactional
+    public Result<Map<String, Object>> restoreCoordPreset() {
+        try {
+            Map<String, Object> row = jdbc.queryForMap(
+                "SELECT configs_json, saved_at FROM agv_coord_preset WHERE preset_key = ?",
+                COORD_PRESET_KEY);
+            Map<String, Object> configs = parsePresetConfigs(String.valueOf(row.get("configs_json")));
+            if (configs.isEmpty()) {
+                return Result.error("暂无已保存的预设，请先点击「保存预设」");
+            }
+            for (Map.Entry<String, Object> e : configs.entrySet()) {
+                String ip = e.getKey();
+                if (!(e.getValue() instanceof Map<?, ?> frame)) continue;
+                double deg = toDouble(frame.get("rotationDeg"), 0);
+                double ox = toDouble(frame.get("offsetX"), 0);
+                double oy = toDouble(frame.get("offsetY"), 0);
+                double scale = toDouble(frame.get("scale"), 1);
+                jdbc.update(
+                    "INSERT INTO agv_coord_config (robot_ip, rotation_deg, offset_x, offset_y, scale) VALUES (?, ?, ?, ?, ?) " +
+                    "ON DUPLICATE KEY UPDATE rotation_deg = ?, offset_x = ?, offset_y = ?, scale = ?",
+                    ip, deg, ox, oy, scale, deg, ox, oy, scale);
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("exists", true);
+            payload.put("savedAt", toEpochMillis(row.get("saved_at")));
+            payload.put("configs", configs);
+            return Result.success(payload);
+        } catch (EmptyResultDataAccessException e) {
+            return Result.error("暂无已保存的预设，请先点击「保存预设」");
+        } catch (Exception e) {
+            return Result.error("恢复坐标系预设失败: " + e.getMessage());
+        }
+    }
+
+    @PutMapping("/coord-config/{ip}")
+    @Operation(summary = "设置单台小车坐标系配置（旋转+平移偏移+缩放）")
+    public Result<String> setCoordConfig(@PathVariable String ip,
+                                         @RequestParam(defaultValue = "0") double deg,
+                                         @RequestParam(defaultValue = "0") double offsetX,
+                                         @RequestParam(defaultValue = "0") double offsetY,
+                                         @RequestParam(required = false) Double scale) {
+        // scale 省略时保持库中原值不变——避免只调平移/旋转的调用把缩放悄悄重置为 1
+        if (scale != null) {
+            jdbc.update(
+                "INSERT INTO agv_coord_config (robot_ip, rotation_deg, offset_x, offset_y, scale) VALUES (?, ?, ?, ?, ?) " +
+                "ON DUPLICATE KEY UPDATE rotation_deg = ?, offset_x = ?, offset_y = ?, scale = ?",
+                ip, deg, offsetX, offsetY, scale, deg, offsetX, offsetY, scale);
+        } else {
+            jdbc.update(
+                "INSERT INTO agv_coord_config (robot_ip, rotation_deg, offset_x, offset_y) VALUES (?, ?, ?, ?) " +
+                "ON DUPLICATE KEY UPDATE rotation_deg = ?, offset_x = ?, offset_y = ?",
+                ip, deg, offsetX, offsetY, deg, offsetX, offsetY);
+        }
+        return Result.success("ok");
+    }
+
+    private Map<String, Object> loadLiveCoordConfigs() {
         Map<String, Object> result = new LinkedHashMap<>();
         for (String ip : KNOWN_IPS) {
             try {
                 Map<String, Object> cfg = jdbc.queryForMap(
-                    "SELECT rotation_deg, offset_x, offset_y FROM agv_coord_config WHERE robot_ip = ?",
+                    "SELECT rotation_deg, offset_x, offset_y, scale FROM agv_coord_config WHERE robot_ip = ?",
                     ip);
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("rotationDeg", cfg.getOrDefault("rotation_deg", 0.0));
-                entry.put("offsetX", cfg.getOrDefault("offset_x", 0.0));
-                entry.put("offsetY", cfg.getOrDefault("offset_y", 0.0));
-                result.put(ip, entry);
+                result.put(ip, frameEntry(
+                    toDouble(cfg.get("rotation_deg"), 0),
+                    toDouble(cfg.get("offset_x"), 0),
+                    toDouble(cfg.get("offset_y"), 0),
+                    toDouble(cfg.get("scale"), 1)));
             } catch (Exception e) {
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("rotationDeg", 0.0);
-                entry.put("offsetX", 0.0);
-                entry.put("offsetY", 0.0);
-                result.put(ip, entry);
+                result.put(ip, frameEntry(0, 0, 0, 1));
             }
         }
-        return Result.success(result);
+        return result;
     }
 
-    @PutMapping("/coord-config/{ip}")
-    @Operation(summary = "设置单台小车坐标系配置（旋转+平移偏移）")
-    public Result<String> setCoordConfig(@PathVariable String ip,
-                                         @RequestParam(defaultValue = "0") double deg,
-                                         @RequestParam(defaultValue = "0") double offsetX,
-                                         @RequestParam(defaultValue = "0") double offsetY) {
-        jdbc.update(
-            "INSERT INTO agv_coord_config (robot_ip, rotation_deg, offset_x, offset_y) VALUES (?, ?, ?, ?) " +
-            "ON DUPLICATE KEY UPDATE rotation_deg = ?, offset_x = ?, offset_y = ?",
-            ip, deg, offsetX, offsetY, deg, offsetX, offsetY);
-        return Result.success("ok");
+    private static Map<String, Object> frameEntry(double rotationDeg, double offsetX, double offsetY, double scale) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("rotationDeg", rotationDeg);
+        entry.put("offsetX", offsetX);
+        entry.put("offsetY", offsetY);
+        entry.put("scale", scale);
+        return entry;
+    }
+
+    private Map<String, Object> parsePresetConfigs(String json) throws Exception {
+        if (json == null || json.isBlank() || "null".equals(json)) return new LinkedHashMap<>();
+        Map<String, Object> raw = JSON.readValue(json, new TypeReference<Map<String, Object>>() {});
+        return normalizePresetConfigs(raw);
+    }
+
+    private Map<String, Object> normalizePresetConfigs(Map<?, ?> raw) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        Set<String> known = new HashSet<>(Arrays.asList(KNOWN_IPS));
+        for (Map.Entry<?, ?> e : raw.entrySet()) {
+            String ip = String.valueOf(e.getKey());
+            if (!known.contains(ip)) continue;
+            if (!(e.getValue() instanceof Map<?, ?> frame)) continue;
+            out.put(ip, frameEntry(
+                toDouble(frame.get("rotationDeg"), 0),
+                toDouble(frame.get("offsetX"), 0),
+                toDouble(frame.get("offsetY"), 0),
+                toDouble(frame.get("scale"), 1)));
+        }
+        return out;
+    }
+
+    private static double toDouble(Object v, double def) {
+        if (v == null) return def;
+        if (v instanceof Number n) return n.doubleValue();
+        try {
+            return Double.parseDouble(String.valueOf(v));
+        } catch (Exception e) {
+            return def;
+        }
+    }
+
+    private static Long toEpochMillis(Object savedAt) {
+        if (savedAt == null) return null;
+        if (savedAt instanceof Timestamp ts) return ts.getTime();
+        if (savedAt instanceof java.util.Date d) return d.getTime();
+        if (savedAt instanceof LocalDateTime ldt) {
+            return ldt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        }
+        return null;
     }
 
     // ── 固定路线拓扑（DEPRECATED — 静态 JSON 方案已废弃） ──

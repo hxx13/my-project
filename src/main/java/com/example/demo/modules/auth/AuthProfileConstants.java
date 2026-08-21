@@ -14,8 +14,11 @@ public final class AuthProfileConstants {
     /** Web 账号密码登录体系（或未走微信绑定链路的账号） */
     public static final String WEB_PASSWORD = "WEB_PASSWORD";
 
-    /** CAS 统一认证登录 */
+    /** CAS 统一认证登录（用户侧已废弃，历史会话可能仍见此值） */
     public static final String CAS_LOGIN = "CAS_LOGIN";
+
+    /** 上海交大医学院 IAM OAuth 统一认证登录 */
+    public static final String IAM_OAUTH = "IAM_OAUTH";
 
     public static String miniHomeDefaultTab(String authProfile) {
         if (WECHAT_ARO.equalsIgnoreCase(trim(authProfile))) {

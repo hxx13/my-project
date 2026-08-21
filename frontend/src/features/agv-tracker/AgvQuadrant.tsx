@@ -60,6 +60,8 @@ interface Props {
   selectedZoneId?: number | null;
   onZoneSelect?: (id: number | null) => void;
   onZoneReshape?: (id: number, polygonJson: string) => void;
+  onCoordFrameMove?: (ip: string, offsetX: number, offsetY: number) => void;
+  onCoordFrameScale?: (ip: string, scale: number, offsetX: number, offsetY: number) => void;
   onCoordFrameRotate?: (ip: string, newDeg: number, centerX: number, centerY: number) => void;
   playbackProgressRef?: React.MutableRefObject<number>;
   // ── History playback props (single-quadrant only) ──
@@ -146,7 +148,7 @@ export default function AgvQuadrant(props: Props) {
     jackEnable, jackState, jackIsFull, jackMode, jackErrorCode,
     errors, warnings, diChannels, coordRotationDeg,
     zoneOverlays, routeOverlays, routeMode, followMode, currentActivity,
-    vehicleIcon, pickMode, pickTwoPoint, pickAnchor, onPointPick, onRectDrawn, onZoneClick, coordEditMode, zoneEditMode, selectedZoneId, onZoneSelect, onZoneReshape, onCoordFrameRotate, playbackProgressRef,
+    vehicleIcon, pickMode, pickTwoPoint, pickAnchor, onPointPick, onRectDrawn, onZoneClick, coordEditMode, zoneEditMode, selectedZoneId, onZoneSelect, onZoneReshape, onCoordFrameMove, onCoordFrameScale, onCoordFrameRotate, playbackProgressRef,
     playbackActive, playbackData, playbackPlaying, playbackProgress, playbackSpeed,
     playbackLoading, playbackError,
     onStartPlayback, onClearPlayback, onStopPlayback, onPlaybackPlay, onPlaybackPause, onPlaybackProgress, onPlaybackSpeed,
@@ -284,7 +286,7 @@ export default function AgvQuadrant(props: Props) {
               coordEditMode={coordEditMode} zoneEditMode={zoneEditMode}
               selectedZoneId={selectedZoneId} onZoneSelect={onZoneSelect}
               onZoneReshape={onZoneReshape}
-              onCoordFrameMove={undefined} onCoordFrameScale={undefined}
+              onCoordFrameMove={onCoordFrameMove} onCoordFrameScale={onCoordFrameScale}
               onCoordFrameRotate={onCoordFrameRotate}
               playbackProgressRef={playbackProgressRef}
               playbackActive={playbackActive}

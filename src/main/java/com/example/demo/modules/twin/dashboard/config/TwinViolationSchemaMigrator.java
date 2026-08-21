@@ -4,6 +4,7 @@ import com.example.demo.common.logging.annotation.StartupPhase;
 import com.example.demo.common.logging.model.StartupContext;
 import com.example.demo.common.logging.model.StartupResult;
 import com.example.demo.common.logging.model.StartupRunner;
+import com.example.demo.modules.twin.dashboard.support.CageViolationFkSupport;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -115,20 +116,66 @@ public class TwinViolationSchemaMigrator implements StartupRunner {
             safeExecute("CREATE INDEX IF NOT EXISTS idx_cage_vid ON twin_student_violation (cage_violation_id)");
         }); ok++;
 
-        ensureStrandedSignoutConfigRow(ctx);
+        // T1-2：真实 FK + ON DELETE CASCADE（先清理孤儿，再加约束）
+        ctx.subtask("cage_violation_fk_cascade", this::ensureCageViolationFkCascade); ok++;
+
+        // T2-7：id=2 签退配置行仅由 SQL bootstrap（bootstrap-stranded-signout-config-row.sql）创建；
+        // 本 Migrator 不再重复 INSERT。运行期兜底见 StrandedViolationService.@PostConstruct。
 
         return StartupResult.success("全部就绪");
     }
 
-    private void ensureStrandedSignoutConfigRow(StartupContext ctx) {
+    /**
+     * T1-2：清理断链子 / 空 ACTIVE 父，再幂等添加
+     * {@code fk_tsv_cage_violation}（ON DELETE CASCADE）。
+     * 应用层删父前仍应先经 service 删子以撤回镜像通知；CASCADE 为库级兜底。
+     */
+    private void ensureCageViolationFkCascade() {
+        safeExecute("""
+                UPDATE twin_student_violation v
+                SET v.cage_violation_id = NULL, v.updated_at = NOW()
+                WHERE v.cage_violation_id IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM twin_cage_status_violation p WHERE p.id = v.cage_violation_id
+                  )
+                """);
+        safeExecute("""
+                UPDATE twin_cage_status_violation p
+                SET p.status = 'CLEARED', p.updated_at = NOW()
+                WHERE p.status = 'ACTIVE'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM twin_student_violation c
+                    WHERE c.cage_violation_id = p.id AND c.status = 'ACTIVE'
+                  )
+                """);
+        safeExecute("CREATE INDEX IF NOT EXISTS idx_cage_vid ON twin_student_violation (cage_violation_id)");
         try {
-            safeExecute("""
-                    INSERT INTO stranded_violation_config (id, enabled, auto_signout_enabled)
-                    VALUES (2, 0, 1)
-                    ON DUPLICATE KEY UPDATE id = id
-                    """);
-        } catch (Exception e) {
-            ctx.warn("signout config row: " + e.getMessage());
+            Integer fkCount = jdbcTemplate.queryForObject(
+                    """
+                            SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+                            WHERE CONSTRAINT_SCHEMA = DATABASE()
+                              AND TABLE_NAME = ?
+                              AND CONSTRAINT_NAME = ?
+                              AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+                            """,
+                    Integer.class,
+                    CageViolationFkSupport.CHILD_TABLE,
+                    CageViolationFkSupport.CONSTRAINT_NAME);
+            if (fkCount != null && fkCount == 0) {
+                jdbcTemplate.execute("""
+                        ALTER TABLE %s
+                          ADD CONSTRAINT %s
+                          FOREIGN KEY (%s)
+                          REFERENCES %s (id)
+                          ON DELETE CASCADE
+                        """.formatted(
+                        CageViolationFkSupport.CHILD_TABLE,
+                        CageViolationFkSupport.CONSTRAINT_NAME,
+                        CageViolationFkSupport.CHILD_COLUMN,
+                        CageViolationFkSupport.PARENT_TABLE));
+            }
+        } catch (Exception ignored) {
+            // 幂等：缺表/无权限时由启动日志其他路径暴露
         }
     }
 

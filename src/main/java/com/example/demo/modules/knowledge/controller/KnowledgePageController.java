@@ -4,6 +4,7 @@ import com.example.demo.common.config.AdminAuthInterceptor;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.knowledge.config.KnowledgeYudaoImportRunner;
 import com.example.demo.modules.knowledge.entity.KnowledgeHistory;
 import com.example.demo.modules.knowledge.entity.KnowledgePage;
@@ -23,13 +24,16 @@ public class KnowledgePageController {
     private final KnowledgePageService pageService;
     private final KnowledgeImportService importService;
     private final KnowledgeYudaoImportRunner knowledgeImporter;
+    private final UserDisplayNameService userDisplayNameService;
 
     public KnowledgePageController(KnowledgePageService pageService,
                                    KnowledgeImportService importService,
-                                   KnowledgeYudaoImportRunner knowledgeImporter) {
+                                   KnowledgeYudaoImportRunner knowledgeImporter,
+                                   UserDisplayNameService userDisplayNameService) {
         this.pageService = pageService;
         this.importService = importService;
         this.knowledgeImporter = knowledgeImporter;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     // ═══════ 查询 ═══════
@@ -169,6 +173,12 @@ public class KnowledgePageController {
     private String getCurrentUsername(HttpServletRequest request) {
         Object attr = request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
         if (attr instanceof User user) {
+            if (user.getId() != null && !user.getId().isBlank()) {
+                String name = userDisplayNameService.resolveDisplayName(user.getId());
+                if (name != null && !name.isBlank()) {
+                    return name;
+                }
+            }
             return user.getUsername() != null ? user.getUsername() : "system";
         }
         return "system";

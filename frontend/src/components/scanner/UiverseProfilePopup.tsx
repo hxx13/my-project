@@ -454,15 +454,12 @@ export function UiverseProfilePopup(props: PopupProps) {
                                         getDelayOptions={actions.getDelayOptionsForRoom}
                                         subjectUserId={state.user?.userId}
                                         onDelaySuccess={actions.handleDelayGrantSuccess}
-                                        getDelayStatusForRoom={actions.getDelayStatusForRoom}
-                                        getRejectedOptionIdsForRoom={actions.getRejectedOptionIdsForRoom}
                                         userName={state.user?.name}
                                         onRequestExit={actions.requestExit}
                                         onConfirmExit={actions.confirmExit}
                                         onCancelExit={actions.cancelExit}
                                         confirmingExitRoom={state.confirmingExitRoom}
                                         studentUserId={studentUserId}
-                                        enterDisabledHintText={enterDisabledHintText}
                                     />
                                 ) : (
                                     <div className="flex-1 min-h-[120px] w-full shrink-0" aria-hidden />

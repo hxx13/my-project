@@ -6,6 +6,7 @@
         <id column="id" property="id"/>
         <result column="target_user_id" property="targetUserId"/>
         <result column="violation_text" property="violationText"/>
+        <result column="content_json" property="contentJson"/>
         <result column="image_urls" property="imageUrls"/>
         <result column="forbid_enter" property="forbidEnter"/>
         <result column="max_enter_success" property="maxEnterSuccess"/>
@@ -42,6 +43,15 @@
           AND NOT (<include refid="pendingInteractivePastExpireClause"/>)
     </update>
 
+    <select id="selectIdsDueToExpire" resultType="long">
+        SELECT id
+        FROM twin_student_violation
+        WHERE status = 'ACTIVE'
+          AND expire_at IS NOT NULL
+          AND expire_at &lt; NOW()
+          AND NOT (<include refid="pendingInteractivePastExpireClause"/>)
+    </select>
+
     <update id="expireByIdIfPastDue">
         UPDATE twin_student_violation
         SET status = 'EXPIRED', updated_at = NOW()
@@ -50,6 +60,13 @@
           AND expire_at IS NOT NULL
           AND expire_at &lt; NOW()
     </update>
+
+    <select id="selectActiveIdsByTargetUserId" resultType="long">
+        SELECT id
+        FROM twin_student_violation
+        WHERE target_user_id = #{targetUserId}
+          AND status = 'ACTIVE'
+    </select>
 
     <update id="supersedeActiveByTargetUserId">
         UPDATE twin_student_violation
@@ -62,12 +79,8 @@
     </update>
 
     <select id="selectActiveByTargetUserId" resultMap="TwinStudentViolationMap">
-        SELECT v.*,
-            (SELECT COUNT(*) FROM twin_student_violation c
-             WHERE c.target_user_id = v.target_user_id
-               AND c.status = 'ACTIVE'
-               AND (c.rule_id = v.rule_id OR (c.rule_id IS NULL AND v.rule_id IS NULL))
-            ) AS enter_success_count
+        <!-- T2-1：enter_success_count 取物理列（进入次数），禁止用违规条数子查询覆盖 -->
+        SELECT v.*
         FROM twin_student_violation v
         WHERE v.target_user_id = #{targetUserId}
           AND v.status = 'ACTIVE'
@@ -82,12 +95,12 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO twin_student_violation (
-            target_user_id, violation_text, image_urls,
+            target_user_id, violation_text, content_json, image_urls,
             forbid_enter, max_enter_success, enter_success_count, show_notice_every_scan,
             expire_at, status, created_by_user_id, source, interactive_challenge, interactive_unlock_on_verify,
             rule_id, cage_violation_id
         ) VALUES (
-            #{targetUserId}, #{violationText}, #{imageUrls},
+            #{targetUserId}, #{violationText}, #{contentJson}, #{imageUrls},
             #{forbidEnter}, #{maxEnterSuccess}, #{enterSuccessCount}, #{showNoticeEveryScan},
             #{expireAt}, #{status}, #{createdByUserId}, #{source}, #{interactiveChallenge}, #{interactiveUnlockOnVerify},
             #{ruleId}, #{cageViolationId}
@@ -123,11 +136,7 @@
     </update>
 
     <select id="selectRecent" resultMap="TwinStudentViolationMap">
-        SELECT v.*,
-            (SELECT COUNT(*) FROM twin_student_violation c
-             WHERE c.target_user_id = v.target_user_id
-               AND (c.rule_id = v.rule_id OR (c.rule_id IS NULL AND v.rule_id IS NULL))
-            ) AS enter_success_count
+        SELECT v.*
         FROM twin_student_violation v
         <where>
             <if test="targetUserId != null and targetUserId != ''">
@@ -138,20 +147,25 @@
         LIMIT #{limit}
     </select>
 
+    <!-- 与扫码端 selectActiveByTargetUserId 一致：拼图未完成且超期仍视为生效公示 -->
     <select id="selectActiveForDashboardBoard" resultMap="TwinStudentViolationMap">
-        SELECT v.*,
-            (SELECT COUNT(*) FROM twin_student_violation c
-             WHERE c.target_user_id = v.target_user_id
-               AND (c.rule_id = v.rule_id OR (c.rule_id IS NULL AND v.rule_id IS NULL))
-            ) AS enter_success_count
+        SELECT v.*
         FROM twin_student_violation v
         WHERE v.status = 'ACTIVE'
-          AND (v.expire_at IS NULL OR v.expire_at &gt; NOW())
+          AND (
+            v.expire_at IS NULL
+            OR v.expire_at &gt; NOW()
+            OR (<include refid="pendingInteractivePastExpireClause"/>)
+          )
           AND v.id IN (
               SELECT MAX(id)
               FROM twin_student_violation
               WHERE status = 'ACTIVE'
-                AND (expire_at IS NULL OR expire_at &gt; NOW())
+                AND (
+                  expire_at IS NULL
+                  OR expire_at &gt; NOW()
+                  OR (<include refid="pendingInteractivePastExpireClause"/>)
+                )
               GROUP BY target_user_id
           )
         ORDER BY v.created_at DESC, v.id DESC
@@ -159,11 +173,7 @@
     </select>
 
     <select id="selectById" resultMap="TwinStudentViolationMap">
-        SELECT v.*,
-            (SELECT COUNT(*) FROM twin_student_violation c
-             WHERE c.target_user_id = v.target_user_id
-               AND (c.rule_id = v.rule_id OR (c.rule_id IS NULL AND v.rule_id IS NULL))
-            ) AS enter_success_count
+        SELECT v.*
         FROM twin_student_violation v
         WHERE v.id = #{id}
     </select>
@@ -171,6 +181,7 @@
     <update id="updateEditableById">
         UPDATE twin_student_violation
         SET violation_text = #{violationText},
+            content_json = #{contentJson},
             image_urls = #{imageUrls},
             forbid_enter = #{forbidEnter},
             max_enter_success = #{maxEnterSuccess},

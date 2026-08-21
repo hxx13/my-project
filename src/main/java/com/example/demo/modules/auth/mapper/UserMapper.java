@@ -47,6 +47,9 @@ public interface UserMapper {
 
     int updateUsernameById(@Param("id") String id, @Param("username") String username);
 
+    /** 仅更新真实姓名列，不改 username / display_nickname */
+    int updateNameById(@Param("id") String id, @Param("name") String name);
+
     String getPasswordPlainById(@Param("id") String id);
 
     int updateUser(User user);

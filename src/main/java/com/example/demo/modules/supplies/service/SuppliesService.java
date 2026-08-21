@@ -1003,8 +1003,8 @@ public class SuppliesService {
         if (!user.getId().equals(o.getUserId())) return Result.error("仅本人可撤回");
         int n = claimOrderMapper.updateWithdrawn(orderId, user.getId());
         if (n == 0) return Result.error("仅待处理状态可撤回");
-        // 撤回成功后释放本单全部行的锁定
-        releaseClaimOrderLocks(orderId);
+        // 撤回后本单不再是 PENDING，按权威源重算锁定量
+        reconcileLockedQtyForOrder(orderId);
         logOp("ORDER_WITHDRAW", "CLAIM_ORDER", orderId, user.getId(), Map.of());
         return Result.success();
     }
@@ -1022,19 +1022,11 @@ public class SuppliesService {
         if (!canAdminDelete && !canSelfDelete) return Result.error("无权限操作");
         int deleted = claimOrderMapper.deleteById(oid, user.getId(), LocalDateTime.now().plusDays(7));
         if (deleted <= 0) return Result.error("删除工单失败");
-        // 释放锁定必须以 deleteById 之后重读的“新鲜”状态为准，而非上方无锁快照：
-        // 并发撤回/出库（updateWithdrawn/updateFulfilled，均带 status='PENDING' AND deleted=0 守卫）
-        // 可能在快照读取后、deleteById 前已提交并释放过锁，若按过期快照再放一次会吃掉其他单的预占。
-        // deleteById 是 UPDATE，已对该行加了行锁且不修改 status：
-        // - 若撤回/出库先提交：此处重读看到 WITHDRAWN/FULFILLED → 不再释放（对方已释放过）；
-        // - 若撤回/出库被我们的行锁阻塞：我们提交后 deleted=1 使其守卫失配 → 对方 0 行更新、不释放。
-        // 两个方向都恰好释放一次，锁定量不会被双重扣减。
+        // 软删后以 PENDING∩未删除 行重算锁定：本单不再计入，避免「删单未释放」或历史幽灵锁定；
+        // 也覆盖并发撤回/出库已释放的情况（幂等校准，不会二次扣减其他单的预占）。
         SupplyClaimOrder fresh = claimOrderMapper.findByIdAny(oid);
         String freshStatus = fresh != null ? fresh.getStatus() : null;
-        // 待处理单进回收站需释放锁定（恢复时再重新锁定）
-        if ("PENDING".equals(freshStatus)) {
-            releaseClaimOrderLocks(oid);
-        }
+        reconcileLockedQtyForOrder(oid);
         logOp("ORDER_DELETE", "CLAIM_ORDER", oid, user.getId(), Map.of("status", str(freshStatus)));
         return Result.success();
     }
@@ -1043,9 +1035,7 @@ public class SuppliesService {
         int p = Math.max(1, page);
         int s = Math.min(Math.max(size, 1), 100);
         int offset = (p - 1) * s;
-        List<SupplyClaimOrderView> rows = claimOrderMapper.listRecycleByUser(user.getId(), s, offset).stream()
-                .map(o -> toOrderView(o, false))
-                .toList();
+        List<SupplyClaimOrderView> rows = toOrderViews(claimOrderMapper.listRecycleByUser(user.getId(), s, offset), false);
         int total = claimOrderMapper.countRecycleByUser(user.getId());
         Map<String, Object> data = new HashMap<>();
         data.put("data", rows);
@@ -1062,10 +1052,8 @@ public class SuppliesService {
         if (row == null) return Result.error("回收站工单不存在或无权限");
         int restored = claimOrderMapper.restoreById(oid);
         if (restored <= 0) return Result.error("恢复失败");
-        // 恢复的待处理单重新锁定库存（允许超锁）
-        if ("PENDING".equals(row.getStatus())) {
-            forceLockClaimOrderLocks(oid);
-        }
+        // 恢复后按 PENDING∩未删除 行重算（取代 forceLock，避免历史未释放时超锁）
+        reconcileLockedQtyForOrder(oid);
         return Result.success();
     }
 
@@ -1073,7 +1061,7 @@ public class SuppliesService {
         int p = Math.max(1, page);
         int s = Math.min(Math.max(size, 1), 200);
         int offset = (p - 1) * s;
-        List<SupplyClaimOrderView> rows = claimOrderMapper.listRecycle(s, offset).stream().map(o -> toOrderView(o, false)).toList();
+        List<SupplyClaimOrderView> rows = toOrderViews(claimOrderMapper.listRecycle(s, offset), true);
         Map<String, Object> data = new HashMap<>();
         data.put("data", rows);
         data.put("total", claimOrderMapper.countRecycle());
@@ -1084,13 +1072,10 @@ public class SuppliesService {
     public Result<?> restoreClaimOrder(String orderId) {
         String oid = trimOrNull(orderId);
         if (!StringUtils.hasText(oid)) return Result.error("领用单号不能为空");
-        SupplyClaimOrder row = claimOrderMapper.findByIdAny(oid);
         int restored = claimOrderMapper.restoreById(oid);
         if (restored <= 0) return Result.error("恢复失败或工单不在回收站");
-        // 恢复的待处理单重新锁定库存（允许超锁）
-        if (row != null && "PENDING".equals(row.getStatus())) {
-            forceLockClaimOrderLocks(oid);
-        }
+        // 恢复后按 PENDING∩未删除 行重算（取代 forceLock，避免历史未释放时超锁）
+        reconcileLockedQtyForOrder(oid);
         return Result.success();
     }
 
@@ -1098,10 +1083,17 @@ public class SuppliesService {
     public Result<?> purgeClaimOrder(String orderId) {
         String oid = trimOrNull(orderId);
         if (!StringUtils.hasText(oid)) return Result.error("领用单号不能为空");
+        // 先记下涉及物品：硬删订单/明细后无法从本单反查，需重算以清掉「删单后残留锁定」
+        List<Long> itemIds = claimLineMapper.listByOrderId(oid).stream()
+                .filter(l -> l != null && l.getItemId() != null)
+                .map(SupplyClaimLine::getItemId)
+                .distinct()
+                .toList();
         int deleted = claimOrderMapper.hardDeleteById(oid);
         if (deleted <= 0) return Result.error("彻底删除失败");
         claimExportFileMapper.deleteByClaimId(oid);
         claimLineMapper.deleteByOrderId(oid);
+        reconcileLockedQtyForItemIds(itemIds);
         return Result.success();
     }
 
@@ -1113,11 +1105,18 @@ public class SuppliesService {
                 .map(String::trim)
                 .toList();
         if (validIds.isEmpty()) return Result.error("请选择要彻底删除的工单");
+        LinkedHashSet<Long> itemIds = new LinkedHashSet<>();
+        for (String id : validIds) {
+            for (SupplyClaimLine l : claimLineMapper.listByOrderId(id)) {
+                if (l != null && l.getItemId() != null) itemIds.add(l.getItemId());
+            }
+        }
         int deleted = claimOrderMapper.hardDeleteByIds(validIds);
         validIds.forEach(id -> {
             claimExportFileMapper.deleteByClaimId(id);
             claimLineMapper.deleteByOrderId(id);
         });
+        reconcileLockedQtyForItemIds(itemIds);
         return Result.success(Map.of("deleted", deleted));
     }
 
@@ -1126,11 +1125,18 @@ public class SuppliesService {
         List<SupplyClaimOrder> recycleRows = claimOrderMapper.listRecycle(5000, 0);
         if (recycleRows.isEmpty()) return Result.success(Map.of("deleted", 0));
         List<String> ids = recycleRows.stream().map(SupplyClaimOrder::getId).toList();
+        LinkedHashSet<Long> itemIds = new LinkedHashSet<>();
+        for (String id : ids) {
+            for (SupplyClaimLine l : claimLineMapper.listByOrderId(id)) {
+                if (l != null && l.getItemId() != null) itemIds.add(l.getItemId());
+            }
+        }
         int deleted = claimOrderMapper.hardDeleteByIds(ids);
         ids.forEach(id -> {
             claimExportFileMapper.deleteByClaimId(id);
             claimLineMapper.deleteByOrderId(id);
         });
+        reconcileLockedQtyForItemIds(itemIds);
         return Result.success(Map.of("deleted", deleted));
     }
 
@@ -1144,10 +1150,11 @@ public class SuppliesService {
     }
 
     public List<SupplyClaimOrderView> listPendingTasks(User user) {
+        // withLines=true：处理页展开无需再拉详情，修改后返回也能立刻刷新明细/标题
         if (capabilityPolicyService.canViewAllPending(user, BizDomains.SUPPLIES_CLAIM)) {
-            return claimOrderMapper.listPendingAll().stream().map(o -> toOrderView(o, false)).toList();
+            return toOrderViews(claimOrderMapper.listPendingAll(), true);
         }
-        return claimOrderMapper.listPendingByUser(user.getId()).stream().map(o -> toOrderView(o, false)).toList();
+        return toOrderViews(claimOrderMapper.listPendingByUser(user.getId()), true);
     }
 
     /**
@@ -1156,9 +1163,9 @@ public class SuppliesService {
     public List<SupplyClaimOrderView> listRecentClosedClaims(User user, int limit) {
         int lim = Math.min(Math.max(limit, 1), 100);
         if (canProcessClaims(user)) {
-            return claimOrderMapper.listRecentClosedAll(lim).stream().map(o -> toOrderView(o, false)).toList();
+            return toOrderViews(claimOrderMapper.listRecentClosedAll(lim), true);
         }
-        return claimOrderMapper.listRecentClosedByUser(user.getId(), lim).stream().map(o -> toOrderView(o, false)).toList();
+        return toOrderViews(claimOrderMapper.listRecentClosedByUser(user.getId(), lim), true);
     }
 
     public Map<String, Object> listMine(User user, String status, int page, int size) {
@@ -1171,9 +1178,7 @@ public class SuppliesService {
         int s = Math.min(Math.max(size, 1), 100);
         int offset = (p - 1) * s;
         String st = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
-        List<SupplyClaimOrderView> rows = claimOrderMapper.listMine(user.getId(), st, s, offset).stream()
-                .map(o -> toOrderView(o, withLines))
-                .toList();
+        List<SupplyClaimOrderView> rows = toOrderViews(claimOrderMapper.listMine(user.getId(), st, s, offset), withLines);
         int total = claimOrderMapper.countMine(user.getId(), st);
         Map<String, Object> data = new HashMap<>();
         data.put("data", rows);
@@ -1199,7 +1204,7 @@ public class SuppliesService {
         }
         List<SupplyClaimOrder> orders = claimOrderMapper.listByUserCreatedBetween(
                 targetUid, fromDt, toExclusive, CLAIM_RANGE_LIST_MAX_ORDERS, 0);
-        List<SupplyClaimOrderView> rows = orders.stream().map(o -> toOrderView(o, true)).toList();
+        List<SupplyClaimOrderView> rows = toOrderViews(orders, true);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("from", from.toString());
         data.put("to", to.toString());
@@ -1263,7 +1268,7 @@ public class SuppliesService {
         }
         List<SupplyClaimOrder> orders = claimOrderMapper.listByUserCreatedBetween(
                 targetUid, fromDt, toExclusive, CLAIM_RANGE_LIST_MAX_ORDERS, 0);
-        List<SupplyClaimOrderView> views = orders.stream().map(o -> toOrderView(o, true)).toList();
+        List<SupplyClaimOrderView> views = toOrderViews(orders, true);
         String label = resolveClaimPersonDisplay(targetUid);
         return suppliesExcelExportService.buildPersonalClaimsAggregateSheet(from, to, label, views, this::resolveClaimPersonDisplay);
     }
@@ -1428,10 +1433,7 @@ public class SuppliesService {
         if (!anyGrant) {
             return Result.error("请至少勾选一行同意发放");
         }
-        // 出库处理即终结本单：释放全部行的申请锁定（无论是否同意发放）
-        for (SupplyClaimLine dl : dbLines) {
-            releaseClaimLineLock(dl);
-        }
+        // 先扣实物库存（仍保持 PENDING 锁定，stock_qty 与 locked_qty 独立）；成功后再改状态并重算锁定
         List<String> grantedItemNames = new ArrayList<>();
         for (SupplyClaimLine dl : dbLines) {
             Integer out = outQtyByLine.get(dl.getId());
@@ -1466,6 +1468,8 @@ public class SuppliesService {
         if (uo == 0) {
             throw new IllegalStateException("更新订单状态失败");
         }
+        // 本单已非 PENDING：按权威源重算，清掉本单预占（并顺带修复历史幽灵锁定）
+        reconcileLockedQtyForOrder(orderId);
         Map<String, Object> detail = new HashMap<>();
         detail.put("orderId", orderId);
         detail.put("lines", outQtyByLine);
@@ -1904,7 +1908,7 @@ public class SuppliesService {
         }
     }
 
-    /** 释放单行锁定（SQL 侧仅作用于 QUANTIFIED，下限 0） */
+    /** 释放单行锁定（SQL 侧仅作用于 QUANTIFIED，下限 0）；修订覆盖写阶段仍用增量释放再重锁 */
     private void releaseClaimLineLock(SupplyClaimLine line) {
         if (line == null || line.getItemId() == null) return;
         int qty = line.getQty() == null ? 0 : line.getQty();
@@ -1913,20 +1917,21 @@ public class SuppliesService {
         }
     }
 
-    /** 释放订单全部明细行的锁定 */
-    private void releaseClaimOrderLocks(String orderId) {
+    /** 按未删除 PENDING 行重算本单涉及物品的 locked_qty（删单/撤回/出库/恢复/硬删后的权威校准） */
+    private void reconcileLockedQtyForOrder(String orderId) {
+        if (!StringUtils.hasText(orderId)) return;
+        LinkedHashSet<Long> itemIds = new LinkedHashSet<>();
         for (SupplyClaimLine line : claimLineMapper.listByOrderId(orderId)) {
-            releaseClaimLineLock(line);
+            if (line != null && line.getItemId() != null) itemIds.add(line.getItemId());
         }
+        reconcileLockedQtyForItemIds(itemIds);
     }
 
-    /** 回收站恢复待处理单：强制重新锁定全部明细行（允许超锁） */
-    private void forceLockClaimOrderLocks(String orderId) {
-        for (SupplyClaimLine line : claimLineMapper.listByOrderId(orderId)) {
-            if (line == null || line.getItemId() == null) continue;
-            int qty = line.getQty() == null ? 0 : line.getQty();
-            if (qty > 0) {
-                itemMapper.lockStockForce(line.getItemId(), qty);
+    private void reconcileLockedQtyForItemIds(Collection<Long> itemIds) {
+        if (itemIds == null || itemIds.isEmpty()) return;
+        for (Long itemId : itemIds) {
+            if (itemId != null) {
+                itemMapper.reconcileLockedQty(itemId);
             }
         }
     }
@@ -2019,17 +2024,70 @@ public class SuppliesService {
     }
 
     /**
-     * 领用导出等场景：优先账号「展示昵称」，与小程序/Web 个人中心展示对齐；否则再走人员库/用户名链路。
+     * 领用展示名：统一走 UserDisplayNameService（personnel staffId/19位同源优先）。
      */
     private String resolveClaimPersonDisplay(String userId) {
+        return resolveDisplayName(userId);
+    }
+
+    /** 列表批量解析申请人/出库人展示名。 */
+    private List<SupplyClaimOrderView> toOrderViews(List<SupplyClaimOrder> orders, boolean withLines) {
+        if (orders == null || orders.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (SupplyClaimOrder o : orders) {
+            if (o == null) continue;
+            if (StringUtils.hasText(o.getUserId())) ids.add(o.getUserId().trim());
+            if (StringUtils.hasText(o.getFulfilledBy())) ids.add(o.getFulfilledBy().trim());
+        }
+        Map<String, String> nameMap = userDisplayNameService.resolveDisplayNames(ids);
+        List<SupplyClaimOrderView> out = new ArrayList<>(orders.size());
+        for (SupplyClaimOrder o : orders) {
+            if (o == null) continue;
+            out.add(toOrderView(o, withLines, nameMap));
+        }
+        return out;
+    }
+
+    private SupplyClaimOrderView toOrderView(SupplyClaimOrder o, boolean withLines) {
+        if (o == null) {
+            return null;
+        }
+        return toOrderViews(List.of(o), withLines).stream().findFirst().orElse(null);
+    }
+
+    private SupplyClaimOrderView toOrderView(SupplyClaimOrder o, boolean withLines, Map<String, String> nameMap) {
+        SupplyClaimOrderView v = new SupplyClaimOrderView();
+        v.setId(o.getId());
+        v.setUserId(o.getUserId());
+        v.setApplicantName(displayNameOf(nameMap, o.getUserId()));
+        v.setStatus(o.getStatus());
+        v.setCreatedAt(o.getCreatedAt());
+        v.setFulfilledAt(o.getFulfilledAt());
+        v.setFulfilledBy(o.getFulfilledBy());
+        v.setDeleted(o.getDeleted());
+        v.setDeletedTime(o.getDeletedTime());
+        v.setDeletedBy(o.getDeletedBy());
+        v.setPurgeAfterTime(o.getPurgeAfterTime());
+        if (StringUtils.hasText(o.getFulfilledBy())) {
+            v.setFulfilledByName(displayNameOf(nameMap, o.getFulfilledBy()));
+        }
+        if (withLines) {
+            v.setLines(claimLineMapper.listByOrderId(o.getId()).stream().map(this::toLineView).toList());
+        }
+        return v;
+    }
+
+    private String displayNameOf(Map<String, String> nameMap, String userId) {
         if (!StringUtils.hasText(userId)) {
             return "";
         }
-        User u = userMapper.findById(userId.trim());
-        if (u != null && StringUtils.hasText(u.getDisplayNickname())) {
-            return u.getDisplayNickname().trim();
+        String id = userId.trim();
+        if (nameMap != null && StringUtils.hasText(nameMap.get(id))) {
+            return nameMap.get(id);
         }
-        return resolveDisplayName(userId);
+        return resolveDisplayName(id);
     }
 
     /** 按物品导出审计流水 Excel（最多 10000 行） */
@@ -2052,28 +2110,6 @@ public class SuppliesService {
         }
         List<SupplyAuditRestoredRow> restored = claimLineMapper.listFulfilledHistoryByItemId(itemId, cap, 0);
         return suppliesExcelExportService.buildAuditWorkbook(item.getName(), rows, restored, this::resolveDisplayName);
-    }
-
-    private SupplyClaimOrderView toOrderView(SupplyClaimOrder o, boolean withLines) {
-        SupplyClaimOrderView v = new SupplyClaimOrderView();
-        v.setId(o.getId());
-        v.setUserId(o.getUserId());
-        v.setApplicantName(resolveClaimPersonDisplay(o.getUserId()));
-        v.setStatus(o.getStatus());
-        v.setCreatedAt(o.getCreatedAt());
-        v.setFulfilledAt(o.getFulfilledAt());
-        v.setFulfilledBy(o.getFulfilledBy());
-        v.setDeleted(o.getDeleted());
-        v.setDeletedTime(o.getDeletedTime());
-        v.setDeletedBy(o.getDeletedBy());
-        v.setPurgeAfterTime(o.getPurgeAfterTime());
-        if (StringUtils.hasText(o.getFulfilledBy())) {
-            v.setFulfilledByName(resolveClaimPersonDisplay(o.getFulfilledBy()));
-        }
-        if (withLines) {
-            v.setLines(claimLineMapper.listByOrderId(o.getId()).stream().map(this::toLineView).toList());
-        }
-        return v;
     }
 
     private SupplyClaimLineView toLineView(SupplyClaimLine l) {

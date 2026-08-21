@@ -10,7 +10,7 @@ import { useAgvTagManagement } from "@/features/agv-tracker/useAgvTagManagement"
 import { useAgvPickMode } from "@/features/agv-tracker/useAgvPickMode";
 import { useAgvPlayback } from "@/features/agv-tracker/useAgvPlayback";
 import { useAgvUndo } from "@/features/agv-tracker/useAgvUndo";
-import { useAgvCoordPresets, getStoredScales } from "@/features/agv-tracker/useAgvCoordPresets";
+import { useAgvCoordPresets } from "@/features/agv-tracker/useAgvCoordPresets";
 import { useAgvZoneManagement } from "@/features/agv-tracker/useAgvZoneManagement";
 import { useAgvDataRefresh } from "@/features/agv-tracker/useAgvDataRefresh";
 import { buildAgvInfo } from "@/features/agv-tracker/buildAgvInfo";
@@ -99,8 +99,8 @@ export default function AgvTrackerPage() {
   // ── Custom hooks ──
   const {
     hiddenTagsByIp, toggleHiddenTag,
-    customTags, handleAddCustomTag, handleDeleteCustomTag,
-    allTagOptions, allTagColors, creatableTags,
+    tags, handleAddCustomTag, handleUpdateTag, handleDeleteCustomTag,
+    allTagOptions, allTagColors, creatableTags, tagMutationError,
   } = useAgvTagManagement(tagControlIp);
 
   const {
@@ -145,7 +145,7 @@ export default function AgvTrackerPage() {
     handleQuickSaveZone, handleZoneClick, handleDeleteZone, handleZoneColorChange,
     handleZoneReshape,
     pairZoneOverlays, robotZoneOverlays, pickZoneRef,
-  } = useAgvZoneManagement(zones, hiddenTagsByIp, tagControlIp, allTagColors, qc, pushUndo, saveZoneMut as UseMutationResult<any, Error, Partial<AgvSpatialElement>, unknown>, deleteZoneMut, pendingPick, setPendingPick, customTags);
+  } = useAgvZoneManagement(zones, hiddenTagsByIp, tagControlIp, allTagColors, qc, pushUndo, saveZoneMut as UseMutationResult<any, Error, Partial<AgvSpatialElement>, unknown>, deleteZoneMut, pendingPick, setPendingPick, tags);
 
   // ── Focused mode: sync tagControlIp, clear playback on exit ──
   useEffect(() => {
@@ -166,7 +166,7 @@ export default function AgvTrackerPage() {
   // ── AGV info builder ──
   const lastKnownRef = useRef<Record<string, Record<string, unknown>>>({});
   const info = (r: typeof ROBOTS[number]) =>
-    buildAgvInfo(r, getStatus, getLastPolled, robotAnalytics, dwellByIp, getTrail, coordConfigs, getStoredScales, lastKnownRef);
+    buildAgvInfo(r, getStatus, getLastPolled, robotAnalytics, dwellByIp, getTrail, coordConfigs, lastKnownRef);
 
   const quadrant = (r: typeof ROBOTS[number]) => {
     const i = info(r);
@@ -196,6 +196,7 @@ export default function AgvTrackerPage() {
           onZoneClick={handleZoneClick}
           coordEditMode={coordEditMode} zoneEditMode={zoneEditMode}
           selectedZoneId={selectedZoneId} onZoneSelect={setSelectedZoneId} onZoneReshape={handleZoneReshape}
+          onCoordFrameMove={handleCoordFrameMove} onCoordFrameScale={handleCoordFrameScale}
           onCoordFrameRotate={handleCoordFrameRotate}
           playbackProgressRef={pbProgressRef}
           playbackActive={isPlaybackActive}
@@ -241,7 +242,8 @@ export default function AgvTrackerPage() {
         onGenerateTopology={() => generateTopologyMut.mutate()}
         onStartRectPick={handleStartRectPick}
         hiddenTagsByIp={hiddenTagsByIp} onToggleHiddenTag={toggleHiddenTag}
-        customTags={customTags} onAddCustomTag={handleAddCustomTag} onDeleteCustomTag={handleDeleteCustomTag}
+        tags={tags} onAddCustomTag={handleAddCustomTag} onUpdateTag={handleUpdateTag}
+        onDeleteCustomTag={handleDeleteCustomTag} tagMutationError={tagMutationError}
         allTagColors={allTagColors} creatableTags={creatableTags}
         undoLabel={undoLabel} onUndo={handleUndo}
         onSaveCoordPreset={handleSaveCoordPreset} onRestoreCoordPreset={handleRestoreCoordPreset}

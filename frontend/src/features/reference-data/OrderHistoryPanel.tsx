@@ -108,6 +108,11 @@ function OrderCard({ order, expanded, onToggle }: { order: RefOrder; expanded: b
           </span>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-2">
+          {order.estimatedDeliveryDate && (
+            <span className="text-[11px] text-emerald-700">
+              预计送达 {order.estimatedDeliveryDate}
+            </span>
+          )}
           <span className="text-[11px] text-[var(--twin-mute)]">
             {lines.length} 项
           </span>
@@ -136,8 +141,18 @@ function OrderCard({ order, expanded, onToggle }: { order: RefOrder; expanded: b
                           : Object.entries(line.specSelections).map(([k, v]) => `${k}=${v}`).join(" · ")}
                       </span>
                     )}
+                    {(line.registerNo || line.aupRecordId != null) && (
+                      <span className="text-sky-600 ml-1">
+                        {line.registerNo?.trim() || `AUP#${line.aupRecordId}`}
+                      </span>
+                    )}
+                    {line.addedBy && (
+                      <span className="text-[var(--twin-mute)] ml-1">
+                        加购 · {(line.addedByName || "").trim() || line.addedBy}
+                      </span>
+                    )}
                     {line.lineRemark && (
-                      <span className="text-amber-600 ml-1">备注: {line.lineRemark}</span>
+                      <span className="text-amber-600 ml-1">包备注: {line.lineRemark}</span>
                     )}
                   </div>
                   <span className="shrink-0 font-semibold text-[var(--twin-ink)] ml-2">×{line.quantity}</span>
@@ -161,6 +176,13 @@ function OrderCard({ order, expanded, onToggle }: { order: RefOrder; expanded: b
           )}
 
           {/* Submit remark */}
+          {order.estimatedDeliveryDate && (
+            <div>
+              <div className="text-[11px] font-semibold text-[var(--twin-body)] mb-0.5">预计送达</div>
+              <div className="text-xs text-emerald-700">{order.estimatedDeliveryDate}</div>
+            </div>
+          )}
+
           {order.submitRemark && (
             <div>
               <div className="text-[11px] font-semibold text-[var(--twin-body)] mb-0.5">提交备注</div>
@@ -183,6 +205,9 @@ function OrderCard({ order, expanded, onToggle }: { order: RefOrder; expanded: b
                       style={{ backgroundColor: STATUS_COLORS[log.action] || "#9ca3af" }}
                     >
                       {STATUS_LABELS[log.action] || log.action}
+                    </span>
+                    <span className="text-[var(--twin-mute)] shrink-0">
+                      {(log.operatorName || "").trim() || log.operatorId}
                     </span>
                     <span className="text-[var(--twin-body)]">{log.detail}</span>
                   </div>

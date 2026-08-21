@@ -79,6 +79,8 @@ export type ConversationSummary = {
   peerUserId: string;
   peerUsername: string;
   peerDisplayNickname: string;
+  /** 统一展示名（UserDisplayNameService） */
+  peerDisplayName?: string;
   lastMessageAt: string;
   /** 有 chat_user_conversation_prefs 表时由后端返回 */
   pinned?: boolean;

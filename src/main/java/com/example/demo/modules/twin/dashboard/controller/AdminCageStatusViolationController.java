@@ -100,6 +100,51 @@ public class AdminCageStatusViolationController {
         return Result.success(dto);
     }
 
+    /** 更新父记录笼位/状态（课题组批量下多名成员共享同一父记录） */
+    @PutMapping("/{id}")
+    public Result<CageStatusViolationDTO> update(@PathVariable long id, @RequestBody Map<String, Object> body) {
+        TwinCageStatusViolation existing = mapper.selectById(id);
+        if (existing == null) return Result.error("记录不存在");
+        String statusCode = objToStr(body.get("statusCode"));
+        if (statusCode == null || statusCode.isBlank()) {
+            return Result.error("statusCode 不能为空");
+        }
+        existing.setStatusCode(statusCode);
+        existing.setPositionLabel(objToStr(body.get("positionLabel")));
+        if (body.containsKey("projectGroupName")) {
+            existing.setProjectGroupName(objToStr(body.get("projectGroupName")));
+        }
+        if (body.containsKey("projectPiName")) {
+            existing.setProjectPiName(objToStr(body.get("projectPiName")));
+        }
+        if (body.containsKey("campusName")) {
+            existing.setCampusName(objToStr(body.get("campusName")));
+        }
+        if (body.containsKey("roomName")) {
+            existing.setRoomName(objToStr(body.get("roomName")));
+        }
+        Object sId = body.get("cageShelveId");
+        if (sId instanceof Number) {
+            existing.setCageShelveId(((Number) sId).longValue());
+        } else if (body.containsKey("cageShelveId") && (sId == null || "".equals(String.valueOf(sId).trim()))) {
+            existing.setCageShelveId(null);
+        }
+        Object px = body.get("positionX");
+        if (px instanceof Number) {
+            existing.setPositionX(((Number) px).intValue());
+        } else if (body.containsKey("positionX") && px == null) {
+            existing.setPositionX(null);
+        }
+        Object py = body.get("positionY");
+        if (py instanceof Number) {
+            existing.setPositionY(((Number) py).intValue());
+        } else if (body.containsKey("positionY") && py == null) {
+            existing.setPositionY(null);
+        }
+        mapper.updateCageFields(existing);
+        return Result.success(toDTO(existing));
+    }
+
     /** 解除父记录及其所有子记录 */
     @PostMapping("/{id}/clear")
     public Result<?> clear(@PathVariable long id) {
@@ -113,12 +158,14 @@ public class AdminCageStatusViolationController {
         return Result.success(null);
     }
 
-    /** 删除父记录及其所有子记录 */
+    /** 删除父记录及其所有子记录（子记录走 service 以撤回镜像通知） */
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable long id) {
         List<TwinStudentViolation> children = violationMapper.selectByCageViolationId(id);
         for (TwinStudentViolation v : children) {
-            violationMapper.deleteById(v.getId());
+            if (v.getId() != null) {
+                violationService.delete(v.getId());
+            }
         }
         mapper.deleteById(id);
         return Result.success(null);
@@ -158,16 +205,19 @@ public class AdminCageStatusViolationController {
         return Result.success(null);
     }
 
-    /** 移除单个成员 */
+    /** 移除单个成员（走 service：撤回镜像 + 空父记录 CLEARED） */
     @DeleteMapping("/{id}/members/{userId}")
     public Result<?> removeMember(@PathVariable long id, @PathVariable String userId) {
         List<TwinStudentViolation> children = violationMapper.selectByCageViolationId(id);
+        int deleted = 0;
         for (TwinStudentViolation v : children) {
-            if (userId.equals(v.getTargetUserId())) {
-                violationMapper.deleteById(v.getId());
+            if (userId.equals(v.getTargetUserId()) && v.getId() != null) {
+                if (violationService.delete(v.getId())) {
+                    deleted++;
+                }
             }
         }
-        return Result.success(null);
+        return Result.success(Map.of("deleted", deleted));
     }
 
     /** 批量解除选中子记录 */
@@ -183,7 +233,7 @@ public class AdminCageStatusViolationController {
         return Result.success(Map.of("cleared", count));
     }
 
-    /** 批量删除选中子记录 */
+    /** 批量删除选中子记录（撤回镜像；空父记录自动 CLEARED） */
     @PostMapping("/{id}/members/batch-delete")
     public Result<?> batchDeleteMembers(@PathVariable long id, @RequestBody Map<String, Object> body) {
         @SuppressWarnings("unchecked")
@@ -191,8 +241,7 @@ public class AdminCageStatusViolationController {
         if (ids == null || ids.isEmpty()) return Result.error("violationIds 不能为空");
         int count = 0;
         for (Integer vid : ids) {
-            if (vid != null) {
-                violationMapper.deleteById(vid.longValue());
+            if (vid != null && violationService.delete(vid.longValue())) {
                 count++;
             }
         }

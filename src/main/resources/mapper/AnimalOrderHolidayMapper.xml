@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.animalorder.mapper.AnimalOrderHolidayMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.animalorder.entity.AnimalOrderHoliday">
+        <id property="id" column="id"/>
+        <result property="holidayDate" column="holiday_date"/>
+        <result property="dayType" column="day_type"/>
+        <result property="name" column="name"/>
+        <result property="source" column="source"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="listByYear" resultMap="Base">
+        SELECT * FROM animal_order_holiday
+        WHERE YEAR(holiday_date) = #{year}
+        ORDER BY holiday_date ASC
+    </select>
+
+    <select id="countByYear" resultType="int">
+        SELECT COUNT(1) FROM animal_order_holiday
+        WHERE YEAR(holiday_date) = #{year}
+    </select>
+
+    <select id="findById" resultMap="Base">
+        SELECT * FROM animal_order_holiday WHERE id = #{id} LIMIT 1
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO animal_order_holiday (holiday_date, day_type, name, source)
+        VALUES (#{holidayDate}, #{dayType}, #{name}, #{source})
+        ON DUPLICATE KEY UPDATE
+            day_type = VALUES(day_type),
+            name = VALUES(name),
+            source = VALUES(source),
+            updated_at = CURRENT_TIMESTAMP
+    </insert>
+
+    <delete id="deleteById">
+        DELETE FROM animal_order_holiday WHERE id = #{id}
+    </delete>
+
+</mapper>

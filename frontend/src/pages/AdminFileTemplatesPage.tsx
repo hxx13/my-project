@@ -16,6 +16,7 @@ import {
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
+import { appConfirm } from "@/lib/appDialog";
 function fmtBytes(n: number) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -77,7 +78,7 @@ export default function AdminFileTemplatesPage() {
   };
 
   const onDelete = async (id: string) => {
-    if (!window.confirm("确认删除该模板？")) return;
+    if (!await appConfirm("确认删除该模板？")) return;
     try {
       await deleteAdminFileTemplate(id);
       setRows((prev) => prev.filter((x) => x.id !== id));

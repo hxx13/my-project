@@ -155,6 +155,33 @@
         UPDATE supply_item SET locked_qty = 0 WHERE id = #{id}
     </update>
 
+    <!-- 以未删除 PENDING 领用行 SUM(qty) 为权威源重算 locked_qty，消除幽灵锁定 -->
+    <update id="reconcileLockedQty">
+        UPDATE supply_item si
+        SET locked_qty = COALESCE((
+            SELECT SUM(l.qty) FROM supply_claim_line l
+            INNER JOIN supply_claim_order o ON l.order_id = o.id
+            WHERE l.item_id = si.id
+              AND o.status = 'PENDING'
+              AND (o.deleted IS NULL OR o.deleted = 0)
+        ), 0)
+        WHERE si.id = #{id}
+          AND si.stock_mode = 'QUANTIFIED'
+    </update>
+
+    <update id="reconcileAllLockedQty">
+        UPDATE supply_item si
+        SET locked_qty = COALESCE((
+            SELECT SUM(l.qty) FROM supply_claim_line l
+            INNER JOIN supply_claim_order o ON l.order_id = o.id
+            WHERE l.item_id = si.id
+              AND o.status = 'PENDING'
+              AND (o.deleted IS NULL OR o.deleted = 0)
+        ), 0)
+        WHERE si.stock_mode = 'QUANTIFIED'
+          AND si.deleted = 0
+    </update>
+
     <update id="increaseStock">
         UPDATE supply_item
         SET stock_qty = stock_qty + #{qty},

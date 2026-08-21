@@ -12,6 +12,7 @@ import { AdminToolbar, AdminToolbarActions } from "@/components/admin/AdminToolb
 import {Map as MapIcon, Clock, Users, Activity} from "lucide-react";
 import * as echarts from 'echarts';
 
+import { appAlert } from "@/lib/appDialog";
 const DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 // 截取 07:00 到 19:00 (共 13 个时间槽)
 const HOURS = Array.from({length: 13}, (_, i) => i + 7);
@@ -253,13 +254,13 @@ export default function DebugHeatmapPage() {
         setIsSyncing(true);
         try {
             await triggerGroupHeatmapRecalc();
-            alert("✅ 全局空间推演引擎已启动！请在后台查看进度，稍后刷新页面即可看到最新矩阵。");
+            await appAlert("✅ 全局空间推演引擎已启动！请在后台查看进度，稍后刷新页面即可看到最新矩阵。");
             setTimeout(() => {
                 refetchRooms();
                 setIsSyncing(false);
             }, 2000);
         } catch (error) {
-            alert("❌ 引擎启动失败，请检查网络或后端。");
+            await appAlert("❌ 引擎启动失败，请检查网络或后端。");
             setIsSyncing(false);
         }
     };

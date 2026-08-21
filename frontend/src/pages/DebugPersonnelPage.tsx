@@ -23,6 +23,7 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import toast from "react-hot-toast";
 import { DebugPersonnelPersonCard } from "@/features/twin-debug/DebugPersonnelPersonCard";
 
+import { appConfirm } from "@/lib/appDialog";
 function toPersonRow(p: PersonnelRecord | Record<string, unknown>): Record<string, unknown> {
   return { ...p };
 }
@@ -106,7 +107,7 @@ export default function DebugPersonnelPage() {
   };
 
   const handleRecalculateExp = async () => {
-    if (!window.confirm("这将重新遍历历史流水并重新计算所有人的 RPG 经验！确认执行？")) return;
+    if (!await appConfirm("这将重新遍历历史流水并重新计算所有人的 RPG 经验！确认执行？")) return;
     setIsRecalculating(true);
     try {
       await recalculateRpgExp();

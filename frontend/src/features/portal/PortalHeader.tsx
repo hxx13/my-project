@@ -5,7 +5,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { resolveRootEntryPath } from "@/features/auth/postLoginNavigation";
 import { fullLogout } from "@/features/auth/impersonation";
 import { hasMinRole } from "@/features/auth/roleAccess";
-import { ChevronDown, Smartphone, LayoutDashboard, FileEdit, LogOut, User } from "lucide-react";
+import { ChevronDown, ChevronRight, Smartphone, LayoutDashboard, FileEdit, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchPublicCategories } from "@/api/domains/portalContent.api";
 
@@ -13,7 +13,14 @@ import { fetchPublicCategories } from "@/api/domains/portalContent.api";
 /*  Nav data                                                            */
 /* ------------------------------------------------------------------ */
 
-interface DropdownItem { label: string; href: string; route?: string; desc?: string }
+interface DropdownItem {
+  label: string;
+  href: string;
+  route?: string;
+  desc?: string;
+  /** 向右展开的二级菜单 */
+  children?: DropdownItem[];
+}
 interface NavEntry { label: string; href: string; route?: string; children?: DropdownItem[] }
 
 function useNavEntries(modelCats: { name: string }[]): NavEntry[] {
@@ -40,45 +47,93 @@ function useNavEntries(modelCats: { name: string }[]): NavEntry[] {
       ],
     },
     {
+      label: "实验动物", href: "#",
+      children: [
+        {
+          label: "手术", href: "#", desc: "手术相关研究入口",
+          children: [
+            { label: "NHP研究计划", href: "#", route: "/nhp/fill", desc: "选动物 → 选/建实例 → 缓冲确认 → 填写" },
+          ],
+        },
+        { label: "填写AUP计划书", href: "#", route: "/aup/fill", desc: "IACUC 实验动物研究及使用计划" },
+      ],
+    },
+    {
       label: "关于我们", href: "#about", route: "/about",
       children: [
         { label: "部门简介", href: "#", route: "/about", desc: "实验动物科学部概况" },
         { label: "服务指南", href: "#", route: "/services", desc: "使用流程与收费标准" },
         { label: "常见问题", href: "#", route: "/faq", desc: "使用帮助与 FAQ" },
         { label: "联系我们", href: "#", route: "/contact", desc: "地址与联系方式" },
-        { label: "填写计划书", href: "#", route: "/aup/fill", desc: "IACUC 实验动物研究及使用计划（暂）" },
       ],
     },
   ], [modelCats]);
 }
 
 /* ------------------------------------------------------------------ */
-/*  Dropdown — dark theme, solid bg                                    */
+/*  Dropdown — dark theme, solid bg；支持向右展开的二级菜单             */
 /* ------------------------------------------------------------------ */
 
 function NavDropdown({ entry, navigate, onClose }: { entry: NavEntry; navigate: ReturnType<typeof useNavigate>; onClose: () => void }) {
+  const [flyoutLabel, setFlyoutLabel] = useState<string | null>(null);
   if (!entry.children?.length) return null;
+
   const handleClick = (item: DropdownItem) => {
+    if (item.children?.length) return; // 有子菜单的项不直接跳转
     onClose();
     if (item.route) {
       navigate(item.route);
     } else if (item.href && item.href !== "#") {
-      // 锚点链接：先去首页再滚动
       navigate("/", { state: { scrollTo: item.href } });
     }
   };
+
   return (
     <div
       className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 w-56 rounded-xl border border-white/10 bg-[#1e293b] shadow-xl py-1 z-50"
-      onMouseLeave={onClose}
+      onMouseLeave={() => { setFlyoutLabel(null); onClose(); }}
     >
-      {entry.children.map((item) => (
-        <button key={item.label} onClick={() => handleClick(item)}
-          className="w-full text-left block px-4 py-2.5 hover:bg-white/5 transition-colors">
-          <div className="text-sm font-medium text-white/90">{item.label}</div>
-          {item.desc && <div className="text-xs text-white/40 mt-0.5">{item.desc}</div>}
-        </button>
-      ))}
+      {entry.children.map((item) => {
+        const hasSub = !!(item.children?.length);
+        const subOpen = flyoutLabel === item.label;
+        return (
+          <div
+            key={item.label}
+            className="relative"
+            onMouseEnter={() => setFlyoutLabel(hasSub ? item.label : null)}
+          >
+            <button
+              type="button"
+              onClick={() => handleClick(item)}
+              className={cn(
+                "w-full text-left flex items-center gap-2 px-4 py-2.5 hover:bg-white/5 transition-colors",
+                subOpen && "bg-white/5",
+              )}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-white/90">{item.label}</div>
+                {item.desc && <div className="text-xs text-white/40 mt-0.5">{item.desc}</div>}
+              </div>
+              {hasSub && <ChevronRight className="size-3.5 shrink-0 text-white/40" />}
+            </button>
+            {hasSub && subOpen && (
+              <div className="absolute left-full top-0 ml-1 w-56 rounded-xl border border-white/10 bg-[#1e293b] shadow-xl py-1 z-50">
+                {item.children!.map((sub) => (
+                  <button
+                    key={sub.label}
+                    type="button"
+                    onClick={() => handleClick(sub)}
+                    className="w-full text-left block px-4 py-2.5 hover:bg-white/5 transition-colors"
+                  >
+                    <div className="text-sm font-medium text-white/90">{sub.label}</div>
+                    {sub.desc && <div className="text-xs text-white/40 mt-0.5">{sub.desc}</div>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -265,8 +320,20 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
                 <button onClick={() => scrollTo(entry.href, entry.route)}
                   className="w-full text-left px-3 py-2.5 text-sm font-medium text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-colors">{entry.label}</button>
                 {entry.children?.map((c) => (
-                  <button key={c.label} onClick={() => scrollTo(c.href, c.route)}
-                    className="w-full text-left pl-8 pr-3 py-1.5 text-xs text-white/40">{c.label}</button>
+                  <div key={c.label}>
+                    {c.children?.length ? (
+                      <>
+                        <div className="w-full text-left pl-8 pr-3 py-1.5 text-xs text-white/50 font-medium">{c.label}</div>
+                        {c.children.map((sub) => (
+                          <button key={sub.label} onClick={() => scrollTo(sub.href, sub.route)}
+                            className="w-full text-left pl-12 pr-3 py-1.5 text-xs text-white/40">{sub.label}</button>
+                        ))}
+                      </>
+                    ) : (
+                      <button onClick={() => scrollTo(c.href, c.route)}
+                        className="w-full text-left pl-8 pr-3 py-1.5 text-xs text-white/40">{c.label}</button>
+                    )}
+                  </div>
                 ))}
               </div>
             ))}

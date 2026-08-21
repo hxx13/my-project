@@ -11,6 +11,7 @@ import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { useSwipeAlertStore } from "@/store/useSwipeAlertStore";
 
+import { appConfirm } from "@/lib/appDialog";
 interface Props {
   onEdit: (rule: SwipeAlertRuleRow) => void;
   onAdd: () => void;
@@ -33,7 +34,7 @@ export function SwipeAlertRuleList({ onEdit, onAdd, onClose, formOpen, refreshKe
   useEffect(() => { void load(); }, [refreshKey]);
 
   const onDelete = async (id: number) => {
-    if (!window.confirm("确定删除？")) return;
+    if (!await appConfirm("确定删除？")) return;
     try { await deleteSwipeAlertRule(id); toast.success("已删除"); setRows(prev => prev.filter(r => r.id !== id)); }
     catch (e) { toast.error(e instanceof Error ? e.message : "删除失败"); }
   };
