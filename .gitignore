@@ -100,3 +100,12 @@ aroapp/.cloudbase/
 /*.png
 /*.jpg
 /*.jpeg
+
+# ===== AI 分析临时产物（架构图/页面快照/patch 脚本等，不纳入版本库） =====
+.archify/
+_patch_*.py
+animal-surgery-flow.json
+aro-aup-*.txt
+aro-aup-*.js
+aup-page-snapshot.md
+parse-render.js
