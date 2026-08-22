@@ -26,8 +26,8 @@ import NhpTracePanel from "./NhpTracePanel";
 import NhpSnapshotDrawer from "./NhpSnapshotDrawer";
 import NhpQueryPanel from "./NhpQueryPanel";
 import NhpSeriesGrid from "./NhpSeriesGrid";
-import NhpLedger from "./NhpLedger";
-import NhpSampleLedger from "./NhpSampleLedger";
+import NhpEntityLedger from "./NhpEntityLedger";
+import { entityTypeForDomain } from "../api/nhpEntity.api";
 import ScrollButtons from "@/features/aup/components/ScrollButtons";
 import { authStorage } from "@/features/auth/authStorage";
 import { fetchNhpTemplates, fetchNhpTemplateById, fillableFormId, isFillablePublished, type NhpTemplateListItem, type NhpFormTemplate } from "../api/nhpTemplate.api";
@@ -872,7 +872,7 @@ export default function NhpFillWorkbench({
       {captureForm === "SERIES" ? (
         <NhpSeriesGrid data={seriesData ?? undefined} loading={seriesLoading} />
       ) : captureForm === "LEDGER" ? (
-        <NhpSampleLedger subjectId={subject?.id ?? 0} />
+        <NhpEntityLedger entityType={entityTypeForDomain(formKey) ?? "sample"} subjectId={subject?.id ?? 0} txId={record?.transplantId} />
       ) : !template ? (
         <div className="aup-empty">{loadError || "加载模板…"}</div>
       ) : (

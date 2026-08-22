@@ -59,11 +59,19 @@ public class NhpSampleController {
             ctx.put("tx", s.getTxId());
             ctx.put("tp", s.getTimepointCode());
             ctx.put("sampleType", s.getSampleType());
-            sampleCode = idService.buildCode("SMP", ctx);
+            sampleCode = safeCode("SMP", ctx);
         }
         s.setSampleCode(sampleCode);
         sampleMapper.insert(s);
         return Result.success(s);
+    }
+
+    private String safeCode(String idType, Map<String, Object> ctx) {
+        try {
+            return idService.buildCode(idType, ctx);
+        } catch (Exception e) {
+            return idType + "-" + System.currentTimeMillis();
+        }
     }
 
     private static String str(Object v) {

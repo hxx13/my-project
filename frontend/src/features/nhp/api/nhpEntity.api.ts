@@ -79,3 +79,15 @@ export async function fetchNhpAdverseEvents(txId?: number): Promise<NhpAdverseEv
 export async function createNhpAdverseEvent(body: Partial<NhpAdverseEvent>): Promise<NhpAdverseEvent> {
   return authHttp.post<Result<NhpAdverseEvent>>("/nhp/adverse-events", body).then(({ data }) => data.data);
 }
+
+/** 台账实体类型 */
+export type NhpEntityType = "sample" | "medication" | "adverseEvent";
+
+/** 由数据域码推导台账实体类型：D4 样本 / D6 用药 / D5 随访(不良事件) */
+export function entityTypeForDomain(domainCode?: string | null): NhpEntityType | null {
+  const d = (domainCode ?? "").toUpperCase();
+  if (d === "D4") return "sample";
+  if (d === "D6") return "medication";
+  if (d === "D5") return "adverseEvent";
+  return null;
+}

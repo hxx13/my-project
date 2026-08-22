@@ -109,3 +109,6 @@ aro-aup-*.txt
 aro-aup-*.js
 aup-page-snapshot.md
 parse-render.js
+
+# ===== 建库字段档案（本地权威文档，仅供 AI 建库参考，不进代码仓库） =====
+数据库字段档案/
