@@ -20,6 +20,13 @@ public class CrfVisit {
     private Integer earlyDays;
     /** 允许延后天数 */
     private Integer lateDays;
+    /** 重复时点右边界天数（V34） */
+    private Integer endDays;
+    /**
+     * 事件锚点：ENROLL/PRE_TX/DAY0/POST_TX/INTRAOP/ANES/PERFUSION/HARVEST/
+     * SAMPLE/READOUT/REGIMEN/STORAGE/EVENT/ENDPOINT/LOCK/ALL（V20260821025）
+     */
+    private String eventAnchor;
     private Boolean active;
     private LocalDateTime createdAt;
 }

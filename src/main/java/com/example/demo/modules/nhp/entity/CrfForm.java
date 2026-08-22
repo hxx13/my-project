@@ -18,6 +18,12 @@ public class CrfForm {
     /** DRAFT/FREEZING/FROZEN/ARCHIVED */
     private String status;
     private String description;
+    /** 事件锚点 ENROLL/PRE_TX/DAY0/POST_TX/…（V34 schedule） */
+    private String eventAnchor;
+    /** 频次 ONCE/PER_TP/EVENT/…；≠ONCE 即重复（无 repeat_flag） */
+    private String frequency;
+    /** 采集形态 SERIES/LEDGER/PANEL（V35 推导） */
+    private String captureForm;
     private Boolean active;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

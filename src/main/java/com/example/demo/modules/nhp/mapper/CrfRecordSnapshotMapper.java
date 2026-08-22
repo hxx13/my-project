@@ -17,9 +17,22 @@ public interface CrfRecordSnapshotMapper {
     @Select("SELECT * FROM crf_record_snapshot WHERE id = #{id} AND record_id = #{recordId}")
     CrfRecordSnapshot findByIdAndRecordId(@Param("id") Long id, @Param("recordId") Long recordId);
 
+    @Select("SELECT * FROM crf_record_snapshot WHERE id = #{id}")
+    CrfRecordSnapshot findById(Long id);
+
     @Select("SELECT id, record_id, version_no, stage, biz_stage, form_id, note, created_by, created_at " +
             "FROM crf_record_snapshot WHERE record_id = #{recordId} ORDER BY version_no DESC")
     List<CrfRecordSnapshot> listLightByRecordId(Long recordId);
+
+    @Select("<script>" +
+            "SELECT id, record_id, version_no, stage, biz_stage, form_id, note, created_by, created_at " +
+            "FROM crf_record_snapshot " +
+            "<where>" +
+            "  <if test='recordId != null'>record_id = #{recordId}</if>" +
+            "</where>" +
+            "ORDER BY id DESC LIMIT #{limit}" +
+            "</script>")
+    List<CrfRecordSnapshot> listLight(@Param("recordId") Long recordId, @Param("limit") int limit);
 
     @Select("SELECT COALESCE(MAX(version_no), 0) FROM crf_record_snapshot WHERE record_id = #{recordId}")
     Integer selectMaxVersionNo(Long recordId);

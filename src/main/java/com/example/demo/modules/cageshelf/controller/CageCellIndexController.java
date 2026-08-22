@@ -168,6 +168,22 @@ public class CageCellIndexController {
         return Result.success(stats);
     }
 
+    // ── 一键本地同步（固定顺序：全量 → 补全详情 → 状态）──
+
+    @PostMapping("/sync-local-pipeline")
+    @Operation(summary = "一键同步本地笼位：按固定顺序执行 /back 全量 → /list 补全详情 → /book 状态（仅超级管理员）")
+    public Result<Map<String, Object>> syncLocalPipeline(
+            @RequestBody(required = false) Map<String, Object> body,
+            HttpServletRequest request) {
+        User user = resolveUser(request.getHeader("Authorization"));
+        Result<?> denied = requireMinRole(user, RoleEnum.SUPER_ADMIN);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        Long roomId = body != null ? toLong(body.get("roomId")) : null;
+        log.info("[local-pipeline] 超级管理员 {} 触发一键本地同步 roomId={}", user.getId(), roomId);
+        Map<String, Object> stats = cellIndexService.syncLocalPipeline(roomId);
+        return Result.success(stats);
+    }
+
     // ── 本地写入（先写DB，异步投递ARO）──
 
     @PostMapping("/local-action")

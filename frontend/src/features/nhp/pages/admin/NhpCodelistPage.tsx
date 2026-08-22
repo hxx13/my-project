@@ -13,6 +13,8 @@ import {
   addNhpCodelistItem,
   addNhpCodelistLink,
   approveNhpCodelistReview,
+  createNhpCodelist,
+  updateNhpCodelistMeta,
   createNhpCodelistDraft,
   deleteNhpCodelist,
   deleteNhpCodelistItem,
@@ -31,13 +33,15 @@ import {
   type NhpCodelistItem,
   type NhpCodelistUsageVersion,
 } from "../../api/nhpCodelist.api";
-import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
-import { buildNhpFieldPagePath, sanitizeNhpReturnTo } from "../../utils/nhpAdminNav";
+import { buildNhpFieldPagePath, nhpPathOf, sanitizeNhpReturnTo } from "../../utils/nhpAdminNav";
 import { compareCodedId } from "../../utils/domainSort";
 import { scheduleScrollAsideItem } from "../../utils/scrollAsideItem";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
+import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "../../components/FolderTreeManager";
+import { CODELIST_FOLDER_LABELS } from "../../utils/folderTreeLabels";
+import ContentManagerWorkbenchLayout from "@/layouts/ContentManagerWorkbenchLayout";
 import "@/features/aup/aup.css";
 import "../../nhp.css";
 
@@ -83,12 +87,193 @@ interface ItemModal {
   itemId?: number;
 }
 
+const UNGROUPED = "未分类";
+const PENDING_FOLDERS_STORAGE_KEY = "nhp-codelist-pending-folders";
+/** 嵌套文件夹路径分隔符，存入 crf_codelist.folder（VARCHAR 64） */
+const FOLDER_PATH_SEP = "/";
+const MAX_FOLDER_PATH_LEN = 64;
+
+function folderPathSegments(path: string): string[] {
+  return path.split(FOLDER_PATH_SEP).filter((s) => s.length > 0);
+}
+
+function joinFolderPath(parent: string, childName: string): string {
+  const child = childName.trim();
+  if (!child) return parent;
+  return parent ? `${parent}${FOLDER_PATH_SEP}${child}` : child;
+}
+
+function isUnderFolderPath(path: string, ancestor: string): boolean {
+  return path === ancestor || path.startsWith(`${ancestor}${FOLDER_PATH_SEP}`);
+}
+
+function replaceFolderPathPrefix(path: string, oldPrefix: string, newPrefix: string): string {
+  if (path === oldPrefix) return newPrefix;
+  if (path.startsWith(`${oldPrefix}${FOLDER_PATH_SEP}`)) {
+    return newPrefix + path.slice(oldPrefix.length);
+  }
+  return path;
+}
+
+function validateFolderSegmentName(name: string): string | null {
+  if (!name.trim()) return "名称不能为空";
+  if (name === UNGROUPED) return `「${UNGROUPED}」为系统保留名`;
+  if (name.includes(FOLDER_PATH_SEP)) return `文件夹名不能包含「${FOLDER_PATH_SEP}」`;
+  return null;
+}
+
+function validateFolderPath(path: string): string | null {
+  if (path.length > MAX_FOLDER_PATH_LEN) {
+    return `文件夹路径不能超过 ${MAX_FOLDER_PATH_LEN} 个字符`;
+  }
+  return null;
+}
+
+function allKnownFolderKeys(codelists: NhpCodelist[], pendingFolders: Set<string>): Set<string> {
+  const keys = new Set<string>();
+  for (const c of codelists) {
+    const fk = codelistFolderKey(c.folder);
+    if (fk !== UNGROUPED) keys.add(fk);
+  }
+  for (const f of pendingFolders) keys.add(f);
+  return keys;
+}
+
+function folderHasSubfolders(folderKey: string, knownKeys: Set<string>): boolean {
+  for (const k of knownKeys) {
+    if (k !== folderKey && k.startsWith(`${folderKey}${FOLDER_PATH_SEP}`)) return true;
+  }
+  return false;
+}
+
+function countTreeFolderNodes(groups: FolderTreeGroup[]): number {
+  let n = 0;
+  for (const g of groups) {
+    if (g.key !== UNGROUPED) n += 1;
+    n += countTreeFolderNodes(g.children ?? []);
+  }
+  return n;
+}
+
+function buildNestedCodelistFolderTree(
+  grouped: Array<[string, NhpCodelist[]]>,
+): FolderTreeGroup<{ id: string; codelist: NhpCodelist }>[] {
+  type Node = {
+    key: string;
+    label: string;
+    items: { id: string; codelist: NhpCodelist }[];
+    children: Map<string, Node>;
+  };
+
+  const roots = new Map<string, Node>();
+
+  const getOrCreateNode = (fullKey: string): Node => {
+    const segments = folderPathSegments(fullKey);
+    let pathSoFar = "";
+    let parentMap = roots;
+    let node!: Node;
+
+    for (const seg of segments) {
+      pathSoFar = pathSoFar ? `${pathSoFar}${FOLDER_PATH_SEP}${seg}` : seg;
+      let existing = parentMap.get(pathSoFar);
+      if (!existing) {
+        existing = { key: pathSoFar, label: seg, items: [], children: new Map() };
+        parentMap.set(pathSoFar, existing);
+      }
+      node = existing;
+      parentMap = existing.children;
+    }
+    return node;
+  };
+
+  const toGroup = (node: Node, depth = 0): FolderTreeGroup<{ id: string; codelist: NhpCodelist }> => ({
+    key: node.key,
+    label: node.label,
+    mutable: true,
+    items: node.items,
+    headerStyle:
+      depth > 0
+        ? { paddingLeft: 28, fontSize: 12, color: "var(--slate)", fontWeight: 600 }
+        : undefined,
+    emptyHint: "空文件夹",
+    emptyActionLabel: "新建码表",
+    children: [...node.children.values()]
+      .sort((a, b) => a.label.localeCompare(b.label, "zh-CN"))
+      .map((child) => toGroup(child, depth + 1)),
+  });
+
+  let ungrouped: FolderTreeGroup<{ id: string; codelist: NhpCodelist }> | null = null;
+
+  for (const [folderKey, list] of grouped) {
+    if (folderKey === UNGROUPED) {
+      ungrouped = {
+        key: UNGROUPED,
+        label: UNGROUPED,
+        mutable: false,
+        items: list.map((c) => ({ id: c.code, codelist: c })),
+      };
+      continue;
+    }
+    const node = getOrCreateNode(folderKey);
+    node.items = list.map((c) => ({ id: c.code, codelist: c }));
+  }
+
+  const topFolders = [...roots.values()]
+    .sort((a, b) => a.label.localeCompare(b.label, "zh-CN"))
+    .map((node) => toGroup(node, 0));
+
+  if (ungrouped) topFolders.push(ungrouped);
+  return topFolders;
+}
+
+function expandFolderPathKeys(prev: Set<string>, folderKey: string): Set<string> {
+  const next = new Set(prev);
+  let path = "";
+  for (const seg of folderPathSegments(folderKey)) {
+    path = path ? `${path}${FOLDER_PATH_SEP}${seg}` : seg;
+    next.delete(path);
+  }
+  return next;
+}
+
+function codelistFolderKey(folder?: string | null): string {
+  return (folder ?? "").trim() || UNGROUPED;
+}
+
+function folderFieldValue(folderKey: string): string {
+  return folderKey === UNGROUPED ? "" : folderKey;
+}
+
+function loadPendingFolders(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(PENDING_FOLDERS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(
+      parsed.filter((f): f is string => typeof f === "string" && f.trim() !== "" && f !== UNGROUPED),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+interface CreateCodelistModal {
+  folder: string;
+  code: string;
+  name: string;
+}
+
+interface EditCodelistMetaModal {
+  name: string;
+  folder: string;
+}
+
 export default function NhpCodelistPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const goBack = useGoBack("/content-manager/nhp-field");
   const [keyword, setKeyword] = useState("");
   const [selected, setSelected] = useState<string | null>(() => searchParams.get("code"));
   const [selectedVersion, setSelectedVersion] = useState<number | null>(() => {
@@ -96,12 +281,21 @@ export default function NhpCodelistPage() {
     return v ? Number(v) : null;
   });
   const [itemModal, setItemModal] = useState<ItemModal | null>(null);
+  const [createModal, setCreateModal] = useState<CreateCodelistModal | null>(null);
+  const [editMetaModal, setEditMetaModal] = useState<EditCodelistMetaModal | null>(null);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  /** 尚无码表的空文件夹（folder 仅为字符串标签，无独立实体） */
+  const [pendingFolders, setPendingFolders] = useState<Set<string>>(loadPendingFolders);
   const [linkPicker, setLinkPicker] = useState<Record<number, string>>({});
   const asideRef = useRef<HTMLElement>(null);
   const pendingScrollCode = useRef<string | null>(searchParams.get("code"));
 
   /** URL dictKey：从字段页带入，便于无 returnTo 时回跳 */
   const fromDictKey = (searchParams.get("dictKey") || "").trim();
+
+  useEffect(() => {
+    sessionStorage.setItem(PENDING_FOLDERS_STORAGE_KEY, JSON.stringify([...pendingFolders]));
+  }, [pendingFolders]);
 
   const role = authStorage.getRole() || "";
   const canMaintain = hasMinRole(role, "ADMIN");
@@ -186,9 +380,153 @@ export default function NhpCodelistPage() {
   const filtered = useMemo(() => {
     if (!q) return codelists;
     return codelists.filter(
-      (c) => c.code.toLowerCase().includes(q) || (c.name || "").toLowerCase().includes(q),
+      (c) =>
+        c.code.toLowerCase().includes(q) ||
+        (c.name || "").toLowerCase().includes(q) ||
+        (c.folder || "").toLowerCase().includes(q),
     );
   }, [codelists, q]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, NhpCodelist[]>();
+    for (const c of filtered) {
+      const folder = codelistFolderKey(c.folder);
+      if (!map.has(folder)) map.set(folder, []);
+      map.get(folder)!.push(c);
+    }
+    const qLower = q;
+    for (const folder of pendingFolders) {
+      if (folder === UNGROUPED) continue;
+      if (qLower && !folder.toLowerCase().includes(qLower)) continue;
+      if (!map.has(folder)) map.set(folder, []);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code, "zh-CN"));
+    }
+    return Array.from(map.entries()).sort((a, b) => {
+      if (a[0] === UNGROUPED) return 1;
+      if (b[0] === UNGROUPED) return -1;
+      return a[0].localeCompare(b[0], "zh-CN");
+    });
+  }, [filtered, pendingFolders, q]);
+
+  const folderTreeGroups = useMemo(
+    (): FolderTreeGroup<{ id: string; codelist: NhpCodelist }>[] => buildNestedCodelistFolderTree(grouped),
+    [grouped],
+  );
+
+  const folderCount = useMemo(() => countTreeFolderNodes(folderTreeGroups), [folderTreeGroups]);
+
+  const openCreateInFolder = (folderKey: string) => {
+    setCollapsedFolders((prev) => expandFolderPathKeys(prev, folderKey));
+    setCreateModal({ folder: folderFieldValue(folderKey), code: "", name: "" });
+  };
+
+  const addPendingFolder = (fullPath: string) => {
+    setPendingFolders((prev) => new Set(prev).add(fullPath));
+    setCollapsedFolders((prev) => expandFolderPathKeys(prev, fullPath));
+  };
+
+  const promptCreateFolder = async (parentFolderKey?: string) => {
+    const title = parentFolderKey ? "新建子文件夹" : "新建文件夹";
+    const name = (await appPrompt(title, ""))?.trim() ?? "";
+    if (!name) return;
+    const segErr = validateFolderSegmentName(name);
+    if (segErr) {
+      toast.error(segErr);
+      return;
+    }
+    const fullPath = joinFolderPath(parentFolderKey ?? "", name);
+    const pathErr = validateFolderPath(fullPath);
+    if (pathErr) {
+      toast.error(pathErr);
+      return;
+    }
+    const known = allKnownFolderKeys(codelists, pendingFolders);
+    if (known.has(fullPath)) {
+      toast.error(`文件夹「${fullPath}」已存在`);
+      return;
+    }
+    addPendingFolder(fullPath);
+    if (await appConfirm(`文件夹「${fullPath}」已创建。是否立即在此文件夹新建码表？`)) {
+      openCreateInFolder(fullPath);
+    }
+  };
+
+  const handleCreateFolder = () => promptCreateFolder();
+
+  const handleCreateSubFolder = (parentFolderKey: string) => promptCreateFolder(parentFolderKey);
+
+  const handleRenameFolder = async (folderKey: string) => {
+    if (folderKey === UNGROUPED) return;
+    const segments = folderPathSegments(folderKey);
+    const currentName = segments[segments.length - 1] ?? folderKey;
+    const newName = (await appPrompt("重命名文件夹", currentName))?.trim() ?? "";
+    if (!newName || newName === currentName) return;
+    const segErr = validateFolderSegmentName(newName);
+    if (segErr) {
+      toast.error(segErr);
+      return;
+    }
+    const parentPath = segments.slice(0, -1).join(FOLDER_PATH_SEP);
+    const newPath = parentPath ? joinFolderPath(parentPath, newName) : newName;
+    const pathErr = validateFolderPath(newPath);
+    if (pathErr) {
+      toast.error(pathErr);
+      return;
+    }
+    const known = allKnownFolderKeys(codelists, pendingFolders);
+    if (known.has(newPath) && newPath !== folderKey) {
+      toast.error(`文件夹「${newPath}」已存在`);
+      return;
+    }
+    const affectedCodes = codelists
+      .filter((c) => isUnderFolderPath(codelistFolderKey(c.folder), folderKey))
+      .map((c) => c.code);
+    if (affectedCodes.length === 0) {
+      setPendingFolders((prev) => {
+        const next = new Set<string>();
+        for (const f of prev) {
+          if (f === folderKey || isUnderFolderPath(f, folderKey)) {
+            next.add(replaceFolderPathPrefix(f, folderKey, newPath));
+          } else {
+            next.add(f);
+          }
+        }
+        return next;
+      });
+      toast.success(`已重命名为「${newPath}」`);
+      return;
+    }
+    renameFolderMut.mutate({ folderKey, newPath, codes: affectedCodes });
+  };
+
+  const handleDeleteFolder = async (folderKey: string) => {
+    if (folderKey === UNGROUPED) return;
+    const known = allKnownFolderKeys(codelists, pendingFolders);
+    const directCodes = codelists.filter((c) => codelistFolderKey(c.folder) === folderKey);
+    if (directCodes.length > 0 || folderHasSubfolders(folderKey, known)) return;
+    if (!await appConfirm(`确定删除空文件夹「${folderKey}」？`)) return;
+    setPendingFolders((prev) => {
+      const next = new Set(prev);
+      next.delete(folderKey);
+      return next;
+    });
+    toast.success(`已删除文件夹「${folderKey}」`);
+  };
+
+  useEffect(() => {
+    if (!q) return;
+    setCollapsedFolders((prev) => {
+      let next = prev;
+      for (const [folder, list] of grouped) {
+        if (list.length > 0 || folder.toLowerCase().includes(q)) {
+          next = expandFolderPathKeys(next, folder);
+        }
+      }
+      return next;
+    });
+  }, [q, grouped]);
 
   useEffect(() => {
     const code = pendingScrollCode.current;
@@ -374,6 +712,90 @@ export default function NhpCodelistPage() {
     onError: (e: Error) => toast.error(e.message || "批量解冻失败"),
   });
 
+  const createCodelistMut = useMutation({
+    mutationFn: (body: { code: string; name: string; folder?: string }) => createNhpCodelist(body),
+    onSuccess: (d) => {
+      toast.success(`已新建码表「${d.name}」`);
+      const fk = codelistFolderKey(d.folder);
+      if (fk !== UNGROUPED) {
+        setPendingFolders((prev) => {
+          if (!prev.has(fk)) return prev;
+          const next = new Set(prev);
+          next.delete(fk);
+          return next;
+        });
+      }
+      setCreateModal(null);
+      setSelected(d.code);
+      setSelectedVersion(d.version);
+      syncUrl(d.code, d.version);
+      pendingScrollCode.current = d.code;
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "新建码表失败"),
+  });
+
+  const renameFolderMut = useMutation({
+    mutationFn: async ({
+      folderKey,
+      newPath,
+      codes,
+    }: {
+      folderKey: string;
+      newPath: string;
+      codes: string[];
+    }) => {
+      for (const code of codes) {
+        const c = codelists.find((row) => row.code === code);
+        if (!c) continue;
+        const oldFk = codelistFolderKey(c.folder);
+        const newFk = replaceFolderPathPrefix(oldFk, folderKey, newPath);
+        await updateNhpCodelistMeta(code, { folder: folderFieldValue(newFk) || null });
+      }
+      return { folderKey, newPath };
+    },
+    onSuccess: ({ folderKey, newPath }) => {
+      toast.success(`文件夹已重命名为「${newPath}」`);
+      setPendingFolders((prev) => {
+        let changed = false;
+        const next = new Set<string>();
+        for (const f of prev) {
+          if (f === folderKey || isUnderFolderPath(f, folderKey)) {
+            next.add(replaceFolderPathPrefix(f, folderKey, newPath));
+            changed = true;
+          } else {
+            next.add(f);
+          }
+        }
+        return changed ? next : prev;
+      });
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "重命名文件夹失败"),
+  });
+
+  const updateMetaMut = useMutation({
+    mutationFn: (body: { name: string; folder?: string | null }) =>
+      updateNhpCodelistMeta(selected!, body),
+    onSuccess: (d) => {
+      toast.success(`已更新码表「${d.name}」`);
+      setEditMetaModal(null);
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "更新失败"),
+  });
+
+  const moveCodelistMut = useMutation({
+    mutationFn: ({ code, folderKey }: { code: string; folderKey: string }) =>
+      updateNhpCodelistMeta(code, { folder: folderFieldValue(folderKey) || null }),
+    onSuccess: (d) => {
+      const fk = codelistFolderKey(d.folder);
+      toast.success(`已移动到「${fk}」`);
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "移动失败"),
+  });
+
   const reorderLocal = async (index: number, dir: -1 | 1) => {
     if (!selected || !editable) return;
     const j = index + dir;
@@ -426,17 +848,20 @@ export default function NhpCodelistPage() {
   };
 
   const handleBack = () => {
-    const rt = sanitizeNhpReturnTo((location.state as { returnTo?: unknown } | null)?.returnTo);
+    const rt = sanitizeNhpReturnTo(
+      (location.state as { returnTo?: unknown } | null)?.returnTo,
+      nhpPathOf(location),
+    );
     if (rt) {
-      navigate(rt);
+      navigate(rt, { replace: true });
       return;
     }
     if (fromDictKey) {
       const fc = (searchParams.get("fieldCode") || "").trim();
-      navigate(buildNhpFieldPagePath(fromDictKey, { fieldCode: fc || null }));
+      navigate(buildNhpFieldPagePath(fromDictKey, { fieldCode: fc || null }), { replace: true });
       return;
     }
-    goBack();
+    navigate("/content-manager/nhp-template", { replace: true });
   };
 
   const row = (label: string, input: ReactNode) => (
@@ -449,140 +874,126 @@ export default function NhpCodelistPage() {
   const st = statusMeta(detail?.status);
 
   return (
-    <div className="aup-app aup-app--workbench" style={{ background: "var(--bg)" }}>
-      <div className="aup-wb">
-        <div className="aup-wb-hd aup-wb-hd--compact">
-          <div className="aup-wb-hd-main">
-            <button type="button" className="btn ghost small" onClick={handleBack}>
-              ← 返回{fromDictKey ? `字段（${fromDictKey}）` : ""}
-            </button>
-            <h1>NHP 码表</h1>
-            <div className="sub">
-              整表版本 · 本页校对发布。
-              种子码表基线为<strong>已发布(FROZEN)</strong>（便于字段挂接），不是故障；
-              改项请「新建版本」再校对，或对无引用码表用「解冻本版 / 批量解冻无引用」。
-              「重导入猪字典」只冻结<strong>字段</strong>，不批量冻码表。{" · "}
-              <Link to="/content-manager/nhp-template" style={{ color: "var(--primary)" }}>
-                CRF 模板
-              </Link>
-            </div>
-          </div>
-          <div className="aup-wb-actions">
-            {canMaintain && (
-              <button
-                className="btn ghost small"
-                disabled={unfreezeUnusedMut.isPending}
-                title="仅解冻未被活跃字段引用的冻结码表；种子/重导入批量冻结后可用"
-                onClick={async () => {
-                  if (
-                    await appConfirm(
-                      "批量解冻所有「无活跃字段引用」的已冻结码表？仍有引用的会跳过并说明。软删字段不计占用。继续？",
-                    )
-                  ) {
-                    unfreezeUnusedMut.mutate();
-                  }
-                }}
-              >
-                {unfreezeUnusedMut.isPending ? "解冻中…" : "批量解冻无引用"}
-              </button>
-            )}
-            {canMaintain && selected && isPublishedStatus(detail?.status) && (
-              <button
-                className="btn ghost small"
-                disabled={unfreezeMut.isPending}
-                title="无活跃字段占用本版时可解冻；否则请新建版本"
-                onClick={async () => {
-                  if (
-                    await appConfirm(
-                      `解冻码表「${detail?.name || selected}」当前版为草稿？仅当无活跃字段引用本版时允许。确认？`,
-                    )
-                  ) {
-                    unfreezeMut.mutate();
-                  }
-                }}
-              >
-                解冻本版
-              </button>
-            )}
-            {canMaintain && selected && isPublishedStatus(detail?.status) && (
-              <button
-                className="btn primary small"
-                disabled={draftMut.isPending}
-                onClick={async () => {
-                  if (await appConfirm("基于最新已发布版克隆新草稿（版号自动补位空缺）。占用中的历史版本会保留。确认？")) {
-                    draftMut.mutate();
-                  }
-                }}
-              >
-                ＋ 新建版本
-              </button>
-            )}
-            <button
-              className="btn primary small"
-              disabled={!selected || !editable}
-              onClick={() => setItemModal({ mode: "add", itemCode: "", itemLabel: "" })}
-            >
-              ＋ 新增项
-            </button>
-          </div>
-        </div>
-
-        <div className="aup-wb-toolbar">
-          <input
-            className="input"
-            placeholder="搜索码表中文名 / 编码…"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-          {keyword && (
-            <button className="btn ghost small" onClick={() => setKeyword("")}>
-              清除
-            </button>
-          )}
-          <span className="aup-wb-count">共 {filtered.length} 个码表</span>
-        </div>
-
-        <div className="aup-wb-split">
-          <aside className="aup-wb-aside" ref={asideRef}>
-            {listQuery.isLoading && (
-              <div style={{ padding: 28, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>加载码表…</div>
-            )}
-            {!listQuery.isLoading && filtered.length === 0 && (
-              <div style={{ padding: 28, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
-                {keyword.trim() ? "无匹配码表" : "暂无码表"}
-              </div>
-            )}
-            {filtered.map((c: NhpCodelist) => {
-              const sm = statusMeta(c.status);
-              const refN = c.refCount ?? 0;
-              return (
-                <div
-                  key={c.code}
-                  data-codelist-code={c.code}
-                  className={`aup-wb-row${selected === c.code ? " on" : ""}`}
-                  style={{ paddingLeft: 14 }}
-                  onClick={() => selectCodelist(c.code)}
-                  title={`${c.name}（${c.code}）· v${c.version} · 被 ${refN} 个字段引用`}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="lbl">{c.name}</div>
-                    <div className="meta" style={{ marginTop: 2, fontFamily: "ui-monospace, monospace" }}>
-                      {c.code} · v{c.version}
-                      {(c.versionCount ?? 1) > 1 ? ` · ${c.versionCount} 版` : ""}
-                    </div>
+    <ContentManagerWorkbenchLayout
+      onBack={handleBack}
+      backLabel={`← 返回${fromDictKey ? `字段（${fromDictKey}）` : ""}`}
+      searchPlaceholder="搜索码表中文名 / 编码 / 文件夹…"
+      searchValue={keyword}
+      onSearchChange={setKeyword}
+      toolbarExtra={
+        canMaintain ? (
+          <button
+            type="button"
+            className="btn ghost small"
+            disabled={unfreezeUnusedMut.isPending}
+            title="仅解冻未被活跃字段引用的冻结码表"
+            onClick={async () => {
+              if (
+                await appConfirm(
+                  "批量解冻所有「无活跃字段引用」的已冻结码表？仍有引用的会跳过并说明。软删字段不计占用。继续？",
+                )
+              ) {
+                unfreezeUnusedMut.mutate();
+              }
+            }}
+          >
+            {unfreezeUnusedMut.isPending ? "解冻中…" : "批量解冻无引用"}
+          </button>
+        ) : undefined
+      }
+      countText={
+        <>
+          共 {filtered.length} 个码表 · {folderCount} 个文件夹
+        </>
+      }
+      wideAside
+      asideRef={asideRef}
+      aside={
+            <FolderTreeManager
+              folders={folderTreeGroups}
+              selectedItemId={selected}
+              onSelectItem={selectCodelist}
+              loading={listQuery.isLoading}
+              canMaintain={canMaintain}
+              ungroupedKey={UNGROUPED}
+              collapsedFolders={collapsedFolders}
+              onCollapsedFoldersChange={setCollapsedFolders}
+              deleteFolderPending={renameFolderMut.isPending}
+              headerHint="文件夹为分类路径（无独立实体），嵌套用 / 分隔（如 移植/供体）；重命名会批量更新其下全部码表与子路径。"
+              labels={CODELIST_FOLDER_LABELS}
+              folderActions={(folderKey): FolderAction[] =>
+                folderKey === UNGROUPED
+                  ? ["createItem"]
+                  : ["createItem", "createFolder", "rename", "delete"]
+              }
+              isFolderDeletable={(group, totalCount) =>
+                group.key !== UNGROUPED && totalCount === 0 && (group.children?.length ?? 0) === 0
+              }
+              itemActions={() => ["moveItem"]}
+              onCreateFolder={canMaintain ? () => void handleCreateFolder() : undefined}
+              onCreateSubFolder={canMaintain ? (parent) => void handleCreateSubFolder(parent) : undefined}
+              onCreateItem={canMaintain ? (fk) => openCreateInFolder(fk) : undefined}
+              onRenameFolder={canMaintain ? (fk) => void handleRenameFolder(fk) : undefined}
+              onDeleteFolder={canMaintain ? (fk) => void handleDeleteFolder(fk) : undefined}
+              onMoveItem={
+                canMaintain
+                  ? (itemId, _from, toKey) => moveCodelistMut.mutate({ code: itemId, folderKey: toKey })
+                  : undefined
+              }
+              itemDataAttr={(item) => ({ "data-codelist-code": item.id })}
+              emptyState={
+                <div style={{ padding: 28, textAlign: "center" }}>
+                  <div style={{ color: "var(--muted)", fontSize: 13, marginBottom: 8, lineHeight: 1.55 }}>
+                    {keyword.trim() ? (
+                      "无匹配码表或文件夹"
+                    ) : (
+                      <>
+                        尚无码表：先建<strong>文件夹</strong>分类，再在文件夹内新建码表。
+                      </>
+                    )}
                   </div>
-                  <span className="aup-wb-chip muted" title={`最新版被 ${refN} 个字段引用`}>
-                    {refN}
-                  </span>
-                  <span className="aup-wb-chip" style={{ background: sm.bg, color: sm.color }}>
-                    {sm.text}
-                  </span>
+                  {canMaintain && !keyword.trim() && (
+                    <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                      <button type="button" className="btn primary small" onClick={() => void handleCreateFolder()}>
+                        ＋ 新建文件夹
+                      </button>
+                      <button
+                        type="button"
+                        className="btn ghost small"
+                        onClick={() => openCreateInFolder(UNGROUPED)}
+                      >
+                        ＋ 新建码表
+                      </button>
+                    </div>
+                  )}
                 </div>
-              );
-            })}
-          </aside>
-
-          <div className="aup-wb-main">
+              }
+              renderItem={(item) => {
+                const c = item.codelist;
+                const sm = statusMeta(c.status);
+                const refN = c.refCount ?? 0;
+                return (
+                  <>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="lbl">{c.name}</div>
+                      <div className="meta" style={{ marginTop: 2, fontFamily: "ui-monospace, monospace" }}>
+                        {c.code} · v{c.version}
+                        {(c.versionCount ?? 1) > 1 ? ` · ${c.versionCount} 版` : ""}
+                      </div>
+                    </div>
+                    <span className="aup-wb-chip muted" title={`最新版被 ${refN} 个字段引用`}>
+                      {refN}
+                    </span>
+                    <span className="aup-wb-chip" style={{ background: sm.bg, color: sm.color }}>
+                      {sm.text}
+                    </span>
+                  </>
+                );
+              }}
+            />
+      }
+      main={
+        <>
             {!selected && <div className="aup-wb-empty">选左侧码表维护选项与版本</div>}
 
             {selected && detailQuery.isLoading && <div className="aup-wb-empty">加载详情…</div>}
@@ -598,10 +1009,64 @@ export default function NhpCodelistPage() {
                     {st.text}
                   </span>
                   <span style={{ fontSize: 12, color: "var(--muted)" }}>v{detail.version}</span>
+                  {(detail.folder ?? "").trim() && (
+                    <span className="aup-wb-chip muted" title="文件夹分类">
+                      {(detail.folder ?? "").trim()}
+                    </span>
+                  )}
+                  {canMaintain && (
+                    <button
+                      type="button"
+                      className="btn small ghost"
+                      onClick={() =>
+                        setEditMetaModal({
+                          name: detail.name ?? "",
+                          folder: (detail.folder ?? "").trim(),
+                        })
+                      }
+                    >
+                      编辑名称/分类
+                    </button>
+                  )}
                   {(detail.refCount ?? 0) > 0 && (
                     <span className="aup-wb-chip muted">{detail.refCount} 字段占用本版</span>
                   )}
                   <div style={{ flex: 1 }} />
+                  {canMaintain && isPublishedStatus(detail.status) && (
+                    <>
+                      <button
+                        className="btn small ghost"
+                        disabled={unfreezeMut.isPending}
+                        title="无活跃字段占用本版时可解冻；否则请新建版本"
+                        onClick={async () => {
+                          if (
+                            await appConfirm(
+                              `解冻码表「${detail.name || selected}」当前版为草稿？仅当无活跃字段引用本版时允许。确认？`,
+                            )
+                          ) {
+                            unfreezeMut.mutate();
+                          }
+                        }}
+                      >
+                        解冻本版
+                      </button>
+                      <button
+                        className="btn small primary"
+                        disabled={draftMut.isPending}
+                        onClick={async () => {
+                          if (
+                            await appConfirm(
+                              "基于最新已发布版克隆新草稿（版号自动补位空缺）。占用中的历史版本会保留。确认？",
+                            )
+                          ) {
+                            draftMut.mutate();
+                          }
+                        }}
+                      >
+                        ＋ 新建版本
+                      </button>
+                    </>
+                  )}
                   {canMaintain && editable && (
                     <button
                       className="btn small primary"
@@ -977,9 +1442,117 @@ export default function NhpCodelistPage() {
                 </div>
               </div>
             )}
+        </>
+      }
+    >
+      {editMetaModal && selected && (
+        <div className="aup-modal-mask" onClick={() => setEditMetaModal(null)}>
+          <div className="aup-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>编辑码表元数据</h3>
+            <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px" }}>
+              编码 <code>{selected}</code> 不可改；名称会同步到该码表全部活跃版本。文件夹请在左树管理，或在此单独移动本码表。
+            </p>
+            {row(
+              "文件夹",
+              <input
+                className="input"
+                placeholder="分类/文件夹（可空，归入「未分类」）"
+                value={editMetaModal.folder}
+                onChange={(e) => setEditMetaModal({ ...editMetaModal, folder: e.target.value })}
+              />,
+            )}
+            {row(
+              "名称",
+              <input
+                className="input"
+                placeholder="码表中文名"
+                value={editMetaModal.name}
+                onChange={(e) => setEditMetaModal({ ...editMetaModal, name: e.target.value })}
+              />,
+            )}
+            <div className="aup-modal-actions">
+              <button className="btn ghost" onClick={() => setEditMetaModal(null)}>
+                取消
+              </button>
+              <button
+                className="btn primary"
+                disabled={!editMetaModal.name.trim() || updateMetaMut.isPending}
+                onClick={() => {
+                  updateMetaMut.mutate({
+                    name: editMetaModal.name.trim(),
+                    folder: editMetaModal.folder.trim() || null,
+                  });
+                }}
+              >
+                保存
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {createModal && (
+        <div className="aup-modal-mask" onClick={() => setCreateModal(null)}>
+          <div className="aup-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>新建码表{createModal.folder ? ` · ${createModal.folder}` : ""}</h3>
+            {createModal.folder ? (
+              <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                将创建于文件夹「{createModal.folder}」。如需改分类，请先在左树移动或重命名文件夹。
+              </p>
+            ) : (
+              row(
+                "文件夹",
+                <input
+                  className="input"
+                  placeholder="分类/文件夹（可空，归入「未分类」）"
+                  value={createModal.folder}
+                  onChange={(e) => setCreateModal({ ...createModal, folder: e.target.value })}
+                />,
+              )
+            )}
+            {row(
+              "编码",
+              <input
+                className="input"
+                placeholder="大写字母开头，如 BREED、ORG_TYPE"
+                value={createModal.code}
+                onChange={(e) => setCreateModal({ ...createModal, code: e.target.value.toUpperCase() })}
+              />,
+            )}
+            {row(
+              "名称",
+              <input
+                className="input"
+                placeholder="码表中文名"
+                value={createModal.name}
+                onChange={(e) => setCreateModal({ ...createModal, name: e.target.value })}
+              />,
+            )}
+            <div className="aup-modal-actions">
+              <button className="btn ghost" onClick={() => setCreateModal(null)}>
+                取消
+              </button>
+              <button
+                className="btn primary"
+                disabled={
+                  !createModal.code.trim() ||
+                  !createModal.name.trim() ||
+                  createCodelistMut.isPending
+                }
+                onClick={() => {
+                  createCodelistMut.mutate({
+                    code: createModal.code.trim(),
+                    name: createModal.name.trim(),
+                    folder: createModal.folder.trim() || undefined,
+                  });
+                }}
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {itemModal && selected && editable && (
         <div className="aup-modal-mask" onClick={() => setItemModal(null)}>
@@ -1026,6 +1599,6 @@ export default function NhpCodelistPage() {
           </div>
         </div>
       )}
-    </div>
+    </ContentManagerWorkbenchLayout>
   );
 }

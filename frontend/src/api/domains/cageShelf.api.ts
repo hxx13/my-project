@@ -939,6 +939,33 @@ export interface CellSyncStats {
   startedAt: string;
   finishedAt: string;
   failures?: Array<{ shelveId: string; error: string }>;
+  error?: string;
+}
+
+/** 一键本地同步流水线结果（全量 → 补全详情 → 状态） */
+export interface LocalSyncPipelineResult {
+  ok: boolean;
+  failedStep: string | null;
+  failedMessage: string | null;
+  completedSteps: string[];
+  steps: {
+    syncAllCells?: CellSyncStats;
+    syncDetailFields?: CellSyncStats;
+    syncStatusFromBook?: CellSyncStats;
+  };
+  startedAt: string;
+  finishedAt: string;
+}
+
+const LOCAL_PIPELINE_STEP_LABEL: Record<string, string> = {
+  syncAllCells: "全量同步笼位",
+  syncDetailFields: "补全详情字段",
+  syncStatusFromBook: "同步状态",
+};
+
+export function localPipelineStepLabel(step: string | null | undefined): string {
+  if (!step) return "未知步骤";
+  return LOCAL_PIPELINE_STEP_LABEL[step] ?? step;
 }
 
 export async function fetchCellIndexSummary(params: {
@@ -1035,6 +1062,20 @@ export async function syncDetailFields(roomId?: number): Promise<CellSyncStats> 
     roomId: roomId ?? undefined,
   });
   if (!res.data?.success) throw new Error(res.data?.message || "详情补全失败");
+  return res.data.data!;
+}
+
+/**
+ * 一键同步本地笼位（仅超管）：固定顺序
+ * 1) /back 全量 → 2) /list 补全详情 → 3) /book 状态
+ */
+export async function syncLocalCagePipeline(roomId?: number): Promise<LocalSyncPipelineResult> {
+  const res = await authHttp.post<Result<LocalSyncPipelineResult>>(
+    "/cage-cell-index/sync-local-pipeline",
+    { roomId: roomId ?? undefined },
+    { timeout: 600_000 },
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "一键同步失败");
   return res.data.data!;
 }
 

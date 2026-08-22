@@ -10,6 +10,8 @@ import java.util.List;
 public interface UserAroBindingMapper {
     UserAroBinding selectByUserId(@Param("userId") String userId);
 
+    List<UserAroBinding> selectByUserIds(@Param("userIds") List<String> userIds);
+
     UserAroBinding selectByAroUserId(@Param("aroUserId") String aroUserId);
 
     List<UserAroBinding> selectAll();

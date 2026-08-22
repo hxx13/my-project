@@ -20,6 +20,12 @@ public interface CrfQueryMapper {
     @Select("SELECT * FROM crf_query WHERE record_id = #{recordId} ORDER BY id DESC")
     List<CrfQuery> listByRecordId(Long recordId);
 
+    @Select("SELECT * FROM crf_query WHERE status IN ('OPEN','ANSWERED') ORDER BY id DESC LIMIT #{limit}")
+    List<CrfQuery> listOpenRecent(@Param("limit") int limit);
+
+    @Select("SELECT COUNT(*) FROM crf_query WHERE status IN ('OPEN','ANSWERED')")
+    int countOpen();
+
     @Update("UPDATE crf_query SET status = #{status}, answered_by = #{answeredBy}, answered_at = #{answeredAt}, " +
             "answer_text = #{answerText} WHERE id = #{id}")
     int updateAnswer(CrfQuery row);

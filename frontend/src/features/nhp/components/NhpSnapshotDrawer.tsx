@@ -10,6 +10,7 @@ import {
 } from "../api/nhpRecord.api";
 
 import { appConfirm } from "@/lib/appDialog";
+import NhpUserRefLabel from "./NhpUserRefLabel";
 /**
  * NHP 快照抽屉（对齐 AUP SnapshotDrawer）。
  * 列出不可变版本；查看 JSON；回退覆盖当前值；手动创建当前快照。
@@ -150,7 +151,12 @@ export default function NhpSnapshotDrawer({
               </div>
               <div className="m">
                 {formatDateTimeAsiaShanghaiShort(s.createdAt)}
-                {s.createdBy ? ` · ${s.createdBy}` : ""}
+                {(s.createdByName || s.createdBy) && (
+                  <>
+                    {" · "}
+                    <NhpUserRefLabel name={s.createdByName} userId={s.createdBy} inline />
+                  </>
+                )}
                 {s.note ? ` · ${s.note}` : ""}
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>

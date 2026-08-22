@@ -126,6 +126,60 @@ public class NhpCodelistService {
         return out;
     }
 
+    /**
+     * 新建码表（首版 v1 草稿，无选项项）。
+     * code 全局唯一；已软删过的 code 不可复活（与种子策略一致）。
+     */
+    @Transactional
+    public Result<Map<String, Object>> createCodelist(String code, String name, String folder) {
+        if (code == null || code.isBlank()) {
+            return Result.fail(400, "code 不能为空");
+        }
+        String normalized = code.trim().toUpperCase();
+        if (!normalized.matches("[A-Z][A-Z0-9_]{0,31}")) {
+            return Result.fail(400, "code 须为大写字母开头，仅含 A-Z、0-9、下划线，最长 32 字符");
+        }
+        if (name == null || name.isBlank()) {
+            return Result.fail(400, "name 不能为空");
+        }
+        if (codelistMapper.countAnyByCode(normalized) > 0) {
+            return Result.fail(409, "码表编码「" + normalized + "」已存在（含曾软删记录，不可复用）");
+        }
+        String folderNorm = normalizeFolder(folder);
+        CrfCodelist neu = new CrfCodelist();
+        neu.setCode(normalized);
+        neu.setName(name.trim());
+        neu.setFolder(folderNorm);
+        neu.setVersion(1);
+        neu.setStatus("DRAFT");
+        neu.setActive(true);
+        codelistMapper.insert(neu);
+        logChange(neu.getId(), "CREATE", null, Map.of("code", normalized, "version", 1), null, null);
+        return detailById(neu.getId());
+    }
+
+    /**
+     * 更新码表定义元数据（name / folder），同步到同 code 全部活跃版本。
+     */
+    @Transactional
+    public Result<Map<String, Object>> updateCodelistMeta(String code, String name, String folder) {
+        if (code == null || code.isBlank()) {
+            return Result.fail(400, "code 不能为空");
+        }
+        List<CrfCodelist> rows = codelistMapper.listByCode(code.trim());
+        if (rows == null || rows.isEmpty()) {
+            return Result.error("码表不存在");
+        }
+        CrfCodelist head = rows.get(0);
+        String newName = name != null && !name.isBlank() ? name.trim() : head.getName();
+        String newFolder = folder != null ? normalizeFolder(folder) : head.getFolder();
+        if (newName == null || newName.isBlank()) {
+            return Result.fail(400, "name 不能为空");
+        }
+        codelistMapper.updateMetaByCode(code.trim(), newName, newFolder);
+        return detail(code.trim(), null);
+    }
+
     public Result<Map<String, Object>> detail(String code) {
         return detail(code, null);
     }
@@ -418,6 +472,7 @@ public class NhpCodelistService {
         CrfCodelist neu = new CrfCodelist();
         neu.setCode(source.getCode());
         neu.setName(source.getName());
+        neu.setFolder(source.getFolder());
         neu.setVersion(next);
         neu.setStatus("DRAFT");
         neu.setActive(true);
@@ -487,8 +542,76 @@ public class NhpCodelistService {
         if (patch.getItemLabel() != null) item.setItemLabel(patch.getItemLabel());
         if (patch.getSortOrder() != null) item.setSortOrder(patch.getSortOrder());
         if (patch.getActive() != null) item.setActive(patch.getActive());
+        if (patch.getVerdict() != null) item.setVerdict(patch.getVerdict());
+        if (patch.getVerdictNote() != null) item.setVerdictNote(patch.getVerdictNote());
         itemMapper.update(item);
         return Result.success(item);
+    }
+
+    /** 码表项审核列表（带 verdict）。 */
+    public Result<List<Map<String, Object>>> listReviewItems(String code) {
+        CrfCodelist cl = resolveEditableOrLatest(code);
+        if (cl == null) {
+            return Result.error("码表不存在");
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (CrfCodelistItem item : itemMapper.listByCodelistId(cl.getId())) {
+            Map<String, Object> im = new LinkedHashMap<>();
+            im.put("id", item.getId());
+            im.put("itemCode", item.getItemCode());
+            im.put("itemLabel", item.getItemLabel());
+            im.put("verdict", item.getVerdict());
+            im.put("verdictNote", item.getVerdictNote());
+            items.add(im);
+        }
+        return Result.success(items);
+    }
+
+    /** 提交码表项 verdict（CONFIRM/MODIFY/DELETE/QUESTION）。 */
+    @Transactional
+    public Result<?> submitItemVerdict(String code, Long itemId, String verdict, String verdictNote) {
+        CrfCodelist cl = resolveEditableOrLatest(code);
+        if (cl == null) {
+            return Result.error("码表不存在");
+        }
+        CrfCodelistItem item = itemMapper.findById(itemId);
+        if (item == null || !cl.getId().equals(item.getCodelistId())) {
+            return Result.error("码表项不存在");
+        }
+        if (verdict == null || verdict.isBlank()) {
+            return Result.fail(400, "verdict 必填");
+        }
+        String v = verdict.trim().toUpperCase();
+        if (!Set.of("CONFIRM", "MODIFY", "DELETE", "QUESTION").contains(v)) {
+            return Result.fail(400, "verdict 须为 CONFIRM/MODIFY/DELETE/QUESTION");
+        }
+        item.setVerdict(v);
+        item.setVerdictNote(verdictNote);
+        itemMapper.update(item);
+        return Result.success(null);
+    }
+
+    /**
+     * 冻结码表（契约 alias）：若待校对则走 approve；草稿则兼容 publish。
+     * 与既有 approve/publish 并存。
+     */
+    @Transactional
+    public Result<?> freeze(String code, String operator) {
+        CrfCodelist form = resolveEditableOrLatest(code);
+        if (form == null) {
+            return Result.error("码表不存在");
+        }
+        String st = nullToEmpty(form.getStatus()).toUpperCase();
+        if ("PENDING_REVIEW".equals(st)) {
+            return approveReview(code, operator, "freeze");
+        }
+        if ("DRAFT".equals(st) || "ACTIVE".equals(st)) {
+            return publish(code);
+        }
+        if ("FROZEN".equals(st) || "PUBLISHED".equals(st)) {
+            return Result.success(toListItem(form, loadRefCounts()));
+        }
+        return Result.fail(400, "当前状态不可冻结: " + form.getStatus());
     }
 
     @Transactional
@@ -592,6 +715,7 @@ public class NhpCodelistService {
                         + " 仍被活跃行占用（code=" + draft.getCode() + "），无法补位写入");
             }
             any.setName(draft.getName());
+            any.setFolder(draft.getFolder());
             any.setStatus(draft.getStatus() != null ? draft.getStatus() : "DRAFT");
             any.setActive(true);
             codelistMapper.reactivateAndUpdate(any);
@@ -773,11 +897,18 @@ public class NhpCodelistService {
         return "FROZEN".equals(s) || "PUBLISHED".equals(s);
     }
 
+    private static String normalizeFolder(String folder) {
+        if (folder == null) return null;
+        String t = folder.trim();
+        return t.isEmpty() ? null : t;
+    }
+
     private Map<String, Object> buildDetail(CrfCodelist cl) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", cl.getId());
         out.put("code", cl.getCode());
         out.put("name", cl.getName());
+        out.put("folder", cl.getFolder());
         out.put("version", cl.getVersion());
         out.put("status", cl.getStatus());
         out.put("refCount", fieldMapper.countByCodelistId(cl.getId()));
@@ -789,6 +920,8 @@ public class NhpCodelistService {
             im.put("itemCode", item.getItemCode());
             im.put("itemLabel", item.getItemLabel());
             im.put("sortOrder", item.getSortOrder());
+            im.put("verdict", item.getVerdict());
+            im.put("verdictNote", item.getVerdictNote());
             List<Map<String, Object>> childLinks = new ArrayList<>();
             for (CrfCodelistLink link : linkMapper.listByItemId(item.getId())) {
                 CrfCodelist child = codelistMapper.findById(link.getChildCodelistId());
@@ -812,6 +945,7 @@ public class NhpCodelistService {
         m.put("id", cl.getId());
         m.put("code", cl.getCode());
         m.put("name", cl.getName());
+        m.put("folder", cl.getFolder());
         m.put("version", cl.getVersion());
         m.put("status", cl.getStatus());
         m.put("refCount", refCounts.getOrDefault(cl.getId(), 0));

@@ -13,6 +13,9 @@ public class CrfCodelistItem {
     private String itemCode;
     private String itemLabel;
     private Integer sortOrder;
+    /** 校对四态 CONFIRM/MODIFY/DELETE/QUESTION（V36） */
+    private String verdict;
+    private String verdictNote;
     private Boolean active;
     private LocalDateTime createdAt;
 }

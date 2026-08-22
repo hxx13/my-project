@@ -63,6 +63,7 @@ export interface NhpRecord {
   formId: number;
   formVersionId?: number;
   visitInstanceId?: number;
+  transplantId?: number;
   status: string;
   dagId?: number;
   createdBy?: string;
@@ -125,6 +126,13 @@ export async function updateNhpSubject(
 ): Promise<NhpSubject> {
   return authHttp
     .put<Result<NhpSubject>>(`/nhp/subjects/${subjectId}`, body)
+    .then(({ data }) => data.data);
+}
+
+/** 推进动物生命周期阶段（SCREENING→MATCHING→POST_TX→ENDPOINT） */
+export async function advanceNhpStage(subjectId: number, targetStage: string): Promise<NhpSubject> {
+  return authHttp
+    .post<Result<NhpSubject>>(`/nhp/subjects/${subjectId}/advance-stage`, { targetStage })
     .then(({ data }) => data.data);
 }
 
@@ -331,8 +339,12 @@ export interface NhpQueryItem {
   queryText: string;
   status: string;
   openedBy?: string;
+  /** 发起人展示名（UserDisplayNameService） */
+  openedByName?: string;
   openedAt?: string;
   answeredBy?: string;
+  /** 回复人展示名（UserDisplayNameService） */
+  answeredByName?: string;
   answeredAt?: string;
   answerText?: string;
 }
@@ -362,3 +374,14 @@ export async function answerNhpQuery(
 export async function closeNhpQuery(id: number, body?: { closedBy?: string }): Promise<NhpQueryItem> {
   return authHttp.put<Result<NhpQueryItem>>(`/nhp/queries/${id}/close`, body ?? {}).then(({ data }) => data.data);
 }
+
+/** 电子签署 */
+export async function signNhpRecord(
+  recordId: number,
+  body?: { operatorId?: string; meaning?: string; note?: string },
+): Promise<unknown> {
+  return authHttp
+    .post<Result<unknown>>(`/nhp/records/${recordId}/sign`, body ?? {})
+    .then(({ data }) => data.data);
+}
+

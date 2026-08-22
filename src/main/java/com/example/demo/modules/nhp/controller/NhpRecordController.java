@@ -84,6 +84,17 @@ public class NhpRecordController {
         return service.updateSubject(subjectId, body);
     }
 
+    @PostMapping("/subjects/{subjectId}/advance-stage")
+    @Operation(summary = "推进研究对象生命周期阶段（SCREENING→MATCHING→POST_TX→ENDPOINT）")
+    public Result<?> advanceStage(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long subjectId,
+            @RequestBody Map<String, Object> body) {
+        Result<?> denied = requireMinRole(auth, DELETE_MIN_ROLE);
+        if (denied != null) return denied;
+        return service.advanceStage(subjectId, body);
+    }
+
     @DeleteMapping("/subjects/{subjectId}")
     @Operation(summary = "软删除研究对象（RETIRED）；有实例时需 cascade=true")
     public Result<?> deleteSubject(

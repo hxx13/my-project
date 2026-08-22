@@ -8,10 +8,11 @@ import type { FieldType } from "../schema/formTemplate";
 interface Props {
   onPick: (t: FieldType) => void;
   onPickTemplate: (t: FieldTemplate) => void;
+  onPickFromDict: () => void;
   onClose: () => void;
 }
 
-export default function TypeMenu({ onPick, onPickTemplate, onClose }: Props) {
+export default function TypeMenu({ onPick, onPickTemplate, onPickFromDict, onClose }: Props) {
   return (
     <div className="aup-type-mask" onClick={onClose}>
       <div className="aup-type-menu" onClick={(e) => e.stopPropagation()}>
@@ -25,6 +26,10 @@ export default function TypeMenu({ onPick, onPickTemplate, onClose }: Props) {
           </button>
         </div>
         <div className="aup-type-grid">
+          <button type="button" onClick={onPickFromDict} title="从数据域套选字段" style={{ gridColumn: "span 2", background: "var(--primary-weak)", color: "var(--primary)", fontWeight: 600 }}>
+            <span className="aup-type-ic">🗂️</span>
+            <span>从字典选字段（选套 → 字段 → 答题方式）</span>
+          </button>
           {TYPE_REGISTRY.map((t) => (
             <button key={t.value} type="button" onClick={() => onPick(t.value)} title={FIELD_TYPE_GROUP_LABELS[t.group]}>
               <span className="aup-type-ic">{t.icon}</span>

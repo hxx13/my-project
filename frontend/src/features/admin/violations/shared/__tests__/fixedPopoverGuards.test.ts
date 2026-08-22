@@ -37,11 +37,16 @@ describe("fixed 下拉防裁切守卫", () => {
     expect(src.includes("setTimeout")).toBe(true);
   });
 
+  it("浮层 z-index 高于 ConfigModal（--z-modal: 800）", () => {
+    const src = readSrc("features/admin/violations/shared/useMultiSelectPopover.ts");
+    expect(src.includes("zIndex: 801")).toBe(true);
+    expect(src.includes("zIndex: 300")).toBe(false);
+  });
+
   it("浮层/trigger 内滚动不关闭（capture scroll 只关外部祖先滚动）", () => {
     const src = readSrc("features/admin/violations/shared/useMultiSelectPopover.ts");
     expect(src.includes("panelRef.current?.contains(target)")).toBe(true);
     expect(src.includes("triggerRef.current?.contains(target)")).toBe(true);
-    // 仍须在 document capture 上听 scroll，否则页面内部 overflow 容器滚动关不掉
     expect(src.includes('addEventListener("scroll", onScroll, { capture: true })')).toBe(true);
   });
 

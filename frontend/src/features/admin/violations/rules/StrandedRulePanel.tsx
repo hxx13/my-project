@@ -10,6 +10,7 @@ import { DepartmentMultiSelect } from "../shared/DepartmentMultiSelect";
 import { InspectorGroup, InspectorRow } from "../shared/InspectorGroup";
 import { MultiSelectField } from "../shared/MultiSelectField";
 import type { MultiSelectOption } from "../shared/multiSelectModel";
+import { violationContentTemplateSlot } from "../shared/violationContentTemplateSlot";
 import { ContentBodySlot, contentBodyFromHtml, serializeContentBody } from "../slots/ContentBodySlot";
 import { DispositionFieldsSlot } from "../slots/DispositionFieldsSlot";
 import { DISPOSITION_RULE_LEVEL, actionsIncludeUnlock, type DispositionActionCode, type DispositionCapability, type DispositionValue } from "../slots/dispositionTypes";
@@ -118,13 +119,20 @@ export function StrandedRulePanel(): JSX.Element {
           每日定时检测未豁免且仍在楼内的滞留人员，自动创建违规记录并通过扫码公告。执行时刻请在「定时管理 → 冻结联动任务」配置；可用变量：{"${name}"}、{"${dept}"}、{"${date}"}。
         </p>
       </div>
-      <ContentBodySlot
-        value={body}
-        onChange={(next) => setConfig({ violationTextTpl: serializeContentBody(next).html })}
-        onPickFiles={() => {}}
-        disabled={loading}
-        placeholder="留空则使用系统默认文案"
-      />
+      {loading ? (
+        <div className="flex min-h-[220px] items-center justify-center rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] text-sm text-[var(--app-color-text-tertiary)]">
+          加载正文…
+        </div>
+      ) : (
+        <ContentBodySlot
+          key="stranded-violation-tpl"
+          value={body}
+          onChange={(next) => setConfig({ violationTextTpl: serializeContentBody(next).html })}
+          onPickFiles={() => {}}
+          templateSlot={violationContentTemplateSlot(body, (next) => setConfig({ violationTextTpl: serializeContentBody(next).html }))}
+          placeholder="留空则使用系统默认文案"
+        />
+      )}
     </div>
   );
 

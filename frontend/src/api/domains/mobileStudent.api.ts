@@ -270,6 +270,11 @@ export interface MobileAlertItem {
   canSelfUnblock?: boolean;
   /** 解禁方式：自助解禁 / 仅工作人员 */
   unblockMethod?: string;
+  /** 关联 Obligation，消息 → 待办深链 */
+  obligationId?: number;
+  sourceUrl?: string;
+  mpPath?: string;
+  contentJson?: string | null;
   bizType?: string;
   bizId?: string;
   notificationId?: string;

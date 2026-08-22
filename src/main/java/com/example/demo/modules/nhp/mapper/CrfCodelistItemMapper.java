@@ -9,8 +9,8 @@ import java.util.List;
 @Mapper
 public interface CrfCodelistItemMapper {
 
-    @Insert("INSERT INTO crf_codelist_item (codelist_id, item_code, item_label, sort_order, active) " +
-            "VALUES (#{codelistId}, #{itemCode}, #{itemLabel}, #{sortOrder}, #{active})")
+    @Insert("INSERT INTO crf_codelist_item (codelist_id, item_code, item_label, sort_order, verdict, verdict_note, active) " +
+            "VALUES (#{codelistId}, #{itemCode}, #{itemLabel}, #{sortOrder}, #{verdict}, #{verdictNote}, #{active})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CrfCodelistItem row);
 
@@ -20,8 +20,8 @@ public interface CrfCodelistItemMapper {
     @Select("SELECT * FROM crf_codelist_item WHERE codelist_id = #{codelistId} ORDER BY sort_order, id")
     List<CrfCodelistItem> listByCodelistId(Long codelistId);
 
-    @Update("UPDATE crf_codelist_item SET item_label = #{itemLabel}, sort_order = #{sortOrder}, active = #{active} " +
-            "WHERE id = #{id}")
+    @Update("UPDATE crf_codelist_item SET item_label = #{itemLabel}, sort_order = #{sortOrder}, " +
+            "verdict = #{verdict}, verdict_note = #{verdictNote}, active = #{active} WHERE id = #{id}")
     int update(CrfCodelistItem row);
 
     @Select("SELECT COUNT(1) FROM crf_codelist_item WHERE codelist_id = #{codelistId} AND item_code = #{itemCode} AND active = 1")

@@ -41,6 +41,10 @@ public class CrfSubject {
     private String pedigree;
     /** ACTIVE/RETIRED */
     private String status;
+    /** SCREENING/MATCHING/POST_TX/ENDPOINT（V38） */
+    private String lifecycleStage;
+    /** 研究分组 HEART/LIVER（非独立研究，V38） */
+    private String armCode;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

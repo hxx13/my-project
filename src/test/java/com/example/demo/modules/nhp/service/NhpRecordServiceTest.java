@@ -33,8 +33,10 @@ class NhpRecordServiceTest {
     @Mock private CrfCodelistItemMapper codelistItemMapper;
     @Mock private CrfStudyMapper studyMapper;
     @Mock private CrfFormMapper formMapper;
+    @Mock private CrfCenterMapper centerMapper;
     @Mock private NhpIdService idService;
     @Mock private NhpSnapshotService snapshotService;
+    @Mock private NhpEventEngine eventEngine;
 
     private NhpRecordService service;
 
@@ -42,8 +44,8 @@ class NhpRecordServiceTest {
     void setUp() {
         service = new NhpRecordService(
                 subjectMapper, recordMapper, valueMapper, auditLogMapper, signatureMapper,
-                fieldMapper, codelistItemMapper, studyMapper, formMapper, idService,
-                snapshotService, new ObjectMapper());
+                fieldMapper, codelistItemMapper, studyMapper, formMapper, centerMapper, idService,
+                snapshotService, new ObjectMapper(), eventEngine);
     }
 
     @Test
@@ -72,10 +74,35 @@ class NhpRecordServiceTest {
         assertEquals(7L, result.getData().getStudyId());
         verify(idService, never()).next(any(), any(), any());
         verify(idService, never()).buildCode(any(), any(), any(), anyLong());
+        verify(idService, never()).buildCode(any(), any());
     }
 
     @Test
-    void createSubject_returns400_whenSubjectCodeMissing() {
+    void createSubject_autoAssignsCode_whenSubjectCodeMissing() {
+        CrfStudy study = new CrfStudy();
+        study.setId(7L);
+        study.setCode(NhpRecordService.DEFAULT_STUDY_CODE);
+        when(studyMapper.findByCode(NhpRecordService.DEFAULT_STUDY_CODE)).thenReturn(study);
+        when(idService.buildCode(eq("RCP"), any())).thenReturn("RCP-SJ26-001");
+        when(subjectMapper.findBySubjectCode("RCP-SJ26-001")).thenReturn(null);
+        when(subjectMapper.insert(any(CrfSubject.class))).thenAnswer(inv -> {
+            CrfSubject s = inv.getArgument(0);
+            s.setId(100L);
+            return 1;
+        });
+
+        Result<CrfSubject> result = service.createSubject(Map.of(
+                "subjectType", "RECIPIENT",
+                "centerCode", "SJ"
+        ));
+
+        assertTrue(Boolean.TRUE.equals(result.getSuccess()));
+        assertEquals("RCP-SJ26-001", result.getData().getSubjectCode());
+        verify(idService).buildCode(eq("RCP"), any());
+    }
+
+    @Test
+    void createSubject_returns400_whenAutoCodeContextMissing() {
         CrfStudy study = new CrfStudy();
         study.setId(7L);
         study.setCode(NhpRecordService.DEFAULT_STUDY_CODE);
@@ -84,9 +111,8 @@ class NhpRecordServiceTest {
         Result<CrfSubject> result = service.createSubject(Map.of("subjectType", "RECIPIENT"));
 
         assertEquals(400, result.getCode());
-        assertTrue(result.getMessage().contains("动物编号"));
+        assertTrue(result.getMessage().contains("centerCode") || result.getMessage().contains("取号"));
         verify(subjectMapper, never()).insert(any());
-        verify(idService, never()).next(any(), any(), any());
     }
 
     @Test

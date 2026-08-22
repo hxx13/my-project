@@ -14,8 +14,12 @@ public class CrfQuery {
     /** OPEN/ANSWERED/CLOSED */
     private String status;
     private String openedBy;
+    /** 展示用发起人姓名（非持久列，UserDisplayNameService） */
+    private String openedByName;
     private LocalDateTime openedAt;
     private String answeredBy;
+    /** 展示用回复人姓名（非持久列，UserDisplayNameService） */
+    private String answeredByName;
     private LocalDateTime answeredAt;
     private String answerText;
 }

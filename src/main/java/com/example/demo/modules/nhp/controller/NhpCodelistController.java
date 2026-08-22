@@ -63,6 +63,26 @@ public class NhpCodelistController {
         return Result.success(service.list());
     }
 
+    @PostMapping
+    @Operation(summary = "新建码表（首版 v1 草稿）")
+    public Result<Map<String, Object>> create(@RequestBody Map<String, Object> body) {
+        String code = body != null && body.get("code") != null ? String.valueOf(body.get("code")) : null;
+        String name = body != null && body.get("name") != null ? String.valueOf(body.get("name")) : null;
+        String folder = body != null && body.get("folder") != null ? String.valueOf(body.get("folder")) : null;
+        return service.createCodelist(code, name, folder);
+    }
+
+    @PutMapping("/{code}")
+    @Operation(summary = "更新码表元数据（name / folder，同步全部活跃版本）")
+    public Result<Map<String, Object>> updateMeta(@PathVariable String code, @RequestBody Map<String, Object> body) {
+        String name = body != null && body.get("name") != null ? String.valueOf(body.get("name")) : null;
+        String folder = null;
+        if (body != null && body.containsKey("folder")) {
+            folder = body.get("folder") == null ? "" : String.valueOf(body.get("folder"));
+        }
+        return service.updateCodelistMeta(code, name, folder);
+    }
+
     @GetMapping("/published-options")
     @Operation(summary = "字段挂接选项：每 code 仅最新已发布（FROZEN）版本 id")
     public Result<List<Map<String, Object>>> publishedOptions() {
@@ -149,6 +169,38 @@ public class NhpCodelistController {
         }
         User user = authContextService.resolveUserFromBearer(auth);
         return service.unfreeze(code, operatorLabel(user));
+    }
+
+    @GetMapping("/{code}/review-items")
+    @Operation(summary = "码表项审核列表（含 verdict）")
+    public Result<List<Map<String, Object>>> reviewItems(@PathVariable String code) {
+        return service.listReviewItems(code);
+    }
+
+    @PostMapping("/{code}/items/{itemId}/verdict")
+    @Operation(summary = "提交码表项 verdict")
+    public Result<?> itemVerdict(
+            @PathVariable String code,
+            @PathVariable Long itemId,
+            @RequestBody Map<String, Object> body) {
+        String verdict = body != null && body.get("verdict") != null
+                ? String.valueOf(body.get("verdict")) : null;
+        String note = body != null && body.get("verdictNote") != null
+                ? String.valueOf(body.get("verdictNote")) : null;
+        return service.submitItemVerdict(code, itemId, verdict, note);
+    }
+
+    @PostMapping("/{code}/freeze")
+    @Operation(summary = "冻结（契约 alias：approve/publish）")
+    public Result<?> freeze(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable String code) {
+        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        if (denied != null) {
+            return denied;
+        }
+        User user = authContextService.resolveUserFromBearer(auth);
+        return service.freeze(code, operatorLabel(user));
     }
 
     @PostMapping("/actions/unfreeze-unused")

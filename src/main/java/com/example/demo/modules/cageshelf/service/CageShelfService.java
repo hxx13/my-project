@@ -643,10 +643,10 @@ public class CageShelfService {
         cell.put("empty", false);
         cell.put("id", String.valueOf(cage.get("id")));
         cell.put("name", trim(cage.get("name")));
-        cell.put("piName", trim(cage.get("piName")));
-        cell.put("projectGroup", cageBoxVo == null ? "" : trim(cageBoxVo.get("projectName")));
+        cell.put("piName", decodeDisplayText(cage.get("piName")));
+        cell.put("projectGroup", cageBoxVo == null ? "" : decodeDisplayText(cageBoxVo.get("projectName")));
         cell.put("departmentName", cageBoxVo == null ? "" : decodeDisplayText(cageBoxVo.get("departmentName")));
-        cell.put("projectPiName", cageBoxVo == null ? "" : trim(cageBoxVo.get("projectPiName")));
+        cell.put("projectPiName", cageBoxVo == null ? "" : decodeDisplayText(cageBoxVo.get("projectPiName")));
         cell.put("rentType", toIntObj(cage.get("rentType")));
         cell.put("animalCageType", toIntObj(cage.get("animalCageType")));
         cell.put("isCageBox", cage.get("isCageBox"));

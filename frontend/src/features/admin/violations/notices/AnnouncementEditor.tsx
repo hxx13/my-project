@@ -13,6 +13,7 @@ import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { EditorInspectorLayout } from "../shared/EditorInspectorLayout";
 import { InspectorGroup, InspectorRow } from "../shared/InspectorGroup";
 import { BareInput } from "../shared/BareControl";
+import { violationContentTemplateSlot } from "../shared/violationContentTemplateSlot";
 import { ContentBodySlot, contentBodyFromHtml, serializeContentBody, type ContentBodyValue } from "../slots/ContentBodySlot";
 
 function toDatetimeLocalValue(iso: string | null | undefined): string {
@@ -171,6 +172,7 @@ export function AnnouncementEditor({ id, onDone, onCancel }: AnnouncementEditorP
               value={body}
               onChange={setBody}
               onPickFiles={() => {}}
+              templateSlot={violationContentTemplateSlot(body, setBody)}
             />
           )}
         </div>

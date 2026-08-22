@@ -34,6 +34,8 @@ export interface NhpCodelist {
   id: number;
   code: string;
   name: string;
+  /** 文件夹分类（分组用，NULL=未分类） */
+  folder?: string | null;
   version: number;
   status: string;
   /** 被字段引用数（列表/详情接口返回） */
@@ -92,6 +94,35 @@ export interface NhpCodelistUsageGraph {
 /** 码表列表头（每 code 最新版） */
 export async function fetchNhpCodelists(): Promise<NhpCodelist[]> {
   return authHttp.get<Result<NhpCodelist[]>>("/nhp/codelists").then(({ data }) => data.data);
+}
+
+/** 新建码表（首版 v1 草稿） */
+export async function createNhpCodelist(body: {
+  code: string;
+  name: string;
+  folder?: string;
+}): Promise<NhpCodelistDetail> {
+  return authHttp.post<Result<NhpCodelistDetail>>("/nhp/codelists", body).then(({ data }) => data.data);
+}
+
+/** 更新码表元数据（name / folder） */
+export async function updateNhpCodelistMeta(
+  code: string,
+  patch: { name?: string; folder?: string | null },
+): Promise<NhpCodelistDetail> {
+  return authHttp
+    .put<Result<NhpCodelistDetail>>(`/nhp/codelists/${encodeURIComponent(code)}`, patch)
+    .then(({ data }) => data.data);
+}
+
+/** 批量重命名文件夹（逐码表 PUT folder，无独立 folder 实体） */
+export async function renameNhpCodelistFolder(
+  codes: string[],
+  newFolder: string | null,
+): Promise<void> {
+  for (const code of codes) {
+    await updateNhpCodelistMeta(code, { folder: newFolder });
+  }
 }
 
 /** 字段挂接：每 code 最新已冻结版（无冻结则草稿，供种子期） */

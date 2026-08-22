@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** NHP 数据采集：研究对象/表单实例/EAV 值 upsert/签名/快照。双录入比对、物化宽表冻结二期实现。 */
 @Service
@@ -21,6 +22,10 @@ public class NhpRecordService {
 
     /** 与种子/模板一致的默认研究编码（一期单研究）。 */
     static final String DEFAULT_STUDY_CODE = "NHP-XENO";
+
+    /** 生命周期顺序：SCREENING → MATCHING → POST_TX → ENDPOINT（V2 业务流转） */
+    private static final java.util.List<String> LIFECYCLE_ORDER =
+            java.util.List.of("SCREENING", "MATCHING", "POST_TX", "ENDPOINT");
 
     private final CrfSubjectMapper subjectMapper;
     private final CrfRecordMapper recordMapper;
@@ -31,18 +36,19 @@ public class NhpRecordService {
     private final CrfCodelistItemMapper codelistItemMapper;
     private final CrfStudyMapper studyMapper;
     private final CrfFormMapper formMapper;
-    /** 预留：自定义动物编号生成器（当前 createSubject 要求用户手填 subjectCode，不自动取号）。 */
-    @SuppressWarnings("unused")
+    private final CrfCenterMapper centerMapper;
     private final NhpIdService idService;
     private final NhpSnapshotService snapshotService;
     private final ObjectMapper objectMapper;
+    private final NhpEventEngine eventEngine;
 
     public NhpRecordService(CrfSubjectMapper subjectMapper, CrfRecordMapper recordMapper,
                             CrfRecordValueMapper valueMapper, CrfDataAuditLogMapper auditLogMapper,
                             CrfSignatureMapper signatureMapper, CrfFieldMapper fieldMapper,
                             CrfCodelistItemMapper codelistItemMapper, CrfStudyMapper studyMapper,
-                            CrfFormMapper formMapper, NhpIdService idService,
-                            NhpSnapshotService snapshotService, ObjectMapper objectMapper) {
+                            CrfFormMapper formMapper, CrfCenterMapper centerMapper, NhpIdService idService,
+                            NhpSnapshotService snapshotService, ObjectMapper objectMapper,
+                            NhpEventEngine eventEngine) {
         this.subjectMapper = subjectMapper;
         this.recordMapper = recordMapper;
         this.valueMapper = valueMapper;
@@ -52,9 +58,11 @@ public class NhpRecordService {
         this.codelistItemMapper = codelistItemMapper;
         this.studyMapper = studyMapper;
         this.formMapper = formMapper;
+        this.centerMapper = centerMapper;
         this.idService = idService;
         this.snapshotService = snapshotService;
         this.objectMapper = objectMapper;
+        this.eventEngine = eventEngine;
     }
 
     @Transactional
@@ -68,13 +76,17 @@ public class NhpRecordService {
             return Result.fail(400, resolved.error());
         }
         Long studyId = resolved.studyId();
-        // 动物编号必须由用户填写自定义码，禁止用库主键或静默取号冒充展示号。
-        // 预留：日后可接 NhpIdService 专用号段生成器，再回填 subjectCode；当前不自动生成。
+        // subjectCode 可选：未填时按 DON→DON / RECIPIENT→RCP 自动取号（22 §4.3）
         String subjectCode = str(body.get("subjectCode"));
         if (subjectCode == null || subjectCode.isBlank()) {
-            return Result.fail(400, "请填写自定义动物编号（subjectCode）");
+            try {
+                subjectCode = allocateSubjectCode(subjectType, body);
+            } catch (IllegalArgumentException ex) {
+                return Result.fail(400, ex.getMessage());
+            }
+        } else {
+            subjectCode = subjectCode.trim();
         }
-        subjectCode = subjectCode.trim();
         if (subjectMapper.findBySubjectCode(subjectCode) != null) {
             return Result.fail(400, "动物编号已存在: " + subjectCode);
         }
@@ -105,6 +117,32 @@ public class NhpRecordService {
             applyIdentityFields(s, body);
         }
         subjectMapper.update(s);
+        return Result.success(subjectMapper.findById(subjectId));
+    }
+
+    /** 推进研究对象生命周期阶段（只允许向前）。 */
+    @Transactional
+    public Result<CrfSubject> advanceStage(Long subjectId, Map<String, Object> body) {
+        CrfSubject s = subjectMapper.findById(subjectId);
+        if (s == null) {
+            return Result.error("动物不存在");
+        }
+        String target = str(body == null ? null : body.get("targetStage"));
+        if (target == null || target.isBlank()) {
+            return Result.fail(400, "targetStage 必填");
+        }
+        target = target.trim().toUpperCase();
+        String current = s.getLifecycleStage() == null ? null : s.getLifecycleStage().toUpperCase();
+        int ti = LIFECYCLE_ORDER.indexOf(target);
+        if (ti < 0) {
+            return Result.fail(400, "未知阶段: " + target);
+        }
+        int ci = current == null || current.isBlank() ? -1 : LIFECYCLE_ORDER.indexOf(current);
+        if (ci >= 0 && ti <= ci) {
+            return Result.fail(400, "非法阶段推进：" + current + " → " + target);
+        }
+        subjectMapper.updateLifecycleStage(subjectId, target);
+        s.setLifecycleStage(target);
         return Result.success(subjectMapper.findById(subjectId));
     }
 
@@ -165,6 +203,8 @@ public class NhpRecordService {
         if (body.containsKey("originNote")) s.setOriginNote(str(body.get("originNote")));
         if (body.containsKey("biocontainmentLevel")) s.setBiocontainmentLevel(str(body.get("biocontainmentLevel")));
         if (body.containsKey("pedigree")) s.setPedigree(str(body.get("pedigree")));
+        if (body.containsKey("lifecycleStage")) s.setLifecycleStage(str(body.get("lifecycleStage")));
+        if (body.containsKey("armCode")) s.setArmCode(str(body.get("armCode")));
 
         // 显式 basicJson 优先；否则用身份字段合成
         if (body.containsKey("basicJson") && body.get("basicJson") != null) {
@@ -516,7 +556,8 @@ public class NhpRecordService {
 
     @Transactional
     public Result<CrfSignature> sign(Long recordId, Map<String, Object> body) {
-        if (recordMapper.findById(recordId) == null) {
+        CrfRecord record = recordMapper.findById(recordId);
+        if (record == null) {
             return Result.error("表单实例不存在");
         }
         CrfSignature sig = new CrfSignature();
@@ -526,6 +567,13 @@ public class NhpRecordService {
         sig.setMeaning(str(body.get("meaning")));
         sig.setSignatureHash(str(body.get("signatureHash")));
         signatureMapper.insert(sig);
+        // 签署驱动：REVIEWED（复核通过）状态下签署 → 推进 SIGNED（签署集齐）；LOCKED 不可再签
+        if ("REVIEWED".equals(record.getStatus())) {
+            recordMapper.updateStatus(recordId, "SIGNED");
+            record.setStatus("SIGNED");
+            snapshotService.create(record, toJson(loadValueMap(recordId)), null,
+                    "签署集齐快照", str(body.get("signerId")));
+        }
         return Result.success(sig);
     }
 
@@ -582,7 +630,9 @@ public class NhpRecordService {
     }
 
     /**
-     * 更新记录状态（DRAFT→COMPLETE→LOCKED）。进入 COMPLETE/LOCKED 时自动打快照。
+     * 更新记录状态（DRAFT→COMPLETE→REVIEWED→SIGNED→LOCKED，五态流转）。
+     * COMPLETE=提交完成（沿用旧名，兼容存量）；REVIEWED=复核通过；SIGNED=签署集齐；LOCKED=锁定归档（终态）。
+     * 进入 COMPLETE/REVIEWED/SIGNED/LOCKED 均打快照；LOCKED 不可回退；质疑走 crf_query（字段级），不设 record 级 QUERIED 态。
      */
     @Transactional
     public Result<CrfRecord> updateStatus(Long recordId, Map<String, Object> body) {
@@ -591,8 +641,8 @@ public class NhpRecordService {
             return Result.error("表单实例不存在");
         }
         String status = str(body == null ? null : body.get("status"));
-        if (status == null || (!"DRAFT".equals(status) && !"COMPLETE".equals(status) && !"LOCKED".equals(status))) {
-            return Result.fail(400, "status 须为 DRAFT/COMPLETE/LOCKED");
+        if (status == null || !Set.of("DRAFT", "COMPLETE", "REVIEWED", "SIGNED", "LOCKED").contains(status)) {
+            return Result.fail(400, "status 须为 DRAFT/COMPLETE/REVIEWED/SIGNED/LOCKED");
         }
         if ("LOCKED".equals(record.getStatus()) && !"LOCKED".equals(status)) {
             return Result.fail(400, "已锁定记录不可回退状态");
@@ -602,14 +652,49 @@ public class NhpRecordService {
         String note = str(body == null ? null : body.get("note"));
         recordMapper.updateStatus(recordId, status);
         record.setStatus(status);
-        if ("COMPLETE".equals(status) || "LOCKED".equals(status)) {
+        // 事件引擎：状态变更（非 DRAFT）触发下游（手术完成→展开术后随访待办等）
+        if (!"DRAFT".equals(status)) {
+            CrfForm form = formMapper.findById(record.getFormId());
+            String atomCode = form == null ? null : form.getCode();
+            if (atomCode != null && !atomCode.isBlank()) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("subjectId", record.getSubjectId());
+                payload.put("transplantId", record.getTransplantId());
+                payload.put("triggerOn", "STATUS_CHANGED");
+                payload.put("status", status);
+                eventEngine.onEvent(atomCode, recordId, payload);
+            }
+        }
+        if (!"DRAFT".equals(status)) {
             String dataJson = toJson(loadValueMap(recordId));
             snapshotService.create(record, dataJson, bizStage,
-                    note != null ? note : ("LOCKED".equals(status) ? "数据锁定归档" : "提交完成快照"),
+                    note != null ? note : statusNote(status),
                     operatorId);
-            auditStage(recordId, operatorId, "LOCKED".equals(status) ? "锁定" : "完成");
+            auditStage(recordId, operatorId, statusLabel(status));
         }
         return Result.success(record);
+    }
+
+    /** 状态快照默认注记 */
+    private String statusNote(String status) {
+        return switch (status) {
+            case "COMPLETE" -> "提交完成快照";
+            case "REVIEWED" -> "复核通过快照";
+            case "SIGNED" -> "签署集齐快照";
+            case "LOCKED" -> "数据锁定归档";
+            default -> "状态变更快照";
+        };
+    }
+
+    /** 状态审计标签 */
+    private String statusLabel(String status) {
+        return switch (status) {
+            case "COMPLETE" -> "提交";
+            case "REVIEWED" -> "复核";
+            case "SIGNED" -> "签署";
+            case "LOCKED" -> "锁定";
+            default -> status;
+        };
     }
 
     /** 手动创建不可变快照（当前 EAV 值）。 */
@@ -728,6 +813,39 @@ public class NhpRecordService {
 
     /* ── 内部辅助 ── */
 
+    /**
+     * 未填 subjectCode 时按类型取号：DONOR→DON（基地码 FARM）、RECIPIENT→RCP（中心码 CENTER）。
+     */
+    private String allocateSubjectCode(String subjectType, Map<String, Object> body) {
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        int year = LocalDate.now().getYear();
+        ctx.put("year", year);
+        if ("DONOR".equals(subjectType)) {
+            String base = str(body.get("farmCode"));
+            if (base == null) base = str(body.get("base"));
+            if (base == null) {
+                throw new IllegalArgumentException("自动取号需提供 farmCode（基地/FARM 码）");
+            }
+            ctx.put("base", base);
+            ctx.put("farm", base);
+            return idService.buildCode("DON", ctx);
+        }
+        String center = str(body.get("centerCode"));
+        if (center == null) {
+            Long centerId = asLong(body.get("centerId"));
+            if (centerId != null) {
+                CrfCenter c = centerMapper.findById(centerId);
+                if (c != null) center = c.getCode();
+            }
+        }
+        if (center == null) {
+            throw new IllegalArgumentException("自动取号需提供 centerCode 或 centerId（中心/CENTER 码）");
+        }
+        ctx.put("center", center);
+        ctx.put("centerCode", center);
+        return idService.buildCode("RCP", ctx);
+    }
+
     private CrfField resolveField(Map<String, Object> entry) {
         Long fieldId = asLong(entry.get("fieldId"));
         if (fieldId != null) {
@@ -748,6 +866,11 @@ public class NhpRecordService {
         }
         if ("CALC".equals(type)) {
             return false;
+        }
+        // 结构化字段（repeatGroup/table）：值为数组/对象 → value_json
+        if (raw instanceof List || raw instanceof Map) {
+            rv.setValueJson(toJson(raw));
+            return true;
         }
         switch (type == null ? "STRING" : type) {
             case "TEXT" -> rv.setValueText(str(raw));

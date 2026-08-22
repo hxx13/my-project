@@ -114,6 +114,22 @@ Page({
   onAlertTap: function (e) {
     var id = e.currentTarget.dataset.id;
     var kind = e.currentTarget.dataset.kind;
+    var obligationId = e.currentTarget.dataset.obligationId;
+    var mpPath = e.currentTarget.dataset.mpPath;
+    if (String(kind) === 'violation') {
+      var oid = obligationId ? Number(obligationId) : 0;
+      var url = '';
+      if (mpPath && String(mpPath).indexOf('studentObligation') >= 0) {
+        url = String(mpPath);
+        if (url.charAt(0) !== '/') url = '/' + url;
+      } else if (oid > 0) {
+        url = '/package-feature/pages/studentObligation/index?id=' + oid;
+      } else {
+        url = '/package-feature/pages/studentObligation/index';
+      }
+      wx.navigateTo({ url: url });
+      return;
+    }
     if (id && kind) {
       wx.navigateTo({
         url: '/package-feature/pages/homeBulletinDetail/index?id=' + encodeURIComponent(id) + '&kind=' + encodeURIComponent(kind),

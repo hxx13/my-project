@@ -7,6 +7,8 @@
  * 填写实例可挂已发布原子或组合。列表头可能是草稿，请用 publishedFormId 开填。
  */
 import { authHttp } from "@/api/core/authHttp";
+import { reimportPigDictionary } from "./nhpFieldDictionary.api";
+import { seedNhpAtoms } from "./nhpOps.api";
 import type { FormTemplate } from "../schema/formTemplate";
 
 interface Result<T> {
@@ -65,6 +67,11 @@ export interface NhpTemplateListItem {
   publishedFormId?: number;
   publishedVersion?: number;
   publishedStatus?: string;
+  /** schedule 列：事件锚点（发布后决定何时可填） */
+  eventAnchor?: string | null;
+  /** schedule 列：频次（ONCE=里程碑 / 其他=可重复） */
+  frequency?: string | null;
+  captureForm?: string | null;
 }
 
 /** 是否可用于开填（头版本已发布，或同 key 另有已发布版） */
@@ -80,6 +87,35 @@ export function fillableFormId(t: NhpTemplateListItem): number | undefined {
   const s = (t.status || "").toUpperCase();
   if (s === "PUBLISHED" || s === "FROZEN") return t.formId;
   return undefined;
+}
+
+/** 事件指派 / 采集侧应使用的 formId（与 visit_plan.atom_id 对齐） */
+export function assignableFormId(t: NhpTemplateListItem): number {
+  return fillableFormId(t) ?? t.formId;
+}
+
+export function isCompositeTemplate(t: NhpTemplateListItem): boolean {
+  const ft = (t.formType || "").toUpperCase();
+  const kd = (t.kind || "").toUpperCase();
+  return ft === "TEMPLATE" || ft === "COMPOSITE" || kd === "COMPOSITE";
+}
+
+/** 已发布可指派模板（原子 + 组合；与模板发布页「已发布」口径一致） */
+export async function fetchAssignableNhpTemplates(): Promise<NhpTemplateListItem[]> {
+  const all = await fetchNhpTemplates("ALL");
+  return all.filter(isFillablePublished);
+}
+
+/** visit_plan.atom_id 可能落草稿头或已发布版 id，建双向索引 */
+export function indexTemplatesByFormId(templates: NhpTemplateListItem[]): Map<number, NhpTemplateListItem> {
+  const m = new Map<number, NhpTemplateListItem>();
+  for (const t of templates) {
+    m.set(t.formId, t);
+    const fid = assignableFormId(t);
+    if (fid !== t.formId) m.set(fid, t);
+    if (t.publishedFormId != null) m.set(t.publishedFormId, t);
+  }
+  return m;
 }
 
 export interface NhpFormTemplate extends FormTemplate {
@@ -200,6 +236,48 @@ export async function createNhpTemplateDraft(formKey: string): Promise<NhpFormTe
   return authHttp
     .post<Result<NhpFormTemplate>>(`/nhp/templates/${formKey}/draft`)
     .then(({ data }) => data.data);
+}
+
+/** 新建空白组合模板草稿（v1 DRAFT，首存即落库） */
+export async function createNhpCompositeDraft(title = "新建组合模板"): Promise<NhpFormTemplate> {
+  const formKey = `nhp-crftpl-${Date.now().toString(36)}`;
+  return saveNhpTemplate(formKey, { formKey, title, sections: [] });
+}
+
+/** 一键导入内置种子：猪字典字段 + 45 域原子（DRAFT MODULE + 题目模板）；不生成组合模板 */
+export interface NhpBuiltinSeedImportResult {
+  dictionary: Awaited<ReturnType<typeof reimportPigDictionary>>;
+  atoms: Awaited<ReturnType<typeof seedNhpAtoms>>;
+}
+
+export async function importNhpBuiltinSeedTemplates(): Promise<NhpBuiltinSeedImportResult> {
+  const dictionary = await reimportPigDictionary();
+  const atoms = await seedNhpAtoms();
+  return { dictionary, atoms };
+}
+
+/** 模板发布页导入成功摘要 */
+export function formatBuiltinSeedImportToast(r: NhpBuiltinSeedImportResult): string {
+  const d = r.dictionary;
+  const inserted = d.fieldsInserted ?? 0;
+  const updated = d.fieldsUpdated ?? 0;
+  const frozen = d.fieldsFrozen ?? 0;
+  const revived = d.fieldsRevived ?? 0;
+  const atomSeed = r.atoms.atoms ?? 0;
+  const regenerated = d.atomsRegenerated ?? [];
+  const fieldPart =
+    `猪字典字段：新增 ${inserted}、复活 ${revived}、更新 ${updated}、冻结 ${frozen}` +
+    (d.structureRebuilt ? "；大纲已重建" : "");
+  const atomPart =
+    atomSeed > 0
+      ? `内置原子模板 ${atomSeed} 个（DRAFT，含题目）`
+      : regenerated.length > 0
+        ? `补生成域原子 ${regenerated.join("、")}`
+        : "原子模板已就绪（幂等，无新增）";
+  return (
+    `【导入完成】${fieldPart}。${atomPart}。` +
+    "请在「含草稿」中查看各原子模板，编辑后逐一手动发布。需要组合表单时点「＋ 去发布」创建空白组合草稿。"
+  );
 }
 
 /** 软删单个模板版本（原子或组合）；填写实例引用或原子被组合钉住时 409 */

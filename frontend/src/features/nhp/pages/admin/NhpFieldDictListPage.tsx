@@ -1,11 +1,10 @@
 /**
  * 字段字典套列表壳：猪 / 猴 / 自定义互不覆盖；点进某套再管理字段。
  */
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import {
   createNhpFieldDictionary,
   deleteNhpFieldDictionary,
@@ -15,23 +14,18 @@ import {
   updateNhpFieldDictionary,
   type NhpFieldDictionary,
 } from "../../api/nhpFieldDictionary.api";
-import { nhpNavState } from "../../utils/nhpAdminNav";
+import { nhpNavState, nhpPathOf, sanitizeNhpReturnTo } from "../../utils/nhpAdminNav";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { appConfirm } from "@/lib/appDialog";
+import ContentManagerWorkbenchLayout from "@/layouts/ContentManagerWorkbenchLayout";
 import "@/features/aup/aup.css";
 import "../../nhp.css";
 
 export default function NhpFieldDictListPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const goBack = useGoBack("/content-manager/content");
   const qc = useQueryClient();
+  const [keyword, setKeyword] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [dictKey, setDictKey] = useState("");
   const [name, setName] = useState("");
@@ -190,32 +184,61 @@ export default function NhpFieldDictListPage() {
   };
 
   const rows = listQuery.data ?? [];
+  const q = keyword.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!q) return rows;
+    return rows.filter(
+      (d) =>
+        d.dictKey.toLowerCase().includes(q) ||
+        (d.name ?? "").toLowerCase().includes(q) ||
+        (d.species ?? "").toLowerCase().includes(q) ||
+        (d.description ?? "").toLowerCase().includes(q),
+    );
+  }, [rows, q]);
+
+  const handleBack = () => {
+    const rt = sanitizeNhpReturnTo(
+      (location.state as { returnTo?: unknown } | null)?.returnTo,
+      nhpPathOf(location),
+    );
+    if (rt) {
+      navigate(rt, { replace: true });
+      return;
+    }
+    navigate("/content-manager/nhp-template", { replace: true });
+  };
 
   return (
-    <div className="aup-app aup-app--full nhp-template-admin">
-      <div className="page-hd">
-        <div>
-          <button type="button" className="btn ghost small" onClick={goBack} style={{ marginBottom: 8 }}>
-            ← 返回
-          </button>
-          <h1>数据域套</h1>
-          <div className="sub">
-            <strong>并排父源</strong>：猪套、猴套等彼此独立。先建「数据域套」，再在套内建数据域（不必沿用猪 D1–D10）。
-            下游原子/组合从本套派生；勿与业务采集阶段混淆。
-            {" · "}
-            <Link to="/content-manager/nhp-template" state={nhpNavState(location)} style={{ color: "var(--primary)" }}>
-              原子/组合模板（子）
-            </Link>
-            {" · "}
-            <Link to="/content-manager/nhp-codelist" state={nhpNavState(location)} style={{ color: "var(--primary)" }}>
-              码表
-            </Link>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <ContentManagerWorkbenchLayout
+      onBack={handleBack}
+      searchPlaceholder="搜索 dictKey / 名称 / 种属…"
+      searchValue={keyword}
+      onSearchChange={setKeyword}
+      countText={`共 ${filtered.length} 套数据域`}
+      split={false}
+      toolbarExtra={
+        <>
           <button
             type="button"
-            className="btn primary"
+            className="btn ghost small"
+            disabled={reimportPigMutation.isPending}
+            onClick={async () => {
+              if (
+                await appConfirm(
+                  "【恢复默认 · 第 1–2 层】将内置种子字段同步进猪字典套：重建域/子模块大纲、冻结字段，并检测补生成缺失域原子。\n\n" +
+                    "不含 45 个细粒度原子草稿与题目模板（第 3–4 层）——请到「模板发布」页导入。\n\n" +
+                    "已有字段会计入更新/冻结（不是失败）；不改猴套与码表基线。继续？",
+                )
+              ) {
+                reimportPigMutation.mutate();
+              }
+            }}
+          >
+            {reimportPigMutation.isPending ? "导入中…" : "恢复默认字段"}
+          </button>
+          <button
+            type="button"
+            className="btn ghost small"
             onClick={() => {
               setEditTarget(null);
               setCreateOpen((v) => !v);
@@ -223,33 +246,19 @@ export default function NhpFieldDictListPage() {
           >
             ＋ 新建数据域套
           </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button type="button" className="btn ghost">
-                更多 ▾
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                disabled={reimportPigMutation.isPending}
-                onClick={async () => {
-                  if (
-                    await appConfirm(
-                      "【字段重导入】将内置猪字段同步进猪字典并冻结字段（便于从字典生成原子；已有字段会计入更新/冻结，不是失败）。不会批量冻结码表。按字段重建 D1–D10 大纲，清理误种 DD* 空原子，并【原子缺失检测】补生成缺失域原子。不改猴套。继续？",
-                    )
-                  ) {
-                    reimportPigMutation.mutate();
-                  }
-                }}
-              >
-                {reimportPigMutation.isPending ? "重导入中…" : "重导入内置猪字典"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {createOpen && (
+          <Link
+            to="/content-manager/nhp-codelist"
+            state={nhpNavState(location)}
+            className="btn ghost small"
+            style={{ textDecoration: "none" }}
+          >
+            码表
+          </Link>
+        </>
+      }
+      main={
+        <>
+          {createOpen && (
         <div className="nhp-toolbar-panel">
           <div className="nhp-toolbar-panel-title">新建数据域套</div>
           <p className="nhp-toolbar-panel-desc">
@@ -313,11 +322,13 @@ export default function NhpFieldDictListPage() {
 
       {listQuery.isLoading ? (
         <div className="aup-empty">加载中…</div>
-      ) : rows.length === 0 ? (
-        <div className="aup-empty">暂无数据域套。请新建，或重启后端以灌入默认猪/猴壳。</div>
+      ) : filtered.length === 0 ? (
+        <div className="aup-empty">
+          {q ? "无匹配数据域套" : "暂无数据域套。请新建，或重启后端以灌入默认猪/猴壳。"}
+        </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 20 }}>
-          {rows.map((d: NhpFieldDictionary) => (
+          {filtered.map((d: NhpFieldDictionary) => (
             <div className="aup-doc-stack" key={d.dictKey}>
               <div className="aup-doc">
                 <div className="aup-doc-hd">
@@ -382,6 +393,9 @@ export default function NhpFieldDictListPage() {
         </div>
       )}
 
+        </>
+      }
+    >
       {editTarget && (
         <div className="aup-modal-mask" onClick={closeEdit}>
           <div className="aup-modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
@@ -465,6 +479,6 @@ export default function NhpFieldDictListPage() {
           </div>
         </div>
       )}
-    </div>
+    </ContentManagerWorkbenchLayout>
   );
 }

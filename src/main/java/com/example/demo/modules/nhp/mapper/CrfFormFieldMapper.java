@@ -9,8 +9,8 @@ import java.util.List;
 @Mapper
 public interface CrfFormFieldMapper {
 
-    @Insert("INSERT INTO crf_form_field (form_id, field_id, role, position, required_override, logic_ref) " +
-            "VALUES (#{formId}, #{fieldId}, #{role}, #{position}, #{requiredOverride}, #{logicRef})")
+    @Insert("INSERT INTO crf_form_field (form_id, field_id, role, fk_target, position, required_override, logic_ref) " +
+            "VALUES (#{formId}, #{fieldId}, #{role}, #{fkTarget}, #{position}, #{requiredOverride}, #{logicRef})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CrfFormField row);
 
@@ -25,4 +25,7 @@ public interface CrfFormFieldMapper {
 
     @Delete("DELETE FROM crf_form_field WHERE form_id = #{formId}")
     int deleteByFormId(Long formId);
+
+    @Update("UPDATE crf_form_field SET role = #{role} WHERE id = #{id}")
+    int updateRole(@Param("id") Long id, @Param("role") String role);
 }

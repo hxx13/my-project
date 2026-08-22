@@ -11,6 +11,8 @@ public class CrfCodelist {
     /** 码表编码 BREED/EDIT/FARM/ORG… */
     private String code;
     private String name;
+    /** 文件夹分类（分组/层级索引；NULL=未分类） */
+    private String folder;
     private Integer version;
     /** DRAFT/ACTIVE(存量)/PENDING_REVIEW/FROZEN/ARCHIVED/RETIRED — 冻结后改值须新建版本 */
     private String status;

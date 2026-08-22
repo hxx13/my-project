@@ -91,3 +91,28 @@ export const TYPES_WITH_OPTIONS = new Set<FieldType>(
 export const TYPES_NESTABLE = new Set<FieldType>(
   TYPE_REGISTRY.filter((t) => t.nestable).map((t) => t.value)
 );
+
+/**
+ * dataType（字典层存储类型）→ 兼容的控件 type（填写方式）。
+ * 字段属性限制「存什么」，type 决定「怎么填」，二者独立但必须配合——
+ * 编辑器选题型时按 dataType 过滤，避免 DECIMAL 字段选成下拉、ENUM 字段选成文本。
+ */
+export const DATA_TYPE_COMPATIBLE_TYPES: Record<string, FieldType[]> = {
+  STRING: ["text", "textarea", "richText"],
+  TEXT: ["textarea", "richText"],
+  INTEGER: ["number"],
+  DECIMAL: ["number"],
+  DATE: ["date", "dateRange", "time"],
+  DATETIME: ["date", "dateRange", "time"],
+  ENUM: ["select", "choice", "cascade"],
+  ENUM_MULTI: ["checkbox"],
+  BOOLEAN: ["checkbox"],
+  FILE: ["file", "image"],
+  CALC: [],
+};
+
+/** 按 dataType 取可选题型；无 dataType 时返回全部（兼容旧数据，不设限） */
+export function compatibleTypesFor(dataType?: string): FieldType[] {
+  if (!dataType) return TYPE_REGISTRY.map((t) => t.value);
+  return DATA_TYPE_COMPATIBLE_TYPES[dataType] ?? ["text"];
+}

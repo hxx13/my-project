@@ -147,13 +147,24 @@ import AupReviewerConfigPage from "@/features/aup/pages/admin/AupReviewerConfigP
 import NhpTemplateEditor from "@/features/nhp/pages/admin/NhpTemplateEditor";
 import NhpTemplateListPage from "@/features/nhp/pages/admin/NhpTemplateListPage";
 import NhpCodelistPage from "@/features/nhp/pages/admin/NhpCodelistPage";
-import NhpFieldDictListPage from "@/features/nhp/pages/admin/NhpFieldDictListPage";
 import NhpFieldPage from "@/features/nhp/pages/admin/NhpFieldPage";
-import NhpFieldReviewPage from "@/features/nhp/pages/admin/NhpFieldReviewPage";
+import NhpFieldDictListPage from "@/features/nhp/pages/admin/NhpFieldDictListPage";
 import NhpDataEntryPage from "@/features/nhp/pages/admin/NhpDataEntryPage";
 import NhpRecordsPage from "@/features/nhp/pages/admin/NhpRecordsPage";
+import NhpRecordDetailPage from "@/features/nhp/pages/admin/NhpRecordDetailPage";
 import NhpSubjectsPage from "@/features/nhp/pages/admin/NhpSubjectsPage";
-import NhpWorkflowHubPage from "@/features/nhp/pages/admin/NhpWorkflowHubPage";
+import NhpVisitPage from "@/features/nhp/pages/admin/NhpVisitPage";
+import NhpEventAssignmentPage from "@/features/nhp/pages/admin/NhpEventAssignmentPage";
+import NhpIdRulePage from "@/features/nhp/pages/admin/NhpIdRulePage";
+import NhpEventRulePage from "@/features/nhp/pages/admin/NhpEventRulePage";
+import NhpStandardPage from "@/features/nhp/pages/admin/NhpStandardPage";
+import NhpQualityPage from "@/features/nhp/pages/admin/NhpQualityPage";
+import NhpAuditPage from "@/features/nhp/pages/admin/NhpAuditPage";
+import NhpSnapshotPage from "@/features/nhp/pages/admin/NhpSnapshotPage";
+import NhpCodelistReviewPage from "@/features/nhp/pages/admin/NhpCodelistReviewPage";
+import NhpOverviewPage from "@/features/nhp/pages/admin/NhpOverviewPage";
+import NhpReviewCenterPage from "@/features/nhp/pages/admin/NhpReviewCenterPage";
+import NhpNotificationCenterPage from "@/features/nhp/pages/admin/NhpNotificationCenterPage";
 import MobileStudentCenterRoute from "@/pages/mobile/MobileStudentCenterRoute";
 import MobileStudentCenterInvalidPage from "@/pages/mobile/MobileStudentCenterInvalidPage";
 import MobileLoginPage from "@/pages/mobile/auth/MobileLoginPage";
@@ -249,8 +260,12 @@ export const router = createHashRouter([
   // ═══════════════════════════════════════════════════════
   { path: "/aup/fill", element: <AuthGuard><AupFillPage /></AuthGuard> },
   { path: "/aup/fill/:id", element: <AuthGuard><AupFillPage /></AuthGuard> },
+  { path: "/nhp", element: <AuthGuard><Navigate to="/content-manager/nhp-records" replace /></AuthGuard> },
   { path: "/nhp/fill", element: <AuthGuard><NhpFillPage /></AuthGuard> },
   { path: "/nhp/fill/:id", element: <AuthGuard><NhpFillPage /></AuthGuard> },
+  { path: "/nhp/overview", element: <AuthGuard><NhpOverviewPage /></AuthGuard> },
+  { path: "/nhp/review-center", element: <AuthGuard><NhpReviewCenterPage /></AuthGuard> },
+  { path: "/nhp/notifications", element: <AuthGuard><NhpNotificationCenterPage /></AuthGuard> },
 
   // ═══════════════════════════════════════════════════════
   //  教职工路由 — 统一在 /console 命名空间下
@@ -441,12 +456,20 @@ export const router = createHashRouter([
       { path: "nhp-template", element: <NhpTemplateListPage /> },
       { path: "nhp-template/edit/:formKey", element: <NhpTemplateEditor /> },
       { path: "nhp-codelist", element: <NhpCodelistPage /> },
+      { path: "nhp-visits", element: <NhpVisitPage /> },
+      { path: "nhp-event-assignment", element: <NhpEventAssignmentPage /> },
+      { path: "nhp-idrules", element: <NhpIdRulePage /> },
+      { path: "nhp-event-rules", element: <NhpEventRulePage /> },
+      { path: "nhp-standards", element: <NhpStandardPage /> },
+      { path: "nhp-quality", element: <NhpQualityPage /> },
+      { path: "nhp-audit", element: <NhpAuditPage /> },
+      { path: "nhp-snapshots", element: <NhpSnapshotPage /> },
+      { path: "nhp-codelist-review", element: <NhpCodelistReviewPage /> },
       { path: "nhp-field", element: <NhpFieldDictListPage /> },
       { path: "nhp-field/:dictKey", element: <NhpFieldPage /> },
-      { path: "nhp-field-review", element: <NhpFieldReviewPage /> },
-      { path: "nhp-hub", element: <NhpWorkflowHubPage /> },
       { path: "nhp-subjects", element: <NhpSubjectsPage /> },
       { path: "nhp-records", element: <NhpRecordsPage /> },
+      { path: "nhp-records/:subjectId", element: <NhpRecordDetailPage /> },
       { path: "nhp-entry", element: <NhpDataEntryPage /> },
       { path: "nhp-entry/:id", element: <NhpDataEntryPage /> },
     ],

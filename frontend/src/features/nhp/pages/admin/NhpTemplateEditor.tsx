@@ -5,7 +5,8 @@
  * 见《数据库字段档案》12/13/15。
  */
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import { useTemplateEditor } from "../../store/useTemplateEditor";
@@ -27,16 +28,34 @@ import type { FieldTemplate } from "../../schema/fieldTemplates";
 import * as templateApi from "../../api/nhpTemplate.api";
 import type { NhpAtomRef } from "../../api/nhpTemplate.api";
 import { fetchNhpCodelists } from "../../api/nhpCodelist.api";
+import { fetchNhpDictStructure } from "../../api/nhpFieldDictionary.api";
 import NhpFormField from "../../components/NhpFormField";
 import NhpCompositeComposer, { type StagePick } from "../../components/NhpCompositeComposer";
+import { AtomPickInline, buildDomainNameMap, formatAtomPicksText } from "../../utils/nhpAtomDisplay";
 import SectionTree from "../../editor/SectionTree";
 import FieldEditorPanel from "../../editor/FieldEditorPanel";
 import TypeMenu from "../../editor/TypeMenu";
+import FieldPicker from "../../editor/FieldPicker";
+import DictDomainGenerateDialog from "../../editor/DictDomainGenerateDialog";
+import type { NhpField } from "../../api/nhpField.api";
 import { appConfirm } from "@/lib/appDialog";
 import "../../nhp.css";
 
+function parseAtomScope(formKey: string): { dictKey: string; domainCode: string | null } {
+  const scoped = formKey.match(/^([a-z0-9_-]+)__(.+)$/i);
+  if (scoped) {
+    const domain = scoped[2].match(/^(D+\d+)/i)?.[1]?.toUpperCase() ?? scoped[2].toUpperCase();
+    return { dictKey: scoped[1].toLowerCase(), domainCode: domain };
+  }
+  const bare = formKey.match(/^(D+\d+)/i);
+  if (bare) return { dictKey: "pig", domainCode: bare[1].toUpperCase() };
+  return { dictKey: "pig", domainCode: null };
+}
+
 export default function NhpTemplateEditor() {
   const goBack = useGoBack("/content-manager/nhp-template");
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const { formKey: formKeyParam } = useParams<{ formKey: string }>();
   const formKey = formKeyParam ?? "";
 
@@ -62,6 +81,7 @@ export default function NhpTemplateEditor() {
   const [status, setStatus] = useState("DRAFT");
   const [version, setVersion] = useState<number | undefined>();
   const [kind, setKind] = useState<"ATOM" | "COMPOSITE">("COMPOSITE");
+  const [compositeDictKey, setCompositeDictKey] = useState("pig");
   const [atoms, setAtoms] = useState<NhpAtomRef[]>([]);
   const [atomSummary, setAtomSummary] = useState("");
   const [atomLocked, setAtomLocked] = useState(false);
@@ -70,9 +90,40 @@ export default function NhpTemplateEditor() {
   const [codelists, setCodelists] = useState<{ code: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [addMenu, setAddMenu] = useState<{ sectionCode: string; subsectionCode: string | null } | null>(null);
+  const [fieldPickerOpen, setFieldPickerOpen] = useState(false);
+  const [dictGenerateOpen, setDictGenerateOpen] = useState(false);
   /** 组合编辑器内：添加缺失数据域原子 / 更换某原子 */
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerFocus, setComposerFocus] = useState<string | null>(null);
+
+  const editorDictKey = useMemo(() => parseAtomScope(formKey).dictKey, [formKey]);
+  const editorDomainCode = useMemo(() => parseAtomScope(formKey).domainCode, [formKey]);
+
+  const structureQuery = useQuery({
+    queryKey: ["nhp", "dict-structure", editorDictKey],
+    queryFn: () => fetchNhpDictStructure(editorDictKey),
+    enabled: !!formKey,
+  });
+
+  const domainNameMap = useMemo(
+    () => buildDomainNameMap(structureQuery.data?.domains),
+    [structureQuery.data],
+  );
+
+  const syncAtomSummary = (nextAtoms: NhpAtomRef[]) => {
+    const picks = nextAtoms.map((a) => ({
+      atomCode: a.atomCode,
+      version: a.atomVersion,
+      title: a.atomTitle,
+    }));
+    setAtomSummary(formatAtomPicksText(picks, domainNameMap));
+  };
+
+  useEffect(() => {
+    if (!atoms.length) return;
+    syncAtomSummary(atoms);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domainNameMap]);
 
   useEffect(() => {
     fetchNhpCodelists()
@@ -91,11 +142,21 @@ export default function NhpTemplateEditor() {
         setStatus(t.status ?? "DRAFT");
         setVersion(t.version);
         setKind(t.kind === "ATOM" ? "ATOM" : "COMPOSITE");
+        setCompositeDictKey((t.dictKey || "pig").trim() || "pig");
         setAtomLocked(!!t.locked);
         const nextAtoms = t.atoms ?? [];
         setAtoms(nextAtoms);
         if (nextAtoms.length) {
-          setAtomSummary(nextAtoms.map((a) => `${a.atomCode}@v${a.atomVersion ?? "?"}`).join(" · "));
+          setAtomSummary(
+            formatAtomPicksText(
+              nextAtoms.map((a) => ({
+                atomCode: a.atomCode,
+                version: a.atomVersion,
+                title: a.atomTitle,
+              })),
+              domainNameMap,
+            ),
+          );
         } else if (t.referencedBy?.length) {
           setAtomSummary(
             "引用：" + t.referencedBy.map((r) => `${r.formKey}@v${r.version ?? "?"}`).join(" · "),
@@ -114,11 +175,21 @@ export default function NhpTemplateEditor() {
     setStatus(t.status ?? "DRAFT");
     setVersion(t.version);
     setKind(t.kind === "ATOM" ? "ATOM" : "COMPOSITE");
+    setCompositeDictKey((t.dictKey || "pig").trim() || "pig");
     setAtomLocked(!!t.locked);
     const nextAtoms = t.atoms ?? [];
     setAtoms(nextAtoms);
     if (nextAtoms.length) {
-      setAtomSummary(nextAtoms.map((a) => `${a.atomCode}@v${a.atomVersion ?? "?"}`).join(" · "));
+      setAtomSummary(
+        formatAtomPicksText(
+          nextAtoms.map((a) => ({
+            atomCode: a.atomCode,
+            version: a.atomVersion,
+            title: a.atomTitle,
+          })),
+          domainNameMap,
+        ),
+      );
     } else if (t.referencedBy?.length) {
       setAtomSummary(
         "引用：" + t.referencedBy.map((r) => `${r.formKey}@v${r.version ?? "?"}`).join(" · "),
@@ -141,19 +212,21 @@ export default function NhpTemplateEditor() {
   const selectedField = useMemo(() => findField(sections, selectedFieldKey), [sections, selectedFieldKey]);
   const fieldCatalog = useMemo(() => buildFieldCatalog(sections), [sections]);
   const fieldOptions = useMemo(() => collectAllFields(sections), [sections]);
-  // 原子：草稿且未被组合钉住可编辑；已发布须新建版本。组合：仅 DRAFT
+  // 原子：草稿且未被组合钉住可改结构；已发布须新建版本。组合：草稿可编辑（已发布须先新建草稿，但可钉原子升版）
   const editable =
     kind === "ATOM"
       ? !atomLocked && (status === "DRAFT" || status === "FREEZING" || !status)
-      : status === "DRAFT";
+      : status === "DRAFT" || status === "FREEZING" || !status;
+  const canPinAtoms = kind === "COMPOSITE";
   const showEditMode = editable && viewMode === "edit";
-  const isPublishedStatus = status === "PUBLISHED" || status === "FROZEN";
 
   const run = async (fn: () => Promise<unknown>, okMsg: string) => {
     setBusy(true);
     try {
       await fn();
       toast.success(okMsg);
+      void qc.invalidateQueries({ queryKey: ["nhp", "templates"] });
+      void qc.invalidateQueries({ queryKey: ["nhp", "assignable-templates"] });
     } catch (e) {
       toast.error((e as Error)?.message || "操作失败");
     } finally {
@@ -179,14 +252,18 @@ export default function NhpTemplateEditor() {
       applyTemplatePayload(t);
     }, "已保存");
 
-  const generate = () =>
+  const generateFromDomain = (dictKey: string, domainCode: string) =>
     run(async () => {
-      const scoped = formKey.match(/^([a-z0-9_-]+)__(.+)$/i);
-      const dictKey = scoped ? scoped[1].toLowerCase() : /^D+\d/i.test(formKey) ? "pig" : undefined;
-      const domainOrKey = scoped ? scoped[2] : formKey;
-      const t = await templateApi.generateFromDict(domainOrKey, title || formKey, dictKey);
+      const scopedKey = dictKey === "pig" ? domainCode : `${dictKey}__${domainCode}`;
+      const t = await templateApi.generateFromDict(scopedKey, title || domainCode, dictKey);
       applyTemplatePayload(t);
+      if (t.formKey && t.formKey !== formKey) {
+        navigate(`/content-manager/nhp-template/edit/${encodeURIComponent(t.formKey)}`, { replace: true });
+      }
+      setDictGenerateOpen(false);
     }, "已从字段字典生成");
+
+  const openDictGenerate = () => setDictGenerateOpen(true);
 
   const publish = async () => {
     const tip =
@@ -231,7 +308,7 @@ export default function NhpTemplateEditor() {
     if (kind === "COMPOSITE") {
       setAtoms((prev) => {
         const next = prev.filter((a) => a.atomCode !== code);
-        setAtomSummary(next.map((a) => `${a.atomCode}@v${a.atomVersion ?? "?"}`).join(" · "));
+        syncAtomSummary(next);
         return next;
       });
       toast.success(`已移除数据域原子 ${code}，可重新选择`);
@@ -288,7 +365,7 @@ export default function NhpTemplateEditor() {
 
   const handleAddSection = () => {
     const code = nextSectionCode(sections.map((s) => s.code));
-    addSection(code, "");
+    addSection(code, code);
     selectSection(code);
   };
 
@@ -297,7 +374,7 @@ export default function NhpTemplateEditor() {
     if (!sec) return;
     const n = nextSubsectionNumber((sec.subsections ?? []).map((u) => u.code), sectionCode);
     const code = `${sectionCode}.${String(n).padStart(2, "0")}`;
-    addSubsection(sectionCode, code, "");
+    addSubsection(sectionCode, code, code);
   };
 
   const handleRemoveSubsection = async (sectionCode: string, subsectionCode: string) => {
@@ -368,9 +445,7 @@ export default function NhpTemplateEditor() {
           {kind === "ATOM"
             ? atomLocked
               ? "已锁定"
-              : isPublishedStatus
-                ? statusLabel(status)
-                : "可编辑"
+              : statusLabel(status)
             : statusLabel(status)}
           {version != null ? ` · v${version}` : ""}
         </span>
@@ -392,7 +467,7 @@ export default function NhpTemplateEditor() {
           </div>
         )}
         {kind === "ATOM" && editable && (
-          <button type="button" className="aup-btn ghost" disabled={busy || !formKey} onClick={generate}>
+          <button type="button" className="aup-btn ghost" disabled={busy || !formKey} onClick={openDictGenerate}>
             从字典生成
           </button>
         )}
@@ -411,7 +486,7 @@ export default function NhpTemplateEditor() {
         )}
       </div>
 
-      {kind === "COMPOSITE" && editable && (
+      {kind === "COMPOSITE" && canPinAtoms && (
         <div className="nhp-editor-stage-bar">
           <span className="aup-muted" style={{ fontWeight: 600 }}>
             数据域原子
@@ -421,8 +496,10 @@ export default function NhpTemplateEditor() {
           ) : (
             atoms.map((a) => (
               <span key={a.atomCode} className="nhp-editor-stage-chip">
-                <span className="code">{a.atomCode}</span>
-                <span>v{a.atomVersion ?? "?"}</span>
+                <AtomPickInline
+                  pick={{ atomCode: a.atomCode, version: a.atomVersion, title: a.atomTitle }}
+                  nameMap={domainNameMap}
+                />
                 <button
                   type="button"
                   className="aup-btn small ghost"
@@ -439,7 +516,8 @@ export default function NhpTemplateEditor() {
             ＋ 添加数据域原子
           </button>
           <span className="aup-muted" style={{ marginLeft: "auto" }}>
-            删除左侧章节后可重新选择同数据域；同域不可重复添加
+            删除左侧章节后可重新选择同数据域；同域不可重复添加。
+            {!editable ? " 已发布组合钉原子将自动新建草稿版本。" : " 草稿与已发布原子均可钉，发布组合前建议先发布原子。"}
           </span>
         </div>
       )}
@@ -490,16 +568,22 @@ export default function NhpTemplateEditor() {
               <div className="t">尚无 CRF 板块</div>
               <div className="d">
                 {kind === "COMPOSITE"
-                  ? "可「添加数据域原子」按域→版本→预览组合；删除章节后也可重新选择该域。"
+                  ? "点「添加数据域原子」勾选域模块并选版本（草稿或已发布均可钉）；删除章节后也可重新选择该域。"
                   : "原子不可随意覆盖：请用「新建版本」后再改。也可从字段字典按域生成结构。"}
               </div>
               <div className="acts">
                 {kind === "COMPOSITE" ? (
-                  <button type="button" className="aup-btn primary" disabled={busy} onClick={openAddStages}>
+                  <button
+                    type="button"
+                    className="aup-btn primary"
+                    disabled={busy}
+                    onClick={openAddStages}
+                    title="勾选数据域原子并选版本；已发布组合将自动升草稿"
+                  >
                     ＋ 添加数据域原子
                   </button>
                 ) : (
-                  <button type="button" className="aup-btn primary" disabled={busy || !editable} onClick={generate}>
+                  <button type="button" className="aup-btn primary" disabled={busy || !editable} onClick={openDictGenerate}>
                     从字典生成
                   </button>
                 )}
@@ -614,7 +698,40 @@ export default function NhpTemplateEditor() {
         </main>
       </div>
 
-      {addMenu && <TypeMenu onPick={handlePickType} onPickTemplate={handlePickTemplate} onClose={() => setAddMenu(null)} />}
+      {addMenu && <TypeMenu onPick={handlePickType} onPickTemplate={handlePickTemplate} onPickFromDict={() => setFieldPickerOpen(true)} onClose={() => setAddMenu(null)} />}
+
+      {fieldPickerOpen && addMenu && (
+        <FieldPicker
+          defaultDictKey={editorDictKey}
+          filterDomainCode={addMenu.sectionCode.match(/^(D+\d+)/i)?.[1]?.toUpperCase()}
+          onPick={(field: NhpField, type: FieldType) => {
+            const sec = sections.find((s) => s.code === addMenu.sectionCode);
+            if (!sec) return;
+            const nf: FormField = {
+              fieldKey: field.fieldCode,
+              label: field.nameCn || field.nameEn,
+              type,
+              required: field.required === "YES",
+              dataType: field.dataType,
+            };
+            addField(addMenu.sectionCode, addMenu.subsectionCode, nf);
+            selectField(field.fieldCode);
+            setFieldPickerOpen(false);
+            setAddMenu(null);
+          }}
+          onClose={() => setFieldPickerOpen(false)}
+        />
+      )}
+
+      {dictGenerateOpen && kind === "ATOM" && (
+        <DictDomainGenerateDialog
+          initialDictKey={editorDictKey}
+          initialDomainCode={editorDomainCode}
+          confirming={busy}
+          onClose={() => !busy && setDictGenerateOpen(false)}
+          onConfirm={(dictKey, domainCode) => generateFromDomain(dictKey, domainCode)}
+        />
+      )}
 
       {composerOpen && kind === "COMPOSITE" && (
         <div className="nhp-editor-composer-mask" onClick={() => !busy && setComposerOpen(false)}>
@@ -622,6 +739,7 @@ export default function NhpTemplateEditor() {
             <NhpCompositeComposer
               mode="edit"
               hideMeta
+              defaultDictKey={compositeDictKey}
               formKey={formKey}
               title={title}
               initialPicks={atoms.map((a) => ({

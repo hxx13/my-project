@@ -29,6 +29,7 @@ import com.example.demo.modules.nhp.mapper.CrfTemplateFieldMapper;
 import com.example.demo.modules.nhp.mapper.CrfTemplateSectionMapper;
 import com.example.demo.modules.nhp.mapper.CrfVisitMapper;
 import com.example.demo.modules.nhp.util.NhpAtomFormKeys;
+import com.example.demo.modules.nhp.util.NhpTemplateSectionLabels;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -55,6 +56,8 @@ public class NhpSeedService {
 
     private static final Logger log = LoggerFactory.getLogger(NhpSeedService.class);
     private static final String FIELD_DICT_RESOURCE = "db/nhp-field-dict.json";
+    /** 原子优先种子资源（套→原子→字段，替代 FIELD_DICT_RESOURCE 的字段平铺） */
+    private static final String ATOMS_RESOURCE = "db/nhp-atoms.json";
     private static final String DEFAULT_COMPOSITE_KEY = "nhp-crf";
     /** 历史误种：域码写成 DD1 而字段仍为 D1.*；≥2 个 D 的裸域视为猪套脏种子 */
     private static final Pattern BOGUS_DOUBLE_D_ATOM = Pattern.compile("^D{2,}\\d{1,3}$", Pattern.CASE_INSENSITIVE);
@@ -118,8 +121,7 @@ public class NhpSeedService {
         stat.put("idRules", seedIdRules());
         stat.put("codelists", seedCodelists());
         stat.put("links", seedLinks());
-        stat.put("fields", seedFields());
-        stat.put("atoms", seedTemplate());
+        stat.put("atoms", seedAtomsFromPriorityJson());
         stat.put("composite", seedCompositeTemplate());
         log.info("[nhp-seed] 完成: {}", stat);
         return stat;
@@ -159,23 +161,38 @@ public class NhpSeedService {
     }
 
     public int seedVisits() {
+        // code / name / seq / repeating / plannedDays / eventAnchor（V25）；TP 码无横线（V27）
         String[][] visits = {
-                {"TP-01", "术前筛查期", "1", "0", "-7"}, {"TP-02", "术前基线", "2", "0", "0"},
-                {"TP-03", "术中", "3", "0", "0"}, {"TP-04", "术后早期", "4", "1", "1"},
-                {"TP-05", "术后亚急性", "5", "1", "8"}, {"TP-06", "术后中期", "6", "1", "29"},
-                {"TP-07", "术后稳定期", "7", "1", "91"}, {"TP-08", "长期随访", "8", "1", "181"},
-                {"TP-09", "超长期", "9", "1", "366"}, {"TP-10", "事件触发", "10", "1", null},
-                {"TP-11", "终点/剖检", "11", "0", null}, {"TP-12", "数据锁定", "12", "0", "30"},
+                {"TP01", "术前筛查期", "1", "0", "-7", "PRE_TX"},
+                {"TP02", "术前基线", "2", "0", "0", "PRE_TX"},
+                {"TP03", "术中", "3", "0", "0", "DAY0"},
+                {"TP04", "术后早期", "4", "1", "1", "POST_TX"},
+                {"TP05", "术后亚急性", "5", "1", "8", "POST_TX"},
+                {"TP06", "术后中期", "6", "1", "29", "POST_TX"},
+                {"TP07", "术后稳定期", "7", "1", "91", "POST_TX"},
+                {"TP08", "长期随访", "8", "1", "181", "POST_TX"},
+                {"TP09", "超长期", "9", "1", "366", "POST_TX"},
+                {"TP10", "事件触发", "10", "1", null, "EVENT"},
+                {"TP11", "终点/剖检", "11", "0", null, "ENDPOINT"},
+                {"TP12", "数据锁定", "12", "0", "30", "LOCK"},
         };
         int n = 0;
         for (String[] v : visits) {
-            if (visitMapper.findByCode(v[0]) != null) continue;
+            CrfVisit existing = visitMapper.findByCode(v[0]);
+            if (existing != null) {
+                if (existing.getEventAnchor() == null || existing.getEventAnchor().isBlank()) {
+                    visitMapper.updateEventAnchor(existing.getId(), v[5]);
+                    n++;
+                }
+                continue;
+            }
             CrfVisit visit = new CrfVisit();
             visit.setCode(v[0]);
             visit.setName(v[1]);
             visit.setSeq(Integer.parseInt(v[2]));
             visit.setRepeating("1".equals(v[3]));
             visit.setPlannedDays(v[4] == null ? null : Integer.parseInt(v[4]));
+            visit.setEventAnchor(v[5]);
             visit.setActive(true);
             visitMapper.insert(visit);
             n++;
@@ -184,22 +201,50 @@ public class NhpSeedService {
     }
 
     public int seedIdRules() {
+        // idType / pattern / derived(1=派生)
         String[][] rules = {
-                {"DON", "DON-{center}{year}-{seq:4}"}, {"RCP", "RCP-{center}{year}-{seq:3}"},
-                {"XM", "XM-{DONOR}-{RECIP}"}, {"TX", "TX-{center}{year}-{seq:3}"},
-                {"FU", "FU-{TX}-{时点}"}, {"AE", "AE-{TX}-{日期}-{seq:2}"},
-                {"REG", "REG-{TX}-{seq:2}"}, {"MED", "MED-{REG}-{seq:4}"},
-                {"LVL", "LVL-{TX}-{日期}-{seq:2}"}, {"ANES", "ANES-{TX}"},
-                {"PATH", "PATH-{TX}-{时点}-{seq:2}"}, {"HX", "HX-{TX}"},
-                {"PERF", "PERF-{DON}-{日期}"}, {"SMP", "SMP-{TX}-{时点}-{样本类型}-{seq:2}"},
-                {"TST", "TST-{实验室}{年月}-{seq:4}"}, {"RS", "RS-{TEST_ID}-{项目码}"},
+                {"DON", "DON-{base}{year}-{seq:4}", "0"},
+                {"RCP", "RCP-{center}{year}-{seq:3}", "0"},
+                {"XM", "XM-{DONOR}-{RECIP}-{seq:2}", "0"},
+                {"TX", "TX-{center}{year}-{seq:3}", "0"},
+                {"FU", "FU-{TX}-{TP}-{seq:2}", "0"},
+                {"AE", "AE-{TX}-{日期}-{seq:2}", "0"},
+                {"REG", "REG-{TX}-{seq:2}", "0"},
+                {"MED", "MED-{REG}-{seq:4}", "0"},
+                {"LVL", "LVL-{TX}-{日期}-{seq:2}", "0"},
+                {"ANES", "ANES-{TX}", "1"},
+                {"PATH", "PATH-{TX}-{TP}-{seq:2}", "0"},
+                {"HX", "HX-{TX}", "1"},
+                {"PERF", "PERF-{DON}-{日期}", "0"},
+                {"SMP", "SMP-{TX}-{TP}-{样本类型}-{seq:2}", "0"},
+                {"TST", "TST-{实验室}{年月}-{seq:4}", "0"},
+                {"RS", "RS-{TEST_ID}-{项目码}", "1"},
         };
         int n = 0;
         for (String[] r : rules) {
-            if (!idRuleMapper.listByType(r[0]).isEmpty()) continue;
+            List<CrfIdRule> existing = idRuleMapper.listByType(r[0]);
+            if (!existing.isEmpty()) {
+                CrfIdRule rule = existing.get(0);
+                boolean dirty = false;
+                if (!r[1].equals(rule.getPattern())) {
+                    rule.setPattern(r[1]);
+                    dirty = true;
+                }
+                boolean derived = "1".equals(r[2]);
+                if (rule.getDerived() == null || rule.getDerived() != derived) {
+                    rule.setDerived(derived);
+                    dirty = true;
+                }
+                if (dirty) {
+                    idRuleMapper.updatePatternAndDerived(rule);
+                    n++;
+                }
+                continue;
+            }
             CrfIdRule rule = new CrfIdRule();
             rule.setIdType(r[0]);
             rule.setPattern(r[1]);
+            rule.setDerived("1".equals(r[2]));
             rule.setActive(true);
             idRuleMapper.insert(rule);
             n++;
@@ -366,6 +411,7 @@ public class NhpSeedService {
                         field.setRequired(str(f.get("required")));
                         field.setCodelistId(resolveCodelist(str(f.get("codelist"))));
                         field.setDescription(str(f.get("desc")));
+                        field.setConceptCode(str(f.get("conceptCode")));
                         // 种子字段视为已校对基线，直接 FROZEN，便于从字典生成原子；新建字段仍走 DRAFT→校对
                         field.setStatus("FROZEN");
                         field.setVersion(1);
@@ -373,16 +419,30 @@ public class NhpSeedService {
                         fieldMapper.insert(field);
                         fieldMapper.updateFreeze(field.getId(), "FROZEN", java.time.LocalDateTime.now(), "seed");
                         fields++;
+                    } else {
+                        // 回填 concept_code / 保持与字典一致
+                        String conceptCode = str(f.get("conceptCode"));
+                        if (conceptCode != null && (field.getConceptCode() == null || field.getConceptCode().isBlank())) {
+                            fieldMapper.updateConceptCode(field.getId(), conceptCode);
+                        }
                     }
                     // 表单-字段引用（幂等）
                     final Long fieldId = field.getId();
+                    String role = str(f.get("role")) == null ? "VALUE" : str(f.get("role"));
                     if (formFieldMapper.listByFormId(form.getId()).stream().noneMatch(ff -> fieldId.equals(ff.getFieldId()))) {
                         CrfFormField ff = new CrfFormField();
                         ff.setFormId(form.getId());
                         ff.setFieldId(fieldId);
-                        ff.setRole(str(f.get("role")) == null ? "VALUE" : str(f.get("role")));
+                        ff.setRole(role);
+                        ff.setFkTarget(str(f.get("fkTarget")));
                         ff.setPosition(intOf(f.get("pos")));
                         formFieldMapper.insert(ff);
+                    } else if ("DERIVED".equals(role)) {
+                        // DERIVED 补标：存量 form_field 角色纠偏
+                        formFieldMapper.listByFormId(form.getId()).stream()
+                                .filter(ff -> fieldId.equals(ff.getFieldId()))
+                                .filter(ff -> !"DERIVED".equals(ff.getRole()))
+                                .forEach(ff -> formFieldMapper.updateRole(ff.getId(), "DERIVED"));
                     }
                 }
             }
@@ -413,7 +473,7 @@ public class NhpSeedService {
             CrfTemplateSection sec = new CrfTemplateSection();
             sec.setFormId(form.getId());
             sec.setCode(dcode);
-            sec.setLabel(dname);
+            sec.setLabel(NhpTemplateSectionLabels.resolve(dcode, dname));
             sec.setSortOrder(0);
             sec.setSubdivisible(true);
             templateSectionMapper.insert(sec);
@@ -442,7 +502,7 @@ public class NhpSeedService {
                     // 字典 JSON 小节常无中文名：label 与 code 同值即可，填写侧只显示一次编码
                     subLabel = finalSubCode;
                 }
-                sub.setLabel(subLabel);
+                sub.setLabel(NhpTemplateSectionLabels.resolve(finalSubCode, subLabel));
                 sub.setSortOrder(0);
                 sub.setSubdivisible(false);
                 templateSectionMapper.insert(sub);
@@ -452,6 +512,7 @@ public class NhpSeedService {
                     tf.setFormId(form.getId());
                     tf.setSectionId(sub.getId());
                     tf.setFieldKey(str(f.get("fieldCode")));
+                    tf.setDataType(str(f.get("dataType")));
                     tf.setLabel(str(f.get("nameCn")));
                     tf.setDescription(str(f.get("desc")));
                     tf.setType(defaultType(str(f.get("dataType"))));
@@ -466,6 +527,157 @@ public class NhpSeedService {
             }
         }
         return fields;
+    }
+
+    /** 原子优先种子：读 nhp-atoms.json（套→原子→字段），导套/原子/字段（替代按域组装的旧路线）。 */
+    public int seedAtomsFromPriorityJson() {
+        List<Map<String, Object>> suites = loadPriorityJson();
+        if (suites == null || suites.isEmpty()) return 0;
+        CrfStudy study = studyMapper.findByCode("NHP-XENO");
+        Long studyId = study == null ? null : study.getId();
+        int atomCount = 0;
+        for (Map<String, Object> suite : suites) {
+            String dictKey = str(suite.get("dictKey"));
+            if (dictKey == null) continue;
+            CrfFieldDictionary dict = fieldDictionaryMapper.findByDictKey(dictKey);
+            if (dict == null) {
+                dict = new CrfFieldDictionary();
+                dict.setDictKey(dictKey);
+                dict.setName(str(suite.get("name")));
+                dict.setSpecies(str(suite.get("species")));
+                dict.setStatus("ACTIVE");
+                dict.setVersion(1);
+                dict.setActive(true);
+                fieldDictionaryMapper.insert(dict);
+            }
+            Long dictId = dict.getId();
+            for (Map<String, Object> atom : list(suite.get("atoms"))) {
+                String code = str(atom.get("code"));
+                if (code == null) continue;
+                CrfForm form = formMapper.findByCode(code);
+                if (form == null) {
+                    form = new CrfForm();
+                    form.setStudyId(studyId);
+                    form.setCode(code);
+                    form.setName(str(atom.get("name")));
+                    form.setFormType("MODULE");
+                    form.setVersion(1);
+                    form.setStatus("DRAFT");
+                    form.setActive(true);
+                    formMapper.insert(form);
+                }
+                form.setCaptureForm(str(atom.get("captureForm")));
+                form.setEventAnchor(str(atom.get("eventAnchor")));
+                form.setFrequency(str(atom.get("frequency")));
+                if (form.getDescription() == null || form.getDescription().isBlank()) {
+                    form.setDescription(NhpTemplateService.ORIGIN_SEED + "原子优先·" + (str(atom.get("folder")) == null ? code : str(atom.get("folder"))));
+                }
+                formMapper.update(form);
+                for (Map<String, Object> f : list(atom.get("fields"))) {
+                    String fieldCode = str(f.get("fieldCode"));
+                    if (fieldCode == null) continue;
+                    CrfField field = fieldMapper.findByFieldCodeInDict(dictId, fieldCode);
+                    if (field == null) {
+                        field = new CrfField();
+                        field.setDictionaryId(dictId);
+                        field.setFieldCode(fieldCode);
+                        field.setNameEn(str(f.get("nameEn")));
+                        field.setNameCn(str(f.get("nameCn")));
+                        field.setDataType(str(f.get("dataType")));
+                        field.setUnit(str(f.get("unit")));
+                        field.setRequired(str(f.get("required")));
+                        field.setCodelistId(resolveCodelist(str(f.get("codelist"))));
+                        String desc = str(f.get("desc"));
+                        String pending = str(f.get("codelistPending"));
+                        if (pending != null && !pending.isBlank()) {
+                            desc = (desc == null || desc.isBlank() ? "" : desc + " ") + "【内联枚举待提升码表：" + pending + "】";
+                        }
+                        field.setDescription(desc);
+                        field.setConceptCode(str(f.get("conceptCode")));
+                        field.setIdRuleType(str(f.get("idRule")));
+                        field.setNature(str(f.get("nature")));
+                        field.setStatus("FROZEN");
+                        field.setVersion(1);
+                        field.setActive(true);
+                        fieldMapper.insert(field);
+                        fieldMapper.updateFreeze(field.getId(), "FROZEN", java.time.LocalDateTime.now(), "seed");
+                    } else {
+                        boolean dirty = false;
+                        // 全量回填（字典权威），避免新旧 JSON 漂移时新值不生效
+                        if (!eq(str(f.get("nameEn")), field.getNameEn())) { field.setNameEn(str(f.get("nameEn"))); dirty = true; }
+                        if (!eq(str(f.get("nameCn")), field.getNameCn())) { field.setNameCn(str(f.get("nameCn"))); dirty = true; }
+                        if (!eq(str(f.get("dataType")), field.getDataType())) { field.setDataType(str(f.get("dataType"))); dirty = true; }
+                        if (!eq(str(f.get("unit")), field.getUnit())) { field.setUnit(str(f.get("unit"))); dirty = true; }
+                        if (!eq(str(f.get("required")), field.getRequired())) { field.setRequired(str(f.get("required"))); dirty = true; }
+                        Long codelistId = resolveCodelist(str(f.get("codelist")));
+                        if (!eq(codelistId, field.getCodelistId())) { field.setCodelistId(codelistId); dirty = true; }
+                        if (!eq(str(f.get("idRule")), field.getIdRuleType())) { field.setIdRuleType(str(f.get("idRule"))); dirty = true; }
+                        if (!eq(str(f.get("nature")), field.getNature())) { field.setNature(str(f.get("nature"))); dirty = true; }
+                        if (!eq(str(f.get("conceptCode")), field.getConceptCode())) { field.setConceptCode(str(f.get("conceptCode"))); dirty = true; }
+                        if (dirty) fieldMapper.update(field);
+                    }
+                    final Long fieldId = field.getId();
+                    String role = str(f.get("role")) == null ? "VALUE" : str(f.get("role"));
+                    if (formFieldMapper.listByFormId(form.getId()).stream().noneMatch(ff -> fieldId.equals(ff.getFieldId()))) {
+                        CrfFormField ff = new CrfFormField();
+                        ff.setFormId(form.getId());
+                        ff.setFieldId(fieldId);
+                        ff.setRole(role);
+                        ff.setFkTarget(str(f.get("fkTarget")));
+                        ff.setPosition(intOf(f.get("pos")));
+                        formFieldMapper.insert(ff);
+                    }
+                }
+                // 模板层（题目组织）：每个原子一个根 section，字段按 pos 排成题目，带 dataType 快照约束前端题型
+                if (templateSectionMapper.listByFormId(form.getId()).isEmpty()) {
+                    CrfTemplateSection sec = new CrfTemplateSection();
+                    sec.setFormId(form.getId());
+                    sec.setCode(code);
+                    sec.setLabel(NhpTemplateSectionLabels.resolve(code, str(atom.get("name")), str(form.getName())));
+                    sec.setSortOrder(0);
+                    sec.setSubdivisible(true);
+                    templateSectionMapper.insert(sec);
+                    int order = 0;
+                    for (Map<String, Object> f : list(atom.get("fields"))) {
+                        CrfTemplateField tf = new CrfTemplateField();
+                        tf.setFormId(form.getId());
+                        tf.setSectionId(sec.getId());
+                        tf.setFieldKey(str(f.get("fieldCode")));
+                        tf.setDataType(str(f.get("dataType")));
+                        tf.setLabel(str(f.get("nameCn")));
+                        tf.setDescription(str(f.get("desc")));
+                        tf.setType(defaultType(str(f.get("dataType"))));
+                        tf.setDictKey(str(f.get("codelist")));
+                        tf.setRequired("YES".equals(str(f.get("required"))));
+                        tf.setSortOrder(order++);
+                        String unit = str(f.get("unit"));
+                        if (unit != null) tf.setConfig("{\"unit\":\"" + unit + "\"}");
+                        templateFieldMapper.insert(tf);
+                    }
+                }
+                atomCount++;
+            }
+        }
+        return atomCount;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> loadPriorityJson() {
+        try {
+            ClassPathResource res = new ClassPathResource(ATOMS_RESOURCE);
+            if (!res.exists()) {
+                log.warn("[nhp-seed] 原子优先资源缺失: {}", ATOMS_RESOURCE);
+                return null;
+            }
+            String json = new String(res.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            Map<String, Object> root = objectMapper.readValue(json, new TypeReference<>() {});
+            Object suites = root.get("suites");
+            if (!(suites instanceof List<?> list)) return null;
+            return (List<Map<String, Object>>) list;
+        } catch (Exception e) {
+            log.warn("[nhp-seed] 读取原子优先资源失败: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -835,5 +1047,12 @@ public class NhpSeedService {
     private int intOf(Object v) {
         if (v instanceof Number n) return n.intValue();
         try { return Integer.parseInt(String.valueOf(v)); } catch (Exception e) { return 0; }
+    }
+
+    /** null 安全的相等比较（String/Long/Integer 通用） */
+    private boolean eq(Object a, Object b) {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return String.valueOf(a).equals(String.valueOf(b));
     }
 }

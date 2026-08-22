@@ -6,10 +6,9 @@
  * - 设计 08 + 原型「字段/码表管理」（域→子模块→字段三级树，右侧 12 列元数据）
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import {
   createNhpField,
   deleteNhpField,
@@ -35,13 +34,16 @@ import {
   syncNhpDictAtomLabels,
 } from "../../api/nhpFieldDictionary.api";
 import { fetchNhpCodelistById, fetchNhpCodelistPublishedOptions, fetchNhpCodelists, type NhpCodelist } from "../../api/nhpCodelist.api";
-import { buildNhpCodelistPath, buildNhpFieldPagePath, nhpNavState } from "../../utils/nhpAdminNav";
+import { buildNhpCodelistPath, buildNhpFieldPagePath, nhpPathOf, sanitizeNhpReturnTo } from "../../utils/nhpAdminNav";
 import { compareBySortOrder, compareCodedId } from "../../utils/domainSort";
 import { isBlankOrSameAsCode } from "../../utils/nhpSectionTitle";
 import { scheduleScrollAsideItem } from "../../utils/scrollAsideItem";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
+import ContentManagerWorkbenchLayout from "@/layouts/ContentManagerWorkbenchLayout";
+import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "../../components/FolderTreeManager";
+import { FIELD_FOLDER_LABELS } from "../../utils/folderTreeLabels";
 import "@/features/aup/aup.css";
 import "../../nhp.css";
 
@@ -189,13 +191,12 @@ export default function NhpFieldPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const goBack = useGoBack("/content-manager/nhp-field");
   const { dictKey: dictKeyParam } = useParams<{ dictKey: string }>();
   const dictKey = (dictKeyParam || "").trim();
 
   useEffect(() => {
     if (!dictKey) {
-      navigate("/content-manager/nhp-field", { replace: true });
+      navigate("/content-manager/nhp-template", { replace: true });
     }
   }, [dictKey, navigate]);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -212,8 +213,7 @@ export default function NhpFieldPage() {
   const role = authStorage.getRole() || "";
   const canMaintainDict = hasMinRole(role, "ADMIN");
   const canPiReview = hasMinRole(role, "ADMIN"); // TODO: 将来改为 PI identityTag，ADMIN 仅代行
-  const [collapsedDomain, setCollapsedDomain] = useState<Set<string>>(new Set());
-  const [collapsedSub, setCollapsedSub] = useState<Set<string>>(new Set());
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [editOpen, setEditOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [domainOpen, setDomainOpen] = useState(false);
@@ -284,13 +284,9 @@ export default function NhpFieldPage() {
   const focusField = (hit: NhpField) => {
     const d = domainOf(hit.fieldCode);
     const s = submoduleOf(hit.fieldCode);
-    setCollapsedDomain((prev) => {
+    setCollapsedFolders((prev) => {
       const next = new Set(prev);
       next.delete(d);
-      return next;
-    });
-    setCollapsedSub((prev) => {
-      const next = new Set(prev);
       next.delete(`${d}:${s}`);
       return next;
     });
@@ -363,7 +359,7 @@ export default function NhpFieldPage() {
       pendingScrollCode.current = null;
     }, 60);
     return () => window.clearTimeout(t);
-  }, [selectedId, collapsedDomain, collapsedSub, fields, statusFilter, keyword]);
+  }, [selectedId, collapsedFolders, fields, statusFilter, keyword]);
 
   const q = keyword.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -656,11 +652,15 @@ export default function NhpFieldPage() {
     deleteSubMut.mutate({ code: sub, cascade: false });
   };
 
-  const openCreateField = (underSub?: string) => {
+  const openCreateField = (under?: string) => {
     const next = emptyForm();
-    if (underSub && /^D+\d+\.\d+$/i.test(underSub)) {
-      next.fieldCode = `${underSub.toUpperCase()}.`;
-      setCreatePrefillSub(underSub.toUpperCase());
+    const key = (under || "").trim().toUpperCase();
+    if (/^D+\d+\.\d+$/i.test(key)) {
+      next.fieldCode = `${key}.`;
+      setCreatePrefillSub(key);
+    } else if (/^D+\d+$/i.test(key)) {
+      next.fieldCode = `${key}.`;
+      setCreatePrefillSub(null);
     } else {
       setCreatePrefillSub(null);
     }
@@ -751,22 +751,9 @@ export default function NhpFieldPage() {
     deleteMut.mutate({ id: selected.id, force: false });
   };
 
-  const toggleDomain = (code: string) => {
-    setCollapsedDomain((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
-  };
-
-  const toggleSub = (key: string) => {
-    setCollapsedSub((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const fieldFolderActions = (_folderKey: string, depth: number): FolderAction[] => {
+    if (depth === 0) return ["createItem", "createFolder", "rename", "delete"];
+    return ["createItem", "rename", "delete"];
   };
 
   /** 中文显示名（不含编码）；无信息量时返回空，由树节点只显示一次 code */
@@ -789,7 +776,70 @@ export default function NhpFieldPage() {
     return "";
   };
 
-  const treeNodeTitle = (code: string, zh: string) => (zh ? `${zh} · ${code}` : code);
+  /** 树节点标题：中文文件夹名；表码 Dn 仅作侧栏 id，不拼进名称 */
+  const folderDisplayName = (code: string, zh: string) => (zh ? zh : code);
+
+  const folderIdChip = (code: string, zh: string) =>
+    zh ? (
+      <span className="aup-wb-chip muted" style={{ fontFamily: "ui-monospace, monospace", fontSize: 10 }}>
+        {code}
+      </span>
+    ) : null;
+
+  const fieldFolderGroups = useMemo((): FolderTreeGroup<{ id: string; field: NhpField }>[] => {
+    return grouped.map(([dom, subs]) => {
+      const domZh = domainZhName(dom);
+      const domainDirect = subs.get("未分子模块") ?? [];
+      return {
+        key: dom,
+        label: folderDisplayName(dom, domZh),
+        items: domainDirect.map((f) => ({ id: String(f.id), field: f })),
+        adornment: folderIdChip(dom, domZh),
+        emptyHint: "尚无子模块",
+        emptyActionLabel: "新建子模块",
+        emptyAction: "createFolder",
+        children: Array.from(subs.entries())
+          .filter(([sub]) => sub !== "未分子模块")
+          .map(([sub, list]) => {
+            const subZh = submoduleZhName(sub);
+            return {
+              key: `${dom}:${sub}`,
+              label: folderDisplayName(sub, subZh),
+              items: list.map((f) => ({ id: String(f.id), field: f })),
+              adornment: folderIdChip(sub, subZh),
+              headerStyle: { paddingLeft: 28, fontSize: 12, color: "var(--slate)", fontWeight: 600 },
+              emptyHint: "尚无字段",
+              emptyActionLabel: "新建字段",
+            };
+          }),
+      };
+    });
+  }, [grouped, structureDomains, dictKey]);
+
+  const handleFieldFolderCreateItem = (folderKey: string) => {
+    const idx = folderKey.indexOf(":");
+    if (idx >= 0) openCreateField(folderKey.slice(idx + 1));
+    else openCreateField(folderKey);
+  };
+
+  const handleFieldFolderRename = (folderKey: string) => {
+    const idx = folderKey.indexOf(":");
+    if (idx >= 0) openRenameSub(folderKey.slice(idx + 1));
+    else openRenameDomain(folderKey);
+  };
+
+  const handleFieldFolderDelete = (folderKey: string) => {
+    const idx = folderKey.indexOf(":");
+    if (idx >= 0) {
+      const sub = folderKey.slice(idx + 1);
+      const list = grouped.find(([d]) => d === folderKey.slice(0, idx))?.[1].get(sub) ?? [];
+      void confirmDeleteSub(sub, list.length);
+      return;
+    }
+    const subs = grouped.find(([d]) => d === folderKey)?.[1];
+    const count = subs ? Array.from(subs.values()).reduce((n, arr) => n + arr.length, 0) : 0;
+    void confirmDeleteDomain(folderKey, count);
+  };
 
   const row = (label: string, input: ReactNode) => (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
@@ -812,134 +862,117 @@ export default function NhpFieldPage() {
 
   const st = statusMeta(selected?.status);
 
+  const statusFilterToolbar = (
+    <div
+      style={{
+        display: "inline-flex",
+        border: "1px solid var(--border, #e5e7eb)",
+        borderRadius: 8,
+        overflow: "hidden",
+        background: "#fff",
+        flexShrink: 0,
+      }}
+      title="按状态筛选；点「待校对」可专看校对队列"
+    >
+      {STATUS_FILTERS.map((s) => {
+        const on = statusFilter === s.value;
+        const pendingBadge = s.value === "PENDING_REVIEW" ? pendingReviewCount : null;
+        return (
+          <button
+            key={s.value}
+            type="button"
+            onClick={() => applyStatusFilter(s.value)}
+            style={{
+              border: "none",
+              borderRight: "1px solid var(--border, #e5e7eb)",
+              padding: "6px 10px",
+              fontSize: 12,
+              cursor: "pointer",
+              background: on
+                ? s.value === "PENDING_REVIEW"
+                  ? "#fdf3e3"
+                  : "var(--primary, #002FA7)"
+                : "#fff",
+              color: on
+                ? s.value === "PENDING_REVIEW"
+                  ? "#d97706"
+                  : "#fff"
+                : "var(--slate, #334155)",
+              fontWeight: on ? 600 : 400,
+            }}
+          >
+            {s.label}
+            {pendingBadge != null ? (
+              <span style={{ marginLeft: 4, opacity: on ? 1 : 0.7 }}>({pendingBadge})</span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const handleBack = () => {
+    const rt = sanitizeNhpReturnTo(
+      (location.state as { returnTo?: unknown } | null)?.returnTo,
+      nhpPathOf(location),
+    );
+    if (rt) {
+      navigate(rt, { replace: true });
+      return;
+    }
+    navigate("/content-manager/nhp-field", { replace: true });
+  };
+
   return (
-    <div className="aup-app aup-app--workbench" style={{ background: "var(--bg)" }}>
-      <div className="aup-wb">
-        <div className="aup-wb-hd aup-wb-hd--compact">
-          <div className="aup-wb-hd-main">
-            <button type="button" className="btn ghost small" onClick={goBack}>
-              ← 返回
-            </button>
-            <h1>
-              {dictionary?.name || "数据域套"}
-              {dictionary?.species ? ` · ${dictionary.species}` : ""}
-            </h1>
-            <div className="sub">
-              <Link to="/content-manager/nhp-field" state={nhpNavState(location)} style={{ color: "var(--primary)" }}>
-                数据域套列表
-              </Link>
-              {" · "}
-              <code style={{ fontSize: 12 }}>{dictKey}</code>
-              {" · 左树新建 · 右栏校对"}
-              {" · "}
-              <Link to="/content-manager/nhp-template" state={nhpNavState(location)} style={{ color: "var(--primary)" }}>
-                原子/组合模板
-              </Link>
-            </div>
-          </div>
-          <div className="aup-wb-actions">
+    <ContentManagerWorkbenchLayout
+      onBack={handleBack}
+      backLabel="← 返回字段字典"
+      searchPlaceholder="搜索中文名 / 英文名 / 编码 / 域 / 码表…"
+      searchValue={keyword}
+      onSearchChange={setKeyword}
+      toolbarExtra={
+        <>
+          {statusFilterToolbar}
+          <button
+            type="button"
+            className="btn ghost small"
+            title="打开码表管理（返回时保留本页筛选与选中字段）"
+            onClick={() => openCodelist(linkedCodelist?.code)}
+          >
+            码表
+          </button>
+          {dictKey !== "pig" && !hasDeclaredStructure && (
             <button
               type="button"
               className="btn ghost small"
-              title="打开码表管理（返回时保留本页筛选与选中字段）"
-              onClick={() => openCodelist(linkedCodelist?.code)}
-            >
-              码表
-            </button>
-            {dictKey !== "pig" && !hasDeclaredStructure && (
-              <button
-                type="button"
-                className="btn ghost small"
-                disabled={cloneFromPigMut.isPending}
-                title="仅复制猪套域/子模块大纲，不复制字段；非默认行为"
-                onClick={async () => {
-                  if (
-                    await appConfirm(
-                      "将从「猪套」克隆域/子模块大纲到本套（不复制字段）。空套默认应自建域；确认要克隆？",
-                    )
-                  ) {
-                    cloneFromPigMut.mutate();
-                  }
-                }}
-              >
-                从猪套克隆大纲
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="aup-wb-toolbar">
-          <input
-            className="input"
-            placeholder="搜索中文名 / 英文名 / 编码 / 域 / 码表…"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-          {keyword && (
-            <button
-              className="btn ghost small"
-              onClick={() => {
-                setKeyword("");
+              disabled={cloneFromPigMut.isPending}
+              title="仅复制猪套域/子模块大纲，不复制字段；非默认行为"
+              onClick={async () => {
+                if (
+                  await appConfirm(
+                    "将从「猪套」克隆域/子模块大纲到本套（不复制字段）。空套默认应自建域；确认要克隆？",
+                  )
+                ) {
+                  cloneFromPigMut.mutate();
+                }
               }}
             >
-              清除
+              从猪套克隆大纲
             </button>
           )}
-          <div
-            style={{
-              display: "inline-flex",
-              border: "1px solid var(--border, #e5e7eb)",
-              borderRadius: 8,
-              overflow: "hidden",
-              background: "#fff",
-              flexShrink: 0,
-            }}
-            title="按状态筛选；点「待校对」可专看校对队列"
-          >
-            {STATUS_FILTERS.map((s) => {
-              const on = statusFilter === s.value;
-              const pendingBadge = s.value === "PENDING_REVIEW" ? pendingReviewCount : null;
-              return (
-                <button
-                  key={s.value}
-                  type="button"
-                  onClick={() => applyStatusFilter(s.value)}
-                  style={{
-                    border: "none",
-                    borderRight: "1px solid var(--border, #e5e7eb)",
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    cursor: "pointer",
-                    background: on
-                      ? s.value === "PENDING_REVIEW"
-                        ? "#fdf3e3"
-                        : "var(--primary, #002FA7)"
-                      : "#fff",
-                    color: on
-                      ? s.value === "PENDING_REVIEW"
-                        ? "#d97706"
-                        : "#fff"
-                      : "var(--slate, #334155)",
-                    fontWeight: on ? 600 : 400,
-                  }}
-                >
-                  {s.label}
-                  {pendingBadge != null ? (
-                    <span style={{ marginLeft: 4, opacity: on ? 1 : 0.7 }}>({pendingBadge})</span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-          <span className="aup-wb-count">
-            共 {filtered.length} 字段 · {grouped.length} 域
-            {statusFilter === "PENDING_REVIEW" ? " · 校对队列" : ""}
-            {q ? ` · 筛选「${keyword.trim()}」` : ""}
-          </span>
-        </div>
-
-        <div className="aup-wb-split aup-wb-split--wide-aside">
-          <aside className="aup-wb-aside" ref={asideRef}>
+        </>
+      }
+      countText={
+        <>
+          共 {filtered.length} 字段 · {grouped.length} 域
+          {statusFilter === "PENDING_REVIEW" ? " · 校对队列" : ""}
+          {q ? ` · 筛选「${keyword.trim()}」` : ""}
+        </>
+      }
+      wideAside
+      asideRef={asideRef}
+      aside={
+        <>
             {fieldsQuery.isLoading && (
               <div style={{ padding: 28, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>加载字段…</div>
             )}
@@ -966,22 +999,35 @@ export default function NhpFieldPage() {
               </div>
             )}
             {grouped.length > 0 && (
-              <div
-                style={{
-                  padding: "10px 12px 8px",
-                  borderBottom: "1px solid var(--border, #e5e7eb)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
+              <FolderTreeManager
+                folders={fieldFolderGroups}
+                selectedItemId={selectedId != null ? String(selectedId) : null}
+                onSelectItem={(id) => {
+                  const hit = fields.find((f) => String(f.id) === id);
+                  if (hit) focusField(hit);
                 }}
-              >
-                <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.45 }}>
-                  套根 · 域码是表码/id · 树按展示序（sortOrder）排列 · 「中文名 + 编码」
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button type="button" className="btn ghost small" style={{ fontSize: 11 }} onClick={openCreateDomain}>
-                    ＋ 新建数据域
-                  </button>
+                canMaintain={canMaintainDict}
+                collapsedFolders={collapsedFolders}
+                onCollapsedFoldersChange={setCollapsedFolders}
+                deleteFolderPending={deleteDomainMut.isPending || deleteSubMut.isPending}
+                folderActions={fieldFolderActions}
+                itemActions={() => []}
+                labels={FIELD_FOLDER_LABELS}
+                onCreateFolder={
+                  canMaintainDict
+                    ? (folderKey) => {
+                        if (folderKey) openCreateSub(folderKey);
+                        else openCreateDomain();
+                      }
+                    : undefined
+                }
+                onCreateSubFolder={canMaintainDict ? openCreateSub : undefined}
+                onCreateItem={canMaintainDict ? handleFieldFolderCreateItem : undefined}
+                onRenameFolder={canMaintainDict ? handleFieldFolderRename : undefined}
+                onDeleteFolder={canMaintainDict ? handleFieldFolderDelete : undefined}
+                itemDataAttr={(item) => ({ "data-field-code": item.field.fieldCode })}
+                itemRowClassName={(item) => (highlightCode === item.field.fieldCode ? "aup-wb-row--flash" : undefined)}
+                extraHeaderActions={
                   <button
                     type="button"
                     className="btn ghost small"
@@ -992,186 +1038,29 @@ export default function NhpFieldPage() {
                   >
                     同步大纲名称到原子
                   </button>
-                </div>
-              </div>
+                }
+                headerHint="套根 · 域码是表码/id · 树按展示序（sortOrder）排列 · 「中文名 + 编码」"
+                renderItem={(item) => {
+                  const f = item.field;
+                  const sm = statusMeta(f.status);
+                  return (
+                    <>
+                      <span className="lbl">{f.nameCn || f.nameEn}</span>
+                      <span className="key" title={f.nameEn}>
+                        {f.nameEn}
+                      </span>
+                      <span className="aup-wb-chip" style={{ background: sm.bg, color: sm.color, fontSize: 10 }}>
+                        {sm.text}
+                      </span>
+                    </>
+                  );
+                }}
+              />
             )}
-            {grouped.map(([dom, subs]) => {
-              const domCollapsed = collapsedDomain.has(dom);
-              const count = Array.from(subs.values()).reduce((n, arr) => n + arr.length, 0);
-              const domZh = domainZhName(dom);
-              return (
-                <div key={dom}>
-                  <div className="aup-wb-group-hd" onClick={() => toggleDomain(dom)}>
-                    <span className="chev">{domCollapsed ? "▸" : "▾"}</span>
-                    <span className="name" title={treeNodeTitle(dom, domZh)}>
-                      {domZh ? <span>{domZh}</span> : null}
-                      {domZh ? " " : null}
-                      <code style={{ fontSize: 11, fontWeight: 600 }}>{dom}</code>
-                    </span>
-                    <span className="aup-wb-chip muted">{count}</span>
-                    <button
-                      type="button"
-                      className="btn ghost small"
-                      style={{ marginLeft: "auto", padding: "2px 6px", fontSize: 11 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openRenameDomain(dom);
-                      }}
-                      title={`编辑数据域 ${dom} 显示名`}
-                    >
-                      编辑名称
-                    </button>
-                    <button
-                      type="button"
-                      className="btn ghost small"
-                      style={{ padding: "2px 6px", fontSize: 11 }}
-                      disabled={deleteDomainMut.isPending}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openCreateSub(dom);
-                      }}
-                      title={`在 ${dom} 下新建子模块`}
-                    >
-                      ＋子模块
-                    </button>
-                    <button
-                      type="button"
-                      className="btn ghost small"
-                      style={{ padding: "2px 6px", fontSize: 11, color: "var(--danger, #b91c1c)" }}
-                      disabled={deleteDomainMut.isPending}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        confirmDeleteDomain(dom, count);
-                      }}
-                      title={`删除数据域 ${dom}`}
-                    >
-                      删除
-                    </button>
-                  </div>
-                  {!domCollapsed &&
-                    Array.from(subs.entries()).length === 0 && (
-                      <div style={{ padding: "8px 12px 8px 28px", fontSize: 12, color: "var(--muted)" }}>
-                        尚无子模块 ·{" "}
-                        <button
-                          type="button"
-                          className="btn ghost small"
-                          style={{ padding: "0 4px", fontSize: 12 }}
-                          onClick={() => openCreateSub(dom)}
-                        >
-                          新建子模块
-                        </button>
-                      </div>
-                    )}
-                  {!domCollapsed &&
-                    Array.from(subs.entries()).map(([sub, list]) => {
-                        const subKey = `${dom}:${sub}`;
-                        const subCollapsed = collapsedSub.has(subKey);
-                        const subZh = submoduleZhName(sub);
-                        return (
-                          <div key={subKey}>
-                            <div
-                              className="aup-wb-group-hd"
-                              style={{ paddingLeft: 28, fontSize: 12, color: "var(--slate)" }}
-                              onClick={() => toggleSub(subKey)}
-                            >
-                              <span className="chev">{subCollapsed ? "▸" : "▾"}</span>
-                              <span className="name" style={{ fontWeight: 600 }} title={treeNodeTitle(sub, subZh)}>
-                                {subZh ? <span>{subZh}</span> : null}
-                                {subZh ? " " : null}
-                                <code style={{ fontSize: 11 }}>{sub}</code>
-                              </span>
-                              <span className="meta" style={{ fontSize: 11, color: "var(--muted)" }}>
-                                {list.length}
-                              </span>
-                              <button
-                                type="button"
-                                className="btn ghost small"
-                                style={{ marginLeft: "auto", padding: "2px 6px", fontSize: 11 }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openRenameSub(sub);
-                                }}
-                                title={`编辑子模块 ${sub} 显示名`}
-                              >
-                                编辑名称
-                              </button>
-                              <button
-                                type="button"
-                                className="btn ghost small"
-                                style={{ padding: "2px 6px", fontSize: 11 }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openCreateField(sub);
-                                }}
-                                title={`在 ${sub} 下新建字段`}
-                              >
-                                ＋字段
-                              </button>
-                              <button
-                                type="button"
-                                className="btn ghost small"
-                                style={{ padding: "2px 6px", fontSize: 11, color: "var(--danger, #b91c1c)" }}
-                                disabled={deleteSubMut.isPending}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  confirmDeleteSub(sub, list.length);
-                                }}
-                                title={`删除子模块 ${sub}`}
-                              >
-                                删除
-                              </button>
-                            </div>
-            {!subCollapsed && list.length === 0 && (
-                              <div
-                                style={{
-                                  padding: "8px 12px 8px 44px",
-                                  fontSize: 12,
-                                  color: "var(--muted)",
-                                }}
-                              >
-                                尚无字段 ·{" "}
-                                <button
-                                  type="button"
-                                  className="btn ghost small"
-                                  style={{ padding: "0 4px", fontSize: 12 }}
-                                  onClick={() => openCreateField(sub)}
-                                >
-                                  新建字段
-                                </button>
-                              </div>
-                            )}
-                            {!subCollapsed &&
-                              list.map((f) => {
-                                const sm = statusMeta(f.status);
-                                const flash = highlightCode === f.fieldCode;
-                                return (
-                                  <div
-                                    key={f.id}
-                                    data-field-code={f.fieldCode}
-                                    className={`aup-wb-row${selectedId === f.id ? " on" : ""}${flash ? " aup-wb-row--flash" : ""}`}
-                                    style={{ paddingLeft: 44, scrollMarginTop: 12 }}
-                                    onClick={() => focusField(f)}
-                                    title={`${f.nameCn || f.nameEn} · ${f.fieldCode}`}
-                                  >
-                                    <span className="lbl">{f.nameCn || f.nameEn}</span>
-                                    <span className="key" title={f.nameEn}>
-                                      {f.nameEn}
-                                    </span>
-                                    <span className="aup-wb-chip" style={{ background: sm.bg, color: sm.color, fontSize: 10 }}>
-                                      {sm.text}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        );
-                      })}
-                </div>
-              );
-            })}
-          </aside>
-
-          <div className="aup-wb-main">
+        </>
+      }
+      main={
+        <>
             {!selected && <div className="aup-wb-empty">从左侧选一个字段看详情</div>}
 
             {selected && (
@@ -1182,9 +1071,18 @@ export default function NhpFieldPage() {
                     {(() => {
                       const dc = domainOf(selected.fieldCode);
                       const zh = domainZhName(dc);
-                      return zh ? `${zh} · ${dc}` : dc;
+                      return zh || dc;
                     })()}
                   </span>
+                  {(() => {
+                    const dc = domainOf(selected.fieldCode);
+                    const zh = domainZhName(dc);
+                    return zh ? (
+                      <span className="aup-wb-chip muted" style={{ fontFamily: "ui-monospace, monospace" }}>
+                        {dc}
+                      </span>
+                    ) : null;
+                  })()}
                   <span className="aup-wb-chip" style={{ background: st.bg, color: st.color }}>
                     {st.text}
                   </span>
@@ -1377,10 +1275,9 @@ export default function NhpFieldPage() {
                 )}
               </div>
             )}
-          </div>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {/* 编辑弹层 */}
       {editOpen && selected && (
         <div className="aup-modal-mask" onClick={() => setEditOpen(false)}>
@@ -1643,7 +1540,7 @@ export default function NhpFieldPage() {
                   : []
                 ).map((d) => (
                     <option key={d.code} value={d.code}>
-                      {domainZhName(d.code) ? `${domainZhName(d.code)} · ${d.code}` : d.code}
+                      {folderDisplayName(d.code, domainZhName(d.code))}
                     </option>
                   ))}
                 {!structureDomains.length && (
@@ -1723,6 +1620,6 @@ export default function NhpFieldPage() {
           </div>
         </div>
       )}
-    </div>
+    </ContentManagerWorkbenchLayout>
   );
 }

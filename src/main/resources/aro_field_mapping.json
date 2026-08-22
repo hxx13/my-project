@@ -93,7 +93,7 @@
     {
       "canonical": "project_pi_name",
       "sqlColumn": "project_pi_name",
-      "comment": "项目/课题 PI ← ARO cageBoxVo.projectPiName（网格常用此字段作课题组标识）",
+      "comment": "项目/课题 PI ← ARO cageBoxVo.projectPiName（网格常用此字段作课题组标识）。/book 无此字段，勿在 book sources 中声明。",
       "type": "string",
       "sources": {
         "back": ["cageBoxVo.projectPiName", "projectPiName"],

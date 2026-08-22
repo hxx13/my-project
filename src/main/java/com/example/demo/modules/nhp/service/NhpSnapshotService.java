@@ -83,7 +83,9 @@ public class NhpSnapshotService {
             }
             String id = r.getCreatedBy().trim();
             String n = names.get(id);
-            r.setCreatedByName(StringUtils.hasText(n) ? n : id);
+            if (StringUtils.hasText(n) && !n.equals(id)) {
+                r.setCreatedByName(n);
+            }
         }
     }
 }

@@ -33,4 +33,20 @@ public class NhpSeedController {
     public Result<Map<String, Object>> reimportPigDictionary() {
         return Result.success(seedService.reimportPigDictionary());
     }
+
+    @PostMapping("/seed/atoms")
+    @Operation(summary = "导入内置原子种子（nhp-atoms.json：套/字段/45 域原子 DRAFT + 题目模板；幂等补缺失）")
+    public Result<Map<String, Integer>> seedAtoms() {
+        Map<String, Integer> stat = new java.util.LinkedHashMap<>();
+        stat.put("atoms", seedService.seedAtomsFromPriorityJson());
+        return Result.success(stat);
+    }
+
+    @PostMapping("/seed/composite")
+    @Operation(summary = "导入内置组合模板 nhp-crf（钉住全部原子并发布；幂等补缺失结构）")
+    public Result<Map<String, Integer>> seedComposite() {
+        Map<String, Integer> stat = new java.util.LinkedHashMap<>();
+        stat.put("composite", seedService.seedCompositeTemplate());
+        return Result.success(stat);
+    }
 }

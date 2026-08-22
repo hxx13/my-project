@@ -5,9 +5,13 @@ import com.example.demo.modules.aro.service.AroNewsProxyService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.notification.entity.StudentNotification;
 import com.example.demo.modules.notification.mapper.StudentNotificationMapper;
+import com.example.demo.modules.twin.dashboard.support.ViolationMirrorNotificationSupport;
+import com.example.demo.modules.twin.obligation.entity.TwinObligation;
+import com.example.demo.modules.twin.obligation.service.ObligationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -24,11 +28,15 @@ public class StudentNotificationService {
 
     private final StudentNotificationMapper studentNotificationMapper;
     private final AroNewsProxyService aroNewsProxyService;
+    private final ObligationService obligationService;
 
     public StudentNotificationService(StudentNotificationMapper studentNotificationMapper,
-                                       AroNewsProxyService aroNewsProxyService) {
+                                       AroNewsProxyService aroNewsProxyService,
+                                       @org.springframework.beans.factory.annotation.Autowired(required = false)
+                                       ObligationService obligationService) {
         this.studentNotificationMapper = studentNotificationMapper;
         this.aroNewsProxyService = aroNewsProxyService;
+        this.obligationService = obligationService;
     }
 
     /**
@@ -63,7 +71,15 @@ public class StudentNotificationService {
             m.put("bizId", sn.getBizId());
             m.put("publishDate", sn.getCreateTime() != null ? sn.getCreateTime().format(fmt) : "");
             m.put("isRead", sn.getIsRead() != null && sn.getIsRead() == 1);
-            m.put("sourceUrl", sn.getSourceUrl());
+            String sourceUrl = sn.getSourceUrl();
+            Long obligationId = resolveObligationIdForMirror(sn);
+            if (obligationId != null && obligationId > 0) {
+                m.put("obligationId", obligationId);
+                if (!StringUtils.hasText(sourceUrl)) {
+                    sourceUrl = ViolationMirrorNotificationSupport.h5SourceUrl(obligationId);
+                }
+            }
+            m.put("sourceUrl", sourceUrl);
             items.add(m);
         }
 
@@ -89,6 +105,21 @@ public class StudentNotificationService {
             studentNotificationMapper.markAllRead(user.getId());
         } catch (Exception e) {
             log.warn("Failed to mark all student notifications read for user {}", user.getId(), e);
+        }
+    }
+
+    private Long resolveObligationIdForMirror(StudentNotification sn) {
+        if (obligationService == null || sn == null
+                || !ViolationMirrorNotificationSupport.isViolationBiz(sn.getBizType())
+                || !StringUtils.hasText(sn.getBizId())) {
+            return null;
+        }
+        try {
+            long violationId = Long.parseLong(sn.getBizId().trim());
+            TwinObligation ob = obligationService.findByViolationId(violationId);
+            return ob != null ? ob.getId() : null;
+        } catch (Exception e) {
+            return null;
         }
     }
 

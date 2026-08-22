@@ -102,12 +102,25 @@ public final class NhpAtomFormKeys {
         return dictKey.trim().toLowerCase(Locale.ROOT);
     }
 
-    /** 列表过滤：裸 D* 归属猪套；{@code x__D*} 归属 x。 */
+    /** 组合模板 formKey（非原子），用于排除误标 DOMAIN 的存量行。 */
+    public static boolean looksLikeCompositeTemplateCode(String code) {
+        if (code == null || code.isBlank()) return false;
+        String c = code.trim().toLowerCase(Locale.ROOT);
+        return "nhp-crf".equals(c) || c.startsWith("nhp-crftpl-");
+    }
+
+    /**
+     * 列表过滤：裸 D* / 套内 x__D* 按 parse；语义化原子码（donor_profile 等）无 __ 前缀时归猪套默认域。
+     */
     public static boolean matchesDictKey(String formKey, String dictKey) {
         if (dictKey == null || dictKey.isBlank()) return true;
+        if (formKey == null || formKey.isBlank() || looksLikeCompositeTemplateCode(formKey)) return false;
         Parsed p = parse(formKey);
-        if (p == null) return false;
-        return normalizeDictKey(dictKey).equals(p.dictKey());
+        if (p != null) return normalizeDictKey(dictKey).equals(p.dictKey());
+        if (!formKey.contains("__") && DEFAULT_DICT_KEY.equals(normalizeDictKey(dictKey))) {
+            return true;
+        }
+        return false;
     }
 
     public static String displayLabel(String formKey, String title) {

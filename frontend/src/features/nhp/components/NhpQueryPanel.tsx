@@ -8,6 +8,7 @@ import {
   fetchNhpQueries,
   type NhpQueryItem,
 } from "../api/nhpRecord.api";
+import NhpUserRefLabel from "./NhpUserRefLabel";
 
 /** 质疑列表 + 发起/回复（持久化 crf_query + 审计）。 */
 export default function NhpQueryPanel({
@@ -116,13 +117,21 @@ export default function NhpQueryPanel({
             <div className="nhp-query-meta">
               <span className="tag">{statusLabel(q.status)}</span>
               <span>{formatDateTimeAsiaShanghaiShort(q.openedAt)}</span>
-              {q.openedBy ? <span>· {q.openedBy}</span> : null}
+              {q.openedBy ? (
+                <NhpUserRefLabel name={q.openedByName} userId={q.openedBy} inline />
+              ) : null}
             </div>
             <div className="nhp-query-text">{q.queryText}</div>
             {q.answerText && (
               <div className="nhp-query-answer">
                 回复：{q.answerText}
-                {q.answeredBy ? `（${q.answeredBy}）` : ""}
+                {q.answeredBy ? (
+                  <>
+                    {"（"}
+                    <NhpUserRefLabel name={q.answeredByName} userId={q.answeredBy} inline />
+                    {"）"}
+                  </>
+                ) : null}
               </div>
             )}
             {!readOnly && q.status === "OPEN" && (

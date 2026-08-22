@@ -45,4 +45,12 @@ class NhpAtomFormKeysTest {
         assertFalse(NhpAtomFormKeys.isBogusDoubleDBareAtom("D2"));
         assertFalse(NhpAtomFormKeys.isBogusDoubleDBareAtom("monkey__DD2"));
     }
+
+    @Test
+    void semanticAtomCodeMatchesPigDictByDefault() {
+        assertTrue(NhpAtomFormKeys.matchesDictKey("donor_profile", "pig"));
+        assertFalse(NhpAtomFormKeys.matchesDictKey("donor_profile", "monkey"));
+        assertFalse(NhpAtomFormKeys.looksLikeCompositeTemplateCode("donor_profile"));
+        assertTrue(NhpAtomFormKeys.looksLikeCompositeTemplateCode("nhp-crftpl-abc"));
+    }
 }

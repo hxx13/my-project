@@ -29,15 +29,27 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: "NHP · 配置",
     items: [
-      { path: "/content-manager/nhp-field", label: "字段字典（父）", icon: "🗂️" },
       { path: "/content-manager/nhp-codelist", label: "码表", icon: "🔗" },
-      { path: "/content-manager/nhp-template", label: "原子/组合（子）", icon: "🧫" },
+      { path: "/content-manager/nhp-template", label: "模板发布", icon: "🧫" },
+      { path: "/content-manager/nhp-visits", label: "访视/时点", icon: "🕐" },
+      { path: "/content-manager/nhp-event-assignment", label: "事件指派", icon: "🔀" },
+      { path: "/content-manager/nhp-idrules", label: "编码规则", icon: "#️⃣" },
+      { path: "/content-manager/nhp-event-rules", label: "事件规则", icon: "⚙️" },
+      { path: "/content-manager/nhp-standards", label: "标准库", icon: "📐" },
+    ],
+  },
+  {
+    title: "NHP · 治理",
+    items: [
+      { path: "/content-manager/nhp-quality", label: "数据质量", icon: "📈" },
+      { path: "/content-manager/nhp-audit", label: "审计留痕", icon: "🛡️" },
+      { path: "/content-manager/nhp-snapshots", label: "快照管理", icon: "📸" },
+      { path: "/content-manager/nhp-codelist-review", label: "码表审核", icon: "🔍" },
     ],
   },
   {
     title: "NHP · 采集",
     items: [
-      { path: "/content-manager/nhp-hub", label: "业务阶段流程", icon: "🧭", emphasize: true },
       { path: "/content-manager/nhp-subjects", label: "动物管理", icon: "🧬" },
       { path: "/content-manager/nhp-records", label: "实例管理", icon: "📁" },
     ],
@@ -56,13 +68,12 @@ export default function PortalContentAdminShell() {
   const isNhpFillLike =
     pathname.includes("/content-manager/nhp-entry") ||
     pathname.includes("/content-manager/nhp-records") ||
-    pathname.includes("/content-manager/nhp-subjects") ||
-    pathname.includes("/content-manager/nhp-hub");
+    pathname.includes("/content-manager/nhp-subjects");
 
   const isNhpTemplateEditor = pathname.includes("/content-manager/nhp-template/edit");
   const isNhpTemplateList = pathname === "/content-manager/nhp-template";
   const isNhpFieldShell =
-    pathname === "/content-manager/nhp-field" || pathname.startsWith("/content-manager/nhp-field/") || pathname === "/content-manager/nhp-field-review";
+    pathname === "/content-manager/nhp-field" || pathname.startsWith("/content-manager/nhp-field/");
   const isNhpCodelist = pathname === "/content-manager/nhp-codelist";
 
   const isEditor = pathname.includes("/content/new") || pathname.includes("/edit") || pathname.match(/\/content-manager\/pages\/(about|faq|contact|service-guide)$/);

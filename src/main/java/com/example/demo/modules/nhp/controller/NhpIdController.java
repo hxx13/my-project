@@ -12,7 +12,7 @@ import java.util.Map;
 /** NHP ID 编码取号。 */
 @RestController
 @RequestMapping("/api/nhp/ids")
-@Tag(name = "NHP ID 编码", description = "16 类 ID 原子取号")
+@Tag(name = "NHP ID 编码", description = "16 类 ID 原子取号（scope_key 泛化）")
 public class NhpIdController {
 
     private final NhpIdService service;
@@ -22,20 +22,46 @@ public class NhpIdController {
     }
 
     @PostMapping("/next")
-    @Operation(summary = "原子取号（DON/RCP/XM/TX/SMP…，crf_sequence 原子递增）")
+    @Operation(summary = "原子取号（DON/RCP/XM/TX/SMP…，按 scope_key 递增）")
     public Result<Map<String, Object>> next(@RequestBody Map<String, Object> body) {
         String idType = str(body.get("idType"));
-        String centerCode = str(body.get("centerCode"));
-        Integer year = body.get("year") instanceof Number n ? n.intValue() : null;
-        long seq = service.next(idType, centerCode, year);
-        String code = service.buildCode(idType, centerCode, year, seq);
+        if (idType == null) {
+            return Result.fail(400, "idType 必填");
+        }
+        try {
+            // body 即 ctx：center/base/tx/tp/date/lab… 由调用方按 ID 类型传入
+            Map<String, Object> ctx = body == null ? Map.of() : new LinkedHashMap<>(body);
+            String code = service.buildCode(idType, ctx);
+            return Result.success(idResult(idType, ctx, code, false));
+        } catch (IllegalArgumentException ex) {
+            return Result.fail(400, ex.getMessage());
+        }
+    }
+
+    @PostMapping("/preview")
+    @Operation(summary = "预览下一编号（不递增、不持久化）")
+    public Result<Map<String, Object>> preview(@RequestBody Map<String, Object> body) {
+        String idType = str(body.get("idType"));
+        if (idType == null) {
+            return Result.fail(400, "idType 必填");
+        }
+        try {
+            Map<String, Object> ctx = body == null ? Map.of() : new LinkedHashMap<>(body);
+            String code = service.previewCode(idType, ctx);
+            return Result.success(idResult(idType, ctx, code, true));
+        } catch (IllegalArgumentException ex) {
+            return Result.fail(400, ex.getMessage());
+        }
+    }
+
+    private Map<String, Object> idResult(String idType, Map<String, Object> ctx, String code, boolean preview) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("idType", idType);
-        out.put("centerCode", centerCode);
-        out.put("year", year);
-        out.put("seq", seq);
+        out.put("scopeKey", service.buildScopeKey(idType, ctx));
         out.put("code", code);
-        return Result.success(out);
+        out.put("ctx", ctx);
+        out.put("preview", preview);
+        return out;
     }
 
     private String str(Object v) {

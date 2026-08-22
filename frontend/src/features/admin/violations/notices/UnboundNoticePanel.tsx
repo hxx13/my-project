@@ -16,6 +16,7 @@ import { EditorInspectorLayout } from "../shared/EditorInspectorLayout";
 import { InspectorGroup, InspectorRow } from "../shared/InspectorGroup";
 import { MultiSelectField } from "../shared/MultiSelectField";
 import type { MultiSelectOption } from "../shared/multiSelectModel";
+import { violationContentTemplateSlot } from "../shared/violationContentTemplateSlot";
 import {
   ContentBodySlot,
   contentBodyFromHtml,
@@ -140,6 +141,7 @@ export function UnboundNoticePanel(): JSX.Element {
           uploading={uploading}
           onPickFiles={handlePickFiles}
           disabled={!behaviors.includes("on")}
+          templateSlot={violationContentTemplateSlot(body, setBody)}
         />
       )}
     </div>

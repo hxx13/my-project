@@ -111,6 +111,21 @@ export interface FieldConfig {
   levels?: string[];
   /** 表格列：列宽（px） */
   width?: number;
+  /** 概念码（DERIVED/CALC 计算锚点，如 PAIR_SCORE / VR） */
+  conceptCode?: string;
+}
+
+/** 字段 role（与 type 正交：type 管「是什么控件」，role 管「能不能手填 / 从哪取值」） */
+export type FieldRole = "PK" | "FK" | "DERIVED" | "VALUE";
+
+/** role 专属元数据（由事件类型定义配置驱动，非硬编码） */
+export interface FieldRoleMeta {
+  /** PK：取号规则编码（如 SMP/MED），用于展示「由 X 规则生成」 */
+  pkRule?: string;
+  /** DERIVED：算法/规则来源（如「平台配对算法 V1」），显式标注给填写人 */
+  derivedSource?: string;
+  /** FK：目标实体类型（如 donor/recipient/sample/regimen），实体选择器据此取数 */
+  entityType?: string;
 }
 
 /** 字段（可配置的最小单元） */
@@ -127,6 +142,14 @@ export interface FormField {
   options?: FieldOptions;
   /** 引用码表（来自 04 的码表编码，如 FARM/BREED） */
   dictKey?: string;
+  /** role 四类：决定采集侧渲染形态，与 type 正交；缺省按 VALUE 处理（兼容旧数据） */
+  role?: FieldRole;
+  /** role 专属元数据（PK 取号规则 / DERIVED 算法来源 / FK 实体类型） */
+  roleMeta?: FieldRoleMeta;
+  /** 字段存储类型（字典层权威，约束可选题型；STRING/TEXT/INTEGER/DECIMAL/DATE/DATETIME/ENUM/ENUM_MULTI/BOOLEAN/FILE/CALC） */
+  dataType?: string;
+  /** 概念码（DERIVED/CALC 计算锚点，如 PAIR_SCORE / VR） */
+  conceptCode?: string;
   showWhen?: ShowWhen | null;
   sortOrder?: number;
   config?: FieldConfig;

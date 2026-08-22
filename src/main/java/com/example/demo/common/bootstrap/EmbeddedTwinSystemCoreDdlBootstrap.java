@@ -217,6 +217,50 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-nhp-codelist-version.sql", ctx)) success++;
         // 版号补位：唯一键仅约束 active=1，软删后可复用版号
         total++; if (runScript("db/bootstrap-nhp-version-reuse.sql", ctx)) success++;
+        // V20260821025：timepoint 归一化（event_anchor + crf_timepoint_map）
+        total++; if (runScript("db/bootstrap-nhp-timepoint-map.sql", ctx)) success++;
+        // V20260821026：概念/指标库（crf_concept + crf_field.concept_code）
+        total++; if (runScript("db/bootstrap-nhp-concept.sql", ctx)) success++;
+        // V20260821027：编码规则 scope_key + derived + TP 去横线
+        total++; if (runScript("db/bootstrap-nhp-id-scope.sql", ctx)) success++;
+        // V20260821028：枢纽实体 crf_crossmatch + crf_transplant
+        total++; if (runScript("db/bootstrap-nhp-transplant.sql", ctx)) success++;
+        // V20260821029：样本实体 sample/coc/test_order/test_result
+        total++; if (runScript("db/bootstrap-nhp-sample.sql", ctx)) success++;
+        // V20260821030：随访实体 followup/adverse_event/outcome
+        total++; if (runScript("db/bootstrap-nhp-followup.sql", ctx)) success++;
+        // V20260821031：用药 DRAFT regimen_library/regimen/medication/drug_level
+        total++; if (runScript("db/bootstrap-nhp-regimen.sql", ctx)) success++;
+        // V20260821032：麻醉+病理 anesthesia/transfusion/pathology(+ihc/if)
+        total++; if (runScript("db/bootstrap-nhp-anesthesia-pathology.sql", ctx)) success++;
+        // V20260821033：模块+治理 DRAFT heart/perfusion/donor/protocol/public_case/standard_version
+        total++; if (runScript("db/bootstrap-nhp-module-governance.sql", ctx)) success++;
+        // V20260821034：调度层 schedule（form event_anchor/frequency + visit end_days + instance/record transplant）
+        total++; if (runScript("db/bootstrap-nhp-schedule.sql", ctx)) success++;
+        // V20260821035：事件规则引擎 event_rule/todo + capture_form
+        total++; if (runScript("db/bootstrap-nhp-event-rule.sql", ctx)) success++;
+        // V20260821036：校对 verdict 维度
+        total++; if (runScript("db/bootstrap-nhp-verdict.sql", ctx)) success++;
+        // V20260821037：数据质量中心 quality_event
+        total++; if (runScript("db/bootstrap-nhp-quality-event.sql", ctx)) success++;
+        // V20260821038：lifecycle_stage/arm_code + visit_plan
+        total++; if (runScript("db/bootstrap-nhp-lifecycle-visit-plan.sql", ctx)) success++;
+        // V20260821039：通知消息流 crf_notification
+        total++; if (runScript("db/bootstrap-nhp-notification.sql", ctx)) success++;
+        // 标准库 seed（方案库/panel/协议 预置条目，避免配置侧「标准库」页空白；医学内容待 PI）
+        total++; if (runScript("db/bootstrap-nhp-standard.sql", ctx)) success++;
+        // 原子优先种子重构：crf_field 加 id_rule_type/nature + crf_form.code 加宽
+        total++; if (runScript("db/bootstrap-nhp-atom-priority.sql", ctx)) success++;
+        // 字段属性 vs 填写方式配合：crf_template_field 加 data_type 快照
+        total++; if (runScript("db/bootstrap-nhp-template-field-datatype.sql", ctx)) success++;
+        // 模板字段 role / role_meta（PK 取号规则、FK 实体、DERIVED 来源）
+        total++; if (runScript("db/bootstrap-nhp-template-field-role.sql", ctx)) success++;
+        // FK 字段指向落库：crf_form_field 加 fk_target
+        total++; if (runScript("db/bootstrap-nhp-form-field-fk-target.sql", ctx)) success++;
+        // 码表文件夹分类：crf_codelist 加 folder
+        total++; if (runScript("db/bootstrap-nhp-codelist-folder.sql", ctx)) success++;
+        // 模板章节 code 加宽：对齐 snake_case 原子名（seedAtomsFromPriorityJson）
+        total++; if (runScript("db/bootstrap-nhp-template-section-code.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");

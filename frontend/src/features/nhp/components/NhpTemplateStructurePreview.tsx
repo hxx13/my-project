@@ -3,6 +3,7 @@
  */
 import type { FormSection, FormSubSection, FormField } from "../schema/formTemplate";
 import type { NhpFormTemplate } from "../api/nhpTemplate.api";
+import { formatAtomPicksText } from "../utils/nhpAtomDisplay";
 import { typeMetaOf } from "../schema/typeRegistry";
 
 function countFields(sections: FormSection[] | undefined): number {
@@ -72,7 +73,15 @@ export default function NhpTemplateStructurePreview({
   const kind = template.kind === "ATOM" ? "数据域原子" : "组合快照";
   const atomHint =
     template.kind === "COMPOSITE" && (template.atoms?.length ?? 0) > 0
-      ? ` · 钉住 ${(template.atoms ?? []).map((a) => `${a.atomCode}@v${a.atomVersion ?? "?"}`).join("、")}`
+      ? ` · 钉住 ${formatAtomPicksText(
+          (template.atoms ?? []).map((a) => ({
+            atomCode: a.atomCode,
+            version: a.atomVersion,
+            title: a.atomTitle,
+          })),
+          undefined,
+          "、",
+        )}`
       : "";
 
   return (

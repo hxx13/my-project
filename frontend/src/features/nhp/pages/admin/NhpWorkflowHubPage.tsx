@@ -7,7 +7,9 @@ import { Link, useLocation } from "react-router-dom";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import { fetchNhpRecords, fetchNhpSubjects } from "../../api/nhpRecord.api";
 import { fetchNhpTemplates } from "../../api/nhpTemplate.api";
+import { fetchNhpConcepts, seedNhpAll } from "../../api/nhpOps.api";
 import { nhpNavState } from "../../utils/nhpAdminNav";
+import toast from "react-hot-toast";
 import "@/features/aup/aup.css";
 import "../../nhp.css";
 
@@ -25,6 +27,8 @@ export default function NhpWorkflowHubPage() {
   const goBack = useGoBack("/content-manager/nhp-template");
   const [counts, setCounts] = useState<Counts | null>(null);
   const [latestDraftId, setLatestDraftId] = useState<number | null>(null);
+  const [conceptCount, setConceptCount] = useState<number | null>(null);
+  const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +38,8 @@ export default function NhpWorkflowHubPage() {
       fetchNhpSubjects({ page: 1, size: 1 }).catch(() => ({ items: [], total: 0 })),
       fetchNhpRecords({ status: "DRAFT", page: 1, size: 1 }).catch(() => ({ items: [], total: 0 })),
       fetchNhpRecords({ page: 1, size: 1 }).catch(() => ({ items: [], total: 0 })),
-    ]).then(([composites, atoms, subjects, drafts, all]) => {
+      fetchNhpConcepts().catch(() => []),
+    ]).then(([composites, atoms, subjects, drafts, all, concepts]) => {
       if (cancelled) return;
       const published = [...composites, ...atoms].filter((t) => {
         const s = (t.status || "").toUpperCase();
@@ -50,11 +55,27 @@ export default function NhpWorkflowHubPage() {
       });
       const first = drafts.items?.[0]?.record?.id;
       setLatestDraftId(first ?? null);
+      setConceptCount(concepts.length);
     });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const onSeed = async () => {
+    setSeeding(true);
+    try {
+      const r = await seedNhpAll();
+      const summary = Object.entries(r)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" · ");
+      toast.success(summary ? `种子完成：${summary}` : "种子已执行（幂等）");
+    } catch (e) {
+      toast.error((e as Error).message || "种子失败");
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const next =
     !counts || counts.published === 0
@@ -160,8 +181,17 @@ export default function NhpWorkflowHubPage() {
           <Link to="/content-manager/nhp-records" className="btn ghost small" style={{ textDecoration: "none" }} state={nhpNavState(location)}>
             实例管理
           </Link>
+          <button type="button" className="btn ghost small" disabled={seeding} onClick={() => void onSeed()}>
+            {seeding ? "种子中…" : "执行种子"}
+          </button>
         </div>
       </div>
+
+      {conceptCount != null && (
+        <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 12 }}>
+          概念库已接入：{conceptCount} 个指标（/api/nhp/query/concepts）· 导入批次见 API `/nhp/imports/batches`
+        </div>
+      )}
 
       <div
         className="card"
