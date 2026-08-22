@@ -61,7 +61,7 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     // Has PI or cageBoxCode -> at least reserved, not awaiting allocation
     if ((ct == null || ct === 0 || isNaN(ct)) && !cell.empty) {
       const cbi = cell.cageBoxInfo as Record<string, unknown> | undefined;
-      if (cell.projectPiName || cbi?.cageBoxCode || cbi?.CageBoxQrCode) ct = 3;
+      if (cell.projectPiName || cell.piName || cbi?.ProjectPiName || cbi?.cageBoxCode || cbi?.CageBoxQrCode) ct = 3;
       else ct = 1;
     }
     return (ct != null && ct !== 0 && !isNaN(ct)) ? ct : undefined;
@@ -88,7 +88,16 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   const pi = (() => {
     if (nonEmptyText(cell.projectPiName)) return cell.projectPiName!.trim();
     if (nonEmptyText(cell.piName)) return cell.piName!.trim();
-    // 本地 DB 网格偶发只把 PI 放在 detail 嵌套对象时兜底
+    // ARO cageBoxInfo 用 PascalCase ProjectPiName；本地 detail 嵌套兜底
+    const cbi = cell.cageBoxInfo as Record<string, unknown> | undefined;
+    if (cbi) {
+      const fromBi =
+        (typeof cbi.ProjectPiName === "string" && cbi.ProjectPiName.trim()) ||
+        (typeof cbi.projectPiName === "string" && cbi.projectPiName.trim()) ||
+        (typeof cbi.piName === "string" && cbi.piName.trim()) ||
+        "";
+      if (fromBi) return fromBi;
+    }
     const d = (cell as any).detail as Record<string, unknown> | undefined;
     if (d) {
       const projectPi = typeof d.projectPiName === "string" ? d.projectPiName.trim() : "";

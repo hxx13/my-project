@@ -53,17 +53,19 @@ export interface CrfDomainDict {
   subsections: CrfSubsectionDict[];
 }
 
-/** dataType → 默认题型（12 文档第四节；仅默认，编辑器可改） */
+/** dataType（字典层存储类型，英文，与 crf_field.data_type 一致）→ 默认题型；与 typeRegistry 的 DATA_TYPE_COMPATIBLE_TYPES 对齐 */
 export const DATATYPE_TO_TYPE: Record<string, FieldType> = {
-  字符: "text",
-  文本: "textarea",
-  数值: "number",
-  日期: "date",
-  日期时间: "date",
-  时间: "time",
-  枚举: "select",
-  枚举多选: "checkbox",
-  "枚举+数值": "number",
+  STRING: "text",
+  TEXT: "textarea",
+  INTEGER: "number",
+  DECIMAL: "number",
+  DATE: "date",
+  DATETIME: "date",
+  ENUM: "select",
+  ENUM_MULTI: "checkbox",
+  BOOLEAN: "checkbox",
+  FILE: "file",
+  CALC: "text",
 };
 
 /** 从字段字典生成表单模板（连锁关系自动打好） */
@@ -89,12 +91,14 @@ export function buildFormTemplateFromDict(
 
 /** 单个字段字典字段 → 表单模板字段（连锁关系自动带出） */
 export function dictFieldToFormField(f: CrfFieldDict): FormField {
+  const dataType = (f.dataType || "").toUpperCase();
   const field: FormField = {
     fieldKey: fieldKeyOf(f),
     label: f.nameCn,
-    type: DATATYPE_TO_TYPE[f.dataType] ?? "text",
+    type: DATATYPE_TO_TYPE[dataType] ?? "text",
     required: f.required === "是",
     description: f.description,
+    dataType,
   };
 
   // 连锁 1：码表引用 → dictKey（自动挂码表选项）

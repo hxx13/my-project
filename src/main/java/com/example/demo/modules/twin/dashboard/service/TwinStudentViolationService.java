@@ -19,6 +19,7 @@ import com.example.demo.modules.twin.dashboard.support.InteractiveChallengeVerif
 import com.example.demo.modules.twin.dashboard.support.ViolationMirrorNotificationSupport;
 import com.example.demo.modules.twin.dashboard.support.ViolationTextTemplateRenderer;
 import com.example.demo.modules.twin.obligation.content.ContentJsonSupport;
+import com.example.demo.modules.twin.obligation.entity.TwinObligation;
 import com.example.demo.modules.twin.obligation.service.ObligationService;
 import com.example.demo.modules.twin.obligation.support.ObligationSupport;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -838,15 +839,14 @@ public class TwinStudentViolationService {
             }
             throw e;
         }
-        // 实时推送通知到 H5 手机端
+        // 先同步 Obligation，再写镜像通知 / 推送（sourceUrl、obligationId 依赖待办 id）
+        syncObligationFromCreated(row);
+        persistStudentNotification(row);
         pushViolationCreatedNotification(row);
         // 笼位联动 → 广播到管理端灵动岛
         if ("CAGE_STATUS".equals(row.getSource())) {
             broadcastCageNoticeAlert(row);
         }
-        // 同步写入 sys_student_notification，确保 /student/notifications 消息中心可见
-        persistStudentNotification(row);
-        syncObligationFromCreated(row);
         try { String srcLabel = "CAGE_STATUS".equals(row.getSource()) ? "笼位状态异常" : row.getSource() != null ? row.getSource() : "管理员记录"; String enterLabel = row.getForbidEnter() != null && row.getForbidEnter() == 1 ? "已限制进入" : "未限制"; pushService.send("VIOLATION_CREATED", Map.of("title", "CAGE_STATUS".equals(row.getSource()) ? resolveCageNoticeTitle(row) : "违规提醒", "source", srcLabel, "summary", row.getViolationText() != null ? row.getViolationText().replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim() : "", "enterLocked", enterLabel), Set.of(row.getTargetUserId())); } catch (Exception e) { log.warn("[Push] VIOLATION_CREATED failed: {}", e.getMessage()); }
         return row;
     }
@@ -876,6 +876,7 @@ public class TwinStudentViolationService {
                 }
             }
             alertItem.put("contentHtml", body != null ? body : "");
+            alertItem.put("contentJson", row.getContentJson());
 
             alertItem.put("enterLocked", computeEnterLocked(row));
             alertItem.put("interactiveRequired",
@@ -895,6 +896,7 @@ public class TwinStudentViolationService {
                 }
             }
             alertItem.put("createdAt", row.getCreatedAt() != null ? row.getCreatedAt().toString() : null);
+            attachObligationDeepLink(alertItem, row.getId());
             mobileUserSocketPushService.pushAlertItem(row.getTargetUserId().trim(), alertItem);
         } catch (Exception e) {
             log.warn("[student-violation] 推送 H5 通知失败 userId={} id={}: {}",
@@ -940,6 +942,10 @@ public class TwinStudentViolationService {
             sn.setBizType(ViolationMirrorNotificationSupport.BIZ_TYPE);
             sn.setBizId(ViolationMirrorNotificationSupport.bizId(row.getId()));
             sn.setRecipientUserId(row.getTargetUserId().trim());
+            Long obligationId = resolveObligationId(row.getId());
+            if (obligationId != null && obligationId > 0) {
+                sn.setSourceUrl(ViolationMirrorNotificationSupport.h5SourceUrl(obligationId));
+            }
             sn.setIsRead(0);
             sn.setCreateTime(row.getCreatedAt() != null ? row.getCreatedAt() : LocalDateTime.now());
             studentNotificationMapper.insert(sn);
@@ -947,6 +953,31 @@ public class TwinStudentViolationService {
             log.warn("[student-violation] 写入通知中心失败 userId={} id={}: {}",
                     row.getTargetUserId(), row.getId(), e.getMessage());
         }
+    }
+
+    private Long resolveObligationId(Long violationId) {
+        if (obligationService == null || violationId == null || violationId <= 0) {
+            return null;
+        }
+        try {
+            TwinObligation ob = obligationService.findByViolationId(violationId);
+            return ob != null ? ob.getId() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void attachObligationDeepLink(Map<String, Object> item, Long violationId) {
+        if (item == null) {
+            return;
+        }
+        Long obligationId = resolveObligationId(violationId);
+        if (obligationId == null || obligationId <= 0) {
+            return;
+        }
+        item.put("obligationId", obligationId);
+        item.put("sourceUrl", ViolationMirrorNotificationSupport.h5SourceUrl(obligationId));
+        item.put("mpPath", ViolationMirrorNotificationSupport.mpPath(obligationId));
     }
 
     /** C-T1：终态 / 硬删除时撤回镜像通知（按 bizType+bizId） */

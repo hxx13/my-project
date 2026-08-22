@@ -1,4 +1,5 @@
 var springAuth = require('../../../utils/springAuth.js');
+var { preparePublishedContentHtml } = require('../../../utils/mpPublishedContentHtml.js');
 
 function parseBody(raw) {
   if (raw == null) return null;
@@ -98,7 +99,12 @@ Page({
           that.setData({ loading: false, error: u.message });
           return;
         }
-        var list = Array.isArray(u.data) ? u.data : [];
+        var list = (Array.isArray(u.data) ? u.data : []).map(function (row) {
+          if (!row || typeof row !== 'object') return row;
+          return Object.assign({}, row, {
+            contentHtml: preparePublishedContentHtml(row.contentHtml, row.contentJson),
+          });
+        });
         var active = null;
         if (that._focusId) {
           active = list.find(function (r) {

@@ -15,6 +15,7 @@ import { BareNumberWithUnit, bareControlClass } from "../shared/BareControl";
 import { MultiSelectField } from "../shared/MultiSelectField";
 import { SelectField } from "../shared/SelectField";
 import type { MultiSelectOption } from "../shared/multiSelectModel";
+import { violationContentTemplateSlot } from "../shared/violationContentTemplateSlot";
 import { ContentBodySlot, contentBodyFromHtml, serializeContentBody } from "../slots/ContentBodySlot";
 import { DispositionFieldsSlot } from "../slots/DispositionFieldsSlot";
 import { DISPOSITION_RULE_LEVEL } from "../slots/dispositionTypes";
@@ -45,7 +46,7 @@ const TRIGGER_ACTIONS = [
 const JUDGE_MODE_LABEL: Record<string, string> = { AUTO_SYNC_LINKED: "同步联动", PURE_DAYS: "纯天数", PURE_MANUAL: "纯手动" };
 const TRIGGER_ACTION_LABEL: Record<string, string> = { VIOLATION_ONLY: "仅违规", NOTICE_ONLY: "仅公告", BOTH: "两者" };
 
-/** 从总览推导各笼架字段的可选项（园区 / 课题组），去重排序。 */
+/** 从总览推导各笼架字段的可选项（校区 / 课题组），去重排序。 */
 function uniqueCageValues(overview: SpecialStatusOverview | undefined, key: "campusName" | "projectPiName"): MultiSelectOption<string>[] {
   const set = new Set<string>();
   (overview?.groups ?? []).forEach((g) => g.cages.forEach((c) => { const v = c[key]; if (v) set.add(v); }));
@@ -140,6 +141,10 @@ export function CageRulePanel(): JSX.Element {
         uploading={uploading}
         disabled={saving}
         placeholder="留空则使用系统默认文案"
+        templateSlot={violationContentTemplateSlot(body, (next) => {
+          const { html, imageUrls } = serializeContentBody(next);
+          setForm({ violationTextTpl: html, cageImageUrls: imageUrls });
+        })}
       />
       {imageFiles.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -173,8 +178,8 @@ export function CageRulePanel(): JSX.Element {
         <InspectorRow label="延迟天数">
           {(id) => <BareNumberWithUnit id={id} value={form.cageDelayDays == null ? "" : String(form.cageDelayDays)} onChange={(raw) => setForm({ cageDelayDays: Number(raw) || 7 })} unit="天" placeholder="7" disabled={saving} />}
         </InspectorRow>
-        <InspectorRow stack label="园区范围" hint="空 = 所有园区">
-          {(id) => <MultiSelectField id={id} options={campusOptions} value={form.cageAreaFilter?.campuses ?? []} onChange={(next) => setForm({ cageAreaFilter: { ...form.cageAreaFilter, campuses: next } })} placeholder="所有园区" disabled={saving} />}
+        <InspectorRow stack label="校区范围" hint="空 = 所有校区">
+          {(id) => <MultiSelectField id={id} options={campusOptions} value={form.cageAreaFilter?.campuses ?? []} onChange={(next) => setForm({ cageAreaFilter: { ...form.cageAreaFilter, campuses: next } })} placeholder="所有校区" disabled={saving} />}
         </InspectorRow>
         <InspectorRow stack label="课题组白名单" hint="空 = 不限课题组">
           {(id) => <MultiSelectField id={id} options={groupOptions} value={form.cageGroupWhitelist ?? []} onChange={(next) => setForm({ cageGroupWhitelist: next })} placeholder="不限" disabled={saving} />}

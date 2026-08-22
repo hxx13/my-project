@@ -17,6 +17,9 @@ import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.dashboard.mapper.TwinScanPopupAnnouncementMapper;
 import com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
+import com.example.demo.modules.twin.dashboard.support.ViolationMirrorNotificationSupport;
+import com.example.demo.modules.twin.obligation.entity.TwinObligation;
+import com.example.demo.modules.twin.obligation.service.ObligationService;
 import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayOption;
 import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayRequest;
 import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayRequestMapper;
@@ -57,6 +60,7 @@ public class MobileCenterAlertService {
     private final MaterialRequestMapper materialRequestMapper;
     private final MaterialRequestLineMapper materialRequestLineMapper;
     private final TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService;
+    private final ObligationService obligationService;
 
     public MobileCenterAlertService(TwinScanPopupAnnouncementMapper announcementMapper,
                                     TwinStudentViolationMapper violationMapper,
@@ -69,7 +73,9 @@ public class MobileCenterAlertService {
                                     ScanDelayConfigService scanDelayConfigService,
                                     MaterialRequestMapper materialRequestMapper,
                                     MaterialRequestLineMapper materialRequestLineMapper,
-                                    TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService) {
+                                    TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService,
+                                    @org.springframework.beans.factory.annotation.Autowired(required = false)
+                                    ObligationService obligationService) {
         this.announcementMapper = announcementMapper;
         this.violationMapper = violationMapper;
         this.twinStudentViolationService = twinStudentViolationService;
@@ -82,6 +88,7 @@ public class MobileCenterAlertService {
         this.materialRequestMapper = materialRequestMapper;
         this.materialRequestLineMapper = materialRequestLineMapper;
         this.scanNoticeAutoSuppressService = scanNoticeAutoSuppressService;
+        this.obligationService = obligationService;
     }
 
     public Map<String, Object> buildAlerts(String userId, boolean html5PrivilegeBypass) {
@@ -336,6 +343,9 @@ public class MobileCenterAlertService {
             String violationSource = activeViolation != null ? activeViolation.getSource() : null;
             Map<String, Object> item = baseItem("violation", notice.getId(), title, false, violationSource);
             item.put("contentHtml", body != null ? body : "");
+            if (activeViolation != null && StringUtils.hasText(activeViolation.getContentJson())) {
+                item.put("contentJson", activeViolation.getContentJson());
+            }
             item.put("createdAt", activeViolation != null && activeViolation.getCreatedAt() != null
                     ? activeViolation.getCreatedAt().toString() : null);
             if (suppressKeys.contains("violation:" + notice.getId())) {
@@ -354,9 +364,27 @@ public class MobileCenterAlertService {
             if (StringUtils.hasText(notice.getUnblockMethod())) {
                 item.put("unblockMethod", notice.getUnblockMethod().trim());
             }
+            attachObligationDeepLink(item, notice.getId());
             items.add(item);
         } catch (Exception e) {
             log.warn("[MobileAlerts] 违规查询失败: {}", e.getMessage());
+        }
+    }
+
+    private void attachObligationDeepLink(Map<String, Object> item, Long violationId) {
+        if (item == null || obligationService == null || violationId == null || violationId <= 0) {
+            return;
+        }
+        try {
+            TwinObligation ob = obligationService.findByViolationId(violationId);
+            if (ob == null || ob.getId() == null || ob.getId() <= 0) {
+                return;
+            }
+            item.put("obligationId", ob.getId());
+            item.put("sourceUrl", ViolationMirrorNotificationSupport.h5SourceUrl(ob.getId()));
+            item.put("mpPath", ViolationMirrorNotificationSupport.mpPath(ob.getId()));
+        } catch (Exception e) {
+            log.debug("[MobileAlerts] resolve obligation failed violationId={}: {}", violationId, e.getMessage());
         }
     }
 

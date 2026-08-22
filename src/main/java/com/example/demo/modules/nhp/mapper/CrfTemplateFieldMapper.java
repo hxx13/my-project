@@ -9,10 +9,10 @@ import java.util.List;
 @Mapper
 public interface CrfTemplateFieldMapper {
 
-    @Insert("INSERT INTO crf_template_field (form_id, section_id, field_key, label, description, type, " +
-            "options, dict_key, required, show_when, sort_order, config) " +
-            "VALUES (#{formId}, #{sectionId}, #{fieldKey}, #{label}, #{description}, #{type}, " +
-            "#{options}, #{dictKey}, #{required}, #{showWhen}, #{sortOrder}, #{config})")
+    @Insert("INSERT INTO crf_template_field (form_id, section_id, field_key, data_type, label, description, type, " +
+            "options, dict_key, role, role_meta, required, show_when, sort_order, config) " +
+            "VALUES (#{formId}, #{sectionId}, #{fieldKey}, #{dataType}, #{label}, #{description}, #{type}, " +
+            "#{options}, #{dictKey}, #{role}, #{roleMeta}, #{required}, #{showWhen}, #{sortOrder}, #{config})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CrfTemplateField row);
 

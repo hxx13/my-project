@@ -3,14 +3,21 @@
  * 版式对齐 AUP `/#/aup/fill`：缓冲页 → 顶栏文档动作 + 阶段条 + 左章节 / 中表单 / 右留痕。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { FormField, FormTemplate } from "../schema/formTemplate";
 import NhpFormField from "./NhpFormField";
-import NhpStageStepper, {
+import {
   hasFieldValue,
-  primaryDomainForStage,
   stageForDomain,
   type NhpBizStage,
 } from "./NhpStageStepper";
@@ -18,11 +25,15 @@ import NhpSectionNav from "./NhpSectionNav";
 import NhpTracePanel from "./NhpTracePanel";
 import NhpSnapshotDrawer from "./NhpSnapshotDrawer";
 import NhpQueryPanel from "./NhpQueryPanel";
+import NhpSeriesGrid from "./NhpSeriesGrid";
+import NhpLedger from "./NhpLedger";
+import NhpSampleLedger from "./NhpSampleLedger";
 import ScrollButtons from "@/features/aup/components/ScrollButtons";
 import { authStorage } from "@/features/auth/authStorage";
 import { fetchNhpTemplates, fetchNhpTemplateById, fillableFormId, isFillablePublished, type NhpTemplateListItem, type NhpFormTemplate } from "../api/nhpTemplate.api";
 import { fetchNhpCodelist, type NhpCodelistItem } from "../api/nhpCodelist.api";
 import { fetchNhpDictStructure } from "../api/nhpFieldDictionary.api";
+import { fetchNhpSeries, type NhpSeriesData } from "../api/nhpWorkbench.api";
 import {
   upsertNhpValues,
   fetchNhpRecordDetail,
@@ -47,6 +58,17 @@ import {
   stickyScrollOffset,
 } from "../utils/nhpStickyChrome";
 import { animalTypeLabel } from "../utils/nhpSubjectLabels";
+import { nextNhpId, previewNhpId } from "../api/nhpOps.api";
+import {
+  applyDerivedPreviews,
+  computeDerivedPreview,
+  hasEffectiveFieldValue,
+} from "../utils/nhpAutoGenPreview";
+import {
+  buildPkIdContext,
+  resolvePkIdType,
+  subjectPkCode,
+} from "../utils/nhpPkIdContext";
 
 function flattenFields(template: FormTemplate | null): FormField[] {
   const out: FormField[] = [];
@@ -65,7 +87,9 @@ function isPublished(t: NhpTemplateListItem): boolean {
 function statusLabel(status?: string | null): string {
   const s = (status || "").toUpperCase();
   if (s === "LOCKED") return "已锁定";
-  if (s === "COMPLETE") return "已完成（待锁定）";
+  if (s === "SIGNED") return "已签署";
+  if (s === "REVIEWED") return "已复核";
+  if (s === "COMPLETE") return "已提交（待复核）";
   if (s === "DRAFT") return "草稿";
   return status || "—";
 }
@@ -78,10 +102,13 @@ export default function NhpFillWorkbench({
   const goBack = useGoBack(mode === "adminPreview" ? "/content-manager/nhp-records" : "/nhp/fill", {
     preferHistory: mode !== "adminPreview",
   });
+  const navigate = useNavigate();
   const { id: routeId } = useParams<{ id?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const snapshotViewId = searchParams.get("snapshot");
   const entered = searchParams.get("enter") === "1";
+  /** 采集形态（表单-事件指派级）：PANEL 长表单 / SERIES 序列网格 / LEDGER 台账 */
+  const captureForm = (searchParams.get("captureForm") || "PANEL").toUpperCase();
 
   const operatorId = authStorage.getUserInfo()?.id?.trim() || undefined;
 
@@ -105,7 +132,6 @@ export default function NhpFillWorkbench({
   const [entryPass, setEntryPass] = useState<1 | 2>(1);
   const [secondValues, setSecondValues] = useState<Record<string, unknown>>({});
   const [compareSummary, setCompareSummary] = useState<string | null>(null);
-  const [toolsOpen, setToolsOpen] = useState(false);
   /** 点击「提交」后仍有未完整章节时，侧栏显示红 ✗（对齐 AUP 校验失败指示） */
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const scrollLockRef = useRef(false);
@@ -114,14 +140,23 @@ export default function NhpFillWorkbench({
   const scrollParentRef = useRef<HTMLElement | null>(null);
   const stickyChromeHRef = useRef(0);
 
+  const [seriesData, setSeriesData] = useState<NhpSeriesData | null>(null);
+  const [seriesLoading, setSeriesLoading] = useState(false);
+  /** 自动生成字段预览（PK 取号 / DERIVED 计算；未落库） */
+  const [autoGenPreviews, setAutoGenPreviews] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (captureForm !== "SERIES" || !subject?.id) return;
+    setSeriesLoading(true);
+    fetchNhpSeries({ subjectId: subject.id })
+      .then(setSeriesData)
+      .catch(() => setSeriesData(null))
+      .finally(() => setSeriesLoading(false));
+  }, [captureForm, subject?.id]);
+
   const locked = (record?.status || "").toUpperCase() === "LOCKED";
   const canEdit = !locked && !snapshotViewId;
   const statusUp = (record?.status || "").toUpperCase();
-
-  const fillBase =
-    mode === "adminPreview"
-      ? `/content-manager/nhp-entry/${routeId}`
-      : `/nhp/fill/${routeId}`;
 
   const enterFill = () => {
     const next = new URLSearchParams(searchParams);
@@ -287,8 +322,55 @@ export default function NhpFillWorkbench({
   }, [record?.id]);
 
   const sections = useMemo(() => template?.sections ?? [], [template]);
-  const [showBizHint, setShowBizHint] = useState(false);
   const activeValues = entryPass === 2 ? secondValues : values;
+  const pkFields = useMemo(() => flattenFields(template).filter((f) => f.role === "PK"), [template]);
+  const derivedFields = useMemo(() => flattenFields(template).filter((f) => f.role === "DERIVED"), [template]);
+
+  /** 未落库的自动生成字段：PK 走 ids/preview；DERIVED 本地计算（均不持久化） */
+  useEffect(() => {
+    if (!template || !entered || entryPass !== 1) {
+      setAutoGenPreviews({});
+      return;
+    }
+    let cancelled = false;
+    const allFields = flattenFields(template);
+
+    void (async () => {
+      const previews: Record<string, string> = {};
+
+      for (const f of derivedFields) {
+        const key = f.fieldKey;
+        if (hasFieldValue(values[key])) continue;
+        const computed = computeDerivedPreview(f, values, allFields);
+        if (computed) previews[key] = computed;
+      }
+
+      for (const f of pkFields) {
+        const key = f.fieldKey;
+        if (hasFieldValue(values[key])) continue;
+        const idType = resolvePkIdType(f);
+        if (!idType) continue;
+        const fromSubject = subjectPkCode(subject, idType);
+        if (fromSubject) {
+          previews[key] = fromSubject;
+          continue;
+        }
+        try {
+          const ctx = buildPkIdContext(idType, subject, values, allFields);
+          const res = await previewNhpId({ idType, ...ctx });
+          if (res.code) previews[key] = res.code;
+        } catch {
+          // 占位符未齐时跳过，字段显示「等待预览…」
+        }
+      }
+
+      if (!cancelled) setAutoGenPreviews(previews);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [template, subject, values, entered, entryPass, pkFields, derivedFields]);
 
   /** 快照/状态用弱语境：当前 TOC 章节关联的可选业务标签（非域流水线） */
   const softBizStage: NhpBizStage = useMemo(() => {
@@ -334,7 +416,7 @@ export default function NhpFillWorkbench({
       ro.disconnect();
       window.removeEventListener("resize", sync);
     };
-  }, [mode, template, record?.status, subject?.subjectCode, formKey, entered, toolsOpen, showBizHint]);
+  }, [mode, template, record?.status, subject?.subjectCode, formKey, entered]);
 
   /* ---------- 滚动高亮章节 ---------- */
   useEffect(() => {
@@ -382,18 +464,59 @@ export default function NhpFillWorkbench({
     }
   };
 
+  /** 为未落库的 PK 正式取号，并写入 DERIVED 计算值 */
+  const ensureAutoGenValues = async (src: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    const allFields = flattenFields(template);
+    let next = { ...src };
+    for (const f of pkFields) {
+      const key = f.fieldKey;
+      if (hasFieldValue(next[key])) continue;
+      const idType = resolvePkIdType(f);
+      if (!idType) continue;
+      const fromSubject = subjectPkCode(subject, idType);
+      if (fromSubject) {
+        next[key] = fromSubject;
+        continue;
+      }
+      const ctx = buildPkIdContext(idType, subject, next, allFields);
+      const res = await nextNhpId({ idType, ...ctx });
+      next[key] = res.code;
+    }
+    const derivedPreviews: Record<string, string> = {};
+    for (const f of derivedFields) {
+      const key = f.fieldKey;
+      if (hasFieldValue(next[key])) continue;
+      const computed = computeDerivedPreview(f, next, allFields);
+      if (computed) derivedPreviews[key] = computed;
+    }
+    next = applyDerivedPreviews(next, derivedFields, derivedPreviews);
+    return next;
+  };
+
   const save = () =>
     run(async () => {
       if (!record) return;
-      const src = entryPass === 2 ? secondValues : values;
-      const list = Object.entries(src)
-        .filter(([, v]) => hasFieldValue(v))
-        .map(([fieldCode, value]) => ({ fieldCode, value }));
       if (entryPass === 2) {
+        const src = secondValues;
+        const list = Object.entries(src)
+          .filter(([, v]) => hasFieldValue(v))
+          .map(([fieldCode, value]) => ({ fieldCode, value }));
         await submitNhpDoubleEntry(record.id, { values: list, operatorId, replace: true });
         setSecondValues(await fetchNhpSecondValues(record.id));
       } else {
+        const withAutoGen = await ensureAutoGenValues(values);
+        const list = Object.entries(withAutoGen)
+          .filter(([, v]) => hasFieldValue(v))
+          .map(([fieldCode, value]) => ({ fieldCode, value }));
         await upsertNhpValues(record.id, list, operatorId);
+        setValues(withAutoGen);
+        setAutoGenPreviews((prev) => {
+          const rest = { ...prev };
+          for (const f of [...pkFields, ...derivedFields]) {
+            if (hasFieldValue(withAutoGen[f.fieldKey])) delete rest[f.fieldKey];
+          }
+          return rest;
+        });
       }
       await refreshAudit(record.id);
     }, entryPass === 2 ? "已保存二录" : `已保存 ${Object.keys(values).filter((k) => hasFieldValue(values[k])).length} 个字段`);
@@ -414,7 +537,9 @@ export default function NhpFillWorkbench({
 
   const markComplete = () => {
     const allFields = flattenFields(template);
-    const missingRequired = allFields.filter((f) => f.required && !hasFieldValue(values[f.fieldKey]));
+    const missingRequired = allFields.filter(
+      (f) => f.required && !hasEffectiveFieldValue(f, values, autoGenPreviews),
+    );
     if (missingRequired.length > 0) {
       setSubmitAttempted(true);
       toast.error(`还有 ${missingRequired.length} 个必填项未填，请补全后再提交（未涉及的域可留空）`);
@@ -432,13 +557,22 @@ export default function NhpFillWorkbench({
     setSubmitAttempted(false);
     run(async () => {
       if (!record) return;
+      const withAutoGen = await ensureAutoGenValues(values);
       await upsertNhpValues(
         record.id,
-        Object.entries(values)
+        Object.entries(withAutoGen)
           .filter(([, v]) => hasFieldValue(v))
           .map(([fieldCode, value]) => ({ fieldCode, value })),
         operatorId,
       );
+      setValues(withAutoGen);
+      setAutoGenPreviews((prev) => {
+        const rest = { ...prev };
+        for (const f of [...pkFields, ...derivedFields]) {
+          if (hasFieldValue(withAutoGen[f.fieldKey])) delete rest[f.fieldKey];
+        }
+        return rest;
+      });
       const r = await updateNhpRecordStatus(record.id, {
         status: "COMPLETE",
         operatorId,
@@ -464,6 +598,34 @@ export default function NhpFillWorkbench({
       setSnapshotCount((c) => c + 1);
       await refreshAudit(record.id);
     }, "已锁定并归档快照");
+
+  const markReviewed = () =>
+    run(async () => {
+      if (!record) return;
+      const r = await updateNhpRecordStatus(record.id, {
+        status: "REVIEWED",
+        operatorId,
+        bizStage: softBizStage,
+        note: "复核通过快照",
+      });
+      setRecord(r);
+      setSnapshotCount((c) => c + 1);
+      await refreshAudit(record.id);
+    }, "已复核通过并生成快照");
+
+  const markSigned = () =>
+    run(async () => {
+      if (!record) return;
+      const r = await updateNhpRecordStatus(record.id, {
+        status: "SIGNED",
+        operatorId,
+        bizStage: softBizStage,
+        note: "签署/放行快照",
+      });
+      setRecord(r);
+      setSnapshotCount((c) => c + 1);
+      await refreshAudit(record.id);
+    }, "已签署并生成快照");
 
   const makeSnapshot = () =>
     run(async () => {
@@ -498,16 +660,14 @@ export default function NhpFillWorkbench({
     scrollElementBelowSticky(el, scrollParent, stickyScrollOffset(chromeH));
   };
 
-  const onStageSelect = (stage: NhpBizStage) => {
-    const domain = primaryDomainForStage(stage);
-    if (domain) {
-      const sec = sections.find((s) => s.code.toUpperCase().startsWith(domain));
-      if (sec) handleSelect(sec.code);
-    }
-  };
-
   const goBackList = () => {
     goBack();
+  };
+
+  const exitToLanding = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("enter");
+    setSearchParams(next, { replace: true });
   };
 
   const primarySubmit =
@@ -515,8 +675,12 @@ export default function NhpFillWorkbench({
       ? statusUp === "DRAFT"
         ? { label: "提交", onClick: markComplete }
         : statusUp === "COMPLETE"
-          ? { label: "数据锁定", onClick: markLocked }
-          : null
+          ? { label: "复核通过", onClick: markReviewed }
+          : statusUp === "REVIEWED"
+            ? { label: "签署 / 放行", onClick: markSigned }
+            : statusUp === "SIGNED"
+              ? { label: "数据锁定", onClick: markLocked }
+              : null
       : null;
 
   /* ---------- 加载 / 无模板 ---------- */
@@ -623,19 +787,61 @@ export default function NhpFillWorkbench({
       ref={rootRef}
       className={mode === "adminPreview" ? "nhp-fill-root nhp-fill-root--embedded" : "nhp-fill-root"}
     >
-      {/* 文档动作顶栏：对齐 AUP Toolbar —— 返回 / 模板名 / 保存 / 提交 */}
+      {/* 文档动作顶栏：返回 + 标题同行，对齐 AUP Toolbar / aup-wb-hd--compact */}
       <div className="toolbar">
         <button type="button" className="btn ghost" onClick={goBackList}>
           ← 返回
         </button>
-        <span className="tag" style={{ background: "var(--success-weak)", color: "var(--success)" }}>
-          {formKey || "NHP CRF"}
-        </span>
+        <h1 className="nhp-fill-toolbar-title">{pageTitle}</h1>
         {mode === "adminPreview" && (
           <span className="nhp-admin-preview-chip" title="管理侧填写，与门户同构">
             管理填写
           </span>
         )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className="btn ghost small">
+              更多工具 ▾
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel>双录入</DropdownMenuLabel>
+            <DropdownMenuItem disabled={!record} onClick={() => setEntryPass(1)}>
+              一录{entryPass === 1 ? " ✓" : ""}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!record || (!canEdit && Object.keys(secondValues).length === 0)}
+              onClick={() => setEntryPass(2)}
+            >
+              二录{entryPass === 2 ? " ✓" : ""}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem disabled={busy || !record} onClick={runCompare}>
+              比对两录
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={!record} onClick={() => setSnapOpen(true)}>
+              快照{snapshotCount > 0 ? ` (${snapshotCount})` : ""}
+            </DropdownMenuItem>
+            {canEdit && entryPass === 1 && (
+              <DropdownMenuItem disabled={busy || !record} onClick={makeSnapshot}>
+                打快照
+              </DropdownMenuItem>
+            )}
+            {mode === "adminPreview" && record && (
+              <DropdownMenuItem onClick={() => navigate(`/nhp/fill/${record.id}?enter=1`)}>
+                门户正式填写
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={exitToLanding}>回缓冲页</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Link
+          to={mode === "adminPreview" ? "/content-manager/nhp-records" : "/nhp/fill"}
+          className="btn ghost small"
+          style={{ textDecoration: "none" }}
+        >
+          {mode === "adminPreview" ? "实例列表" : "重选动物"}
+        </Link>
         <span className="spacer" />
         <span className="autosave" style={{ fontSize: 12, color: "var(--muted)" }}>
           {locked ? "已锁定 · 只读" : snapshotViewId ? "快照只读" : "编辑中"}
@@ -654,70 +860,6 @@ export default function NhpFillWorkbench({
         )}
       </div>
 
-      {/* 页面抬头：这是什么页 */}
-      <div className="nhp-fill-page-hd">
-        <div>
-          <h1>{pageTitle}</h1>
-          <div className="sub">{metaLine || "加载实例信息…"}</div>
-        </div>
-        <div className="nhp-fill-page-hd-acts">
-          <button type="button" className="btn ghost small" onClick={() => setToolsOpen((v) => !v)}>
-            {toolsOpen ? "收起工具" : "更多工具"}
-          </button>
-          <Link
-            to={mode === "adminPreview" ? "/content-manager/nhp-records" : "/nhp/fill"}
-            className="btn ghost small"
-            style={{ textDecoration: "none" }}
-          >
-            {mode === "adminPreview" ? "实例列表" : "重选动物"}
-          </Link>
-        </div>
-      </div>
-
-      {toolsOpen && record && (
-        <div className="nhp-fill-tools">
-          <div className="nhp-fill-tools-label">次要工具</div>
-          <div style={{ display: "inline-flex", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-            <button
-              type="button"
-              className="btn ghost small"
-              style={{ borderRadius: 0, background: entryPass === 1 ? "var(--primary-weak)" : undefined }}
-              onClick={() => setEntryPass(1)}
-            >
-              一录
-            </button>
-            <button
-              type="button"
-              className="btn ghost small"
-              style={{ borderRadius: 0, background: entryPass === 2 ? "var(--primary-weak)" : undefined }}
-              disabled={!canEdit && Object.keys(secondValues).length === 0}
-              onClick={() => setEntryPass(2)}
-            >
-              二录
-            </button>
-          </div>
-          <button type="button" className="btn ghost small" disabled={busy || !record} onClick={runCompare}>
-            比对
-          </button>
-          <button type="button" className="btn ghost small" onClick={() => setSnapOpen(true)}>
-            快照{snapshotCount > 0 ? `(${snapshotCount})` : ""}
-          </button>
-          {canEdit && entryPass === 1 && (
-            <button type="button" className="btn ghost small" disabled={busy} onClick={makeSnapshot}>
-              打快照
-            </button>
-          )}
-          {mode === "adminPreview" && (
-            <Link to={`/nhp/fill/${record.id}?enter=1`} className="btn ghost small" style={{ textDecoration: "none" }}>
-              门户正式填写
-            </Link>
-          )}
-          <Link to={fillBase} className="btn ghost small" style={{ textDecoration: "none" }}>
-            回缓冲页
-          </Link>
-        </div>
-      )}
-
       {compareSummary && (
         <div className="nhp-fill-banner muted">双录入 · {compareSummary}</div>
       )}
@@ -727,29 +869,11 @@ export default function NhpFillWorkbench({
         </div>
       )}
 
-      <div className="nhp-fill-hint-bar">
-        <span className="muted" style={{ fontSize: 12, lineHeight: 1.45 }}>
-          章节按展示序列出，可任意跳转；域码是表码不是步骤。提交只校验必填项，未涉及的域可留空。
-        </span>
-        <button
-          type="button"
-          className="btn ghost small"
-          style={{ fontSize: 11, marginLeft: 8 }}
-          onClick={() => setShowBizHint((v) => !v)}
-        >
-          {showBizHint ? "收起业务提示" : "业务语境提示"}
-        </button>
-      </div>
-      {showBizHint && (
-        <NhpStageStepper
-          active={softBizStage}
-          recordStatus={record?.status}
-          subtitle="可选业务语境（与域表码正交；非 D1→D10 流水线）"
-          onSelect={onStageSelect}
-        />
-      )}
-
-      {!template ? (
+      {captureForm === "SERIES" ? (
+        <NhpSeriesGrid data={seriesData ?? undefined} loading={seriesLoading} />
+      ) : captureForm === "LEDGER" ? (
+        <NhpSampleLedger subjectId={subject?.id ?? 0} />
+      ) : !template ? (
         <div className="aup-empty">{loadError || "加载模板…"}</div>
       ) : (
         <div className="layout">
@@ -777,11 +901,18 @@ export default function NhpFillWorkbench({
                         field={f}
                         options={resolveOptions(f)}
                         value={activeValues[f.fieldKey]}
+                        values={activeValues}
                         readOnly={!canEdit}
+                        autoGenPreview={entryPass === 1 ? autoGenPreviews[f.fieldKey] : undefined}
                         onChange={(v) =>
                           entryPass === 2
                             ? setSecondValues((p) => ({ ...p, [f.fieldKey]: v }))
                             : setValues((p) => ({ ...p, [f.fieldKey]: v }))
+                        }
+                        onFieldChange={(k, v) =>
+                          entryPass === 2
+                            ? setSecondValues((p) => ({ ...p, [k]: v }))
+                            : setValues((p) => ({ ...p, [k]: v }))
                         }
                       />
                     ))}
@@ -793,11 +924,18 @@ export default function NhpFillWorkbench({
                     field={f}
                     options={resolveOptions(f)}
                     value={activeValues[f.fieldKey]}
+                    values={activeValues}
                     readOnly={!canEdit}
+                    autoGenPreview={entryPass === 1 ? autoGenPreviews[f.fieldKey] : undefined}
                     onChange={(v) =>
                       entryPass === 2
                         ? setSecondValues((p) => ({ ...p, [f.fieldKey]: v }))
                         : setValues((p) => ({ ...p, [f.fieldKey]: v }))
+                    }
+                    onFieldChange={(k, v) =>
+                      entryPass === 2
+                        ? setSecondValues((p) => ({ ...p, [k]: v }))
+                        : setValues((p) => ({ ...p, [k]: v }))
                     }
                   />
                 ))}
@@ -843,14 +981,20 @@ function FieldInput({
   field,
   options,
   value,
+  values,
   onChange,
+  onFieldChange,
   readOnly,
+  autoGenPreview,
 }: {
   field: FormField;
   options: FormField["options"];
   value: unknown;
+  values?: Record<string, unknown>;
   onChange: (v: unknown) => void;
+  onFieldChange?: (fieldKey: string, v: unknown) => void;
   readOnly?: boolean;
+  autoGenPreview?: string;
 }) {
   return (
     <div className="field" style={{ marginBottom: 14 }}>
@@ -861,7 +1005,15 @@ function FieldInput({
           <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 500 }}>（{field.config.unit}）</span>
         ) : null}
       </label>
-      <NhpFormField field={{ ...field, options }} value={value} onChange={onChange} readOnly={readOnly} />
+      <NhpFormField
+        field={{ ...field, options }}
+        value={value}
+        values={values}
+        onChange={onChange}
+        onFieldChange={onFieldChange}
+        readOnly={readOnly}
+        autoGenPreview={autoGenPreview}
+      />
       {field.description ? <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{field.description}</div> : null}
       {field.dictKey ? <div style={{ fontSize: 11, color: "var(--muted)" }}>码表 {field.dictKey}</div> : null}
     </div>

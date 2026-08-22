@@ -1,4 +1,5 @@
 var springAuth = require('../../../utils/springAuth.js');
+var { preparePublishedContentHtml } = require('../../../utils/mpPublishedContentHtml.js');
 
 var DAY_OF_WEEK_MAP = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -114,6 +115,7 @@ Page({
       list.forEach(function(item) {
         item.displayTime = formatTime(item.time);
         item.statusLabel = item.status === 'processed' ? '已处理' : '待处理';
+        item.contentHtml = preparePublishedContentHtml(item.contentHtml, item.contentJson);
       });
 
       var dateGroups = groupByDate(list);

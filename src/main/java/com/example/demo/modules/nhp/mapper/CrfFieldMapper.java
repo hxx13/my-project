@@ -10,9 +10,11 @@ import java.util.List;
 public interface CrfFieldMapper {
 
     @Insert("INSERT INTO crf_field (dictionary_id, field_code, name_en, name_cn, data_type, unit, required, codelist_id, " +
-            "description, calc_expression, cdisc_domain, cdisc_variable, cdisc_test_code, status, version, active) " +
+            "description, calc_expression, cdisc_domain, cdisc_variable, cdisc_test_code, concept_code, " +
+            "id_rule_type, nature, verdict, verdict_note, review_round, status, version, active) " +
             "VALUES (#{dictionaryId}, #{fieldCode}, #{nameEn}, #{nameCn}, #{dataType}, #{unit}, #{required}, #{codelistId}, " +
-            "#{description}, #{calcExpression}, #{cdiscDomain}, #{cdiscVariable}, #{cdiscTestCode}, #{status}, #{version}, #{active})")
+            "#{description}, #{calcExpression}, #{cdiscDomain}, #{cdiscVariable}, #{cdiscTestCode}, #{conceptCode}, " +
+            "#{idRuleType}, #{nature}, #{verdict}, #{verdictNote}, #{reviewRound}, #{status}, #{version}, #{active})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CrfField row);
 
@@ -39,7 +41,7 @@ public interface CrfFieldMapper {
 
     @Update("UPDATE crf_field SET active = 1, status = #{status}, name_en = #{nameEn}, name_cn = #{nameCn}, " +
             "data_type = #{dataType}, unit = #{unit}, required = #{required}, codelist_id = #{codelistId}, " +
-            "description = #{description} WHERE id = #{id}")
+            "description = #{description}, concept_code = #{conceptCode} WHERE id = #{id}")
     int reactivateAndUpdate(CrfField row);
 
     @Select("SELECT * FROM crf_field WHERE active = 1 ORDER BY field_code")
@@ -75,8 +77,16 @@ public interface CrfFieldMapper {
     @Update("UPDATE crf_field SET name_cn = #{nameCn}, data_type = #{dataType}, unit = #{unit}, " +
             "required = #{required}, codelist_id = #{codelistId}, description = #{description}, " +
             "calc_expression = #{calcExpression}, cdisc_domain = #{cdiscDomain}, cdisc_variable = #{cdiscVariable}, " +
-            "cdisc_test_code = #{cdiscTestCode} WHERE id = #{id}")
+            "cdisc_test_code = #{cdiscTestCode}, concept_code = #{conceptCode}, id_rule_type = #{idRuleType}, nature = #{nature}, " +
+            "verdict = #{verdict}, verdict_note = #{verdictNote}, review_round = #{reviewRound} WHERE id = #{id}")
     int update(CrfField row);
+
+    /** 按概念码列出字段（跨域复用）。 */
+    @Select("SELECT * FROM crf_field WHERE active = 1 AND concept_code = #{conceptCode} ORDER BY field_code")
+    List<CrfField> listByConceptCode(String conceptCode);
+
+    @Update("UPDATE crf_field SET concept_code = #{conceptCode} WHERE id = #{id}")
+    int updateConceptCode(@Param("id") Long id, @Param("conceptCode") String conceptCode);
 
     @Update("UPDATE crf_field SET status = #{status} WHERE id = #{id}")
     int updateStatus(@Param("id") Long id, @Param("status") String status);

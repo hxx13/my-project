@@ -11,10 +11,10 @@ public interface CrfSubjectMapper {
 
     @Insert("INSERT INTO crf_subject (study_id, subject_type, subject_code, center_id, dag_id, basic_json, " +
             "sex, birth_date, species, breed, weight_kg, age_years, external_id, microchip_id, farm_code, " +
-            "origin_note, biocontainment_level, pedigree, status) " +
+            "origin_note, biocontainment_level, pedigree, status, lifecycle_stage, arm_code) " +
             "VALUES (#{studyId}, #{subjectType}, #{subjectCode}, #{centerId}, #{dagId}, #{basicJson}, " +
             "#{sex}, #{birthDate}, #{species}, #{breed}, #{weightKg}, #{ageYears}, #{externalId}, #{microchipId}, #{farmCode}, " +
-            "#{originNote}, #{biocontainmentLevel}, #{pedigree}, #{status})")
+            "#{originNote}, #{biocontainmentLevel}, #{pedigree}, #{status}, #{lifecycleStage}, #{armCode})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CrfSubject row);
 
@@ -64,8 +64,11 @@ public interface CrfSubjectMapper {
             "sex = #{sex}, birth_date = #{birthDate}, species = #{species}, breed = #{breed}, " +
             "weight_kg = #{weightKg}, age_years = #{ageYears}, external_id = #{externalId}, microchip_id = #{microchipId}, " +
             "farm_code = #{farmCode}, origin_note = #{originNote}, biocontainment_level = #{biocontainmentLevel}, " +
-            "pedigree = #{pedigree} WHERE id = #{id}")
+            "pedigree = #{pedigree}, lifecycle_stage = #{lifecycleStage}, arm_code = #{armCode} WHERE id = #{id}")
     int update(CrfSubject row);
+
+    @Update("UPDATE crf_subject SET lifecycle_stage = #{lifecycleStage} WHERE id = #{id}")
+    int updateLifecycleStage(@Param("id") Long id, @Param("lifecycleStage") String lifecycleStage);
 
     @Update("UPDATE crf_subject SET status = #{status} WHERE id = #{id}")
     int updateStatus(@Param("id") Long id, @Param("status") String status);

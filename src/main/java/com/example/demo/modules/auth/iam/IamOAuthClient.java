@@ -86,16 +86,23 @@ public class IamOAuthClient {
 
     public IamOAuthUserInfo fetchUserInfo(String accessToken) {
         JsonNode v3 = getJson(properties.userInfoUrl(), bearer(accessToken));
+        log.info("[IAM-OAuth] userInfo v3 raw: {}", v3 == null ? "<null>" : v3);
         if (v3 != null && v3.has("errcode") && !v3.path("errcode").asText("").isBlank()) {
             throw new IamOAuthException("获取用户信息失败：" + v3.path("msg").asText("access_token 无效"));
         }
 
-        String userName = firstText(v3, "userName", "username", "loginName", "employeeNo", "spRoleList");
-        if (userName == null && v3 != null && v3.has("spRoleList") && v3.get("spRoleList").isArray()
-                && v3.get("spRoleList").size() > 0) {
-            userName = v3.get("spRoleList").get(0).asText(null);
+        // 工号：优先 spRoleList[0]（应用账号名，手册 3.4「无需额外配置，接口默认返回」，不受 SSO 映射影响）；
+        // userName 受 SSO 映射控制（可能被映射成姓名 fullname），不可作工号首选。
+        String jobNumber = firstArrayElement(v3, "spRoleList");
+        if (!StringUtils.hasText(jobNumber)) {
+            jobNumber = firstText(v3, "employeeNo", "jobNumber", "job_number", "username", "loginName");
         }
-        String jobNumber = firstText(v3, "employeeNo", "jobNumber", "job_number", "userName", "username");
+
+        // 姓名/显示名：userName 优先（SSO 映射可能给出姓名）
+        String userName = firstText(v3, "userName", "username", "loginName", "employeeNo");
+        if (!StringUtils.hasText(userName)) {
+            userName = firstArrayElement(v3, "spRoleList");
+        }
         if (!StringUtils.hasText(jobNumber)) {
             jobNumber = userName;
         }
@@ -109,7 +116,10 @@ public class IamOAuthClient {
                     userName = firstText(oidc, "userName", "username", "preferred_username");
                 }
                 if (!StringUtils.hasText(jobNumber)) {
-                    jobNumber = firstText(oidc, "employeeNo", "userName", "username");
+                    jobNumber = firstArrayElement(oidc, "spRoleList");
+                    if (!StringUtils.hasText(jobNumber)) {
+                        jobNumber = firstText(oidc, "employeeNo", "username", "loginName");
+                    }
                     if (!StringUtils.hasText(jobNumber)) {
                         jobNumber = userName;
                     }
@@ -213,6 +223,35 @@ public class IamOAuthClient {
                 if (found != null) {
                     return found;
                 }
+            }
+        }
+        return null;
+    }
+
+    /** 取 node[key] 数组的首个非空元素文本；key 为字符串/数字时原样返回。用于 spRoleList 这类默认返回的账号名列表。 */
+    private static String firstArrayElement(JsonNode node, String key) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        JsonNode child = node.get(key);
+        if (child == null || child.isNull()) {
+            return null;
+        }
+        if (child.isArray()) {
+            for (JsonNode item : child) {
+                if (item != null && !item.isNull()) {
+                    String v = item.asText();
+                    if (StringUtils.hasText(v)) {
+                        return v.trim();
+                    }
+                }
+            }
+            return null;
+        }
+        if (child.isTextual() || child.isNumber()) {
+            String v = child.asText();
+            if (StringUtils.hasText(v)) {
+                return v.trim();
             }
         }
         return null;

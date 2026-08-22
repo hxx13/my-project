@@ -9,10 +9,11 @@ import { isRichTextEmpty, richTextPlainPreview } from "@/utils/announcementHtml"
 import { useMultiSelectPopover } from "../shared/useMultiSelectPopover";
 
 /**
- * 违规文案模板快捷选择 + 保存预设。挂到 ContentBodySlot 的 templateSlot。
+ * 违规弹窗警告域专用：文案模板快捷选择 + 保存预设。挂到 ContentBodySlot 的 templateSlot。
  *
  * T2-2 定稿：本组件是预设模板库的唯一消费方（管理端快选调色板）。
  * 运行时渲染不读本库，走 ViolationTextTemplateRenderer + 滞留/规则模板。
+ * 仅限 student-violations 管理面，勿挂到全站其它 RichTextEditor。
  *
  * 弹层用 Portal + fixed（复用 useMultiSelectPopover），逃逸 PageTransition transform 与画布 overflow 裁切。
  *

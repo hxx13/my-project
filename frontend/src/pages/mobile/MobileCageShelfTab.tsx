@@ -267,7 +267,19 @@ const GridCellButton = memo(function GridCellButton({
         : { ...safeStyle, background: combinedBg })
     : safeStyle;
   const multiBg = allBgColors.length >= 2;
-  const piName = nonEmptyText(cell.projectPiName) ? cell.projectPiName!.trim() : "";
+  const piName = (() => {
+    if (nonEmptyText(cell.projectPiName)) return cell.projectPiName!.trim();
+    if (nonEmptyText(cell.piName)) return cell.piName!.trim();
+    const cbi = cell.cageBoxInfo as Record<string, unknown> | undefined;
+    if (cbi) {
+      const fromBi =
+        (typeof cbi.ProjectPiName === "string" && cbi.ProjectPiName.trim()) ||
+        (typeof cbi.projectPiName === "string" && cbi.projectPiName.trim()) ||
+        "";
+      if (fromBi) return fromBi;
+    }
+    return "";
+  })();
   const statusLabel = cell.empty || !cell.visible ? "" : getCellStatusDisplayLabel(cell.specialStatuses, cell.cageBoxInfo);
 
   const statusCodes = formatSpecialStatusCodesForDisplay(

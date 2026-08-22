@@ -9,8 +9,8 @@ import java.util.List;
 @Mapper
 public interface CrfRecordMapper {
 
-    @Insert("INSERT INTO crf_record (subject_id, form_id, form_version_id, visit_instance_id, status, dag_id, created_by) " +
-            "VALUES (#{subjectId}, #{formId}, #{formVersionId}, #{visitInstanceId}, #{status}, #{dagId}, #{createdBy})")
+    @Insert("INSERT INTO crf_record (subject_id, form_id, form_version_id, visit_instance_id, atom_id, transplant_id, status, dag_id, created_by) " +
+            "VALUES (#{subjectId}, #{formId}, #{formVersionId}, #{visitInstanceId}, #{atomId}, #{transplantId}, #{status}, #{dagId}, #{createdBy})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CrfRecord row);
 

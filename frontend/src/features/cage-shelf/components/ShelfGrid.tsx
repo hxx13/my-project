@@ -301,9 +301,21 @@ export function snapshotCellToShelfCell(c: any): CageShelfCell {
     empty,
     stateLabel: empty ? "空位" : "",
     animalCageType: c.animalCageType ?? undefined,
-    projectPiName: (cageBoxInfo?.projectPiName as string) ?? undefined,
-    departmentName: (cageBoxInfo?.departmentName as string) ?? undefined,
-    piName: (cageBoxInfo?.piName as string) ?? undefined,
+    // cageBoxInfo 来自后端 buildCageBoxInfo，键为 PascalCase ProjectPiName
+    projectPiName:
+      (c.projectPiName as string) ||
+      (cageBoxInfo?.ProjectPiName as string) ||
+      (cageBoxInfo?.projectPiName as string) ||
+      undefined,
+    departmentName:
+      (c.departmentName as string) ||
+      (cageBoxInfo?.DepartmentName as string) ||
+      (cageBoxInfo?.departmentName as string) ||
+      undefined,
+    piName:
+      (c.piName as string) ||
+      (cageBoxInfo?.piName as string) ||
+      undefined,
     cageBoxInfo,
     specialStatuses,
   };

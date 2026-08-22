@@ -1,11 +1,20 @@
 /**
  * 右侧字段编辑面板（对齐设计 15 FieldEditorPanel）。
  */
-import type { FormField } from "../schema/formTemplate";
-import { TYPE_REGISTRY, TYPES_WITH_OPTIONS, typeMetaOf } from "../schema/typeRegistry";
+import type { FieldRole, FormField } from "../schema/formTemplate";
+import { TYPE_REGISTRY, TYPES_WITH_OPTIONS, typeMetaOf, compatibleTypesFor } from "../schema/typeRegistry";
 import type { FieldCatalogEntry } from "../store/editorUtils";
+import { PK_ID_RULE_OPTIONS } from "../utils/nhpIdRuleLabels";
 import OptionsEditor, { type CodelistOption } from "./OptionsEditor";
 import ShowWhenEditor from "./ShowWhenEditor";
+
+/** role 四类（与 type 正交，决定采集侧渲染形态） */
+const ROLE_OPTIONS: { value: FieldRole; label: string }[] = [
+  { value: "VALUE", label: "VALUE 采集（码表 / 直填）" },
+  { value: "PK", label: "PK 取号（自动生成，只读）" },
+  { value: "FK", label: "FK 实体（选择器）" },
+  { value: "DERIVED", label: "DERIVED 派生（计算，只读）" },
+];
 
 interface Props {
   field: FormField;
@@ -70,13 +79,75 @@ export default function FieldEditorPanel({
               });
             }}
           >
-            {TYPE_REGISTRY.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
+            {compatibleTypesFor(field.dataType).map((tv) => {
+              const t = typeMetaOf(tv);
+              return (
+                <option key={tv} value={tv}>
+                  {t?.label ?? tv}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+        <div className="aup-row">
+          <label>字段角色</label>
+          <select
+            className="aup-select"
+            value={field.role ?? "VALUE"}
+            disabled={!editable}
+            onChange={(e) => onChange({ role: e.target.value as FieldRole })}
+          >
+            {ROLE_OPTIONS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
               </option>
             ))}
           </select>
         </div>
+
+        {field.role === "PK" && (
+          <div className="aup-row">
+            <label>编码引擎（ID 规则）</label>
+            <select
+              className="aup-select"
+              value={field.roleMeta?.pkRule ?? ""}
+              disabled={!editable}
+              onChange={(e) => onChange({ roleMeta: { ...field.roleMeta, pkRule: e.target.value || undefined } })}
+            >
+              <option value="">— 选择 ID 规则 —</option>
+              {PK_ID_RULE_OPTIONS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {field.role === "FK" && (
+          <div className="aup-row">
+            <label>实体类型</label>
+            <input
+              className="aup-input"
+              value={field.roleMeta?.entityType ?? ""}
+              disabled={!editable}
+              onChange={(e) => onChange({ roleMeta: { ...field.roleMeta, entityType: e.target.value || undefined } })}
+              placeholder="如 donor / recipient / sample / regimen"
+            />
+          </div>
+        )}
+        {field.role === "DERIVED" && (
+          <div className="aup-row">
+            <label>算法来源</label>
+            <input
+              className="aup-input"
+              value={field.roleMeta?.derivedSource ?? ""}
+              disabled={!editable}
+              onChange={(e) => onChange({ roleMeta: { ...field.roleMeta, derivedSource: e.target.value || undefined } })}
+              placeholder="如 平台配对算法 V1"
+            />
+          </div>
+        )}
+
         <div className="aup-row">
           <label>必填</label>
           <label className="aup-check">

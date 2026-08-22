@@ -5,9 +5,10 @@
  * 选中即「展开」插入到当前小节；插入后与手写字段完全一致，可自由编辑。
  *
  * NHP 专属模板对应业务流转（见 09）：供体-受体关联、随访序列、用药记录、灌注监测等；
- * 通用联动模板（是否+展开、下拉、明细表、可重复块、声明+签名）保留。
+ * 通用联动模板与 AUP 编辑器对齐（是否+展开、下拉、明细表、可重复块、声明+签名等）。
  */
-import type { FormField, FieldConfig, ShowWhen } from "./formTemplate";
+import { FIELD_TEMPLATES as AUP_FIELD_TEMPLATES } from "@/features/aup/schema/fieldTemplates";
+import type { FormField, FieldConfig } from "./formTemplate";
 
 export interface FieldTemplate {
   key: string;
@@ -19,10 +20,8 @@ export interface FieldTemplate {
   build: (base: string) => FormField[];
 }
 
-const sw = (field: string, op: ShowWhen["op"], value?: string): ShowWhen =>
-  value == null ? { field, op } : { field, op, value };
-
-export const FIELD_TEMPLATES: FieldTemplate[] = [
+/** NHP 业务专属复合模板（AUP 无对应项） */
+const NHP_SPECIFIC_TEMPLATES: FieldTemplate[] = [
   {
     key: "donorRecipient",
     label: "供体-受体关联",
@@ -111,90 +110,17 @@ export const FIELD_TEMPLATES: FieldTemplate[] = [
       },
     ],
   },
-  {
-    key: "yesNoExpand",
-    label: "是否 + 联动展开",
-    desc: "是/否单选，选「是」后显示补充说明",
-    icon: "联",
-    count: 2,
-    build: (base) => [
-      {
-        fieldKey: `${base}.q`,
-        label: "是否…？",
-        type: "choice",
-        required: true,
-        config: { choiceType: "single" } satisfies FieldConfig,
-        options: ["是", "否"],
-      },
-      {
-        fieldKey: `${base}.detail`,
-        label: "补充说明",
-        type: "textarea",
-        showWhen: sw(`${base}.q`, "equals", "是"),
-      },
-    ],
-  },
-  {
-    key: "dropdownSelect",
-    label: "下拉选择",
-    desc: "单选下拉框，选项自定义或引用码表",
-    icon: "↓",
-    count: 1,
-    build: (base) => [
-      {
-        fieldKey: `${base}.q`,
-        label: "请选择…",
-        type: "select",
-        required: true,
-        options: ["选项一", "选项二", "选项三"],
-      },
-    ],
-  },
-  {
-    key: "detailTable",
-    label: "动态明细表",
-    desc: "可增删行的表格",
-    icon: "表",
-    count: 1,
-    build: (base) => [
-      {
-        fieldKey: `${base}.table`,
-        label: "明细",
-        type: "table",
-        config: {
-          columns: [
-            { fieldKey: "col_name", label: "名称", type: "text" },
-            { fieldKey: "col_kind", label: "类别", type: "choice", options: ["类别一", "类别二"] },
-            { fieldKey: "col_note", label: "备注", type: "text" },
-          ],
-        } satisfies FieldConfig,
-      },
-    ],
-  },
-  {
-    key: "declarationList",
-    label: "声明清单 + 签名",
-    desc: "声明逐条确认后签名",
-    icon: "声",
-    count: 2,
-    build: (base) => [
-      {
-        fieldKey: `${base}.list`,
-        label: "声明确认（多选）",
-        type: "choice",
-        required: true,
-        config: { choiceType: "multiple" } satisfies FieldConfig,
-        options: ["声明项一", "声明项二", "声明项三"],
-      },
-      {
-        fieldKey: `${base}.signature`,
-        label: "负责人签名",
-        type: "signature",
-        required: true,
-      },
-    ],
-  },
 ];
+
+const nhpKeys = new Set(NHP_SPECIFIC_TEMPLATES.map((t) => t.key));
+
+/** AUP 通用复合模板（排除与 NHP 专属重复的 key） */
+const SHARED_GENERIC_TEMPLATES = AUP_FIELD_TEMPLATES.filter((t) => !nhpKeys.has(t.key)) as FieldTemplate[];
+
+/**
+ * 菜单展示顺序：NHP 业务模板在前，其后为与 AUP 对齐的通用复合模板。
+ */
+export const FIELD_TEMPLATES: FieldTemplate[] = [...NHP_SPECIFIC_TEMPLATES, ...SHARED_GENERIC_TEMPLATES];
 
 /** 菜单角标文案（如「2 项」） */
 export const templateCountText = (t: FieldTemplate) => `${t.count} 项`;

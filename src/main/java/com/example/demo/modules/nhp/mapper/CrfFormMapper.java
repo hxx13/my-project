@@ -12,8 +12,8 @@ import java.util.List;
 @Mapper
 public interface CrfFormMapper {
 
-    @Insert("INSERT INTO crf_form (study_id, code, name, form_type, version, status, description, active) " +
-            "VALUES (#{studyId}, #{code}, #{name}, #{formType}, #{version}, #{status}, #{description}, #{active})")
+    @Insert("INSERT INTO crf_form (study_id, code, name, form_type, version, status, description, event_anchor, frequency, capture_form, active) " +
+            "VALUES (#{studyId}, #{code}, #{name}, #{formType}, #{version}, #{status}, #{description}, #{eventAnchor}, #{frequency}, #{captureForm}, #{active})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CrfForm row);
 
@@ -51,11 +51,14 @@ public interface CrfFormMapper {
     List<CrfForm> list();
 
     /**
-     * 原子：form_type 为 DOMAIN/MODULE/ATOM/PUBLIC，且 code 须像域码（裸 D1/DD1 或套内 monkey__D1）。
-     * 排除 nhp-crf 等误标为 DOMAIN 的组合种子。与 NhpAtomFormKeys 的 D+ 口径一致。
+     * 原子：form_type 为 DOMAIN/MODULE/ATOM/PUBLIC（含语义码 donor_profile 与裸 Dn 域码）。
+     * nhp-crf 等误标组合在 Service {@code isAtom} 二次过滤。
      */
-    @Select("SELECT * FROM crf_form WHERE active = 1 AND form_type IN ('DOMAIN', 'MODULE', 'ATOM', 'PUBLIC') "
-            + "AND (code REGEXP '^[Dd]+[0-9]{1,3}$' OR code REGEXP '^[a-zA-Z0-9_-]+__[Dd]+[0-9]{1,3}$') "
+    @Select("SELECT * FROM crf_form WHERE active = 1 "
+            + "AND (form_type IS NULL OR TRIM(form_type) = '' "
+            + "OR form_type IN ('DOMAIN', 'MODULE', 'ATOM', 'PUBLIC')) "
+            + "AND (form_type IS NULL OR TRIM(form_type) = '' "
+            + "OR form_type NOT IN ('TEMPLATE', 'COMPOSITE')) "
             + "ORDER BY code, version DESC")
     List<CrfForm> listAtoms();
 
@@ -73,7 +76,8 @@ public interface CrfFormMapper {
     @Select("SELECT COUNT(1) FROM crf_form WHERE code = #{code}")
     int countAnyByCode(String code);
 
-    @Update("UPDATE crf_form SET name = #{name}, form_type = #{formType}, description = #{description} WHERE id = #{id}")
+    @Update("UPDATE crf_form SET name = #{name}, form_type = #{formType}, description = #{description}, " +
+            "event_anchor = #{eventAnchor}, frequency = #{frequency}, capture_form = #{captureForm} WHERE id = #{id}")
     int update(CrfForm row);
 
     @Update("UPDATE crf_form SET status = #{status} WHERE id = #{id}")
@@ -81,7 +85,8 @@ public interface CrfFormMapper {
 
     /** 软删后补位：复活同行并刷新元数据（version 不变）。 */
     @Update("UPDATE crf_form SET active = 1, name = #{name}, form_type = #{formType}, status = #{status}, "
-            + "description = #{description} WHERE id = #{id}")
+            + "description = #{description}, event_anchor = #{eventAnchor}, frequency = #{frequency}, "
+            + "capture_form = #{captureForm} WHERE id = #{id}")
     int reactivateAndUpdate(CrfForm row);
 
     /** 软删模板版本（active=0，列表不再出现）。 */

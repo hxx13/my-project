@@ -270,7 +270,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.03",
-              "pos": 3
+              "pos": 3,
+              "conceptCode": "PERVA"
             },
             {
               "fieldCode": "D1.03.004",
@@ -285,7 +286,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.03",
-              "pos": 4
+              "pos": 4,
+              "conceptCode": "PERVB"
             },
             {
               "fieldCode": "D1.03.005",
@@ -300,7 +302,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.03",
-              "pos": 5
+              "pos": 5,
+              "conceptCode": "PERVC"
             },
             {
               "fieldCode": "D1.03.006",
@@ -824,10 +827,11 @@
               "codelist": null,
               "timepoint": "TP01",
               "desc": "平台配对算法输出（V1 规则引擎）",
-              "role": "VALUE",
+              "role": "DERIVED",
               "domain": "D3",
               "sub": "D3.01",
-              "pos": 6
+              "pos": 6,
+              "conceptCode": "PAIR_SCORE"
             },
             {
               "fieldCode": "D3.01.007",
@@ -1243,7 +1247,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.03",
-              "pos": 1
+              "pos": 1,
+              "conceptCode": "PCFDNA"
             },
             {
               "fieldCode": "D4.03.002",
@@ -2838,7 +2843,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 5
+              "pos": 5,
+              "conceptCode": "EF"
             },
             {
               "fieldCode": "D9.04.006",
@@ -2898,7 +2904,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 9
+              "pos": 9,
+              "conceptCode": "TNI"
             },
             {
               "fieldCode": "D9.04.010",
@@ -3083,7 +3090,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.05",
-              "pos": 9
+              "pos": 9,
+              "conceptCode": "FREE_HB"
             }
           ]
         },
@@ -3451,10 +3459,11 @@
               "codelist": null,
               "timepoint": "每15-30min",
               "desc": "压力/流量自动计算，趋势判读",
-              "role": "VALUE",
+              "role": "DERIVED",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 6
+              "pos": 6,
+              "conceptCode": "VR"
             },
             {
               "fieldCode": "D10.02.007",
@@ -3594,7 +3603,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 2
+              "pos": 2,
+              "conceptCode": "ALT"
             },
             {
               "fieldCode": "D10.03.003",
@@ -3609,7 +3619,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 3
+              "pos": 3,
+              "conceptCode": "AST"
             },
             {
               "fieldCode": "D10.03.004",
@@ -3699,7 +3710,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 9
+              "pos": 9,
+              "conceptCode": "INR"
             },
             {
               "fieldCode": "D10.03.010",
@@ -3729,7 +3741,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 11
+              "pos": 11,
+              "conceptCode": "FREE_HB"
             },
             {
               "fieldCode": "D10.03.012",

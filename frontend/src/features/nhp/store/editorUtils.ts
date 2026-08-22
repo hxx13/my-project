@@ -161,3 +161,16 @@ export function getFieldAt(tree: FormSection[], path: FieldPath): FormField | un
 export function statusLabel(s: string): string {
   return s === "DRAFT" ? "草稿" : s === "PUBLISHED" || s === "FROZEN" ? "已发布" : s === "ARCHIVED" ? "已归档" : s;
 }
+
+/** 原子模板列表/钉选：区分草稿、已发布、被组合钉住 */
+export function atomTemplateStatusHint(t: {
+  status?: string;
+  locked?: boolean;
+  hasPublished?: boolean;
+}): string {
+  if (t.locked) return "已被组合钉住，改结构请「新建版本」";
+  const s = (t.status || "").toUpperCase();
+  if (s === "PUBLISHED" || s === "FROZEN") return "已发布，可钉入组合或独立开填";
+  if (t.hasPublished) return "当前为草稿，另有已发布版可钉";
+  return "草稿，可直接钉入组合；发布组合前建议先发布原子";
+}

@@ -13,6 +13,8 @@ public class CrfTemplateField {
     private Long sectionId;
     /** 字段键 D1.01.001（引用 crf_field.field_code） */
     private String fieldKey;
+    /** 字段存储类型（字典层权威快照，约束前端可选题型，V41） */
+    private String dataType;
     private String label;
     private String description;
     private String type;
@@ -20,6 +22,10 @@ public class CrfTemplateField {
     private String options;
     /** 引用码表 crf_codelist.code */
     private String dictKey;
+    /** PK/FK/VALUE/DERIVED（与 type 正交；缺省 VALUE） */
+    private String role;
+    /** role 专属元数据 JSON：pkRule / entityType / derivedSource */
+    private String roleMeta;
     private Boolean required;
     /** 条件显示 JSON */
     private String showWhen;

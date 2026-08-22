@@ -24,7 +24,11 @@ export default function MobileNoticeListRow({
   onSelect: () => void;
 }) {
   const colors = alertKindColors(item.kind);
-  const needK = item.interactiveRequired && !html5PrivilegeBypass;
+  const pendingConfirm =
+    item.kind === "violation" &&
+    !html5PrivilegeBypass &&
+    item.interactiveChallengeVerified !== true &&
+    (Boolean(item.obligationId) || item.interactiveRequired);
   const subtitle =
     item.kind === "exempt"
       ? buildExemptListPreview(parseExemptFields(item))
@@ -55,9 +59,9 @@ export default function MobileNoticeListRow({
           >
             {title}
           </span>
-          {needK && (
-            <span className="shrink-0 text-[10px] font-semibold" style={{ color: "#d97706" }}>
-              ⚠️自助机
+          {pendingConfirm && (
+            <span className="shrink-0 text-[10px] font-semibold" style={{ color: "#ac1736" }}>
+              待确认
             </span>
           )}
         </div>

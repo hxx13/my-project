@@ -109,7 +109,8 @@ export function useMultiSelectPopover({
       left: pos.left,
       top: pos.top,
       minWidth: pos.minWidth,
-      zIndex: 300,
+      // 高于 ConfigModalShell（--z-modal: 800），否则浮层落在弹窗遮罩下「点不开」
+      zIndex: 801,
     },
   };
 }

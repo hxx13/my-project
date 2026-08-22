@@ -240,6 +240,8 @@ export interface NotificationData {
   type: 'ARO' | 'PLATFORM' | 'WORK_ORDER';
   bizType?: string;
   bizId?: string;
+  /** 违规镜像关联的 Obligation id（消息中心深链） */
+  obligationId?: number;
   publishDate: string;
   isRead: boolean;
   sourceUrl?: string;

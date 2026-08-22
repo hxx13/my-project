@@ -1,5 +1,8 @@
 /** 单条公告/通知正文 — 对齐小程序 homeBulletinDetail .hbd-scroll */
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import type { MobileAlertItem } from "@/api/domains/mobileStudent.api";
+import { markObligationDelivered } from "@/features/student/api/student.api";
 import { AlertTriangle } from "lucide-react";
 import { alertKindColors, alertKindLabel } from "./MobileNoticesPanel";
 import {
@@ -30,6 +33,16 @@ function StatusRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function resolveObligationPath(item: MobileAlertItem): string {
+  if (item.sourceUrl && item.sourceUrl.startsWith("/") && !item.sourceUrl.startsWith("//")) {
+    return item.sourceUrl;
+  }
+  if (item.obligationId && item.obligationId > 0) {
+    return `/student/obligations?focus=${item.obligationId}`;
+  }
+  return "/student/obligations";
+}
+
 function MobileViolationStatusCard({
   item,
   html5PrivilegeBypass,
@@ -44,9 +57,14 @@ function MobileViolationStatusCard({
   const unblockMethod = item.unblockMethod?.trim();
   const isSelfUnblockRule = unblockMethod === "自助解禁";
   const canSelfUnblock = item.canSelfUnblock === true;
-  const needKiosk =
+  const pendingConfirm =
+    !html5PrivilegeBypass && hasInteractive && !interactiveDone;
+  const showCompleteCta =
     !html5PrivilegeBypass &&
-    (hasInteractive && !interactiveDone || isSelfUnblockRule);
+    !interactiveDone &&
+    (pendingConfirm || Boolean(item.obligationId));
+  const showKioskHint =
+    !html5PrivilegeBypass && isSelfUnblockRule && !hasInteractive && !item.obligationId;
 
   return (
     <div
@@ -73,18 +91,19 @@ function MobileViolationStatusCard({
           value={canSelfUnblock ? "可以" : "不可以"}
         />
       )}
-      {needKiosk && (
+      {showCompleteCta && (
+        <p className="mt-2 text-[12px] leading-relaxed px-0.5" style={{ color: "#646566" }}>
+          请在手机端完成确认（H5 / 小程序均可），见下方按钮。
+        </p>
+      )}
+      {showKioskHint && (
         <div
           className="mt-2 rounded-lg px-2.5 py-2 flex items-start gap-2"
           style={{ background: "#fffbeb", border: "1px solid rgba(245,158,11,0.25)" }}
         >
           <AlertTriangle className="size-4 shrink-0 mt-0.5" style={{ color: "#d97706" }} />
           <p className="text-[12px] leading-relaxed" style={{ color: "#92400e" }}>
-            {hasInteractive && !interactiveDone
-              ? "交互确认与解禁需前往实验动物科学部的"
-              : "解禁需前往实验动物科学部的"}
-            <strong>自助刷卡机器</strong>
-            上操作，手机端无法完成。
+            解禁操作可能需前往实验动物科学部自助刷卡机完成。
           </p>
         </div>
       )}
@@ -97,10 +116,17 @@ export default function MobileNoticeDetailBody({
   html5PrivilegeBypass = false,
   fullBleed = false,
 }: MobileNoticeDetailBodyProps) {
-  const needK = item.interactiveRequired && !html5PrivilegeBypass;
+  const navigate = useNavigate();
   const colors = alertKindColors(item.kind);
   const isViolation = item.kind === "violation";
   const isExempt = item.kind === "exempt";
+  const pendingConfirm =
+    isViolation &&
+    !html5PrivilegeBypass &&
+    item.interactiveChallengeVerified !== true &&
+    (Boolean(item.obligationId) ||
+      Boolean(item.interactiveChallenge?.trim()) ||
+      item.interactiveRequired);
   const bodySource = isViolation
     ? extractViolationBodyForDisplay(String(item.contentHtml || ""))
     : isExempt
@@ -115,9 +141,15 @@ export default function MobileNoticeDetailBody({
     item.createdAt?.slice(0, 10) ||
     "";
 
+  useEffect(() => {
+    if (isViolation && item.obligationId && item.obligationId > 0) {
+      void markObligationDelivered(item.obligationId).catch(() => undefined);
+    }
+  }, [isViolation, item.obligationId]);
+
   return (
     <div className="flex flex-col gap-2.5">
-      {/* 来源指示：类型 · 时间 · 自助机 — 单行 */}
+      {/* 来源指示：类型 · 时间 */}
       <div className="flex items-center gap-1 min-w-0 overflow-hidden flex-nowrap">
         <span
           className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none"
@@ -138,16 +170,16 @@ export default function MobileNoticeDetailBody({
             </span>
           </>
         ) : null}
-        {needK ? (
+        {pendingConfirm ? (
           <>
             <span className="shrink-0 text-[11px]" style={{ color: "#dcdee0" }}>
               ·
             </span>
             <span
               className="shrink-0 text-[10px] font-semibold whitespace-nowrap"
-              style={{ color: "#d97706" }}
+              style={{ color: "#ac1736" }}
             >
-              需自助机
+              待确认
             </span>
           </>
         ) : null}
@@ -204,6 +236,17 @@ export default function MobileNoticeDetailBody({
           </p>
         )}
       </div>
+
+      {pendingConfirm && (
+        <button
+          type="button"
+          className="w-full rounded-xl py-3 text-[15px] font-semibold text-white active:opacity-90"
+          style={{ background: "#ac1736" }}
+          onClick={() => navigate(resolveObligationPath(item))}
+        >
+          去完成确认
+        </button>
+      )}
     </div>
   );
 }

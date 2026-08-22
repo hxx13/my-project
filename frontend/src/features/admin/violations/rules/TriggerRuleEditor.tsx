@@ -11,6 +11,7 @@ import { EditorInspectorLayout } from "../shared/EditorInspectorLayout";
 import { InspectorGroup, InspectorRow } from "../shared/InspectorGroup";
 import { BareInput, BareNumberWithUnit, bareControlClass } from "../shared/BareControl";
 import { SelectField } from "../shared/SelectField";
+import { violationContentTemplateSlot } from "../shared/violationContentTemplateSlot";
 import { ContentBodySlot, contentBodyFromHtml, serializeContentBody } from "../slots/ContentBodySlot";
 import { DispositionFieldsSlot } from "../slots/DispositionFieldsSlot";
 import { DISPOSITION_RULE_LEVEL } from "../slots/dispositionTypes";
@@ -130,6 +131,7 @@ export function TriggerRuleEditor({ ruleId, onDone, onCancel }: TriggerRuleEdito
         onPickFiles={() => {}}
         disabled={saveMu.isPending}
         placeholder="留空则使用系统默认文案"
+        templateSlot={violationContentTemplateSlot(body, (next) => set({ violationTextTpl: serializeContentBody(next).html }))}
       />
     </div>
   );

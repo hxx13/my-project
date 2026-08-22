@@ -1,19 +1,15 @@
 import { useState, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { ChevronDown, ChevronRight, RefreshCw, Loader2, Check, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Check, X } from "lucide-react";
 import {
   fetchCageShelfFilterOptions,
   fetchCageShelfIndexes,
   fetchCellIndexByShelf,
-  syncAllCellIds,
-  syncDetailFields,
-  syncStatusFromBook,
   updateCellAnimalCageId,
   lookupAnimalCageId,
   type CageShelfIndexRow,
   type CageCellIndexEntry,
-  type CellSyncStats,
 } from "@/api/domains/cageShelf.api";
 import { authHttp } from "@/api/core/authHttp";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
@@ -102,7 +98,6 @@ function CellGrid({ shelfIndexId }: { shelfIndexId: number }) {
 }
 
 export default function AdminCageShelfIndexPage() {
-  const qc = useQueryClient();
   const [campusId, setCampusId] = useState("");
   const [areaId, setAreaId] = useState(""); const [areaName, setAreaName] = useState("");
   const [floorId, setFloorId] = useState(""); const [floorName, setFloorName] = useState("");
@@ -112,10 +107,6 @@ export default function AdminCageShelfIndexPage() {
   const [activeTab, setActiveTab] = useState<"index"|"outbox">("index");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [syncing, setSyncing] = useState(false);
-  const [syncingDetails, setSyncingDetails] = useState(false);
-  const [syncingStatus, setSyncingStatus] = useState(false);
-  const [syncStats, setSyncStats] = useState<CellSyncStats | null>(null);
 
   const toggle = (shelveId: string) => setExpanded(prev => { const n = new Set(prev); n.has(shelveId) ? n.delete(shelveId) : n.add(shelveId); return n; });
 
@@ -141,42 +132,6 @@ export default function AdminCageShelfIndexPage() {
     }),
     placeholderData: (prev) => prev,
   });
-
-  const handleSync = useCallback(async () => {
-    setSyncing(true); setSyncStats(null);
-    try {
-      const stats = await syncAllCellIds();
-      setSyncStats(stats);
-      toast.success(`同步完成: ${stats.successShelves}/${stats.totalShelves} 成功, ${stats.totalCellsWritten} 笼位`);
-      qc.removeQueries({ queryKey: ["cageCellIndex"] });
-      await qc.invalidateQueries({ queryKey: ["cageCellIndex"] });
-    } catch (e) { toast.error(e instanceof Error ? e.message : "同步失败"); }
-    finally { setSyncing(false); }
-  }, [qc]);
-
-  const handleDetailSync = useCallback(async () => {
-    setSyncingDetails(true); setSyncStats(null);
-    try {
-      const stats = await syncDetailFields();
-      setSyncStats(stats);
-      toast.success(`详情补全: ${stats.totalUpdated ?? 0} 个笼位已更新`);
-      qc.removeQueries({ queryKey: ["cageCellIndex"] });
-      await qc.invalidateQueries({ queryKey: ["cageCellIndex"] });
-    } catch (e) { toast.error(e instanceof Error ? e.message : "补全失败"); }
-    finally { setSyncingDetails(false); }
-  }, [qc]);
-
-  const handleStatusSync = useCallback(async () => {
-    setSyncingStatus(true);
-    try {
-      const stats = await syncStatusFromBook();
-      setSyncStats(stats);
-      toast.success(`状态同步: ${stats.totalUpdated ?? 0} 个笼位状态已更新`);
-      qc.removeQueries({ queryKey: ["cageCellIndex"] });
-      await qc.invalidateQueries({ queryKey: ["cageCellIndex"] });
-    } catch (e) { toast.error(e instanceof Error ? e.message : "状态同步失败"); }
-    finally { setSyncingStatus(false); }
-  }, [qc]);
 
   const handleLookup = useCallback(async () => {
     const id = Number(lookupId.trim());
@@ -247,27 +202,6 @@ export default function AdminCageShelfIndexPage() {
             <button type="button"
               className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs hover:bg-[var(--twin-canvas-soft)]"
               onClick={handleLookup}>定位</button>
-            <div className="ml-auto flex items-center gap-3">
-              {syncStats && <span className="text-[11px] text-[var(--twin-mute)]">{syncStats.successShelves}/{syncStats.totalShelves} 成功 | {syncStats.totalCellsWritten} 笼位</span>}
-              <button type="button"
-                className="inline-flex items-center gap-1.5 rounded-twin-sm bg-[var(--twin-primary)] px-3 py-1.5 text-sm font-medium text-[var(--twin-on-primary)] hover:opacity-90 disabled:opacity-50"
-                disabled={syncing} onClick={handleSync}>
-                {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                {syncing ? "同步中…" : "从 ARO 同步全部笼位ID"}
-              </button>
-              <button type="button"
-                className="inline-flex items-center gap-1.5 rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1.5 text-sm font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] disabled:opacity-50"
-                disabled={syncingDetails} onClick={handleDetailSync}>
-                {syncingDetails ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                {syncingDetails ? "补全中…" : "补全详情字段"}
-              </button>
-              <button type="button"
-                className="inline-flex items-center gap-1.5 rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1.5 text-sm font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] disabled:opacity-50"
-                disabled={syncingStatus} onClick={handleStatusSync}>
-                {syncingStatus ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                {syncingStatus ? "同步中…" : "同步状态 (/book)"}
-              </button>
-            </div>
           </div>
         </AdminFormCard>
 

@@ -15,7 +15,7 @@
 
     <view wx:if="{{active}}" class="card">
       <view class="title">{{active.title}}</view>
-      <rich-text wx:if="{{active.contentHtml}}" nodes="{{active.contentHtml}}"></rich-text>
+      <rich-text wx:if="{{active.contentHtml}}" nodes="{{active.contentHtml}}" type="html"></rich-text>
 
       <view wx:if="{{active.deliveryMode === 'GUIDE_ONLY'}}" class="guide">
         <text>{{active.guideMessage || '请前往互动渠道完成确认'}}</text>

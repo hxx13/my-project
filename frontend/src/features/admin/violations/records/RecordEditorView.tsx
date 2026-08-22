@@ -6,10 +6,10 @@ import { BareInput } from "../shared/BareControl";
 import { MultiSelectField } from "../shared/MultiSelectField";
 import { SelectField } from "../shared/SelectField";
 import { cn } from "@/lib/utils";
-import { ContentBodySlot, contentBodyFromHtml, serializeContentBody } from "../slots/ContentBodySlot";
+import { violationContentTemplateSlot } from "../shared/violationContentTemplateSlot";
+import { ContentBodySlot } from "../slots/ContentBodySlot";
 import { DispositionFieldsSlot } from "../slots/DispositionFieldsSlot";
 import { DISPOSITION_FULL, validateDispositionForCreate } from "../slots/dispositionTypes";
-import { ViolationTemplateQuickSelect } from "./ViolationTemplateQuickSelect";
 import {
   useRecordForm,
   CAGE_STATUS_OPTIONS,
@@ -41,13 +41,7 @@ export function RecordEditorView({ mode, onDone, onCancel }: RecordEditorViewPro
     ? form.rules.filter((r) => r.sourceTag === "CAGE_STATUS" && r.enabled === 1)
     : form.rules.filter((r) => r.enabled === 1);
 
-  const currentHtml = serializeContentBody(form.content).html;
-  const templateSlot = (
-    <ViolationTemplateQuickSelect
-      currentText={currentHtml}
-      onSelect={(text) => form.setContent((prev) => contentBodyFromHtml(text, serializeContentBody(prev).imageUrls))}
-    />
-  );
+  const templateSlot = violationContentTemplateSlot(form.content, form.setContent);
 
   const cageKey = form.cagePick
     ? `${form.cagePick.shelveId}-${form.cagePick.positionX}-${form.cagePick.positionY}`

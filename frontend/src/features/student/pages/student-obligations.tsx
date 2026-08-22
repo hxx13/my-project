@@ -4,6 +4,7 @@ import { ClipboardCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { InteractiveChallenge } from "@/components/scanner/InteractiveChallenge";
+import { prepareAnnouncementHtml } from "@/utils/announcementHtml";
 import {
   completeObligation,
   drawObligationQuiz,
@@ -135,8 +136,8 @@ function ObligationDispositionPanel({
       <h2 className="text-lg font-semibold text-[var(--student-foreground)]">{row.title}</h2>
       {row.contentHtml ? (
         <div
-          className="prose prose-sm mt-3 max-w-none text-[var(--student-foreground)]"
-          dangerouslySetInnerHTML={{ __html: row.contentHtml }}
+          className="prose prose-sm mt-3 max-w-none rich-text-content text-[var(--student-foreground)]"
+          dangerouslySetInnerHTML={{ __html: prepareAnnouncementHtml(row.contentHtml) }}
         />
       ) : null}
 

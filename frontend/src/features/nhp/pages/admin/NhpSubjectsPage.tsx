@@ -42,7 +42,7 @@ function identitySummary(s: NhpSubject): string {
 
 export default function NhpSubjectsPage() {
   const location = useLocation();
-  const goBack = useGoBack("/content-manager/nhp-hub");
+  const goBack = useGoBack("/nhp/overview");
   const canDelete = hasMinRole(authStorage.getRole(), "ADMIN");
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");

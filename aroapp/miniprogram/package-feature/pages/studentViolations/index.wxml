@@ -57,7 +57,7 @@
 
               <!-- HTML content -->
               <view class="vcard-content" wx:if="{{ rec.contentHtml }}">
-                <rich-text nodes="{{ rec.contentHtml }}"></rich-text>
+                <rich-text nodes="{{ rec.contentHtml }}" type="html"></rich-text>
               </view>
 
               <!-- Room / Door info -->

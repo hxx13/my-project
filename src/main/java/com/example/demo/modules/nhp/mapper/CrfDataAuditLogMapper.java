@@ -21,4 +21,10 @@ public interface CrfDataAuditLogMapper {
             "LEFT JOIN crf_field f ON f.id = a.field_id " +
             "WHERE a.record_id = #{recordId} ORDER BY a.id DESC")
     List<CrfDataAuditLog> listByRecordId(Long recordId);
+
+    @Select("SELECT a.*, f.field_code AS fieldCode, f.name_cn AS fieldName " +
+            "FROM crf_data_audit_log a " +
+            "LEFT JOIN crf_field f ON f.id = a.field_id " +
+            "ORDER BY a.id DESC LIMIT #{limit}")
+    List<CrfDataAuditLog> listRecent(@Param("limit") int limit);
 }

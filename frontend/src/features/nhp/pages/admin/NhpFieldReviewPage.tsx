@@ -16,5 +16,5 @@ export default function NhpFieldReviewPage() {
       />
     );
   }
-  return <Navigate to="/content-manager/nhp-field" replace />;
+  return <Navigate to="/content-manager/nhp-template" replace />;
 }

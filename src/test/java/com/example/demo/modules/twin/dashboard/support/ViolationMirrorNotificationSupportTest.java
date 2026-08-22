@@ -29,4 +29,12 @@ class ViolationMirrorNotificationSupportTest {
         assertFalse(ViolationMirrorNotificationSupport.isTerminalStatus(""));
         assertFalse(ViolationMirrorNotificationSupport.isTerminalStatus("DRAFT"));
     }
+
+    @Test
+    void deepLinkPaths() {
+        assertEquals("/student/obligations?focus=9", ViolationMirrorNotificationSupport.h5SourceUrl(9));
+        assertTrue(ViolationMirrorNotificationSupport.mpPath(3).contains("studentObligation"));
+        assertTrue(ViolationMirrorNotificationSupport.isViolationBiz("STUDENT_VIOLATION"));
+        assertFalse(ViolationMirrorNotificationSupport.isViolationBiz("ARO"));
+    }
 }

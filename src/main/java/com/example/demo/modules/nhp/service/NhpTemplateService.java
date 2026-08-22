@@ -18,6 +18,7 @@ import com.example.demo.modules.nhp.mapper.CrfTemplateFieldMapper;
 import com.example.demo.modules.nhp.mapper.CrfTemplateSectionMapper;
 import com.example.demo.modules.nhp.util.CodedIdOrder;
 import com.example.demo.modules.nhp.util.NhpAtomFormKeys;
+import com.example.demo.modules.nhp.util.NhpTemplateSectionLabels;
 import com.example.demo.modules.nhp.util.NhpVersionAllocator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -172,6 +173,10 @@ public class NhpTemplateService {
         if (form == null) {
             boolean atom = looksLikeAtomCode(formKey);
             form = insertOrReactivate(newForm(formKey, title, atom ? atomTypeFor(formKey) : TYPE_TEMPLATE, 1, "DRAFT"));
+            applyScheduleFields(form, template);
+            if (template != null && (template.containsKey("captureForm") || template.containsKey("eventAnchor") || template.containsKey("frequency"))) {
+                formMapper.update(form);
+            }
         } else if (isAtom(form)) {
             // 原子：被组合钉住，或已发布/归档 → 须新建版本；草稿可改
             if (isAtomVersionPinned(form.getId())) {
@@ -186,12 +191,14 @@ public class NhpTemplateService {
                         + (st.isEmpty() ? "未知" : st));
             }
             if (title != null) form.setName(title);
+            applyScheduleFields(form, template);
             formMapper.update(form);
         } else {
             if (!"DRAFT".equals(form.getStatus()) && !"FREEZING".equals(form.getStatus())) {
                 return Result.fail(409, "已发布/归档版本不可编辑，请先「新建草稿版本」");
             }
             if (title != null) form.setName(title);
+            applyScheduleFields(form, template);
             formMapper.update(form);
         }
         persistSections(form.getId(), sectionsOf(template));
@@ -923,6 +930,22 @@ public class NhpTemplateService {
 
     /* ── JSON ↔ 关系表 ── */
 
+    private void applyScheduleFields(CrfForm form, Map<String, Object> template) {
+        if (form == null || template == null) return;
+        if (template.containsKey("captureForm")) {
+            Object v = template.get("captureForm");
+            form.setCaptureForm(v == null || String.valueOf(v).isBlank() ? null : String.valueOf(v).trim());
+        }
+        if (template.containsKey("eventAnchor")) {
+            Object v = template.get("eventAnchor");
+            form.setEventAnchor(v == null || String.valueOf(v).isBlank() ? null : String.valueOf(v).trim());
+        }
+        if (template.containsKey("frequency")) {
+            Object v = template.get("frequency");
+            form.setFrequency(v == null || String.valueOf(v).isBlank() ? null : String.valueOf(v).trim());
+        }
+    }
+
     private Map<String, Object> toListItem(CrfForm f) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("formId", f.getId());
@@ -935,14 +958,13 @@ public class NhpTemplateService {
         m.put("description", f.getDescription());
         m.put("origin", originOf(f));
         m.put("updatedAt", f.getUpdatedAt());
+        m.put("captureForm", f.getCaptureForm());
+        m.put("eventAnchor", f.getEventAnchor());
+        m.put("frequency", f.getFrequency());
         // 列表头可能是更新后的草稿；附带最新已发布版，避免「看不到已发布表」
         attachPublishedMeta(m, f.getCode());
         if (isAtom(f)) {
-            NhpAtomFormKeys.Parsed p = NhpAtomFormKeys.parse(f.getCode());
-            if (p != null) {
-                m.put("dictKey", p.dictKey());
-                m.put("domainCode", p.domainCode());
-            }
+            attachAtomSuiteMeta(m, f.getCode());
         }
         if (isComposite(f)) {
             List<Map<String, Object>> atoms = new ArrayList<>();
@@ -1000,12 +1022,11 @@ public class NhpTemplateService {
         out.put("kind", isComposite(form) ? KIND_COMPOSITE : KIND_ATOM);
         out.put("description", form.getDescription());
         out.put("origin", originOf(form));
+        out.put("captureForm", form.getCaptureForm());
+        out.put("eventAnchor", form.getEventAnchor());
+        out.put("frequency", form.getFrequency());
         if (isAtom(form)) {
-            NhpAtomFormKeys.Parsed p = NhpAtomFormKeys.parse(form.getCode());
-            if (p != null) {
-                out.put("dictKey", p.dictKey());
-                out.put("domainCode", p.domainCode());
-            }
+            attachAtomSuiteMeta(out, form.getCode());
         }
 
         List<CrfTemplateSection> sections = sectionMapper.listByFormId(form.getId());
@@ -1086,6 +1107,8 @@ public class NhpTemplateService {
         m.put("required", Boolean.TRUE.equals(f.getRequired()));
         if (f.getOptions() != null) m.put("options", fromJson(f.getOptions()));
         if (f.getDictKey() != null) m.put("dictKey", f.getDictKey());
+        if (f.getRole() != null) m.put("role", f.getRole());
+        if (f.getRoleMeta() != null) m.put("roleMeta", fromJson(f.getRoleMeta()));
         if (f.getShowWhen() != null) m.put("showWhen", fromJson(f.getShowWhen()));
         m.put("sortOrder", f.getSortOrder());
         if (f.getConfig() != null) m.put("config", fromJson(f.getConfig()));
@@ -1111,8 +1134,9 @@ public class NhpTemplateService {
         for (Map<String, Object> sec : sections) {
             CrfTemplateSection secRow = new CrfTemplateSection();
             secRow.setFormId(formId);
-            secRow.setCode(str(sec.get("code")));
-            secRow.setLabel(str(sec.get("label")));
+            String secCode = str(sec.get("code"));
+            secRow.setCode(secCode);
+            secRow.setLabel(NhpTemplateSectionLabels.resolve(secCode, str(sec.get("label"))));
             secRow.setSortOrder(secOrder++);
             secRow.setSubdivisible(Boolean.TRUE.equals(sec.get("subdivisible")));
             secRow.setShowWhen(toJson(sec.get("showWhen")));
@@ -1125,8 +1149,9 @@ public class NhpTemplateService {
                 CrfTemplateSection subRow = new CrfTemplateSection();
                 subRow.setFormId(formId);
                 subRow.setParentId(secRow.getId());
-                subRow.setCode(str(sub.get("code")));
-                subRow.setLabel(str(sub.get("label")));
+                String subCode = str(sub.get("code"));
+                subRow.setCode(subCode);
+                subRow.setLabel(NhpTemplateSectionLabels.resolve(subCode, str(sub.get("label"))));
                 subRow.setSortOrder(subOrder++);
                 subRow.setSubdivisible(false);
                 subRow.setShowWhen(toJson(sub.get("showWhen")));
@@ -1150,6 +1175,8 @@ public class NhpTemplateService {
             row.setType(str(f.get("type")));
             row.setOptions(toJson(f.get("options")));
             row.setDictKey(str(f.get("dictKey")));
+            row.setRole(str(f.get("role")));
+            row.setRoleMeta(toJson(f.get("roleMeta")));
             row.setRequired(Boolean.TRUE.equals(f.get("required")));
             row.setShowWhen(toJson(f.get("showWhen")));
             row.setSortOrder(order++);
@@ -1514,24 +1541,41 @@ public class NhpTemplateService {
         return "D9".equals(u) || "D10".equals(u) ? "MODULE" : "DOMAIN";
     }
 
+    private static boolean isAtomFormType(String formType) {
+        return "DOMAIN".equals(formType) || "MODULE".equals(formType)
+                || "ATOM".equals(formType) || "PUBLIC".equals(formType);
+    }
+
     private static boolean isAtom(CrfForm f) {
         if (f == null) return false;
-        // TEMPLATE / 显式组合绝不当原子
         if (TYPE_TEMPLATE.equals(f.getFormType()) || "COMPOSITE".equals(f.getFormType())) return false;
-        // 非域码（如 nhp-crf）即使误标 DOMAIN 也不进原子栏
-        if (!looksLikeAtomCode(f.getCode())) return false;
-        String t = f.getFormType();
-        return t == null || t.isBlank()
-                || "DOMAIN".equals(t) || "MODULE".equals(t) || "ATOM".equals(t) || "PUBLIC".equals(t);
+        if (NhpAtomFormKeys.looksLikeCompositeTemplateCode(f.getCode())) return false;
+        if (isAtomFormType(f.getFormType())) return true;
+        return looksLikeAtomCode(f.getCode());
     }
 
     /**
-     * 组合：form_type=TEMPLATE，或 code 不是原子域码（纠正 nhp-crf 等存量误标）。
+     * 组合：form_type=TEMPLATE，或 code 不是原子（纠正 nhp-crf 等存量误标）。
      */
     private static boolean isComposite(CrfForm f) {
         if (f == null) return false;
         if (TYPE_TEMPLATE.equals(f.getFormType()) || "COMPOSITE".equals(f.getFormType())) return true;
+        if (isAtom(f)) return false;
         return !looksLikeAtomCode(f.getCode());
+    }
+
+    /** 列表/详情：域码原子与语义码原子（donor_profile）的套与展示码。 */
+    private static void attachAtomSuiteMeta(Map<String, Object> m, String formKey) {
+        NhpAtomFormKeys.Parsed p = NhpAtomFormKeys.parse(formKey);
+        if (p != null) {
+            m.put("dictKey", p.dictKey());
+            m.put("domainCode", p.domainCode());
+            return;
+        }
+        if (formKey != null && !formKey.isBlank() && !NhpAtomFormKeys.looksLikeCompositeTemplateCode(formKey)) {
+            m.put("dictKey", NhpAtomFormKeys.DEFAULT_DICT_KEY);
+            m.put("domainCode", formKey);
+        }
     }
 
     private static String normalizeStatus(String status) {

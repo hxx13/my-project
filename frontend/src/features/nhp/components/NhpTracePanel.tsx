@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
 import type { NhpAuditEntry } from "../api/nhpRecord.api";
+import NhpUserRefLabel from "./NhpUserRefLabel";
 
 const REASON_LABELS: Record<string, string> = {
   录入: "字段录入",
@@ -65,7 +66,7 @@ export default function NhpTracePanel({
                 <div className="m">{formatDateTimeAsiaShanghaiShort(t.createdAt)}</div>
                 {t.operatorId && (
                   <div className="who">
-                    操作人：<b>{(t.operatorName && t.operatorName.trim()) || t.operatorId}</b>
+                    <NhpUserRefLabel name={t.operatorName} userId={t.operatorId} prefix="操作人" />
                   </div>
                 )}
               </div>

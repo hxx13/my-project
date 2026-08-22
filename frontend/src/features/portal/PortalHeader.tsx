@@ -29,42 +29,45 @@ function useNavEntries(modelCats: { name: string }[]): NavEntry[] {
     {
       label: "模型资源", href: "#model-resource", route: "/models",
       children: modelCats.length > 0
-        ? modelCats.map((c) => ({ label: c.name, href: "#", route: `/models?search=${encodeURIComponent(c.name)}`, desc: `浏览${c.name}品系` }))
+        ? modelCats.map((c) => ({ label: c.name, href: "#", route: `/models?search=${encodeURIComponent(c.name)}`, desc: `${c.name}品系` }))
         : [
-            { label: "基因编辑模型", href: "#", route: "/models?search=基因编辑模型", desc: "CRISPR/Cas9 基因敲除与敲入" },
-            { label: "免疫缺陷模型", href: "#", route: "/models?search=免疫缺陷模型", desc: "NSG/NOG 等重度免疫缺陷" },
-            { label: "人源化模型", href: "#", route: "/models?search=人源化模型", desc: "靶点人源化与免疫系统重建" },
-            { label: "疾病模型", href: "#", route: "/models?search=疾病模型", desc: "肿瘤/代谢/神经退行性疾病" },
-            { label: "工具鼠与繁殖", href: "#", route: "/models?search=工具鼠与繁殖", desc: "Cre/Flp工具鼠及育种服务" },
+            { label: "基因编辑模型", href: "#", route: "/models?search=基因编辑模型", desc: "CRISPR 基因编辑" },
+            { label: "免疫缺陷模型", href: "#", route: "/models?search=免疫缺陷模型", desc: "NSG/NOG 免疫缺陷" },
+            { label: "人源化模型", href: "#", route: "/models?search=人源化模型", desc: "靶点人源化" },
+            { label: "疾病模型", href: "#", route: "/models?search=疾病模型", desc: "肿瘤与代谢疾病" },
+            { label: "工具鼠与繁殖", href: "#", route: "/models?search=工具鼠与繁殖", desc: "Cre/Flp 工具鼠" },
           ],
     },
     {
       label: "新闻动态", href: "#news", route: "/news",
       children: [
-        { label: "文章干货", href: "#", route: "/news", desc: "技术分享与研究前沿" },
-        { label: "通知公告", href: "#", route: "/news", desc: "平台运营与管理通知" },
-        { label: "平台更新", href: "#", route: "/news", desc: "系统升级与服务变更" },
+        { label: "文章干货", href: "#", route: "/news", desc: "技术分享" },
+        { label: "通知公告", href: "#", route: "/news", desc: "平台通知" },
+        { label: "平台更新", href: "#", route: "/news", desc: "系统更新" },
       ],
     },
     {
       label: "实验动物", href: "#",
       children: [
         {
-          label: "手术", href: "#", desc: "手术相关研究入口",
+          label: "手术", href: "#", desc: "NHP 手术研究",
           children: [
-            { label: "NHP研究计划", href: "#", route: "/nhp/fill", desc: "选动物 → 选/建实例 → 缓冲确认 → 填写" },
+            { label: "总览驾驶舱", href: "#", route: "/nhp/overview", desc: "研究总览" },
+            { label: "进入工作台", href: "#", route: "/nhp/fill", desc: "采集与时间线" },
+            { label: "采集侧 · 病例墙", href: "#", route: "/content-manager/nhp-records", desc: "选动物开填" },
+            { label: "审核中心", href: "#", route: "/nhp/review-center", desc: "校对复核签署" },
           ],
         },
-        { label: "填写AUP计划书", href: "#", route: "/aup/fill", desc: "IACUC 实验动物研究及使用计划" },
+        { label: "填写AUP计划书", href: "#", route: "/aup/fill", desc: "IACUC 使用计划" },
       ],
     },
     {
       label: "关于我们", href: "#about", route: "/about",
       children: [
-        { label: "部门简介", href: "#", route: "/about", desc: "实验动物科学部概况" },
-        { label: "服务指南", href: "#", route: "/services", desc: "使用流程与收费标准" },
-        { label: "常见问题", href: "#", route: "/faq", desc: "使用帮助与 FAQ" },
-        { label: "联系我们", href: "#", route: "/contact", desc: "地址与联系方式" },
+        { label: "部门简介", href: "#", route: "/about", desc: "科学部概况" },
+        { label: "服务指南", href: "#", route: "/services", desc: "流程与收费" },
+        { label: "常见问题", href: "#", route: "/faq", desc: "使用帮助" },
+        { label: "联系我们", href: "#", route: "/contact", desc: "联系方式" },
       ],
     },
   ], [modelCats]);
@@ -74,13 +77,27 @@ function useNavEntries(modelCats: { name: string }[]): NavEntry[] {
 /*  Dropdown — dark theme, solid bg；支持向右展开的二级菜单             */
 /* ------------------------------------------------------------------ */
 
-function NavDropdown({ entry, navigate, onClose }: { entry: NavEntry; navigate: ReturnType<typeof useNavigate>; onClose: () => void }) {
+const DROPDOWN_CLOSE_DELAY_MS = 200;
+
+function NavDropdown({
+  entry,
+  navigate,
+  onHoverIn,
+  onHoverOut,
+  onNavigateClose,
+}: {
+  entry: NavEntry;
+  navigate: ReturnType<typeof useNavigate>;
+  onHoverIn: () => void;
+  onHoverOut: () => void;
+  onNavigateClose: () => void;
+}) {
   const [flyoutLabel, setFlyoutLabel] = useState<string | null>(null);
   if (!entry.children?.length) return null;
 
   const handleClick = (item: DropdownItem) => {
     if (item.children?.length) return; // 有子菜单的项不直接跳转
-    onClose();
+    onNavigateClose();
     if (item.route) {
       navigate(item.route);
     } else if (item.href && item.href !== "#") {
@@ -90,9 +107,11 @@ function NavDropdown({ entry, navigate, onClose }: { entry: NavEntry; navigate: 
 
   return (
     <div
-      className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 w-56 rounded-xl border border-white/10 bg-[#1e293b] shadow-xl py-1 z-50"
-      onMouseLeave={() => { setFlyoutLabel(null); onClose(); }}
+      className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 pt-1 w-52 z-50"
+      onMouseEnter={onHoverIn}
+      onMouseLeave={() => { setFlyoutLabel(null); onHoverOut(); }}
     >
+      <div className="rounded-xl border border-white/10 bg-[#1e293b] shadow-xl py-1">
       {entry.children.map((item) => {
         const hasSub = !!(item.children?.length);
         const subOpen = flyoutLabel === item.label;
@@ -106,34 +125,37 @@ function NavDropdown({ entry, navigate, onClose }: { entry: NavEntry; navigate: 
               type="button"
               onClick={() => handleClick(item)}
               className={cn(
-                "w-full text-left flex items-center gap-2 px-4 py-2.5 hover:bg-white/5 transition-colors",
+                "w-full text-left flex items-center gap-1.5 px-3 py-2 hover:bg-white/5 transition-colors",
                 subOpen && "bg-white/5",
               )}
             >
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-white/90">{item.label}</div>
-                {item.desc && <div className="text-xs text-white/40 mt-0.5">{item.desc}</div>}
+                <div className="text-sm font-medium text-white/90 leading-snug">{item.label}</div>
+                {item.desc && <div className="text-xs text-white/40 mt-px leading-snug">{item.desc}</div>}
               </div>
               {hasSub && <ChevronRight className="size-3.5 shrink-0 text-white/40" />}
             </button>
             {hasSub && subOpen && (
-              <div className="absolute left-full top-0 ml-1 w-56 rounded-xl border border-white/10 bg-[#1e293b] shadow-xl py-1 z-50">
-                {item.children!.map((sub) => (
-                  <button
-                    key={sub.label}
-                    type="button"
-                    onClick={() => handleClick(sub)}
-                    className="w-full text-left block px-4 py-2.5 hover:bg-white/5 transition-colors"
-                  >
-                    <div className="text-sm font-medium text-white/90">{sub.label}</div>
-                    {sub.desc && <div className="text-xs text-white/40 mt-0.5">{sub.desc}</div>}
-                  </button>
-                ))}
+              <div className="absolute left-full top-0 -ml-1 pl-1 z-50">
+                <div className="w-52 rounded-xl border border-white/10 bg-[#1e293b] shadow-xl py-1">
+                  {item.children!.map((sub) => (
+                    <button
+                      key={sub.label}
+                      type="button"
+                      onClick={() => handleClick(sub)}
+                      className="w-full text-left block px-3 py-2 hover:bg-white/5 transition-colors"
+                    >
+                      <div className="text-sm font-medium text-white/90 leading-snug">{sub.label}</div>
+                      {sub.desc && <div className="text-xs text-white/40 mt-px leading-snug">{sub.desc}</div>}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -188,8 +210,24 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
     document.querySelector(href)?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const hoverIn = (label: string) => { if (dropdownTimer.current) { clearTimeout(dropdownTimer.current); dropdownTimer.current = null; } setActiveDropdown(label); };
-  const hoverOut = () => { dropdownTimer.current = window.setTimeout(() => setActiveDropdown(null), 120); };
+  const cancelDropdownClose = () => {
+    if (dropdownTimer.current) {
+      clearTimeout(dropdownTimer.current);
+      dropdownTimer.current = null;
+    }
+  };
+
+  const hoverIn = (label: string) => {
+    cancelDropdownClose();
+    setActiveDropdown(label);
+  };
+
+  const hoverOut = () => {
+    cancelDropdownClose();
+    dropdownTimer.current = window.setTimeout(() => setActiveDropdown(null), DROPDOWN_CLOSE_DELAY_MS);
+  };
+
+  useEffect(() => () => cancelDropdownClose(), []);
 
   return (
     <>
@@ -211,7 +249,15 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
                     isOpen ? "text-white bg-white/10" : "text-white/60 hover:text-white/90 hover:bg-white/5")}>
                   {entry.label}{hasKids && <ChevronDown className={cn("size-3 transition", isOpen && "rotate-180")} />}
                 </button>
-                {hasKids && isOpen && <NavDropdown entry={entry} navigate={navigate} onClose={() => setActiveDropdown(null)} />}
+                {hasKids && isOpen && (
+                  <NavDropdown
+                    entry={entry}
+                    navigate={navigate}
+                    onHoverIn={cancelDropdownClose}
+                    onHoverOut={hoverOut}
+                    onNavigateClose={() => { cancelDropdownClose(); setActiveDropdown(null); }}
+                  />
+                )}
               </div>
             );
           })}

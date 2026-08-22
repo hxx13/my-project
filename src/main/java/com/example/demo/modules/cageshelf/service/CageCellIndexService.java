@@ -148,8 +148,8 @@ public class CageCellIndexService {
                     totalCells += batch.size();
                 }
 
-                // 批量写入 cage_cell_detail
-                List<CageCellDetail> detailBatch = buildDetailBatch(list, shelveId);
+                // 批量写入 cage_cell_detail（合并已有行：/back 缺 cageBoxVo 字段时勿用 null 冲掉 /list 已补全的 PI）
+                List<CageCellDetail> detailBatch = buildDetailBatch(list, shelfIdxId);
                 if (!detailBatch.isEmpty()) {
                     detailMapper.batchUpsert(detailBatch);
                 }
@@ -250,6 +250,18 @@ public class CageCellIndexService {
                 gc.put("projectPiName", trimStr(detail.getProjectPiName()));
                 gc.put("departmentName", trimStr(detail.getDepartmentName()));
                 gc.put("aupNumber", trimStr(detail.getAupNumber()));
+                // 与 ARO cageBoxInfo 对齐，供编辑侧栏 / 前端兜底读 ProjectPiName
+                String displayPi = trimStr(detail.getProjectPiName());
+                if (displayPi == null) displayPi = trimStr(detail.getPiName());
+                Map<String, Object> cageBoxInfo = new LinkedHashMap<>();
+                cageBoxInfo.put("ProjectPiName", displayPi);
+                cageBoxInfo.put("DepartmentName", trimStr(detail.getDepartmentName()));
+                cageBoxInfo.put("AupNumber", trimStr(detail.getAupNumber()));
+                cageBoxInfo.put("cageBoxCode", trimStr(detail.getCageBoxCode()));
+                cageBoxInfo.put("CageBoxQrCode", trimStr(detail.getCageBoxCode()));
+                cageBoxInfo.put("StateName", trimStr(detail.getStateLabel()));
+                cageBoxInfo.put("AnimalCageType", detail.getCageTypeCode());
+                gc.put("cageBoxInfo", cageBoxInfo);
                 gc.put("needsDivision", detail.getNeedsDivision());
                 gc.put("needsSpecialFeeding", detail.getNeedsSpecialFeeding());
                 gc.put("hasHealthAbnormality", detail.getHasHealthAbnormality());
@@ -401,29 +413,57 @@ public class CageCellIndexService {
                                 mapped.get("lab_assistant_name"));
                     }
 
-                    // 覆盖：ARO 返回空也视为该笼位该项信息为空，直接清空本地旧值（而非保留）
-                    // 关键：补全 PI/课题组/部门/AUP（/back 常缺完整 cageBoxVo，此前未写入导致网格无 PI）
+                    // 仅当 mapping 命中该 canonical（路径存在）才覆盖：空串→null 清空；路径不存在→不动
+                    // 避免 /list 某条缺 cageBoxVo.projectPiName 时用 get()==null 误清空已有 PI
                     boolean changed = isNew;
-                    if (!Objects.equals(mapped.get("pi_name"), d.getPiName())) { d.setPiName((String) mapped.get("pi_name")); changed = true; }
-                    if (!Objects.equals(mapped.get("project_pi_name"), d.getProjectPiName())) { d.setProjectPiName((String) mapped.get("project_pi_name")); changed = true; }
-                    if (!Objects.equals(mapped.get("project_name"), d.getProjectName())) { d.setProjectName((String) mapped.get("project_name")); changed = true; }
-                    if (!Objects.equals(mapped.get("department_name"), d.getDepartmentName())) { d.setDepartmentName((String) mapped.get("department_name")); changed = true; }
-                    if (!Objects.equals(mapped.get("aup_number"), d.getAupNumber())) { d.setAupNumber((String) mapped.get("aup_number")); changed = true; }
-                    if (!Objects.equals(mapped.get("cage_box_code"), d.getCageBoxCode())) {
+                    if (mapped.containsKey("pi_name") && !Objects.equals(mapped.get("pi_name"), d.getPiName())) {
+                        d.setPiName((String) mapped.get("pi_name")); changed = true;
+                    }
+                    if (mapped.containsKey("project_pi_name") && !Objects.equals(mapped.get("project_pi_name"), d.getProjectPiName())) {
+                        d.setProjectPiName((String) mapped.get("project_pi_name")); changed = true;
+                    }
+                    if (mapped.containsKey("project_name") && !Objects.equals(mapped.get("project_name"), d.getProjectName())) {
+                        d.setProjectName((String) mapped.get("project_name")); changed = true;
+                    }
+                    if (mapped.containsKey("department_name") && !Objects.equals(mapped.get("department_name"), d.getDepartmentName())) {
+                        d.setDepartmentName((String) mapped.get("department_name")); changed = true;
+                    }
+                    if (mapped.containsKey("aup_number") && !Objects.equals(mapped.get("aup_number"), d.getAupNumber())) {
+                        d.setAupNumber((String) mapped.get("aup_number")); changed = true;
+                    }
+                    if (mapped.containsKey("cage_box_code") && !Objects.equals(mapped.get("cage_box_code"), d.getCageBoxCode())) {
                         String cbc = (String) mapped.get("cage_box_code");
                         d.setCageBoxCode(cbc);
                         d.setHasCageBox(cbc != null && !cbc.isBlank());
                         changed = true;
                     }
-                    if (!Objects.equals(mapped.get("animal_strain_name"), d.getAnimalStrainName())) { d.setAnimalStrainName((String) mapped.get("animal_strain_name")); changed = true; }
-                    if (!Objects.equals(mapped.get("animal_sex"), d.getAnimalSex())) { d.setAnimalSex((String) mapped.get("animal_sex")); changed = true; }
-                    if (!Objects.equals(mapped.get("animal_week_age"), d.getAnimalWeekAge())) { d.setAnimalWeekAge((String) mapped.get("animal_week_age")); changed = true; }
-                    if (!Objects.equals(mapped.get("animal_male_number"), d.getAnimalMaleNumber())) { d.setAnimalMaleNumber((Integer) mapped.get("animal_male_number")); changed = true; }
-                    if (!Objects.equals(mapped.get("animal_female_number"), d.getAnimalFemaleNumber())) { d.setAnimalFemaleNumber((Integer) mapped.get("animal_female_number")); changed = true; }
-                    if (!Objects.equals(mapped.get("animal_come_from"), d.getAnimalComeFrom())) { d.setAnimalComeFrom((String) mapped.get("animal_come_from")); changed = true; }
-                    if (!Objects.equals(mapped.get("experimenter_name"), d.getExperimenterName())) { d.setExperimenterName((String) mapped.get("experimenter_name")); changed = true; }
-                    if (!Objects.equals(mapped.get("lab_assistant_name"), d.getLabAssistantName())) { d.setLabAssistantName((String) mapped.get("lab_assistant_name")); changed = true; }
-                    if (!Objects.equals(mapped.get("cage_box_name"), d.getCageBoxName())) { d.setCageBoxName((String) mapped.get("cage_box_name")); changed = true; }
+                    if (mapped.containsKey("animal_strain_name") && !Objects.equals(mapped.get("animal_strain_name"), d.getAnimalStrainName())) {
+                        d.setAnimalStrainName((String) mapped.get("animal_strain_name")); changed = true;
+                    }
+                    if (mapped.containsKey("animal_sex") && !Objects.equals(mapped.get("animal_sex"), d.getAnimalSex())) {
+                        d.setAnimalSex((String) mapped.get("animal_sex")); changed = true;
+                    }
+                    if (mapped.containsKey("animal_week_age") && !Objects.equals(mapped.get("animal_week_age"), d.getAnimalWeekAge())) {
+                        d.setAnimalWeekAge((String) mapped.get("animal_week_age")); changed = true;
+                    }
+                    if (mapped.containsKey("animal_male_number") && !Objects.equals(mapped.get("animal_male_number"), d.getAnimalMaleNumber())) {
+                        d.setAnimalMaleNumber((Integer) mapped.get("animal_male_number")); changed = true;
+                    }
+                    if (mapped.containsKey("animal_female_number") && !Objects.equals(mapped.get("animal_female_number"), d.getAnimalFemaleNumber())) {
+                        d.setAnimalFemaleNumber((Integer) mapped.get("animal_female_number")); changed = true;
+                    }
+                    if (mapped.containsKey("animal_come_from") && !Objects.equals(mapped.get("animal_come_from"), d.getAnimalComeFrom())) {
+                        d.setAnimalComeFrom((String) mapped.get("animal_come_from")); changed = true;
+                    }
+                    if (mapped.containsKey("experimenter_name") && !Objects.equals(mapped.get("experimenter_name"), d.getExperimenterName())) {
+                        d.setExperimenterName((String) mapped.get("experimenter_name")); changed = true;
+                    }
+                    if (mapped.containsKey("lab_assistant_name") && !Objects.equals(mapped.get("lab_assistant_name"), d.getLabAssistantName())) {
+                        d.setLabAssistantName((String) mapped.get("lab_assistant_name")); changed = true;
+                    }
+                    if (mapped.containsKey("cage_box_name") && !Objects.equals(mapped.get("cage_box_name"), d.getCageBoxName())) {
+                        d.setCageBoxName((String) mapped.get("cage_box_name")); changed = true;
+                    }
 
                     if (changed) {
                         // 合并详情到 raw_data
@@ -595,6 +635,75 @@ public class CageCellIndexService {
         return result;
     }
 
+    /**
+     * 一键本地笼位同步（固定顺序，避免手动乱序冲空 PI）：
+     * 1) /back 全量建索引+详情骨架 → 2) /list 补全 PI 等详情 → 3) /book 只更新状态列。
+     * 任一步硬失败（异常或 ok=false）即停止，返回 failedStep。
+     */
+    public Map<String, Object> syncLocalPipeline(Long roomId) {
+        LocalDateTime startedAt = LocalDateTime.now();
+        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Object> steps = new LinkedHashMap<>();
+        List<String> completedSteps = new ArrayList<>();
+        result.put("ok", false);
+        result.put("steps", steps);
+        result.put("completedSteps", completedSteps);
+        result.put("startedAt", DT_FMT.format(startedAt));
+        log.info("[local-pipeline] 开始一键同步 roomId={}", roomId);
+
+        // ① 全量 /back
+        try {
+            Map<String, Object> step1 = syncAllCells(roomId);
+            steps.put("syncAllCells", step1);
+            if (Boolean.FALSE.equals(step1.get("ok"))) {
+                result.put("failedStep", "syncAllCells");
+                result.put("failedMessage", String.valueOf(step1.getOrDefault("error", "全量同步失败")));
+                result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
+                return result;
+            }
+            completedSteps.add("syncAllCells");
+        } catch (Exception e) {
+            log.error("[local-pipeline] syncAllCells 异常: {}", e.getMessage(), e);
+            result.put("failedStep", "syncAllCells");
+            result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "全量同步异常");
+            result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
+            return result;
+        }
+
+        // ② /list 补全详情（含 PI）
+        try {
+            Map<String, Object> step2 = syncDetailFields(roomId);
+            steps.put("syncDetailFields", step2);
+            completedSteps.add("syncDetailFields");
+        } catch (Exception e) {
+            log.error("[local-pipeline] syncDetailFields 异常: {}", e.getMessage(), e);
+            result.put("failedStep", "syncDetailFields");
+            result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "详情补全异常");
+            result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
+            return result;
+        }
+
+        // ③ /book 仅状态列
+        try {
+            Map<String, Object> step3 = syncStatusFromBook(roomId);
+            steps.put("syncStatusFromBook", step3);
+            completedSteps.add("syncStatusFromBook");
+        } catch (Exception e) {
+            log.error("[local-pipeline] syncStatusFromBook 异常: {}", e.getMessage(), e);
+            result.put("failedStep", "syncStatusFromBook");
+            result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "状态同步异常");
+            result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
+            return result;
+        }
+
+        result.put("ok", true);
+        result.put("failedStep", null);
+        result.put("failedMessage", null);
+        result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
+        log.info("[local-pipeline] 一键同步完成 roomId={} steps={}", roomId, completedSteps);
+        return result;
+    }
+
     /** 全局反查：根据 animalCageId 定位笼位 */
     public Map<String, Object> lookupByAnimalCageId(Long animalCageId) {
         if (animalCageId == null) return null;
@@ -615,10 +724,20 @@ public class CageCellIndexService {
     }
 
     /**
-     * 从 ARO 响应构建 cage_cell_detail 批量数据 — 使用映射表翻译字段名。
+     * 从 ARO /back 响应构建 cage_cell_detail 批量数据 — 使用映射表翻译字段名。
+     * <p>合并已有 detail：仅当 {@code mapped.containsKey}（ARO 路径存在）才覆盖。
+     * 路径不存在 ≠ 空值；避免 /back 缺 cageBoxVo 时把 /list 已写入的 PI/项目冲成 null，
+     * 也避免把本地 experiment_desc / images_json 冲掉。
      */
     @SuppressWarnings("unchecked")
-    private List<CageCellDetail> buildDetailBatch(List<?> list, Long shelveId) {
+    private List<CageCellDetail> buildDetailBatch(List<?> list, Long shelfIndexId) {
+        Map<Long, CageCellDetail> existingById = new LinkedHashMap<>();
+        if (shelfIndexId != null) {
+            for (CageCellDetail ex : detailMapper.selectByShelfIndexId(shelfIndexId)) {
+                existingById.put(ex.getAnimalCageId(), ex);
+            }
+        }
+
         List<CageCellDetail> details = new ArrayList<>();
         for (Object item : list) {
             if (!(item instanceof Map<?, ?> cage)) continue;
@@ -634,50 +753,59 @@ public class CageCellIndexService {
             if (x == null || y == null || x < 1 || x > 8 || y < 1 || y > 10) continue;
             if (animalCageId == null) continue;
 
-            CageCellDetail d = new CageCellDetail();
-            d.setAnimalCageId(animalCageId);
+            CageCellDetail d = existingById.get(animalCageId);
+            if (d == null) {
+                d = detailMapper.selectByAnimalCageId(animalCageId);
+            }
+            if (d == null) {
+                d = new CageCellDetail();
+                d.setAnimalCageId(animalCageId);
+            }
 
-            // 映射表输出直接赋值
-            d.setCageTypeCode((Integer) mapped.get("cage_type_code"));
-            d.setState((Integer) mapped.get("state"));
-            d.setStateLabel((String) mapped.get("state_label"));
-            d.setRentType((Integer) mapped.get("rent_type"));
-            d.setCageName((String) mapped.get("cage_name"));
+            // 仅路径存在才覆盖（空→null；缺键→保留本地旧值）
+            if (mapped.containsKey("cage_type_code")) d.setCageTypeCode((Integer) mapped.get("cage_type_code"));
+            if (mapped.containsKey("state")) d.setState((Integer) mapped.get("state"));
+            if (mapped.containsKey("state_label")) d.setStateLabel((String) mapped.get("state_label"));
+            if (mapped.containsKey("rent_type")) d.setRentType((Integer) mapped.get("rent_type"));
+            if (mapped.containsKey("cage_name")) d.setCageName((String) mapped.get("cage_name"));
 
-            String cbc = (String) mapped.get("cage_box_code");
-            d.setHasCageBox(cbc != null && !cbc.isBlank());
-            d.setCageBoxCode(cbc);
-            d.setCageBoxName((String) mapped.get("cage_box_name"));
+            if (mapped.containsKey("cage_box_code")) {
+                String cbc = (String) mapped.get("cage_box_code");
+                d.setHasCageBox(cbc != null && !cbc.isBlank());
+                d.setCageBoxCode(cbc);
+            }
+            if (mapped.containsKey("cage_box_name")) d.setCageBoxName((String) mapped.get("cage_box_name"));
             // 从原始 cageBoxVo.id 提取 cageBoxId，避免 outbox 投递时再调 ARO 解析
             Map<String, Object> cbv = castMap(raw.get("cageBoxVo"));
             if (cbv != null && cbv.get("id") instanceof Number n) d.setCageBoxId(n.longValue());
 
-            d.setPiName((String) mapped.get("pi_name"));
-            d.setProjectPiName((String) mapped.get("project_pi_name"));
-            d.setProjectName((String) mapped.get("project_name"));
-            d.setDepartmentName((String) mapped.get("department_name"));
-            d.setAupNumber((String) mapped.get("aup_number"));
+            if (mapped.containsKey("pi_name")) d.setPiName((String) mapped.get("pi_name"));
+            if (mapped.containsKey("project_pi_name")) d.setProjectPiName((String) mapped.get("project_pi_name"));
+            if (mapped.containsKey("project_name")) d.setProjectName((String) mapped.get("project_name"));
+            if (mapped.containsKey("department_name")) d.setDepartmentName((String) mapped.get("department_name"));
+            if (mapped.containsKey("aup_number")) d.setAupNumber((String) mapped.get("aup_number"));
 
-            d.setAnimalStrainName((String) mapped.get("animal_strain_name"));
-            d.setAnimalSex((String) mapped.get("animal_sex"));
-            d.setAnimalWeekAge((String) mapped.get("animal_week_age"));
-            d.setAnimalMaleNumber((Integer) mapped.get("animal_male_number"));
-            d.setAnimalFemaleNumber((Integer) mapped.get("animal_female_number"));
-            d.setAnimalComeFrom((String) mapped.get("animal_come_from"));
-            d.setExperimenterName((String) mapped.get("experimenter_name"));
-            d.setLabAssistantName((String) mapped.get("lab_assistant_name"));
+            if (mapped.containsKey("animal_strain_name")) d.setAnimalStrainName((String) mapped.get("animal_strain_name"));
+            if (mapped.containsKey("animal_sex")) d.setAnimalSex((String) mapped.get("animal_sex"));
+            if (mapped.containsKey("animal_week_age")) d.setAnimalWeekAge((String) mapped.get("animal_week_age"));
+            if (mapped.containsKey("animal_male_number")) d.setAnimalMaleNumber((Integer) mapped.get("animal_male_number"));
+            if (mapped.containsKey("animal_female_number")) d.setAnimalFemaleNumber((Integer) mapped.get("animal_female_number"));
+            if (mapped.containsKey("animal_come_from")) d.setAnimalComeFrom((String) mapped.get("animal_come_from"));
+            if (mapped.containsKey("experimenter_name")) d.setExperimenterName((String) mapped.get("experimenter_name"));
+            if (mapped.containsKey("lab_assistant_name")) d.setLabAssistantName((String) mapped.get("lab_assistant_name"));
 
-            d.setNeedsDivision((Boolean) mapped.get("needs_division"));
-            d.setNeedsSpecialFeeding((Boolean) mapped.get("needs_special_feeding"));
-            d.setNeedsTransfer((Boolean) mapped.get("needs_transfer"));
-            d.setHasHealthAbnormality((Boolean) mapped.get("has_health_abnormality"));
-            d.setCohabitationDate((String) mapped.get("cohabitation_date"));
-            d.setSpecialBreedingName((String) mapped.get("special_breeding_name"));
-            d.setSpecialBreedingDesc((String) mapped.get("special_breeding_desc"));
+            if (mapped.containsKey("needs_division")) d.setNeedsDivision((Boolean) mapped.get("needs_division"));
+            if (mapped.containsKey("needs_special_feeding")) d.setNeedsSpecialFeeding((Boolean) mapped.get("needs_special_feeding"));
+            if (mapped.containsKey("needs_transfer")) d.setNeedsTransfer((Boolean) mapped.get("needs_transfer"));
+            if (mapped.containsKey("has_health_abnormality")) d.setHasHealthAbnormality((Boolean) mapped.get("has_health_abnormality"));
+            if (mapped.containsKey("cohabitation_date")) d.setCohabitationDate((String) mapped.get("cohabitation_date"));
+            if (mapped.containsKey("special_breeding_name")) d.setSpecialBreedingName((String) mapped.get("special_breeding_name"));
+            if (mapped.containsKey("special_breeding_desc")) d.setSpecialBreedingDesc((String) mapped.get("special_breeding_desc"));
 
             d.setAroRawData(JSON.toJSONString(raw));
             d.setMappingVersion(MAPPING_VERSION);
             details.add(d);
+            existingById.put(animalCageId, d);
         }
         return details;
     }

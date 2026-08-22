@@ -16,4 +16,7 @@ public interface CrfDictChangeLogMapper {
 
     @Select("SELECT * FROM crf_dict_change_log WHERE entity = #{entity} AND entity_id = #{entityId} ORDER BY id DESC")
     List<CrfDictChangeLog> listByEntity(@Param("entity") String entity, @Param("entityId") Long entityId);
+
+    @Select("SELECT * FROM crf_dict_change_log ORDER BY id DESC LIMIT #{limit}")
+    List<CrfDictChangeLog> listRecent(@Param("limit") int limit);
 }

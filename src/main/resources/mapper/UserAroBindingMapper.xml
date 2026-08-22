@@ -26,6 +26,15 @@
         LIMIT 1
     </select>
 
+    <select id="selectByUserIds" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_aro_binding
+        WHERE user_id IN
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+    </select>
+
     <select id="selectByAroUserId" resultMap="BaseResultMap">
         SELECT <include refid="Base_Column_List"/>
         FROM user_aro_binding

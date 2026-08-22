@@ -56,7 +56,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, KeyRound, Loader2, Scan, Check, X, QrCode, ImagePlus } from "lucide-react";
+import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, KeyRound, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   fetchCageShelfDetail, fetchCageScanProgress, refreshCellDetail,
@@ -74,6 +74,7 @@ import {
   cancelCageBoxColor, ACTION_CANCEL_COLOR, type CancelColor,
   bindCageBox, unbindCageBox, updateAnimalCage, type AnimalCageUpdatePayload,
   fetchCellIndexByShelf, fetchLocalShelfGridByShelveId, localBind, localUnbind, localAllocate, localCancelAllocate, localEdit, localAnnotate, fetchLocalAnnotate, type CageCellIndexEntry,
+  syncLocalCagePipeline, localPipelineStepLabel,
 } from "@/api/domains/cageShelf.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
@@ -130,6 +131,8 @@ function Inner(){
   // ═══════════════════════════════════════════════════════════
   /* ---- 分配模式 ---- */
   const canEdit = useMemo(() => hasMinRole(authStorage.getRole(), "STAFF"), []);
+  const isSuperAdmin = useMemo(() => hasMinRole(authStorage.getRole(), "SUPER_ADMIN"), []);
+  const[localPipelineSyncing,setLocalPipelineSyncing]=useState(false);
   const[pageMode,setPageMode]=useState<"view"|"allocate"|"booking">("view");
   const[selectedCells,setSelectedCells]=useState<Set<string>>(new Set());
   const anchorCellRef=useRef<{shelveId:string;x:number;y:number}|null>(null); // Shift+Click 区间选择锚点
@@ -452,6 +455,37 @@ function Inner(){
   };
   const loadBm=async()=>{setBmLoading(true);try{const list=await fetchBookmarks();setBmList(list);setPinned(new Set(list.map(b=>`${b.roomId}:${b.shelveId}`)));}catch{}finally{setBmLoading(false);}};
   useEffect(()=>{if(tab==="bookmarks")loadBm();},[tab]);
+
+  const handleLocalPipelineSync=useCallback(async()=>{
+    if(localPipelineSyncing)return;
+    setLocalPipelineSyncing(true);
+    const toastId=toast.loading("一键同步进行中（全量→详情→状态）…");
+    try{
+      const result=await syncLocalCagePipeline();
+      if(result.ok){
+        toast.success("一键同步完成：全量 → 补全详情 → 状态",{id:toastId,duration:5000});
+        setDetailReloadKey(k=>k+1);
+        if(aRid){
+          try{
+            if(viewMode==="shelf"&&shelfDetail?.shelfMeta?.shelveId){
+              const sid=String(shelfDetail.shelfMeta.shelveId);
+              const d=await fetchLocalShelfGridByShelveId(sid);
+              setShelfDetail(d);
+            }else if(viewMode==="room"){
+              // 触发房间网格重载：沿用 detailReloadKey 副作用
+            }
+          }catch{/* ignore refresh errors */}
+        }
+      }else{
+        const step=localPipelineStepLabel(result.failedStep);
+        toast.error(`同步中断于「${step}」：${result.failedMessage||"未知错误"}`,{id:toastId,duration:8000});
+      }
+    }catch(e:any){
+      toast.error(e?.message||"一键同步失败",{id:toastId});
+    }finally{
+      setLocalPipelineSyncing(false);
+    }
+  },[localPipelineSyncing,aRid,viewMode,shelfDetail]);
 
   useEffect(()=>{if(!cell||!shelfId||cell.empty)return;let cancelled=false;void(async()=>{try{const fresh=await refreshCellDetail(shelfId,cell.x,cell.y);if(!cancelled)setCell(fresh);}catch{}})();return()=>{cancelled=true;};},[cell?.position,shelfId]);
   const onOpenRoom=(roomId:string,roomName:string)=>{
@@ -1037,6 +1071,15 @@ function Inner(){
               </button>}
           </div>
           <div className="flex items-center gap-1">
+            {/* 本地模式：超管一键顺序同步 */}
+            {dataSource==="local"&&isSuperAdmin&&(
+              <button type="button" onClick={handleLocalPipelineSync} disabled={localPipelineSyncing}
+                className="inline-flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition mr-1"
+                title="按固定顺序：ARO 全量 → 补全详情 → 同步状态，避免手动乱序冲空 PI">
+                {localPipelineSyncing?<Loader2 className="h-3 w-3 animate-spin"/>:<RefreshCw className="h-3 w-3"/>}
+                {localPipelineSyncing?"同步中…":"一键同步本地笼位"}
+              </button>
+            )}
             {/* ---- 查看模式控件（本地模式/分配/预约/编辑/绑定时隐藏） ---- */}
             {pageMode==="view"&&!editMode&&!bindMode&&dataSource!=="local"&&<>
               <div className="flex items-stretch rounded-twin-md border border-[var(--twin-hairline)] overflow-hidden mr-1">

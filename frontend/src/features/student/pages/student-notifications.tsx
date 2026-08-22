@@ -1,9 +1,15 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Bell, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
+import { prepareAnnouncementHtml } from "@/utils/announcementHtml";
 import { useStudentNotifications, useMarkNotificationRead } from "../hooks/use-student-notifications";
-import type { FetchNotificationsParams, NotificationData } from "../api/student.api";
+import {
+  markObligationDelivered,
+  type FetchNotificationsParams,
+  type NotificationData,
+} from "../api/student.api";
 import {
   NotificationItem,
   Skeleton,
@@ -14,8 +20,28 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  Badge,
 } from "../components/ui";
+
+function isInternalAppPath(url: string): boolean {
+  return url.startsWith("/") && !url.startsWith("//");
+}
+
+function isViolationObligationNotice(n: NotificationData): boolean {
+  return String(n.bizType || "").toUpperCase() === "STUDENT_VIOLATION"
+    || Boolean(n.obligationId)
+    || Boolean(n.sourceUrl?.includes("/student/obligations"));
+}
+
+function resolveObligationCta(n: NotificationData): { path: string; label: string } | null {
+  if (!isViolationObligationNotice(n)) return null;
+  if (n.sourceUrl && isInternalAppPath(n.sourceUrl)) {
+    return { path: n.sourceUrl, label: "去完成确认" };
+  }
+  if (n.obligationId && n.obligationId > 0) {
+    return { path: `/student/obligations?focus=${n.obligationId}`, label: "去完成确认" };
+  }
+  return { path: "/student/obligations", label: "去完成确认" };
+}
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -149,6 +175,13 @@ export default function StudentNotificationsPage() {
     [markMutation.mutate],
   );
 
+  useEffect(() => {
+    const oid = selectedNotification?.obligationId;
+    if (oid && oid > 0) {
+      void markObligationDelivered(oid).catch(() => undefined);
+    }
+  }, [selectedNotification?.obligationId]);
+
   /* ---- Loading state ---- */
   if (isLoading) {
     return <NotificationsSkeleton />;
@@ -273,25 +306,63 @@ export default function StudentNotificationsPage() {
               {(selectedNotification.content || selectedNotification.summary) ? (
                 <div
                   className="rich-text-content"
-                  dangerouslySetInnerHTML={{ __html: selectedNotification.content || selectedNotification.summary }}
+                  dangerouslySetInnerHTML={{
+                    __html: prepareAnnouncementHtml(
+                      selectedNotification.content || selectedNotification.summary || "",
+                    ),
+                  }}
                 />
               ) : (
                 <p className="text-center py-8 text-[var(--student-mute)]">暂无详细内容</p>
               )}
             </div>
-            {selectedNotification.sourceUrl && (
-              <DialogFooter>
-                <a
-                  href={selectedNotification.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--student-primary)] hover:underline"
-                >
-                  <ExternalLink className="size-3.5" />
-                  查看原文
-                </a>
-              </DialogFooter>
-            )}
+            {(() => {
+              const cta = resolveObligationCta(selectedNotification);
+              if (cta) {
+                return (
+                  <DialogFooter>
+                    <Link
+                      to={cta.path}
+                      className="inline-flex items-center gap-1.5 rounded-[var(--student-radius-md)] bg-[var(--student-primary)] px-3 py-2 text-[13px] font-medium text-white"
+                      onClick={() => setSelectedNotification(null)}
+                    >
+                      {cta.label}
+                    </Link>
+                  </DialogFooter>
+                );
+              }
+              if (selectedNotification.sourceUrl) {
+                const url = selectedNotification.sourceUrl;
+                if (isInternalAppPath(url)) {
+                  return (
+                    <DialogFooter>
+                      <Link
+                        to={url}
+                        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--student-primary)] hover:underline"
+                        onClick={() => setSelectedNotification(null)}
+                      >
+                        <ExternalLink className="size-3.5" />
+                        查看原文
+                      </Link>
+                    </DialogFooter>
+                  );
+                }
+                return (
+                  <DialogFooter>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--student-primary)] hover:underline"
+                    >
+                      <ExternalLink className="size-3.5" />
+                      查看原文
+                    </a>
+                  </DialogFooter>
+                );
+              }
+              return null;
+            })()}
           </>
         )}
       </Dialog>

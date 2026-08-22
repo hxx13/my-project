@@ -52,10 +52,17 @@ export function buildNhpTemplatePath(opts?: { formKey?: string | null; dictKey?:
   return `/content-manager/nhp-template${q ? `?${q}` : ""}`;
 }
 
-/** 校验站内 returnTo */
-export function sanitizeNhpReturnTo(raw: unknown): string | null {
+function normalizeNhpPath(path: string): string {
+  const base = path.split("?")[0].replace(/\/$/, "") || "/";
+  return base;
+}
+
+/** 校验站内 returnTo；与 currentPath 相同时视为无效，防止自指回环 */
+export function sanitizeNhpReturnTo(raw: unknown, currentPath?: string | null): string | null {
   if (typeof raw !== "string") return null;
   const t = raw.trim();
   if (!t.startsWith("/") || t.startsWith("//")) return null;
+  const cur = (currentPath ?? "").trim();
+  if (cur && (t === cur || normalizeNhpPath(t) === normalizeNhpPath(cur))) return null;
   return t;
 }

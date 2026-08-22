@@ -29,6 +29,18 @@ public class CrfField {
     private String cdiscDomain;
     private String cdiscVariable;
     private String cdiscTestCode;
+    /** 概念/指标库码（多 field → 1 concept，V20260821026） */
+    private String conceptCode;
+    /** PK 字段编码规则类型 DON/RCP/XM/TX/…（V40） */
+    private String idRuleType;
+    /** 字段性质 DATA/FK/PK/DERIVED（决定进不进题目，V40） */
+    private String nature;
+    /** 校对四态 CONFIRM/MODIFY/DELETE/QUESTION（V36） */
+    private String verdict;
+    /** PI 校对意见 */
+    private String verdictNote;
+    /** 校对轮次，默认 1 */
+    private Integer reviewRound;
     /** DRAFT/PENDING_REVIEW/FROZEN/RETIRED */
     private String status;
     private Integer version;
