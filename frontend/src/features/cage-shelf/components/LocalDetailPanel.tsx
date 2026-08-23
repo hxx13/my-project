@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { authHttp } from "@/api/core/authHttp";
 import { CAGE_TYPE_COLORS, STATUS_CHIPS } from "../constants";
 import { type CageShelfCell } from "@/api/domains/cageShelf.api";
@@ -111,6 +112,16 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
         {cageBoxCode && <span className="text-[10px] font-mono text-[var(--twin-mute)]">盒:{cageBoxCode}</span>}
       </div>
       <button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={onClose}>✕</button>
+    </div>
+
+    {/* 笼位二维码：payload = 纯数字 animal_cage_id */}
+    <div className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-2 flex items-center gap-3">
+      <QRCodeSVG value={animalCageId} size={72} level="M" />
+      <div className="text-[10px] text-[var(--twin-mute)] leading-relaxed">
+        <div className="text-[11px] font-semibold text-[var(--twin-ink)]">笼位二维码</div>
+        <div className="font-mono">笼位ID: {animalCageId}</div>
+        <div>扫码读取该笼位占用信息</div>
+      </div>
     </div>
 
     {/* 二级：关键信息 icon+compact */}
