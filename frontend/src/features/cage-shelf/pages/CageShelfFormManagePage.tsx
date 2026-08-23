@@ -10,9 +10,9 @@ import { fetchNhpFields } from "@/features/nhp/api/nhpField.api";
  *
  * 复用 NHP 管理页，不再维护自定义简化页：
  *   - 码表管理     → /console/admin/cage-shelves/forms/codelists
- *   - 字段配置     → /content-manager/nhp-field/cage（笼位字段字典套）
- *   - 字段字典套   → /content-manager/nhp-field
- *   - 编辑并发布   → /content-manager/nhp-field/cage
+ *   - 字段配置     → /console/admin/cage-shelves/forms/fields/cage（笼位字段字典套）
+ *   - 字段字典套   → /console/admin/cage-shelves/forms/fields
+ *   - 编辑并发布   → /console/admin/cage-shelves/forms/fields/cage
  *
  * 摘要数据来自笼位字段字典套（dictKey="cage"，FROZEN 即已发布）。
  */
@@ -60,14 +60,14 @@ export default function CageShelfFormManagePage() {
           </button>
           <button
             type="button"
-            onClick={() => navigate("/content-manager/nhp-field/cage")}
+            onClick={() => navigate("/console/admin/cage-shelves/forms/fields/cage")}
             className="inline-flex items-center gap-1.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)] transition"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />字段配置
           </button>
           <button
             type="button"
-            onClick={() => navigate("/content-manager/nhp-field")}
+            onClick={() => navigate("/console/admin/cage-shelves/forms/fields")}
             className="inline-flex items-center gap-1.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)] transition"
           >
             <Layers className="h-3.5 w-3.5" />字段字典套
@@ -102,7 +102,7 @@ export default function CageShelfFormManagePage() {
             </div>
             <button
               type="button"
-              onClick={() => navigate("/content-manager/nhp-field/cage")}
+              onClick={() => navigate("/console/admin/cage-shelves/forms/fields/cage")}
               className="shrink-0 inline-flex items-center gap-1.5 rounded-twin-md px-4 py-2 text-xs font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 transition"
             >
               <PencilRuler className="h-4 w-4" />编辑并发布
@@ -131,7 +131,7 @@ export default function CageShelfFormManagePage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/content-manager/nhp-field/cage")}
+              onClick={() => navigate("/console/admin/cage-shelves/forms/fields/cage")}
               className="text-left rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 hover:border-[var(--twin-hairline-strong)] transition"
             >
               <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--twin-ink)]">
@@ -141,7 +141,7 @@ export default function CageShelfFormManagePage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/content-manager/nhp-field")}
+              onClick={() => navigate("/console/admin/cage-shelves/forms/fields")}
               className="text-left rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 hover:border-[var(--twin-hairline-strong)] transition"
             >
               <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--twin-ink)]">
