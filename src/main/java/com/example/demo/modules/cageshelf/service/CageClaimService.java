@@ -280,6 +280,70 @@ public class CageClaimService {
     }
 
     // ═══════════════════════════════════════════
+    // 分笼（D2）：母笼确认后派生子笼认领
+    // ═══════════════════════════════════════════
+
+    @Transactional
+    public CageClaim divide(User student, Long claimId, List<Long> targetAnimalCageIds, String reason) {
+        CageClaim mother = claimMapper.selectById(claimId);
+        if (mother == null) throw new TwinBusinessException(404, "认领记录不存在");
+        if (!student.getId().equals(mother.getClaimantId())) {
+            throw new TwinBusinessException(403, "只能对自己的笼位进行分笼");
+        }
+        if (!"confirmed".equals(mother.getClaimStatus())) {
+            throw new TwinBusinessException(400, "当前状态不可分笼（仅已确认可分笼）");
+        }
+        if (targetAnimalCageIds == null || targetAnimalCageIds.isEmpty()) {
+            throw new TwinBusinessException(400, "请选择分笼目标笼位");
+        }
+
+        List<Long> childIds = new ArrayList<>();
+        for (Long targetId : targetAnimalCageIds) {
+            // ① FOR UPDATE 锁目标笼位详情
+            CageCellDetail detail = detailMapper.selectByAnimalCageIdForUpdate(targetId);
+            if (detail == null || detail.getCageTypeCode() == null || detail.getCageTypeCode() != 2) {
+                throw new TwinBusinessException(400, "笼位不可分笼");
+            }
+            // ② FOR UPDATE 锁目标笼位活跃认领
+            List<CageClaim> existing = claimMapper.selectByAnimalCageIdForUpdate(targetId);
+            for (CageClaim c : existing) {
+                if (c.isActive()) {
+                    throw new TwinBusinessException(409, "目标笼位已有活跃认领");
+                }
+            }
+
+            // ③ 派生子笼认领（locked，等待到场确认）
+            CageClaim child = new CageClaim();
+            child.setAnimalCageId(targetId);
+            child.setClaimStatus("locked");
+            child.setClaimantId(mother.getClaimantId());
+            child.setClaimantName(mother.getClaimantName());
+            child.setClaimantDept(mother.getClaimantDept());
+            child.setAupId(mother.getAupId());
+            child.setAssignerId(mother.getAssignerId());
+            child.setAssignerName(mother.getAssignerName());
+            child.setConfirmRequired(mother.getConfirmRequired());
+            child.setRetryCount(0);
+            child.setNote("分笼自笼位 " + mother.getAnimalCageId() + (reason != null ? "：" + reason : ""));
+            claimMapper.insert(child);
+            childIds.add(child.getId());
+
+            // ④ 表单值继承（INHERIT）并清空需重填字段
+            cageClaimInfoService.deriveInherited(mother.getId(), child.getId());
+        }
+
+        // ⑤ 母笼归档
+        mother.setClaimStatus("released");
+        mother.setReleasedAt(DT_FMT.format(LocalDateTime.now()));
+        mother.setNote("分笼归档" + (reason != null ? "：" + reason : ""));
+        claimMapper.update(mother);
+
+        log.info("[cage-apply] divide motherClaimId={} animalCageId={} children={}",
+                mother.getId(), mother.getAnimalCageId(), childIds);
+        return mother;
+    }
+
+    // ═══════════════════════════════════════════
     // 管理端审批
     // ═══════════════════════════════════════════
 

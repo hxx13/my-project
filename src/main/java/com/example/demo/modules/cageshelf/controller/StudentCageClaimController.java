@@ -176,6 +176,34 @@ public class StudentCageClaimController {
         }
     }
 
+    // ── 分笼 ──
+
+    @PostMapping("/{id}/divide")
+    @Operation(summary = "分笼派生子笼认领")
+    public Result<Map<String, Object>> divide(@PathVariable Long id,
+                                              @RequestBody Map<String, Object> body,
+                                              HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireLogin(u);
+        if (denied != null) return Result.fail(401, denied.getMessage());
+
+        List<Long> targetAnimalCageIds = toLongList(body == null ? null : body.get("targetAnimalCageIds"));
+        String reason = body != null ? str(body, "reason") : null;
+        if (targetAnimalCageIds == null || targetAnimalCageIds.isEmpty())
+            return Result.fail(400, "targetAnimalCageIds 必填且为数组");
+
+        try {
+            CageClaim mother = claimService.divide(u, id, targetAnimalCageIds, reason);
+            return Result.success(Map.of(
+                "id", mother.getId(),
+                "status", mother.getClaimStatus(),
+                "childCount", targetAnimalCageIds.size()
+            ));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
     // ── 我的认领 ──
 
     @GetMapping("/my")
@@ -257,6 +285,16 @@ public class StudentCageClaimController {
             if (item instanceof Map<?, ?> m) {
                 out.add((Map<String, Object>) m);
             }
+        }
+        return out;
+    }
+
+    private static List<Long> toLongList(Object v) {
+        if (!(v instanceof List<?> list)) return null;
+        List<Long> out = new ArrayList<>();
+        for (Object item : list) {
+            Long l = toLong(item);
+            if (l != null) out.add(l);
         }
         return out;
     }

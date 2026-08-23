@@ -104,4 +104,22 @@
             updated_at = NOW()
     </insert>
 
+    <update id="updateFillSource">
+        UPDATE cage_claim_info_value
+        SET fill_source = #{fillSource},
+            updated_at = NOW()
+        WHERE claim_id = #{claimId}
+    </update>
+
+    <delete id="deleteByFieldIds">
+        <if test="fieldIds != null and fieldIds.size() > 0">
+            DELETE FROM cage_claim_info_value
+            WHERE claim_id = #{claimId}
+              AND field_id IN
+            <foreach collection="fieldIds" item="fieldId" open="(" separator="," close=")">
+                #{fieldId}
+            </foreach>
+        </if>
+    </delete>
+
 </mapper>

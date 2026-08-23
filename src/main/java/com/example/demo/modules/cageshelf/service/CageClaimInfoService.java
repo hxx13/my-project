@@ -97,6 +97,30 @@ public class CageClaimInfoService {
         upsertText(claimId, fieldIdByCanonical, "animal_come_from", detail.getAnimalComeFrom());
     }
 
+    // ── 分笼继承（D2） ──
+
+    /**
+     * 从母笼认领派生子笼认领的表单值：整表复制母笼值（fill_source 统一标记 INHERIT），
+     * 再清空「需重填」字段（animal_male_number / animal_female_number / animal_sex），
+     * 交由学生在新笼位上重新填写数量与性别。
+     */
+    @Transactional
+    public void deriveInherited(Long motherClaimId, Long childClaimId) {
+        valueMapper.batchCopy(motherClaimId, childClaimId);
+        valueMapper.updateFillSource(childClaimId, "INHERIT");
+
+        List<Long> refillFieldIds = new ArrayList<>();
+        for (String canonical : new String[]{"animal_male_number", "animal_female_number", "animal_sex"}) {
+            CageInfoField f = fieldMapper.selectByCanonical(canonical);
+            if (f != null && f.getId() != null) {
+                refillFieldIds.add(f.getId());
+            }
+        }
+        if (!refillFieldIds.isEmpty()) {
+            valueMapper.deleteByFieldIds(childClaimId, refillFieldIds);
+        }
+    }
+
     private void upsertInt(Long claimId, Map<String, Long> fieldIdByCanonical, String canonical, Integer value) {
         if (value == null) {
             return;

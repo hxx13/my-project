@@ -27,4 +27,12 @@ public interface CageClaimInfoValueMapper {
      */
     int batchCopy(@Param("sourceClaimId") Long sourceClaimId,
                   @Param("targetClaimId") Long targetClaimId);
+
+    /** 整表更新某认领全部值的 fill_source（分笼继承后统一标记为 INHERIT） */
+    int updateFillSource(@Param("claimId") Long claimId,
+                         @Param("fillSource") String fillSource);
+
+    /** 按字段 id 批量删除某认领的实例值（fieldIds 为空时跳过，供「需重填」字段清空用） */
+    int deleteByFieldIds(@Param("claimId") Long claimId,
+                         @Param("fieldIds") List<Long> fieldIds);
 }
