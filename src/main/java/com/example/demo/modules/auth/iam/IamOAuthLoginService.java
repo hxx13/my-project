@@ -11,6 +11,7 @@ import com.example.demo.modules.auth.entity.UserAuthBinding;
 import com.example.demo.modules.auth.mapper.UserAuthBindingMapper;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.AuthService;
+import com.example.demo.modules.personnel.entity.Personnel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -194,6 +195,20 @@ public class IamOAuthLoginService {
             t = t.substring(0, t.length() - 1);
         }
         return t.toLowerCase(Locale.ROOT);
+    }
+
+    /** 单个人 → 登录账号 id:staff_id 优先,回落 aro_user_id;都空返回 null。 */
+    static String resolveAccountId(Personnel p) {
+        if (p == null) {
+            return null;
+        }
+        if (StringUtils.hasText(p.getStaffId())) {
+            return p.getStaffId().trim();
+        }
+        if (StringUtils.hasText(p.getAroUserId())) {
+            return p.getAroUserId().trim();
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")
