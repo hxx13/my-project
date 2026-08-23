@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageInfoFieldMapper">
+
+    <resultMap id="CageInfoFieldMap" type="com.example.demo.modules.cageshelf.entity.CageInfoField">
+        <id property="id" column="id"/>
+        <result property="canonical" column="canonical"/>
+        <result property="label" column="label"/>
+        <result property="dataType" column="data_type"/>
+        <result property="dictKey" column="dict_key"/>
+        <result property="role" column="role"/>
+        <result property="required" column="required"/>
+        <result property="showWhen" column="show_when"/>
+        <result property="syncSource" column="sync_source"/>
+        <result property="config" column="config"/>
+        <result property="sort" column="sort"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, canonical, label, data_type, dict_key, role, required,
+        show_when, sync_source, config, sort, created_at, updated_at
+    </sql>
+
+    <select id="selectAll" resultMap="CageInfoFieldMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_field
+        ORDER BY sort ASC, id ASC
+    </select>
+
+    <select id="selectByCanonical" resultMap="CageInfoFieldMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_field
+        WHERE canonical = #{canonical}
+        LIMIT 1
+    </select>
+
+    <select id="selectByRole" resultMap="CageInfoFieldMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_field
+        WHERE role = #{role}
+        ORDER BY sort ASC, id ASC
+    </select>
+
+</mapper>
