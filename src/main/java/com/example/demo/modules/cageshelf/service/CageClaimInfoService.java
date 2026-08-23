@@ -4,10 +4,12 @@ import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.entity.CageClaimInfoValue;
-import com.example.demo.modules.cageshelf.entity.CageInfoField;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimInfoValueMapper;
-import com.example.demo.modules.cageshelf.mapper.CageInfoFieldMapper;
+import com.example.demo.modules.nhp.entity.CrfField;
+import com.example.demo.modules.nhp.entity.CrfFieldDictionary;
+import com.example.demo.modules.nhp.mapper.CrfFieldDictionaryMapper;
+import com.example.demo.modules.nhp.mapper.CrfFieldMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +22,8 @@ import java.util.Map;
 
 /**
  * 认领表单实例服务 — 认领/分配建立时从笼位详情（CageCellDetail）同步交接一批 SYNC 种子值。
+ * 字段字典读 NHP crf_field 的「cage」数据域套（dictKey="cage"），字段身份 = crf_field.id，
+ * 值表 cage_claim_info_value.field_id 引用 crf_field.id。
  */
 @Service
 public class CageClaimInfoService {
@@ -28,16 +32,56 @@ public class CageClaimInfoService {
     private static final String COL_TEXT = "value_text";
     private static final String COL_BOOL = "value_bool";
 
+    /** cage 字段字典套稳定键 */
+    private static final String CAGE_DICT_KEY = "cage";
+
     private final CageCellDetailMapper detailMapper;
-    private final CageInfoFieldMapper fieldMapper;
+    private final CrfFieldDictionaryMapper fieldDictionaryMapper;
+    private final CrfFieldMapper fieldMapper;
     private final CageClaimInfoValueMapper valueMapper;
 
     public CageClaimInfoService(CageCellDetailMapper detailMapper,
-                                CageInfoFieldMapper fieldMapper,
+                                CrfFieldDictionaryMapper fieldDictionaryMapper,
+                                CrfFieldMapper fieldMapper,
                                 CageClaimInfoValueMapper valueMapper) {
         this.detailMapper = detailMapper;
+        this.fieldDictionaryMapper = fieldDictionaryMapper;
         this.fieldMapper = fieldMapper;
         this.valueMapper = valueMapper;
+    }
+
+    /** 解析 cage 字典套 id；未建套（或已软删）返回 null。 */
+    private Long cageDictId() {
+        CrfFieldDictionary dict = fieldDictionaryMapper.findByDictKey(CAGE_DICT_KEY);
+        if (dict == null || !Boolean.TRUE.equals(dict.getActive())) {
+            return null;
+        }
+        return dict.getId();
+    }
+
+    /** 载入 cage 数据域套下全部字段（活跃行，按 field_code 稳定排序）；字典缺失时返回空表。 */
+    private List<CrfField> cageFields() {
+        Long dictId = cageDictId();
+        if (dictId == null) {
+            return List.of();
+        }
+        List<CrfField> fields = fieldMapper.listByDictionary(dictId);
+        return fields == null ? List.of() : fields;
+    }
+
+    /**
+     * crf_field.data_type（NHP 精确值 INTEGER/TEXT/BOOLEAN…）→ 值表列名（number/text/boolean）。
+     * 与 {@link #valueColumn(String)} 的读写事实源对齐；未知类型返回 null。
+     */
+    private String columnType(CrfField field) {
+        String dt = field == null ? null : field.getDataType();
+        if (dt == null) return null;
+        return switch (dt.trim().toUpperCase()) {
+            case "INTEGER" -> "number";
+            case "BOOLEAN" -> "boolean";
+            case "STRING", "TEXT" -> "text";
+            default -> null;
+        };
     }
 
     /**
@@ -53,11 +97,11 @@ public class CageClaimInfoService {
             return;
         }
 
-        List<CageInfoField> fields = fieldMapper.selectAll();
+        List<CrfField> fields = cageFields();
         Map<String, Long> fieldIdByCanonical = new HashMap<>();
-        for (CageInfoField f : fields) {
-            if (f != null && f.getCanonical() != null && f.getId() != null) {
-                fieldIdByCanonical.put(f.getCanonical(), f.getId());
+        for (CrfField f : fields) {
+            if (f != null && f.getFieldCode() != null && f.getId() != null) {
+                fieldIdByCanonical.put(f.getFieldCode(), f.getId());
             }
         }
 
@@ -109,9 +153,10 @@ public class CageClaimInfoService {
         valueMapper.batchCopy(motherClaimId, childClaimId);
         valueMapper.updateFillSource(childClaimId, "INHERIT");
 
+        Long dictId = cageDictId();
         List<Long> refillFieldIds = new ArrayList<>();
         for (String canonical : new String[]{"animal_male_number", "animal_female_number", "animal_sex"}) {
-            CageInfoField f = fieldMapper.selectByCanonical(canonical);
+            CrfField f = dictId == null ? null : fieldMapper.findByFieldCodeInDict(dictId, canonical);
             if (f != null && f.getId() != null) {
                 refillFieldIds.add(f.getId());
             }
@@ -183,11 +228,11 @@ public class CageClaimInfoService {
     }
 
     /**
-     * 读取某个认领的全部信息字段（按字典 sort 排序），每个字段挂上该认领的实例值。
+     * 读取某个认领的全部信息字段（按字典稳定序排序），每个字段挂上该认领的实例值。
      * 未填写字段 value 为 null、fillSource 为 null，但仍返回行（供表单渲染）。
      */
     public List<Map<String, Object>> getInfo(Long claimId) {
-        List<CageInfoField> fields = fieldMapper.selectAll();
+        List<CrfField> fields = cageFields();
         List<CageClaimInfoValue> values = valueMapper.selectByClaimId(claimId);
         Map<Long, CageClaimInfoValue> valueByFieldId = new HashMap<>();
         for (CageClaimInfoValue v : values) {
@@ -197,16 +242,16 @@ public class CageClaimInfoService {
         }
 
         List<Map<String, Object>> result = new ArrayList<>();
-        for (CageInfoField f : fields) {
+        for (CrfField f : fields) {
             if (f == null || f.getId() == null) continue;
             CageClaimInfoValue v = valueByFieldId.get(f.getId());
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("fieldId", f.getId());
-            row.put("canonical", f.getCanonical());
-            row.put("label", f.getLabel());
-            row.put("dataType", f.getDataType());
+            row.put("canonical", f.getFieldCode());
+            row.put("label", f.getNameCn());
+            row.put("dataType", columnType(f));
             row.put("required", f.getRequired());
-            row.put("sort", f.getSort());
+            row.put("sort", f.getId());
             row.put("value", readValue(f, v));
             row.put("fillSource", v == null ? null : v.getFillSource());
             result.add(row);
@@ -221,9 +266,9 @@ public class CageClaimInfoService {
      */
     @Transactional
     public List<Map<String, Object>> updateInfo(Long claimId, List<Map<String, Object>> entries) {
-        List<CageInfoField> fields = fieldMapper.selectAll();
-        Map<Long, CageInfoField> fieldById = new HashMap<>();
-        for (CageInfoField f : fields) {
+        List<CrfField> fields = cageFields();
+        Map<Long, CrfField> fieldById = new HashMap<>();
+        for (CrfField f : fields) {
             if (f != null && f.getId() != null) {
                 fieldById.put(f.getId(), f);
             }
@@ -233,9 +278,9 @@ public class CageClaimInfoService {
             if (entry == null) continue;
             Long fieldId = toLong(entry.get("fieldId"));
             if (fieldId == null) throw new TwinBusinessException(400, "fieldId 必填");
-            CageInfoField field = fieldById.get(fieldId);
+            CrfField field = fieldById.get(fieldId);
             if (field == null) throw new TwinBusinessException(400, "字段不存在: " + fieldId);
-            String col = valueColumn(field.getDataType());
+            String col = valueColumn(columnType(field));
             if (col == null) throw new TwinBusinessException(400, "字段类型不支持: " + field.getDataType());
 
             CageClaimInfoValue v = new CageClaimInfoValue();
@@ -250,9 +295,9 @@ public class CageClaimInfoService {
         return getInfo(claimId);
     }
 
-    private Object readValue(CageInfoField field, CageClaimInfoValue v) {
+    private Object readValue(CrfField field, CageClaimInfoValue v) {
         if (v == null) return null;
-        String col = valueColumn(field.getDataType());
+        String col = valueColumn(columnType(field));
         if (col == null) return null;
         return switch (col) {
             case COL_INT -> v.getValueInt();
@@ -266,7 +311,7 @@ public class CageClaimInfoService {
      * 把 raw 落到 v 的对应值列。value=null 表示「清除该字段」，直接删行并返回 false；
      * 否则返回 true 表示需要 upsert。类型不匹配抛 TwinBusinessException(400)。
      */
-    private boolean applyValue(CageClaimInfoValue v, String col, CageInfoField field, Object raw) {
+    private boolean applyValue(CageClaimInfoValue v, String col, CrfField field, Object raw) {
         if (raw == null) {
             valueMapper.deleteByClaimAndField(v.getClaimId(), v.getFieldId());
             return false;
@@ -274,23 +319,23 @@ public class CageClaimInfoService {
         switch (col) {
             case COL_INT -> {
                 if (!(raw instanceof Number n)) {
-                    throw new TwinBusinessException(400, "字段 " + field.getCanonical() + " 需要数字类型");
+                    throw new TwinBusinessException(400, "字段 " + field.getFieldCode() + " 需要数字类型");
                 }
                 if ((n instanceof Double || n instanceof Float || n instanceof BigDecimal)
                         && n.doubleValue() != Math.floor(n.doubleValue())) {
-                    throw new TwinBusinessException(400, "字段 " + field.getCanonical() + " 需要整数");
+                    throw new TwinBusinessException(400, "字段 " + field.getFieldCode() + " 需要整数");
                 }
                 v.setValueInt(n.longValue());
             }
             case COL_TEXT -> {
                 if (!(raw instanceof String)) {
-                    throw new TwinBusinessException(400, "字段 " + field.getCanonical() + " 需要文本类型");
+                    throw new TwinBusinessException(400, "字段 " + field.getFieldCode() + " 需要文本类型");
                 }
                 v.setValueText((String) raw);
             }
             case COL_BOOL -> {
                 if (!(raw instanceof Boolean)) {
-                    throw new TwinBusinessException(400, "字段 " + field.getCanonical() + " 需要布尔类型");
+                    throw new TwinBusinessException(400, "字段 " + field.getFieldCode() + " 需要布尔类型");
                 }
                 v.setValueBool((Boolean) raw);
             }
