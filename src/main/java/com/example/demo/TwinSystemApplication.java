@@ -21,7 +21,8 @@ import java.util.TimeZone;
         "com.example.demo.modules.notification.push.config",
         "com.example.demo.modules.notification.push.recipient",
         "com.example.demo.modules.notification.push.digest",
-        "com.example.demo.modules.notification.push.preference"
+        "com.example.demo.modules.notification.push.preference",
+        "com.example.demo.modules.notification.push.binding"
 })
 @EnableScheduling
 @EnableAsync
