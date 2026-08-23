@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageClaimInfoValueMapper">
+
+    <resultMap id="CageClaimInfoValueMap" type="com.example.demo.modules.cageshelf.entity.CageClaimInfoValue">
+        <id property="id" column="id"/>
+        <result property="claimId" column="claim_id"/>
+        <result property="fieldId" column="field_id"/>
+        <result property="valueString" column="value_string"/>
+        <result property="valueText" column="value_text"/>
+        <result property="valueInt" column="value_int"/>
+        <result property="valueDecimal" column="value_decimal"/>
+        <result property="valueDate" column="value_date"/>
+        <result property="valueDatetime" column="value_datetime"/>
+        <result property="valueBool" column="value_bool"/>
+        <result property="valueJson" column="value_json"/>
+        <result property="fillSource" column="fill_source"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, claim_id, field_id,
+        value_string, value_text, value_int, value_decimal,
+        value_date, value_datetime, value_bool, value_json,
+        fill_source, created_at, updated_at
+    </sql>
+
+    <insert id="upsert">
+        INSERT INTO cage_claim_info_value (
+            claim_id, field_id,
+            value_string, value_text, value_int, value_decimal,
+            value_date, value_datetime, value_bool, value_json,
+            fill_source, created_at, updated_at
+        ) VALUES (
+            #{claimId}, #{fieldId},
+            #{valueString}, #{valueText}, #{valueInt}, #{valueDecimal},
+            #{valueDate}, #{valueDatetime}, #{valueBool}, #{valueJson},
+            COALESCE(#{fillSource}, 'MANUAL'), NOW(), NOW()
+        )
+        ON DUPLICATE KEY UPDATE
+            value_string = VALUES(value_string),
+            value_text = VALUES(value_text),
+            value_int = VALUES(value_int),
+            value_decimal = VALUES(value_decimal),
+            value_date = VALUES(value_date),
+            value_datetime = VALUES(value_datetime),
+            value_bool = VALUES(value_bool),
+            value_json = VALUES(value_json),
+            fill_source = VALUES(fill_source),
+            updated_at = NOW()
+    </insert>
+
+    <select id="selectByClaimId" resultMap="CageClaimInfoValueMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_claim_info_value
+        WHERE claim_id = #{claimId}
+        ORDER BY id ASC
+    </select>
+
+    <!--
+        把 source 认领的全部值复制到 target 认领，幂等：
+        目标已有同 (claim_id, field_id) 键时走 ON DUPLICATE KEY UPDATE，不会重复插入。
+        单条 SQL（数据源未开启 allowMultiQueries，无法在同一语句内先 DELETE 再 INSERT），
+        如需严格「替换」语义（清掉目标多余行），由调用方在 @Transactional 内先删目标行。
+    -->
+    <insert id="batchCopy">
+        INSERT INTO cage_claim_info_value (
+            claim_id, field_id,
+            value_string, value_text, value_int, value_decimal,
+            value_date, value_datetime, value_bool, value_json,
+            fill_source, created_at, updated_at
+        )
+        SELECT
+            #{targetClaimId}, field_id,
+            value_string, value_text, value_int, value_decimal,
+            value_date, value_datetime, value_bool, value_json,
+            COALESCE(fill_source, 'MANUAL'), NOW(), NOW()
+        FROM cage_claim_info_value
+        WHERE claim_id = #{sourceClaimId}
+        ON DUPLICATE KEY UPDATE
+            value_string = VALUES(value_string),
+            value_text = VALUES(value_text),
+            value_int = VALUES(value_int),
+            value_decimal = VALUES(value_decimal),
+            value_date = VALUES(value_date),
+            value_datetime = VALUES(value_datetime),
+            value_bool = VALUES(value_bool),
+            value_json = VALUES(value_json),
+            fill_source = VALUES(fill_source),
+            updated_at = NOW()
+    </insert>
+
+</mapper>

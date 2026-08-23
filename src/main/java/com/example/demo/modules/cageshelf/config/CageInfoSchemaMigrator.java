@@ -26,6 +26,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(CageInfoSchemaMigrator.class);
     private static final String TABLE = "cage_info_field";
+    private static final String CLAIM_VALUE_TABLE = "cage_claim_info_value";
     private static final String MAPPING_RESOURCE = "aro_field_mapping.json";
 
     /** canonical → 中文显示名（任务指定的精确文案） */
@@ -43,6 +44,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         try {
             createTableIfNeeded();
+            createClaimValueTableIfNeeded();
             seedFromMapping();
         } catch (Exception e) {
             log.error("[cage-info-schema] 迁移失败: {}", e.getMessage(), e);
@@ -70,6 +72,31 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼位字段字典表'
                 """);
         log.info("[cage-info-schema] {} 表已就绪", TABLE);
+    }
+
+    private void createClaimValueTableIfNeeded() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS cage_claim_info_value (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    claim_id BIGINT NOT NULL COMMENT '认领ID → cage_claims.id',
+                    field_id BIGINT NOT NULL COMMENT '字段ID → cage_info_field.id',
+                    value_string VARCHAR(512) NULL,
+                    value_text TEXT NULL,
+                    value_int BIGINT NULL,
+                    value_decimal DECIMAL(18,4) NULL,
+                    value_date VARCHAR(32) NULL,
+                    value_datetime VARCHAR(32) NULL,
+                    value_bool TINYINT(1) NULL,
+                    value_json JSON NULL,
+                    fill_source VARCHAR(16) NOT NULL DEFAULT 'MANUAL',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_claim_field (claim_id, field_id),
+                    KEY idx_cage_claim_info_value_claim (claim_id),
+                    KEY idx_cage_claim_info_value_field (field_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='认领表单实例 EAV 值表'
+                """);
+        log.info("[cage-info-schema] {} 表已就绪", CLAIM_VALUE_TABLE);
     }
 
     private void seedFromMapping() {
