@@ -285,7 +285,7 @@ public class CageClaimService {
 
     @Transactional
     public CageClaim divide(User student, Long claimId, List<Long> targetAnimalCageIds, String reason) {
-        CageClaim mother = claimMapper.selectById(claimId);
+        CageClaim mother = claimMapper.selectByIdForUpdate(claimId);
         if (mother == null) throw new TwinBusinessException(404, "认领记录不存在");
         if (!student.getId().equals(mother.getClaimantId())) {
             throw new TwinBusinessException(403, "只能对自己的笼位进行分笼");
@@ -296,9 +296,11 @@ public class CageClaimService {
         if (targetAnimalCageIds == null || targetAnimalCageIds.isEmpty()) {
             throw new TwinBusinessException(400, "请选择分笼目标笼位");
         }
+        // 去重 + 升序排序，保证多笼锁定顺序一致，避免并发 divide 死锁
+        List<Long> targets = targetAnimalCageIds.stream().distinct().sorted().toList();
 
         List<Long> childIds = new ArrayList<>();
-        for (Long targetId : targetAnimalCageIds) {
+        for (Long targetId : targets) {
             // ① FOR UPDATE 锁目标笼位详情
             CageCellDetail detail = detailMapper.selectByAnimalCageIdForUpdate(targetId);
             if (detail == null || detail.getCageTypeCode() == null || detail.getCageTypeCode() != 2) {
