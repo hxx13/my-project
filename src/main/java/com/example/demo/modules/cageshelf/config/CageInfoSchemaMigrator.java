@@ -44,6 +44,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         try {
             createTableIfNeeded();
+            ensurePublishedColumn();
             createClaimValueTableIfNeeded();
             seedFromMapping();
         } catch (Exception e) {
@@ -65,6 +66,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
                     sync_source VARCHAR(256) NULL COMMENT 'ARO字段路径',
                     config JSON NULL COMMENT '字段配置',
                     sort INT NULL COMMENT '排序值',
+                    published TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否发布',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     UNIQUE KEY uk_cage_info_field_canonical (canonical),
@@ -72,6 +74,26 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼位字段字典表'
                 """);
         log.info("[cage-info-schema] {} 表已就绪", TABLE);
+    }
+
+    /**
+     * 补齐 published 列（兼容旧表）：ALTER 幂等，仅在「新加列」时回填存量行 = 1（种子字段发布）。
+     * 后续运行时由 create() 新建的自定义字段默认 published=0，不在此被误发布。
+     */
+    private void ensurePublishedColumn() {
+        boolean added = false;
+        try {
+            jdbcTemplate.execute("ALTER TABLE cage_info_field ADD COLUMN published TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否发布'");
+            added = true;
+        } catch (Exception ignored) { /* 列已存在 */ }
+        if (added) {
+            try {
+                jdbcTemplate.update("UPDATE cage_info_field SET published = 1 WHERE published = 0");
+            } catch (Exception e) {
+                log.warn("[cage-info-schema] 回填 published 失败: {}", e.getMessage());
+            }
+        }
+        log.info("[cage-info-schema] {} published 列就绪", TABLE);
     }
 
     private void createClaimValueTableIfNeeded() {
@@ -128,11 +150,11 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
     }
 
     private void upsert(String canonical, String label, String dataType, String syncSource, int sort) {
-        // role/required 使用默认值；dict_key/show_when/config 暂无种子来源，置 NULL。
+        // role/required 使用默认值；dict_key/show_when/config 暂无种子来源，置 NULL；种子字段一律 published=1。
         jdbcTemplate.update(
             "INSERT INTO cage_info_field " +
-            "(canonical, label, data_type, dict_key, role, required, show_when, sync_source, config, sort, created_at, updated_at) " +
-            "VALUES (?, ?, ?, NULL, 'VALUE', 'NO', NULL, ?, NULL, ?, NOW(), NOW()) " +
+            "(canonical, label, data_type, dict_key, role, required, show_when, sync_source, config, sort, published, created_at, updated_at) " +
+            "VALUES (?, ?, ?, NULL, 'VALUE', 'NO', NULL, ?, NULL, ?, 1, NOW(), NOW()) " +
             "ON DUPLICATE KEY UPDATE " +
             "label = VALUES(label), data_type = VALUES(data_type), " +
             "sync_source = VALUES(sync_source), sort = VALUES(sort), updated_at = NOW()",

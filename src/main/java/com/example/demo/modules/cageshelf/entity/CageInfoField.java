@@ -17,6 +17,7 @@ public class CageInfoField {
     private String syncSource;     // ARO 字段路径
     private String config;         // 字段配置 JSON
     private Integer sort;          // 排序值
+    private Boolean published;     // 是否发布（1=已发布，0=未发布）
     private String createdAt;      // DATETIME
     private String updatedAt;      // DATETIME
 
@@ -54,6 +55,9 @@ public class CageInfoField {
 
     public Integer getSort() { return sort; }
     public void setSort(Integer v) { this.sort = v; }
+
+    public Boolean getPublished() { return published; }
+    public void setPublished(Boolean v) { this.published = v; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String v) { this.createdAt = v; }
