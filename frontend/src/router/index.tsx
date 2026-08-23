@@ -74,6 +74,10 @@ import AdminDoorControlPage from "@/pages/AdminDoorControlPage";
 import AdminCageShelfPage from "@/pages/AdminCageShelfPage";
 import AdminSpecialStatusOverviewPage from "@/pages/AdminSpecialStatusOverviewPage";
 import AdminCageShelfIndexPage from "@/pages/AdminCageShelfIndexPage";
+import CageShelfFormManagePage from "@/features/cage-shelf/pages/CageShelfFormManagePage";
+import CageFieldConfigPage from "@/features/cage-shelf/pages/CageFieldConfigPage";
+import CageCodelistManagePage from "@/features/cage-shelf/pages/CageCodelistManagePage";
+import CageFormEditorPage from "@/features/cage-shelf/pages/CageFormEditorPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
 import AdminAroBindingPage from "@/pages/AdminAroBindingPage";
 import AdminExpStatsPage from "@/pages/AdminExpStatsPage";
@@ -332,6 +336,10 @@ export const router = createHashRouter([
               { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage /> },
               { path: "cage-shelves", element: <AdminCageShelfPage /> },
               { path: "cage-shelves/special-status", element: <AdminSpecialStatusOverviewPage /> },
+              { path: "cage-shelves/forms", element: <CageShelfFormManagePage /> },
+              { path: "cage-shelves/forms/fields", element: <CageFieldConfigPage /> },
+              { path: "cage-shelves/forms/codelists", element: <CageCodelistManagePage /> },
+              { path: "cage-shelves/forms/editor", element: <CageFormEditorPage /> },
               { path: "cage-shelf-indexes", element: <AdminCageShelfIndexPage /> },
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },
               { path: "aro-binding", element: <AdminAroBindingPage /> },
