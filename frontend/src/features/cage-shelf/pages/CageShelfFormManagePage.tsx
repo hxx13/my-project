@@ -9,7 +9,7 @@ import { fetchNhpFields } from "@/features/nhp/api/nhpField.api";
  * CageShelfFormManagePage — 笼位详情表单管理 HUB
  *
  * 复用 NHP 管理页，不再维护自定义简化页：
- *   - 码表管理     → /content-manager/nhp-codelist
+ *   - 码表管理     → /console/admin/cage-shelves/forms/codelists
  *   - 字段配置     → /content-manager/nhp-field/cage（笼位字段字典套）
  *   - 字段字典套   → /content-manager/nhp-field
  *   - 编辑并发布   → /content-manager/nhp-field/cage
@@ -53,7 +53,7 @@ export default function CageShelfFormManagePage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => navigate("/content-manager/nhp-codelist")}
+            onClick={() => navigate("/console/admin/cage-shelves/forms/codelists")}
             className="inline-flex items-center gap-1.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)] transition"
           >
             <Database className="h-3.5 w-3.5" />码表管理
@@ -121,7 +121,7 @@ export default function CageShelfFormManagePage() {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
             <button
               type="button"
-              onClick={() => navigate("/content-manager/nhp-codelist")}
+              onClick={() => navigate("/console/admin/cage-shelves/forms/codelists")}
               className="text-left rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 hover:border-[var(--twin-hairline-strong)] transition"
             >
               <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--twin-ink)]">

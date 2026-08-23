@@ -75,6 +75,7 @@ import AdminCageShelfPage from "@/pages/AdminCageShelfPage";
 import AdminSpecialStatusOverviewPage from "@/pages/AdminSpecialStatusOverviewPage";
 import AdminCageShelfIndexPage from "@/pages/AdminCageShelfIndexPage";
 import CageShelfFormManagePage from "@/features/cage-shelf/pages/CageShelfFormManagePage";
+import CageCodelistPage from "@/features/cage-shelf/pages/CageCodelistPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
 import AdminAroBindingPage from "@/pages/AdminAroBindingPage";
 import AdminExpStatsPage from "@/pages/AdminExpStatsPage";
@@ -334,6 +335,7 @@ export const router = createHashRouter([
               { path: "cage-shelves", element: <AdminCageShelfPage /> },
               { path: "cage-shelves/special-status", element: <AdminSpecialStatusOverviewPage /> },
               { path: "cage-shelves/forms", element: <CageShelfFormManagePage /> },
+              { path: "cage-shelves/forms/codelists", element: <CageCodelistPage /> },
               { path: "cage-shelf-indexes", element: <AdminCageShelfIndexPage /> },
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },
               { path: "aro-binding", element: <AdminAroBindingPage /> },
