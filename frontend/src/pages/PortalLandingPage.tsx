@@ -9,7 +9,7 @@ import { AboutSection } from "@/features/portal/AboutSection";
 import { FadeInSection } from "@/components/scroll-reveal";
 import { loginOAuth } from "@/api/domains/auth.api";
 import { authStorage } from "@/features/auth/authStorage";
-import { resolvePostLoginTarget } from "@/features/auth/postLoginNavigation";
+import { isStudentAccount, resolvePostLoginTarget } from "@/features/auth/postLoginNavigation";
 import {
   clearOAuthQueryFromUrl,
   consumeIamOAuthCallback,
@@ -73,9 +73,7 @@ export default function PortalLandingPage() {
         authStorage.setAuth(data.token, data.role, data.userInfo);
         clearOAuthQueryFromUrl();
 
-        const isStudent =
-          data.userInfo?.accountSource === "STUDENT" ||
-          (data.userInfo?.accountSource == null && data.role === "MEMBER");
+        const isStudent = isStudentAccount();
 
         if (isStudent) {
           authStorage.markLoginPortal("student");
