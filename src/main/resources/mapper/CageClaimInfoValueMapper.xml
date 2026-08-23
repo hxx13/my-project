@@ -60,6 +60,11 @@
         ORDER BY id ASC
     </select>
 
+    <delete id="deleteByClaimAndField">
+        DELETE FROM cage_claim_info_value
+        WHERE claim_id = #{claimId} AND field_id = #{fieldId}
+    </delete>
+
     <!--
         把 source 认领的全部值复制到 target 认领，幂等：
         目标已有同 (claim_id, field_id) 键时走 ON DUPLICATE KEY UPDATE，不会重复插入。

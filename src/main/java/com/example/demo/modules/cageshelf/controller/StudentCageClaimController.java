@@ -5,6 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
+import com.example.demo.modules.cageshelf.service.CageClaimInfoService;
 import com.example.demo.modules.cageshelf.service.CageClaimService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,11 +28,14 @@ public class StudentCageClaimController {
 
     private final AuthContextService authContextService;
     private final CageClaimService claimService;
+    private final CageClaimInfoService infoService;
 
     public StudentCageClaimController(AuthContextService authContextService,
-                                       CageClaimService claimService) {
+                                       CageClaimService claimService,
+                                       CageClaimInfoService infoService) {
         this.authContextService = authContextService;
         this.claimService = claimService;
+        this.infoService = infoService;
     }
 
     private User resolveUser(HttpServletRequest req) {
@@ -184,6 +188,46 @@ public class StudentCageClaimController {
         return Result.success(claimService.getMyClaims(u.getId(), status));
     }
 
+    // ── 信息读写 ──
+
+    @GetMapping("/{id}/info")
+    @Operation(summary = "查看认领信息")
+    public Result<List<Map<String, Object>>> getInfo(@PathVariable Long id,
+                                                      HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireLogin(u);
+        if (denied != null) return Result.fail(401, denied.getMessage());
+
+        CageClaim claim = claimService.getById(id);
+        if (claim == null) return Result.fail(404, "认领记录不存在");
+        if (!u.getId().equals(claim.getClaimantId())) return Result.fail(403, "只能查看自己的认领信息");
+
+        return Result.success(infoService.getInfo(id));
+    }
+
+    @PutMapping("/{id}/info")
+    @Operation(summary = "保存认领信息")
+    public Result<List<Map<String, Object>>> updateInfo(@PathVariable Long id,
+                                                         @RequestBody Map<String, Object> body,
+                                                         HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireLogin(u);
+        if (denied != null) return Result.fail(401, denied.getMessage());
+
+        CageClaim claim = claimService.getById(id);
+        if (claim == null) return Result.fail(404, "认领记录不存在");
+        if (!u.getId().equals(claim.getClaimantId())) return Result.fail(403, "只能编辑自己的认领信息");
+
+        List<Map<String, Object>> values = toMapList(body == null ? null : body.get("values"));
+        if (values == null) return Result.fail(400, "values 必填且为数组");
+
+        try {
+            return Result.success(infoService.updateInfo(id, values));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
     // ── helpers ──
 
     @SuppressWarnings("unchecked")
@@ -203,5 +247,17 @@ public class StudentCageClaimController {
         if (v instanceof Number n) return n.longValue();
         try { return Long.parseLong(String.valueOf(v).trim()); }
         catch (NumberFormatException e) { return null; }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> toMapList(Object v) {
+        if (!(v instanceof List<?> list)) return null;
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> m) {
+                out.add((Map<String, Object>) m);
+            }
+        }
+        return out;
     }
 }

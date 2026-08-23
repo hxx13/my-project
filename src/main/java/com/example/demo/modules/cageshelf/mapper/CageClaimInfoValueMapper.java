@@ -15,6 +15,9 @@ public interface CageClaimInfoValueMapper {
     /** 查某个认领的全部表单实例值 */
     List<CageClaimInfoValue> selectByClaimId(@Param("claimId") Long claimId);
 
+    /** 清除某个认领上某个字段的实例值（value=null 语义） */
+    int deleteByClaimAndField(@Param("claimId") Long claimId, @Param("fieldId") Long fieldId);
+
     /**
      * 把 source 认领的全部值复制到 target 认领。
      * 幂等：目标已有同键行时走 ON DUPLICATE KEY UPDATE（不会重复插入）。
