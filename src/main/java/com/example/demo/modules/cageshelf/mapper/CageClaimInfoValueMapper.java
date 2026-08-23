@@ -15,6 +15,9 @@ public interface CageClaimInfoValueMapper {
     /** 查某个认领的全部表单实例值 */
     List<CageClaimInfoValue> selectByClaimId(@Param("claimId") Long claimId);
 
+    /** 查某认领是否存在任何表单实例值（hasInfo 判定用） */
+    int countByClaimId(@Param("claimId") Long claimId);
+
     /** 清除某个认领上某个字段的实例值（value=null 语义） */
     int deleteByClaimAndField(@Param("claimId") Long claimId, @Param("fieldId") Long fieldId);
 

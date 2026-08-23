@@ -60,6 +60,12 @@
         ORDER BY id ASC
     </select>
 
+    <select id="countByClaimId" resultType="int">
+        SELECT COUNT(1)
+        FROM cage_claim_info_value
+        WHERE claim_id = #{claimId}
+    </select>
+
     <delete id="deleteByClaimAndField">
         DELETE FROM cage_claim_info_value
         WHERE claim_id = #{claimId} AND field_id = #{fieldId}
