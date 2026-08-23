@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageInfoCodelistItemMapper">
+
+    <resultMap id="CageInfoCodelistItemMap" type="com.example.demo.modules.cageshelf.entity.CageInfoCodelistItem">
+        <id property="id" column="id"/>
+        <result property="codelistId" column="codelist_id"/>
+        <result property="itemCode" column="item_code"/>
+        <result property="itemLabel" column="item_label"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, codelist_id, item_code, item_label, sort_order, created_at, updated_at
+    </sql>
+
+    <select id="selectByCodelistId" resultMap="CageInfoCodelistItemMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_codelist_item
+        WHERE codelist_id = #{codelistId}
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectById" resultMap="CageInfoCodelistItemMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_codelist_item
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="countByCodelistId" resultType="int">
+        SELECT COUNT(1) FROM cage_info_codelist_item WHERE codelist_id = #{codelistId}
+    </select>
+
+    <select id="countByCodelistIdAndItemCode" resultType="int">
+        SELECT COUNT(1) FROM cage_info_codelist_item
+        WHERE codelist_id = #{codelistId} AND item_code = #{itemCode}
+    </select>
+
+    <select id="selectMaxSortOrder" resultType="java.lang.Integer">
+        SELECT MAX(sort_order) FROM cage_info_codelist_item WHERE codelist_id = #{codelistId}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_info_codelist_item (codelist_id, item_code, item_label, sort_order, created_at, updated_at)
+        VALUES (#{codelistId}, #{itemCode}, #{itemLabel}, #{sortOrder}, NOW(), NOW())
+    </insert>
+
+    <update id="update">
+        UPDATE cage_info_codelist_item
+        SET item_label = #{itemLabel},
+            sort_order = #{sortOrder},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM cage_info_codelist_item WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByCodelistId">
+        DELETE FROM cage_info_codelist_item WHERE codelist_id = #{codelistId}
+    </delete>
+</mapper>

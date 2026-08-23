@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageInfoCodelistMapper">
+
+    <resultMap id="CageInfoCodelistMap" type="com.example.demo.modules.cageshelf.entity.CageInfoCodelist">
+        <id property="id" column="id"/>
+        <result property="code" column="code"/>
+        <result property="name" column="name"/>
+        <result property="folder" column="folder"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="itemCount" column="item_count"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, code, name, folder, created_at, updated_at
+    </sql>
+
+    <select id="selectAll" resultMap="CageInfoCodelistMap">
+        SELECT c.id, c.code, c.name, c.folder, c.created_at, c.updated_at,
+               (SELECT COUNT(1) FROM cage_info_codelist_item i WHERE i.codelist_id = c.id) AS item_count
+        FROM cage_info_codelist c
+        ORDER BY c.name ASC, c.code ASC
+    </select>
+
+    <select id="selectByCode" resultMap="CageInfoCodelistMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_codelist
+        WHERE code = #{code}
+        LIMIT 1
+    </select>
+
+    <select id="selectById" resultMap="CageInfoCodelistMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_codelist
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="countByCode" resultType="int">
+        SELECT COUNT(1) FROM cage_info_codelist WHERE code = #{code}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_info_codelist (code, name, folder, created_at, updated_at)
+        VALUES (#{code}, #{name}, #{folder}, NOW(), NOW())
+    </insert>
+
+    <update id="updateMeta">
+        UPDATE cage_info_codelist
+        SET name = #{name},
+            folder = #{folder},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM cage_info_codelist WHERE id = #{id}
+    </delete>
+</mapper>
