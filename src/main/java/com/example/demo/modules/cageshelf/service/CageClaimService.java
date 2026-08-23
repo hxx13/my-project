@@ -12,6 +12,7 @@ import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.mapper.ApprovalRecordMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
+import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.identity.service.PersonIdentityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,8 @@ public class CageClaimService {
     private final NotificationSettingsService notificationSettingsService;
     private final PersonIdentityService personIdentityService;
     private final UserDisplayNameService userDisplayNameService;
+    private final CageQuotaService quotaService;
+    private final CageClaimInfoService cageClaimInfoService;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -45,7 +48,9 @@ public class CageClaimService {
                             UserMapper userMapper,
                             NotificationSettingsService notificationSettingsService,
                             PersonIdentityService personIdentityService,
-                            UserDisplayNameService userDisplayNameService) {
+                            UserDisplayNameService userDisplayNameService,
+                            CageQuotaService quotaService,
+                            CageClaimInfoService cageClaimInfoService) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -53,6 +58,8 @@ public class CageClaimService {
         this.notificationSettingsService = notificationSettingsService;
         this.personIdentityService = personIdentityService;
         this.userDisplayNameService = userDisplayNameService;
+        this.quotaService = quotaService;
+        this.cageClaimInfoService = cageClaimInfoService;
     }
 
     private String displayNameOf(User user) {
@@ -105,6 +112,10 @@ public class CageClaimService {
             throw new TwinBusinessException(400, "该笼位不可认领（仅已预约空笼盒可认领）");
         }
 
+        // ①½ 配额校验：认领也受「该 AUP 可用笼位数」限制
+        Long roomId = claimMapper.selectRoomIdByShelfIndexId(shelfIndexId);
+        quotaService.assertCanAllocate(roomId, detail.getAupNumber(), 1);
+
         // ② FOR UPDATE 锁已有活跃认领（只锁活跃态，不锁历史）
         List<CageClaim> existing = claimMapper.selectByAnimalCageIdForUpdate(animalCageId);
         for (CageClaim c : existing) {
@@ -152,6 +163,7 @@ public class CageClaimService {
         claim.setConfirmRequired(confirmReq);
         claim.setRetryCount(0);
         claimMapper.insert(claim);
+        cageClaimInfoService.seedFromDetail(claim);
 
         log.info("[cage-apply] student={} animalCageId={} status={} id={}", studentId, animalCageId, initStatus, claim.getId());
         return claim;
@@ -367,6 +379,7 @@ public class CageClaimService {
         claim.setRetryCount(0);
         claim.setNote("管理员手动分配");
         claimMapper.insert(claim);
+        cageClaimInfoService.seedFromDetail(claim);
 
         log.info("[cage-apply] assign admin={} animalCageId={} → student={}", admin.getId(), animalCageId, studentUserId);
         return claim;
