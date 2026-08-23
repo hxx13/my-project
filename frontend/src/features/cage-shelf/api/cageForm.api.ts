@@ -30,7 +30,7 @@ export interface CageInfoField {
   syncSource?: string | null;
 }
 
-/** 可用码表摘要（dict_key 选择器） */
+/** 笼位域码表摘要（与 NHP crf_codelist 隔离；当前可为空） */
 export interface CodelistSummary {
   id: number;
   code: string;
@@ -81,5 +81,44 @@ export async function publishCageInfoFields(fieldIds?: number[]): Promise<{ affe
 export async function fetchCageInfoCodelists(): Promise<CodelistSummary[]> {
   const res = await authHttp.get<Result<CodelistSummary[]>>("/admin/cage-info/codelists");
   if (!res.data?.success) throw new Error(res.data?.message || "加载码表失败");
+  return res.data.data ?? [];
+}
+
+// ═══════════════════════════════════════════
+// 认领信息读写（管理端，无归属校验）
+// ═══════════════════════════════════════════
+
+/** 认领信息行：字段字典 + 该认领的实例值（CageClaimInfoService.getInfo 返回形状） */
+export interface CageClaimInfoRow {
+  fieldId: number;
+  canonical: string;
+  label: string;
+  dataType: string;
+  required?: string | null;
+  sort?: number | null;
+  value: string | number | boolean | null;
+  fillSource?: string | null;
+}
+
+/** 认领信息保存项 */
+export interface CageClaimInfoValue {
+  fieldId: number;
+  value: string | number | boolean | null;
+}
+
+/** 查看认领信息（管理端） */
+export async function fetchCageClaimInfo(claimId: number): Promise<CageClaimInfoRow[]> {
+  const res = await authHttp.get<Result<CageClaimInfoRow[]>>(`/admin/cage-claims/${claimId}/info`);
+  if (!res.data?.success) throw new Error(res.data?.message || "加载认领信息失败");
+  return res.data.data ?? [];
+}
+
+/** 保存认领信息（管理端） */
+export async function updateCageClaimInfo(
+  claimId: number,
+  values: CageClaimInfoValue[],
+): Promise<CageClaimInfoRow[]> {
+  const res = await authHttp.put<Result<CageClaimInfoRow[]>>(`/admin/cage-claims/${claimId}/info`, { values });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存认领信息失败");
   return res.data.data ?? [];
 }

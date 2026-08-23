@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { authHttp } from "@/api/core/authHttp";
 import { CAGE_TYPE_COLORS, STATUS_CHIPS } from "../constants";
 import { type CageShelfCell } from "@/api/domains/cageShelf.api";
+import { fetchCageInfoFields, fetchCageClaimInfo, updateCageClaimInfo, type CageInfoField } from "../api/cageForm.api";
 import toast from "react-hot-toast";
 
 /**
@@ -41,6 +42,49 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [statusPhotos, setStatusPhotos] = useState<Record<string, string[]>>({});
+
+  // ── 认领信息表单：发布的字段字典 + 当前认领的实例值 ──
+  const claimId = (cell as any).activeClaimId ?? (cell as any).claim?.id ?? (cell as any).claimId ?? null;
+  const [fieldDefs, setFieldDefs] = useState<CageInfoField[]>([]);
+  const [editValues, setEditValues] = useState<Record<number, string | number | boolean | null>>({});
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [infoSaving, setInfoSaving] = useState(false);
+
+  useEffect(() => {
+    fetchCageInfoFields()
+      .then(all => all
+        .filter(f => f.published === true)
+        .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)))
+      .then(fields => setFieldDefs(fields))
+      .catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    if (claimId == null) return;
+    setInfoLoading(true);
+    fetchCageClaimInfo(claimId)
+      .then(rows => {
+        const map: Record<number, string | number | boolean | null> = {};
+        for (const r of rows) map[r.fieldId] = r.value;
+        setEditValues(map);
+      })
+      .catch(() => { })
+      .finally(() => setInfoLoading(false));
+  }, [claimId]);
+
+  const handleSaveInfo = async () => {
+    if (claimId == null) return;
+    setInfoSaving(true);
+    try {
+      const values = fieldDefs.map(f => ({ fieldId: f.id, value: editValues[f.id] ?? null }));
+      await updateCageClaimInfo(claimId, values);
+      toast.success("已保存");
+    } catch (e: any) {
+      toast.error(e?.message || "保存失败");
+    } finally {
+      setInfoSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!animalCageId) return;
@@ -124,29 +168,65 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
       </div>
     </div>
 
-    {/* 二级：关键信息 icon+compact */}
-    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-      {(() => {
-        const projectPi = typeof detail?.projectPiName === "string" ? detail.projectPiName.trim() : "";
-        const topPi = typeof detail?.piName === "string" ? detail.piName.trim() : "";
-        const displayPi = projectPi || topPi;
-        if (!displayPi) return null;
-        return <div className="truncate" title={displayPi}>👤 <span className="text-[var(--twin-mute)]">PI</span> {displayPi}</div>;
-      })()}
-      {detail?.projectPiName && detail?.piName && detail.projectPiName !== detail.piName && (
-        <div className="truncate" title={detail.piName}>👤 <span className="text-[var(--twin-mute)]">笼位PI</span> {detail.piName}</div>
-      )}
-      {detail?.projectName && <div className="truncate col-span-2" title={detail.projectName}>📁 <span className="text-[var(--twin-mute)]">项目</span> {detail.projectName}</div>}
-      {detail?.departmentName && <div className="truncate col-span-2" title={detail.departmentName}>🏢 <span className="text-[var(--twin-mute)]">部门</span> {detail.departmentName}</div>}
-      {detail?.aupNumber && <div className="truncate">📋 <span className="text-[var(--twin-mute)]">AUP</span> {detail.aupNumber}</div>}
-      {detail?.experimenterName && <div className="truncate">🔬 <span className="text-[var(--twin-mute)]">实验员</span> {detail.experimenterName}</div>}
-      {detail?.animalStrainName && <div className="truncate">🧬 {detail.animalStrainName}</div>}
-      {detail?.animalSex && <div>⚥ {detail.animalSex}</div>}
-      {detail?.animalWeekAge && <div>🕐 {detail.animalWeekAge}周龄</div>}
-      {(detail?.animalMaleNumber || detail?.animalFemaleNumber) && <div>🔢 {detail.animalMaleNumber ? detail.animalMaleNumber + "♂" : ""}{detail.animalMaleNumber && detail.animalFemaleNumber ? "+" : ""}{detail.animalFemaleNumber ? detail.animalFemaleNumber + "♀" : ""}</div>}
-      {detail?.animalComeFrom && <div className="truncate col-span-2">📍 <span className="text-[var(--twin-mute)]">来源</span> {detail.animalComeFrom}</div>}
-      {detail?.labAssistantName && <div className="truncate">🧑‍🔬 <span className="text-[var(--twin-mute)]">实验人员</span> {detail.labAssistantName}</div>}
-    </div>
+    {/* 二级：关键信息 — 发布的字段表单（绑定当前认领，可编辑） */}
+    {claimId == null ? (
+      <div className="text-[11px] text-[var(--twin-mute)] py-3 text-center">暂无占用记录</div>
+    ) : (
+      <div className="space-y-2">
+        <div className="text-[11px] font-semibold text-[var(--twin-ink)]">关键信息</div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
+          {fieldDefs.map(f => {
+            const val = editValues[f.id];
+            const isText = f.dataType === "text";
+            return (
+              <div key={f.id} className={isText ? "col-span-2" : ""}>
+                <label className="flex flex-col gap-0.5">
+                  <span className="text-[var(--twin-mute)]">
+                    {f.label}
+                    {f.required === "YES" && <span className="text-red-500"> *</span>}
+                  </span>
+                  {f.dataType === "boolean" ? (
+                    <input
+                      type="checkbox"
+                      checked={val === true}
+                      onChange={e => setEditValues(prev => ({ ...prev, [f.id]: e.target.checked }))}
+                      className="h-4 w-4 accent-[var(--twin-primary)]"
+                    />
+                  ) : f.dataType === "number" ? (
+                    <input
+                      type="number"
+                      value={typeof val === "number" ? val : ""}
+                      onChange={e => {
+                        const n = e.target.valueAsNumber;
+                        setEditValues(prev => ({ ...prev, [f.id]: Number.isNaN(n) ? null : n }));
+                      }}
+                      className="w-full rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[11px] text-[var(--twin-ink)]"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={typeof val === "string" ? val : ""}
+                      onChange={e => setEditValues(prev => ({ ...prev, [f.id]: e.target.value }))}
+                      className="w-full rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[11px] text-[var(--twin-ink)]"
+                    />
+                  )}
+                </label>
+              </div>
+            );
+          })}
+        </div>
+        {fieldDefs.length === 0 && !infoLoading && <div className="text-[11px] text-[var(--twin-mute)] text-center py-1">暂无已发布字段</div>}
+        {infoLoading && <div className="text-[10px] text-[var(--twin-mute)]">加载中...</div>}
+        <button
+          type="button"
+          onClick={handleSaveInfo}
+          disabled={infoSaving || fieldDefs.length === 0}
+          className="rounded-twin-md px-3 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 disabled:opacity-50 transition self-start"
+        >
+          {infoSaving ? "保存中..." : "保存"}
+        </button>
+      </div>
+    )}
 
     {/* 三级：状态标记 + 通道一：状态标记照片（只读，仅编辑模式可管理） */}
     {(statusChips.length > 0 || Object.keys(statusPhotos).some(k => k.startsWith("_") && (statusPhotos[k] || []).length > 0)) && <div className="space-y-2">
