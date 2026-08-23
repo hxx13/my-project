@@ -4,9 +4,11 @@ import com.alibaba.fastjson2.JSON;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageCellIndex;
+import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
+import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.support.CageFieldMappingService;
 import org.slf4j.Logger;
@@ -27,17 +29,20 @@ public class CageCellIndexService {
     private final CageCellIndexMapper cellIndexMapper;
     private final CageCellDetailMapper detailMapper;
     private final CageShelfMapper shelfMapper;
+    private final CageClaimMapper claimMapper;
     private final AroService aroService;
     private final CageFieldMappingService mappingService;
 
     public CageCellIndexService(CageCellIndexMapper cellIndexMapper,
                                 CageCellDetailMapper detailMapper,
                                 CageShelfMapper shelfMapper,
+                                CageClaimMapper claimMapper,
                                 AroService aroService,
                                 CageFieldMappingService mappingService) {
         this.cellIndexMapper = cellIndexMapper;
         this.detailMapper = detailMapper;
         this.shelfMapper = shelfMapper;
+        this.claimMapper = claimMapper;
         this.aroService = aroService;
         this.mappingService = mappingService;
     }
@@ -232,6 +237,13 @@ public class CageCellIndexService {
             gc.put("position", cell.getPositionX() + "-" + cell.getPositionY());
             gc.put("id", String.valueOf(cell.getAnimalCageId()));
             gc.put("animalCageId", cell.getAnimalCageId());
+            // 活跃认领 id — 供详情面板绑定认领信息表单（无活跃认领时为 null）
+            Long activeClaimId = null;
+            if (cell.getAnimalCageId() != null) {
+                CageClaim activeClaim = claimMapper.selectActiveByAnimalCageId(cell.getAnimalCageId());
+                if (activeClaim != null) activeClaimId = activeClaim.getId();
+            }
+            gc.put("activeClaimId", activeClaimId);
             gc.put("hasCageBox", cell.getHasCageBox());
             gc.put("cageBoxCode", cell.getCageBoxCode());
             boolean empty = cell.getAnimalCageId() == null;
