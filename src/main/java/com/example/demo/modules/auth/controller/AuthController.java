@@ -6,6 +6,8 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
+import com.example.demo.modules.notification.push.PushConstants;
+import com.example.demo.modules.notification.push.binding.NotifyBindingService;
 import com.example.demo.modules.auth.AuthProfileConstants;
 import com.example.demo.modules.auth.dto.BindEmailRequest;
 import com.example.demo.modules.auth.dto.ChangePasswordRequest;
@@ -74,6 +76,7 @@ public class AuthController {
     private final StaffRegistrationService staffRegistrationService;
     private final JwtTokenService jwtTokenService;
     private final AroPersonnelMapper aroPersonnelMapper;
+    private final NotifyBindingService notifyBindingService;
     private final TurnstileVerificationService turnstileVerificationService;
     private final IamOAuthLoginService iamOAuthLoginService;
     private final EmailVerificationCodeService emailVerificationCodeService;
@@ -87,6 +90,7 @@ public class AuthController {
                           StaffRegistrationService staffRegistrationService,
                           JwtTokenService jwtTokenService,
                           AroPersonnelMapper aroPersonnelMapper,
+                          NotifyBindingService notifyBindingService,
                           TurnstileVerificationService turnstileVerificationService,
                           IamOAuthLoginService iamOAuthLoginService,
                           EmailVerificationCodeService emailVerificationCodeService) {
@@ -98,6 +102,7 @@ public class AuthController {
         this.staffRegistrationService = staffRegistrationService;
         this.jwtTokenService = jwtTokenService;
         this.aroPersonnelMapper = aroPersonnelMapper;
+        this.notifyBindingService = notifyBindingService;
         this.turnstileVerificationService = turnstileVerificationService;
         this.iamOAuthLoginService = iamOAuthLoginService;
         this.emailVerificationCodeService = emailVerificationCodeService;
@@ -596,13 +601,7 @@ public class AuthController {
                 emailVerificationCodeService.verifyForBinding(email, code);
         if (!vr.isSuccess()) return Result.error(vr.getMessage());
 
-        String userId = current.getId();
-        if (isStaffId(userId)) {
-            userMapper.updateContactEmail(userId, email);
-        } else {
-            aroPersonnelMapper.ensureRowExists(userId);
-            aroPersonnelMapper.updateContactEmail(userId, email);
-        }
+        notifyBindingService.writeByChannel(current.getId(), PushConstants.CHANNEL_EMAIL, email);
         return Result.success(Map.of("message", "邮箱绑定成功"));
     }
 
@@ -704,12 +703,6 @@ public class AuthController {
         // Consume token AFTER password write succeeds
         emailVerificationCodeService.consumeResetToken(recordId, email);
         return Result.success(Map.of("message", "密码重置成功，请返回登录"));
-    }
-
-    private boolean isStaffId(String userId) {
-        if (userId == null) return false;
-        String up = userId.toUpperCase();
-        return up.startsWith("USR_") || up.startsWith("STAFF_") || "SYS_SUPER_ROOT".equals(userId);
     }
 
     private Result<?> bindStudent(WechatBindRequest request, HttpServletRequest httpRequest) {
