@@ -5,8 +5,7 @@ import com.example.demo.modules.identity.entity.PersonIdentity;
 import com.example.demo.modules.identity.entity.PersonIdentityTag;
 import com.example.demo.modules.identity.mapper.PersonIdentityMapper;
 import com.example.demo.modules.identity.mapper.PersonIdentityTagMapper;
-import com.example.demo.modules.personnel.entity.Personnel;
-import com.example.demo.modules.personnel.mapper.PersonnelMapper;
+import com.example.demo.modules.personnel.service.PersonnelService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,12 +39,12 @@ public class PersonIdentityService {
 
     private final PersonIdentityTagMapper tagMapper;
     private final PersonIdentityMapper identityMapper;
-    private final PersonnelMapper personnelMapper;
+    private final PersonnelService personnelService;
 
-    public PersonIdentityService(PersonIdentityTagMapper tagMapper, PersonIdentityMapper identityMapper, PersonnelMapper personnelMapper) {
+    public PersonIdentityService(PersonIdentityTagMapper tagMapper, PersonIdentityMapper identityMapper, PersonnelService personnelService) {
         this.tagMapper = tagMapper;
         this.identityMapper = identityMapper;
-        this.personnelMapper = personnelMapper;
+        this.personnelService = personnelService;
     }
 
     /** 启用中的标签，按 sortOrder 升序（同序按 id）。 */
@@ -119,36 +118,12 @@ public class PersonIdentityService {
 
     /** 鉴权侧：sys_user.id（staff_id 或 aro_user_id）→ personnel.id 字符串；personnel 不存在返回 null。 */
     public String resolveIdByAccount(String accountId) {
-        if (accountId == null || accountId.isBlank()) {
-            return null;
-        }
-        Personnel p = personnelMapper.findByStaffId(accountId);
-        if (p == null) {
-            p = personnelMapper.findByAroUserId(accountId);
-        }
-        return p == null ? null : String.valueOf(p.getId());
+        return personnelService.resolveIdByAccount(accountId);
     }
 
     /** 通知/指派侧：personnel.id 集合 → staff_id 列表（过滤 staff_id 空者，无账号人员不参与账号通知）。 */
     public List<String> resolveStaffIds(Collection<String> personnelIds) {
-        if (personnelIds == null || personnelIds.isEmpty()) {
-            return List.of();
-        }
-        List<String> result = new ArrayList<>();
-        for (String pid : personnelIds) {
-            if (pid == null || pid.isBlank()) {
-                continue;
-            }
-            try {
-                Personnel p = personnelMapper.findById(Long.parseLong(pid));
-                if (p != null && p.getStaffId() != null && !p.getStaffId().isBlank()) {
-                    result.add(p.getStaffId());
-                }
-            } catch (NumberFormatException ignore) {
-                // 非数字 id 忽略（迁移前残留 staff_id 不会出现在此处）
-            }
-        }
-        return result;
+        return personnelService.resolveStaffIds(personnelIds);
     }
 
     /** 全量替换（先删后插）；校验 tagIds 均存在于字典，否则抛 IllegalArgumentException。 */

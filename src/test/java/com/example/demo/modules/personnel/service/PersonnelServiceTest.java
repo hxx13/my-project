@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.never;
@@ -104,5 +105,32 @@ class PersonnelServiceTest {
         verify(userMapper).updateNameById("190001", "新姓名");
         verify(userMapper, never()).updateUsernameById(anyString(), anyString());
         verify(userMapper, never()).updateDisplayNicknameById(anyString(), anyString());
+    }
+
+    @Test
+    void resolveIdByAccount_prefersStaffId_thenAroUserId_thenNull() {
+        PersonnelService service = service();
+        Personnel p = new Personnel();
+        p.setId(7L);
+        when(personnelMapper.findByStaffId("STAFF_0001")).thenReturn(p);
+        assertEquals("7", service.resolveIdByAccount("STAFF_0001"));
+
+        when(personnelMapper.findByStaffId("1234567890123456789")).thenReturn(null);
+        when(personnelMapper.findByAroUserId("1234567890123456789")).thenReturn(p);
+        assertEquals("7", service.resolveIdByAccount("1234567890123456789"));
+
+        when(personnelMapper.findByStaffId("NOPE")).thenReturn(null);
+        when(personnelMapper.findByAroUserId("NOPE")).thenReturn(null);
+        assertNull(service.resolveIdByAccount("NOPE"));
+    }
+
+    @Test
+    void resolveStaffIds_skipsBlankAndNoStaff() {
+        PersonnelService service = service();
+        Personnel withStaff = new Personnel(); withStaff.setId(1L); withStaff.setStaffId("STAFF_A");
+        Personnel noStaff = new Personnel(); noStaff.setId(2L);
+        when(personnelMapper.findById(1L)).thenReturn(withStaff);
+        when(personnelMapper.findById(2L)).thenReturn(noStaff);
+        assertEquals(List.of("STAFF_A"), service.resolveStaffIds(List.of("1", "2", "999", "")));
     }
 }

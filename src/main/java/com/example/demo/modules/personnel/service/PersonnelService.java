@@ -64,6 +64,40 @@ public class PersonnelService {
         return new ArrayList<>(set);
     }
 
+    /** 任意账号 id(staff_id 或 aro_user_id)→ personnel.id 字符串;不存在返回 null。 */
+    public String resolveIdByAccount(String accountId) {
+        if (accountId == null || accountId.isBlank()) {
+            return null;
+        }
+        Personnel p = personnelMapper.findByStaffId(accountId);
+        if (p == null) {
+            p = personnelMapper.findByAroUserId(accountId);
+        }
+        return p == null ? null : String.valueOf(p.getId());
+    }
+
+    /** personnel.id 集合 → staff_id 列表(过滤空 staff_id;非数字 id 忽略)。 */
+    public List<String> resolveStaffIds(Collection<String> personnelIds) {
+        if (personnelIds == null || personnelIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (String pid : personnelIds) {
+            if (pid == null || pid.isBlank()) {
+                continue;
+            }
+            try {
+                Personnel p = personnelMapper.findById(Long.parseLong(pid));
+                if (p != null && p.getStaffId() != null && !p.getStaffId().isBlank()) {
+                    result.add(p.getStaffId());
+                }
+            } catch (NumberFormatException ignore) {
+                // 非数字 id 忽略
+            }
+        }
+        return result;
+    }
+
     private static final Set<String> EDITABLE_FIELDS = Set.of(
             "job_number", "department_name", "project_group_name", "user_type_names", "is_school");
 
