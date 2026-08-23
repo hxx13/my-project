@@ -1,17 +1,16 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Loader2, Database, SlidersHorizontal, Layers, PencilRuler, ChevronLeft } from "lucide-react";
+import { Loader2, Database, SlidersHorizontal, PencilRuler, ChevronLeft } from "lucide-react";
 import { fetchCageInfoFields } from "../api/cageForm.api";
 
 /**
  * CageShelfFormManagePage — 笼位详情表单管理 HUB
  *
  * 页面挂自建 cage_info_field 后端（不再复用 NHP 页面）：
- *   - 码表管理     → /console/admin/cage-shelves/forms/codelists（只读码表列表）
- *   - 字段配置     → /console/admin/cage-shelves/forms/fields/cage（笼位字段字典）
- *   - 字段字典套   → /console/admin/cage-shelves/forms/fields（重定向到 cage）
- *   - 编辑并发布   → /console/admin/cage-shelves/forms/fields/cage
+ *   - 码表管理   → /console/admin/cage-shelves/forms/codelists（只读码表列表）
+ *   - 字段配置   → /console/admin/cage-shelves/forms/fields（笼位字段字典套 cage，含发布）
+ *   - 编辑并发布 → /console/admin/cage-shelves/forms/fields
  *
  * 摘要数据来自 cage_info_field（published 即已发布）。
  */
@@ -56,17 +55,10 @@ export default function CageShelfFormManagePage() {
           </button>
           <button
             type="button"
-            onClick={() => navigate("/console/admin/cage-shelves/forms/fields/cage")}
-            className="inline-flex items-center gap-1.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)] transition"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />字段配置
-          </button>
-          <button
-            type="button"
             onClick={() => navigate("/console/admin/cage-shelves/forms/fields")}
             className="inline-flex items-center gap-1.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)] transition"
           >
-            <Layers className="h-3.5 w-3.5" />字段字典套
+            <SlidersHorizontal className="h-3.5 w-3.5" />字段配置
           </button>
         </div>
       </div>
@@ -96,7 +88,7 @@ export default function CageShelfFormManagePage() {
             </div>
             <button
               type="button"
-              onClick={() => navigate("/console/admin/cage-shelves/forms/fields/cage")}
+              onClick={() => navigate("/console/admin/cage-shelves/forms/fields")}
               className="shrink-0 inline-flex items-center gap-1.5 rounded-twin-md px-4 py-2 text-xs font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 transition"
             >
               <PencilRuler className="h-4 w-4" />编辑并发布
@@ -125,23 +117,13 @@ export default function CageShelfFormManagePage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/console/admin/cage-shelves/forms/fields/cage")}
+              onClick={() => navigate("/console/admin/cage-shelves/forms/fields")}
               className="text-left rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 hover:border-[var(--twin-hairline-strong)] transition"
             >
               <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--twin-ink)]">
                 <SlidersHorizontal className="h-4 w-4 text-[var(--twin-mute)]" />字段配置
               </div>
-              <div className="text-[11px] text-[var(--twin-mute)] mt-1">配置并发布笼位字段字典（cage）</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/console/admin/cage-shelves/forms/fields")}
-              className="text-left rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 hover:border-[var(--twin-hairline-strong)] transition"
-            >
-              <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--twin-ink)]">
-                <Layers className="h-4 w-4 text-[var(--twin-mute)]" />字段字典套
-              </div>
-              <div className="text-[11px] text-[var(--twin-mute)] mt-1">浏览笼位字段字典套（cage）</div>
+              <div className="text-[11px] text-[var(--twin-mute)] mt-1">配置并发布笼位字段字典套（cage）</div>
             </button>
           </div>
         </div>

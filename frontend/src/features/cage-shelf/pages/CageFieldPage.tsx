@@ -53,6 +53,10 @@ const CATEGORY_MAP: Record<string, string> = {
 const CATEGORY_ORDER = ["笼位身份", "项目信息", "动物信息", "状态标记"];
 const UNGROUPED = "未分类";
 
+/** 字段字典套（唯一套）：cage 是字段树的顶层父文件夹，其下再按固定分类分组字段。 */
+const DICT_KEY = "cage";
+const DICT_LABEL = "笼位详情字段字典";
+
 const DATA_TYPES = [
   { value: "number", label: "数值" },
   { value: "text", label: "文本" },
@@ -144,22 +148,25 @@ export default function CageFieldPage({ onBack }: CageFieldPageProps) {
       ...CATEGORY_ORDER.filter((c) => byCat.has(c)),
       ...Array.from(byCat.keys()).filter((c) => !CATEGORY_ORDER.includes(c)),
     ];
-    if (order.length === 0) {
-      return [
-        {
-          key: UNGROUPED,
-          label: UNGROUPED,
-          mutable: false,
-          items: [],
-        },
-      ];
-    }
-    return order.map((cat) => ({
-      key: cat,
-      label: cat,
-      mutable: false,
-      items: (byCat.get(cat) ?? []).map((f) => ({ id: String(f.id), field: f })),
-    }));
+    const children: FolderTreeGroup<{ id: string; field: CageInfoField }>[] =
+      order.length === 0
+        ? [{ key: UNGROUPED, label: UNGROUPED, mutable: false, items: [] }]
+        : order.map((cat) => ({
+            key: cat,
+            label: cat,
+            mutable: false,
+            items: (byCat.get(cat) ?? []).map((f) => ({ id: String(f.id), field: f })),
+          }));
+    // 顶层固定为单一字段字典套「cage」，分类降级为 cage 下的二级子文件夹。
+    return [
+      {
+        key: DICT_KEY,
+        label: DICT_LABEL,
+        mutable: false,
+        items: [],
+        children,
+      },
+    ];
   }, [filtered]);
 
   const selected = useMemo(
