@@ -238,7 +238,8 @@
 }
 
 .inp-cat-short {
-  flex: 1;
+  flex: 0 0 100px;
+  width: 100px;
   min-width: 0;
   height: 40px;
   padding: 0 8px;
@@ -247,65 +248,6 @@
   border: 1px solid #ebecef;
   background: #fff;
   box-sizing: border-box;
-}
-
-.create-cat-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  margin: -2px 0 10px;
-  padding: 8px;
-  border-radius: 10px;
-  border: 1px solid #ebecef;
-  background: #fafafa;
-  box-sizing: border-box;
-}
-
-.btn-cat-toggle {
-  flex-shrink: 0;
-  height: 40px;
-  padding: 0 12px;
-  border-radius: 10px;
-  border: 1px solid #dcdee0;
-  background: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  color: #646566;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  white-space: nowrap;
-}
-
-.btn-cat-toggle--on {
-  border-color: #1989fa;
-  background: #ecf5ff;
-  color: #1989fa;
-}
-
-.btn-cat-toggle-hover {
-  opacity: 0.88;
-}
-
-.btn-cat-confirm {
-  flex-shrink: 0;
-  height: 36px;
-  padding: 0 14px;
-  border-radius: 8px;
-  background: #1989fa;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-}
-
-.btn-cat-confirm-hover {
-  opacity: 0.9;
 }
 
 .inp-inline {

@@ -1,17 +1,14 @@
 <view class="page">
   <view class="hint">在此维护分类与物资：新建或编辑档案、上下架、封面；卡片内还可入库与改库存。分类默认收起，点分类行展开/收起，物资按分类收纳便于查找。</view>
   <view class="toolbar-row">
-    <input class="inp-inline" placeholder="搜索名称 / 副标题 / ID" value="{{ searchKeyword }}" bindinput="onSearchInput" confirm-type="search" />
+    <input class="inp-inline" placeholder="搜索管理物资（名称/ID/模式）" value="{{ searchKeyword }}" bindinput="onSearchInput" confirm-type="search" />
     <view class="icon-tool icon-tool--primary" hover-class="icon-tool-hover" bindtap="openCreate">
       <van-icon name="plus" size="18px" color="#ffffff" />
     </view>
-    <view class="btn-cat-toggle {{ createCatOpen ? 'btn-cat-toggle--on' : '' }}" hover-class="btn-cat-toggle-hover" bindtap="onToggleCreateCat">
-      {{ createCatOpen ? '收起' : '新建分类' }}
+    <input class="inp-cat-short" placeholder="新分类" value="{{ newCatName }}" bindinput="onCatName" confirm-type="done" />
+    <view class="icon-tool" hover-class="icon-tool-hover" bindtap="onAddCat">
+      <van-icon name="label-o" size="18px" color="#646566" />
     </view>
-  </view>
-  <view wx:if="{{ createCatOpen }}" class="create-cat-row">
-    <input class="inp-cat-short" placeholder="新分类名称" value="{{ newCatName }}" bindinput="onCatName" confirm-type="done" bindconfirm="onAddCat" />
-    <view class="btn-cat-confirm" hover-class="btn-cat-confirm-hover" bindtap="onAddCat">确认</view>
   </view>
 
   <view class="sec-head row-between">
@@ -48,7 +45,7 @@
               <text class="item-title">{{ it.name }}</text>
               <text wx:if="{{ it.shelfStatus === 'OFF_SHELF' }}" class="badge-off">下架</text>
             </view>
-            <view class="item-meta">#{{ it.id }} · {{ it.stockMode }} · {{ it._stockLabel || ('库存 ' + it.stockQty) }}</view>
+            <view class="item-meta">#{{ it.id }} · {{ it.stockMode }} · 库存 {{ it.stockQty }}</view>
             <view class="item-actions">
               <text class="link link-strong" data-id="{{ it.id }}" bindtap="openEdit">编辑</text>
               <text class="link" data-id="{{ it.id }}" bindtap="toggleInbound">入库</text>

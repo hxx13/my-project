@@ -98,12 +98,13 @@ function overviewMatchesScanRoom(overviewRoom, scanRoom) {
 
 function pickScanTargetRooms(dto) {
   if (!dto || dto.success !== true) return [];
-  const inside = dto.currentState === 'INSIDE';
-  if (inside) {
-    return Array.isArray(dto.pendingRooms) ? dto.pendingRooms : [];
+  const allowed = (Array.isArray(dto.allowedRooms) ? dto.allowedRooms : [])
+    .filter((r) => r && r.isDisabled !== true);
+  if (dto.currentState === 'INSIDE') {
+    const pending = Array.isArray(dto.pendingRooms) ? dto.pendingRooms : [];
+    return allowed.concat(pending);
   }
-  const raw = Array.isArray(dto.allowedRooms) ? dto.allowedRooms : [];
-  return raw.filter((r) => r && r.isDisabled !== true);
+  return allowed;
 }
 
 /** 与门禁/预测表一致的 officialRoomId，供 AI 画像等场景优先探测 */
@@ -136,7 +137,7 @@ function pickAccessibleRooms(dto) {
 }
 
 function mergeMyRooms(overviewRows, dto) {
-  const targets = pickAccessibleRooms(dto);
+  const targets = pickScanTargetRooms(dto);
   if (!targets.length || !Array.isArray(overviewRows)) return [];
   const seen = new Set();
   const out = [];

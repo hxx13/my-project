@@ -1,12 +1,13 @@
-const mpBulletinApi = require('../../../utils/mpBulletinApi.js');
+﻿const mpBulletinApi = require('../../../utils/mpBulletinApi.js');
 const studentAlerts = require('../../../utils/studentAlertHelpers.js');
 const { isStudentAccount } = require('../../../utils/roleAccess.js');
-const { preparePublishedContentHtml } = require('../../../utils/mpPublishedContentHtml.js');
+const { applyRichTextTypography } = require('../../../utils/richTextTypography.js');
 
 function withBodyTypography(detail) {
-  if (!detail) return detail;
-  var html = preparePublishedContentHtml(detail.bodyHtml || detail.contentHtml || '', detail.contentJson);
-  return Object.assign({}, detail, { bodyHtml: html });
+  if (!detail || !detail.bodyHtml) return detail;
+  return Object.assign({}, detail, {
+    bodyHtml: applyRichTextTypography(detail.bodyHtml),
+  });
 }
 
 Page({
@@ -59,7 +60,6 @@ Page({
         detail: withBodyTypography({
           title: item.title || '',
           bodyHtml: item.contentHtml || '',
-          contentJson: item.contentJson || '',
           publishedAtText: time,
         }),
         kindLabel: studentAlerts.kindLabel(item.kind),
@@ -89,7 +89,6 @@ Page({
         detail: withBodyTypography({
           title: title,
           bodyHtml: bodyHtml,
-          contentJson: item.contentJson || '',
           publishedAtText: time,
         }),
         kindLabel: studentAlerts.isImportantReminderKind(item.kind)

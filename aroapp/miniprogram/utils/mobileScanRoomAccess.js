@@ -53,6 +53,7 @@ function normalizeScanRoomInfo(raw) {
     name: displayName,
     officialRoomId: officialRoomId || undefined,
     displayName: displayName || undefined,
+    officialRoomName: typeof r.officialRoomName === 'string' ? r.officialRoomName : undefined,
     isDisabled: asBool(r.isDisabled),
   };
 }
@@ -66,12 +67,18 @@ function normalizeMobileScanAnalyze(raw) {
     : Array.isArray(safe.allowed_rooms)
       ? safe.allowed_rooms
       : [];
+  const pendingRaw = Array.isArray(safe.pendingRooms)
+    ? safe.pendingRooms
+    : Array.isArray(safe.pending_rooms)
+      ? safe.pending_rooms
+      : [];
 
   return {
     success: safe.success === true,
     currentState,
     globalUserState: Number(safe.globalUserState != null ? safe.globalUserState : 2),
     allowedRooms: allowedRaw.map(normalizeScanRoomInfo).filter((r) => !r.isDisabled),
+    pendingRooms: pendingRaw.map(normalizeScanRoomInfo).filter((r) => !r.isDisabled),
     scanDelayEnabled: asBool(safe.scanDelayEnabled) === true,
     scanDelayButtonLabel:
       typeof safe.scanDelayButtonLabel === 'string' && safe.scanDelayButtonLabel.trim()
@@ -87,18 +94,21 @@ function normalizeMobileScanAnalyze(raw) {
 function resolveScanOfficialRoomId(overviewRoomId, overviewIndex, analyze) {
   if (!analyze || !analyze.success) return null;
   const rid = String(overviewRoomId);
-  const allowed = analyze.allowedRooms || [];
+  const searchRooms =
+    analyze.currentState === 'INSIDE' && Array.isArray(analyze.pendingRooms) && analyze.pendingRooms.length > 0
+      ? (analyze.allowedRooms || []).concat(analyze.pendingRooms || [])
+      : analyze.allowedRooms || [];
 
-  for (let i = 0; i < allowed.length; i += 1) {
-    const r = allowed[i];
+  for (let i = 0; i < searchRooms.length; i += 1) {
+    const r = searchRooms[i];
     const oid = String(r.officialRoomId || r.id || '').trim();
     if (oid === rid) return oid;
   }
 
   const byRoomId = overviewIndex.byRoomId || {};
 
-  for (let i = 0; i < allowed.length; i += 1) {
-    const r = allowed[i];
+  for (let i = 0; i < searchRooms.length; i += 1) {
+    const r = searchRooms[i];
     const oid = String(r.officialRoomId || r.id || '').trim();
     if (!oid) continue;
 
@@ -115,7 +125,7 @@ function resolveScanOfficialRoomId(overviewRoomId, overviewIndex, analyze) {
         .replace(/[\s　]+/g, '')
         .replace(/[—–]/g, '-')
         .toLowerCase();
-      const dn = String(r.displayName || r.name || '')
+      const dn = String(r.displayName || r.name || r.officialRoomName || '')
         .trim()
         .replace(/[\s　]+/g, '')
         .replace(/[—–]/g, '-')

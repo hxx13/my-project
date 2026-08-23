@@ -90,6 +90,17 @@ function parseCartKey(key) {
   return { itemId: itemId, specSnapshot: Object.keys(spec).length ? spec : null };
 }
 
+/** 规格对象 → 键排序后的 JSON 字符串（与后端行合并键规范一致）
+ *  后端 CreateSupplyClaimRequest.Line.specSnapshot 为 String，请求体必须传 JSON 文本而非对象 */
+function specSnapshotToJson(spec) {
+  if (!spec || typeof spec !== 'object') return undefined;
+  var keys = Object.keys(spec).sort();
+  if (!keys.length) return undefined;
+  var sorted = {};
+  keys.forEach(function (k) { sorted[k] = spec[k]; });
+  return JSON.stringify(sorted);
+}
+
 /**
  * True when the item has a valid specSchema (at least one dimension with options).
  */
@@ -242,24 +253,6 @@ function decorateSpecFields(items, specSelections) {
   });
 }
 
-/** QUANTIFIED：有锁定时「库存 N · 不含锁定 M」(M=锁定量)；无锁定仅「库存 N」。FLAG：有货/缺货。 */
-function formatSupplyStockLabel(item) {
-  if (!item) return '';
-  var mode = String(item.stockMode || '');
-  var stock = Number(item.stockQty != null ? item.stockQty : 0);
-  var locked = Number(item.lockedQty != null ? item.lockedQty : 0);
-  var avail = item.availableQty != null
-    ? Number(item.availableQty)
-    : Math.max(0, stock - (Number.isFinite(locked) ? locked : 0));
-  if (mode === 'FLAG') {
-    return avail >= 1 ? '有货' : '缺货';
-  }
-  if (Number.isFinite(locked) && locked > 0) {
-    return '库存 ' + stock + ' · 不含锁定 ' + locked;
-  }
-  return '库存 ' + stock;
-}
-
 function decorateItems(list) {
   const arr = list || [];
   return arr.map((it) => {
@@ -279,28 +272,13 @@ function decorateItems(list) {
       isNewItem,
       isNewInbound,
       noveltyTag: noveltyTag || (isNewItem && isNewInbound ? '新品!/进货!' : isNewInbound ? '进货!' : isNewItem ? '新品!' : ''),
-      _stockLabel: formatSupplyStockLabel(it),
     };
   });
 }
 
-async function resolveItemsCloudUrls(items) {
-  if (!items || items.length === 0) return;
-  const httpUrls = items
-    .map((it) => it.coverAbsUrl)
-    .filter((u) => u && !u.startsWith('cloud://'));
-  if (httpUrls.length === 0) return;
-  try {
-    const { mappings } = await springAuth.resolveCloudUrls(httpUrls);
-    let hit = 0;
-    items.forEach((it) => {
-      const cloud = mappings[it.coverAbsUrl];
-      if (cloud) { it.coverAbsUrl = cloud; hit++; }
-    });
-    if (hit < httpUrls.length) springAuth.triggerCloudSync();
-  } catch (_) {
-    springAuth.triggerCloudSync();
-  }
+/** @deprecated Cloud URL resolution no longer needed; all images go through direct HTTP */
+async function resolveItemsCloudUrls(_items) {
+  /* no-op: cloud:// resolution removed in Phase 2C */
 }
 
 function normalizeBool(value, fallback) {
@@ -340,6 +318,47 @@ function buildCartLines(cart, items) {
   return out;
 }
 
+/* ── Merge dialog helpers ─────────────────────────────────────── */
+
+/**
+ * 待处理订单物资摘要：snapshotName×qty 用「、」连接，超 3 项截断为「等N项」。
+ */
+function summarizePendingLines(lines) {
+  var arr = Array.isArray(lines) ? lines : [];
+  if (!arr.length) return '';
+  var parts = arr.slice(0, 3).map(function (l) {
+    var name = String((l && l.snapshotName) || '物资');
+    return name + '×' + (Number(l && l.qty) || 0);
+  });
+  var txt = parts.join('、');
+  if (arr.length > 3) txt += ' 等' + arr.length + '项';
+  return txt;
+}
+
+/**
+ * 待处理订单分类（合并目标匹配规则）：
+ * - regular：所有行均非独立下单（independentOrder !== 1）
+ * - independent：所有行同一 itemId 且该物资独立下单
+ * - mixed：其余（含无行数据的旧单）→ 不进入任何目标列表
+ */
+function classifyPendingOrder(order) {
+  var lines = order && order.lines;
+  if (!Array.isArray(lines) || lines.length === 0) return { kind: 'mixed' };
+  // 行的 independentOrder 为 null/undefined = 物资已被删除，该单不可作为合并目标（后端必然拒绝）
+  var hasUnknown = lines.some(function (l) { return l == null || l.independentOrder == null; });
+  if (hasUnknown) return { kind: 'mixed' };
+  var hasIndep = lines.some(function (l) { return Number(l && l.independentOrder) === 1; });
+  if (!hasIndep) return { kind: 'regular' };
+  var firstId = Number(lines[0].itemId);
+  var allSame =
+    Number.isFinite(firstId) &&
+    lines.every(function (l) {
+      return Number(l && l.itemId) === firstId && Number(l && l.independentOrder) === 1;
+    });
+  if (allSame) return { kind: 'independent', itemId: firstId };
+  return { kind: 'mixed' };
+}
+
 Page({
   data: {
     categories: [],
@@ -366,6 +385,16 @@ Page({
     remarkExpandedByLine: {},
     confirmOpen: false,
     confirmLines: [],
+    /** 独立下单拆单提示：购物车含独立下单物资时提交将拆分为多张工单 */
+    willSplit: false,
+    multiIndependent: false,
+    independentItemNames: [],
+    /** 合并到待处理订单弹窗（规则匹配方案）
+     *  mergeRegular: null | { orders:[...], selectedId } — selectedId 为 '' 表示新建订单
+     *  mergeIndependents: [{ itemId, name, orders:[...], selectedId, hasTargets }] */
+    mergeDialogShow: false,
+    mergeRegular: null,
+    mergeIndependents: [],
     showStudentSwitch: false,
     navBarHeight: 64,
     pageHeight: 667,
@@ -441,8 +470,22 @@ Page({
   },
 
   onSwitchStudent() {
-    this.setData({ cartSheetShow: false, confirmOpen: false });
-    goStudentMaterial();
+    const proceed = () => {
+      this.setData({ cartSheetShow: false, confirmOpen: false });
+      goStudentMaterial();
+    };
+    if (String(this.data.claimReviseOrderId || '').trim()) {
+      // redirectTo 会卸载本页：先做与 goStudentMaterial 相同的权限检查，
+      // 无权限时保持原有直达 toast 行为，不弹离开确认
+      const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
+      if (!canShowStudentMaterialSwitch(role)) {
+        wx.showToast({ title: '无权限', icon: 'none' });
+        return;
+      }
+      this._confirmExitRevise(proceed);
+      return;
+    }
+    proceed();
   },
 
   async onShow() {
@@ -471,6 +514,14 @@ Page({
 
     if (this._navOutToSubPage) {
       this._navOutToSubPage = false;
+      // FALLBACK: sub-page navigation now prompts before leaving (goMine /
+      // goProcess / goAdmin call _confirmExitRevise), so revise mode should
+      // already be exited here. If it is somehow still active on return,
+      // abandon it: restore the user's own persisted cart (durable stores
+      // were never touched by the revise flow) and drop the exit guard.
+      if (String(this.data.claimReviseOrderId || '').trim()) {
+        this._exitReviseMode();
+      }
       const key = this.cacheKeyForCat(this.data.activeCat);
       const cached = this._itemsCache[key];
       if (cached && Array.isArray(cached.items)) {
@@ -483,6 +534,14 @@ Page({
 
     if (Date.now() - this._lastReloadAt < 2000) return;
     this.reload();
+  },
+
+  onUnload() {
+    // Durable stores need no cleanup (revise flow never writes to them);
+    // just cancel any pending debounced remote save. Also drop the revise
+    // exit guard for hygiene (user may have confirmed the native alert).
+    if (this._cartSaveTimer) { clearTimeout(this._cartSaveTimer); this._cartSaveTimer = null; }
+    try { wx.disableAlertBeforeUnload({}); } catch (e) { /* ignore */ }
   },
 
   onListRefresh() {
@@ -533,17 +592,23 @@ Page({
         const iid = l.itemId != null ? Number(l.itemId) : NaN;
         const q = l.qty != null ? Number(l.qty) : 0;
         if (Number.isFinite(iid) && iid > 0 && Number.isFinite(q) && q > 0) {
-          // Build cart key: include specSnapshot if present
-          if (l.specSnapshot && typeof l.specSnapshot === 'object' && Object.keys(l.specSnapshot).length > 0) {
-            var k = specCartKey(iid, l.specSnapshot);
-            cart[k] = Math.min(Math.floor(q), 999);
+          // Build cart key: include specSnapshot if present.
+          // 后端返回的 specSnapshot 是 JSON 字符串（如 "{\"尺寸\":\"M\"}"），先解析成对象。
+          var spec = l.specSnapshot;
+          if (typeof spec === 'string' && spec.trim()) {
+            try { spec = JSON.parse(spec); } catch (e) { spec = null; }
+          }
+          if (spec && typeof spec === 'object' && Object.keys(spec).length > 0) {
+            var k = specCartKey(iid, spec);
+            cart[k] = Math.min((cart[k] || 0) + Math.floor(q), 999);
           } else {
-            cart[String(iid)] = Math.min(Math.floor(q), 999);
+            cart[String(iid)] = Math.min((cart[String(iid)] || 0) + Math.floor(q), 999);
           }
         }
       });
-      persistSuppliesCart(cart);
-      void saveRemoteSuppliesCart(cart).catch(() => null);
+      // Revise cart is PAGE-LOCAL only: never touch local storage or the
+      // remote cart here — the user's own durable cart stays untouched
+      // throughout the revise flow.
       const cartCount = cartTotalQty(cart);
       const cartLines = buildCartLines(cart, this.data.items || []);
       this.setData({
@@ -553,12 +618,133 @@ Page({
         cartSheetShow: true,
         cartLines,
       });
+      // 修订态激活：开启返回拦截（返回/退出页面前弹原生确认）
+      this._enableReviseExitGuard();
       wx.showToast({ title: '已从工单载入购物车', icon: 'none' });
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '载入失败', icon: 'none' });
     } finally {
       wx.hideLoading();
     }
+  },
+
+  /* ── Revise exit guard ─────────────────────────────────────── */
+
+  /** 修订态返回拦截：开启原生返回确认弹窗（基础库 ≥2.12.0） */
+  _enableReviseExitGuard() {
+    try {
+      wx.enableAlertBeforeUnload({
+        message: '当前正在修改领用单，返回将取消本次修改',
+      });
+    } catch (e) { /* 基础库 <2.12.0 降级：无拦截 */ }
+  },
+
+  _disableReviseExitGuard() {
+    try { wx.disableAlertBeforeUnload({}); } catch (e) { /* ignore */ }
+  },
+
+  /**
+   * 退出修订态：清除修订单号、恢复用户自己的持久购物车、关闭返回拦截。
+   * （修订购物车是页面本地的，持久存储从未被触碰。）
+   */
+  _exitReviseMode() {
+    this._disableReviseExitGuard();
+    const ownCart = loadPersistedSuppliesCart();
+    this.setData({
+      claimReviseOrderId: '',
+      cart: ownCart,
+      cartCount: cartTotalQty(ownCart),
+      cartLines: [],
+      cartSheetShow: false,
+      remarkByLine: {},
+      remarkExpandedByLine: {},
+    });
+  },
+
+  /**
+   * 修订提交核心（confirmSubmit 修订分支与离开守卫共用，防止逻辑漂移）：
+   * 构建行（含 specSnapshot JSON 化）→ specRequired 校验 → PUT lines →
+   * 成功后拆单提示、退出修订态（恢复自己的购物车 + 关闭返回拦截）、刷新列表。
+   * 成功 resolve(true)；校验失败 / 请求失败 toast 后 resolve(false)，页面停留、修订态保持。
+   */
+  async _submitReviseLines() {
+    if (this.data.submitting) return false;
+    const reviseId = String(this.data.claimReviseOrderId || '').trim();
+    if (!reviseId) return false;
+    const lines = this._buildClaimLines();
+    if (!lines.length) {
+      wx.showToast({ title: '请选择物资', icon: 'none' });
+      return false;
+    }
+    // Enforce specRequired on submit
+    var failed = false;
+    var _this = this;
+    lines.forEach(function (l) {
+      if (!l.specSnapshot) {
+        var it = (_this.data.items || []).find(function (x) { return x.id === l.itemId; });
+        if (it && itemHasSpec(it) && Number(it.specRequired) === 1) {
+          wx.showToast({ title: '「' + it.name + '」必须选择规格', icon: 'none' });
+          failed = true;
+        }
+      }
+    });
+    if (failed) return false;
+    this.setData({ submitting: true, confirmOpen: false });
+    try {
+      const res = await springAuth.springRequest({
+        url: `/api/supplies/claims/${encodeURIComponent(reviseId)}/lines`,
+        method: 'PUT',
+        data: { lines },
+      });
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      // 修订也可能触发独立下单拆分：展示拆分张数（与 onMergeConfirm 一致）
+      const rd = p.body.data || {};
+      const reviseSplitCount = Number(rd.splitCount || 0);
+      if (reviseSplitCount > 1) {
+        wx.showToast({ title: `已更新工单，并拆分出 ${reviseSplitCount - 1} 张新工单`, icon: 'none' });
+      } else {
+        wx.showToast({ title: '已更新工单', icon: 'success' });
+      }
+      // Do NOT clear durable stores: the revise flow never touched them.
+      // _exitReviseMode restores the user's own persisted cart into page state
+      // and disables the back-navigation guard.
+      if (this._cartSaveTimer) { clearTimeout(this._cartSaveTimer); this._cartSaveTimer = null; }
+      this._exitReviseMode();
+      await this.loadItems({ forceRefresh: true });
+      return true;
+    } catch (e) {
+      wx.showToast({ title: (e && e.message) || '失败', icon: 'none' });
+      return false;
+    } finally {
+      this.setData({ submitting: false });
+    }
+  },
+
+  /**
+   * 修订态离开确认（三选一）：
+   * 保存修改并离开（提交修订，成功后退出修订态再导航；失败停留）/
+   * 取消修改并离开（退出修订态后导航）/ 点遮罩取消（停留，修订态保持）。
+   */
+  _confirmExitRevise(onProceed) {
+    wx.showActionSheet({
+      alertText: '正在修改领用单', // 基础库支持时显示标题文本；不支持则忽略
+      itemList: ['保存修改并离开', '取消修改并离开'],
+      itemColor: '#323233',
+      success: (r) => {
+        if (r.tapIndex === 0) {
+          // 保存修改：走与 confirmSubmit 修订分支相同的提交核心
+          void this._submitReviseLines().then((ok) => {
+            if (ok && typeof onProceed === 'function') onProceed();
+          });
+        } else if (r.tapIndex === 1) {
+          // 取消修改：退出修订态并恢复自己的购物车，然后继续导航
+          this._exitReviseMode();
+          if (typeof onProceed === 'function') onProceed();
+        }
+      },
+      fail: () => { /* 取消/点击遮罩 = 留在本页，修订态保持 */ },
+    });
   },
 
   cacheKeyForCat(cat) {
@@ -685,12 +871,48 @@ Page({
 
   maxForItem(item) {
     if (!item) return 0;
-    // 可用库存 = 总库存 − 待处理单锁定量；availableQty 缺失时回落 stockQty
-    var effectiveQty = Number(item.availableQty != null ? item.availableQty : item.stockQty);
     if (item.stockMode === 'QUANTIFIED') {
-      return Math.max(0, Number.isFinite(effectiveQty) ? effectiveQty : 0);
+      // 可用库存 = 总库存 − 待处理单锁定量；availableQty 缺失时回落 stockQty
+      var avail = Number(item.availableQty);
+      if (Number.isFinite(avail)) return Math.max(0, avail);
+      return Math.max(0, Number(item.stockQty) || 0);
     }
-    return effectiveQty >= 1 ? 99 : 0;
+    var flagQty = item.availableQty != null ? Number(item.availableQty) : Number(item.stockQty);
+    return flagQty >= 1 ? 9999 : 0;
+  },
+
+  /**
+   * 提交行构建（confirmSubmit / 修订提交 / 合并提交共用，防止逻辑漂移）：
+   * 购物车 key 解析 itemId + specSnapshot（键排序 JSON 化），附加行备注。
+   */
+  _buildClaimLines() {
+    const _this = this;
+    return Object.keys(this.data.cart)
+      .map(function (k) {
+        var parsed = parseCartKey(k);
+        var qty = _this.data.cart[k];
+        var remark = (_this.data.remarkByLine[k] || '').trim();
+        var entry = { itemId: parsed.itemId, qty: qty, remark: remark || undefined };
+        // 请求体形态：specSnapshot 统一为键排序 JSON 字符串（后端字段为 String）
+        if (parsed.specSnapshot) entry.specSnapshot = specSnapshotToJson(parsed.specSnapshot);
+        return entry;
+      })
+      .filter(function (l) { return l.qty > 0; });
+  },
+
+  /**
+   * 跨分类物品查找表：购物车可能含非当前分类的物资，
+   * 合并所有分类缓存 + 当前列表，按 itemId 建索引。
+   */
+  _buildItemLookup() {
+    var itemById = {};
+    var self = this;
+    Object.keys(this._itemsCache || {}).forEach(function (ck) {
+      var arr = (self._itemsCache[ck] && self._itemsCache[ck].items) || [];
+      arr.forEach(function (x) { itemById[x.id] = x; });
+    });
+    (this.data.items || []).forEach(function (x) { itemById[x.id] = x; });
+    return itemById;
   },
 
   /* ── Spec selection ─────────────────────────────────── */
@@ -707,15 +929,30 @@ Page({
     } else {
       sel[dimKey] = optVal;
     }
-    // Re-decorate items + filteredItems to reflect new spec selections
-    var newSpecSelections = { ...this.data.specSelections, [itemId]: sel };
-    var items = decorateSpecFields(this.data.items.slice(), newSpecSelections);
-    var filteredItems = decorateSpecFields(this.data.filteredItems.slice(), newSpecSelections);
-    this.setData({
-      [`specSelections.${itemId}`]: sel,
-      items: items,
-      filteredItems: filteredItems,
-    });
+    // Use targeted path-based setData to avoid re-rendering the entire list,
+    // which would cause the scroll-view to lose its scroll position.
+    const newSpecSelections = { ...this.data.specSelections, [itemId]: sel };
+    const itemsIdx = this.data.items.findIndex(function (x) { return x.id === itemId; });
+    const filteredIdx = this.data.filteredItems.findIndex(function (x) { return x.id === itemId; });
+
+    // Re-decorate only the tapped item in-place (mutate + path-based setData)
+    if (itemsIdx >= 0) {
+      decorateSpecFields([this.data.items[itemsIdx]], newSpecSelections);
+    }
+    if (filteredIdx >= 0) {
+      decorateSpecFields([this.data.filteredItems[filteredIdx]], newSpecSelections);
+    }
+
+    const patch = { [`specSelections.${itemId}`]: sel };
+    if (itemsIdx >= 0) {
+      patch[`items[${itemsIdx}]._specAllSelected`] = this.data.items[itemsIdx]._specAllSelected;
+      patch[`items[${itemsIdx}]._specCartKey`] = this.data.items[itemsIdx]._specCartKey;
+    }
+    if (filteredIdx >= 0) {
+      patch[`filteredItems[${filteredIdx}]._specAllSelected`] = this.data.filteredItems[filteredIdx]._specAllSelected;
+      patch[`filteredItems[${filteredIdx}]._specCartKey`] = this.data.filteredItems[filteredIdx]._specCartKey;
+    }
+    this.setData(patch);
   },
 
   /** Determine if all spec dimensions for an item are selected. */
@@ -742,15 +979,38 @@ Page({
     if (!itemId || !comboJson) return;
     var combo;
     try { combo = JSON.parse(comboJson); } catch (err) { return; }
-    // Set selections to this combo
-    this.setData({ [`specSelections.${itemId}`]: combo });
+
+    // Update selections + decorated fields via targeted paths so the
+    // stepper appears immediately without a full-list re-render.
+    var newSpecSelections = { ...this.data.specSelections, [itemId]: combo };
+    var itemsIdx = this.data.items.findIndex(function (x) { return x.id === itemId; });
+    var filteredIdx = this.data.filteredItems.findIndex(function (x) { return x.id === itemId; });
+
+    if (itemsIdx >= 0) {
+      decorateSpecFields([this.data.items[itemsIdx]], newSpecSelections);
+    }
+    if (filteredIdx >= 0) {
+      decorateSpecFields([this.data.filteredItems[filteredIdx]], newSpecSelections);
+    }
+
+    var patch = { [`specSelections.${itemId}`]: combo };
+    if (itemsIdx >= 0) {
+      patch['items[' + itemsIdx + ']._specAllSelected'] = this.data.items[itemsIdx]._specAllSelected;
+      patch['items[' + itemsIdx + ']._specCartKey'] = this.data.items[itemsIdx]._specCartKey;
+    }
+    if (filteredIdx >= 0) {
+      patch['filteredItems[' + filteredIdx + ']._specAllSelected'] = this.data.filteredItems[filteredIdx]._specAllSelected;
+      patch['filteredItems[' + filteredIdx + ']._specCartKey'] = this.data.filteredItems[filteredIdx]._specCartKey;
+    }
+    this.setData(patch);
     // Then add to cart
     this._addSpecCart(itemId, combo);
   },
 
   _addSpecCart(itemId, selections) {
     var key = specCartKey(itemId, selections);
-    var item = this.data.items.find(function (x) { return x.id === itemId; });
+    // 跨分类查找：购物车可能含非当前分类的物资
+    var item = this._buildItemLookup()[itemId];
     var max = this.maxForItem(item);
     if (max <= 0) {
       wx.showToast({ title: '暂无库存', icon: 'none' });
@@ -764,7 +1024,16 @@ Page({
   },
 
   addCart(e) {
-    const id = Number(e.currentTarget.dataset.id);
+    const idRaw = String(e.currentTarget.dataset.id);
+    // 购物车弹窗的规格行传入完整 cart key（含 "::"）：解析后走规格加购
+    if (idRaw.indexOf('::') !== -1) {
+      const parsedKey = parseCartKey(idRaw);
+      if (parsedKey.specSnapshot) {
+        this._addSpecCart(parsedKey.itemId, parsedKey.specSnapshot);
+        return;
+      }
+    }
+    const id = Number(idRaw);
     const item = this.data.items.find((x) => x.id === id);
     // If item has spec, ignore simple +/- (must use SKU panel)
     if (itemHasSpec(item)) {
@@ -815,8 +1084,11 @@ Page({
     const idRaw = e.currentTarget.dataset.id;
     const key = String(idRaw);
     const parsed = parseCartKey(key);
-    const item = this.data.items.find((x) => x.id === parsed.itemId);
-    const max = this.maxForItem(item);
+    // 跨分类解析：购物车行可能来自非当前分类，先查全部分类缓存
+    let item = this.data.items.find((x) => x.id === parsed.itemId);
+    if (!item) item = this._buildItemLookup()[parsed.itemId];
+    // 仍无法解析时不拒绝编辑：回落 999 上限，最终由后端校验库存
+    const max = item ? this.maxForItem(item) : 999;
     if (max <= 0) {
       wx.showToast({ title: '暂无库存', icon: 'none' });
       return;
@@ -846,6 +1118,7 @@ Page({
       let cart = remote;
       if (cartTotalQty(remote) === 0 && cartTotalQty(local) > 0) {
         cart = local;
+        if (this._cartSaveTimer) { clearTimeout(this._cartSaveTimer); this._cartSaveTimer = null; }
         await saveRemoteSuppliesCart(cart).catch(() => null);
       }
       persistSuppliesCart(cart);
@@ -868,8 +1141,13 @@ Page({
   },
 
   syncCart(cart) {
-    persistSuppliesCart(cart);
-    this._scheduleRemoteCartSave(cart);
+    // While revising a claim, the cart is page-local only: never persist to
+    // local storage or the remote cart, so the user's own cart survives.
+    const revising = !!String(this.data.claimReviseOrderId || '').trim();
+    if (!revising) {
+      persistSuppliesCart(cart);
+      this._scheduleRemoteCartSave(cart);
+    }
     const cartCount = cartTotalQty(cart);
     const patch = { cart, cartCount };
     if (this.data.cartSheetShow) {
@@ -894,6 +1172,40 @@ Page({
     this.setData({ cartSheetShow: false });
   },
 
+  clearCart() {
+    if (this.data.cartCount === 0) {
+      wx.showToast({ title: '购物车已是空的', icon: 'none' });
+      return;
+    }
+    wx.showModal({
+      title: '清空购物车',
+      content: '确认清空全部物资？',
+      confirmColor: '#ee0a24',
+      success: (res) => {
+        if (!res.confirm) return;
+        if (this._cartSaveTimer) { clearTimeout(this._cartSaveTimer); this._cartSaveTimer = null; }
+        // 清空 always empties everything visible. In revise mode this also
+        // exits the revise flow; user explicitly asked for an empty cart,
+        // so clear the durable stores too — predictable result.
+        persistSuppliesCart({});
+        void saveRemoteSuppliesCart({}).catch(() => null);
+        const wasRevising = !!String(this.data.claimReviseOrderId || '').trim();
+        // 清空即退出修订态：关闭返回拦截（clearCart 已自行清空全部状态，
+        // 不走 _exitReviseMode 以免恢复持久购物车与清空语义冲突）
+        if (wasRevising) this._disableReviseExitGuard();
+        this.setData({
+          cart: {},
+          cartCount: 0,
+          cartLines: [],
+          cartSheetShow: false,
+          remarkByLine: {},
+          claimReviseOrderId: '',
+        });
+        wx.showToast({ title: wasRevising ? '已清空并退出修改' : '已清空', icon: wasRevising ? 'none' : 'success' });
+      },
+    });
+  },
+
   previewItemImage(e) {
     const current = String((e.currentTarget.dataset && e.currentTarget.dataset.url) || '').trim();
     if (!current) return;
@@ -916,7 +1228,7 @@ Page({
     this.decCart(e);
   },
 
-  submitOrder() {
+  async submitOrder() {
     if (this.data.submitting || this.data.cartCount === 0) return;
     const lines = Object.keys(this.data.cart)
       .map((k) => {
@@ -924,7 +1236,8 @@ Page({
         return {
           itemId: parsed.itemId,
           qty: this.data.cart[k],
-          specSnapshot: parsed.specSnapshot || undefined,
+          // 请求体形态：specSnapshot 统一为键排序 JSON 字符串（后端字段为 String）
+          specSnapshot: parsed.specSnapshot ? specSnapshotToJson(parsed.specSnapshot) : undefined,
         };
       })
       .filter((l) => l.qty > 0);
@@ -946,6 +1259,39 @@ Page({
     });
     if (failed) return;
 
+    // Check for independent-order items, warn about split.
+    // Build a full item map across ALL category caches (cart may hold items
+    // from categories other than the active one), plus current items.
+    var itemById = this._buildItemLookup();
+
+    // Dedupe by itemId: spec variants of the same item ("42::尺寸=M" and
+    // "42::尺寸=L") must count once.
+    var independentIds = {};
+    var independentItems = [];
+    var independentInfos = [];
+    var regularIds = {};
+    var regularItems = [];
+    Object.keys(this.data.cart).forEach(function (k) {
+      var parsed = parseCartKey(k);
+      var it = itemById[parsed.itemId];
+      if (it && it.independentOrder === 1) {
+        if (!independentIds[it.id]) {
+          independentIds[it.id] = true;
+          independentItems.push(it.name);
+          independentInfos.push({ itemId: it.id, name: it.name });
+        }
+      } else {
+        // Regular item, or unresolvable — treat unresolved conservatively
+        // as regular rather than dropping it silently.
+        if (!regularIds[parsed.itemId]) {
+          regularIds[parsed.itemId] = true;
+          regularItems.push(it ? it.name : '物资');
+        }
+      }
+    });
+    var willSplit = independentItems.length > 0 && regularItems.length > 0;
+    var multiIndependent = independentItems.length > 1;
+
     const cartLines = buildCartLines(this.data.cart, this.data.items);
     const confirmLines = cartLines.map((cl) => ({
       ...cl,
@@ -957,7 +1303,217 @@ Page({
         remarkExpandedByLine[l.id] = true;
       }
     });
-    this.setData({ confirmOpen: true, confirmLines, cartLines, remarkExpandedByLine });
+    this.setData({
+      confirmLines,
+      cartLines,
+      remarkExpandedByLine,
+      willSplit,
+      multiIndependent,
+      independentItemNames: independentItems,
+    });
+
+    // 修订模式跳过合并检查，直接进入原确认弹窗
+    const reviseId = String(this.data.claimReviseOrderId || '').trim();
+    if (!reviseId) {
+      this.setData({ submitting: true });
+      const pending = await this._fetchPendingClaims();
+      this.setData({ submitting: false });
+      if (pending && pending.length) {
+        const plan = this._buildMergePlan(pending, {
+          hasRegular: regularItems.length > 0,
+          regularIdSet: regularIds,
+          independents: independentInfos,
+        });
+        if (plan) {
+          this.setData({
+            mergeDialogShow: true,
+            mergeRegular: plan.regular,
+            mergeIndependents: plan.independents,
+          });
+          return;
+        }
+      }
+      // 拉取失败 / 无待处理订单 / 无任何规则匹配目标：直接走正常提交确认
+    }
+    this.setData({ confirmOpen: true });
+  },
+
+  /**
+   * 构建合并方案（规则匹配，禁止随意选择）：
+   * - 购物车常规物资 → 仅可并入「常规待处理订单」（不含任何独立下单行），另附「新建订单」选项
+   * - 购物车独立下单物资 X → 仅可并入「X 的独立待处理订单」（所有行均为 X 且独立下单）
+   * - 旧混合单（既有独立又有常规行 / 无行数据）不进入任何目标列表
+   * - 每组自动默认选中最近一张匹配订单；无任何组存在目标时返回 null（跳过弹窗）
+   */
+  _buildMergePlan(pendingRows, cartInfo) {
+    var regularOrders = [];
+    var indepByItem = {};
+    (pendingRows || []).forEach(function (o) {
+      var c = classifyPendingOrder(o);
+      if (c.kind === 'regular') {
+        regularOrders.push(o);
+      } else if (c.kind === 'independent') {
+        if (!indepByItem[c.itemId]) indepByItem[c.itemId] = [];
+        indepByItem[c.itemId].push(o);
+      }
+      // mixed/legacy：排除
+    });
+    var regular = null;
+    if (cartInfo.hasRegular && regularOrders.length) {
+      var idSet = cartInfo.regularIdSet || {};
+      var orders = regularOrders.map(function (o) {
+        // 目标单已含购物车同款物资 → 提示追加数量（后端按 (itemId, spec) 归并）
+        var hasOverlap = (o.lines || []).some(function (l) { return !!idSet[Number(l && l.itemId)]; });
+        return { ...o, hasOverlap: hasOverlap };
+      });
+      // _fetchPendingClaims 已按 createdAt 降序：默认选中最近一张
+      regular = { orders: orders, selectedId: orders[0].id };
+    }
+    var independents = (cartInfo.independents || []).map(function (x) {
+      var matches = indepByItem[x.itemId] || [];
+      return {
+        itemId: x.itemId,
+        name: x.name,
+        orders: matches,
+        selectedId: matches.length ? matches[0].id : '',
+        hasTargets: matches.length > 0,
+      };
+    });
+    var anyTarget = !!regular || independents.some(function (s) { return s.hasTargets; });
+    if (!anyTarget) return null;
+    return { regular: regular, independents: independents };
+  },
+
+  /**
+   * 拉取我的待处理领用单（合并弹窗数据源，含行明细）。
+   * 失败返回 null（调用方 fail open 走正常提交）。
+   */
+  async _fetchPendingClaims() {
+    try {
+      const res = await springAuth.springRequest({
+        url: '/api/supplies/claims/mine',
+        method: 'GET',
+        data: { status: 'PENDING', page: 1, size: 50, withLines: 'true' },
+      });
+      const p = parseResponse(res);
+      if (!p.ok) return null;
+      const list = (p.body.data && p.body.data.data) || [];
+      return list
+        .map(function (o) {
+          const id = String(o.id != null ? o.id : '');
+          const createdAt = String(o.createdAt || '');
+          const lines = Array.isArray(o.lines) ? o.lines : [];
+          return {
+            id,
+            idShort: '…' + id.slice(-8),
+            createdAt,
+            // "07-17 14:32"：省去年份，弹窗行更紧凑
+            createdAtText: createdAt.replace('T', ' ').slice(5, 16),
+            applicantName:
+              String(o.applicantName || o.applicant || o.createdByName || '').trim() || '我',
+            itemSummary: summarizePendingLines(lines),
+            lines,
+          };
+        })
+        .filter(function (o) { return !!o.id; })
+        .sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0; });
+    } catch (e) {
+      return null;
+    }
+  },
+
+  /** 常规物资分组选择目标（含 data-id="" 的「新建订单」选项） */
+  onMergeRegularSelect(e) {
+    if (this.data.submitting) return;
+    if (!this.data.mergeRegular) return;
+    const id = e.currentTarget.dataset.id;
+    if (id == null) return;
+    this.setData({ 'mergeRegular.selectedId': String(id) });
+  },
+
+  /** 独立下单物资分组选择目标（仅该物资自己的独立订单可选） */
+  onMergeIndepSelect(e) {
+    if (this.data.submitting) return;
+    const idx = Number(e.currentTarget.dataset.index);
+    const id = e.currentTarget.dataset.id;
+    if (!Number.isFinite(idx) || id == null) return;
+    const sec = (this.data.mergeIndependents || [])[idx];
+    if (!sec || !sec.hasTargets) return;
+    this.setData({ [`mergeIndependents[${idx}].selectedId`]: String(id) });
+  },
+
+  closeMergeDialog() {
+    // 弹窗关闭 = 取消本次提交（不新建、不合并，购物车保留）
+    if (this.data.submitting) return;
+    this.setData({ mergeDialogShow: false });
+  },
+
+  onMergeCreateNew() {
+    // 直接新建：跳过合并，走原确认弹窗 → POST /claims（后端自动拆单）
+    if (this.data.submitting) return;
+    this.setData({ mergeDialogShow: false, confirmOpen: true });
+  },
+
+  async onMergeConfirm() {
+    if (this.data.submitting) return;
+    // 购物车行：与 confirmSubmit 相同的共享构建器
+    const lines = this._buildClaimLines();
+    if (!lines.length) {
+      wx.showToast({ title: '请选择物资', icon: 'none' });
+      return;
+    }
+    const regular = this.data.mergeRegular;
+    // selectedId 为 '' 时表示常规物资选择「新建订单」→ 不传 regularTargetOrderId
+    const regularTargetOrderId =
+      regular && String(regular.selectedId || '').trim() ? String(regular.selectedId).trim() : undefined;
+    const independentTargets = {};
+    (this.data.mergeIndependents || []).forEach(function (s) {
+      if (s && s.hasTargets && String(s.selectedId || '').trim()) {
+        independentTargets[String(s.itemId)] = String(s.selectedId).trim();
+      }
+    });
+    const body = { lines };
+    if (regularTargetOrderId) body.regularTargetOrderId = regularTargetOrderId;
+    if (Object.keys(independentTargets).length) body.independentTargets = independentTargets;
+    this.setData({ submitting: true });
+    try {
+      const res = await springAuth.springRequest({
+        url: '/api/supplies/claims/merge-submit',
+        method: 'POST',
+        data: body,
+      });
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      const d = p.body.data || {};
+      const mergedN = Array.isArray(d.mergedOrderIds) ? d.mergedOrderIds.length : 0;
+      const createdN = Array.isArray(d.createdOrderIds) ? d.createdOrderIds.length : 0;
+      let title = '已提交';
+      if (mergedN > 0 && createdN > 0) title = `已并入 ${mergedN} 张、新建 ${createdN} 张订单`;
+      else if (mergedN > 0) title = `已并入 ${mergedN} 张订单`;
+      else if (createdN > 0) title = `已新建 ${createdN} 张订单`;
+      wx.showToast({ title, icon: 'none' });
+      // 合并成功：与非修订提交成功路径一致地清空持久购物车
+      if (this._cartSaveTimer) { clearTimeout(this._cartSaveTimer); this._cartSaveTimer = null; }
+      persistSuppliesCart({});
+      void saveRemoteSuppliesCart({}).catch(() => null);
+      this.setData({
+        cart: {},
+        cartCount: 0,
+        cartLines: [],
+        cartSheetShow: false,
+        remarkByLine: {},
+        mergeDialogShow: false,
+        mergeRegular: null,
+        mergeIndependents: [],
+      });
+      await this.loadItems({ forceRefresh: true });
+      void refreshPendingBadges({ force: true }).then((snap) => this.applyTopBadges(snap));
+    } catch (e) {
+      // 失败：保留弹窗与购物车，允许重试或改选
+      wx.showToast({ title: (e && e.message) || '合并失败', icon: 'none' });
+    } finally {
+      this.setData({ submitting: false });
+    }
   },
 
   closeConfirm() {
@@ -976,16 +1532,14 @@ Page({
 
   async confirmSubmit() {
     if (this.data.submitting) return;
-    const lines = Object.keys(this.data.cart)
-      .map((k) => {
-        var parsed = parseCartKey(k);
-        const qty = this.data.cart[k];
-        const remark = (this.data.remarkByLine[k] || '').trim();
-        var entry = { itemId: parsed.itemId, qty, remark: remark || undefined };
-        if (parsed.specSnapshot) entry.specSnapshot = parsed.specSnapshot;
-        return entry;
-      })
-      .filter((l) => l.qty > 0);
+    const reviseId = String(this.data.claimReviseOrderId || '').trim();
+    if (reviseId) {
+      // 修订分支：与离开守卫共用同一提交核心（行构建/校验/PUT/退出修订态）
+      const ok = await this._submitReviseLines();
+      if (ok) wx.navigateBack({ delta: 1 });
+      return;
+    }
+    const lines = this._buildClaimLines();
     if (!lines.length) {
       wx.showToast({ title: '请选择物资', icon: 'none' });
       return;
@@ -1004,32 +1558,8 @@ Page({
     });
     if (failed) return;
 
-    const reviseId = String(this.data.claimReviseOrderId || '').trim();
     this.setData({ submitting: true, confirmOpen: false });
     try {
-      if (reviseId) {
-        const res = await springAuth.springRequest({
-          url: `/api/supplies/claims/${encodeURIComponent(reviseId)}/lines`,
-          method: 'PUT',
-          data: { lines },
-        });
-        const p = parseResponse(res);
-        if (!p.ok) throw new Error(p.message);
-        wx.showToast({ title: '已更新工单', icon: 'success' });
-        persistSuppliesCart({});
-        void saveRemoteSuppliesCart({}).catch(() => null);
-        this.setData({
-          cart: {},
-          cartCount: 0,
-          cartLines: [],
-          cartSheetShow: false,
-          claimReviseOrderId: '',
-          remarkByLine: {},
-        });
-        await this.loadItems({ forceRefresh: true });
-        wx.navigateBack({ delta: 1 });
-        return;
-      }
       const res = await springAuth.springRequest({
         url: '/api/supplies/claims',
         method: 'POST',
@@ -1038,10 +1568,12 @@ Page({
       const p = parseResponse(res);
       if (!p.ok) throw new Error(p.message);
       wx.showToast({ title: '已提交', icon: 'success' });
+      if (this._cartSaveTimer) { clearTimeout(this._cartSaveTimer); this._cartSaveTimer = null; }
       persistSuppliesCart({});
       void saveRemoteSuppliesCart({}).catch(() => null);
       this.setData({ cart: {}, cartCount: 0, cartLines: [], cartSheetShow: false, remarkByLine: {} });
-      await this.loadItems();
+      // 提交后锁定量已变化，强制刷新以展示最新可用库存
+      await this.loadItems({ forceRefresh: true });
       void refreshPendingBadges({ force: true }).then((snap) => this.applyTopBadges(snap));
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '失败', icon: 'none' });
@@ -1069,8 +1601,15 @@ Page({
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    this._navOutToSubPage = true;
-    wx.navigateTo({ url: '/package-feature/pages/suppliesMine/index' });
+    const proceed = () => {
+      this._navOutToSubPage = true;
+      wx.navigateTo({ url: '/package-feature/pages/suppliesMine/index' });
+    };
+    if (String(this.data.claimReviseOrderId || '').trim()) {
+      this._confirmExitRevise(proceed);
+      return;
+    }
+    proceed();
   },
 
   goProcess() {
@@ -1079,8 +1618,15 @@ Page({
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    this._navOutToSubPage = true;
-    wx.navigateTo({ url: '/package-feature/pages/suppliesProcess/index' });
+    const proceed = () => {
+      this._navOutToSubPage = true;
+      wx.navigateTo({ url: '/package-feature/pages/suppliesProcess/index' });
+    };
+    if (String(this.data.claimReviseOrderId || '').trim()) {
+      this._confirmExitRevise(proceed);
+      return;
+    }
+    proceed();
   },
 
   goAdmin() {
@@ -1089,7 +1635,14 @@ Page({
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    this._navOutToSubPage = true;
-    wx.navigateTo({ url: '/package-feature/pages/suppliesAdmin/index' });
+    const proceed = () => {
+      this._navOutToSubPage = true;
+      wx.navigateTo({ url: '/package-feature/pages/suppliesAdmin/index' });
+    };
+    if (String(this.data.claimReviseOrderId || '').trim()) {
+      this._confirmExitRevise(proceed);
+      return;
+    }
+    proceed();
   },
 });

@@ -23,14 +23,14 @@
           <view class="mall-top-actions">
             <view
               wx:if="{{ showProcessEntry }}"
-              class="mall-top-pill mall-top-pill-process mall-top-pill-badge-wrap"
+              class="mall-top-pill mall-top-pill-process"
               hover-class="mall-top-pill-hover"
               bindtap="goProcess"
             >
               <text>物资处理</text>
               <view wx:if="{{ processBadgeText }}" class="mall-top-mini-badge">{{ processBadgeText }}</view>
             </view>
-            <view class="mall-top-pill mall-top-pill-mine-wrap" hover-class="mall-top-pill-hover" bindtap="goMine">
+            <view class="mall-top-pill" hover-class="mall-top-pill-hover" bindtap="goMine">
               <text>我的记录</text>
               <view wx:if="{{ mineRecordBadgeText }}" class="mall-top-mini-badge mall-top-mini-badge-mine">{{ mineRecordBadgeText }}</view>
             </view>
@@ -94,34 +94,14 @@
             <text class="goods-ph-sm">{{ item.nameInitial }}</text>
           </view>
           <view class="goods-main">
-            <view class="name-step-row">
-              <view class="goods-name-wrap">
-                <text class="goods-name">{{ item.name }}</text>
-                <text wx:if="{{ item.isNewItem }}" class="goods-novelty-tag goods-novelty-new">新品!</text>
-                <text wx:if="{{ item.isNewInbound }}" class="goods-novelty-tag goods-novelty-inbound">进货!</text>
-                <text wx:if="{{ item.subtitle }}" class="goods-sub-inline">{{ item.subtitle }}</text>
-              </view>
-              <!-- Non-spec items: simple +/- stepper -->
-              <view wx:if="{{ !item.specSchema }}" class="step-inline">
-                <view
-                  class="si-btn {{ (cart[item.id] || 0) <= 0 ? 'si-btn-off' : '' }}"
-                  hover-class="si-btn-hover"
-                  data-id="{{ item.id }}"
-                  bindtap="decCart"
-                >−</view>
-                <input
-                  class="si-num-input"
-                  type="number"
-                  value="{{ cart[item.id] != null ? cart[item.id] : 0 }}"
-                  data-id="{{ item.id }}"
-                  bindblur="onQtyInputBlur"
-                  confirm-type="done"
-                />
-                <view class="si-btn si-btn-plus" hover-class="si-btn-hover" data-id="{{ item.id }}" bindtap="addCart">+</view>
-              </view>
+            <view class="goods-name-wrap">
+              <text class="goods-name">{{ item.name }}</text>
+              <text wx:if="{{ item.isNewItem }}" class="goods-novelty-tag goods-novelty-new">新品!</text>
+              <text wx:if="{{ item.isNewInbound }}" class="goods-novelty-tag goods-novelty-inbound">进货!</text>
+              <text wx:if="{{ item.subtitle }}" class="goods-sub-inline">{{ item.subtitle }}</text>
             </view>
             <view class="goods-stock-line">
-              {{ item._stockLabel || (item.stockMode === 'QUANTIFIED' ? '库存 ' + item.stockQty : (item.stockQty >= 1 ? '有货' : '缺货')) }}
+              {{ item.stockMode === 'QUANTIFIED' ? '库存 ' + (item.availableQty != null ? item.availableQty : item.stockQty) : ((item.availableQty != null ? item.availableQty : item.stockQty) >= 1 ? '有货' : '缺货') }}
             </view>
             <!-- Spec SKU panel for items with specSchema -->
             <view wx:if="{{ item.specSchema }}" class="sku-panel">
@@ -141,16 +121,18 @@
                   >{{ opt }}</view>
                 </view>
               </view>
-              <!-- Spec add-to-cart button: shows only when all dims selected -->
+              <!-- Spec stepper: shows only when all dims selected -->
               <view wx:if="{{ item._specAllSelected }}" class="sku-add-row">
                 <view class="step-inline">
                   <view
-                    class="si-btn {{ (cart[item._specCartKey] || 0) <= 0 ? 'si-btn-off' : '' }}"
+                    wx:if="{{ (cart[item._specCartKey] || 0) > 0 }}"
+                    class="si-btn"
                     hover-class="si-btn-hover"
                     data-id="{{ item._specCartKey }}"
                     bindtap="decCart"
                   >−</view>
                   <input
+                    wx:if="{{ (cart[item._specCartKey] || 0) > 0 }}"
                     class="si-num-input"
                     type="number"
                     value="{{ cart[item._specCartKey] != null ? cart[item._specCartKey] : 0 }}"
@@ -163,6 +145,26 @@
                 <text wx:if="{{ item.specRequired === 1 }}" class="sku-required-hint">必选规格</text>
               </view>
               <view wx:elif="{{ !item._specAllSelected && item.specRequired === 1 }}" class="sku-required-banner">请选择规格</view>
+            </view>
+            <!-- Non-spec stepper: bottom-right -->
+            <view wx:if="{{ !item.specSchema }}" class="step-inline step-bottom">
+              <view
+                wx:if="{{ (cart[item.id] || 0) > 0 }}"
+                class="si-btn"
+                hover-class="si-btn-hover"
+                data-id="{{ item.id }}"
+                bindtap="decCart"
+              >−</view>
+              <input
+                wx:if="{{ (cart[item.id] || 0) > 0 }}"
+                class="si-num-input"
+                type="number"
+                value="{{ cart[item.id] != null ? cart[item.id] : 0 }}"
+                data-id="{{ item.id }}"
+                bindblur="onQtyInputBlur"
+                confirm-type="done"
+              />
+              <view class="si-btn si-btn-plus" hover-class="si-btn-hover" data-id="{{ item.id }}" bindtap="addCart">+</view>
             </view>
           </view>
         </view>
@@ -239,6 +241,7 @@
     </view>
   </scroll-view>
   <view class="sheet-foot">
+    <view class="sheet-btn sheet-btn-clear" bindtap="clearCart">清空</view>
     <text class="sheet-total">共 {{ cartCount }} 件</text>
     <view class="sheet-foot-actions">
       <view class="sheet-btn" bindtap="closeCartSheet">收起</view>
@@ -259,6 +262,7 @@
     <view class="pop-top">
       <text class="pop-title">{{ claimReviseOrderId ? '确认修改领用单' : '确认提交领用单' }}</text>
       <text class="pop-sub">请核对以下物品与备注信息</text>
+      <text wx:if="{{ willSplit || multiIndependent }}" class="pop-split-hint">{{ willSplit ? '含独立下单物资，提交后将自动拆分为多张工单' : '多个独立下单物资将分别生成工单' }}</text>
     </view>
     <scroll-view scroll-y class="pop-scroll">
       <view wx:for="{{ confirmLines }}" wx:key="id" class="confirm-line">
@@ -293,6 +297,96 @@
       <view class="pop-btn ghost" bindtap="closeConfirm">取消</view>
       <view class="pop-btn primary {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="confirmSubmit">
         {{ submitting ? '提交中…' : '确认提交' }}
+      </view>
+    </view>
+  </view>
+</van-popup>
+
+<van-popup
+  show="{{ mergeDialogShow }}"
+  position="center"
+  round
+  closeable
+  bind:close="closeMergeDialog"
+  custom-style="width:92%;max-width:680rpx;max-height:76vh;padding:0;"
+>
+  <view class="pop-root">
+    <view class="pop-top">
+      <text class="pop-title">发现可并入的待处理订单</text>
+      <text class="pop-sub">已按物资类型自动匹配，重复物资将追加数量</text>
+    </view>
+    <scroll-view scroll-y class="pop-scroll">
+      <!-- 常规物资分组：仅常规待处理订单可选 + 新建订单 -->
+      <block wx:if="{{ mergeRegular }}">
+        <view class="merge-sec-head">常规物资</view>
+        <view
+          wx:for="{{ mergeRegular.orders }}"
+          wx:key="id"
+          class="merge-order-line {{ mergeRegular.selectedId === item.id ? 'merge-order-line-on' : '' }}"
+          data-id="{{ item.id }}"
+          bindtap="onMergeRegularSelect"
+        >
+          <view class="merge-radio {{ mergeRegular.selectedId === item.id ? 'merge-radio-on' : '' }}"></view>
+          <view class="merge-order-mid">
+            <text class="merge-order-id">{{ item.applicantName }} · {{ item.createdAtText }}</text>
+            <text wx:if="{{ item.itemSummary }}" class="merge-order-items">{{ item.itemSummary }}</text>
+            <text wx:if="{{ item.hasOverlap }}" class="merge-order-append">含相同物资，将追加数量</text>
+          </view>
+        </view>
+        <view
+          class="merge-order-line {{ mergeRegular.selectedId === '' ? 'merge-order-line-on' : '' }}"
+          data-id=""
+          bindtap="onMergeRegularSelect"
+        >
+          <view class="merge-radio {{ mergeRegular.selectedId === '' ? 'merge-radio-on' : '' }}"></view>
+          <view class="merge-order-mid">
+            <text class="merge-order-id">新建订单</text>
+          </view>
+        </view>
+      </block>
+      <!-- 独立下单物资分组：每个物资仅可并入自己的独立订单 -->
+      <block wx:if="{{ mergeIndependents.length > 0 }}">
+        <view class="merge-sec-head">独立下单物资</view>
+        <view wx:for="{{ mergeIndependents }}" wx:for-item="sec" wx:for-index="secIdx" wx:key="itemId">
+          <block wx:if="{{ !sec.hasTargets }}">
+            <view class="merge-order-line merge-order-static">
+              <view class="merge-order-mid">
+                <text class="merge-order-id">{{ sec.name }} → 新建独立订单</text>
+              </view>
+            </view>
+          </block>
+          <block wx:elif="{{ sec.orders.length === 1 }}">
+            <view class="merge-order-line merge-order-static">
+              <view class="merge-order-mid">
+                <text class="merge-order-id">{{ sec.name }} → 并入 {{ sec.orders[0].applicantName }} · {{ sec.orders[0].createdAtText }}</text>
+                <text wx:if="{{ sec.orders[0].itemSummary }}" class="merge-order-items">{{ sec.orders[0].itemSummary }}（数量追加）</text>
+              </view>
+            </view>
+          </block>
+          <block wx:else>
+            <view class="merge-indep-title">{{ sec.name }} → 选择并入的订单</view>
+            <view
+              wx:for="{{ sec.orders }}"
+              wx:key="id"
+              class="merge-order-line {{ sec.selectedId === item.id ? 'merge-order-line-on' : '' }}"
+              data-index="{{ secIdx }}"
+              data-id="{{ item.id }}"
+              bindtap="onMergeIndepSelect"
+            >
+              <view class="merge-radio {{ sec.selectedId === item.id ? 'merge-radio-on' : '' }}"></view>
+              <view class="merge-order-mid">
+                <text class="merge-order-id">{{ item.applicantName }} · {{ item.createdAtText }}</text>
+                <text wx:if="{{ item.itemSummary }}" class="merge-order-items">{{ item.itemSummary }}（数量追加）</text>
+              </view>
+            </view>
+          </block>
+        </view>
+      </block>
+    </scroll-view>
+    <view class="pop-foot">
+      <view class="pop-btn ghost {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="onMergeCreateNew">直接新建</view>
+      <view class="pop-btn primary {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="onMergeConfirm">
+        {{ submitting ? '提交中…' : '按方案合并' }}
       </view>
     </view>
   </view>

@@ -64,21 +64,9 @@ function decorateClaimLines(lines) {
   });
 }
 
-async function resolveLineCloudUrls(lines) {
-  if (!lines || lines.length === 0) return;
-  const httpUrls = lines
-    .map((l) => l.coverAbsUrl)
-    .filter((u) => u && !u.startsWith('cloud://'));
-  if (httpUrls.length === 0) return;
-  try {
-    const { mappings } = await springAuth.resolveCloudUrls(httpUrls);
-    lines.forEach((l) => {
-      const cloud = mappings[l.coverAbsUrl];
-      if (cloud) l.coverAbsUrl = cloud;
-    });
-  } catch (e) {
-    /* ignore */
-  }
+/** @deprecated Cloud URL resolution no longer needed; all images go through direct HTTP */
+async function resolveLineCloudUrls(_lines) {
+  /* no-op: cloud:// resolution removed in Phase 2C */
 }
 
 Page({

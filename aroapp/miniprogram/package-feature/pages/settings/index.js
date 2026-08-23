@@ -51,13 +51,11 @@ Page({
     this.setData({
       hasToken: Boolean(token),
       isStudentView: studentView,
-      // 管理员功能仅教职工视角可见
+      // 管理员功能仅按角色判定（统一权限体系）
       canAnnouncementAdmin:
-        !studentView &&
         hasMinRole(role, 'ADMIN') &&
         pagePermission.canShowMiniEntry('settings', '/package-feature/pages/announcementAdmin/index', role, 'ADMIN'),
       canReleaseAdmin:
-        !studentView &&
         hasMinRole(role, 'PLATFORM_OWNER') &&
         pagePermission.canShowMiniEntry('settings', '/package-feature/pages/releaseNotesAdmin/index', role, 'PLATFORM_OWNER'),
       showEnvSwitcher: envConfig.canShowEnvSwitcher(role),
@@ -103,6 +101,14 @@ Page({
       showCancel: false,
       confirmText: '知道了',
     });
+  },
+
+  goNotifySettings: function () {
+    if (!wx.getStorageSync(springAuth.KEYS.TOKEN)) {
+      wx.showToast({ title: '请先绑定校内账号', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/notifySettings/index' });
   },
 
   goRoomWatch: function () {

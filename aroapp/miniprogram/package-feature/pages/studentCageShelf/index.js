@@ -1,5 +1,7 @@
 var springAuth = require('../../../utils/springAuth.js');
 var pagePermission = require('../../../utils/pagePermission.js');
+var { hasMinRole } = require('../../../utils/roleAccess.js');
+var { readCustomNavMetrics } = require('../../../utils/customNavMetrics.js');
 
 var CAGE_SHELF_PAGE = '/package-feature/pages/studentCageShelf/index';
 
@@ -30,8 +32,8 @@ var STATUS_BG_PRIORITY = [
 ];
 
 var CAGE_TYPE_LABEL = { 1: "等待分配", 2: "已预约(空笼盒)", 3: "已预约(饲养中)", 4: "异常" };
-var CAGE_TYPE_DOT_COLOR = { 1: "#f59e0b", 2: "#f43f5e", 4: "#3b82f6" };
-var CAGE_TYPE_ABBR = { 1: "待", 2: "空", 4: "异" };
+var CAGE_TYPE_DOT_COLOR = { 1: "#f59e0b", 2: "#10b981", 3: "#f43f5e", 4: "#3b82f6" };
+var CAGE_TYPE_ABBR = { 1: "待", 2: "空", 3: "饲", 4: "异" };
 
 var STATUS_LABEL_MAP = {
   COHABITATION: "合笼/繁殖",
@@ -127,6 +129,7 @@ function computeStatusesFromCageBoxInfo(cageBoxInfo) {
 
 function getDominantStatusCode(specialStatuses, cageBoxInfo) {
   var list = normalizeStatuses(specialStatuses);
+  // Fallback: compute from cageBoxInfo if specialStatuses is empty or only NORMAL
   if (list.length === 0 || (list.length === 1 && list[0].code === "NORMAL")) {
     var fallback = computeStatusesFromCageBoxInfo(cageBoxInfo);
     if (fallback.length > 0 && !(fallback.length === 1 && fallback[0].code === "NORMAL")) {
@@ -138,12 +141,14 @@ function getDominantStatusCode(specialStatuses, cageBoxInfo) {
     codes[list[i].code] = true;
   }
   var codeKeys = Object.keys(codes);
+  // No status data at all → treat as NORMAL
   if (codeKeys.length === 0) return "NORMAL";
+  // Only NORMAL flag → use NORMAL color
   if (codes["NORMAL"] && codeKeys.length === 1) return "NORMAL";
   for (var j = 0; j < STATUS_BG_PRIORITY.length; j++) {
     if (codes[STATUS_BG_PRIORITY[j]]) return STATUS_BG_PRIORITY[j];
   }
-  return "NORMAL";
+  return "NORMAL"; // fallback: unrecognized codes → use normal color
 }
 
 function getCellStyle(cell) {
@@ -153,6 +158,29 @@ function getCellStyle(cell) {
   if (cell.visible === false) {
     return "background-color: #fff9c4; border: 1px solid #f59e0b;";
   }
+  // 合并已有状态 + 缓存动作 → 统一分色
+  var bgColors = [];
+  (cell.specialStatuses || []).forEach(function(s) {
+    if (s.code !== "NORMAL" && DEFAULT_COLORS[s.code]) bgColors.push(DEFAULT_COLORS[s.code].bg);
+  });
+  // 缓存动作色（逗号分隔 → 逐个加入分色）
+  if (cell._cachedBg) {
+    var cacheColors = cell._cachedBg.split(',');
+    for (var ci = 0; ci < cacheColors.length; ci++) {
+      if (cacheColors[ci]) bgColors.push(cacheColors[ci]);
+    }
+  }
+  if (bgColors.length >= 2) {
+    var n = bgColors.length;
+    var stops = [];
+    for (var i = 0; i < n; i++) {
+      var pct = Math.round((i / n) * 100);
+      var pctNext = Math.round(((i + 1) / n) * 100);
+      stops.push(bgColors[i] + " " + pct + "%, " + bgColors[i] + " " + pctNext + "%");
+    }
+    return "background: linear-gradient(to bottom, " + stops.join(", ") + "); border: 1px solid #cbd5e1;";
+  }
+  if (bgColors.length === 1) return "background-color: " + bgColors[0] + "; border: 1px solid #cbd5e1;";
   var code = cell._dominantCode || getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
   cell._dominantCode = code;
   var c = DEFAULT_COLORS[code] || DEFAULT_COLORS["NORMAL"];
@@ -164,7 +192,7 @@ function getDominantCodeLabel(code) {
 }
 
 /* ================================================================== */
-/*  Grid Building                                                        */
+/*  Grid Building（对齐 H5：后端 position 为 A-1…H-10，grid 已含 80 格） */
 /* ================================================================== */
 
 function toPositionLabel(x, y) {
@@ -178,6 +206,7 @@ function resolveAnimalCageType(cell) {
   if ((ct == null || isNaN(ct)) && cell.cageBoxInfo && cell.cageBoxInfo.AnimalCageType != null) {
     ct = Number(cell.cageBoxInfo.AnimalCageType);
   }
+  // 回退：从 stateLabel 推断 cageType（animalCageType 为 null 时）
   if ((ct == null || isNaN(ct)) && cell.stateLabel) {
     var sl = String(cell.stateLabel);
     if (sl.indexOf('等待分配') >= 0) ct = 1;
@@ -185,14 +214,13 @@ function resolveAnimalCageType(cell) {
     else if (sl.indexOf('饲养') >= 0) ct = 3;
     else if (sl.indexOf('异常') >= 0) ct = 4;
   }
-  return (ct == null || isNaN(ct)) ? null : ct;
-}
-
-function truncateText(text, maxLen) {
-  if (!text) return '';
-  var s = String(text).trim();
-  if (s.length > maxLen) return s.substring(0, maxLen) + '…';
-  return s;
+  // 完全无法推断且非空位 → 有 PI 或 cageBoxCode 则至少是饲养中（对齐 admin/student/H5 页面逻辑）
+  if ((ct == null || ct === 0 || isNaN(ct)) && !cell.empty) {
+    var cbi = cell.cageBoxInfo || {};
+    if (cell.projectPiName || cbi.cageBoxCode || cbi.CageBoxQrCode) ct = 3;
+    else ct = 1;
+  }
+  return (ct == null || ct === 0 || isNaN(ct)) ? null : ct;
 }
 
 function enrichGridCell(cell) {
@@ -208,22 +236,30 @@ function enrichGridCell(cell) {
   enriched._cellStyle = getCellStyle(enriched);
   enriched._piShort = truncateText(enriched.projectPiName, 4);
   enriched._deptShort = truncateText(enriched.departmentName, 5);
-  // 课题组名
-  enriched._projectGroupShort = truncateText(enriched.projectGroup || (enriched.cageBoxInfo && enriched.cageBoxInfo.projectGroup), 5);
   var ct = resolveAnimalCageType(enriched);
-  enriched._cageTypeAbbr = (ct === 3) ? '' : (CAGE_TYPE_ABBR[ct] || '');
-  enriched._cageTypeDotColor = (ct === 3) ? '' : (CAGE_TYPE_DOT_COLOR[ct] || '');
+  enriched._cageTypeAbbr = CAGE_TYPE_ABBR[ct] || '';
+  // 饲养中(type 3)不显示指示灯，对齐 H5 CageCellOverlays
+  enriched._cageTypeDotColor = ct === 3 ? '' : (CAGE_TYPE_DOT_COLOR[ct] || '');
   enriched._cageTypeLabel = CAGE_TYPE_LABEL[ct] || enriched.stateLabel || '—';
-  enriched._cageTypeLabelShort = truncateText(CAGE_TYPE_LABEL[ct] || '', 6);
   enriched._hasStatusCodes = computeStatusCodesForDisplay(enriched);
+  // 显示坐标反转：A-1(顶)↔A-10(底)，内容不动仅编号反转
+  enriched._displayPosition = (function(p) {
+    var m = /^([A-H])-(\d+)$/.exec(p);
+    if (m) return m[1] + '-' + (11 - parseInt(m[2]));
+    var m2 = /^(\d+)-(\d+)$/.exec(p);
+    if (m2) { var col = COLUMNS[Math.max(0, Math.min(7, Number(m2[1]) - 1))] || 'A'; return col + '-' + (11 - parseInt(m2[2])); }
+    return p;
+  })(enriched.position || '');
   return enriched;
 }
 
 function buildGrid(gridCells) {
   var source = gridCells || [];
+  // 与 H5 / MobileCageShelfTab 一致：优先直接使用后端返回的 80 格序列
   if (source.length > 0) {
     return source.map(enrichGridCell);
   }
+  // 兜底：无数据时生成 8×10 空位占位（position 必须为 A-1 格式）
   var cells = [];
   var y, x, position;
   for (y = 1; y <= ROWS; y++) {
@@ -240,6 +276,13 @@ function buildGrid(gridCells) {
     }
   }
   return cells;
+}
+
+function truncateText(text, maxLen) {
+  if (!text) return '';
+  var s = String(text).trim();
+  if (s.length > maxLen) return s.substring(0, maxLen) + '…';
+  return s;
 }
 
 function computeStatusCodesForDisplay(cell) {
@@ -283,26 +326,76 @@ function getSpecialStatusList(cell) {
   return out;
 }
 
-function formatSpecialStatusDisplayLabel(entries) {
-  var nonNormal = [];
-  for (var i = 0; i < (entries || []).length; i++) {
-    if (entries[i].code !== "NORMAL") nonNormal.push(entries[i]);
-  }
-  if (nonNormal.length === 0) return "";
-  return nonNormal.map(function(s) {
-    return STATUS_LABEL_MAP[s.code] || s.label || s.code;
-  }).join("·");
-}
-
 function parseImageUrlLines(text) {
   if (!text) return [];
   return String(text).split("\n").map(function(s) { return s.trim(); }).filter(Boolean);
 }
 
-/**
- * buildCellDetailMeta — 对齐 Web cageCellDetailHelpers.ts buildCageDetailSections()
- * 返回所有区块字段，由 WXML 按区块渲染。
- */
+/** 从 cell.detail（本地笼位索引数据）构建详情卡片数据 */
+function buildCellDetailData(cell) {
+  var detail = cell.detail || {};
+  var ct = resolveAnimalCageType(cell);
+
+  // 性别映射
+  var sexMap = { 'M': '♂雄', 'F': '♀雌', 'male': '♂雄', 'female': '♀雌', '1': '♂雄', '2': '♀雌' };
+  var sexDisplay = sexMap[String(detail.animalSex || '').toLowerCase()] || detail.animalSex || '';
+
+  // 动物数量字符串
+  var maleNum = parseInt(detail.animalMaleNumber) || 0;
+  var femaleNum = parseInt(detail.animalFemaleNumber) || 0;
+  var animalCountStr = '';
+  if (maleNum > 0 && femaleNum > 0) {
+    animalCountStr = maleNum + '♂+' + femaleNum + '♀';
+  } else if (maleNum > 0) {
+    animalCountStr = maleNum + '♂';
+  } else if (femaleNum > 0) {
+    animalCountStr = femaleNum + '♀';
+  }
+
+  // 特殊状态标签
+  var chips = [];
+  var yn = function(v) { return v === 1 || v === true || v === '1'; };
+  if (yn(detail.needsDivision)) chips.push({ code: 'NEED_DIVIDE', label: '需分笼', color: '#eab308', bg: '#fef08a', statusField: 'needs_division' });
+  if (yn(detail.needsSpecialFeeding)) chips.push({ code: 'SPECIAL_FEEDING', label: '特殊饲养', color: '#ef4444', bg: '#fecaca', statusField: 'needs_special_feeding' });
+  if (yn(detail.needsTransfer)) chips.push({ code: 'ANIMAL_TRANSFER', label: '需转移', color: '#06b6d4', bg: '#cffafe', statusField: 'needs_transfer' });
+  if (yn(detail.hasHealthAbnormality)) chips.push({ code: 'HEALTH_ABNORMAL', label: '健康异常', color: '#a855f7', bg: '#e9d5ff', statusField: 'has_health_abnormality' });
+  if (detail.cohabitationDate && String(detail.cohabitationDate).trim()) chips.push({ code: 'COHABITATION', label: '合笼中', color: '#10b981', bg: '#a7f3d0', statusField: 'cohabitation_date' });
+
+  // 解析图片
+  var images = [];
+  try {
+    if (typeof detail.imagesJson === 'string') {
+      var parsed = JSON.parse(detail.imagesJson);
+      images = Array.isArray(parsed) ? parsed : [];
+    } else if (Array.isArray(detail.imagesJson)) {
+      images = detail.imagesJson;
+    }
+  } catch (e) {
+    images = [];
+  }
+
+  return {
+    position: cell._displayPosition || cell.position,
+    coords: '(' + cell.x + ',' + cell.y + ')',
+    cageTypeAbbr: CAGE_TYPE_ABBR[ct] || '',
+    cageTypeLabel: CAGE_TYPE_LABEL[ct] || cell.stateLabel || '—',
+    cageTypeDotColor: ct === 3 ? '' : (CAGE_TYPE_DOT_COLOR[ct] || ''),
+    cageBoxCode: detail.cageBoxCode || (cell.cageBoxInfo && cell.cageBoxInfo.cageBoxCode) || '',
+    piName: detail.projectPiName || '',
+    deptName: detail.departmentName || '',
+    aupNumber: detail.aupNumber || '',
+    strainName: detail.animalStrainName || '',
+    sex: sexDisplay,
+    weekAge: detail.animalWeekAge || '',
+    animalCount: animalCountStr,
+    animalSource: detail.animalComeFrom || '',
+    experimenterName: detail.experimenterName || '',
+    labAssistantName: detail.labAssistantName || '',
+    statusChips: chips,
+    images: images
+  };
+}
+
 function buildCellDetailMeta(cell, gridMeta) {
   var bi = cell.cageBoxInfo || {};
   var chips = getSpecialStatusList(cell).map(function(s) {
@@ -312,47 +405,6 @@ function buildCellDetailMeta(cell, gridMeta) {
       abbr: STATUS_ABBR[s.code] || "?"
     };
   });
-  var ct = resolveAnimalCageType(cell);
-  var cageTypeLabel = CAGE_TYPE_LABEL[ct] || cell.stateLabel || "—";
-
-  // 状态名称（与笼位类型去重）
-  var stateName = (bi.StateName || bi.stateName || cell.stateLabel || "").trim();
-  if (stateName === "空位" || stateName === cageTypeLabel) stateName = "";
-
-  // 特殊状态摘要
-  var statusList = cell.specialStatuses && cell.specialStatuses.length
-    ? cell.specialStatuses
-    : computeStatusesFromCageBoxInfo(bi);
-  var specialStatusSummary = formatSpecialStatusDisplayLabel(statusList);
-
-  // 课题信息
-  var departmentName = cell.departmentName || bi.DepartmentName || bi.departmentName || "";
-  var projectPiName = cell.projectPiName || bi.ProjectPiName || bi.projectPiName || bi.piName || "";
-  var aupNumber = cell.aupNumber || bi.AupNumber || bi.aupNumber || "";
-  var mobilePhone = bi.MobilePhone || bi.mobilePhone || "";
-  var hasProjectInfo = !!(departmentName || projectPiName || aupNumber || mobilePhone);
-
-  // 饲养与状态标记
-  var showNeedDivide = ynFlag(bi, "NeedDivideYn");
-  var showNeedFeeding = ynFlag(bi, "NeedFeedingYn");
-  var showNeedTransfer = ynFlag(bi, "NeedTransferYn");
-  var showAbnormalHealth = ynFlag(bi, "AbnormalHealthYn");
-  var closingDate = bi.ClosingDate ? String(bi.ClosingDate) : "";
-  var specialBreedingName = bi.SpecialBreedingName ? String(bi.SpecialBreedingName) : "";
-  var specialBreedingDesc = bi.specialBreedingDescription ? String(bi.specialBreedingDescription) : "";
-  var hasFlags = !!(showNeedDivide || showNeedFeeding || showNeedTransfer || showAbnormalHealth || closingDate || specialBreedingName || specialBreedingDesc);
-
-  // 笼盒信息
-  var cageBoxQrCode = cell.cageBoxQrCode || bi.CageBoxQrCode || bi.cageBoxQrCode || "";
-  var hasPhysicalBox = bi.HasPhysicalBox !== undefined && bi.HasPhysicalBox !== null;
-  var hasPhysicalBoxLabel = "";
-  if (hasPhysicalBox) {
-    var hb = bi.HasPhysicalBox;
-    hasPhysicalBoxLabel = (hb === 1 || hb === "1" || hb === true) ? "是" : "否";
-  }
-  var hasBoxInfo = !!(cageBoxQrCode || hasPhysicalBox);
-
-  // 位置
   var locationParts = [];
   if (gridMeta) {
     if (gridMeta.campusName) locationParts.push(gridMeta.campusName);
@@ -360,47 +412,18 @@ function buildCellDetailMeta(cell, gridMeta) {
     if (gridMeta.floorName) locationParts.push(gridMeta.floorName);
     if (gridMeta.roomName) locationParts.push(gridMeta.roomName);
   }
-  var locationText = locationParts.join(" / ");
-
-  // 系统信息
-  var createAdmin = bi.createAdmin || "";
-  var createTime = bi.CreateTime || bi.createTime || "";
-  var updateTime = bi.UpdateTime || bi.updateTime || "";
-  var hasSystemInfo = !!(createAdmin || createTime || updateTime);
-
+  var ct = resolveAnimalCageType(cell);
   return {
     permitted: cell.visible !== false,
-    cageTypeLabel: cageTypeLabel,
-    stateName: stateName,
-    specialStatusSummary: specialStatusSummary,
+    cageTypeLabel: CAGE_TYPE_LABEL[ct] || cell.stateLabel || "—",
     specialChips: chips,
-    // 课题
-    departmentName: departmentName,
-    projectPiName: projectPiName,
-    aupNumber: aupNumber,
-    mobilePhone: mobilePhone,
-    hasProjectInfo: hasProjectInfo,
-    // 标记
-    showNeedDivide: showNeedDivide,
-    showNeedFeeding: showNeedFeeding,
-    showNeedTransfer: showNeedTransfer,
-    showAbnormalHealth: showAbnormalHealth,
-    closingDate: closingDate,
-    specialBreedingName: specialBreedingName,
-    specialBreedingDesc: specialBreedingDesc,
-    hasFlags: hasFlags,
-    // 笼盒
-    cageBoxQrCode: cageBoxQrCode,
-    hasPhysicalBox: hasPhysicalBox,
-    hasPhysicalBoxLabel: hasPhysicalBoxLabel,
-    hasBoxInfo: hasBoxInfo,
-    // 位置
-    locationText: locationText,
-    // 系统
-    createAdmin: createAdmin,
-    createTime: createTime,
-    updateTime: updateTime,
-    hasSystemInfo: hasSystemInfo,
+    showNeedDivide: ynFlag(bi, "NeedDivideYn"),
+    showNeedFeeding: ynFlag(bi, "NeedFeedingYn"),
+    showNeedTransfer: ynFlag(bi, "NeedTransferYn"),
+    showAbnormalHealth: ynFlag(bi, "AbnormalHealthYn"),
+    closingDate: bi.ClosingDate ? String(bi.ClosingDate) : "",
+    specialBreedingName: bi.SpecialBreedingName ? String(bi.SpecialBreedingName) : "",
+    locationText: locationParts.join(" / ")
   };
 }
 
@@ -410,145 +433,44 @@ function getActiveShelveId(pageData) {
   return "";
 }
 
-var CAMPUS_ORDER = ['浦东', '浦西'];
-
-var CAMPUS_HEADER_STYLES = {
-  '浦东': 'background:linear-gradient(135deg,#0284c7,#0369a1);',
-  '浦西': 'background:linear-gradient(135deg,#d97706,#b45309);'
-};
-var CAMPUS_HEADER_FALLBACK = 'background:#64748b;';
-
-function campusHeaderStyle(campusName) {
-  return CAMPUS_HEADER_STYLES[campusName] || CAMPUS_HEADER_FALLBACK;
+/** 从 roomName 提取父房间 key（例：201A → 201；210A → 210） */
+function extractParentRoomKey(roomName) {
+  var m = /^(\d+)/.exec(roomName || '');
+  return m ? m[1] : (roomName || '其他');
 }
 
-/* ---- 笼位类型进度条（指示灯风格颜色，数据来自后端 cageTypeCounts）---- */
-var TYPE_COLORS = { 1: '#f59e0b', 2: '#f43f5e', 3: '#10b981', 4: '#3b82f6' };
-var TYPE_LABELS = { 1: '待分配', 2: '空笼盒', 3: '饲养中', 4: '异常' };
-var TOTAL_CELLS = 80;
-
-function enrichShelvesWithTypeBars(shelves) {
-  (shelves || []).forEach(function(s) {
-    var counts = s.cageTypeCounts || {};
-    var bars = [];
-    var filled = 0;
-    [3, 1, 4, 2].forEach(function(ct) {
-      var n = Number(counts[String(ct)] || 0);
-      filled += n;
-      bars.push({ type: ct, label: TYPE_LABELS[ct], count: n, pct: Math.round(n / TOTAL_CELLS * 100), color: TYPE_COLORS[ct] });
-    });
-    s._bars = bars.filter(function(b) { return b.count > 0; });
-    s._filled = filled;
-  });
-}
-
-/** 聚合房间级 bars */
-function buildRoomBars(room) {
-  var merged = { 1: 0, 2: 0, 3: 0, 4: 0 };
-  var shelfCount = (room.shelves || []).length;
-  (room.shelves || []).forEach(function(s) {
-    var counts = s.cageTypeCounts || {};
-    merged[1] += Number(counts['1'] || 0);
-    merged[2] += Number(counts['2'] || 0);
-    merged[3] += Number(counts['3'] || 0);
-    merged[4] += Number(counts['4'] || 0);
-  });
-  var grandTotal = shelfCount * TOTAL_CELLS;
-  var bars = [];
-  [3, 1, 4, 2].forEach(function(ct) {
-    var n = merged[ct];
-    bars.push({ type: ct, label: TYPE_LABELS[ct], count: n, pct: grandTotal > 0 ? Math.round(n / grandTotal * 100) : 0, color: TYPE_COLORS[ct] });
-  });
-  return bars.filter(function(b) { return b.count > 0; });
-}
-
+/** 校区 → 父房间 → 子房间(笼架组) → 笼架 三级分组 */
 function groupShelvesByCampus(shelves) {
   var campusMap = {};
+  var campusOrder = [];
   (shelves || []).forEach(function(s) {
-    var cn = s.campusName || '其他校区';
+    var cn = s.campusName || "其他";
+    var rn = s.roomName || "其他";
+    var pr = extractParentRoomKey(rn);   // 父房间：201A → 201
     if (!campusMap[cn]) {
-      campusMap[cn] = { campusName: cn, rooms: [], roomMap: {}, expanded: false, shelfCount: 0, _headerStyle: campusHeaderStyle(cn) };
+      campusMap[cn] = { campusName: cn, rooms: [], roomMap: {} };
+      campusOrder.push(cn);
     }
-    var camp = campusMap[cn];
-    var rn = s.roomName || '其他房间';
-    if (!camp.roomMap[rn]) {
-      var room = { roomName: rn, shelves: [], hasHighlight: false, expanded: false };
-      camp.roomMap[rn] = room;
-      camp.rooms.push(room);
+    var cm = campusMap[cn];
+    if (!cm.roomMap[pr]) {
+      var room = { roomName: pr, shelfGroups: [], groupMap: {}, hasHighlight: false };
+      cm.roomMap[pr] = room;
+      cm.rooms.push(room);
     }
-    camp.roomMap[rn].shelves.push(s);
-    camp.shelfCount++;
+    var rm = cm.roomMap[pr];
+    if (!rm.groupMap[rn]) {
+      var sg = { key: rn, name: rn, shelves: [], hasHighlight: false, expanded: false,
+                 c1: 0, c2: 0, c3: 0, c4: 0 };
+      rm.groupMap[rn] = sg;
+      rm.shelfGroups.push(sg);
+    }
+    rm.groupMap[rn].shelves.push(s);
     if (s.highlight) {
-      camp.roomMap[rn].hasHighlight = true;
+      rm.hasHighlight = true;
+      rm.groupMap[rn].hasHighlight = true;
     }
   });
-  var orderedCampuses = [];
-  for (var i = 0; i < CAMPUS_ORDER.length; i++) {
-    if (campusMap[CAMPUS_ORDER[i]]) {
-      orderedCampuses.push(campusMap[CAMPUS_ORDER[i]]);
-      delete campusMap[CAMPUS_ORDER[i]];
-    }
-  }
-  var rest = Object.keys(campusMap).sort();
-  for (var j = 0; j < rest.length; j++) {
-    orderedCampuses.push(campusMap[rest[j]]);
-  }
-  // 计算每个房间的聚合进度条
-  orderedCampuses.forEach(function(camp) {
-    (camp.rooms || []).forEach(function(room) {
-      room._bars = buildRoomBars(room);
-    });
-  });
-  return orderedCampuses;
-}
-
-/* ================================================================== */
-/*  Image Upload Helpers                                                */
-/* ================================================================== */
-
-var MAX_UPLOAD_IMAGES = 9;
-
-function chooseImages(count) {
-  return new Promise(function(resolve, reject) {
-    wx.chooseImage({
-      count: count,
-      sizeType: ['compressed'],
-      sourceType: ['album', 'camera'],
-      success: function(res) { resolve(res.tempFilePaths || []); },
-      fail: function(err) { reject(new Error((err && err.errMsg) || '选择图片失败')); }
-    });
-  });
-}
-
-function uploadSingleImage(tempFilePath, token) {
-  return springAuth.refreshPublicRuntimeConfig().then(function() {
-    var baseUrl = springAuth.getApiPublicBaseUrl().replace(/\/+$/, '');
-    return new Promise(function(resolve, reject) {
-      wx.uploadFile({
-        url: baseUrl + '/api/upload',
-      filePath: tempFilePath,
-      name: 'file',
-      header: {
-        'Authorization': 'Bearer ' + token
-      },
-      success: function(res) {
-        try {
-          var body = JSON.parse(res.data);
-          if (body && body.success && body.data) {
-            resolve(body.data.publicUrl || body.data.url || '');
-          } else {
-            reject(new Error((body && body.message) || '上传失败'));
-          }
-        } catch (e) {
-          reject(new Error('解析上传结果失败'));
-        }
-      },
-      fail: function(err) {
-        reject(new Error((err && err.errMsg) || '上传请求失败'));
-      }
-    });
-    });
-  });
+  return campusOrder.map(function(k) { return campusMap[k]; });
 }
 
 /* ================================================================== */
@@ -559,50 +481,91 @@ Page({
   data: {
     loading: true,
     error: '',
-    screen: 'list',
+    screen: 'list',           // 'list' | 'grid'
     shelves: [],
-    campusGroups: [],
-    allCampusGroups: [],
+    shelfGroups: [],          // [{roomName, shelves:[], expanded:false}]
+    allShelfGroups: [],       // unfiltered, for filter dropdown
     totalCount: 0,
 
+    // Search & filter
     searchQuery: '',
-    roomFilter: '',
-    roomFilterIndex: 0,
-    filteredShelfCount: 0,
-    allExpanded: false,
+    roomFilter: '',           // selected roomName filter value
+    roomFilterIndex: 0,       // picker selected index
+    roomFilterOptions: [],    // [{text, value}] for picker
+    filteredShelfCount: 0,    // count of shelves in filtered view
 
     // Grid
-    selectedShelf: null,
-    grid: [],
+    selectedShelf: null,      // shelfMeta from detail
+    grid: [],                 // 80 cells
     gridMeta: null,
     filledCount: 0,
     totalCells: 80,
 
-    // Cell detail
+    // Scan mode (教职工视角)
+    staffView: false,
+    scanMode: false,
+    scannedCellX: -1,
+    scannedCellY: -1,
+    scannedPosition: '',
+    scannedCageBoxCode: '',
+    legendOpen: false,
+    scanCache: {},               // { "x:y": { cell, code, actions: {DIVIDE, SPECIAL_BREEDING, HEALTH_CHECK} } }
+    scanCacheSize: 0,
+    scanTotalActions: 0,
+    lastScannedKey: '',
+    lastScannedEntry: { position: '', code: '', act_DIVIDE: false, act_SPECIAL_BREEDING: false, act_HEALTH_CHECK: false },
+    actionSubmitting: false,
+    editActionCell: null,       // 编辑模式弹出的 cell
+    editActionPopup: false,     // 弹窗显隐
+    editActionPhotos: [],       // 弹窗内上传的照片
+    editActionNote: "",         // 弹窗内备注
+    editActionUploading: false,
+    editHistory: [],            // 弹窗内历史记录
+    editHistoryLoading: false,
+    editMode: false,
+    bindMode: false,
+    bindScannedCode: '',
+    bindSelectedKey: '',
+    unbindActive: false,
+    bindPairCache: [],       // [{ key: "x:y", cell, code }] 批量绑定缓存（数组）
+    bindPairCacheSize: 0,
+    unbindPairCache: [],     // [{ key: "x:y", cell }] 批量解绑缓存（数组）
+    unbindPairCacheSize: 0,
+    bindSubmitting: false,
+    navBarHeight: 64,
+
+    // Cell detail（对齐 Web CellDetailPanel / MobileCageCellDetailDialog）
     selectedCell: null,
     cellDetailMeta: null,
     showCellDetail: false,
-    detailRichText: "",
-    detailImageUrls: "",
-    detailImagePreviewUrls: [],
+    cellDetail: null,
+    experimentDesc: '',
+    detailImages: [],
+    detailStatusPhotos: {},
     detailAnnotationLoading: false,
     detailSaving: false,
     detailSaveMsg: "",
     detailSaveMsgType: "",
     detailQrImageSrc: "",
-    detailUploading: false,
+    detailImageUploading: false,
+    // 教职工详情弹窗动作
+    detailActions: { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false },
+    detailActionSubmitting: false,
 
     // 特殊状态弹窗
     specialStatusOpen: false,
     specialStatusLoading: false,
     specialStatusError: '',
     specialStatusScannedAt: '',
-    specialStatusTotal: 0,
     specialStatusGroups: [],
     allExpanded: false,
+    anyExpanded: false,
+    scannedAt: '',
+    highlightTarget: null,  // { shelveId, x, y, campusName, roomName } 扫码跳转高亮
+    scanLockHighlight: null, // { sid: shelveId, x, y } 扫码定位闪烁高亮
   },
 
-  onLoad: function() {
+  onLoad: function(options) {
     var self = this;
     var role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     var token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
@@ -612,20 +575,32 @@ Page({
       wx.navigateBack({ delta: 1 });
       return;
     }
-    self.loadShelves();
-  },
 
-  /* ------------------------------------------------------------------ */
-  /*  Pull-down Refresh                                                   */
-  /* ------------------------------------------------------------------ */
-
-  onPullDownRefresh: function() {
-    var self = this;
-    if (self.data.screen === 'grid') {
-      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
-    } else {
-      self.loadShelves();
+    // 解析扫码跳转参数（微信可能不解码，手动 decodeURIComponent）
+    var highlightTarget = null;
+    console.log('[mp-jump] onLoad options:', JSON.stringify(options || {}));
+    if (options && (options.shelveId || options.campusName || options.roomName)) {
+      var decodedCampus = '';
+      var decodedRoom = '';
+      try { decodedCampus = decodeURIComponent(options.campusName || ''); } catch(e) { decodedCampus = options.campusName || ''; }
+      try { decodedRoom = decodeURIComponent(options.roomName || ''); } catch(e) { decodedRoom = options.roomName || ''; }
+      console.log('[mp-jump] decoded campus=' + decodedCampus + ' room=' + decodedRoom);
+      highlightTarget = {
+        shelveId: options.shelveId || '',
+        x: parseInt(options.highlightX) || 0,
+        y: parseInt(options.highlightY) || 0,
+        campusName: decodedCampus,
+        roomName: decodedRoom,
+      };
+      console.log('[mp-jump] parsed highlightTarget:', JSON.stringify(highlightTarget));
     }
+
+    self.setData({
+      staffView: hasMinRole(role, 'STAFF'),
+      highlightTarget: highlightTarget,
+      ...readCustomNavMetrics()
+    });
+    self.loadShelves();
   },
 
   /* ------------------------------------------------------------------ */
@@ -636,50 +611,197 @@ Page({
     var self = this;
     self.setData({ loading: true, error: '' });
 
-    springAuth.springRequest({
+    var p1 = springAuth.springRequest({
       url: '/api/student/mobile/cage-shelves/all',
       method: 'GET',
       data: {}
-    }).then(function(res) {
-      var p = unwrap(res);
+    });
+    var p2 = springAuth.springRequest({
+      url: '/api/cage-shelves/full-tree',
+      method: 'GET',
+      data: {}
+    });
+
+    Promise.all([p1, p2]).then(function(results) {
+      var p = unwrap(results[0]);
       if (!p.ok) {
         self.setData({ loading: false, error: p.message });
-        wx.stopPullDownRefresh();
         return;
       }
       var shelves = (p.data && p.data.shelves) || [];
       var totalCount = (p.data && p.data.totalCount) || shelves.length;
+      var scannedAt = (p.data && p.data.scannedAt) || '';
 
-      // 从后端响应直接读取 cageTypeCounts，计算进度条（指示灯风格）
-      enrichShelvesWithTypeBars(shelves);
+      // 合并 full-tree 的类型计数到每个 shelf
+      var treeResult = unwrap(results[1]);
+      var treeData = treeResult.ok ? treeResult.data : [];
+      var typeMap = {};
+      for (var ti = 0; ti < (treeData || []).length; ti++) {
+        var tn = treeData[ti];
+        if (tn.shelveId) {
+          typeMap[String(tn.shelveId)] = { t1: tn.type1 || 0, t2: tn.type2 || 0, t3: tn.type3 || 0, t4: tn.type4 || 0 };
+        }
+      }
+      for (var si = 0; si < shelves.length; si++) {
+        var sc = typeMap[String(shelves[si].shelveId)];
+        if (sc) {
+          shelves[si].c1 = sc.t1; shelves[si].c2 = sc.t2; shelves[si].c3 = sc.t3; shelves[si].c4 = sc.t4;
+        }
+      }
 
       var campusGroups = groupShelvesByCampus(shelves);
+      // 计算房间 & 笼架组两级聚合计数
+      for (var ci = 0; ci < campusGroups.length; ci++) {
+        var cg = campusGroups[ci];
+        for (var ri = 0; ri < cg.rooms.length; ri++) {
+          var rm = cg.rooms[ri];
+          rm.c1 = 0; rm.c2 = 0; rm.c3 = 0; rm.c4 = 0;
+          for (var gi = 0; gi < rm.shelfGroups.length; gi++) {
+            var grp = rm.shelfGroups[gi];
+            grp.c1 = 0; grp.c2 = 0; grp.c3 = 0; grp.c4 = 0;
+            for (var sj = 0; sj < grp.shelves.length; sj++) {
+              var s = grp.shelves[sj];
+              grp.c1 += s.c1 || 0; grp.c2 += s.c2 || 0; grp.c3 += s.c3 || 0; grp.c4 += s.c4 || 0;
+            }
+            rm.c1 += grp.c1; rm.c2 += grp.c2; rm.c3 += grp.c3; rm.c4 += grp.c4;
+          }
+          rm.shelfCount = 0;
+          for (var gi2 = 0; gi2 < rm.shelfGroups.length; gi2++) {
+            rm.shelfCount += rm.shelfGroups[gi2].shelves.length;
+          }
+        }
+      }
+
+      // Build room filter options
+      var roomOptions = [{ text: '全部房间', value: '' }];
+      var allRooms = [];
+      for (var ci2 = 0; ci2 < campusGroups.length; ci2++) {
+        for (var ri2 = 0; ri2 < campusGroups[ci2].rooms.length; ri2++) {
+          allRooms.push(campusGroups[ci2].rooms[ri2]);
+        }
+      }
+      for (var ai = 0; ai < allRooms.length; ai++) {
+        var totalShelves = 0;
+        for (var gi2 = 0; gi2 < allRooms[ai].shelfGroups.length; gi2++) {
+          totalShelves += allRooms[ai].shelfGroups[gi2].shelves.length;
+        }
+        roomOptions.push({
+          text: allRooms[ai].roomName + '房间 (' + totalShelves + '架)',
+          value: allRooms[ai].roomName
+        });
+      }
+
+      // 默认全部折叠
+      for (var ci3 = 0; ci3 < campusGroups.length; ci3++) {
+        campusGroups[ci3]._collapsed = true;
+      }
 
       self.setData({
         loading: false,
         error: '',
         shelves: shelves,
-        campusGroups: campusGroups,
-        allCampusGroups: JSON.parse(JSON.stringify(campusGroups)),
+        shelfGroups: campusGroups,
+        allShelfGroups: JSON.parse(JSON.stringify(campusGroups)),
         totalCount: totalCount,
         filteredShelfCount: totalCount,
+        scannedAt: scannedAt,
+        anyExpanded: false,
+        allExpanded: false,
+        roomFilterOptions: roomOptions,
         searchQuery: '',
         roomFilter: '',
-        roomFilterIndex: 0,
-        allExpanded: false
+        roomFilterIndex: 0
       });
-      wx.stopPullDownRefresh();
+
+      // 扫码跳转：自动展开并导航到目标笼位
+      if (self.data.highlightTarget) {
+        console.log('[mp-jump] trigger from loadShelves, highlightTarget:', JSON.stringify(self.data.highlightTarget));
+        self._autoJumpToHighlightTarget(self.data.highlightTarget, shelves, campusGroups);
+      }
     }).catch(function(e) {
       self.setData({ loading: false, error: (e && e.message) || '加载失败' });
-      wx.stopPullDownRefresh();
     });
   },
 
+  /** 扫码跳转：用 campusName+roomName 在列表中找 shelf → 走 onShelfTap 正常链路 */
+  _autoJumpToHighlightTarget: function(target, shelves, campusGroups) {
+    var self = this;
+    console.log('[mp-jump] target:', JSON.stringify(target));
+    console.log('[mp-jump] shelves count:', shelves.length, 'campusGroups:', campusGroups.length);
+    if (!target || (!target.campusName && !target.roomName)) {
+      console.log('[mp-jump] SKIP: no campusName/roomName');
+      return;
+    }
+
+    var campusName = target.campusName || '';
+    // 后端返回完整房间名如 210A，但列表 room 组用父键如 210
+    var roomName = target.roomName || '';
+    var roomParentKey = extractParentRoomKey(roomName);
+    console.log('[mp-jump] searching campus="' + campusName + '" room="' + roomName + '" parentKey="' + roomParentKey + '"');
+
+    // 打印 campusGroups 结构用于调试
+    for (var ci = 0; ci < campusGroups.length; ci++) {
+      var cg2 = campusGroups[ci];
+      console.log('[mp-jump] campus:', cg2.campusName, 'rooms:', (cg2.rooms || []).map(function(r) { return r.roomName; }));
+    }
+
+    // 展开 campus/room（用 parentKey 匹配列表 room 组）
+    for (var ci = 0; ci < campusGroups.length; ci++) {
+      var cg = campusGroups[ci];
+      if (campusName && cg.campusName !== campusName) continue;
+      cg._collapsed = false;
+      for (var ri = 0; ri < cg.rooms.length; ri++) {
+        var room = cg.rooms[ri];
+        if (roomParentKey && room.roomName !== roomParentKey) continue;
+        room.expanded = true;
+        for (var gi = 0; gi < room.shelfGroups.length; gi++) {
+          room.shelfGroups[gi].expanded = true;
+        }
+        break;
+      }
+      break;
+    }
+
+    // 在匹配到的 campus+room 范围内取第一个 shelf 的 shelveId
+    var listShelveId = null;
+    for (var ci2 = 0; ci2 < campusGroups.length && !listShelveId; ci2++) {
+      if (campusName && campusGroups[ci2].campusName !== campusName) continue;
+      var rooms2 = campusGroups[ci2].rooms;
+      for (var ri2 = 0; ri2 < rooms2.length && !listShelveId; ri2++) {
+        if (roomParentKey && rooms2[ri2].roomName !== roomParentKey) continue;
+        var sgs = rooms2[ri2].shelfGroups;
+        for (var gi2 = 0; gi2 < sgs.length && !listShelveId; gi2++) {
+          if (sgs[gi2].shelves.length > 0) {
+            listShelveId = sgs[gi2].shelves[0].shelveId;
+            console.log('[mp-jump] found listShelveId:', listShelveId, 'from group:', sgs[gi2].name || sgs[gi2].key);
+          }
+        }
+      }
+    }
+    if (!listShelveId) {
+      console.error('[mp-jump] NOT FOUND: no shelf in matched room');
+      wx.showToast({ title: '列表中未找到对应房间的笼架', icon: 'none' });
+      self.setData({ highlightTarget: null });
+      return;
+    }
+
+    console.log('[mp-jump] opening grid with listShelveId:', listShelveId, 'highlight:', target.x, target.y);
+    self.setData({
+      shelfGroups: campusGroups,
+      scannedCellX: target.x,
+      scannedCellY: target.y,
+      lastScannedKey: target.x + ':' + target.y,
+      highlightTarget: null
+    });
+
+    self.loadShelfDetail(listShelveId);
+  },
 
   onRetry: function() {
     var self = this;
     if (self.data.screen === 'grid') {
-      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+      // 刷新按钮强制拉取实时数据，绕过快照
+      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '', true);
     } else {
       self.loadShelves();
     }
@@ -687,12 +809,13 @@ Page({
 
   onRefresh: function() {
     var self = this;
+    self.setData({ searchQuery: '', roomFilter: '', roomFilterIndex: 0, allExpanded: false });
     self.loadShelves();
   },
 
-  onRefreshGrid: function() {
+  onScrollRefresh: function() {
     var self = this;
-    self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+    self.loadShelves();
   },
 
   /* ------------------------------------------------------------------ */
@@ -703,56 +826,87 @@ Page({
     var self = this;
     var query = (e.detail.value || '').trim();
     self.setData({ searchQuery: query });
-    self.applyFilters(query, self.data.allCampusGroups);
+    self.applyFilters(query, self.data.roomFilter, self.data.allShelfGroups);
   },
 
-  applyFilters: function(query, allCampusGroups) {
-    var q = query.toLowerCase();
-    var deep = JSON.parse(JSON.stringify(allCampusGroups));
+  onRoomFilterChange: function(e) {
+    var self = this;
+    var index = parseInt(e.detail.value);
+    var roomName = '';
+    if (index > 0) {
+      var option = self.data.roomFilterOptions[index];
+      roomName = option ? option.value : '';
+    }
+    self.setData({ roomFilter: roomName, roomFilterIndex: index });
+    self.applyFilters(self.data.searchQuery, roomName, self.data.allShelfGroups);
+  },
+
+  applyFilters: function(query, roomFilter, allGroups) {
     var filtered = [];
-    var shelfCount = 0;
-    for (var i = 0; i < deep.length; i++) {
-      var camp = deep[i];
-      var matchingRooms = [];
-      for (var j = 0; j < camp.rooms.length; j++) {
-        var room = camp.rooms[j];
+    var q = query.toLowerCase();
+    var totalShelfCount = 0;
+    for (var i = 0; i < allGroups.length; i++) {
+      var campus = allGroups[i];
+      var matchedRooms = [];
+      for (var j = 0; j < campus.rooms.length; j++) {
+        var room = campus.rooms[j];
+        if (roomFilter && room.roomName !== roomFilter) continue;
         if (q && room.roomName.toLowerCase().indexOf(q) === -1) continue;
-        room._bars = buildRoomBars(room);
-        matchingRooms.push(room);
-        shelfCount += room.shelves.length;
+        var clonedGroups = [];
+        var roomShelfCount = 0;
+        for (var gi = 0; gi < room.shelfGroups.length; gi++) {
+          var src = room.shelfGroups[gi];
+          clonedGroups.push({
+            key: src.key, name: src.name, shelves: src.shelves.slice(),
+            hasHighlight: src.hasHighlight, expanded: false,
+            c1: src.c1, c2: src.c2, c3: src.c3, c4: src.c4
+          });
+          roomShelfCount += src.shelves.length;
+        }
+        totalShelfCount += roomShelfCount;
+        matchedRooms.push({
+          roomName: room.roomName,
+          shelfGroups: clonedGroups,
+          shelfCount: roomShelfCount,
+          expanded: false,
+          hasHighlight: room.hasHighlight,
+          c1: room.c1, c2: room.c2, c3: room.c3, c4: room.c4
+        });
       }
-      if (matchingRooms.length > 0) {
-        camp.rooms = matchingRooms;
-        filtered.push(camp);
+      if (matchedRooms.length > 0) {
+        filtered.push({ campusName: campus.campusName, rooms: matchedRooms });
       }
     }
-    this.setData({ campusGroups: filtered, filteredShelfCount: shelfCount });
+    this.setData({ shelfGroups: filtered, filteredShelfCount: totalShelfCount });
+  },
+
+  onToggleCampus: function(e) {
+    var campusName = e.currentTarget.dataset.campusName;
+    var groups = this.data.shelfGroups;
+    for (var ci = 0; ci < groups.length; ci++) {
+      if (groups[ci].campusName === campusName) {
+        groups[ci]._collapsed = !groups[ci]._collapsed;
+        break;
+      }
+    }
+    this.setData({ shelfGroups: groups });
   },
 
   onToggleAllRooms: function() {
-    var groups = this.data.campusGroups;
+    var groups = this.data.shelfGroups;
     var next = !this.data.allExpanded;
-    for (var i = 0; i < groups.length; i++) {
-      groups[i].expanded = next;
-      for (var j = 0; j < groups[i].rooms.length; j++) {
-        groups[i].rooms[j].expanded = next;
+    for (var ci = 0; ci < groups.length; ci++) {
+      groups[ci]._collapsed = next;
+      for (var ri = 0; ri < groups[ci].rooms.length; ri++) {
+        var rm = groups[ci].rooms[ri];
+        rm.expanded = next;
+        for (var gi = 0; gi < rm.shelfGroups.length; gi++) {
+          rm.shelfGroups[gi].expanded = next;
+        }
       }
     }
-    this.setData({ campusGroups: groups, allExpanded: next });
+    this.setData({ shelfGroups: groups, allExpanded: next, anyExpanded: next });
   },
-
-  onClearFilter: function() {
-    var self = this;
-    self.setData({
-      searchQuery: '',
-      campusGroups: JSON.parse(JSON.stringify(self.data.allCampusGroups)),
-      filteredShelfCount: self.data.totalCount
-    });
-  },
-
-  /* ------------------------------------------------------------------ */
-  /*  Special Status Popup                                                */
-  /* ------------------------------------------------------------------ */
 
   onOpenSpecialStatus: function() {
     var self = this;
@@ -768,7 +922,6 @@ Page({
         return;
       }
       var data = body.data || {};
-      var allCagesTotal = 0;
       var colors = {
         COHABITATION:    { bg: '#a7f3d0', border: '#10b981' },
         SPECIAL_FEEDING: { bg: '#fecaca', border: '#ef4444' },
@@ -776,55 +929,61 @@ Page({
         HEALTH_ABNORMAL: { bg: '#e9d5ff', border: '#a855f7' },
         ANIMAL_TRANSFER: { bg: '#cffafe', border: '#06b6d4' },
       };
-
       var groups = (data.groups || []).map(function(g) {
         var cages = g.cages || [];
-        allCagesTotal += cages.length;
+        // 反转显示坐标（兼容数字格式 1-1 和字母格式 A-1）
+        cages.forEach(function(c) {
+          var p = c.position || '';
+          var m = /^([A-H])-(\d+)$/.exec(p);
+          if (m) { c._displayPosition = m[1] + '-' + (11 - parseInt(m[2])); }
+          else {
+            var m2 = /^(\d+)-(\d+)$/.exec(p);
+            if (m2) { var col = COLUMNS[Math.max(0, Math.min(7, Number(m2[1]) - 1))] || 'A'; c._displayPosition = col + '-' + (11 - parseInt(m2[2])); }
+            else { c._displayPosition = p; }
+          }
+        });
+        // 对齐 H5 groupCagesByShelf：按 shelveId 分组（Status → Shelf → Cage）
+        var shelfMap = {};
+        var shelfOrder = [];
+        cages.forEach(function(c) {
+          var key = String(c.shelveId || (c.roomName + '-' + c.campusName));
+          if (!shelfMap[key]) {
+            shelfMap[key] = {
+              key: key,
+              title: (c.roomName || '—') + ' · ' + (c.shelveName || c.shelveId || '—'),
+              meta: [c.campusName, c.floorName].filter(function(s) { return s && s.trim(); }).join(' '),
+              cages: [],
+            };
+            shelfOrder.push(key);
+          }
+          shelfMap[key].cages.push(c);
+        });
+        // 排序：先按 meta 再按 title
+        shelfOrder.sort(function(a, b) {
+          var sa = shelfMap[a], sb = shelfMap[b];
+          var mc = (sa.meta || '').localeCompare(sb.meta || '');
+          if (mc !== 0) return mc;
+          return (sa.title || '').localeCompare(sb.title || '');
+        });
         var c = colors[g.statusCode] || { bg: '#f1f5f9', border: '#cbd5e1' };
-
-        // 按校区+房间分组
-        var roomMap = {};
-        cages.forEach(function(cage, idx) {
-          var cn = cage.campusName || '未知校区';
-          var rn = cage.roomName || '未知房间';
-          var key = cn + '||' + rn;
-          if (!roomMap[key]) {
-            roomMap[key] = { key: key, campusName: cn, roomName: rn, cages: [], _expanded: false };
-          }
-          roomMap[key].cages.push(cage);
-        });
-        var byRoom = Object.keys(roomMap).sort().map(function(k) { return roomMap[k]; });
-
-        // 按课题组分组
-        var groupMap = {};
-        cages.forEach(function(cage, idx) {
-          var gn = cage.projectPiName || cage.piName || '未知课题组';
-          var key = gn;
-          if (!groupMap[key]) {
-            groupMap[key] = { key: key, groupName: gn, cages: [], _expanded: false };
-          }
-          groupMap[key].cages.push(cage);
-        });
-        var byGroup = Object.keys(groupMap).sort().map(function(k) { return groupMap[k]; });
-
         return {
           code: g.statusCode,
-          label: g.statusLabel,
+          label: g.statusLabel || STATUS_LABEL_MAP[g.statusCode] || g.statusCode,
           count: cages.length,
           dotColor: c.bg,
           borderColor: c.border,
-          expanded: true,
-          _groupBy: 'room',
-          byRoom: byRoom,
-          byGroup: byGroup,
-          cages: cages,
+          abbr: STATUS_ABBR[g.statusCode] || '?',
+          expanded: false,
+          shelfGroups: shelfOrder.map(function(k) {
+            var sg = shelfMap[k];
+            sg._expanded = false;
+            return sg;
+          }),
         };
       });
-
       self.setData({
         specialStatusLoading: false,
         specialStatusScannedAt: data.scannedAt || '',
-        specialStatusTotal: data.totalAbnormal || allCagesTotal,
         specialStatusGroups: groups,
       });
     }).catch(function(err) {
@@ -848,30 +1007,16 @@ Page({
     this.setData({ specialStatusGroups: groups });
   },
 
-  onSwitchSpecialGroupDim: function(e) {
+  onToggleSpecialShelf: function(e) {
     var code = e.currentTarget.dataset.code;
-    var dim = e.currentTarget.dataset.dim;
+    var key = e.currentTarget.dataset.key;
     var groups = this.data.specialStatusGroups;
     for (var i = 0; i < groups.length; i++) {
       if (groups[i].code === code) {
-        groups[i]._groupBy = dim;
-        break;
-      }
-    }
-    this.setData({ specialStatusGroups: groups });
-  },
-
-  onToggleSpecialSubGroup: function(e) {
-    var pkey = e.currentTarget.dataset.pkey;
-    var skey = e.currentTarget.dataset.skey;
-    var groups = this.data.specialStatusGroups;
-    for (var i = 0; i < groups.length; i++) {
-      if (groups[i].code === pkey) {
-        var dim = groups[i]._groupBy;
-        var list = dim === 'group' ? groups[i].byGroup : groups[i].byRoom;
-        for (var j = 0; j < list.length; j++) {
-          if (list[j].key === skey) {
-            list[j]._expanded = list[j]._expanded === false ? true : false;
+        var sgs = groups[i].shelfGroups;
+        for (var j = 0; j < sgs.length; j++) {
+          if (sgs[j].key === key) {
+            sgs[j]._expanded = !sgs[j]._expanded;
             break;
           }
         }
@@ -879,40 +1024,58 @@ Page({
       }
     }
     this.setData({ specialStatusGroups: groups });
+  },
+
+  onClearFilter: function() {
+    var self = this;
+    self.setData({
+      searchQuery: '',
+      roomFilter: '',
+      roomFilterIndex: 0,
+      shelfGroups: JSON.parse(JSON.stringify(self.data.allShelfGroups)),
+      filteredShelfCount: self.data.totalCount
+    });
   },
 
   /* ------------------------------------------------------------------ */
   /*  List — Accordion                                                     */
   /* ------------------------------------------------------------------ */
 
-  onToggleCampus: function(e) {
-    var campusName = e.currentTarget.dataset.campusName;
-    var groups = this.data.campusGroups;
-    for (var i = 0; i < groups.length; i++) {
-      if (groups[i].campusName === campusName) {
-        groups[i].expanded = !groups[i].expanded;
-        break;
+  onToggleRoom: function(e) {
+    var self = this;
+    var roomName = e.currentTarget.dataset.roomName;
+    var groups = self.data.shelfGroups;
+    for (var ci = 0; ci < groups.length; ci++) {
+      for (var ri = 0; ri < groups[ci].rooms.length; ri++) {
+        if (groups[ci].rooms[ri].roomName === roomName) {
+          groups[ci].rooms[ri].expanded = !groups[ci].rooms[ri].expanded;
+          break;
+        }
       }
     }
-    this.setData({ campusGroups: groups });
+    self.setData({ shelfGroups: groups });
   },
 
-  onToggleRoom: function(e) {
-    var campusName = e.currentTarget.dataset.campusName;
+  onToggleShelfGroup: function(e) {
+    var self = this;
     var roomName = e.currentTarget.dataset.roomName;
-    var groups = this.data.campusGroups;
-    for (var i = 0; i < groups.length; i++) {
-      if (groups[i].campusName === campusName) {
-        for (var j = 0; j < groups[i].rooms.length; j++) {
-          if (groups[i].rooms[j].roomName === roomName) {
-            groups[i].rooms[j].expanded = !groups[i].rooms[j].expanded;
-            break;
+    var groupKey = e.currentTarget.dataset.groupKey;
+    var groups = self.data.shelfGroups;
+    for (var ci = 0; ci < groups.length; ci++) {
+      for (var ri = 0; ri < groups[ci].rooms.length; ri++) {
+        var rm = groups[ci].rooms[ri];
+        if (rm.roomName === roomName) {
+          for (var gi = 0; gi < rm.shelfGroups.length; gi++) {
+            if (rm.shelfGroups[gi].key === groupKey) {
+              rm.shelfGroups[gi].expanded = !rm.shelfGroups[gi].expanded;
+              break;
+            }
           }
+          break;
         }
-        break;
       }
     }
-    this.setData({ campusGroups: groups });
+    self.setData({ shelfGroups: groups });
   },
 
   /* ------------------------------------------------------------------ */
@@ -926,43 +1089,82 @@ Page({
     self.loadShelfDetail(shelveId);
   },
 
-  loadShelfDetail: function(shelveId) {
+  /** 从本地DB加载笼架网格（秒加载） */
+  loadShelfDetail: function(shelveId, opts) {
     var self = this;
+    opts = opts || {};
     self.setData({ loading: true, error: '', screen: 'grid' });
 
     springAuth.springRequest({
-      url: '/api/student/mobile/cage-shelves/' + shelveId + '/detail',
-      method: 'GET',
-      data: {}
+      url: '/api/cage-cell-index/local-grid/by-shelve/' + shelveId,
+      method: 'GET'
     }).then(function(res) {
       var p = unwrap(res);
       if (!p.ok) {
         self.setData({ loading: false, error: p.message });
-        wx.stopPullDownRefresh();
         return;
       }
       var data = p.data || {};
       var shelfMeta = data.shelfMeta || {};
       var gridCells = data.grid || [];
-      var totalCells = data.totalCells || 80;
-      var filledCells = data.filledCells || 0;
       var grid = buildGrid(gridCells);
 
-      self.setData({
+      var patch = {
         loading: false,
         error: '',
         selectedShelf: shelfMeta,
         grid: grid,
         gridMeta: shelfMeta,
-        filledCount: filledCells,
-        totalCells: totalCells,
         showCellDetail: false,
         selectedCell: null
-      });
-      wx.stopPullDownRefresh();
+      };
+
+      // 扫码定位 → 设置十字交叉高亮 + 闪烁动画
+      if (opts.locateX != null && opts.locateY != null) {
+        patch.lastScannedKey = opts.locateX + ':' + opts.locateY;
+        patch.scannedCellX = opts.locateX;
+        patch.scannedCellY = opts.locateY;
+        patch.scanLockHighlight = { sid: String(shelfMeta.shelveId || shelveId), x: opts.locateX, y: opts.locateY };
+      }
+
+      self.setData(patch);
     }).catch(function(e) {
       self.setData({ loading: false, error: (e && e.message) || '加载失败' });
-      wx.stopPullDownRefresh();
+    });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  扫码定位（学生/教职工通用）                                          */
+  /* ------------------------------------------------------------------ */
+
+  onScanLock: function() {
+    var self = this;
+    wx.scanCode({
+      onlyFromCamera: true,
+      scanType: ['qrCode', 'barCode'],
+      success: function(res) {
+        var code = (res.result || '').trim();
+        if (!code) return;
+        springAuth.springRequest({
+          url: '/api/local/scan-lookup',
+          method: 'GET',
+          data: { code: code }
+        }).then(function(res2) {
+          var p = unwrap(res2);
+          if (!p.ok || !p.data || p.data.type === 'NOT_FOUND') {
+            wx.showToast({ title: '未找到对应笼位', icon: 'none' });
+            return;
+          }
+          var d = p.data;
+          var sid = String(d.shelveId || '');
+          if (!sid) { wx.showToast({ title: '无笼架信息', icon: 'none' }); return; }
+          // Load the grid with crosshair locate target
+          self.loadShelfDetail(sid, { locateX: d.positionX, locateY: d.positionY });
+          wx.showToast({ title: '已定位: ' + (d.roomName||'') + ' ' + (d.shelveName||'') + ' (' + d.positionX + ',' + d.positionY + ')', icon: 'success' });
+        }).catch(function() {
+          wx.showToast({ title: '扫码查询失败', icon: 'none' });
+        });
+      }
     });
   },
 
@@ -972,20 +1174,51 @@ Page({
 
   onBackToList: function() {
     var self = this;
-    self.setData({
+    var hasCache = self.data.scanCache && Object.keys(self.data.scanCache).length > 0;
+    if (hasCache) {
+      wx.showModal({
+        title: '未提交修改',
+        content: '有未提交的扫码修改，是否放弃？',
+        confirmText: '放弃',
+        cancelText: '继续编辑',
+        success: function(res) {
+          if (res.confirm) { self.onExitScanMode(); self._doBackToList(); }
+        }
+      });
+    } else {
+      self._doBackToList();
+    }
+  },
+
+  _doBackToList: function() {
+    this.setData({
       screen: 'list',
       loading: false,
       error: '',
       selectedShelf: null,
       grid: [],
       gridMeta: null,
+      scanMode: false,
+      scannedCellX: -1,
+      scannedCellY: -1,
+      scannedPosition: '',
+      scannedCageBoxCode: '',
+      scanCache: {},
+      lastScannedKey: '',
+      editMode: false,
+      bindMode: false,
+      bindScannedCode: '',
+      bindSelectedKey: '',
+      unbindActive: false,
       showCellDetail: false,
       selectedCell: null,
       cellDetailMeta: null,
-      detailRichText: "",
-      detailImageUrls: "",
-      detailImagePreviewUrls: [],
-      detailQrImageSrc: ""
+      cellDetail: null,
+      experimentDesc: "",
+      detailImages: [],
+    detailStatusPhotos: {},
+      detailQrImageSrc: "",
+      scanLockHighlight: null
     });
   },
 
@@ -995,6 +1228,10 @@ Page({
 
   onCellTap: function(e) {
     var self = this;
+    if (self.data.bindMode) {
+      self.onBindCellTap(e);
+      return;
+    }
     var x = Number(e.currentTarget.dataset.x);
     var y = Number(e.currentTarget.dataset.y);
     var cell = null;
@@ -1007,70 +1244,144 @@ Page({
     }
     if (!cell || cell.empty) return;
 
+    // 编辑模式：弹出操作选择窗口而非详情
+    if (self.data.editMode && self.data.staffView) {
+      var ld = cell.detail || {};
+      var ck = cell.x + ':' + cell.y;
+      var cacheEntry = (self.data.scanCache || {})[ck];
+      // 优先从 scanCache 读取，其次从 cell.detail
+      var initAct = cacheEntry ? cacheEntry.initialActions : { DIVIDE: ld.needsDivision===true, SPECIAL_BREEDING: ld.needsSpecialFeeding===true, HEALTH_CHECK: ld.hasHealthAbnormality===true };
+      var currAct = cacheEntry ? cacheEntry.currentActions : JSON.parse(JSON.stringify(initAct));
+      var animalCageId = cell.id || cell.animalCageId || '';
+      self.setData({
+        editActionCell: cell,
+        editActionPopup: true,
+        editActionPhotos: [],
+        editActionNote: '',
+        editHistory: [],
+        editHistoryLoading: true,
+        editActionInitial: { DIVIDE: initAct.DIVIDE, SPECIAL_BREEDING: initAct.SPECIAL_BREEDING, HEALTH_CHECK: initAct.HEALTH_CHECK },
+        editActionCurrent: { DIVIDE: currAct.DIVIDE, SPECIAL_BREEDING: currAct.SPECIAL_BREEDING, HEALTH_CHECK: currAct.HEALTH_CHECK }
+      });
+      // 加载历史记录
+      if (animalCageId) {
+        springAuth.springRequest({ url: '/api/local/history/' + animalCageId, method: 'GET', data: {} }).then(function(res) {
+          var hp = unwrap(res);
+          var list = (hp.ok ? hp.data : []) || [];
+          // 解析 imagesJson → _imgs 供模板渲染
+          list.forEach(function(h) {
+            try { h._imgs = JSON.parse(h.imagesJson || '[]'); } catch(e) { h._imgs = []; }
+            if (h.createdAt) h.createdAt = (h.createdAt || '').substring(0, 16);
+          });
+          self.setData({ editHistory: list, editHistoryLoading: false });
+        }).catch(function() { self.setData({ editHistoryLoading: false }); });
+      }
+      // 从 annotate 加载已有备注和状态照片（不能从 cell.detail 读取）
+      if (animalCageId) {
+        springAuth.springRequest({ url: '/api/local/annotate/' + animalCageId, method: 'GET', data: {} }).then(function(res) {
+          var up = unwrap(res);
+          if (up.ok && up.data) {
+            var d = up.data;
+            var note = '';
+            var all = [];
+            if (d.statusPhotos) {
+              try {
+                var sp = typeof d.statusPhotos === 'string' ? JSON.parse(d.statusPhotos) : d.statusPhotos;
+                if (typeof sp._note === 'string') note = sp._note;
+                // 合并所有 key 的照片（跳过 _note 字符串）
+                for (var k in sp) { if (k !== '_note' && Object.prototype.hasOwnProperty.call(sp, k) && Array.isArray(sp[k])) all = all.concat(sp[k]); }
+              } catch (e) {}
+            }
+            self.setData({ editActionNote: note, editActionPhotos: all });
+          }
+        });
+      }
+      return;
+    }
+
+    var cellDetail = buildCellDetailData(cell);
     var detailMeta = buildCellDetailMeta(cell, self.data.gridMeta);
+
+    var ck = x + ':' + y;
+    var cacheEntry = (self.data.scanCache || {})[ck];
+    var initialActions = { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false };
+    var currentActions = { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false };
+    if (cacheEntry && cacheEntry.initialActions && cacheEntry.currentActions) {
+      initialActions.DIVIDE = !!cacheEntry.initialActions.DIVIDE;
+      initialActions.SPECIAL_BREEDING = !!cacheEntry.initialActions.SPECIAL_BREEDING;
+      initialActions.HEALTH_CHECK = !!cacheEntry.initialActions.HEALTH_CHECK;
+      currentActions.DIVIDE = !!cacheEntry.currentActions.DIVIDE;
+      currentActions.SPECIAL_BREEDING = !!cacheEntry.currentActions.SPECIAL_BREEDING;
+      currentActions.HEALTH_CHECK = !!cacheEntry.currentActions.HEALTH_CHECK;
+    } else {
+      var cbi = cell.cageBoxInfo || {};
+      var cvo = cbi.cageBoxVo || cbi['cageBoxVo'] || {};
+      if (cbi.NeedDivideYn === 1 || cbi.NeedDivideYn === '1' || cvo.needDivideYn === 1 || cvo.needDivideYn === '1') currentActions.DIVIDE = true;
+      if (cbi.NeedFeedingYn === 1 || cbi.NeedFeedingYn === '1' || cvo.needFeedingYn === 1 || cvo.needFeedingYn === '1' || (typeof cbi.specialBreedingName === 'string' && cbi.specialBreedingName.trim()) || (typeof cvo.specialBreedingName === 'string' && cvo.specialBreedingName.trim())) currentActions.SPECIAL_BREEDING = true;
+      if (cbi.AbnormalHealthYn === 1 || cbi.AbnormalHealthYn === '1' || cvo.abnormalHealthYn === 1 || cvo.abnormalHealthYn === '1' || cbi.animalHealthEntity != null || cvo.animalHealthEntity != null) currentActions.HEALTH_CHECK = true;
+      initialActions = JSON.parse(JSON.stringify(currentActions));
+    }
+    this.initialDetailActions = JSON.parse(JSON.stringify(initialActions));
+
     self.setData({
       selectedCell: cell,
       cellDetailMeta: detailMeta,
+      cellDetail: cellDetail,
       showCellDetail: true,
-      detailRichText: "",
-      detailImageUrls: "",
-      detailImagePreviewUrls: [],
+      experimentDesc: (cell.detail && cell.detail.experimentDesc) || '',
+      detailImages: cellDetail.images,
       detailAnnotationLoading: detailMeta.permitted,
       detailSaving: false,
-      detailSaveMsg: "",
-      detailSaveMsgType: "",
-      detailQrImageSrc: "",
-      detailUploading: false
+      detailSaveMsg: '',
+      detailSaveMsgType: '',
+      detailQrImageSrc: '',
+      detailActions: JSON.parse(JSON.stringify(currentActions)),
+      initialDetailActions: JSON.parse(JSON.stringify(initialActions))
     });
 
     if (detailMeta.permitted) {
       self.loadCellAnnotation(cell);
-      if (detailMeta.cageBoxQrCode) {
-        setTimeout(function() { self.drawCageQrCode(detailMeta.cageBoxQrCode); }, 280);
-      }
+      var cbCode = (cell.detail && cell.detail.cageBoxCode) || (cell.cageBoxInfo && cell.cageBoxInfo.cageBoxCode) || cell.cageBoxCode;
+      // QR code rendering removed — local DB doesn't generate QR codes
     }
   },
-
-  loadCellAnnotation: function(cell) {
+loadCellAnnotation: function(cell) {
     var self = this;
-    var shelveId = getActiveShelveId(self.data);
-    if (!shelveId || !cell) {
+    var animalCageId = cell.id || cell.animalCageId || '';
+    if (!animalCageId) {
       self.setData({ detailAnnotationLoading: false });
       return;
     }
     springAuth.springRequest({
-      url: "/api/student/mobile/cage-shelves/" + shelveId + "/cells/" + cell.x + "/" + cell.y + "/annotation",
-      method: "GET",
+      url: '/api/local/annotate/' + animalCageId,
+      method: 'GET',
       data: {}
     }).then(function(res) {
-      var p = unwrap(res);
-      if (!p.ok) {
+      var up = unwrap(res);
+      if (!up.ok) {
         self.setData({ detailAnnotationLoading: false });
         return;
       }
-      var a = p.data;
+      var a = up.data;
       if (!a) {
         self.setData({ detailAnnotationLoading: false });
         return;
       }
-      var imageUrls = "";
-      var previews = [];
-      if (a.images) {
+      var images = [];
+      if (a.imagesJson) {
         try {
-          var arr = JSON.parse(a.images);
-          if (Array.isArray(arr)) {
-            imageUrls = arr.join("\n");
-            previews = arr.slice();
-          }
-        } catch (err) {
-          imageUrls = String(a.images);
-          previews = parseImageUrlLines(imageUrls);
-        }
+          var arr = typeof a.imagesJson === 'string' ? JSON.parse(a.imagesJson) : a.imagesJson;
+          if (Array.isArray(arr)) images = arr;
+        } catch (err2) {}
+      }
+      var statusPhotos = {};
+      if (a.statusPhotos) {
+        try { var sp = typeof a.statusPhotos === 'string' ? JSON.parse(a.statusPhotos) : a.statusPhotos; if (typeof sp === 'object' && !Array.isArray(sp)) statusPhotos = sp; } catch (err3) {}
       }
       self.setData({
-        detailRichText: a.richText || "",
-        detailImageUrls: imageUrls,
-        detailImagePreviewUrls: previews,
+        experimentDesc: a.experimentDesc || '',
+        detailImages: images,
+        detailStatusPhotos: statusPhotos,
         detailAnnotationLoading: false
       });
     }).catch(function() {
@@ -1078,169 +1389,151 @@ Page({
     });
   },
 
-  onDetailRichTextInput: function(e) {
-    this.setData({ detailRichText: e.detail.value || "" });
+  onDetailExperimentDescInput: function(e) {
+    this.setData({ experimentDesc: e.detail.value || '' });
   },
 
-  onDetailImageUrlsInput: function(e) {
-    var text = e.detail.value || "";
-    this.setData({
-      detailImageUrls: text,
-      detailImagePreviewUrls: parseImageUrlLines(text)
-    });
-  },
-
-  onDetailImageError: function(e) {
+  onDetailPreviewImage: function(e) {
     var url = e.currentTarget.dataset.url;
-    if (!url) return;
-    var previews = (this.data.detailImagePreviewUrls || []).filter(function(u) { return u !== url; });
-    this.setData({ detailImagePreviewUrls: previews });
+    var urls = this.data.detailImages || [];
+    if (urls.length === 0) return;
+    wx.previewImage({
+      current: url,
+      urls: urls
+    });
   },
 
-  /* ---- Image Upload ---- */
-
-  onChooseAndUploadImage: function() {
-    var self = this;
-    if (self.data.detailUploading) return;
-
-    var currentUrls = parseImageUrlLines(self.data.detailImageUrls);
-    var remain = MAX_UPLOAD_IMAGES - currentUrls.length;
-    if (remain <= 0) {
-      wx.showToast({ title: '最多上传' + MAX_UPLOAD_IMAGES + '张', icon: 'none' });
-      return;
+  onDetailRemoveImage: function(e) {
+    var index = e.currentTarget.dataset.index;
+    var images = (this.data.detailImages || []).slice();
+    if (index >= 0 && index < images.length) {
+      images.splice(index, 1);
+      this.setData({ detailImages: images });
     }
+  },
 
-    chooseImages(remain).then(function(files) {
-      if (!files.length) return;
-      self.setData({ detailUploading: true });
-
-      var uploadedUrls = [];
-      var token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
-
-      function uploadNext(index) {
-        if (index >= files.length) {
-          // All done — append to existing URLs
-          var merged = currentUrls.concat(uploadedUrls.filter(Boolean));
-          self.setData({
-            detailImageUrls: merged.join("\n"),
-            detailImagePreviewUrls: merged.slice(),
-            detailUploading: false
-          });
-          return;
-        }
-        uploadSingleImage(files[index], token).then(function(url) {
-          if (url) uploadedUrls.push(url);
-          uploadNext(index + 1);
-        }).catch(function(err) {
-          wx.showToast({ title: (err && err.message) || '上传失败', icon: 'none' });
-          uploadNext(index + 1);
-        });
+  onDetailRemoveStatusPhoto: function(e) {
+    var field = e.currentTarget.dataset.field;
+    var index = e.currentTarget.dataset.index;
+    var sp = this.data.detailStatusPhotos || {};
+    if (sp[field]) {
+      var arr = sp[field].slice();
+      if (index >= 0 && index < arr.length) {
+        arr.splice(index, 1);
+        var nsp = {}; for (var k in sp) { if (Object.prototype.hasOwnProperty.call(sp, k)) nsp[k] = sp[k]; }
+        nsp[field] = arr;
+        this.setData({ detailStatusPhotos: nsp });
       }
+    }
+  },
 
-      uploadNext(0);
-    }).catch(function(err) {
-      if (err && err.message && err.message.indexOf('cancel') === -1) {
-        wx.showToast({ title: err.message, icon: 'none' });
+onDetailChooseImage: function() {
+    var self = this;
+    if (self.data.detailImageUploading) return;
+    wx.chooseImage({
+      count: 9,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: function(res) {
+        if (!res.tempFilePaths || res.tempFilePaths.length === 0) return;
+        self.setData({ detailImageUploading: true, detailSaveMsg: '', detailSaveMsgType: '' });
+        var uploaded = [];
+        var failed = 0;
+        var next = function(idx) {
+          if (idx >= res.tempFilePaths.length) {
+            self.setData({ detailImageUploading: false });
+            if (uploaded.length > 0) {
+              var existing = self.data.detailImages || [];
+              var merged = existing.concat(uploaded);
+              self.setData({ detailImages: merged });
+            }
+            if (failed > 0) {
+              self.setData({ detailSaveMsg: uploaded.length + ' 张上传成功 / ' + failed + ' 张失败', detailSaveMsgType: 'err' });
+              setTimeout(function() { self.setData({ detailSaveMsg: '', detailSaveMsgType: '' }); }, 3000);
+            }
+            return;
+          }
+          springAuth.uploadFileDirect(res.tempFilePaths[idx], {}).then(function(url) {
+            uploaded.push(url);
+            next(idx + 1);
+          }).catch(function() {
+            failed++;
+            next(idx + 1);
+          });
+        };
+        next(0);
       }
     });
   },
 
-  onSaveCellAnnotation: function() {
+onSaveCellAnnotation: function() {
     var self = this;
     var cell = self.data.selectedCell;
-    var shelveId = getActiveShelveId(self.data);
-    if (!cell || !shelveId || self.data.detailSaving) return;
+    if (!cell || self.data.detailSaving) return;
     if (!self.data.cellDetailMeta || !self.data.cellDetailMeta.permitted) return;
 
-    var imgArr = parseImageUrlLines(self.data.detailImageUrls);
-    var payload = { position: cell.position };
-    if (self.data.detailRichText) payload.richText = self.data.detailRichText;
-    if (imgArr.length > 0) payload.images = JSON.stringify(imgArr);
+    var animalCageId = cell.id || cell.animalCageId || '';
+    var payload = {
+      animalCageId: animalCageId,
+      experimentDesc: self.data.experimentDesc || '',
+      imagesJson: JSON.stringify(self.data.detailImages || []),
+      statusPhotos: JSON.stringify(self.data.detailStatusPhotos || {})
+    };
 
-    self.setData({ detailSaving: true, detailSaveMsg: "", detailSaveMsgType: "" });
+    self.setData({ detailSaving: true, detailSaveMsg: '', detailSaveMsgType: '' });
 
     springAuth.springRequest({
-      url: "/api/student/mobile/cage-shelves/" + shelveId + "/cells/" + cell.x + "/" + cell.y + "/annotation",
-      method: "PUT",
+      url: '/api/local/annotate',
+      method: 'POST',
       data: payload
     }).then(function(res) {
-      var p = unwrap(res);
-      if (!p.ok) {
+      var up = unwrap(res);
+      if (!up.ok) {
         self.setData({
           detailSaving: false,
-          detailSaveMsg: p.message || "保存失败",
-          detailSaveMsgType: "err"
+          detailSaveMsg: up.message || '保存失败',
+          detailSaveMsgType: 'err'
         });
         return;
       }
       self.setData({
         detailSaving: false,
-        detailSaveMsg: "保存成功",
-        detailSaveMsgType: "ok",
-        detailImagePreviewUrls: imgArr.slice()
+        detailSaveMsg: '保存成功',
+        detailSaveMsgType: 'ok'
       });
       setTimeout(function() {
-        if (self.data.detailSaveMsgType === "ok") {
-          self.setData({ detailSaveMsg: "", detailSaveMsgType: "" });
+        if (self.data.detailSaveMsgType === 'ok') {
+          self.setData({ detailSaveMsg: '', detailSaveMsgType: '' });
         }
       }, 2000);
     }).catch(function(e) {
       self.setData({
         detailSaving: false,
-        detailSaveMsg: (e && e.message) || "保存失败",
-        detailSaveMsgType: "err"
+        detailSaveMsg: (e && e.message) || '保存失败',
+        detailSaveMsgType: 'err'
       });
     });
   },
 
-  drawCageQrCode: function(qrText) {
-    var self = this;
-    if (!qrText) return;
-    self.setData({ detailQrImageSrc: "" });
-    try {
-      var drawQrcode = require("../../../libs/weapp-qrcode.js");
-      var dpr = Math.min(3, Math.max(1, (wx.getSystemInfoSync() && wx.getSystemInfoSync().pixelRatio) || 2));
-      drawQrcode({
-        width: 160,
-        height: 160,
-        canvasId: "cageQrCanvasOffscreen",
-        text: String(qrText),
-        _this: self,
-        callback: function() {
-          wx.canvasToTempFilePath({
-            canvasId: "cageQrCanvasOffscreen",
-            width: 160,
-            height: 160,
-            destWidth: Math.floor(160 * dpr),
-            destHeight: Math.floor(160 * dpr),
-            success: function(res) {
-              if (res && res.tempFilePath) {
-                self.setData({ detailQrImageSrc: res.tempFilePath });
-              }
-            }
-          }, self);
-        }
-      });
-    } catch (err) {
-      console.warn("[studentCageShelf] qrcode", err);
-    }
-  },
-
-  onCloseCellDetail: function() {
-    var self = this;
-    self.setData({
+onCloseCellDetail: function() { this._closeDetail(); },
+_closeDetail: function() {
+    this.setData({
       showCellDetail: false,
       selectedCell: null,
       cellDetailMeta: null,
-      detailRichText: "",
-      detailImageUrls: "",
-      detailImagePreviewUrls: [],
+      cellDetail: null,
+      experimentDesc: '',
+      detailImages: [],
+    detailStatusPhotos: {},
       detailAnnotationLoading: false,
       detailSaving: false,
-      detailSaveMsg: "",
-      detailSaveMsgType: "",
-      detailQrImageSrc: "",
-      detailUploading: false
+      detailSaveMsg: '',
+      detailSaveMsgType: '',
+      detailQrImageSrc: '',
+      detailImageUploading: false,
+      detailActions: { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false },
+      initialDetailActions: { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false },
+      detailActionSubmitting: false
     });
   },
 
@@ -1248,11 +1541,970 @@ Page({
   /*  WXS helpers for template use                                        */
   /* ------------------------------------------------------------------ */
 
-  getCellStyleWxs: function(cell) {
+getCellStyleWxs: function(cell) {
     return getCellStyle(cell);
   },
 
   getDominantCodeLabelWxs: function(code) {
     return getDominantCodeLabel(code);
+  },
+
+  /* ── 详情弹窗动作 ── */
+
+  onToggleDetailAction: function(e) {
+    var act = e.currentTarget.dataset.act;
+    if (!act) return;
+    var old = this.data.detailActions;
+    var newActions = { DIVIDE: old.DIVIDE, SPECIAL_BREEDING: old.SPECIAL_BREEDING, HEALTH_CHECK: old.HEALTH_CHECK };
+    newActions[act] = !newActions[act];
+    var cell = this.data.selectedCell;
+    if (cell && this.data.editMode) {
+      var ck = cell.x + ':' + cell.y;
+      // 确保缓存条目存在（点击格子 vs 扫码 → 统一走同一条缓存系统）
+      var cache = this.data.scanCache || {};
+      var newCache = {};
+      for (var k in cache) {
+        if (Object.prototype.hasOwnProperty.call(cache, k)) newCache[k] = cache[k];
+      }
+      if (!newCache[ck]) {
+        var cbi = cell.cageBoxInfo || {};
+        var cvo = cbi.cageBoxVo || cbi['cageBoxVo'] || {};
+        var code = String(cbi.cageBoxCode || cbi['cageBoxCode'] || cvo.cageBoxCode || cvo['cageBoxCode'] || '');
+        // 创建条目时从弹窗当前状态全量初始化，避免丢失已预选的其他动作
+        newCache[ck] = { cell: cell, code: code, initialActions: { DIVIDE: this.initialDetailActions.DIVIDE, SPECIAL_BREEDING: this.initialDetailActions.SPECIAL_BREEDING, HEALTH_CHECK: this.initialDetailActions.HEALTH_CHECK }, currentActions: { DIVIDE: newActions.DIVIDE, SPECIAL_BREEDING: newActions.SPECIAL_BREEDING, HEALTH_CHECK: newActions.HEALTH_CHECK } };
+      } else {
+        newCache[ck].currentActions[act] = newActions[act];
+      }
+      this.setData({ detailActions: newActions, scanCache: newCache }, this.applyCacheToGrid.bind(this));
+    } else {
+      this.setData({ detailActions: newActions });
+    }
+  },
+
+  onSubmitDetailActions: function() {
+    // 提交已统一由页面顶栏处理，弹窗内不做提交
+    return;
+    /* 原提交逻辑保留但不执行
+    var self = this;
+    var actions = self.data.detailActions;
+    var initial = this.initialDetailActions || {};
+    // 仅提交新增的动作
+    var toSubmit = [];
+    if (actions.DIVIDE && !initial.DIVIDE) toSubmit.push('DIVIDE');
+    if (actions.SPECIAL_BREEDING && !initial.SPECIAL_BREEDING) toSubmit.push('SPECIAL_BREEDING');
+    if (actions.HEALTH_CHECK && !initial.HEALTH_CHECK) toSubmit.push('HEALTH_CHECK');
+    // 反选数量
+    var deselected = 0;
+    if (initial.DIVIDE && !actions.DIVIDE) deselected++;
+    if (initial.SPECIAL_BREEDING && !actions.SPECIAL_BREEDING) deselected++;
+    if (initial.HEALTH_CHECK && !actions.HEALTH_CHECK) deselected++;
+    if (toSubmit.length === 0 && deselected === 0) return;
+
+    var cell = self.data.selectedCell;
+    var cbi = cell && cell.cageBoxInfo;
+    var code = (cbi && (cbi.cageBoxCode || cbi['cageBoxCode'])) || '';
+    if (!code) {
+      var cvo = (cbi && (cbi.cageBoxVo || cbi['cageBoxVo'])) || {};
+      code = cvo.cageBoxCode || cvo['cageBoxCode'] || '';
+    }
+    var meta = self.data.gridMeta || {};
+    var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
+    var shelveId = String((self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
+
+    self.setData({ detailActionSubmitting: true });
+    var okCount = 0, failCount = 0;
+    var next = function(idx) {
+      if (idx >= toSubmit.length) {
+        self.setData({ detailActionSubmitting: false });
+        if (failCount === 0) {
+          var msg = '已完成 ' + okCount + ' 个操作';
+          if (deselected > 0) msg += '，' + deselected + ' 项标记移除';
+          wx.showToast({ title: msg, icon: okCount > 0 ? 'success' : 'none', duration: 2500 });
+          if (okCount > 0) self.onRetry();
+        } else {
+          wx.showToast({ title: okCount + ' 成功 / ' + failCount + ' 失败', icon: 'none' });
+        }
+        return;
+      }
+      springAuth.springRequest({
+        url: '/api/aro/cage-box/action',
+        method: 'POST',
+        data: { roomId: roomId, shelveId: shelveId, cageBoxCode: code, action: toSubmit[idx] }
+      }).then(function(res) {
+        var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+        if (body && body.success) { okCount++; } else { failCount++; }
+        next(idx + 1);
+      }).catch(function() { failCount++; next(idx + 1); });
+    };
+    next(0);
+    */
+  },
+
+  /* ── 扫码模式 ── */
+
+  /** 教职工扫码：调用 wx.scanCode */
+  onGridScanTap: function() {
+    var self = this;
+    if (!self.data.staffView) {
+      wx.showToast({ title: '仅教职工可用', icon: 'none' });
+      return;
+    }
+    wx.scanCode({
+      onlyFromCamera: true,
+      scanType: ['qrCode', 'barCode'],
+      success: function(res) {
+        self.handleScanResult(res.result);
+      },
+      fail: function(err) {
+        if (err && err.errMsg && err.errMsg.indexOf('cancel') === -1) {
+          wx.showToast({ title: '扫码失败', icon: 'none' });
+        }
+      }
+    });
+  },
+
+  /** 匹配扫码结果 → 加入缓存 */
+  handleScanResult: function(code) {
+    var self = this;
+    var grid = self.data.grid || [];
+    // 本地DB扫码检索 — 支持笼盒码和笼位ID
+    springAuth.springRequest({
+      url: '/api/local/scan-lookup',
+      method: 'GET',
+      data: { code: String(code).trim() }
+    }).then(function(res) {
+      var p = unwrap(res);
+      if (!p.ok || !p.data || p.data.type === 'NOT_FOUND') {
+        wx.showToast({ title: '未找到对应笼位: ' + code, icon: 'none' });
+        return;
+      }
+      var d = p.data;
+      // 在 grid 中按坐标匹配
+      var matched = null;
+      for (var i = 0; i < grid.length; i++) {
+        if (grid[i] && grid[i].x === d.positionX && grid[i].y === d.positionY) {
+          matched = grid[i];
+          break;
+        }
+      }
+      if (!matched) {
+        wx.showToast({ title: '当前笼架未找到坐标 (' + d.positionX + ',' + d.positionY + ')', icon: 'none' });
+        return;
+      }
+      var key = matched.x + ':' + matched.y;
+      var oldCache = self.data.scanCache || {};
+      var newCache = {};
+      for (var k in oldCache) { if (Object.prototype.hasOwnProperty.call(oldCache, k)) newCache[k] = oldCache[k]; }
+      if (!newCache[key]) {
+        var ld = (matched.detail) || {};
+        var preActions = {
+          DIVIDE: ld.needsDivision === true,
+          SPECIAL_BREEDING: ld.needsSpecialFeeding === true,
+          HEALTH_CHECK: ld.hasHealthAbnormality === true
+        };
+        newCache[key] = { cell: matched, code: String(code), initialActions: { DIVIDE: preActions.DIVIDE, SPECIAL_BREEDING: preActions.SPECIAL_BREEDING, HEALTH_CHECK: preActions.HEALTH_CHECK }, currentActions: { DIVIDE: preActions.DIVIDE, SPECIAL_BREEDING: preActions.SPECIAL_BREEDING, HEALTH_CHECK: preActions.HEALTH_CHECK } };
+      }
+      var entry = newCache[key];
+      self.setData({
+        scanCache: newCache,
+        scanCacheSize: Object.keys(newCache).length,
+        lastScannedKey: key,
+        lastScannedEntry: {
+          position: matched._displayPosition || matched.position || '',
+          code: String(code),
+          act_DIVIDE: entry.currentActions.DIVIDE,
+          act_SPECIAL_BREEDING: entry.currentActions.SPECIAL_BREEDING,
+          act_HEALTH_CHECK: entry.currentActions.HEALTH_CHECK
+        },
+        scannedCellX: matched.x,
+        scannedCellY: matched.y,
+        legendOpen: false
+      }, self.applyCacheToGrid.bind(self));
+    }).catch(function() {
+      wx.showToast({ title: '扫码查询失败', icon: 'none' });
+    });
+  },
+
+  /** 仅关闭十字交叉高亮（保留有 diff 的缓存条目） */
+  onDismissCrosshair: function() {
+    var cache = this.data.scanCache || {};
+    var newCache = {};
+    var hasKept = false;
+    for (var k in cache) {
+      if (Object.prototype.hasOwnProperty.call(cache, k)) {
+        var e = cache[k];
+        // 仅保留有实际差异的条目（新增或反选）
+        var init = e.initialActions || {};
+        var curr = e.currentActions || {};
+        if (curr.DIVIDE !== init.DIVIDE || curr.SPECIAL_BREEDING !== init.SPECIAL_BREEDING || curr.HEALTH_CHECK !== init.HEALTH_CHECK) {
+          newCache[k] = e;
+          hasKept = true;
+        }
+      }
+    }
+    this.setData({
+      scanCache: newCache,
+      scanCacheSize: Object.keys(newCache).length,
+      lastScannedKey: '',
+      lastScannedEntry: { position: '', code: '', act_DIVIDE: false, act_SPECIAL_BREEDING: false, act_HEALTH_CHECK: false },
+      scannedCellX: -1,
+      scannedCellY: -1,
+      scannedCageBoxCode: ''
+    }, this.applyCacheToGrid.bind(this));
+    if (!hasKept && Object.keys(cache).length > 0) {
+      wx.showToast({ title: '已关闭高亮，无待提交修改', icon: 'none', duration: 1500 });
+    }
+  },
+
+  /** 清除全部缓存 */
+  onExitScanMode: function() {
+    this.setData({
+      scanCache: {},
+      scanCacheSize: 0,
+      scanTotalActions: 0,
+      lastScannedKey: '',
+      scannedCellX: -1,
+      scannedCellY: -1,
+      scannedCageBoxCode: '',
+      actionSubmitting: false
+    }, this.applyCacheToGrid.bind(this));
+  },
+
+  /** 移除单条缓存 */
+  onRemoveCacheEntry: function(e) {
+    var key = e.currentTarget.dataset.key;
+    if (!key) return;
+    var cache = this.data.scanCache || {};
+    delete cache[key];
+    var lk = this.data.lastScannedKey === key ? '' : this.data.lastScannedKey;
+    this.setData({ scanCache: cache, lastScannedKey: lk }, this.applyCacheToGrid.bind(this));
+  },
+
+  /** 切换图例 */
+  _doExitEditMode: function() {
+    this.setData({
+      editMode: false,
+      scanCache: {},
+      scanCacheSize: 0,
+      lastScannedKey: '',
+      scannedCellX: -1,
+      scannedCellY: -1,
+      detailActions: { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false }
+    }, function() {
+      this.applyCacheToGrid();
+      this.loadShelfDetail(this.data.selectedShelf ? this.data.selectedShelf.shelveId : '');
+    }.bind(this));
+  },
+
+  onToggleRealtime: function() {
+    var self = this;
+    var next = !self.data.editMode;
+    // 退出编辑模式且有未提交修改 → 弹窗确认
+    if (!next && self.data.scanCache && Object.keys(self.data.scanCache).length > 0) {
+      wx.showModal({
+        title: '未提交修改',
+        content: '有未提交的修改，是否放弃？',
+        confirmText: '放弃',
+        cancelText: '继续编辑',
+        success: function(res) {
+          if (res.confirm) { self._doExitEditMode(); }
+        }
+      });
+      return;
+    }
+    if (!next) {
+      // 退出编辑模式（无缓存）→ 切回快照数据
+      self._doExitEditMode();
+      return;
+    }
+    self.setData({ editMode: next, bindMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false });
+    if (next && self.data.selectedShelf && self.data.selectedShelf.shelveId) {
+      // 进入编辑模式 → 从本地DB刷新
+      self.loadShelfDetail(self.data.selectedShelf.shelveId);
+    } else {
+      // 退出编辑模式 → 清除缓存、定位、交叉高亮
+      self.setData({
+        scanCache: {},
+        lastScannedKey: '',
+        scannedCellX: -1,
+        scannedCellY: -1,
+        detailActions: { DIVIDE: false, SPECIAL_BREEDING: false, HEALTH_CHECK: false }
+      }, self.applyCacheToGrid.bind(self));
+      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+    }
+  },
+
+  onToggleGridLegend: function() {
+    this.setData({ legendOpen: !this.data.legendOpen });
+  },
+
+  /** 给 grid cell 附加缓存状态（底色覆盖 + 动作标签） */
+  applyCacheToGrid: function() {
+    var grid = this.data.grid || [];
+    var cache = this.data.scanCache || {};
+    var patch = {};
+    var totalDiffs = 0;
+    for (var i = 0; i < grid.length; i++) {
+      var cell = grid[i];
+      var ck = cell.x + ':' + cell.y;
+      var entry = cache[ck];
+      // 当前是否有选中动作（用于颜色叠加）
+      var hasCurrent = entry && (entry.currentActions.DIVIDE || entry.currentActions.SPECIAL_BREEDING || entry.currentActions.HEALTH_CHECK);
+      patch['grid[' + i + ']._cached'] = hasCurrent || false;
+      if (hasCurrent) {
+        var cur = entry.currentActions;
+        // 累计当前选中动作的颜色（逗号分隔，供 getCellStyle 分色）
+        var bgParts = [];
+        if (cur.DIVIDE) bgParts.push('#fef08a');
+        if (cur.SPECIAL_BREEDING) bgParts.push('#fecaca');
+        if (cur.HEALTH_CHECK) bgParts.push('#e9d5ff');
+        var bg = bgParts.join(',');
+        patch['grid[' + i + ']._cachedBg'] = bg;
+        var tmpCell = Object.assign({}, cell, { _cachedBg: bg });
+        patch['grid[' + i + ']._cellStyle'] = getCellStyle(tmpCell);
+      } else {
+        patch['grid[' + i + ']._cachedBg'] = '';
+        // 重建干净对象：cell 可能残留之前 setData 写入的 _cachedBg，导致 getCellStyle 误读
+        var cleanCell = Object.assign({}, cell);
+        cleanCell._cachedBg = '';
+        patch['grid[' + i + ']._cellStyle'] = getCellStyle(cleanCell);
+      }
+      patch['grid[' + i + ']._cachedLast'] = !!(ck === this.data.lastScannedKey);
+      // 累计差异数（新增 + 反选）
+      if (entry) {
+        var init = entry.initialActions || {};
+        var curr = entry.currentActions || {};
+        if (curr.DIVIDE !== init.DIVIDE) totalDiffs++;
+        if (curr.SPECIAL_BREEDING !== init.SPECIAL_BREEDING) totalDiffs++;
+        if (curr.HEALTH_CHECK !== init.HEALTH_CHECK) totalDiffs++;
+      }
+    }
+    patch.scanTotalActions = totalDiffs;
+    patch.scanCacheSize = Object.keys(cache).length;
+    this.setData(patch);
+  },
+
+  /** 切换动作选择 */
+  onToggleAction: function(e) {
+    var key = e.currentTarget.dataset.key;
+    if (!key) return;
+    var act = e.currentTarget.dataset.act;
+    if (!act) return;
+    // 路径 setData 确保嵌套数据可靠更新
+    var path = 'scanCache.' + key + '.currentActions.' + act;
+    var current = this.data.scanCache && this.data.scanCache[key] && this.data.scanCache[key].currentActions && this.data.scanCache[key].currentActions[act];
+    var newVal = !current;
+    // 同时更新扁平 lastScannedEntry
+    var lsePath = 'lastScannedEntry.act_' + act;
+    var patch = {};
+    patch[path] = newVal;
+    patch[lsePath] = newVal;
+    this.setData(patch, this.applyCacheToGrid.bind(this));
+  },
+
+  // Action → CancelColor 映射
+  ACTION_CANCEL_COLOR: { DIVIDE: 2, SPECIAL_BREEDING: 1, HEALTH_CHECK: 3 },
+
+  /** 切换状态选项 → 写入 scanCache（对齐 Desktop：不在弹窗内直接提交） */
+  onEditActionToggle: function(e) {
+    var a = e.currentTarget.dataset.action;
+    var cell = this.data.editActionCell;
+    if (!cell || !a) return;
+    var key = cell.x + ':' + cell.y;
+    var cache = this.data.scanCache || {};
+    var newCache = {};
+    for (var k in cache) { if (Object.prototype.hasOwnProperty.call(cache, k)) newCache[k] = cache[k]; }
+    if (!newCache[key]) {
+      // 首次创建缓存条目，从 cell.detail 读取初始状态
+      var ld = cell.detail || {};
+      newCache[key] = {
+        cell: cell,
+        code: ld.cageBoxCode || '',
+        initialActions: {
+          DIVIDE: ld.needsDivision === true,
+          SPECIAL_BREEDING: ld.needsSpecialFeeding === true,
+          HEALTH_CHECK: ld.hasHealthAbnormality === true
+        },
+        currentActions: {
+          DIVIDE: ld.needsDivision === true,
+          SPECIAL_BREEDING: ld.needsSpecialFeeding === true,
+          HEALTH_CHECK: ld.hasHealthAbnormality === true
+        }
+      };
+    }
+    // 切换动作
+    newCache[key].currentActions[a] = !newCache[key].currentActions[a];
+    // 如果 currentActions 已恢复为初始状态，移除缓存条目
+    var init = newCache[key].initialActions;
+    var cur = newCache[key].currentActions;
+    if (cur.DIVIDE === init.DIVIDE && cur.SPECIAL_BREEDING === init.SPECIAL_BREEDING && cur.HEALTH_CHECK === init.HEALTH_CHECK) {
+      delete newCache[key];
+    }
+    // 同步更新 editActionCurrent（弹窗内显示用）
+    var ec = { DIVIDE: (newCache[key] && newCache[key].currentActions.DIVIDE), SPECIAL_BREEDING: (newCache[key] && newCache[key].currentActions.SPECIAL_BREEDING), HEALTH_CHECK: (newCache[key] && newCache[key].currentActions.HEALTH_CHECK) };
+    this.setData({ scanCache: newCache, editActionCurrent: ec }, this.applyCacheToGrid.bind(this));
+  },
+
+  onEditActionChoosePhoto: function() {
+    var self = this;
+    wx.chooseImage({
+      count: 6,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: function(res) {
+        if (!res.tempFilePaths || res.tempFilePaths.length === 0) return;
+        self.setData({ editActionUploading: true });
+        var uploaded = [];
+        var next = function(idx) {
+          if (idx >= res.tempFilePaths.length) {
+            self.setData({ editActionUploading: false });
+            if (uploaded.length > 0) {
+              var cur = self.data.editActionPhotos || [];
+              var np = cur.concat(uploaded);
+              self.setData({ editActionPhotos: np });
+              // 不再自动保存，统一由「保存标注」按钮提交
+            }
+            return;
+          }
+          springAuth.uploadFileDirect(res.tempFilePaths[idx], {}).then(function(url) {
+            uploaded.push(url);
+            next(idx + 1);
+          }).catch(function() { next(idx + 1); });
+        };
+        next(0);
+      }
+    });
+  },
+
+  onEditActionRemovePhoto: function(e) {
+    var idx = e.currentTarget.dataset.index;
+    var photos = (this.data.editActionPhotos || []).slice();
+    if (idx >= 0 && idx < photos.length) { photos.splice(idx, 1); this.setData({ editActionPhotos: photos }); }
+  },
+
+  onEditActionNoteInput: function(e) {
+    this.setData({ editActionNote: e.detail.value || '' });
+  },
+
+  onEditActionSave: function() {
+    var self = this;
+    var cell = self.data.editActionCell;
+    if (!cell) return;
+    var animalCageId = cell.id || cell.animalCageId || '';
+    if (!animalCageId) { wx.showToast({ title: '无法获取笼位ID', icon: 'none' }); return; }
+    // 合并后端已有 statusPhotos
+    springAuth.springRequest({ url: '/api/local/annotate/' + animalCageId, method: 'GET', data: {} }).then(function(res) {
+      var up = unwrap(res);
+      var sp = {};
+      if (up.ok && up.data && up.data.statusPhotos) {
+        try { var ex = typeof up.data.statusPhotos === 'string' ? JSON.parse(up.data.statusPhotos) : up.data.statusPhotos; if (typeof ex === 'object' && !Array.isArray(ex)) sp = ex; } catch(e) {}
+      }
+      var ld = cell.detail || {};
+      var photos = self.data.editActionPhotos || [];
+      if (ld.needsDivision === true) sp.needs_division = photos;
+      if (ld.needsSpecialFeeding === true) sp.needs_special_feeding = photos;
+      if (ld.hasHealthAbnormality === true) sp.has_health_abnormality = photos;
+      if (photos.length > 0) sp._status = photos;
+      var note = (self.data.editActionNote || '').trim();
+      if (note) sp._note = note; // 标注文本存入 statusPhotos，与实验记录分离
+      var body = { animalCageId: animalCageId, statusPhotos: JSON.stringify(sp) };
+      return springAuth.springRequest({ url: '/api/local/annotate', method: 'POST', data: body });
+    }).then(function() {
+      wx.showToast({ title: '标注已保存', icon: 'success' });
+    }).catch(function(e) {
+      wx.showToast({ title: '保存失败: ' + ((e && e.message) || ''), icon: 'none' });
+    });
+  },
+
+  onEditActionNewVersion: function() {
+    var self = this;
+    var cell = self.data.editActionCell;
+    if (!cell) return;
+    var animalCageId = cell.id || cell.animalCageId || '';
+    if (!animalCageId) { wx.showToast({ title: '无法获取笼位ID', icon: 'none' }); return; }
+    // 先GET已有数据，合并后POST，然后清空表单
+    springAuth.springRequest({ url: '/api/local/annotate/' + animalCageId, method: 'GET', data: {} }).then(function(res) {
+      var up = unwrap(res);
+      var sp = {};
+      if (up.ok && up.data && up.data.statusPhotos) {
+        try { var ex = typeof up.data.statusPhotos === 'string' ? JSON.parse(up.data.statusPhotos) : up.data.statusPhotos; if (typeof ex === 'object' && !Array.isArray(ex)) sp = ex; } catch(e) {}
+      }
+      var ld = cell.detail || {};
+      var photos = self.data.editActionPhotos || [];
+      if (ld.needsDivision === true) sp.needs_division = photos;
+      if (ld.needsSpecialFeeding === true) sp.needs_special_feeding = photos;
+      if (ld.hasHealthAbnormality === true) sp.has_health_abnormality = photos;
+      if (photos.length > 0) sp._status = photos;
+      var note = (self.data.editActionNote || '').trim();
+      if (note) sp._note = note;
+      var body = { animalCageId: animalCageId, statusPhotos: JSON.stringify(sp) };
+      return springAuth.springRequest({ url: '/api/local/annotate', method: 'POST', data: body });
+    }).then(function() {
+      // 清空表单 + 刷新历史
+      self.setData({ editActionPhotos: [], editActionNote: '' });
+      if (animalCageId) {
+        springAuth.springRequest({ url: '/api/local/history/' + animalCageId, method: 'GET', data: {} }).then(function(res2) {
+          var hp = unwrap(res2);
+          var list = (hp.ok ? hp.data : []) || [];
+          list.forEach(function(h) {
+            try { h._imgs = JSON.parse(h.imagesJson || '[]'); } catch(e) { h._imgs = []; }
+            if (h.createdAt) h.createdAt = (h.createdAt || '').substring(0, 16);
+          });
+          self.setData({ editHistory: list });
+        }).catch(function(){});
+      }
+      wx.showToast({ title: '已归档为新记录', icon: 'success', duration: 2000 });
+    }).catch(function(e) {
+      wx.showToast({ title: '保存失败: ' + ((e && e.message) || ''), icon: 'none' });
+    });
+  },
+
+  onEditActionJustClose: function() {
+    this.setData({ editActionPopup: false, editActionCell: null, editActionPhotos: [], editActionNote: '', editHistory: [] });
+  },
+
+  onEditHistoryDelete: function(e) {
+    var self = this;
+    var id = e.currentTarget.dataset.id;
+    if (!id) return;
+    wx.showModal({
+      title: '删除确认',
+      content: '确定删除该条历史记录？',
+      success: function(res) {
+        if (!res.confirm) return;
+        springAuth.springRequest({ url: '/api/local/history/' + id, method: 'DELETE', data: {} }).then(function() {
+          var list = (self.data.editHistory || []).filter(function(h) { return h.id !== id; });
+          self.setData({ editHistory: list });
+          wx.showToast({ title: '已删除', icon: 'success' });
+        }).catch(function() { wx.showToast({ title: '删除失败', icon: 'none' }); });
+      }
+    });
+  },
+
+  onEditActionClose: function() {
+    var self = this;
+    var cell = self.data.editActionCell;
+    // 保存照片和备注到 statusPhotos
+    if (cell && (self.data.editActionPhotos.length > 0 || self.data.editActionNote.trim())) {
+      var animalCageId = cell.id || cell.animalCageId || '';
+      if (animalCageId) {
+        var sp = {};
+        var ld = cell.detail || {};
+        if (ld.needsDivision === true) sp.needs_division = self.data.editActionPhotos;
+        if (ld.needsSpecialFeeding === true) sp.needs_special_feeding = self.data.editActionPhotos;
+        if (ld.hasHealthAbnormality === true) sp.has_health_abnormality = self.data.editActionPhotos;
+        sp._status = self.data.editActionPhotos;  // 兜底
+        springAuth.springRequest({
+          url: '/api/local/annotate', method: 'POST',
+          data: { animalCageId: animalCageId, experimentDesc: self.data.editActionNote, statusPhotos: JSON.stringify(sp) }
+        });
+      }
+    }
+    self.setData({ editActionPopup: false, editActionCell: null, editActionPhotos: [], editActionNote: '' });
+  },
+
+  onEditActionSubmit: function() {
+    var self = this;
+    var cell = self.data.editActionCell;
+    if (!cell) return;
+    // Save photos first
+    var animalCageId = cell.id || cell.animalCageId || '';
+    if (animalCageId && (self.data.editActionPhotos.length > 0 || self.data.editActionNote.trim())) {
+      var sp = {};
+      var ld = cell.detail || {};
+      var cur = self.data.editActionCurrent || {};
+      if (cur.DIVIDE) sp.needs_division = self.data.editActionPhotos;
+      if (cur.SPECIAL_BREEDING) sp.needs_special_feeding = self.data.editActionPhotos;
+      if (cur.HEALTH_CHECK) sp.has_health_abnormality = self.data.editActionPhotos;
+      sp._status = self.data.editActionPhotos;  // 兜底
+      springAuth.springRequest({
+        url: '/api/local/annotate', method: 'POST',
+        data: { animalCageId: animalCageId, experimentDesc: self.data.editActionNote, statusPhotos: JSON.stringify(sp) }
+      });
+    }
+    // Submit actions
+    var init = self.data.editActionInitial || {};
+    var cur2 = self.data.editActionCurrent || {};
+    var toAdd = [], toRemove = [];
+    if (cur2.DIVIDE && !init.DIVIDE) toAdd.push('DIVIDE');
+    if (cur2.SPECIAL_BREEDING && !init.SPECIAL_BREEDING) toAdd.push('SPECIAL_BREEDING');
+    if (cur2.HEALTH_CHECK && !init.HEALTH_CHECK) toAdd.push('HEALTH_CHECK');
+    if (!cur2.DIVIDE && init.DIVIDE) toRemove.push('DIVIDE');
+    if (!cur2.SPECIAL_BREEDING && init.SPECIAL_BREEDING) toRemove.push('SPECIAL_BREEDING');
+    if (!cur2.HEALTH_CHECK && init.HEALTH_CHECK) toRemove.push('HEALTH_CHECK');
+    if (toAdd.length === 0 && toRemove.length === 0) {
+      self.onEditActionClose();
+      return;
+    }
+    self.setData({ actionSubmitting: true });
+    var ok=0, fail=0, total=toAdd.length+toRemove.length;
+    var tasks = [];
+    for (var i=0;i<toAdd.length;i++) {
+      (function(action){
+        var toggle = action==='DIVIDE'?'needs_division':action==='SPECIAL_BREEDING'?'needs_special_feeding':'has_health_abnormality';
+        tasks.push(springAuth.springRequest({url:'/api/local/edit',method:'POST',data:{animalCageId:animalCageId,toggle:toggle,enable:true,cageBoxCode:''}}).then(function(){ok++;}).catch(function(){fail++;}));
+      })(toAdd[i]);
+    }
+    for (var j=0;j<toRemove.length;j++) {
+      (function(action){
+        var toggle = action==='DIVIDE'?'needs_division':action==='SPECIAL_BREEDING'?'needs_special_feeding':'has_health_abnormality';
+        tasks.push(springAuth.springRequest({url:'/api/local/edit',method:'POST',data:{animalCageId:animalCageId,toggle:toggle,enable:false,cageBoxCode:''}}).then(function(){ok++;}).catch(function(){fail++;}));
+      })(toRemove[j]);
+    }
+    Promise.all(tasks).then(function(){
+      self.setData({ actionSubmitting: false, editActionPopup: false, editActionCell: null, editActionPhotos: [], editActionNote: '' });
+      if(fail===0){wx.showToast({title:'已完成 '+ok+' 个操作（本地+异步投递）',icon:'success'});self.onRetry();}
+      else{wx.showToast({title:ok+' 成功 / '+fail+' 失败',icon:'none'});}
+    });
+  },
+
+  onSubmitScanActions: function() {
+    var self = this;
+    var cache = self.data.scanCache || {};
+    var addEntries = [];
+    var removeEntries = [];
+    for (var key in cache) {
+      if (Object.prototype.hasOwnProperty.call(cache, key)) {
+        var e = cache[key];
+        var init = e.initialActions || {};
+        var curr = e.currentActions || {};
+        if (curr.DIVIDE && !init.DIVIDE) addEntries.push({ key: key, code: e.code, action: 'DIVIDE', cell: e.cell });
+        if (curr.SPECIAL_BREEDING && !init.SPECIAL_BREEDING) addEntries.push({ key: key, code: e.code, action: 'SPECIAL_BREEDING', cell: e.cell });
+        if (curr.HEALTH_CHECK && !init.HEALTH_CHECK) addEntries.push({ key: key, code: e.code, action: 'HEALTH_CHECK', cell: e.cell });
+        if (!curr.DIVIDE && init.DIVIDE) removeEntries.push({ key: key, code: e.code, action: 'DIVIDE', cell: e.cell });
+        if (!curr.SPECIAL_BREEDING && init.SPECIAL_BREEDING) removeEntries.push({ key: key, code: e.code, action: 'SPECIAL_BREEDING', cell: e.cell });
+        if (!curr.HEALTH_CHECK && init.HEALTH_CHECK) removeEntries.push({ key: key, code: e.code, action: 'HEALTH_CHECK', cell: e.cell });
+      }
+    }
+    if (addEntries.length === 0 && removeEntries.length === 0) return;
+
+    self.setData({ actionSubmitting: true });
+    var okCount = 0, failCount = 0;
+    var totalTasks = addEntries.concat(removeEntries.map(function(r) {
+      return { key: r.key, code: r.code, action: r.action, cancel: true, cell: r.cell };
+    }));
+
+    var next = function(idx) {
+      if (idx >= totalTasks.length) {
+        self.setData({ actionSubmitting: false });
+        if (failCount === 0) {
+          wx.showToast({ title: '已完成 ' + okCount + ' 个操作（本地+异步投递）', icon: 'success', duration: 3000 });
+          self.onRetry();
+          self.onExitScanMode();
+        } else {
+          wx.showToast({ title: okCount + ' 成功 / ' + failCount + ' 失败', icon: 'none' });
+        }
+        return;
+      }
+      var entry = totalTasks[idx];
+      var cageId = String(entry.cell.id || (entry.cell.animalCageId) || '');
+      var toggle = entry.action === 'DIVIDE' ? 'needs_division' : entry.action === 'SPECIAL_BREEDING' ? 'needs_special_feeding' : 'has_health_abnormality';
+      var enable = !entry.cancel;
+      var data = {
+        animalCageId: cageId,
+        toggle: toggle,
+        enable: enable,
+        cageBoxCode: entry.code || ''
+      };
+      springAuth.springRequest({ url: '/api/local/edit', method: 'POST', data: data })
+        .then(function(res) {
+          var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+          if (body && body.success) { okCount++; } else { failCount++; }
+          next(idx + 1);
+        }).catch(function() { failCount++; next(idx + 1); });
+    };
+    next(0);
+  },
+
+  /* ── 绑定模式 ── */
+
+  /** 进入绑定模式 */
+  onEnterBindMode: function() {
+    var self = this;
+    if (!this.data.staffView) {
+      wx.showToast({ title: '仅教职工可用', icon: 'none' });
+      return;
+    }
+    // 进入绑定模式 → 退出编辑 → 先刷新 grid cache（对齐 Web Admin 的 refreshRoomRealtime）
+    this.setData({ bindMode: true, editMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false, bindPairCache: [], bindPairCacheSize: 0, scanCache: {}, lastScannedKey: '' });
+    var shelveId = self.data.selectedShelf ? self.data.selectedShelf.shelveId : '';
+    springAuth.springRequest({
+      url: '/api/v1/cage-shelves/' + shelveId + '/refresh',
+      method: 'POST',
+      data: {}
+    }).then(function() {
+      self.loadShelfDetail(shelveId);
+    }).catch(function() {
+      self.loadShelfDetail(shelveId);
+    });
+  },
+
+  /** 退出绑定模式 */
+  onExitBindMode: function() {
+    var total = this.data.bindPairCacheSize + this.data.unbindPairCacheSize;
+    if (total > 0) {
+      var self = this;
+      wx.showModal({
+        title: '未提交的操作',
+        content: '有 ' + total + ' 个未提交的操作，是否放弃？',
+        success: function(res) {
+          if (res.confirm) {
+            self.setData({ bindMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false, bindPairCache: [], bindPairCacheSize: 0, unbindPairCache: [], unbindPairCacheSize: 0 });
+            self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+          }
+        }
+      });
+      return;
+    }
+    this.setData({ bindMode: false, bindScannedCode: '', bindSelectedKey: '', unbindActive: false, bindPairCache: [], bindPairCacheSize: 0, unbindPairCache: [], unbindPairCacheSize: 0 });
+    this.loadShelfDetail(this.data.selectedShelf ? this.data.selectedShelf.shelveId : '');
+  },
+
+  /** 绑定扫码 */
+  onBindScanTap: function() {
+    var self = this;
+    wx.scanCode({
+      onlyFromCamera: true,
+      scanType: ['qrCode', 'barCode'],
+      success: function(res) {
+        var code = res.result;
+        console.log('[bind-scan] 扫码结果:', code);
+        self.setData({ bindScannedCode: code, bindSelectedKey: '' });
+        wx.showToast({ title: '已录入，请点击空笼盒格位', icon: 'success', duration: 3000 });
+      },
+      fail: function(err) {
+        if (err && err.errMsg && err.errMsg.indexOf('cancel') === -1) {
+          wx.showToast({ title: '扫码失败', icon: 'none' });
+        }
+      }
+    });
+  },
+
+  /** 切换解绑/取消（3态） */
+  onToggleUnbind: function() {
+    if (this.data.unbindActive) { this.setData({ unbindActive: false, bindSelectedKey: '' }); return; }
+    if (this.data.bindScannedCode) { this.setData({ bindScannedCode: '', bindSelectedKey: '' }); return; }
+    this.setData({ unbindActive: true, bindSelectedKey: '' });
+    wx.showToast({ title: '请点击饲养中格位完成解绑', icon: 'none', duration: 3000 });
+  },
+
+  /** 绑定模式下点击笼位：case2=绑定 / case3=解绑 */
+  onBindCellTap: function(e) {
+    var self = this;
+    var x = Number(e.currentTarget.dataset.x);
+    var y = Number(e.currentTarget.dataset.y);
+    var grid = self.data.grid;
+    var cell = null;
+    for (var i = 0; i < grid.length; i++) {
+      if (Number(grid[i].x) === x && Number(grid[i].y) === y) {
+        cell = grid[i];
+        break;
+      }
+    }
+    if (!cell || cell.empty) return;
+    var animalCageType = cell.animalCageType || (cell.cageBoxInfo && cell.cageBoxInfo.AnimalCageType) || 0;
+
+    // case 2: 绑定 → 加入批量缓存
+    if (animalCageType === 2) {
+      if (self.data.unbindActive) { wx.showToast({ title: '无需解绑', icon: 'none' }); return; }
+      if (!self.data.bindScannedCode) { wx.showToast({ title: '请先扫码获取笼盒编号', icon: 'none' }); return; }
+      var key2 = cell.x + ':' + cell.y;
+      // 检查重复
+      var dup = false;
+      var arr = self.data.bindPairCache;
+      for (var d = 0; d < arr.length; d++) { if (arr[d].key === key2) { dup = true; break; } }
+      if (dup) { wx.showToast({ title: '该笼位已在缓存中', icon: 'none' }); return; }
+      var displayPos = cell._displayPosition || cell.position || '';
+      var newArr = arr.concat([{ key: key2, cell: cell, pos: displayPos, code: self.data.bindScannedCode }]);
+      self.setData({ bindPairCache: newArr, bindPairCacheSize: newArr.length, bindScannedCode: '', bindSelectedKey: key2 });
+      wx.showToast({ title: '已缓存（' + newArr.length + ' 个待提交）', icon: 'success' });
+      return;
+    }
+
+    // case 3: 解绑 → 加入批量缓存
+    if (animalCageType === 3) {
+      if (!self.data.unbindActive) { wx.showToast({ title: '请先进入解绑模式', icon: 'none' }); return; }
+      var key3 = cell.x + ':' + cell.y;
+      var dup3 = false;
+      var uarr = self.data.unbindPairCache;
+      for (var u = 0; u < uarr.length; u++) { if (uarr[u].key === key3) { dup3 = true; break; } }
+      if (dup3) { wx.showToast({ title: '该笼位已在缓存中', icon: 'none' }); return; }
+      var displayPos = cell._displayPosition || cell.position || '';
+      var newUArr = uarr.concat([{ key: key3, cell: cell, pos: displayPos }]);
+      self.setData({ unbindPairCache: newUArr, unbindPairCacheSize: newUArr.length, bindSelectedKey: key3 });
+      wx.showToast({ title: '已缓存（' + newUArr.length + ' 个待解绑）', icon: 'success' });
+      return;
+    }
+
+    wx.showToast({ title: animalCageType === 1 ? '该笼位尚未预约' : '该笼位状态异常', icon: 'none' });
+  },
+
+  /** 批量绑定提交（并行调用） */
+  onBatchBindSubmit: function() {
+    var self = this;
+    var arr = self.data.bindPairCache;
+    if (arr.length === 0) return;
+    self.setData({ bindSubmitting: true });
+    var ok = 0, fail = 0, total = arr.length;
+    var promises = [];
+    for (var i = 0; i < arr.length; i++) {
+      var entry = arr[i];
+      var cageId = String(entry.cell.id || (entry.cell.animalCageId) || '');
+      (function(cid, code, pos) {
+        promises.push(new Promise(function(resolve) {
+          springAuth.springRequest({
+            url: '/api/local/bind',
+            method: 'POST',
+            data: { animalCageId: cid, cageBoxCode: code }
+          }).then(function(res) {
+            var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+            if (body && body.success) { ok++; } else { fail++; if (fail <= 3) wx.showToast({ title: pos + ' 失败', icon: 'none' }); }
+            resolve();
+          }).catch(function() { fail++; resolve(); });
+        }));
+      })(cageId, entry.code, entry.cell.position);
+    }
+    Promise.all(promises).then(function() {
+      self.setData({ bindPairCache: [], bindPairCacheSize: 0, bindSubmitting: false, bindScannedCode: '', bindSelectedKey: '' });
+      if (fail === 0) { wx.showToast({ title: total + ' 个绑定全部成功！（本地+异步投递）', icon: 'success' }); }
+      else { wx.showToast({ title: ok + ' 成功 / ' + fail + ' 失败', icon: 'none' }); }
+      self.onRetry();
+    });
+  },
+
+  /** 批量解绑提交 */
+  onBatchUnbindSubmit: function() {
+    var self = this;
+    var arr = self.data.unbindPairCache;
+    if (arr.length === 0) return;
+    self.setData({ bindSubmitting: true });
+    var ok = 0, fail = 0, total = arr.length;
+    var promises = [];
+    for (var i = 0; i < arr.length; i++) {
+      var entry = arr[i];
+      var cageId = String(entry.cell.id || (entry.cell.animalCageId) || '');
+      (function(cid, pos) {
+        promises.push(new Promise(function(resolve) {
+          springAuth.springRequest({
+            url: '/api/local/unbind',
+            method: 'POST',
+            data: { animalCageId: cid }
+          }).then(function(res) {
+            var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+            if (body && body.success) { ok++; } else { fail++; }
+            resolve();
+          }).catch(function() { fail++; resolve(); });
+        }));
+      })(cageId, entry.pos);
+    }
+    Promise.all(promises).then(function() {
+      self.setData({ unbindPairCache: [], unbindPairCacheSize: 0, bindSubmitting: false });
+      if (fail === 0) { wx.showToast({ title: total + ' 个解绑全部成功！（本地+异步投递）', icon: 'success' }); }
+      else { wx.showToast({ title: ok + ' 成功 / ' + fail + ' 失败', icon: 'none' }); }
+      self.onRetry();
+    });
+  },
+
+  /** 清空解绑缓存 */
+  onClearUnbindCache: function() {
+    this.setData({ unbindPairCache: [], unbindPairCacheSize: 0 });
+  },
+
+  /** 移除单个解绑缓存 */
+  onRemoveUnbindPair: function(e) {
+    var key = e.currentTarget.dataset.key;
+    var arr = this.data.unbindPairCache;
+    var newArr = [];
+    for (var i = 0; i < arr.length; i++) { if (arr[i].key !== key) newArr.push(arr[i]); }
+    this.setData({ unbindPairCache: newArr, unbindPairCacheSize: newArr.length });
+  },
+
+  /** 清空绑定缓存 */
+  onClearBindCache: function() {
+    this.setData({ bindPairCache: [], bindPairCacheSize: 0 });
+    wx.showToast({ title: '已清空缓存', icon: 'none' });
+  },
+
+  /** 移除单个绑定缓存 */
+  onRemoveBindPair: function(e) {
+    var key = e.currentTarget.dataset.key;
+    var arr = this.data.bindPairCache;
+    var newArr = [];
+    for (var i = 0; i < arr.length; i++) { if (arr[i].key !== key) newArr.push(arr[i]); }
+    this.setData({ bindPairCache: newArr, bindPairCacheSize: newArr.length });
+  },
+
+  /** 执行绑定（单个，保留兼容） */
+  doBindCage: function(cell, cageBoxCode) {
+    var self = this;
+    var meta = self.data.gridMeta || {};
+    // 优先 cell.id，回退到 cageBoxInfo.id（snapshot 路径可能不包含顶层 id）
+    var cageId = String(cell.id || (cell.cageBoxInfo && cell.cageBoxInfo.id) || '');
+    var cageName = String(cell.name || '');
+    var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
+    var shelveId = String((self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
+
+    wx.showLoading({ title: '绑定中...' });
+    springAuth.springRequest({
+      url: '/api/aro/cage-box/bind',
+      method: 'POST',
+      data: { animalCageId: cageId, cageBoxCode: cageBoxCode }
+    }).then(function(res) {
+      var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (!body || !body.success) {
+        wx.hideLoading();
+        wx.showToast({ title: '关联失败: ' + (body && body.message || ''), icon: 'none' });
+        return Promise.reject('bind failed');
+      }
+      return springAuth.springRequest({
+        url: '/api/v1/cage-shelves/cage/update',
+        method: 'POST',
+        data: { id: cageId, name: cageName, roomId: roomId, shelveId: shelveId, postionX: cell.x || 0, postionY: cell.y || 0, qrcode: cageBoxCode, state: 3 }
+      });
+    }).then(function(res) {
+      wx.hideLoading();
+      var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (body && body.success) {
+        wx.showToast({ title: '绑定成功！', icon: 'success' });
+        self.onRetry(); // 先刷新（bindMode 仍为 true 拉实时）
+        self.onExitBindMode();
+      } else {
+        wx.showToast({ title: '更新失败: ' + (body && body.message || ''), icon: 'none' });
+      }
+    }).catch(function(err) {
+      wx.hideLoading();
+      if (err !== 'bind failed') wx.showToast({ title: '绑定失败', icon: 'none' });
+    });
+  },
+
+  /** 执行解绑：update state=2 + 清空 qrcode */
+  doUnbindCage: function(cell) {
+    var self = this;
+    var meta = self.data.gridMeta || {};
+    // 优先 cell.id，回退到 cageBoxInfo.id（snapshot 路径可能不包含顶层 id）
+    var cageId = String(cell.id || (cell.cageBoxInfo && cell.cageBoxInfo.id) || '');
+    var cageName = String(cell.name || '');
+    var roomId = String(meta.roomId || (self.data.selectedShelf && self.data.selectedShelf.roomId) || '');
+    var shelveId = String((self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
+
+    wx.showLoading({ title: '解绑中...' });
+    springAuth.springRequest({
+      url: '/api/aro/cage-box/unbind',
+      method: 'POST',
+      data: { animalCageIdList: [cageId], roomId: roomId }
+    }).then(function(res) {
+      wx.hideLoading();
+      var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
+      if (body && body.success) {
+        wx.showToast({ title: '解绑成功！', icon: 'success' });
+        self.onRetry(); // 先刷新实时数据
+        self.onExitBindMode();
+      } else {
+        wx.showToast({ title: '解绑失败: ' + (body && body.message || ''), icon: 'none' });
+      }
+    }).catch(function() {
+      wx.hideLoading();
+      wx.showToast({ title: '解绑失败', icon: 'none' });
+    });
   }
 });

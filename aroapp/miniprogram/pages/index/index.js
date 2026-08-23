@@ -236,11 +236,10 @@ Page({
       heroCarouselEnabled: carouselOn && urls.length > 1,
       heroColorMode: mode,
     });
-    // syncToWechat 异步完成后 cloud-mappings 才有值，延迟重解析一次（与物资列表 onShow 重拉同理）
+    // Phase 2C: cloud:// 映射已移除，无需延迟重解析
     if (
       branding
       && urls.length
-      && urls.every((u) => !String(u).startsWith('cloud://'))
       && !this._heroCloudRetryScheduled
     ) {
       this._heroCloudRetryScheduled = true;
@@ -275,9 +274,61 @@ Page({
     }
   },
 
-  /** 预留：左上角扫码（后续接 wx.scanCode 或业务路由） */
+  /** 左上角扫码：调用微信扫码工具 → 统一查询 → 路由跳转 */
   onScanTap() {
-    wx.showToast({ title: '扫码功能即将上线', icon: 'none' });
+    var self = this;
+    wx.scanCode({
+      onlyFromCamera: true,
+      scanType: ['qrCode', 'barCode', 'datamatrix', 'pdf417'],
+      success: function (res) {
+        var code = (res && (res.result || res.rawData)) ? String(res.result || res.rawData).trim() : '';
+        console.log('[index] scan result:', code);
+        if (!code) return;
+
+        wx.showLoading({ title: '识别中…', mask: true });
+        springAuth.springRequest({
+          url: '/api/v1/scan/lookup',
+          method: 'GET',
+          data: { code: code },
+        }).then(function (lookupRes) {
+          wx.hideLoading();
+          var body = typeof lookupRes.data === 'string' ? JSON.parse(lookupRes.data) : lookupRes.data;
+          var result = (body && body.success && body.data) ? body.data : {};
+          console.log('[scan-lookup] result:', JSON.stringify(result));
+          if (!result.type || result.type === 'NOT_FOUND') {
+            wx.showToast({ title: result.message || '未识别到有效内容', icon: 'none' });
+            return;
+          }
+
+          if (result.type === 'CAGE_BOX' && result.cageBox) {
+            var cb = result.cageBox;
+            var url = '/package-feature/pages/studentCageShelf/index' +
+              '?highlightX=' + cb.positionX +
+              '&highlightY=' + cb.positionY +
+              '&campusName=' + (cb.campusName || '') +
+              '&roomName=' + (cb.roomName || '') +
+              (cb.shelveId ? '&shelveId=' + cb.shelveId : '');
+            wx.navigateTo({ url: url });
+          } else if (result.type === 'ASSET' && result.asset) {
+            var assetCode = result.asset.assetCode || code;
+            wx.navigateTo({
+              url: '/package-feature/pages/assetRecord/index?searchCode=' + encodeURIComponent(assetCode)
+            });
+          } else {
+            wx.showToast({ title: result.message || '未识别到有效内容', icon: 'none' });
+          }
+        }).catch(function (e) {
+          wx.hideLoading();
+          wx.showToast({ title: (e && e.message) || '查询失败', icon: 'none' });
+        });
+      },
+      fail: function (err) {
+        // 用户取消不提示
+        if (err && err.errMsg && err.errMsg.indexOf('cancel') === -1) {
+          wx.showToast({ title: '扫码失败', icon: 'none' });
+        }
+      }
+    });
   },
 
   async getNewsList() {

@@ -141,29 +141,36 @@ App({
     splashShownThisSession: false,
   },
   onLaunch() {
-    if (wx.cloud) {
-      wx.cloud.init({
-        env: envConfig.getEffectiveCloudEnvId(),
-        traceUser: true,
-      });
-      springAuth.refreshPublicRuntimeConfig().then((cfg) => {
-        if (cfg) console.log('[app] 已拉取 Spring 公开运行时配置');
-        else console.warn('[app] 未拉取到 runtime-config（检查云函数白名单 /api/public 与 SPRING_BASE_URL）');
-      });
-    } else {
-      console.error('[app] 当前基础库不支持 wx.cloud，请检查基础库版本与 app.json 中 cloud 配置');
-    }
+    // 直连模式：无需 wx.cloud.init，直接从后端拉取运行时配置
+    springAuth.refreshPublicRuntimeConfig().then((cfg) => {
+      if (cfg) console.log('[app] 已拉取 Spring 公开运行时配置 (直连)');
+      else console.warn('[app] 未拉取到 runtime-config，检查后端 /api/public/runtime-config');
+    }).catch((e) => console.warn('[app] runtime-config 拉取失败:', e && e.message));
     // jtu 校园网账号登录（与 Spring 完全独立，勿删）
     this.autoLogin();
     // 并行：微信 code → Spring 静默登录；成功写 spring*，未绑写 springPendingOpenId（不覆盖 jtu 的 token）
-    springAuth.runWechatSilentLoginOnLaunch();
+    springAuth.runWechatSilentLoginOnLaunch().then((r) => {
+      // 静默登录完成晚于首屏渲染，成功后主动刷新当前页登录状态，避免一直显示「未登录」
+      if (!r || !r.ok || !r.bound) return;
+      const pages = getCurrentPages();
+      const page = pages && pages[pages.length - 1];
+      if (page) {
+        if (typeof page.refreshLoginBar === 'function') page.refreshLoginBar();
+        if (typeof page.refreshSpringUiState === 'function') page.refreshSpringUiState();
+      }
+    });
     pagePermission.refreshMiniPermissions();
   },
 
-  // 自动登录方法（请把账号密码改为安全配置，勿长期硬编码在客户端）
+  // JTU 校园网自动登录：账号密码从 envConfig PRESETS 读取，不硬编码
   autoLogin() {
-    const account = '15001771038';
-    const password = '88888888';
+    const preset = envConfig.PRESETS[envConfig.getEffectivePresetId()] || {};
+    const account = preset.jtuAccount || '';
+    const password = preset.jtuPassword || '';
+    if (!account || !password) {
+      console.log('[autoLogin] 未配置 JTU 账号密码，跳过自动登录');
+      return;
+    }
 
     wx.request({
       url: 'https://aro.shsmu.edu.cn/jtu/api/login',

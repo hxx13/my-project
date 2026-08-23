@@ -30,50 +30,15 @@ function decorateItems(list) {
       ...it,
       coverAbsUrl: springAuth.toAbsoluteMediaUrl(it.coverUrl),
       nameInitial: ch,
-      _stockLabel: formatSupplyStockLabel(it),
     };
   });
 }
 
-/** QUANTIFIED：有锁定时「库存 N · 不含锁定 M」(M=锁定量)；无锁定仅「库存 N」。FLAG：有货/缺货。 */
-function formatSupplyStockLabel(item) {
-  if (!item) return '';
-  var mode = String(item.stockMode || '');
-  var stock = Number(item.stockQty != null ? item.stockQty : 0);
-  var locked = Number(item.lockedQty != null ? item.lockedQty : 0);
-  var avail = item.availableQty != null
-    ? Number(item.availableQty)
-    : Math.max(0, stock - (Number.isFinite(locked) ? locked : 0));
-  if (mode === 'FLAG') {
-    return avail >= 1 ? '有货' : '缺货';
-  }
-  if (Number.isFinite(locked) && locked > 0) {
-    return '库存 ' + stock + ' · 不含锁定 ' + locked;
-  }
-  return '库存 ' + stock;
-}
-
 /**
- * CDN 优先：批量解析 items 中的 HTTP coverAbsUrl → cloud:// fileID。
- * 在 setData 渲染前调用，避免 HTTP 域名白名单限制导致缩略图空白。
+ * @deprecated Cloud URL resolution no longer needed; all images go through direct HTTP (Phase 2C).
  */
-async function resolveItemsCloudUrls(items) {
-  if (!items || items.length === 0) return;
-  const httpUrls = items
-    .map((it) => it.coverAbsUrl)
-    .filter((u) => u && !u.startsWith('cloud://'));
-  if (httpUrls.length === 0) return;
-  try {
-    const { mappings } = await springAuth.resolveCloudUrls(httpUrls);
-    let hit = 0;
-    items.forEach((it) => {
-      const cloud = mappings[it.coverAbsUrl];
-      if (cloud) { it.coverAbsUrl = cloud; hit++; }
-    });
-    if (hit < httpUrls.length) springAuth.triggerCloudSync();
-  } catch (_) {
-    springAuth.triggerCloudSync();
-  }
+async function resolveItemsCloudUrls(_items) {
+  /* no-op */
 }
 
 Page({
@@ -85,7 +50,6 @@ Page({
     categoryBlocks: [],
     searchKeyword: '',
     newCatName: '',
-    createCatOpen: false,
     inboundOpenId: null,
     stockOpenId: null,
     inboundSubmittingId: null,
@@ -115,6 +79,8 @@ Page({
     specEnabled: false,
     specDimensions: [],    // [{ dimName: '', optionsStr: '' }]
     specRequired: false,
+    /** 独立下单：该物资不能与其他物资合并下单 */
+    independentOrder: false,
   },
 
   onShow() {
@@ -188,7 +154,7 @@ Page({
       const categories = Array.isArray(c.body.data) ? c.body.data : [];
       const rawItems = Array.isArray(i.body.data) ? i.body.data : [];
       const items = decorateItems(rawItems);
-      // CDN 优先：渲染前解析 cloud:// 映射
+      // 渲染前解析 coverAbsUrl（cloud:// 映射已移除，直接 HTTP）
       await resolveItemsCloudUrls(items);
       const recycleRows = ((r.body.data && r.body.data.data) || []).map((it) => ({
         ...it,
@@ -208,16 +174,12 @@ Page({
   },
 
   /**
-   * CDN 优先：批量解析 HTTP URL → cloud:// fileID（deprecated, replaced by resolveItemsCloudUrls）。
+   * @deprecated Cloud URL resolution removed in Phase 2C.
    */
   async applyCloudUrls(_items) { },
 
   onCatName(e) {
     this.setData({ newCatName: e.detail.value });
-  },
-
-  onToggleCreateCat() {
-    this.setData({ createCatOpen: !this.data.createCatOpen });
   },
 
   applyItemFilter() {
@@ -227,17 +189,21 @@ Page({
     if (keyword) {
       filteredItems = items.filter((it) => {
         const name = String(it.name || '').toLowerCase();
-        const subtitle = String(it.subtitle || '').toLowerCase();
         const idText = String(it.id || '').toLowerCase();
         const mode = String(it.stockMode || '').toLowerCase();
-        return name.includes(keyword) || subtitle.includes(keyword) || idText.includes(keyword) || mode.includes(keyword);
+        return name.includes(keyword) || idText.includes(keyword) || mode.includes(keyword);
       });
     }
-    const prevForExpand = keyword ? this.data.categoryBlocks : [];
+    // Always preserve previous expanded state so the user doesn't lose their
+    // place when items are reloaded after edit/inbound/stock-save/deletion.
+    const prevForExpand = this.data.categoryBlocks;
     let categoryBlocks = this.buildCategoryBlocks(this.data.categories, filteredItems, prevForExpand);
     if (keyword) {
       categoryBlocks = categoryBlocks.map((b) => (b.itemCount > 0 ? { ...b, expanded: true } : { ...b, expanded: false }));
     }
+    // inboundOpenId / stockOpenId are reset on purpose: the data underneath
+    // has been refreshed (e.g. stock changed), so keeping the old panel open
+    // would show stale values.
     this.setData({ filteredItems, categoryBlocks, inboundOpenId: null, stockOpenId: null });
   },
 
@@ -360,7 +326,7 @@ Page({
     const p = parseResponse(res);
     if (!p.ok) return wx.showToast({ title: p.message, icon: 'none' });
     wx.showToast({ title: '已添加', icon: 'success' });
-    this.setData({ newCatName: '', createCatOpen: false });
+    this.setData({ newCatName: '' });
     await this.loadAll();
   },
 
@@ -527,6 +493,7 @@ Page({
         specEnabled: false,
         specDimensions: [],
         specRequired: false,
+        independentOrder: false,
       },
       () => this.syncCreatePickerLabels(),
     );
@@ -594,6 +561,7 @@ Page({
         specEnabled: specEnabled,
         specDimensions: specDimensions,
         specRequired: specRequired,
+        independentOrder: item.independentOrder === 1,
       },
       () => this.syncCreatePickerLabels(),
     );
@@ -647,15 +615,9 @@ Page({
       wx.showLoading({ title: '上传中', mask: true });
       try {
         const path = f.tempFilePath;
-        const fileID = await springAuth.uploadCloudMediaFile(path, 'supplies/covers');
-        const url = springAuth.toAbsoluteMediaUrl(fileID);
-        // 异步同步到后端，Web 端立即可看
-        wx.cloud.callFunction({
-          name: 'syncToBackend',
-          data: { wechatFileID: fileID, originalName: 'cover.jpg', mimeType: 'image/jpeg' },
-        }).catch(() => {});
+        const url = await springAuth.uploadFileDirect(path, {});
         this.setData({
-          createCoverUrl: fileID,
+          createCoverUrl: url,
           createCoverPreview: url,
           coverExplicitlyCleared: false,
         });
@@ -697,6 +659,10 @@ Page({
 
   onToggleSpecRequired() {
     this.setData({ specRequired: !this.data.specRequired });
+  },
+
+  onToggleIndependentOrder() {
+    this.setData({ independentOrder: !this.data.independentOrder });
   },
 
   onAddSpecDim() {
@@ -784,6 +750,7 @@ Page({
         };
         if (specSchema) body.specSchema = specSchema;
         body.specRequired = specRequired ? 1 : 0;
+        body.independentOrder = this.data.independentOrder ? 1 : 0;
         const cv = (createCoverUrl || '').trim();
         if (cv) body.coverUrl = cv;
         const res = await springAuth.springRequest({
@@ -810,6 +777,7 @@ Page({
       };
       if (specSchema != null) body.specSchema = specSchema;
       body.specRequired = specRequired ? 1 : 0;
+      body.independentOrder = this.data.independentOrder ? 1 : 0;
       if (coverExplicitlyCleared) {
         body.coverUrl = '';
       } else if ((createCoverUrl || '').trim()) {

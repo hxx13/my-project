@@ -405,7 +405,7 @@ Page({
   async _submitExempt(cardNo, flag, durationMinutes, mode, maxCount, roomIds, extendUntilTime) {
     wx.showLoading({ title: '处理中…', mask: true });
     try {
-      const data = { cardNo, flag };
+      const data = { cardNo, flag, client: 'room-audit-miniapp' };
       if (flag === 1) {
         if (mode) data.mode = mode;
         if (extendUntilTime) data.extendUntilTime = extendUntilTime;
