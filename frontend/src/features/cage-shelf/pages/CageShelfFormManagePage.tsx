@@ -2,34 +2,30 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Loader2, Database, SlidersHorizontal, Layers, PencilRuler, ChevronLeft } from "lucide-react";
-import { fetchNhpFieldDictionary, type NhpFieldDictionary } from "@/features/nhp/api/nhpFieldDictionary.api";
-import { fetchNhpFields } from "@/features/nhp/api/nhpField.api";
+import { fetchCageInfoFields } from "../api/cageForm.api";
 
 /**
  * CageShelfFormManagePage — 笼位详情表单管理 HUB
  *
- * 复用 NHP 管理页，不再维护自定义简化页：
- *   - 码表管理     → /console/admin/cage-shelves/forms/codelists
- *   - 字段配置     → /console/admin/cage-shelves/forms/fields/cage（笼位字段字典套）
- *   - 字段字典套   → /console/admin/cage-shelves/forms/fields
+ * 页面挂自建 cage_info_field 后端（不再复用 NHP 页面）：
+ *   - 码表管理     → /console/admin/cage-shelves/forms/codelists（只读码表列表）
+ *   - 字段配置     → /console/admin/cage-shelves/forms/fields/cage（笼位字段字典）
+ *   - 字段字典套   → /console/admin/cage-shelves/forms/fields（重定向到 cage）
  *   - 编辑并发布   → /console/admin/cage-shelves/forms/fields/cage
  *
- * 摘要数据来自笼位字段字典套（dictKey="cage"，FROZEN 即已发布）。
+ * 摘要数据来自 cage_info_field（published 即已发布）。
  */
 export default function CageShelfFormManagePage() {
   const navigate = useNavigate();
-  const [dict, setDict] = useState<NhpFieldDictionary | null>(null);
-  const [frozenCount, setFrozenCount] = useState<number | null>(null);
+  const [fieldCount, setFieldCount] = useState<number | null>(null);
+  const [publishedCount, setPublishedCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      fetchNhpFieldDictionary("cage"),
-      fetchNhpFields(undefined, { dictKey: "cage", status: "FROZEN" }),
-    ])
-      .then(([d, fields]) => {
-        setDict(d ?? null);
-        setFrozenCount(fields?.length ?? 0);
+    fetchCageInfoFields()
+      .then((fields) => {
+        setFieldCount(fields.length);
+        setPublishedCount(fields.filter((f) => f.published).length);
       })
       .catch((e) => toast.error(e?.message || "加载笼位字段字典失败"))
       .finally(() => setLoading(false));
@@ -85,19 +81,17 @@ export default function CageShelfFormManagePage() {
           <div className="flex items-center justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-[var(--twin-ink)]">
-                  {dict?.name || "笼位字段字典"}
-                </span>
+                <span className="text-sm font-bold text-[var(--twin-ink)]">笼位字段字典</span>
                 <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">
-                  已发布字段 {frozenCount ?? 0} 个
+                  已发布字段 {publishedCount ?? 0} 个
                 </span>
               </div>
               <div className="text-xs text-[var(--twin-mute)] mt-1">
                 字段字典套 <span className="font-mono text-[11px] text-[var(--twin-ink)]">cage</span>
-                {dict?.species ? <span className="ml-2">物种：{dict.species}</span> : null}
+                <span className="ml-2">字段共 {fieldCount ?? 0} 个</span>
               </div>
               <div className="text-[11px] text-[var(--twin-mute)] mt-1">
-                字段配置、码表与模板均复用 NHP 管理页，避免维护两套简化表单。
+                字段与码表数据来自自建 <span className="font-mono">cage_info_field</span> 后端，不再复用 NHP 页面。
               </div>
             </div>
             <button
@@ -115,7 +109,7 @@ export default function CageShelfFormManagePage() {
       <div className="flex-1 min-h-0 flex flex-col rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] overflow-hidden">
         <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b border-[var(--twin-hairline)]">
           <span className="text-sm font-semibold text-[var(--twin-ink)]">管理入口</span>
-          <span className="text-[11px] text-[var(--twin-mute)]">复用 NHP 内容管理页面</span>
+          <span className="text-[11px] text-[var(--twin-mute)]">自建笼位字段字典</span>
         </div>
         <div className="flex-1 min-h-0 overflow-auto p-4">
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
@@ -127,7 +121,7 @@ export default function CageShelfFormManagePage() {
               <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--twin-ink)]">
                 <Database className="h-4 w-4 text-[var(--twin-mute)]" />码表管理
               </div>
-              <div className="text-[11px] text-[var(--twin-mute)] mt-1">管理字段取值的码表字典</div>
+              <div className="text-[11px] text-[var(--twin-mute)] mt-1">查看字段取值的码表字典（只读）</div>
             </button>
             <button
               type="button"
@@ -147,7 +141,7 @@ export default function CageShelfFormManagePage() {
               <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--twin-ink)]">
                 <Layers className="h-4 w-4 text-[var(--twin-mute)]" />字段字典套
               </div>
-              <div className="text-[11px] text-[var(--twin-mute)] mt-1">浏览全部字段字典套（cage / 猪 / 猴 …）</div>
+              <div className="text-[11px] text-[var(--twin-mute)] mt-1">浏览笼位字段字典套（cage）</div>
             </button>
           </div>
         </div>
