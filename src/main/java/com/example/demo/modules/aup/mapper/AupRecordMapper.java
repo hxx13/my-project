@@ -50,6 +50,9 @@ public interface AupRecordMapper {
                            @Param("animalAllowlist") String animalAllowlist,
                            @Param("status") String status);
 
+    /** 解锁返修时清空动物白名单与 registry status */
+    int clearRegistryMeta(@Param("id") Long id);
+
     /** 订购侧：按课题组名查已批准 AUP 下拉（id/registerNo/projectGroupName/projectGroupId） */
     List<Map<String, Object>> selectApprovedForOrder(@Param("projectGroupName") String projectGroupName);
 
@@ -66,6 +69,7 @@ public interface AupRecordMapper {
                                  @Param("registerNo") String registerNo,
                                  @Param("stage") String stage,
                                  @Param("excludeStage") String excludeStage,
+                                 @Param("excludeStages") List<String> excludeStages,
                                  @Param("projectGroupName") String projectGroupName,
                                  @Param("excludeDraft") boolean excludeDraft,
                                  @Param("draftSource") String draftSource,
@@ -75,6 +79,7 @@ public interface AupRecordMapper {
                                  @Param("submitterName") String submitterName,
                                  @Param("reviewerName") String reviewerName,
                                  @Param("relatedToMe") boolean relatedToMe,
+                                 @Param("groupScopeOnly") boolean groupScopeOnly,
                                  @Param("sortBy") String sortBy,
                                  @Param("sortDir") String sortDir,
                                  @Param("offset") int offset,
@@ -99,6 +104,7 @@ public interface AupRecordMapper {
                   @Param("registerNo") String registerNo,
                   @Param("stage") String stage,
                   @Param("excludeStage") String excludeStage,
+                  @Param("excludeStages") List<String> excludeStages,
                   @Param("projectGroupName") String projectGroupName,
                   @Param("excludeDraft") boolean excludeDraft,
                   @Param("draftSource") String draftSource,
@@ -107,7 +113,8 @@ public interface AupRecordMapper {
                   @Param("reviewerId") String reviewerId,
                   @Param("submitterName") String submitterName,
                   @Param("reviewerName") String reviewerName,
-                  @Param("relatedToMe") boolean relatedToMe);
+                  @Param("relatedToMe") boolean relatedToMe,
+                  @Param("groupScopeOnly") boolean groupScopeOnly);
 
     /** 列表筛选用：去重课题组名称 */
     List<String> selectDistinctProjectGroups();

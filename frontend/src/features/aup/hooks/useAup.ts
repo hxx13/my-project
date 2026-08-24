@@ -12,6 +12,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
+import { handleAupConflict } from "../utils/aupConflict";
+
 import {
   autosaveAup,
   createAup,
@@ -108,7 +110,7 @@ export const aupQueryKeys = {
   templates: () => ["aup", "templates"] as const,
   template: (id: number | string) => ["aup", "template", id] as const,
   templateVersions: (id: number | string) => ["aup", "templateVersions", id] as const,
-  publishedTemplate: (formKey?: string) => ["aup", "publishedTemplate", formKey] as const,
+  publishedTemplate: (formKey?: string, kind?: string) => ["aup", "publishedTemplate", formKey, kind] as const,
   dicts: (params?: AupDictListParams) => ["aup", "dicts", params ?? {}] as const,
   dict: (dictKey: string) => ["aup", "dict", dictKey] as const,
   signatureContext: () => ["aup", "signatureContext"] as const,
@@ -256,6 +258,12 @@ export function useAupDraft(id?: string) {
         return res;
       } catch (e) {
         setAutosaveState("error");
+        if (await handleAupConflict(e, {
+          refetch: () => qc.invalidateQueries({ queryKey: aupQueryKeys.detail(id) }),
+          message: "草稿已在其他端修改，已刷新数据，请重试",
+        })) {
+          return null;
+        }
         throw e;
       }
     },
@@ -266,7 +274,11 @@ export function useAupDraft(id?: string) {
     if (!id) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      void doSave(true).catch((e: Error) => {
+      void doSave(true).catch(async (e: Error) => {
+        if (await handleAupConflict(e, {
+          refetch: () => qc.invalidateQueries({ queryKey: aupQueryKeys.detail(id!) }),
+          message: "草稿已在其他端修改，已刷新数据，请重试",
+        })) return;
         toast.error("自动保存失败：" + e.message);
       });
     }, 800);
@@ -305,7 +317,13 @@ export function useAupDraft(id?: string) {
   const saveMutation = useMutation({
     mutationFn: () => flushSave(),
     onSuccess: () => toast.success("已保存"),
-    onError: (e: Error) => toast.error(e.message || "保存失败"),
+    onError: async (e: Error) => {
+      if (await handleAupConflict(e, {
+        refetch: () => (id ? qc.invalidateQueries({ queryKey: aupQueryKeys.detail(id) }) : Promise.resolve()),
+        message: "草稿已在其他端修改，已刷新数据，请重试",
+      })) return;
+      toast.error(e.message || "保存失败");
+    },
   });
 
   const submitMutation = useMutation({
@@ -320,7 +338,13 @@ export function useAupDraft(id?: string) {
       if (id) qc.invalidateQueries({ queryKey: aupQueryKeys.detail(id) });
       qc.invalidateQueries({ queryKey: aupQueryKeys.all });
     },
-    onError: (e: Error) => toast.error(e.message || "提交失败"),
+    onError: async (e: Error) => {
+      if (await handleAupConflict(e, {
+        refetch: () => (id ? qc.invalidateQueries({ queryKey: aupQueryKeys.detail(id) }) : Promise.resolve()),
+        message: "计划书状态已变更，已刷新数据，请重试",
+      })) return;
+      toast.error(e.message || "提交失败");
+    },
   });
 
   return {
@@ -461,6 +485,24 @@ function invalidateReview(id: string | undefined, qc: ReturnType<typeof useQuery
   qc.invalidateQueries({ queryKey: aupQueryKeys.all });
 }
 
+function reviewConflictHandler(id: string | undefined, qc: ReturnType<typeof useQueryClient>) {
+  return async (e: Error) => {
+    if (await handleAupConflict(e, {
+      refetch: () => {
+        if (!id) return Promise.resolve();
+        return Promise.all([
+          qc.invalidateQueries({ queryKey: aupQueryKeys.detail(id) }),
+          qc.invalidateQueries({ queryKey: aupQueryKeys.reviewProgress(id) }),
+          qc.invalidateQueries({ queryKey: aupQueryKeys.reviewItems(id) }),
+          qc.invalidateQueries({ queryKey: aupQueryKeys.reviewSessions(id) }),
+        ]);
+      },
+      message: "计划书状态已变更，已刷新数据，请重试",
+    })) return;
+    toast.error(e.message || "操作失败");
+  };
+}
+
 export function useFormatReview(id?: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -469,7 +511,7 @@ export function useFormatReview(id?: string) {
       return submitFormatReview(id, body);
     },
     onSuccess: () => invalidateReview(id, qc),
-    onError: (e: Error) => toast.error(e.message || "格式审查失败"),
+    onError: reviewConflictHandler(id, qc),
   });
 }
 
@@ -481,7 +523,7 @@ export function usePiReview(id?: string) {
       return submitPiReview(id, body);
     },
     onSuccess: () => invalidateReview(id, qc),
-    onError: (e: Error) => toast.error(e.message || "组长审核失败"),
+    onError: reviewConflictHandler(id, qc),
   });
 }
 
@@ -493,7 +535,7 @@ export function useExpertReview(id?: string) {
       return submitExpertReview(id, body);
     },
     onSuccess: () => invalidateReview(id, qc),
-    onError: (e: Error) => toast.error(e.message || "提交投票失败"),
+    onError: reviewConflictHandler(id, qc),
   });
 }
 
@@ -588,10 +630,10 @@ export function useAupTemplates() {
   });
 }
 
-export function usePublishedTemplate(formKey?: string) {
+export function usePublishedTemplate(formKey?: string, kind?: string) {
   return useQuery({
-    queryKey: aupQueryKeys.publishedTemplate(formKey),
-    queryFn: () => fetchPublishedTemplate(formKey!),
+    queryKey: aupQueryKeys.publishedTemplate(formKey, kind),
+    queryFn: () => fetchPublishedTemplate(formKey!, kind),
     enabled: !!formKey,
     // 未发布返回 null 而非抛错，无需重试；真正失败（网络/5xx）才需要
     retry: false,

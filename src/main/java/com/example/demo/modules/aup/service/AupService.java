@@ -9,6 +9,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.aup.dto.AupAttachmentVO;
+import com.example.demo.modules.aup.dto.AupBatchDeleteRequest;
 import com.example.demo.modules.aup.dto.AupDetailVO;
 import com.example.demo.modules.aup.dto.AupListItem;
 import com.example.demo.modules.aup.dto.AupSnapshotVO;
@@ -97,6 +98,7 @@ public class AupService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final AupDemoSeeder aupDemoSeeder;
+    private final AupAnimalAllowlistCompat allowlistCompat;
 
     /** 签名可信邮箱域（逗号分隔），不硬编码、可配置 */
     @Value("${aup.signature.trusted-domains:@shsmu.edu.cn}")
@@ -129,7 +131,8 @@ public class AupService {
                       UserDisplayNameService userDisplayNameService,
                       JdbcTemplate jdbcTemplate,
                       ObjectMapper objectMapper,
-                      AupDemoSeeder aupDemoSeeder) {
+                      AupDemoSeeder aupDemoSeeder,
+                      AupAnimalAllowlistCompat allowlistCompat) {
         this.recordMapper = recordMapper;
         this.dataMapper = dataMapper;
         this.auditLogMapper = auditLogMapper;
@@ -146,6 +149,7 @@ public class AupService {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.aupDemoSeeder = aupDemoSeeder;
+        this.allowlistCompat = allowlistCompat;
     }
 
     // ======================================================================
@@ -157,8 +161,8 @@ public class AupService {
     public AupRecord createDraft(User user, String templateVersion) {
         long[] tpl = resolvePublishedTemplate();
         Long templateId = tpl[0];
-        String frozenVersion = (templateVersion != null && !templateVersion.isBlank())
-                ? templateVersion.trim() : String.valueOf(tpl[1]);
+        // 忽略客户端 templateVersion，防止绑定非发布模板或 id/version 不一致
+        String frozenVersion = String.valueOf(tpl[1]);
 
         AupRecord record = new AupRecord();
         record.setTemplateId(templateId);
@@ -367,7 +371,7 @@ public class AupService {
         // 批准时固化动物白名单（B5 大类 SUBTREE + B6 品系 EXACT），供订购侧可购校验
         if (isApprove) {
             AupData approveData = dataMapper.selectByAupId(aupId);
-            String allowlist = buildAnimalAllowlist(approveData == null ? null : approveData.getData());
+            String allowlist = allowlistCompat.buildFromFormJson(approveData == null ? null : approveData.getData());
             recordMapper.updateRegistryMeta(aupId, allowlist, "active");
         }
 
@@ -430,8 +434,9 @@ public class AupService {
     // ======================================================================
 
     /** 按发布版模板逐字段校验，返回结构化 errors[]（供 submit/save 兜底与预检）。校验前先剥离隐藏区块值。 */
-    public List<AupValidationErrorDTO> validate(Long aupId) {
+    public List<AupValidationErrorDTO> validate(Long aupId, User user) {
         AupRecord record = requireRecord(aupId);
+        accessPolicy.assertViewable(record, user);
         AupData data = dataMapper.selectByAupId(aupId);
         String raw = data == null ? "{}" : data.getData();
         String cleaned = stripHiddenFieldsQuiet(record.getTemplateId(), raw);
@@ -644,6 +649,7 @@ public class AupService {
         }
         // 解锁回 draft 后清空提交时间、通过时间与到期时间；注册号已锁定为该计划书，作废不复用，不清空
         jdbcTemplate.update("UPDATE aup_record SET expire_at = NULL, approved_at = NULL, submitted_at = NULL WHERE id = ?", aupId);
+        recordMapper.clearRegistryMeta(aupId);
         AupData data = dataMapper.selectByAupId(aupId);
         snapshotService.createSnapshot(record, STAGE_DRAFT, "rollback", data == null ? null : data.getData(), user.getId());
         audit(aupId, user.getId(), "admin", "unlock", stage, STAGE_DRAFT, "管理员解锁，重新打开计划书");
@@ -736,11 +742,12 @@ public class AupService {
     // ======================================================================
 
     public Map<String, Object> list(User user, int page, int size, String keyword, String registerNo,
-                                    String stage, String excludeStage, String projectGroupName,
+                                    String stage, String excludeStage, List<String> excludeStages,
+                                    String projectGroupName,
                                     boolean excludeDraft, String draftSource, Integer roundNo,
                                     String submitterId, String reviewerId,
                                     String submitterName, String reviewerName,
-                                    boolean relatedToMe,
+                                    boolean relatedToMe, boolean groupScopeOnly,
                                     String sortBy, String sortDir) {
         String scopeRole = accessPolicy.resolveScopeRole(user);
         String scopeUserId = user.getId();
@@ -749,8 +756,8 @@ public class AupService {
         int safeSize = Math.min(Math.max(size, 1), 100);
         int offset = (safePage - 1) * safeSize;
         List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo,
-                stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo,
-                submitterId, reviewerId, submitterName, reviewerName, relatedToMe, sortBy, sortDir, offset, safeSize);
+                stage, excludeStage, excludeStages, projectGroupName, excludeDraft, draftSource, roundNo,
+                submitterId, reviewerId, submitterName, reviewerName, relatedToMe, groupScopeOnly, sortBy, sortDir, offset, safeSize);
         Map<Long, String> speciesByAup = loadSpeciesByAup(items);
         for (AupListItem item : items) {
             item.setSummaryJson(buildSummaryJson(item, speciesByAup.get(item.getId())));
@@ -759,7 +766,7 @@ public class AupService {
         Map<Long, Integer> expertRounds = resolveExpertRounds(items);
         fillNames(items, expertRounds);
         fillVoteNames(items, expertRounds);
-        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft, draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe);
+        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, excludeStages, projectGroupName, excludeDraft, draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe, groupScopeOnly);
         Map<String, Object> data = new HashMap<>();
         data.put("total", total);
         data.put("items", items);
@@ -772,7 +779,12 @@ public class AupService {
     }
 
     /** 订购侧：按课题组名列出已批准 AUP 下拉（含 projectGroupId），供下单必选 AUP 用。 */
-    public List<Map<String, Object>> listApprovedForOrder(String projectGroupName) {
+    /** 订购侧：仅返回当前登录用户所属课题组的已批准 AUP；无课题组则空列表。 */
+    public List<Map<String, Object>> listApprovedForOrder(User user) {
+        String projectGroupName = resolveProjectGroupName(user.getId());
+        if (!StringUtils.hasText(projectGroupName)) {
+            return List.of();
+        }
         return recordMapper.selectApprovedForOrder(projectGroupName);
     }
 
@@ -784,6 +796,45 @@ public class AupService {
                             + "WHERE active = 1 ORDER BY sort_order ASC, id ASC");
         } catch (Exception e) {
             log.warn("[aup] 读取课题组下拉失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 表单选择器数据源：person / department / cage / animal */
+    public List<Map<String, Object>> listPickers(String type, Map<String, String> params) {
+        String t = type == null ? "" : type.trim().toLowerCase();
+        try {
+            switch (t) {
+                case "person":
+                    return jdbcTemplate.queryForList(
+                            "SELECT user_id AS value, "
+                                    + "CONCAT(name, IF(job_number IS NOT NULL AND job_number != '', "
+                                    + "CONCAT(' (', job_number, ')'), '')) AS label "
+                                    + "FROM aro_personnel WHERE name IS NOT NULL AND TRIM(name) != '' "
+                                    + "ORDER BY name LIMIT 500");
+                case "department":
+                    return jdbcTemplate.queryForList(
+                            "SELECT DISTINCT department_name AS value, department_name AS label "
+                                    + "FROM aro_personnel WHERE department_name IS NOT NULL "
+                                    + "AND TRIM(department_name) != '' ORDER BY department_name LIMIT 200");
+                case "cage":
+                    return jdbcTemplate.queryForList(
+                            "SELECT CAST(room_id AS CHAR) AS value, "
+                                    + "IFNULL(name, CAST(room_id AS CHAR)) AS label "
+                                    + "FROM cage_booking_room ORDER BY name LIMIT 500");
+                case "animal":
+                    return jdbcTemplate.queryForList(
+                            "SELECT di.value AS value, di.label AS label FROM dict_item di "
+                                    + "INNER JOIN dict d ON d.id = di.dict_id "
+                                    + "WHERE d.dict_key IN ('animalSpecies', 'animalBreed', 'species', 'breed') "
+                                    + "ORDER BY di.sort_order, di.label LIMIT 300");
+                default:
+                    throw TwinBusinessException.of(400, "未知选择器类型: " + type);
+            }
+        } catch (TwinBusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[aup] pickers type={} failed: {}", type, e.getMessage());
             return List.of();
         }
     }
@@ -1102,6 +1153,67 @@ public class AupService {
         jdbcTemplate.update("DELETE FROM aup_record WHERE id = ?", aupId);
     }
 
+    /**
+     * 批量删除计划书：逐条复用单删权限校验与级联删除，单条失败不阻断其余。
+     * @return { deletedCount, failed:[{id, reason}] }
+     */
+    public Map<String, Object> batchDelete(List<Long> ids, User user, User impersonator) {
+        int deleted = 0;
+        List<Map<String, Object>> failed = new ArrayList<>();
+        for (Long id : ids) {
+            if (id == null) {
+                continue;
+            }
+            try {
+                delete(id, user, impersonator);
+                deleted++;
+            } catch (Exception e) {
+                failed.add(Map.of("id", id, "reason", e.getMessage() == null ? "未知错误" : e.getMessage()));
+            }
+        }
+        Map<String, Object> out = new HashMap<>();
+        out.put("deletedCount", deleted);
+        out.put("failed", failed);
+        return out;
+    }
+
+    /** 按筛选条件分页遍历，返回全部匹配记录 id（供全选删除，含未加载分页）。 */
+    public List<Long> listMatchingIds(User user, String keyword, String registerNo, String stage,
+                                      List<String> excludeStages, String projectGroupName, String draftSource,
+                                      Integer roundNo, String submitterName, String reviewerName,
+                                      boolean relatedToMe, String sortBy, String sortDir) {
+        String scopeRole = accessPolicy.resolveScopeRole(user);
+        String scopeUserId = user.getId();
+        String scopeProjectGroup = resolveProjectGroupName(scopeUserId);
+        List<Long> ids = new ArrayList<>();
+        int offset = 0;
+        int size = 100;
+        while (true) {
+            List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo,
+                    stage, null, excludeStages, projectGroupName, true, draftSource, roundNo,
+                    null, null, submitterName, reviewerName, relatedToMe, false, sortBy, sortDir, offset, size);
+            if (items.isEmpty()) {
+                break;
+            }
+            for (AupListItem item : items) {
+                ids.add(item.getId());
+            }
+            if (items.size() < size) {
+                break;
+            }
+            offset += size;
+        }
+        return ids;
+    }
+
+    /** 全选删除：按筛选条件取全部 id 后逐条删除（复用单删权限校验）。 */
+    public Map<String, Object> batchDeleteAll(AupBatchDeleteRequest req, User user, User impersonator) {
+        List<Long> ids = listMatchingIds(user, req.getKeyword(), req.getRegisterNo(), req.getStage(),
+                req.getExcludeStages(), req.getProjectGroupName(), req.getDraftSource(), req.getRoundNo(),
+                req.getSubmitterName(), req.getReviewerName(), req.isRelatedToMe(), req.getSortBy(), req.getSortDir());
+        return batchDelete(ids, user, impersonator);
+    }
+
     private Map<String, Object> persistDraftData(Long aupId, String dataJson, Long expectedVersion, String updatedBy) {
         AupData data = dataMapper.selectByAupId(aupId);
         if (data == null) {
@@ -1396,7 +1508,8 @@ public class AupService {
         Set<String> out = new LinkedHashSet<>();
         try {
             List<String> vals = jdbcTemplate.queryForList(
-                    "SELECT di.value FROM dict_item di JOIN dict d ON di.dict_id = d.id WHERE d.dict_key = ?",
+                    "SELECT di.value FROM dict_item di JOIN dict d ON di.dict_id = d.id "
+                            + "WHERE d.dict_key = ? AND d.status = 'PUBLISHED'",
                     String.class, dictKey);
             out.addAll(vals);
         } catch (Exception e) {
@@ -1552,90 +1665,7 @@ public class AupService {
         }
     }
 
-    // ---- 动物白名单 ----
-
-    /**
-     * 从计划书正文解析动物白名单（结构化 JSON）。
-     * B5.blocks 每块 species → 物种大类 ANIMAL_BREED，scope=SUBTREE（整类含后代品系）；
-     * B6.blocks 每块 species → 品系 ANIMAL_STRAIN，scope=EXACT（仅该品系）。
-     * species 值可为纯名称字符串或 {label, refDataId} 对象，均解析到 ref_data.id。
-     */
-    private String buildAnimalAllowlist(String dataJson) {
-        Map<String, Object> map = parseMap(dataJson);
-        List<Map<String, Object>> entries = new ArrayList<>();
-        collectAllowlistEntries(map, "B5.blocks", "ANIMAL_BREED", "SUBTREE", entries);
-        collectAllowlistEntries(map, "B6.blocks", "ANIMAL_STRAIN", "EXACT", entries);
-        if (entries.isEmpty()) {
-            return null;
-        }
-        try {
-            return objectMapper.writeValueAsString(entries);
-        } catch (Exception e) {
-            log.warn("[aup] 序列化动物白名单失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /** 解析某个 blocks 字段下每块的 species，映射到 ref_data.id 后加入 entries。 */
-    private void collectAllowlistEntries(Map<String, Object> data, String blocksKey, String refType, String scope,
-                                         List<Map<String, Object>> entries) {
-        Object blocks = data == null ? null : data.get(blocksKey);
-        if (!(blocks instanceof List<?> bl)) {
-            return;
-        }
-        for (Object block : bl) {
-            if (!(block instanceof Map<?, ?> m)) {
-                continue;
-            }
-            Long refDataId = resolveSpeciesRefDataId(m.get("species"), refType);
-            if (refDataId == null) {
-                continue;
-            }
-            Map<String, Object> e = new LinkedHashMap<>();
-            e.put("refType", refType);
-            e.put("refDataId", refDataId);
-            e.put("scope", scope);
-            entries.add(e);
-        }
-    }
-
-    /** 解析单个 species 值到 ref_data.id：对象优先取 refDataId，否则按名称匹配。 */
-    private Long resolveSpeciesRefDataId(Object species, String refType) {
-        if (species == null) {
-            return null;
-        }
-        if (species instanceof Map<?, ?> sm) {
-            Object rid = sm.get("refDataId");
-            if (rid instanceof Number n) {
-                return n.longValue();
-            }
-            if (rid != null) {
-                try {
-                    return Long.parseLong(String.valueOf(rid).trim());
-                } catch (NumberFormatException ignore) {
-                }
-            }
-            Object label = sm.get("label");
-            return label == null ? null : resolveRefDataIdByTitle(refType, String.valueOf(label).trim());
-        }
-        return resolveRefDataIdByTitle(refType, String.valueOf(species).trim());
-    }
-
-    /** 按 ref_data.title 精确匹配解析 id（订购侧 ref_data 主标题即展示名）。 */
-    private Long resolveRefDataIdByTitle(String refType, String title) {
-        if (!StringUtils.hasText(title)) {
-            return null;
-        }
-        try {
-            List<Long> ids = jdbcTemplate.queryForList(
-                    "SELECT id FROM ref_data WHERE ref_type = ? AND JSON_UNQUOTE(JSON_EXTRACT(field_data, '$.title')) = ? LIMIT 1",
-                    Long.class, refType, title);
-            return (ids == null || ids.isEmpty()) ? null : ids.get(0);
-        } catch (Exception e) {
-            log.warn("[aup] 解析 ref_data id 失败 refType={} title={} err={}", refType, title, e.getMessage());
-            return null;
-        }
-    }
+    // ---- 动物白名单（构建逻辑见 {@link AupAnimalAllowlistCompat}） ----
 
     // ---- 取值辅助 ----
 
@@ -2192,6 +2222,10 @@ public class AupService {
         }
         String[] labels = {draftLabel, "组长", "格式", "专家", "通过"};
         int current = indexOf(keys, item.getCurrentStage());
+        // expired 不在 keys 内：审批已全部完成，steps 全 done，terminal 单独表达「已过期」
+        if (STAGE_EXPIRED.equals(item.getCurrentStage())) {
+            current = keys.length;
+        }
         List<Map<String, Object>> steps = new ArrayList<>();
         for (int i = 0; i < keys.length; i++) {
             Map<String, Object> s = new LinkedHashMap<>();

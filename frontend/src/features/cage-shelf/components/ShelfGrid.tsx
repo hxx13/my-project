@@ -81,7 +81,7 @@ export function ShelfGrid({
   bindPairCache?: Map<string, { cell: CageShelfCell; code: string }>;
   unbindPairCache?: Set<string>;
   claimMode?: boolean;
-  poolCells?: Map<number, PoolCell>;
+  poolCells?: Map<string, PoolCell>;
 }) {
   const sid = detail?.shelfMeta?.shelveId ?? "";
   const cells = detail?.grid ?? [];
@@ -129,7 +129,7 @@ export function ShelfGrid({
               isCrossRow={showCross && c.y === crossY}
               flashOverlay={!!(scanLockTarget && scanLockTarget.sid === sid && scanLockTarget.x === c.x && scanLockTarget.y === c.y)}
               claimMode={claimMode}
-              isPoolCell={claimMode && poolCells ? poolCells.has(Number((c as any).id ?? (c as any).animalCageId ?? 0)) : false}
+              isPoolCell={claimMode && poolCells ? poolCells.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
             />
           );
         })}

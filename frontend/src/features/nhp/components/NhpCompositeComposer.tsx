@@ -328,7 +328,7 @@ export default function NhpCompositeComposer({
         <div className="aup-empty small">加载数据域原子…</div>
       ) : atoms.length === 0 ? (
         <div className="aup-empty small">
-          「{suiteLabel}」套内尚无原子模板。请先在模板发布页「导入内置种子」或到字段字典「从字典生成」域原子；
+          「{suiteLabel}」套内尚无原子模板。请先在表单发布页「导入内置种子」或到字段字典「从字典生成」域原子；
           列表默认只显示「已发布」，草稿原子请切到「含草稿」查看。
         </div>
       ) : (

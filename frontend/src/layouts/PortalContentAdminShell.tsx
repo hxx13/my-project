@@ -21,20 +21,21 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: "AUP",
     items: [
-      { path: "/content-manager/aup-template", label: "AUP 模板", icon: "🧬" },
-      { path: "/content-manager/aup-dict", label: "AUP 字典", icon: "📚" },
-      { path: "/content-manager/aup-reviewers", label: "AUP 审查人", icon: "👥" },
+      { path: "/content-manager/aup-template", label: "版本管理", icon: "🧬" },
+      { path: "/content-manager/aup-dict", label: "码表", icon: "📚" },
+      { path: "/content-manager/aup-audit", label: "变更记录", icon: "🛡" },
+      { path: "/content-manager/aup-reviewers", label: "审查人", icon: "👥" },
     ],
   },
   {
     title: "NHP · 配置",
     items: [
       { path: "/content-manager/nhp-codelist", label: "码表", icon: "🔗" },
-      { path: "/content-manager/nhp-template", label: "模板发布", icon: "🧫" },
-      { path: "/content-manager/nhp-visits", label: "访视/时点", icon: "🕐" },
-      { path: "/content-manager/nhp-event-assignment", label: "事件指派", icon: "🔀" },
-      { path: "/content-manager/nhp-idrules", label: "编码规则", icon: "#️⃣" },
-      { path: "/content-manager/nhp-event-rules", label: "事件规则", icon: "⚙️" },
+      { path: "/content-manager/nhp-template", label: "表单发布", icon: "🧫" },
+      { path: "/content-manager/nhp-visits", label: "访视时点", icon: "🕐" },
+      { path: "/content-manager/nhp-event-assignment", label: "采集方案", icon: "🔀" },
+      { path: "/content-manager/nhp-idrules", label: "编号规则", icon: "#️⃣" },
+      { path: "/content-manager/nhp-event-rules", label: "流转规则", icon: "⚙️" },
       { path: "/content-manager/nhp-standards", label: "标准库", icon: "📐" },
     ],
   },
@@ -42,16 +43,16 @@ const NAV_SECTIONS: NavSection[] = [
     title: "NHP · 治理",
     items: [
       { path: "/content-manager/nhp-quality", label: "数据质量", icon: "📈" },
-      { path: "/content-manager/nhp-audit", label: "审计留痕", icon: "🛡️" },
-      { path: "/content-manager/nhp-snapshots", label: "快照管理", icon: "📸" },
+      { path: "/content-manager/nhp-audit", label: "审计", icon: "🛡️" },
+      { path: "/content-manager/nhp-snapshots", label: "快照", icon: "📸" },
       { path: "/content-manager/nhp-codelist-review", label: "码表审核", icon: "🔍" },
     ],
   },
   {
     title: "NHP · 采集",
     items: [
-      { path: "/content-manager/nhp-subjects", label: "动物管理", icon: "🧬" },
-      { path: "/content-manager/nhp-records", label: "实例管理", icon: "📁" },
+      { path: "/content-manager/nhp-subjects", label: "研究对象", icon: "🧬" },
+      { path: "/content-manager/nhp-records", label: "项目管理", icon: "📁" },
     ],
   },
 ];

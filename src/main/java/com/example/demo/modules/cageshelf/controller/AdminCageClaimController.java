@@ -5,6 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
+import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cageshelf.service.CageClaimService;
 import com.example.demo.modules.identity.service.PersonIdentityService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,13 +31,16 @@ public class AdminCageClaimController {
 
     private final AuthContextService authContextService;
     private final CageClaimService claimService;
+    private final CageInfoValueService infoValueService;
     private final PersonIdentityService personIdentityService;
 
     public AdminCageClaimController(AuthContextService authContextService,
                                      CageClaimService claimService,
+                                     CageInfoValueService infoValueService,
                                      PersonIdentityService personIdentityService) {
         this.authContextService = authContextService;
         this.claimService = claimService;
+        this.infoValueService = infoValueService;
         this.personIdentityService = personIdentityService;
     }
 
@@ -155,6 +159,44 @@ public class AdminCageClaimController {
         return Result.success(claimService.getApprovalHistory(id));
     }
 
+    // ── 信息读写（管理端，无归属校验） ──
+
+    @GetMapping("/{id}/info")
+    @Operation(summary = "查看认领信息（管理端）")
+    public Result<List<Map<String, Object>>> getInfo(@PathVariable Long id,
+                                                     HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMinRole(u, RoleEnum.ADMIN);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+
+        CageClaim claim = claimService.getById(id);
+        if (claim == null) return Result.fail(404, "认领记录不存在");
+
+        return Result.success(infoValueService.getInfo(claim.getAnimalCageId()));
+    }
+
+    @PutMapping("/{id}/info")
+    @Operation(summary = "保存认领信息（管理端）")
+    public Result<List<Map<String, Object>>> updateInfo(@PathVariable Long id,
+                                                        @RequestBody Map<String, Object> body,
+                                                        HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMinRole(u, RoleEnum.ADMIN);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+
+        CageClaim claim = claimService.getById(id);
+        if (claim == null) return Result.fail(404, "认领记录不存在");
+
+        List<Map<String, Object>> values = toMapList(body == null ? null : body.get("values"));
+        if (values == null) return Result.fail(400, "values 必填且为数组");
+
+        try {
+            return Result.success(infoValueService.updateInfo(claim.getAnimalCageId(), values, u.getId()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
     // ── helpers ──
 
     @SuppressWarnings("unchecked")
@@ -174,5 +216,17 @@ public class AdminCageClaimController {
         if (v instanceof Number n) return n.longValue();
         try { return Long.parseLong(String.valueOf(v).trim()); }
         catch (NumberFormatException e) { return null; }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> toMapList(Object v) {
+        if (!(v instanceof List<?> list)) return null;
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> m) {
+                out.add((Map<String, Object>) m);
+            }
+        }
+        return out;
     }
 }

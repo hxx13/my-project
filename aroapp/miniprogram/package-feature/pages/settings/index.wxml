@@ -16,6 +16,15 @@
       />
     </van-cell-group>
 
+    <van-cell-group wx:if="{{ hasToken }}" inset="{{ true }}" border="{{ false }}">
+      <van-cell
+        title="通知设置"
+        label="管理各信息源的通知开关和渠道偏好"
+        is-link
+        bind:click="goNotifySettings"
+      />
+    </van-cell-group>
+
     <van-cell-group wx:if="{{ showEnvSwitcher }}" inset="{{ true }}" border="{{ false }}" custom-class="settings-env-group">
       <van-cell
         title="后端环境"

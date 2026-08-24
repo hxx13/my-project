@@ -252,11 +252,9 @@ export interface AupOption {
   projectGroupId?: number | null;
 }
 
-/** 拉取本课题组已批准 AUP（下单必选 AUP 下拉；projectGroupName 为空则拉全部） */
-export async function fetchApprovedAups(projectGroupName?: string) {
-  const res = await authHttp.get<Result<AupOption[]>>("/aup/approved-for-order", {
-    params: { projectGroupName },
-  });
+/** 拉取当前用户课题组的已批准 AUP（服务端按登录用户课题组过滤，不接受客户端指定） */
+export async function fetchApprovedAups() {
+  const res = await authHttp.get<Result<AupOption[]>>("/aup/approved-for-order");
   return res.data.data ?? [];
 }
 

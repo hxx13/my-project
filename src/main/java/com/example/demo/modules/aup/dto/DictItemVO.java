@@ -9,4 +9,6 @@ public class DictItemVO {
     private String value;
     private String label;
     private Integer sortOrder;
+    private String verdict;
+    private String verdictNote;
 }

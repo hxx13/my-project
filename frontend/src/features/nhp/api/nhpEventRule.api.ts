@@ -1,5 +1,5 @@
 /**
- * NHP 事件规则 API 层。
+ * NHP 流转规则 API 层。
  *
  * 对接后端契约（后端未实现，前端按 22 §6.3 先行定义）：
  * - crf_event_rule：源事件类型 + 触发时机 → 下游动作
@@ -28,7 +28,7 @@ export const ACTION_OPTIONS = [
   { value: "ADVANCE_STATE", label: "推进状态机" },
 ] as const;
 
-/** 事件规则（crf_event_rule 一行） */
+/** 流转规则（crf_event_rule 一行） */
 export interface NhpEventRule {
   id: number;
   /** 源事件类型 = 原子 code，如 SMP/MED/TX/AE/XM */

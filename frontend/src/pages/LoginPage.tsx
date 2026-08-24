@@ -759,7 +759,7 @@ export default function LoginPage() {
       ) : null}
 
       <Dialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
-        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm" overlayClassName="top-0">
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>退出登录</DialogTitle>
             <DialogDescription>确定要退出当前账号吗？</DialogDescription>

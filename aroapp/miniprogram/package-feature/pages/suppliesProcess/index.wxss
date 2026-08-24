@@ -237,13 +237,6 @@
   color: #323233;
 }
 
-.expand-apply-qty {
-  margin-top: 4rpx;
-  font-size: 22rpx;
-  color: #969799;
-  line-height: 1.4;
-}
-
 /* 发放数量 + 备注 常驻行 */
 .expand-qty-row {
   margin-top: 8rpx;

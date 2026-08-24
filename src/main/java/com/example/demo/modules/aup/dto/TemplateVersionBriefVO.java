@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 @Data
 public class TemplateVersionBriefVO {
     private Long id;
+    private String kind;
     private Integer version;
     private String status;
     private LocalDateTime publishedAt;

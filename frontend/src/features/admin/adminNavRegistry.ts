@@ -32,6 +32,7 @@ import {
   Monitor,
   Package,
   Server,
+  ScrollText,
   Settings,
   ShieldAlert,
   ShoppingCart,
@@ -534,6 +535,26 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/special-status", "STAFF"),
       },
       {
+        id: "cage-forms",
+        path: "/admin/cage-shelves/forms",
+        label: "表单发布",
+        icon: FileText,
+        alias: ["笼位表单", "表单管理", "cage form", "forms"],
+        homeTone: "from-sky-400 to-blue-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/forms", "ADMIN"),
+      },
+      {
+        id: "cage-forms-audit",
+        path: "/admin/cage-shelves/forms/audit",
+        label: "表单审计",
+        icon: ScrollText,
+        alias: ["笼位审计", "表单记录", "cage audit"],
+        homeTone: "from-violet-400 to-purple-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/forms/audit", "ADMIN"),
+      },
+      {
         id: "aro-binding",
         path: "/admin/aro-binding",
         label: "培训管理",
@@ -816,7 +837,9 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p === "/admin/device-channels" ||
     p === "/admin/aro-rooms" ||
     p === "/admin/cage-shelves" ||
-    p === "/admin/cage-shelves/special-status"
+    p === "/admin/cage-shelves/special-status" ||
+    p === "/admin/cage-shelves/forms" ||
+    p === "/admin/cage-shelves/forms/audit"
   ) {
     return "ARO 房间与联动";
   }

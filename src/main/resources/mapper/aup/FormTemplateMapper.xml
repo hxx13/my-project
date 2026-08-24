@@ -3,17 +3,24 @@
 <mapper namespace="com.example.demo.modules.aup.mapper.FormTemplateMapper">
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO form_template (form_key, name, version, status, description, published_at, created_by)
-        VALUES (#{formKey}, #{name}, #{version}, #{status}, #{description}, #{publishedAt}, #{createdBy})
+        INSERT INTO form_template (form_key, kind, folder_id, origin, name, version, status, description,
+            published_at, submitted_at, review_comment, created_by)
+        VALUES (#{formKey}, #{kind}, #{folderId}, #{origin}, #{name}, #{version}, #{status}, #{description},
+            #{publishedAt}, #{submittedAt}, #{reviewComment}, #{createdBy})
     </insert>
 
     <update id="update">
         UPDATE form_template
         <set>
+            <if test="kind != null">kind = #{kind},</if>
+            <if test="folderId != null">folder_id = #{folderId},</if>
+            <if test="origin != null">origin = #{origin},</if>
             <if test="name != null">name = #{name},</if>
             <if test="description != null">description = #{description},</if>
             <if test="status != null">status = #{status},</if>
             <if test="publishedAt != null">published_at = #{publishedAt},</if>
+            <if test="submittedAt != null">submitted_at = #{submittedAt},</if>
+            <if test="reviewComment != null">review_comment = #{reviewComment},</if>
         </set>
         WHERE id = #{id}
     </update>
@@ -26,6 +33,10 @@
         SELECT * FROM form_template ORDER BY form_key ASC, version DESC, updated_at DESC
     </select>
 
+    <select id="listByKind" resultType="com.example.demo.modules.aup.entity.FormTemplate">
+        SELECT * FROM form_template WHERE kind = #{kind} ORDER BY form_key ASC, version DESC, updated_at DESC
+    </select>
+
     <select id="listByFormKey" resultType="com.example.demo.modules.aup.entity.FormTemplate">
         SELECT * FROM form_template WHERE form_key = #{formKey} ORDER BY version DESC
     </select>
@@ -33,6 +44,12 @@
     <select id="findPublishedByFormKey" resultType="com.example.demo.modules.aup.entity.FormTemplate">
         SELECT * FROM form_template
         WHERE form_key = #{formKey} AND status = 'PUBLISHED'
+        ORDER BY version DESC LIMIT 1
+    </select>
+
+    <select id="findByKindAndFormKey" resultType="com.example.demo.modules.aup.entity.FormTemplate">
+        SELECT * FROM form_template
+        WHERE kind = #{kind} AND form_key = #{formKey}
         ORDER BY version DESC LIMIT 1
     </select>
 
@@ -59,8 +76,20 @@
         WHERE id = #{id}
     </update>
 
+    <update id="updateStatus">
+        UPDATE form_template SET status = #{status} WHERE id = #{id}
+    </update>
+
+    <update id="updateStatusById">
+        UPDATE form_template SET status = #{status} WHERE id = #{id}
+    </update>
+
     <delete id="deleteById">
         DELETE FROM form_template WHERE id = #{id}
     </delete>
+
+    <select id="countByFolderId" resultType="int">
+        SELECT COUNT(1) FROM form_template WHERE folder_id = #{folderId}
+    </select>
 
 </mapper>

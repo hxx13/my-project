@@ -9,8 +9,9 @@ import com.example.demo.modules.notification.push.preference.UserNotifySettingSe
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.notification.entity.NotifyDeliveryLog;
 import com.example.demo.modules.notification.mapper.NotificationMiniProgramMapper;
-import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.notification.push.PushConstants;
+import com.example.demo.modules.notification.push.binding.NotifyBindingService;
+import com.example.demo.modules.personnel.service.PersonnelService;
 import com.example.demo.modules.notification.push.channel.PushChannel;
 import com.example.demo.modules.notification.push.channel.PushResult;
 import com.example.demo.modules.notification.push.config.NotifySourceChannel;
@@ -39,7 +40,8 @@ public class PushDispatchEngine {
     private final NotifySourceService sourceService;
     private final NotifySourceChannelService channelConfigService;
     private final NotifySourceRecipientService recipientService;
-    private final AroPersonnelMapper personnelMapper;
+    private final PersonnelService personnelService;
+    private final NotifyBindingService notifyBindingService;
     private final UserMapper userMapper;
     private final UserDisplayNameService displayNameService;
     private final NotificationMiniProgramMapper deliveryLogMapper;
@@ -53,7 +55,8 @@ public class PushDispatchEngine {
     public PushDispatchEngine(NotifySourceService sourceService,
                               NotifySourceChannelService channelConfigService,
                               NotifySourceRecipientService recipientService,
-                              AroPersonnelMapper personnelMapper,
+                              PersonnelService personnelService,
+                              NotifyBindingService notifyBindingService,
                               UserMapper userMapper,
                               UserDisplayNameService displayNameService,
                               NotificationMiniProgramMapper deliveryLogMapper,
@@ -66,7 +69,8 @@ public class PushDispatchEngine {
         this.sourceService = sourceService;
         this.channelConfigService = channelConfigService;
         this.recipientService = recipientService;
-        this.personnelMapper = personnelMapper;
+        this.personnelService = personnelService;
+        this.notifyBindingService = notifyBindingService;
         this.userMapper = userMapper;
         this.displayNameService = displayNameService;
         this.deliveryLogMapper = deliveryLogMapper;
@@ -114,6 +118,8 @@ public class PushDispatchEngine {
             report.put("diagnosis", diag);
             return report;
         }
+        // 收件人去重：同人命中 STAFF + STUDENT 两条规则（映射同一 personnel.id）只派发一次
+        allRecipientIds = dedupRecipientsByPersonnel(allRecipientIds);
         diag.add("recipient count: " + allRecipientIds.size());
 
         // 遥测报警源由 TelemetryAlarmCheckScheduler 自行管理缓冲队列，不经过 PushDispatchEngine 的 digest/夜间分支
@@ -186,49 +192,52 @@ public class PushDispatchEngine {
             return report;
         }
 
-        // Batch preload users, display names, emails, and sendKeys
+        // Batch preload users, display names, and channel targets
         List<String> idList = new ArrayList<>(allRecipientIds);
         Map<String, User> userCache = userMapper.findByIds(idList).stream()
                 .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
         Map<String, String> nameMap = displayNameService.resolveDisplayNames(idList);
-        // 分表查询：USR_* / STAFF_* / SYS_SUPER_ROOT → sys_user；其余 → aro_personnel
-        List<String> staffIds = idList.stream().filter(id -> {
-            String up = id == null ? "" : id.toUpperCase();
-            return up.startsWith("USR_") || up.startsWith("STAFF_") || "SYS_SUPER_ROOT".equals(id);
-        }).toList();
-        List<String> aroIds = idList.stream().filter(id -> !staffIds.contains(id)).toList();
 
+        // 渠道目标统一走 personnel_notify_binding：按 personnel.id 批量预载；落单账号（无人员档案）回落 sys_user 旧列
         Map<String, String> emailMap = new HashMap<>();
         Map<String, String> sendKeyMap = new HashMap<>();
         Map<String, String> wxPusherUidMap = new HashMap<>();
-        if (!aroIds.isEmpty()) {
-            List<Map<String, String>> aroEmails = personnelMapper.findContactEmailsByUserIds(aroIds);
-            if (aroEmails != null) {
-                for (Map<String, String> row : aroEmails) {
-                    String uid = row.get("user_id");
-                    String email = row.get("contact_email");
-                    if (uid != null && email != null && !email.isBlank()) emailMap.put(uid, email);
-                }
+
+        List<Long> personnelIds = new ArrayList<>();
+        Map<String, Long> resolvedByAccount = new LinkedHashMap<>(); // userId -> personnelId
+        List<String> fallbackIds = new ArrayList<>();
+        for (String uid : idList) {
+            String pidStr = personnelService.resolveIdByAccount(uid);
+            if (pidStr == null) {
+                fallbackIds.add(uid);
+                continue;
             }
-            List<Map<String, String>> aroKeys = personnelMapper.findSendKeysByUserIds(aroIds);
-            if (aroKeys != null) {
-                for (Map<String, String> row : aroKeys) {
-                    String uid = row.get("user_id");
-                    String sk = row.get("send_key");
-                    if (uid != null && sk != null && !sk.isBlank()) sendKeyMap.put(uid, sk);
-                }
-            }
-            List<Map<String, String>> aroWuids = personnelMapper.findWxPusherUidsByUserIds(aroIds);
-            if (aroWuids != null) {
-                for (Map<String, String> row : aroWuids) {
-                    String uid = row.get("user_id");
-                    String wuid = row.get("wx_pusher_uid");
-                    if (uid != null && wuid != null && !wuid.isBlank()) wxPusherUidMap.put(uid, wuid);
-                }
+            try {
+                Long pid = Long.parseLong(pidStr);
+                resolvedByAccount.put(uid, pid);
+                personnelIds.add(pid);
+            } catch (NumberFormatException e) {
+                fallbackIds.add(uid);
             }
         }
-        if (!staffIds.isEmpty()) {
-            List<Map<String, String>> userEmails = userMapper.findContactEmailsByIds(staffIds);
+
+        if (!personnelIds.isEmpty()) {
+            List<Long> distinctPids = personnelIds.stream().distinct().toList();
+            Map<Long, Map<String, String>> batch = notifyBindingService.readBatchByPersonnelIds(distinctPids);
+            for (Map.Entry<String, Long> e : resolvedByAccount.entrySet()) {
+                Map<String, String> ch = batch.get(e.getValue());
+                if (ch == null) continue;
+                String email = ch.get(PushConstants.CHANNEL_EMAIL);
+                if (email != null && !email.isBlank()) emailMap.put(e.getKey(), email);
+                String sk = ch.get(PushConstants.CHANNEL_SERVER_CHAN);
+                if (sk != null && !sk.isBlank()) sendKeyMap.put(e.getKey(), sk);
+                String wuid = ch.get(PushConstants.CHANNEL_WXPUSHER);
+                if (wuid != null && !wuid.isBlank()) wxPusherUidMap.put(e.getKey(), wuid);
+            }
+        }
+
+        if (!fallbackIds.isEmpty()) {
+            List<Map<String, String>> userEmails = userMapper.findContactEmailsByIds(fallbackIds);
             if (userEmails != null) {
                 for (Map<String, String> row : userEmails) {
                     String uid = row.get("id");
@@ -236,7 +245,7 @@ public class PushDispatchEngine {
                     if (uid != null && email != null && !email.isBlank()) emailMap.put(uid, email);
                 }
             }
-            List<Map<String, String>> userKeys = userMapper.findSendKeysByIds(staffIds);
+            List<Map<String, String>> userKeys = userMapper.findSendKeysByIds(fallbackIds);
             if (userKeys != null) {
                 for (Map<String, String> row : userKeys) {
                     String uid = row.get("id");
@@ -244,7 +253,7 @@ public class PushDispatchEngine {
                     if (uid != null && sk != null && !sk.isBlank()) sendKeyMap.put(uid, sk);
                 }
             }
-            List<Map<String, String>> userWuids = userMapper.findWxPusherUidsByIds(staffIds);
+            List<Map<String, String>> userWuids = userMapper.findWxPusherUidsByIds(fallbackIds);
             if (userWuids != null) {
                 for (Map<String, String> row : userWuids) {
                     String uid = row.get("id");
@@ -424,6 +433,33 @@ public class PushDispatchEngine {
                 }
             }
         }
+        return result;
+    }
+
+    /**
+     * 同人（staff 与 student 双账号映射同一 personnel.id）去重：每个 personnel 保留一个代表账号 id；
+     * 无 personnel 档案的落单账号原样保留（各自独立收件人）。
+     */
+    private Set<String> dedupRecipientsByPersonnel(Set<String> accountIds) {
+        if (accountIds == null || accountIds.isEmpty()) {
+            return accountIds;
+        }
+        Map<Long, String> representative = new LinkedHashMap<>();
+        List<String> orphans = new ArrayList<>();
+        for (String id : accountIds) {
+            String pidStr = personnelService.resolveIdByAccount(id);
+            if (pidStr != null) {
+                try {
+                    representative.putIfAbsent(Long.parseLong(pidStr), id);
+                    continue;
+                } catch (NumberFormatException ignore) {
+                    // 非数字 personnel.id 视为落单
+                }
+            }
+            orphans.add(id);
+        }
+        Set<String> result = new LinkedHashSet<>(representative.values());
+        result.addAll(orphans);
         return result;
     }
 

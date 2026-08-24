@@ -187,4 +187,11 @@
         FOR UPDATE
     </select>
 
+    <select id="selectRoomIdByShelfIndexId" resultType="long">
+        SELECT si.room_id
+        FROM cage_shelf_index si
+        WHERE si.id = #{shelfIndexId}
+        LIMIT 1
+    </select>
+
 </mapper>

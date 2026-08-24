@@ -119,6 +119,68 @@ export async function createNhpSubject(body: {
   return authHttp.post<Result<NhpSubject>>("/nhp/subjects", body).then(({ data }) => data.data);
 }
 
+/** 表单化登记第一步：创建占位研究对象（subjectCode=PEND- 临时号） */
+export async function createPlaceholderNhpSubject(subjectType: string): Promise<NhpSubject> {
+  return authHttp
+    .post<Result<NhpSubject>>("/nhp/subjects/placeholder", { subjectType })
+    .then(({ data }) => data.data);
+}
+
+/** 表单化登记第二步：D1/D2 保存后回填真实编号与身份字段 */
+export async function finalizeNhpSubject(
+  subjectId: number,
+  body: NhpSubjectIdentityInput & { subjectCode: string; centerCode?: string },
+): Promise<NhpSubject> {
+  return authHttp
+    .post<Result<NhpSubject>>(`/nhp/subjects/${subjectId}/finalize`, body)
+    .then(({ data }) => data.data);
+}
+
+/** 登记项目：仅建项目（crf_transplant），对象在保存 D1/D2 表单时才创建 */
+export async function createNhpProject(opts?: { createdBy?: string }): Promise<{
+  project: { id: number; txCode?: string | null; status?: string; donorSubjectId?: number | null; recipientSubjectId?: number | null; lifecycleStage?: string | null; createdBy?: string | null; createdAt?: string | null };
+}> {
+  return authHttp
+    .post<
+      Result<{
+        project: { id: number; txCode?: string | null; status?: string; donorSubjectId?: number | null; recipientSubjectId?: number | null; lifecycleStage?: string | null; createdBy?: string | null; createdAt?: string | null };
+      }>
+    >("/nhp/projects", opts ?? {})
+    .then(({ data }) => data.data);
+}
+
+/** 项目化建实例：为宿主表单建一条未绑定对象的记录（保存时才建研究对象） */
+export async function createNhpRecordForProject(projectId: number, formId: number): Promise<NhpRecord> {
+  return authHttp
+    .post<Result<NhpRecord>>(`/nhp/projects/${projectId}/records`, { formId })
+    .then(({ data }) => data.data);
+}
+
+/** 按需创建研究对象：记录尚无对象时据 hostType 建供体/受体对象并回链 */
+export async function ensureSubjectForRecord(recordId: number): Promise<NhpSubject> {
+  return authHttp
+    .post<Result<NhpSubject>>(`/nhp/records/${recordId}/ensure-subject`)
+    .then(({ data }) => data.data);
+}
+
+/** 项目（crf_transplant，含供体/受体对象） */
+export interface NhpProject {
+  id: number;
+  txCode?: string | null;
+  status?: string;
+  lifecycleStage?: string | null;
+  txDate?: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  donor?: NhpSubject | null;
+  recipient?: NhpSubject | null;
+}
+
+/** 项目管理：列出全部项目（含供体/受体） */
+export async function fetchNhpProjects(): Promise<NhpProject[]> {
+  return authHttp.get<Result<NhpProject[]>>("/nhp/projects").then(({ data }) => data.data ?? []);
+}
+
 /** 更新动物（含身份标识；需 ADMIN+） */
 export async function updateNhpSubject(
   subjectId: number,

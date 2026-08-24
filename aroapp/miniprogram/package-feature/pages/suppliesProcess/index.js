@@ -76,53 +76,6 @@ function recycleOrderTitle(o) {
   return applicantDisplay(o);
 }
 
-/** 列表已带 lines 时，进页即建好展开缓存，展开不再请求详情 */
-function buildExpandCaches(rows) {
-  const detailCache = {};
-  const grantMapCache = {};
-  const fulfillQtyByLineCache = {};
-  const remarkByLineCache = {};
-  const remarkExpandedByLineCache = {};
-  (rows || []).forEach(function (row) {
-    if (!row || !row.id) return;
-    const lines = row.lines || [];
-    if (!lines.length) return;
-    const grantMap = {};
-    const fulfillQtyByLine = {};
-    const remarkByLine = {};
-    const remarkExpandedByLine = {};
-    lines.forEach(function (line) {
-      grantMap[line.id] = (line.fulfilledQty || 0) > 0;
-      fulfillQtyByLine[line.id] = line.qty != null ? line.qty : 1;
-      if (line.remark) {
-        remarkByLine[line.id] = line.remark;
-        remarkExpandedByLine[line.id] = true;
-      }
-      if (line.coverUrl) line._coverAbsUrl = springAuth.toAbsoluteMediaUrl(line.coverUrl);
-    });
-    detailCache[row.id] = {
-      ...row,
-      createdAtText: toTextTime(row.createdAt),
-      fulfilledAtText: toTextTime(row.fulfilledAt),
-      statusText: claimStatusText(row.status),
-      applicantDisplay: applicantDisplay(row),
-      _specGroups: buildSpecGroups(lines),
-      _headerNames: row._headerNames || lines.map(function (l) { return l.snapshotName; }).join('、'),
-    };
-    grantMapCache[row.id] = grantMap;
-    fulfillQtyByLineCache[row.id] = fulfillQtyByLine;
-    remarkByLineCache[row.id] = remarkByLine;
-    remarkExpandedByLineCache[row.id] = remarkExpandedByLine;
-  });
-  return {
-    detailCache,
-    grantMapCache,
-    fulfillQtyByLineCache,
-    remarkByLineCache,
-    remarkExpandedByLineCache,
-  };
-}
-
 Page({
   data: {
     activeTab: 'pending',
@@ -153,11 +106,7 @@ Page({
     }
     if (!pagePermission.guardPageOnShow(this, '/package-feature/pages/suppliesProcess/index', role, 'SUPER_ADMIN')) return;
     springAuth.refreshPublicRuntimeConfig().finally(() => {
-      // 从「修改」返回时静默刷新，避免整页闪「加载中」且能立刻换上新明细
-      const silent = (this.data.pendingRows || []).length > 0
-        || (this.data.doneRows || []).length > 0
-        || (this.data.recycleRows || []).length > 0;
-      this.loadAll({ silent });
+      this.loadAll();
     });
   },
 
@@ -171,9 +120,8 @@ Page({
     this.setData({ activeTab: tab });
   },
 
-  async loadAll(opts) {
-    const silent = !!(opts && opts.silent);
-    if (!silent) this.setData({ loading: true });
+  async loadAll() {
+    this.setData({ loading: true });
     try {
       const [pRes, dRes, rRes] = await Promise.all([
         springAuth.springRequest({ url: '/api/supplies/claims/pending-tasks', method: 'GET', data: {} }),
@@ -210,20 +158,7 @@ Page({
         recycleTitle: recycleOrderTitle(it),
         _headerNames: (it.lines || []).map(function(l) { return l.snapshotName; }).join('、'),
       }));
-      const caches = buildExpandCaches(pendingRows.concat(doneRows).concat(recycleRows));
-      this.setData({
-        pendingRows,
-        doneRows,
-        recycleRows,
-        recycleSelected: {},
-        expandedIds: {},
-        menuOpenId: null,
-        detailCache: caches.detailCache,
-        grantMapCache: caches.grantMapCache,
-        fulfillQtyByLineCache: caches.fulfillQtyByLineCache,
-        remarkByLineCache: caches.remarkByLineCache,
-        remarkExpandedByLineCache: caches.remarkExpandedByLineCache,
-      });
+      this.setData({ pendingRows, doneRows, recycleRows, recycleSelected: {} });
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '加载失败', icon: 'none' });
     } finally {
@@ -239,14 +174,52 @@ Page({
       this.collapseOne(id);
       return;
     }
-    // 展开：列表已预热 detailCache，一般无需再请求
+    // 展开
     this.setData({ ['expandedIds.' + id]: true });
-    if (this.data.detailCache[id]) return;
+    if (this.data.detailCache[id]) return; // 已缓存
     void this.expandCard(id);
   },
 
   expandCard(id) {
-    // 兜底：列表偶发缺 lines 时才调详情 API
+    // 列表接口已返回 lines，直接从已有数据构建缓存，无需调详情 API
+    const rows = (this.data.pendingRows || []).concat(this.data.doneRows || []).concat(this.data.recycleRows || []);
+    const row = rows.find(function(r) { return r.id === id; });
+    const lines = row && row.lines ? row.lines : null;
+
+    if (lines && lines.length > 0) {
+      const grantMap = {};
+      const fulfillQtyByLine = {};
+      const remarkByLine = {};
+      const remarkExpandedByLine = {};
+      lines.forEach(function(line) {
+        grantMap[line.id] = (line.fulfilledQty || 0) > 0;
+        fulfillQtyByLine[line.id] = line.qty != null ? line.qty : 1;
+        if (line.remark) {
+          remarkByLine[line.id] = line.remark;
+          remarkExpandedByLine[line.id] = true;
+        }
+        if (line.coverUrl) line._coverAbsUrl = springAuth.toAbsoluteMediaUrl(line.coverUrl);
+      });
+      const detail = {
+        ...row,
+        createdAtText: toTextTime(row.createdAt),
+        fulfilledAtText: toTextTime(row.fulfilledAt),
+        statusText: claimStatusText(row.status),
+        applicantDisplay: applicantDisplay(row),
+        _specGroups: buildSpecGroups(lines),
+        _headerNames: row._headerNames || lines.map(function(l) { return l.snapshotName; }).join('、'),
+      };
+      this.setData({
+        ['detailCache.' + id]: detail,
+        ['grantMapCache.' + id]: grantMap,
+        ['fulfillQtyByLineCache.' + id]: fulfillQtyByLine,
+        ['remarkByLineCache.' + id]: remarkByLine,
+        ['remarkExpandedByLineCache.' + id]: remarkExpandedByLine,
+      });
+      return;
+    }
+
+    // 兜底：列表没 lines 时才调详情 API
     const that = this;
     wx.showLoading({ title: '加载中…', mask: true });
     springAuth.springRequest({

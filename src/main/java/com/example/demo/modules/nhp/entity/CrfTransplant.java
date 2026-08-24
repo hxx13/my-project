@@ -25,6 +25,10 @@ public class CrfTransplant {
     private String maintenanceRegimen;
     private Long parentTxId;
     private String status;
+    /** 项目生命周期 SCREENING/MATCHING/POST_TX/ENDPOINT（生命周期挪到项目，不再挂单只动物） */
+    private String lifecycleStage;
+    /** 创建人 */
+    private String createdBy;
     private Boolean active;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

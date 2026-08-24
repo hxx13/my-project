@@ -91,6 +91,26 @@ public class CageShelfBookingController {
         return Result.success(bookingLocalService.saveRoomAup(roomId, body));
     }
 
+    // ── 保存房间上限（本地写，改低校验） ──
+
+    @PostMapping("/rooms/{roomId}/capacity")
+    @Operation(summary = "保存房间上限（本地，改低校验不低于已切配额）")
+    public Result<?> saveCapacity(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                  @PathVariable String roomId,
+                                  @RequestBody Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        Integer capacity = null;
+        Object cap = body.get("capacity");
+        if (cap instanceof Number n) capacity = n.intValue();
+        else if (cap != null) {
+            try { capacity = Integer.parseInt(String.valueOf(cap).trim()); } catch (NumberFormatException ignored) {}
+        }
+        if (capacity == null) return Result.error("capacity 必填");
+        return Result.success(bookingLocalService.saveRoomCapacity(roomId, capacity));
+    }
+
     // ── 删除 AUP 分配（本地软删） ──
 
     @PostMapping("/aups/{id}/delete")

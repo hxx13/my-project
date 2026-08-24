@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupFolderMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO aup_folder (owner_type, parent_id, name, sort_order, description)
+        VALUES (#{ownerType}, #{parentId}, #{name}, #{sortOrder}, #{description})
+    </insert>
+
+    <update id="update">
+        UPDATE aup_folder
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            <if test="description != null">description = #{description},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateParent">
+        UPDATE aup_folder SET parent_id = #{parentId} WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultType="com.example.demo.modules.aup.entity.AupFolder">
+        SELECT * FROM aup_folder WHERE id = #{id}
+    </select>
+
+    <select id="listByOwnerType" resultType="com.example.demo.modules.aup.entity.AupFolder">
+        SELECT * FROM aup_folder WHERE owner_type = #{ownerType} ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="listAll" resultType="com.example.demo.modules.aup.entity.AupFolder">
+        SELECT * FROM aup_folder ORDER BY owner_type ASC, sort_order ASC, id ASC
+    </select>
+
+    <select id="countChildren" resultType="int">
+        SELECT COUNT(1) FROM aup_folder WHERE parent_id = #{parentId}
+    </select>
+
+    <select id="countByName" resultType="int">
+        SELECT COUNT(1) FROM aup_folder
+        WHERE owner_type = #{ownerType} AND parent_id = #{parentId} AND name = #{name}
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM aup_folder WHERE id = #{id}
+    </delete>
+
+</mapper>

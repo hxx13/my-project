@@ -57,6 +57,9 @@ public interface CageClaimMapper {
     /** 按架子查池中可用的笼位（cageTypeCode=2 + 无 active claim） */
     List<Map<String, Object>> selectPoolCells(@Param("shelfIndexId") Long shelfIndexId);
 
+    /** 按架子索引 id 反查房间数值 id（配额用） */
+    Long selectRoomIdByShelfIndexId(@Param("shelfIndexId") Long shelfIndexId);
+
     /** 查某笼位所有认领记录（FOR UPDATE 并发控制） */
     List<CageClaim> selectByAnimalCageIdForUpdate(@Param("animalCageId") Long animalCageId);
 }

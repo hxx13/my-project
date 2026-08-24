@@ -5,6 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
+import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cageshelf.service.CageClaimService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,11 +28,14 @@ public class StudentCageClaimController {
 
     private final AuthContextService authContextService;
     private final CageClaimService claimService;
+    private final CageInfoValueService infoValueService;
 
     public StudentCageClaimController(AuthContextService authContextService,
-                                       CageClaimService claimService) {
+                                       CageClaimService claimService,
+                                       CageInfoValueService infoValueService) {
         this.authContextService = authContextService;
         this.claimService = claimService;
+        this.infoValueService = infoValueService;
     }
 
     private User resolveUser(HttpServletRequest req) {
@@ -78,7 +82,7 @@ public class StudentCageClaimController {
             CageClaim claim = claimService.claim(u, animalCageId, shelfIndexId);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", claim.getId());
-            result.put("animalCageId", claim.getAnimalCageId());
+            result.put("animalCageId", String.valueOf(claim.getAnimalCageId()));
             result.put("status", claim.getClaimStatus());
             result.put("needApproval", "pending_approval".equals(claim.getClaimStatus()));
             return Result.success(result);
@@ -172,6 +176,34 @@ public class StudentCageClaimController {
         }
     }
 
+    // ── 分笼 ──
+
+    @PostMapping("/{id}/divide")
+    @Operation(summary = "分笼派生子笼认领")
+    public Result<Map<String, Object>> divide(@PathVariable Long id,
+                                              @RequestBody Map<String, Object> body,
+                                              HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireLogin(u);
+        if (denied != null) return Result.fail(401, denied.getMessage());
+
+        List<Long> targetAnimalCageIds = toLongList(body == null ? null : body.get("targetAnimalCageIds"));
+        String reason = body != null ? str(body, "reason") : null;
+        if (targetAnimalCageIds == null || targetAnimalCageIds.isEmpty())
+            return Result.fail(400, "targetAnimalCageIds 必填且为数组");
+
+        try {
+            CageClaim mother = claimService.divide(u, id, targetAnimalCageIds, reason);
+            return Result.success(Map.of(
+                "id", mother.getId(),
+                "status", mother.getClaimStatus(),
+                "childCount", targetAnimalCageIds.size()
+            ));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
     // ── 我的认领 ──
 
     @GetMapping("/my")
@@ -182,6 +214,46 @@ public class StudentCageClaimController {
         Result<?> denied = requireLogin(u);
         if (denied != null) return Result.fail(401, denied.getMessage());
         return Result.success(claimService.getMyClaims(u.getId(), status));
+    }
+
+    // ── 信息读写 ──
+
+    @GetMapping("/{id}/info")
+    @Operation(summary = "查看认领信息")
+    public Result<List<Map<String, Object>>> getInfo(@PathVariable Long id,
+                                                      HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireLogin(u);
+        if (denied != null) return Result.fail(401, denied.getMessage());
+
+        CageClaim claim = claimService.getById(id);
+        if (claim == null) return Result.fail(404, "认领记录不存在");
+        if (!u.getId().equals(claim.getClaimantId())) return Result.fail(403, "只能查看自己的认领信息");
+
+        return Result.success(infoValueService.getInfo(claim.getAnimalCageId()));
+    }
+
+    @PutMapping("/{id}/info")
+    @Operation(summary = "保存认领信息")
+    public Result<List<Map<String, Object>>> updateInfo(@PathVariable Long id,
+                                                         @RequestBody Map<String, Object> body,
+                                                         HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireLogin(u);
+        if (denied != null) return Result.fail(401, denied.getMessage());
+
+        CageClaim claim = claimService.getById(id);
+        if (claim == null) return Result.fail(404, "认领记录不存在");
+        if (!u.getId().equals(claim.getClaimantId())) return Result.fail(403, "只能编辑自己的认领信息");
+
+        List<Map<String, Object>> values = toMapList(body == null ? null : body.get("values"));
+        if (values == null) return Result.fail(400, "values 必填且为数组");
+
+        try {
+            return Result.success(infoValueService.updateInfo(claim.getAnimalCageId(), values, u.getId()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
     }
 
     // ── helpers ──
@@ -203,5 +275,27 @@ public class StudentCageClaimController {
         if (v instanceof Number n) return n.longValue();
         try { return Long.parseLong(String.valueOf(v).trim()); }
         catch (NumberFormatException e) { return null; }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> toMapList(Object v) {
+        if (!(v instanceof List<?> list)) return null;
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> m) {
+                out.add((Map<String, Object>) m);
+            }
+        }
+        return out;
+    }
+
+    private static List<Long> toLongList(Object v) {
+        if (!(v instanceof List<?> list)) return null;
+        List<Long> out = new ArrayList<>();
+        for (Object item : list) {
+            Long l = toLong(item);
+            if (l != null) out.add(l);
+        }
+        return out;
     }
 }

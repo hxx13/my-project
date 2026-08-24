@@ -12,8 +12,8 @@ import java.util.List;
 @Mapper
 public interface CrfFormMapper {
 
-    @Insert("INSERT INTO crf_form (study_id, code, name, form_type, version, status, description, event_anchor, frequency, capture_form, active) " +
-            "VALUES (#{studyId}, #{code}, #{name}, #{formType}, #{version}, #{status}, #{description}, #{eventAnchor}, #{frequency}, #{captureForm}, #{active})")
+    @Insert("INSERT INTO crf_form (study_id, code, name, form_type, version, status, description, event_anchor, frequency, capture_form, host_type, active) " +
+            "VALUES (#{studyId}, #{code}, #{name}, #{formType}, #{version}, #{status}, #{description}, #{eventAnchor}, #{frequency}, #{captureForm}, #{hostType}, #{active})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CrfForm row);
 
@@ -77,7 +77,8 @@ public interface CrfFormMapper {
     int countAnyByCode(String code);
 
     @Update("UPDATE crf_form SET name = #{name}, form_type = #{formType}, description = #{description}, " +
-            "event_anchor = #{eventAnchor}, frequency = #{frequency}, capture_form = #{captureForm} WHERE id = #{id}")
+            "event_anchor = #{eventAnchor}, frequency = #{frequency}, capture_form = #{captureForm}, " +
+            "host_type = #{hostType} WHERE id = #{id}")
     int update(CrfForm row);
 
     @Update("UPDATE crf_form SET status = #{status} WHERE id = #{id}")
@@ -86,7 +87,7 @@ public interface CrfFormMapper {
     /** 软删后补位：复活同行并刷新元数据（version 不变）。 */
     @Update("UPDATE crf_form SET active = 1, name = #{name}, form_type = #{formType}, status = #{status}, "
             + "description = #{description}, event_anchor = #{eventAnchor}, frequency = #{frequency}, "
-            + "capture_form = #{captureForm} WHERE id = #{id}")
+            + "capture_form = #{captureForm}, host_type = #{hostType} WHERE id = #{id}")
     int reactivateAndUpdate(CrfForm row);
 
     /** 软删模板版本（active=0，列表不再出现）。 */

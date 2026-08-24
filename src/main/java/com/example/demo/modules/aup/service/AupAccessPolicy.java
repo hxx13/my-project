@@ -11,6 +11,7 @@ import java.util.Objects;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 /**
  * AUP 数据级权限（统一 where 作用域 + 阶段/操作人校验）。
@@ -144,17 +145,42 @@ public class AupAccessPolicy {
         }
     }
 
-    /** 用户所属课题组名（aro_personnel） */
-    private String projectGroupNameOf(String userId) {
+    /** 用户所属课题组名（aro_personnel；教职工回退 sys_user.project_group_name）。 */
+    public String projectGroupNameOf(String userId) {
         if (userId == null || userId.isBlank()) {
             return null;
         }
         try {
-            return jdbcTemplate.queryForObject(
-                    "SELECT project_group_name FROM aro_personnel WHERE user_id = ?",
+            List<String> rows = jdbcTemplate.queryForList(
+                    "SELECT project_group_name FROM aro_personnel WHERE user_id = ? LIMIT 1",
                     String.class, userId);
+            if (!rows.isEmpty() && rows.get(0) != null && !rows.get(0).isBlank()) {
+                return rows.get(0);
+            }
+            rows = jdbcTemplate.queryForList(
+                    "SELECT project_group_name FROM sys_user WHERE id = ? LIMIT 1",
+                    String.class, userId);
+            return rows.isEmpty() ? null : rows.get(0);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /**
+     * 组长审核鉴权：须持有 PI 身份且与计划同属一课题组（project_group_name）。
+     * 管理员可 bypass；课题组名为空时不放行（防跨组冒领）。
+     */
+    public void assertPiCanReview(String recordProjectGroupName, User user) {
+        if (isAdmin(user)) {
+            return;
+        }
+        if (!isPi(user)) {
+            throw TwinBusinessException.of(403, "仅组长或管理员可执行组长审核");
+        }
+        String reviewerGroup = projectGroupNameOf(user.getId());
+        if (!StringUtils.hasText(recordProjectGroupName) || !StringUtils.hasText(reviewerGroup)
+                || !recordProjectGroupName.trim().equals(reviewerGroup.trim())) {
+            throw TwinBusinessException.of(403, "您不属于该计划书所在课题组，无法审核");
         }
     }
 

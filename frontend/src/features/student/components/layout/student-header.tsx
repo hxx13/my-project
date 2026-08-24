@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Bell, ChevronDown, LogOut, Mail, Menu, MessageCircle, Search, Smartphone, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
 import { PageHelpHost } from "@/features/page-help/PageHelpHost";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { adminInputClass } from "@/features/admin/adminFormUi";
 
 import { appConfirm } from "@/lib/appDialog";
 interface StudentHeaderProps {
@@ -58,6 +68,7 @@ export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps
   const [emailCode, setEmailCode] = useState("");
   const [emailCodeSending, setEmailCodeSending] = useState(false);
   const [emailCodeCooldown, setEmailCodeCooldown] = useState(0);
+  const emailCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [emailSaving, setEmailSaving] = useState(false);
   const [currentEmail, setCurrentEmail] = useState("");
   // SendKey binding
@@ -94,6 +105,43 @@ export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps
       setSendKeyOpen(true);
     }
   }, [personnelId]);
+
+  useEffect(() => {
+    return () => {
+      if (emailCooldownRef.current) clearInterval(emailCooldownRef.current);
+    };
+  }, []);
+
+  const handleSendBindCode = async () => {
+    if (!emailDraft.trim()) {
+      toast.error("请输入邮箱地址");
+      return;
+    }
+    setEmailCodeSending(true);
+    try {
+      const result = await sendVerificationCode(emailDraft.trim(), "BIND_EMAIL");
+      toast.success(result.message || "验证码已发送");
+      setEmailCodeCooldown(result.cooldownSeconds || 60);
+      if (emailCooldownRef.current) clearInterval(emailCooldownRef.current);
+      emailCooldownRef.current = setInterval(() => {
+        setEmailCodeCooldown((prev) => {
+          if (prev <= 1) {
+            if (emailCooldownRef.current) {
+              clearInterval(emailCooldownRef.current);
+              emailCooldownRef.current = null;
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "发送失败";
+      toast.error(message);
+    } finally {
+      setEmailCodeSending(false);
+    }
+  };
 
   const handleReturnToStaff = () => {
     returnToStaffView();
@@ -290,6 +338,12 @@ export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps
             <DropdownMenuItem onSelect={() => {
               if (!personnelId) { toast.error("无法获取人员ID"); return; }
               setEmailDraft(currentEmail);
+              setEmailCode("");
+              setEmailCodeCooldown(0);
+              if (emailCooldownRef.current) {
+                clearInterval(emailCooldownRef.current);
+                emailCooldownRef.current = null;
+              }
               setEmailOpen(true);
             }}>
               <Mail className="mr-2 h-4 w-4" />
@@ -355,115 +409,176 @@ export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps
         </DropdownMenu>
       </div>
 
-      {/* Email edit dialog */}
-      {emailOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
-          <div className="w-full max-w-sm rounded-2xl bg-[var(--student-canvas)] dark:bg-gray-900 p-5 shadow-xl">
-            <h3 className="text-base font-semibold text-[var(--student-ink)] dark:text-gray-100">绑定邮箱</h3>
-            <p className="mt-1 text-xs text-[var(--student-mute)] dark:text-gray-400">设置用于接收通知的联系邮箱</p>
+      <Dialog
+        open={emailOpen}
+        onOpenChange={(open) => {
+          setEmailOpen(open);
+          if (!open) {
+            setEmailCode("");
+            setEmailCodeCooldown(0);
+            if (emailCooldownRef.current) {
+              clearInterval(emailCooldownRef.current);
+              emailCooldownRef.current = null;
+            }
+          }
+        }}
+      >
+        <DialogContent
+          overlayClassName="top-0"
+          className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm"
+        >
+          <DialogHeader>
+            <DialogTitle>绑定邮箱</DialogTitle>
+            <DialogDescription>
+              设置用于接收通知的联系邮箱地址。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
             <input
+              className={`${adminInputClass} w-full`}
               type="email"
-              value={emailDraft}
-              onChange={(e) => { setEmailDraft(e.target.value); setEmailCode(""); }}
-              maxLength={128}
-              className="mt-3 w-full rounded-xl border border-[var(--student-hairline)] dark:border-gray-700 px-3 py-2.5 text-sm text-[var(--student-ink)] dark:text-gray-100 bg-[var(--student-canvas-soft)] dark:bg-gray-800"
               placeholder="请输入邮箱地址"
+              value={emailDraft}
+              maxLength={128}
+              onChange={(e) => {
+                setEmailDraft(e.target.value);
+                setEmailCode("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && emailDraft.trim()) {
+                  e.preventDefault();
+                  const btn = document.getElementById("student-email-bind-submit-btn") as HTMLButtonElement | null;
+                  btn?.click();
+                }
+              }}
             />
-            <div className="mt-3 flex gap-2">
+            <div className="flex items-center gap-2">
               <input
+                className={`${adminInputClass} flex-1`}
                 type="text"
                 inputMode="numeric"
+                maxLength={6}
+                placeholder="6位验证码"
                 value={emailCode}
                 onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                maxLength={6}
-                className="flex-1 rounded-xl border border-[var(--student-hairline)] dark:border-gray-700 px-3 py-2.5 text-sm text-[var(--student-ink)] dark:text-gray-100 bg-[var(--student-canvas-soft)] dark:bg-gray-800"
-                placeholder="6位验证码"
               />
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="default"
                 disabled={!emailDraft.trim() || emailCodeSending || emailCodeCooldown > 0}
-                className="shrink-0 rounded-xl bg-indigo-50 dark:bg-indigo-900/40 px-3 py-2.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 disabled:opacity-40"
-                onClick={async () => {
-                  if (!emailDraft.trim()) return;
-                  setEmailCodeSending(true);
-                  try {
-                    const r = await sendVerificationCode(emailDraft.trim(), "BIND_EMAIL");
-                    toast.success(r.message || "验证码已发送");
-                    setEmailCodeCooldown(r.cooldownSeconds || 60);
-                  } catch (e: any) {
-                    toast.error(e?.message || "发送失败");
-                  } finally {
-                    setEmailCodeSending(false);
-                  }
-                }}
+                onClick={() => void handleSendBindCode()}
+                className="whitespace-nowrap"
               >
-                {emailCodeCooldown > 0 ? `${emailCodeCooldown}s` : emailCodeSending ? "发送中" : "获取验证码"}
-              </button>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="rounded-xl border border-[var(--student-hairline)] dark:border-gray-700 px-4 py-2 text-sm text-[var(--student-body)] dark:text-gray-300"
-                onClick={() => { setEmailOpen(false); setEmailCode(""); setEmailCodeCooldown(0); }}>取消</button>
-              <button type="button" disabled={!emailDraft.trim() || emailCode.length !== 6 || emailSaving}
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50"
-                onClick={async () => {
-                  setEmailSaving(true);
-                  try {
-                    await bindEmailWithCode(emailDraft.trim(), emailCode.trim());
-                    toast.success("邮箱已绑定");
-                    setCurrentEmail(emailDraft.trim());
-                    setEmailOpen(false);
-                    setEmailCode("");
-                    setEmailCodeCooldown(0);
-                  } catch (e: any) {
-                    toast.error(e?.message || "保存失败");
-                  } finally { setEmailSaving(false); }
-                }}
-              >{emailSaving ? "绑定中…" : "确认绑定"}</button>
+                {emailCodeSending ? "发送中..." : emailCodeCooldown > 0 ? `${emailCodeCooldown}s` : "发送验证码"}
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" size="default" onClick={() => setEmailOpen(false)}>
+              取消
+            </Button>
+            <Button
+              id="student-email-bind-submit-btn"
+              size="default"
+              disabled={!emailDraft.trim() || emailCode.trim().length !== 6 || emailSaving}
+              onClick={async () => {
+                setEmailSaving(true);
+                try {
+                  await bindEmailWithCode(emailDraft.trim(), emailCode.trim());
+                  toast.success("邮箱绑定成功");
+                  setCurrentEmail(emailDraft.trim());
+                  setEmailOpen(false);
+                  setEmailCode("");
+                  setEmailCodeCooldown(0);
+                  if (emailCooldownRef.current) {
+                    clearInterval(emailCooldownRef.current);
+                    emailCooldownRef.current = null;
+                  }
+                } catch (e: unknown) {
+                  const message = e instanceof Error ? e.message : "保存失败";
+                  toast.error(message);
+                } finally {
+                  setEmailSaving(false);
+                }
+              }}
+            >
+              {emailSaving ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* SendKey binding dialog */}
-      {sendKeyOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
-          <div className="w-full max-w-sm rounded-2xl bg-[var(--student-canvas)] dark:bg-gray-900 p-5 shadow-xl">
-            <h3 className="text-base font-semibold text-[var(--student-ink)] dark:text-gray-100">绑定微信通知</h3>
-            <p className="mt-1 text-xs text-[var(--student-mute)] dark:text-gray-400">通过 Server酱 SendKey 接收微信推送通知</p>
+      <Dialog open={sendKeyOpen} onOpenChange={setSendKeyOpen}>
+        <DialogContent
+          overlayClassName="top-0"
+          className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm"
+        >
+          <DialogHeader>
+            <DialogTitle>绑定微信通知</DialogTitle>
+            <DialogDescription>
+              设置 SendKey 以启用微信消息通知推送。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
             <a
               href={`https://sct.ftqq.com/appkey/create/forward?name=ARO&url=${encodeURIComponent(`${window.location.origin}/#/student/home?sendkey={key}&bindUserId=${encodeURIComponent(personnelId)}`)}`}
-              className="mt-2 inline-flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 underline underline-offset-2 hover:text-indigo-800"
+              className="inline-flex items-center gap-1 text-[11px] text-[var(--twin-link)] underline underline-offset-2 hover:text-[var(--twin-link-deep)]"
             >
               还没有 SendKey？点此前往 Server酱 创建 →
             </a>
-            <input type="text" value={sendKeyDraft} onChange={(e) => setSendKeyDraft(e.target.value)} maxLength={256}
-              className="mt-3 w-full rounded-xl border border-[var(--student-hairline)] dark:border-gray-700 px-3 py-2.5 text-sm text-[var(--student-ink)] dark:text-gray-100 bg-[var(--student-canvas-soft)] dark:bg-gray-800"
-              placeholder="粘贴 SendKey" />
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="rounded-xl border border-[var(--student-hairline)] dark:border-gray-700 px-4 py-2 text-sm text-[var(--student-body)] dark:text-gray-300"
-                onClick={() => setSendKeyOpen(false)}>取消</button>
-              <button type="button" disabled={!sendKeyDraft.trim() || sendKeySaving}
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50"
-                onClick={async () => {
-                  setSendKeySaving(true);
-                  try {
-                    const token = authStorage.getToken();
-                    const res = await fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/send-key`, {
-                      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-                      body: JSON.stringify({ sendKey: sendKeyDraft.trim() }),
-                    });
-                    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || "保存失败");
-                    toast.success("微信通知已绑定");
-                    setCurrentSendKey(true);
-                    setSendKeyOpen(false);
-                  } catch (e: any) { toast.error(e?.message || "保存失败"); }
-                  finally { setSendKeySaving(false); }
-                }}
-              >{sendKeySaving ? "保存中…" : "保存"}</button>
-            </div>
+            <input
+              className={`${adminInputClass} w-full`}
+              type="text"
+              placeholder="请输入 SendKey"
+              value={sendKeyDraft}
+              maxLength={256}
+              onChange={(e) => setSendKeyDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && sendKeyDraft.trim()) {
+                  e.preventDefault();
+                  const btn = document.getElementById("student-sendkey-bind-submit-btn") as HTMLButtonElement | null;
+                  btn?.click();
+                }
+              }}
+            />
           </div>
-        </div>
-      )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" size="default" onClick={() => setSendKeyOpen(false)}>
+              取消
+            </Button>
+            <Button
+              id="student-sendkey-bind-submit-btn"
+              size="default"
+              disabled={!sendKeyDraft.trim() || sendKeySaving}
+              onClick={async () => {
+                setSendKeySaving(true);
+                try {
+                  const token = authStorage.getToken();
+                  const res = await fetch(`/api/admin/personnel/${encodeURIComponent(personnelId)}/send-key`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                    body: JSON.stringify({ sendKey: sendKeyDraft.trim() }),
+                  });
+                  if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error((errData as { message?: string }).message || "保存失败");
+                  }
+                  toast.success("SendKey 绑定成功");
+                  setCurrentSendKey(true);
+                  setSendKeyOpen(false);
+                } catch (e: unknown) {
+                  const message = e instanceof Error ? e.message : "保存失败";
+                  toast.error(message);
+                } finally {
+                  setSendKeySaving(false);
+                }
+              }}
+            >
+              {sendKeySaving ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* WxPusher binding dialog */}
       <WxPusherBindModal

@@ -6,6 +6,7 @@ import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.animalorder.service.AnimalOrderTimePolicyService;
 import com.example.demo.modules.aup.entity.AupRecord;
 import com.example.demo.modules.aup.mapper.AupRecordMapper;
+import com.example.demo.modules.aup.service.AupAnimalAllowlistCompat;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.referencedata.dto.*;
 import com.example.demo.modules.referencedata.entity.*;
@@ -48,6 +49,7 @@ public class ReferenceDataService {
     private final AupRecordMapper aupRecordMapper;
     private final UserDisplayNameService userDisplayNameService;
     private final AnimalOrderTimePolicyService animalOrderTimePolicyService;
+    private final AupAnimalAllowlistCompat allowlistCompat;
 
     public ReferenceDataService(ReferenceDataMapper referenceDataMapper,
                                 RefSpecTemplateMapper specTemplateMapper,
@@ -61,7 +63,8 @@ public class ReferenceDataService {
                                 NotificationService notificationService,
                                 AupRecordMapper aupRecordMapper,
                                 UserDisplayNameService userDisplayNameService,
-                                AnimalOrderTimePolicyService animalOrderTimePolicyService) {
+                                AnimalOrderTimePolicyService animalOrderTimePolicyService,
+                                AupAnimalAllowlistCompat allowlistCompat) {
         this.referenceDataMapper = referenceDataMapper;
         this.specTemplateMapper = specTemplateMapper;
         this.cartMapper = cartMapper;
@@ -75,6 +78,7 @@ public class ReferenceDataService {
         this.aupRecordMapper = aupRecordMapper;
         this.userDisplayNameService = userDisplayNameService;
         this.animalOrderTimePolicyService = animalOrderTimePolicyService;
+        this.allowlistCompat = allowlistCompat;
     }
 
     // ==================== RefData CRUD ====================
@@ -543,7 +547,7 @@ public class ReferenceDataService {
             if (entries.isEmpty()) {
                 continue;
             }
-            if (!isAllowedByAllowlist(entries, item.getRefDataId())) {
+            if (!isAllowedByAllowlist(aup, entries, item.getRefDataId())) {
                 String name = extractDisplayName(referenceDataMapper.findById(item.getRefDataId()));
                 return "动物「" + name + "」不符合当前AUP（" + aup.getRegisterNo() + "）";
             }
@@ -559,7 +563,7 @@ public class ReferenceDataService {
         if (entries.isEmpty()) {
             return null;
         }
-        if (!isAllowedByAllowlist(entries, refDataId)) {
+        if (!isAllowedByAllowlist(aup, entries, refDataId)) {
             return "不符合当前AUP";
         }
         return null;
@@ -584,29 +588,15 @@ public class ReferenceDataService {
         return List.of();
     }
 
-    /** 判断 refDataId 是否命中白名单：SUBTREE 命中祖先链任一节点，EXACT 仅命中自身。 */
-    private boolean isAllowedByAllowlist(List<Map<String, Object>> entries, Long leafId) {
-        if (leafId == null) {
-            return false;
+    /** 判断 refDataId 是否命中白名单；ARO 同步计划书（created_by=aro）走放宽匹配。 */
+    private boolean isAllowedByAllowlist(AupRecord aup, List<Map<String, Object>> entries, Long leafId) {
+        if (aup != null && SYNC_ACTOR_ARO.equals(aup.getCreatedBy())) {
+            return allowlistCompat.isAllowedRelaxed(entries, leafId, referenceDataMapper);
         }
-        List<RefData> ancestors = referenceDataMapper.findAncestors(leafId);
-        if (ancestors == null || ancestors.isEmpty()) {
-            return false;
-        }
-        for (RefData node : ancestors) {
-            boolean isLeaf = node.getId().equals(leafId);
-            for (Map<String, Object> e : entries) {
-                Long rid = toLong(e.get("refDataId"));
-                if (rid != null && rid.equals(node.getId())) {
-                    String scope = e.get("scope") == null ? null : String.valueOf(e.get("scope"));
-                    if ("SUBTREE".equals(scope) || isLeaf) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
+        return allowlistCompat.isAllowed(entries, leafId, referenceDataMapper);
     }
+
+    private static final String SYNC_ACTOR_ARO = "aro";
 
     private Long toLong(Object v) {
         if (v == null) {

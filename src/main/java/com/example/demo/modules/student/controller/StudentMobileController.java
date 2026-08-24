@@ -362,6 +362,59 @@ public class StudentMobileController {
         return Result.success(cageShelfService.getSpecialStatusOverview(user, html5Privilege));
     }
 
+    @GetMapping("/cage-shelves/{shelveId}/detail")
+    @Operation(summary = "笼架网格详情（JWT）")
+    public Result<Map<String, Object>> getCageShelfDetail(@PathVariable String shelveId,
+                                                           HttpServletRequest request) {
+        User user = requireCurrentUser(request);
+        boolean html5Privilege = StudentMobileHtml5Privilege.isPrivileged(user);
+        try {
+            return Result.success(cageShelfService.getShelfDetail(user, shelveId, html5Privilege));
+        } catch (IllegalStateException e) {
+            return Result.fail(403, e.getMessage());
+        } catch (Exception e) {
+            log.warn("[StudentMobile] cage-shelf detail failed shelveId={} userId={}: {}",
+                    shelveId, user.getId(), e.getMessage());
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @GetMapping("/cage-shelves/{shelveId}/cells/{x}/{y}/annotation")
+    @Operation(summary = "获取笼位标注（JWT）")
+    public Result<Map<String, Object>> getCellAnnotation(@PathVariable String shelveId,
+                                                          @PathVariable int x,
+                                                          @PathVariable int y,
+                                                          HttpServletRequest request) {
+        User user = requireCurrentUser(request);
+        try {
+            return Result.success(cageShelfService.getAnnotation(user, shelveId, x, y));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PutMapping("/cage-shelves/{shelveId}/cells/{x}/{y}/annotation")
+    @Operation(summary = "保存笼位标注（JWT）")
+    public Result<Void> saveCellAnnotation(@PathVariable String shelveId,
+                                           @PathVariable int x,
+                                           @PathVariable int y,
+                                           @RequestBody Map<String, String> body,
+                                           HttpServletRequest request) {
+        User user = requireCurrentUser(request);
+        try {
+            String position = body.getOrDefault("position", x + "-" + y);
+            String richText = body.getOrDefault("richText", null);
+            String images = body.getOrDefault("images", null);
+            String aroRawData = body.getOrDefault("aroRawData", null);
+            cageShelfService.upsertAnnotation(user, shelveId, x, y, position, richText, images, aroRawData);
+            return Result.success(null);
+        } catch (IllegalStateException e) {
+            return Result.fail(403, e.getMessage());
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     // ============================================================
     // Violations
     // ============================================================

@@ -105,6 +105,7 @@ public class CageShelfSchemaMigrator implements ApplicationRunner {
                         needs_special_feeding TINYINT(1) DEFAULT 0 COMMENT '需特殊饲养',
                         needs_transfer TINYINT(1) DEFAULT 0 COMMENT '动物转移',
                         has_health_abnormality TINYINT(1) DEFAULT 0 COMMENT '健康异常',
+                        needs_cohabitation TINYINT(1) DEFAULT 0 COMMENT '需合笼（本地，无ARO源）',
                         cohabitation_date VARCHAR(50) NULL COMMENT '合笼日期',
                         special_breeding_name VARCHAR(256) NULL COMMENT '特殊饲养名称',
                         special_breeding_desc TEXT NULL COMMENT '特殊饲养描述',
@@ -131,26 +132,47 @@ public class CageShelfSchemaMigrator implements ApplicationRunner {
             // ── 补齐 cage_cell_detail 新字段（兼容旧表）──
             try { jdbcTemplate.execute("ALTER TABLE cage_cell_detail ADD COLUMN cage_box_id BIGINT NULL COMMENT 'ARO笼盒ID' AFTER cage_box_code"); }
             catch (Exception ignored) { /* 列已存在 */ }
+            try { jdbcTemplate.execute("ALTER TABLE cage_cell_detail ADD COLUMN needs_cohabitation TINYINT(1) DEFAULT 0 COMMENT '需合笼（本地，无ARO源）' AFTER has_health_abnormality"); }
+            catch (Exception ignored) { /* 列已存在 */ }
             try { jdbcTemplate.execute("ALTER TABLE cage_cell_detail DROP COLUMN cage_box_qr_code"); }
             catch (Exception ignored) { /* 列已删除或不存在 */ }
             log.info("[cage-shelf-schema] cage_cell_detail 字段清理完成");
 
-            // ── 笼位转移日志表（审计回溯）──
+            // ── 笼位占用事件日志表（占用周期 + 转移/复制/退出 审计回溯）──
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS cage_transfer_log (
                         id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                        from_animal_cage_id BIGINT NOT NULL COMMENT '源笼位ID',
-                        to_animal_cage_id BIGINT NOT NULL COMMENT '目标笼位ID',
-                        data_snapshot JSON NULL COMMENT '转移时的extra_data快照',
-                        operator_id BIGINT NULL COMMENT '操作人',
+                        event_type VARCHAR(20) NOT NULL DEFAULT 'transfer' COMMENT 'start/transfer/copy/exit',
+                        occupant_id BIGINT NULL COMMENT '占用者 统一人员 personnel.id',
+                        occupant_name VARCHAR(128) NULL COMMENT '占用者姓名快照',
+                        from_animal_cage_id BIGINT NULL COMMENT '源笼位ID（start为空）',
+                        to_animal_cage_id BIGINT NULL COMMENT '目标笼位ID（exit为空）',
+                        data_snapshot JSON NULL COMMENT '覆盖前/退出前的占用字段快照',
+                        operator_id BIGINT NULL COMMENT '操作人 统一人员 personnel.id',
                         operator_name VARCHAR(128) NULL,
-                        reason VARCHAR(256) NULL COMMENT '转移原因',
+                        reason VARCHAR(256) NULL COMMENT '原因',
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         KEY idx_from (from_animal_cage_id),
                         KEY idx_to (to_animal_cage_id),
+                        KEY idx_occupant (occupant_id),
                         KEY idx_created (created_at)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼位数据转移日志'
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼位占用事件日志'
                     """);
+            // ── 兼容旧表：补齐占用维度列、放宽 from/to 为可空 ──
+            try { jdbcTemplate.execute("ALTER TABLE cage_transfer_log ADD COLUMN event_type VARCHAR(20) NOT NULL DEFAULT 'transfer' COMMENT 'start/transfer/copy/exit' AFTER id"); }
+            catch (Exception ignored) { /* 列已存在 */ }
+            try { jdbcTemplate.execute("ALTER TABLE cage_transfer_log ADD COLUMN occupant_id BIGINT NULL COMMENT '占用者 统一人员 personnel.id' AFTER event_type"); }
+            catch (Exception ignored) { /* 列已存在 */ }
+            try { jdbcTemplate.execute("ALTER TABLE cage_transfer_log ADD COLUMN occupant_name VARCHAR(128) NULL COMMENT '占用者姓名快照' AFTER occupant_id"); }
+            catch (Exception ignored) { /* 列已存在 */ }
+            try { jdbcTemplate.execute("ALTER TABLE cage_transfer_log MODIFY COLUMN from_animal_cage_id BIGINT NULL COMMENT '源笼位ID（start为空）'"); }
+            catch (Exception ignored) { /* 已可空 */ }
+            try { jdbcTemplate.execute("ALTER TABLE cage_transfer_log MODIFY COLUMN to_animal_cage_id BIGINT NULL COMMENT '目标笼位ID（exit为空）'"); }
+            catch (Exception ignored) { /* 已可空 */ }
+            try { jdbcTemplate.execute("ALTER TABLE cage_transfer_log MODIFY COLUMN operator_id BIGINT NULL COMMENT '操作人 统一人员 personnel.id'"); }
+            catch (Exception ignored) { /* 已改类型 */ }
+            try { jdbcTemplate.execute("CREATE INDEX idx_occupant ON cage_transfer_log (occupant_id)"); }
+            catch (Exception ignored) { /* 索引已存在 */ }
             log.info("[cage-shelf-schema] cage_transfer_log 表已就绪");
 
             // ── 投递箱表（Outbox Pattern：本地变更→异步可靠投递ARO）──

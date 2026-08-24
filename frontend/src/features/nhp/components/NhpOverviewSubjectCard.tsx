@@ -1,5 +1,5 @@
 /**
- * 驾驶舱左侧 · 研究对象档案卡（完整身份信息 + 移植上下文）
+ * 驾驶舱左侧 · 研究对象档案卡（供体/受体身份 + 移植上下文）
  */
 import { lifecycleStageLabel } from "../api/nhpSubjectBoard.api";
 import type { NhpSurgeryContext } from "../utils/nhpSurgeryContext";
@@ -21,6 +21,14 @@ function sexLabel(s?: string): string {
   return s;
 }
 
+/** 供体猪 / 受体 等角色展示 */
+function roleDisplayLabel(type?: string, species?: string): string {
+  const role = animalTypeLabel(type);
+  const sp = (species ?? "").trim();
+  if (role === "供体" || role === "受体") return sp ? `${role}${sp}` : role;
+  return animalTypeLongLabel(type);
+}
+
 type Props = {
   surgery: NhpSurgeryContext;
   todoCount?: number;
@@ -28,63 +36,80 @@ type Props = {
 };
 
 export default function NhpOverviewSubjectCard({ surgery, todoCount, overdueCount }: Props) {
-  const typeCls =
-    surgery.subjectType?.toUpperCase() === "DONOR"
-      ? "donor"
-      : surgery.subjectType?.toUpperCase() === "RECIPIENT"
-        ? "recipient"
-        : "";
+  const type = surgery.subjectType?.toUpperCase();
+  const typeCls = type === "DONOR" ? "donor" : type === "RECIPIENT" ? "recipient" : "";
+  const todos = todoCount ?? surgery.todoCount ?? 0;
+  const overdue = overdueCount ?? surgery.overdueCount ?? 0;
+  const stage = lifecycleStageLabel(surgery.lifecycleStage);
 
   return (
-    <section className="nhp-cockpit-card nhp-cockpit-subject">
-      <header className="nhp-cockpit-card-hd">
-        <div>
-          <h2 className="nhp-cockpit-subject-code">{surgery.subjectCode}</h2>
-          <p className="nhp-cockpit-subject-role">{animalTypeLongLabel(surgery.subjectType)}</p>
+    <section
+      className={`nhp-cockpit-card nhp-cockpit-subject${typeCls ? ` nhp-cockpit-subject--${typeCls}` : ""}`}
+      aria-label="研究对象档案"
+    >
+      <div className="nhp-cockpit-subject-hero">
+        <div className="nhp-cockpit-subject-hero-main">
+          <span className="nhp-cockpit-subject-eyebrow">研究对象档案</span>
+          <div className="nhp-cockpit-subject-title-row">
+            <h2 className="nhp-cockpit-subject-code">{surgery.subjectCode}</h2>
+            {typeCls ? (
+              <span className={`nhp-cockpit-subject-badge nhp-cockpit-subject-badge--${typeCls}`}>
+                {roleDisplayLabel(surgery.subjectType, surgery.species)}
+              </span>
+            ) : null}
+          </div>
+          <p className="nhp-cockpit-subject-arm">{armCodeLabel(surgery.armCode)}</p>
         </div>
-        {typeCls ? <span className={`nhp-cockpit-type-badge ${typeCls}`}>{animalTypeLabel(surgery.subjectType)}</span> : null}
-      </header>
+      </div>
 
-      <dl className="nhp-cockpit-kv">
-        <div className="nhp-cockpit-kv-row">
-          <dt>手术臂</dt>
-          <dd>{armCodeLabel(surgery.armCode)}</dd>
+      <div className="nhp-cockpit-subject-body">
+        <div className="nhp-cockpit-subject-grid" role="list">
+          <div className="nhp-cockpit-subject-cell" role="listitem">
+            <span className="nhp-cockpit-subject-cell-label">物种</span>
+            <span className="nhp-cockpit-subject-cell-value">{surgery.species ?? "—"}</span>
+          </div>
+          <div className="nhp-cockpit-subject-cell" role="listitem">
+            <span className="nhp-cockpit-subject-cell-label">性别</span>
+            <span className="nhp-cockpit-subject-cell-value">{sexLabel(surgery.sex)}</span>
+          </div>
+          <div className="nhp-cockpit-subject-cell nhp-cockpit-subject-cell--wide" role="listitem">
+            <span className="nhp-cockpit-subject-cell-label">生命周期</span>
+            <span className="nhp-cockpit-subject-stage">{stage}</span>
+          </div>
         </div>
-        <div className="nhp-cockpit-kv-row">
-          <dt>物种 / 性别</dt>
-          <dd>
-            {surgery.species ?? "—"}
-            <span className="nhp-cockpit-kv-sep">·</span>
-            {sexLabel(surgery.sex)}
-          </dd>
+
+        <div className="nhp-cockpit-subject-timeline" aria-label="手术时间轴">
+          <div className="nhp-cockpit-subject-tp">
+            <span className="nhp-cockpit-subject-tp-label">手术日 day0</span>
+            <span className="nhp-cockpit-subject-tp-value">
+              {surgery.txDate ?? <span className="muted">术前</span>}
+            </span>
+          </div>
+          <div className="nhp-cockpit-subject-tp-connector" aria-hidden>
+            <span className="nhp-cockpit-subject-tp-line" />
+            <span className="nhp-cockpit-subject-tp-dot" />
+          </div>
+          <div className="nhp-cockpit-subject-tp nhp-cockpit-subject-tp--current">
+            <span className="nhp-cockpit-subject-tp-label">当前时点</span>
+            <span className="nhp-cockpit-subject-tp-value nhp-cockpit-subject-tp-value--strong">
+              {surgery.currentTp ?? "—"}
+            </span>
+          </div>
         </div>
-        <div className="nhp-cockpit-kv-row">
-          <dt>生命周期</dt>
-          <dd>
-            <span className="nhp-cockpit-stage-pill">{lifecycleStageLabel(surgery.lifecycleStage)}</span>
-          </dd>
-        </div>
-        <div className="nhp-cockpit-kv-row">
-          <dt>手术日 (day0)</dt>
-          <dd>{surgery.txDate ?? <span className="muted">术前</span>}</dd>
-        </div>
-        <div className="nhp-cockpit-kv-row">
-          <dt>当前时点</dt>
-          <dd className="nhp-cockpit-kv-strong">{surgery.currentTp ?? "—"}</dd>
-        </div>
-      </dl>
+      </div>
 
       <footer className="nhp-cockpit-subject-foot">
-        <div className="nhp-cockpit-stat">
-          <span className="nhp-cockpit-stat-n">{todoCount ?? surgery.todoCount ?? 0}</span>
-          <span className="nhp-cockpit-stat-l">待办</span>
+        <div className={`nhp-cockpit-subject-stat${todos > 0 ? " nhp-cockpit-subject-stat--active" : ""}`}>
+          <span className="nhp-cockpit-subject-stat-n">{todos}</span>
+          <span className="nhp-cockpit-subject-stat-l">待办任务</span>
         </div>
-        {(overdueCount ?? surgery.overdueCount ?? 0) > 0 ? (
-          <div className="nhp-cockpit-stat nhp-cockpit-stat--warn">
-            <span className="nhp-cockpit-stat-n">{overdueCount ?? surgery.overdueCount}</span>
-            <span className="nhp-cockpit-stat-l">超时</span>
-          </div>
-        ) : null}
+        <div className="nhp-cockpit-subject-foot-divider" aria-hidden />
+        <div
+          className={`nhp-cockpit-subject-stat${overdue > 0 ? " nhp-cockpit-subject-stat--warn" : ""}`}
+        >
+          <span className="nhp-cockpit-subject-stat-n">{overdue}</span>
+          <span className="nhp-cockpit-subject-stat-l">已超时</span>
+        </div>
       </footer>
     </section>
   );

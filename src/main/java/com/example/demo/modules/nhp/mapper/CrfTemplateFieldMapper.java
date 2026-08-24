@@ -24,4 +24,10 @@ public interface CrfTemplateFieldMapper {
 
     @Delete("DELETE FROM crf_template_field WHERE form_id = #{formId}")
     int deleteByFormId(Long formId);
+
+    @Update("UPDATE crf_template_field SET dict_key = #{dictKey}, type = #{type} WHERE id = #{id}")
+    int updateDictKeyAndType(@Param("id") Long id, @Param("dictKey") String dictKey, @Param("type") String type);
+
+    @Update("UPDATE crf_template_field SET role = #{role}, role_meta = #{roleMeta} WHERE id = #{id}")
+    int updateRoleMeta(@Param("id") Long id, @Param("role") String role, @Param("roleMeta") String roleMeta);
 }

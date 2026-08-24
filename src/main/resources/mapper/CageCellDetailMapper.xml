@@ -30,6 +30,7 @@
         <result property="needsSpecialFeeding" column="needs_special_feeding"/>
         <result property="needsTransfer" column="needs_transfer"/>
         <result property="hasHealthAbnormality" column="has_health_abnormality"/>
+        <result property="needsCohabitation" column="needs_cohabitation"/>
         <result property="cohabitationDate" column="cohabitation_date"/>
         <result property="specialBreedingName" column="special_breeding_name"/>
         <result property="specialBreedingDesc" column="special_breeding_desc"/>
@@ -60,7 +61,7 @@
             experimenter_name, lab_assistant_name,
             animal_strain_name, animal_sex, animal_week_age,
             animal_male_number, animal_female_number, animal_come_from,
-            needs_division, needs_special_feeding, needs_transfer, has_health_abnormality,
+            needs_division, needs_special_feeding, needs_transfer, has_health_abnormality, needs_cohabitation,
             cohabitation_date, special_breeding_name, special_breeding_desc,
             experiment_desc, images_json,
             aro_raw_data, extra_data,
@@ -75,7 +76,7 @@
             #{d.experimenterName}, #{d.labAssistantName},
             #{d.animalStrainName}, #{d.animalSex}, #{d.animalWeekAge},
             #{d.animalMaleNumber}, #{d.animalFemaleNumber}, #{d.animalComeFrom},
-            #{d.needsDivision}, #{d.needsSpecialFeeding}, #{d.needsTransfer}, #{d.hasHealthAbnormality},
+            #{d.needsDivision}, #{d.needsSpecialFeeding}, #{d.needsTransfer}, #{d.hasHealthAbnormality}, #{d.needsCohabitation},
             #{d.cohabitationDate}, #{d.specialBreedingName}, #{d.specialBreedingDesc},
             #{d.experimentDesc}, #{d.imagesJson},
             #{d.aroRawData}, #{d.extraData},
@@ -109,6 +110,7 @@
             needs_special_feeding = VALUES(needs_special_feeding),
             needs_transfer = VALUES(needs_transfer),
             has_health_abnormality = VALUES(has_health_abnormality),
+            needs_cohabitation = VALUES(needs_cohabitation),
             cohabitation_date = VALUES(cohabitation_date),
             special_breeding_name = VALUES(special_breeding_name),
             special_breeding_desc = VALUES(special_breeding_desc),

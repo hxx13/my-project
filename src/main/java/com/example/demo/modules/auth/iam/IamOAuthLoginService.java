@@ -1,8 +1,6 @@
 package com.example.demo.modules.auth.iam;
 
 import com.example.demo.common.dto.Result;
-import com.example.demo.modules.aro.dto.AroPersonnel;
-import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.AuthProfileConstants;
 import com.example.demo.modules.auth.dto.AuthData;
 import com.example.demo.modules.auth.dto.OAuthLoginRequest;
@@ -11,6 +9,8 @@ import com.example.demo.modules.auth.entity.UserAuthBinding;
 import com.example.demo.modules.auth.mapper.UserAuthBindingMapper;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.AuthService;
+import com.example.demo.modules.personnel.entity.Personnel;
+import com.example.demo.modules.personnel.mapper.PersonnelMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,8 +19,6 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * IAM OAuth 登录：换票 → uid 绑定 / 工号唯一匹配 → 签发与密码登录同形 JWT 响应。
@@ -35,7 +33,7 @@ public class IamOAuthLoginService {
     private final IamOAuthClient iamOAuthClient;
     private final IamRegistrationService iamRegistrationService;
     private final UserAuthBindingMapper userAuthBindingMapper;
-    private final AroPersonnelMapper aroPersonnelMapper;
+    private final PersonnelMapper personnelMapper;
     private final UserMapper userMapper;
     private final AuthService authService;
 
@@ -43,14 +41,14 @@ public class IamOAuthLoginService {
                                 IamOAuthClient iamOAuthClient,
                                 IamRegistrationService iamRegistrationService,
                                 UserAuthBindingMapper userAuthBindingMapper,
-                                AroPersonnelMapper aroPersonnelMapper,
+                                PersonnelMapper personnelMapper,
                                 UserMapper userMapper,
                                 AuthService authService) {
         this.properties = properties;
         this.iamOAuthClient = iamOAuthClient;
         this.iamRegistrationService = iamRegistrationService;
         this.userAuthBindingMapper = userAuthBindingMapper;
-        this.aroPersonnelMapper = aroPersonnelMapper;
+        this.personnelMapper = personnelMapper;
         this.userMapper = userMapper;
         this.authService = authService;
     }
@@ -96,11 +94,9 @@ public class IamOAuthLoginService {
 
     private Result<AuthData> firstLoginBind(IamOAuthUserInfo iamUser) {
         String jobNumber = iamUser.getJobNumber().trim();
-        List<AroPersonnel> matches = aroPersonnelMapper.findAllByJobNumber(jobNumber);
+        List<Personnel> matches = personnelMapper.findByJobNumber(jobNumber);
         if (matches == null || matches.isEmpty()) {
-            // 注册开关关闭：禁止进入注册分支
             if (properties.getRegistration() != null && properties.getRegistration().isEnabled()) {
-                // TODO(iam-registration): 仅 enabled=true 时调用；当前默认 false
                 try {
                     String newUserId = iamRegistrationService.registerFromIam(iamUser);
                     bind(iamUser, newUserId);
@@ -114,20 +110,16 @@ public class IamOAuthLoginService {
                     "未在人员库中找到工号匹配记录（" + jobNumber + "）。请联系管理员录入人员库后再试。");
         }
 
-        List<AroPersonnel> distinct = matches.stream()
-                .filter(Objects::nonNull)
-                .filter(p -> StringUtils.hasText(p.getId()))
-                .collect(Collectors.toMap(AroPersonnel::getId, p -> p, (a, b) -> a))
-                .values()
-                .stream()
-                .toList();
-        if (distinct.size() > 1) {
+        if (matches.size() > 1) {
             return fail(IamOAuthErrorCodes.PERSON_AMBIGUOUS,
                     "工号 " + jobNumber + " 在人员库存在多条记录，无法唯一匹配。请联系管理员处理。");
         }
 
-        AroPersonnel matched = distinct.get(0);
-        String userId = matched.getId();
+        String userId = resolveAccountId(matches.get(0));
+        if (!StringUtils.hasText(userId)) {
+            return fail(IamOAuthErrorCodes.ACCOUNT_NOT_PROVISIONED,
+                    "人员库有记录（工号 " + jobNumber + "），但系统账号尚未开通。请联系管理员开通。");
+        }
         User user = userMapper.findById(userId);
         if (user == null) {
             return fail(IamOAuthErrorCodes.ACCOUNT_NOT_PROVISIONED,
@@ -194,6 +186,20 @@ public class IamOAuthLoginService {
             t = t.substring(0, t.length() - 1);
         }
         return t.toLowerCase(Locale.ROOT);
+    }
+
+    /** 单个人 → 登录账号 id:staff_id 优先,回落 aro_user_id;都空返回 null。 */
+    static String resolveAccountId(Personnel p) {
+        if (p == null) {
+            return null;
+        }
+        if (StringUtils.hasText(p.getStaffId())) {
+            return p.getStaffId().trim();
+        }
+        if (StringUtils.hasText(p.getAroUserId())) {
+            return p.getAroUserId().trim();
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")

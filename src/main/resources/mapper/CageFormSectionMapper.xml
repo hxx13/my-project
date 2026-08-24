@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageFormSectionMapper">
+
+    <resultMap id="CageFormSectionMap" type="com.example.demo.modules.cageshelf.entity.CageFormSection">
+        <id property="id" column="id"/>
+        <result property="templateId" column="template_id"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="code" column="code"/>
+        <result property="label" column="label"/>
+        <result property="sortOrder" column="sort_order"/>
+    </resultMap>
+
+    <select id="selectByTemplateId" resultMap="CageFormSectionMap">
+        SELECT id, template_id, parent_id, code, label, sort_order
+        FROM cage_form_section
+        WHERE template_id = #{templateId}
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_form_section (template_id, parent_id, code, label, sort_order)
+        VALUES (#{templateId}, #{parentId}, #{code}, #{label}, #{sortOrder})
+    </insert>
+
+    <delete id="deleteByTemplateId">
+        DELETE FROM cage_form_section WHERE template_id = #{templateId}
+    </delete>
+</mapper>

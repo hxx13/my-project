@@ -40,7 +40,7 @@
  *
  * 功能模式（可与 view 叠加）:
  *   editMode  — 编辑模式，扫码/手动录入笼盒，标记分笼/特殊饲养/健康检查
- *   bindMode  — 绑定模式，扫码绑定笼盒或点击解绑
+ *   confirmMode — 扫码确认模式，扫笼位ID判定是否到位并确认
  *
  * 数据源 (dataSource):
  *   "aro"   — 直连 ARO 系统（生产）
@@ -56,7 +56,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, KeyRound, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw } from "lucide-react";
+import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, KeyRound, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   fetchCageShelfDetail, fetchCageScanProgress, refreshCellDetail,
@@ -72,9 +72,10 @@ import {
   fetchBookingRooms, type BookingRoom, syncBookingData,
   executeCageBoxAction, type CageBoxAction, type CageBoxActionRequest,
   cancelCageBoxColor, ACTION_CANCEL_COLOR, type CancelColor,
-  bindCageBox, unbindCageBox, updateAnimalCage, type AnimalCageUpdatePayload,
-  fetchCellIndexByShelf, fetchLocalShelfGridByShelveId, localBind, localUnbind, localAllocate, localCancelAllocate, localEdit, localAnnotate, fetchLocalAnnotate, type CageCellIndexEntry,
+  updateAnimalCage, type AnimalCageUpdatePayload,
+  fetchCellIndexByShelf, fetchLocalShelfGridByShelveId, localAllocate, localCancelAllocate, localEdit, localAnnotate, fetchLocalAnnotate, type CageCellIndexEntry,
   syncLocalCagePipeline, localPipelineStepLabel,
+  lookupCode, confirmClaim, type CodeLookupResult,
 } from "@/api/domains/cageShelf.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
@@ -92,9 +93,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CAGE_TYPE_LABEL } from "@/features/cage-shelf/components/CageCellOverlays";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
 import LocalDetailPanel from "@/features/cage-shelf/components/LocalDetailPanel";
+import CageScanSettingsPanel from "@/features/cage-shelf/components/CageScanSettingsPanel";
+import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import { ShelfGrid, BookmarkShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import { buildTree, CampusTree } from "@/features/cage-shelf/components/CampusTree";
 import { displayPosition, formatCageDetailValue, CAGE_BOX_INFO_LABEL, CAGE_BOX_INFO_FIELD_ORDER } from "@/features/cage-shelf/constants";
@@ -152,23 +160,11 @@ function Inner(){
   const[lastScannedKey,setLastScannedKey]=useState<string|null>(null);
   const[actionSubmitting,setActionSubmitting]=useState(false);
   // ═══════════════════════════════════════════════════════════
-  //  STATE — 绑定模式 (bind)
+  //  STATE — 扫码确认模式 (confirm)
   // ═══════════════════════════════════════════════════════════
-  // ── 绑定模式 ──
-  const[bindMode,setBindMode]=useState(false);
+  // ── 扫码确认模式 ──
+  const[confirmMode,setConfirmMode]=useState(false);
   const[dataSource,setDataSource]=useState<"aro"|"local">("local"); // 默认本地
-  const[bindScannedCode,setBindScannedCode]=useState("");
-  const[bindSelectedKey,setBindSelectedKey]=useState<string|null>(null);
-  const[bindSubmitting,setBindSubmitting]=useState(false);
-  const[bindConfirmOpen,setBindConfirmOpen]=useState(false);
-  const[unbindActive,setUnbindActive]=useState(false);
-  // 批量绑定缓存: cageKey → {cell, code}
-  const[bindPairCache,setBindPairCache]=useState<Map<string,{cell:CageShelfCell;code:string}>>(new Map());
-  // 批量解绑缓存: cageKey → cell
-  const[unbindPairCache,setUnbindPairCache]=useState<Set<string>>(new Set());
-  const[unbindCells,setUnbindCells]=useState<Map<string,CageShelfCell>>(new Map());
-  const[editScanOpen,setEditScanOpen]=useState(false);
-  const[bindScanOpen,setBindScanOpen]=useState(false);
   const[scanLockOpen,setScanLockOpen]=useState(false);
   const[scanLockTarget,setScanLockTarget]=useState<{sid:string;x:number;y:number}|null>(null);
   const[editDialogCell,setEditDialogCell]=useState<CageShelfCell|null>(null);
@@ -177,10 +173,9 @@ function Inner(){
   const[actionUploading,setActionUploading]=useState(false);
   const[editHistory,setEditHistory]=useState<any[]>([]);
   const[detailReloadKey,setDetailReloadKey]=useState(0);
-  const[editMissingCode,setEditMissingCode]=useState("");
-  const[editSearching,setEditSearching]=useState(false);
-  const[editInputVal,setEditInputVal]=useState("");
-  const[bindInputVal,setBindInputVal]=useState("");
+  const[confirmLookup,setConfirmLookup]=useState<CodeLookupResult|null>(null);
+  const[confirmSubmitting,setConfirmSubmitting]=useState(false);
+  const[settingsOpen,setSettingsOpen]=useState(false);
   const { casStatus, openCasDialog } = useCasBinding();
 
   // 弹窗A 打开时从 /local/annotate 加载备注和状态照片（不能用 onOpenChange，Radix 只在用户关闭时触发）
@@ -246,7 +241,7 @@ function Inner(){
     setBookingSyncing(true);
     try{
       const r=await syncBookingData();
-      toast.success(`同步完成：${r.rooms} 房间 / ${r.aups} 分配 / ${r.aupDict} AUP`);
+      toast.success(`同步完成：${r.rooms} 房间 / ${r.aups} 分配`);
       await loadBookingRooms();
     }catch(e:any){toast.error(e?.message||"同步失败");}
     finally{setBookingSyncing(false);}
@@ -346,8 +341,8 @@ function Inner(){
       return()=>{cancelled=true;};
     }
 
-    if(pageMode==="allocate"||editMode||bindMode){
-      // 分配/编辑/绑定模式：走实时数据源
+    if(pageMode==="allocate"||editMode||confirmMode){
+      // 分配/编辑模式：走实时数据源
       void(async()=>{
         try{
           const result=await fetchRealtimeRefresh(aRid);
@@ -376,7 +371,7 @@ function Inner(){
       })();
     }
     return()=>{cancelled=true;};
-  },[aRid,fullTree,selectedBatchId,pageMode,editMode,bindMode,detailReloadKey,dataSource]);
+  },[aRid,fullTree,selectedBatchId,pageMode,editMode,confirmMode,detailReloadKey,dataSource]);
 
   const{data:scan}=useQuery({queryKey:["cageScanProgress"],queryFn:fetchCageScanProgress,refetchInterval:(q)=>q.state.data?.status==="running"?5000:30000});
   const [scanDismissed, setScanDismissed] = useState(false);
@@ -496,7 +491,7 @@ function Inner(){
     setShelfLoading(true);setShelfDetail(null);
     if(dataSource==="local"){
       try{const d=await fetchLocalShelfGridByShelveId(shelveId);setShelfDetail(d);}catch{setShelfDetail(null);}
-    }else if(pageMode==="allocate"||pageMode==="booking"||editMode||bindMode){
+    }else if(pageMode==="allocate"||pageMode==="booking"||editMode||confirmMode){
       try{const r=await fetchRealtimeRefresh(roomId||"",shelveId);setShelfDetail(r.shelves[0]??null);setRealtimeMeta({fromRealtime:r.fromRealtime,cachedAt:r.cachedAt});}catch{setShelfDetail(null);}
     }else{
       try{const d=await fetchCageShelfDetail(shelveId, selectedBatchId||undefined);setShelfDetail(d);}catch{setShelfDetail(null);}
@@ -631,7 +626,7 @@ function Inner(){
       return;
     }
 
-    try{await assignCages(aRid,assignShelveId,cageIds,selectedAupId);toast.success(`已分配 ${cageIds.length} 个笼位`);setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
+    try{const aup=aupList.find(x=>String(x.id)===String(selectedAupId));await assignCages(aRid,assignShelveId,cageIds,selectedAupId,aup?.registerNumber);toast.success(`已分配 ${cageIds.length} 个笼位`);setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
       const r=await fetchRealtimeRefresh(aRid);setDetails(r.shelves??[]);setRealtimeMeta({fromRealtime:r.fromRealtime,cachedAt:r.cachedAt});
     }catch(e:any){toast.error(e instanceof Error?e.message:"分配失败");}
     finally{setAllocSubmitting(false);}
@@ -645,56 +640,7 @@ function Inner(){
   };
   // 两个 Set 是否完全一致
   const setsEqual=<T,>(a:Set<T>,b:Set<T>)=>a.size===b.size&&[...a].every(x=>b.has(x));
-  // 全局搜索笼盒：遍历所有房间 → 找到后跳转
-  const handleGlobalFind=async(code:string)=>{
-    if(!code||editSearching)return;
-    const findInGrid=(grid:CageShelfCell[],sid:string,rid:string):boolean=>{
-      for(const cell of grid){if(cell.empty)continue;
-        const cbi=cell.cageBoxInfo as Record<string,any>|undefined;
-        let cc=(cell as any).cageBoxCode??cbi?.cageBoxCode;
-        if(!cc){const cvo=cbi?.cageBoxVo??cbi?.["cageBoxVo"]??{};cc=cvo.cageBoxCode??cvo["cageBoxCode"]??"";}
-        if(String(cc)===code){
-          setEditMissingCode("");
-          toast.success(`已在房间 ${rid} 笼架 ${sid} 找到`);
-          if(rid!==aRid){setARid(rid);setARname(rid);expandToRoom(rid);}
-          const cbi2=cell.cageBoxInfo as Record<string,any>|undefined;
-          const cvo2=cbi2?.cageBoxVo??cbi2?.["cageBoxVo"]??{};
-          const pre=new Set<CageBoxAction>();
-          if(cbi2?.NeedDivideYn===1||cvo2.needDivideYn===1)pre.add("DIVIDE");
-          if(cbi2?.NeedFeedingYn===1||cvo2.needFeedingYn===1)pre.add("SPECIAL_BREEDING");
-          if(cbi2?.AbnormalHealthYn===1||cvo2.abnormalHealthYn===1)pre.add("HEALTH_CHECK");
-          const key=`${sid}:${cell.x}:${cell.y}`;
-          setScanCache(prev=>{const next=new Map(prev);if(!next.has(key))next.set(key,{cell,code,initialActions:new Set(pre),currentActions:new Set(pre),images:[],notes:""});return next;});
-          setLastScannedKey(key);
-          setTimeout(()=>{document.getElementById(`shelf-${sid}`)?.scrollIntoView({behavior:"smooth",block:"center"});},300);
-          return true;
-        }
-      }
-      return false;
-    };
-    setEditSearching(true);
-    try{
-      // ① 本笼架（当前已加载的 details）
-      for(const d of details){const sid=String(d.shelfMeta?.shelveId??"");if(findInGrid(d.grid,sid,aRid)){setEditSearching(false);return;}}
-      // ② 本房间其他未加载的笼架
-      const currentShelves=roomShelveMap.get(aRid)||[];
-      for(const s of currentShelves){
-        const alreadyLoaded=details.some(d=>String(d.shelfMeta?.shelveId)===s.shelveId);
-        if(alreadyLoaded)continue;
-        try{const d=await fetchCageShelfDetail(s.shelveId);if(d?.grid&&findInGrid(d.grid,s.shelveId,aRid)){try{const r=await fetchRealtimeRefresh(aRid);if(r.shelves)setDetails(r.shelves);}catch{}setEditSearching(false);return;}}catch{}
-      }
-      // ③ 其他房间
-      for(const[rid,shelves]of roomShelveMap){if(rid===aRid)continue;
-        for(const s of shelves){
-          try{const d=await fetchCageShelfDetail(s.shelveId);if(d?.grid&&findInGrid(d.grid,s.shelveId,rid)){try{const r=await fetchRealtimeRefresh(rid);if(r.shelves){setDetails(r.shelves);setRealtimeMeta({fromRealtime:r.fromRealtime,cachedAt:r.cachedAt});}}catch{}setEditSearching(false);return;}}catch{}
-        }
-      }
-      toast.error("全局未找到笼盒 "+code);
-    }catch{toast.error("搜索出错");}
-    setEditSearching(false);
-  };
-
-  // ── 统一 cell 点击：编辑/绑定/查看 ──
+  // ── 统一 cell 点击：编辑/查看 ──
   const handleGridCellClick=useCallback((cell:CageShelfCell)=>{
     if(cell.empty)return;
     // 编辑模式：全房间→弹窗 / 单笼架→右侧面板（仅 state=3 可操作）
@@ -706,40 +652,9 @@ function Inner(){
       setCell(cell);setShelfId(""); // 单笼架走右侧面板
       return;
     }
-    // 绑定模式
-    if(bindMode){
-      const ct=dataSource==="local" ? ((cell as any).cageTypeCode) : (cell as any).animalCageType;
-      const code=bindScannedCode||bindInputVal.trim();
-      // 绑定：加入批量缓存队列（不立即提交）
-      if(!unbindActive&&ct===2&&code){
-        const sid=findShelfIdForCell(cell);
-        const ck=`${sid}:${cell.x}:${cell.y}`;
-        if(bindPairCache.has(ck)){toast.error("该笼位已在缓存中");return;}
-        setBindPairCache(prev=>{const next=new Map(prev);next.set(ck,{cell,code});return next;});
-        setBindScannedCode("");setBindInputVal("");
-        setBindSelectedKey(ck);setBindConfirmOpen(false);setCell(null);
-        toast.success(`已缓存 (${bindPairCache.size+1} 个待提交)`);
-        return;
-      }
-      // 解绑：加入批量缓存
-      if(unbindActive&&ct===3){
-        const sid=findShelfIdForCell(cell);
-        const ck=`${sid}:${cell.x}:${cell.y}`;
-        if(unbindPairCache.has(ck)){toast.error("该笼位已在缓存中");return;}
-        setUnbindPairCache(prev=>{const next=new Set(prev);next.add(ck);return next;});
-        setUnbindCells(prev=>{const next=new Map(prev);next.set(ck,cell);return next;});
-        setBindSelectedKey(ck);
-        toast.success(`已缓存 (${unbindPairCache.size+1} 个待解绑)`);
-        return;
-      }
-      if(!unbindActive&&ct===2&&!code){toast.error("请先输入笼盒编号");return;}
-      if(!unbindActive&&ct!==2){toast.error("只能选择「已预约(空笼盒)」的笼位");return;}
-      if(unbindActive&&ct!==3){toast.error("只能选择「已预约(饲养中)」的笼位解绑");return;}
-      return;
-    }
-    // 查看模式
+    // 查看模式 / 扫码确认模式（确认由扫码触发，点击格子仅查看）
     setCell(cell);setShelfId("");
-  },[editMode,lastScannedKey,bindMode,unbindActive,bindScannedCode,bindInputVal,viewMode,aRid,bindPairCache,unbindPairCache]);
+  },[editMode,lastScannedKey,viewMode,aRid]);
 
   // ═══════════════════════════════════════════════════════════
   //  HANDLERS — 编辑模式
@@ -748,20 +663,20 @@ function Inner(){
   const handleEditScan=useCallback(async(text:string)=>{
     if(!details||!details.length)return;
     const code=text.trim();if(!code)return;
-    // 本地DB扫码检索 — 支持笼盒码和笼位ID
     try{
-      const r=await authHttp.get("/local/scan-lookup",{params:{code}});
-      if(!r.data?.success||r.data.data?.type==="NOT_FOUND"){toast.error("未找到对应笼位: "+code);setEditMissingCode(code);return;}
-      setEditMissingCode("");
-      const d=r.data.data;
+      const r=await lookupCode(code);
+      if(r.type==="NOT_FOUND"||r.type==="ASSET"){toast.error("未找到对应笼位: "+code);return;}
+      if(r.type==="LEGACY_CAGE_BOX"){toast.error("旧盒码已废弃，请扫笼位码");return;}
+      const pos=r.cageCell;
+      if(!pos||pos.positionX==null||pos.positionY==null){toast.error("未找到对应笼位坐标");return;}
       // 在所有shelf detail的grid中按坐标匹配
       let matched:CageShelfCell|null=null;let matchedSid="";
       for(const sd of details){
         const sid=String(sd.shelfMeta?.shelveId??"");
-        const cell=sd.grid?.find((c:any)=>c.x===d.positionX&&c.y===d.positionY);
+        const cell=sd.grid?.find((c:any)=>c.x===pos.positionX&&c.y===pos.positionY);
         if(cell){matched=cell;matchedSid=sid;break;}
       }
-      if(!matched){toast.error("当前房间未找到坐标 ("+d.positionX+","+d.positionY+")");return;}
+      if(!matched){toast.error("当前房间未找到坐标 ("+pos.positionX+","+pos.positionY+")");return;}
       const match=matched!;
       const ld=(match as any).detail as Record<string,any>|undefined;
       const pre=new Set<CageBoxAction>();
@@ -775,6 +690,37 @@ function Inner(){
       setLastScannedKey(key);toast.success("已匹配 "+match.position);
     }catch{toast.error("扫码查询失败");}
   },[details]);
+
+  // ── 统一扫码定位：从 lookupCode 结果提取坐标并定位高亮 ──
+  const locateLookup=useCallback(async(r:CodeLookupResult):Promise<boolean>=>{
+    let pos:{positionX:number;positionY:number}|null=null;
+    let roomId:string|number|undefined="";let roomName="";let shelveId="";let shelveName="";
+    if(r.type==="CAGE_CELL"&&r.cageCell){
+      pos={positionX:r.cageCell.positionX,positionY:r.cageCell.positionY};
+      roomId=r.cageCell.roomId??"";roomName=r.cageCell.roomName;shelveId=r.cageCell.shelveId??"";shelveName=r.cageCell.shelveName??"";
+    }else if(r.type==="LEGACY_CAGE_BOX"&&r.positionX!=null&&r.positionY!=null){
+      pos={positionX:r.positionX,positionY:r.positionY};
+      roomId=r.roomId??"";roomName=r.roomName??"";shelveId=r.shelveId??"";shelveName=r.shelveName??"";
+    }
+    if(!pos)return false;
+    const rid=String(roomId||"");
+    const sid=String(shelveId||"");
+    setViewMode("shelf");
+    setARid(rid);setARname(roomName||rid);
+    if(rid) expandToRoom(rid);
+    if(sid){
+      setShelfLoading(true);setShelfDetail(null);
+      try{
+        const shelf=await fetchLocalShelfGridByShelveId(sid);
+        setShelfDetail(shelf);
+        setScanLockTarget({sid:String(shelf.shelfMeta?.shelveId||sid),x:pos.positionX,y:pos.positionY});
+        toast.success(`已定位: ${roomName||""} ${shelveName||""} (${pos.positionX},${pos.positionY})`);
+        return true;
+      }catch(e:any){toast.error("加载笼架失败: "+(e?.message||sid));return false;}
+      finally{setShelfLoading(false);}
+    }
+    return false;
+  },[expandToRoom]);
 
   // ── 编辑模式：切换动作 ──
   const toggleEditAction=useCallback((action:CageBoxAction)=>{
@@ -832,116 +778,76 @@ function Inner(){
       try{await cancelCageBoxColor(aRid,sid,entry.code,color);ok++;}
       catch(e:any){toast.error(`${entry.cell.position} 取消${action}: ${e?.message||"失败"}`);fail++;}
     }
-    if(fail===0){toast.success(`已完成 ${ok} 个操作`);setScanCache(new Map());setLastScannedKey(null);setEditMissingCode("");setDetailReloadKey(k=>k+1);}
+    if(fail===0){toast.success(`已完成 ${ok} 个操作`);setScanCache(new Map());setLastScannedKey(null);setDetailReloadKey(k=>k+1);}
     else toast(`${ok} 成功 / ${fail} 失败`,{icon:"⚠️"});
     setActionSubmitting(false);
   },[aRid,scanCache,details,dataSource]);
 
   // ═══════════════════════════════════════════════════════════
-  //  HANDLERS — 绑定模式
+  //  HANDLERS — 扫码确认模式
   // ═══════════════════════════════════════════════════════════
-  // ── 批量绑定提交（并行调用 ARO API）──
-  const handleBatchBindSubmit=useCallback(async()=>{
-    if(bindPairCache.size===0||!aRid)return;
-    setBindSubmitting(true);
-    const entries=Array.from(bindPairCache.entries());
-    let ok=0,fail=0;
-
-    if(dataSource==="local"){
-      await Promise.all(entries.map(async([key,{cell,code}])=>{
-        try{
-          const cageId=String((cell as any).id??(cell as any).animalCageId??"");
-          await localBind(cageId,code);
-          ok++;
-        }catch(e:any){fail++;toast.error(`${cell.position}: ${e?.message||"失败"}`);}
-      }));
-      setBindPairCache(new Map());setBindSubmitting(false);setDetailReloadKey(k=>k+1);
-      if(fail===0)toast.success(`${ok} 个绑定全部成功！（本地+异步投递）`,{duration:4000});
-      else toast(`${ok} 成功 / ${fail} 失败`,{icon:"⚠️"});
-      return;
-    }
-
-    await Promise.all(entries.map(async([key,{cell,code}])=>{
-      try{
-        const cageId=String((cell as any).id??"");
-        await bindCageBox(cageId,code,aRid);
-        ok++;
-      }catch(e:any){fail++;toast.error(`${cell.position}: ${e?.message||"失败"}`);}
-    }));
-    setBindPairCache(new Map());
-    setBindSubmitting(false);
-    if(fail===0)toast.success(`${ok} 个绑定全部成功！`,{duration:4000});
-    else toast(`${ok} 成功 / ${fail} 失败`,{icon:"⚠️"});
-  },[bindPairCache,aRid,dataSource]);
-
-  // ── 批量解绑提交（并行调用）──
-  const handleBatchUnbindSubmit=useCallback(async()=>{
-    if(unbindPairCache.size===0||!aRid)return;
-    setBindSubmitting(true);
-    const ids=Array.from(unbindPairCache);
-    let ok=0,fail=0;
-
-    if(dataSource==="local"){
-      await Promise.all(ids.map(async(ck)=>{
-        try{
-          const cell=unbindCells.get(ck);
-          const cageId=String((cell as any)?.id??(cell as any)?.animalCageId??"");
-          await localUnbind(cageId);
-          ok++;
-        }catch{fail++;}
-      }));
-      setUnbindPairCache(new Set());setUnbindCells(new Map());setBindSubmitting(false);setDetailReloadKey(k=>k+1);
-      if(fail===0)toast.success(`${ok} 个解绑全部成功！（本地+异步投递）`,{duration:4000});
-      else toast(`${ok} 成功 / ${fail} 失败`,{icon:"⚠️"});
-      return;
-    }
-
-    await Promise.all(ids.map(async(ck)=>{
-      try{
-        const cell=unbindCells.get(ck);
-        const cageId=String((cell as any)?.id??"");
-        await unbindCageBox(cageId,aRid);
-        ok++;
-      }catch{fail++;}
-    }));
-    setUnbindPairCache(new Set());setUnbindCells(new Map());
-    setBindSubmitting(false);
-    if(fail===0)toast.success(`${ok} 个解绑全部成功！`,{duration:4000});
-    else toast(`${ok} 成功 / ${fail} 失败`,{icon:"⚠️"});
-  },[unbindPairCache,unbindCells,aRid,dataSource]);
-
-  // ── 单个绑定（保留兼容，Dialog 调用）──
-  const handleBindConfirm=useCallback(async(cell:CageShelfCell)=>{
-    const code=bindScannedCode||bindInputVal.trim();
-    if(!code||!aRid)return;
-    setBindSubmitting(true);
+  // ── 扫码 → 判定（已分配/待确认）→ 弹核对面板或提示 ──
+  const handleConfirmScan=useCallback(async(code:string)=>{
+    const q=code.trim();if(!q)return;
     try{
-      const cageId=String((cell as any).id??(cell as any).animalCageId??"");
-      if(dataSource==="local") await localBind(cageId,code);
-      else await bindCageBox(cageId,code,aRid);
-      toast.success(dataSource==="local"?"绑定成功！（本地+异步投递）":"绑定成功！",{duration:4000});
-      setBindConfirmOpen(false);setCell(null);
-      setBindScannedCode("");setBindSelectedKey(null);
-      if(dataSource==="local") setDetailReloadKey(k=>k+1);
-    }catch(e:any){toast.error(e?.message||"绑定失败");}
-    finally{setBindSubmitting(false);}
-  },[bindScannedCode,bindInputVal,aRid,dataSource]);
+      const r=await lookupCode(q);
+      if(r.type==="NOT_FOUND"){toast.error("未识别笼位");return;}
+      if(r.type==="ASSET"){toast.error("该编码为资产编号，非笼位");return;}
+      if(r.type==="LEGACY_CAGE_BOX"){toast.error("旧盒码已废弃，请扫笼位码");await locateLookup(r);return;}
+      await locateLookup(r);
+      const claim=r.claim;
+      if(!claim){toast.error("该笼位未分配（课题组判定后续开放）");return;}
+      if(claim.claimStatus==="locked"){
+        setConfirmLookup(r);
+      }else if(claim.claimStatus==="confirmed"){
+        toast.success("该笼位已到位");
+      }else if(claim.claimStatus==="pending_approval"){
+        toast.error("该笼位待审批");
+      }else if(claim.claimStatus==="pending_release_approval"){
+        toast.error("该笼位待释放审批");
+      }else{
+        toast.error("该笼位状态："+claim.claimStatus);
+      }
+    }catch(e:any){toast.error(e?.message||"扫码查询失败");}
+  },[locateLookup]);
 
-  // ── 绑定模式：确认解绑 ──
-  const handleUnbindConfirm=useCallback(async(cell:CageShelfCell)=>{
-    if(!aRid)return;
-    setBindSubmitting(true);
+  // ── 确认到位：调用学生端 confirm（后端校验本人 claimantId）──
+  const handleConfirmArrival=useCallback(async()=>{
+    if(!confirmLookup?.claim?.id)return;
+    setConfirmSubmitting(true);
     try{
-      const cageId=String((cell as any).id??(cell as any).animalCageId??"");
-      if(dataSource==="local") await localUnbind(cageId);
-      else await unbindCageBox(cageId, aRid);
-      toast.success(dataSource==="local"?"解绑成功！（本地+异步投递）":"解绑成功！笼位已恢复空笼盒",{duration:4000});
-      setBindConfirmOpen(false);setCell(null);
-      setBindSelectedKey(null);setUnbindActive(false);
-      if(dataSource==="local") setDetailReloadKey(k=>k+1);
-    }catch(e:any){toast.error(e?.message||"解绑失败");}
-    finally{setBindSubmitting(false);}
-  },[aRid,dataSource]);
+      await confirmClaim(confirmLookup.claim.id);
+      toast.success("已确认到位");
+      setConfirmLookup(null);
+    }catch(e:any){toast.error(e?.message||"确认失败（仅本人可确认）");}
+    finally{setConfirmSubmitting(false);}
+  },[confirmLookup]);
+
+  // ── 常驻「扫码定位」入口：按当前模式联动判定 ──
+  const handleResidentScan=useCallback(async(code:string)=>{
+    if(editMode){await handleEditScan(code);return;}
+    if(confirmMode){await handleConfirmScan(code);return;}
+    try{
+      const r=await lookupCode(code);
+      if(r.type==="NOT_FOUND"){toast.error("未找到对应笼位");return;}
+      if(r.type==="ASSET"){toast.error("该编码为资产编号，非笼位");return;}
+      await locateLookup(r);
+    }catch{toast.error("扫码查询失败");}
+  },[editMode,confirmMode,handleEditScan,handleConfirmScan,locateLookup]);
+
+  // ── 统一模式切换（下拉选择用）──
+  const switchMode=useCallback((mode:"view"|"allocate"|"booking"|"edit"|"confirm")=>{
+    setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);
+    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setScanCache(new Map());setLastScannedKey(null);
+    if(mode==="allocate")setPageMode("allocate");
+    else if(mode==="booking")setPageMode("booking");
+    else if(mode==="edit")setEditMode(true);
+    else if(mode==="confirm")setConfirmMode(true);
+    else setPageMode("view");
+  },[]);
+
+  const currentMode: "view"|"allocate"|"booking"|"edit"|"confirm" = editMode?"edit":confirmMode?"confirm":pageMode==="allocate"?"allocate":pageMode==="booking"?"booking":"view";
+  const currentModeLabel = currentMode==="edit"?"编辑":currentMode==="confirm"?"扫码确认":currentMode==="allocate"?"分配":currentMode==="booking"?"预约":"查看";
 
   // ═══════════════════════════════════════════════════════════
   //  RENDER
@@ -991,58 +897,41 @@ function Inner(){
               <button type="button" onClick={() =>setViewMode("room")} className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${viewMode==="room"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>全房间</button>
               <button type="button" onClick={() =>setViewMode("shelf")} className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${viewMode==="shelf"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>单笼架</button>
             </div>}
-            {/* ---- 笼位分配 / 笼位预约 / 编辑 / 绑定 (STAFF+) ---- */}
+            {/* ---- 模式切换下拉（STAFF+） ---- */}
             {canEdit && <div className="flex items-center gap-1 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1">
-              <button type="button" onClick={async () =>{
-                  if(bindMode&&bindPairCache.size>0){if(!await appConfirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`))return;setBindPairCache(new Map());}
-                  const n=pageMode!=="allocate";setPageMode(n?"allocate":"view");setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);if(n){setEditMode(false);setBindMode(false);setScanCache(new Map());setLastScannedKey(null);setBindScannedCode("");setBindSelectedKey(null);setUnbindActive(false);}
-                }}
-                className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${pageMode==="allocate"?"bg-blue-600 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
-                笼位分配{pageMode==="allocate"?" ▾":""}
-              </button>
-              <button type="button" onClick={async () =>{
-                  if(bindMode&&bindPairCache.size>0){if(!await appConfirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`))return;setBindPairCache(new Map());}
-                  const n=pageMode!=="booking";setPageMode(n?"booking":"view");setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);if(n){setEditMode(false);setBindMode(false);setScanCache(new Map());setLastScannedKey(null);setBindScannedCode("");setBindSelectedKey(null);setUnbindActive(false);}
-                }}
-                className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${pageMode==="booking"?"bg-emerald-600 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
-                笼位预约{pageMode==="booking"?" ▾":""}
-              </button>
-              {!bindMode&&<button type="button" onClick={async () =>{
-                  if(bindMode&&bindPairCache.size>0){
-                    if(!await appConfirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`))return;
-                    setBindPairCache(new Map());
-                  }
-                  const n=!editMode;setEditMode(n);setPageMode("view");if(!n){setScanCache(new Map());setLastScannedKey(null);}if(n){setBindMode(false);setBindScannedCode("");setBindSelectedKey(null);setUnbindActive(false);setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);}
-                }}
-                className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${editMode?"bg-[var(--twin-primary)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
-                编辑{editMode?" ▾":""}
-              </button>}
-              {!editMode&&<button type="button" onClick={async () =>{
-                  if(bindMode&&(bindPairCache.size>0||unbindPairCache.size>0)){
-                    const total=bindPairCache.size+unbindPairCache.size;
-                    if(!await appConfirm(`有 ${total} 个未提交的操作，是否放弃？\n\n「确定」放弃并退出\n「取消」继续`))return;
-                    setBindPairCache(new Map());setUnbindPairCache(new Set());setUnbindCells(new Map());
-                  }
-                  const n=!bindMode;setBindMode(n);setPageMode("view");setBindScannedCode("");setBindSelectedKey(null);setUnbindActive(false);if(!n){setScanCache(new Map());}if(n){setEditMode(false);setScanCache(new Map());setLastScannedKey(null);setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);}
-                }}
-                className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${bindMode?"bg-blue-600 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
-                绑定{bindMode?" ▾":""}
-              </button>}
+              <DropdownMenu>
+                <DropdownMenuTrigger className="flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)] outline-none">
+                  {currentModeLabel}<span className="text-[10px] text-[var(--twin-mute)]">▾</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-[8rem]">
+                  {(["view","allocate","booking","edit","confirm"] as const).map(m=>{
+                    const label=m==="edit"?"编辑":m==="confirm"?"扫码确认":m==="allocate"?"分配":m==="booking"?"预约":"查看";
+                    return <DropdownMenuItem key={m} onSelect={()=>switchMode(m)} className={currentMode===m?"bg-[var(--twin-canvas-soft)]":""}>
+                      <span className={currentMode===m?"font-semibold text-[var(--twin-link-deep)]":""}>{currentMode===m?"✓ ":""}{label}</span>
+                    </DropdownMenuItem>;
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
               {pageMode==="allocate"&&realtimeMeta&&dataSource!=="local"&&(<>
                 <span className="text-[10px] text-[var(--twin-mute)] ml-0.5">{realtimeMeta.fromRealtime?"✅ 实时":"📦 缓存"}{realtimeMeta.cachedAt?" · "+realtimeMeta.cachedAt.substring(11,19):""}</span>
                 <button onClick={async()=>{if(!aRid)return;try{const r=await forceRealtimeRefresh(aRid);setDetails(r.shelves??[]);setRealtimeMeta({fromRealtime:r.fromRealtime,cachedAt:r.cachedAt});toast.success("已刷新");}catch(e:any){toast.error("刷新失败");}}}
                   className="rounded-twin-md px-1.5 py-0.5 text-[10px] font-bold bg-blue-500 text-white hover:bg-blue-600 ml-1" title="强制刷新房间数据">↻</button>
               </>)}
             </div>}
-            {/* 数据源切换 */}
-              <div className="flex items-center gap-0 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-0.5 ml-2">
-                <button type="button" onClick={()=>{setDataSource("aro");setEditMode(false);setBindMode(false);setScanCache(new Map());setBindPairCache(new Map());setUnbindPairCache(new Set());setSelectedCells(new Set());setCell(null);}}
-                  className={`rounded-twin-md px-2 py-0.5 text-[10px] font-semibold transition ${dataSource==="aro"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
-                  ☁️ ARO</button>
-                <button type="button" onClick={()=>{setDataSource("local");setEditMode(false);setBindMode(false);setScanCache(new Map());setBindPairCache(new Map());setUnbindPairCache(new Set());setSelectedCells(new Set());setCell(null);}}
-                  className={`rounded-twin-md px-2 py-0.5 text-[10px] font-semibold transition ${dataSource==="local"?"bg-emerald-600 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
-                  🏠 本地</button>
-              </div>
+            {/* 数据源切换下拉 */}
+              <DropdownMenu>
+                <DropdownMenuTrigger className="flex items-center gap-1 rounded-twin-md px-2 py-0.5 text-[10px] font-semibold text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)] outline-none ml-2">
+                  {dataSource==="aro"?"☁️ ARO":"🏠 本地"}<span className="text-[9px] text-[var(--twin-mute)]">▾</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-[7rem]">
+                  <DropdownMenuItem onSelect={()=>{setDataSource("aro");setEditMode(false);setConfirmMode(false);setScanCache(new Map());setConfirmLookup(null);setSelectedCells(new Set());setCell(null);}} className={dataSource==="aro"?"bg-[var(--twin-canvas-soft)]":""}>
+                    <span className={dataSource==="aro"?"font-semibold text-[var(--twin-link-deep)]":""}>{dataSource==="aro"?"✓ ":""}☁️ ARO</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={()=>{setDataSource("local");setEditMode(false);setConfirmMode(false);setScanCache(new Map());setConfirmLookup(null);setSelectedCells(new Set());setCell(null);}} className={dataSource==="local"?"bg-[var(--twin-canvas-soft)]":""}>
+                    <span className={dataSource==="local"?"font-semibold text-[var(--twin-link-deep)]":""}>{dataSource==="local"?"✓ ":""}🏠 本地</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               {/* 扫码定位笼位 */}
               <button type="button" onClick={()=>setScanLockOpen(true)}
                 className="flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[10px] font-semibold text-[var(--twin-mute)] hover:text-[var(--twin-ink)] border border-[var(--twin-hairline)] ml-1"
@@ -1055,7 +944,7 @@ function Inner(){
                 <button onClick={async()=>{if(!aRid)return;try{const r=await forceRealtimeRefresh(aRid);setDetails(r.shelves??[]);setRealtimeMeta({fromRealtime:r.fromRealtime,cachedAt:r.cachedAt});toast.success("已刷新");}catch(e:any){toast.error("刷新失败");}}}
                   className="rounded-twin-md px-1.5 py-0.5 text-[10px] font-bold bg-blue-500 text-white hover:bg-blue-600 ml-1" title="强制刷新房间数据">↻</button>
               </>)}
-              {bindMode&&realtimeMeta&&dataSource!=="local"&&(<>
+              {confirmMode&&realtimeMeta&&dataSource!=="local"&&(<>
                 <span className="text-[10px] text-blue-600 ml-0.5">📷 {realtimeMeta.fromRealtime?"实时":"缓存"}{realtimeMeta.cachedAt?" · "+realtimeMeta.cachedAt.substring(11,19):""}</span>
                 <button onClick={async()=>{if(!aRid)return;try{const r=await forceRealtimeRefresh(aRid);setDetails(r.shelves??[]);setRealtimeMeta({fromRealtime:r.fromRealtime,cachedAt:r.cachedAt});toast.success("已刷新");}catch(e:any){toast.error("刷新失败");}}}
                   className="rounded-twin-md px-1.5 py-0.5 text-[10px] font-bold bg-blue-500 text-white hover:bg-blue-600 ml-1" title="强制刷新房间数据">↻</button>
@@ -1080,8 +969,8 @@ function Inner(){
                 {localPipelineSyncing?"同步中…":"一键同步本地笼位"}
               </button>
             )}
-            {/* ---- 查看模式控件（本地模式/分配/预约/编辑/绑定时隐藏） ---- */}
-            {pageMode==="view"&&!editMode&&!bindMode&&dataSource!=="local"&&<>
+            {/* ---- 查看模式控件（本地模式/分配/预约/编辑时隐藏） ---- */}
+            {pageMode==="view"&&!editMode&&!confirmMode&&dataSource!=="local"&&<>
               <div className="flex items-stretch rounded-twin-md border border-[var(--twin-hairline)] overflow-hidden mr-1">
                 <button type="button" onClick={() => { setConfigMode("auto"); localStorage.setItem("cageAlertConfigMode","auto"); }}
                   className={`px-2 py-1 text-[10px] font-bold transition ${configMode==="auto"?"bg-[var(--twin-link-deep)] text-white":"bg-[var(--twin-canvas)] text-[var(--twin-mute)]"}`}>自动</button>
@@ -1115,94 +1004,22 @@ function Inner(){
             {pageMode==="allocate"&&!boxSelectMode&&<span className="text-[10px] text-[var(--twin-mute)] ml-1 select-none">🖱️ 点击选中 · <kbd className="text-[9px] px-0.5 py-px rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)]">Shift</kbd>+点击 矩形多选</span>}
             {boxSelectMode&&<span className="text-[10px] text-amber-600 font-medium ml-1 select-none animate-pulse">⬜ 请点击第一个笼位设置框选起点</span>}
 
-            {/* ── 编辑模式操作按钮 ── */}
+            {/* ── 编辑模式操作按钮（扫码由常驻「扫码定位」联动） ── */}
             {editMode&&<>
-              <span className="text-[10px] text-[var(--twin-mute)] ml-1 select-none">笼盒编号</span>
-              <input type="text" placeholder="输入或扫码…" value={editInputVal} onChange={e=>setEditInputVal(e.target.value)}
-                className="w-40 rounded-twin-md border border-[var(--twin-hairline)] px-3 py-1.5 text-xs"
-                onKeyDown={(e)=>{if(e.key==="Enter"){const v=(e.target as HTMLInputElement).value.trim();if(v){handleEditScan(v);setEditInputVal(v);}}}}/>
-              <button onClick={()=>{const code=editMissingCode||editInputVal.trim();if(!code){toast.error("请先输入或扫码获取笼盒编号");return;}handleGlobalFind(code);}} disabled={editSearching}
-                className="rounded-twin-md px-2.5 py-1.5 text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition">
-                {editSearching?"搜索中…":"🔍 找到他"}
-              </button>
-              <button onClick={()=>{if(!aRid){toast.error("请先在左侧选择房间");return;}setEditScanOpen(true);}} className="flex items-center justify-center rounded-md w-9 h-9 -my-0.5" style={{background:"rgba(172,23,54,0.1)"}} title="扫码（编辑模式）">
-                <QrCode className="size-5" style={{color:"var(--twin-primary)"}}/>
-              </button>
               {scanCache.size>0&&(()=>{const addCount=Array.from(scanCache.values()).reduce((n,e)=>{for(const a of e.currentActions)if(!e.initialActions.has(a))n++;return n;},0);const delCount=Array.from(scanCache.values()).reduce((n,e)=>{for(const a of e.initialActions)if(!e.currentActions.has(a))n++;return n;},0);const total=addCount+delCount;return<button onClick={handleEditSubmit} disabled={actionSubmitting||total===0}
                 className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white disabled:opacity-40">
                 提交{total>0?` +${addCount} −${delCount}`:` (${scanCache.size})`}
               </button>;})()}
-              <button type="button" onClick={()=>{setScanCache(new Map());setLastScannedKey(null);setEditMissingCode("");setEditInputVal("");}}
+              <button type="button" onClick={()=>{setScanCache(new Map());setLastScannedKey(null);}}
                 className="rounded-twin-md px-3 py-1.5 text-[11px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 hover:bg-slate-200 hover:text-slate-700 transition">清除</button>
             </>}
-            {/* ── 绑定模式操作按钮 ── */}
-            {bindMode&&<>
-              <span className="text-[10px] text-blue-600 ml-1 select-none">笼盒编号</span>
-              <input type="text" placeholder="输入或扫码…" value={bindInputVal} onChange={e=>setBindInputVal(e.target.value)}
-                className="w-40 rounded-twin-md border border-blue-300 px-3 py-1.5 text-xs"
-                onKeyDown={(e)=>{if(e.key==="Enter"){const v=(e.target as HTMLInputElement).value.trim();if(v){setBindScannedCode(v);setBindInputVal(v);setBindSelectedKey(null);toast.success("已录入: "+v);}}}}/>
-              <button onClick={()=>{if(!aRid){toast.error("请先在左侧选择房间");return;}setBindScanOpen(true);}} className="flex items-center justify-center rounded-md w-9 h-9 -my-0.5" style={{background:"rgba(37,99,235,0.1)"}} title="扫码（绑定模式）">
-                <QrCode className="size-5" style={{color:"#2563eb"}}/>
-              </button>
-              <button onClick={()=>{
-                  if(unbindActive){setUnbindActive(false);setBindSelectedKey(null);return;}
-                  if(bindScannedCode||bindInputVal.trim()){setBindScannedCode("");setBindInputVal("");setBindSelectedKey(null);return;}
-                  setUnbindActive(true);setBindSelectedKey(null);
-                }}
-                className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${unbindActive?"bg-red-600 text-white":(bindScannedCode||bindInputVal.trim())?"text-red-500 border border-red-300 hover:bg-red-50":"text-red-600 border border-red-300 hover:bg-red-50"}`}>
-                {(unbindActive||bindScannedCode||bindInputVal.trim())?"取消":"解绑"}
-              </button>
-              {/* 批量绑定：提交 + 清空 */}
-              {!unbindActive&&bindPairCache.size>0&&<>
-                <button onClick={handleBatchBindSubmit} disabled={bindSubmitting}
-                  className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition">
-                  {bindSubmitting?<Loader2 className="h-3 w-3 inline animate-spin"/>:null}
-                  提交 ({bindPairCache.size})
-                </button>
-                <button onClick={()=>{setBindPairCache(new Map());toast("已清空缓存");}}
-                  className="rounded-twin-md px-2 py-1 text-[10px] text-slate-500 hover:text-red-500 transition">清空</button>
-              </>}
-              {/* 批量解绑：提交 + 清空 */}
-              {unbindActive&&unbindPairCache.size>0&&<>
-                <button onClick={handleBatchUnbindSubmit} disabled={bindSubmitting}
-                  className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition">
-                  {bindSubmitting?<Loader2 className="h-3 w-3 inline animate-spin"/>:null}
-                  提交 ({unbindPairCache.size})
-                </button>
-                <button onClick={()=>{setUnbindPairCache(new Set());setUnbindCells(new Map());toast("已清空缓存");}}
-                  className="rounded-twin-md px-2 py-1 text-[10px] text-slate-500 hover:text-red-500 transition">清空</button>
-              </>}
-            </>}
+            {/* ── 扫码确认模式：由常驻「扫码定位」联动判定，无专用输入 ── */}
+            <a href={toAdminRoutePath("/admin/cage-shelves/forms")} onClick={e=>{e.preventDefault();nav(toAdminRoutePath("/admin/cage-shelves/forms"));}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold no-underline bg-[var(--twin-primary)] text-white hover:opacity-90 transition">表单管理</a>
             <button type="button" onClick={()=>setLegend(v=>!v)} className={`flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition ${legend?'bg-[var(--twin-link-deep)] text-white':'text-[var(--twin-mute)] hover:text-[var(--twin-ink)]'}`}><Info className="h-3 w-3"/>图例{legend?' ▲':' ▼'}</button>
+            {isSuperAdmin&&<button type="button" onClick={()=>setSettingsOpen(true)} className="flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title="设置中心"><Settings2 className="h-3 w-3"/>设置</button>}
           </div>
         </div>
         {legend&&<CageShelfLegend/>}
-        {/* ── 批量绑定缓存面板 ── */}
-        {bindMode&&!unbindActive&&bindPairCache.size>0&&<div className="shrink-0 rounded-twin-lg border border-green-300 bg-green-50/50 p-2">
-          <div className="flex flex-wrap gap-2">{Array.from(bindPairCache.entries()).map(([key,{cell,code}])=>{
-            return <div key={key} className="rounded-twin-md border border-green-300 bg-white px-3 py-1.5 text-[11px] flex items-center gap-2">
-              <span className="font-mono font-bold text-green-700 text-xs">{code}</span>
-              <span className="text-[var(--twin-mute)]">→</span>
-              <span className="font-semibold text-[var(--twin-ink)]">{displayPosition(cell.position)}</span>
-              <button onClick={()=>{
-                setBindPairCache(prev=>{const next=new Map(prev);next.delete(key);return next;});
-              }} className="ml-1 text-[var(--twin-mute)] hover:text-red-500 text-xs">✕</button>
-            </div>;
-          })}</div>
-        </div>}
-        {/* ── 批量解绑缓存面板 ── */}
-        {bindMode&&unbindActive&&unbindPairCache.size>0&&<div className="shrink-0 rounded-twin-lg border border-red-300 bg-red-50/50 p-2">
-          <div className="flex flex-wrap gap-2">{Array.from(unbindPairCache).map((key)=>{
-            const cell=unbindCells.get(key);if(!cell)return null;
-            return <div key={key} className="rounded-twin-md border border-red-300 bg-white px-3 py-1.5 text-[11px] flex items-center gap-2">
-              <span className="font-semibold text-[var(--twin-ink)]">{displayPosition(cell.position)}</span>
-              <button onClick={()=>{
-                setUnbindPairCache(prev=>{const next=new Set(prev);next.delete(key);return next;});
-                setUnbindCells(prev=>{const next=new Map(prev);next.delete(key);return next;});
-              }} className="ml-1 text-[var(--twin-mute)] hover:text-red-500 text-xs">✕</button>
-            </div>;
-          })}</div>
-        </div>}
         {/* ── 编辑模式：动作缓存面板 ── */}
         {editMode&&<div className="shrink-0 rounded-twin-lg border border-transparent bg-transparent p-2" style={scanCache.size===0?{padding:0,borderWidth:0}:{borderColor:"var(--twin-hairline)",backgroundColor:"var(--twin-canvas)"}}>
           <div className="flex flex-wrap gap-2">{Array.from(scanCache.entries()).map(([key,entry])=>{
@@ -1243,7 +1060,7 @@ function Inner(){
             {aRid&&!bookingLoading&&<div className="flex gap-3 min-h-0 h-full">
               {/* Left: booking data */}
               <div className="w-1/2 flex flex-col min-w-0">
-                <CageBookingPanel room={bookingRoom} roomId={aRid}/>
+                <CageBookingPanel room={bookingRoom} roomId={aRid} onChanged={loadBookingRooms}/>
               </div>
               {/* Right: shelf grid (realtime) */}
               <div className="w-1/2 flex flex-col min-w-0">
@@ -1260,10 +1077,9 @@ function Inner(){
                     onCellClick={handleGridCellClick}
                     alertMap={alertMap}
                     scanCache={scanCache} lastScannedKey={lastScannedKey}
-                    bindSelectedKey={bindSelectedKey} editMode={editMode} bindMode={bindMode}
+                    editMode={editMode}
                     crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}
-                    bindPairCache={bindPairCache}
-                  />
+                                     />
                 )}
               </div>
             </div>}
@@ -1275,7 +1091,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} bindSelectedKey={bindSelectedKey} editMode={editMode} bindMode={bindMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} bindPairCache={bindPairCache} unbindPairCache={unbindPairCache}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/></div>;
             })}</div>}
           </>}
 
@@ -1285,7 +1101,7 @@ function Inner(){
             <div className="w-1/2 flex flex-col min-w-0">
               {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
               {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
-              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} bindSelectedKey={bindSelectedKey} editMode={editMode} bindMode={bindMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/>}
             </div>
             {/* Right: cell detail / edit actions / bind confirm */}
             <div className="w-1/2 flex flex-col min-w-0 gap-2">
@@ -1310,7 +1126,7 @@ function Inner(){
                   </div>
                 </div>;})()}
               {/* 查看模式：笼盒详情 */}
-              {!editMode&&!bindMode&&(()=>{if(!cell)return<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><div className="text-4xl mb-3 opacity-20">📋</div>笼盒详情预备画面<br/><span className="text-[11px]">点击左侧笼位格子显示笼盒信息</span></div>;
+              {!editMode&&!confirmMode&&(()=>{if(!cell)return<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><div className="text-4xl mb-3 opacity-20">📋</div>笼盒详情预备画面<br/><span className="text-[11px]">点击左侧笼位格子显示笼盒信息</span></div>;
                 return<div className="flex-1 overflow-y-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3">
                 <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>setCell(null)}>清除</button></div>
                 {dataSource==="local"
@@ -1333,7 +1149,7 @@ function Inner(){
       </div>
     </div>
 
-    {cell&&viewMode!=="shelf"&&!editMode&&!bindMode&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
+    {cell&&viewMode!=="shelf"&&!editMode&&!confirmMode&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
       <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-3" onClick={e=>e.stopPropagation()}>
         {dataSource==="local"
           ? <LocalDetailPanel cell={cell} onClose={()=>{setCell(null);setShelfId(null);}}/>
@@ -1351,38 +1167,13 @@ function Inner(){
     </div></Portal>}
 
         {/* ═══════════════════════════════════════════════════
-             DIALOGS — 分配弹窗 / 扫码弹窗 / 编辑状态弹窗 / 绑定确认 / CAS提示
+             DIALOGS — 分配弹窗 / 扫码弹窗 / 编辑状态弹窗 / 扫码确认核对 / CAS提示
              ═══════════════════════════════════════════════════ */}
     {/* ---- 分配确认弹窗 ---- */}
     {allocDialogOpen&&<AllocDialog aupList={aupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
 
-    {/* ---- 扫码弹窗（编辑/绑定各一个） ---- */}
-    <MobileScanDialog open={editScanOpen} onClose={()=>setEditScanOpen(false)} onResult={(code)=>{handleEditScan(code);setEditInputVal(code);setEditScanOpen(false);}}/>
-    <MobileScanDialog open={bindScanOpen} onClose={()=>setBindScanOpen(false)} onResult={(code)=>{setBindInputVal(code);setBindScannedCode(code);setBindSelectedKey(null);setUnbindActive(false);setBindScanOpen(false);toast.success(`已录入笼盒编号 ${code}`,{duration:4000});}}/>
-    <MobileScanDialog open={scanLockOpen} onClose={()=>setScanLockOpen(false)} onResult={async(code)=>{
-      setScanLockOpen(false);
-      try{
-        const r=await authHttp.get(`/local/scan-lookup`,{params:{code}});
-        if(!r.data?.success||r.data.data?.type==="NOT_FOUND"){toast.error("未找到对应笼位");return;}
-        const d=r.data.data;
-        const rid=String(d.roomId||"");
-        const sid=String(d.shelveId||"");
-        setViewMode("shelf");
-        setARid(rid);setARname(d.roomName||rid);
-        if(rid) expandToRoom(rid);
-        if(sid){
-          setShelfLoading(true);setShelfDetail(null);
-          try{
-            const shelf=await fetchLocalShelfGridByShelveId(sid);
-            setShelfDetail(shelf);
-            // 用网格自身的 shelveId（非 PK），保证与 CellButton 中 sid 匹配
-            setScanLockTarget({sid:String(shelf.shelfMeta?.shelveId||sid),x:d.positionX,y:d.positionY});
-            toast.success(`已定位: ${d.roomName||""} ${d.shelveName||""} (${d.positionX},${d.positionY})`);
-          }catch(e:any){toast.error("加载笼架失败: "+(e?.message||sid));}
-          finally{setShelfLoading(false);}
-        }
-      }catch{toast.error("扫码查询失败");}
-    }}/>
+    {/* ---- 常驻扫码定位（按当前模式联动判定） ---- */}
+    <MobileScanDialog open={scanLockOpen} onClose={()=>setScanLockOpen(false)} onResult={(code)=>{setScanLockOpen(false);handleResidentScan(code);}}/>
     {/* ---- 编辑模式状态选择弹窗 ---- */}
     <Dialog open={!!editDialogCell} onOpenChange={(o)=>{
       if(!o){setEditDialogCell(null);setActionPhotos([]);setActionNote("");}
@@ -1581,74 +1372,57 @@ function Inner(){
         </DialogFooter>
       </DialogContent>
     </Dialog>
-    {/* ---- 绑定模式顶部提示（Portal 弹窗式） ---- */}
-    {bindMode&&!unbindActive&&!bindConfirmOpen&&(bindScannedCode||bindInputVal.trim())&&!bindSelectedKey&&
-    <Portal><div className="fixed top-6 left-1/2 -translate-x-1/2 z-[var(--z-toast)] animate-bounce">
-      <div className="flex items-center gap-3 rounded-twin-xl border-2 border-blue-400 bg-blue-500 text-white px-5 py-3 shadow-[0_8px_30px_rgba(37,99,235,0.35)]">
-        <div>
-          <div className="text-sm font-bold">请选择要绑定的笼位</div>
-          <div className="text-[11px] text-blue-100">点击蓝色高亮的空笼盒格位完成绑定</div>
-        </div>
-      </div>
-    </div></Portal>}
-    {bindMode&&!bindConfirmOpen&&unbindActive&&!bindSelectedKey&&
-    <Portal><div className="fixed top-6 left-1/2 -translate-x-1/2 z-[var(--z-toast)] animate-bounce">
-      <div className="flex items-center gap-3 rounded-twin-xl border-2 border-red-400 bg-red-500 text-white px-5 py-3 shadow-[0_8px_30px_rgba(220,38,38,0.35)]">
-        <div>
-          <div className="text-sm font-bold">请选择要解绑的笼位</div>
-          <div className="text-[11px] text-red-100">点击红色高亮的饲养中格位完成解绑</div>
-        </div>
-      </div>
-    </div></Portal>}
-    {/* ---- 绑定/解绑确认弹窗（居中 Dialog） ---- */}
-    <Dialog open={bindMode&&bindConfirmOpen&&!!cell} onOpenChange={(o)=>{if(!o){setBindConfirmOpen(false);setCell(null);setBindSelectedKey(null);}}}>
-      <DialogContent className="z-[var(--z-modal)] sm:max-w-sm" style={{
-        borderWidth:2,
-        borderColor:unbindActive?"#dc2626":"#2563eb",
-      }}>
+    {/* ---- 扫码确认核对面板（居中 Dialog） ---- */}
+    <Dialog open={confirmMode&&!!confirmLookup} onOpenChange={(o)=>{if(!o)setConfirmLookup(null);}}>
+      <DialogContent className="z-[var(--z-modal)] sm:max-w-md">
         <DialogHeader>
-          <DialogTitle style={{color:unbindActive?"#dc2626":"#2563eb"}}>
-            {unbindActive?"确认解绑":"确认绑定"}
-          </DialogTitle>
+          <DialogTitle>扫码确认 · 核对信息</DialogTitle>
           <DialogDescription className="space-y-2">
-            {!unbindActive&&<div className="rounded-twin-md bg-blue-50 border border-blue-200 px-3 py-2 text-center">
-              <div className="text-[10px] text-blue-500">笼盒编号</div>
-              <div className="text-sm font-mono font-bold text-blue-700">{bindScannedCode||bindInputVal.trim()}</div>
-            </div>}
             <div className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] divide-y divide-[var(--twin-hairline)]">
-              {(()=>{const cbi=cell?.cageBoxInfo as Record<string,any>|undefined;const rows:{label:string;value:string;em?:boolean}[]=[];
-                rows.push({label:"笼位",value:cell?displayPosition(cell.position):""});
-                const typeLabel=CAGE_TYPE_LABEL[(cell as any)?.animalCageType as number??0];
-                if(typeLabel)rows.push({label:"类型",value:typeLabel});
-                const pi=cbi?.ProjectPiName||(cell as any)?.projectPiName||(cell as any)?.piName||"";
-                if(pi)rows.push({label:"课题组 PI",value:pi,em:true});
-                const dept=cbi?.DepartmentName||"";
-                if(dept)rows.push({label:"部门",value:dept});
-                const aup=cbi?.AupNumber||"";
-                if(aup)rows.push({label:"AUP 编号",value:aup});
-                const st=cbi?.StateName||(cell as any)?.stateLabel||"";
-                if(st)rows.push({label:"当前状态",value:st,em:true});
+              {(()=>{const cc=confirmLookup?.cageCell;const cl=confirmLookup?.claim;
+                const rows:{label:string;value:string;em?:boolean}[]=[];
+                if(cc)rows.push({label:"笼位",value:(cc.positionLabel||`${cc.positionX}-${cc.positionY}`)});
+                if(cc?.roomName)rows.push({label:"房间",value:cc.roomName});
+                if(cl?.claimantName)rows.push({label:"认领人",value:cl.claimantName,em:true});
+                if(cl?.projectPiName)rows.push({label:"课题组 PI",value:cl.projectPiName,em:true});
+                if(cl?.aupNumber)rows.push({label:"AUP 编号",value:cl.aupNumber});
+                if(cl?.projectName)rows.push({label:"项目",value:cl.projectName});
+                rows.push({label:"当前状态",value:cl?.claimStatus==="locked"?"待确认":(cl?.claimStatus||"-"),em:true});
                 return rows.map((r,i)=><div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
                   <span className="text-[var(--twin-mute)]">{r.label}</span>
                   <span className={r.em?"font-semibold text-[var(--twin-ink)]":"text-[var(--twin-ink)]"}>{r.value||"-"}</span>
                 </div>);
               })()}
             </div>
-            {unbindActive&&<div className="rounded-twin-md bg-red-50 border border-red-200 px-3 py-2 text-center">
-              <span className="text-[11px] text-red-600 font-semibold">解绑后该笼位将恢复为「空笼盒」状态</span>
-            </div>}
+            {confirmLookup?.claim && !confirmLookup.claim.hasInfo && (
+              <div className="border-t border-[var(--twin-hairline)] pt-2">
+                <div className="mb-1 text-[11px] font-semibold text-[var(--twin-ink)]">填写信息</div>
+                <CageFormFill animalCageId={confirmLookup.cageCell?.animalCageId ?? null} claimed editable />
+              </div>
+            )}
+            <div className="rounded-twin-md bg-amber-50 border border-amber-200 px-3 py-2 text-center">
+              <span className="text-[11px] text-amber-700 font-semibold">确认该笼位已到位（由学生本人账号确认）</span>
+            </div>
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-2">
-          <AdminButton type="button" tone="secondary" size="default" onClick={()=>{setBindConfirmOpen(false);setCell(null);setBindSelectedKey(null);}}>
+          <AdminButton type="button" tone="secondary" size="default" onClick={()=>setConfirmLookup(null)}>
             取消
           </AdminButton>
-          <AdminButton type="button" size="default" onClick={()=>{if(cell){unbindActive?handleUnbindConfirm(cell):handleBindConfirm(cell);}}}
-            disabled={bindSubmitting}
-            className={unbindActive?"!bg-[#dc2626] hover:!bg-[#b91c1c]":"!bg-[#2563eb] hover:!bg-[#1d4ed8]"}>
-            {bindSubmitting?"处理中...":unbindActive?"确认解绑":"确认绑定"}
+          <AdminButton type="button" size="default" onClick={handleConfirmArrival} disabled={confirmSubmitting}>
+            {confirmSubmitting?"处理中...":"确认到位"}
           </AdminButton>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    {/* ---- 设置中心（齿轮）---- */}
+    <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+      <DialogContent className="z-[var(--z-modal)] sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>设置中心</DialogTitle>
+          <DialogDescription>笼位扫码确认相关配置（后续可继续扩展）</DialogDescription>
+        </DialogHeader>
+        <CageScanSettingsPanel />
       </DialogContent>
     </Dialog>
     {/* ---- CAS 绑定提示弹窗 ---- */}

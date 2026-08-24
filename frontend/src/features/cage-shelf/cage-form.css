@@ -1,0 +1,47 @@
+/**
+ * Cage form pages in admin console — workbench skin on twin canvas.
+ * Page bg inherits AdminLayout (--twin-canvas-soft); panels use app surface tokens.
+ */
+.cage-form-wb.aup-app.aup-app--workbench {
+  background: transparent;
+  min-height: 0;
+  height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.cage-form-wb .aup-wb {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.cage-form-wb .aup-wb-toolbar {
+  background: var(--app-color-surface-container);
+  border-color: var(--app-color-border-default);
+  border-radius: var(--admin-radius-md, 0.375rem);
+}
+
+.cage-form-wb .aup-wb-aside,
+.cage-form-wb .aup-wb-panel,
+.cage-form-wb .aup-wb-empty {
+  background: var(--app-color-surface-container);
+  border-color: var(--app-color-border-default);
+}
+
+.cage-form-wb .aup-wb-split {
+  flex: 1;
+  min-height: 0;
+}
+
+.cage-form-wb .aup-wb-main--full {
+  overflow: auto;
+}
+
+/* Body-portaled modals: AdminLayout main is z-[1] vs header z-20, so in-tree
+   .aup-modal-mask (z-index: 80) cannot stack above the chrome. */
+.aup-app.cage-form-modal-portal .aup-modal-mask {
+  z-index: var(--z-modal, 800);
+}

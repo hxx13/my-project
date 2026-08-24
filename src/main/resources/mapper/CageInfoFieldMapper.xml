@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageInfoFieldMapper">
+
+    <resultMap id="CageInfoFieldMap" type="com.example.demo.modules.cageshelf.entity.CageInfoField">
+        <id property="id" column="id"/>
+        <result property="canonical" column="canonical"/>
+        <result property="label" column="label"/>
+        <result property="dataType" column="data_type"/>
+        <result property="fieldType" column="field_type"/>
+        <result property="dictKey" column="dict_key"/>
+        <result property="folder" column="folder"/>
+        <result property="domainCode" column="domain_code"/>
+        <result property="submoduleCode" column="submodule_code"/>
+        <result property="role" column="role"/>
+        <result property="required" column="required"/>
+        <result property="showWhen" column="show_when"/>
+        <result property="syncSource" column="sync_source"/>
+        <result property="config" column="config"/>
+        <result property="sort" column="sort"/>
+        <result property="published" column="published"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, canonical, label, data_type, field_type, dict_key, folder, domain_code, submodule_code, role, required,
+        show_when, sync_source, config, sort, published, status, created_at, updated_at
+    </sql>
+
+    <select id="selectAll" resultMap="CageInfoFieldMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_field
+        ORDER BY sort ASC, id ASC
+    </select>
+
+    <select id="selectByCanonical" resultMap="CageInfoFieldMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_field
+        WHERE canonical = #{canonical}
+        LIMIT 1
+    </select>
+
+    <select id="selectByRole" resultMap="CageInfoFieldMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_field
+        WHERE role = #{role}
+        ORDER BY sort ASC, id ASC
+    </select>
+
+    <select id="selectById" resultMap="CageInfoFieldMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_field
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="selectPublished" resultMap="CageInfoFieldMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_field
+        WHERE published = 1
+        ORDER BY sort ASC, id ASC
+    </select>
+
+    <select id="selectByDictKey" resultMap="CageInfoFieldMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_field
+        WHERE dict_key = #{dictKey}
+        ORDER BY sort ASC, id ASC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_info_field
+        (canonical, label, data_type, field_type, dict_key, folder, domain_code, submodule_code, role, required, show_when, sync_source, config, sort, published, status, created_at, updated_at)
+        VALUES
+        (#{canonical}, #{label}, #{dataType}, #{fieldType}, #{dictKey}, #{folder}, #{domainCode}, #{submoduleCode}, #{role}, #{required}, #{showWhen}, #{syncSource}, #{config}, #{sort}, #{published}, #{status}, NOW(), NOW())
+    </insert>
+
+    <update id="update">
+        UPDATE cage_info_field
+        SET label = #{label},
+            data_type = #{dataType},
+            field_type = #{fieldType},
+            dict_key = #{dictKey},
+            folder = #{folder},
+            domain_code = #{domainCode},
+            submodule_code = #{submoduleCode},
+            required = #{required},
+            show_when = #{showWhen},
+            sort = #{sort},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE cage_info_field
+        SET status = #{status}, updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="markPublishedByIds">
+        UPDATE cage_info_field
+        SET published = 1, status = 'FROZEN', updated_at = NOW()
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <update id="markAllPublished">
+        UPDATE cage_info_field
+        SET published = 1, status = 'FROZEN', updated_at = NOW()
+    </update>
+
+    <update id="markPublishedUnfrozenByIds">
+        UPDATE cage_info_field
+        SET published = 0, status = 'DRAFT', updated_at = NOW()
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM cage_info_field WHERE id = #{id}
+    </delete>
+
+    <select id="countByDictKey" resultType="int">
+        SELECT COUNT(1) FROM cage_info_field WHERE dict_key = #{dictKey}
+    </select>
+
+    <select id="countByDomainCode" resultType="int">
+        SELECT COUNT(1) FROM cage_info_field WHERE domain_code = #{domainCode}
+    </select>
+</mapper>

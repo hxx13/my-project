@@ -12,8 +12,6 @@
         class="msg-card msg-card--pinned {{ !item.isRead ? 'msg-card--unread' : '' }}"
         data-id="{{ item.id }}"
         data-kind="{{ item.kind }}"
-        data-obligation-id="{{ item.obligationId }}"
-        data-mp-path="{{ item.mpPath }}"
         bindtap="onAlertTap"
       >
         <view class="mc-top">
@@ -76,8 +74,6 @@
           class="msg-card {{ !item.isRead ? 'msg-card--unread' : '' }}"
           data-id="{{ item.id }}"
           data-kind="{{ item.kind }}"
-          data-obligation-id="{{ item.obligationId }}"
-          data-mp-path="{{ item.mpPath }}"
           bindtap="onAlertTap"
         >
           <view class="mc-top">
@@ -108,8 +104,6 @@
           class="msg-card msg-card--bulletin"
           data-id="{{ item.id }}"
           data-kind="{{ item.kind }}"
-          data-obligation-id="{{ item.obligationId }}"
-          data-mp-path="{{ item.mpPath }}"
           bindtap="onAlertTap"
         >
           <view class="mc-top">

@@ -72,6 +72,8 @@ export interface NhpTemplateListItem {
   /** schedule 列：频次（ONCE=里程碑 / 其他=可重复） */
   frequency?: string | null;
   captureForm?: string | null;
+  /** 宿主：DONOR 供体域 / RECIPIENT 受体域（表单划分） */
+  hostType?: "DONOR" | "RECIPIENT" | null;
 }
 
 /** 是否可用于开填（头版本已发布，或同 key 另有已发布版） */
@@ -100,7 +102,7 @@ export function isCompositeTemplate(t: NhpTemplateListItem): boolean {
   return ft === "TEMPLATE" || ft === "COMPOSITE" || kd === "COMPOSITE";
 }
 
-/** 已发布可指派模板（原子 + 组合；与模板发布页「已发布」口径一致） */
+/** 已发布可指派模板（原子 + 组合；与表单发布页「已发布」口径一致） */
 export async function fetchAssignableNhpTemplates(): Promise<NhpTemplateListItem[]> {
   const all = await fetchNhpTemplates("ALL");
   return all.filter(isFillablePublished);
@@ -128,6 +130,7 @@ export interface NhpFormTemplate extends FormTemplate {
   origin?: NhpTemplateOrigin;
   dictKey?: string;
   domainCode?: string;
+  hostType?: "DONOR" | "RECIPIENT" | null;
   atoms?: NhpAtomRef[];
   referencedBy?: NhpAtomReferencedBy[];
   locked?: boolean;
@@ -192,6 +195,7 @@ export async function createNhpAtom(body: {
   title: string;
   formType?: "DOMAIN" | "MODULE";
   dictKey?: string;
+  hostType?: "DONOR" | "RECIPIENT";
 }): Promise<NhpFormTemplate> {
   return authHttp.post<Result<NhpFormTemplate>>("/nhp/templates/atom", body).then(({ data }) => data.data);
 }
@@ -219,9 +223,12 @@ export async function generateFromDict(
     .then(({ data }) => data.data);
 }
 
-export async function publishNhpTemplate(formKey: string): Promise<NhpTemplateListItem | void> {
+export async function publishNhpTemplate(
+  formKey: string,
+  hostType?: "DONOR" | "RECIPIENT",
+): Promise<NhpTemplateListItem | void> {
   return authHttp
-    .post<Result<NhpTemplateListItem>>(`/nhp/templates/${formKey}/publish`)
+    .post<Result<NhpTemplateListItem>>(`/nhp/templates/${formKey}/publish`, hostType ? { hostType } : {})
     .then(({ data }) => data.data);
 }
 
@@ -256,7 +263,7 @@ export async function importNhpBuiltinSeedTemplates(): Promise<NhpBuiltinSeedImp
   return { dictionary, atoms };
 }
 
-/** 模板发布页导入成功摘要 */
+/** 表单发布页导入成功摘要 */
 export function formatBuiltinSeedImportToast(r: NhpBuiltinSeedImportResult): string {
   const d = r.dictionary;
   const inserted = d.fieldsInserted ?? 0;
@@ -304,6 +311,20 @@ export async function deleteNhpTemplateAllVersions(formKey: string): Promise<{
   return authHttp
     .delete<Result<{ formKey: string; deletedCount: number; blocked?: string[] }>>(
       `/nhp/templates/${encodeURIComponent(formKey)}`,
+    )
+    .then(({ data }) => data.data);
+}
+
+/** 批量软删模板（按 formKey 删全部活跃版本）；被引用版本跳过并汇总 */
+export async function batchDeleteNhpTemplates(formKeys: string[]): Promise<{
+  deletedCount: number;
+  deletedKeys?: string[];
+  blocked?: string[];
+}> {
+  return authHttp
+    .post<Result<{ deletedCount: number; deletedKeys?: string[]; blocked?: string[] }>>(
+      "/nhp/templates/actions/batch-delete",
+      { formKeys },
     )
     .then(({ data }) => data.data);
 }

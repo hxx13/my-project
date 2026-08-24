@@ -116,87 +116,25 @@ public class CageBoxActionController {
     // ── 笼盒关联笼位（2026-07-30 新增）──
 
     @PostMapping("/bind")
-    @Operation(summary = "扫码后将笼盒关联到指定笼位，成功后刷新房间缓存")
+    @Operation(summary = "已退役：扫码绑定已被预约/分配流程取代")
     public Result<Map<String, Object>> bind(@RequestBody Map<String, Object> body,
                                             HttpServletRequest request) {
         User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
         if (user == null) return Result.fail(401, "未登录");
-
-        String animalCageIdStr = str(body, "animalCageId");
-        String cageBoxCode = str(body, "cageBoxCode");
-        if (anyBlank(animalCageIdStr, cageBoxCode))
-            return Result.fail(400, "animalCageId, cageBoxCode 均为必填");
-
-        Long animalCageId = toLong(animalCageIdStr);
-        if (animalCageId == null) return Result.fail(400, "animalCageId 格式错误");
-
-        Long roomId = toLong(str(body, "roomId"));
-
-        boolean ok = aroService.saveCageRelatedBox(animalCageId, cageBoxCode);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("animalCageId", animalCageId);
-        result.put("cageBoxCode", cageBoxCode);
-        result.put("success", ok);
-        log.info("[cage-box-bind] user={} animalCageId={} cageBoxCode={} roomId={} ok={}",
-                user.getId(), animalCageId, cageBoxCode, roomId, ok);
-        if (ok) {
-            // 同步刷新缓存，确保前端重读时已是最新数据
-            if (roomId != null) {
-                try {
-                    cageShelfService.forceRefreshAfterMutation(roomId);
-                    log.info("[cage-box-bind] 缓存刷新完成 roomId={}", roomId);
-                } catch (Exception e) {
-                    log.warn("[cage-box-bind] 缓存刷新失败 roomId={} err={}", roomId, e.getMessage());
-                }
-            }
-            return Result.success(result);
-        }
-        String aroMsg = aroService.getLastAroErrorMessage();
-        return Result.error(aroMsg != null && !aroMsg.isBlank() ? aroMsg : "课题组与AUP不符");
+        log.info("[cage-box-bind] 退役拒绝 user={}", user.getId());
+        return Result.fail(410, "扫码绑定已退役，请使用预约/分配流程");
     }
 
     // ── 笼盒解绑（2026-07-31）──
 
     @PostMapping("/unbind")
-    @Operation(summary = "解绑笼盒（批量删除笼盒关联），成功后刷新房间缓存")
+    @Operation(summary = "已退役：扫码绑定已被预约/分配流程取代")
     public Result<Map<String, Object>> unbind(@RequestBody Map<String, Object> body,
                                               HttpServletRequest request) {
         User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
         if (user == null) return Result.fail(401, "未登录");
-
-        Object idsObj = body.get("animalCageIdList");
-        if (!(idsObj instanceof List<?> list) || list.isEmpty())
-            return Result.fail(400, "animalCageIdList 不能为空");
-
-        List<Long> animalCageIdList = new ArrayList<>();
-        for (Object item : list) {
-            Long id = toLong(String.valueOf(item).trim());
-            if (id != null) animalCageIdList.add(id);
-        }
-        if (animalCageIdList.isEmpty()) return Result.fail(400, "无有效笼位ID");
-
-        Long roomId = toLong(str(body, "roomId"));
-
-        boolean ok = aroService.unbindCageBox(animalCageIdList);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("animalCageIdList", animalCageIdList);
-        result.put("success", ok);
-        log.info("[cage-box-unbind] user={} ids={} roomId={} ok={}",
-                user.getId(), animalCageIdList, roomId, ok);
-        if (ok) {
-            // 同步刷新缓存，确保前端重读时已是最新数据
-            if (roomId != null) {
-                try {
-                    cageShelfService.forceRefreshAfterMutation(roomId);
-                    log.info("[cage-box-unbind] 缓存刷新完成 roomId={}", roomId);
-                } catch (Exception e) {
-                    log.warn("[cage-box-unbind] 缓存刷新失败 roomId={} err={}", roomId, e.getMessage());
-                }
-            }
-            return Result.success(result);
-        }
-        String aroMsg = aroService.getLastAroErrorMessage();
-        return Result.error(aroMsg != null && !aroMsg.isBlank() ? aroMsg : "解绑失败");
+        log.info("[cage-box-unbind] 退役拒绝 user={}", user.getId());
+        return Result.fail(410, "扫码绑定已退役，请使用预约/分配流程");
     }
 
     // ── 取消笼盒颜色/状态（2026-07-30 新增）──

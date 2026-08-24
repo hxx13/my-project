@@ -1,5 +1,5 @@
 /**
- * NHP 事件规则配置页（单页表格，对齐 22 §6.3 / 24 §3.6）。
+ * NHP 流转规则配置页（单页表格，对齐 22 §6.3 / 24 §3.6）。
  *
  * crf_event_rule：源事件类型 + 触发时机 → 下游动作（四类）。
  * 执行器 NhpEventEngine 事件入库/状态变更时查表逐条执行；前端「今日待办」统一读 crf_todo。
@@ -114,7 +114,7 @@ export default function NhpEventRulePage() {
             <button type="button" className="btn ghost small" onClick={goBack}>
               ← 返回
             </button>
-            <h1>事件规则</h1>
+            <h1>流转规则</h1>
             <div className="sub">源事件 + 触发时机 → 下游动作 · 执行器 NhpEventEngine · 待办写 crf_todo</div>
           </div>
         </div>
@@ -122,7 +122,7 @@ export default function NhpEventRulePage() {
         <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="aup-wb-panel">
             <div className="aup-wb-panel-hd">
-              <span className="title">事件规则（crf_event_rule）</span>
+              <span className="title">流转规则（crf_event_rule）</span>
               <span className="aup-wb-chip muted">共 {rules.length} 条</span>
             </div>
             <div className="aup-wb-table-wrap" style={{ marginTop: 8 }}>
@@ -148,7 +148,7 @@ export default function NhpEventRulePage() {
                     </tr>
                   ) : rules.length === 0 ? (
                     <tr>
-                      <td colSpan={6} style={{ padding: 28, textAlign: "center", color: "var(--muted)" }}>暂无事件规则</td>
+                      <td colSpan={6} style={{ padding: 28, textAlign: "center", color: "var(--muted)" }}>暂无流转规则</td>
                     </tr>
                   ) : (
                     rules.map((r) => (

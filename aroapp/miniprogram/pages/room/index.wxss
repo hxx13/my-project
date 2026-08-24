@@ -662,6 +662,24 @@ page {
   margin-left: 4rpx;
 }
 
+/* 审核中 */
+.delay-toggle-pending {
+  background: #fffbeb;
+  border-color: rgba(217, 119, 6, 0.35);
+}
+.delay-toggle-pending .delay-toggle-label {
+  color: #92400e;
+}
+
+/* 已通过 */
+.delay-toggle-approved {
+  background: #f0fdf4;
+  border-color: rgba(22, 163, 74, 0.35);
+}
+.delay-toggle-approved .delay-toggle-label {
+  color: #166534;
+}
+
 .delay-option-list {
   margin-top: 16rpx;
 }

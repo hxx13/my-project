@@ -35,9 +35,9 @@
     </select>
 
     <select id="selectCandidatesByUserIds" resultType="com.example.demo.modules.aup.dto.ExpertCandidate">
-        SELECT p.user_id AS userId, COALESCE(p.name, p.user_id) AS name, p.department_name AS dept
-        FROM aro_personnel p
-        WHERE p.user_id IN
+        SELECT p.staff_id AS userId, p.name AS name, p.department_name AS dept
+        FROM personnel p
+        WHERE p.staff_id IN
         <foreach collection="userIds" item="uid" open="(" separator="," close=")">
             #{uid}
         </foreach>

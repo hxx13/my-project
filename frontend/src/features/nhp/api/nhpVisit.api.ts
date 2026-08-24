@@ -1,5 +1,5 @@
 /**
- * NHP 访视/时点 API 层。
+ * NHP 访视时点 API 层。
  *
  * 对接后端契约（后端未实现，前端按 22 §2.1 先行定义）：
  * - crf_visit：TP01~TP12 定义 + event_anchor/frequency 归一化列
@@ -80,27 +80,12 @@ export interface NhpVisit {
   seq?: number;
 }
 
-/** timepoint 归一化映射（crf_timepoint_map 一行） */
-export interface NhpTimepointMapEntry {
-  id: number;
-  /** 原始 timepoint 文案（如「术前1月每2-3d」） */
-  rawValue: string;
-  eventAnchor: string;
-  frequency: string;
-  tpCode?: string | null;
-  domain?: string;
-}
-
 export async function fetchNhpVisits(): Promise<NhpVisit[]> {
   return authHttp.get<Result<NhpVisit[]>>("/nhp/visits").then(({ data }) => data.data);
 }
 
 export async function updateNhpVisit(id: number, patch: Partial<NhpVisit>): Promise<NhpVisit> {
   return authHttp.put<Result<NhpVisit>>(`/nhp/visits/${id}`, patch).then(({ data }) => data.data);
-}
-
-export async function fetchNhpTimepointMap(): Promise<NhpTimepointMapEntry[]> {
-  return authHttp.get<Result<NhpTimepointMapEntry[]>>("/nhp/timepoint-map").then(({ data }) => data.data);
 }
 
 /** 采集形态（表单-事件指派级，V2）：PANEL 事件面板 / LEDGER 台账 / SERIES 序列网格 */

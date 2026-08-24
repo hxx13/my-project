@@ -302,7 +302,9 @@
   <view class="pop-root">
     <view class="pop-top">
       <text class="pop-title">确认提交申领</text>
-      <text class="pop-sub">请核对以下物品</text>
+      <text wx:if="{{ showPickupTimePicker }}" class="pop-sub">预约申领将在预约时间前提前通知审核人，审核通过后按时领取</text>
+      <text wx:else class="pop-sub">请核对以下物品</text>
+      <text wx:if="{{ willSplit || multiIndependent }}" class="pop-split-hint">{{ willSplit ? '含独立下单物资，将拆分为多份申领单' : '多个独立下单物资将分别生成申领单' }}</text>
     </view>
     <scroll-view scroll-y class="pop-scroll">
       <view wx:for="{{ confirmLines }}" wx:key="id" class="confirm-line">
@@ -314,11 +316,81 @@
           <text class="confirm-qty">×{{ item.qty }}</text>
         </view>
       </view>
+      <view wx:if="{{ showPickupTimePicker }}" class="pickup-section">
+        <text class="pickup-section-title">选择预约领取日期</text>
+        <view class="pickup-presets">
+          <view class="pickup-preset {{ pickupPreset === 'dayafter' ? 'pickup-preset-on' : '' }}" bindtap="onPickupPreset" data-preset="dayafter">后天</view>
+        </view>
+        <picker mode="date" value="{{ pickupDate }}" start="{{ minPickupDate }}" bindchange="onPickupDateChange">
+          <view class="pickup-preset pickup-preset-custom">自定义日期 {{ pickupDate || '' }}</view>
+        </picker>
+      </view>
+      <view wx:elif="{{ pickupTimeLabel }}" class="pickup-label-row">
+        <text class="pickup-label">{{ pickupTimeLabel }}</text>
+        <text class="pickup-label-edit" bindtap="onEditPickup">修改</text>
+      </view>
     </scroll-view>
     <view class="pop-foot">
       <view class="pop-btn ghost" bindtap="closeConfirm">取消</view>
-      <view class="pop-btn primary {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="confirmSubmit">
-        {{ submitting ? '提交中…' : '确认提交' }}
+      <view wx:if="{{ !showPickupTimePicker }}" class="pop-btn outline" bindtap="onReservePickup">预约领取</view>
+      <view wx:if="{{ showPickupTimePicker }}" class="pop-btn ghost" bindtap="onPickupBack">返回</view>
+      <view class="pop-btn primary {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="onConfirmFinal">
+        {{ submitting ? '提交中…' : (showPickupTimePicker ? '确认预约提交' : '立即提交') }}
+      </view>
+    </view>
+  </view>
+</van-popup>
+
+<van-popup
+  show="{{ mergeDialogShow }}"
+  position="center"
+  round
+  closeable
+  bind:close="closeMergeDialog"
+  custom-style="width:92%;max-width:680rpx;max-height:76vh;padding:0;"
+>
+  <view class="pop-root">
+    <view class="pop-top">
+      <text class="pop-title">您还有待处理的申领单，是否合并？</text>
+      <text class="pop-sub">合并后按审核流程与独立下单规则自动归类</text>
+      <text wx:if="{{ willSplit || multiIndependent }}" class="pop-split-hint">{{ willSplit ? '含独立下单物资，将拆分为多份申领单' : '多个独立下单物资将分别生成申领单' }}</text>
+    </view>
+    <scroll-view scroll-y class="pop-scroll">
+      <view
+        wx:for="{{ mergePendingRequests }}"
+        wx:key="idStr"
+        class="merge-req-row"
+        data-id="{{ item.idStr }}"
+        bindtap="onMergeSelect"
+      >
+        <view class="merge-radio {{ mergeSelectedId === item.idStr ? 'merge-radio-on' : '' }}" />
+        <view class="merge-req-mid">
+          <text class="merge-req-title {{ mergeSelectedId === item.idStr ? 'merge-req-title-on' : '' }}">单号 …{{ item.shortId }}</text>
+          <text class="merge-req-meta">{{ item.metaText }}</text>
+          <text wx:if="{{ item.pickupText }}" class="merge-req-pickup">{{ item.pickupText }}</text>
+        </view>
+      </view>
+      <!-- 合并弹窗预约日期面板 -->
+      <view wx:if="{{ mergeShowPickupPicker }}" class="pickup-section">
+        <text class="pickup-section-title">选择预约领取日期</text>
+        <view class="pickup-presets">
+          <view class="pickup-preset {{ pickupPreset === 'dayafter' ? 'pickup-preset-on' : '' }}" bindtap="onMergePickupPreset" data-preset="dayafter">后天</view>
+        </view>
+        <picker mode="date" value="{{ pickupDate }}" start="{{ minPickupDate }}" bindchange="onMergePickupDateChange">
+          <view class="pickup-preset pickup-preset-custom">自定义日期 {{ pickupDate || '' }}</view>
+        </picker>
+      </view>
+      <view wx:elif="{{ pickupTimeLabel }}" class="pickup-label-row">
+        <text class="pickup-label">合并后将使用预约时间：{{ pickupTimeLabel }}</text>
+        <text class="pickup-label-edit" bindtap="onMergeEditPickup">修改</text>
+      </view>
+    </scroll-view>
+    <view class="pop-foot">
+      <view class="pop-btn ghost {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="onMergeCreateNew">直接新建</view>
+      <view wx:if="{{ !mergeShowPickupPicker }}" class="pop-btn outline {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="onMergeReservePickup">预约领取</view>
+      <view wx:if="{{ mergeShowPickupPicker }}" class="pop-btn ghost {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="onMergePickupBack">返回</view>
+      <view class="pop-btn primary {{ submitting ? 'pop-btn-disabled' : '' }}" bindtap="onMergeConfirm">
+        {{ submitting ? '合并中…' : '合并到选中单' }}
       </view>
     </view>
   </view>

@@ -3,8 +3,10 @@
 <mapper namespace="com.example.demo.modules.aup.mapper.FormSectionMapper">
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO form_section (template_id, code, label, sort_order, subdivisible, show_when, highlight)
-        VALUES (#{templateId}, #{code}, #{label}, #{sortOrder}, #{subdivisible}, #{showWhen}, #{highlight})
+        INSERT INTO form_section (template_id, code, label, sort_order, subdivisible, show_when
+        <if test="highlight != null">, highlight</if>)
+        VALUES (#{templateId}, #{code}, #{label}, #{sortOrder}, #{subdivisible}, #{showWhen}
+        <if test="highlight != null">, #{highlight}</if>)
     </insert>
 
     <select id="listByTemplateId" resultType="com.example.demo.modules.aup.entity.FormSection">

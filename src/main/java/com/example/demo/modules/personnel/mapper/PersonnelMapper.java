@@ -21,6 +21,9 @@ public interface PersonnelMapper {
     @Select("SELECT * FROM personnel WHERE aro_user_id = #{aroUserId} LIMIT 1")
     Personnel findByAroUserId(@Param("aroUserId") String aroUserId);
 
+    @Select("SELECT * FROM personnel WHERE job_number = #{jobNumber}")
+    List<Personnel> findByJobNumber(@Param("jobNumber") String jobNumber);
+
     /**
      * 按账号 id 批量查人员（staff_id 或 aro_user_id 命中均可），供展示名统一解析。
      */

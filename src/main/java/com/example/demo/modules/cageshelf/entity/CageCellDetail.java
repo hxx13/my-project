@@ -1,11 +1,15 @@
 package com.example.demo.modules.cageshelf.entity;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+
 /**
  * 笼位详情 — animal_cage_id 为键存储业务数据内容。
  * 所有字段使用本地规范命名（snake_case），ARO 脏字段名通过映射表翻译后写入。
  */
 public class CageCellDetail {
 
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long animalCageId;
 
     // 笼位状态
@@ -19,6 +23,7 @@ public class CageCellDetail {
     private Boolean hasCageBox;
     private String cageBoxCode;
     private String cageBoxName;
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long cageBoxId;          // ARO 笼盒ID，outbox 投递时直接使用无需再解析
 
     // 人员与课题组
@@ -43,6 +48,7 @@ public class CageCellDetail {
     private Boolean needsSpecialFeeding;
     private Boolean needsTransfer;
     private Boolean hasHealthAbnormality;
+    private Boolean needsCohabitation;   // 需合笼（本地状态标记，无 ARO 源）
     private String cohabitationDate;
     private String specialBreedingName;
     private String specialBreedingDesc;
@@ -143,6 +149,9 @@ public class CageCellDetail {
 
     public Boolean getHasHealthAbnormality() { return hasHealthAbnormality; }
     public void setHasHealthAbnormality(Boolean v) { this.hasHealthAbnormality = v; }
+
+    public Boolean getNeedsCohabitation() { return needsCohabitation; }
+    public void setNeedsCohabitation(Boolean v) { this.needsCohabitation = v; }
 
     public String getCohabitationDate() { return cohabitationDate; }
     public void setCohabitationDate(String v) { this.cohabitationDate = v; }

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageFormAuditLogMapper">
+
+    <resultMap id="CageFormAuditLogMap" type="com.example.demo.modules.cageshelf.entity.CageFormAuditLog">
+        <id property="id" column="id"/>
+        <result property="category" column="category"/>
+        <result property="changeType" column="change_type"/>
+        <result property="entity" column="entity"/>
+        <result property="entityId" column="entity_id"/>
+        <result property="entityCode" column="entity_code"/>
+        <result property="entityName" column="entity_name"/>
+        <result property="targetType" column="target_type"/>
+        <result property="targetId" column="target_id"/>
+        <result property="targetLabel" column="target_label"/>
+        <result property="fieldCode" column="field_code"/>
+        <result property="fieldName" column="field_name"/>
+        <result property="beforeValue" column="before_value"/>
+        <result property="afterValue" column="after_value"/>
+        <result property="beforeJson" column="before_json"/>
+        <result property="afterJson" column="after_json"/>
+        <result property="operatorId" column="operator_id"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="FilterWhere">
+        <where>
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+            <if test="changeType != null and changeType != ''">
+                AND change_type = #{changeType}
+            </if>
+            <if test="entity != null and entity != ''">
+                AND entity = #{entity}
+            </if>
+            <if test="operatorId != null and operatorId != ''">
+                AND operator_id = #{operatorId}
+            </if>
+            <if test="dateFrom != null and dateFrom != ''">
+                AND created_at &gt;= #{dateFrom}
+            </if>
+            <if test="dateTo != null and dateTo != ''">
+                AND created_at &lt;= #{dateTo}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    entity_code LIKE CONCAT('%', #{keyword}, '%')
+                    OR entity_name LIKE CONCAT('%', #{keyword}, '%')
+                    OR field_code LIKE CONCAT('%', #{keyword}, '%')
+                    OR field_name LIKE CONCAT('%', #{keyword}, '%')
+                    OR target_label LIKE CONCAT('%', #{keyword}, '%')
+                    OR before_value LIKE CONCAT('%', #{keyword}, '%')
+                    OR after_value LIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+        </where>
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_form_audit_log (
+            category, change_type, entity, entity_id, entity_code, entity_name,
+            target_type, target_id, target_label,
+            field_code, field_name, before_value, after_value, before_json, after_json,
+            operator_id, created_at
+        ) VALUES (
+            #{category}, #{changeType}, #{entity}, #{entityId}, #{entityCode}, #{entityName},
+            #{targetType}, #{targetId}, #{targetLabel},
+            #{fieldCode}, #{fieldName}, #{beforeValue}, #{afterValue}, #{beforeJson}, #{afterJson},
+            #{operatorId}, NOW()
+        )
+    </insert>
+
+    <select id="listFiltered" resultMap="CageFormAuditLogMap">
+        SELECT *
+        FROM cage_form_audit_log
+        <include refid="FilterWhere"/>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countFiltered" resultType="long">
+        SELECT COUNT(*)
+        FROM cage_form_audit_log
+        <include refid="FilterWhere"/>
+    </select>
+
+    <select id="countByEntity" resultType="map">
+        SELECT entity AS entity, COUNT(*) AS cnt
+        FROM cage_form_audit_log
+        <where>
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+        </where>
+        GROUP BY entity
+        ORDER BY cnt DESC
+    </select>
+</mapper>

@@ -35,6 +35,7 @@ public class CageCellIndexController {
     private final com.example.demo.modules.cageshelf.service.CageCellDetailService detailService;
     private final StudentCageShelfService studentCageShelfService;
     private final UserDisplayNameService userDisplayNameService;
+    private final com.example.demo.modules.cageshelf.service.CageFormAuditService auditService;
 
     public CageCellIndexController(AuthContextService authContextService,
                                    CageCellIndexService cellIndexService,
@@ -43,7 +44,8 @@ public class CageCellIndexController {
                                    com.example.demo.modules.cageshelf.service.OutboxService outboxService,
                                    com.example.demo.modules.cageshelf.service.CageCellDetailService detailService,
                                    StudentCageShelfService studentCageShelfService,
-                                   UserDisplayNameService userDisplayNameService) {
+                                   UserDisplayNameService userDisplayNameService,
+                                   com.example.demo.modules.cageshelf.service.CageFormAuditService auditService) {
         this.authContextService = authContextService;
         this.cellIndexService = cellIndexService;
         this.detailMapper = detailMapper;
@@ -52,6 +54,7 @@ public class CageCellIndexController {
         this.detailService = detailService;
         this.studentCageShelfService = studentCageShelfService;
         this.userDisplayNameService = userDisplayNameService;
+        this.auditService = auditService;
     }
 
     private String operatorDisplayName(User user) {
@@ -194,7 +197,7 @@ public class CageCellIndexController {
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return Result.fail(403, denied.getMessage());
 
-        String action = str(body, "action"); // DIVIDE / SPECIAL_BREEDING / HEALTH_CHECK / BIND / UNBIND
+        String action = str(body, "action"); // DIVIDE / SPECIAL_BREEDING / HEALTH_CHECK / ALLOCATE / CANCEL_ALLOCATE（BIND/UNBIND 已退役）
         Long animalCageId = toLong(body.get("animalCageId"));
         String cageBoxCode = str(body, "cageBoxCode");
         if (animalCageId == null) return Result.fail(400, "animalCageId 必填");
@@ -219,16 +222,8 @@ public class CageCellIndexController {
                 detailService.toggleStatus(animalCageId, "has_health_abnormality");
                 aroEndpoint = "updateAnimalCage";
             }
-            case "BIND" -> {
-                if (cageBoxCode == null || cageBoxCode.isBlank())
-                    return Result.fail(400, "BIND 操作需要 cageBoxCode");
-                detailService.bindCageBox(animalCageId, cageBoxCode);
-                aroEndpoint = "cageRelatedBox";
-                outboxPayload.put("cage_box_code", cageBoxCode);
-            }
-            case "UNBIND" -> {
-                detailService.unbindCageBox(animalCageId);
-                aroEndpoint = "unbindCageBox";
+            case "BIND", "UNBIND" -> {
+                return Result.fail(410, "扫码绑定已退役，请使用预约/分配流程");
             }
             case "ALLOCATE" -> {
                 detailService.allocate(animalCageId);
@@ -260,7 +255,7 @@ public class CageCellIndexController {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("ok", true);
-        result.put("animalCageId", animalCageId);
+        result.put("animalCageId", animalCageId == null ? null : String.valueOf(animalCageId));
         result.put("action", action);
         result.put("local", true);
         result.put("syncedToAro", false); // 异步，稍后投递
@@ -316,6 +311,8 @@ public class CageCellIndexController {
         if (result == null || result.isEmpty()) {
             return Result.error("未找到该 animalCageId: " + animalCageId);
         }
+        // ARO 雪花 ID 以字符串返回，避免前端 JSON Number 精度丢失
+        CageCellIndexService.stringifySnowflakeIds(result, "animalCageId", "shelveId", "roomId");
         return Result.success(result);
     }
 

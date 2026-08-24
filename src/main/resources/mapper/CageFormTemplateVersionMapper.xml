@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageFormTemplateVersionMapper">
+
+    <resultMap id="CageFormTemplateVersionMap" type="com.example.demo.modules.cageshelf.entity.CageFormTemplateVersion">
+        <id property="id" column="id"/>
+        <result property="formKey" column="form_key"/>
+        <result property="versionNo" column="version_no"/>
+        <result property="fieldCount" column="field_count"/>
+        <result property="publishedBy" column="published_by"/>
+        <result property="publishedAt" column="published_at"/>
+    </resultMap>
+
+    <select id="selectLatest" resultMap="CageFormTemplateVersionMap">
+        SELECT id, form_key, version_no, field_count, published_by, published_at
+        FROM cage_form_template_version
+        WHERE form_key = #{formKey}
+        ORDER BY version_no DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectAllByFormKey" resultMap="CageFormTemplateVersionMap">
+        SELECT id, form_key, version_no, field_count, published_by, published_at
+        FROM cage_form_template_version
+        WHERE form_key = #{formKey}
+        ORDER BY version_no DESC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_form_template_version (form_key, version_no, field_count, published_by, published_at)
+        VALUES (#{formKey}, #{versionNo}, #{fieldCount}, #{publishedBy}, NOW())
+    </insert>
+</mapper>

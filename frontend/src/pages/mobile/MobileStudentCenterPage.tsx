@@ -684,9 +684,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
           setScanLookupLoading(true);
           try {
             const result = await lookupCode(trimmed);
-            if (result.type === "CAGE_BOX" && result.cageBox) {
-              const cb = result.cageBox;
-              console.log('[scan-lookup] CAGE_BOX found:', JSON.stringify(cb));
+            if (result.type === "CAGE_CELL" && result.cageCell) {
+              const cb = result.cageCell;
               setCageJumpTarget({
                 shelveId: cb.shelveId != null ? String(cb.shelveId) : undefined,
                 x: Number(cb.positionX),
@@ -694,7 +693,18 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
                 campusName: cb.campusName,
                 roomName: cb.roomName,
               });
-              console.log('[scan-lookup] setCageJumpTarget + setActiveTab("cage")');
+              setActiveTab("cage");
+            } else if (result.type === "LEGACY_CAGE_BOX") {
+              await appAlert(result.message || "旧盒码已废弃，请扫笼位码");
+            } else if (result.type === "CAGE_BOX" && result.cageBox) {
+              const cb = result.cageBox;
+              setCageJumpTarget({
+                shelveId: cb.shelveId != null ? String(cb.shelveId) : undefined,
+                x: Number(cb.positionX),
+                y: Number(cb.positionY),
+                campusName: cb.campusName,
+                roomName: cb.roomName,
+              });
               setActiveTab("cage");
             } else if (result.type === "ASSET" && result.asset) {
               const assetCode = (result.asset as any).assetCode || trimmed;

@@ -13,5 +13,8 @@ public class DictItem {
     /** 展示文本 */
     private String label;
     private Integer sortOrder;
+    /** 逐项校对四态 CONFIRM/MODIFY/DELETE/QUESTION */
+    private String verdict;
+    private String verdictNote;
     private LocalDateTime createdAt;
 }

@@ -4,7 +4,6 @@ import com.example.demo.common.logging.annotation.StartupPhase;
 import com.example.demo.common.logging.model.StartupContext;
 import com.example.demo.common.logging.model.StartupResult;
 import com.example.demo.common.logging.model.StartupRunner;
-import com.example.demo.modules.aup.service.AupDefaultTemplateSeeder;
 import com.example.demo.modules.aup.service.AupDemoSeeder;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 import org.springframework.beans.factory.InitializingBean;
@@ -49,18 +48,15 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
     private final DataSource dataSource;
     private final JdbcTemplate jdbcTemplate;
     private final TwinStudentViolationService twinStudentViolationService;
-    private final AupDefaultTemplateSeeder aupDefaultTemplateSeeder;
     private final AupDemoSeeder aupDemoSeeder;
 
     public EmbeddedTwinSystemCoreDdlBootstrap(DataSource dataSource,
                                                JdbcTemplate jdbcTemplate,
                                                TwinStudentViolationService twinStudentViolationService,
-                                               AupDefaultTemplateSeeder aupDefaultTemplateSeeder,
                                                AupDemoSeeder aupDemoSeeder) {
         this.dataSource = dataSource;
         this.jdbcTemplate = jdbcTemplate;
         this.twinStudentViolationService = twinStudentViolationService;
-        this.aupDefaultTemplateSeeder = aupDefaultTemplateSeeder;
         this.aupDemoSeeder = aupDemoSeeder;
     }
 
@@ -122,6 +118,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/cage-shelf-cell-snapshot.sql", ctx)) success++;
         total++; if (runScript("db/cage-shelf-bookmark.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-booking.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-booking-roomid-bigint.sql", ctx)) success++;
         total++; if (runScript("db/student-room-pin.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-twin-swipe-alert-rule.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-swipe-alert-notify-site.sql", ctx)) success++;
@@ -147,6 +144,15 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-aup-demo-flag.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aup-review-item-role.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aup-snapshot-draft-source.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-config-folder.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-codelist-version.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-field-def.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-atom-composite.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-config-change-log.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-field-dict-version.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-dict-source.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-dict-item-value-width.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-field-role.sql", ctx)) success++;
         total++; if (runScript("db/migration/V20260815__person_identity_recreate.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-identity.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-drop-person-identity-scope.sql", ctx)) success++;
@@ -154,10 +160,12 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-personnel-unify.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-drop-personnel-student-id.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-migrate-student-notify-keys.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-fix-iam-binding-staff-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-notify-binding.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-migrate-notify-binding.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-personnel-room-authorization.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-personnel-role.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-identity-migrate-to-personnel-id.sql", ctx)) success++;
-        total++; if (seedAupDefaultTemplate(ctx)) success++;
         total++; if (seedAupDemo(ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_baseline_multi.sql", ctx)) success++;
@@ -261,6 +269,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-nhp-codelist-folder.sql", ctx)) success++;
         // 模板章节 code 加宽：对齐 snake_case 原子名（seedAtomsFromPriorityJson）
         total++; if (runScript("db/bootstrap-nhp-template-section-code.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-nhp-attachment.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");
@@ -270,21 +279,6 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         }
         return StartupResult.failed(success + "/" + total + " 就绪，"
                 + (total - success) + " 个失败 (权限不足或表已存在)", null);
-    }
-
-    /** AUP 默认模板种子（环境变量/资源）；幂等，未配置或已有版本时为空操作，不算失败。 */
-    private boolean seedAupDefaultTemplate(StartupContext ctx) {
-        try {
-            if (ctx == null) {
-                aupDefaultTemplateSeeder.seedIfNeeded();
-            } else {
-                ctx.subtask("aup-default-template", aupDefaultTemplateSeeder::seedIfNeeded);
-            }
-            return true;
-        } catch (Exception ex) {
-            log.warn("AUP default template seed skipped: {}", ex.getMessage());
-            return true;
-        }
     }
 
     /** AUP 演示示例种子；幂等，已存在演示记录时为空操作，失败不阻塞启动。 */

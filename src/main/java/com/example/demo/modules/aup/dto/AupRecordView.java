@@ -19,5 +19,6 @@ public class AupRecordView {
     private String createdBy;
     private String projectName;
     private String registerNo;
+    private String projectGroupName;
     private Integer isDemo;
 }

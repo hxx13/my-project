@@ -5,7 +5,6 @@
 import { useState } from "react";
 import type { FormSection } from "../schema/formTemplate";
 
-import { appConfirm } from "@/lib/appDialog";
 interface Props {
   sections: FormSection[];
   selectedFieldKey: string | null;
@@ -62,9 +61,9 @@ export default function SectionTree({
                 type="button"
                 className="aup-iconbtn danger"
                 title="删除板块"
-                onClick={async (e) => {
+                onClick={(e) => {
                   e.stopPropagation();
-                  if (await appConfirm(`删除板块 ${sec.code}？`)) onRemoveSection(sec.code);
+                  onRemoveSection(sec.code);
                 }}
               >
                 ×
@@ -81,14 +80,9 @@ export default function SectionTree({
                         type="button"
                         className="aup-iconbtn danger"
                         title="删除子模块"
-                        onClick={async (e) => {
+                        onClick={(e) => {
                           e.stopPropagation();
-                          const n = sub.fields?.length ?? 0;
-                          const tip =
-                            n > 0
-                              ? `删除子模块 ${sub.code}？其下 ${n} 道题目将一并删除。`
-                              : `删除子模块 ${sub.code}？`;
-                          if (await appConfirm(tip)) onRemoveSubsection(sec.code, sub.code);
+                          onRemoveSubsection(sec.code, sub.code);
                         }}
                       >
                         ×

@@ -1,10 +1,9 @@
 /**
  * 小程序环境切换（无需重新上传正式版）
  *
- * 原理：每个微信云环境内的 springProxy 配置不同 SPRING_BASE_URL；
- * 客户端只切换 cloudEnvId（storage 键 aroapp_env_override）。
+ * 原理：客户端通过 apiBaseUrl 直连后端 Spring 服务（wx.request），不再经过微信云函数代理。
+ * 切换环境即切换 apiBaseUrl（storage 键 aroapp_env_override）。
  *
- * 运维：云开发控制台为 test/dev 环境设置 SPRING_BASE_URL，并将环境 ID 填入下方 PRESETS。
  * 切换后请完全关闭小程序再打开。
  */
 
@@ -13,23 +12,19 @@ const STORAGE_KEY = 'aroapp_env_override';
 const PRESETS = {
   prod: {
     id: 'prod',
-    label: '生产',
-    cloudEnvId: 'aroapp-d0gf62u0p13ac9c9c',
-    hint: 'ECS 生产 Spring',
-  },
-  test: {
-    id: 'test',
-    label: '测试',
-    // TODO: 在云开发创建测试环境后，将下方占位 ID 替换为真实 cloudEnvId
-    cloudEnvId: 'aroapp-test-REPLACE_ME',
-    hint: '测试/staging Spring',
+    label: '正式',
+    apiBaseUrl: 'https://aroultra.shsmu.edu.cn',
+    hint: '生产环境',
+    jtuAccount: '',
+    jtuPassword: '',
   },
   dev: {
     id: 'dev',
     label: '开发',
-    // TODO: 可选；指向 frp 穿透的开发机时，将下方占位 ID 替换为真实 cloudEnvId
-    cloudEnvId: 'aroapp-dev-REPLACE_ME',
-    hint: '开发机（需 frp）',
+    apiBaseUrl: 'http://localhost:8081',
+    hint: '本地开发机',
+    jtuAccount: '15001771038',
+    jtuPassword: '88888888',
   },
 };
 
@@ -55,8 +50,16 @@ function getEffectivePresetId() {
   return getDefaultPresetId();
 }
 
+function getEffectiveApiBaseUrl() {
+  return PRESETS[getEffectivePresetId()].apiBaseUrl;
+}
+
+/**
+ * @deprecated 迁移期兼容别名，始终返回生产环境 cloudEnvId。
+ *             新代码请使用 getEffectiveApiBaseUrl()。
+ */
 function getEffectiveCloudEnvId() {
-  return PRESETS[getEffectivePresetId()].cloudEnvId;
+  return 'aroapp-d0gf62u0p13ac9c9c';
 }
 
 function setEnvOverride(id) {
@@ -88,7 +91,7 @@ function getPresetList() {
     return {
       id: p.id,
       label: p.label,
-      cloudEnvId: p.cloudEnvId,
+      apiBaseUrl: p.apiBaseUrl,
       hint: p.hint,
     };
   });
@@ -100,6 +103,7 @@ module.exports = {
   getEnvVersion: getEnvVersion,
   getDefaultPresetId: getDefaultPresetId,
   getEffectivePresetId: getEffectivePresetId,
+  getEffectiveApiBaseUrl: getEffectiveApiBaseUrl,
   getEffectiveCloudEnvId: getEffectiveCloudEnvId,
   setEnvOverride: setEnvOverride,
   clearEnvOverride: clearEnvOverride,

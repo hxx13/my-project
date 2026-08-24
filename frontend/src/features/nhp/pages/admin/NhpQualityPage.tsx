@@ -13,6 +13,7 @@ import {
   qualityEventStatusLabel,
   qualityEventTypeLabel,
 } from "../../api/nhpQuality.api";
+import NhpUserRefLabel from "../../components/NhpUserRefLabel";
 import "@/features/aup/aup.css";
 import "../../nhp.css";
 
@@ -135,7 +136,10 @@ export default function NhpQualityPage() {
                           <td>
                             <span className="aup-wb-chip muted">{qualityEventStatusLabel(e.status)}</span>
                           </td>
-                          <td style={{ color: "var(--muted)" }}>{e.reviewer ?? "—"}</td>
+                          <td style={{ color: "var(--muted)" }}>
+                            <NhpUserRefLabel name={e.reviewerName} userId={e.reviewer} inline />
+                            {!e.reviewerName && !e.reviewer ? "—" : null}
+                          </td>
                         </tr>
                       );
                     })

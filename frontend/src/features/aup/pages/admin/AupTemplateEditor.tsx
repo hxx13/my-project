@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
-  fetchAupDefaultSeed,
   fetchAupDicts,
   fetchAupTemplateById,
   publishAupTemplate,
@@ -15,7 +14,6 @@ import type {
   FieldConfig,
   FieldType,
   NoteTone,
-  OptionItem,
   ShowWhen,
   ShowWhenOp,
   FormField as FormFieldDef,
@@ -53,25 +51,6 @@ type FieldPath = { si: number; ui?: number; fi: number };
 type StructRef =
   | { kind: "section"; si: number }
   | { kind: "subsection"; si: number; ui: number };
-
-type TargetNode =
-  | { kind: "section"; si: number; code: string; label: string; secCode: string; secLabel: string }
-  | { kind: "subsection"; si: number; ui: number; code: string; label: string; secCode: string; secLabel: string }
-  | { kind: "field"; si: number; ui?: number; fi: number; code: string; label: string; secCode: string; secLabel: string };
-
-function targetKey(t: TargetNode): string {
-  return t.kind === "section"
-    ? `s:${t.si}`
-    : t.kind === "subsection"
-      ? `u:${t.si}:${t.ui}`
-      : `f:${t.si}:${t.ui ?? "-"}:${t.fi}`;
-}
-
-function targetLabel(t: TargetNode): string {
-  const kind = t.kind === "section" ? "板块" : t.kind === "subsection" ? "小节" : "题目";
-  const text = [t.code, t.label].filter(Boolean).join(" · ");
-  return `${kind} ${text}`.trim();
-}
 
 /* ---- 工具 ---- */
 function move<T>(arr: T[], i: number, dir: -1 | 1): T[] {
@@ -185,49 +164,6 @@ function buildFieldCatalog(tree: FormSection[]): FieldCatalogEntry[] {
     });
   });
   return out;
-}
-
-function collectTargets(tree: FormSection[]): TargetNode[] {
-  const out: TargetNode[] = [];
-  tree.forEach((s, si) => {
-    const secLabel = displayTitle(s.code, s.label) || `板块 ${s.code}`;
-    out.push({ kind: "section", si, code: s.code, label: s.label, secCode: s.code, secLabel });
-    (s.subsections ?? []).forEach((u, ui) => {
-      out.push({ kind: "subsection", si, ui, code: u.code, label: u.label, secCode: s.code, secLabel });
-      u.fields.forEach((f, fi) =>
-        out.push({ kind: "field", si, ui, fi, code: u.code, label: f.label, secCode: s.code, secLabel })
-      );
-    });
-    (s.fields ?? []).forEach((f, fi) =>
-      out.push({ kind: "field", si, fi, code: s.code, label: f.label, secCode: s.code, secLabel })
-    );
-  });
-  return out;
-}
-
-/**
- * 选项侧展开索引：key = `${fieldKey};;${optionValue}` → 该选项「开启后显示」的目标节点。
- * 数据源是各节点自身的 showWhen（同一份数据，两种入口）。
- */
-function buildRevealMap(tree: FormSection[]): Map<string, TargetNode[]> {
-  const m = new Map<string, TargetNode[]>();
-  const add = (node: TargetNode, sw: ShowWhen | null | undefined) => {
-    if (!sw || !sw.field || sw.value == null) return;
-    const key = `${sw.field};;${String(sw.value)}`;
-    const arr = m.get(key) ?? [];
-    arr.push(node);
-    m.set(key, arr);
-  };
-  tree.forEach((s, si) => {
-    const secLabel = displayTitle(s.code, s.label) || `板块 ${s.code}`;
-    add({ kind: "section", si, code: s.code, label: s.label, secCode: s.code, secLabel }, s.showWhen);
-    (s.subsections ?? []).forEach((u, ui) => {
-      add({ kind: "subsection", si, ui, code: u.code, label: u.label, secCode: s.code, secLabel }, u.showWhen);
-      u.fields.forEach((f, fi) => add({ kind: "field", si, ui, fi, code: u.code, label: f.label, secCode: s.code, secLabel }, f.showWhen));
-    });
-    (s.fields ?? []).forEach((f, fi) => add({ kind: "field", si, fi, code: s.code, label: f.label, secCode: s.code, secLabel }, f.showWhen));
-  });
-  return m;
 }
 
 /** 条件显示 → 人话描述（用于目标节点上的横幅） */
@@ -641,212 +577,6 @@ function TypeMenu({
 }
 
 /* =====================================================================
- * 选项编辑器（choice/checkbox）—— 一行一个中文词 + 选项侧展开
- * value 与 label 同步为输入的文本；选项文本改动时自动重写关联目标的 showWhen。
- * ================================================================== */
-function OptionsEditor({
-  options,
-  onChangeOptions,
-  onChangeOptionText,
-  fieldKey,
-  choiceType,
-  targets,
-  revealMap,
-  onApplyExpand,
-  onClearExpand,
-  editable,
-}: {
-  options: OptionItem[];
-  onChangeOptions: (o: OptionItem[]) => void;
-  onChangeOptionText: (i: number, text: string) => void;
-  fieldKey: string;
-  choiceType: ChoiceType;
-  targets: TargetNode[];
-  revealMap: Map<string, TargetNode[]>;
-  onApplyExpand: (optionValue: string, target: TargetNode) => void;
-  onClearExpand: (target: TargetNode) => void;
-  editable: boolean;
-}) {
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
-
-  const revealedFor = (value: string) => revealMap.get(`${fieldKey};;${value}`) ?? [];
-
-  return (
-    <div>
-      {options.map((o, i) => {
-        const revealed = revealedFor(o.value);
-        const open = openIdx === i;
-        const pickable = targets.filter((t) => !revealed.some((r) => targetKey(r) === targetKey(t)));
-        return (
-          <div key={i}>
-            <div className="aup-opt-row">
-              <input
-                className="aup-input"
-                placeholder="输入选项文字，如 国家专项"
-                value={o.label}
-                disabled={!editable}
-                onChange={(e) => onChangeOptionText(i, e.target.value)}
-              />
-              <input
-                className="aup-input"
-                style={{ width: 110, flex: "0 0 110px" }}
-                placeholder="分组（可选）"
-                title="排版选「分组标题」时，同分组选项聚在一组"
-                value={o.group ?? ""}
-                disabled={!editable}
-                onChange={(e) =>
-                  onChangeOptions(options.map((x, j) => (j === i ? { ...x, group: e.target.value || undefined } : x)))
-                }
-              />
-              <button
-                className={`aup-expand-pill ${revealed.length > 0 ? "on" : "off"}`}
-                disabled={!editable}
-                onClick={() => setOpenIdx(open ? null : i)}
-                title="选中此选项后，可显示指定的板块/小节/题目"
-              >
-                {revealed.length > 0 ? `开启后显示 ${revealed.length} 项 ▾` : "未开启 · 点此开启"}
-              </button>
-              <label className="aup-opt-fixed" title="固定选中：默认勾选且不可取消（如 A8 的 K 补充表）">
-                <input
-                  type="checkbox"
-                  checked={!!o.fixed}
-                  disabled={!editable}
-                  onChange={(e) => onChangeOptions(options.map((x, j) => (j === i ? { ...x, fixed: e.target.checked } : x)))}
-                />
-                <span>固定</span>
-              </label>
-              <button className="aup-iconbtn" title="上移" disabled={!editable} onClick={() => onChangeOptions(move(options, i, -1))}>↑</button>
-              <button className="aup-iconbtn" title="下移" disabled={!editable} onClick={() => onChangeOptions(move(options, i, 1))}>↓</button>
-              <button className="aup-iconbtn danger" title="删除" disabled={!editable} onClick={() => onChangeOptions(options.filter((_, j) => j !== i))}>×</button>
-            </div>
-            {open && (
-              <div className="aup-expand-panel">
-                <div className="lbl">当选择「{o.label || o.value || "…"}」后显示：</div>
-                {revealed.length === 0 && <div className="aup-muted" style={{ marginBottom: 6 }}>暂未配置，点下方「＋ 添加」选择要显示的内容。</div>}
-                {revealed.map((r) => (
-                  <div className="aup-reveal-chip" key={targetKey(r)}>
-                    <span className="kind">{r.kind === "section" ? "板块" : r.kind === "subsection" ? "小节" : "题目"}</span>
-                    <span>{[r.code, r.label].filter(Boolean).join(" · ")}</span>
-                    <button className="x" title="移除" disabled={!editable} onClick={() => onClearExpand(r)}>×</button>
-                  </div>
-                ))}
-                {pickable.length > 0 && (
-                  <div className="aup-add-reveal">
-                    <span>＋ 添加</span>
-                    <select
-                      className="aup-select"
-                      value=""
-                      disabled={!editable}
-                      onChange={(e) => {
-                        const t = pickable.find((x) => targetKey(x) === e.target.value);
-                        if (t) {
-                          onApplyExpand(o.value, t);
-                          setOpenIdx(null);
-                        }
-                      }}
-                    >
-                      <option value="">选择板块 / 小节 / 题目…</option>
-                      {Array.from(
-                        pickable.reduce((m, t) => {
-                          const g = `${t.secLabel}`;
-                          const arr = m.get(g) ?? [];
-                          arr.push(t);
-                          m.set(g, arr);
-                          return m;
-                        }, new Map<string, TargetNode[]>())
-                      ).map(([gl, items]) => (
-                        <optgroup key={gl} label={gl}>
-                          {items.map((t) => (
-                            <option key={targetKey(t)} value={targetKey(t)}>
-                              {targetLabel(t)}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-        <button
-          className="aup-btn small ghost"
-          disabled={!editable}
-          onClick={() => onChangeOptions([...options, { value: "", label: "" }])}
-        >
-          ＋ 选项
-        </button>
-        <button
-          className="aup-btn small ghost"
-          disabled={!editable}
-          title="一键生成 是/否 两项，可再改文字"
-          onClick={() => onChangeOptions([{ value: "是", label: "是" }, { value: "否", label: "否" }])}
-        >
-          ⚡ 是/否
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* =====================================================================
- * 表格列 / 组子字段的选项编辑（紧凑版：无选项侧展开，单元格选项直接渲染）
- * ================================================================== */
-function ColumnOptions({
-  field,
-  patch,
-  editable,
-}: {
-  field: FormFieldDef;
-  patch: (p: Partial<FormFieldDef>) => void;
-  editable: boolean;
-}) {
-  const opts = normalizeOptions(field.options);
-  const setOpts = (o: OptionItem[]) => patch({ options: o });
-  const setOpt = (i: number, text: string) =>
-    setOpts(opts.map((o, j) => (j === i ? { value: text, label: text } : o)));
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {opts.map((o, i) => (
-        <div key={i} className="aup-row" style={{ marginBottom: 0 }}>
-          <span className="aup-type-ic" style={{ flex: "0 0 auto" }}>•</span>
-          <input
-            className="aup-input"
-            placeholder="选项文字"
-            value={o.label}
-            disabled={!editable}
-            onChange={(e) => setOpt(i, e.target.value)}
-          />
-          <button className="aup-iconbtn" title="上移" disabled={!editable} onClick={() => setOpts(move(opts, i, -1))}>↑</button>
-          <button className="aup-iconbtn" title="下移" disabled={!editable} onClick={() => setOpts(move(opts, i, 1))}>↓</button>
-          <button className="aup-iconbtn danger" title="删除" disabled={!editable} onClick={() => setOpts(opts.filter((_, j) => j !== i))}>×</button>
-        </div>
-      ))}
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          className="aup-btn small ghost"
-          disabled={!editable}
-          onClick={() => setOpts([...opts, { value: "", label: "" }])}
-        >
-          ＋ 选项
-        </button>
-        <button
-          className="aup-btn small ghost"
-          disabled={!editable}
-          title="一键生成 是/否 两项"
-          onClick={() => setOpts([{ value: "是", label: "是" }, { value: "否", label: "否" }])}
-        >
-          ⚡ 是/否
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* =====================================================================
  * 子字段列表（table 的 columns / group 的 fields）
  * 补齐：choice/checkbox 的选项编辑、选择方式（单选/多选）、字典引用。
  * ================================================================== */
@@ -874,7 +604,6 @@ function ChildFieldRow({
   const cfg = c.config ?? {};
   const setCfg = (p: Partial<FieldConfig>) => patch({ config: { ...cfg, ...p } });
   const meta = typeMetaOf(c.type);
-  const useDict = !!c.dictKey;
   const dictsInCat = selCat ? dicts.filter((d) => (d.category || "未分类") === selCat) : dicts;
 
   return (
@@ -932,95 +661,58 @@ function ChildFieldRow({
         <div style={{ borderTop: "1px dashed #d5dbe3", marginTop: 8, paddingTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
           {meta?.hasOptions && (
             <>
-              <div className="aup-row" style={{ marginBottom: 0, alignItems: "center" }}>
-                <label>选项来源</label>
-                <button
-                  type="button"
-                  className={`aup-btn small ${useDict ? "ghost" : ""}`}
-                  style={useDict ? undefined : { background: "var(--pw)", color: "var(--p)", borderColor: "var(--p)" }}
+              <div className="aup-row" style={{ marginBottom: 0 }}>
+                <label>分类</label>
+                <select
+                  className="aup-select"
+                  value={selCat}
                   disabled={!editable}
-                  onClick={() => {
-                    const opts = normalizeOptions(c.options);
-                    patch({ dictKey: undefined, options: opts.length ? opts : [{ value: "", label: "" }] });
+                  onChange={(e) => {
+                    setSelCat(e.target.value);
                     setSelDict("");
+                    patch({ dictKey: undefined });
                   }}
                 >
-                  手动填写
-                </button>
-                <button
-                  type="button"
-                  className={`aup-btn small ${!useDict ? "ghost" : ""}`}
-                  style={!useDict ? undefined : { background: "var(--pw)", color: "var(--p)", borderColor: "var(--p)" }}
-                  disabled={!editable}
-                  onClick={() => {
-                    patch({ dictKey: "", options: undefined });
-                    setSelCat("");
-                    setSelDict("");
-                  }}
-                >
-                  从字典选择
-                </button>
+                  <option value="">选择分类…</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
               </div>
-              {useDict ? (
-                <>
-                  <div className="aup-row" style={{ marginBottom: 0 }}>
-                    <label>分类</label>
-                    <select
-                      className="aup-select"
-                      value={selCat}
-                      disabled={!editable}
-                      onChange={(e) => {
-                        setSelCat(e.target.value);
-                        setSelDict("");
-                        patch({ dictKey: undefined });
-                      }}
-                    >
-                      <option value="">选择分类…</option>
-                      {categories.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="aup-row" style={{ marginBottom: 0 }}>
-                    <label>字典</label>
-                    <select
-                      className="aup-select"
-                      value={selDict}
-                      disabled={!editable}
-                      onChange={(e) => {
-                        const dk = e.target.value;
-                        setSelDict(dk);
-                        patch({ dictKey: dk || undefined });
-                      }}
-                    >
-                      <option value="">选择字典…</option>
-                      {dictsInCat.map((d) => (
-                        <option key={d.dictKey} value={d.dictKey}>
-                          {d.name}
-                          {d.itemCount ? `（${d.itemCount} 项）` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <ColumnOptions field={c} patch={patch} editable={editable} />
-                  {c.type === "choice" && (
-                    <div className="aup-row" style={{ marginBottom: 0, alignItems: "center" }}>
-                      <label>选择方式</label>
-                      <select
-                        className="aup-select"
-                        value={String(cfg.choiceType ?? "single")}
-                        disabled={!editable}
-                        onChange={(e) => setCfg({ choiceType: e.target.value as ChoiceType })}
-                      >
-                        <option value="single">单选</option>
-                        <option value="multiple">多选</option>
-                      </select>
-                    </div>
-                  )}
-                </>
+              <div className="aup-row" style={{ marginBottom: 0 }}>
+                <label>字典</label>
+                <select
+                  className="aup-select"
+                  value={selDict}
+                  disabled={!editable}
+                  onChange={(e) => {
+                    const dk = e.target.value;
+                    setSelDict(dk);
+                    patch({ dictKey: dk || undefined });
+                  }}
+                >
+                  <option value="">选择字典…</option>
+                  {dictsInCat.map((d) => (
+                    <option key={d.dictKey} value={d.dictKey}>
+                      {d.name}
+                      {d.itemCount ? `（${d.itemCount} 项）` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {c.type === "choice" && (
+                <div className="aup-row" style={{ marginBottom: 0, alignItems: "center" }}>
+                  <label>选择方式</label>
+                  <select
+                    className="aup-select"
+                    value={String(cfg.choiceType ?? "single")}
+                    disabled={!editable}
+                    onChange={(e) => setCfg({ choiceType: e.target.value as ChoiceType })}
+                  >
+                    <option value="single">单选</option>
+                    <option value="multiple">多选</option>
+                  </select>
+                </div>
               )}
             </>
           )}
@@ -1114,11 +806,6 @@ function FieldEditorInline({
   patch,
   editable,
   fieldCatalog,
-  targets,
-  revealMap,
-  onChangeOptionText,
-  onApplyExpand,
-  onClearExpand,
   onClose,
   focusShowWhen,
 }: {
@@ -1126,18 +813,11 @@ function FieldEditorInline({
   patch: (p: Partial<FormFieldDef>) => void;
   editable: boolean;
   fieldCatalog: FieldCatalogEntry[];
-  targets: TargetNode[];
-  revealMap: Map<string, TargetNode[]>;
-  onChangeOptionText: (i: number, text: string) => void;
-  onApplyExpand: (optionValue: string, target: TargetNode) => void;
-  onClearExpand: (target: TargetNode) => void;
   onClose: () => void;
   /** 打开时自动展开「高级设置」定位到显示条件（点题目卡片上的条件横幅触发） */
   focusShowWhen?: boolean;
 }) {
   const cfg: FieldConfig = field.config ?? {};
-  const options = normalizeOptions(field.options);
-  const useDict = !!field.dictKey;
   const setCfg = (p: Partial<FieldConfig>) => patch({ config: { ...cfg, ...p } });
   const multiple = field.type === "choice" && cfg.choiceType === "multiple";
   // 点题目卡片上的条件横幅进入时，自动展开「高级设置」定位到显示条件
@@ -1166,138 +846,89 @@ function FieldEditorInline({
         <>
           <div className="aup-divider" />
           <div className="aup-subh">选项</div>
-          <div className="aup-row" style={{ alignItems: "center" }}>
-            <label>选项来源</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                type="button"
-                className={`aup-btn small ${useDict ? "ghost" : ""}`}
-                style={useDict ? undefined : { background: "var(--pw)", color: "var(--p)", borderColor: "var(--p)" }}
-                disabled={!editable}
-                onClick={() => {
-                  patch({ dictKey: undefined, options: options.length ? options : [{ value: "", label: "" }] });
-                  setSelDict("");
-                }}
-              >
-                手动填写
-              </button>
-              <button
-                type="button"
-                className={`aup-btn small ${!useDict ? "ghost" : ""}`}
-                style={!useDict ? undefined : { background: "var(--pw)", color: "var(--p)", borderColor: "var(--p)" }}
-                disabled={!editable}
-                onClick={() => {
-                  patch({ dictKey: "", options: undefined });
-                  setSelCat(currentDict?.category ?? "");
-                  setSelDict(field.dictKey ?? "");
-                }}
-              >
-                从字典选择
-              </button>
-            </div>
+          <div className="aup-row">
+            <label>分类</label>
+            <select
+              className="aup-select"
+              value={selCat}
+              disabled={!editable}
+              onChange={(e) => {
+                setSelCat(e.target.value);
+                setSelDict("");
+                patch({ dictKey: undefined });
+              }}
+            >
+              <option value="">选择分类…</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </div>
-          {useDict ? (
+          <div className="aup-row">
+            <label>字典</label>
+            <select
+              className="aup-select"
+              value={selDict}
+              disabled={!editable}
+              onChange={(e) => {
+                const dk = e.target.value;
+                setSelDict(dk);
+                patch({ dictKey: dk || undefined });
+              }}
+            >
+              <option value="">选择字典…</option>
+              {dictsInCat.map((d) => (
+                <option key={d.dictKey} value={d.dictKey}>
+                  {d.name}
+                  {d.itemCount ? `（${d.itemCount} 项）` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="aup-hint">引用后选项来自字典，到 AUP 字典页修改即全局生效。</div>
+          {t === "choice" && (
             <>
-              <div className="aup-row">
-                <label>分类</label>
+              <div className="aup-row" style={{ marginTop: 8, alignItems: "center" }}>
+                <label>选择方式</label>
                 <select
                   className="aup-select"
-                  value={selCat}
+                  value={String(cfg.choiceType ?? "single")}
                   disabled={!editable}
-                  onChange={(e) => {
-                    setSelCat(e.target.value);
-                    setSelDict("");
-                    patch({ dictKey: undefined });
-                  }}
+                  onChange={(e) => setCfg({ choiceType: e.target.value as ChoiceType })}
                 >
-                  <option value="">选择分类…</option>
-                  {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
+                  <option value="single">单选</option>
+                  <option value="multiple">多选（可多选并触发补充表）</option>
                 </select>
               </div>
-              <div className="aup-row">
-                <label>字典</label>
+              <div className="aup-row" style={{ marginTop: 8, alignItems: "center" }}>
+                <label>选项排版</label>
                 <select
                   className="aup-select"
-                  value={selDict}
+                  value={String(cfg.layout ?? "list")}
                   disabled={!editable}
-                  onChange={(e) => {
-                    const dk = e.target.value;
-                    setSelDict(dk);
-                    patch({ dictKey: dk || undefined });
-                  }}
+                  onChange={(e) => setCfg({ layout: e.target.value as FieldConfig["layout"] })}
                 >
-                  <option value="">选择字典…</option>
-                  {dictsInCat.map((d) => (
-                    <option key={d.dictKey} value={d.dictKey}>
-                      {d.name}
-                      {d.itemCount ? `（${d.itemCount} 项）` : ""}
-                    </option>
-                  ))}
+                  <option value="list">竖排（默认）</option>
+                  <option value="grid">多列网格</option>
+                  <option value="grouped">分组标题（选项填「分组」时生效）</option>
                 </select>
               </div>
-              <div className="aup-hint">引用后选项来自字典，到 AUP 字典页修改即全局生效。</div>
-            </>
-          ) : (
-            <>
-              <OptionsEditor
-                options={options}
-                onChangeOptions={(o) => patch({ options: o })}
-                onChangeOptionText={onChangeOptionText}
-                fieldKey={field.fieldKey}
-                choiceType={cfg.choiceType ?? "single"}
-                targets={targets}
-                revealMap={revealMap}
-                onApplyExpand={onApplyExpand}
-                onClearExpand={onClearExpand}
-                editable={editable}
-              />
-              {t === "choice" && (
-                <>
-                  <div className="aup-row" style={{ marginTop: 8, alignItems: "center" }}>
-                    <label>选择方式</label>
-                    <select
-                      className="aup-select"
-                      value={String(cfg.choiceType ?? "single")}
-                      disabled={!editable}
-                      onChange={(e) => setCfg({ choiceType: e.target.value as ChoiceType })}
-                    >
-                      <option value="single">单选</option>
-                      <option value="multiple">多选（可多选并触发补充表）</option>
-                    </select>
-                  </div>
-                  <div className="aup-row" style={{ marginTop: 8, alignItems: "center" }}>
-                    <label>选项排版</label>
-                    <select
-                      className="aup-select"
-                      value={String(cfg.layout ?? "list")}
-                      disabled={!editable}
-                      onChange={(e) => setCfg({ layout: e.target.value as FieldConfig["layout"] })}
-                    >
-                      <option value="list">竖排（默认）</option>
-                      <option value="grid">多列网格</option>
-                      <option value="grouped">分组标题（选项填「分组」时生效）</option>
-                    </select>
-                  </div>
-                  {cfg.layout === "grid" && (
-                    <div className="aup-row" style={{ marginTop: 8, alignItems: "center" }}>
-                      <label>列数</label>
-                      <select
-                        className="aup-select"
-                        value={String(cfg.cols ?? 3)}
-                        disabled={!editable}
-                        onChange={(e) => setCfg({ cols: Number(e.target.value) })}
-                      >
-                        <option value="2">2 列</option>
-                        <option value="3">3 列</option>
-                        <option value="4">4 列</option>
-                      </select>
-                    </div>
-                  )}
-                </>
+              {cfg.layout === "grid" && (
+                <div className="aup-row" style={{ marginTop: 8, alignItems: "center" }}>
+                  <label>列数</label>
+                  <select
+                    className="aup-select"
+                    value={String(cfg.cols ?? 3)}
+                    disabled={!editable}
+                    onChange={(e) => setCfg({ cols: Number(e.target.value) })}
+                  >
+                    <option value="2">2 列</option>
+                    <option value="3">3 列</option>
+                    <option value="4">4 列</option>
+                  </select>
+                </div>
               )}
             </>
           )}
@@ -1730,8 +1361,6 @@ export default function AupTemplateEditor() {
 
   const fieldOptions = useMemo(() => collectAllFields(tree), [tree]);
   const fieldCatalog = useMemo(() => buildFieldCatalog(tree), [tree]);
-  const targets = useMemo(() => collectTargets(tree), [tree]);
-  const revealMap = useMemo(() => buildRevealMap(tree), [tree]);
 
   // Esc 关闭当前模态（题型选择 / 字段抽屉 / 结构编辑）
   useEffect(() => {
@@ -1931,47 +1560,6 @@ export default function AupTemplateEditor() {
     );
   };
 
-  /* ---- 选项侧展开 ---- */
-  const applyExpand = (fieldKey: string, choiceType: ChoiceType, optionValue: string, target: TargetNode) => {
-    const sw: ShowWhen = { field: fieldKey, op: choiceType === "multiple" ? "contains" : "equals", value: optionValue };
-    if (target.kind === "section") patchSection(target.si, { showWhen: sw });
-    else if (target.kind === "subsection") patchSubsection(target.si, target.ui, { showWhen: sw });
-    else patchField({ si: target.si, ui: target.ui, fi: target.fi }, { showWhen: sw });
-    toast.success(`已开启：选择「${optionValue}」后显示「${targetLabel(target)}」`);
-  };
-  const clearExpand = (target: TargetNode) => {
-    if (target.kind === "section") patchSection(target.si, { showWhen: null });
-    else if (target.kind === "subsection") patchSubsection(target.si, target.ui, { showWhen: null });
-    else patchField({ si: target.si, ui: target.ui, fi: target.fi }, { showWhen: null });
-  };
-
-  /* 选项文本改动：value/label 同步，并把引用旧值的 showWhen 一并改到新值 */
-  const handleOptionTextChange = (path: FieldPath, i: number, text: string) => {
-    const field = getField(path);
-    if (!field) return;
-    const opts = normalizeOptions(field.options);
-    const old = opts[i]?.value;
-    patchField(path, { options: opts.map((o, j) => (j === i ? { value: text, label: text } : o)) });
-    if (old != null && old !== text) {
-      const patchSw = (sw: ShowWhen | null | undefined): ShowWhen | null => {
-        if (sw && sw.field === field.fieldKey && String(sw.value ?? "") === old) return { ...sw, value: text };
-        return sw ?? null;
-      };
-      setTree((t) =>
-        t.map((s) => ({
-          ...s,
-          showWhen: patchSw(s.showWhen),
-          subsections: (s.subsections ?? []).map((u) => ({
-            ...u,
-            showWhen: patchSw(u.showWhen),
-            fields: u.fields.map((f) => ({ ...f, showWhen: patchSw(f.showWhen) })),
-          })),
-          fields: (s.fields ?? []).map((f) => ({ ...f, showWhen: patchSw(f.showWhen) })),
-        }))
-      );
-    }
-  };
-
   /* ---- 保存 / 发布 / 新建 ---- */
   const buildSaveBody = (): UpdateTemplateBody => ({
     name,
@@ -2019,25 +1607,6 @@ export default function AupTemplateEditor() {
     onError: (e: Error) => toast.error(e.message || "发布失败"),
   });
 
-  /* 导入内置模板到当前草稿（仅替换本地状态，确认后保存生效） */
-  const seedMutation = useMutation({
-    mutationFn: fetchAupDefaultSeed,
-    onSuccess: (seed) => {
-      setTree(seed.sections ?? []);
-      setName(seed.name ?? "");
-      setDescription(seed.description ?? "");
-      setEditingField(null);
-      setEditingStruct(null);
-      setAddMenu(null);
-      toast.success("已载入内置模板内容，确认后点击「保存草稿」生效");
-    },
-    onError: (e: Error) => toast.error(e.message || "导入内置模板失败"),
-  });
-  const doImportSeed = async () => {
-    if (!await appConfirm("用内置 IACUC 模板内容替换当前草稿？当前草稿内容将丢失。")) return;
-    seedMutation.mutate();
-  };
-
   const doSave = () => {
     if (selectedId == null) return;
     saveMutation.mutate({ id: selectedId, body: buildSaveBody() });
@@ -2047,7 +1616,7 @@ export default function AupTemplateEditor() {
     if (!await appConfirm("发布后将冻结当前草稿并使其对填写人生效，上一发布版本将归档。确认发布？")) return;
     publishMutation.mutate(selectedId);
   };
-  const busy = saveMutation.isPending || publishMutation.isPending || seedMutation.isPending;
+  const busy = saveMutation.isPending || publishMutation.isPending;
 
   /* ---- 渲染：字段（编辑态 = 悬浮出编辑；点「编辑」打开右侧抽屉） ---- */
   const renderFieldEdit = (si: number, ui: number | undefined, f: FormFieldDef, fi: number, isLast: boolean) => (
@@ -2117,11 +1686,6 @@ export default function AupTemplateEditor() {
               patch={(p) => patchField({ si, ui, fi }, p)}
               editable={editable}
               fieldCatalog={fieldCatalog}
-              targets={targets}
-              revealMap={revealMap}
-              onChangeOptionText={(i, text) => handleOptionTextChange({ si, ui, fi }, i, text)}
-              onApplyExpand={(val, t) => applyExpand(f.fieldKey, (f.config?.choiceType ?? "single") as ChoiceType, val, t)}
-              onClearExpand={clearExpand}
               onClose={() => { setEditingField(null); setFocusShowWhen(false); }}
               focusShowWhen={focusShowWhen}
             />
@@ -2383,15 +1947,9 @@ export default function AupTemplateEditor() {
                   <div className="ic">📋</div>
                   <div className="t">当前草稿还没有内容</div>
                   <div className="d">
-                    可以直接「导入内置模板」，把 IACUC 实验动物研究及使用计划（AUP）的完整框架载入当前草稿；
-                    也可以从零开始新增板块。内置模板始终作为初始默认配置，新建草稿不会丢失它。
+                    从零开始新增板块，搭建 IACUC 实验动物研究及使用计划（AUP）表单。
                   </div>
                   <div className="acts">
-                    {editable && (
-                      <button className="aup-btn primary" onClick={doImportSeed} disabled={seedMutation.isPending}>
-                        {seedMutation.isPending ? "导入中…" : "↺ 导入内置模板"}
-                      </button>
-                    )}
                     {editable && (
                       <button className="aup-btn ghost" onClick={addSection}>＋ 新增板块</button>
                     )}

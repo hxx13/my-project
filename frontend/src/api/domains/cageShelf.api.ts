@@ -42,6 +42,8 @@ export interface CageShelfCell {
   projectGroup?: string;
   departmentName?: string;
   projectPiName?: string;
+  activeClaimId?: string | number;
+  occupantName?: string;
   cageBoxInfo?: Record<string, unknown>;
   detail?: Record<string, unknown>;
   specialStatuses?: SpecialStatusEntry[];
@@ -382,8 +384,8 @@ export async function fetchEventTimeline(cageBoxQrCode: string, limit = 100): Pr
 // ── New snapshot + bookmark APIs ──────────────────────────────────
 
 export interface CageCellSnapshot {
-  roomId: number;
-  shelveId: number;
+  roomId: number | string;
+  shelveId: number | string;
   positionX: number;
   positionY: number;
   positionLabel: string;
@@ -396,7 +398,7 @@ export interface CageCellSnapshot {
 
 /** GET /api/cage-shelves/{roomId}/{shelveId}/cells */
 export async function fetchShelfCells(roomId: string, shelveId: string): Promise<{
-  roomId: number; shelveId: number; cells: CageCellSnapshot[]; isEmpty?: boolean;
+  roomId: number | string; shelveId: number | string; cells: CageCellSnapshot[]; isEmpty?: boolean;
 }> {
   const res = await authHttp.get<Result<any>>(
     `/cage-shelves/${encodeURIComponent(roomId)}/${encodeURIComponent(shelveId)}/cells`
@@ -620,10 +622,10 @@ export async function fetchAllocationAups(): Promise<AupItem[]> {
 
 /** 执行笼位分配 */
 export async function assignCages(
-  roomId: string, shelveId: string, cageIds: string[], aupId: string,
+  roomId: string, shelveId: string, cageIds: string[], aupId: string, registerNumber?: string,
 ): Promise<{ ok: boolean }> {
   const res = await authHttp.post<Result<{ ok: boolean }>>("/v1/cage-shelves/allocation/assign", {
-    roomId, shelveId, cageIds, aupId,
+    roomId, shelveId, cageIds, aupId, registerNumber,
   });
   if (!res.data?.success) throw new Error(res.data?.message || "分配失败");
   return res.data.data ?? { ok: false };
@@ -682,22 +684,6 @@ export const ACTION_CANCEL_COLOR: Record<CageBoxAction, CancelColor> = {
   HEALTH_CHECK: 3,
 };
 
-export async function bindCageBox(animalCageId: string, cageBoxCode: string, roomId?: string): Promise<boolean> {
-  const res = await authHttp.post<Result<boolean>>("/aro/cage-box/bind", { animalCageId: String(animalCageId), cageBoxCode, roomId: roomId || undefined });
-  console.log("[API bindCageBox] raw:", JSON.stringify(res.data, null, 2));
-  if (!res.data?.success) throw new Error(res.data?.message || "笼盒关联失败");
-  return res.data.data ?? false;
-}
-
-/** 解绑笼盒（批量删除笼盒关联） */
-export async function unbindCageBox(animalCageId: string, roomId?: string): Promise<boolean> {
-  const res = await authHttp.post<Result<boolean>>("/aro/cage-box/unbind", { animalCageIdList: [String(animalCageId)], roomId: roomId || undefined });
-  console.log("[API unbindCageBox] raw:", JSON.stringify(res.data, null, 2));
-  if (!res.data?.success) throw new Error(res.data?.message || "解绑失败");
-  return res.data.data ?? false;
-}
-
-
 export async function cancelCageBoxColor(
   roomId: string,
   shelveId: string,
@@ -718,8 +704,8 @@ export interface CageBoxMember {
 
 export interface CageBoxMembersResult {
   cageBoxCode: string;
-  cageBoxId: number;
-  animalCageId: number;
+  cageBoxId: number | string;
+  animalCageId: number | string;
   members: CageBoxMember[];
 }
 
@@ -807,13 +793,13 @@ export async function fetchBookingRooms(pageNum = 1, pageSize = 30): Promise<Boo
   return res.data.data!;
 }
 
-/** 手动同步：从 ARO 拉取房间预约汇总 + AUP 明细 + AUP 字典落本地 */
-export async function syncBookingData(): Promise<{ ok: boolean; rooms: number; aups: number; aupDict: number }> {
-  const res = await authHttp.post<Result<{ ok: boolean; rooms: number; aups: number; aupDict: number }>>(
+/** 手动同步：从 ARO 拉取房间预约汇总 + AUP 明细落本地（硬覆盖） */
+export async function syncBookingData(): Promise<{ ok: boolean; rooms: number; aups: number }> {
+  const res = await authHttp.post<Result<{ ok: boolean; rooms: number; aups: number }>>(
     "/v1/cage-shelves/booking/sync",
   );
   if (!res.data?.success) throw new Error(res.data?.message || "同步失败");
-  return res.data.data ?? { ok: false, rooms: 0, aups: 0, aupDict: 0 };
+  return res.data.data ?? { ok: false, rooms: 0, aups: 0 };
 }
 
 /** 房间内 AUP 分配明细 */
@@ -841,6 +827,15 @@ export async function deleteBookingAup(id: string): Promise<void> {
     `/v1/cage-shelves/booking/aups/${encodeURIComponent(id)}/delete`
   );
   if (!res.data?.success) throw new Error(res.data?.message || "删除AUP分配失败");
+}
+
+/** 保存房间上限（animal_cage_number） */
+export async function saveRoomCapacity(roomId: string, capacity: number): Promise<void> {
+  const res = await authHttp.post<Result<unknown>>(
+    `/v1/cage-shelves/booking/rooms/${encodeURIComponent(roomId)}/capacity`,
+    { capacity }
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "保存房间上限失败");
 }
 
 /** AUP 下拉字典（自己的字段口径：id/registerNo/projectGroupName） */
@@ -880,11 +875,52 @@ export interface CodeLookupCageBox {
   positionLabel: string;
 }
 
+/** 新扫码语义：笼位（animal_cage_id）命中 */
+export interface CodeLookupCell {
+  animalCageId?: string;
+  shelveId?: string;
+  shelveName?: string;
+  roomId?: string | number;
+  campusName: string;
+  roomName: string;
+  positionX: number;
+  positionY: number;
+  positionLabel: string;
+}
+
+/** 笼位 active claim 摘要 */
+export interface CodeLookupClaim {
+  /** cage_claims.id（AUTO_INCREMENT，小整数） */
+  id: number;
+  claimStatus: string;
+  claimantId: string;
+  claimantName: string;
+  /** 是否需要到场确认 */
+  confirmRequired?: boolean;
+  /** ARO AUP 雪花 ID，可能为空 */
+  aupId?: number | string | null;
+  aupNumber?: string | null;
+  projectPiName?: string | null;
+  projectName?: string | null;
+  hasInfo: boolean;
+}
+
 export interface CodeLookupResult {
-  type: "CAGE_BOX" | "ASSET" | "NOT_FOUND";
+  type: "CAGE_CELL" | "LEGACY_CAGE_BOX" | "CAGE_BOX" | "ASSET" | "NOT_FOUND";
   message?: string;
   cageBox?: CodeLookupCageBox;
+  cageCell?: CodeLookupCell;
+  claim?: CodeLookupClaim;
   asset?: Record<string, unknown>;
+  /** 旧盒码兜底命中时，位置字段平铺在顶层（供定位高亮） */
+  legacy?: boolean;
+  roomId?: string | number;
+  shelveId?: string;
+  shelveName?: string;
+  positionX?: number;
+  positionY?: number;
+  campusName?: string;
+  roomName?: string;
 }
 
 /** 统一扫码查询：根据二维码/条形码内容自动识别类型 */
@@ -893,16 +929,18 @@ export async function lookupCode(code: string): Promise<CodeLookupResult> {
     params: { code },
   });
   if (!res.data?.success) throw new Error(res.data?.message || "查询失败");
-  return res.data.data!;
+  const data = res.data.data!;
+  console.log("[lookupCode] 扫码内容=", code, "→ type=", data.type, "cageCell=", data.cageCell, "claim=", data.claim);
+  return data;
 }
 
 // ── 笼位ID索引 API (cage-cell-index) ──
 
 export interface ShelfCellSummary {
   shelfIndexId: number;
-  shelveId: number;
+  shelveId: number | string;
   shelveName: string;
-  roomId: number;
+  roomId: number | string;
   roomName: string;
   campusName: string;
   areaName: string;
@@ -916,10 +954,11 @@ export interface ShelfCellSummary {
 export interface CageCellIndexEntry {
   id: number;
   shelfIndexId: number;
-  shelveId: number;
+  shelveId: string;
   positionX: number;
   positionY: number;
-  animalCageId: number | null;
+  /** ARO 雪花 ID，必须用字符串，禁止 Number() */
+  animalCageId: string | null;
   hasCageBox: boolean;
   cageBoxCode: string | null;
   lastSyncStatus: string;
@@ -1000,17 +1039,17 @@ export async function syncAllCellIds(roomId?: number): Promise<CellSyncStats> {
 
 export interface CageCellLookupResult {
   shelfIndexId: number;
-  shelveId: number;
+  shelveId: string;
   positionX: number;
   positionY: number;
-  animalCageId: number;
+  animalCageId: string;
   hasCageBox: boolean;
   cageBoxCode: string | null;
   campusName: string;
   areaName: string;
   floorName: string;
   roomName: string;
-  roomId: number;
+  roomId: string;
   shelveName: string;
 }
 
@@ -1025,14 +1064,6 @@ export async function syncStatusFromBook(roomId?: number): Promise<CellSyncStats
 // 本地业务接口 (/api/local/*)
 // ═══════════════════════════════════════════
 
-export async function localBind(animalCageId: number | string, cageBoxCode: string) {
-  const res = await authHttp.post<Result<any>>("/local/bind", { animalCageId, cageBoxCode });
-  if (!res.data?.success) throw new Error(res.data?.message || "绑定失败");
-}
-export async function localUnbind(animalCageId: number | string) {
-  const res = await authHttp.post<Result<any>>("/local/unbind", { animalCageId });
-  if (!res.data?.success) throw new Error(res.data?.message || "解绑失败");
-}
 export async function localAllocate(animalCageIds: (number | string)[], aupId: number | string, roomId: number | string, shelveId: number | string, piName: string, aupNumber: string) {
   const res = await authHttp.post<Result<any>>("/local/allocate", { animalCageIds, aupId, roomId, shelveId, piName, aupNumber });
   if (!res.data?.success) throw new Error(res.data?.message || "分配失败");
@@ -1046,14 +1077,22 @@ export async function localEdit(animalCageId: number | string, toggle: string, e
   if (!res.data?.success) throw new Error(res.data?.message || "编辑失败");
 }
 
-/** @deprecated 用 localBind/localUnbind/localAllocate/localEdit 替代 */
-export async function localAction(body: {
-  action: string; animalCageId: number | string; cageBoxCode?: string;
-  specialBreedingName?: string; specialBreedingDescription?: string;
-}): Promise<{ ok: boolean; local: boolean; syncedToAro: boolean }> {
-  const res = await authHttp.post<Result<{ ok: boolean; local: boolean; syncedToAro: boolean }>>("/cage-cell-index/local-action", body);
-  if (!res.data?.success) throw new Error(res.data?.message || "操作失败");
-  return res.data.data ?? { ok: false, local: false, syncedToAro: false };
+// ═══════════════════════════════════════════════════════════
+// 退役桩：扫码绑定已退役（后端 /bind 返回 410）。
+// 保留仅用于移动端编译过渡，移动端绑定 UI 将在三端改造（Phase E2/E3）中移除。
+// ═══════════════════════════════════════════════════════════
+
+export async function bindCageBox(_animalCageId: string, _cageBoxCode: string, _roomId?: string): Promise<boolean> {
+  throw new Error("扫码绑定已退役，请使用预约/分配流程");
+}
+export async function unbindCageBox(_animalCageId: string, _roomId?: string): Promise<boolean> {
+  throw new Error("扫码绑定已退役，请使用预约/分配流程");
+}
+export async function localBind(_animalCageId: number | string, _cageBoxCode: string) {
+  throw new Error("扫码绑定已退役，请使用预约/分配流程");
+}
+export async function localUnbind(_animalCageId: number | string) {
+  throw new Error("扫码绑定已退役，请使用预约/分配流程");
 }
 
 /** 补全详情字段 — 从 ARO /list 批量拉取 PI/课题组/动物品系等 */
@@ -1087,7 +1126,7 @@ export async function fetchLocalShelfGridByShelveId(shelveId: string): Promise<C
 }
 
 /** 全局反查：根据 animalCageId 定位笼位 */
-export async function lookupAnimalCageId(animalCageId: number): Promise<CageCellLookupResult> {
+export async function lookupAnimalCageId(animalCageId: string): Promise<CageCellLookupResult> {
   const res = await authHttp.get<Result<CageCellLookupResult>>("/cage-cell-index/lookup", {
     params: { animalCageId },
   });
@@ -1099,7 +1138,7 @@ export async function updateCellAnimalCageId(
   shelfIndexId: number,
   positionX: number,
   positionY: number,
-  animalCageId: number | null
+  animalCageId: string | null
 ): Promise<boolean> {
   const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-cell-index/cell", {
     shelfIndexId,
@@ -1130,10 +1169,10 @@ export async function localAnnotate(animalCageId: number | string, experimentDes
 
 /** 池中可用笼位 */
 export interface PoolCell {
-  animalCageId: number;
+  animalCageId: string;
   positionX: number;
   positionY: number;
-  shelveId: number;
+  shelveId: string;
   cageTypeCode: number;
   projectPiName: string;
   aupNumber: string;
@@ -1144,12 +1183,12 @@ export interface PoolCell {
 /** 申请记录 */
 export interface CageClaimItem {
   id: number;
-  animalCageId: number;
+  animalCageId: string;
   claimStatus: string;
   claimantId: string;
   claimantName: string;
   claimantDept: string;
-  aupId: number | null;
+  aupId: number | string | null;
   assignerId: string | null;
   assignerName: string | null;
   confirmRequired: boolean;
@@ -1187,8 +1226,8 @@ export async function fetchPoolCells(shelfIndexId: number): Promise<PoolCell[]> 
 }
 
 /** 申请笼位 */
-export async function claimCage(animalCageId: number, shelfIndexId: number): Promise<{ id: number; animalCageId: number; status: string; needApproval: boolean }> {
-  const res = await authHttp.post<Result<{ id: number; animalCageId: number; status: string; needApproval: boolean }>>(
+export async function claimCage(animalCageId: string, shelfIndexId: number): Promise<{ id: number; animalCageId: string; status: string; needApproval: boolean }> {
+  const res = await authHttp.post<Result<{ id: number; animalCageId: string; status: string; needApproval: boolean }>>(
     "/student/cage-claims", { animalCageId, shelfIndexId },
   );
   if (!res.data?.success) throw new Error(res.data?.message || "申请失败");
@@ -1202,7 +1241,7 @@ export async function cancelClaim(id: number): Promise<void> {
 }
 
 /** 到场确认 */
-export async function confirmClaim(id: number): Promise<void> {
+export async function confirmClaim(id: number | string): Promise<void> {
   const res = await authHttp.post<Result<any>>(`/student/cage-claims/${id}/confirm`);
   if (!res.data?.success) throw new Error(res.data?.message || "确认失败");
 }
@@ -1249,7 +1288,7 @@ export async function approveClaim(id: number, decision: "approved" | "rejected"
 }
 
 /** 手动分配 */
-export async function assignClaim(animalCageId: number, shelfIndexId: number, studentUserId: string, aupId?: number): Promise<void> {
+export async function assignClaim(animalCageId: string, shelfIndexId: number, studentUserId: string, aupId?: number): Promise<void> {
   const res = await authHttp.post<Result<any>>("/admin/cage-claims/assign", {
     animalCageId, shelfIndexId, studentUserId, aupId,
   });

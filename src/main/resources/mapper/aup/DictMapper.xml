@@ -2,8 +2,20 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.demo.modules.aup.mapper.DictMapper">
 
+    <sql id="dictFilter">
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (dict_key LIKE CONCAT('%',#{keyword},'%') OR name LIKE CONCAT('%',#{keyword},'%'))
+            </if>
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+        </where>
+    </sql>
+
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO dict (dict_key, name, category) VALUES (#{dictKey}, #{name}, #{category})
+        INSERT INTO dict (dict_key, name, category, version, status, folder_id, published_at, published_by, review_comment, source, source_ref)
+        VALUES (#{dictKey}, #{name}, #{category}, #{version}, #{status}, #{folderId}, #{publishedAt}, #{publishedBy}, #{reviewComment}, #{source}, #{sourceRef})
     </insert>
 
     <update id="update">
@@ -11,12 +23,45 @@
         <set>
             <if test="name != null">name = #{name},</if>
             <if test="category != null">category = #{category},</if>
+            <if test="version != null">version = #{version},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="folderId != null">folder_id = #{folderId},</if>
+            <if test="publishedAt != null">published_at = #{publishedAt},</if>
+            <if test="publishedBy != null">published_by = #{publishedBy},</if>
+            <if test="reviewComment != null">review_comment = #{reviewComment},</if>
+            <if test="source != null">source = #{source},</if>
+            <if test="sourceRef != null">source_ref = #{sourceRef},</if>
         </set>
         WHERE id = #{id}
     </update>
 
     <select id="findByKey" resultType="com.example.demo.modules.aup.entity.Dict">
-        SELECT * FROM dict WHERE dict_key = #{dictKey}
+        SELECT * FROM dict
+        WHERE dict_key = #{dictKey}
+        ORDER BY CASE WHEN status = 'PUBLISHED' THEN 0 ELSE 1 END ASC, version DESC, id DESC
+        LIMIT 1
+    </select>
+
+    <select id="findByKeyAndVersion" resultType="com.example.demo.modules.aup.entity.Dict">
+        SELECT * FROM dict WHERE dict_key = #{dictKey} AND version = #{version} LIMIT 1
+    </select>
+
+    <select id="findLatestByKey" resultType="com.example.demo.modules.aup.entity.Dict">
+        SELECT * FROM dict WHERE dict_key = #{dictKey} ORDER BY version DESC, id DESC LIMIT 1
+    </select>
+
+    <select id="findPublishedByKey" resultType="com.example.demo.modules.aup.entity.Dict">
+        SELECT * FROM dict
+        WHERE dict_key = #{dictKey} AND status = 'PUBLISHED'
+        ORDER BY version DESC LIMIT 1
+    </select>
+
+    <select id="findPublishedVersionByKey" resultType="java.lang.Integer">
+        SELECT MAX(version) FROM dict WHERE dict_key = #{dictKey} AND status = 'PUBLISHED'
+    </select>
+
+    <select id="listVersionsByKey" resultType="com.example.demo.modules.aup.entity.Dict">
+        SELECT * FROM dict WHERE dict_key = #{dictKey} ORDER BY version DESC
     </select>
 
     <select id="findById" resultType="com.example.demo.modules.aup.entity.Dict">
@@ -27,29 +72,32 @@
         DELETE FROM dict WHERE id = #{id}
     </delete>
 
+    <update id="updateStatus">
+        UPDATE dict SET status = #{status} WHERE id = #{id}
+    </update>
+
+    <update id="archivePublished">
+        UPDATE dict SET status = 'ARCHIVED'
+        WHERE dict_key = #{dictKey} AND status = 'PUBLISHED' AND id != #{excludeId}
+    </update>
+
     <select id="listByKeyword" resultType="com.example.demo.modules.aup.entity.Dict">
-        SELECT * FROM dict
-        <where>
-            <if test="keyword != null and keyword != ''">
-                (dict_key LIKE CONCAT('%',#{keyword},'%') OR name LIKE CONCAT('%',#{keyword},'%'))
-            </if>
-            <if test="category != null and category != ''">
-                AND category = #{category}
-            </if>
-        </where>
-        ORDER BY id ASC LIMIT #{limit} OFFSET #{offset}
+        SELECT d.* FROM dict d
+        INNER JOIN (
+            SELECT dict_key, MAX(version) AS mv FROM dict
+            <include refid="dictFilter"/>
+            GROUP BY dict_key
+        ) t ON d.dict_key = t.dict_key AND d.version = t.mv
+        ORDER BY d.id ASC LIMIT #{limit} OFFSET #{offset}
     </select>
 
     <select id="countByKeyword" resultType="int">
-        SELECT COUNT(1) FROM dict
-        <where>
-            <if test="keyword != null and keyword != ''">
-                (dict_key LIKE CONCAT('%',#{keyword},'%') OR name LIKE CONCAT('%',#{keyword},'%'))
-            </if>
-            <if test="category != null and category != ''">
-                AND category = #{category}
-            </if>
-        </where>
+        SELECT COUNT(DISTINCT dict_key) FROM dict
+        <include refid="dictFilter"/>
+    </select>
+
+    <select id="countByFolderId" resultType="int">
+        SELECT COUNT(1) FROM dict WHERE folder_id = #{folderId}
     </select>
 
 </mapper>

@@ -12,6 +12,7 @@ import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.mapper.ApprovalRecordMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
+import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.identity.service.PersonIdentityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,9 @@ public class CageClaimService {
     private final NotificationSettingsService notificationSettingsService;
     private final PersonIdentityService personIdentityService;
     private final UserDisplayNameService userDisplayNameService;
+    private final CageQuotaService quotaService;
+    private final CageInfoValueService infoValueService;
+    private final CageFormAuditService auditService;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -45,7 +49,10 @@ public class CageClaimService {
                             UserMapper userMapper,
                             NotificationSettingsService notificationSettingsService,
                             PersonIdentityService personIdentityService,
-                            UserDisplayNameService userDisplayNameService) {
+                            UserDisplayNameService userDisplayNameService,
+                            CageQuotaService quotaService,
+                            CageInfoValueService infoValueService,
+                            CageFormAuditService auditService) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -53,6 +60,9 @@ public class CageClaimService {
         this.notificationSettingsService = notificationSettingsService;
         this.personIdentityService = personIdentityService;
         this.userDisplayNameService = userDisplayNameService;
+        this.quotaService = quotaService;
+        this.infoValueService = infoValueService;
+        this.auditService = auditService;
     }
 
     private String displayNameOf(User user) {
@@ -76,21 +86,18 @@ public class CageClaimService {
         }
     }
 
-    private String getApprovalMode()       { return getConfig("cage.claim.approval_mode", "pi"); }
     private boolean getConfirmRequired()   { return "true".equalsIgnoreCase(getConfig("cage.claim.confirm_required", "false")); }
-    private int getRejectCooldownMinutes() { return safeParseInt(getConfig("cage.claim.reject_cooldown_minutes", "5"), 5); }
-    private int getMaxRejectCount()        { return safeParseInt(getConfig("cage.claim.max_reject_count", "3"), 3); }
-    private int safeParseInt(String val, int fallback) {
-        try { return Integer.parseInt(val); } catch (NumberFormatException e) { return fallback; }
-    }
-    private String getReleaseApprovalMode(){ return getConfig("cage.release.approval_mode", "follow_claim"); }
 
     // ═══════════════════════════════════════════
     // 池查询
     // ═══════════════════════════════════════════
 
     public List<Map<String, Object>> getPoolCells(Long shelfIndexId) {
-        return claimMapper.selectPoolCells(shelfIndexId);
+        List<Map<String, Object>> rows = claimMapper.selectPoolCells(shelfIndexId);
+        for (Map<String, Object> row : rows) {
+            CageCellIndexService.stringifySnowflakeIds(row, "animalCageId", "shelveId");
+        }
+        return rows;
     }
 
     // ═══════════════════════════════════════════
@@ -105,6 +112,10 @@ public class CageClaimService {
             throw new TwinBusinessException(400, "该笼位不可认领（仅已预约空笼盒可认领）");
         }
 
+        // ①½ 配额校验：认领也受「该 AUP 可用笼位数」限制
+        Long roomId = claimMapper.selectRoomIdByShelfIndexId(shelfIndexId);
+        quotaService.assertCanAllocate(roomId, detail.getAupNumber(), 1);
+
         // ② FOR UPDATE 锁已有活跃认领（只锁活跃态，不锁历史）
         List<CageClaim> existing = claimMapper.selectByAnimalCageIdForUpdate(animalCageId);
         for (CageClaim c : existing) {
@@ -117,7 +128,7 @@ public class CageClaimService {
         String studentId = student.getId();
         String lastRejectedAt = claimMapper.selectLastRejectedAt(animalCageId, studentId);
         if (lastRejectedAt != null) {
-            int cooldownMin = getRejectCooldownMinutes();
+            int cooldownMin = 5;
             try {
                 LocalDateTime last = LocalDateTime.parse(lastRejectedAt, DT_FMT);
                 if (LocalDateTime.now().isBefore(last.plusMinutes(cooldownMin))) {
@@ -128,12 +139,12 @@ public class CageClaimService {
             }
         }
         int rejectCount = claimMapper.countRejectedByAnimalCage(animalCageId, studentId);
-        if (rejectCount >= getMaxRejectCount()) {
+        if (rejectCount >= 3) {
             throw new TwinBusinessException(400, "该笼位已被驳回 " + rejectCount + " 次，请联系管理员手动分配");
         }
 
-        // ④ 查配置决定初始状态
-        String mode = getApprovalMode();
+        // ④ 决定初始状态（认领默认走审批流 pending_approval，仅 confirm_required 配置是否到位确认）
+        String mode = "pi";
         boolean confirmReq = getConfirmRequired();
         String initStatus;
         if ("none".equals(mode)) {
@@ -152,6 +163,7 @@ public class CageClaimService {
         claim.setConfirmRequired(confirmReq);
         claim.setRetryCount(0);
         claimMapper.insert(claim);
+        infoValueService.seedFromDetail(claim.getAnimalCageId());
 
         log.info("[cage-apply] student={} animalCageId={} status={} id={}", studentId, animalCageId, initStatus, claim.getId());
         return claim;
@@ -220,19 +232,29 @@ public class CageClaimService {
             throw new TwinBusinessException(400, "当前状态不可释放（仅已确认可释放）");
         }
 
-        String releaseMode = getReleaseApprovalMode();
-        if ("follow_claim".equals(releaseMode)) releaseMode = getApprovalMode();
+        String releaseMode = "pi";
 
+        String beforeStatus = claim.getClaimStatus();
         if ("none".equals(releaseMode)) {
             String now = DT_FMT.format(LocalDateTime.now());
             claim.setClaimStatus("released");
             claim.setReleasedAt(now);
             claim.setNote(reason);
             claimMapper.update(claim);
+            auditService.logDataJson("RELEASE", "claim", claimId, String.valueOf(claimId), claim.getClaimantName(),
+                    "claim", claimId, "claim:" + claimId,
+                    Map.of("status", beforeStatus, "claimantId", claim.getClaimantId()),
+                    Map.of("status", "released", "reason", reason != null ? reason : ""),
+                    student.getId());
         } else {
             claim.setClaimStatus("pending_release_approval");
             claim.setNote(reason);
             claimMapper.update(claim);
+            auditService.logDataJson("RELEASE", "claim", claimId, String.valueOf(claimId), claim.getClaimantName(),
+                    "claim", claimId, "claim:" + claimId,
+                    Map.of("status", beforeStatus),
+                    Map.of("status", "pending_release_approval", "reason", reason != null ? reason : ""),
+                    student.getId());
         }
 
         log.info("[cage-apply] release student={} claimId={} animalCageId={} mode={}", student.getId(), claimId, claim.getAnimalCageId(), releaseMode);
@@ -257,14 +279,90 @@ public class CageClaimService {
         User toUser = userMapper.findById(toStudentUserId);
         if (toUser == null) throw new TwinBusinessException(400, "目标用户不存在");
 
+        String fromName = displayNameOf(student);
+        String toName = displayNameOf(toUser);
+        String fromId = claim.getClaimantId();
+
         claim.setClaimantId(toStudentUserId);
         claim.setClaimantName(displayNameOf(toUser));
         claim.setNote("转自 " + displayNameOf(student) + "：" + (reason != null ? reason : ""));
         claimMapper.update(claim);
 
+        auditService.logDataJson("TRANSFER", "claim", claimId, String.valueOf(claimId), "笼位认领",
+                "claim", claimId, "animalCage:" + claim.getAnimalCageId(),
+                Map.of("claimantId", fromId, "claimantName", fromName),
+                Map.of("claimantId", toStudentUserId, "claimantName", toName, "reason", reason),
+                student.getId());
+
         log.info("[cage-apply] transfer from={} to={} claimId={} animalCageId={}",
                 student.getId(), toStudentUserId, claimId, claim.getAnimalCageId());
         return claim;
+    }
+
+    // ═══════════════════════════════════════════
+    // 分笼（D2）：母笼确认后派生子笼认领
+    // ═══════════════════════════════════════════
+
+    @Transactional
+    public CageClaim divide(User student, Long claimId, List<Long> targetAnimalCageIds, String reason) {
+        CageClaim mother = claimMapper.selectByIdForUpdate(claimId);
+        if (mother == null) throw new TwinBusinessException(404, "认领记录不存在");
+        if (!student.getId().equals(mother.getClaimantId())) {
+            throw new TwinBusinessException(403, "只能对自己的笼位进行分笼");
+        }
+        if (!"confirmed".equals(mother.getClaimStatus())) {
+            throw new TwinBusinessException(400, "当前状态不可分笼（仅已确认可分笼）");
+        }
+        if (targetAnimalCageIds == null || targetAnimalCageIds.isEmpty()) {
+            throw new TwinBusinessException(400, "请选择分笼目标笼位");
+        }
+        // 去重 + 升序排序，保证多笼锁定顺序一致，避免并发 divide 死锁
+        List<Long> targets = targetAnimalCageIds.stream().distinct().sorted().toList();
+
+        List<Long> childIds = new ArrayList<>();
+        for (Long targetId : targets) {
+            // ① FOR UPDATE 锁目标笼位详情
+            CageCellDetail detail = detailMapper.selectByAnimalCageIdForUpdate(targetId);
+            if (detail == null || detail.getCageTypeCode() == null || detail.getCageTypeCode() != 2) {
+                throw new TwinBusinessException(400, "笼位不可分笼");
+            }
+            // ② FOR UPDATE 锁目标笼位活跃认领
+            List<CageClaim> existing = claimMapper.selectByAnimalCageIdForUpdate(targetId);
+            for (CageClaim c : existing) {
+                if (c.isActive()) {
+                    throw new TwinBusinessException(409, "目标笼位已有活跃认领");
+                }
+            }
+
+            // ③ 派生子笼认领（locked，等待到场确认）
+            CageClaim child = new CageClaim();
+            child.setAnimalCageId(targetId);
+            child.setClaimStatus("locked");
+            child.setClaimantId(mother.getClaimantId());
+            child.setClaimantName(mother.getClaimantName());
+            child.setClaimantDept(mother.getClaimantDept());
+            child.setAupId(mother.getAupId());
+            child.setAssignerId(mother.getAssignerId());
+            child.setAssignerName(mother.getAssignerName());
+            child.setConfirmRequired(mother.getConfirmRequired());
+            child.setRetryCount(0);
+            child.setNote("分笼自笼位 " + mother.getAnimalCageId() + (reason != null ? "：" + reason : ""));
+            claimMapper.insert(child);
+            childIds.add(child.getId());
+
+            // ④ 表单值继承（INHERIT）并清空需重填字段
+            infoValueService.copyFrom(mother.getAnimalCageId(), child.getAnimalCageId());
+        }
+
+        // ⑤ 母笼归档
+        mother.setClaimStatus("released");
+        mother.setReleasedAt(DT_FMT.format(LocalDateTime.now()));
+        mother.setNote("分笼归档" + (reason != null ? "：" + reason : ""));
+        claimMapper.update(mother);
+
+        log.info("[cage-apply] divide motherClaimId={} animalCageId={} children={}",
+                mother.getId(), mother.getAnimalCageId(), childIds);
+        return mother;
     }
 
     // ═══════════════════════════════════════════
@@ -367,6 +465,7 @@ public class CageClaimService {
         claim.setRetryCount(0);
         claim.setNote("管理员手动分配");
         claimMapper.insert(claim);
+        infoValueService.seedFromDetail(claim.getAnimalCageId());
 
         log.info("[cage-apply] assign admin={} animalCageId={} → student={}", admin.getId(), animalCageId, studentUserId);
         return claim;

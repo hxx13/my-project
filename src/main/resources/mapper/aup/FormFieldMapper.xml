@@ -4,10 +4,27 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO form_field (section_id, subsection_id, field_key, label, description, type, options, dict_key,
-            required, show_when, sort_order, config)
+            dict_version, required, show_when, sort_order, config)
         VALUES (#{sectionId}, #{subsectionId}, #{fieldKey}, #{label}, #{description}, #{type}, #{options}, #{dictKey},
-            #{required}, #{showWhen}, #{sortOrder}, #{config})
+            #{dictVersion}, #{required}, #{showWhen}, #{sortOrder}, #{config})
     </insert>
+
+    <update id="update">
+        UPDATE form_field
+        <set>
+            <if test="label != null">label = #{label},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="type != null">type = #{type},</if>
+            <if test="options != null">options = #{options},</if>
+            <if test="dictKey != null">dict_key = #{dictKey},</if>
+            <if test="dictVersion != null">dict_version = #{dictVersion},</if>
+            <if test="required != null">required = #{required},</if>
+            <if test="showWhen != null">show_when = #{showWhen},</if>
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            <if test="config != null">config = #{config},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
 
     <select id="listBySectionIds" resultType="com.example.demo.modules.aup.entity.FormField">
         SELECT * FROM form_field
@@ -45,6 +62,32 @@
 
     <select id="countByDictKey" resultType="int">
         SELECT COUNT(1) FROM form_field WHERE dict_key = #{dictKey}
+    </select>
+
+    <update id="updateDictVersion">
+        UPDATE form_field SET dict_version = #{dictVersion} WHERE id = #{id}
+    </update>
+
+    <select id="countRefByFieldCode" resultType="int">
+        SELECT COUNT(1) FROM form_field f
+        LEFT JOIN form_section s ON f.section_id = s.id
+        LEFT JOIN form_subsection ss ON f.subsection_id = ss.id
+        LEFT JOIN form_section s2 ON ss.section_id = s2.id
+        JOIN form_template t ON t.id = COALESCE(s.template_id, s2.template_id)
+        WHERE f.field_key = #{fieldCode} AND t.kind = 'ATOM'
+    </select>
+
+    <select id="listAtomRefsByFieldCode" resultType="com.example.demo.modules.aup.dto.AupFieldTemplateRef">
+        SELECT t.id AS templateId, t.form_key AS formKey, t.name AS templateName,
+               t.version AS templateVersion, t.kind AS kind,
+               f.id AS fieldId, f.field_key AS fieldKey, f.label AS fieldLabel
+        FROM form_field f
+        LEFT JOIN form_section s ON f.section_id = s.id
+        LEFT JOIN form_subsection ss ON f.subsection_id = ss.id
+        LEFT JOIN form_section s2 ON ss.section_id = s2.id
+        JOIN form_template t ON t.id = COALESCE(s.template_id, s2.template_id)
+        WHERE f.field_key = #{fieldCode} AND t.kind = 'ATOM'
+        ORDER BY t.form_key ASC, t.version DESC
     </select>
 
 </mapper>

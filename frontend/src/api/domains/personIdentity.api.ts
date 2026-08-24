@@ -25,6 +25,12 @@ export async function fetchIdentityTags(): Promise<IdentityTag[]> {
   return res.data.data;
 }
 
+/** 查询当前登录用户自己的身份标签（无需超管）。 */
+export async function fetchMyIdentity(): Promise<IdentityTag[]> {
+  const res = await authHttp.get<Result<PersonIdentity>>("/person-identity/me");
+  return res.data.data?.tags ?? [];
+}
+
 export async function createIdentityTag(body: {
   code: string;
   label: string;

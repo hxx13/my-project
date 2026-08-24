@@ -170,13 +170,11 @@ public class AupReviewService {
         if (!"approve".equals(action) && !"return".equals(action)) {
             throw TwinBusinessException.of(400, "action 仅支持 approve/return");
         }
-        if (!isAdmin(user) && !accessPolicy.isPi(user)) {
-            throw TwinBusinessException.of(403, "仅组长或管理员可执行组长审核");
-        }
         AupRecordView record = requireRecord(aupId);
         if (!STAGE_PI_REVIEW.equals(record.getCurrentStage())) {
             throw TwinBusinessException.of(409, "当前阶段非组长审核，无法操作");
         }
+        accessPolicy.assertPiCanReview(record.getProjectGroupName(), user);
         String comment = req.getComment();
         if ("approve".equals(action)) {
             aupService.transition(aupId, STAGE_PI_REVIEW, STAGE_FORMAT_REVIEW, "approve",
@@ -208,6 +206,7 @@ public class AupReviewService {
 
         // 有格式建议 → 返修
         if (!items.isEmpty()) {
+            validateSecretaryItems(items, record.getTemplateId());
             persistSecretaryItems(user, aupId, roundNo, comment, items);
             aupService.transition(aupId, STAGE_FORMAT_REVIEW, STAGE_PI_REVIEW, "return", user.getId(), "secretary", comment);
             return stageResult(aupId, STAGE_PI_REVIEW);
@@ -637,21 +636,24 @@ public class AupReviewService {
         return hasSuggest ? V_MODIFY : V_AGREE;
     }
 
-    private void validateItems(String verdict, List<ReviewVoteRequest.VoteItem> items, Long templateId) {
-        Set<String> validKeys = new HashSet<>();
-        if (templateId != null) {
-            List<String> keys = reviewMapper.selectFieldKeysByTemplate(templateId);
-            if (keys != null) {
-                validKeys.addAll(keys);
+    /** 秘书格式建议：fieldKey 须属于计划绑定的模板版本（与专家投票同一白名单）。 */
+    private void validateSecretaryItems(List<FormatReviewRequest.Item> items, Long templateId) {
+        Set<String> validKeys = loadTemplateFieldKeys(templateId);
+        for (FormatReviewRequest.Item it : items) {
+            if (it == null) {
+                continue;
             }
+            assertFieldKeyInTemplate(it.getFieldKey(), validKeys);
         }
+    }
+
+    private void validateItems(String verdict, List<ReviewVoteRequest.VoteItem> items, Long templateId) {
+        Set<String> validKeys = loadTemplateFieldKeys(templateId);
         for (ReviewVoteRequest.VoteItem it : items) {
             if (it == null) {
                 continue;
             }
-            if (!StringUtils.hasText(it.getFieldKey())) {
-                throw TwinBusinessException.of(400, "评审项缺少 fieldKey");
-            }
+            assertFieldKeyInTemplate(it.getFieldKey(), validKeys);
             if (!StringUtils.hasText(it.getVerdict())) {
                 throw TwinBusinessException.of(400, "评审项缺少 verdict");
             }
@@ -662,9 +664,26 @@ public class AupReviewService {
             if (IV_NON_COMPLIANT.equals(iv) && !StringUtils.hasText(it.getReason())) {
                 throw TwinBusinessException.of(400, "不合规字段必须填写原因");
             }
-            if (!validKeys.isEmpty() && !validKeys.contains(it.getFieldKey())) {
-                throw TwinBusinessException.of(400, "字段不属于该计划模板版本: " + it.getFieldKey());
+        }
+    }
+
+    private Set<String> loadTemplateFieldKeys(Long templateId) {
+        Set<String> validKeys = new HashSet<>();
+        if (templateId != null) {
+            List<String> keys = reviewMapper.selectFieldKeysByTemplate(templateId);
+            if (keys != null) {
+                validKeys.addAll(keys);
             }
+        }
+        return validKeys;
+    }
+
+    private void assertFieldKeyInTemplate(String fieldKey, Set<String> validKeys) {
+        if (!StringUtils.hasText(fieldKey)) {
+            throw TwinBusinessException.of(400, "评审项缺少 fieldKey");
+        }
+        if (!validKeys.isEmpty() && !validKeys.contains(fieldKey)) {
+            throw TwinBusinessException.of(400, "字段不属于该计划模板版本: " + fieldKey);
         }
     }
 
@@ -713,24 +732,27 @@ public class AupReviewService {
         return false;
     }
 
-    /** userId 列表 → ExpertCandidate：补 name/dept；无人员档案时 name 回退为 userId。 */
+    /** userId 列表 → ExpertCandidate：姓名走 {@link UserDisplayNameService}（STAFF_* / aro id 同源），部门走 personnel.staff_id。 */
     private List<ExpertCandidate> toCandidates(List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return List.of();
         }
-        Map<String, ExpertCandidate> byId = new LinkedHashMap<>();
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(userIds);
+        Map<String, ExpertCandidate> deptByStaff = new LinkedHashMap<>();
         for (ExpertCandidate c : reviewerMapper.selectCandidatesByUserIds(userIds)) {
             if (c != null && c.getUserId() != null) {
-                byId.put(c.getUserId(), c);
+                deptByStaff.put(c.getUserId(), c);
             }
         }
         List<ExpertCandidate> out = new ArrayList<>(userIds.size());
         for (String uid : userIds) {
-            ExpertCandidate c = byId.get(uid);
-            if (c == null) {
-                c = new ExpertCandidate();
-                c.setUserId(uid);
-                c.setName(uid);
+            ExpertCandidate c = new ExpertCandidate();
+            c.setUserId(uid);
+            String displayName = names.get(uid);
+            c.setName(StringUtils.hasText(displayName) ? displayName : uid);
+            ExpertCandidate deptRow = deptByStaff.get(uid);
+            if (deptRow != null && StringUtils.hasText(deptRow.getDept())) {
+                c.setDept(deptRow.getDept());
             }
             out.add(c);
         }

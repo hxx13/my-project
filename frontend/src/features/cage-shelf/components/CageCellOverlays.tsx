@@ -136,11 +136,12 @@ export const STATUS_COLOR_DOT: Record<string, string> = {
   NEED_DIVIDE:    "bg-yellow-500 ring-yellow-300",
   HEALTH_ABNORMAL: "bg-purple-500 ring-purple-300",
   ANIMAL_TRANSFER: "bg-cyan-500 ring-cyan-300",
+  NEED_COHABITATION: "bg-orange-500 ring-orange-300",
 };
 
 export const STATUS_ABBR: Record<string, string> = {
   COHABITATION: "合", SPECIAL_FEEDING: "饲", NEED_DIVIDE: "分",
-  HEALTH_ABNORMAL: "疾", ANIMAL_TRANSFER: "迁",
+  HEALTH_ABNORMAL: "疾", ANIMAL_TRANSFER: "迁", NEED_COHABITATION: "笼",
 };
 
 /** @deprecated 使用 SPECIAL_STATUS_LABELS from @/utils/cageSpecialStatusLabels */

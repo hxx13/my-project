@@ -24,6 +24,8 @@ public class CrfForm {
     private String frequency;
     /** 采集形态 SERIES/LEDGER/PANEL（V35 推导） */
     private String captureForm;
+    /** 宿主：DONOR=供体域 / RECIPIENT=受体域（表单划分；新建原子域时显式指定，不靠域码推导） */
+    private String hostType;
     private Boolean active;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

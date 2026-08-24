@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { createNhpRecord, type NhpRecordListItem } from "../api/nhpRecord.api";
+import { createNhpRecordForProject, type NhpRecordListItem } from "../api/nhpRecord.api";
 import {
   assignableFormId,
   fetchAssignableNhpTemplates,
@@ -21,11 +21,10 @@ import {
   type NhpVisit,
   type NhpVisitPlan,
 } from "../api/nhpVisit.api";
-import type { NhpSurgeryContext } from "../utils/nhpSurgeryContext";
 import "../nhp.css";
 
 type Props = {
-  surgery: NhpSurgeryContext;
+  projectId: number;
   records: NhpRecordListItem[];
   mode?: "portal" | "adminPreview";
   onCreated?: (recordId: number) => void;
@@ -43,7 +42,7 @@ function captureFormLabel(cf?: string | null): string {
   return CAPTURE_FORM_OPTIONS.find((o) => o.value === cf)?.label ?? cf ?? "事件面板";
 }
 
-export default function NhpSurgeryFormLauncher({ surgery, records, mode = "portal", onCreated }: Props) {
+export default function NhpSurgeryFormLauncher({ projectId, records, mode = "portal", onCreated }: Props) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
   const isAdmin = mode === "adminPreview";
@@ -115,8 +114,8 @@ export default function NhpSurgeryFormLauncher({ surgery, records, mode = "porta
     }
     setBusy(form.formKey);
     try {
-      const r = await createNhpRecord(surgery.subjectId, formId);
-      toast.success(`已创建实例 #${r.id}`);
+      const r = await createNhpRecordForProject(projectId, formId);
+      toast.success(`已创建「${form.title || form.formKey}」实例`);
       onCreated?.(r.id);
       navigate(fillPath(r.id, form.formKey, captureForm));
     } catch (e) {
@@ -169,7 +168,7 @@ export default function NhpSurgeryFormLauncher({ surgery, records, mode = "porta
                       disabled={busy === form.formKey}
                       onClick={() => navigate(fillPath(draft.record.id, form.formKey, plan.captureForm))}
                     >
-                      续填 #{draft.record.id}
+                      续填
                     </button>
                   ) : null}
                   <button

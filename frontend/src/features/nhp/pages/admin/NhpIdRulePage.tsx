@@ -1,5 +1,5 @@
 /**
- * NHP 编码规则配置页（左列表右详情，对齐 22 §4 / 24 §3.5）。
+ * NHP 编号规则配置页（左列表右详情，对齐 22 §4 / 24 §3.5）。
  *
  * - crf_id_rule：16 类 ID 的 pattern + derived 标记
  * - pattern 全占位符、derived（ANES/HX/RS）不走取号器、未解析占位符抛异常
@@ -136,7 +136,7 @@ export default function NhpIdRulePage() {
             <button type="button" className="btn ghost small" onClick={goBack}>
               ← 返回
             </button>
-            <h1>编码规则</h1>
+            <h1>编号规则</h1>
             <div className="sub">16 类 ID · pattern 全占位符 + derived 标记（ANES/HX/RS 不走取号器）</div>
           </div>
         </div>
@@ -150,7 +150,7 @@ export default function NhpIdRulePage() {
               <div style={{ padding: 28, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>加载失败，请刷新重试</div>
             )}
             {!rulesQuery.isLoading && !rulesQuery.isError && rules.length === 0 && (
-              <div style={{ padding: 28, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>暂无编码规则</div>
+              <div style={{ padding: 28, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>暂无编号规则</div>
             )}
             {rules.map((r) => (
               <div

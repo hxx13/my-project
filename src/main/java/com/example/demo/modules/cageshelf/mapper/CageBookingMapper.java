@@ -20,6 +20,15 @@ public interface CageBookingMapper {
 
     int upsertRooms(@Param("list") List<Map<String, Object>> rows);
 
+    /** 保存房间上限（animal_cage_number），改低由 Service 校验 */
+    int upsertRoomCapacity(@Param("roomId") String roomId, @Param("capacity") Integer capacity);
+
+    /** 硬覆盖同步用：清空房间汇总表 */
+    int truncateRooms();
+
+    /** 硬覆盖同步用：清空房间 AUP 明细表 */
+    int truncateRoomAups();
+
     // ── cage_booking_room_aup ──
 
     List<Map<String, Object>> selectRoomAups(@Param("roomId") String roomId);

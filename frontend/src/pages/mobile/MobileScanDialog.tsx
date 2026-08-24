@@ -1,5 +1,6 @@
 /** H5 手机版扫码弹窗：摄像头优先，无摄像头自动拉起文件选择 */
 import { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Html5Qrcode } from "html5-qrcode";
 import { Camera, CameraOff, AlertTriangle, Upload } from "lucide-react";
 
@@ -38,19 +39,23 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
   const decodeFile = useCallback(async (file: File) => {
     setFileMode(true);
     setError(null);
+    console.log("[scan-file] 开始识别 name=", file.name, "size=", file.size, "type=", file.type);
     try {
+      await stopScanner(); // 先停掉摄像头，避免与相册识别实例冲突
       const html5Qr = new Html5Qrcode(QR_SCANNER_ID, { verbose: false });
       scannerRef.current = html5Qr;
       const text = await html5Qr.scanFile(file, false);
+      console.log("[scan-file] 识别文本=", text);
       if (text) {
         onResult(text);
-        stopScanner();
         onClose();
       } else {
+        console.log("[scan-file] 识别文本为空");
         setError("未识别到二维码/条形码，请选择其他图片");
         setFileMode(false);
       }
-    } catch {
+    } catch (e) {
+      console.log("[scan-file] 识别失败 error=", e);
       setError("未识别到二维码/条形码，请选择其他图片");
       setFileMode(false);
     }
@@ -79,6 +84,7 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1 },
         (decoded: string) => {
+          console.log("[scan-camera] 识别文本=", decoded);
           onResult(decoded);
           stopScanner();
           onClose();
@@ -112,7 +118,7 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[var(--z-modal)] bg-black/70 flex flex-col"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -218,6 +224,7 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
           取消扫码
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

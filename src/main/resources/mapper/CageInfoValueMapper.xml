@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageInfoValueMapper">
+
+    <resultMap id="CageInfoValueMap" type="com.example.demo.modules.cageshelf.entity.CageInfoValue">
+        <id property="id" column="id"/>
+        <result property="animalCageId" column="animal_cage_id"/>
+        <result property="fieldId" column="field_id"/>
+        <result property="valueString" column="value_string"/>
+        <result property="valueText" column="value_text"/>
+        <result property="valueInt" column="value_int"/>
+        <result property="valueDecimal" column="value_decimal"/>
+        <result property="valueDate" column="value_date"/>
+        <result property="valueDatetime" column="value_datetime"/>
+        <result property="valueBool" column="value_bool"/>
+        <result property="valueJson" column="value_json"/>
+        <result property="fillSource" column="fill_source"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, animal_cage_id, field_id, value_string, value_text, value_int, value_decimal,
+        value_date, value_datetime, value_bool, value_json, fill_source, created_at, updated_at
+    </sql>
+
+    <select id="selectByAnimalCageId" resultMap="CageInfoValueMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_value
+        WHERE animal_cage_id = #{animalCageId}
+    </select>
+
+    <select id="countByAnimalCageId" resultType="int">
+        SELECT COUNT(1) FROM cage_info_value WHERE animal_cage_id = #{animalCageId}
+    </select>
+
+    <insert id="upsert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_info_value
+        (animal_cage_id, field_id, value_string, value_text, value_int, value_decimal,
+         value_date, value_datetime, value_bool, value_json, fill_source, created_at, updated_at)
+        VALUES
+        (#{animalCageId}, #{fieldId}, #{valueString}, #{valueText}, #{valueInt}, #{valueDecimal},
+         #{valueDate}, #{valueDatetime}, #{valueBool}, #{valueJson}, #{fillSource}, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE
+            value_string = VALUES(value_string),
+            value_text = VALUES(value_text),
+            value_int = VALUES(value_int),
+            value_decimal = VALUES(value_decimal),
+            value_date = VALUES(value_date),
+            value_datetime = VALUES(value_datetime),
+            value_bool = VALUES(value_bool),
+            value_json = VALUES(value_json),
+            fill_source = VALUES(fill_source),
+            updated_at = NOW()
+    </insert>
+
+    <delete id="deleteByAnimalCageAndField">
+        DELETE FROM cage_info_value WHERE animal_cage_id = #{animalCageId} AND field_id = #{fieldId}
+    </delete>
+</mapper>

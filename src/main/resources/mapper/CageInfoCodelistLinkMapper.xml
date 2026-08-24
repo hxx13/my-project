@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageInfoCodelistLinkMapper">
+
+    <resultMap id="CageInfoCodelistLinkMap" type="com.example.demo.modules.cageshelf.entity.CageInfoCodelistLink">
+        <id property="id" column="id"/>
+        <result property="itemId" column="item_id"/>
+        <result property="childCodelistId" column="child_codelist_id"/>
+        <result property="sortOrder" column="sort_order"/>
+    </resultMap>
+
+    <select id="selectByItemId" resultMap="CageInfoCodelistLinkMap">
+        SELECT id, item_id, child_codelist_id, sort_order
+        FROM cage_info_codelist_link
+        WHERE item_id = #{itemId}
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_info_codelist_link (item_id, child_codelist_id, sort_order)
+        VALUES (#{itemId}, #{childCodelistId}, #{sortOrder})
+    </insert>
+
+    <delete id="deleteById">
+        DELETE FROM cage_info_codelist_link WHERE id = #{id}
+    </delete>
+</mapper>

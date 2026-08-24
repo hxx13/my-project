@@ -41,10 +41,15 @@ export default function MobileCageBindQrDialog({
     setError("");
 
     try {
-      const cageId = Number((selectedCageData as any).id ?? 0);
+      const cageId = String((selectedCageData as any).id ?? (selectedCageData as any).animalCageId ?? "");
+      if (!/^\d+$/.test(cageId)) {
+        setError("笼位ID无效");
+        setSubmitting(false);
+        return;
+      }
 
       const roomId = shelfMeta?.roomId != null ? String(shelfMeta.roomId) : undefined;
-      await bindCageBox(String(cageId), scannedCode, roomId);
+      await bindCageBox(cageId, scannedCode, roomId);
 
       toast.success("绑定成功！");
       setSubmitting(false);

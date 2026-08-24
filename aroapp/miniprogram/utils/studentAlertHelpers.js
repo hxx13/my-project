@@ -784,9 +784,6 @@ function decoratePersonalAlertItem(item) {
     statusColor: status.statusColor,
     cardBg: important ? 'rgba(172,23,54,0.04)' : '#ffffff',
     cardBorder: important ? 'rgba(172,23,54,0.22)' : 'rgba(30,55,90,0.08)',
-    obligationId: item.obligationId || null,
-    mpPath: item.mpPath || '',
-    sourceUrl: item.sourceUrl || '',
   };
 }
 

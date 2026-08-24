@@ -63,12 +63,11 @@ page {
 .mall-top-actions-wrap {
   flex: 0 1 auto;
   min-width: 0;
-  overflow: hidden;
 }
 
 .mall-top-actions-scroll {
   width: auto;
-  height: 36px;
+  height: 32px;
 }
 
 .mall-top-actions {
@@ -76,14 +75,13 @@ page {
   flex-direction: row;
   align-items: center;
   gap: 6px;
-  height: 36px;
-  padding: 6px 4px 0 0;
+  height: 32px;
+  padding-right: 4px;
   white-space: nowrap;
 }
 
 .mall-top-pill {
   flex-shrink: 0;
-  position: relative;
   font-size: 11px;
   line-height: 1;
   padding: 7px 10px;
@@ -132,27 +130,22 @@ page {
   border-color: #ffd7b0;
 }
 
-.mall-top-pill-badge-wrap,
-.mall-top-pill-mine-wrap {
-  padding-right: 14px;
-}
-
 .mall-top-mini-badge {
-  position: absolute;
-  top: -5px;
-  right: -4px;
-  min-width: 16px;
-  height: 16px;
-  line-height: 16px;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 3px;
+  height: 14px;
+  line-height: 15px;
   padding: 0 4px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #ff6034, #ee0a24);
+  background: #ee0a24;
   border-radius: 999px;
   text-align: center;
   box-sizing: border-box;
-  border: 1px solid #fff;
+  transform: scale(0.92);
+  transform-origin: left center;
 }
 
 .mall-top-mini-badge-mine {
@@ -227,6 +220,7 @@ page {
 }
 
 .goods-card {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -325,13 +319,25 @@ page {
 
 .step-inline {
   flex-shrink: 0;
-  display: flex;
+  display: inline-flex;
   flex-direction: row;
   align-items: center;
   border: 1px solid #dcdee0;
   border-radius: 8px;
   overflow: hidden;
   background: #fff;
+}
+
+.step-bottom {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+}
+
+.sku-add-row {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
 }
 
 .si-btn {
@@ -558,6 +564,11 @@ page {
   padding: 8px 18px;
 }
 
+.sheet-btn-clear {
+  color: #ee0a24;
+  margin-right: auto;
+}
+
 .sheet-foot-actions {
   display: flex;
   align-items: center;
@@ -630,6 +641,13 @@ page {
   margin-top: 6rpx;
   font-size: 22rpx;
   color: #969799;
+}
+
+.pop-split-hint {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #ed6a0c;
 }
 
 .pop-scroll {
@@ -752,6 +770,92 @@ page {
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+}
+
+/* ── 合并到待处理订单弹窗 ─────────────────────── */
+.merge-order-line {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 18rpx 10rpx;
+  border-bottom: 1px dashed #eceef0;
+  border-radius: 8rpx;
+}
+
+.merge-order-line-on {
+  background: #f4f9ff;
+}
+
+.merge-radio {
+  width: 30rpx;
+  height: 30rpx;
+  border-radius: 999px;
+  border: 1px solid #dcdee0;
+  background: #fff;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.merge-radio-on {
+  border: 8rpx solid #1989fa;
+}
+
+.merge-order-mid {
+  flex: 1;
+  min-width: 0;
+}
+
+.merge-order-id {
+  display: block;
+  font-size: 26rpx;
+  color: #323233;
+  font-weight: 500;
+}
+
+.merge-order-time {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+/* 分组小标题：常规物资 / 独立下单物资 */
+.merge-sec-head {
+  font-size: 22rpx;
+  color: #969799;
+  margin: 16rpx 0 4rpx;
+}
+
+/* 订单行小字物资摘要（防护服×2、手套×1 等N项） */
+.merge-order-items {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #969799;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 目标单含相同物资时的追加数量提示 */
+.merge-order-append {
+  display: block;
+  margin-top: 2rpx;
+  font-size: 20rpx;
+  color: #ed6a0c;
+}
+
+/* 静态行（唯一匹配 / 新建独立订单）：无单选圈 */
+.merge-order-static {
+  padding-left: 10rpx;
+}
+
+/* 独立物资多目标时的组内标题 */
+.merge-indep-title {
+  font-size: 24rpx;
+  color: #323233;
+  font-weight: 500;
+  margin: 10rpx 0 2rpx;
 }
 
 /* ── Spec SKU panel ────────────────────────────── */

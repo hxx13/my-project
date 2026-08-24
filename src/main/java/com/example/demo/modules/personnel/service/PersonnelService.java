@@ -64,6 +64,53 @@ public class PersonnelService {
         return new ArrayList<>(set);
     }
 
+    /** 任意账号 id(staff_id 或 aro_user_id)→ personnel.id 字符串;不存在返回 null。 */
+    public String resolveIdByAccount(String accountId) {
+        if (accountId == null || accountId.isBlank()) {
+            return null;
+        }
+        Personnel p = personnelMapper.findByStaffId(accountId);
+        if (p == null) {
+            p = personnelMapper.findByAroUserId(accountId);
+        }
+        return p == null ? null : String.valueOf(p.getId());
+    }
+
+    /** 任意账号 id(staff_id 或 aro_user_id) → 统一人员;不存在返回 null。操作人/占用者解析统一入口,不复用 sys_user.id。 */
+    public Personnel resolveByAccount(String accountId) {
+        String pid = resolveIdByAccount(accountId);
+        if (pid == null) {
+            return null;
+        }
+        try {
+            return personnelMapper.findById(Long.parseLong(pid));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** personnel.id 集合 → staff_id 列表(过滤空 staff_id;非数字 id 忽略)。 */
+    public List<String> resolveStaffIds(Collection<String> personnelIds) {
+        if (personnelIds == null || personnelIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (String pid : personnelIds) {
+            if (pid == null || pid.isBlank()) {
+                continue;
+            }
+            try {
+                Personnel p = personnelMapper.findById(Long.parseLong(pid));
+                if (p != null && p.getStaffId() != null && !p.getStaffId().isBlank()) {
+                    result.add(p.getStaffId());
+                }
+            } catch (NumberFormatException ignore) {
+                // 非数字 id 忽略
+            }
+        }
+        return result;
+    }
+
     private static final Set<String> EDITABLE_FIELDS = Set.of(
             "job_number", "department_name", "project_group_name", "user_type_names", "is_school");
 
@@ -334,6 +381,8 @@ public class PersonnelService {
         Personnel p = new Personnel();
         p.setName(name);
         p.setStaffId(staffId);
+        // 新建教职工账号尚无官方可进房间授权，默认 0（列为 NOT NULL DEFAULT 0，显式插入 null 会触发约束异常）
+        p.setHasOfficialRoomPermission(0);
         personnelMapper.insert(p);
         if (StringUtils.hasText(roleCode) && p.getId() != null) {
             personnelMapper.updateRole(p.getId(), roleCode.trim());

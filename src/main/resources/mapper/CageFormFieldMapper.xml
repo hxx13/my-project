@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageFormFieldMapper">
+
+    <resultMap id="CageFormFieldMap" type="com.example.demo.modules.cageshelf.entity.CageFormField">
+        <id property="id" column="id"/>
+        <result property="templateId" column="template_id"/>
+        <result property="sectionId" column="section_id"/>
+        <result property="fieldId" column="field_id"/>
+        <result property="canonical" column="canonical"/>
+        <result property="label" column="label"/>
+        <result property="dataType" column="data_type"/>
+        <result property="fieldType" column="field_type"/>
+        <result property="dictKey" column="dict_key"/>
+        <result property="role" column="role"/>
+        <result property="required" column="required"/>
+        <result property="sortOrder" column="sort_order"/>
+    </resultMap>
+
+    <select id="selectByTemplateId" resultMap="CageFormFieldMap">
+        SELECT id, template_id, section_id, field_id, canonical, label, data_type, field_type, dict_key, role, required, sort_order
+        FROM cage_form_field
+        WHERE template_id = #{templateId}
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectByFieldId" resultMap="CageFormFieldMap">
+        SELECT id, template_id, section_id, field_id, canonical, label, data_type, field_type, dict_key, role, required, sort_order
+        FROM cage_form_field
+        WHERE field_id = #{fieldId}
+        ORDER BY template_id ASC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_form_field (template_id, section_id, field_id, canonical, label, data_type, field_type, dict_key, role, required, sort_order)
+        VALUES (#{templateId}, #{sectionId}, #{fieldId}, #{canonical}, #{label}, #{dataType}, #{fieldType}, #{dictKey}, #{role}, #{required}, #{sortOrder})
+    </insert>
+
+    <delete id="deleteByTemplateId">
+        DELETE FROM cage_form_field WHERE template_id = #{templateId}
+    </delete>
+</mapper>

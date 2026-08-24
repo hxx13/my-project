@@ -3,6 +3,7 @@ package com.example.demo.modules.identity.controller;
 import com.example.demo.common.config.AdminAuthInterceptor;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.identity.dto.IdentityTagUpsertRequest;
 import com.example.demo.modules.identity.dto.IdentityTagVO;
@@ -24,9 +25,12 @@ import java.util.Map;
 public class PersonIdentityController {
 
     private final PersonIdentityService personIdentityService;
+    private final AuthContextService authContextService;
 
-    public PersonIdentityController(PersonIdentityService personIdentityService) {
+    public PersonIdentityController(PersonIdentityService personIdentityService,
+                                    AuthContextService authContextService) {
         this.personIdentityService = personIdentityService;
+        this.authContextService = authContextService;
     }
 
     @GetMapping("/tags")
@@ -126,6 +130,18 @@ public class PersonIdentityController {
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    @GetMapping("/me")
+    @Operation(summary = "查询当前登录用户自己的身份标签（无需超管，供前端判定编辑权限）")
+    public Result<PersonIdentityVO> myIdentity(HttpServletRequest request) {
+        User u = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (u == null) return (Result<PersonIdentityVO>) (Object) Result.fail(403, "未登录");
+        String pid = personIdentityService.resolveIdByAccount(u.getId());
+        PersonIdentityVO vo = new PersonIdentityVO();
+        vo.setUserId(u.getId());
+        vo.setTags(pid == null ? List.of() : personIdentityService.getByUser(pid));
+        return Result.success(vo);
     }
 
     private Result<?> requireSuperAdmin(HttpServletRequest request) {

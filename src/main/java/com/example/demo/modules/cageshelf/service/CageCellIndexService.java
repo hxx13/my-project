@@ -2,11 +2,14 @@ package com.example.demo.modules.cageshelf.service;
 
 import com.alibaba.fastjson2.JSON;
 import com.example.demo.modules.aro.service.AroService;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageCellIndex;
+import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
+import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.support.CageFieldMappingService;
 import org.slf4j.Logger;
@@ -27,19 +30,28 @@ public class CageCellIndexService {
     private final CageCellIndexMapper cellIndexMapper;
     private final CageCellDetailMapper detailMapper;
     private final CageShelfMapper shelfMapper;
+    private final CageClaimMapper claimMapper;
     private final AroService aroService;
     private final CageFieldMappingService mappingService;
+    private final UserDisplayNameService userDisplayNameService;
+    private final CageInfoValueService infoValueService;
 
     public CageCellIndexService(CageCellIndexMapper cellIndexMapper,
                                 CageCellDetailMapper detailMapper,
                                 CageShelfMapper shelfMapper,
+                                CageClaimMapper claimMapper,
                                 AroService aroService,
-                                CageFieldMappingService mappingService) {
+                                CageFieldMappingService mappingService,
+                                UserDisplayNameService userDisplayNameService,
+                                CageInfoValueService infoValueService) {
         this.cellIndexMapper = cellIndexMapper;
         this.detailMapper = detailMapper;
         this.shelfMapper = shelfMapper;
+        this.claimMapper = claimMapper;
         this.aroService = aroService;
         this.mappingService = mappingService;
+        this.userDisplayNameService = userDisplayNameService;
+        this.infoValueService = infoValueService;
     }
 
     /**
@@ -223,6 +235,21 @@ public class CageCellIndexService {
             }
         }
 
+        // 批量解析占用者(所属人)姓名:复用 UserDisplayNameService,不裸返回 staff_id / aro_user_id
+        Map<Long, CageClaim> activeClaimByCage = new LinkedHashMap<>();
+        Set<String> claimantIds = new LinkedHashSet<>();
+        for (CageCellIndex cell : cells) {
+            Long cageId = cell.getAnimalCageId();
+            if (cageId == null) continue;
+            CageClaim ac = claimMapper.selectActiveByAnimalCageId(cageId);
+            if (ac == null) continue;
+            activeClaimByCage.put(cageId, ac);
+            if (ac.getClaimantId() != null && !ac.getClaimantId().isBlank()) {
+                claimantIds.add(ac.getClaimantId().trim());
+            }
+        }
+        Map<String, String> occupantNames = userDisplayNameService.resolveDisplayNames(claimantIds);
+
         // 构建 grid
         List<Map<String, Object>> grid = new ArrayList<>();
         for (CageCellIndex cell : cells) {
@@ -230,8 +257,18 @@ public class CageCellIndexService {
             gc.put("x", cell.getPositionX());
             gc.put("y", cell.getPositionY());
             gc.put("position", cell.getPositionX() + "-" + cell.getPositionY());
-            gc.put("id", String.valueOf(cell.getAnimalCageId()));
-            gc.put("animalCageId", cell.getAnimalCageId());
+            // 雪花 ID 必须以字符串下发，避免前端 JSON Number 精度丢失
+            String animalCageIdStr = cell.getAnimalCageId() == null ? null : String.valueOf(cell.getAnimalCageId());
+            gc.put("id", animalCageIdStr);
+            gc.put("animalCageId", animalCageIdStr);
+            // 活跃认领 id — 供详情面板绑定认领信息表单（无活跃认领时为 null）
+            CageClaim activeClaim = activeClaimByCage.get(cell.getAnimalCageId());
+            Long activeClaimId = activeClaim == null ? null : activeClaim.getId();
+            gc.put("activeClaimId", activeClaimId);
+            // 所属人姓名（统一人员解析，不回退裸 id/ARO 空名）
+            String claimantId = activeClaim == null ? null : activeClaim.getClaimantId();
+            gc.put("occupantName", (claimantId != null && !claimantId.isBlank())
+                    ? occupantNames.get(claimantId.trim()) : null);
             gc.put("hasCageBox", cell.getHasCageBox());
             gc.put("cageBoxCode", cell.getCageBoxCode());
             boolean empty = cell.getAnimalCageId() == null;
@@ -276,6 +313,8 @@ public class CageCellIndexService {
                     statuses.add(Map.of("code","ANIMAL_TRANSFER","label","动物转移","iconKey","transfer"));
                 if (Boolean.TRUE.equals(detail.getHasHealthAbnormality()))
                     statuses.add(Map.of("code","HEALTH_ABNORMAL","label","动物健康异常","iconKey","health"));
+                if (Boolean.TRUE.equals(detail.getNeedsCohabitation()))
+                    statuses.add(Map.of("code","NEED_COHABITATION","label","需合笼","iconKey","cohabitation"));
                 if (detail.getCohabitationDate() != null && !detail.getCohabitationDate().isBlank())
                     statuses.add(Map.of("code","COHABITATION","label","合笼/繁殖","iconKey","cohabitation"));
                 gc.put("specialStatuses", statuses);
@@ -385,6 +424,8 @@ public class CageCellIndexService {
 
                     Long animalCageId = (Long) mapped.get("animal_cage_id");
                     if (animalCageId == null) continue;
+                    // 双写：同步直连 cage_info_value（跳过固定表）
+                    infoValueService.syncFromMapped(animalCageId, mapped);
                     boolean isNew = false;
                     CageCellDetail d = detailMap.get(animalCageId);
                     if (d == null) {
@@ -578,6 +619,8 @@ public class CageCellIndexService {
                     // 按位置取正确的 animalCageId
                     Long animalCageId = posToAnimalCageId.get(x + "-" + y);
                     if (animalCageId == null) continue;
+                    // 双写：同步直连 cage_info_value（跳过固定表）
+                    infoValueService.syncFromMapped(animalCageId, mapped);
 
                     boolean isNew = false;
                     CageCellDetail d = detailById.get(animalCageId);
@@ -710,6 +753,17 @@ public class CageCellIndexService {
         return cellIndexMapper.lookupByAnimalCageId(animalCageId);
     }
 
+    /** Map 响应里的 ARO 雪花 ID 转为字符串，避免前端 Number 精度丢失 */
+    public static void stringifySnowflakeIds(Map<String, Object> row, String... keys) {
+        if (row == null) return;
+        for (String key : keys) {
+            Object v = row.get(key);
+            if (v instanceof Number n) {
+                row.put(key, String.valueOf(n.longValue()));
+            }
+        }
+    }
+
     /** 架子笼位汇总列表（分页） */
     public Map<String, Object> shelfCellSummary(Long roomId, String keyword, int page, int pageSize) {
         int offset = (page - 1) * pageSize;
@@ -752,6 +806,8 @@ public class CageCellIndexService {
             Integer y = (Integer) mapped.get("position_y");
             if (x == null || y == null || x < 1 || x > 8 || y < 1 || y > 10) continue;
             if (animalCageId == null) continue;
+            // 双写：同步直连 cage_info_value（跳过固定表）
+            infoValueService.syncFromMapped(animalCageId, mapped);
 
             CageCellDetail d = existingById.get(animalCageId);
             if (d == null) {

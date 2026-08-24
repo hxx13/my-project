@@ -18,5 +18,7 @@ public class CrfQualityEvent {
     /** OPEN / REVIEWED / CLOSED */
     private String status;
     private String reviewer;
+    /** 展示用复核人姓名（非持久列，UserDisplayNameService） */
+    private String reviewerName;
     private LocalDateTime createdAt;
 }

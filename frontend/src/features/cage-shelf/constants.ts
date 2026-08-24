@@ -75,6 +75,7 @@ export const STATUS_CHIPS: Array<{key:string;label:string;color:string;icon:stri
   {key:"needsDivision",label:"需分笼",color:"#eab308",icon:"🟡"},
   {key:"needsSpecialFeeding",label:"特殊饲养",color:"#ef4444",icon:"🔴"},
   {key:"hasHealthAbnormality",label:"健康异常",color:"#a855f7",icon:"🟣"},
+  {key:"needsCohabitation",label:"需合笼",color:"#f97316",icon:"🟠"},
   {key:"needsTransfer",label:"动物转移",color:"#06b6d4",icon:"🔵"},
   {key:"cohabitationDate",label:"合笼",color:"#10b981",icon:"🟢"},
 ];

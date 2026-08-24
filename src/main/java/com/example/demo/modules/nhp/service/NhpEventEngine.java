@@ -2,9 +2,11 @@ package com.example.demo.modules.nhp.service;
 
 import com.example.demo.modules.nhp.entity.CrfEventRule;
 import com.example.demo.modules.nhp.entity.CrfTodo;
+import com.example.demo.modules.nhp.entity.CrfTransplant;
 import com.example.demo.modules.nhp.mapper.CrfEventRuleMapper;
 import com.example.demo.modules.nhp.mapper.CrfSubjectMapper;
 import com.example.demo.modules.nhp.mapper.CrfTodoMapper;
+import com.example.demo.modules.nhp.mapper.CrfTransplantMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -30,17 +32,20 @@ public class NhpEventEngine {
     private final NhpVisitService visitService;
     private final ObjectMapper objectMapper;
     private final CrfSubjectMapper subjectMapper;
+    private final CrfTransplantMapper transplantMapper;
 
     public NhpEventEngine(CrfEventRuleMapper eventRuleMapper,
                           CrfTodoMapper todoMapper,
                           NhpVisitService visitService,
                           ObjectMapper objectMapper,
-                          CrfSubjectMapper subjectMapper) {
+                          CrfSubjectMapper subjectMapper,
+                          CrfTransplantMapper transplantMapper) {
         this.eventRuleMapper = eventRuleMapper;
         this.todoMapper = todoMapper;
         this.visitService = visitService;
         this.objectMapper = objectMapper;
         this.subjectMapper = subjectMapper;
+        this.transplantMapper = transplantMapper;
     }
 
     /**
@@ -133,13 +138,23 @@ public class NhpEventEngine {
 
     private void advanceState(Map<String, Object> ctx, Map<String, Object> spec) {
         Long subjectId = longVal(ctx.get("subjectId"));
+        Long transplantId = longVal(ctx.get("transplantId"));
         String targetState = str(spec.get("target_state"));
         if (subjectId == null || targetState == null) {
             log.warn("ADVANCE_STATE skipped: subjectId/target_state missing");
             return;
         }
-        subjectMapper.updateLifecycleStage(subjectId, targetState.trim().toUpperCase());
-        log.info("ADVANCE_STATE subjectId={} target={}", subjectId, targetState);
+        String target = targetState.trim().toUpperCase();
+        subjectMapper.updateLifecycleStage(subjectId, target);
+        // 生命周期挪到项目：同步 crf_transplant.lifecycle_stage
+        if (transplantId != null) {
+            CrfTransplant project = transplantMapper.findById(transplantId);
+            if (project != null) {
+                project.setLifecycleStage(target);
+                transplantMapper.update(project);
+            }
+        }
+        log.info("ADVANCE_STATE subjectId={} transplantId={} target={}", subjectId, transplantId, target);
     }
 
     private Map<String, Object> parseSpec(String actionSpec) {

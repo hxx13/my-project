@@ -89,9 +89,9 @@ public class NhpTemplateController {
     }
 
     @PostMapping("/{formKey}/publish")
-    @Operation(summary = "发布/冻结模板（原子=独立可填表单；组合=多原子快照）")
-    public Result<?> publish(@PathVariable String formKey) {
-        return service.publish(formKey);
+    @Operation(summary = "发布/冻结模板（原子=独立可填表单；组合=多原子快照）；原子可传 hostType 确定载体")
+    public Result<?> publish(@PathVariable String formKey, @RequestBody(required = false) Map<String, Object> body) {
+        return service.publish(formKey, body == null ? null : str(body.get("hostType")));
     }
 
     @PostMapping("/{formKey}/unfreeze")
@@ -116,6 +116,19 @@ public class NhpTemplateController {
     @Operation(summary = "软删该 formKey 下全部活跃版本（清理乱版本）；被引用版本跳过并汇总")
     public Result<?> deleteAllVersions(@PathVariable String formKey) {
         return service.deleteAllVersions(formKey);
+    }
+
+    @PostMapping("/actions/batch-delete")
+    @Operation(summary = "批量软删模板（按 formKey 删全部活跃版本；被填写实例/组合钉住引用的跳过并汇总）")
+    public Result<Map<String, Object>> batchDelete(@RequestBody Map<String, Object> body) {
+        List<String> keys = new java.util.ArrayList<>();
+        Object raw = body == null ? null : body.get("formKeys");
+        if (raw instanceof java.util.Collection<?> c) {
+            for (Object o : c) {
+                if (o != null) keys.add(String.valueOf(o));
+            }
+        }
+        return service.batchDeleteAllVersions(keys);
     }
 
     private String str(Object v) {

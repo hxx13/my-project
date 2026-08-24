@@ -541,8 +541,8 @@ public class AupDemoSeeder {
         d.put("A4.operators", List.of(mapOf(
                 "col_no", "S001", "col_type", "硕士研究生", "col_name", "张同学",
                 "col_email", "student@shsmu.edu.cn", "col_task", "给药与样本采集")));
-        d.put("A5.scope", "是");
-        d.put("A6.update", "否");
+        d.put("A5.scope", "全部校内");
+        d.put("A6.update", "新计划");
         d.put("A7.export", "否");
         d.put("A7.import", "否");
         d.put("A8.parts", List.of("I", "K"));
@@ -554,16 +554,16 @@ public class AupDemoSeeder {
         d.put("B3.conclusion", "已通过数据库文献检索，确认现有方案为当前可获得的最优动物实验途径。");
         d.put("B3.hasPain", "是");
         d.put("B3.painDesc", "造模及给药过程存在可引起动物疼痛的程序");
-        d.put("B4.basis", List.of("研究过程非常复杂，无法在体外单一系统复制"));
+        d.put("B4.basis", List.of("研究过程非常复杂，无法在体外单一系统来复制和研究相关内容。"));
         Map<String, Object> b5Block = new LinkedHashMap<>();
         b5Block.put("species", spec.species);
-        b5Block.put("basis", List.of("该品系生理特性与解剖结构更适合本项目研究"));
+        b5Block.put("basis", List.of("此种动物的生理特性及解剖结构更适合本项目研究。"));
         b5Block.put("basisDesc", "该品系遗传背景清晰、模型成熟，适用于本项目。");
         d.put("B5.blocks", List.of(b5Block));
         // B6 已改 repeatGroup：每种动物一块，块内疼痛级别值对齐新种子选项「目录D」
         Map<String, Object> b6Block = new LinkedHashMap<>();
         b6Block.put("species", spec.species);
-        b6Block.put("line", strainType(spec.line));
+        b6Block.put("line", spec.line);
         b6Block.put("age", "6-8 周");
         b6Block.put("weight", "20-25 g");
         b6Block.put("count", spec.count);
@@ -575,22 +575,22 @@ public class AupDemoSeeder {
         b6Block.put("domesticProvince", "上海");
         b6Block.put("domesticOrg", "上海灵畅生物科技有限公司");
         d.put("B6.blocks", List.of(b6Block));
-        d.put("B7.basis", List.of("通过生物统计学方法计算得出"));
+        d.put("B7.basis", List.of("通过生物统计学方法计算出可以获得显著差异性结果所需的动物数量。"));
         d.put("B7.basisDesc", "根据预实验结果与统计学要求估算各组样本量。");
         d.put("B8.overview", "实验分为对照组与给药组，观察造模、给药、采样的全过程变化。");
         d.put("B8.timeline", "第 1-2 月动物引入与预实验，第 3-8 月正式实验与采样，第 9 月安乐死与数据整理。");
         d.put("B9.nonPharma", "否");
-        d.put("C1.space", List.of("动物由医学院实验动物科学部订购，并饲养在部内动物设施"));
+        d.put("C1.space", List.of("动科部设施"));
         d.put("C2.hasRequest", "否");
         d.put("C3.singleCage", "否");
         d.put("D1.ether", "否");
         d.put("D2.restraint", "否");
-        d.put("D3.exempt", "否，实验过程中使用了麻醉剂或止痛药物进行疼痛缓解");
-        d.put("E1.operator", List.of("实验动物科学部兽医对动物实施安乐死"));
+        d.put("D3.exempt", "否，实验过程中使用了麻醉剂或止痛药物对动物进行疼痛缓解。");
+        d.put("E1.operator", List.of("实验动物科学部兽医或兽医技术人员对动物实施安乐死。"));
         d.put("E1.avmaTable", List.of(mapOf("col_species", spec.species, "col_method", "二氧化碳窒息", "col_dose", "100% CO2 逐步置换")));
-        d.put("E1.confirm", List.of("双侧胸部剪开", "组织/器官采样"));
-        d.put("E2.disposal", List.of("实验结束后遗留动物交由动科部进行安乐死操作"));
-        d.put("E3.method", List.of("无生物危害动物尸体交由动科部处置"));
+        d.put("E1.confirm", List.of("双侧胸部剪开", "组织采样"));
+        d.put("E2.disposal", List.of("实验结束后遗留动物将交由医学院实验动物科学部进行安乐死操作。"));
+        d.put("E3.method", List.of("无生物危害尸体"));
         d.put("E4.cooperate", "否");
         // A8 勾选了 I：补 I 保定/麻醉
         d.put("I1.purposes", List.of("使用动物保定药物对动物进行抽血、注射的保定。"));

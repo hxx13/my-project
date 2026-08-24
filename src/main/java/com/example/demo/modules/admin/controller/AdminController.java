@@ -12,6 +12,8 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.service.SpecialChannelService;
+import com.example.demo.modules.notification.push.PushConstants;
+import com.example.demo.modules.notification.push.binding.NotifyBindingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,17 +32,20 @@ public class AdminController {
     private final UserMapper userMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final NotifyBindingService notifyBindingService;
 
     public AdminController(AdminService adminService,
                           SpecialChannelService specialChannelService,
                           UserMapper userMapper,
                           AroPersonnelMapper aroPersonnelMapper,
-                          JdbcTemplate jdbcTemplate) {
+                          JdbcTemplate jdbcTemplate,
+                          NotifyBindingService notifyBindingService) {
         this.adminService = adminService;
         this.specialChannelService = specialChannelService;
         this.userMapper = userMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.notifyBindingService = notifyBindingService;
     }
 
     @GetMapping("/personnel")
@@ -286,15 +291,15 @@ public class AdminController {
         String email = body != null ? body.get("email") : null;
         // 空值 = 取消绑定
         String trimmed = (email != null && !email.isBlank()) ? email.trim() : null;
-        // 通知 key 统一存 sys_user（学生账号 sys_user.id=aro_user_id 由 StudentAccountProvisioner 自动供给），不区分视角
-        userMapper.updateContactEmail(userId, trimmed);
+        // 通知渠道统一走 personnel_notify_binding，不区分视角
+        notifyBindingService.writeByChannel(userId, PushConstants.CHANNEL_EMAIL, trimmed);
         return Result.success();
     }
 
     @GetMapping("/personnel/{userId}/contact-email")
     @Operation(summary = "获取人员的联系邮箱")
     public Result<Map<String, Object>> getContactEmail(@PathVariable String userId) {
-        String email = userMapper.findContactEmailById(userId);
+        String email = notifyBindingService.readByChannel(userId, PushConstants.CHANNEL_EMAIL);
         return Result.success(Map.of("email", email != null ? email : ""));
     }
 
@@ -303,15 +308,15 @@ public class AdminController {
     public Result<Void> updateSendKey(@PathVariable String userId, @RequestBody Map<String, String> body) {
         String sendKey = body != null ? body.get("sendKey") : null;
         String trimmed = (sendKey != null && !sendKey.isBlank()) ? sendKey.trim() : null;
-        // 通知 key 统一存 sys_user，不区分视角
-        userMapper.updateSendKey(userId, trimmed);
+        // 通知渠道统一走 personnel_notify_binding，不区分视角
+        notifyBindingService.writeByChannel(userId, PushConstants.CHANNEL_SERVER_CHAN, trimmed);
         return Result.success();
     }
 
     @GetMapping("/personnel/{userId}/send-key")
     @Operation(summary = "获取人员的SendKey（脱敏）")
     public Result<Map<String, Object>> getSendKey(@PathVariable String userId) {
-        String sendKey = userMapper.findSendKeyById(userId);
+        String sendKey = notifyBindingService.readByChannel(userId, PushConstants.CHANNEL_SERVER_CHAN);
         String masked = sendKey != null && sendKey.length() > 10
                 ? sendKey.substring(0, 4) + "****" + sendKey.substring(sendKey.length() - 4)
                 : (sendKey != null ? "****" : "");
@@ -323,15 +328,15 @@ public class AdminController {
     public Result<Void> updateWxPusherUid(@PathVariable String userId, @RequestBody Map<String, String> body) {
         String wxPusherUid = body != null ? body.get("wxPusherUid") : null;
         String trimmed = (wxPusherUid != null && !wxPusherUid.isBlank()) ? wxPusherUid.trim() : null;
-        // 通知 key 统一存 sys_user，不区分视角
-        userMapper.updateWxPusherUid(userId, trimmed);
+        // 通知渠道统一走 personnel_notify_binding，不区分视角
+        notifyBindingService.writeByChannel(userId, PushConstants.CHANNEL_WXPUSHER, trimmed);
         return Result.success();
     }
 
     @GetMapping("/personnel/{userId}/wx-pusher-uid")
     @Operation(summary = "获取人员的WxPusher UID（脱敏）")
     public Result<Map<String, Object>> getWxPusherUid(@PathVariable String userId) {
-        String wxPusherUid = userMapper.findWxPusherUidById(userId);
+        String wxPusherUid = notifyBindingService.readByChannel(userId, PushConstants.CHANNEL_WXPUSHER);
         String masked = wxPusherUid != null && wxPusherUid.length() > 10
                 ? wxPusherUid.substring(0, 4) + "****" + wxPusherUid.substring(wxPusherUid.length() - 4)
                 : (wxPusherUid != null ? "****" : "");

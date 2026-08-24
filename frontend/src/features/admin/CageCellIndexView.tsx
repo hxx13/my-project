@@ -33,14 +33,14 @@ function CellEditor({
 
   const save = async () => {
     const t = value.trim();
-    const id = t ? Number(t) : null;
-    if (t && (!Number.isFinite(id) || id! <= 0)) {
+    const id = t || null;
+    if (t && !/^\d+$/.test(t)) {
       toast.error("请输入有效的正整数ID");
       return;
     }
     setSaving(true);
     try {
-      await updateCellAnimalCageId(cell.shelfIndexId, cell.positionX, cell.positionY, id as number | null);
+      await updateCellAnimalCageId(cell.shelfIndexId, cell.positionX, cell.positionY, id);
       toast.success(`(${cell.positionX},${cell.positionY}) 已保存`);
       setEditing(false);
       onSaved();
@@ -129,7 +129,7 @@ function CellGrid({
     for (let x = 1; x <= 8; x++) {
       const key = `${y}-${x}`;
       row.push(cellMap.get(key) ?? {
-        id: 0, shelfIndexId, shelveId: 0,
+        id: 0, shelfIndexId, shelveId: "",
         positionX: x, positionY: y,
         animalCageId: null, hasCageBox: false,
         cageBoxCode: null, lastSyncStatus: "PENDING",

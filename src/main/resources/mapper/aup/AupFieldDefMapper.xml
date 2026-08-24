@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupFieldDefMapper">
+
+    <sql id="fieldFilter">
+        <where>
+            <if test="folderId != null">AND folder_id = #{folderId}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (field_code LIKE CONCAT('%',#{keyword},'%')
+                     OR label LIKE CONCAT('%',#{keyword},'%')
+                     OR dict_key LIKE CONCAT('%',#{keyword},'%'))
+            </if>
+        </where>
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO aup_field_def (field_code, label, type, dict_key, options, required, description, config,
+            show_when, folder_id, status, frozen_at, frozen_by, sort_order)
+        VALUES (#{fieldCode}, #{label}, #{type}, #{dictKey}, #{options}, #{required}, #{description}, #{config},
+            #{showWhen}, #{folderId}, #{status}, #{frozenAt}, #{frozenBy}, #{sortOrder})
+    </insert>
+
+    <update id="update">
+        UPDATE aup_field_def
+        <set>
+            <if test="label != null">label = #{label},</if>
+            <if test="type != null">type = #{type},</if>
+            <if test="dictKey != null">dict_key = #{dictKey},</if>
+            <if test="options != null">options = #{options},</if>
+            <if test="required != null">required = #{required},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="config != null">config = #{config},</if>
+            <if test="showWhen != null">show_when = #{showWhen},</if>
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            <if test="status != null">status = #{status},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultType="com.example.demo.modules.aup.entity.AupFieldDef">
+        SELECT * FROM aup_field_def WHERE id = #{id}
+    </select>
+
+    <select id="findByFieldCode" resultType="com.example.demo.modules.aup.entity.AupFieldDef">
+        SELECT * FROM aup_field_def WHERE field_code = #{fieldCode} LIMIT 1
+    </select>
+
+    <select id="listByFilter" resultType="com.example.demo.modules.aup.entity.AupFieldDef">
+        SELECT * FROM aup_field_def
+        <include refid="fieldFilter"/>
+        ORDER BY sort_order ASC, id ASC LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByFilter" resultType="int">
+        SELECT COUNT(1) FROM aup_field_def
+        <include refid="fieldFilter"/>
+    </select>
+
+    <select id="countByFolderId" resultType="int">
+        SELECT COUNT(1) FROM aup_field_def WHERE folder_id = #{folderId}
+    </select>
+
+    <select id="countByDictKey" resultType="int">
+        SELECT COUNT(1) FROM aup_field_def WHERE dict_key = #{dictKey}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE aup_field_def SET status = #{status} WHERE id = #{id}
+    </update>
+
+    <update id="updateFolder">
+        UPDATE aup_field_def SET folder_id = #{folderId}, sort_order = #{sortOrder} WHERE id = #{id}
+    </update>
+
+    <update id="markPublished">
+        UPDATE aup_field_def SET status = 'PUBLISHED', frozen_at = #{frozenAt}, frozen_by = #{frozenBy}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM aup_field_def WHERE id = #{id}
+    </delete>
+
+</mapper>

@@ -3,6 +3,7 @@ package com.example.demo.modules.notification.push.preference;
 import com.example.demo.modules.notification.push.PushConstants;
 import com.example.demo.modules.notification.push.source.NotifySource;
 import com.example.demo.modules.notification.push.source.NotifySourceMapper;
+import com.example.demo.modules.personnel.service.PersonnelService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -21,10 +22,19 @@ public class UserNotifySettingService {
     private static final Logger log = LoggerFactory.getLogger(UserNotifySettingService.class);
     private final NotifySourceMapper sourceMapper;
     private final UserNotifyMuteMapper muteMapper;
+    private final PersonnelService personnelService;
 
-    public UserNotifySettingService(NotifySourceMapper sourceMapper, UserNotifyMuteMapper muteMapper) {
+    public UserNotifySettingService(NotifySourceMapper sourceMapper, UserNotifyMuteMapper muteMapper,
+                                    PersonnelService personnelService) {
         this.sourceMapper = sourceMapper;
         this.muteMapper = muteMapper;
+        this.personnelService = personnelService;
+    }
+
+    /** user_notify_mute 已迁 personnel.id:任意账号 id 归一为 personnel.id;落单账号回落原 id。 */
+    private String resolveMuteKey(String userId) {
+        String pid = personnelService.resolveIdByAccount(userId);
+        return pid != null ? pid : userId;
     }
 
     /** 单源 + 用户偏好 */
@@ -40,7 +50,7 @@ public class UserNotifySettingService {
 
         Map<String, UserNotifyMute> muteMap = new LinkedHashMap<>();
         try {
-            for (UserNotifyMute m : muteMapper.findByUserId(userId)) {
+            for (UserNotifyMute m : muteMapper.findByUserId(resolveMuteKey(userId))) {
                 if (m != null && StringUtils.hasText(m.getSourceCode())) {
                     muteMap.put(m.getSourceCode().trim(), m);
                 }
@@ -70,10 +80,11 @@ public class UserNotifySettingService {
 
     /** 保存用户对单个源的偏好 */
     public void save(String userId, String sourceCode, UserNotifyMute body) {
-        body.setUserId(userId);
+        String key = resolveMuteKey(userId);
+        body.setUserId(key);
         body.setSourceCode(sourceCode);
         // 合并已有设置：未传的字段保留原值
-        UserNotifyMute existing = muteMapper.findByUserAndSource(userId, sourceCode);
+        UserNotifyMute existing = muteMapper.findByUserAndSource(key, sourceCode);
         if (existing != null) {
             if (body.getEnabled() == null) body.setEnabled(existing.getEnabled());
             if (body.getMuteEmail() == null) body.setMuteEmail(existing.getMuteEmail());
@@ -98,7 +109,7 @@ public class UserNotifySettingService {
     /** 查询用户对特定源的静默状态（供 PushDispatchEngine 使用） */
     public UserNotifyMute getMute(String userId, String sourceCode) {
         try {
-            return muteMapper.findByUserAndSource(userId, sourceCode);
+            return muteMapper.findByUserAndSource(resolveMuteKey(userId), sourceCode);
         } catch (Exception e) {
             return null; // 出错视为无静默
         }

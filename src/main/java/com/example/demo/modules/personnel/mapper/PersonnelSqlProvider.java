@@ -14,14 +14,17 @@ public class PersonnelSqlProvider {
             "su_student.username AS studentUsername, su_staff.open_id AS staffOpenId, " +
             "su_staff.account_source AS staffAccountSource, su_staff.display_nickname AS staffDisplayNickname, " +
             "su_staff.create_time AS staffCreateTime, " +
-            "COALESCE(su_staff.contact_email, ap_student.contact_email, su_student.contact_email) AS contactEmail, " +
-            "COALESCE(su_staff.send_key, ap_student.send_key, su_student.send_key) AS sendKey, " +
-            "COALESCE(su_staff.wx_pusher_uid, ap_student.wx_pusher_uid, su_student.wx_pusher_uid) AS wxPusherUid ";
+            "nb_email.target_value AS contactEmail, " +
+            "nb_sc.target_value AS sendKey, " +
+            "nb_wx.target_value AS wxPusherUid ";
 
     private static final String FROM = "FROM personnel p " +
             "LEFT JOIN sys_user su_staff ON su_staff.id = p.staff_id " +
             "LEFT JOIN aro_personnel ap_student ON ap_student.user_id = p.aro_user_id " +
-            "LEFT JOIN sys_user su_student ON su_student.id = p.aro_user_id ";
+            "LEFT JOIN sys_user su_student ON su_student.id = p.aro_user_id " +
+            "LEFT JOIN personnel_notify_binding nb_email ON nb_email.personnel_id = p.id AND nb_email.channel_code = 'EMAIL' " +
+            "LEFT JOIN personnel_notify_binding nb_sc    ON nb_sc.personnel_id    = p.id AND nb_sc.channel_code = 'SERVER_CHAN' " +
+            "LEFT JOIN personnel_notify_binding nb_wx    ON nb_wx.personnel_id    = p.id AND nb_wx.channel_code = 'WXPUSHER' ";
 
     public static String search(PersonnelFilter f) {
         return COLUMNS + FROM + where(f) + " ORDER BY p.id ASC LIMIT #{limit} OFFSET #{offset}";
