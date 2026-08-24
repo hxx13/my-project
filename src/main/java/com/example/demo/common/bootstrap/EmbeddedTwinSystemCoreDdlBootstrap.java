@@ -122,6 +122,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/cage-shelf-cell-snapshot.sql", ctx)) success++;
         total++; if (runScript("db/cage-shelf-bookmark.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-booking.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-booking-roomid-bigint.sql", ctx)) success++;
         total++; if (runScript("db/student-room-pin.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-twin-swipe-alert-rule.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-swipe-alert-notify-site.sql", ctx)) success++;
@@ -147,6 +148,13 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-aup-demo-flag.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aup-review-item-role.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aup-snapshot-draft-source.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-config-folder.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-codelist-version.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-field-def.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-atom-composite.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-config-change-log.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-field-dict-version.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-dict-source.sql", ctx)) success++;
         total++; if (runScript("db/migration/V20260815__person_identity_recreate.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-identity.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-drop-person-identity-scope.sql", ctx)) success++;
@@ -264,6 +272,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-nhp-codelist-folder.sql", ctx)) success++;
         // 模板章节 code 加宽：对齐 snake_case 原子名（seedAtomsFromPriorityJson）
         total++; if (runScript("db/bootstrap-nhp-template-section-code.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-nhp-attachment.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");
