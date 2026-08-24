@@ -14,12 +14,10 @@ import com.example.demo.modules.auth.entity.User;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,7 +31,6 @@ import java.util.stream.Collectors;
 public class AupDictService {
 
     private static final Logger log = LoggerFactory.getLogger(AupDictService.class);
-    private static final String BUILTIN_DICT_RESOURCE = "db/default-aup-dict.json";
     private static final Set<String> VERDICTS = Set.of("CONFIRM", "MODIFY", "DELETE", "QUESTION");
 
     private final DictMapper dictMapper;
@@ -253,60 +250,6 @@ public class AupDictService {
         }
         auditService.log("codelist", d.getId(), d.getDictKey(), d.getName(), "UPDATE", null, null, operator, "reorder items");
         return Result.success(null);
-    }
-
-    /**
-     * 导入内置种子字典（db/default-aup-dict.json）。
-     * 幂等：字典按 dictKey、字典项按 value 去重，已存在则不覆盖，只补充缺失项。
-     * 新建种子字典落 version=1,status='PUBLISHED'（与存量回填一致）。
-     */
-    @Transactional
-    public Map<String, Object> importBuiltinDicts() {
-        int createdDicts = 0;
-        int createdItems = 0;
-        for (Map<String, Object> bd : loadBuiltinDicts()) {
-            String dictKey = str(bd.get("dictKey"));
-            if (dictKey == null) {
-                continue;
-            }
-            Dict d = dictMapper.findByKey(dictKey);
-            if (d == null) {
-                d = new Dict();
-                d.setDictKey(dictKey);
-                String name = str(bd.get("name"));
-                d.setName(name == null ? dictKey : name);
-                d.setCategory(str(bd.get("category")));
-                d.setVersion(1);
-                d.setStatus("PUBLISHED");
-                d.setPublishedAt(LocalDateTime.now());
-                dictMapper.insert(d);
-                createdDicts++;
-                auditService.log("codelist", d.getId(), dictKey, d.getName(), "CREATE", null, d, null, "seed");
-            }
-            Object itemsObj = bd.get("items");
-            if (!(itemsObj instanceof List<?> items)) {
-                continue;
-            }
-            int order = 0;
-            for (Object itemObj : items) {
-                String itemName = str(itemObj);
-                if (itemName == null || dictItemMapper.countByDictIdAndValue(d.getId(), itemName) > 0) {
-                    continue;
-                }
-                DictItem item = new DictItem();
-                item.setDictId(d.getId());
-                item.setValue(itemName);
-                item.setLabel(itemName);
-                item.setSortOrder(order++);
-                dictItemMapper.insert(item);
-                createdItems++;
-                auditService.log("codelist_item", item.getId(), itemName, itemName, "CREATE", null, item, null, "seed");
-            }
-        }
-        Map<String, Object> out = new HashMap<>();
-        out.put("createdDicts", createdDicts);
-        out.put("createdItems", createdItems);
-        return out;
     }
 
     /* ── 版本状态机 ── */
@@ -613,32 +556,6 @@ public class AupDictService {
         r.setDictVersion(intOrNull(m.get("dictVersion")));
         r.setFieldDefId(longOrNull(m.get("fieldDefId")));
         return r;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> loadBuiltinDicts() {
-        try {
-            ClassPathResource res = new ClassPathResource(BUILTIN_DICT_RESOURCE);
-            if (!res.exists()) {
-                return List.of();
-            }
-            String json = new String(res.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            Map<String, Object> root = objectMapper.readValue(json, Map.class);
-            Object dictsObj = root.get("dicts");
-            if (!(dictsObj instanceof List<?> list)) {
-                return List.of();
-            }
-            List<Map<String, Object>> out = new ArrayList<>();
-            for (Object o : list) {
-                if (o instanceof Map<?, ?> m) {
-                    out.add((Map<String, Object>) m);
-                }
-            }
-            return out;
-        } catch (Exception e) {
-            log.warn("[aup-dict] 读取内置字典种子失败: {}", e.getMessage());
-            return List.of();
-        }
     }
 
     private String operatorName(User user) {

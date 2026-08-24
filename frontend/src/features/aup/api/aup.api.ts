@@ -349,11 +349,6 @@ export function archiveAupTemplate(id: number): Promise<void> {
   return authHttp.post<Result<void>>(`/aup-template/${id}/archive`).then(() => undefined);
 }
 
-/** GET /aup-template/default-seed —— 内置默认模板（「导入内置模板」填充当前草稿用） */
-export function fetchAupDefaultSeed(): Promise<UpdateTemplateBody> {
-  return authHttp.get<Result<UpdateTemplateBody>>("/aup-template/default-seed").then(({ data }) => data.data);
-}
-
 /** DELETE /aup-template/{id} —— 删除版本（含整树结构，任意状态可删） */
 export function deleteAupTemplate(id: number): Promise<void> {
   return authHttp.delete<Result<never>>(`/aup-template/${id}`).then(({ data }) => data.data);
@@ -609,11 +604,6 @@ export function deleteAupDictItem(dictKey: string, itemId: number): Promise<void
 /** PUT /aup-dict/{dictKey}/items/reorder —— 按序落 sort_order（itemIds 为 Long 数组） */
 export function reorderAupDictItems(dictKey: string, itemIds: number[]): Promise<void> {
   return authHttp.put<Result<void>>(`/aup-dict/${dictKey}/items/reorder`, itemIds).then(() => undefined);
-}
-
-/** POST /aup-dict/import-builtin —— 导入内置种子字典（幂等） */
-export function importBuiltinAupDict(): Promise<{ createdDicts: number; createdItems: number }> {
-  return authHttp.post<Result<{ createdDicts: number; createdItems: number }>>("/aup-dict/import-builtin").then(({ data }) => data.data);
 }
 
 /* =====================================================================

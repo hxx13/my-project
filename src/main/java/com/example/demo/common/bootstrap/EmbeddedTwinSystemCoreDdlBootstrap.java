@@ -4,7 +4,6 @@ import com.example.demo.common.logging.annotation.StartupPhase;
 import com.example.demo.common.logging.model.StartupContext;
 import com.example.demo.common.logging.model.StartupResult;
 import com.example.demo.common.logging.model.StartupRunner;
-import com.example.demo.modules.aup.service.AupDefaultTemplateSeeder;
 import com.example.demo.modules.aup.service.AupDemoSeeder;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 import org.springframework.beans.factory.InitializingBean;
@@ -49,18 +48,15 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
     private final DataSource dataSource;
     private final JdbcTemplate jdbcTemplate;
     private final TwinStudentViolationService twinStudentViolationService;
-    private final AupDefaultTemplateSeeder aupDefaultTemplateSeeder;
     private final AupDemoSeeder aupDemoSeeder;
 
     public EmbeddedTwinSystemCoreDdlBootstrap(DataSource dataSource,
                                                JdbcTemplate jdbcTemplate,
                                                TwinStudentViolationService twinStudentViolationService,
-                                               AupDefaultTemplateSeeder aupDefaultTemplateSeeder,
                                                AupDemoSeeder aupDemoSeeder) {
         this.dataSource = dataSource;
         this.jdbcTemplate = jdbcTemplate;
         this.twinStudentViolationService = twinStudentViolationService;
-        this.aupDefaultTemplateSeeder = aupDefaultTemplateSeeder;
         this.aupDemoSeeder = aupDemoSeeder;
     }
 
@@ -168,7 +164,6 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-personnel-room-authorization.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-personnel-role.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-identity-migrate-to-personnel-id.sql", ctx)) success++;
-        total++; if (seedAupDefaultTemplate(ctx)) success++;
         total++; if (seedAupDemo(ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_baseline_multi.sql", ctx)) success++;
@@ -282,21 +277,6 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         }
         return StartupResult.failed(success + "/" + total + " 就绪，"
                 + (total - success) + " 个失败 (权限不足或表已存在)", null);
-    }
-
-    /** AUP 默认模板种子（环境变量/资源）；幂等，未配置或已有版本时为空操作，不算失败。 */
-    private boolean seedAupDefaultTemplate(StartupContext ctx) {
-        try {
-            if (ctx == null) {
-                aupDefaultTemplateSeeder.seedIfNeeded();
-            } else {
-                ctx.subtask("aup-default-template", aupDefaultTemplateSeeder::seedIfNeeded);
-            }
-            return true;
-        } catch (Exception ex) {
-            log.warn("AUP default template seed skipped: {}", ex.getMessage());
-            return true;
-        }
     }
 
     /** AUP 演示示例种子；幂等，已存在演示记录时为空操作，失败不阻塞启动。 */

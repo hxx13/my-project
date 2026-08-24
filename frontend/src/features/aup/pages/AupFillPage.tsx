@@ -31,12 +31,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { appConfirm } from "@/lib/appDialog";
 import "../aup.css";
-
-/** 乐观锁冲突判定：authHttp 把 409 转成 Error，仅保留 message */
-function isConflict(e: unknown): boolean {
-  const m = e instanceof Error ? e.message : String(e ?? "");
-  return /409|冲突|其他端|已被修改|乐观锁/i.test(m);
-}
+import { isAupConflict } from "@/features/aup/utils/aupConflict";
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -56,7 +51,7 @@ export default function AupFillPage() {
   const record = draft.detail.data?.record;
   // 有 id = 续填：用记录冻结的模板快照；无 id = 新建：直接用当前已发布模板（本地填写，不建 id）
   const templateQuery = useAupTemplateById(record?.templateId ?? undefined);
-  const publishedQuery = usePublishedTemplate(id ? undefined : "aup");
+  const publishedQuery = usePublishedTemplate(id ? undefined : "aup", "COMPOSITE");
 
   const [activeId, setActiveId] = useState<string | null>(null);
   // 程序化定位锁：点击章节跳转期间锁定高亮，避免滚动监听反复覆盖导致横跳
@@ -303,7 +298,7 @@ export default function AupFillPage() {
       else await persistFirstDraft();
       goBack();
     } catch (e) {
-      if (isConflict(e)) {
+      if (isAupConflict(e)) {
         toast.error("草稿已在其他端修改，请刷新后再试");
         setExitDialog(false);
       } else {
@@ -326,7 +321,7 @@ export default function AupFillPage() {
         navigate(`/aup/fill/${newId}`, { replace: true });
       }
     } catch (e) {
-      if (isConflict(e)) {
+      if (isAupConflict(e)) {
         if (id && await appConfirm("草稿已在其他端修改，是否刷新加载最新内容？")) draft.detail.refetch();
         else toast.error("草稿已在其他端修改，请刷新后重试");
       } else {
@@ -358,7 +353,7 @@ export default function AupFillPage() {
       navigate("/console/admin/aup");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (isConflict(e)) {
+      if (isAupConflict(e)) {
         if (id && await appConfirm("草稿已在其他端修改，是否刷新加载最新内容？")) draft.detail.refetch();
         else toast.error("草稿已在其他端修改，请刷新后重试");
       } else if (/校验未通过/i.test(msg)) {

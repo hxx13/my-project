@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
-  fetchAupDefaultSeed,
   fetchAupDicts,
   fetchAupTemplateById,
   publishAupTemplate,
@@ -2019,25 +2018,6 @@ export default function AupTemplateEditor() {
     onError: (e: Error) => toast.error(e.message || "发布失败"),
   });
 
-  /* 导入内置模板到当前草稿（仅替换本地状态，确认后保存生效） */
-  const seedMutation = useMutation({
-    mutationFn: fetchAupDefaultSeed,
-    onSuccess: (seed) => {
-      setTree(seed.sections ?? []);
-      setName(seed.name ?? "");
-      setDescription(seed.description ?? "");
-      setEditingField(null);
-      setEditingStruct(null);
-      setAddMenu(null);
-      toast.success("已载入内置模板内容，确认后点击「保存草稿」生效");
-    },
-    onError: (e: Error) => toast.error(e.message || "导入内置模板失败"),
-  });
-  const doImportSeed = async () => {
-    if (!await appConfirm("用内置 IACUC 模板内容替换当前草稿？当前草稿内容将丢失。")) return;
-    seedMutation.mutate();
-  };
-
   const doSave = () => {
     if (selectedId == null) return;
     saveMutation.mutate({ id: selectedId, body: buildSaveBody() });
@@ -2047,7 +2027,7 @@ export default function AupTemplateEditor() {
     if (!await appConfirm("发布后将冻结当前草稿并使其对填写人生效，上一发布版本将归档。确认发布？")) return;
     publishMutation.mutate(selectedId);
   };
-  const busy = saveMutation.isPending || publishMutation.isPending || seedMutation.isPending;
+  const busy = saveMutation.isPending || publishMutation.isPending;
 
   /* ---- 渲染：字段（编辑态 = 悬浮出编辑；点「编辑」打开右侧抽屉） ---- */
   const renderFieldEdit = (si: number, ui: number | undefined, f: FormFieldDef, fi: number, isLast: boolean) => (
@@ -2383,15 +2363,9 @@ export default function AupTemplateEditor() {
                   <div className="ic">📋</div>
                   <div className="t">当前草稿还没有内容</div>
                   <div className="d">
-                    可以直接「导入内置模板」，把 IACUC 实验动物研究及使用计划（AUP）的完整框架载入当前草稿；
-                    也可以从零开始新增板块。内置模板始终作为初始默认配置，新建草稿不会丢失它。
+                    从零开始新增板块，搭建 IACUC 实验动物研究及使用计划（AUP）表单。
                   </div>
                   <div className="acts">
-                    {editable && (
-                      <button className="aup-btn primary" onClick={doImportSeed} disabled={seedMutation.isPending}>
-                        {seedMutation.isPending ? "导入中…" : "↺ 导入内置模板"}
-                      </button>
-                    )}
                     {editable && (
                       <button className="aup-btn ghost" onClick={addSection}>＋ 新增板块</button>
                     )}

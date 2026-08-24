@@ -15,7 +15,6 @@ import {
   fetchAupDicts,
   fetchAupDictUsage,
   fetchAupDictVersions,
-  importBuiltinAupDict,
   listAupFolders,
   rejectAupDict,
   reorderAupDictItems,
@@ -424,20 +423,6 @@ export default function AupDictPage() {
     },
     onError: (e: Error) => toast.error(e.message || "审核标记失败"),
   });
-  const importBuiltinMut = useMutation({
-    mutationFn: importBuiltinAupDict,
-    onSuccess: (r) => {
-      toast.success(`已导入内置码表：新建 ${r.createdDicts} 个码表、${r.createdItems} 个码表项`);
-      invalidateAll();
-    },
-    onError: (e: Error) => toast.error(e.message || "导入失败"),
-  });
-
-  const handleImportBuiltin = async () => {
-    if (!(await appConfirm("导入内置种子码表？将补充缺失的安乐死方法/人员类别/项目来源等码表（已存在的不覆盖）。"))) return;
-    importBuiltinMut.mutate();
-  };
-
   const openCreateInFolder = (folderKey: string) => {
     setCreateModal({ folderKey, name: "", dictKey: "", advanced: false });
   };
@@ -873,9 +858,6 @@ export default function AupDictPage() {
             </div>
           </div>
           <div className="aup-wb-actions">
-            <button className="btn ghost small" disabled={importBuiltinMut.isPending} onClick={handleImportBuiltin}>
-              导入内置码表
-            </button>
             <button className="btn primary small" onClick={() => openCreateInFolder(UNGROUPED)}>
               ＋ 新建码表
             </button>

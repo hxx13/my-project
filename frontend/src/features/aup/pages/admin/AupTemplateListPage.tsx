@@ -1,92 +1,143 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { useGSAP } from "@gsap/react";
-import gsap from "gsap";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   archiveAupTemplate,
+  composeAupTemplate,
   copyAupTemplate,
-  createAupTemplate,
+  createAupAtom,
   deleteAupTemplate,
-  fetchAupDefaultSeed,
-  fetchAupTemplates,
+  fetchAupTemplateById,
+  fetchAupTemplatesByKind,
+  fetchAupTemplateUsage,
   publishAupTemplate,
-  updateAupTemplate,
-  updateAupTemplateMeta,
-} from "../../api/aup.api";
-import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
-import { appConfirm } from "@/lib/appDialog";
-import "../../aup.css";
+  rejectAupTemplate,
+  submitAupTemplateReview,
+  unfreezeAupTemplate,
+  type TemplateVersionVO,
+} from "@/features/aup/api/aup.api";
+import AupCompositeComposer, { type AupAtomPick } from "@/features/aup/components/AupCompositeComposer";
+import TemplateStructurePreview from "@/features/aup/components/TemplateStructurePreview";
+import { authStorage } from "@/features/auth/authStorage";
+import { hasMinRole } from "@/features/auth/roleAccess";
+import { appConfirm, appPrompt } from "@/lib/appDialog";
+import "@/features/aup/aup.css";
 
-gsap.registerPlugin(useGSAP);
+/* =====================================================================
+ * AUP 发布管理：计划书模板 / 原子域 / 组合域 三 tab（kind=PROTOCOL/ATOM/COMPOSITE）。
+ * 每个 formKey 一组：版本轨 + 状态机（发布/提交审核/驳回/解冻/归档/新建原子域/新建组合域）。
+ * ================================================================== */
 
-/** 状态标签文案 */
-function statusLabel(status: string): string {
-  switch (status) {
+type Tab = "PROTOCOL" | "ATOM" | "COMPOSITE";
+
+const TABS: { value: Tab; label: string; icon: string }[] = [
+  { value: "PROTOCOL", label: "计划书模板", icon: "🧬" },
+  { value: "ATOM", label: "原子域", icon: "⚛" },
+  { value: "COMPOSITE", label: "组合域", icon: "🧩" },
+];
+
+const KIND_LABEL: Record<Tab, string> = {
+  PROTOCOL: "计划书模板",
+  ATOM: "原子域",
+  COMPOSITE: "组合域",
+};
+
+function statusMeta(status?: string): { text: string; bg: string; color: string } {
+  switch ((status ?? "").toUpperCase()) {
     case "PUBLISHED":
-      return "已发布";
+      return { text: "已发布", bg: "#e8f7ee", color: "#16a34a" };
+    case "PENDING_REVIEW":
+      return { text: "待审核", bg: "#fff7ed", color: "#c2410c" };
+    case "DRAFT":
+      return { text: "草稿", bg: "#eef2ff", color: "#002FA7" };
     case "ARCHIVED":
-      return "已归档";
+      return { text: "已归档", bg: "#f1f5f9", color: "#64748b" };
     default:
-      return "草稿";
+      return { text: status || "—", bg: "#eef2f7", color: "#64748b" };
   }
 }
 
-/** 状态 → 印章（计划书式） */
-function statusSeal(status: string): { lines: string[]; cls: string } {
-  switch (status) {
-    case "PUBLISHED":
-      return { lines: ["已", "发布"], cls: "approved" };
-    case "ARCHIVED":
-      return { lines: ["已", "归档"], cls: "terminated" };
-    default:
-      return { lines: ["草稿"], cls: "draft" };
+/** 按 formKey 分组（含版本轨） */
+function groupByFormKey(list: TemplateVersionVO[]): TemplateVersionVO[][] {
+  const map = new Map<string, TemplateVersionVO[]>();
+  for (const t of list) {
+    const arr = map.get(t.formKey) ?? [];
+    arr.push(t);
+    map.set(t.formKey, arr);
   }
+  return Array.from(map.values()).map((arr) =>
+    arr.sort((a, b) => (b.version ?? 0) - (a.version ?? 0)),
+  );
 }
 
-/**
- * 计划书模板版本列表管理页（计划书式卡片）。
- * 统一管理所有版本：改名 / 描述 / 复制 / 删除 / 一键导入内置 / 进入编辑。
- */
+interface AtomModal {
+  name: string;
+  formKey: string;
+  code: string;
+  description: string;
+}
+
+interface ComposeModal {
+  name: string;
+  formKey: string;
+  description: string;
+}
+
 export default function AupTemplateListPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [tab, setTab] = useState<Tab>("PROTOCOL");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [previewId, setPreviewId] = useState<number | null>(null);
+  const [atomModal, setAtomModal] = useState<AtomModal | null>(null);
+  const [composeModal, setComposeModal] = useState<ComposeModal | null>(null);
 
-  const templatesQuery = useQuery({ queryKey: ["aup", "templates"], queryFn: fetchAupTemplates });
-  const templates = useMemo(
-    () => (templatesQuery.data ?? []).sort((a, b) => b.updatedAt?.localeCompare(a.updatedAt ?? "") ?? 0),
-    [templatesQuery.data]
+  const role = authStorage.getRole() || "";
+  const canMaintain = hasMinRole(role, "ADMIN");
+
+  const templatesQuery = useQuery({
+    queryKey: ["aup", "templates", tab],
+    queryFn: () => fetchAupTemplatesByKind(tab),
+  });
+  const atomTemplatesQuery = useQuery({
+    queryKey: ["aup", "templates", "ATOM"],
+    queryFn: () => fetchAupTemplatesByKind("ATOM"),
+  });
+
+  const usageQuery = useQuery({
+    queryKey: ["aup", "template", "usage", previewId],
+    queryFn: () => fetchAupTemplateUsage(Number(previewId)),
+    enabled: tab === "ATOM" && previewId != null,
+  });
+  const detailQuery = useQuery({
+    queryKey: ["aup", "template", "detail", previewId],
+    queryFn: () => fetchAupTemplateById(Number(previewId)),
+    enabled: previewId != null,
+  });
+
+  const allTemplates = useMemo(() => templatesQuery.data ?? [], [templatesQuery.data]);
+  const groups = useMemo(() => groupByFormKey(allTemplates), [allTemplates]);
+  const atomTemplates = useMemo(() => atomTemplatesQuery.data ?? [], [atomTemplatesQuery.data]);
+
+  const selectedGroup = useMemo(
+    () => groups.find((g) => g[0].formKey === selectedKey) ?? null,
+    [groups, selectedKey],
   );
+  const selectedVersion = useMemo(() => {
+    if (!selectedGroup) return null;
+    if (previewId != null) return selectedGroup.find((v) => v.id === previewId) ?? selectedGroup[0];
+    return selectedGroup[0];
+  }, [selectedGroup, previewId]);
 
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [nameDraft, setNameDraft] = useState("");
-  const [descDraft, setDescDraft] = useState("");
+  const selectRow = (versions: TemplateVersionVO[]) => {
+    setSelectedKey(versions[0].formKey);
+    setPreviewId(versions[0].id);
+  };
 
-  const gridRef = useRef<HTMLDivElement>(null);
+  const invalidate = () => void qc.invalidateQueries({ queryKey: ["aup", "templates"] });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["aup", "templates"] });
-
-  const copyMutation = useMutation({
-    mutationFn: (id: number) => copyAupTemplate(id),
-    onSuccess: () => {
-      toast.success("已复制为草稿副本");
-      invalidate();
-    },
-    onError: (e: Error) => toast.error(e.message || "复制失败"),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => deleteAupTemplate(id),
-    onSuccess: () => {
-      toast.success("已删除");
-      invalidate();
-    },
-    onError: (e: Error) => toast.error(e.message || "删除失败"),
-  });
-
-  const publishMutation = useMutation({
+  const publishMut = useMutation({
     mutationFn: (id: number) => publishAupTemplate(id),
     onSuccess: () => {
       toast.success("已发布");
@@ -94,8 +145,7 @@ export default function AupTemplateListPage() {
     },
     onError: (e: Error) => toast.error(e.message || "发布失败"),
   });
-
-  const archiveMutation = useMutation({
+  const archiveMut = useMutation({
     mutationFn: (id: number) => archiveAupTemplate(id),
     onSuccess: () => {
       toast.success("已归档");
@@ -103,209 +153,432 @@ export default function AupTemplateListPage() {
     },
     onError: (e: Error) => toast.error(e.message || "归档失败"),
   });
-
-  const metaMutation = useMutation({
-    mutationFn: ({ id, name, description }: { id: number; name: string; description?: string }) =>
-      updateAupTemplateMeta(id, { name, description }),
+  const submitMut = useMutation({
+    mutationFn: (id: number) => submitAupTemplateReview(id),
     onSuccess: () => {
-      toast.success("已保存");
-      setEditingId(null);
+      toast.success("已提交审核");
       invalidate();
     },
-    onError: (e: Error) => toast.error(e.message || "保存失败"),
+    onError: (e: Error) => toast.error(e.message || "提交失败"),
   });
-
-  const importSeedMutation = useMutation({
-    mutationFn: async () => {
-      const seed = await fetchAupDefaultSeed();
-      const brief = await createAupTemplate({ formKey: "aup", name: seed.name || "AUP 计划书模板" });
-      return updateAupTemplate(brief.id, {
-        name: seed.name || "AUP 计划书模板",
-        description: seed.description,
-        sections: seed.sections ?? [],
-      });
-    },
+  const rejectMut = useMutation({
+    mutationFn: ({ id, comment }: { id: number; comment: string }) => rejectAupTemplate(id, { comment }),
     onSuccess: () => {
-      toast.success("已从内置模板创建版本");
+      toast.success("已驳回为草稿");
       invalidate();
     },
-    onError: (e: Error) => toast.error(e.message || "导入失败"),
+    onError: (e: Error) => toast.error(e.message || "驳回失败"),
+  });
+  const unfreezeMut = useMutation({
+    mutationFn: (id: number) => unfreezeAupTemplate(id),
+    onSuccess: () => {
+      toast.success("已解冻为草稿");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message || "解冻失败", { duration: 8000 }),
+  });
+  const copyMut = useMutation({
+    mutationFn: (id: number) => copyAupTemplate(id),
+    onSuccess: () => {
+      toast.success("已复制为草稿副本");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message || "复制失败"),
+  });
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteAupTemplate(id),
+    onSuccess: () => {
+      toast.success("已删除");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message || "删除失败"),
+  });
+  const createAtomMut = useMutation({
+    mutationFn: (body: { formKey?: string; name: string; code?: string; description?: string }) => createAupAtom(body),
+    onSuccess: () => {
+      toast.success("已新建原子域");
+      setAtomModal(null);
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message || "新建原子域失败"),
+  });
+  const composeMut = useMutation({
+    mutationFn: (body: { formKey?: string; name: string; description?: string; atoms: AupAtomPick[] }) =>
+      composeAupTemplate({
+        formKey: body.formKey,
+        name: body.name,
+        description: body.description,
+        atoms: body.atoms.map((p) => ({ atomFormKey: p.atomFormKey, atomTemplateId: p.atomTemplateId })),
+      }),
+    onSuccess: () => {
+      toast.success("已新建组合域");
+      setComposeModal(null);
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message || "新建组合域失败"),
   });
 
-  const startEdit = (id: number, name: string, description?: string) => {
-    setEditingId(id);
-    setNameDraft(name);
-    setDescDraft(description ?? "");
-  };
+  const usageRefs = usageQuery.data?.refs ?? [];
 
-  const saveEdit = (id: number) => {
-    metaMutation.mutate({ id, name: nameDraft.trim() || "未命名", description: descDraft });
-  };
-
-  useGSAP(
-    () => {
-      const cards = gridRef.current?.querySelectorAll(".aup-doc-stack");
-      if (!cards || cards.length === 0) return;
-      gsap.fromTo(
-        cards,
-        { opacity: 0, y: 24 },
-        { opacity: 1, y: 0, duration: 0.45, stagger: 0.07, ease: "power2.out", overwrite: true }
-      );
-    },
-    { scope: gridRef, dependencies: [templates] }
+  const row = (label: string, input: ReactNode) => (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+      <label style={{ fontSize: 13, color: "var(--muted)", width: 76, flexShrink: 0, paddingTop: 8 }}>{label}</label>
+      <div style={{ flex: 1 }}>{input}</div>
+    </div>
   );
 
+  const renderActions = (t: TemplateVersionVO) => {
+    const st = (t.status ?? "").toUpperCase();
+    const isDraft = st === "DRAFT";
+    const isPending = st === "PENDING_REVIEW";
+    const isPublished = st === "PUBLISHED";
+    const isProtocol = t.kind === "PROTOCOL";
+    const isAtom = t.kind === "ATOM";
+    return (
+      <div className="acts" style={{ flexWrap: "wrap", gap: 6 }}>
+        {isProtocol && (
+          <button className="btn ghost small" onClick={() => navigate(`/content-manager/aup-template/edit/${t.id}`)}>
+            {isDraft ? "编辑 ▸" : "查看 ▸"}
+          </button>
+        )}
+        {canMaintain && isDraft && (
+          <button
+            className="btn primary small"
+            onClick={async () => {
+              if (await appConfirm("发布后该版本将冻结并对填写人生效，上一发布版本将归档。确认发布？")) publishMut.mutate(t.id);
+            }}
+            disabled={publishMut.isPending}
+          >
+            发布
+          </button>
+        )}
+        {canMaintain && isDraft && (
+          <button
+            className="btn ghost small"
+            disabled={submitMut.isPending}
+            onClick={async () => {
+              if (await appConfirm("提交审核后进入待审核。确认？")) submitMut.mutate(t.id);
+            }}
+          >
+            提交审核
+          </button>
+        )}
+        {canMaintain && isPending && (
+          <>
+            <button
+              className="btn primary small"
+              disabled={publishMut.isPending}
+              onClick={async () => {
+                if (await appConfirm("通过并发布该版本？上一发布版本将归档。确认？")) publishMut.mutate(t.id);
+              }}
+            >
+              通过并发布
+            </button>
+            <button
+              className="btn danger small"
+              disabled={rejectMut.isPending}
+              onClick={async () => {
+                const note = (await appPrompt("驳回意见（必填）", ""))?.trim() ?? "";
+                if (!note) {
+                  toast.error("驳回须填写意见");
+                  return;
+                }
+                rejectMut.mutate({ id: t.id, comment: note });
+              }}
+            >
+              驳回
+            </button>
+          </>
+        )}
+        {canMaintain && isPublished && (
+          <>
+            <button
+              className="btn ghost small"
+              disabled={unfreezeMut.isPending}
+              title={isAtom ? "无组合域钉住、无已发布模板引用时可解冻" : "解冻回草稿返修"}
+              onClick={async () => {
+                if (await appConfirm("解冻该版本为草稿？仅当无组合域钉住/无已发布模板引用时允许。确认？")) unfreezeMut.mutate(t.id);
+              }}
+            >
+              解冻
+            </button>
+            <button
+              className="btn ghost small"
+              disabled={archiveMut.isPending}
+              onClick={async () => {
+                if (await appConfirm("归档后该版本不再对填写人生效。确认归档？")) archiveMut.mutate(t.id);
+              }}
+            >
+              归档
+            </button>
+          </>
+        )}
+        {canMaintain && (
+          <button className="btn ghost small" disabled={copyMut.isPending} onClick={() => copyMut.mutate(t.id)}>
+            复制
+          </button>
+        )}
+        {canMaintain && (
+          <button
+            className="btn danger small"
+            disabled={deleteMut.isPending}
+            onClick={async () => {
+              if (await appConfirm("删除该版本？此操作不可恢复。")) deleteMut.mutate(t.id);
+            }}
+          >
+            删除
+          </button>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="aup-app" style={{ padding: "24px", maxWidth: 1240, margin: "0 auto" }}>
-      <div className="page-hd">
-        <div>
-          <h1>计划书模板管理</h1>
-          <div className="sub">统一管理模板版本：改名 / 描述 / 复制 / 删除，进入编辑页调整结构与发布</div>
+    <div className="aup-app aup-app--workbench">
+      <div className="aup-wb">
+        <div className="aup-wb-hd">
+          <div>
+            <h1>AUP 发布管理</h1>
+            <div className="sub">
+              计划书模板 / 原子域 / 组合域三种配置，共用一个版本状态机（草稿 → 待审核 → 已发布；解冻/归档）。
+            </div>
+          </div>
+          <div className="aup-wb-actions">
+            {tab === "ATOM" && canMaintain && (
+              <button className="btn primary small" onClick={() => setAtomModal({ name: "", formKey: "", code: "", description: "" })}>
+                ＋ 新建原子域
+              </button>
+            )}
+            {tab === "COMPOSITE" && canMaintain && (
+              <button className="btn primary small" onClick={() => setComposeModal({ name: "", formKey: "", description: "" })}>
+                ＋ 新建组合域
+              </button>
+            )}
+            {canMaintain && (
+              <button className="btn ghost small" onClick={() => navigate("/content-manager/aup-field")} title="维护字段字典（字段文件夹/字段）">
+                🗂️ 管理字段
+              </button>
+            )}
+          </div>
         </div>
-        <button
-          className="btn primary"
-          onClick={() => importSeedMutation.mutate()}
-          disabled={importSeedMutation.isPending}
-        >
-          {importSeedMutation.isPending ? "导入中…" : "＋ 导入内置模板"}
-        </button>
+
+        <div className="aup-wb-toolbar">
+          <div style={{ display: "flex", gap: 8 }}>
+            {TABS.map((t) => {
+              const on = tab === t.value;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  className="btn small"
+                  onClick={() => {
+                    setTab(t.value);
+                    setSelectedKey(null);
+                    setPreviewId(null);
+                  }}
+                  style={{
+                    borderColor: on ? "var(--primary)" : undefined,
+                    background: on ? "var(--primary-weak)" : "#fff",
+                    fontWeight: on ? 700 : 500,
+                  }}
+                >
+                  {t.icon} {t.label}
+                </button>
+              );
+            })}
+          </div>
+          <span className="aup-wb-count">共 {groups.length} 个</span>
+        </div>
+
+        <div className="aup-wb-split aup-wb-split--wide-aside">
+          <aside className="aup-wb-aside">
+            {templatesQuery.isLoading && <div className="aup-wb-empty">加载中…</div>}
+            {!templatesQuery.isLoading && groups.length === 0 && (
+              <div className="aup-wb-empty">
+                暂无{KIND_LABEL[tab]}
+                {tab === "ATOM" && canMaintain ? "，点击右上「＋ 新建原子域」" : ""}
+                {tab === "COMPOSITE" && canMaintain ? "，点击右上「＋ 新建组合域」" : ""}
+              </div>
+            )}
+            {groups.map((versions) => {
+              const head = versions[0];
+              const on = selectedKey === head.formKey;
+              return (
+                <div
+                  key={head.formKey}
+                  className={`aup-wb-row${on ? " on" : ""}`}
+                  style={{ paddingLeft: 10 }}
+                  onClick={() => selectRow(versions)}
+                  title={head.description || head.name}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="lbl" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                      <span className="aup-wb-chip muted">{KIND_LABEL[(head.kind as Tab) ?? "PROTOCOL"]}</span>
+                      <span>{head.name}</span>
+                    </div>
+                    <div className="meta" style={{ marginTop: 2, fontFamily: "ui-monospace, monospace" }}>
+                      {head.formKey} · {versions.length} 版本
+                    </div>
+                  </div>
+                  <span
+                    className="aup-wb-chip"
+                    style={{ background: statusMeta(head.status).bg, color: statusMeta(head.status).color }}
+                  >
+                    {statusMeta(head.status).text}
+                  </span>
+                </div>
+              );
+            })}
+          </aside>
+
+          <div className="aup-wb-main">
+            {!selectedVersion && <div className="aup-wb-empty">选左侧模板查看版本与结构预览</div>}
+
+            {selectedVersion && selectedGroup && (
+              <div className="aup-wb-panel">
+                <div className="aup-wb-panel-hd">
+                  <span className="title">{selectedGroup[0].name}</span>
+                  <span className="aup-wb-chip">{KIND_LABEL[(selectedGroup[0].kind as Tab) ?? "PROTOCOL"]}</span>
+                  <span className="aup-wb-chip" style={{ fontFamily: "ui-monospace, monospace" }}>
+                    {selectedGroup[0].formKey}
+                  </span>
+                  <span className="aup-wb-chip muted">v{selectedVersion.version}</span>
+                  <div style={{ flex: 1 }} />
+                  {renderActions(selectedVersion)}
+                </div>
+
+                {selectedGroup[0].description && (
+                  <div style={{ fontSize: 12.5, color: "var(--muted)", margin: "4px 0 8px", lineHeight: 1.5 }}>
+                    {selectedGroup[0].description}
+                  </div>
+                )}
+
+                {/* 版本轨：每个版本可单独切换预览 + 删除 */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "4px 0 8px" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>版本</span>
+                  {selectedGroup.map((v) => {
+                    const active = previewId === v.id;
+                    return (
+                      <span key={v.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                        <button
+                          type="button"
+                          className="btn small"
+                          onClick={() => setPreviewId(v.id)}
+                          style={{
+                            borderColor: active ? "var(--primary)" : undefined,
+                            background: active ? "var(--primary-weak)" : "#fff",
+                            fontWeight: active ? 700 : 500,
+                          }}
+                        >
+                          v{v.version} · {statusMeta(v.status).text}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn small danger"
+                          title="删除此版本"
+                          disabled={deleteMut.isPending}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (await appConfirm(`删除 v${v.version}？此操作不可恢复。`)) deleteMut.mutate(v.id);
+                          }}
+                        >
+                          删
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+
+                {/* ATOM 被组合域钉住 */}
+                {tab === "ATOM" && (
+                  <div style={{ margin: "4px 0 8px", fontSize: 12.5 }}>
+                    <span style={{ fontWeight: 700 }}>被组合域钉住（{usageRefs.length}）</span>
+                    {usageQuery.isLoading && <span style={{ color: "var(--muted)", marginLeft: 8 }}>…</span>}
+                    {!usageQuery.isLoading &&
+                      usageRefs.map((r, i) => (
+                        <span key={i} className="aup-wb-chip muted" style={{ marginLeft: 6 }}>
+                          {r.compositeName || r.compositeFormKey}@v{r.compositeVersion}
+                        </span>
+                      ))}
+                    {!usageQuery.isLoading && usageRefs.length === 0 && (
+                      <span style={{ color: "var(--muted)", marginLeft: 8 }}>暂无</span>
+                    )}
+                  </div>
+                )}
+
+                {/* 结构预览（当前选中版本） */}
+                <div style={{ fontWeight: 700, fontSize: 12.5, margin: "8px 0 6px" }}>结构预览（当前选中版本）</div>
+                {detailQuery.isLoading && <div style={{ color: "var(--muted)" }}>加载结构…</div>}
+                {detailQuery.isError && <div style={{ color: "var(--danger, #c2410c)" }}>结构加载失败</div>}
+                {detailQuery.data && <TemplateStructurePreview sections={detailQuery.data.sections} />}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      {templatesQuery.isLoading ? (
-        <div className="aup-empty">加载中…</div>
-      ) : templates.length === 0 ? (
-        <div className="aup-empty">
-          暂无模板版本，点击右上角「导入内置模板」一键生成
+      {/* 新建原子域弹窗 */}
+      {atomModal && (
+        <div className="aup-modal-mask" onClick={() => setAtomModal(null)}>
+          <div className="aup-modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+            <h3>新建原子域</h3>
+            <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+              新建一个原子域，作为发布/组合的单元。字段内容到「字段域」页组织，或到编辑器里搭建。
+            </p>
+            {row(
+              "名称",
+              <input className="input" placeholder="如 动物基本信息" value={atomModal.name} onChange={(e) => setAtomModal({ ...atomModal, name: e.target.value })} />,
+            )}
+            {row(
+              "编码",
+              <input className="input" placeholder="可选，如 animalInfo（缺省用 atom:{code}）" value={atomModal.code} onChange={(e) => setAtomModal({ ...atomModal, code: e.target.value })} />,
+            )}
+            {row(
+              "描述",
+              <textarea className="textarea" rows={2} value={atomModal.description} onChange={(e) => setAtomModal({ ...atomModal, description: e.target.value })} />,
+            )}
+            <div className="aup-modal-actions">
+              <button className="btn ghost" onClick={() => setAtomModal(null)}>
+                取消
+              </button>
+              <button
+                className="btn primary"
+                disabled={!atomModal.name.trim() || createAtomMut.isPending}
+                onClick={() =>
+                  createAtomMut.mutate({
+                    formKey: atomModal.formKey.trim() || undefined,
+                    name: atomModal.name.trim(),
+                    code: atomModal.code.trim() || undefined,
+                    description: atomModal.description.trim() || undefined,
+                  })
+                }
+              >
+                确定
+              </button>
+            </div>
+          </div>
         </div>
-      ) : (
-        <div
-          ref={gridRef}
-          style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))", gap: 20, perspective: "1200px" }}
-        >
-          {templates.map((t) => {
-            const seal = statusSeal(t.status);
-            return (
-              <div className="aup-doc-stack" key={t.id}>
-                <div className="aup-doc">
-                  <div className="aup-doc-hd">
-                    <span className="aup-doc-title">实验动物使用计划书 · 模板</span>
-                    <span className="aup-doc-no">v{t.version}</span>
-                  </div>
-                  <div className="aup-doc-body">
-                    <div className="aup-f">
-                      <div className="aup-f-k">模板名称</div>
-                      {editingId === t.id ? (
-                        <input
-                          className="input"
-                          style={{ padding: "6px 10px", fontSize: 13 }}
-                          value={nameDraft}
-                          onChange={(e) => setNameDraft(e.target.value)}
-                          onBlur={() => saveEdit(t.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveEdit(t.id);
-                            if (e.key === "Escape") setEditingId(null);
-                          }}
-                          autoFocus
-                        />
-                      ) : (
-                        <div
-                          className="aup-f-v"
-                          style={{ cursor: "pointer" }}
-                          onClick={() => startEdit(t.id, t.name, t.description)}
-                          title="点击编辑名称/描述"
-                        >
-                          {t.name || "未命名"}
-                        </div>
-                      )}
-                    </div>
-                    <div className="aup-f">
-                      <div className="aup-f-k">模板描述</div>
-                      {editingId === t.id ? (
-                        <textarea
-                          className="textarea"
-                          style={{ padding: "8px 10px", fontSize: 13 }}
-                          value={descDraft}
-                          rows={3}
-                          onChange={(e) => setDescDraft(e.target.value)}
-                          onBlur={() => saveEdit(t.id)}
-                          placeholder="模板描述（可选，显示给填写人，支持富文本 HTML）"
-                        />
-                      ) : (
-                        <div
-                          className="aup-f-v"
-                          style={{ cursor: "pointer", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}
-                          onClick={() => startEdit(t.id, t.name, t.description)}
-                          title={t.description || ""}
-                        >
-                          {t.description || "—"}
-                        </div>
-                      )}
-                    </div>
-                    <div className="aup-f">
-                      <div className="aup-f-k">最近更新</div>
-                      <div className="aup-f-v">{t.updatedAt ? formatDateTimeAsiaShanghaiShort(t.updatedAt) : "—"}</div>
-                    </div>
-                  </div>
-                  <div className="aup-doc-foot">
-                    <div className="aup-doc-acts">
-                      <button className="btn ghost small" onClick={() => navigate(`/content-manager/aup-template/edit/${t.id}`)}>
-                        {t.status === "DRAFT" ? "编辑 ▸" : "查看 ▸"}
-                      </button>
-                      {t.status === "DRAFT" && (
-                        <button
-                          className="btn primary small"
-                          onClick={async () => {
-                            if (await appConfirm("发布后将冻结该草稿并使其对填写人生效，上一发布版本将归档。确认发布？")) publishMutation.mutate(t.id);
-                          }}
-                          disabled={publishMutation.isPending}
-                        >
-                          发布
-                        </button>
-                      )}
-                      {t.status === "PUBLISHED" && (
-                        <button
-                          className="btn ghost small"
-                          onClick={async () => {
-                            if (await appConfirm("归档后该版本将不再对填写人生效。确认归档？")) archiveMutation.mutate(t.id);
-                          }}
-                          disabled={archiveMutation.isPending}
-                        >
-                          归档
-                        </button>
-                      )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className="btn ghost small">更多 ▾</button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => copyMutation.mutate(t.id)} disabled={copyMutation.isPending}>
-                            复制
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={async () => {
-                              if (await appConfirm("删除该模板版本？该模板下同步(ARO)/演示(demo)的计划书将一并删除；若仍有本地填写的计划书将被拒绝。此操作不可恢复。")) deleteMutation.mutate(t.id);
-                            }}
-                            disabled={deleteMutation.isPending}
-                            className="text-red-600 focus:text-red-600"
-                          >
-                            删除
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    <div className="aup-doc-foot-right">
-                      <div className={"aup-seal " + seal.cls}>
-                        {seal.lines.map((l) => (
-                          <span key={l}>{l}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      )}
+
+      {/* 新建组合域：勾选原子域 + 选版本 + 预览 */}
+      {composeModal && (
+        <AupCompositeComposer
+          atoms={atomTemplates}
+          name={composeModal.name}
+          formKey={composeModal.formKey}
+          onNameChange={(v) => setComposeModal({ ...composeModal, name: v })}
+          onFormKeyChange={(v) => setComposeModal({ ...composeModal, formKey: v })}
+          onCancel={() => setComposeModal(null)}
+          confirming={composeMut.isPending}
+          onConfirm={(picks) =>
+            composeMut.mutate({
+              formKey: composeModal.formKey.trim() || undefined,
+              name: composeModal.name.trim(),
+              description: composeModal.description.trim() || undefined,
+              atoms: picks,
+            })
+          }
+        />
       )}
     </div>
   );
