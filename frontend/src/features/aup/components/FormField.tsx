@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import toast from "react-hot-toast";
 import { useAupAttachments, useAupDictDetail, useAupPickers, useAupSignatureContext } from "../hooks/useAup";
 import { useRefDataOptions } from "../hooks/useRefDataOptions";
 import type { PickerType } from "../api/aup.api";
 import type { FieldOptions, FormField as FormFieldDef, OptionItem, ShowWhen } from "../schema/formTemplate";
+import {
+  cascadeOptionsForLevel,
+  cascadePatch,
+  defaultImageAccept,
+  fileIdsFromValue,
+  multiSelectValues,
+  parseCascadeValue,
+  validateFileUpload,
+} from "@/features/form-shared/fieldHelpers";
 
 /* =====================================================================
  * 共享工具（SectionNav / FillPage 复用）
@@ -191,12 +201,11 @@ export default function FormField({ field, value, values, onChange, readOnly, au
     case "richText":
       return (
         <FieldWrap field={field} error={error}>
-          <textarea
-            className="textarea rich"
+          <RichTextInput
             value={asStr(value)}
             disabled={readOnly}
-            onChange={(e) => onChange(field.fieldKey, e.target.value)}
             placeholder={field.label}
+            onChange={(v) => onChange(field.fieldKey, v)}
           />
         </FieldWrap>
       );
@@ -296,18 +305,19 @@ function DateRange({ field, value, onChange, readOnly, error }: { field: FormFie
 function useResolvedOptions(field: FormFieldDef): OptionItem[] {
   const inline = normalizeOptions(field.options);
   const dict = useAupDictDetail(field.dictKey);
-  const refDataSource = field.config?.refDataSource;
-  const refData = useRefDataOptions(refDataSource);
+  // EXTERNAL 码表只有表头无 items，值域由 sourceRef 指向的源模块取项；否则回退旧的 config.refDataSource。
+  const refType = dict.data?.source === "EXTERNAL" ? dict.data.sourceRef : field.config?.refDataSource;
+  const refData = useRefDataOptions(refType);
   return useMemo(() => {
     if (inline.length > 0) return inline;
-    if (field.dictKey && dict.data?.items) {
+    if (field.dictKey && dict.data?.source !== "EXTERNAL" && dict.data?.items?.length) {
       return dict.data.items.map((i) => ({ value: i.value, label: i.label }));
     }
-    if (refDataSource && refData.data) {
+    if (refType && refData.data) {
       return refData.data;
     }
     return [];
-  }, [inline, field.dictKey, dict.data, refDataSource, refData.data]);
+  }, [inline, field.dictKey, dict.data, refType, refData.data]);
 }
 
 function Choice({ field, value, onChange, readOnly, error }: { field: FormFieldDef; value: unknown; onChange: (k: string, v: unknown) => void; readOnly?: boolean; error?: boolean }) {
@@ -476,26 +486,69 @@ function SelectField({ field, value, onChange, readOnly, error }: { field: FormF
 }
 
 function Cascade({ field, value, onChange, readOnly, error }: { field: FormFieldDef; value: unknown; onChange: (k: string, v: unknown) => void; readOnly?: boolean; error?: boolean }) {
-  // 级联数据源未在契约中明确，退化渲染：有 options/dictKey 则单选，否则文本输入。
   const options = useResolvedOptions(field);
-  if (options.length > 0) {
-    return (
-      <FieldWrap field={field} error={error}>
-        <select
-          className="select"
-          value={asStr(value)}
-          disabled={readOnly}
-          onChange={(e) => onChange(field.fieldKey, e.target.value)}
-        >
-          <option value="">请选择</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </FieldWrap>
-    );
+  const levels = field.config?.levels;
+  const current = parseCascadeValue(value);
+
+  if (!levels || levels.length === 0) {
+    if (options.length > 0) {
+      return (
+        <FieldWrap field={field} error={error}>
+          <select
+            className="select"
+            value={current._legacy ?? ""}
+            disabled={readOnly}
+            onChange={(e) => onChange(field.fieldKey, e.target.value)}
+          >
+            <option value="">请选择</option>
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </FieldWrap>
+      );
+    }
+    return <Text field={field} value={asStr(value)} onChange={onChange} readOnly={readOnly} />;
   }
-  return <Text field={field} value={asStr(value)} onChange={onChange} readOnly={readOnly} />;
+
+  return (
+    <FieldWrap field={field} error={error}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {levels.map((levelLabel, i) => {
+          const levelOpts = cascadeOptionsForLevel(options, levels, i, current);
+          const val = current[levelLabel] ?? "";
+          const prevFilled = i === 0 || Boolean(current[levels[i - 1]]);
+          if (!prevFilled && i > 0) return null;
+          return (
+            <div key={levelLabel}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>{levelLabel}</div>
+              {levelOpts.length > 0 ? (
+                <select
+                  className="select"
+                  value={val}
+                  disabled={readOnly}
+                  onChange={(e) => onChange(field.fieldKey, cascadePatch(levels, current, levelLabel, i, e.target.value))}
+                >
+                  <option value="">请选择</option>
+                  {levelOpts.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="input"
+                  value={val}
+                  disabled={readOnly}
+                  placeholder={`输入${levelLabel}`}
+                  onChange={(e) => onChange(field.fieldKey, cascadePatch(levels, current, levelLabel, i, e.target.value))}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </FieldWrap>
+  );
 }
 
 function PickerField({ field, type, value, onChange, readOnly, error }: { field: FormFieldDef; type: PickerType; value: unknown; onChange: (k: string, v: unknown) => void; readOnly?: boolean; error?: boolean }) {
@@ -686,7 +739,20 @@ function CellField({ field, value, onChange, readOnly, aupId }: { field: FormFie
     case "select":
       return <CellChoice field={field} value={value} onChange={onChange} readOnly={readOnly} />;
     case "checkbox":
+      if ((field.options?.length ?? 0) > 0 || field.dictKey) {
+        return <CellChoice field={{ ...field, type: "choice", config: { ...field.config, choiceType: "multiple" } }} value={value} onChange={onChange} readOnly={readOnly} />;
+      }
       return <input type="checkbox" checked={value === true} disabled={readOnly} onChange={(e) => onChange(e.target.checked)} />;
+    case "cascade":
+      return <CellCascade field={field} value={value} onChange={onChange} readOnly={readOnly} />;
+    case "file":
+    case "image":
+      return <CellFile field={field} value={value} onChange={onChange} readOnly={readOnly} aupId={aupId} />;
+    case "signature":
+      return <CellSignature value={value} onChange={onChange} readOnly={readOnly} />;
+    case "richText":
+      if (readOnly) return <span className="cell-text">{asStr(value) || "—"}</span>;
+      return <RichTextInput value={asStr(value)} disabled={readOnly} onChange={onChange} />;
     case "personPicker":
     case "departmentPicker":
     case "cagePicker":
@@ -751,6 +817,128 @@ function CellPicker({ type, value, onChange, readOnly, error }: { type: PickerTy
   );
 }
 
+function RichTextInput({ value, onChange, disabled, placeholder }: { value: string; onChange: (v: string) => void; disabled?: boolean; placeholder?: string }) {
+  const [showPreview, setShowPreview] = useState(false);
+  return (
+    <div>
+      <textarea
+        className="textarea rich"
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+      />
+      {value.trim() && (
+        <button type="button" className="btn ghost small" style={{ marginTop: 4 }} onClick={() => setShowPreview((p) => !p)}>
+          {showPreview ? "隐藏预览" : "HTML 预览"}
+        </button>
+      )}
+      {showPreview && value.trim() && (
+        <div className="aup-desc" style={{ marginTop: 4, padding: 6, border: "1px solid var(--border)", borderRadius: 4 }} dangerouslySetInnerHTML={{ __html: value }} />
+      )}
+    </div>
+  );
+}
+
+function CellCascade({ field, value, onChange, readOnly }: { field: FormFieldDef; value: unknown; onChange: (v: unknown) => void; readOnly?: boolean }) {
+  const options = useResolvedOptions(field);
+  const levels = field.config?.levels;
+  const current = parseCascadeValue(value);
+  if (!levels || levels.length === 0) {
+    return (
+      <select className="select" value={current._legacy ?? ""} disabled={readOnly} onChange={(e) => onChange(e.target.value)}>
+        <option value="">请选择</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {levels.map((levelLabel, i) => {
+        const levelOpts = cascadeOptionsForLevel(options, levels, i, current);
+        const val = current[levelLabel] ?? "";
+        if (i > 0 && !current[levels[i - 1]]) return null;
+        return levelOpts.length > 0 ? (
+          <select
+            key={levelLabel}
+            className="select"
+            value={val}
+            disabled={readOnly}
+            onChange={(e) => onChange(cascadePatch(levels, current, levelLabel, i, e.target.value))}
+          >
+            <option value="">{levelLabel}</option>
+            {levelOpts.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            key={levelLabel}
+            className="input"
+            value={val}
+            disabled={readOnly}
+            placeholder={levelLabel}
+            onChange={(e) => onChange(cascadePatch(levels, current, levelLabel, i, e.target.value))}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function CellSignature({ value, onChange, readOnly }: { value: unknown; onChange: (v: unknown) => void; readOnly?: boolean }) {
+  if (readOnly) return <span className="cell-text">{asStr(value) || "—"}</span>;
+  return (
+    <input
+      className="input"
+      value={asStr(value)}
+      placeholder="手写签名"
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+function CellFile({ field, value, onChange, readOnly, aupId }: { field: FormFieldDef; value: unknown; onChange: (v: unknown) => void; readOnly?: boolean; aupId?: string }) {
+  const { listQuery, uploadMutation, deleteMutation } = useAupAttachments(aupId);
+  const ids = fileIdsFromValue(value);
+  const files = (listQuery.data ?? []).filter((f) => ids.includes(f.fileId));
+  const accept = field.type === "image" ? (field.config?.accept ?? defaultImageAccept()) : field.config?.accept;
+
+  const onPick = (file: File | null) => {
+    if (!file || !aupId) return;
+    const err = validateFileUpload(file, ids.length, field.config);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    uploadMutation.mutate(file, {
+      onSuccess: (uploaded) => onChange([...ids, uploaded.fileId]),
+    });
+  };
+
+  if (readOnly) {
+    return <span className="cell-text">{files.map((f) => f.fileName).join(", ") || ids.length ? `${ids.length} 个文件` : "—"}</span>;
+  }
+
+  return (
+    <div>
+      {files.map((f) => (
+        <span key={f.fileId} style={{ fontSize: 11, marginRight: 6 }}>
+          {f.fileName}
+          <button type="button" className="row-del" onClick={() => deleteMutation.mutate(f.fileId, { onSuccess: () => onChange(ids.filter((x) => x !== f.fileId)) })}>✕</button>
+        </span>
+      ))}
+      <label className="add-row" style={{ cursor: "pointer" }}>
+        {uploadMutation.isPending ? "上传中…" : "＋"}
+        <input type="file" hidden accept={accept} onChange={(e) => { onPick(e.target.files?.[0] ?? null); e.target.value = ""; }} />
+      </label>
+    </div>
+  );
+}
+
 function SignatureField({ field, value, onChange, readOnly, error }: { field: FormFieldDef; value: unknown; onChange: (k: string, v: unknown) => void; readOnly?: boolean; error?: boolean }) {
   const ctx = useAupSignatureContext();
   const trusted = ctx.data?.domainTrusted === true;
@@ -786,13 +974,24 @@ function SignatureField({ field, value, onChange, readOnly, error }: { field: Fo
 
 function FileField({ field, value, onChange, readOnly, aupId, error }: { field: FormFieldDef; value: unknown; onChange: (k: string, v: unknown) => void; readOnly?: boolean; aupId?: string; error?: boolean }) {
   const { listQuery, uploadMutation, deleteMutation, download } = useAupAttachments(aupId);
-  const ids: number[] = Array.isArray(value) ? (value as number[]) : value != null ? [Number(value)] : [];
+  const ids = fileIdsFromValue(value);
   const files = (listQuery.data ?? []).filter((f) => ids.includes(f.fileId));
+  const accept = field.type === "image" ? (field.config?.accept ?? defaultImageAccept()) : field.config?.accept;
+  const maxCount = field.config?.maxCount ?? 10;
+  const isMulti = maxCount > 1;
 
   const onPick = (file: File | null) => {
     if (!file || !aupId) return;
+    const err = validateFileUpload(file, ids.length, field.config);
+    if (err) {
+      toast.error(err);
+      return;
+    }
     uploadMutation.mutate(file, {
-      onSuccess: (uploaded) => onChange(field.fieldKey, [...ids, uploaded.fileId]),
+      onSuccess: (uploaded) => {
+        const next = isMulti ? [...ids, uploaded.fileId] : [...ids, uploaded.fileId];
+        onChange(field.fieldKey, next);
+      },
     });
   };
 
@@ -843,7 +1042,7 @@ function FileField({ field, value, onChange, readOnly, aupId, error }: { field: 
           <input
             type="file"
             hidden
-            accept={field.config?.accept}
+            accept={accept}
             onChange={(e) => {
               onPick(e.target.files?.[0] ?? null);
               e.target.value = "";
