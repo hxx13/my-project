@@ -63,6 +63,8 @@ export interface AupListParams {
   stage?: AupStage;
   /** 排除某个阶段（如未通过 tab 排除 approved） */
   excludeStage?: AupStage;
+  /** 排除多个阶段（逗号分隔传参，如 approved,expired） */
+  excludeStages?: AupStage[];
   /** 课题组名称（学生端按课题组查本组的计划书） */
   projectGroupName?: string;
   /** 排除草稿（后台列表不显示未提交的草稿） */
@@ -79,13 +81,20 @@ export interface AupListParams {
   reviewerName?: string;
   /** 只看与我相关（我是提交人 / 组长PI / 被分配专家 / 留痕操作人） */
   relatedToMe?: boolean;
+  /** 学生端：强制按课题组或本人范围过滤（忽略管理员全量可见） */
+  groupScopeOnly?: boolean;
   sortBy?: string;
   sortDir?: "asc" | "desc";
 }
 
 /** GET /aup/list */
 export function fetchAupList(params: AupListParams = {}): Promise<AupPage<AupListItem>> {
-  return authHttp.get<Result<AupPage<AupListItem>>>("/aup/list", { params }).then(({ data }) => data.data);
+  const { excludeStages, ...rest } = params;
+  const query = {
+    ...rest,
+    ...(excludeStages?.length ? { excludeStages: excludeStages.join(",") } : {}),
+  };
+  return authHttp.get<Result<AupPage<AupListItem>>>("/aup/list", { params: query }).then(({ data }) => data.data);
 }
 
 /** GET /aup/project-groups —— 列表筛选用去重课题组名称 */
@@ -228,17 +237,22 @@ export function fetchAupPrintData(id: string): Promise<AupPrintData> {
  * 5.2 模板
  * ================================================================== */
 
-export type TemplateStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+export type TemplateStatus = "DRAFT" | "PENDING_REVIEW" | "PUBLISHED" | "ARCHIVED";
 
 /** 版本列表项（GET /aup-template），对齐 TemplateVersionVO */
 export interface TemplateVersionVO {
   id: number;
   formKey: string;
+  /** PROTOCOL / ATOM / COMPOSITE */
+  kind?: string;
+  folderId?: number;
   name: string;
   description?: string;
   version: number;
   status: TemplateStatus;
   publishedAt?: string;
+  submittedAt?: string;
+  reviewComment?: string;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -246,6 +260,7 @@ export interface TemplateVersionVO {
 /** 版本简要（版本历史 / 新建草稿 / 发布响应），对齐 TemplateVersionBriefVO */
 export interface TemplateVersionBriefVO {
   id: number;
+  kind?: string;
   version: number;
   status: TemplateStatus;
   publishedAt?: string;
@@ -255,11 +270,15 @@ export interface TemplateVersionBriefVO {
 export interface TemplateDetailVO {
   id: number;
   formKey: string;
+  kind?: string;
+  folderId?: number;
   name: string;
   version: number;
   status: TemplateStatus;
   description?: string;
   publishedAt?: string;
+  submittedAt?: string;
+  reviewComment?: string;
   updatedAt?: string;
   sections: FormSection[];
 }
@@ -276,14 +295,19 @@ export interface UpdateTemplateBody {
   sections: FormSection[];
 }
 
-/** GET /aup-template —— 版本列表（含 DRAFT/PUBLISHED/ARCHIVED） */
+/** GET /aup-template —— 版本列表（含 DRAFT/PENDING_REVIEW/PUBLISHED/ARCHIVED；kind 默认 PROTOCOL） */
 export function fetchAupTemplates(): Promise<TemplateVersionVO[]> {
   return authHttp.get<Result<TemplateVersionVO[]>>("/aup-template").then(({ data }) => data.data);
 }
 
-/** GET /aup-template/published —— 当前 PUBLISHED 版本结构（新填页用；未发布返回 null） */
-export function fetchPublishedTemplate(formKey: string): Promise<TemplateDetailVO | null> {
-  return authHttp.get<Result<TemplateDetailVO | null>>("/aup-template/published", { params: { formKey } }).then(
+/** GET /aup-template?kind= —— 按 kind 取版本列表（PROTOCOL / ATOM / COMPOSITE） */
+export function fetchAupTemplatesByKind(kind: string): Promise<TemplateVersionVO[]> {
+  return authHttp.get<Result<TemplateVersionVO[]>>("/aup-template", { params: { kind } }).then(({ data }) => data.data);
+}
+
+/** GET /aup-template/published —— 当前 PUBLISHED 版本结构（新填页用；未发布返回 null；kind 默认 PROTOCOL） */
+export function fetchPublishedTemplate(formKey: string, kind?: string): Promise<TemplateDetailVO | null> {
+  return authHttp.get<Result<TemplateDetailVO | null>>("/aup-template/published", { params: { formKey, kind } }).then(
     ({ data }) => data.data
   );
 }
@@ -464,6 +488,9 @@ export function updateReviewerConfig(body: ReviewerConfigRequest): Promise<void>
  * 5.4 字典
  * ================================================================== */
 
+/** 码表状态机：DRAFT → PENDING_REVIEW → PUBLISHED（unfreeze 回 DRAFT） */
+export type AupDictStatus = "DRAFT" | "PENDING_REVIEW" | "PUBLISHED";
+
 export interface AupDictListParams {
   page?: number;
   size?: number;
@@ -473,30 +500,56 @@ export interface AupDictListParams {
 }
 
 export interface AupDictListItem {
+  id: number;
   dictKey: string;
   name: string;
   /** 分类（分组/文件夹；NULL=未分类） */
   category?: string;
+  version?: number;
+  status?: AupDictStatus;
+  folderId?: number;
+  /** LOCAL（本地维护）/ EXTERNAL（外部引用，只读） */
+  source?: string;
+  /** EXTERNAL 的源模块标识：projectGroup / ANIMAL_BREED / ANIMAL_STRAIN */
+  sourceRef?: string;
   itemCount: number;
+  refCount?: number;
+  versionCount?: number;
 }
 
 export interface CreateDictBody {
   dictKey: string;
   name: string;
   category?: string;
+  /** → aup_folder(owner_type=CODELIST)；NULL=未分类 */
+  folderId?: number;
 }
 
 export interface AupDictItem {
   itemId: number;
   value: string;
   label: string;
-  sortOrder: number;
+  sortOrder?: number;
+  /** CONFIRM / MODIFY / DELETE / QUESTION */
+  verdict?: string;
+  verdictNote?: string;
 }
 
 export interface AupDictDetail {
+  id: number;
   dictKey: string;
   name: string;
   category?: string;
+  version?: number;
+  status?: AupDictStatus;
+  folderId?: number;
+  /** LOCAL（本地维护）/ EXTERNAL（外部引用，只读） */
+  source?: string;
+  /** EXTERNAL 的源模块标识：projectGroup / ANIMAL_BREED / ANIMAL_STRAIN */
+  sourceRef?: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  reviewComment?: string;
   items: AupDictItem[];
 }
 
@@ -521,13 +574,15 @@ export function createAupDict(body: CreateDictBody): Promise<AupDictDetail> {
   return authHttp.post<Result<AupDictDetail>>("/aup-dict", body).then(({ data }) => data.data);
 }
 
-/** GET /aup-dict/{dictKey} —— 查字典 + 有序项 */
-export function fetchAupDict(dictKey: string): Promise<AupDictDetail> {
-  return authHttp.get<Result<AupDictDetail>>(`/aup-dict/${dictKey}`).then(({ data }) => data.data);
+/** GET /aup-dict/{dictKey} —— 查字典 + 有序项（version 可选，按版本取） */
+export function fetchAupDict(dictKey: string, version?: number): Promise<AupDictDetail> {
+  return authHttp
+    .get<Result<AupDictDetail>>(`/aup-dict/${dictKey}`, { params: version != null ? { version } : undefined })
+    .then(({ data }) => data.data);
 }
 
-/** PUT /aup-dict/{dictKey} —— 改名（category 非空时一并更新分类） */
-export function updateAupDict(dictKey: string, body: { name: string; category?: string }): Promise<void> {
+/** PUT /aup-dict/{dictKey} —— 改名（category 非空时一并更新分类；folderId 可迁移文件夹） */
+export function updateAupDict(dictKey: string, body: { name: string; category?: string; folderId?: number }): Promise<void> {
   return authHttp.put<Result<void>>(`/aup-dict/${dictKey}`, body).then(() => undefined);
 }
 
@@ -536,9 +591,9 @@ export function deleteAupDict(dictKey: string): Promise<void> {
   return authHttp.delete<Result<void>>(`/aup-dict/${dictKey}`).then(() => undefined);
 }
 
-/** POST /aup-dict/{dictKey}/items —— 新增项 */
-export function createAupDictItem(dictKey: string, body: CreateDictItemBody): Promise<{ itemId: number }> {
-  return authHttp.post<Result<{ itemId: number }>>(`/aup-dict/${dictKey}/items`, body).then(({ data }) => data.data);
+/** POST /aup-dict/{dictKey}/items —— 新增项（后端返回 DictItemVO） */
+export function createAupDictItem(dictKey: string, body: CreateDictItemBody): Promise<AupDictItem> {
+  return authHttp.post<Result<AupDictItem>>(`/aup-dict/${dictKey}/items`, body).then(({ data }) => data.data);
 }
 
 /** PUT /aup-dict/{dictKey}/items/{itemId} —— 改项 */
@@ -662,6 +717,473 @@ export function fetchAupNotifications(params: Record<string, unknown> = {}): Pro
 /** PUT /aup/notifications/{id}/read —— 标记已读 */
 export function markAupNotificationRead(id: string): Promise<void> {
   return authHttp.put<Result<void>>(`/aup/notifications/${id}/read`).then(() => undefined);
+}
+
+/* =====================================================================
+ * 5.7 配置工作台：文件夹 / 字段域 / 码表状态机 / 模板原子域 / 变更记录
+ * ================================================================== */
+
+/* ── 文件夹 /api/aup-folder ── */
+
+/** 配置面文件夹树节点，对齐 AupFolderVO */
+export interface AupFolderVO {
+  id: number;
+  /** CODELIST / FIELD / ATOM */
+  ownerType?: string;
+  parentId?: number;
+  name: string;
+  sortOrder?: number;
+  description?: string;
+  children?: AupFolderVO[];
+}
+
+/** 新建文件夹请求，对齐 AupFolderCreateRequest */
+export interface AupFolderCreateRequest {
+  /** CODELIST / FIELD / ATOM */
+  ownerType?: string;
+  parentId?: number;
+  name: string;
+  sortOrder?: number;
+  description?: string;
+}
+
+/** 重命名/改排序请求，对齐 AupFolderUpdateRequest */
+export interface AupFolderUpdateRequest {
+  name?: string;
+  sortOrder?: number;
+  description?: string;
+}
+
+/** 换父节点请求，对齐 AupFolderMoveRequest */
+export interface AupFolderMoveRequest {
+  parentId?: number;
+}
+
+/** GET /aup-folder —— 取整棵文件夹树 */
+export function listAupFolders(ownerType?: string): Promise<AupFolderVO[]> {
+  return authHttp.get<Result<AupFolderVO[]>>("/aup-folder", { params: { ownerType } }).then(({ data }) => data.data);
+}
+
+/** POST /aup-folder —— 新建文件夹 */
+export function createAupFolder(body: AupFolderCreateRequest): Promise<AupFolderVO> {
+  return authHttp.post<Result<AupFolderVO>>("/aup-folder", body).then(({ data }) => data.data);
+}
+
+/** PUT /aup-folder/{id} —— 重命名/改排序 */
+export function updateAupFolder(id: number, body: AupFolderUpdateRequest): Promise<AupFolderVO> {
+  return authHttp.put<Result<AupFolderVO>>(`/aup-folder/${id}`, body).then(({ data }) => data.data);
+}
+
+/** PUT /aup-folder/{id}/move —— 换父节点 */
+export function moveAupFolder(id: number, body: AupFolderMoveRequest): Promise<void> {
+  return authHttp.put<Result<void>>(`/aup-folder/${id}/move`, body).then(() => undefined);
+}
+
+/** DELETE /aup-folder/{id} —— 删除空文件夹 */
+export function deleteAupFolder(id: number): Promise<void> {
+  return authHttp.delete<Result<void>>(`/aup-folder/${id}`).then(() => undefined);
+}
+
+/* ── 字段域 /api/aup-field ── */
+
+/** 字段状态机：DRAFT → PENDING_REVIEW → PUBLISHED（unfreeze 回 DRAFT） */
+export type AupFieldStatus = "DRAFT" | "PENDING_REVIEW" | "PUBLISHED";
+
+/** 字段字典视图，对齐 AupFieldVO（options/config/showWhen 解析为 Object） */
+export interface AupFieldVO {
+  id: number;
+  fieldCode: string;
+  label: string;
+  type?: string;
+  dictKey?: string;
+  options?: unknown;
+  required?: boolean;
+  description?: string;
+  config?: unknown;
+  showWhen?: unknown;
+  folderId?: number;
+  status?: AupFieldStatus;
+  frozenAt?: string;
+  frozenBy?: string;
+  sortOrder?: number;
+  refCount?: number;
+}
+
+export interface AupFieldListParams {
+  folderId?: number;
+  status?: string;
+  keyword?: string;
+  page?: number;
+  size?: number;
+}
+
+export interface AupFieldListResult {
+  items: AupFieldVO[];
+  total: number;
+}
+
+/** 新建字段请求，对齐 AupFieldCreateRequest */
+export interface AupFieldCreateRequest {
+  fieldCode: string;
+  label: string;
+  type?: string;
+  dictKey?: string;
+  options?: unknown;
+  required?: boolean;
+  description?: string;
+  config?: unknown;
+  showWhen?: unknown;
+  folderId?: number;
+  sortOrder?: number;
+}
+
+/** 修改字段请求，对齐 AupFieldUpdateRequest（仅 DRAFT 可改） */
+export interface AupFieldUpdateRequest {
+  label?: string;
+  type?: string;
+  dictKey?: string;
+  options?: unknown;
+  required?: boolean;
+  description?: string;
+  config?: unknown;
+  showWhen?: unknown;
+  sortOrder?: number;
+}
+
+/** 字段移动请求，对齐 AupFieldMoveRequest */
+export interface AupFieldMoveRequest {
+  folderId?: number;
+  sortOrder?: number;
+}
+
+/** 字段状态机审核请求（reject 意见必填），对齐 AupFieldReviewRequest */
+export interface AupFieldReviewRequest {
+  comment?: string;
+}
+
+/** 引用某字段编码的原子域模板，对齐 AupFieldTemplateRef */
+export interface AupFieldTemplateRef {
+  templateId?: number;
+  formKey?: string;
+  templateName?: string;
+  templateVersion?: number;
+  kind?: string;
+  fieldId?: number;
+  fieldKey?: string;
+  fieldLabel?: string;
+}
+
+/** 字段 usage 结果（fieldCode/label/status/refCount/refs） */
+export interface AupFieldUsageVO {
+  fieldCode?: string;
+  label?: string;
+  status?: AupFieldStatus;
+  refCount?: number;
+  refs?: AupFieldTemplateRef[];
+}
+
+/** 从已发布模板抽取字段请求，对齐 ExtractFromTemplateRequest */
+export interface ExtractFromTemplateRequest {
+  templateId?: number;
+  /** templateId 为空时按 formKey 解析（kind=PROTOCOL 已发布版） */
+  formKey?: string;
+}
+
+/** 字段抽取结果，对齐 ExtractFromTemplateResponse */
+export interface ExtractFromTemplateResponse {
+  created?: number;
+  skipped?: number;
+}
+
+/** GET /aup-field —— 字段分页列表 */
+export function fetchAupFields(params: AupFieldListParams = {}): Promise<AupFieldListResult> {
+  return authHttp.get<Result<AupFieldListResult>>("/aup-field", { params }).then(({ data }) => data.data);
+}
+
+/** POST /aup-field —— 新建字段（DRAFT） */
+export function createAupField(body: AupFieldCreateRequest): Promise<AupFieldVO> {
+  return authHttp.post<Result<AupFieldVO>>("/aup-field", body).then(({ data }) => data.data);
+}
+
+/** PUT /aup-field/{id} —— 修改字段（仅 DRAFT） */
+export function updateAupField(id: number, body: AupFieldUpdateRequest): Promise<AupFieldVO> {
+  return authHttp.put<Result<AupFieldVO>>(`/aup-field/${id}`, body).then(({ data }) => data.data);
+}
+
+/** PUT /aup-field/{id}/move —— 移动到别的文件夹 */
+export function moveAupField(id: number, body: AupFieldMoveRequest): Promise<void> {
+  return authHttp.put<Result<void>>(`/aup-field/${id}/move`, body).then(() => undefined);
+}
+
+/** DELETE /aup-field/{id} —— 删除字段（被原子域引用则拒绝） */
+export function deleteAupField(id: number): Promise<void> {
+  return authHttp.delete<Result<void>>(`/aup-field/${id}`).then(() => undefined);
+}
+
+/** GET /aup-field/{id}/usage —— 被哪些原子域引用 */
+export function fetchAupFieldUsage(id: number): Promise<AupFieldUsageVO> {
+  return authHttp.get<Result<AupFieldUsageVO>>(`/aup-field/${id}/usage`).then(({ data }) => data.data);
+}
+
+/** POST /aup-field/{id}/submit-review —— 提交审核 */
+export function submitAupFieldReview(id: number): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-field/${id}/submit-review`).then(() => undefined);
+}
+
+/** POST /aup-field/{id}/approve —— 通过发布 */
+export function approveAupField(id: number): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-field/${id}/approve`).then(() => undefined);
+}
+
+/** POST /aup-field/{id}/reject —— 驳回（意见必填） */
+export function rejectAupField(id: number, body?: AupFieldReviewRequest): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-field/${id}/reject`, body).then(() => undefined);
+}
+
+/** POST /aup-field/{id}/unfreeze —— 解冻 */
+export function unfreezeAupField(id: number): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-field/${id}/unfreeze`).then(() => undefined);
+}
+
+/** POST /aup-field/actions/extract-from-template —— 从已发布计划书模板反向抽取字段入库 */
+export function extractAupFieldsFromTemplate(body: ExtractFromTemplateRequest): Promise<ExtractFromTemplateResponse> {
+  return authHttp
+    .post<Result<ExtractFromTemplateResponse>>("/aup-field/actions/extract-from-template", body)
+    .then(({ data }) => data.data);
+}
+
+/* ── 码表状态机（/api/aup-dict 扩展） ── */
+
+/** 码表版本列表项，对齐 DictVersionVO */
+export interface AupDictVersionVO {
+  id: number;
+  dictKey?: string;
+  name?: string;
+  version?: number;
+  status?: AupDictStatus;
+  folderId?: number;
+  publishedAt?: string;
+  publishedBy?: string;
+  reviewComment?: string;
+  itemCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** 码表引用链，对齐 DictUsageVO */
+export interface AupDictUsageVO {
+  dictKey?: string;
+  refCount?: number;
+  refs?: AupDictUsageRef[];
+}
+
+/** 码表引用链中的单个引用，对齐 DictUsageRef */
+export interface AupDictUsageRef {
+  /** TEMPLATE_FIELD（模板字段） / FIELD_DEF（字段字典） */
+  refType?: string;
+  fieldKey?: string;
+  fieldLabel?: string;
+  templateId?: number;
+  formKey?: string;
+  templateName?: string;
+  templateVersion?: number;
+  /** form_field.dict_version（可能为 null=跟随最新） */
+  dictVersion?: number;
+  fieldDefId?: number;
+}
+
+/** 码表状态机审核请求（approve/reject 共用），对齐 DictReviewRequest */
+export interface AupDictReviewRequest {
+  comment?: string;
+}
+
+/** 逐项校对四态请求，对齐 DictVerdictRequest */
+export interface AupDictVerdictRequest {
+  /** CONFIRM / MODIFY / DELETE / QUESTION */
+  verdict: string;
+  verdictNote?: string;
+}
+
+/** GET /aup-dict/{dictKey}/versions —— 版本列表 */
+export function fetchAupDictVersions(dictKey: string): Promise<AupDictVersionVO[]> {
+  return authHttp.get<Result<AupDictVersionVO[]>>(`/aup-dict/${dictKey}/versions`).then(({ data }) => data.data);
+}
+
+/** GET /aup-dict/{dictKey}/usage —— 引用链 */
+export function fetchAupDictUsage(dictKey: string): Promise<AupDictUsageVO> {
+  return authHttp.get<Result<AupDictUsageVO>>(`/aup-dict/${dictKey}/usage`).then(({ data }) => data.data);
+}
+
+/** POST /aup-dict/{dictKey}/submit-review —— 提交审核 DRAFT→PENDING_REVIEW */
+export function submitAupDictReview(dictKey: string): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-dict/${dictKey}/submit-review`).then(() => undefined);
+}
+
+/** POST /aup-dict/{dictKey}/approve —— 通过发布 PENDING_REVIEW→PUBLISHED */
+export function approveAupDict(dictKey: string, body?: AupDictReviewRequest): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-dict/${dictKey}/approve`, body).then(() => undefined);
+}
+
+/** POST /aup-dict/{dictKey}/reject —— 驳回 PENDING_REVIEW→DRAFT（意见必填） */
+export function rejectAupDict(dictKey: string, body: AupDictReviewRequest): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-dict/${dictKey}/reject`, body).then(() => undefined);
+}
+
+/** POST /aup-dict/{dictKey}/unfreeze —— 解冻 PUBLISHED→DRAFT（无字段引用才可） */
+export function unfreezeAupDict(dictKey: string): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-dict/${dictKey}/unfreeze`).then(() => undefined);
+}
+
+/** POST /aup-dict/{dictKey}/draft —— 从已发布版克隆新草稿 */
+export function createAupDictDraft(dictKey: string): Promise<AupDictVersionVO> {
+  return authHttp.post<Result<AupDictVersionVO>>(`/aup-dict/${dictKey}/draft`).then(({ data }) => data.data);
+}
+
+/** POST /aup-dict/{dictKey}/items/{itemId}/verdict —— 逐项校对四态 */
+export function submitAupDictItemVerdict(dictKey: string, itemId: number, body: AupDictVerdictRequest): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-dict/${dictKey}/items/${itemId}/verdict`, body).then(() => undefined);
+}
+
+/* ── 模板原子域/组合域（/api/aup-template 扩展） ── */
+
+/** 新建原子域请求，对齐 AtomCreateRequest */
+export interface AtomCreateRequest {
+  /** 调用方给定 formKey；缺省用 atom:{code}（或 atom:{name}） */
+  formKey?: string;
+  name?: string;
+  code?: string;
+  description?: string;
+  folderId?: number;
+}
+
+/** 组合域钉住的原子域引用，对齐 AtomRef */
+export interface AtomRef {
+  atomFormKey?: string;
+  atomTemplateId?: number;
+}
+
+/** 新建组合域请求，对齐 ComposeRequest */
+export interface ComposeRequest {
+  formKey?: string;
+  name?: string;
+  description?: string;
+  folderId?: number;
+  atoms?: AtomRef[];
+}
+
+/** 把若干原子域字段整段插入当前草稿请求，对齐 ImportAtomsRequest */
+export interface ImportAtomsRequest {
+  atomTemplateIds?: number[];
+}
+
+/** 模板（原子域）被哪些组合域钉住，对齐 TemplateUsageVO */
+export interface TemplateUsageVO {
+  templateId?: number;
+  formKey?: string;
+  name?: string;
+  version?: number;
+  kind?: string;
+  refCount?: number;
+  refs?: TemplateUsageRef[];
+}
+
+/** 组合域对原子域的钉住引用，对齐 TemplateUsageRef */
+export interface TemplateUsageRef {
+  compositeTemplateId?: number;
+  compositeFormKey?: string;
+  compositeName?: string;
+  compositeVersion?: number;
+  atomFormKey?: string;
+}
+
+/** 模板状态机审核请求（reject 意见必填），对齐 TemplateReviewRequest */
+export interface TemplateReviewRequest {
+  comment?: string;
+}
+
+/** POST /aup-template/atom —— 新建原子域 */
+export function createAupAtom(body: AtomCreateRequest): Promise<TemplateVersionBriefVO> {
+  return authHttp.post<Result<TemplateVersionBriefVO>>("/aup-template/atom", body).then(({ data }) => data.data);
+}
+
+/** POST /aup-template/compose —— 新建组合域并钉住原子域版本 */
+export function composeAupTemplate(body: ComposeRequest): Promise<TemplateVersionBriefVO> {
+  return authHttp.post<Result<TemplateVersionBriefVO>>("/aup-template/compose", body).then(({ data }) => data.data);
+}
+
+/** POST /aup-template/{id}/import-atoms —— 把若干原子域字段整段插入当前草稿 */
+export function importAtomsIntoAupTemplate(id: number, body: ImportAtomsRequest): Promise<TemplateDetailVO> {
+  return authHttp.post<Result<TemplateDetailVO>>(`/aup-template/${id}/import-atoms`, body).then(({ data }) => data.data);
+}
+
+/** POST /aup-template/{id}/submit-review —— 提交审核 */
+export function submitAupTemplateReview(id: number): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-template/${id}/submit-review`).then(() => undefined);
+}
+
+/** POST /aup-template/{id}/reject —— 驳回（意见必填） */
+export function rejectAupTemplate(id: number, body?: TemplateReviewRequest): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-template/${id}/reject`, body).then(() => undefined);
+}
+
+/** POST /aup-template/{id}/unfreeze —— 解冻 */
+export function unfreezeAupTemplate(id: number): Promise<void> {
+  return authHttp.post<Result<void>>(`/aup-template/${id}/unfreeze`).then(() => undefined);
+}
+
+/** GET /aup-template/{id}/usage —— 原子域被哪些组合域钉住 */
+export function fetchAupTemplateUsage(id: number): Promise<TemplateUsageVO> {
+  return authHttp.get<Result<TemplateUsageVO>>(`/aup-template/${id}/usage`).then(({ data }) => data.data);
+}
+
+/* ── 变更记录 /api/aup-config-audit ── */
+
+/** 配置面变更记录条目，对齐 AupConfigChangeLog 实体 */
+export interface AupConfigChangeLogVO {
+  id?: number;
+  /** codelist / codelist_item / field / folder / template */
+  entity?: string;
+  entityId?: number;
+  entityCode?: string;
+  entityName?: string;
+  /** CREATE/UPDATE/DELETE/MOVE/SUBMIT_REVIEW/APPROVE/REJECT/UNFREEZE/NEW_VERSION/ARCHIVE */
+  changeType?: string;
+  beforeJson?: string;
+  afterJson?: string;
+  operatorId?: number;
+  operator?: string;
+  comment?: string;
+  createdAt?: string;
+}
+
+/** 按 entity 分组计数（供前端分类 chip） */
+export interface AupConfigEntitySummary {
+  entity?: string;
+  count?: number;
+}
+
+export interface AupConfigAuditQuery {
+  entity?: string;
+  changeType?: string;
+  operatorId?: string;
+  keyword?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AupConfigAuditResult {
+  items: AupConfigChangeLogVO[];
+  total: number;
+  page: number;
+  pageSize: number;
+  entitySummaries: AupConfigEntitySummary[];
+}
+
+/** GET /aup-config-audit —— 分页查询配置变更记录 */
+export function fetchAupConfigAudit(query: AupConfigAuditQuery = {}): Promise<AupConfigAuditResult> {
+  return authHttp.get<Result<AupConfigAuditResult>>("/aup-config-audit", { params: query }).then(({ data }) => data.data);
 }
 
 /* =====================================================================

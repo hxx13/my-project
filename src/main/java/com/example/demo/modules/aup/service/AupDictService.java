@@ -142,6 +142,12 @@ public class AupDictService {
         if (versions.isEmpty()) {
             return Result.error("字典不存在");
         }
+        for (Dict d : versions) {
+            Result<?> ro = requireLocal(d);
+            if (ro != null) {
+                return ro;
+            }
+        }
         int refs = fieldMapper.countByDictKey(dictKey) + fieldDefMapper.countByDictKey(dictKey);
         if (refs > 0) {
             return Result.fail(400, "该字典被 " + refs + " 个字段引用，无法删除");
@@ -159,6 +165,10 @@ public class AupDictService {
         Dict d = dictMapper.findLatestByKey(dictKey);
         if (d == null) {
             return Result.error("字典不存在");
+        }
+        Result<DictItemVO> ro = requireLocal(d);
+        if (ro != null) {
+            return ro;
         }
         String value = trim(req.getValue());
         if (value.isEmpty()) {
@@ -183,6 +193,10 @@ public class AupDictService {
         if (d == null) {
             return Result.error("字典不存在");
         }
+        Result<?> ro = requireLocal(d);
+        if (ro != null) {
+            return ro;
+        }
         DictItem item = dictItemMapper.findById(itemId);
         if (item == null || !d.getId().equals(item.getDictId())) {
             return Result.error("字典项不存在");
@@ -203,6 +217,10 @@ public class AupDictService {
         if (d == null) {
             return Result.error("字典不存在");
         }
+        Result<?> ro = requireLocal(d);
+        if (ro != null) {
+            return ro;
+        }
         DictItem item = dictItemMapper.findById(itemId);
         if (item == null || !d.getId().equals(item.getDictId())) {
             return Result.error("字典项不存在");
@@ -217,6 +235,10 @@ public class AupDictService {
         Dict d = dictMapper.findLatestByKey(dictKey);
         if (d == null) {
             return Result.error("字典不存在");
+        }
+        Result<?> ro = requireLocal(d);
+        if (ro != null) {
+            return ro;
         }
         if (itemIds == null) {
             itemIds = List.of();
@@ -345,6 +367,10 @@ public class AupDictService {
         if (d == null) {
             return Result.error("字典不存在");
         }
+        Result<?> ro = requireLocal(d);
+        if (ro != null) {
+            return ro;
+        }
         if (!"DRAFT".equals(d.getStatus())) {
             return Result.fail(400, "仅草稿状态可提交审核");
         }
@@ -362,6 +388,10 @@ public class AupDictService {
         Dict d = dictMapper.findLatestByKey(dictKey);
         if (d == null) {
             return Result.error("字典不存在");
+        }
+        Result<?> ro = requireLocal(d);
+        if (ro != null) {
+            return ro;
         }
         if (!"PENDING_REVIEW".equals(d.getStatus())) {
             return Result.fail(400, "仅待审核状态可发布");
@@ -390,6 +420,10 @@ public class AupDictService {
         if (d == null) {
             return Result.error("字典不存在");
         }
+        Result<?> ro = requireLocal(d);
+        if (ro != null) {
+            return ro;
+        }
         if (!"PENDING_REVIEW".equals(d.getStatus())) {
             return Result.fail(400, "仅待审核状态可驳回");
         }
@@ -410,6 +444,10 @@ public class AupDictService {
         if (d == null) {
             return Result.error("字典不存在");
         }
+        Result<?> ro = requireLocal(d);
+        if (ro != null) {
+            return ro;
+        }
         if (!"PUBLISHED".equals(d.getStatus())) {
             return Result.fail(400, "仅已发布状态可解冻");
         }
@@ -428,6 +466,10 @@ public class AupDictService {
         Dict published = dictMapper.findPublishedByKey(dictKey);
         if (published == null) {
             return Result.fail(400, "无已发布版本可克隆草稿");
+        }
+        Result<DictVersionVO> ro = requireLocal(published);
+        if (ro != null) {
+            return ro;
         }
         List<Integer> used = dictMapper.listVersionsByKey(dictKey).stream()
                 .map(Dict::getVersion).collect(Collectors.toList());
@@ -475,6 +517,10 @@ public class AupDictService {
         if (owner == null || !dictKey.equals(owner.getDictKey())) {
             return Result.error("字典项不属于该字典");
         }
+        Result<?> ro = requireLocal(owner);
+        if (ro != null) {
+            return ro;
+        }
         String verdict = trimToNull(req.getVerdict());
         if (verdict != null) {
             verdict = verdict.toUpperCase();
@@ -486,6 +532,14 @@ public class AupDictService {
         auditService.log("codelist_item", itemId, item.getValue(), item.getLabel(), "UPDATE",
                 Map.of("verdict", item.getVerdict()), Map.of("verdict", verdict), operator, req.getVerdictNote());
         return Result.success(null);
+    }
+
+    /** EXTERNAL 码表头只读：值域由源模块维护，拒绝一切写操作。放行（null）或返回失败结果。 */
+    private <T> Result<T> requireLocal(Dict d) {
+        if ("EXTERNAL".equalsIgnoreCase(d.getSource())) {
+            return Result.fail(400, "外部引用码表只读，请到源模块编辑");
+        }
+        return null;
     }
 
     /* ── 视图转换 / 工具 ── */
