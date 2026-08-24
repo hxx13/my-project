@@ -18,9 +18,21 @@ function inferPkIdTypeFromUnit(field: FormField): string | undefined {
 }
 
 export function resolvePkIdType(field: FormField): string | undefined {
+  if (field.role === "DERIVED") return undefined;
   const rule = field.roleMeta?.pkRule?.trim().toUpperCase();
   if (rule) return rule;
   return inferPkIdTypeFromUnit(field);
+}
+
+/** DERIVED 派生键 ID 类型（ANES/HX/RS）：从 derivedSource 或 unit 推断。 */
+export function resolveDerivedIdType(field: FormField): string | undefined {
+  if (field.role !== "DERIVED") return undefined;
+  const fromSource = field.roleMeta?.derivedSource?.trim().toUpperCase() ?? "";
+  const sourceMatch = /^([A-Z]{2,4})/.exec(fromSource);
+  if (sourceMatch && DERIVED_ID_TYPES.has(sourceMatch[1])) return sourceMatch[1];
+  const fromUnit = inferPkIdTypeFromUnit(field);
+  if (fromUnit && DERIVED_ID_TYPES.has(fromUnit)) return fromUnit;
+  return undefined;
 }
 
 export function isDerivedPkIdType(idType: string): boolean {
@@ -32,6 +44,23 @@ function strVal(values: Record<string, unknown>, key: string): string | undefine
   if (v == null) return undefined;
   const s = String(v).trim();
   return s || undefined;
+}
+
+/** 从表单已填值里取某码表字段的取值（如 FARM→基地码、CENTER→中心码）。 */
+function valueOfDictKeyField(
+  allFields: FormField[] | undefined,
+  values: Record<string, unknown>,
+  dictKey: string,
+): string | undefined {
+  if (!allFields) return undefined;
+  const key = dictKey.trim().toUpperCase();
+  for (const f of allFields) {
+    if ((f.dictKey ?? "").trim().toUpperCase() === key) {
+      const v = strVal(values, f.fieldKey);
+      if (v) return v;
+    }
+  }
+  return undefined;
 }
 
 function yymmdd(): string {
@@ -89,9 +118,12 @@ function mergePkValuesFromForm(
 /** 研究对象级主键：DON/RCP 在登记时已取号则直接用作预览/落库，不再递增。 */
 export function subjectPkCode(subject: NhpSubject | null | undefined, idType: string): string | undefined {
   if (!subject?.subjectCode) return undefined;
+  const code = subject.subjectCode;
+  // 占位对象（表单化登记第一步，PEND- 临时号）尚无真实编号，不能当主键用
+  if (code.startsWith("PEND-")) return undefined;
   const type = idType.toUpperCase();
-  if (type === "DON" && subject.subjectType === "DONOR") return subject.subjectCode;
-  if (type === "RCP" && subject.subjectType === "RECIPIENT") return subject.subjectCode;
+  if (type === "DON" && subject.subjectType === "DONOR") return code;
+  if (type === "RCP" && subject.subjectType === "RECIPIENT") return code;
   return undefined;
 }
 
@@ -109,9 +141,23 @@ export function buildPkIdContext(
     ctx.base = subject.farmCode;
     ctx.farm = subject.farmCode;
     ctx.farmCode = subject.farmCode;
+  } else {
+    // 表单化登记：占位 subject 尚无基地码，改从表单里已选的 FARM 码表字段取值
+    const farmFromForm = valueOfDictKeyField(allFields, values, "FARM");
+    if (farmFromForm) {
+      ctx.base = farmFromForm;
+      ctx.farm = farmFromForm;
+      ctx.farmCode = farmFromForm;
+    }
   }
 
-  if (subject?.subjectCode) {
+  const centerFromForm = valueOfDictKeyField(allFields, values, "CENTER");
+  if (centerFromForm) {
+    ctx.center = centerFromForm;
+    ctx.centerCode = centerFromForm;
+  }
+
+  if (subject?.subjectCode && !subject.subjectCode.startsWith("PEND-")) {
     if (subject.subjectType === "DONOR") {
       ctx.donor = subject.subjectCode;
       ctx.DON = subject.subjectCode;

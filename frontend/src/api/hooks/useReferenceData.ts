@@ -281,12 +281,11 @@ export function useSubmitOrder() {
   });
 }
 
-/** 拉取本课题组已批准 AUP（下单必选 AUP 下拉） */
-export function useApprovedAups(projectGroupName?: string) {
+/** 拉取当前用户课题组的已批准 AUP（下单必选 AUP 下拉；服务端按登录用户过滤） */
+export function useApprovedAups() {
   return useQuery({
-    queryKey: ["approved-aups", projectGroupName],
-    queryFn: () => fetchApprovedAups(projectGroupName),
-    enabled: !!projectGroupName,
+    queryKey: ["approved-aups"],
+    queryFn: () => fetchApprovedAups(),
     staleTime: 5 * 60 * 1000,
   });
 }

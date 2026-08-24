@@ -81,8 +81,8 @@ public class SpecialChannelController {
         if (me == null) {
             return Result.fail(ErrorCodeConstants.UNAUTHORIZED, "未登录");
         }
-        // 以当前用户的 username 作为人员库 userId（sys_user.username 与 aro_personnel.user_id 对应）
-        specialChannelService.resetPin(me.getUsername().trim(), me.getId());
+        // 人员库 userId = aro_personnel.user_id = sys_user.id（19 位），不是 username（注册后可被自定义，会不一致）
+        specialChannelService.resetPin(me.getId().trim(), me.getId());
         return Result.success();
     }
 }

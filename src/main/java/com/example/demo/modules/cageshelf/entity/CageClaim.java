@@ -1,5 +1,8 @@
 package com.example.demo.modules.cageshelf.entity;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+
 import java.util.Set;
 
 /**
@@ -19,6 +22,7 @@ public class CageClaim {
     );
 
     private Long id;
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long animalCageId;
     private String claimStatus;         // pool | pending_approval | locked | confirmed | pending_release_approval | rejected | cancelled | released
     private String claimantId;          // sys_user.id (String)

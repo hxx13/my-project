@@ -76,13 +76,6 @@ export default function NhpOverviewCockpitHeader({
         <button type="button" className="btn primary small" onClick={() => navigate("/nhp/fill")}>
           ＋ 记录事件
         </button>
-        <button
-          type="button"
-          className="btn ghost small"
-          onClick={() => navigate("/content-manager/nhp-records")}
-        >
-          病例墙
-        </button>
       </div>
     </header>
   );

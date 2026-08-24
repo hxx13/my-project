@@ -116,7 +116,7 @@ export interface Expert {
   dept?: string;
 }
 
-/** 审查人名册成员（aup_reviewer） */
+/** 审查人名册成员（身份标签解析；name 由后端 UserDisplayNameService 填充） */
 export interface Reviewer {
   userId: string;
   name?: string;

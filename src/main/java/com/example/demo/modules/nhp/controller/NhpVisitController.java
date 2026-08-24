@@ -1,10 +1,8 @@
 package com.example.demo.modules.nhp.controller;
 
 import com.example.demo.common.dto.Result;
-import com.example.demo.modules.nhp.entity.CrfTimepointMap;
 import com.example.demo.modules.nhp.entity.CrfVisit;
 import com.example.demo.modules.nhp.entity.CrfVisitPlan;
-import com.example.demo.modules.nhp.mapper.CrfTimepointMapMapper;
 import com.example.demo.modules.nhp.mapper.CrfVisitMapper;
 import com.example.demo.modules.nhp.service.NhpVisitService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -15,21 +13,18 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
-/** NHP 访视时点 + timepoint 归一化映射 + 访视编排（visit_plan）。 */
+/** NHP 访视时点 + 访视编排（visit_plan）。 */
 @RestController
 @RequestMapping("/api/nhp")
-@Tag(name = "NHP 访视/时点", description = "crf_visit + crf_timepoint_map + crf_visit_plan")
+@Tag(name = "NHP 访视时点", description = "crf_visit + crf_visit_plan")
 public class NhpVisitController {
 
     private final CrfVisitMapper visitMapper;
-    private final CrfTimepointMapMapper timepointMapMapper;
     private final NhpVisitService visitService;
 
     public NhpVisitController(CrfVisitMapper visitMapper,
-                              CrfTimepointMapMapper timepointMapMapper,
                               NhpVisitService visitService) {
         this.visitMapper = visitMapper;
-        this.timepointMapMapper = timepointMapMapper;
         this.visitService = visitService;
     }
 
@@ -66,12 +61,6 @@ public class NhpVisitController {
         if (patch.containsKey("active")) row.setActive(asBool(patch.get("active")));
         visitMapper.update(row);
         return Result.success(visitMapper.findById(id));
-    }
-
-    @GetMapping("/timepoint-map")
-    @Operation(summary = "65→归一化 timepoint 映射")
-    public Result<List<CrfTimepointMap>> listTimepointMap() {
-        return Result.success(timepointMapMapper.listAll());
     }
 
     @GetMapping("/visits/{visitId}/plan")

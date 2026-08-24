@@ -6,6 +6,7 @@ import {
   saveBookingAup,
   deleteBookingAup,
   fetchAupDict,
+  saveRoomCapacity,
   type BookingAup,
 } from "@/api/domains/cageShelf.api";
 import type { BookingRoom } from "@/api/domains/cageShelf.api";
@@ -15,11 +16,13 @@ import { appConfirm } from "@/lib/appDialog";
 interface Props {
   room: BookingRoom | null;
   roomId: string;
+  onChanged?: () => void;
 }
 
 interface EditingState {
   id: string; // existing id, or "new" for insertion
   aupId: string;
+  registerNumber: string; // AUP 注册号（配额键）
   piName: string; // cascading: PI name → filter AUP options
   rentNumber: number;
   memo: string;
@@ -132,13 +135,16 @@ function SearchableSelect({
   );
 }
 
-export default function CageBookingPanel({ room, roomId }: Props) {
+export default function CageBookingPanel({ room, roomId, onChanged }: Props) {
   const [aups, setAups] = useState<BookingAup[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<EditingState>({ id: "", aupId: "", piName: "", rentNumber: 0, memo: "" });
+  const [editState, setEditState] = useState<EditingState>({ id: "", aupId: "", registerNumber: "", piName: "", rentNumber: 0, memo: "" });
   const [saving, setSaving] = useState(false);
   const [aupOptions, setAupOptions] = useState<{ id: string; registerNo: string; projectGroupName: string }[]>([]);
+  const [editingCapacity, setEditingCapacity] = useState(false);
+  const [capacityDraft, setCapacityDraft] = useState<string>("");
+  const [savingCapacity, setSavingCapacity] = useState(false);
 
   const loadAups = useCallback(async () => {
     if (!roomId) return;
@@ -176,17 +182,22 @@ export default function CageBookingPanel({ room, roomId }: Props) {
 
   const startEdit = (aup: BookingAup) => {
     setEditingId(aup.id);
-    setEditState({ id: aup.id, aupId: aup.aupId || "", piName: aup.piName || "", rentNumber: aup.rentNumber ?? 0, memo: aup.memo || "" });
+    setEditState({ id: aup.id, aupId: aup.aupId || "", registerNumber: aup.registerNumber || "", piName: aup.piName || "", rentNumber: aup.rentNumber ?? 0, memo: aup.memo || "" });
   };
 
   const startNew = () => {
     setEditingId("new");
-    setEditState({ id: "new", aupId: "", piName: "", rentNumber: 0, memo: "" });
+    setEditState({ id: "new", aupId: "", registerNumber: "", piName: "", rentNumber: 0, memo: "" });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditState({ id: "", aupId: "", piName: "", rentNumber: 0, memo: "" });
+    setEditState({ id: "", aupId: "", registerNumber: "", piName: "", rentNumber: 0, memo: "" });
+  };
+
+  const pickAup = (aupId: string) => {
+    const opt = aupOptionsByPi.find(a => a.id === aupId);
+    setEditState(s => ({ ...s, aupId, registerNumber: opt?.registerNo || "" }));
   };
 
   const handleSave = async () => {
@@ -194,7 +205,7 @@ export default function CageBookingPanel({ room, roomId }: Props) {
     if (editingId === "new" && !editState.aupId) { toast.error("请选择 AUP"); return; }
     setSaving(true);
     try {
-      const body: Record<string, unknown> = { rentNumber: editState.rentNumber, memo: editState.memo };
+      const body: Record<string, unknown> = { rentNumber: editState.rentNumber, memo: editState.memo, registerNumber: editState.registerNumber };
       if (editingId === "new") {
         body.aupId = editState.aupId;
       } else {
@@ -216,6 +227,25 @@ export default function CageBookingPanel({ room, roomId }: Props) {
       toast.success("已删除");
       loadAups();
     } catch (e: any) { toast.error(e?.message || "删除失败"); }
+  };
+
+  const startCapacityEdit = () => {
+    setCapacityDraft(String(total));
+    setEditingCapacity(true);
+  };
+
+  const handleSaveCapacity = async () => {
+    if (!roomId) return;
+    const cap = parseInt(capacityDraft) || 0;
+    if (cap < 0) { toast.error("上限不能为负数"); return; }
+    setSavingCapacity(true);
+    try {
+      await saveRoomCapacity(roomId, cap);
+      toast.success("房间上限已保存");
+      setEditingCapacity(false);
+      onChanged?.();
+    } catch (e: any) { toast.error(e?.message || "保存失败"); }
+    finally { setSavingCapacity(false); }
   };
 
   // ── Computed ──
@@ -242,6 +272,35 @@ export default function CageBookingPanel({ room, roomId }: Props) {
               <div className="text-[10px] text-[var(--twin-mute)]">剩余可用</div>
             </div>
           </div>
+          {/* 房间上限（可编辑） */}
+          <div className="flex items-center justify-between text-xs mb-2">
+            <span className="text-[var(--twin-mute)]">房间上限</span>
+            {editingCapacity ? (
+              <span className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={capacityDraft}
+                  onChange={e => setCapacityDraft(e.target.value)}
+                  className="w-20 rounded border border-[var(--app-color-border-default)] px-2 py-0.5 text-xs text-right"
+                  min={0}
+                />
+                <button onClick={handleSaveCapacity} disabled={savingCapacity} className="p-1 rounded text-emerald-600 hover:bg-emerald-50" title="保存">
+                  {savingCapacity ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                </button>
+                <button onClick={() => setEditingCapacity(false)} className="p-1 rounded text-[var(--twin-mute)] hover:bg-[var(--app-color-surface-hover)]" title="取消">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 font-medium text-[var(--twin-ink)]">
+                {total}
+                <button onClick={startCapacityEdit} className="p-0.5 rounded text-[var(--twin-mute)] hover:text-blue-600 hover:bg-blue-50" title="编辑上限">
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+          </div>
+
           {/* 进度条 */}
           <div className="space-y-2">
             <div>
@@ -318,7 +377,7 @@ export default function CageBookingPanel({ room, roomId }: Props) {
                       <SearchableSelect
                         options={aupOptionsByPi.map(a => ({ value: a.id, label: a.registerNo || "" }))}
                         value={editState.aupId}
-                        onChange={(aupId) => setEditState(s => ({ ...s, aupId }))}
+                        onChange={(aupId) => pickAup(aupId)}
                         placeholder={editState.piName ? "选择 AUP 编号…" : "请先选课题组"}
                         disabled={!editState.piName}
                       />
@@ -370,7 +429,7 @@ export default function CageBookingPanel({ room, roomId }: Props) {
                         <SearchableSelect
                           options={aupOptionsByPi.map(a => ({ value: a.id, label: a.registerNo || "" }))}
                           value={editState.aupId}
-                          onChange={(aupId) => setEditState(s => ({ ...s, aupId }))}
+                          onChange={(aupId) => pickAup(aupId)}
                           placeholder={editState.piName ? "选择 AUP 编号…" : "请先选课题组"}
                           disabled={!editState.piName}
                         />

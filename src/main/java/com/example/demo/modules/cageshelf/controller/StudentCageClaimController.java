@@ -5,7 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
-import com.example.demo.modules.cageshelf.service.CageClaimInfoService;
+import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cageshelf.service.CageClaimService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,14 +28,14 @@ public class StudentCageClaimController {
 
     private final AuthContextService authContextService;
     private final CageClaimService claimService;
-    private final CageClaimInfoService infoService;
+    private final CageInfoValueService infoValueService;
 
     public StudentCageClaimController(AuthContextService authContextService,
                                        CageClaimService claimService,
-                                       CageClaimInfoService infoService) {
+                                       CageInfoValueService infoValueService) {
         this.authContextService = authContextService;
         this.claimService = claimService;
-        this.infoService = infoService;
+        this.infoValueService = infoValueService;
     }
 
     private User resolveUser(HttpServletRequest req) {
@@ -82,7 +82,7 @@ public class StudentCageClaimController {
             CageClaim claim = claimService.claim(u, animalCageId, shelfIndexId);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", claim.getId());
-            result.put("animalCageId", claim.getAnimalCageId());
+            result.put("animalCageId", String.valueOf(claim.getAnimalCageId()));
             result.put("status", claim.getClaimStatus());
             result.put("needApproval", "pending_approval".equals(claim.getClaimStatus()));
             return Result.success(result);
@@ -230,7 +230,7 @@ public class StudentCageClaimController {
         if (claim == null) return Result.fail(404, "认领记录不存在");
         if (!u.getId().equals(claim.getClaimantId())) return Result.fail(403, "只能查看自己的认领信息");
 
-        return Result.success(infoService.getInfo(id));
+        return Result.success(infoValueService.getInfo(claim.getAnimalCageId()));
     }
 
     @PutMapping("/{id}/info")
@@ -250,7 +250,7 @@ public class StudentCageClaimController {
         if (values == null) return Result.fail(400, "values 必填且为数组");
 
         try {
-            return Result.success(infoService.updateInfo(id, values));
+            return Result.success(infoValueService.updateInfo(claim.getAnimalCageId(), values, u.getId()));
         } catch (Exception e) {
             return handleServiceException(e);
         }

@@ -27,7 +27,7 @@ import type { FieldType, FormField } from "../../schema/formTemplate";
 import type { FieldTemplate } from "../../schema/fieldTemplates";
 import * as templateApi from "../../api/nhpTemplate.api";
 import type { NhpAtomRef } from "../../api/nhpTemplate.api";
-import { fetchNhpCodelists } from "../../api/nhpCodelist.api";
+import { fetchNhpCodelists, fetchNhpCodelist, fetchNhpCodelistById, type NhpCodelistItem } from "../../api/nhpCodelist.api";
 import { fetchNhpDictStructure } from "../../api/nhpFieldDictionary.api";
 import NhpFormField from "../../components/NhpFormField";
 import NhpCompositeComposer, { type StagePick } from "../../components/NhpCompositeComposer";
@@ -88,6 +88,7 @@ export default function NhpTemplateEditor() {
   const [viewMode, setViewMode] = useState<"edit" | "preview">("edit");
   const [search, setSearch] = useState("");
   const [codelists, setCodelists] = useState<{ code: string; name: string }[]>([]);
+  const [codelistOptions, setCodelistOptions] = useState<Record<string, { value: string; label: string }[]>>({});
   const [busy, setBusy] = useState(false);
   const [addMenu, setAddMenu] = useState<{ sectionCode: string; subsectionCode: string | null } | null>(null);
   const [fieldPickerOpen, setFieldPickerOpen] = useState(false);
@@ -130,6 +131,32 @@ export default function NhpTemplateEditor() {
       .then((list) => setCodelists(list.map((c) => ({ code: c.code, name: c.name }))))
       .catch(() => {});
   }, []);
+
+  // 预览用：按模板里出现的 dictKey 拉取码表选项（供 FieldPreview 渲染选项）
+  useEffect(() => {
+    const dictKeys = new Set<string>();
+    for (const sec of sections) {
+      for (const sub of sec.subsections ?? []) {
+        for (const f of sub.fields) if (f.dictKey) dictKeys.add(f.dictKey);
+      }
+      for (const f of sec.fields ?? []) if (f.dictKey) dictKeys.add(f.dictKey);
+    }
+    if (dictKeys.size === 0) {
+      setCodelistOptions({});
+      return;
+    }
+    const map: Record<string, { value: string; label: string }[]> = {};
+    Promise.all(
+      [...dictKeys].map(async (code) => {
+        try {
+          const d = await fetchNhpCodelist(code);
+          map[code] = d.items.map((i: NhpCodelistItem) => ({ value: i.itemCode, label: i.itemLabel }));
+        } catch {
+          map[code] = [];
+        }
+      }),
+    ).then(() => setCodelistOptions(map));
+  }, [sections]);
 
   useEffect(() => {
     if (!formKey) return;
@@ -299,11 +326,21 @@ export default function NhpTemplateEditor() {
     setComposerOpen(true);
   };
 
-  const handleRemoveSection = (code: string) => {
+  const handleRemoveSection = async (code: string) => {
     if (!editable) {
       toast.error(kind === "COMPOSITE" ? "已发布版本不可删章节，请先新建草稿" : "已锁定版本不可删除");
       return;
     }
+    const sec = sections.find((s) => s.code === code);
+    if (!sec) return;
+    const n =
+      (sec.fields?.length ?? 0) +
+      (sec.subsections ?? []).reduce((sum, sub) => sum + (sub.fields?.length ?? 0), 0);
+    const tip =
+      n > 0
+        ? `删除板块「${sec.label || code}」？其下 ${n} 道题目将一并删除。`
+        : `删除板块「${sec.label || code}」？`;
+    if (!await appConfirm(tip)) return;
     removeSection(code);
     if (kind === "COMPOSITE") {
       setAtoms((prev) => {
@@ -656,6 +693,7 @@ export default function NhpTemplateEditor() {
                         key={f.fieldKey}
                         field={f}
                         showEdit={showEditMode}
+                        codelistOptions={codelistOptions}
                         conditionText={f.showWhen ? describeShowWhen(f.showWhen, fieldOptions) : ""}
                         onEdit={() => selectField(f.fieldKey)}
                         onMove={(dir) => moveField(f.fieldKey, dir)}
@@ -672,6 +710,7 @@ export default function NhpTemplateEditor() {
                     key={f.fieldKey}
                     field={f}
                     showEdit={showEditMode}
+                    codelistOptions={codelistOptions}
                     conditionText={f.showWhen ? describeShowWhen(f.showWhen, fieldOptions) : ""}
                     onEdit={() => selectField(f.fieldKey)}
                     onMove={(dir) => moveField(f.fieldKey, dir)}
@@ -704,15 +743,26 @@ export default function NhpTemplateEditor() {
         <FieldPicker
           defaultDictKey={editorDictKey}
           filterDomainCode={addMenu.sectionCode.match(/^(D+\d+)/i)?.[1]?.toUpperCase()}
-          onPick={(field: NhpField, type: FieldType) => {
+          onPick={async (field: NhpField, type: FieldType) => {
             const sec = sections.find((s) => s.code === addMenu.sectionCode);
             if (!sec) return;
+            // 字段字典带码表（codelistId）时，解析成 dictKey（码表 code）一并带进题目
+            let dictKey: string | undefined;
+            if (field.codelistId) {
+              try {
+                const cl = await fetchNhpCodelistById(field.codelistId);
+                dictKey = cl.code;
+              } catch {
+                dictKey = undefined;
+              }
+            }
             const nf: FormField = {
               fieldKey: field.fieldCode,
               label: field.nameCn || field.nameEn,
               type,
               required: field.required === "YES",
               dataType: field.dataType,
+              dictKey,
             };
             addField(addMenu.sectionCode, addMenu.subsectionCode, nf);
             selectField(field.fieldCode);
@@ -791,6 +841,7 @@ function FieldPreview({
   onRemove,
   isFirst,
   isLast,
+  codelistOptions,
 }: {
   field: FormField;
   showEdit: boolean;
@@ -800,7 +851,14 @@ function FieldPreview({
   onRemove: () => void;
   isFirst: boolean;
   isLast: boolean;
+  codelistOptions?: Record<string, { value: string; label: string }[]>;
 }) {
+  const resolvedOptions =
+    field.options && field.options.length > 0
+      ? field.options
+      : field.dictKey
+        ? codelistOptions?.[field.dictKey]
+        : undefined;
   return (
     <div className="aup-fw">
       <div className="nhp-field-wrap" style={{ padding: "4px 0" }}>
@@ -813,7 +871,7 @@ function FieldPreview({
             {field.dictKey ? ` · ${field.dictKey}` : ""}
           </span>
         </label>
-        <NhpFormField field={field} value={undefined} onChange={() => {}} />
+        <NhpFormField field={{ ...field, options: resolvedOptions }} value={undefined} onChange={() => {}} />
         {field.description ? <div className="hint">{field.description}</div> : null}
       </div>
       {conditionText ? (

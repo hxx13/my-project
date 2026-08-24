@@ -54,6 +54,9 @@ public interface CrfRecordMapper {
     @Update("UPDATE crf_record SET status = #{status} WHERE id = #{id}")
     int updateStatus(@Param("id") Long id, @Param("status") String status);
 
+    @Update("UPDATE crf_record SET subject_id = #{subjectId} WHERE id = #{id}")
+    int updateSubjectId(@Param("id") Long id, @Param("subjectId") Long subjectId);
+
     @Select("SELECT COUNT(1) FROM crf_record WHERE subject_id = #{subjectId} AND status <> 'DELETED'")
     long countActiveBySubjectId(Long subjectId);
 

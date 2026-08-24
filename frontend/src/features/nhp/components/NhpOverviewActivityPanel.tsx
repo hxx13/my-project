@@ -14,21 +14,29 @@ export default function NhpOverviewActivityPanel() {
   });
 
   const activities = overviewQuery.data?.activities ?? [];
-  if (overviewQuery.isError || activities.length === 0) return null;
+  const showEmpty = overviewQuery.isError || activities.length === 0;
 
   return (
     <section className="nhp-cockpit-card nhp-cockpit-activity">
       <header className="nhp-cockpit-card-hd">
         <h3 className="nhp-cockpit-card-title">最近动态</h3>
       </header>
-      <ul className="nhp-cockpit-activity-list">
-        {activities.slice(0, 6).map((a, i) => (
-          <li key={i} className="nhp-cockpit-activity-item">
-            <time>{a.time}</time>
-            <span>{a.text}</span>
-          </li>
-        ))}
-      </ul>
+      {overviewQuery.isLoading ? (
+        <div className="nhp-cockpit-card-empty">加载中…</div>
+      ) : showEmpty ? (
+        <div className="nhp-cockpit-card-empty">暂无动态</div>
+      ) : (
+        <div className="nhp-cockpit-activity-scroll">
+          <ul className="nhp-cockpit-activity-list">
+            {activities.slice(0, 6).map((a, i) => (
+              <li key={i} className="nhp-cockpit-activity-item">
+                <time>{a.time}</time>
+                <span>{a.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }

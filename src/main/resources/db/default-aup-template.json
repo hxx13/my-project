@@ -1,0 +1,1609 @@
+{
+  "name": "IACUC 实验动物研究及使用计划（AUP）",
+  "description": "演示模板：参照上海交通大学医学院实验动物研究及使用计划（AUP）的内容结构生成，作为默认种子，可直接在后台编辑。第一部分为核心信息（A–F），第二部分为补充信息（G–L，在 A8 勾选后自动展开）。",
+  "sections": [
+    {
+      "code": "0",
+      "label": "计划书注册信息",
+      "sortOrder": 0,
+      "subdivisible": false,
+      "highlight": true,
+      "fields": [
+        {
+          "fieldKey": "0.regNo",
+          "label": "实验计划注册号码",
+          "type": "text",
+          "description": "申请提交后由 IACUC 指定，仅限于 IACUC 填写",
+          "sortOrder": 0
+        },
+        {
+          "fieldKey": "0.oldRegNo",
+          "label": "已有实验计划注册号码",
+          "type": "text",
+          "description": "仅限更新实验动物研究及使用计划时填写，由申请部门填写",
+          "sortOrder": 1
+        },
+        {
+          "fieldKey": "0.regNote",
+          "label": "注册号码说明",
+          "type": "description",
+          "description": "<ul><li>实验计划注册号码为申请提交后由 IACUC 指定，仅限于 IACUC 填写。</li><li>以 A 字母开头为医学院校内提交的动物实验计划，B 字母开头为附属医院提交的动物实验计划，C 字母开头为除 A、B 两单位以外的其他科研机构提交的动物实验计划。</li><li>更新项目包括：实验过程中需要变更、增加实验内容；实验人员变动；年度审查的项目以及三年到期项目更新。</li></ul>",
+          "sortOrder": 2
+        }
+      ]
+    },
+    {
+      "code": "A",
+      "label": "A：管理信息",
+      "sortOrder": 1,
+      "subdivisible": true,
+      "subsections": [
+        {
+          "code": "A1",
+          "label": "A1：研究项目信息",
+          "sortOrder": 0,
+          "description": "如为更新的研究计划请填写原计划书信息。研究项目信息填写说明：国家专项需填写专项名称，例如“转基因生物新品种培育科技重大专项”；非国家专项须填写项目名称，例如“国家自然基金面上项目”；上海市项目须填写上海市各级项目名称，例如“上海市科委2014年实验动物专项科研项目”；其他科研项目为所列科研项目以外的科研项目，须填写具体名称。",
+          "descriptionTone": "warn",
+          "fields": [
+            { "fieldKey": "A1.name", "label": "项目名称", "type": "text", "required": true, "sortOrder": 0 },
+            {
+              "fieldKey": "A1.source", "label": "项目来源", "type": "choice", "required": true, "sortOrder": 1,
+              "config": { "choiceType": "single" },
+              "dictKey": "projectSource"
+            },
+            {
+              "fieldKey": "A1.sourceName", "label": "专项 / 项目具体名称", "type": "text", "sortOrder": 2,
+              "showWhen": { "field": "A1.source", "op": "notEquals", "value": "国家自然科学基金" },
+              "description": "国家专项需填写专项名称；非国家专项须填写项目名称；上海市项目须填写上海市各级项目名称；其他科研项目须填写具体名称。"
+            },
+            { "fieldKey": "A1.period", "label": "项目起止日期", "type": "dateRange", "required": true, "sortOrder": 3 },
+            { "fieldKey": "A1.no", "label": "项目编号", "type": "text", "required": true, "sortOrder": 4 },
+            { "fieldKey": "A1.pi", "label": "项目负责人", "type": "text", "required": true, "sortOrder": 5 },
+            { "fieldKey": "A1.contact", "label": "项目联系人", "type": "text", "required": true, "sortOrder": 6 }
+          ]
+        },
+        {
+          "code": "A2",
+          "label": "A2：项目负责人信息",
+          "sortOrder": 1,
+          "fields": [
+            {
+              "fieldKey": "A2.unitType", "label": "单位属性", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [ "校内", "校外" ]
+            },
+            { "fieldKey": "A2.leader", "label": "课题组长", "type": "text", "required": true, "sortOrder": 1 },
+            { "fieldKey": "A2.employeeNo", "label": "工号", "type": "text", "required": true, "sortOrder": 2 },
+            { "fieldKey": "A2.department", "label": "部门", "type": "text", "required": true, "sortOrder": 3 },
+            {
+              "fieldKey": "A2.group", "label": "课题组", "type": "select", "sortOrder": 4,
+              "config": { "refDataSource": "projectGroup" }
+            },
+            { "fieldKey": "A2.officePhone", "label": "办公电话", "type": "text", "required": true, "sortOrder": 5 },
+            { "fieldKey": "A2.mobile", "label": "移动电话", "type": "text", "required": true, "sortOrder": 6 },
+            { "fieldKey": "A2.email", "label": "邮箱地址（Email）", "type": "text", "required": true, "sortOrder": 7 },
+            { "fieldKey": "A2.address", "label": "办公地址", "type": "text", "sortOrder": 8 }
+          ]
+        },
+        {
+          "code": "A3",
+          "label": "A3：课题负责人是否亲自接触动物实验",
+          "sortOrder": 2,
+          "fields": [
+            {
+              "fieldKey": "A3.inPerson", "label": "是否亲自接触动物实验", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [ "是", "否" ]
+            }
+          ]
+        },
+        {
+          "code": "A4",
+          "label": "A4：实验动物操作人员信息",
+          "sortOrder": 3,
+          "description": "实验操作人员填写说明：在校学生请在人员类别处选择：本科生、硕士研究生、博士研究生；在职科研人员请填写相应职称，例如：实验师、高级实验师、助理研究员、副研究员、研究员等。",
+          "descriptionTone": "info",
+          "fields": [
+            {
+              "fieldKey": "A4.operators", "label": "实验动物操作人员", "type": "table", "required": true, "sortOrder": 0,
+              "config": {
+                "columns": [
+                  { "fieldKey": "col_no", "label": "学号/工号", "type": "text" },
+                  {
+                    "fieldKey": "col_type", "label": "人员类别", "type": "choice",
+                    "dictKey": "userClass"
+                  },
+                  { "fieldKey": "col_name", "label": "姓名", "type": "text" },
+                  { "fieldKey": "col_email", "label": "Email地址", "type": "text" },
+                  { "fieldKey": "col_task", "label": "在动物实验过程中承担的任务", "type": "text" }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "code": "A5",
+          "label": "A5：合作单位",
+          "sortOrder": 4,
+          "fields": [
+            {
+              "fieldKey": "A5.scope", "label": "实验开展范围", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                { "value": "全部校内", "label": "是的，全部实验都将在医学院本校范围内进行。" },
+                { "value": "部分校外", "label": "否，部分实验将离开医学院本校范围内，前往其他研究机构进行。请提供合作研究机构信息：" }
+              ],
+              "description": "是否一切动物实验（包括饲养、给药、观察、采样以及一切动物相关操作过程）都在上海交通大学医学院校内进行（包括实验动物科学部黄浦6#楼，周浦E10#，E11A#E11B#E11C#地下室，两个校区校内教研室，校内研究机构）？"
+            },
+            { "fieldKey": "A5.orgName", "label": "机构名称", "type": "text", "sortOrder": 1, "showWhen": { "field": "A5.scope", "op": "equals", "value": "部分校外" } },
+            {
+              "fieldKey": "A5.iacucApproved", "label": "是否通过该机构 IACUC 审批", "type": "choice", "sortOrder": 2,
+              "showWhen": { "field": "A5.scope", "op": "equals", "value": "部分校外" },
+              "config": { "choiceType": "single" },
+              "options": [ "是", "否" ]
+            },
+            { "fieldKey": "A5.approvalNo", "label": "批准号码", "type": "text", "sortOrder": 3, "showWhen": { "field": "A5.scope", "op": "equals", "value": "部分校外" } },
+            { "fieldKey": "A5.approvalDate", "label": "批准日期", "type": "date", "sortOrder": 4, "showWhen": { "field": "A5.scope", "op": "equals", "value": "部分校外" } },
+            { "fieldKey": "A5.orgLicense", "label": "机构实验动物使用许可证号码", "type": "text", "sortOrder": 5, "showWhen": { "field": "A5.scope", "op": "equals", "value": "部分校外" } }
+          ]
+        },
+        {
+          "code": "A6",
+          "label": "A6：实验动物研究及使用计划更新",
+          "sortOrder": 5,
+          "fields": [
+            {
+              "fieldKey": "A6.update", "label": "是否用于更新现有研究及使用计划", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                { "value": "新计划", "label": "否，这是一个新动物研究及使用计划。" },
+                { "value": "更新计划", "label": "是，本申请用于更新现有研究及使用计划（请填写原计划号码）。" }
+              ]
+            },
+            { "fieldKey": "A6.oldNo", "label": "原计划号码", "type": "text", "sortOrder": 1, "showWhen": { "field": "A6.update", "op": "equals", "value": "更新计划" } }
+          ]
+        },
+        {
+          "code": "A7",
+          "label": "A7：动物、动物组织及相关制品的出口或进口活动",
+          "sortOrder": 6,
+          "fields": [
+            {
+              "fieldKey": "A7.export", "label": "是否涉及出口", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                { "value": "是", "label": "是的，本实验动物研究及使用计划涉及动物、动物组织及相关制品的出口，并且遵守《中华人民共和国进出境动植物检疫法实施条例》。" },
+                { "value": "否", "label": "否，本实验动物研究及使用计划不涉及动物、动物组织及相关制品的出口活动。" }
+              ]
+            },
+            { "fieldKey": "A7.exportItems", "label": "出口的项目包括", "type": "text", "sortOrder": 1, "showWhen": { "field": "A7.export", "op": "equals", "value": "是" } },
+            {
+              "fieldKey": "A7.import", "label": "是否涉及进口", "type": "choice", "required": true, "sortOrder": 2,
+              "config": { "choiceType": "single" },
+              "options": [
+                { "value": "是", "label": "是的，本实验动物研究及使用计划涉及动物、动物组织及相关制品的进口，并且遵守《中华人民共和国进出境动植物检疫法实施条例》。" },
+                { "value": "否", "label": "否，本实验动物研究及使用计划不涉及动物、动物组织及相关制品的进口活动。" }
+              ]
+            },
+            { "fieldKey": "A7.importItems", "label": "进口的项目包括", "type": "text", "sortOrder": 3, "showWhen": { "field": "A7.import", "op": "equals", "value": "是" } }
+          ]
+        },
+        {
+          "code": "A8",
+          "label": "A8：包含在本申请中的其他补充部分（多选）",
+          "sortOrder": 7,
+          "fields": [
+            {
+              "fieldKey": "A8.parts", "label": "需要补充填写的部分", "type": "choice", "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "description": "勾选后，第二部分对应的补充表将自动展开显示",
+              "options": [
+                { "value": "G", "label": "G：有害物质的使用信息。" },
+                { "value": "H", "label": "H：动物的运输及流动信息。" },
+                { "value": "I", "label": "I：动物保定、止痛及麻醉药物使用信息。" },
+                { "value": "J", "label": "J：基因工程动物使用信息。" },
+                { "value": "K", "label": "K：动物紧急状况处理说明。", "fixed": true },
+                { "value": "L", "label": "L：课题组管理区域饲养动物说明。" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "B",
+      "label": "B：实验动物使用信息",
+      "sortOrder": 2,
+      "subdivisible": true,
+      "subsections": [
+        {
+          "code": "B1",
+          "label": "B1：目的",
+          "sortOrder": 0,
+          "fields": [
+            {
+              "fieldKey": "B1.purpose", "label": "选择动物实验的依据及目的", "type": "textarea", "required": true, "sortOrder": 0,
+              "config": { "maxLength": 5000 },
+              "description": "请从专业角度简单阐述本项目选择动物实验的依据及目的（限5000字内）"
+            }
+          ]
+        },
+        {
+          "code": "B2",
+          "label": "B2：益处",
+          "sortOrder": 1,
+          "fields": [
+            {
+              "fieldKey": "B2.benefit", "label": "实验项目的益处", "type": "textarea", "required": true, "sortOrder": 0,
+              "config": { "maxLength": 5000 },
+              "description": "请描述本实验项目的先进性，对人类和动物健康研究的贡献，以及对社会的益处（限5000字以内）"
+            }
+          ]
+        },
+        {
+          "code": "B3",
+          "label": "B3：通过文献查阅以寻求减少实验过程中动物疼痛的方法",
+          "sortOrder": 2,
+          "description": "上海交通大学医学院图书馆以及上海交通大学图书馆已经提供了相关文献查询服务，课题组可通过相关文献的查阅，以寻求在动物实验过程中减少动物疼痛的方法。具体链接网址如下：医学院图书馆 http://lib.shsmu.edu.cn/；上海交通大学图书馆 http://www.lib.sjtu.edu.cn/。",
+          "fields": [
+            {
+              "fieldKey": "B3.literature", "label": "是否通过数据库文献查找寻求减少动物疼痛的方法", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                { "value": "否", "label": "否，没有通过数据库文献查找寻求合适的方法" },
+                { "value": "是", "label": "是，通过数据库文献查找寻求减少动物疼痛的方法" }
+              ]
+            },
+            { "fieldKey": "B3.dbName", "label": "数据库名称", "type": "text", "sortOrder": 1, "showWhen": { "field": "B3.literature", "op": "equals", "value": "是" } },
+            { "fieldKey": "B3.keywords", "label": "关键词", "type": "text", "sortOrder": 2, "showWhen": { "field": "B3.literature", "op": "equals", "value": "是" } },
+            { "fieldKey": "B3.conclusion", "label": "结论", "type": "text", "sortOrder": 3, "showWhen": { "field": "B3.literature", "op": "equals", "value": "是" } },
+            {
+              "fieldKey": "B3.hasPain", "label": "是否涉及动物福利所关心的疼痛问题", "type": "choice", "required": true, "sortOrder": 4,
+              "config": { "choiceType": "single" },
+              "description": "本项目动物实验过程中所选择的操作程序是否涉及动物福利所关心的疼痛问题（包括：手术过程，自发性疾病，基因诱导型疾病，肿瘤形成等）？",
+              "options": [
+                { "value": "否", "label": "否，本课题实施过程中不存在导致动物疼痛相关程序。" },
+                { "value": "是", "label": "是，本课题实施过程中存在导致动物疼痛相关程序。" }
+              ]
+            },
+            {
+              "fieldKey": "B3.painDesc", "label": "导致动物疼痛的程序说明", "type": "textarea", "required": true, "sortOrder": 5,
+              "showWhen": { "field": "B3.hasPain", "op": "equals", "value": "是" },
+              "config": { "maxLength": 250 },
+              "description": "请说明导致动物疼痛的程序（例如：手术、毒理、辐照、移植、肿瘤、败血症、感染等，限250字内）"
+            }
+          ]
+        },
+        {
+          "code": "B4",
+          "label": "B4：活体动物实验应用的依据",
+          "sortOrder": 3,
+          "fields": [
+            {
+              "fieldKey": "B4.basis", "label": "使用活体动物进行实验的依据", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "研究过程非常复杂，无法在体外单一系统来复制和研究相关内容。",
+                "如果采用非活体动物进行研究无法获得足够的信息量以达到研究目的。",
+                "其他原因。"
+              ]
+            },
+            {
+              "fieldKey": "B4.otherReason", "label": "其他原因说明", "type": "textarea", "sortOrder": 1,
+              "showWhen": { "field": "B4.basis", "op": "contains", "value": "其他原因。" },
+              "config": { "maxLength": 5000 },
+              "description": "请对其他原因进行说明（限5000字以内）"
+            }
+          ]
+        },
+        {
+          "code": "B5",
+          "label": "B5：实验动物种类选择",
+          "sortOrder": 4,
+          "fields": [
+            {
+              "fieldKey": "B5.blocks", "label": "实验动物种类信息", "type": "repeatGroup", "required": true, "sortOrder": 0,
+              "description": "每种实验动物填写一块：选择动物、勾选依据并说明。点击「＋ 增加一项」添加新种类。",
+              "config": {
+                "cols": 2,
+                "fields": [
+                  {
+                    "fieldKey": "species", "label": "实验动物（1）", "type": "select", "required": true, "sortOrder": 0,
+                    "config": { "refDataSource": "ANIMAL_BREED" }
+                  },
+                  {
+                    "fieldKey": "basis", "label": "选择此种实验动物的依据", "type": "choice", "required": true, "sortOrder": 1,
+                    "config": { "choiceType": "multiple" },
+                    "description": "请选择及说明此种实验动物应用到本研究中的依据（可多选）：",
+                    "options": [
+                      "与其他实验动物相比选择此种动物可获得更加准确和更多的数据量。",
+                      "此种动物的生理特性及解剖结构更适合本项目研究。",
+                      "此种动物是完成该项目研究所能够选择的最低等生物。",
+                      "其他原因。"
+                    ]
+                  },
+                  {
+                    "fieldKey": "basisDesc", "label": "选择依据说明", "type": "textarea", "required": true, "sortOrder": 2,
+                    "showWhen": { "field": "basis", "op": "notEmpty" },
+                    "config": { "maxLength": 5000 },
+                    "description": "请对以上所选依据进行说明（限5000字以内）"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "code": "B6",
+          "label": "B6：实验动物数量",
+          "sortOrder": 5,
+          "description": "仅限于成年动物（断奶后的动物）。注：如果此申请是一个更新的“实验动物研究及使用计划”，请将原有申请计划中未使用的实验动物数量纳入更新后的申请计划中。原有申请计划中未使用的动物将转移到新的“实验动物研究及使用计划”中。",
+          "fields": [
+            {
+              "fieldKey": "B6.countNote", "label": "数量填写提示", "type": "description", "sortOrder": 0,
+              "config": { "tone": "warn" },
+              "description": "<p><b>注意：</b>所需数量填写总数，以“只”为单位，而不是“笼位数”；总数较大（如超过 1000 只）的，需要在 B7 中注意其动物数量计算依据是否充分。</p>"
+            },
+            {
+              "fieldKey": "B6.allowNote", "label": "批准品种提示", "type": "description", "sortOrder": 1,
+              "config": { "tone": "danger" },
+              "description": "<p><b>重要：</b>您只能购买获得批准的实验动物品种。</p>"
+            },
+            {
+              "fieldKey": "B6.blocks", "label": "实验动物数量信息", "type": "repeatGroup", "required": true, "sortOrder": 2,
+              "description": "每种实验动物填写一块：选择品种/品系、填写年龄体重数量、勾选疼痛级别并填对应分级数量、填写动物来源。点击「＋ 增加一项」添加新种类。",
+              "config": {
+                "cols": 2,
+                "fields": [
+                  {
+                    "fieldKey": "species", "label": "品种", "type": "select", "required": true, "sortOrder": 0,
+                    "config": { "refDataSource": "ANIMAL_BREED" }
+                  },
+                  {
+                    "fieldKey": "line", "label": "品系", "type": "select", "required": true, "sortOrder": 1,
+                    "config": { "refDataSource": "ANIMAL_STRAIN" }
+                  },
+                  { "fieldKey": "age", "label": "年龄", "type": "text", "required": true, "sortOrder": 2 },
+                  { "fieldKey": "weight", "label": "体重", "type": "text", "required": true, "sortOrder": 3 },
+                  { "fieldKey": "count", "label": "所需数量（3年以内）", "type": "number", "required": true, "sortOrder": 4, "config": { "unit": "只" } },
+                  {
+                    "fieldKey": "painLevels", "label": "动物所承受的疼痛级别", "type": "choice", "required": true, "sortOrder": 5,
+                    "config": { "choiceType": "multiple", "span": 2 },
+                    "description": "根据中华人民共和国《动物保护法》第三章第十五条，并参照美国农业部（USDA）对动物实验过程中动物的分类标准，请选择动物所承受疼痛的级别和填写不同级别动物数量（多选）：",
+                    "options": [
+                      { "value": "目录B", "label": "目录B：动物仅饲养，维持，还未参与任何实验。" },
+                      { "value": "目录C", "label": "目录C：动物仅承受瞬间或轻微的疼痛，无需使用止痛药物。例如：安乐死采取组织，釆血，注射。" },
+                      { "value": "目录D", "label": "目录D：动物所承受的痛苦可以通过麻醉，止痛或镇静药物来减轻或消除。请填写第二部分 I 表信息。" },
+                      { "value": "目录E", "label": "目录E：动物所承受的痛苦不能够使用麻醉，止痛或镇静药物来减轻或消除，药物使用将干扰实验结果。" }
+                    ]
+                  },
+                  { "fieldKey": "countB", "label": "目录B：数量", "type": "number", "sortOrder": 6, "showWhen": { "field": "painLevels", "op": "contains", "value": "目录B" }, "config": { "unit": "只" } },
+                  { "fieldKey": "countC", "label": "目录C：数量", "type": "number", "sortOrder": 7, "showWhen": { "field": "painLevels", "op": "contains", "value": "目录C" }, "config": { "unit": "只" } },
+                  { "fieldKey": "countD", "label": "目录D：数量", "type": "number", "sortOrder": 8, "showWhen": { "field": "painLevels", "op": "contains", "value": "目录D" }, "config": { "unit": "只" } },
+                  { "fieldKey": "countE", "label": "目录E：数量", "type": "number", "sortOrder": 9, "showWhen": { "field": "painLevels", "op": "contains", "value": "目录E" }, "config": { "unit": "只" } },
+                  {
+                    "fieldKey": "sourceNote", "label": "动物来源说明", "type": "description", "sortOrder": 10,
+                    "config": { "span": 2 },
+                    "description": "经招投标及动物检疫，可直接进入动科部的动物来源为：上海灵畅生物科技有限公司、上海必凯科翼生物科技有限公司以及上海市松江区车墩实验动物良种场有限公司（兔）。"
+                  },
+                  { "fieldKey": "domesticProvince", "label": "国内省市", "type": "text", "sortOrder": 11 },
+                  { "fieldKey": "domesticOrg", "label": "国内企业 / 科研机构 / 高校", "type": "text", "sortOrder": 12 },
+                  { "fieldKey": "foreign", "label": "国外", "type": "text", "sortOrder": 13 },
+                  { "fieldKey": "foreignOrg", "label": "国外企业 / 科研机构 / 高校", "type": "text", "sortOrder": 14 }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "code": "B7",
+          "label": "B7：实验动物数量计算依据",
+          "sortOrder": 6,
+          "fields": [
+            {
+              "fieldKey": "B7.basis", "label": "实验动物使用数量计算依据", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "通过生物统计学方法计算出可以获得显著差异性结果所需的动物数量。",
+                "未通过生物统计学方法，但通过估算获得达到实验目的所需要的最少动物数量。",
+                "所选动物数量是获得足够动物组织等其他样品进行分析的最低数量。",
+                "需要动物对实验操作人员进行培训确保项目的顺利进行。",
+                "其他依据。"
+              ]
+            },
+            {
+              "fieldKey": "B7.basisDesc", "label": "计算依据说明", "type": "textarea", "required": true, "sortOrder": 1,
+              "showWhen": { "field": "B7.basis", "op": "notEmpty" },
+              "config": { "maxLength": 5000 },
+              "description": "请从预实验，正式实验，以及动物分组等多因素对以上所选依据进行说明（限5000字内）："
+            }
+          ]
+        },
+        {
+          "code": "B8",
+          "label": "B8：动物实验内容及时间节点描述",
+          "sortOrder": 7,
+          "fields": [
+            {
+              "fieldKey": "B8.overview", "label": "整体设计概要", "type": "textarea", "required": true, "sortOrder": 0,
+              "config": { "maxLength": 5000 },
+              "description": "请提供简单的动物实验整体设计概要，概要内容应包括分组实验，分组样本大小，预期或者已经确定的动物死亡情况，以及动物分组后进行观察和检测的程序和内容。此概要不需要填写具体的操作步骤和手术过程，如使用特殊药物或操作技术请在概要中说明（限5000字内）。"
+            },
+            {
+              "fieldKey": "B8.timeline", "label": "时间节点描述", "type": "textarea", "required": true, "sortOrder": 1,
+              "config": { "maxLength": 5000 },
+              "description": "请描述预期的动物实验时间节点，例如：动物的引入，预实验，正式实验，手术，测试，样品收集，安乐死等（限5000字内）。如果实验方案涉及到肿瘤模型，请前往实验动物管理系统（ARO）的 SOP 模块-管理政策-ANIM(动物管理政策）-DLAS-MP-ANIM.11，查看最新版肿瘤模型动物研究政策。"
+            }
+          ]
+        },
+        {
+          "code": "B9",
+          "label": "B9：非药用化合物使用情况",
+          "sortOrder": 8,
+          "description": "根据中华人民共和国《实验动物管理条例》以及《实验动物饲养管理和使用指南》（Guide）规定：动物实验过程中必须使用药用级别化合物（药剂，稀释液，佐剂等）。非药用级别化合物需通过 IACUC 批准后使用。",
+          "fields": [
+            {
+              "fieldKey": "B9.nonPharma", "label": "是否使用非药用级别化合物", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                { "value": "否", "label": "否，本实验过程中所使用的化学品均为药用化合物。" },
+                { "value": "是", "label": "是，本项目动物实验过程中需要使用非药用级别化合物，请对所使用非药用级别化合物进行逐一说明。" }
+              ]
+            },
+            {
+              "fieldKey": "B9.details", "label": "非药用级别化合物说明", "type": "textarea", "sortOrder": 1,
+              "showWhen": { "field": "B9.nonPharma", "op": "equals", "value": "是" },
+              "description": "请对所使用非药用级别化合物进行逐一说明"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "C",
+      "label": "C：实验动物饲养",
+      "sortOrder": 3,
+      "subdivisible": true,
+      "subsections": [
+        {
+          "code": "C1",
+          "label": "C1：动物饲养空间",
+          "sortOrder": 0,
+          "description": "在预订动物前请先联系医学院实验动物科学部有关人员确定笼位后方可预订动物。",
+          "fields": [
+            {
+              "fieldKey": "C1.space", "label": "动物饲养空间", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                { "value": "动科部设施", "label": "动物由医学院实验动物科学部订购，并饲养在医学院实验动物科学部动物设施内。请至医学院西院6号楼一楼接待室确定笼位信息，联系方式：021-63846590-776508。" },
+                { "value": "院外其他单位", "label": "动物由医学院实验动物科学部订购，饲养在医学院外其他单位（附属医院，其他研究机构，高校）。" },
+                { "value": "课题组管理区域", "label": "动物由医学院实验动物科学部订购，实验过程中动物需饲养在课题组管理区域（不包括黄浦6#楼，周浦E10#，E11A#E11B#E11C#地下室）。" }
+              ]
+            },
+            {
+              "fieldKey": "C1.externalTable",
+              "label": "院外饲养单位明细",
+              "type": "table",
+              "sortOrder": 1,
+              "showWhen": { "field": "C1.space", "op": "contains", "value": "院外其他单位" },
+              "description": "动物饲养在医学院外其他单位时，请逐条填写以下单位信息：",
+              "config": {
+                "columns": [
+                  { "fieldKey": "col_species", "label": "动物品种", "type": "select", "required": true, "config": { "refDataSource": "ANIMAL_BREED" } },
+                  { "fieldKey": "col_org", "label": "附属医院/机构名称/高校", "type": "text", "required": true },
+                  { "fieldKey": "col_contact", "label": "联系人", "type": "text", "required": true },
+                  { "fieldKey": "col_email", "label": "联系方式（Email）", "type": "text", "required": true }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "code": "C2",
+          "label": "C2：特殊饲养要求",
+          "sortOrder": 1,
+          "description": "特殊饲养请求需经医学院 IACUC 审批后，由实验动物科学部动各楼层负责人直接安排实施。",
+          "fields": [
+            {
+              "fieldKey": "C2.hasRequest", "label": "是否存在特殊饲养请求", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                { "value": "否", "label": "否，实验过程不存在任何特殊饲养请求。" },
+                { "value": "是", "label": "是，实验过程存在特殊饲养请求。请选择以下特殊饲养请求内容（可多选）：" }
+              ]
+            },
+            {
+              "fieldKey": "C2.requests", "label": "特殊饲养请求内容", "type": "choice", "sortOrder": 1,
+              "showWhen": { "field": "C2.hasRequest", "op": "equals", "value": "是" },
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "手术前禁食：（大鼠，小鼠不需要手术前禁食，大动物术前需要禁食等）。",
+                "特殊饮水：（例如添加酸水，禁水等）。",
+                "特殊饲料和垫料：（特殊饲料成分，特殊更换饲料频等）。",
+                "特殊环境：（例如：光照时间，噪音控制等）。",
+                "其他特殊请求："
+              ]
+            },
+            {
+              "fieldKey": "C2.detail", "label": "特殊饲养请求说明", "type": "textarea", "required": true, "sortOrder": 2,
+              "showWhen": { "field": "C2.hasRequest", "op": "equals", "value": "是" },
+              "config": { "maxLength": 5000 },
+              "description": "请对以上特殊饲养请求进行说明（主要阐述特殊饲养操作时间段，限5000字内）："
+            }
+          ]
+        },
+        {
+          "code": "C3",
+          "label": "C3：单笼饲养情况",
+          "sortOrder": 2,
+          "fields": [
+            {
+              "fieldKey": "C3.singleCage", "label": "是否出现单笼饲养", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "description": "根据《实验动物饲养管理和使用指南》（Guide）规定，社会型动物需要集体饲养，以符合动物福利要求。实验过程中是否出现单笼饲养的情况？",
+              "options": [
+                { "value": "否", "label": "否，全部实验动物都为集体饲养。" },
+                { "value": "是", "label": "是，实验动物需要单笼饲养，饲养过程中需提供动物丰富物（玩具，做窝材料等）以保证动物福利。" }
+              ]
+            },
+            { "fieldKey": "C3.detail", "label": "单笼饲养说明", "type": "textarea", "sortOrder": 1, "showWhen": { "field": "C3.singleCage", "op": "equals", "value": "是" } }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "D",
+      "label": "D：动物实验过程中所关心的其他问题",
+      "sortOrder": 4,
+      "subdivisible": true,
+      "subsections": [
+        {
+          "code": "D1",
+          "label": "D1：乙醚的使用",
+          "sortOrder": 0,
+          "fields": [
+            {
+              "fieldKey": "D1.ether", "label": "是否使用乙醚", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "description": "实验过程中是否使用乙醚作为安乐死，麻醉以及短暂的镇定？",
+              "options": [
+                { "value": "否", "label": "否，实验过程中不使用乙醚。" },
+                { "value": "是", "label": "是，实验过程需要使用乙醚。请说明使用依据（限5000字内）：" }
+              ]
+            },
+            {
+              "fieldKey": "D1.basis", "label": "乙醚使用依据", "type": "textarea", "sortOrder": 1,
+              "showWhen": { "field": "D1.ether", "op": "equals", "value": "是" },
+              "config": { "maxLength": 5000 }
+            }
+          ]
+        },
+        {
+          "code": "D2",
+          "label": "D2：动物保定",
+          "sortOrder": 1,
+          "fields": [
+            {
+              "fieldKey": "D2.restraint", "label": "是否需要对清醒状态动物进行保定", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "description": "实验过程中是否需要对动物在清醒状态（非麻醉）下进行保定（不是短时间的抓取）？",
+              "options": [
+                { "value": "否", "label": "否，实验过程不存在任何对清醒状态动物的保定过程。" },
+                { "value": "是", "label": "是，实验过程存在对清醒动物的保定过程，并且我已经理解以下内容（多选）：" }
+              ]
+            },
+            {
+              "fieldKey": "D2.confirm", "label": "保定操作确认", "type": "choice", "sortOrder": 1,
+              "showWhen": { "field": "D2.restraint", "op": "equals", "value": "是" },
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "保定装置并不能作为饲养笼具。",
+                "本实验必须对动物保定，已经考虑过不使用保定的方法，但不可行。",
+                "尽可能缩短动物实验时间。",
+                "动物在实验前已经有适应保定装置的过程。",
+                "如果动物不能够适应保定装置，应采取训练或者更换动物的方法",
+                "如果动物在保定过程中受伤，应及时进行处理"
+              ]
+            },
+            {
+              "fieldKey": "D2.detail", "label": "动物保定程序说明", "type": "textarea", "required": true, "sortOrder": 2,
+              "showWhen": { "field": "D2.restraint", "op": "equals", "value": "是" },
+              "config": { "maxLength": 5000 },
+              "description": "请对动物保定程序进行说明（应包括：保定方法、保定装置、持续时间、保定过程可能对动物产生压力等，限5000字内）"
+            }
+          ]
+        },
+        {
+          "code": "D3",
+          "label": "D3：免除麻醉药物或止痛药物使用说明",
+          "sortOrder": 2,
+          "description": "实验中存在导致动物疼痛的过程，但是并未使用麻醉剂或止痛药物对动物进行疼痛缓解。",
+          "fields": [
+            {
+              "fieldKey": "D3.exempt", "label": "免除麻醉 / 止痛药物说明", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "否，实验过程中不存在导致动物疼痛的程序",
+                "否，实验过程中使用了麻醉剂或止痛药物对动物进行疼痛缓解。",
+                "是，实验中存在导致动物疼痛的过程，但是不可以使用麻醉剂或止痛药物对动物进行疼痛缓解。"
+              ]
+            },
+            {
+              "fieldKey": "D3.detail",
+              "label": "不使用麻醉剂或止痛药的依据",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 1,
+              "showWhen": { "field": "D3.exempt", "op": "contains", "value": "是，实验中存在导致动物疼痛的过程，但是不可以使用麻醉剂或止痛药物对动物进行疼痛缓解。" },
+              "config": { "maxLength": 5000 },
+              "description": "如选择是，请说明不使用麻醉剂或止痛药的依据（限5000字内）："
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "E",
+      "label": "E：实验动物安乐死及最终处置",
+      "sortOrder": 5,
+      "subdivisible": true,
+      "subsections": [
+        {
+          "code": "E1",
+          "label": "E1：安乐死",
+          "sortOrder": 0,
+          "description": "请前往实验动物管理系统（ARO）的 SOP 模块-管理政策-ANIM(动物管理政策）-DLAS-MP-ANIM.04，查看最新版安乐死要求。",
+          "fields": [
+            {
+              "fieldKey": "E1.operator", "label": "执行安乐死的人员", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "description": "请确认执行安乐死的人员：",
+              "options": [
+                "实验人员自行对实验动物进行安乐死，请在接受培训后操作。",
+                "实验动物科学部兽医或兽医技术人员对动物实施安乐死。",
+                "由于特殊需求不执行安乐死，请说明依据（限5000字内）"
+              ]
+            },
+            {
+              "fieldKey": "E1.noEuthReason", "label": "不执行安乐死依据", "type": "textarea", "sortOrder": 1,
+              "showWhen": { "field": "E1.operator", "op": "contains", "value": "由于特殊需求不执行安乐死，请说明依据（限5000字内）" },
+              "config": { "maxLength": 5000 }
+            },
+            {
+              "fieldKey": "E1.avmaTable", "label": "AVMA 可接受的安乐死方法", "type": "table", "sortOrder": 2,
+              "config": {
+                "columns": [
+                  {
+                    "fieldKey": "col_species", "label": "动物品种", "type": "select",
+                    "config": { "refDataSource": "ANIMAL_BREED" }
+                  },
+                  {
+                    "fieldKey": "col_method", "label": "安乐死方法", "type": "select",
+                    "dictKey": "euthanasiaMethod"
+                  },
+                  { "fieldKey": "col_dose", "label": "药物注射剂量 / 给药途径", "type": "text" }
+                ]
+              },
+              "description": "请选择美国兽医协会（AVMA）可接受的安乐死方法"
+            },
+            {
+              "fieldKey": "E1.confirm", "label": "死亡确认方法", "type": "choice", "required": true, "sortOrder": 3,
+              "config": { "choiceType": "multiple" },
+              "description": "根据 AVMA 规定，任何安乐死动物应采取第二种方法进行死亡确认，请选择（可多选）。",
+              "options": [
+                { "value": "双侧胸部剪开", "label": "双侧胸部剪开" },
+                { "value": "断头", "label": "断头（通常应用于新生小鼠）" },
+                { "value": "组织采样", "label": "组织/器官采样（名称）" },
+                { "value": "其他方法", "label": "其他方法" }
+              ]
+            },
+            { "fieldKey": "E1.sampleName", "label": "组织/器官采样名称", "type": "text", "sortOrder": 4, "showWhen": { "field": "E1.confirm", "op": "contains", "value": "组织采样" } },
+            { "fieldKey": "E1.otherConfirm", "label": "其他死亡确认方法", "type": "text", "sortOrder": 5, "showWhen": { "field": "E1.confirm", "op": "contains", "value": "其他方法" } },
+            {
+              "fieldKey": "E1.conditionalTable", "label": "AVMA 条件性接受的安乐死方法", "type": "table", "sortOrder": 6,
+              "config": {
+                "columns": [
+                  {
+                    "fieldKey": "col_species", "label": "动物品种", "type": "select",
+                    "config": { "refDataSource": "ANIMAL_BREED" }
+                  },
+                  {
+                    "fieldKey": "col_method", "label": "安乐死方法", "type": "select",
+                    "dictKey": "euthanasiaMethod"
+                  }
+                ]
+              },
+              "description": "如需使用 AVMA 条件性接受的安乐死方法，请选择："
+            },
+            {
+              "fieldKey": "E1.conditionalReason", "label": "条件性方法依据", "type": "textarea", "sortOrder": 7,
+              "description": "请说明选择该方法依据："
+            },
+            {
+              "fieldKey": "E1.otherTable", "label": "其他安乐死方法", "type": "table", "sortOrder": 8,
+              "config": {
+                "columns": [
+                  {
+                    "fieldKey": "col_species", "label": "动物品种", "type": "select",
+                    "config": { "refDataSource": "ANIMAL_BREED" }
+                  },
+                  { "fieldKey": "col_method", "label": "安乐死方法", "type": "text" }
+                ]
+              },
+              "description": "如需使用其他安乐死方法，请描述："
+            },
+            {
+              "fieldKey": "E1.otherReason", "label": "其他方法依据", "type": "textarea", "sortOrder": 9,
+              "description": "请说明选择该方法依据："
+            }
+          ]
+        },
+        {
+          "code": "E2",
+          "label": "E2：动物的最终处置",
+          "sortOrder": 1,
+          "fields": [
+            {
+              "fieldKey": "E2.disposal", "label": "实验结束后活体动物的最终处置", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "活体的动物将转移到其他“实验动物研究及使用计划”。",
+                "活体动物将返回动物供应商或进入繁殖保种阶段。",
+                "实验结束后遗留动物将交由医学院实验动物科学部进行安乐死操作。",
+                "活体动物采取 E1 中所选择的安乐死方法进行处置。",
+                "其他处理渠道，请说明（限5000字内）："
+              ]
+            },
+            {
+              "fieldKey": "E2.otherDetail", "label": "其他处理渠道说明", "type": "textarea", "sortOrder": 1,
+              "showWhen": { "field": "E2.disposal", "op": "contains", "value": "其他处理渠道，请说明（限5000字内）：" },
+              "config": { "maxLength": 5000 }
+            }
+          ]
+        },
+        {
+          "code": "E3",
+          "label": "E3：动物尸体及组织的最终处置",
+          "sortOrder": 2,
+          "description": "动物尸体及组织的最终处置应遵守上海交通大学医学院“关于实施实验动物尸体及废弃物回收管理办法的通知”以及上海交通大学医学院实验动物管理制度“IACUC-MP-ANIM.01”的相关规定。",
+          "fields": [
+            {
+              "fieldKey": "E3.method", "label": "动物尸体及动物组织的最终处置方法", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                { "value": "无生物危害尸体", "label": "无生物危害动物尸体交由实验动物科学部处置。（放置黄浦6#楼后尸体冰箱，周浦E10#指定尸体接收处）" },
+                { "value": "无放射性组织器官", "label": "无放射性动物组织器官交由实验动物科学部处置。（放置黄浦6#楼后尸体冰箱，周浦E10#指定尸体接收处）" },
+                { "value": "放射性及生物危害", "label": "放射性及生物危害动物尸体或组织器官，交由医学院统一处置。（放置西院四号楼生物安全物品回收点）。" },
+                { "value": "其他方法", "label": "其他方法，请说明（限5000字）：" }
+              ]
+            },
+            {
+              "fieldKey": "E3.otherDetail", "label": "其他方法说明", "type": "textarea", "sortOrder": 1,
+              "showWhen": { "field": "E3.method", "op": "contains", "value": "其他方法" },
+              "config": { "maxLength": 5000 }
+            }
+          ]
+        },
+        {
+          "code": "E4",
+          "label": "E4：动物组织和器官的合作使用",
+          "sortOrder": 3,
+          "fields": [
+            {
+              "fieldKey": "E4.cooperate", "label": "动物组织或器官是否与合作课题组共同采集", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "description": "实验后期样本收集阶段，是否与本研究计划以外的课题组共同采集动物组织或器官？",
+              "options": [
+                { "value": "否", "label": "否，动物组织和器官仅应用于本研究计划中。" },
+                { "value": "是", "label": "是，动物组织和器官将用于本研究计划以外课题组共同使用，请填写以下表格。" }
+              ]
+            },
+            {
+              "fieldKey": "E4.coLeader", "label": "课题组长", "type": "select", "required": true, "sortOrder": 1,
+              "showWhen": { "field": "E4.cooperate", "op": "equals", "value": "是" },
+              "config": { "refDataSource": "projectGroup" }
+            },
+            { "fieldKey": "E4.coJobNo", "label": "工号", "type": "text", "required": true, "sortOrder": 2, "showWhen": { "field": "E4.cooperate", "op": "equals", "value": "是" } },
+            { "fieldKey": "E4.coDept", "label": "部门", "type": "text", "required": true, "sortOrder": 3, "showWhen": { "field": "E4.cooperate", "op": "equals", "value": "是" } },
+            { "fieldKey": "E4.coOfficePhone", "label": "办公电话", "type": "text", "required": true, "sortOrder": 4, "showWhen": { "field": "E4.cooperate", "op": "equals", "value": "是" } },
+            { "fieldKey": "E4.coMobile", "label": "移动电话", "type": "text", "required": true, "sortOrder": 5, "showWhen": { "field": "E4.cooperate", "op": "equals", "value": "是" } },
+            { "fieldKey": "E4.coEmail", "label": "邮箱地址（Email）", "type": "text", "required": true, "sortOrder": 6, "showWhen": { "field": "E4.cooperate", "op": "equals", "value": "是" } },
+            { "fieldKey": "E4.coAddress", "label": "办公地址", "type": "text", "sortOrder": 7, "showWhen": { "field": "E4.cooperate", "op": "equals", "value": "是" } }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "F",
+      "label": "F：课题组长声明",
+      "sortOrder": 6,
+      "subdivisible": false,
+      "fields": [
+        {
+          "fieldKey": "F.declarations", "label": "课题组长声明", "type": "choice", "required": true, "sortOrder": 0,
+          "config": { "choiceType": "multiple" },
+          "description": "请课题组长认真阅读以下每一项声明，确认后选择（多选）。注：如使用课题组长以 @shsmu.edu.cn 结尾邮箱提交该计划，将不需要进行签名，并抄送给合作单位课题负责人。",
+          "options": [
+            "我保证所填写的内容真实有效，没有故意隐瞒可能会对人员、动物造成伤害的风险操作。",
+            "所有动物实验操作都将遵守我国实验动物相关法律法规，《实验动物饲养管理和使用指南》(Guide)的规定以及上海交通大学医学院关于实验动物的各项规章制度，以确保动物福利的实施。",
+            "该研究是一个创新的项目，不是毫无意义的重复或对已报道过研究项目的重复。",
+            "所有参与动物实验的人员都已经进行了职业风险和健康状况评估。",
+            "本人授权该“实验动物研究及使用计划”所列人员实施动物实验，监督所列人员对动物实验的操作，并承担相应责任。",
+            "本“实验动物研究及使用计划”所列人员已经参加上海市实验动物从业人员上岗证培训以及上海交通大学医学院实验动物科学部实验前培训，并取得“上海市实验动物从业人员上岗证”。同时按要求完成了本研究项目中实验动物相关内容的培训，主要包括：生物学相关技术，实验动物操作，动物护理，无菌手术方法和技术，动物保定，将不良应激减少到最小的概念，研究项目可行性，研究方法或检测方法，止痛药、镇定剂和麻醉剂的合理使用，出现问题时向有关部门报告的程序。",
+            "我保证在“实验动物研究及使用计划”中所涵盖的实验动物在承受疾病、损伤或痛苦时都能够接受兽医人员治疗和照顾，并且在必要的情况下实施安乐死。",
+            "我将及时向 IACUC（IACUC@shsmu.edu.cn）汇报动物实验实施过程中出现的未预料到的结果，这些未预料到的结果一般指实验过程中出现的违反动物福利的内容。",
+            "在动物实验计划发生变化（包括：实验重大设计、人员变化、动物使用数量及实验进行时限等方面）的时候，我将及时向上海交通大学医学院 IACUC 提交变动申请，任何未提交的动物实验变动，将禁止实施操作。",
+            "对于本“实验动物研究及使用计划”B 目录中涉及到的 D 类和 E 类疼痛级别的动物实验方案，本人确信已查阅相关科学文献及数据，虽然该方法会引起一定的疼痛或紧张，没有发现可以替代的方法。本人确定将任何影响动物的非预期的实验结果告知 IACUC。任何未预期的疼痛和紧张、疾病和死亡都会向主管兽医和 IACUC 报告。"
+          ]
+        },
+        { "fieldKey": "F.coLeaderName", "label": "合作单位课题组长姓名（选填）", "type": "text", "sortOrder": 1 },
+        { "fieldKey": "F.leaderSignature", "label": "课题组长签名", "type": "signature", "required": true, "sortOrder": 2 },
+        { "fieldKey": "F.coLeaderSignature", "label": "合作课题组长签名", "type": "signature", "sortOrder": 3 }
+      ]
+    },
+    {
+      "code": "G",
+      "label": "G：有害物质的使用信息",
+      "sortOrder": 7,
+      "subdivisible": true,
+      "showWhen": { "field": "A8.parts", "op": "contains", "value": "G" },
+      "subsections": [
+        {
+          "code": "G1",
+          "label": "G1：有害物质信息",
+          "sortOrder": 0,
+          "fields": [
+            {
+              "fieldKey": "G1.chemicals",
+              "label": "化合物/药物",
+              "type": "choice",
+              "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "致癌物质/诱变剂",
+                "组织固定液（甲醛/福尔马林）",
+                "毒理学药物",
+                "其他有害化合物（请列入下表）"
+              ]
+            },
+            {
+              "fieldKey": "G1.radioactive",
+              "label": "放射性物质",
+              "type": "choice",
+              "sortOrder": 1,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "激光",
+                "辐照机/X射线机",
+                "放射性物质"
+              ]
+            },
+            {
+              "fieldKey": "G1.biological",
+              "label": "生物制品",
+              "type": "choice",
+              "sortOrder": 2,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "人源/猴源性细胞、组织、体液（需排除HBV,HCV,HIV,TB等灵长类动物传染性病原体）",
+                "干细胞",
+                "有活性病毒/细菌/朊病毒",
+                "灭活病毒/细菌",
+                "重组DNA"
+              ]
+            },
+            {
+              "fieldKey": "G1.otherChemicals",
+              "label": "请列出其他有害化合物",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 3,
+              "showWhen": { "field": "G1.chemicals", "op": "contains", "value": "其他有害化合物（请列入下表）" }
+            }
+          ]
+        },
+        {
+          "code": "G2",
+          "label": "G2：有害化合物/药物使用详细信息",
+          "sortOrder": 1,
+          "fields": [
+            {
+              "fieldKey": "G2.details",
+              "label": "有害化合物/药物使用详细信息",
+              "type": "table",
+              "required": true,
+              "sortOrder": 0,
+              "config": {
+                "columns": [
+                  { "fieldKey": "name", "label": "有害物质名称", "type": "text", "required": true },
+                  { "fieldKey": "dose", "label": "使用剂量及频率", "type": "text", "required": true },
+                  { "fieldKey": "route", "label": "给药途径", "type": "text", "required": true },
+                  { "fieldKey": "duration", "label": "维持给药时间", "type": "text", "required": true }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "code": "G3",
+          "label": "G3：生物制品说明",
+          "sortOrder": 2,
+          "fields": [
+            {
+              "fieldKey": "G3.biospecimenDesc",
+              "label": "生物制品特性说明",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 0,
+              "description": "请描述G1中所选择的生物制品特性（细胞、组织、体液的感染性，干细胞来源及特性，病毒、细菌的特性及感染性、重组DNA的特性）。"
+            }
+          ]
+        },
+        {
+          "code": "G4",
+          "label": "G4：有害物质安全操作",
+          "sortOrder": 3,
+          "fields": [
+            {
+              "fieldKey": "G4.safetyOperation",
+              "label": "有害物质安全操作说明",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 0,
+              "description": "请描述以上所选有害物质安全操作相关信息（主要阐述防止有害物质的扩散和对操作人员的保护）。"
+            }
+          ]
+        },
+        {
+          "code": "G5",
+          "label": "G5：有害物质及污染物（动物尸体，耗材等）的处理",
+          "sortOrder": 4,
+          "fields": [
+            {
+              "fieldKey": "G5.disposal",
+              "label": "有害物质及污染物处理方法",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 0,
+              "description": "请描述处理有害物质及受污染动物及材料的方法和程序。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "H",
+      "label": "H：实验动物运输及流动信息",
+      "sortOrder": 8,
+      "subdivisible": true,
+      "showWhen": { "field": "A8.parts", "op": "contains", "value": "H" },
+      "subsections": [
+        {
+          "code": "H1",
+          "label": "H1：实验动物在校园内运输信息",
+          "sortOrder": 0,
+          "description": "所有通过上海交通大学医学院订购的动物都由动物供应商提供运输服务。具体运输措施包括使用专用的实验动物运输车辆，并具有温度和湿度控制系统。一切在校内运输的动物都应该符合上海交通大学医学院 DLAS-MP-ANIM.02 的相关规定，应采取防止动物逃逸及人与动物交叉污染的措施。",
+          "fields": [
+            {
+              "fieldKey": "H1.transportBy",
+              "label": "校园内运输方式",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                { "value": "dept", "label": "实验动物由实验动物科学部负责在校园内进行运输。" },
+                { "value": "self", "label": "实验动物由实验人员自行在校园内运输，并且准守DLAS-MP-ANIM.02相关规定。" }
+              ]
+            },
+            {
+              "fieldKey": "H1.selfTransportDesc",
+              "label": "校园内自行运输的具体措施",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 1,
+              "showWhen": { "field": "H1.transportBy", "op": "equals", "value": "self" },
+              "description": "请描述在校园内自行运输动物的具体措施（主要包括：如何保证动物福利，运输工具描述，防止动物逃跑措施）"
+            },
+            { "fieldKey": "H1.none", "label": "无相关操作。", "type": "checkbox", "sortOrder": 2 }
+          ]
+        },
+        {
+          "code": "H2",
+          "label": "H2：实验动物从校内向校外的运输信息",
+          "sortOrder": 1,
+          "fields": [
+            {
+              "fieldKey": "H2.transportBy",
+              "label": "校外运输方式",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                { "value": "dept", "label": "实验动物由实验动物科学部负责将实验动物运输至校外机构。" },
+                { "value": "self", "label": "实验动物由实验人员自行运输至校外机构，并且准守DLAS-MP-ANIM.02相关规定。" }
+              ]
+            },
+            {
+              "fieldKey": "H2.selfTransportDesc",
+              "label": "自行运输至校外的具体措施",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 1,
+              "showWhen": { "field": "H2.transportBy", "op": "equals", "value": "self" },
+              "description": "请描述自行运输动物至校外机构的相关信息（主要包括：如何保证动物福利，运输工具描述，防止动物逃跑措施）。"
+            },
+            { "fieldKey": "H2.none", "label": "无相关操作。", "type": "checkbox", "sortOrder": 2 }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "I",
+      "label": "I：实验动物保定及麻醉药物使用信息",
+      "sortOrder": 9,
+      "subdivisible": true,
+      "showWhen": { "field": "A8.parts", "op": "contains", "value": "I" },
+      "subsections": [
+        {
+          "code": "I1",
+          "label": "I1：动物保定药物使用信息",
+          "sortOrder": 0,
+          "description": "动物实验过程中所涉及的动物保定、止痛及麻醉药物的使用都应符合中华人民共和国《麻醉药品和精神药品管理条例》及《实验动物饲养管理和使用指南》（Guide）的规定。请按照以下各项逐一对实验动物研究及使用计划中所涉及到的相关药物进行说明。",
+          "fields": [
+            {
+              "fieldKey": "I1.purposes",
+              "label": "使用保定药物的目的（多选）",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "使用动物保定药物对动物进行抽血、注射的保定。",
+                "使用动物保定药物对动物进行抓取或运输保定。",
+                "使用保定药物对动物进行测试项目保定用（例如：身体测量、CT、核磁共振、X光等）。",
+                "其他使用保定药物目的。"
+              ]
+            },
+            {
+              "fieldKey": "I1.otherPurpose",
+              "label": "其他使用保定药物目的说明",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 1,
+              "showWhen": { "field": "I1.purposes", "op": "contains", "value": "其他使用保定药物目的。" },
+              "description": "请对其他使用保定药物目的进行说明。"
+            },
+            {
+              "fieldKey": "I1.drugs",
+              "label": "保定药物信息",
+              "type": "table",
+              "required": true,
+              "sortOrder": 2,
+              "config": {
+                "columns": [
+                  { "fieldKey": "name", "label": "保定药物名称", "type": "text", "required": true },
+                  { "fieldKey": "dose", "label": "使用剂量及频率", "type": "text", "required": true },
+                  { "fieldKey": "route", "label": "给药途径", "type": "text", "required": true }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "code": "I2",
+          "label": "I2：动物止痛药物的使用信息",
+          "sortOrder": 1,
+          "fields": [
+            {
+              "fieldKey": "I2.painLevel",
+              "label": "动物所承受疼痛的级别",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "description": "根据中华人民共和国《动物保护法》第三章第十五条，并参照美国农业部（USDA）对动物实验过程中动物的分类标准请选择动物所承受疼痛的级别。如选择目录D请在下列表格填写止痛药物具体信息。",
+              "options": [
+                "目录B：动物仅饲养，维持，还未参与任何实验",
+                "目录C：动物仅承受瞬间或轻微的疼痛，无需使用止痛药物。",
+                "目录D：动物所承受的痛苦可以通过麻醉，止痛或镇静药物来减轻或消除（需要填写药物信息）。",
+                "目录E：动物所承受的痛苦不能够使用麻醉，止痛或镇静药物来减轻或消除，药物使用将干扰实验结果。"
+              ]
+            },
+            {
+              "fieldKey": "I2.preOpDrugs",
+              "label": "手术前止痛药物信息",
+              "type": "table",
+              "sortOrder": 1,
+              "showWhen": { "field": "I2.painLevel", "op": "contains", "value": "目录D" },
+              "config": {
+                "columns": [
+                  { "fieldKey": "name", "label": "手术前止痛药物名称", "type": "text", "required": true },
+                  { "fieldKey": "dose", "label": "使用剂量及频率", "type": "text", "required": true },
+                  { "fieldKey": "route", "label": "给药途径", "type": "text", "required": true },
+                  { "fieldKey": "period", "label": "给药周期", "type": "text", "required": true }
+                ]
+              }
+            },
+            {
+              "fieldKey": "I2.intraOpDrugs",
+              "label": "手术中/后止痛药物信息",
+              "type": "table",
+              "sortOrder": 2,
+              "showWhen": { "field": "I2.painLevel", "op": "contains", "value": "目录D" },
+              "config": {
+                "columns": [
+                  { "fieldKey": "name", "label": "手术中/后止痛药物名称", "type": "text", "required": true },
+                  { "fieldKey": "dose", "label": "使用剂量及频率", "type": "text", "required": true },
+                  { "fieldKey": "route", "label": "给药途径", "type": "text", "required": true },
+                  { "fieldKey": "period", "label": "给药周期", "type": "text", "required": true }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "code": "I3",
+          "label": "I3：动物麻醉药物的使用信息",
+          "sortOrder": 2,
+          "fields": [
+            {
+              "fieldKey": "I3.anesthesia",
+              "label": "动物麻醉情况",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                "本实验不涉及到动物麻醉过程",
+                "本实验涉及到存活手术步骤，并使用麻醉药物。"
+              ]
+            },
+            {
+              "fieldKey": "I3.drugs",
+              "label": "存活手术所使用麻醉药物",
+              "type": "table",
+              "required": true,
+              "sortOrder": 1,
+              "showWhen": { "field": "I3.anesthesia", "op": "contains", "value": "存活手术" },
+              "config": {
+                "columns": [
+                  { "fieldKey": "name", "label": "麻醉药物名称", "type": "text" },
+                  { "fieldKey": "dose", "label": "使用剂量及频率", "type": "text" },
+                  { "fieldKey": "route", "label": "给药途径", "type": "text" },
+                  { "fieldKey": "duration", "label": "维持给药时间", "type": "text" }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "J",
+      "label": "J：基因工程动物使用信息",
+      "sortOrder": 10,
+      "subdivisible": true,
+      "showWhen": { "field": "A8.parts", "op": "contains", "value": "J" },
+      "subsections": [
+        {
+          "code": "J1",
+          "label": "J1：基因工程动物来源",
+          "sortOrder": 0,
+          "fields": [
+            {
+              "fieldKey": "J1.sources",
+              "label": "基因工程动物来源（多选）",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 0,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "转基因动物来源于其他科研机构。",
+                "交通大学医学院实验动物科学部胚胎工程实验室。",
+                "转基因动物来源于课题组长保种群体。",
+                "来源于实验动物供应商（例如：Charles River，The Jackson Laboratory等）。"
+              ]
+            },
+            {
+              "fieldKey": "J1.supplierName",
+              "label": "实验动物供应商名称",
+              "type": "text",
+              "required": true,
+              "sortOrder": 1,
+              "showWhen": { "field": "J1.sources", "op": "contains", "value": "供应商" }
+            }
+          ]
+        },
+        {
+          "code": "J2",
+          "label": "J2：基因工程动物品种及基因型",
+          "sortOrder": 1,
+          "fields": [
+            {
+              "fieldKey": "J2.details",
+              "label": "基因工程动物品种及基因型",
+              "type": "table",
+              "required": true,
+              "sortOrder": 0,
+              "config": {
+                "columns": [
+                  { "fieldKey": "breed", "label": "品种", "type": "text", "required": true },
+                  { "fieldKey": "strain", "label": "品系/基因型", "type": "text", "required": true },
+                  {
+                    "fieldKey": "phenotypeInduction", "label": "表型诱导", "type": "choice", "required": true,
+                    "config": { "choiceType": "multiple" },
+                    "options": [ "药物诱导", "siRNA", "环境诱导", "病毒诱导", "组成性基因（不需诱导）", "其他" ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "code": "J3",
+          "label": "J3：基因工程动物基因型测定",
+          "sortOrder": 2,
+          "fields": [
+            {
+              "fieldKey": "J3.needTest",
+              "label": "是否需要进行基因型测定",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                "本研究计划中基因工程动物不需要进行基因型测定。",
+                "本研究计划中基因工程动物需要进行基因型测定，请选择以下方法。"
+              ]
+            },
+            {
+              "fieldKey": "J3.methods",
+              "label": "基因型测定方法（多选）",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 1,
+              "showWhen": { "field": "J3.needTest", "op": "contains", "value": "需要进行" },
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "通过断尾采取样品进行基因型分析。",
+                "口腔拭子DNA提取的方法。",
+                "采集血液样品。",
+                "其他，请描述如下。"
+              ]
+            },
+            {
+              "fieldKey": "J3.other",
+              "label": "其他基因型测定方法说明",
+              "type": "textarea",
+              "sortOrder": 2,
+              "showWhen": { "field": "J3.methods", "op": "contains", "value": "其他，请描述如下。" },
+              "description": "勾选「其他」后请描述如下："
+            }
+          ]
+        },
+        {
+          "code": "J4",
+          "label": "J4：基因工程动物表型和动物福利相关",
+          "sortOrder": 3,
+          "fields": [
+            {
+              "fieldKey": "J4.phenotypeDesc",
+              "label": "基因改变后动物所出现的表型特征",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 0,
+              "description": "请简单描述基因改变后动物所出现的表型特征"
+            },
+            {
+              "fieldKey": "J4.changes",
+              "label": "基因型的改变将导致如下变化（多选）",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 1,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "没有任何形态学和生理功能的改变。",
+                "动物早期死亡率上升。",
+                "动物机体出现如下变化，请描述。",
+                "出现生理功能缺陷，请描述。",
+                "可能会出现改变，但是目前还不知道，请说明。"
+              ]
+            },
+            {
+              "fieldKey": "J4.bodyChangeDesc",
+              "label": "动物机体出现的具体变化",
+              "type": "textarea",
+              "sortOrder": 2,
+              "showWhen": { "field": "J4.changes", "op": "contains", "value": "动物机体出现如下变化，请描述。" },
+              "description": "勾选「动物机体出现如下变化」后请描述："
+            },
+            {
+              "fieldKey": "J4.functionDefectDesc",
+              "label": "生理功能缺陷的具体描述",
+              "type": "textarea",
+              "sortOrder": 3,
+              "showWhen": { "field": "J4.changes", "op": "contains", "value": "出现生理功能缺陷，请描述。" },
+              "description": "勾选「出现生理功能缺陷」后请描述："
+            },
+            {
+              "fieldKey": "J4.unknownDesc",
+              "label": "尚不明确的可能变化说明",
+              "type": "textarea",
+              "sortOrder": 4,
+              "showWhen": { "field": "J4.changes", "op": "contains", "value": "可能会出现改变，但是目前还不知道，请说明。" },
+              "description": "勾选「可能会出现改变」后请说明："
+            },
+            {
+              "fieldKey": "J4.observePlan",
+              "label": "对未知变化的观察计划",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 5
+            },
+            {
+              "fieldKey": "J4.specialCare",
+              "label": "基因工程动物特殊饲养操作",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 6,
+              "config": { "choiceType": "single" },
+              "description": "如基因工程动物需要特殊饲养操作（例如：温度、湿度、饲料、饮水、光照等）请描述如下。",
+              "options": [
+                "不需要特殊饲养操作。",
+                "通过对基因工程动物的观察再决定是否需要特殊饲养操作。",
+                "必须提供特殊饲养操作，请说明如下。"
+              ]
+            },
+            {
+              "fieldKey": "J4.specialCareDesc",
+              "label": "特殊饲养操作说明",
+              "type": "textarea",
+              "sortOrder": 7,
+              "showWhen": { "field": "J4.specialCare", "op": "equals", "value": "必须提供特殊饲养操作，请说明如下。" },
+              "description": "必须提供特殊饲养操作时，请说明具体内容："
+            }
+          ]
+        },
+        {
+          "code": "J5",
+          "label": "J5：基因工程动物记录信息",
+          "sortOrder": 4,
+          "fields": [
+            {
+              "fieldKey": "J5.recordPlan",
+              "label": "健康记录和动物福利记录方案",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "description": "对基因工程动物需进行健康记录和动物福利记录，请选择记录方案并进行描述。",
+              "options": [
+                "不需要特殊的健康观察记录，只需要按照实验动物科学部的健康记录操作即可。",
+                "由课题组自行记录。",
+                "由课题组委托实验动物科学部进行记录，请描述需要记录的项目如下，或附表。"
+              ]
+            },
+            {
+              "fieldKey": "J5.recordItems",
+              "label": "委托科学部记录的项目",
+              "type": "textarea",
+              "sortOrder": 1,
+              "showWhen": { "field": "J5.recordPlan", "op": "equals", "value": "由课题组委托实验动物科学部进行记录，请描述需要记录的项目如下，或附表。" },
+              "description": "请描述需要记录的项目如下，或附表。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "K",
+      "label": "K：动物紧急状况处理说明",
+      "sortOrder": 11,
+      "subdivisible": true,
+      "showWhen": { "field": "A8.parts", "op": "contains", "value": "K" },
+      "subsections": [
+        {
+          "code": "K1",
+          "label": "K1：管理信息",
+          "sortOrder": 0,
+          "fields": [
+            {
+              "fieldKey": "K1.requiredNote", "label": "K 表必填提示", "type": "description", "sortOrder": 0,
+              "config": { "tone": "danger" },
+              "description": "<p><b>重要：</b>K 动物紧急状况处理说明是必选项，也必需填写补充表格 K。换言之，某个实验动物使用计划最少应有二个表格：主表格和补充表格 K。</p>"
+            },
+            { "fieldKey": "K1.leaderName", "label": "课题组长姓名", "type": "text", "required": true, "sortOrder": 1 },
+            { "fieldKey": "K1.officePhone", "label": "办公电话", "type": "text", "required": true, "sortOrder": 2 },
+            { "fieldKey": "K1.mobile", "label": "移动电话", "type": "text", "required": true, "sortOrder": 3 },
+            {
+              "fieldKey": "K1.operations", "label": "已进行的实验操作描述", "type": "textarea", "sortOrder": 4,
+              "description": "请描述对动物已经进行的实验操作（例如：手术、肿瘤移植、给药以及注射等）"
+            }
+          ]
+        },
+        {
+          "code": "K2",
+          "label": "K2：动物紧急状况联系信息",
+          "sortOrder": 1,
+          "fields": [
+            { "fieldKey": "K2.primaryContact", "label": "主要联系人", "type": "text", "required": true, "sortOrder": 0 },
+            { "fieldKey": "K2.primaryWorkPhone", "label": "主要联系人工作电话", "type": "text", "sortOrder": 1 },
+            { "fieldKey": "K2.primaryMobile", "label": "主要联系人移动电话", "type": "text", "required": true, "sortOrder": 2 },
+            { "fieldKey": "K2.otherContact", "label": "其他联系人", "type": "text", "sortOrder": 3 },
+            { "fieldKey": "K2.otherWorkPhone", "label": "其他联系人工作电话", "type": "text", "sortOrder": 4 },
+            { "fieldKey": "K2.otherMobile", "label": "其他联系人移动电话", "type": "text", "sortOrder": 5 }
+          ]
+        },
+        {
+          "code": "K3",
+          "label": "K3：动物紧急状况处理",
+          "sortOrder": 2,
+          "fields": [
+            {
+              "fieldKey": "K3.euthPreference", "label": "动物需要安乐死时的首选项", "type": "choice", "required": true, "sortOrder": 0,
+              "config": { "choiceType": "single" },
+              "options": [
+                { "value": "兽医决定", "label": "由实验动物科学部兽医根据动物身体状况及人道终点原则决定。" },
+                { "value": "考虑因素", "label": "当动物需要安乐死的时候需要首先考虑到以下因素。" }
+              ]
+            },
+            {
+              "fieldKey": "K3.preEuthSteps",
+              "label": "实施安乐死前需考虑的因素（多选）",
+              "type": "choice",
+              "sortOrder": 1,
+              "showWhen": { "field": "K3.euthPreference", "op": "equals", "value": "考虑因素" },
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "在对动物安乐死前联系以上所列联系人。",
+                "对动物实施安乐死的时候，按照实验动物研究及使用计划所列的安乐死方法。",
+                "动物实施安乐死的时候如需考虑到其他因素，请说明如下："
+              ]
+            },
+            {
+              "fieldKey": "K3.otherFactorDesc",
+              "label": "其他考虑因素说明",
+              "type": "textarea",
+              "sortOrder": 2,
+              "showWhen": { "field": "K3.preEuthSteps", "op": "contains", "value": "动物实施安乐死的时候如需考虑到其他因素，请说明如下：" },
+              "description": "如实施安乐死时需考虑其他因素，请说明如下："
+            },
+            {
+              "fieldKey": "K3.operations", "label": "执行安乐死或发现死亡后需要进行的操作", "type": "choice", "required": true, "sortOrder": 3,
+              "config": { "choiceType": "multiple" },
+              "options": [
+                "通知联系人",
+                "动物尸体需贴标签放入尸体间冷藏冰箱（课题组取走采样）",
+                "将动物尸体放入冰箱（由学校统一无害化处理）",
+                "将尸体送至兽医处解剖做病理学检测"
+              ]
+            },
+            {
+              "fieldKey": "K3.other", "label": "其他操作说明", "type": "textarea", "sortOrder": 4,
+              "description": "如需其他操作请在下列表格详细说明："
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "L",
+      "label": "L：课题组管理区域饲养动物信息",
+      "sortOrder": 12,
+      "subdivisible": true,
+      "showWhen": { "field": "A8.parts", "op": "contains", "value": "L" },
+      "subsections": [
+        {
+          "code": "L1",
+          "label": "L1：饲养区域管理信息",
+          "sortOrder": 0,
+          "description": "根据《实验动物饲养管理和使用指南》（Guide）规定：任何饲养实验动物超过12小时的区域都应归为实验动物饲养设施，在该区域内的一切饲养行为都应符合Guide的规定及动物福利标准。因此课题组管理区域饲养实验动物需按照Guide的规定进行操作。",
+          "fields": [
+            { "fieldKey": "L1.piName", "label": "课题组长", "type": "text", "required": true, "sortOrder": 0 },
+            { "fieldKey": "L1.buildingNo", "label": "建筑编号", "type": "text", "required": true, "sortOrder": 1 },
+            { "fieldKey": "L1.roomNo", "label": "房间编号", "type": "text", "required": true, "sortOrder": 2 },
+            {
+              "fieldKey": "L1.absLevel", "label": "是否有动物涉及ABSL-2级 或者 3级实验？", "type": "choice", "required": true, "sortOrder": 3,
+              "config": { "choiceType": "single" },
+              "options": [ "否", "是" ]
+            },
+            {
+              "fieldKey": "L1.cycle", "label": "实验动物饲养周期", "type": "choice", "required": true, "sortOrder": 4,
+              "config": { "choiceType": "single" },
+              "options": [
+                "实验动物将长期饲养在课题组管理区域（目前学校禁止在实验室长期饲养动物）。",
+                "实验动物将周期性饲养在课题组管理区域，并不是长期存在。",
+                "实验动物偶尔饲养在课题组管理区域（4-5天/月），并不长期存在。"
+              ]
+            },
+            { "fieldKey": "L1.species", "label": "课题组管理区域饲养动物种类", "type": "textarea", "required": true, "sortOrder": 5 },
+            { "fieldKey": "L1.cageCount", "label": "笼盒数目（笼）", "type": "number", "required": true, "sortOrder": 6 },
+            { "fieldKey": "L1.animalCount", "label": "动物数量（只）", "type": "number", "required": true, "sortOrder": 7 },
+            { "fieldKey": "L1.maxDays", "label": "最长时间（天）", "type": "number", "required": true, "sortOrder": 8 },
+            {
+              "fieldKey": "L1.staff",
+              "label": "课题组管理区域动物饲养人员信息",
+              "type": "table",
+              "required": true,
+              "sortOrder": 9,
+              "config": {
+                "columns": [
+                  { "fieldKey": "category", "label": "人员类别", "type": "text" },
+                  { "fieldKey": "name", "label": "姓名", "type": "text" },
+                  { "fieldKey": "no", "label": "学号/工号", "type": "text" },
+                  { "fieldKey": "email", "label": "E-mail地址", "type": "text" }
+                ]
+              }
+            },
+            {
+              "fieldKey": "L1.disinfectable",
+              "label": "检测工具是否可表面消毒",
+              "type": "choice",
+              "required": true,
+              "sortOrder": 10,
+              "config": { "choiceType": "single" },
+              "description": "根据Guide要求，实验所使用的测试工具需被设计成可以表面消毒，便于应用于不同的研究过程。",
+              "options": [
+                "本研究计划中所使用的检测工具可以表面消毒。",
+                "本研究计划中所使用的检测工具不可以表面消毒，请解释如下。"
+              ]
+            },
+            {
+              "fieldKey": "L1.disinfectReason",
+              "label": "检测工具不可表面消毒的解释",
+              "type": "textarea",
+              "sortOrder": 11,
+              "showWhen": { "field": "L1.disinfectable", "op": "contains", "value": "不可以表面消毒" },
+              "description": "如检测工具不可以表面消毒，请解释如下："
+            }
+          ]
+        },
+        {
+          "code": "L2",
+          "label": "L2：课题组管理区域饲养动物依据",
+          "sortOrder": 1,
+          "fields": [
+            {
+              "fieldKey": "L2.reason",
+              "label": "在课题组管理区域饲养动物的合理理由",
+              "type": "textarea",
+              "required": true,
+              "sortOrder": 0,
+              "description": "医学院实验动物科学部动物设施将实施标准的饲养管理程序，可以充分的保证动物福利以及动物饲养质量。如动物需饲养在课题组管理区域，请给出合理的理由（例如：便于项目检测、特殊操作过程等），并详述如何保证动物福利的实施。"
+            },
+            {
+              "fieldKey": "L2.other",
+              "label": "其他需要说明的问题（选填）",
+              "type": "textarea",
+              "sortOrder": 1,
+              "description": "如果有其他需要说明的问题请描述如下，将有助于IACUC对课题组管理区域动物饲养的批准。"
+            }
+          ]
+        },
+        {
+          "code": "L3",
+          "label": "L3：课题组管理动物饲养区域管理信息",
+          "sortOrder": 2,
+          "fields": [
+            {
+              "fieldKey": "L3.emergencyContacts",
+              "label": "紧急预案联系人",
+              "type": "table",
+              "required": true,
+              "sortOrder": 0,
+              "config": {
+                "columns": [
+                  { "fieldKey": "name", "label": "姓名", "type": "text" },
+                  { "fieldKey": "phone", "label": "电话", "type": "text" },
+                  { "fieldKey": "email", "label": "E-mail地址", "type": "text" }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

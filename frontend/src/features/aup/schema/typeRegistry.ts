@@ -65,7 +65,7 @@ export const TYPE_REGISTRY: FieldTypeMeta[] = [
     hasOptions: true,
     defaultConfig: { choiceType: "single" } satisfies Partial<FieldConfig>,
   },
-  { value: "checkbox", label: "是否勾选", icon: "勾", group: "choice", hasOptions: true },
+  { value: "checkbox", label: "是否勾选", icon: "勾", group: "choice" },
   { value: "cascade", label: "级联选择", icon: "级", group: "choice" },
   { value: "table", label: "表格", icon: "表", group: "structure", nestable: true, defaultConfig: { columns: [] } satisfies Partial<FieldConfig> },
   { value: "group", label: "字段组", icon: "组", group: "structure", nestable: true, defaultConfig: { fields: [] } satisfies Partial<FieldConfig> },

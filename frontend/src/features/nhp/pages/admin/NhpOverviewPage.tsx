@@ -48,9 +48,9 @@ export default function NhpOverviewPage() {
   const error = boardQuery.isError;
 
   return (
-    <>
+    <div className="nhp-cockpit-shell">
       <PortalHeader onOpenLogin={() => navigate("/")} />
-      <div className="aup-app aup-app--workbench nhp-cockpit-app" style={{ background: "var(--bg)" }}>
+      <div className="aup-app aup-app--workbench nhp-cockpit-app">
         <div className="aup-wb nhp-cockpit-wb">
           <NhpOverviewCockpitHeader
             onBack={goBack}
@@ -67,23 +67,14 @@ export default function NhpOverviewPage() {
               <div className="aup-wb-empty">加载手术实例…</div>
             ) : active ? (
               <div className="nhp-cockpit-grid">
-                <aside className="nhp-cockpit-aside">
+                <div className="nhp-cockpit-col nhp-cockpit-col--left">
                   <NhpOverviewSubjectCard
                     surgery={active}
                     todoCount={todosQuery.data?.length ?? active.todoCount}
                     overdueCount={active.overdueCount}
                   />
-                  <NhpOverviewNotificationsPanel />
-                  <NhpOverviewTodosPanel
-                    todos={todosQuery.data ?? []}
-                    loading={todosQuery.isLoading}
-                    onRecord={() => navigate(`/nhp/fill?subjectId=${active.subjectId}`)}
-                  />
-                </aside>
-
-                <main className="nhp-cockpit-main">
                   {recordsQuery.isLoading ? (
-                    <div className="nhp-cockpit-card nhp-cockpit-card-empty">加载实例…</div>
+                    <div className="nhp-cockpit-card nhp-cockpit-fillable nhp-cockpit-card-empty">加载实例…</div>
                   ) : (
                     <NhpOverviewFillablePanel
                       surgery={active}
@@ -91,20 +82,33 @@ export default function NhpOverviewPage() {
                       mode="portal"
                     />
                   )}
+                </div>
+
+                <div className="nhp-cockpit-col nhp-cockpit-col--center">
+                  <div className="nhp-cockpit-center-spacer" aria-hidden />
                   <NhpOverviewActivityPanel />
-                </main>
+                </div>
+
+                <aside className="nhp-cockpit-col nhp-cockpit-col--right">
+                  <NhpOverviewNotificationsPanel />
+                  <NhpOverviewTodosPanel
+                    todos={todosQuery.data ?? []}
+                    loading={todosQuery.isLoading}
+                    onRecord={() => navigate(`/nhp/fill?subjectId=${active.subjectId}`)}
+                  />
+                </aside>
               </div>
             ) : (
               <div className="aup-wb-empty nhp-cockpit-empty">
                 <p>暂无参与中的手术</p>
                 <button type="button" className="btn primary small" onClick={() => navigate("/nhp/fill")}>
-                  前往数据采集入口
+                  前往填报入口
                 </button>
               </div>
             )}
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

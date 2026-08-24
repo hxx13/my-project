@@ -3,8 +3,11 @@ import { QRCodeSVG } from "qrcode.react";
 import { authHttp } from "@/api/core/authHttp";
 import { CAGE_TYPE_COLORS, STATUS_CHIPS } from "../constants";
 import { type CageShelfCell } from "@/api/domains/cageShelf.api";
-import { fetchCageInfoFields, fetchCageClaimInfo, updateCageClaimInfo, type CageInfoField } from "../api/cageForm.api";
+import CageFormFill from "./CageFormFill";
 import toast from "react-hot-toast";
+import { hasMinRole } from "@/features/auth/roleAccess";
+import { authStorage } from "@/features/auth/authStorage";
+import { fetchMyIdentity } from "@/api/domains/personIdentity.api";
 
 /**
  * LocalDetailPanel — 本地数据源笼位详情面板
@@ -32,6 +35,7 @@ import toast from "react-hot-toast";
 export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCell; onClose: () => void }) {
   const detail = (cell as any).detail as Record<string, any> | undefined;
   const animalCageId = String((cell as any).id ?? detail?.animalCageId ?? (cell as any).animalCageId ?? "");
+  console.log("[cage-detail] 二维码ID animalCageId=", animalCageId, "| cell.id=", (cell as any).id, "| detail.animalCageId=", detail?.animalCageId, "| cell.animalCageId=", (cell as any).animalCageId, "| detail=", detail);
   const [notes, setNotes] = useState(detail?.experimentDesc ?? "");
   const [images, setImages] = useState<string[]>(() => {
     try { const raw = detail?.imagesJson; if (typeof raw === "string") { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : []; } } catch { }
@@ -40,51 +44,24 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [qrZoom, setQrZoom] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [statusPhotos, setStatusPhotos] = useState<Record<string, string[]>>({});
 
-  // ── 认领信息表单：发布的字段字典 + 当前认领的实例值 ──
-  const claimId = (cell as any).activeClaimId ?? (cell as any).claim?.id ?? (cell as any).claimId ?? null;
-  const [fieldDefs, setFieldDefs] = useState<CageInfoField[]>([]);
-  const [editValues, setEditValues] = useState<Record<number, string | number | boolean | null>>({});
-  const [infoLoading, setInfoLoading] = useState(false);
-  const [infoSaving, setInfoSaving] = useState(false);
+  // ── 认领状态标识（表单值挂笼位，与认领无关；这里只判断是否已认领）──
+  const claimed = !!((cell as any).activeClaimId);
 
+  // ── 编辑权限：管理员及以上，或「饲养组长」身份标识（BREEDING_GROUP_LEADER，区别于 PI）──
+  const [canEdit, setCanEdit] = useState(false);
   useEffect(() => {
-    fetchCageInfoFields()
-      .then(all => all
-        .filter(f => f.published === true)
-        .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)))
-      .then(fields => setFieldDefs(fields))
-      .catch(() => { });
-  }, []);
-
-  useEffect(() => {
-    if (claimId == null) return;
-    setInfoLoading(true);
-    fetchCageClaimInfo(claimId)
-      .then(rows => {
-        const map: Record<number, string | number | boolean | null> = {};
-        for (const r of rows) map[r.fieldId] = r.value;
-        setEditValues(map);
-      })
-      .catch(() => { })
-      .finally(() => setInfoLoading(false));
-  }, [claimId]);
-
-  const handleSaveInfo = async () => {
-    if (claimId == null) return;
-    setInfoSaving(true);
-    try {
-      const values = fieldDefs.map(f => ({ fieldId: f.id, value: editValues[f.id] ?? null }));
-      await updateCageClaimInfo(claimId, values);
-      toast.success("已保存");
-    } catch (e: any) {
-      toast.error(e?.message || "保存失败");
-    } finally {
-      setInfoSaving(false);
+    if (hasMinRole(authStorage.getRole(), "ADMIN")) {
+      setCanEdit(true);
+      return;
     }
-  };
+    fetchMyIdentity()
+      .then((tags) => setCanEdit(tags.some((t) => t.code === "BREEDING_GROUP_LEADER")))
+      .catch(() => setCanEdit(false));
+  }, []);
 
   useEffect(() => {
     if (!animalCageId) return;
@@ -154,79 +131,44 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
         {typeInfo && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: typeInfo.bg, color: typeInfo.border, border: `1px solid ${typeInfo.border}` }}>{typeInfo.label}</span>}
         <span className="text-sm font-bold text-[var(--twin-ink)]">{cell.position}</span>
         {cageBoxCode && <span className="text-[10px] font-mono text-[var(--twin-mute)]">盒:{cageBoxCode}</span>}
+        {cell.occupantName && <span className="text-[10px] text-[var(--twin-mute)]">所属:<span className="text-[var(--twin-ink)] font-semibold">{cell.occupantName}</span></span>}
       </div>
       <button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={onClose}>✕</button>
     </div>
 
     {/* 笼位二维码：payload = 纯数字 animal_cage_id */}
     <div className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-2 flex items-center gap-3">
-      <QRCodeSVG value={animalCageId} size={72} level="M" />
-      <div className="text-[10px] text-[var(--twin-mute)] leading-relaxed">
+      <div className="cursor-zoom-in shrink-0" title="点击放大" onClick={() => setQrZoom(true)}>
+        <QRCodeSVG value={animalCageId} size={160} level="M" includeMargin={true} />
+      </div>
+      <div className="text-[10px] text-[var(--twin-mute)] leading-relaxed min-w-0">
         <div className="text-[11px] font-semibold text-[var(--twin-ink)]">笼位二维码</div>
-        <div className="font-mono">笼位ID: {animalCageId}</div>
-        <div>扫码读取该笼位占用信息</div>
+        <div className="font-mono break-all">笼位ID: {animalCageId}</div>
+        <div className="text-[var(--twin-mute)]">点击二维码可放大查看</div>
       </div>
     </div>
 
-    {/* 二级：关键信息 — 发布的字段表单（绑定当前认领，可编辑） */}
-    {claimId == null ? (
-      <div className="text-[11px] text-[var(--twin-mute)] py-3 text-center">暂无占用记录</div>
-    ) : (
-      <div className="space-y-2">
-        <div className="text-[11px] font-semibold text-[var(--twin-ink)]">关键信息</div>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
-          {fieldDefs.map(f => {
-            const val = editValues[f.id];
-            const isText = f.dataType === "text";
-            return (
-              <div key={f.id} className={isText ? "col-span-2" : ""}>
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-[var(--twin-mute)]">
-                    {f.label}
-                    {f.required === "YES" && <span className="text-red-500"> *</span>}
-                  </span>
-                  {f.dataType === "boolean" ? (
-                    <input
-                      type="checkbox"
-                      checked={val === true}
-                      onChange={e => setEditValues(prev => ({ ...prev, [f.id]: e.target.checked }))}
-                      className="h-4 w-4 accent-[var(--twin-primary)]"
-                    />
-                  ) : f.dataType === "number" ? (
-                    <input
-                      type="number"
-                      value={typeof val === "number" ? val : ""}
-                      onChange={e => {
-                        const n = e.target.valueAsNumber;
-                        setEditValues(prev => ({ ...prev, [f.id]: Number.isNaN(n) ? null : n }));
-                      }}
-                      className="w-full rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[11px] text-[var(--twin-ink)]"
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      value={typeof val === "string" ? val : ""}
-                      onChange={e => setEditValues(prev => ({ ...prev, [f.id]: e.target.value }))}
-                      className="w-full rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[11px] text-[var(--twin-ink)]"
-                    />
-                  )}
-                </label>
-              </div>
-            );
-          })}
+    {/* 二维码放大预览 */}
+    {qrZoom && (
+      <div className="fixed inset-0 z-[var(--z-modal)] bg-black/70 flex flex-col items-center justify-center p-4" onClick={() => setQrZoom(false)}>
+        <div className="bg-white rounded-lg p-5 flex flex-col items-center gap-3" onClick={(e) => e.stopPropagation()}>
+          <QRCodeSVG value={animalCageId} size={280} level="M" includeMargin={true} />
+          <div className="font-mono text-sm text-gray-800 break-all text-center">{animalCageId}</div>
+          <button
+            type="button"
+            onClick={() => { navigator.clipboard?.writeText(animalCageId); toast.success("已复制笼位ID"); }}
+            className="rounded px-3 py-1 text-xs font-semibold bg-gray-800 text-white hover:bg-gray-700 transition"
+          >
+            复制笼位ID
+          </button>
+          <button type="button" onClick={() => setQrZoom(false)} className="text-xs text-gray-500 hover:text-gray-700">关闭</button>
         </div>
-        {fieldDefs.length === 0 && !infoLoading && <div className="text-[11px] text-[var(--twin-mute)] text-center py-1">暂无已发布字段</div>}
-        {infoLoading && <div className="text-[10px] text-[var(--twin-mute)]">加载中...</div>}
-        <button
-          type="button"
-          onClick={handleSaveInfo}
-          disabled={infoSaving || fieldDefs.length === 0}
-          className="rounded-twin-md px-3 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 disabled:opacity-50 transition self-start"
-        >
-          {infoSaving ? "保存中..." : "保存"}
-        </button>
       </div>
     )}
+
+    {/* 二级：关键信息 — 复用发布模板结构（内联填表，不跳答题页） */}
+    <div className="text-[11px] font-semibold text-[var(--twin-ink)]">关键信息</div>
+    <CageFormFill animalCageId={animalCageId || null} claimed={claimed} editable={canEdit} />
 
     {/* 三级：状态标记 + 通道一：状态标记照片（只读，仅编辑模式可管理） */}
     {(statusChips.length > 0 || Object.keys(statusPhotos).some(k => k.startsWith("_") && (statusPhotos[k] || []).length > 0)) && <div className="space-y-2">

@@ -84,8 +84,21 @@ export interface PortalStats {
   lineChart?: PortalLineChart;
 }
 
-/** 获取今日进出统计。返回 null 时前端显示 0。 */
+/** 获取今日进出统计。失败时返回 null，前端显示 0。 */
 export async function fetchPortalStats(): Promise<PortalStats | null> {
-  // TODO: 接后端统计端点（数据源：门禁/闸机进出记录）
-  return null;
+  try {
+    const response = await axios.get<Result<PortalStats>>("/api/public/portal-stats");
+    if (!response.data?.success || !response.data?.data) {
+      return null;
+    }
+    const d = response.data.data;
+    return {
+      pudongTotal: Number(d.pudongTotal) || 0,
+      puxiTotal: Number(d.puxiTotal) || 0,
+      totalEnter: Number(d.totalEnter) || 0,
+      lineChart: d.lineChart,
+    };
+  } catch {
+    return null;
+  }
 }

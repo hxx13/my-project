@@ -20,7 +20,9 @@
               "role": "PK",
               "domain": "D1",
               "sub": "D1.01",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "DON"
             },
             {
               "fieldCode": "D1.01.002",
@@ -35,7 +37,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.01",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.01.003",
@@ -50,7 +53,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.01",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.01.004",
@@ -59,13 +63,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "SEX",
               "timepoint": "入档",
               "desc": "",
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.01",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.01.005",
@@ -80,7 +85,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.01",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.01.006",
@@ -95,7 +101,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.01",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.01.007",
@@ -104,13 +111,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "BIOCONTAINMENT_LEVEL",
               "timepoint": "入档",
               "desc": "无指定病原体等级",
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.01",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             }
           ]
         },
@@ -130,7 +138,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.02",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.02.002",
@@ -145,7 +154,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.02",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.02.003",
@@ -160,7 +170,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.02",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.02.004",
@@ -169,13 +180,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "EDIT_VERIFY_STATUS",
               "timepoint": "入档",
               "desc": "Sanger+NGS 双验证",
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.02",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.02.005",
@@ -190,7 +202,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.02",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.02.006",
@@ -205,7 +218,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.02",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.02.007",
@@ -220,7 +234,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.02",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             }
           ]
         },
@@ -240,7 +255,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.03",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.03.002",
@@ -255,7 +271,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.03",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.03.003",
@@ -271,7 +288,8 @@
               "domain": "D1",
               "sub": "D1.03",
               "pos": 3,
-              "conceptCode": "PERVA"
+              "conceptCode": "PERVA",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.03.004",
@@ -287,7 +305,8 @@
               "domain": "D1",
               "sub": "D1.03",
               "pos": 4,
-              "conceptCode": "PERVB"
+              "conceptCode": "PERVB",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.03.005",
@@ -296,14 +315,15 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "PERV_C_STATUS",
               "timepoint": "季度",
               "desc": "PERV-C 阳性个体不得作为供体",
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.03",
               "pos": 5,
-              "conceptCode": "PERVC"
+              "conceptCode": "PERVC",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.03.006",
@@ -312,13 +332,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "PERV_AC_RECOMB",
               "timepoint": "季度",
               "desc": "重组型高传播风险",
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.03",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.03.007",
@@ -327,13 +348,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "PERV_INFECTIVITY",
               "timepoint": "年度",
               "desc": "人源细胞共培养试验",
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.03",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.03.008",
@@ -348,7 +370,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.03",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.03.009",
@@ -363,7 +386,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.03",
-              "pos": 9
+              "pos": 9,
+              "nature": "DATA"
             }
           ]
         },
@@ -383,7 +407,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.04",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.04.002",
@@ -398,7 +423,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.04",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.04.003",
@@ -413,7 +439,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.04",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.04.004",
@@ -428,7 +455,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.04",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.04.005",
@@ -437,13 +465,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "RELEASE",
               "timepoint": "术前",
               "desc": "出厂标准 V1.0 判定结果",
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.04",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D1.04.006",
@@ -458,7 +487,8 @@
               "role": "VALUE",
               "domain": "D1",
               "sub": "D1.04",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             }
           ]
         }
@@ -484,7 +514,9 @@
               "role": "PK",
               "domain": "D2",
               "sub": "D2.01",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "RCP"
             },
             {
               "fieldCode": "D2.01.002",
@@ -499,7 +531,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.01",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.01.003",
@@ -508,28 +541,40 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "SPECIES",
               "timepoint": "入组",
               "desc": "",
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.01",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.01.004",
-              "nameCn": "性别/年龄",
+              "nameCn": "性别",
               "nameEn": "sex/age",
               "dataType": "ENUM",
               "unit": "岁",
               "required": "YES",
-              "codelist": null,
+              "codelist": "SEX",
               "timepoint": "入组",
               "desc": "",
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.01",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
+            },
+            {
+              "fieldCode": "D2.01.006",
+              "nameCn": "年龄",
+              "nameEn": "age",
+              "dataType": "INTEGER",
+              "unit": null,
+              "required": "NO",
+              "role": "VALUE",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.01.005",
@@ -544,7 +589,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.01",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.01.006",
@@ -559,7 +605,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.01",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.01.007",
@@ -574,7 +621,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.01",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             }
           ]
         },
@@ -594,7 +642,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.02",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.02.002",
@@ -609,7 +658,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.02",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.02.003",
@@ -624,7 +674,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.02",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.02.004",
@@ -639,7 +690,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.02",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.02.005",
@@ -654,7 +706,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.02",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.02.006",
@@ -669,7 +722,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.02",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.02.007",
@@ -684,7 +738,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.02",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.02.008",
@@ -699,7 +754,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.02",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.02.009",
@@ -714,7 +770,8 @@
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.02",
-              "pos": 9
+              "pos": 9,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.02.010",
@@ -723,13 +780,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "ELIGIBILITY",
               "timepoint": "TP01",
               "desc": "配型资格判定",
               "role": "VALUE",
               "domain": "D2",
               "sub": "D2.02",
-              "pos": 10
+              "pos": 10,
+              "nature": "DATA"
             }
           ]
         }
@@ -755,7 +813,9 @@
               "role": "PK",
               "domain": "D3",
               "sub": "D3.01",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "XM"
             },
             {
               "fieldCode": "D3.01.002",
@@ -770,7 +830,8 @@
               "role": "FK",
               "domain": "D3",
               "sub": "D3.01",
-              "pos": 2
+              "pos": 2,
+              "nature": "FK"
             },
             {
               "fieldCode": "D3.01.003",
@@ -779,13 +840,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "CDC_XM_RESULT",
               "timepoint": "TP01",
               "desc": "补体依赖细胞毒试验",
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.01",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.01.004",
@@ -794,13 +856,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "FLOW_XM_RESULT",
               "timepoint": "TP01",
               "desc": "T/B 细胞流式配型",
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.01",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.01.005",
@@ -809,13 +872,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "NO",
-              "codelist": null,
+              "codelist": "ADCC_RESULT",
               "timepoint": "TP01",
               "desc": "",
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.01",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.01.006",
@@ -831,7 +895,8 @@
               "domain": "D3",
               "sub": "D3.01",
               "pos": 6,
-              "conceptCode": "PAIR_SCORE"
+              "conceptCode": "PAIR_SCORE",
+              "nature": "DERIVED"
             },
             {
               "fieldCode": "D3.01.007",
@@ -840,13 +905,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "PAIR_DECISION",
               "timepoint": "TP01",
               "desc": "最终供受配对结论",
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.01",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.01.008",
@@ -861,7 +927,8 @@
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.01",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             }
           ]
         },
@@ -881,7 +948,9 @@
               "role": "PK",
               "domain": "D3",
               "sub": "D3.02",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "TX"
             },
             {
               "fieldCode": "D3.02.002",
@@ -896,7 +965,8 @@
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.02",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.02.003",
@@ -911,7 +981,8 @@
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.02",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.02.004",
@@ -926,7 +997,8 @@
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.02",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.02.005",
@@ -941,7 +1013,8 @@
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.02",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.02.006",
@@ -956,7 +1029,8 @@
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.02",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.02.007",
@@ -971,7 +1045,8 @@
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.02",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.02.008",
@@ -986,7 +1061,8 @@
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.02",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.02.009",
@@ -1001,7 +1077,8 @@
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.02",
-              "pos": 9
+              "pos": 9,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D3.02.010",
@@ -1016,7 +1093,8 @@
               "role": "VALUE",
               "domain": "D3",
               "sub": "D3.02",
-              "pos": 10
+              "pos": 10,
+              "nature": "DATA"
             }
           ]
         }
@@ -1042,7 +1120,9 @@
               "role": "PK",
               "domain": "D4",
               "sub": "D4.01",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "SMP"
             },
             {
               "fieldCode": "D4.01.002",
@@ -1057,7 +1137,8 @@
               "role": "FK",
               "domain": "D4",
               "sub": "D4.01",
-              "pos": 2
+              "pos": 2,
+              "nature": "FK"
             },
             {
               "fieldCode": "D4.01.003",
@@ -1072,7 +1153,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.01",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.01.004",
@@ -1087,7 +1169,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.01",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.01.005",
@@ -1102,7 +1185,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.01",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.01.006",
@@ -1111,13 +1195,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "STORAGE_CONDITION",
               "timepoint": "入库",
               "desc": "",
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.01",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.01.007",
@@ -1132,7 +1217,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.01",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.01.008",
@@ -1147,7 +1233,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.01",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             }
           ]
         },
@@ -1167,7 +1254,9 @@
               "role": "PK",
               "domain": "D4",
               "sub": "D4.02",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "TST"
             },
             {
               "fieldCode": "D4.02.002",
@@ -1182,7 +1271,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.02",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.02.003",
@@ -1197,7 +1287,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.02",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.02.004",
@@ -1212,7 +1303,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.02",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.02.005",
@@ -1227,7 +1319,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.02",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             }
           ]
         },
@@ -1248,7 +1341,8 @@
               "domain": "D4",
               "sub": "D4.03",
               "pos": 1,
-              "conceptCode": "PCFDNA"
+              "conceptCode": "PCFDNA",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.03.002",
@@ -1263,7 +1357,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.03",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.03.003",
@@ -1278,7 +1373,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.03",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.03.004",
@@ -1293,7 +1389,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.03",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.03.005",
@@ -1308,7 +1405,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.03",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.03.006",
@@ -1323,7 +1421,8 @@
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.03",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D4.03.007",
@@ -1332,13 +1431,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "QC_STATUS",
               "timepoint": "回传时",
               "desc": "平台双人复核，异常值复测规则",
               "role": "VALUE",
               "domain": "D4",
               "sub": "D4.03",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             }
           ]
         }
@@ -1364,7 +1464,9 @@
               "role": "PK",
               "domain": "D5",
               "sub": "D5.01",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "FU"
             },
             {
               "fieldCode": "D5.01.002",
@@ -1379,7 +1481,8 @@
               "role": "FK",
               "domain": "D5",
               "sub": "D5.01",
-              "pos": 2
+              "pos": 2,
+              "nature": "FK"
             },
             {
               "fieldCode": "D5.01.003",
@@ -1394,7 +1497,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.01",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.01.004",
@@ -1409,7 +1513,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.01",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.01.005",
@@ -1424,7 +1529,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.01",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.01.006",
@@ -1439,7 +1545,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.01",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             }
           ]
         },
@@ -1459,7 +1566,9 @@
               "role": "PK",
               "domain": "D5",
               "sub": "D5.02",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "AE"
             },
             {
               "fieldCode": "D5.02.002",
@@ -1474,7 +1583,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.02",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.02.003",
@@ -1489,7 +1599,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.02",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.02.004",
@@ -1504,7 +1615,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.02",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.02.005",
@@ -1519,7 +1631,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.02",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.02.006",
@@ -1534,7 +1647,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.02",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.02.007",
@@ -1543,13 +1657,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "AE_OUTCOME",
               "timepoint": "事件关闭",
               "desc": "",
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.02",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             }
           ]
         },
@@ -1569,7 +1684,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.03",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.03.002",
@@ -1584,7 +1700,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.03",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.03.003",
@@ -1599,7 +1716,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.03",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.03.004",
@@ -1608,13 +1726,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "NECROPSY_STATUS",
               "timepoint": "TP11",
               "desc": "",
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.03",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.03.005",
@@ -1629,7 +1748,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.03",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D5.03.006",
@@ -1644,7 +1764,8 @@
               "role": "VALUE",
               "domain": "D5",
               "sub": "D5.03",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             }
           ]
         }
@@ -1670,7 +1791,9 @@
               "role": "PK",
               "domain": "D6",
               "sub": "D6.01",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "REG"
             },
             {
               "fieldCode": "D6.01.002",
@@ -1685,7 +1808,8 @@
               "role": "FK",
               "domain": "D6",
               "sub": "D6.01",
-              "pos": 2
+              "pos": 2,
+              "nature": "FK"
             },
             {
               "fieldCode": "D6.01.003",
@@ -1700,7 +1824,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.01",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D6.01.004",
@@ -1709,13 +1834,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "REGIMEN_PHASE",
               "timepoint": "方案启动",
               "desc": "",
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.01",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D6.01.005",
@@ -1730,7 +1856,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.01",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D6.01.006",
@@ -1745,7 +1872,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.01",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             }
           ]
         },
@@ -1765,7 +1893,9 @@
               "role": "PK",
               "domain": "D6",
               "sub": "D6.02",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "MED"
             },
             {
               "fieldCode": "D6.02.002",
@@ -1780,7 +1910,8 @@
               "role": "FK",
               "domain": "D6",
               "sub": "D6.02",
-              "pos": 2
+              "pos": 2,
+              "nature": "FK"
             },
             {
               "fieldCode": "D6.02.003",
@@ -1795,7 +1926,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.02",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D6.02.004",
@@ -1810,7 +1942,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.02",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D6.02.005",
@@ -1825,7 +1958,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.02",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D6.02.006",
@@ -1840,7 +1974,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.02",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D6.02.007",
@@ -1849,13 +1984,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "MISSED_FLAG",
               "timepoint": "每次给药",
               "desc": "依从性事件",
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.02",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             }
           ]
         },
@@ -1875,7 +2011,9 @@
               "role": "PK",
               "domain": "D6",
               "sub": "D6.03",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "LVL"
             },
             {
               "fieldCode": "D6.03.002",
@@ -1890,7 +2028,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.03",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D6.03.003",
@@ -1905,7 +2044,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.03",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D6.03.004",
@@ -1920,7 +2060,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.03",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D6.03.005",
@@ -1935,7 +2076,8 @@
               "role": "VALUE",
               "domain": "D6",
               "sub": "D6.03",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             }
           ]
         }
@@ -1957,11 +2099,13 @@
               "required": "YES",
               "codelist": null,
               "timepoint": "麻醉开始",
-              "desc": "主键；一台手术一条",
-              "role": "PK",
+              "desc": "主键；一台手术一条（派生键 ANES-{TX}，不走取号器）",
+              "role": "DERIVED",
               "domain": "D7",
               "sub": "D7.01",
-              "pos": 1
+              "pos": 1,
+              "nature": "DERIVED",
+              "derivedSource": "ANES-{TX}"
             },
             {
               "fieldCode": "D7.01.002",
@@ -1976,7 +2120,8 @@
               "role": "FK",
               "domain": "D7",
               "sub": "D7.01",
-              "pos": 2
+              "pos": 2,
+              "nature": "FK"
             },
             {
               "fieldCode": "D7.01.003",
@@ -1985,13 +2130,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "ANES_METHOD",
               "timepoint": "麻醉开始",
               "desc": "",
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.01",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.01.004",
@@ -2006,7 +2152,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.01",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.01.005",
@@ -2021,7 +2168,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.01",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.01.006",
@@ -2036,7 +2184,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.01",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             }
           ]
         },
@@ -2056,7 +2205,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.02",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.02.002",
@@ -2071,7 +2221,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.02",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.02.003",
@@ -2086,7 +2237,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.02",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.02.004",
@@ -2101,7 +2253,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.02",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.02.005",
@@ -2116,7 +2269,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.02",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.02.006",
@@ -2131,7 +2285,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.02",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             }
           ]
         },
@@ -2151,7 +2306,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.03",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.03.002",
@@ -2166,7 +2322,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.03",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.03.003",
@@ -2181,7 +2338,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.03",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.03.004",
@@ -2196,7 +2354,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.03",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D7.03.005",
@@ -2211,7 +2370,8 @@
               "role": "VALUE",
               "domain": "D7",
               "sub": "D7.03",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             }
           ]
         }
@@ -2237,7 +2397,9 @@
               "role": "PK",
               "domain": "D8",
               "sub": "D8.01",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "PATH"
             },
             {
               "fieldCode": "D8.01.002",
@@ -2252,7 +2414,8 @@
               "role": "FK",
               "domain": "D8",
               "sub": "D8.01",
-              "pos": 2
+              "pos": 2,
+              "nature": "FK"
             },
             {
               "fieldCode": "D8.01.003",
@@ -2267,7 +2430,8 @@
               "role": "FK",
               "domain": "D8",
               "sub": "D8.01",
-              "pos": 3
+              "pos": 3,
+              "nature": "FK"
             },
             {
               "fieldCode": "D8.01.004",
@@ -2276,13 +2440,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "SAMPLING_TYPE",
               "timepoint": "取材",
               "desc": "",
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.01",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D8.01.005",
@@ -2297,7 +2462,8 @@
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.01",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D8.01.006",
@@ -2312,7 +2478,8 @@
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.01",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             }
           ]
         },
@@ -2332,7 +2499,8 @@
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.02",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D8.02.002",
@@ -2347,7 +2515,8 @@
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.02",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D8.02.003",
@@ -2356,13 +2525,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "MICRO_THROMBOSIS",
               "timepoint": "阅片",
               "desc": "TMA 判定依据之一",
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.02",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             }
           ]
         },
@@ -2382,7 +2552,8 @@
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.03",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D8.03.002",
@@ -2397,7 +2568,8 @@
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.03",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D8.03.003",
@@ -2412,7 +2584,8 @@
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.03",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D8.03.004",
@@ -2427,7 +2600,8 @@
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.03",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D8.03.005",
@@ -2442,7 +2616,8 @@
               "role": "VALUE",
               "domain": "D8",
               "sub": "D8.03",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             }
           ]
         }
@@ -2464,11 +2639,13 @@
               "required": "YES",
               "codelist": null,
               "timepoint": "获取",
-              "desc": "主键；一移植事件一条心脏模块主记录",
-              "role": "PK",
+              "desc": "主键；一移植事件一条心脏模块主记录（派生键 HX-{TX}，不走取号器）",
+              "role": "DERIVED",
               "domain": "D9",
               "sub": "D9.01",
-              "pos": 1
+              "pos": 1,
+              "nature": "DERIVED",
+              "derivedSource": "HX-{TX}"
             },
             {
               "fieldCode": "D9.01.002",
@@ -2483,7 +2660,8 @@
               "role": "FK",
               "domain": "D9",
               "sub": "D9.01",
-              "pos": 2
+              "pos": 2,
+              "nature": "FK"
             },
             {
               "fieldCode": "D9.01.003",
@@ -2498,7 +2676,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.01",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.01.004",
@@ -2513,7 +2692,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.01",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.01.005",
@@ -2528,7 +2708,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.01",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.01.006",
@@ -2543,7 +2724,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.01",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.01.007",
@@ -2558,7 +2740,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.01",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.01.008",
@@ -2573,7 +2756,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.01",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.01.009",
@@ -2588,7 +2772,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.01",
-              "pos": 9
+              "pos": 9,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.01.010",
@@ -2603,7 +2788,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.01",
-              "pos": 10
+              "pos": 10,
+              "nature": "DATA"
             }
           ]
         },
@@ -2623,7 +2809,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.02",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.02.002",
@@ -2632,13 +2819,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "JACKET_ADAPT",
               "timepoint": "TP01",
               "desc": "每日≥3次观察；不适应者退出研究",
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.02",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.02.003",
@@ -2653,7 +2841,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.02",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.02.004",
@@ -2668,7 +2857,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.02",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             }
           ]
         },
@@ -2688,7 +2878,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.03",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.03.002",
@@ -2703,7 +2894,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.03",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.03.003",
@@ -2718,7 +2910,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.03",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.03.004",
@@ -2727,13 +2920,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "ANASTOMOSIS",
               "timepoint": "TP03",
               "desc": "供体带瓣管道植入受体主动脉，方案为端端吻合",
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.03",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.03.005",
@@ -2742,13 +2936,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "BYPASS",
               "timepoint": "TP03",
               "desc": "胸主动脉近远端游离，迅速建立旁路循环",
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.03",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.03.006",
@@ -2763,7 +2958,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.03",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             }
           ]
         },
@@ -2783,7 +2979,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.002",
@@ -2798,7 +2995,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.003",
@@ -2813,7 +3011,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.004",
@@ -2828,7 +3027,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.005",
@@ -2844,7 +3044,8 @@
               "domain": "D9",
               "sub": "D9.04",
               "pos": 5,
-              "conceptCode": "EF"
+              "conceptCode": "EF",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.006",
@@ -2859,7 +3060,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.007",
@@ -2874,7 +3076,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.008",
@@ -2883,13 +3086,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "PERICARDIAL_EFF",
               "timepoint": "每2周",
               "desc": "",
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.009",
@@ -2905,7 +3109,8 @@
               "domain": "D9",
               "sub": "D9.04",
               "pos": 9,
-              "conceptCode": "TNI"
+              "conceptCode": "TNI",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.010",
@@ -2920,7 +3125,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 10
+              "pos": 10,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.011",
@@ -2935,7 +3141,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 11
+              "pos": 11,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.04.012",
@@ -2950,7 +3157,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.04",
-              "pos": 12
+              "pos": 12,
+              "nature": "DATA"
             }
           ]
         },
@@ -2970,7 +3178,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.05",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.05.002",
@@ -2985,7 +3194,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.05",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.05.003",
@@ -3000,7 +3210,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.05",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.05.004",
@@ -3015,7 +3226,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.05",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.05.005",
@@ -3030,7 +3242,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.05",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.05.006",
@@ -3045,7 +3258,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.05",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.05.007",
@@ -3060,7 +3274,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.05",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.05.008",
@@ -3075,7 +3290,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.05",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.05.009",
@@ -3091,7 +3307,8 @@
               "domain": "D9",
               "sub": "D9.05",
               "pos": 9,
-              "conceptCode": "FREE_HB"
+              "conceptCode": "FREE_HB",
+              "nature": "DATA"
             }
           ]
         },
@@ -3111,7 +3328,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.06",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.06.002",
@@ -3120,13 +3338,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "CXR_PREEXT",
               "timepoint": "TP03末",
               "desc": "排除未引流积液/气胸后拔管，转氧气笼",
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.06",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.06.003",
@@ -3141,7 +3360,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.06",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.06.004",
@@ -3156,7 +3376,8 @@
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.06",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             }
           ]
         },
@@ -3170,13 +3391,14 @@
               "dataType": "ENUM",
               "unit": "0-3级",
               "required": "YES",
-              "codelist": null,
+              "codelist": "HE_SEMI",
               "timepoint": "TP05/TP11",
               "desc": "方案4.5：半定量评估",
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.07",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.07.002",
@@ -3185,13 +3407,14 @@
               "dataType": "ENUM",
               "unit": "0-3级",
               "required": "YES",
-              "codelist": null,
+              "codelist": "HE_SEMI",
               "timepoint": "TP05/TP11",
               "desc": "",
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.07",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.07.003",
@@ -3200,13 +3423,14 @@
               "dataType": "ENUM",
               "unit": "0-3级",
               "required": "YES",
-              "codelist": null,
+              "codelist": "HE_SEMI",
               "timepoint": "TP05/TP11",
               "desc": "",
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.07",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.07.004",
@@ -3215,13 +3439,14 @@
               "dataType": "ENUM",
               "unit": "0-3级",
               "required": "YES",
-              "codelist": null,
+              "codelist": "HE_SEMI",
               "timepoint": "TP05/TP11",
               "desc": "",
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.07",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D9.07.005",
@@ -3230,13 +3455,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "CONDITIONAL",
-              "codelist": null,
+              "codelist": "CD141_IHC",
               "timepoint": "TP05/TP11",
               "desc": "血栓调节蛋白，内皮损伤标志（方案4.5）",
               "role": "VALUE",
               "domain": "D9",
               "sub": "D9.07",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             }
           ]
         }
@@ -3262,7 +3488,9 @@
               "role": "PK",
               "domain": "D10",
               "sub": "D10.01",
-              "pos": 1
+              "pos": 1,
+              "nature": "PK",
+              "idRule": "PERF"
             },
             {
               "fieldCode": "D10.01.002",
@@ -3277,7 +3505,8 @@
               "role": "FK",
               "domain": "D10",
               "sub": "D10.01",
-              "pos": 2
+              "pos": 2,
+              "nature": "FK"
             },
             {
               "fieldCode": "D10.01.003",
@@ -3292,7 +3521,8 @@
               "role": "FK",
               "domain": "D10",
               "sub": "D10.01",
-              "pos": 3
+              "pos": 3,
+              "nature": "FK"
             },
             {
               "fieldCode": "D10.01.004",
@@ -3307,7 +3537,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.01",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.01.005",
@@ -3322,7 +3553,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.01",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.01.006",
@@ -3337,7 +3569,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.01",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.01.007",
@@ -3352,7 +3585,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.01",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.01.008",
@@ -3367,7 +3601,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.01",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             }
           ]
         },
@@ -3387,7 +3622,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.002",
@@ -3402,7 +3638,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.003",
@@ -3417,7 +3654,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.004",
@@ -3432,7 +3670,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.005",
@@ -3447,7 +3686,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.006",
@@ -3463,7 +3703,8 @@
               "domain": "D10",
               "sub": "D10.02",
               "pos": 6,
-              "conceptCode": "VR"
+              "conceptCode": "VR",
+              "nature": "DERIVED"
             },
             {
               "fieldCode": "D10.02.007",
@@ -3478,7 +3719,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.008",
@@ -3493,7 +3735,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.009",
@@ -3508,7 +3751,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 9
+              "pos": 9,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.010",
@@ -3523,7 +3767,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 10
+              "pos": 10,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.011",
@@ -3538,7 +3783,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 11
+              "pos": 11,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.012",
@@ -3553,7 +3799,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 12
+              "pos": 12,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.02.013",
@@ -3568,7 +3815,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.02",
-              "pos": 13
+              "pos": 13,
+              "nature": "DATA"
             }
           ]
         },
@@ -3588,7 +3836,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.002",
@@ -3604,7 +3853,8 @@
               "domain": "D10",
               "sub": "D10.03",
               "pos": 2,
-              "conceptCode": "ALT"
+              "conceptCode": "ALT",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.003",
@@ -3620,7 +3870,8 @@
               "domain": "D10",
               "sub": "D10.03",
               "pos": 3,
-              "conceptCode": "AST"
+              "conceptCode": "AST",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.004",
@@ -3635,7 +3886,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.005",
@@ -3650,7 +3902,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.006",
@@ -3665,7 +3918,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.007",
@@ -3680,7 +3934,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.008",
@@ -3695,7 +3950,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.009",
@@ -3711,7 +3967,8 @@
               "domain": "D10",
               "sub": "D10.03",
               "pos": 9,
-              "conceptCode": "INR"
+              "conceptCode": "INR",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.010",
@@ -3726,7 +3983,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 10
+              "pos": 10,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.011",
@@ -3742,7 +4000,8 @@
               "domain": "D10",
               "sub": "D10.03",
               "pos": 11,
-              "conceptCode": "FREE_HB"
+              "conceptCode": "FREE_HB",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.03.012",
@@ -3757,7 +4016,8 @@
               "role": "FK",
               "domain": "D10",
               "sub": "D10.03",
-              "pos": 12
+              "pos": 12,
+              "nature": "FK"
             }
           ]
         },
@@ -3777,7 +4037,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.04.002",
@@ -3792,7 +4053,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.04.003",
@@ -3807,7 +4069,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.04.004",
@@ -3822,7 +4085,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 4
+              "pos": 4,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.04.005",
@@ -3837,7 +4101,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 5
+              "pos": 5,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.04.006",
@@ -3852,7 +4117,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 6
+              "pos": 6,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.04.007",
@@ -3867,7 +4133,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 7
+              "pos": 7,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.04.008",
@@ -3882,7 +4149,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 8
+              "pos": 8,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.04.009",
@@ -3897,7 +4165,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 9
+              "pos": 9,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.04.010",
@@ -3912,7 +4181,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 10
+              "pos": 10,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.04.011",
@@ -3921,13 +4191,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "CONDITIONAL",
-              "codelist": null,
+              "codelist": "PLATELET_MORPH",
               "timepoint": "每3h",
               "desc": "EDTA紫管",
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.04",
-              "pos": 11
+              "pos": 11,
+              "nature": "DATA"
             }
           ]
         },
@@ -3941,13 +4212,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "CONDITIONAL",
-              "codelist": null,
+              "codelist": "PERF_CULTURE",
               "timepoint": "灌注结束",
               "desc": "",
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.05",
-              "pos": 1
+              "pos": 1,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.05.002",
@@ -3962,7 +4234,8 @@
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.05",
-              "pos": 2
+              "pos": 2,
+              "nature": "DATA"
             },
             {
               "fieldCode": "D10.05.003",
@@ -3971,13 +4244,14 @@
               "dataType": "ENUM",
               "unit": null,
               "required": "YES",
-              "codelist": null,
+              "codelist": "PERF_ENDPOINT",
               "timepoint": "灌注结束",
               "desc": "",
               "role": "VALUE",
               "domain": "D10",
               "sub": "D10.05",
-              "pos": 3
+              "pos": 3,
+              "nature": "DATA"
             }
           ]
         }

@@ -3,22 +3,27 @@
 <mapper namespace="com.example.demo.modules.aup.mapper.DictItemMapper">
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO dict_item (dict_id, value, label, sort_order)
-        VALUES (#{dictId}, #{value}, #{label}, #{sortOrder})
+        INSERT INTO dict_item (dict_id, value, label, sort_order, verdict, verdict_note)
+        VALUES (#{dictId}, #{value}, #{label}, #{sortOrder}, #{verdict}, #{verdictNote})
     </insert>
 
     <update id="update">
         UPDATE dict_item
         <set>
-            <if test="value != null">value = #{value},</if>
             <if test="label != null">label = #{label},</if>
             <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            <if test="verdict != null">verdict = #{verdict},</if>
+            <if test="verdictNote != null">verdict_note = #{verdictNote},</if>
         </set>
         WHERE id = #{id}
     </update>
 
     <select id="findById" resultType="com.example.demo.modules.aup.entity.DictItem">
         SELECT * FROM dict_item WHERE id = #{id}
+    </select>
+
+    <select id="findByDictIdAndCode" resultType="com.example.demo.modules.aup.entity.DictItem">
+        SELECT * FROM dict_item WHERE dict_id = #{dictId} AND value = #{code} LIMIT 1
     </select>
 
     <select id="listByDictId" resultType="com.example.demo.modules.aup.entity.DictItem">
@@ -48,6 +53,15 @@
 
     <update id="updateSortOrder">
         UPDATE dict_item SET sort_order = #{sortOrder} WHERE id = #{id}
+    </update>
+
+    <update id="updateVerdict">
+        UPDATE dict_item
+        <set>
+            <if test="verdict != null">verdict = #{verdict},</if>
+            <if test="verdictNote != null">verdict_note = #{verdictNote},</if>
+        </set>
+        WHERE id = #{id}
     </update>
 
 </mapper>

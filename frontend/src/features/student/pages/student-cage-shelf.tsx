@@ -72,7 +72,7 @@ export default function StudentCageShelfPage() {
 
   // ── 申请模式 ──
   const [claimMode, setClaimMode] = useState(false);
-  const [poolCells, setPoolCells] = useState<Map<number, PoolCell>>(new Map()); // animalCageId → PoolCell
+  const [poolCells, setPoolCells] = useState<Map<string, PoolCell>>(new Map()); // animalCageId → PoolCell
   const [claimSubmitting, setClaimSubmitting] = useState(false);
 
   // 进入申请模式时，加载当前房间所有架子的池数据
@@ -94,17 +94,17 @@ export default function StudentCageShelfPage() {
           }
         } catch { /* shelf may not be synced yet */ }
       }
-      const m = new Map<number, PoolCell>();
-      for (const c of all) m.set(c.animalCageId, c);
+      const m = new Map<string, PoolCell>();
+      for (const c of all) m.set(String(c.animalCageId), c);
       setPoolCells(m);
     })();
   }, [claimMode, aRid, fullTree, roomShelveMap]);
 
   const handleClaimCell = async (cell: CageShelfCell) => {
-    // 从 grid cell 提取 animalCageId（注意：后端 String.valueOf 导致 id 可能是字符串，须转数字）
+    // 雪花 ID 必须全程用字符串，禁止 Number()（会丢精度）
     const raw = (cell as any).id ?? (cell as any).animalCageId;
-    const animalCageId = raw != null ? Number(raw) : 0;
-    if (!animalCageId || isNaN(animalCageId)) {
+    const animalCageId = raw != null && String(raw).trim() !== "" ? String(raw) : "";
+    if (!animalCageId || !/^\d+$/.test(animalCageId)) {
       console.warn("[claim] cell 无有效 animalCageId", cell);
       return;
     }

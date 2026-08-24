@@ -50,13 +50,20 @@ public class CageInfoFieldController {
         return null;
     }
 
+    private Result<?> requireMinRole(User u, RoleEnum minRole) {
+        if (u == null) return Result.error("未登录");
+        if (u.getStatus() != null && u.getStatus() == 0) return Result.error("账号已禁用");
+        if (u.getRole().getLevel() < minRole.getLevel()) return Result.error("无权限");
+        return null;
+    }
+
     // ── 字段字典 ──
 
     @GetMapping("/fields")
     @Operation(summary = "字段字典列表（全部，含 published 标记）")
     public Result<List<CageInfoField>> fields(HttpServletRequest req) {
         User u = resolveUser(req);
-        Result<?> denied = requireAdmin(u);
+        Result<?> denied = requireMinRole(u, RoleEnum.STAFF);
         if (denied != null) return Result.fail(403, denied.getMessage());
         return Result.success(fieldService.listAll());
     }
@@ -70,14 +77,14 @@ public class CageInfoFieldController {
         if (denied != null) return Result.fail(403, denied.getMessage());
 
         try {
-            return Result.success(fieldService.create(body));
+            return Result.success(fieldService.create(body, u.getId()));
         } catch (Exception e) {
             return handleServiceException(e);
         }
     }
 
     @PutMapping("/fields/{id}")
-    @Operation(summary = "更新字段（label/dataType/dictKey/required/sort/showWhen）")
+    @Operation(summary = "更新字段（label/dataType/dictKey/folder/required/sort/showWhen）")
     public Result<CageInfoField> update(@PathVariable Long id,
                                         @RequestBody Map<String, Object> body,
                                         HttpServletRequest req) {
@@ -86,7 +93,7 @@ public class CageInfoFieldController {
         if (denied != null) return Result.fail(403, denied.getMessage());
 
         try {
-            return Result.success(fieldService.update(id, body));
+            return Result.success(fieldService.update(id, body, u.getId()));
         } catch (Exception e) {
             return handleServiceException(e);
         }
@@ -100,7 +107,7 @@ public class CageInfoFieldController {
         if (denied != null) return Result.fail(403, denied.getMessage());
 
         try {
-            fieldService.delete(id);
+            fieldService.delete(id, u.getId());
             return Result.success(null);
         } catch (Exception e) {
             return handleServiceException(e);
@@ -124,22 +131,84 @@ public class CageInfoFieldController {
             if (body != null && body.containsKey("fieldIds") && body.get("fieldIds") != null) {
                 fieldIds = parseFieldIds(body.get("fieldIds"));
             }
-            int affected = fieldService.publish(fieldIds);
+            int affected = fieldService.publish(fieldIds, u.getId());
             return Result.success(Map.of("affected", affected));
         } catch (Exception e) {
             return handleServiceException(e);
         }
     }
 
-    // ── 码表列表 ──
+    // ── 状态机 ──
 
-    @GetMapping("/codelists")
-    @Operation(summary = "可用码表列表（dict_key 选择器）")
-    public Result<List<Map<String, Object>>> codelists(HttpServletRequest req) {
+    @PostMapping("/fields/{id}/submit-review")
+    @Operation(summary = "提交校对（DRAFT → PENDING_REVIEW）")
+    public Result<?> submitReview(@PathVariable Long id, HttpServletRequest req) {
         User u = resolveUser(req);
         Result<?> denied = requireAdmin(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
-        return Result.success(fieldService.listCodelists());
+        try {
+            fieldService.submitReview(id, u.getId());
+            return Result.success(null);
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    @PostMapping("/fields/{id}/approve")
+    @Operation(summary = "通过并冻结（PENDING_REVIEW → FROZEN）")
+    public Result<?> approve(@PathVariable Long id, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            fieldService.approve(id, u.getId());
+            return Result.success(null);
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    @PostMapping("/fields/{id}/reject")
+    @Operation(summary = "驳回（PENDING_REVIEW → DRAFT）")
+    public Result<?> reject(@PathVariable Long id, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            fieldService.reject(id, u.getId());
+            return Result.success(null);
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    @PostMapping("/fields/{id}/unfreeze")
+    @Operation(summary = "解冻（FROZEN → DRAFT）")
+    public Result<?> unfreeze(@PathVariable Long id, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            fieldService.unfreeze(id, u.getId());
+            return Result.success(null);
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    @PostMapping("/fields/actions/batch-unfreeze")
+    @Operation(summary = "批量解冻")
+    public Result<?> batchUnfreeze(@RequestBody Map<String, Object> body, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            Object raw = body == null ? null : body.get("fieldIds");
+            List<Long> ids = parseFieldIds(raw);
+            return Result.success(Map.of("unfrozenCount", fieldService.batchUnfreeze(ids, u.getId())));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
     }
 
     // ── helpers ──

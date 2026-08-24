@@ -55,4 +55,10 @@ INSERT IGNORE INTO crf_event_rule (source_atom, trigger_on, trigger_cond, action
 ('AE', 'CREATED', NULL, 'GENERATE_TODO', '{"todo_type":"BIOPSY"}', 30, 1),
 ('AE', 'CREATED', NULL, 'CREATE_EVENT', '{"event_atom":"TP10"}', 31, 1),
 ('MED', 'CREATED', NULL, 'GENERATE_TODO', '{"todo_type":"TROUGH"}', 40, 1),
-('XM', 'STATUS_CHANGED', 'APPROVED', 'ADVANCE_STATE', '{"target_state":"MATCHING"}', 50, 1);
+('XM', 'STATUS_CHANGED', 'APPROVED', 'ADVANCE_STATE', '{"target_state":"POST_TX"}', 50, 1),
+('D2', 'STATUS_CHANGED', 'COMPLETE', 'ADVANCE_STATE', '{"target_state":"MATCHING"}', 51, 1),
+('TX', 'STATUS_CHANGED', 'COMPLETE', 'ADVANCE_STATE', '{"target_state":"POST_TX"}', 52, 1);
+
+-- 修正已有库：配型审核通过应推进到「移植后」，而非「配型中」
+UPDATE crf_event_rule SET action_spec = '{"target_state":"POST_TX"}'
+WHERE source_atom = 'XM' AND trigger_on = 'STATUS_CHANGED' AND trigger_cond = 'APPROVED' AND action = 'ADVANCE_STATE';

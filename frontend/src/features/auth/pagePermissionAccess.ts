@@ -3,10 +3,20 @@ import type { PublicPagePermissionNode } from "@/api/domains/pagePermission.api"
 
 type EntrySource = "sidebar" | "tabbar" | "mine" | "home" | "route" | "other";
 
+/**
+ * 兼容 location.pathname（/console/admin/...）与权限表 canonical（/admin/...）。
+ * 逻辑与 buildAdminNavModel.normalizeAdminPath 对齐；此处内联以避免循环依赖。
+ */
 function normalizePath(path: string) {
   if (!path) return "";
-  const withSlash = path.startsWith("/") ? path : `/${path}`;
-  return withSlash.replace(/\/+/g, "/");
+  let withSlash = path.startsWith("/") ? path : `/${path}`;
+  withSlash = withSlash.replace(/\/+/g, "/");
+  const consoleNs = "/console";
+  if (withSlash === `${consoleNs}/admin`) return "/admin";
+  if (withSlash.startsWith(`${consoleNs}/admin/`)) {
+    return withSlash.slice(consoleNs.length);
+  }
+  return withSlash;
 }
 
 function roleAllowed(currentRole: string | undefined, minRole: string | undefined) {
@@ -46,4 +56,3 @@ export function canShowWebEntry(
   if (matched.enabled !== 1) return false;
   return roleAllowed(currentRole, matched.minRole);
 }
-

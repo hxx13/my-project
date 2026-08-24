@@ -70,7 +70,7 @@
         id, current_stage AS currentStage, round_no AS roundNo, review_form AS reviewForm,
         draft_source AS draftSource, template_id AS templateId, template_version AS templateVersion,
         pi_user_id AS piUserId, created_by AS createdBy, project_name AS projectName, register_no AS registerNo,
-        is_demo AS isDemo
+        project_group_name AS projectGroupName, is_demo AS isDemo
     </sql>
 
     <select id="selectRecordBasic" resultType="com.example.demo.modules.aup.dto.AupRecordView">

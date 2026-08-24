@@ -58,12 +58,6 @@ function normalizeOptions(options) {
   });
 }
 
-/** 按 value 升序排序后序列化，作为去重签名。 */
-function signatureOf(items) {
-  const sorted = [...items].sort((a, b) => (a.value < b.value ? -1 : a.value > b.value ? 1 : 0));
-  return JSON.stringify(sorted);
-}
-
 // ---------------------------------------------------------------------------
 // 读取输入
 // ---------------------------------------------------------------------------
@@ -123,7 +117,6 @@ for (const def of EXTERNAL_DEFS) {
 // 规则 C：内联 options —— 规范化 + 按内容去重 + 派生 dictKey
 // ---------------------------------------------------------------------------
 
-const dedupeMap = new Map(); // signature -> { dictKey }
 let optionFieldCount = 0;
 
 function uniqueDictKey(base) {
@@ -153,30 +146,23 @@ function processField(field, sectionCode, parentPath) {
     delete field.config.refDataSource;
     field.dictKey = REF_TO_DICT_KEY[ds];
   } else if (Array.isArray(field.options) && field.options.length > 0) {
-    // 规则 C：内联 options -> 去重后的 LOCAL 码表。
+    // 规则 C：内联 options -> 每个字段一个 LOCAL 码表（不跨字段去重，码表名与字段一一对应）。
     optionFieldCount += 1;
     const items = normalizeOptions(field.options);
-    const sig = signatureOf(items);
+    const dictKey = uniqueDictKey(deriveDictKey(fullPath));
+    usedDictKeys.add(dictKey);
 
-    let entry = dedupeMap.get(sig);
-    if (!entry) {
-      const dictKey = uniqueDictKey(deriveDictKey(fullPath));
-      usedDictKeys.add(dictKey);
-      entry = { dictKey };
-      dedupeMap.set(sig, entry);
-
-      codelists.push({
-        dictKey,
-        name: field.label,
-        folder: sectionCode,
-        source: 'LOCAL',
-        sourceRef: null,
-        items,
-      });
-    }
+    codelists.push({
+      dictKey,
+      name: field.label,
+      folder: sectionCode,
+      source: 'LOCAL',
+      sourceRef: null,
+      items,
+    });
 
     delete field.options;
-    field.dictKey = entry.dictKey;
+    field.dictKey = dictKey;
   }
 
   // 递归进入嵌套子字段（repeatGroup/group 的 config.fields、table 的 config.columns）。
@@ -236,8 +222,7 @@ fs.writeFileSync(OUTPUT_PATH, json, 'utf8');
 
 const existingLocalCount = dictFile.dicts.length;
 const externalCount = EXTERNAL_DEFS.length;
-const newLocalCount = dedupeMap.size;
-const dedupMerged = optionFieldCount - newLocalCount;
+const newLocalCount = optionFieldCount;
 
 const LIST_TYPES = new Set(['choice', 'select', 'checkbox', 'cascade']);
 const EXTERNAL_KEYS = new Set(['projectGroup', 'animalBreed', 'animalStrain']);
@@ -284,7 +269,6 @@ console.log(`  已有 LOCAL    : ${existingLocalCount}`);
 console.log(`  EXTERNAL 头   : ${externalCount}`);
 console.log(`  新 LOCAL 码表 : ${newLocalCount}`);
 console.log(`  内联 options 字段数 : ${optionFieldCount}`);
-console.log(`  去重合并掉   : ${dedupMerged} 个重复组`);
 console.log(`dictKey 冲突   : ${dupKeys.length === 0 ? '无' : dupKeys.join(', ')}`);
 console.log(`缺 dictKey 字段: ${missingDictKey.length === 0 ? '无' : missingDictKey.join(', ')}`);
 console.log(`输出文件       : ${OUTPUT_PATH}`);

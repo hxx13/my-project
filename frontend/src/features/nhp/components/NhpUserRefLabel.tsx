@@ -1,5 +1,5 @@
 /**
- * 人员展示：姓名为主，用户 ID 为次要 monospace 徽标（与域码 Dn 徽标模式一致）。
+ * 人员展示：仅显示中文姓名；无法解析姓名时降级显示用户 ID。
  * 用于留痕、快照等处的操作人 / 创建人。
  */
 type Props = {
@@ -9,9 +9,11 @@ type Props = {
   prefix?: string;
   className?: string;
   inline?: boolean;
+  /** 管理调试：同时显示 ID 徽标（默认仅姓名） */
+  showId?: boolean;
 };
 
-export default function NhpUserRefLabel({ name, userId, prefix, className, inline }: Props) {
+export default function NhpUserRefLabel({ name, userId, prefix, className, inline, showId = false }: Props) {
   const id = (userId || "").trim();
   const rawName = (name || "").trim();
   const displayName = rawName && rawName !== id ? rawName : "";
@@ -20,7 +22,7 @@ export default function NhpUserRefLabel({ name, userId, prefix, className, inlin
   const body = (
     <>
       {displayName ? <b>{displayName}</b> : <b>{id}</b>}
-      {displayName && id ? (
+      {showId && displayName && id ? (
         <span
           className="aup-wb-chip muted nhp-user-id-chip"
           style={{ marginLeft: 6, fontFamily: "ui-monospace, monospace", fontSize: 10 }}
@@ -48,11 +50,11 @@ export default function NhpUserRefLabel({ name, userId, prefix, className, inlin
   );
 }
 
-/** 纯文本：「张三 · uid」或仅 id */
-export function formatUserRefText(name?: string | null, userId?: string | null): string {
+/** 纯文本：姓名；无法解析时仅 id */
+export function formatUserRefText(name?: string | null, userId?: string | null, showId = false): string {
   const id = (userId || "").trim();
   const rawName = (name || "").trim();
   const displayName = rawName && rawName !== id ? rawName : "";
-  if (displayName && id) return `${displayName} · ${id}`;
+  if (showId && displayName && id) return `${displayName} · ${id}`;
   return displayName || id || "";
 }

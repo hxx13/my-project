@@ -23,9 +23,10 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
 import "@/features/aup/aup.css";
+import "@/features/nhp/nhp.css";
 
 /* =====================================================================
- * AUP 发布管理：计划书模板 / 原子域 / 组合域 三 tab（kind=PROTOCOL/ATOM/COMPOSITE）。
+ * AUP 版本管理：计划书模板 / 原子域 / 组合域 三 tab（kind=PROTOCOL/ATOM/COMPOSITE）。
  * 每个 formKey 一组：版本轨 + 状态机（发布/提交审核/驳回/解冻/归档/新建原子域/新建组合域）。
  * ================================================================== */
 
@@ -180,10 +181,10 @@ export default function AupTemplateListPage() {
   const copyMut = useMutation({
     mutationFn: (id: number) => copyAupTemplate(id),
     onSuccess: () => {
-      toast.success("已复制为草稿副本");
+      toast.success("已新建版本（版号补位）");
       invalidate();
     },
-    onError: (e: Error) => toast.error(e.message || "复制失败"),
+    onError: (e: Error) => toast.error(e.message || "新建版本失败"),
   });
   const deleteMut = useMutation({
     mutationFn: (id: number) => deleteAupTemplate(id),
@@ -314,8 +315,13 @@ export default function AupTemplateListPage() {
           </>
         )}
         {canMaintain && (
-          <button className="btn ghost small" disabled={copyMut.isPending} onClick={() => copyMut.mutate(t.id)}>
-            复制
+          <button
+            className="btn primary small"
+            disabled={copyMut.isPending}
+            title="基于当前最新版克隆新版本（版号自动补位空缺）"
+            onClick={() => copyMut.mutate(t.id)}
+          >
+            新建版本
           </button>
         )}
         {canMaintain && (
@@ -336,14 +342,29 @@ export default function AupTemplateListPage() {
   return (
     <div className="aup-app aup-app--workbench">
       <div className="aup-wb">
-        <div className="aup-wb-hd">
-          <div>
-            <h1>AUP 发布管理</h1>
-            <div className="sub">
-              计划书模板 / 原子域 / 组合域三种配置，共用一个版本状态机（草稿 → 待审核 → 已发布；解冻/归档）。
-            </div>
+        <div className="nhp-template-top-panel">
+          <div className="nhp-template-tabs" role="tablist" aria-label="模板类型">
+            {TABS.map((t) => {
+              const on = tab === t.value;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  role="tab"
+                  className={`nhp-template-tab${on ? " on" : ""}`}
+                  onClick={() => {
+                    setTab(t.value);
+                    setSelectedKey(null);
+                    setPreviewId(null);
+                  }}
+                >
+                  {t.icon} {t.label}
+                </button>
+              );
+            })}
           </div>
-          <div className="aup-wb-actions">
+          <span className="aup-wb-count">共 {groups.length} 个</span>
+          <div className="nhp-template-toolbar-actions">
             {tab === "ATOM" && canMaintain && (
               <button className="btn primary small" onClick={() => setAtomModal({ name: "", formKey: "", code: "", description: "" })}>
                 ＋ 新建原子域
@@ -360,34 +381,6 @@ export default function AupTemplateListPage() {
               </button>
             )}
           </div>
-        </div>
-
-        <div className="aup-wb-toolbar">
-          <div style={{ display: "flex", gap: 8 }}>
-            {TABS.map((t) => {
-              const on = tab === t.value;
-              return (
-                <button
-                  key={t.value}
-                  type="button"
-                  className="btn small"
-                  onClick={() => {
-                    setTab(t.value);
-                    setSelectedKey(null);
-                    setPreviewId(null);
-                  }}
-                  style={{
-                    borderColor: on ? "var(--primary)" : undefined,
-                    background: on ? "var(--primary-weak)" : "#fff",
-                    fontWeight: on ? 700 : 500,
-                  }}
-                >
-                  {t.icon} {t.label}
-                </button>
-              );
-            })}
-          </div>
-          <span className="aup-wb-count">共 {groups.length} 个</span>
         </div>
 
         <div className="aup-wb-split aup-wb-split--wide-aside">

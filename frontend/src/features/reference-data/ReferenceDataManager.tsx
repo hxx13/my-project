@@ -92,7 +92,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const currentUserName = userInfo?.displayName?.trim() || userInfo?.username?.trim() || userInfo?.id?.trim() || "";
   const currentUserId = userInfo?.id?.trim() || "";
   const projectGroupName = userInfo?.projectGroupName?.trim() || "";
-  const { data: approvedAups = [] } = useApprovedAups(projectGroupName || undefined);
+  const { data: approvedAups = [] } = useApprovedAups();
   const { data: myRoles } = useAupMyRoles();
   const isPi = !!myRoles?.isPi;
   const isAdmin = mode === "admin" && hasMinRole(role, "SUPER_ADMIN");

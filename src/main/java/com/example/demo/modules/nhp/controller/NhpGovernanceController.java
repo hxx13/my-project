@@ -25,17 +25,35 @@ public class NhpGovernanceController {
     }
 
     @GetMapping("/data-audit-log")
-    @Operation(summary = "数据变更审计（全局）")
-    public Result<List<Map<String, Object>>> dataAuditLog(
-            @RequestParam(value = "limit", required = false, defaultValue = "200") int limit) {
-        return Result.success(service.listDataAuditLog(limit));
+    @Operation(summary = "数据变更审计（全局，可筛选分页）")
+    public Result<Map<String, Object>> dataAuditLog(
+            @RequestParam(value = "formId", required = false) Long formId,
+            @RequestParam(value = "formKey", required = false) String formKey,
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "changeType", required = false) String changeType,
+            @RequestParam(value = "operatorId", required = false) String operatorId,
+            @RequestParam(value = "subjectType", required = false) String subjectType,
+            @RequestParam(value = "dateFrom", required = false) String dateFrom,
+            @RequestParam(value = "dateTo", required = false) String dateTo,
+            @RequestParam(value = "page", required = false, defaultValue = "1") int page,
+            @RequestParam(value = "pageSize", required = false, defaultValue = "50") int pageSize) {
+        return Result.success(service.pageDataAuditLog(
+                formId, formKey, keyword, changeType, operatorId, subjectType, dateFrom, dateTo, page, pageSize));
     }
 
     @GetMapping("/dict-change-log")
-    @Operation(summary = "字典变更审计（全局）")
-    public Result<List<Map<String, Object>>> dictChangeLog(
-            @RequestParam(value = "limit", required = false, defaultValue = "200") int limit) {
-        return Result.success(service.listDictChangeLog(limit));
+    @Operation(summary = "字典变更审计（全局，可筛选分页）")
+    public Result<Map<String, Object>> dictChangeLog(
+            @RequestParam(value = "entityType", required = false) String entityType,
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "changeType", required = false) String changeType,
+            @RequestParam(value = "operatorId", required = false) String operatorId,
+            @RequestParam(value = "dateFrom", required = false) String dateFrom,
+            @RequestParam(value = "dateTo", required = false) String dateTo,
+            @RequestParam(value = "page", required = false, defaultValue = "1") int page,
+            @RequestParam(value = "pageSize", required = false, defaultValue = "50") int pageSize) {
+        return Result.success(service.pageDictChangeLog(
+                entityType, keyword, changeType, operatorId, dateFrom, dateTo, page, pageSize));
     }
 
     @GetMapping("/snapshots")

@@ -9,6 +9,8 @@ public class CageInfoCodelist {
     private String code;
     private String name;
     private String folder;
+    private Integer version;      // 版本号
+    private String status;        // DRAFT/ACTIVE/PENDING_REVIEW/FROZEN/ARCHIVED
     private String createdAt;
     private String updatedAt;
     /** 列表接口填充：选项条数 */
@@ -27,6 +29,12 @@ public class CageInfoCodelist {
 
     public String getFolder() { return folder; }
     public void setFolder(String folder) { this.folder = folder; }
+
+    public Integer getVersion() { return version; }
+    public void setVersion(Integer version) { this.version = version; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }

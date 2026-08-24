@@ -7,4 +7,5 @@ import lombok.Data;
 public class DictRenameRequest {
     private String name;
     private String category;
+    private Long folderId;
 }

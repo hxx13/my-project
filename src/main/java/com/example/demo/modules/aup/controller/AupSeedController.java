@@ -60,4 +60,10 @@ public class AupSeedController {
         stat.put("composite", seedService.seedComposite());
         return Result.success(stat);
     }
+
+    @PostMapping("/reset")
+    @Operation(summary = "清空全部内置种子数据（码表/字段/原子域/组合域/文件夹），删除后需重新导入")
+    public Result<Integer> reset() {
+        return Result.success(seedService.resetSeed());
+    }
 }

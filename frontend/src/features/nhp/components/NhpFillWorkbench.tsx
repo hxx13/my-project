@@ -43,6 +43,8 @@ import {
   submitNhpDoubleEntry,
   compareNhpDoubleEntry,
   fetchNhpSecondValues,
+  finalizeNhpSubject,
+  ensureSubjectForRecord,
   type NhpSubject,
   type NhpRecord,
   type NhpAuditEntry,
@@ -66,6 +68,7 @@ import {
 } from "../utils/nhpAutoGenPreview";
 import {
   buildPkIdContext,
+  resolveDerivedIdType,
   resolvePkIdType,
   subjectPkCode,
 } from "../utils/nhpPkIdContext";
@@ -76,6 +79,23 @@ function flattenFields(template: FormTemplate | null): FormField[] {
   for (const sec of template.sections ?? []) {
     for (const sub of sec.subsections ?? []) out.push(...sub.fields);
     out.push(...(sec.fields ?? []));
+  }
+  return out;
+}
+
+/** 从已填值中提取登记身份字段（FARM 基地码 / CENTER 中心码 / BREED 品种品系）。 */
+function extractSubjectIdentityFromRecord(
+  allFields: FormField[],
+  values: Record<string, unknown>,
+): { farmCode?: string; centerCode?: string; breed?: string } {
+  const out: { farmCode?: string; centerCode?: string; breed?: string } = {};
+  for (const f of allFields) {
+    const dk = (f.dictKey ?? "").trim().toUpperCase();
+    const v = values[f.fieldKey];
+    if (v == null || String(v).trim() === "") continue;
+    if (dk === "FARM") out.farmCode = String(v).trim();
+    else if (dk === "CENTER") out.centerCode = String(v).trim();
+    else if (dk === "BREED") out.breed = String(v).trim();
   }
   return out;
 }
@@ -134,6 +154,7 @@ export default function NhpFillWorkbench({
   const [compareSummary, setCompareSummary] = useState<string | null>(null);
   /** 点击「提交」后仍有未完整章节时，侧栏显示红 ✗（对齐 AUP 校验失败指示） */
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [openQueryCount, setOpenQueryCount] = useState(0);
   const scrollLockRef = useRef(false);
   const scrollLockTimerRef = useRef<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -341,6 +362,17 @@ export default function NhpFillWorkbench({
       for (const f of derivedFields) {
         const key = f.fieldKey;
         if (hasFieldValue(values[key])) continue;
+        const derivedIdType = resolveDerivedIdType(f);
+        if (derivedIdType) {
+          try {
+            const ctx = buildPkIdContext(derivedIdType, subject, values, allFields);
+            const res = await previewNhpId({ idType: derivedIdType, ...ctx });
+            if (res.code) previews[key] = res.code;
+          } catch {
+            // 占位符未齐时跳过
+          }
+          continue;
+        }
         const computed = computeDerivedPreview(f, values, allFields);
         if (computed) previews[key] = computed;
       }
@@ -386,7 +418,7 @@ export default function NhpFillWorkbench({
   const pageTitle = `${formKey ? formKey + " · " : ""}${formTitle}`;
   const metaLine = [
     subject ? `${animalTypeLabel(subject.subjectType)} ${subject.subjectCode}` : null,
-    record ? `实例 #${record.id}` : null,
+    record ? (template?.title ?? "表单实例") : null,
     record ? `状态 ${statusLabel(record.status)}` : null,
   ]
     .filter(Boolean)
@@ -486,11 +518,48 @@ export default function NhpFillWorkbench({
     for (const f of derivedFields) {
       const key = f.fieldKey;
       if (hasFieldValue(next[key])) continue;
+      const derivedIdType = resolveDerivedIdType(f);
+      if (derivedIdType) {
+        try {
+          const ctx = buildPkIdContext(derivedIdType, subject, next, allFields);
+          const res = await nextNhpId({ idType: derivedIdType, ...ctx });
+          next[key] = res.code;
+        } catch {
+          // 占位符未齐时跳过
+        }
+        continue;
+      }
       const computed = computeDerivedPreview(f, next, allFields);
       if (computed) derivedPreviews[key] = computed;
     }
     next = applyDerivedPreviews(next, derivedFields, derivedPreviews);
     return next;
+  };
+
+  /** 保存后：确保对象已创建（项目化登记时对象在保存时才建），并回填表单生成的编号/身份字段 */
+  const finalizeRegistrationIfNeeded = async (savedValues: Record<string, unknown>) => {
+    if (!record) return;
+    const allFields = flattenFields(template);
+    const pkField = allFields.find((f) => f.role === "PK");
+    if (!pkField) return;
+    const subjectCode = String(savedValues[pkField.fieldKey] ?? "").trim();
+    if (!subjectCode || subjectCode.startsWith("PEND-")) return;
+    try {
+      // 对象在保存时才创建（登记项目只建项目，不建对象）
+      let target = subject;
+      if (!target || (target.subjectCode ?? "").startsWith("PEND-")) {
+        target = await ensureSubjectForRecord(record.id);
+        setSubject(target);
+      } else {
+        return; // 已回填过
+      }
+      const identity = extractSubjectIdentityFromRecord(allFields, savedValues);
+      const updated = await finalizeNhpSubject(target.id, { subjectCode, ...identity });
+      setSubject(updated);
+      toast.success(`已生成编号 ${subjectCode}`);
+    } catch (e) {
+      toast.error((e as Error).message || "回填研究对象失败");
+    }
   };
 
   const save = () =>
@@ -517,6 +586,7 @@ export default function NhpFillWorkbench({
           }
           return rest;
         });
+        await finalizeRegistrationIfNeeded(withAutoGen);
       }
       await refreshAudit(record.id);
     }, entryPass === 2 ? "已保存二录" : `已保存 ${Object.keys(values).filter((k) => hasFieldValue(values[k])).length} 个字段`);
@@ -693,7 +763,7 @@ export default function NhpFillWorkbench({
       <div className="aup-empty" style={{ maxWidth: 480, margin: "0 auto", paddingTop: 80 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 10 }}>暂无可用模板</h2>
         <p style={{ color: "var(--muted)", lineHeight: 1.7, marginBottom: 20 }}>
-          尚无已发布的组合模板，暂时无法开填。请联系管理员完成模板发布后再试。
+          尚无已发布的组合模板，暂时无法开填。请联系管理员完成表单发布后再试。
         </p>
         <Link to="/" className="btn ghost" style={{ textDecoration: "none" }}>
           ← 返回门户
@@ -706,7 +776,7 @@ export default function NhpFillWorkbench({
   if (!routeId) {
     return (
       <div className="aup-empty" style={{ paddingTop: 48 }}>
-        请从数据采集入口选择或登记研究对象。
+        请从填报入口选择或登记研究对象。
       </div>
     );
   }
@@ -755,8 +825,7 @@ export default function NhpFillWorkbench({
             {statusLabel(record?.status)}
           </strong>
           <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
-            实例 #{routeId}
-            {template?.title ? ` · ${template.title}` : ""}
+            {template?.title ? template.title : "表单实例"}
           </div>
         </div>
         <div className="aup-landing-cta">
@@ -772,7 +841,7 @@ export default function NhpFillWorkbench({
           </Link>
           {mode === "adminPreview" && (
             <Link to="/content-manager/nhp-records" className="nhp-admin-preview-link" style={{ alignSelf: "center" }}>
-              实例管理
+              表单实例
             </Link>
           )}
         </div>
@@ -903,6 +972,8 @@ export default function NhpFillWorkbench({
                         value={activeValues[f.fieldKey]}
                         values={activeValues}
                         readOnly={!canEdit}
+                        recordId={record?.id}
+                        operatorId={operatorId}
                         autoGenPreview={entryPass === 1 ? autoGenPreviews[f.fieldKey] : undefined}
                         onChange={(v) =>
                           entryPass === 2
@@ -926,6 +997,8 @@ export default function NhpFillWorkbench({
                     value={activeValues[f.fieldKey]}
                     values={activeValues}
                     readOnly={!canEdit}
+                    recordId={record?.id}
+                    operatorId={operatorId}
                     autoGenPreview={entryPass === 1 ? autoGenPreviews[f.fieldKey] : undefined}
                     onChange={(v) =>
                       entryPass === 2
@@ -946,9 +1019,15 @@ export default function NhpFillWorkbench({
           <NhpTracePanel
             audits={audits}
             snapshotCount={snapshotCount}
+            openQueryCount={openQueryCount}
             onOpenSnapshots={record ? () => setSnapOpen(true) : undefined}
           >
-            <NhpQueryPanel recordId={record?.id} operatorId={operatorId} readOnly={!canEdit} />
+            <NhpQueryPanel
+              recordId={record?.id}
+              operatorId={operatorId}
+              readOnly={!canEdit}
+              onOpenCountChange={setOpenQueryCount}
+            />
           </NhpTracePanel>
         </div>
       )}
@@ -986,6 +1065,8 @@ function FieldInput({
   onFieldChange,
   readOnly,
   autoGenPreview,
+  recordId,
+  operatorId,
 }: {
   field: FormField;
   options: FormField["options"];
@@ -995,15 +1076,14 @@ function FieldInput({
   onFieldChange?: (fieldKey: string, v: unknown) => void;
   readOnly?: boolean;
   autoGenPreview?: string;
+  recordId?: number | null;
+  operatorId?: string;
 }) {
   return (
     <div className="field" style={{ marginBottom: 14 }}>
       <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
         {field.label}
         {field.required ? <span style={{ color: "var(--danger)" }}> *</span> : null}
-        {field.config?.unit ? (
-          <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 500 }}>（{field.config.unit}）</span>
-        ) : null}
       </label>
       <NhpFormField
         field={{ ...field, options }}
@@ -1013,6 +1093,8 @@ function FieldInput({
         onFieldChange={onFieldChange}
         readOnly={readOnly}
         autoGenPreview={autoGenPreview}
+        recordId={recordId}
+        operatorId={operatorId}
       />
       {field.description ? <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{field.description}</div> : null}
       {field.dictKey ? <div style={{ fontSize: 11, color: "var(--muted)" }}>码表 {field.dictKey}</div> : null}

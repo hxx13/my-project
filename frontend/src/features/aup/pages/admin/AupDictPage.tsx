@@ -15,9 +15,11 @@ import {
   fetchAupDicts,
   fetchAupDictUsage,
   fetchAupDictVersions,
+  importAupSeed,
   listAupFolders,
   rejectAupDict,
   reorderAupDictItems,
+  resetAupSeed,
   submitAupDictItemVerdict,
   submitAupDictReview,
   unfreezeAupDict,
@@ -423,6 +425,23 @@ export default function AupDictPage() {
     },
     onError: (e: Error) => toast.error(e.message || "审核标记失败"),
   });
+  const seedMut = useMutation({
+    mutationFn: () => importAupSeed(),
+    onSuccess: (r) => {
+      const c = r?.codelists ?? 0, f = r?.fields ?? 0, a = r?.atoms ?? 0, p = r?.composite ?? 0;
+      toast.success(`已导入内置种子：码表 ${c}、字段 ${f}、原子域 ${a}、组合域 ${p}`);
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "导入失败"),
+  });
+  const resetMut = useMutation({
+    mutationFn: () => resetAupSeed(),
+    onSuccess: (n) => {
+      toast.success(`已重置内置种子（删除 ${n} 行），请点「导入内置种子」重新导入`);
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "重置失败"),
+  });
   const openCreateInFolder = (folderKey: string) => {
     setCreateModal({ folderKey, name: "", dictKey: "", advanced: false });
   };
@@ -825,7 +844,7 @@ export default function AupDictPage() {
             {!usageQuery.isLoading &&
               refs.map((r, idx) => (
                 <div key={idx} style={{ padding: 8, marginBottom: 8, borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <span className="mono" style={{ fontSize: 12 }}>{r.fieldKey}</span>
                     <span style={{ fontSize: 13 }}>{r.fieldLabel || "—"}</span>
                     <span className="aup-wb-chip muted">{r.refType === "FIELD_DEF" ? "字段域" : "模板字段"}</span>
@@ -838,6 +857,17 @@ export default function AupDictPage() {
                     {r.dictVersion != null && (
                       <span style={{ fontSize: 12, color: "var(--muted)" }}>钉版本 v{r.dictVersion}</span>
                     )}
+                    <span style={{ flex: 1 }} />
+                    <button
+                      className="btn ghost small"
+                      disabled={!r.fieldDefId && !r.templateId}
+                      onClick={() => {
+                        if (r.refType === "FIELD_DEF") navigate(`/content-manager/aup-field?fieldId=${r.fieldDefId}`);
+                        else navigate(`/content-manager/aup-template/edit/${r.templateId}`);
+                      }}
+                    >
+                      跳转
+                    </button>
                   </div>
                 </div>
               ))}
@@ -858,6 +888,28 @@ export default function AupDictPage() {
             </div>
           </div>
           <div className="aup-wb-actions">
+            {canMaintain && (
+              <>
+                <button
+                  className="btn ghost small"
+                  disabled={seedMut.isPending}
+                  onClick={async () => {
+                    if (await appConfirm("导入内置种子？将幂等灌入码表 + 字段 + 原子域 + 组合域（已存在的不覆盖）。")) seedMut.mutate();
+                  }}
+                >
+                  导入内置种子
+                </button>
+                <button
+                  className="btn ghost small"
+                  disabled={resetMut.isPending}
+                  onClick={async () => {
+                    if (await appConfirm("重置内置种子？将删除全部内置种子数据（码表/字段/原子域/组合域），删除后需重新导入。确认？")) resetMut.mutate();
+                  }}
+                >
+                  重置种子
+                </button>
+              </>
+            )}
             <button className="btn primary small" onClick={() => openCreateInFolder(UNGROUPED)}>
               ＋ 新建码表
             </button>

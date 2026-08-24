@@ -2,6 +2,7 @@ package com.example.demo.modules.aup.service;
 
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.aro.service.AroService;
+import com.example.demo.modules.aup.mapper.AupRecordMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,11 +42,16 @@ public class AupAroSyncService {
     private final AroService aroService;
     private final JdbcTemplate jdbc;
     private final ObjectMapper om;
+    private final AupAnimalAllowlistCompat allowlistCompat;
+    private final AupRecordMapper aupRecordMapper;
 
-    public AupAroSyncService(AroService aroService, JdbcTemplate jdbc, ObjectMapper om) {
+    public AupAroSyncService(AroService aroService, JdbcTemplate jdbc, ObjectMapper om,
+                             AupAnimalAllowlistCompat allowlistCompat, AupRecordMapper aupRecordMapper) {
         this.aroService = aroService;
         this.jdbc = jdbc;
         this.om = om;
+        this.allowlistCompat = allowlistCompat;
+        this.aupRecordMapper = aupRecordMapper;
     }
 
     // ======================================================================
@@ -205,6 +211,12 @@ public class AupAroSyncService {
         if (updated == 0) {
             jdbc.update("INSERT INTO aup_data (aup_id, data, version, updated_by, created_at, updated_at) VALUES (?,?,0,?,NOW(),NOW())",
                     aupId, json, SYNC_ACTOR);
+        }
+
+        // 已批准计划：按 ARO 粗粒度名称构建兼容白名单，供订购侧校验
+        if ("approved".equals(sm.stage)) {
+            String allowlist = allowlistCompat.buildFromAroFormJson(json);
+            aupRecordMapper.updateRegistryMeta(aupId, allowlist, "active");
         }
 
         // 1 条最终版快照：删除旧的同步快照后重插 version_no=1，保证反映最新 ARO 形态

@@ -31,6 +31,9 @@ import java.util.stream.Collectors;
 @Service
 public class PersonIdentityService {
 
+    /** 饲养组长身份标识稳定码（种子标签 BREEDING_GROUP_LEADER / 饲养组长，与 PI 区分）。 */
+    private static final String BREEDING_GROUP_LEADER_CODE = "BREEDING_GROUP_LEADER";
+
     @Value("${aup.identity.pi-code:PI}")
     private String piCode;
 
@@ -90,6 +93,23 @@ public class PersonIdentityService {
         }
         for (IdentityTagVO tag : getByUser(pid)) {
             if (tag != null && Objects.equals(tag.getCode(), piCode)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 是否饲养组长：与 PI 区分，code 固定 {@link #BREEDING_GROUP_LEADER_CODE}（与 PersonIdentityTagSeedBootstrap 种子一致）。 */
+    public boolean isBreedingGroupLeader(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return false;
+        }
+        String pid = resolveIdByAccount(userId);
+        if (pid == null) {
+            return false;
+        }
+        for (IdentityTagVO tag : getByUser(pid)) {
+            if (tag != null && Objects.equals(tag.getCode(), BREEDING_GROUP_LEADER_CODE)) {
                 return true;
             }
         }

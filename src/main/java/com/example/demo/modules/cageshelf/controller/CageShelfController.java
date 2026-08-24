@@ -11,6 +11,7 @@ import com.example.demo.modules.cageshelf.mapper.UserCageColorConfigMapper;
 import com.example.demo.modules.cageshelf.service.CageAlertService;
 import com.example.demo.modules.cageshelf.service.CageScanProgressService;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
+import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.student.service.StudentCageShelfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -47,6 +48,7 @@ public class CageShelfController {
     private final com.example.demo.modules.aro.service.AroService aroService;
     private final com.example.demo.modules.aro.AroPersonalTokenClient aroPersonalTokenClient;
     private final com.example.demo.modules.cageshelf.service.CageShelfRealtimeCooldown cooldown;
+    private final CageQuotaService quotaService;
 
     public CageShelfController(AuthContextService authContextService,
                                CageShelfService cageShelfService,
@@ -58,7 +60,8 @@ public class CageShelfController {
                                CageSpecialStatusSnapshotMapper snapshotMapper,
                                com.example.demo.modules.aro.service.AroService aroService,
                                com.example.demo.modules.aro.AroPersonalTokenClient aroPersonalTokenClient,
-                               com.example.demo.modules.cageshelf.service.CageShelfRealtimeCooldown cooldown) {
+                               com.example.demo.modules.cageshelf.service.CageShelfRealtimeCooldown cooldown,
+                               CageQuotaService quotaService) {
         this.authContextService = authContextService;
         this.cageShelfService = cageShelfService;
         this.studentCageShelfService = studentCageShelfService;
@@ -70,6 +73,7 @@ public class CageShelfController {
         this.aroService = aroService;
         this.aroPersonalTokenClient = aroPersonalTokenClient;
         this.cooldown = cooldown;
+        this.quotaService = quotaService;
     }
 
     @PostMapping("/import")
@@ -466,6 +470,7 @@ public class CageShelfController {
         Long roomId = toLong(body.get("roomId"));
         Long shelveId = toLong(body.get("shelveId"));
         Long aupId = toLong(body.get("aupId"));
+        String registerNumber = body.get("registerNumber") != null ? String.valueOf(body.get("registerNumber")).trim() : null;
         List<Long> cageIds = new ArrayList<>();
         Object idsObj = body.get("cageIds");
         if (idsObj instanceof List<?> list) {
@@ -474,6 +479,8 @@ public class CageShelfController {
         if (roomId == null || aupId == null || cageIds.isEmpty()) {
             return Result.error("roomId/aupId/cageIds 不能为空");
         }
+        // 配额校验：实际占用 + 本次 ≤ 该 AUP 可用数（键用 register_number）
+        quotaService.assertCanAllocate(roomId, registerNumber, cageIds.size());
         boolean ok = aroPersonalTokenClient.execute(token ->
             aroService.bookCagesWithToken(roomId, shelveId, cageIds, aupId, token));
         if (ok) {

@@ -18,6 +18,22 @@
         ORDER BY id ASC
     </select>
 
+    <insert id="upsertRoomCapacity">
+        INSERT INTO cage_booking_room (room_id, animal_cage_number, synced_at)
+        VALUES (#{roomId}, #{capacity}, NOW())
+        ON DUPLICATE KEY UPDATE
+            animal_cage_number = VALUES(animal_cage_number),
+            synced_at = NOW()
+    </insert>
+
+    <delete id="truncateRooms">
+        DELETE FROM cage_booking_room
+    </delete>
+
+    <delete id="truncateRoomAups">
+        DELETE FROM cage_booking_room_aup
+    </delete>
+
     <insert id="upsertRooms">
         INSERT INTO cage_booking_room
             (room_id, name, description, shelve_number, animal_cage_number,

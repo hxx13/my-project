@@ -9,8 +9,12 @@ public class CageInfoField {
     private Long id;
     private String canonical;      // 本地规范字段名（唯一键）
     private String label;          // 中文显示名
-    private String dataType;       // number / text / boolean
+    private String dataType;       // STRING/TEXT/INTEGER/DECIMAL/DATE/DATETIME/BOOLEAN/ENUM/ENUM_MULTI/CALC/FILE
+    private String fieldType;      // 题型（对齐 NHP typeRegistry：text/select/number/date/checkbox 等）
     private String dictKey;        // 码表键（如 gender/rent_type），无则 null
+    private String folder;         // 文件夹分类路径，无则 null（未分类）
+    private String domainCode;     // 域编码 Dn
+    private String submoduleCode;  // 子模块编码 Dn.mm
     private String role;           // 字段角色，默认 VALUE
     private String required;       // YES / NO，默认 NO
     private String showWhen;       // 条件显示规则 JSON
@@ -18,6 +22,7 @@ public class CageInfoField {
     private String config;         // 字段配置 JSON
     private Integer sort;          // 排序值
     private Boolean published;     // 是否发布（1=已发布，0=未发布）
+    private String status;         // DRAFT/PENDING_REVIEW/FROZEN/RETIRED
     private String createdAt;      // DATETIME
     private String updatedAt;      // DATETIME
 
@@ -35,8 +40,20 @@ public class CageInfoField {
     public String getDataType() { return dataType; }
     public void setDataType(String v) { this.dataType = v; }
 
+    public String getFieldType() { return fieldType; }
+    public void setFieldType(String v) { this.fieldType = v; }
+
     public String getDictKey() { return dictKey; }
     public void setDictKey(String v) { this.dictKey = v; }
+
+    public String getFolder() { return folder; }
+    public void setFolder(String v) { this.folder = v; }
+
+    public String getDomainCode() { return domainCode; }
+    public void setDomainCode(String v) { this.domainCode = v; }
+
+    public String getSubmoduleCode() { return submoduleCode; }
+    public void setSubmoduleCode(String v) { this.submoduleCode = v; }
 
     public String getRole() { return role; }
     public void setRole(String v) { this.role = v; }
@@ -58,6 +75,9 @@ public class CageInfoField {
 
     public Boolean getPublished() { return published; }
     public void setPublished(Boolean v) { this.published = v; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String v) { this.status = v; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String v) { this.createdAt = v; }

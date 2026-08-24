@@ -1,5 +1,5 @@
 /**
- * NHP CRF 流程前门：配置模板 → 数据采集入口登记/选对象开填；动物管理与实例管理为运维。
+ * NHP CRF 流程前门：配置模板 → 填报入口登记/选对象开填；研究对象与表单实例为运维。
  * 入口：/#/content-manager/nhp-hub
  */
 import { useEffect, useState } from "react";
@@ -85,9 +85,9 @@ export default function NhpWorkflowHubPage() {
           hint: "尚无已发布模板。可发布单个原子为独立表单，或组合后发布；列表头若是草稿但有「已发布」徽标仍可开填。",
         }
       : counts.subjects === 0
-        ? { label: "登记研究对象", to: "/nhp/fill", hint: "在数据采集入口登记供体 / 受体（自定义编号），再选模板开填。动物管理页仅作维护。" }
+        ? { label: "登记研究对象", to: "/nhp/fill", hint: "在填报入口登记供体 / 受体（自定义编号），再选模板开填。研究对象页仅作维护。" }
         : counts.records === 0
-          ? { label: "门户选对象开填", to: "/nhp/fill", hint: "数据采集入口：登记或选择对象 → 新建/续填实例 → 缓冲确认后填写。" }
+          ? { label: "门户选对象开填", to: "/nhp/fill", hint: "填报入口：登记或选择对象 → 新建/续填实例 → 缓冲确认后填写。" }
           : latestDraftId
             ? {
                 label: "继续门户填写",
@@ -120,13 +120,13 @@ export default function NhpWorkflowHubPage() {
     {
       n: 2,
       title: "登记 / 选择研究对象",
-      produce: "产出：研究用动物（供体 / 受体）+ 自定义编号；登记在数据采集入口完成",
+      produce: "产出：研究用动物（供体 / 受体）+ 自定义编号；登记在填报入口完成",
       status: counts == null ? "…" : counts.subjects > 0 ? `${counts.subjects} 只动物` : "尚无动物",
       done: (counts?.subjects ?? 0) > 0,
       to: "/nhp/fill",
-      cta: "数据采集入口",
+      cta: "填报入口",
       secondaryTo: "/content-manager/nhp-subjects",
-      secondaryCta: "动物管理（维护）",
+      secondaryCta: "研究对象（维护）",
     },
     {
       n: 3,
@@ -137,7 +137,7 @@ export default function NhpWorkflowHubPage() {
       to: "/nhp/fill",
       cta: "打开门户填写",
       secondaryTo: "/content-manager/nhp-records",
-      secondaryCta: "实例管理",
+      secondaryCta: "表单实例",
     },
     {
       n: 4,
@@ -167,8 +167,8 @@ export default function NhpWorkflowHubPage() {
           </button>
           <h1>NHP 采集流程</h1>
           <div className="sub">
-            配置：字段字典 → 原子/组合模板 → 发布。运行：数据采集入口登记或选择对象 → 开填。
-            动物管理页仅维护列表，不承担登记。
+            配置：字段字典 → 原子/组合模板 → 发布。运行：填报入口登记或选择对象 → 开填。
+            研究对象页仅维护列表，不承担登记。
           </div>
         </div>
         <div className="aup-wb-actions">
@@ -179,7 +179,7 @@ export default function NhpWorkflowHubPage() {
             门户填写
           </Link>
           <Link to="/content-manager/nhp-records" className="btn ghost small" style={{ textDecoration: "none" }} state={nhpNavState(location)}>
-            实例管理
+            表单实例
           </Link>
           <button type="button" className="btn ghost small" disabled={seeding} onClick={() => void onSeed()}>
             {seeding ? "种子中…" : "执行种子"}
@@ -251,7 +251,7 @@ export default function NhpWorkflowHubPage() {
             <b>实验者</b>：门户 <code>/#/nhp/fill</code> → 登记或选择对象 → 选/建实例 → 缓冲确认 → 填写
           </li>
           <li>
-            <b>管理员</b>：侧栏「数据采集」可代登记/开填；「动物管理」维护列表；「实例管理」审阅/删除
+            <b>管理员</b>：侧栏「数据采集」可代登记/开填；「研究对象」维护列表；「表单实例」审阅/删除
           </li>
         </ul>
       </div>

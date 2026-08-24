@@ -8,11 +8,15 @@ import java.time.LocalDateTime;
 public class TemplateVersionVO {
     private Long id;
     private String formKey;
+    private String kind;
+    private Long folderId;
     private String name;
     private String description;
     private Integer version;
     private String status;
     private LocalDateTime publishedAt;
+    private LocalDateTime submittedAt;
+    private String reviewComment;
     private LocalDateTime updatedAt;
     private String updatedBy;
 }

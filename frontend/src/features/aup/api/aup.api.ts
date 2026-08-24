@@ -198,6 +198,15 @@ export function deleteAup(id: string): Promise<void> {
   return authHttp.delete<Result<void>>(`/aup/${id}`).then(() => undefined);
 }
 
+/** POST /aup/batch-delete —— 批量删除计划书；selectAll=true 时按筛选条件全删（含未加载分页） */
+export function batchDeleteAup(
+  body: { selectAll?: boolean; ids?: number[] } & Partial<AupListParams>,
+): Promise<{ deletedCount: number; failed: { id: number; reason: string }[] }> {
+  return authHttp
+    .post<Result<{ deletedCount: number; failed: { id: number; reason: string }[] }>>("/aup/batch-delete", body)
+    .then(({ data }) => data.data);
+}
+
 /** POST /aup/{id}/unlock —— 解锁锁定终态（仅管理员），terminated/approved/expired → draft 返修 */
 export function unlockAup(id: string): Promise<StageChangeResult> {
   return authHttp.post<Result<StageChangeResult>>(`/aup/${id}/unlock`).then(({ data }) => data.data);
@@ -935,11 +944,14 @@ export function unfreezeAupField(id: number): Promise<void> {
   return authHttp.post<Result<void>>(`/aup-field/${id}/unfreeze`).then(() => undefined);
 }
 
-/** POST /aup-field/actions/extract-from-template —— 从已发布计划书模板反向抽取字段入库 */
-export function extractAupFieldsFromTemplate(body: ExtractFromTemplateRequest): Promise<ExtractFromTemplateResponse> {
-  return authHttp
-    .post<Result<ExtractFromTemplateResponse>>("/aup-field/actions/extract-from-template", body)
-    .then(({ data }) => data.data);
+/** POST /api/aup-seed/seed —— 幂等导入内置种子（码表+字段+原子域+组合域） */
+export function importAupSeed(): Promise<Record<string, number>> {
+  return authHttp.post<Result<Record<string, number>>>("/aup-seed/seed").then(({ data }) => data.data);
+}
+
+/** POST /api/aup-seed/reset —— 清空全部内置种子数据（码表/字段/原子域/组合域/文件夹），返回删除行数 */
+export function resetAupSeed(): Promise<number> {
+  return authHttp.post<Result<number>>("/aup-seed/reset").then(({ data }) => data.data);
 }
 
 /* ── 码表状态机（/api/aup-dict 扩展） ── */

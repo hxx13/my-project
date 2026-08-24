@@ -1,5 +1,5 @@
 /**
- * NHP 模板发布：已发布组合 / 原子模板列表 + 版本预览。
+ * NHP 表单发布：已发布组合 / 原子模板列表 + 版本预览。
  * 字段字典为父源（/#/content-manager/nhp-field）；本页仅管理呈现层发布与版本。
  */
 import { useEffect, useMemo, useState } from "react";
@@ -8,6 +8,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import {
+  batchDeleteNhpTemplates,
+  createNhpAtom,
   createNhpCompositeDraft,
   createNhpTemplateDraft,
   deleteNhpTemplateAllVersions,
@@ -103,6 +105,12 @@ export default function NhpTemplateListPage() {
   const [publishFilter, setPublishFilter] = useState<PublishFilter>("PUBLISHED");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [previewFormId, setPreviewFormId] = useState<number | null>(null);
+  const [selectedFormKeys, setSelectedFormKeys] = useState<Set<string>>(new Set());
+  const [atomOpen, setAtomOpen] = useState(false);
+  const [atomFormKey, setAtomFormKey] = useState("");
+  const [atomTitle, setAtomTitle] = useState("");
+  const [publishAtomOpen, setPublishAtomOpen] = useState(false);
+  const [publishAtomHostType, setPublishAtomHostType] = useState<"DONOR" | "RECIPIENT">("RECIPIENT");
 
   const listQuery = useQuery({
     queryKey: ["nhp", "templates", "ALL"],
@@ -218,8 +226,26 @@ export default function NhpTemplateListPage() {
     onError: (e: Error) => toast.error(e.message || "创建组合草稿失败"),
   });
 
+  const createAtomMutation = useMutation({
+    mutationFn: () =>
+      createNhpAtom({
+        formKey: atomFormKey.trim().toUpperCase(),
+        title: atomTitle.trim() || atomFormKey.trim().toUpperCase(),
+      }),
+    onSuccess: (t) => {
+      toast.success(`已新建原子域 ${t.formKey}`);
+      setAtomOpen(false);
+      setAtomFormKey("");
+      setAtomTitle("");
+      invalidate();
+      setPublishFilter("ALL");
+    },
+    onError: (e: Error) => toast.error(e.message || "新建原子域失败"),
+  });
+
   const publishMutation = useMutation({
-    mutationFn: (formKey: string) => publishNhpTemplate(formKey),
+    mutationFn: (args: { formKey: string; hostType?: "DONOR" | "RECIPIENT" }) =>
+      publishNhpTemplate(args.formKey, args.hostType),
     onSuccess: () => {
       toast.success("已发布（冻结）");
       invalidate();
@@ -269,6 +295,36 @@ export default function NhpTemplateListPage() {
     onError: (e: Error) => toast.error(e.message || "删除失败"),
   });
 
+  const batchDeleteMutation = useMutation({
+    mutationFn: (formKeys: string[]) => batchDeleteNhpTemplates(formKeys),
+    onSuccess: (d) => {
+      const blocked = d.blocked?.length ? `；未删：${d.blocked.join("；")}` : "";
+      toast.success(
+        `已删 ${d.deletedCount} 个版本（${d.deletedKeys?.length ?? 0} 个模板）${blocked}`,
+        { duration: 9000 },
+      );
+      setSelectedFormKeys(new Set());
+      setSelectedKey(null);
+      setPreviewFormId(null);
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message || "批量删除失败", { duration: 9000 }),
+  });
+
+  const toggleSelect = (formKey: string) => {
+    setSelectedFormKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(formKey)) next.delete(formKey);
+      else next.add(formKey);
+      return next;
+    });
+  };
+
+  const allSelected = templates.length > 0 && templates.every((t) => selectedFormKeys.has(t.formKey));
+  const toggleSelectAll = () => {
+    setSelectedFormKeys(allSelected ? new Set() : new Set(templates.map((t) => t.formKey)));
+  };
+
   const selectRow = (t: NhpTemplateListItem) => {
     setSelectedKey(t.formKey);
     setPreviewFormId(t.formId);
@@ -306,6 +362,29 @@ export default function NhpTemplateListPage() {
           <span className="aup-wb-count">共 {templates.length} 个</span>
 
           <div className="nhp-template-toolbar-actions">
+            {selectedFormKeys.size > 0 && (
+              <>
+                <button type="button" className="btn ghost small" onClick={toggleSelectAll}>
+                  {allSelected ? "取消全选" : "全选"}
+                </button>
+                <button
+                  type="button"
+                  className="btn small danger"
+                  disabled={batchDeleteMutation.isPending}
+                  onClick={async () => {
+                    if (
+                      await appConfirm(
+                        `批量软删选中的 ${selectedFormKeys.size} 个模板（各自全部活跃版本）？\n被填写实例引用或被组合钉住的版本会跳过并说明原因。`,
+                      )
+                    ) {
+                      batchDeleteMutation.mutate([...selectedFormKeys]);
+                    }
+                  }}
+                >
+                  {batchDeleteMutation.isPending ? "删除中…" : `批量删除 (${selectedFormKeys.size})`}
+                </button>
+              </>
+            )}
             <button
               type="button"
               className="btn primary small"
@@ -323,6 +402,14 @@ export default function NhpTemplateListPage() {
               title="POST /nhp/seed/pig-dictionary + /nhp/seed/atoms"
             >
               {importSeedMutation.isPending ? "导入中…" : "导入内置种子"}
+            </button>
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={() => setAtomOpen(true)}
+              title="新建原子域（数据域模块），指定宿主（供体/受体）"
+            >
+              ＋ 新建原子域
             </button>
             <button
               type="button"
@@ -365,14 +452,27 @@ export default function NhpTemplateListPage() {
                 <div
                   key={`${t.formKey}-${t.formId}`}
                   className={`aup-wb-row${on ? " on" : ""}`}
-                  style={{ paddingLeft: 14 }}
+                  style={{ paddingLeft: 10 }}
                   onClick={() => selectRow(t)}
                   title={t.description || t.title}
                 >
+                  <input
+                    type="checkbox"
+                    checked={selectedFormKeys.has(t.formKey)}
+                    onChange={() => toggleSelect(t.formKey)}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ marginRight: 8, flexShrink: 0, cursor: "pointer", accentColor: "var(--primary, #002FA7)" }}
+                    title="勾选以批量删除"
+                  />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="lbl" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                       <span className={suiteBadgeClass(rowSuite)}>{suiteBadgeLabel(rowSuite)}</span>
                       <span className="nhp-kind-chip">{itemKindLabel(t)}</span>
+                      {t.hostType === "DONOR" || t.hostType === "RECIPIENT" ? (
+                        <span className="aup-wb-chip muted" style={{ fontSize: 10 }}>
+                          {t.hostType === "DONOR" ? "供体载体" : "受体载体"}
+                        </span>
+                      ) : null}
                       <span>{t.title || t.formKey}</span>
                     </div>
                     <div className="meta" style={{ marginTop: 2, fontFamily: "ui-monospace, monospace" }}>
@@ -459,10 +559,9 @@ export default function NhpTemplateListPage() {
                       type="button"
                       className="btn small primary"
                       disabled={publishMutation.isPending}
-                      onClick={async () => {
-                        if (await appConfirm("发布后该原子成为独立可填表单（冻结）。确认？")) {
-                          publishMutation.mutate(selected.formKey);
-                        }
+                      onClick={() => {
+                        setPublishAtomHostType((selected.hostType as "DONOR" | "RECIPIENT") || "RECIPIENT");
+                        setPublishAtomOpen(true);
                       }}
                     >
                       发布为独立表单
@@ -475,7 +574,7 @@ export default function NhpTemplateListPage() {
                       disabled={publishMutation.isPending}
                       onClick={async () => {
                         if (await appConfirm("发布后冻结该组合版本。确认？")) {
-                          publishMutation.mutate(selected.formKey);
+                          publishMutation.mutate({ formKey: selected.formKey });
                         }
                       }}
                     >
@@ -679,6 +778,89 @@ export default function NhpTemplateListPage() {
         </div>
       </div>
 
+      {atomOpen && (
+        <div className="aup-modal-mask" onClick={() => setAtomOpen(false)}>
+          <div className="aup-modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+            <h3>新建原子域</h3>
+            <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+              新建一个数据域模块原子，作为发布/组合的单元。域码可自定义（不限 D1-D10），宿主决定该域表单挂给供体还是受体。
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label style={{ fontSize: 13 }}>
+                域码（formKey）
+                <input
+                  className="input"
+                  style={{ width: "100%", marginTop: 4 }}
+                  value={atomFormKey}
+                  onChange={(e) => setAtomFormKey(e.target.value)}
+                  placeholder="如 D11 / 自定义域码"
+                />
+              </label>
+              <label style={{ fontSize: 13 }}>
+                名称
+                <input
+                  className="input"
+                  style={{ width: "100%", marginTop: 4 }}
+                  value={atomTitle}
+                  onChange={(e) => setAtomTitle(e.target.value)}
+                  placeholder="如 术后并发症域"
+                />
+              </label>
+            </div>
+            <div className="aup-modal-actions">
+              <button type="button" className="btn ghost" onClick={() => setAtomOpen(false)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={createAtomMutation.isPending || !atomFormKey.trim()}
+                onClick={() => createAtomMutation.mutate()}
+              >
+                {createAtomMutation.isPending ? "创建中…" : "创建"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {publishAtomOpen && (
+        <div className="aup-modal-mask" onClick={() => setPublishAtomOpen(false)}>
+          <div className="aup-modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <h3>发布为独立表单</h3>
+            <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+              发布时确定该表单的「载体」（宿主）：供体域挂供体对象，受体域挂受体对象。
+            </p>
+            <label style={{ fontSize: 13 }}>
+              载体（hostType）
+              <select
+                className="select"
+                style={{ width: "100%", marginTop: 4 }}
+                value={publishAtomHostType}
+                onChange={(e) => setPublishAtomHostType(e.target.value as "DONOR" | "RECIPIENT")}
+              >
+                <option value="RECIPIENT">受体载体（术后表单挂受体）</option>
+                <option value="DONOR">供体载体（供体表单挂供体）</option>
+              </select>
+            </label>
+            <div className="aup-modal-actions">
+              <button type="button" className="btn ghost" onClick={() => setPublishAtomOpen(false)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={publishMutation.isPending}
+                onClick={() => {
+                  publishMutation.mutate({ formKey: selected!.formKey, hostType: publishAtomHostType });
+                  setPublishAtomOpen(false);
+                }}
+              >
+                {publishMutation.isPending ? "发布中…" : "发布"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

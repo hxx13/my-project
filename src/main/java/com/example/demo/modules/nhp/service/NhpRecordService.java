@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /** NHP 数据采集：研究对象/表单实例/EAV 值 upsert/签名/快照。双录入比对、物化宽表冻结二期实现。 */
 @Service
@@ -41,6 +42,7 @@ public class NhpRecordService {
     private final NhpSnapshotService snapshotService;
     private final ObjectMapper objectMapper;
     private final NhpEventEngine eventEngine;
+    private final CrfTransplantMapper transplantMapper;
 
     public NhpRecordService(CrfSubjectMapper subjectMapper, CrfRecordMapper recordMapper,
                             CrfRecordValueMapper valueMapper, CrfDataAuditLogMapper auditLogMapper,
@@ -48,7 +50,7 @@ public class NhpRecordService {
                             CrfCodelistItemMapper codelistItemMapper, CrfStudyMapper studyMapper,
                             CrfFormMapper formMapper, CrfCenterMapper centerMapper, NhpIdService idService,
                             NhpSnapshotService snapshotService, ObjectMapper objectMapper,
-                            NhpEventEngine eventEngine) {
+                            NhpEventEngine eventEngine, CrfTransplantMapper transplantMapper) {
         this.subjectMapper = subjectMapper;
         this.recordMapper = recordMapper;
         this.valueMapper = valueMapper;
@@ -63,6 +65,7 @@ public class NhpRecordService {
         this.snapshotService = snapshotService;
         this.objectMapper = objectMapper;
         this.eventEngine = eventEngine;
+        this.transplantMapper = transplantMapper;
     }
 
     @Transactional
@@ -100,6 +103,202 @@ public class NhpRecordService {
         s.setStatus("ACTIVE");
         subjectMapper.insert(s);
         return Result.success(s);
+    }
+
+    /**
+     * 表单化登记第一步（单对象，兼容旧调用）：创建占位研究对象。
+     * 项目化登记请用 createProject 一次性建项目 + 供体/受体两个占位对象。
+     */
+    @Transactional
+    public Result<CrfSubject> createPlaceholderSubject(Map<String, Object> body) {
+        String subjectType = str(body == null ? null : body.get("subjectType"));
+        if (subjectType == null || (!"DONOR".equals(subjectType) && !"RECIPIENT".equals(subjectType))) {
+            return Result.fail(400, "subjectType 须为 DONOR/RECIPIENT");
+        }
+        StudyResolve resolved = resolveStudy(body);
+        if (resolved.studyId() == null) {
+            return Result.fail(400, resolved.error());
+        }
+        return Result.success(insertPlaceholderSubject(subjectType, resolved.studyId()));
+    }
+
+    /**
+     * 登记项目：创建「项目」（crf_transplant，TX号占位）+ 供体/受体两个占位对象，挂到项目。
+     * TX号、DON/RCP 号在填 D1/D2 后由 finalizeProject / finalizeSubject 回填。
+     */
+    @Transactional
+    public Result<Map<String, Object>> createProject(Map<String, Object> body) {
+        StudyResolve resolved = resolveStudy(body);
+        if (resolved.studyId() == null) {
+            return Result.fail(400, resolved.error());
+        }
+        // 仅建项目（供体/受体对象在填 D1/D2 表单时才创建并回填编号；此处区分的是项目编码）
+        CrfTransplant tx = new CrfTransplant();
+        tx.setStatus("SCREENING");
+        tx.setCreatedBy(str(body == null ? null : body.get("createdBy")));
+        tx.setActive(true);
+        transplantMapper.insert(tx);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("project", transplantMapper.findById(tx.getId()));
+        return Result.success(out);
+    }
+
+    /** 项目管理：列出全部项目（crf_transplant），每个项目含供体/受体对象。 */
+    public List<Map<String, Object>> listProjects() {
+        List<CrfTransplant> txs = transplantMapper.list();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (CrfTransplant tx : txs) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("id", tx.getId());
+            p.put("txCode", tx.getTxCode());
+            p.put("status", tx.getStatus());
+            p.put("lifecycleStage", tx.getLifecycleStage());
+            p.put("txDate", tx.getTxDate() == null ? null : tx.getTxDate().toString());
+            p.put("createdBy", tx.getCreatedBy());
+            p.put("createdAt", tx.getCreatedAt() == null ? null : tx.getCreatedAt().toString());
+            p.put("donor", subjectCard(tx.getDonorSubjectId()));
+            p.put("recipient", subjectCard(tx.getRecipientSubjectId()));
+            out.add(p);
+        }
+        return out;
+    }
+
+    /** 项目成员卡片：供体/受体对象身份信息（登记表单回填后）。 */
+    private Map<String, Object> subjectCard(Long subjectId) {
+        if (subjectId == null) return null;
+        CrfSubject s = subjectMapper.findById(subjectId);
+        if (s == null) return null;
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", s.getId());
+        m.put("subjectCode", s.getSubjectCode());
+        m.put("subjectType", s.getSubjectType());
+        m.put("species", s.getSpecies());
+        m.put("breed", s.getBreed());
+        m.put("sex", s.getSex());
+        m.put("farmCode", s.getFarmCode());
+        m.put("externalId", s.getExternalId());
+        m.put("microchipId", s.getMicrochipId());
+        m.put("status", s.getStatus());
+        return m;
+    }
+
+    /**
+     * 项目化建实例：为宿主表单（DONOR/RECIPIENT）建一条「尚未绑定对象」的记录。
+     * 对象（研究对象）在保存/提交表单时才由 ensureSubjectForRecord 创建并回填编号。
+     */
+    @Transactional
+    public Result<CrfRecord> createRecordForProject(Long projectId, Map<String, Object> body) {
+        CrfTransplant project = transplantMapper.findById(projectId);
+        if (project == null) {
+            return Result.error("项目不存在");
+        }
+        Long formId = asLong(body == null ? null : body.get("formId"));
+        if (formId == null) {
+            return Result.fail(400, "formId 不能为空");
+        }
+        CrfForm form = formMapper.findById(formId);
+        if (form == null) {
+            return Result.fail(400, "表单不存在: " + formId);
+        }
+        String hostType = form.getHostType() == null ? null : form.getHostType().trim().toUpperCase();
+        if (!"DONOR".equals(hostType) && !"RECIPIENT".equals(hostType)) {
+            return Result.fail(400, "该表单无宿主对象（hostType 须为 DONOR/RECIPIENT），不能用项目化建实例");
+        }
+        String formStatus = form.getStatus() == null ? "" : form.getStatus().trim().toUpperCase();
+        if (!"FROZEN".equals(formStatus) && !"PUBLISHED".equals(formStatus)) {
+            return Result.fail(400, "仅已发布（FROZEN/PUBLISHED）模板可创建填写实例，当前: "
+                    + (formStatus.isEmpty() ? "未知" : formStatus));
+        }
+        CrfRecord r = new CrfRecord();
+        r.setSubjectId(null);
+        r.setFormId(formId);
+        if (form.getVersion() != null) {
+            r.setFormVersionId(form.getVersion().longValue());
+        }
+        r.setTransplantId(projectId);
+        r.setStatus("DRAFT");
+        r.setCreatedBy(str(body == null ? null : body.get("createdBy")));
+        recordMapper.insert(r);
+        return Result.success(r);
+    }
+
+    /**
+     * 保存/提交宿主表单时按需创建研究对象：记录尚无 subject_id 时，据 form.hostType
+     * 建供体/受体对象，回链到项目与记录。对象编号（DON/RCP）由前端保存时取号后经 finalizeSubject 回填。
+     */
+    @Transactional
+    public Result<CrfSubject> ensureSubjectForRecord(Long recordId) {
+        CrfRecord record = recordMapper.findById(recordId);
+        if (record == null) {
+            return Result.error("实例不存在");
+        }
+        if (record.getSubjectId() != null) {
+            return Result.success(subjectMapper.findById(record.getSubjectId()));
+        }
+        CrfForm form = formMapper.findById(record.getFormId());
+        String hostType = form == null || form.getHostType() == null ? null : form.getHostType().trim().toUpperCase();
+        if (!"DONOR".equals(hostType) && !"RECIPIENT".equals(hostType)) {
+            return Result.error("该表单无宿主对象");
+        }
+        CrfSubject s = insertPlaceholderSubject(hostType, form == null ? null : form.getStudyId());
+        if (record.getTransplantId() != null) {
+            CrfTransplant tx = transplantMapper.findById(record.getTransplantId());
+            if (tx != null) {
+                if ("DONOR".equals(hostType)) tx.setDonorSubjectId(s.getId());
+                else tx.setRecipientSubjectId(s.getId());
+                transplantMapper.update(tx);
+            }
+        }
+        recordMapper.updateSubjectId(recordId, s.getId());
+        return Result.success(subjectMapper.findById(s.getId()));
+    }
+
+    /** 建占位对象（subjectCode=PEND-，lifecycleStage=SCREENING）。 */
+    private CrfSubject insertPlaceholderSubject(String subjectType, Long studyId) {
+        CrfSubject s = new CrfSubject();
+        s.setStudyId(studyId);
+        s.setSubjectType(subjectType);
+        s.setSubjectCode("PEND-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        s.setStatus("ACTIVE");
+        s.setLifecycleStage("SCREENING");
+        subjectMapper.insert(s);
+        return s;
+    }
+
+    /**
+     * 表单化登记第二步：D1/D2 表单保存后回填。
+     * 真实编号由表单 PK 字段（DON/RCP）生成后由前端传入，此处仅同步、不重复取号。
+     * body：subjectCode + farmCode（供体）/centerCode（受体）+ species/breed/sex/birthDate 等。
+     */
+    @Transactional
+    public Result<CrfSubject> finalizeSubject(Long subjectId, Map<String, Object> body) {
+        CrfSubject s = subjectMapper.findById(subjectId);
+        if (s == null) {
+            return Result.error("研究对象不存在");
+        }
+        Map<String, Object> b = body == null ? Map.of() : body;
+        String code = str(b.get("subjectCode"));
+        if (code == null || code.isBlank()) {
+            return Result.fail(400, "subjectCode 必填（由 D1/D2 表单的编号字段生成后传入）");
+        }
+        CrfSubject dup = subjectMapper.findBySubjectCode(code);
+        if (dup != null && !dup.getId().equals(subjectId)) {
+            return Result.fail(400, "编号已存在: " + code);
+        }
+        s.setSubjectCode(code);
+        applyIdentityFields(s, b);
+        // 受体中心码（CENTER 码表值）→ centerId
+        if ("RECIPIENT".equals(s.getSubjectType())) {
+            String centerCode = str(b.get("centerCode"));
+            if (centerCode != null) {
+                CrfCenter c = centerMapper.findByCode(centerCode);
+                if (c != null) {
+                    s.setCenterId(c.getId());
+                }
+            }
+        }
+        subjectMapper.update(s);
+        return Result.success(subjectMapper.findById(subjectId));
     }
 
     @Transactional
@@ -143,6 +342,13 @@ public class NhpRecordService {
         }
         subjectMapper.updateLifecycleStage(subjectId, target);
         s.setLifecycleStage(target);
+        // 生命周期挪到项目：同步到 crf_transplant.lifecycle_stage（供体/受体任一推进都落在项目上）
+        List<CrfTransplant> txs = transplantMapper.listBySubjectId(subjectId);
+        if (txs != null && !txs.isEmpty()) {
+            CrfTransplant project = txs.get(0);
+            project.setLifecycleStage(target);
+            transplantMapper.update(project);
+        }
         return Result.success(subjectMapper.findById(subjectId));
     }
 
@@ -265,9 +471,27 @@ public class NhpRecordService {
                     + (formStatus.isEmpty() ? "未知" : formStatus)
                     + "。若列表头是草稿，请选已发布版（publishedFormId）或先发布。");
         }
+        // 表单宿主划分：按 form.hostType 把记录绑到项目的供体/受体对象（不靠域码推导）
+        Long hostSubjectId = subjectId;
+        Long hostProjectId = null;
+        String hostType = form.getHostType() == null ? null : form.getHostType().trim().toUpperCase();
+        if ("DONOR".equals(hostType) || "RECIPIENT".equals(hostType)) {
+            List<CrfTransplant> txs = transplantMapper.listBySubjectId(subjectId);
+            CrfTransplant project = (txs == null || txs.isEmpty()) ? null : txs.get(0);
+            if (project != null) {
+                hostProjectId = project.getId();
+                Long resolved = "DONOR".equals(hostType) ? project.getDonorSubjectId() : project.getRecipientSubjectId();
+                if (resolved != null) {
+                    hostSubjectId = resolved;
+                }
+            }
+        }
         CrfRecord r = new CrfRecord();
-        r.setSubjectId(subjectId);
+        r.setSubjectId(hostSubjectId);
         r.setFormId(formId);
+        if (hostProjectId != null) {
+            r.setTransplantId(hostProjectId);
+        }
         if (form.getVersion() != null) {
             r.setFormVersionId(form.getVersion().longValue());
         }

@@ -6,8 +6,9 @@ import type { AupMiniStepsPayload } from "../schema/aup";
  * 入参为 AupListItem.miniSteps（后端序列化的 JSON 字符串，形如 { steps:[{key,label,status}], terminal }）。
  * 状态映射：done→已完成 / current→进行中 / pending→待处理。
  *
- * 后端在 terminated / expired 时把 `terminal` 置为终态代码（steps 全 done），
- * 这里额外渲染一个红色终节点，并把「通过」步骤改为非 done，避免「已终止」计划却显示全绿「通过」。
+ * 后端在 terminated / expired 时把 `terminal` 置为终态代码。
+ * terminated：「通过」降为 pending，红色「已终止」表达终态（未走完审批）。
+ * expired：保留「通过」为 done，红色「已过期」接在通过后（必须先通过才会过期）。
  */
 export default function MiniStageIndicator({ miniSteps }: { miniSteps?: string | null }) {
   if (!miniSteps) return <span style={{ color: "var(--muted)" }}>—</span>;
@@ -22,12 +23,13 @@ export default function MiniStageIndicator({ miniSteps }: { miniSteps?: string |
   const rawSteps = payload?.steps ?? [];
   if (rawSteps.length === 0) return <span style={{ color: "var(--muted)" }}>—</span>;
 
-  // 终止/过期时，把「通过」步骤（key=approved）从 done 降为 pending，交由红色终节点表达终态。
-  const steps = terminal
-    ? rawSteps.map((s) =>
-        s.key === "approved" && s.status === "done" ? { ...s, status: "pending" as const } : s
-      )
-    : rawSteps;
+  // 仅终止时把「通过」从 done 降为 pending；过期必须先经过通过，保留通过为 done。
+  const steps =
+    terminal === "terminated"
+      ? rawSteps.map((s) =>
+          s.key === "approved" && s.status === "done" ? { ...s, status: "pending" as const } : s
+        )
+      : rawSteps;
 
   const terminalLabel = terminal
     ? terminal === "terminated"
@@ -55,7 +57,7 @@ export default function MiniStageIndicator({ miniSteps }: { miniSteps?: string |
       })}
       {terminalLabel ? (
         <Fragment>
-          <div className="line" />
+          <div className={"line" + (terminal === "expired" ? " done" : "")} />
           <div className="ms">
             <div className="dot" style={{ background: "var(--danger)" }} />
             <div className="lbl" style={{ color: "var(--danger)", fontWeight: 700 }}>

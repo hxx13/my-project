@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router-dom";
 import {
   approveAupField,
   createAupField,
   createAupFolder,
   deleteAupField,
   deleteAupFolder,
-  extractAupFieldsFromTemplate,
+  importAupSeed,
   fetchAupDicts,
   fetchAupFieldUsage,
   fetchAupFields,
   listAupFolders,
   moveAupField,
   rejectAupField,
+  resetAupSeed,
   submitAupFieldReview,
   unfreezeAupField,
   updateAupField,
@@ -33,7 +35,7 @@ import "@/features/aup/aup.css";
  * AUP 字段域工作台。
  *  - 左栏：aup_folder(ownerType=FIELD) 多级文件夹树 + 字段列表
  *  - 右栏：字段详情（编码/题面/题型/码表/必填/引用）+ 状态机按钮
- *  - 顶部：「从模板抽取字段」把已发布计划书模板字段反向入库
+ *  - 顶部：「导入内置种子」幂等灌入码表 + 字段 + 原子域 + 组合域
  * ================================================================== */
 
 const UNGROUPED = "未分类";
@@ -134,6 +136,12 @@ export default function AupFieldPage() {
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [formOpen, setFormOpen] = useState<"create" | "edit" | null>(null);
   const [form, setForm] = useState<FieldForm>(emptyForm(UNGROUPED));
+
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const fid = searchParams.get("fieldId");
+    if (fid && !Number.isNaN(Number(fid))) setSelectedId(Number(fid));
+  }, [searchParams]);
 
   const role = authStorage.getRole() || "";
   const canMaintain = hasMinRole(role, "ADMIN");
@@ -312,13 +320,22 @@ export default function AupFieldPage() {
     onError: (e: Error) => toast.error(e.message || "解冻失败", { duration: 8000 }),
   });
 
-  const extractMut = useMutation({
-    mutationFn: () => extractAupFieldsFromTemplate({ formKey: "aup" }),
+  const seedMut = useMutation({
+    mutationFn: () => importAupSeed(),
     onSuccess: (r) => {
-      toast.success(`已从模板抽取字段：新增 ${r.created ?? 0} 个，跳过 ${r.skipped ?? 0} 个（已存在）`);
+      const c = r?.codelists ?? 0, f = r?.fields ?? 0, a = r?.atoms ?? 0, p = r?.composite ?? 0;
+      toast.success(`已导入内置种子：码表 ${c}、字段 ${f}、原子域 ${a}、组合域 ${p}`);
       invalidateAll();
     },
-    onError: (e: Error) => toast.error(e.message || "抽取失败"),
+    onError: (e: Error) => toast.error(e.message || "导入失败"),
+  });
+  const resetMut = useMutation({
+    mutationFn: () => resetAupSeed(),
+    onSuccess: (n) => {
+      toast.success(`已重置内置种子（删除 ${n} 行），请点「导入内置种子」重新导入`);
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "重置失败"),
   });
 
   const openCreate = (folderKey: string) => {
@@ -608,15 +625,26 @@ export default function AupFieldPage() {
           </div>
           <div className="aup-wb-actions">
             {canMaintain && (
-              <button
-                className="btn ghost small"
-                disabled={extractMut.isPending}
-                onClick={async () => {
-                  if (await appConfirm("从已发布计划书模板反向抽取字段入库？已存在的编码会跳过。")) extractMut.mutate();
-                }}
-              >
-                从模板抽取字段
-              </button>
+              <>
+                <button
+                  className="btn ghost small"
+                  disabled={seedMut.isPending}
+                  onClick={async () => {
+                    if (await appConfirm("导入内置种子？将幂等灌入码表 + 字段 + 原子域 + 组合域（已存在的不覆盖）。")) seedMut.mutate();
+                  }}
+                >
+                  导入内置种子
+                </button>
+                <button
+                  className="btn ghost small"
+                  disabled={resetMut.isPending}
+                  onClick={async () => {
+                    if (await appConfirm("重置内置种子？将删除全部内置种子数据（码表/字段/原子域/组合域），删除后需重新导入。确认？")) resetMut.mutate();
+                  }}
+                >
+                  重置种子
+                </button>
+              </>
             )}
             <button className="btn primary small" onClick={() => openCreate(UNGROUPED)}>
               ＋ 新建字段

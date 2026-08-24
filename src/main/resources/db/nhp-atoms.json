@@ -66,8 +66,7 @@
               "pos": 4,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "M/F"
+              "codelist": "SEX"
             },
             {
               "fieldCode": "D1.01.005",
@@ -109,10 +108,10 @@
               "pos": 7,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "SPF/DPF"
+              "codelist": "BIOCONTAINMENT_LEVEL"
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "donor_genedit",
@@ -176,8 +175,7 @@
               "pos": 4,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "通过/复核中/失败"
+              "codelist": "EDIT_VERIFY_STATUS"
             },
             {
               "fieldCode": "D1.02.005",
@@ -222,7 +220,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "pathogen_monitor_q",
@@ -302,8 +301,7 @@
               "pos": 5,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "阴性/阳性",
+              "codelist": "PERV_C_STATUS",
               "conceptCode": "PERVC"
             },
             {
@@ -318,8 +316,7 @@
               "pos": 6,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "阴性/阳性"
+              "codelist": "PERV_AC_RECOMB"
             },
             {
               "fieldCode": "D1.03.008",
@@ -335,7 +332,8 @@
               "nature": "DATA",
               "codelist": "PATHOGEN"
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "pathogen_monitor_a",
@@ -357,10 +355,10 @@
               "pos": 7,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "阴性/阳性/未测"
+              "codelist": "PERV_INFECTIVITY"
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "pathogen_monitor_tp02",
@@ -384,7 +382,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "organ_release",
@@ -451,6 +450,19 @@
               "codelist": "GRADE"
             },
             {
+              "fieldCode": "D1.04.005",
+              "nameCn": "放行结论",
+              "nameEn": "release_decision",
+              "dataType": "ENUM",
+              "unit": null,
+              "required": "YES",
+              "timepoint": "术前",
+              "desc": "出厂标准 V1.0 判定结果",
+              "role": "VALUE",
+              "nature": "DATA",
+              "codelist": "RELEASE"
+            },
+            {
               "fieldCode": "D1.04.006",
               "nameCn": "放行依据版本",
               "nameEn": "release_criteria_ver",
@@ -464,7 +476,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "recipient_profile",
@@ -514,12 +527,11 @@
               "pos": 3,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "食蟹猴/恒河猴/狨猴"
+              "codelist": "SPECIES"
             },
             {
               "fieldCode": "D2.01.004",
-              "nameCn": "性别/年龄",
+              "nameCn": "性别",
               "nameEn": "sex/age",
               "dataType": "ENUM",
               "unit": "岁",
@@ -529,7 +541,17 @@
               "pos": 4,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null
+              "codelist": "SEX"
+            },
+            {
+              "fieldCode": "D2.01.006",
+              "nameCn": "年龄",
+              "nameEn": "age",
+              "dataType": "INTEGER",
+              "unit": null,
+              "required": "NO",
+              "role": "VALUE",
+              "nature": "DATA"
             },
             {
               "fieldCode": "D2.01.005",
@@ -573,7 +595,8 @@
               "nature": "DATA",
               "codelist": "NHP_PATH"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "recipient_baseline",
@@ -721,10 +744,10 @@
               "pos": 10,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "合格/候补/剔除"
+              "codelist": "ELIGIBILITY"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "crossmatch",
@@ -774,8 +797,7 @@
               "pos": 3,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "阴性/弱阳/阳性"
+              "codelist": "CDC_XM_RESULT"
             },
             {
               "fieldCode": "D3.01.004",
@@ -789,8 +811,7 @@
               "pos": 4,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "阴性/弱阳/阳性"
+              "codelist": "FLOW_XM_RESULT"
             },
             {
               "fieldCode": "D3.01.005",
@@ -804,8 +825,7 @@
               "pos": 5,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "阴性/阳性"
+              "codelist": "ADCC_RESULT"
             },
             {
               "fieldCode": "D3.01.006",
@@ -822,6 +842,19 @@
               "conceptCode": "PAIR_SCORE"
             },
             {
+              "fieldCode": "D3.01.007",
+              "nameCn": "配对决策",
+              "nameEn": "pairing_decision",
+              "dataType": "ENUM",
+              "unit": null,
+              "required": "YES",
+              "timepoint": "TP01",
+              "desc": "最终供受配对结论",
+              "role": "VALUE",
+              "nature": "DATA",
+              "codelist": "PAIR_DECISION"
+            },
+            {
               "fieldCode": "D3.01.008",
               "nameCn": "决策依据",
               "nameEn": "decision_rationale",
@@ -835,7 +868,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "transplant",
@@ -985,7 +1019,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "sample",
@@ -1077,8 +1112,7 @@
               "pos": 6,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "-80℃/LN2/4℃/RT"
+              "codelist": "STORAGE_CONDITION"
             },
             {
               "fieldCode": "D4.01.007",
@@ -1108,7 +1142,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "test_order",
@@ -1188,7 +1223,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "test_result",
@@ -1282,8 +1318,22 @@
               "role": "VALUE",
               "nature": "DATA",
               "codelist": null
+            },
+            {
+              "fieldCode": "D4.03.007",
+              "nameCn": "结果复核状态",
+              "nameEn": "qc_status",
+              "dataType": "ENUM",
+              "unit": null,
+              "required": "YES",
+              "timepoint": "回传时",
+              "desc": "平台双人复核，异常值复测规则",
+              "role": "VALUE",
+              "nature": "DATA",
+              "codelist": "QC_STATUS"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "followup",
@@ -1377,7 +1427,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "adverse_event",
@@ -1483,10 +1534,10 @@
               "pos": 7,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "缓解/部分缓解/进展/死亡"
+              "codelist": "AE_OUTCOME"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "outcome",
@@ -1550,8 +1601,7 @@
               "pos": 4,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "完成/部分/未做"
+              "codelist": "NECROPSY_STATUS"
             },
             {
               "fieldCode": "D5.03.005",
@@ -1581,7 +1631,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "regimen",
@@ -1645,8 +1696,7 @@
               "pos": 4,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "诱导/维持/挽救"
+              "codelist": "REGIMEN_PHASE"
             },
             {
               "fieldCode": "D6.01.005",
@@ -1676,7 +1726,8 @@
               "nature": "DATA",
               "codelist": "DOSE_ADJ"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "medication",
@@ -1782,10 +1833,10 @@
               "pos": 7,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "无/漏服/拒服/呕吐"
+              "codelist": "MISSED_FLAG"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "drug_level",
@@ -1865,7 +1916,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "anesthesia",
@@ -1883,11 +1935,11 @@
               "unit": "ANES-XXX",
               "required": "YES",
               "timepoint": "麻醉开始",
-              "desc": "主键；一台手术一条",
+              "desc": "主键；一台手术一条（派生键 ANES-{TX}，不走取号器）",
               "pos": 1,
-              "role": "PK",
-              "nature": "PK",
-              "idRule": null
+              "role": "DERIVED",
+              "nature": "DERIVED",
+              "derivedSource": "ANES-{TX}"
             },
             {
               "fieldCode": "D7.01.002",
@@ -1915,8 +1967,7 @@
               "pos": 3,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "气管插管全麻/复合麻醉"
+              "codelist": "ANES_METHOD"
             },
             {
               "fieldCode": "D7.01.004",
@@ -1960,7 +2011,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "intraop_monitor",
@@ -2054,7 +2106,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "intraop_fluids",
@@ -2134,7 +2187,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "pathology_sampling",
@@ -2198,8 +2252,7 @@
               "pos": 4,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "计划活检/事件活检/剖检"
+              "codelist": "SAMPLING_TYPE"
             },
             {
               "fieldCode": "D8.01.005",
@@ -2229,7 +2282,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "pathology_readout",
@@ -2279,10 +2333,10 @@
               "pos": 3,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "无/局灶/弥漫"
+              "codelist": "MICRO_THROMBOSIS"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "pathology_stains",
@@ -2362,7 +2416,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_module",
@@ -2380,11 +2435,11 @@
               "unit": "HX-XXX",
               "required": "YES",
               "timepoint": "获取",
-              "desc": "主键；一移植事件一条心脏模块主记录",
+              "desc": "主键；一移植事件一条心脏模块主记录（派生键 HX-{TX}，不走取号器）",
               "pos": 1,
-              "role": "PK",
-              "nature": "PK",
-              "idRule": null
+              "role": "DERIVED",
+              "nature": "DERIVED",
+              "derivedSource": "HX-{TX}"
             },
             {
               "fieldCode": "D9.01.002",
@@ -2512,7 +2567,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_preop",
@@ -2548,8 +2604,7 @@
               "pos": 2,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "适应/不适应移除"
+              "codelist": "JACKET_ADAPT"
             },
             {
               "fieldCode": "D9.02.003",
@@ -2579,7 +2634,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_procedure",
@@ -2643,8 +2699,7 @@
               "pos": 4,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "端端吻合/端侧吻合"
+              "codelist": "ANASTOMOSIS"
             },
             {
               "fieldCode": "D9.03.005",
@@ -2658,8 +2713,7 @@
               "pos": 5,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "是/否"
+              "codelist": "BYPASS"
             },
             {
               "fieldCode": "D9.03.006",
@@ -2675,7 +2729,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_telemetry",
@@ -2713,7 +2768,8 @@
               "nature": "DATA",
               "codelist": "ECG_RHY"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_echo",
@@ -2778,10 +2834,10 @@
               "pos": 8,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "无/少量/中量/大量"
+              "codelist": "PERICARDIAL_EFF"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_biomarkers",
@@ -2848,7 +2904,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_graft_score",
@@ -2872,7 +2929,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_arrhythmia",
@@ -2896,7 +2954,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_immunology",
@@ -2976,7 +3035,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_immuno_extra",
@@ -3043,7 +3103,8 @@
               "codelist": null,
               "conceptCode": "FREE_HB"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_postop",
@@ -3079,8 +3140,7 @@
               "pos": 2,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "正常/胸腔积液/气胸"
+              "codelist": "CXR_PREEXT"
             },
             {
               "fieldCode": "D9.06.003",
@@ -3110,7 +3170,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "heart_pathology",
@@ -3132,7 +3193,7 @@
               "pos": 1,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null
+              "codelist": "HE_SEMI"
             },
             {
               "fieldCode": "D9.07.002",
@@ -3146,7 +3207,7 @@
               "pos": 2,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null
+              "codelist": "HE_SEMI"
             },
             {
               "fieldCode": "D9.07.003",
@@ -3160,7 +3221,7 @@
               "pos": 3,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null
+              "codelist": "HE_SEMI"
             },
             {
               "fieldCode": "D9.07.004",
@@ -3174,7 +3235,7 @@
               "pos": 4,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null
+              "codelist": "HE_SEMI"
             },
             {
               "fieldCode": "D9.07.005",
@@ -3188,10 +3249,10 @@
               "pos": 5,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "阴性/弱阳/阳性"
+              "codelist": "CD141_IHC"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "perfusion",
@@ -3313,7 +3374,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "perfusion_hemodynamics",
@@ -3421,7 +3483,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "perfusion_biochem",
@@ -3515,7 +3578,8 @@
               "nature": "DATA",
               "codelist": null
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "perfusion_liver_hourly",
@@ -3553,7 +3617,8 @@
               "nature": "DATA",
               "codelist": "LIVER_APP"
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "perfusion_liver_q3h",
@@ -3693,7 +3758,8 @@
               "codelist": null,
               "conceptCode": "FREE_HB"
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "perfusion_biopsy",
@@ -3717,7 +3783,8 @@
               "nature": "FK",
               "fkTarget": "pathology"
             }
-          ]
+          ],
+          "hostType": "DONOR"
         },
         {
           "code": "perfusion_recipient",
@@ -3879,10 +3946,10 @@
               "pos": 11,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "正常/异常"
+              "codelist": "PLATELET_MORPH"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         },
         {
           "code": "perfusion_endpoint",
@@ -3904,8 +3971,7 @@
               "pos": 1,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "阴性/阳性"
+              "codelist": "PERF_CULTURE"
             },
             {
               "fieldCode": "D10.05.002",
@@ -3933,10 +3999,10 @@
               "pos": 3,
               "role": "VALUE",
               "nature": "DATA",
-              "codelist": null,
-              "codelistPending": "计划完成/功能衰竭/技术中止"
+              "codelist": "PERF_ENDPOINT"
             }
-          ]
+          ],
+          "hostType": "RECIPIENT"
         }
       ]
     }

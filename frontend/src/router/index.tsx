@@ -75,6 +75,9 @@ import AdminCageShelfPage from "@/pages/AdminCageShelfPage";
 import AdminSpecialStatusOverviewPage from "@/pages/AdminSpecialStatusOverviewPage";
 import AdminCageShelfIndexPage from "@/pages/AdminCageShelfIndexPage";
 import CageShelfFormManagePage from "@/features/cage-shelf/pages/CageShelfFormManagePage";
+import CageFormListPage from "@/features/cage-shelf/pages/CageFormListPage";
+import CageFormAuditPage from "@/features/cage-shelf/pages/CageFormAuditPage";
+import CageFormEditorPage from "@/features/cage-shelf/pages/CageFormEditorPage";
 import CageCodelistPage from "@/features/cage-shelf/pages/CageCodelistPage";
 import CageFieldPage from "@/features/cage-shelf/pages/CageFieldPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
@@ -146,6 +149,8 @@ import AupReviewPage from "@/features/aup/pages/AupReviewPage";
 import AupTemplateEditor from "@/features/aup/pages/admin/AupTemplateEditor";
 import AupTemplateListPage from "@/features/aup/pages/admin/AupTemplateListPage";
 import AupDictPage from "@/features/aup/pages/admin/AupDictPage";
+import AupFieldPage from "@/features/aup/pages/admin/AupFieldPage";
+import AupConfigAuditPage from "@/features/aup/pages/admin/AupConfigAuditPage";
 import AupReviewerConfigPage from "@/features/aup/pages/admin/AupReviewerConfigPage";
 import NhpTemplateEditor from "@/features/nhp/pages/admin/NhpTemplateEditor";
 import NhpTemplateListPage from "@/features/nhp/pages/admin/NhpTemplateListPage";
@@ -335,7 +340,10 @@ export const router = createHashRouter([
               { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage /> },
               { path: "cage-shelves", element: <AdminCageShelfPage /> },
               { path: "cage-shelves/special-status", element: <AdminSpecialStatusOverviewPage /> },
-              { path: "cage-shelves/forms", element: <CageShelfFormManagePage /> },
+              { path: "cage-shelves/forms", element: <CageFormListPage /> },
+              { path: "cage-shelves/forms/audit", element: <CageFormAuditPage /> },
+              { path: "cage-shelves/forms/manage", element: <CageShelfFormManagePage /> },
+              { path: "cage-shelves/forms/edit/:formKey", element: <CageFormEditorPage /> },
               { path: "cage-shelves/forms/codelists", element: <CageCodelistPage /> },
               { path: "cage-shelves/forms/fields", element: <CageFieldPage /> },
               { path: "cage-shelves/forms/fields/:dictKey", element: <CageFieldPage /> },
@@ -459,6 +467,8 @@ export const router = createHashRouter([
       { path: "aup-template", element: <AupTemplateListPage /> },
       { path: "aup-template/edit/:id", element: <AupTemplateEditor /> },
       { path: "aup-dict", element: <AupDictPage /> },
+      { path: "aup-field", element: <AupFieldPage /> },
+      { path: "aup-audit", element: <AupConfigAuditPage /> },
       { path: "aup-reviewers", element: <AupReviewerConfigPage /> },
       { path: "nhp-template", element: <NhpTemplateListPage /> },
       { path: "nhp-template/edit/:formKey", element: <NhpTemplateEditor /> },

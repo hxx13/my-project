@@ -11,6 +11,8 @@ import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellHistoryMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.service.CageCellDetailService;
+import com.example.demo.modules.cageshelf.service.CageInfoValueService;
+import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.cageshelf.service.OutboxService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -42,6 +44,8 @@ public class CageLocalController {
     private final OutboxService outboxService;
     private final JdbcTemplate jdbcTemplate;
     private final UserDisplayNameService userDisplayNameService;
+    private final CageQuotaService quotaService;
+    private final CageInfoValueService infoValueService;
 
     public CageLocalController(AuthContextService authContextService,
                                CageCellDetailService detailService,
@@ -50,7 +54,9 @@ public class CageLocalController {
                                CageCellHistoryMapper historyMapper,
                                OutboxService outboxService,
                                JdbcTemplate jdbcTemplate,
-                               UserDisplayNameService userDisplayNameService) {
+                               UserDisplayNameService userDisplayNameService,
+                               CageQuotaService quotaService,
+                               CageInfoValueService infoValueService) {
         this.authContextService = authContextService;
         this.detailService = detailService;
         this.detailMapper = detailMapper;
@@ -59,6 +65,8 @@ public class CageLocalController {
         this.outboxService = outboxService;
         this.jdbcTemplate = jdbcTemplate;
         this.userDisplayNameService = userDisplayNameService;
+        this.quotaService = quotaService;
+        this.infoValueService = infoValueService;
     }
 
     private String operatorDisplayName(User u) {
@@ -67,18 +75,6 @@ public class CageLocalController {
         }
         String name = userDisplayNameService.resolveDisplayName(u.getId());
         return (name != null && !name.isBlank()) ? name : u.getId();
-    }
-
-    /** 本地 AUP 注册计划号：aupId → aup_record.register_no（打通本地注册号与笼架）。 */
-    private String resolveLocalRegisterNo(Long aupId) {
-        if (aupId == null) return null;
-        try {
-            List<String> rows = jdbcTemplate.queryForList(
-                    "SELECT register_no FROM aup_record WHERE id = ?", String.class, aupId);
-            return rows.isEmpty() || rows.get(0) == null ? null : rows.get(0);
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private User resolveUser(String auth) {
@@ -99,45 +95,23 @@ public class CageLocalController {
     // ═══════════════════════════════════════════
 
     @PostMapping("/bind")
-    @Operation(summary = "绑定笼盒 → 写本地 + 异步投递ARO")
+    @Operation(summary = "已退役：扫码绑定已被预约/分配流程取代")
     public Result<?> bind(@RequestBody Map<String, Object> body, HttpServletRequest req) {
         User u = resolveUser(req.getHeader("Authorization"));
         Result<?> denied = requireRole(u, RoleEnum.STAFF);
         if (denied != null) return denied;
-
-        Long animalCageId = toLong(body.get("animalCageId"));
-        String code = str(body, "cageBoxCode");
-        if (animalCageId == null || code == null) return Result.fail(400, "animalCageId 和 cageBoxCode 必填");
-
-        detailService.bindCageBox(animalCageId, code);
-        String pos = buildPositionLabel(animalCageId);
-        String summary = String.format("%s 绑定笼盒 %s → 笼位 %d %s", operatorDisplayName(u), code, animalCageId, pos);
-        // 使用 canonical 命名（与 aro_field_mapping.json 对齐）
-        outboxService.enqueue("cage_cell", String.valueOf(animalCageId), "bind",
-                Map.of("animal_cage_id", animalCageId, "cage_box_code", code), "cageRelatedBox", summary);
-
-        log.info("[local/bind] {}", summary);
-        return Result.success(Map.of("ok", true, "local", true));
+        log.info("[local/bind] 退役拒绝 user={}", u.getId());
+        return Result.fail(410, "扫码绑定已退役，请使用预约/分配流程");
     }
 
     @PostMapping("/unbind")
-    @Operation(summary = "解绑笼盒 → 写本地 + 异步投递ARO")
+    @Operation(summary = "已退役：扫码绑定已被预约/分配流程取代")
     public Result<?> unbind(@RequestBody Map<String, Object> body, HttpServletRequest req) {
         User u = resolveUser(req.getHeader("Authorization"));
         Result<?> denied = requireRole(u, RoleEnum.STAFF);
         if (denied != null) return denied;
-
-        Long animalCageId = toLong(body.get("animalCageId"));
-        if (animalCageId == null) return Result.fail(400, "animalCageId 必填");
-
-        detailService.unbindCageBox(animalCageId);
-        String pos = buildPositionLabel(animalCageId);
-        String summary = String.format("%s 解绑笼盒 → 笼位 %d %s", operatorDisplayName(u), animalCageId, pos);
-        outboxService.enqueue("cage_cell", String.valueOf(animalCageId), "unbind",
-                Map.of("animal_cage_id", animalCageId), "unbindCageBox", summary);
-
-        log.info("[local/unbind] {}", summary);
-        return Result.success(Map.of("ok", true, "local", true));
+        log.info("[local/unbind] 退役拒绝 user={}", u.getId());
+        return Result.fail(410, "扫码绑定已退役，请使用预约/分配流程");
     }
 
     // ═══════════════════════════════════════════
@@ -160,18 +134,21 @@ public class CageLocalController {
         Long shelveId = toLong(body.get("shelveId"));
         String piName = str(body, "piName");
         String aupNumber = str(body, "aupNumber");
-        // 优先用本地 AUP 注册计划号（打通本地 JUMC 号与笼架），回退 ARO aupNumber
-        String localNo = resolveLocalRegisterNo(aupId);
-        if (localNo != null && !localNo.isBlank()) {
-            aupNumber = localNo;
-        }
 
-        // ① 本地DB逐笼更新（含PI姓名、AUP编号、院系）
+        // 配额校验：实际占用 + 本次 ≤ 该 AUP 可用数（键用 register_number）
+        quotaService.assertCanAllocate(roomId, aupNumber, list.size());
+
+        // ① 本地DB逐笼更新（含PI姓名、AUP编号、院系）+ 直写表单(cage_info_value)自动填充
         List<Long> cageIds = new ArrayList<>();
         for (Object id : list) {
             Long animalCageId = toLong(id);
             if (animalCageId == null) continue;
-            detailService.allocate(animalCageId, piName, aupNumber);
+            CageCellDetail d = detailService.allocate(animalCageId, piName, aupNumber);
+            Map<String, Object> auto = new HashMap<>();
+            if (d.getProjectPiName() != null && !d.getProjectPiName().isBlank()) auto.put("project_pi_name", d.getProjectPiName());
+            if (d.getDepartmentName() != null && !d.getDepartmentName().isBlank()) auto.put("department_name", d.getDepartmentName());
+            if (d.getAupNumber() != null && !d.getAupNumber().isBlank()) auto.put("aup_number", d.getAupNumber());
+            if (!auto.isEmpty()) infoValueService.syncFromMapped(animalCageId, auto);
             cageIds.add(animalCageId);
         }
 
@@ -297,12 +274,14 @@ public class CageLocalController {
     @Operation(summary = "读取笼位实验记录和照片")
     public Result<?> getAnnotate(@PathVariable Long animalCageId, HttpServletRequest req) {
         if (resolveUser(req.getHeader("Authorization")) == null) return Result.fail(401, "未登录");
-        CageCellDetail d = detailMapper.selectByAnimalCageId(animalCageId);
-        if (d == null) return Result.success(Map.of("experimentDesc", "", "imagesJson", "[]", "statusPhotos", "{}"));
+        Map<String, Object> local = infoValueService.getLocalFields(animalCageId);
+        Object ed = local.get("experiment_desc");
+        Object img = local.get("images_json");
+        Object sp = local.get("extra_data");
         return Result.success(Map.of(
-            "experimentDesc", d.getExperimentDesc() != null ? d.getExperimentDesc() : "",
-            "imagesJson", d.getImagesJson() != null ? d.getImagesJson() : "[]",
-            "statusPhotos", d.getExtraData() != null ? d.getExtraData() : "{}"
+            "experimentDesc", ed == null ? "" : String.valueOf(ed),
+            "imagesJson", img == null ? "[]" : String.valueOf(img),
+            "statusPhotos", sp == null ? "{}" : String.valueOf(sp)
         ));
     }
 
@@ -316,27 +295,24 @@ public class CageLocalController {
         Long animalCageId = toLong(body.get("animalCageId"));
         if (animalCageId == null) return Result.fail(400, "animalCageId 必填");
 
-        CageCellDetail d = detailMapper.selectByAnimalCageId(animalCageId);
-        if (d == null) {
-            d = new CageCellDetail();
-            d.setAnimalCageId(animalCageId);
-        }
-        if (body.containsKey("experimentDesc")) d.setExperimentDesc(str(body, "experimentDesc"));
-        if (body.containsKey("imagesJson")) d.setImagesJson(str(body, "imagesJson"));
-        if (body.containsKey("statusPhotos")) {
-            // 特殊状态照片仅教职工（STAFF+）可写，学生只能写实验记录/照片
-            if (u.getRole() != null && u.getRole().getLevel() >= RoleEnum.STAFF.getLevel()) {
-                d.setExtraData(str(body, "statusPhotos"));
-            }
-        }
-        detailMapper.batchUpsert(List.of(d));
+        String experimentDesc = body.containsKey("experimentDesc") ? str(body, "experimentDesc") : null;
+        String imagesJson = body.containsKey("imagesJson") ? str(body, "imagesJson") : null;
+        String statusPhotos = body.containsKey("statusPhotos") ? str(body, "statusPhotos") : null;
+
+        // 特殊状态照片仅教职工（STAFF+）可写，学生只能写实验记录/照片
+        boolean staff = u.getRole() != null && u.getRole().getLevel() >= RoleEnum.STAFF.getLevel();
+        Map<String, Object> values = new HashMap<>();
+        if (experimentDesc != null) values.put("experiment_desc", experimentDesc);
+        if (imagesJson != null) values.put("images_json", imagesJson);
+        if (statusPhotos != null && staff) values.put("extra_data", statusPhotos);
+        infoValueService.saveLocalFields(animalCageId, values, u.getId());
 
         // 同时写入历史归档（标注类操作，statusField="_annotation"）
         CageCellHistory h = new CageCellHistory();
         h.setAnimalCageId(animalCageId);
         h.setStatusField("_annotation");
-        h.setImagesJson(d.getImagesJson());
-        h.setExperimentDesc(d.getExperimentDesc());
+        h.setImagesJson(imagesJson);
+        h.setExperimentDesc(experimentDesc);
         h.setToggledBy(operatorDisplayName(u));
         h.setAction("annotated");
         historyMapper.insert(h);

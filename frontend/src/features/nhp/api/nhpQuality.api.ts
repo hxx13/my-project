@@ -42,6 +42,8 @@ export interface NhpQualityEvent {
   /** OPEN / REVIEWED / CLOSED */
   status: string;
   reviewer?: string | null;
+  /** 复核人展示名（UserDisplayNameService） */
+  reviewerName?: string | null;
   createdAt?: string;
 }
 

@@ -23,7 +23,7 @@ export interface NhpField {
   dataType: string;
   unit?: string;
   required: string;
-  codelistId?: number;
+  codelistId?: number | null;
   description?: string;
   cdiscDomain?: string;
   cdiscVariable?: string;
@@ -110,5 +110,19 @@ export async function rejectNhpFieldReview(fieldId: number, comment: string): Pr
 export async function unfreezeNhpField(fieldId: number): Promise<NhpField> {
   return authHttp
     .post<Result<NhpField>>(`/nhp/fields/${fieldId}/unfreeze`)
+    .then(({ data }) => data.data);
+}
+
+/** 批量解冻字段（FROZEN→DRAFT）；无占用者解冻，占用者跳过并汇总 */
+export async function batchUnfreezeNhpFields(fieldIds: number[]): Promise<{
+  unfrozenCount: number;
+  unfrozenIds?: number[];
+  blocked?: string[];
+}> {
+  return authHttp
+    .post<Result<{ unfrozenCount: number; unfrozenIds?: number[]; blocked?: string[] }>>(
+      "/nhp/fields/actions/batch-unfreeze",
+      { fieldIds },
+    )
     .then(({ data }) => data.data);
 }

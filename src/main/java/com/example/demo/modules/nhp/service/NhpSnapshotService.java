@@ -63,7 +63,7 @@ public class NhpSnapshotService {
         return snapshotMapper.countByRecordId(recordId);
     }
 
-    private void enrichCreatedByNames(List<CrfRecordSnapshot> rows) {
+    public void enrichCreatedByNames(List<CrfRecordSnapshot> rows) {
         if (rows == null || rows.isEmpty()) {
             return;
         }

@@ -1,5 +1,5 @@
 /**
- * NHP 快照管理页（单页，对齐 24 §3.8）。
+ * NHP 快照页（单页，对齐 24 §3.8）。
  *
  * crf_record_snapshot：快照列表 + 字段级对比（回滚落审计，前端仅展示对比，回滚动作待后端就绪）。
  */
@@ -52,7 +52,7 @@ export default function NhpSnapshotPage() {
             <button type="button" className="btn ghost small" onClick={goBack}>
               ← 返回
             </button>
-            <h1>快照管理</h1>
+            <h1>快照</h1>
             <div className="sub">crf_record_snapshot · 列表 / 字段级对比（回滚动作待后端就绪）</div>
           </div>
         </div>

@@ -3,6 +3,7 @@ package com.example.demo.modules.cageshelf.service;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.aup.mapper.AupRecordMapper;
 import com.example.demo.modules.cageshelf.mapper.CageBookingMapper;
+import com.example.demo.modules.cageshelf.mapper.CageQuotaMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -30,13 +31,18 @@ public class CageBookingLocalService {
     private final AupRecordMapper aupRecordMapper;
     private final AroService aroService;
     private final JdbcTemplate jdbcTemplate;
+    private final CageQuotaService quotaService;
+    private final CageQuotaMapper quotaMapper;
 
     public CageBookingLocalService(CageBookingMapper mapper, AupRecordMapper aupRecordMapper,
-                                   AroService aroService, JdbcTemplate jdbcTemplate) {
+                                   AroService aroService, JdbcTemplate jdbcTemplate,
+                                   CageQuotaService quotaService, CageQuotaMapper quotaMapper) {
         this.mapper = mapper;
         this.aupRecordMapper = aupRecordMapper;
         this.aroService = aroService;
         this.jdbcTemplate = jdbcTemplate;
+        this.quotaService = quotaService;
+        this.quotaMapper = quotaMapper;
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -46,6 +52,13 @@ public class CageBookingLocalService {
     /** 房间预约汇总列表，返回形状对齐原 ARO /room/rent/list：{data:{list, total}, status:0} */
     public Map<String, Object> listRooms() {
         List<Map<String, Object>> rooms = mapper.selectRooms();
+        // 实际占用实时计算，覆盖同步快照值
+        for (Map<String, Object> room : rooms) {
+            Long roomId = toLong(room.get("roomId"));
+            if (roomId != null) {
+                room.put("usedAnimalCageNumber", quotaMapper.countRoomUsed(roomId));
+            }
+        }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("list", rooms);
         data.put("total", rooms.size());
@@ -61,6 +74,14 @@ public class CageBookingLocalService {
     /** 房间内 AUP 分配明细，返回形状对齐原 ARO /room/rent/prepare/aups：{data:[...], status:0} */
     public Map<String, Object> listRoomAups(String roomId) {
         List<Map<String, Object>> aups = mapper.selectRoomAups(roomId);
+        // 实际占用实时计算，覆盖同步快照值
+        Long rid = toLong(roomId);
+        for (Map<String, Object> aup : aups) {
+            String registerNo = str(aup.get("registerNumber"));
+            if (rid != null && registerNo != null) {
+                aup.put("usedAnimalCageNumber", quotaMapper.countAupUsedInRoom(rid, registerNo));
+            }
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("data", aups);
         out.put("status", 0);
@@ -90,6 +111,8 @@ public class CageBookingLocalService {
         String aupId = str(body.get("aupId"));
         Integer rentNumber = toInt(body.get("rentNumber"));
         String memo = str(body.get("memo"));
+        // 前端传的 register_number 优先（配额键），同步来的行 aup_id 是 ARO id、反查不到本地 aup_record
+        String bodyRegisterNo = str(body.get("registerNumber"));
 
         // 从 aup_record 反查课题组名 + AUP 编号（自己的字段口径）
         String groupName = null;
@@ -104,11 +127,24 @@ public class CageBookingLocalService {
                 }
             }
         }
+        if (registerNo == null || registerNo.isBlank()) registerNo = bodyRegisterNo;
         if (aroId == null || aroId.isBlank() || "new".equals(aroId)) {
             // 新增：aro_id 用 aupId + roomId 合成，保证 upsert 幂等（同房间同 AUP 唯一）
             aroId = (roomId == null ? "0" : roomId) + "_" + (aupId == null ? "x" : aupId);
         }
+        // 配额校验：改低 AUP 可用数时不得低于其实际占用；键用 register_number
+        quotaService.assertAupQuotaValid(toLong(roomId), registerNo, rentNumber);
         mapper.upsertRoomAup(aroId, roomId, null, groupName, registerNo, aupId, rentNumber, memo);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("data", Map.of("ok", true));
+        out.put("status", 0);
+        return out;
+    }
+
+    /** 保存房间上限（animal_cage_number），改低时校验不低于已切配额之和。 */
+    public Map<String, Object> saveRoomCapacity(String roomId, Integer capacity) {
+        quotaService.assertRoomQuotaValid(toLong(roomId), capacity);
+        mapper.upsertRoomCapacity(roomId, capacity);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("data", Map.of("ok", true));
         out.put("status", 0);
@@ -129,13 +165,18 @@ public class CageBookingLocalService {
     // ═══════════════════════════════════════════════════════════
 
     /**
-     * 从 ARO 拉取房间预约汇总 + 各房间 AUP 明细 + AUP 字典，按唯一键 upsert 到本地。
-     * 不清空、不删除本地行；cage_booking_room_aup 的 deleted=1 行不会被复活。
+     * 从 ARO 拉取房间预约汇总 + 各房间 AUP 明细，硬覆盖落本地（先清空再整量写入）。
+     * 房间 id 转数值口径（与 cage_shelf_index.room_id 一致）。
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> syncFromAro() {
         int rooms = 0;
         int aups = 0;
+
+        // 0) 硬覆盖：先清空本地两张表
+        try { mapper.truncateRoomAups(); mapper.truncateRooms(); } catch (Exception e) {
+            log.warn("[booking-sync] 清空本地预约表失败: {}", e.getMessage());
+        }
 
         // 1) 房间预约汇总
         Map<String, Object> roomRaw = aroService.fetchRoomRentListGlobal(1, 200);
@@ -143,8 +184,9 @@ public class CageBookingLocalService {
         List<Map<String, Object>> roomBatch = new ArrayList<>();
         List<String> roomIds = new ArrayList<>();
         for (Map<String, Object> r : roomRows) {
+            String roomIdStr = str(r.get("roomId"));
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("roomId", str(r.get("roomId")));
+            row.put("roomId", toLong(roomIdStr));
             row.put("name", str(r.get("name")));
             row.put("description", str(r.get("description")));
             row.put("shelveNumber", toInt(r.get("shelveNumber")));
@@ -153,8 +195,7 @@ public class CageBookingLocalService {
             row.put("usedAnimalCageNumber", toInt(r.get("usedAnimalCageNumber")));
             row.put("lastRentNumber", toInt(r.get("lastRentNumber")));
             row.put("memo", str(r.get("memo")));
-            String roomId = str(r.get("roomId"));
-            if (roomId != null && !roomId.isBlank()) roomIds.add(roomId);
+            if (roomIdStr != null && !roomIdStr.isBlank()) roomIds.add(roomIdStr);
             roomBatch.add(row);
         }
         if (!roomBatch.isEmpty()) {
@@ -166,13 +207,13 @@ public class CageBookingLocalService {
 
         // 2) 逐房间 AUP 明细
         List<Map<String, Object>> aupBatch = new ArrayList<>();
-        for (String roomId : roomIds) {
-            Map<String, Object> aupRaw = aroService.fetchRoomRentAupsGlobal(roomId, 1, 200);
+        for (String roomIdStr : roomIds) {
+            Map<String, Object> aupRaw = aroService.fetchRoomRentAupsGlobal(roomIdStr, 1, 200);
             List<Map<String, Object>> aupRows = extractList(aupRaw.get("data"));
             for (Map<String, Object> a : aupRows) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("aroId", str(a.get("id")));
-                row.put("roomId", roomId);
+                row.put("roomId", toLong(roomIdStr));
                 row.put("name", str(a.get("name")));
                 row.put("piName", str(a.get("piName")));
                 row.put("registerNumber", str(a.get("registerNumber")));

@@ -1,133 +1,45 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import toast from "react-hot-toast";
-import { Loader2, Database, SlidersHorizontal, PencilRuler, ChevronLeft } from "lucide-react";
-import { fetchCageInfoFields } from "../api/cageForm.api";
+import { AdminButton } from "@/components/admin/AdminButton";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
+import CageFieldDictWorkbench from "../components/CageFieldDictWorkbench";
+import { CageFormPageShell, CageFormSearchInput } from "../components/CageFormPageShell";
 
 /**
- * CageShelfFormManagePage — 笼位详情表单管理 HUB
- *
- * 页面挂自建 cage_info_field 后端（不再复用 NHP 页面）：
- *   - 码表管理   → /console/admin/cage-shelves/forms/codelists（只读码表列表）
- *   - 字段配置   → /console/admin/cage-shelves/forms/fields（笼位字段字典套 cage，含发布）
- *   - 编辑并发布 → /console/admin/cage-shelves/forms/fields
- *
- * 摘要数据来自 cage_info_field（published 即已发布）。
+ * 笼位字段/码表管理 HUB — 对齐 NHP「管理字段」入口（NhpFieldDictListPage）。
+ * 已发布表单列表见 CageFormListPage（/forms）。
  */
 export default function CageShelfFormManagePage() {
   const navigate = useNavigate();
-  const [fieldCount, setFieldCount] = useState<number | null>(null);
-  const [publishedCount, setPublishedCount] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [keyword, setKeyword] = useState("");
 
-  useEffect(() => {
-    fetchCageInfoFields()
-      .then((fields) => {
-        setFieldCount(fields.length);
-        setPublishedCount(fields.filter((f) => f.published).length);
-      })
-      .catch((e) => toast.error(e?.message || "加载笼位字段字典失败"))
-      .finally(() => setLoading(false));
-  }, []);
+  const toolbar = (
+    <>
+      <CageFormSearchInput
+        value={keyword}
+        onChange={setKeyword}
+        placeholder="搜索 dictKey / 名称…"
+      />
+      {keyword.trim() ? (
+        <AdminButton type="button" tone="ghost" size="sm" onClick={() => setKeyword("")}>
+          清除
+        </AdminButton>
+      ) : null}
+      <AdminButton
+        type="button"
+        tone="ghost"
+        size="sm"
+        onClick={() => navigate(toAdminRoutePath("/admin/cage-shelves/forms/codelists"))}
+      >
+        码表
+      </AdminButton>
+      <span className="ml-auto text-xs text-[var(--app-color-text-tertiary)]">共 1 套数据域</span>
+    </>
+  );
 
   return (
-    <div className="flex flex-col gap-4 h-full">
-      {/* 顶栏：返回 + 标题 + 角落按钮 */}
-      <div className="shrink-0 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate("/console/admin/cage-shelves")}
-            className="inline-flex items-center gap-0.5 text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)] transition"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />笼架管理
-          </button>
-          <span className="text-[var(--twin-hairline)]">|</span>
-          <h2 className="text-base font-bold text-[var(--twin-ink)]">笼位详情表单管理</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate("/console/admin/cage-shelves/forms/codelists")}
-            className="inline-flex items-center gap-1.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)] transition"
-          >
-            <Database className="h-3.5 w-3.5" />码表管理
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate("/console/admin/cage-shelves/forms/fields")}
-            className="inline-flex items-center gap-1.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)] transition"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />字段配置
-          </button>
-        </div>
-      </div>
-
-      {/* 笼位字段字典套卡片 */}
-      <div className="shrink-0 rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4">
-        {loading ? (
-          <div className="flex min-h-[80px] items-center justify-center text-sm text-[var(--twin-mute)]">
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…
-          </div>
-        ) : (
-          <div className="flex items-center justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-[var(--twin-ink)]">笼位字段字典</span>
-                <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">
-                  已发布字段 {publishedCount ?? 0} 个
-                </span>
-              </div>
-              <div className="text-xs text-[var(--twin-mute)] mt-1">
-                字段字典套 <span className="font-mono text-[11px] text-[var(--twin-ink)]">cage</span>
-                <span className="ml-2">字段共 {fieldCount ?? 0} 个</span>
-              </div>
-              <div className="text-[11px] text-[var(--twin-mute)] mt-1">
-                字段与码表数据来自自建 <span className="font-mono">cage_info_field</span> 后端，不再复用 NHP 页面。
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate("/console/admin/cage-shelves/forms/fields")}
-              className="shrink-0 inline-flex items-center gap-1.5 rounded-twin-md px-4 py-2 text-xs font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 transition"
-            >
-              <PencilRuler className="h-4 w-4" />编辑并发布
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* 入口说明卡片 */}
-      <div className="flex-1 min-h-0 flex flex-col rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] overflow-hidden">
-        <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b border-[var(--twin-hairline)]">
-          <span className="text-sm font-semibold text-[var(--twin-ink)]">管理入口</span>
-          <span className="text-[11px] text-[var(--twin-mute)]">自建笼位字段字典</span>
-        </div>
-        <div className="flex-1 min-h-0 overflow-auto p-4">
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-            <button
-              type="button"
-              onClick={() => navigate("/console/admin/cage-shelves/forms/codelists")}
-              className="text-left rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 hover:border-[var(--twin-hairline-strong)] transition"
-            >
-              <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--twin-ink)]">
-                <Database className="h-4 w-4 text-[var(--twin-mute)]" />码表管理
-              </div>
-              <div className="text-[11px] text-[var(--twin-mute)] mt-1">查看字段取值的码表字典（只读）</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/console/admin/cage-shelves/forms/fields")}
-              className="text-left rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 hover:border-[var(--twin-hairline-strong)] transition"
-            >
-              <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--twin-ink)]">
-                <SlidersHorizontal className="h-4 w-4 text-[var(--twin-mute)]" />字段配置
-              </div>
-              <div className="text-[11px] text-[var(--twin-mute)] mt-1">配置并发布笼位字段字典套（cage）</div>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <CageFormPageShell backTo="/admin/cage-shelves/forms" toolbar={toolbar}>
+      <CageFieldDictWorkbench keyword={keyword} />
+    </CageFormPageShell>
   );
 }

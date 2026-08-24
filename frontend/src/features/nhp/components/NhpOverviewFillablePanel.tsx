@@ -165,7 +165,7 @@ export default function NhpOverviewFillablePanel({ surgery, records, mode = "por
           <span>请在管理端「事件指派」配置访视 → 表单映射</span>
         </div>
       ) : (
-        <div className="nhp-cockpit-fillable-grid">
+        <div className="nhp-cockpit-fillable-list">
           {displayRows.map(({ visitName, visitCode, isCurrent, form, plan, draft }) => (
             <article
               key={`${plan.id ?? form.formId}-${visitCode}`}

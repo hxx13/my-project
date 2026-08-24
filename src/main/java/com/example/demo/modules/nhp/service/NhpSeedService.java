@@ -43,6 +43,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -61,6 +63,8 @@ public class NhpSeedService {
     private static final String DEFAULT_COMPOSITE_KEY = "nhp-crf";
     /** 历史误种：域码写成 DD1 而字段仍为 D1.*；≥2 个 D 的裸域视为猪套脏种子 */
     private static final Pattern BOGUS_DOUBLE_D_ATOM = Pattern.compile("^D{2,}\\d{1,3}$", Pattern.CASE_INSENSITIVE);
+    /** 对齐 crf_id_rule.derived=1：派生键不走取号器（ANES/HX/RS） */
+    private static final Set<String> DERIVED_ID_TYPES = Set.of("ANES", "HX", "RS");
 
     private final CrfStudyMapper studyMapper;
     private final CrfCenterMapper centerMapper;
@@ -163,6 +167,7 @@ public class NhpSeedService {
     public int seedVisits() {
         // code / name / seq / repeating / plannedDays / eventAnchor（V25）；TP 码无横线（V27）
         String[][] visits = {
+                {"TP00", "入组登记", "0", "0", null, "ENROLL"},
                 {"TP01", "术前筛查期", "1", "0", "-7", "PRE_TX"},
                 {"TP02", "术前基线", "2", "0", "0", "PRE_TX"},
                 {"TP03", "术中", "3", "0", "0", "DAY0"},
@@ -285,6 +290,38 @@ public class NhpSeedService {
         n += seedCodelist("ECG_RHY", "心律类型", "窦性", "室性早搏", "室速", "房室传导阻滞", "停搏", "其他");
         n += seedCodelist("PERF", "灌注方式", "NMP=NMP常温机械灌注", "HMP=HMP低温机械灌注", "交叉循环=交叉循环（宿主连接）", "静态冷存=静态冷存");
         n += seedCodelist("LIVER_APP", "肝脏外观评分", "A=均匀红润质软", "B=局部花斑", "C=广泛淤血暗紫质硬（判不合格）");
+        n += seedCodelist("SEX", "性别", "雄性", "雌性");
+        n += seedCodelist("HE_SEMI", "HE半定量分级");
+        n += seedCodelist("RELEASE", "放行结论", "放行", "不放行", "有条件放行");
+        n += seedCodelist("PAIR_DECISION", "配对决策", "采用", "备选", "弃用");
+        n += seedCodelist("QC_STATUS", "结果复核状态", "已复核", "待复核", "复测");
+        n += seedCodelist("PERV_AC_RECOMB", "A/C重组检测", "阴性", "阳性");
+        n += seedCodelist("PERV_INFECTIVITY", "PERV体外感染性", "阴性", "阳性", "未测");
+        n += seedCodelist("PERV_C_STATUS", "PERV-C 状态", "阴性", "阳性");
+        n += seedCodelist("BIOCONTAINMENT_LEVEL", "SPF/DPF 等级", "SPF", "DPF");
+        n += seedCodelist("EDIT_VERIFY_STATUS", "编辑验证结果", "通过", "复核中", "失败");
+        n += seedCodelist("SPECIES", "物种", "食蟹猴", "恒河猴", "狨猴");
+        n += seedCodelist("ELIGIBILITY", "入选结论", "合格", "候补", "剔除");
+        n += seedCodelist("CDC_XM_RESULT", "CDC 交叉配型", "阴性", "弱阳", "阳性");
+        n += seedCodelist("FLOW_XM_RESULT", "流式交叉配型", "阴性", "弱阳", "阳性");
+        n += seedCodelist("ADCC_RESULT", "ADCC 试验", "阴性", "阳性");
+        n += seedCodelist("STORAGE_CONDITION", "存储条件", "-80℃", "LN2", "4℃", "RT");
+        n += seedCodelist("AE_OUTCOME", "转归", "缓解", "部分缓解", "进展", "死亡");
+        n += seedCodelist("NECROPSY_STATUS", "剖检完成状态", "完成", "部分", "未做");
+        n += seedCodelist("REGIMEN_PHASE", "方案阶段", "诱导", "维持", "挽救");
+        n += seedCodelist("MISSED_FLAG", "漏服/拒服标记", "无", "漏服", "拒服", "呕吐");
+        n += seedCodelist("ANES_METHOD", "麻醉方式", "气管插管全麻", "复合麻醉");
+        n += seedCodelist("SAMPLING_TYPE", "取材类型", "计划活检", "事件活检", "剖检");
+        n += seedCodelist("MICRO_THROMBOSIS", "间质出血/血栓", "无", "局灶", "弥漫");
+        n += seedCodelist("JACKET_ADAPT", "适应评估结果", "适应", "不适应移除");
+        n += seedCodelist("ANASTOMOSIS", "吻合方式", "端端吻合", "端侧吻合");
+        n += seedCodelist("BYPASS", "旁路循环建立", "是", "否");
+        n += seedCodelist("PERICARDIAL_EFF", "心包积液", "无", "少量", "中量", "大量");
+        n += seedCodelist("CXR_PREEXT", "拔管前胸片", "正常", "胸腔积液", "气胸");
+        n += seedCodelist("CD141_IHC", "CD141免疫染色", "阴性", "弱阳", "阳性");
+        n += seedCodelist("PLATELET_MORPH", "异常血小板形态", "正常", "异常");
+        n += seedCodelist("PERF_CULTURE", "灌注液微生物培养", "阴性", "阳性");
+        n += seedCodelist("PERF_ENDPOINT", "灌注终点判定", "计划完成", "功能衰竭", "技术中止");
         return n;
     }
 
@@ -409,9 +446,12 @@ public class NhpSeedService {
                         field.setDataType(str(f.get("dataType")));
                         field.setUnit(str(f.get("unit")));
                         field.setRequired(str(f.get("required")));
-                        field.setCodelistId(resolveCodelist(str(f.get("codelist"))));
+                        field.setCodelistId(resolveCodelist(resolveCodelistCode(
+                                str(f.get("codelist")), str(f.get("codelistPending")), str(f.get("nameEn")), str(f.get("nameCn")))));
                         field.setDescription(str(f.get("desc")));
                         field.setConceptCode(str(f.get("conceptCode")));
+                        field.setIdRuleType(pkIdRuleTypeFromSeed(f));
+                        field.setNature(str(f.get("nature")));
                         // 种子字段视为已校对基线，直接 FROZEN，便于从字典生成原子；新建字段仍走 DRAFT→校对
                         field.setStatus("FROZEN");
                         field.setVersion(1);
@@ -420,15 +460,25 @@ public class NhpSeedService {
                         fieldMapper.updateFreeze(field.getId(), "FROZEN", java.time.LocalDateTime.now(), "seed");
                         fields++;
                     } else {
-                        // 回填 concept_code / 保持与字典一致
+                        // 回填 concept_code / id_rule / nature，保持与字典一致
+                        boolean dirty = false;
                         String conceptCode = str(f.get("conceptCode"));
                         if (conceptCode != null && (field.getConceptCode() == null || field.getConceptCode().isBlank())) {
                             fieldMapper.updateConceptCode(field.getId(), conceptCode);
                         }
+                        if (!eq(pkIdRuleTypeFromSeed(f), field.getIdRuleType())) {
+                            field.setIdRuleType(pkIdRuleTypeFromSeed(f));
+                            dirty = true;
+                        }
+                        if (!eq(str(f.get("nature")), field.getNature())) {
+                            field.setNature(str(f.get("nature")));
+                            dirty = true;
+                        }
+                        if (dirty) fieldMapper.update(field);
                     }
                     // 表单-字段引用（幂等）
                     final Long fieldId = field.getId();
-                    String role = str(f.get("role")) == null ? "VALUE" : str(f.get("role"));
+                    String role = resolveSeedFieldRole(f);
                     if (formFieldMapper.listByFormId(form.getId()).stream().noneMatch(ff -> fieldId.equals(ff.getFieldId()))) {
                         CrfFormField ff = new CrfFormField();
                         ff.setFormId(form.getId());
@@ -437,12 +487,8 @@ public class NhpSeedService {
                         ff.setFkTarget(str(f.get("fkTarget")));
                         ff.setPosition(intOf(f.get("pos")));
                         formFieldMapper.insert(ff);
-                    } else if ("DERIVED".equals(role)) {
-                        // DERIVED 补标：存量 form_field 角色纠偏
-                        formFieldMapper.listByFormId(form.getId()).stream()
-                                .filter(ff -> fieldId.equals(ff.getFieldId()))
-                                .filter(ff -> !"DERIVED".equals(ff.getRole()))
-                                .forEach(ff -> formFieldMapper.updateRole(ff.getId(), "DERIVED"));
+                    } else {
+                        backfillFormFieldRole(form.getId(), fieldId, role);
                     }
                 }
             }
@@ -517,6 +563,8 @@ public class NhpSeedService {
                     tf.setDescription(str(f.get("desc")));
                     tf.setType(defaultType(str(f.get("dataType"))));
                     tf.setDictKey(str(f.get("codelist")));
+                    tf.setRole(resolveSeedFieldRole(f));
+                    tf.setRoleMeta(roleMetaForSeedField(f));
                     tf.setRequired("YES".equals(str(f.get("required"))));
                     tf.setSortOrder(order++);
                     String unit = str(f.get("unit"));
@@ -569,6 +617,8 @@ public class NhpSeedService {
                 form.setCaptureForm(str(atom.get("captureForm")));
                 form.setEventAnchor(str(atom.get("eventAnchor")));
                 form.setFrequency(str(atom.get("frequency")));
+                // 表单宿主划分：按原子语义码显式指定（供体域→DONOR，其余默认受体 RECIPIENT）
+                form.setHostType(hostTypeForAtom(code));
                 if (form.getDescription() == null || form.getDescription().isBlank()) {
                     form.setDescription(NhpTemplateService.ORIGIN_SEED + "原子优先·" + (str(atom.get("folder")) == null ? code : str(atom.get("folder"))));
                 }
@@ -586,7 +636,8 @@ public class NhpSeedService {
                         field.setDataType(str(f.get("dataType")));
                         field.setUnit(str(f.get("unit")));
                         field.setRequired(str(f.get("required")));
-                        field.setCodelistId(resolveCodelist(str(f.get("codelist"))));
+                        field.setCodelistId(resolveCodelist(resolveCodelistCode(
+                                str(f.get("codelist")), str(f.get("codelistPending")), str(f.get("nameEn")), str(f.get("nameCn")))));
                         String desc = str(f.get("desc"));
                         String pending = str(f.get("codelistPending"));
                         if (pending != null && !pending.isBlank()) {
@@ -594,7 +645,7 @@ public class NhpSeedService {
                         }
                         field.setDescription(desc);
                         field.setConceptCode(str(f.get("conceptCode")));
-                        field.setIdRuleType(str(f.get("idRule")));
+                        field.setIdRuleType(pkIdRuleTypeFromSeed(f));
                         field.setNature(str(f.get("nature")));
                         field.setStatus("FROZEN");
                         field.setVersion(1);
@@ -609,15 +660,16 @@ public class NhpSeedService {
                         if (!eq(str(f.get("dataType")), field.getDataType())) { field.setDataType(str(f.get("dataType"))); dirty = true; }
                         if (!eq(str(f.get("unit")), field.getUnit())) { field.setUnit(str(f.get("unit"))); dirty = true; }
                         if (!eq(str(f.get("required")), field.getRequired())) { field.setRequired(str(f.get("required"))); dirty = true; }
-                        Long codelistId = resolveCodelist(str(f.get("codelist")));
+                        Long codelistId = resolveCodelist(resolveCodelistCode(
+                                str(f.get("codelist")), str(f.get("codelistPending")), str(f.get("nameEn")), str(f.get("nameCn"))));
                         if (!eq(codelistId, field.getCodelistId())) { field.setCodelistId(codelistId); dirty = true; }
-                        if (!eq(str(f.get("idRule")), field.getIdRuleType())) { field.setIdRuleType(str(f.get("idRule"))); dirty = true; }
+                        if (!eq(pkIdRuleTypeFromSeed(f), field.getIdRuleType())) { field.setIdRuleType(pkIdRuleTypeFromSeed(f)); dirty = true; }
                         if (!eq(str(f.get("nature")), field.getNature())) { field.setNature(str(f.get("nature"))); dirty = true; }
                         if (!eq(str(f.get("conceptCode")), field.getConceptCode())) { field.setConceptCode(str(f.get("conceptCode"))); dirty = true; }
                         if (dirty) fieldMapper.update(field);
                     }
                     final Long fieldId = field.getId();
-                    String role = str(f.get("role")) == null ? "VALUE" : str(f.get("role"));
+                    String role = resolveSeedFieldRole(f);
                     if (formFieldMapper.listByFormId(form.getId()).stream().noneMatch(ff -> fieldId.equals(ff.getFieldId()))) {
                         CrfFormField ff = new CrfFormField();
                         ff.setFormId(form.getId());
@@ -626,39 +678,35 @@ public class NhpSeedService {
                         ff.setFkTarget(str(f.get("fkTarget")));
                         ff.setPosition(intOf(f.get("pos")));
                         formFieldMapper.insert(ff);
+                    } else {
+                        backfillFormFieldRole(form.getId(), fieldId, role);
                     }
                 }
-                // 模板层（题目组织）：每个原子一个根 section，字段按 pos 排成题目，带 dataType 快照约束前端题型
-                if (templateSectionMapper.listByFormId(form.getId()).isEmpty()) {
-                    CrfTemplateSection sec = new CrfTemplateSection();
-                    sec.setFormId(form.getId());
-                    sec.setCode(code);
-                    sec.setLabel(NhpTemplateSectionLabels.resolve(code, str(atom.get("name")), str(form.getName())));
-                    sec.setSortOrder(0);
-                    sec.setSubdivisible(true);
-                    templateSectionMapper.insert(sec);
-                    int order = 0;
-                    for (Map<String, Object> f : list(atom.get("fields"))) {
-                        CrfTemplateField tf = new CrfTemplateField();
-                        tf.setFormId(form.getId());
-                        tf.setSectionId(sec.getId());
-                        tf.setFieldKey(str(f.get("fieldCode")));
-                        tf.setDataType(str(f.get("dataType")));
-                        tf.setLabel(str(f.get("nameCn")));
-                        tf.setDescription(str(f.get("desc")));
-                        tf.setType(defaultType(str(f.get("dataType"))));
-                        tf.setDictKey(str(f.get("codelist")));
-                        tf.setRequired("YES".equals(str(f.get("required"))));
-                        tf.setSortOrder(order++);
-                        String unit = str(f.get("unit"));
-                        if (unit != null) tf.setConfig("{\"unit\":\"" + unit + "\"}");
-                        templateFieldMapper.insert(tf);
-                    }
-                }
+                syncAtomTemplateFromJson(form, code, str(atom.get("name")), list(atom.get("fields")));
                 atomCount++;
             }
         }
         return atomCount;
+    }
+
+    /**
+     * 仅重同步原子模板题目 dictKey/type（不 upsert 字典字段）。字典/码表 JSON 修正后用于回填 crf_template_field。
+     */
+    public int resyncAtomTemplatesFromPriorityJson() {
+        List<Map<String, Object>> suites = loadPriorityJson();
+        if (suites == null) return 0;
+        int n = 0;
+        for (Map<String, Object> suite : suites) {
+            for (Map<String, Object> atom : list(suite.get("atoms"))) {
+                String code = str(atom.get("code"));
+                if (code == null) continue;
+                CrfForm form = formMapper.findByCode(code);
+                if (form == null) continue;
+                syncAtomTemplateFromJson(form, code, str(atom.get("name")), list(atom.get("fields")));
+                n++;
+            }
+        }
+        return n;
     }
 
     @SuppressWarnings("unchecked")
@@ -720,7 +768,7 @@ public class NhpSeedService {
                 if (!anyPub) {
                     String st = existing.getStatus() == null ? "" : existing.getStatus().toUpperCase();
                     if ("DRAFT".equals(st) || "FREEZING".equals(st)) {
-                        templateService.publish(DEFAULT_COMPOSITE_KEY);
+                        templateService.publish(DEFAULT_COMPOSITE_KEY, null);
                         return 1;
                     }
                 }
@@ -739,7 +787,7 @@ public class NhpSeedService {
                 formMapper.update(created);
                 String st = created.getStatus() == null ? "" : created.getStatus().toUpperCase();
                 if (!"FROZEN".equals(st) && !"PUBLISHED".equals(st)) {
-                    templateService.publish(DEFAULT_COMPOSITE_KEY);
+                    templateService.publish(DEFAULT_COMPOSITE_KEY, null);
                 }
             }
             return 1;
@@ -761,7 +809,7 @@ public class NhpSeedService {
             created.setName("NHP 异种移植 CRF（组合模板）");
             formMapper.update(created);
         }
-        templateService.publish(DEFAULT_COMPOSITE_KEY);
+        templateService.publish(DEFAULT_COMPOSITE_KEY, null);
         return 1;
     }
 
@@ -771,6 +819,220 @@ public class NhpSeedService {
         if (code == null) return null;
         CrfCodelist cl = codelistMapper.findByCode(code);
         return cl == null ? null : cl.getId();
+    }
+
+    /**
+     * 字段有码表 code 直接返回；否则若有 codelistPending（内联枚举待提升），
+     * 自动建码表 + 条目（code 由字段英文名生成），并返回 code。幂等。
+     * 码表显示名优先用 nameCn，避免题目编辑器下拉只显示英文。
+     */
+    private String resolveCodelistCode(String code, String pending, String nameEn, String nameCn) {
+        if (code != null && !code.isBlank()) return code;
+        if (pending == null || pending.isBlank()) return null;
+        String clCode = nameEn == null ? null : nameEn.trim().toUpperCase().replaceAll("[^A-Z0-9]+", "_");
+        if (clCode == null || clCode.isBlank()) return null;
+        String displayName = nameCn != null && !nameCn.isBlank()
+                ? nameCn.trim()
+                : (nameEn != null && !nameEn.isBlank() ? nameEn.trim() : clCode);
+        CrfCodelist cl = codelistMapper.findByCode(clCode);
+        if (cl == null) {
+            cl = new CrfCodelist();
+            cl.setCode(clCode);
+            cl.setName(displayName);
+            cl.setVersion(1);
+            cl.setStatus("FROZEN");
+            cl.setActive(true);
+            codelistMapper.insert(cl);
+            int order = 0;
+            for (String raw : pending.split("/")) {
+                String it = raw.trim();
+                if (it.isEmpty()) continue;
+                if (itemMapper.countByCodelistIdAndItemCode(cl.getId(), it) == 0) {
+                    CrfCodelistItem ci = new CrfCodelistItem();
+                    ci.setCodelistId(cl.getId());
+                    ci.setItemCode(it);
+                    ci.setItemLabel(it);
+                    ci.setSortOrder(order);
+                    ci.setActive(true);
+                    itemMapper.insert(ci);
+                }
+                order++;
+            }
+        } else {
+            maybeBackfillCodelistName(clCode, displayName, nameEn);
+        }
+        return clCode;
+    }
+
+    /** 内联枚举自动建表时曾用 nameEn 作显示名；种子重跑时用 nameCn 回填。 */
+    private void maybeBackfillCodelistName(String code, String displayName, String nameEn) {
+        if (code == null || displayName == null || displayName.isBlank()) return;
+        if (!containsCjk(displayName)) return;
+        CrfCodelist cl = codelistMapper.findByCode(code);
+        if (cl == null) return;
+        String current = cl.getName();
+        if (current != null && current.equals(displayName)) return;
+        boolean looksEnglish = current == null || current.isBlank()
+                || current.equalsIgnoreCase(code)
+                || (nameEn != null && current.equalsIgnoreCase(nameEn.trim()))
+                || !containsCjk(current);
+        if (looksEnglish) {
+            codelistMapper.updateMetaByCode(code, displayName, cl.getFolder());
+        }
+    }
+
+    private static boolean containsCjk(String text) {
+        if (text == null) return false;
+        for (int i = 0; i < text.length(); i++) {
+            if (Character.UnicodeScript.of(text.charAt(i)) == Character.UnicodeScript.HAN) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 原子模板呈现层与 nhp-atoms.json 对齐：补缺失题目、回填 dictKey/type（已有结构不整表覆盖）。
+     */
+    private void syncAtomTemplateFromJson(CrfForm form, String atomCode, String atomName,
+                                        List<Map<String, Object>> atomFields) {
+        List<CrfTemplateSection> sections = templateSectionMapper.listByFormId(form.getId());
+        CrfTemplateSection root;
+        if (sections.isEmpty()) {
+            root = new CrfTemplateSection();
+            root.setFormId(form.getId());
+            root.setCode(atomCode);
+            root.setLabel(NhpTemplateSectionLabels.resolve(atomCode, atomName, form.getName()));
+            root.setSortOrder(0);
+            root.setSubdivisible(true);
+            templateSectionMapper.insert(root);
+        } else {
+            root = sections.stream()
+                    .filter(s -> s.getParentId() == null)
+                    .findFirst()
+                    .orElse(sections.get(0));
+        }
+        List<CrfTemplateField> existing = templateFieldMapper.listByFormId(form.getId());
+        Map<String, CrfTemplateField> byKey = new LinkedHashMap<>();
+        for (CrfTemplateField tf : existing) {
+            if (tf.getFieldKey() != null) byKey.put(tf.getFieldKey(), tf);
+        }
+        int order = existing.stream()
+                .map(CrfTemplateField::getSortOrder)
+                .filter(Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(-1);
+        for (Map<String, Object> f : atomFields) {
+            String fieldCode = str(f.get("fieldCode"));
+            if (fieldCode == null) continue;
+            String clCode = resolveCodelistCode(
+                    str(f.get("codelist")), str(f.get("codelistPending")), str(f.get("nameEn")), str(f.get("nameCn")));
+            String fieldType = typeFor(str(f.get("dataType")), clCode);
+            CrfTemplateField tf = byKey.get(fieldCode);
+            String role = resolveSeedFieldRole(f);
+            String roleMeta = roleMetaForSeedField(f);
+            if (tf == null) {
+                tf = new CrfTemplateField();
+                tf.setFormId(form.getId());
+                tf.setSectionId(root.getId());
+                tf.setFieldKey(fieldCode);
+                tf.setDataType(str(f.get("dataType")));
+                tf.setLabel(str(f.get("nameCn")));
+                tf.setDescription(str(f.get("desc")));
+                tf.setType(fieldType);
+                tf.setDictKey(clCode);
+                tf.setRole(role);
+                tf.setRoleMeta(roleMeta);
+                tf.setRequired("YES".equals(str(f.get("required"))));
+                tf.setSortOrder(++order);
+                String unit = str(f.get("unit"));
+                if (unit != null) tf.setConfig("{\"unit\":\"" + unit + "\"}");
+                templateFieldMapper.insert(tf);
+            } else {
+                if (!eq(tf.getRole(), role) || !eq(tf.getRoleMeta(), roleMeta)) {
+                    templateFieldMapper.updateRoleMeta(tf.getId(), role, roleMeta);
+                }
+                // 回填 dictKey/type：空 dictKey 与显式码表均纠正（幂等）
+                boolean dictKeyBlank = tf.getDictKey() == null || tf.getDictKey().isBlank();
+                boolean needDictKey = clCode != null && !clCode.isBlank()
+                        && (dictKeyBlank || !eq(tf.getDictKey(), clCode));
+                boolean needType = !eq(tf.getType(), fieldType);
+                if (needDictKey || needType) {
+                    templateFieldMapper.updateDictKeyAndType(tf.getId(), clCode, fieldType);
+                }
+            }
+        }
+    }
+
+    /** 题型：带码表 → 下拉/多选；否则按 dataType 兜底。 */
+    private String typeFor(String dataType, String codelistCode) {
+        if (codelistCode != null && !codelistCode.isBlank()) {
+            return "ENUM_MULTI".equals(dataType) ? "checkbox" : "select";
+        }
+        return defaultType(dataType);
+    }
+
+    /** PK 字段的 roleMeta：pkRule=DON/RCP…；非 PK 返回 null。 */
+    private String pkRuleMeta(String idRule) {
+        if (idRule == null || idRule.isBlank()) return null;
+        String type = idRule.trim().toUpperCase(Locale.ROOT);
+        if (DERIVED_ID_TYPES.contains(type)) return null;
+        return "{\"pkRule\":\"" + type + "\"}";
+    }
+
+    /** 原子宿主划分（表单划分）：供体域→DONOR，其余（受体档案 + 术后围绕受体的表单）默认 RECIPIENT。 */
+    private String hostTypeForAtom(String code) {
+        if (code == null) return null;
+        String c = code.toLowerCase();
+        if (c.startsWith("donor") || c.startsWith("pathogen") || "organ_release".equals(c)) {
+            return "DONOR";
+        }
+        // 灌注是供体器官侧；perfusion_recipient/perfusion_endpoint 是受体侧
+        if (c.startsWith("perfusion") && !c.endsWith("recipient") && !c.endsWith("endpoint")) {
+            return "DONOR";
+        }
+        return "RECIPIENT";
+    }
+
+    /** DERIVED 字段 roleMeta：derivedSource=pattern 或算法说明。 */
+    private String derivedRuleMeta(String derivedSource) {
+        if (derivedSource == null || derivedSource.isBlank()) return null;
+        return "{\"derivedSource\":\"" + derivedSource.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+    }
+
+    /** 种子字段 → 模板 roleMeta（PK 写 pkRule；DERIVED 写 derivedSource）。 */
+    private String roleMetaForSeedField(Map<String, Object> f) {
+        String role = resolveSeedFieldRole(f);
+        if ("PK".equals(role)) return pkRuleMeta(str(f.get("idRule")));
+        if ("DERIVED".equals(role)) return derivedRuleMeta(str(f.get("derivedSource")));
+        return null;
+    }
+
+    /** crf_field.id_rule_type 仅 PK 取号类写入；派生键（ANES/HX/RS）不写。 */
+    private String pkIdRuleTypeFromSeed(Map<String, Object> f) {
+        if (!"PK".equals(resolveSeedFieldRole(f))) return null;
+        String idRule = str(f.get("idRule"));
+        if (idRule == null || idRule.isBlank()) return null;
+        String type = idRule.trim().toUpperCase(Locale.ROOT);
+        return DERIVED_ID_TYPES.contains(type) ? null : type;
+    }
+
+    /** 种子 JSON 角色：显式 role 优先；有 idRule 则兜底 PK（避免历史 VALUE 采码漂移）。 */
+    private String resolveSeedFieldRole(Map<String, Object> f) {
+        String role = str(f.get("role"));
+        if (role != null && !role.isBlank()) return role;
+        String idRule = str(f.get("idRule"));
+        if (idRule != null && !idRule.isBlank()) return "PK";
+        return "VALUE";
+    }
+
+    /** 存量 form_field 角色与种子 JSON 对齐（重播种子时纠偏 VALUE→PK 等）。 */
+    private void backfillFormFieldRole(Long formId, Long fieldId, String role) {
+        if (formId == null || fieldId == null || role == null) return;
+        formFieldMapper.listByFormId(formId).stream()
+                .filter(ff -> fieldId.equals(ff.getFieldId()))
+                .filter(ff -> !eq(ff.getRole(), role))
+                .forEach(ff -> formFieldMapper.updateRole(ff.getId(), role));
     }
 
     private String defaultType(String dataType) {
@@ -892,6 +1154,7 @@ public class NhpSeedService {
             stat.put("atomsFailed", List.of());
             stat.put("atomsEnsureError", ensure.getMessage());
         }
+        stat.put("atomTemplatesResynced", resyncAtomTemplatesFromPriorityJson());
         log.info("[nhp-seed] reimport pig dictionary: {}", stat);
         return stat;
     }
@@ -971,17 +1234,31 @@ public class NhpSeedService {
         field.setDataType(str(f.get("dataType")));
         field.setUnit(str(f.get("unit")));
         field.setRequired(str(f.get("required")));
-        field.setCodelistId(resolveCodelist(str(f.get("codelist"))));
+        field.setCodelistId(resolveCodelist(resolveCodelistCode(
+                str(f.get("codelist")), str(f.get("codelistPending")), str(f.get("nameEn")), str(f.get("nameCn")))));
         field.setDescription(str(f.get("desc")));
+        field.setConceptCode(str(f.get("conceptCode")));
+        field.setIdRuleType(pkIdRuleTypeFromSeed(f));
+        field.setNature(str(f.get("nature")));
     }
 
     private boolean seedMetaDiffers(CrfField existing, Map<String, Object> f) {
+        Long expectedCodelist = resolveCodelist(resolveCodelistCode(
+                str(f.get("codelist")), str(f.get("codelistPending")), str(f.get("nameEn")), str(f.get("nameCn"))));
         return !eq(existing.getNameEn(), str(f.get("nameEn")))
                 || !eq(existing.getNameCn(), str(f.get("nameCn")))
                 || !eq(existing.getDataType(), str(f.get("dataType")))
                 || !eq(existing.getUnit(), str(f.get("unit")))
                 || !eq(existing.getRequired(), str(f.get("required")))
-                || !eq(existing.getDescription(), str(f.get("desc")));
+                || !eq(existing.getDescription(), str(f.get("desc")))
+                || !eq(existing.getConceptCode(), str(f.get("conceptCode")))
+                || !eq(existing.getIdRuleType(), pkIdRuleTypeFromSeed(f))
+                || !eq(existing.getNature(), str(f.get("nature")))
+                || !Objects.equals(existing.getCodelistId(), expectedCodelist);
+    }
+
+    private static boolean eq(Long a, Long b) {
+        return Objects.equals(a, b);
     }
 
     private static boolean eq(String a, String b) {

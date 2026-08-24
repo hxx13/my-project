@@ -60,7 +60,8 @@ public interface CrfSubjectMapper {
                     @Param("status") String status,
                     @Param("q") String q);
 
-    @Update("UPDATE crf_subject SET basic_json = #{basicJson}, status = #{status}, center_id = #{centerId}, dag_id = #{dagId}, " +
+    @Update("UPDATE crf_subject SET subject_code = #{subjectCode}, basic_json = #{basicJson}, status = #{status}, " +
+            "center_id = #{centerId}, dag_id = #{dagId}, " +
             "sex = #{sex}, birth_date = #{birthDate}, species = #{species}, breed = #{breed}, " +
             "weight_kg = #{weightKg}, age_years = #{ageYears}, external_id = #{externalId}, microchip_id = #{microchipId}, " +
             "farm_code = #{farmCode}, origin_note = #{originNote}, biocontainment_level = #{biocontainmentLevel}, " +

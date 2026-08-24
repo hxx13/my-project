@@ -4,6 +4,9 @@
 
     <resultMap id="CageTransferLogMap" type="com.example.demo.modules.cageshelf.entity.CageTransferLog">
         <id property="id" column="id"/>
+        <result property="eventType" column="event_type"/>
+        <result property="occupantId" column="occupant_id"/>
+        <result property="occupantName" column="occupant_name"/>
         <result property="fromAnimalCageId" column="from_animal_cage_id"/>
         <result property="toAnimalCageId" column="to_animal_cage_id"/>
         <result property="dataSnapshot" column="data_snapshot"/>
@@ -14,8 +17,8 @@
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO cage_transfer_log (from_animal_cage_id, to_animal_cage_id, data_snapshot, operator_id, operator_name, reason)
-        VALUES (#{fromAnimalCageId}, #{toAnimalCageId}, #{dataSnapshot}, #{operatorId}, #{operatorName}, #{reason})
+        INSERT INTO cage_transfer_log (event_type, occupant_id, occupant_name, from_animal_cage_id, to_animal_cage_id, data_snapshot, operator_id, operator_name, reason)
+        VALUES (#{eventType}, #{occupantId}, #{occupantName}, #{fromAnimalCageId}, #{toAnimalCageId}, #{dataSnapshot}, #{operatorId}, #{operatorName}, #{reason})
     </insert>
 
     <select id="selectByFrom" resultMap="CageTransferLogMap">
@@ -24,6 +27,10 @@
 
     <select id="selectByTo" resultMap="CageTransferLogMap">
         SELECT * FROM cage_transfer_log WHERE to_animal_cage_id = #{animalCageId} ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByOccupant" resultMap="CageTransferLogMap">
+        SELECT * FROM cage_transfer_log WHERE occupant_id = #{occupantId} ORDER BY created_at DESC
     </select>
 
 </mapper>

@@ -1,5 +1,5 @@
 /**
- * NHP 编码规则 API 层。
+ * NHP 编号规则 API 层。
  *
  * 对接后端契约：
  * - crf_id_rule：16 类 ID 的 pattern + derived 标记
@@ -16,7 +16,7 @@ interface Result<T> {
   data: T;
 }
 
-/** 16 类 ID 编码规则（crf_id_rule 一行） */
+/** 16 类 ID 编号规则（crf_id_rule 一行） */
 export interface NhpIdRule {
   id: number;
   /** 如 DON/RCP/TX/XM/SMP/MED/AE/ANES/RS/… */

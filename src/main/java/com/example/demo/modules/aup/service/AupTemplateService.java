@@ -153,7 +153,7 @@ public class AupTemplateService {
         }
         boolean sourceEmpty = source == null || loadTree(source.getId()).isEmpty();
 
-        int nextVersion = templateMapper.findMaxVersionByFormKey(formKey) + 1;
+        int nextVersion = nextVersion(formKey);
 
         FormTemplate t = new FormTemplate();
         t.setFormKey(formKey);
@@ -277,7 +277,7 @@ public class AupTemplateService {
             return Result.error("模板不存在");
         }
         String formKey = source.getFormKey();
-        int nextVersion = templateMapper.findMaxVersionByFormKey(formKey) + 1;
+        int nextVersion = nextVersion(formKey);
 
         FormTemplate t = new FormTemplate();
         t.setFormKey(formKey);
@@ -715,6 +715,14 @@ public class AupTemplateService {
 
     private String uid(User u) {
         return u != null ? u.getId() : null;
+    }
+
+    /** 版号补位：取该 formKey 下已占用版本号之外的最小正整数（不无限自增）。 */
+    private int nextVersion(String formKey) {
+        List<Integer> used = templateMapper.listByFormKey(formKey).stream()
+                .map(FormTemplate::getVersion)
+                .collect(Collectors.toList());
+        return AupVersionAllocator.nextAvailable(used);
     }
 
     /* ── 树加载 / 重建 ── */

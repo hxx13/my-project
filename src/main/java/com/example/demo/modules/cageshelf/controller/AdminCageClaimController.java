@@ -5,7 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
-import com.example.demo.modules.cageshelf.service.CageClaimInfoService;
+import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cageshelf.service.CageClaimService;
 import com.example.demo.modules.identity.service.PersonIdentityService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,16 +31,16 @@ public class AdminCageClaimController {
 
     private final AuthContextService authContextService;
     private final CageClaimService claimService;
-    private final CageClaimInfoService infoService;
+    private final CageInfoValueService infoValueService;
     private final PersonIdentityService personIdentityService;
 
     public AdminCageClaimController(AuthContextService authContextService,
                                      CageClaimService claimService,
-                                     CageClaimInfoService infoService,
+                                     CageInfoValueService infoValueService,
                                      PersonIdentityService personIdentityService) {
         this.authContextService = authContextService;
         this.claimService = claimService;
-        this.infoService = infoService;
+        this.infoValueService = infoValueService;
         this.personIdentityService = personIdentityService;
     }
 
@@ -172,7 +172,7 @@ public class AdminCageClaimController {
         CageClaim claim = claimService.getById(id);
         if (claim == null) return Result.fail(404, "认领记录不存在");
 
-        return Result.success(infoService.getInfo(id));
+        return Result.success(infoValueService.getInfo(claim.getAnimalCageId()));
     }
 
     @PutMapping("/{id}/info")
@@ -191,7 +191,7 @@ public class AdminCageClaimController {
         if (values == null) return Result.fail(400, "values 必填且为数组");
 
         try {
-            return Result.success(infoService.updateInfo(id, values));
+            return Result.success(infoValueService.updateInfo(claim.getAnimalCageId(), values, u.getId()));
         } catch (Exception e) {
             return handleServiceException(e);
         }

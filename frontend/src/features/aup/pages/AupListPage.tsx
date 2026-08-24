@@ -1,26 +1,27 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
-import { useGSAP } from "@gsap/react";
-import gsap from "gsap";
 import toast from "react-hot-toast";
-import { useAupListInfinite, useRestoreAupDemo, useDeleteAup, useUnlockAup, useRenewAup, useReviewerConfig, useAupSnapshots, useAupProjectGroups } from "../hooks/useAup";
-import { reseedAupDemo, syncAupFromAro } from "../api/aup.api";
+import { useMutation } from "@tanstack/react-query";
+import { useAupListInfinite, useRestoreAupDemo, useDeleteAup, useUnlockAup, useRenewAup, useReviewerConfig, useAupProjectGroups } from "../hooks/useAup";
+import { batchDeleteAup, reseedAupDemo, syncAupFromAro } from "../api/aup.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import type { AupListItem, AupStage, DraftSource } from "../schema/aup";
 import MiniStageIndicator from "../components/MiniStageIndicator";
-import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
+import {
+  ActionButtons,
+  AupListCardGrid,
+  SnapshotPanel,
+  stageBadge,
+  type ItemAction,
+} from "../components/AupListCard";
 import { appConfirm } from "@/lib/appDialog";
 import "../aup.css";
-
-gsap.registerPlugin(useGSAP);
 
 const PAGE_SIZE = 10;
 
 type ViewMode = "card" | "list";
-
-/** 一条操作按钮描述，卡片/列表共用 */
-type ItemAction = { key: string; label: string; primary?: boolean; danger?: boolean; onClick: () => void };
+type ListTab = "pending" | "approved" | "expired";
 
 /** 筛选卡片「小标签 + 输入框」通用样式（沿用 aup.css 变量，紧凑布局） */
 const FILTER_FIELD_STYLE: CSSProperties = {
@@ -33,332 +34,6 @@ const FILTER_FIELD_STYLE: CSSProperties = {
 
 /** 筛选控件紧凑样式（沿用 .input/.select 类，仅收紧内边距与字号） */
 const FILTER_CONTROL_STYLE: CSSProperties = { padding: "4px 8px", fontSize: 12 };
-
-/** 阶段 → 状态徽标（列表视图用） */
-function stageBadge(item: AupListItem): { text: string; cls: string } {
-  switch (item.currentStage) {
-    case "approved":
-      return { text: "已批准", cls: "approved" };
-    case "terminated":
-      return { text: "已终止", cls: "terminated" };
-    case "expired":
-      return { text: "已过期", cls: "terminated" };
-    case "draft":
-      switch (item.draftSource) {
-        case "piReturn":
-          return { text: "退回给实验员", cls: "modify" };
-        case "formatReturn":
-          return { text: "返修(第1轮)", cls: "modify" };
-        case "expertReturn":
-          return { text: "返修(第2轮)", cls: "modify" };
-        case "rollback":
-          return { text: "已回退", cls: "modify" };
-        case "first":
-        default:
-          return { text: "草稿", cls: "draft" };
-      }
-    case "piReview":
-      return { text: "组长审核中", cls: "review" };
-    case "formatReview":
-      return { text: "格式审查中", cls: "review" };
-    case "expertReview":
-      return { text: "专家审查中", cls: "review" };
-    default:
-      return { text: item.currentStage, cls: "draft" };
-  }
-}
-
-/** 阶段 → 印章（计划书卡片用，短文字分行） */
-function stageSeal(item: AupListItem): { lines: string[]; cls: string } {
-  switch (item.currentStage) {
-    case "approved":
-      return { lines: ["已", "批准"], cls: "approved" };
-    case "terminated":
-      return { lines: ["已", "终止"], cls: "terminated" };
-    case "expired":
-      return { lines: ["已", "过期"], cls: "terminated" };
-    case "draft":
-      switch (item.draftSource) {
-        case "piReturn":
-          return { lines: ["退回", "实验员"], cls: "modify" };
-        case "formatReturn":
-          return { lines: ["返修", "第1轮"], cls: "modify" };
-        case "expertReturn":
-          return { lines: ["返修", "第2轮"], cls: "modify" };
-        case "rollback":
-          return { lines: ["已", "回退"], cls: "modify" };
-        case "first":
-        default:
-          return { lines: ["草稿"], cls: "draft" };
-      }
-    case "piReview":
-      return { lines: ["组长", "审核中"], cls: "review" };
-    case "formatReview":
-      return { lines: ["格式", "审查中"], cls: "review" };
-    case "expertReview":
-      return { lines: ["专家", "审查中"], cls: "review" };
-    default:
-      return { lines: [item.currentStage], cls: "draft" };
-  }
-}
-
-/** 专家投票结论（审核人逐人标记） */
-type VoteVerdict = "agree" | "modify" | "disagree" | "unvoted";
-
-const VOTE_LABEL: Record<VoteVerdict, string> = {
-  agree: "同意",
-  modify: "修改",
-  disagree: "拒绝",
-  unvoted: "待投",
-};
-
-function reviewerVerdict(name: string, agree: string[], modify: string[], disagree: string[]): VoteVerdict {
-  if (agree.includes(name)) return "agree";
-  if (modify.includes(name)) return "modify";
-  if (disagree.includes(name)) return "disagree";
-  return "unvoted";
-}
-
-/** 操作按钮组（卡片/列表共用；stopPropagation 避免触发行点击展开） */
-function ActionButtons({ actions, stopPropagation }: { actions: ItemAction[]; stopPropagation?: boolean }) {
-  return (
-    <>
-      {actions.map((a) => (
-        <button
-          key={a.key}
-          className={a.primary ? "btn primary small" : "btn ghost small"}
-          style={a.danger ? { color: "var(--danger)" } : undefined}
-          onClick={(e) => {
-            if (stopPropagation) e.stopPropagation();
-            a.onClick();
-          }}
-        >
-          {a.label}
-        </button>
-      ))}
-    </>
-  );
-}
-
-/** 历史快照面板（卡片/列表展开后共用） */
-function SnapshotPanel({ itemId, onViewSnap }: { itemId: number; onViewSnap: (itemId: number, snapshotId: number) => void }) {
-  const { data: snaps = [] } = useAupSnapshots(String(itemId));
-  const sortedSnaps = useMemo(() => [...snaps].sort((a, b) => b.versionNo - a.versionNo), [snaps]);
-
-  return (
-    <div className="snapshot-box">
-      <div className="snapshot-title">历史快照 · {sortedSnaps.length}</div>
-      {sortedSnaps.length === 0 ? (
-        <div className="snapshot-empty">暂无快照</div>
-      ) : (
-        <table className="snapshot-table">
-          <thead>
-            <tr>
-              <th>版本</th>
-              <th>阶段</th>
-              <th>记录时间</th>
-              <th>操作人</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedSnaps.map((s) => (
-              <tr key={s.snapshotId}>
-                <td className="snapshot-v">v{s.versionNo}</td>
-                <td className="snapshot-stage">{stageLabel(s.stage, s.draftSource)}</td>
-                <td className="snapshot-time">{formatDateTimeAsiaShanghaiShort(s.createdAt)}</td>
-                <td className="snapshot-time">{s.createdByName || s.createdBy || "—"}</td>
-                <td><button className="btn ghost small" onClick={() => onViewSnap(itemId, s.snapshotId)}>查看</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-/** 卡片「项目名称」：固定两行高度；超出两行时自动缩小字号（最多三行），保证卡片高度一致 */
-function ProjectNameTitle({ name, isDemo }: { name?: string; isDemo?: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [shrunk, setShrunk] = useState(false);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const measure = () => {
-      // 以标准字号测量自然内容高度：超过两行（36.4px）则缩小字号
-      el.style.fontSize = "13px";
-      el.style.display = "block";
-      el.style.webkitLineClamp = "none";
-      const over = el.scrollHeight - el.clientHeight > 2;
-      el.style.fontSize = "";
-      el.style.display = "";
-      el.style.webkitLineClamp = "";
-      setShrunk(over);
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [name, isDemo]);
-
-  return (
-    <div ref={ref} className={"aup-f-v aup-f-v-title" + (shrunk ? " shrunk" : "")}>
-      {name || "（未命名）"}
-      {isDemo === 1 && <span className="demo-badge">演示示例</span>}
-    </div>
-  );
-}
-
-/** 计划书式卡片（单条） */
-function CardItem({
-  item,
-  actions,
-  open,
-  onToggle,
-  onViewSnap,
-}: {
-  item: AupListItem;
-  actions: ItemAction[];
-  open: boolean;
-  onToggle: () => void;
-  onViewSnap: (itemId: number, snapshotId: number) => void;
-}) {
-  const seal = stageSeal(item);
-  const reviewers = (item.reviewerNames || "").split(/[,，]/).map((s) => s.trim()).filter(Boolean);
-  const agreeList = item.agreeNames ?? [];
-  const modifyList = item.modifyNames ?? [];
-  const disagreeList = item.disagreeNames ?? [];
-  const hasExpertVotes = agreeList.length + modifyList.length + disagreeList.length > 0;
-  const showVoteBadges = item.currentStage === "expertReview" || hasExpertVotes;
-  const registerNo = item.registerNo || "待编号";
-
-  return (
-    <div className="aup-card-cell">
-      <div className="aup-doc-stack">
-        <div className="aup-doc" onClick={onToggle}>
-          <div className="aup-doc-hd">
-            <span className="aup-doc-title">实验动物使用计划书</span>
-            <span className="aup-doc-no">编号：{registerNo}</span>
-          </div>
-          <div className="aup-doc-body">
-            <div className="aup-f">
-              <div className="aup-f-k">项目名称</div>
-              <ProjectNameTitle name={item.projectName} isDemo={item.isDemo} />
-            </div>
-            <div className="aup-f2">
-              <div className="aup-f">
-                <div className="aup-f-k">课题组负责人</div>
-                <div className="aup-f-v">{item.piName || "—"}</div>
-              </div>
-              <div className="aup-f">
-                <div className="aup-f-k">所属部门</div>
-                <div className="aup-f-v">{item.dept || "—"}</div>
-              </div>
-            </div>
-            <div className="aup-f">
-              <div className="aup-f-k">项目来源</div>
-              <div className="aup-f-v">{item.projectSource || "—"}</div>
-            </div>
-            <div className="aup-f">
-              <div className="aup-f-k">审核人</div>
-              <div className="aup-reviewers">
-                {reviewers.length === 0 ? (
-                  <span className="aup-f-v" style={{ borderBottom: "none", paddingBottom: 4 }}>—</span>
-                ) : showVoteBadges ? (
-                  reviewers.map((r) => {
-                    const v = reviewerVerdict(r, agreeList, modifyList, disagreeList);
-                    return (
-                      <span key={r} className="aup-reviewer">
-                        <span className={"aup-vote-badge " + v}>{VOTE_LABEL[v]}</span>
-                        <span className="aup-reviewer-name">{r}</span>
-                      </span>
-                    );
-                  })
-                ) : (
-                  <span className="aup-f-v" style={{ borderBottom: "none", paddingBottom: 4 }}>{reviewers.join(" · ")}</span>
-                )}
-              </div>
-            </div>
-            <div className="aup-doc-steps">
-              <MiniStageIndicator miniSteps={item.miniSteps} />
-            </div>
-          </div>
-          <div className="aup-doc-foot">
-            <div className="aup-doc-acts">
-              <ActionButtons actions={actions} stopPropagation />
-            </div>
-            <div className="aup-doc-foot-right">
-              <button className="aup-snap-toggle" onClick={(e) => { e.stopPropagation(); onToggle(); }}>
-                {open ? "▾" : "▸"} 快照({item.snapshotCount ?? 0})
-              </button>
-              <div className={"aup-seal " + seal.cls}>
-                {seal.lines.map((l) => (
-                  <span key={l}>{l}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      {open && (
-        <div className="aup-doc-snap">
-          <SnapshotPanel itemId={item.id} onViewSnap={onViewSnap} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 卡片网格：GSAP 淡入 + 上移交错入场。genKey 为筛选/标签重置标记，仅在其变化时重播动画（无限滚动追加不重播） */
-function CardGrid({
-  items,
-  genKey,
-  getActions,
-  expanded,
-  onToggle,
-  onViewSnap,
-}: {
-  items: AupListItem[];
-  genKey: string;
-  getActions: (item: AupListItem) => ItemAction[];
-  expanded: Set<number>;
-  onToggle: (id: number) => void;
-  onViewSnap: (itemId: number, snapshotId: number) => void;
-}) {
-  const gridRef = useRef<HTMLDivElement>(null);
-
-  useGSAP(
-    () => {
-      const cells = gridRef.current?.querySelectorAll(".aup-card-cell");
-      if (!cells || cells.length === 0) return;
-      gsap.fromTo(
-        cells,
-        { opacity: 0, y: 24 },
-        { opacity: 1, y: 0, duration: 0.45, stagger: 0.06, ease: "power2.out", overwrite: true }
-      );
-    },
-    { scope: gridRef, dependencies: [genKey], revertOnUpdate: true }
-  );
-
-  return (
-    <div className="aup-card-grid" ref={gridRef}>
-      {items.map((item) => (
-        <CardItem
-          key={item.id}
-          item={item}
-          actions={getActions(item)}
-          open={expanded.has(item.id)}
-          onToggle={() => onToggle(item.id)}
-          onViewSnap={onViewSnap}
-        />
-      ))}
-    </div>
-  );
-}
 
 /** 人名标签（列表视图用） */
 function PersonChips({ names }: { names: string[] }) {
@@ -379,17 +54,24 @@ function ListTable({
   expanded,
   onToggle,
   onViewSnap,
+  selectedIds,
+  onToggleSelect,
+  selectAll,
 }: {
   items: AupListItem[];
   getActions: (item: AupListItem) => ItemAction[];
   expanded: Set<number>;
   onToggle: (id: number) => void;
   onViewSnap: (itemId: number, snapshotId: number) => void;
+  selectedIds?: Set<number>;
+  onToggleSelect?: (id: number) => void;
+  selectAll?: boolean;
 }) {
   return (
     <table className="list-table">
       <thead>
         <tr>
+          <th style={{ width: 36 }}></th>
           <th>编号</th>
           <th>项目名称</th>
           <th>课题组负责人</th>
@@ -412,6 +94,15 @@ function ListTable({
           return (
             <Fragment key={item.id}>
               <tr className="row" onClick={() => onToggle(item.id)}>
+                <td style={{ width: 36, paddingRight: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectAll || selectedIds?.has(item.id)}
+                    onChange={() => onToggleSelect?.(item.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    title="勾选以批量删除"
+                  />
+                </td>
                 <td>
                   {item.registerNo ? (
                     <span style={{ fontFamily: "monospace", color: "var(--primary)", fontWeight: 600, whiteSpace: "nowrap" }}>{item.registerNo}</span>
@@ -441,7 +132,7 @@ function ListTable({
               </tr>
               {open && (
                 <tr className="snapshot-row">
-                  <td colSpan={10}>
+                  <td colSpan={11}>
                     <SnapshotPanel itemId={item.id} onViewSnap={onViewSnap} />
                   </td>
                 </tr>
@@ -454,37 +145,12 @@ function ListTable({
   );
 }
 
-const STAGE_LABELS: Record<string, string> = {
-  piReview: "组长审核",
-  formatReview: "格式审查",
-  expertReview: "专家审查",
-  approved: "审核通过",
-  terminated: "已终止",
-  expired: "已过期",
-};
-
-/** 草稿阶段（stage=draft）按草稿来源显示准确名称 */
-const DRAFT_SOURCE_LABELS: Record<string, string> = {
-  first: "首次填写",
-  piReturn: "组长退回修改",
-  formatReturn: "格式退回修改",
-  expertReturn: "专家退回修改",
-  rollback: "回退",
-};
-
-function stageLabel(stage: string, draftSource?: string): string {
-  if (stage === "draft") {
-    return (draftSource && DRAFT_SOURCE_LABELS[draftSource]) || "填写草稿";
-  }
-  return STAGE_LABELS[stage] ?? stage;
-}
-
 export default function AupListPage() {
   const navigate = useNavigate();
   const [view, setView] = useState<ViewMode>("card");
   const [keyword, setKeyword] = useState("");
   const [stage, setStage] = useState<AupStage | "">("");
-  const [tab, setTab] = useState<"approved" | "pending">("pending");
+  const [tab, setTab] = useState<ListTab>("pending");
   const [projectGroupName, setProjectGroupName] = useState("");
   const [submitterName, setSubmitterName] = useState("");
   const [reviewerName, setReviewerName] = useState("");
@@ -496,6 +162,8 @@ export default function AupListPage() {
   const [relatedToMe, setRelatedToMe] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectAll, setSelectAll] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const prevGenKeyRef = useRef("");
@@ -518,8 +186,8 @@ export default function AupListPage() {
       size: PAGE_SIZE,
       keyword: keyword.trim() || undefined,
       registerNo: registerNo.trim() || undefined,
-      stage: tab === "approved" ? ("approved" as AupStage) : stage || undefined,
-      excludeStage: tab === "approved" ? undefined : ("approved" as AupStage),
+      stage: tab === "approved" ? ("approved" as AupStage) : tab === "expired" ? ("expired" as AupStage) : stage || undefined,
+      excludeStages: tab === "pending" ? (["approved", "expired"] as AupStage[]) : undefined,
       excludeDraft: true,
       draftSource: tab === "pending" ? draftSource || undefined : undefined,
       roundNo: tab === "pending" && roundNo ? Number(roundNo) : undefined,
@@ -586,6 +254,39 @@ export default function AupListPage() {
   const handleDelete = async (id: number) => {
     if (await appConfirm("确定删除该计划书？删除后不可恢复。")) deleteMut.mutate(id);
   };
+  const toggleSelect = (id: number) => {
+    setSelectAll(false);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const selectedCount = selectAll ? total : selectedIds.size;
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelectAll(false);
+      setSelectedIds(new Set());
+    } else {
+      setSelectAll(true);
+      setSelectedIds(new Set());
+    }
+  };
+  const batchDeleteMut = useMutation({
+    mutationFn: () => {
+      if (selectAll) return batchDeleteAup({ selectAll: true, ...filters });
+      return batchDeleteAup({ ids: [...selectedIds] });
+    },
+    onSuccess: (r) => {
+      const failed = r.failed?.length ?? 0;
+      toast.success(`已删除 ${r.deletedCount ?? 0} 条${failed > 0 ? `，${failed} 条失败（无权限/不可删）` : ""}`);
+      setSelectAll(false);
+      setSelectedIds(new Set());
+      refetch();
+    },
+    onError: (e: Error) => toast.error(e.message || "批量删除失败"),
+  });
   const handleUnlock = async (id: number) => {
     if (await appConfirm("解锁后计划书将回到返修（草稿）状态，可重新提交审核。确定解锁？")) unlockMut.mutate(id);
   };
@@ -678,6 +379,7 @@ export default function AupListPage() {
           <div className="aup-view-toggle" role="tablist" aria-label="审核状态">
             <button className={tab === "pending" ? "on" : ""} onClick={() => { setTab("pending"); }}>未通过</button>
             <button className={tab === "approved" ? "on" : ""} onClick={() => { setTab("approved"); setStage(""); }}>已通过</button>
+            <button className={tab === "expired" ? "on" : ""} onClick={() => { setTab("expired"); setStage(""); }}>已过期</button>
           </div>
           <button
             className={relatedToMe ? "btn primary small" : "btn ghost small"}
@@ -685,6 +387,28 @@ export default function AupListPage() {
           >
             与我相关
           </button>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--muted)", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={selectAll}
+              onChange={toggleSelectAll}
+              title="全选 / 取消全选（含未加载，按当前筛选）"
+            />
+            全选
+          </label>
+          {selectedCount > 0 && (
+            <button
+              className="btn danger small"
+              disabled={batchDeleteMut.isPending}
+              onClick={async () => {
+                if (await appConfirm(`批量删除选中的 ${selectedCount} 条计划书？删除后不可恢复。`)) {
+                  batchDeleteMut.mutate();
+                }
+              }}
+            >
+              {batchDeleteMut.isPending ? "删除中…" : `批量删除 (${selectedCount})`}
+            </button>
+          )}
           {isAdmin ? (
             <>
               <button
@@ -772,7 +496,6 @@ export default function AupListPage() {
                 <option value="formatReview">格式审查中</option>
                 <option value="expertReview">专家审查中</option>
                 <option value="terminated">已终止</option>
-                <option value="expired">已过期</option>
               </select>
             </label>
           )}
@@ -861,13 +584,16 @@ export default function AupListPage() {
           ) : items.length === 0 ? (
             <div className="aup-empty">暂无匹配的计划书</div>
           ) : view === "card" ? (
-            <CardGrid
+            <AupListCardGrid
               items={items}
               genKey={genKey}
               getActions={getActions}
               expanded={expanded}
               onToggle={toggle}
               onViewSnap={onViewSnap}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              selectAll={selectAll}
             />
           ) : (
             <ListTable
@@ -876,6 +602,9 @@ export default function AupListPage() {
               expanded={expanded}
               onToggle={toggle}
               onViewSnap={onViewSnap}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              selectAll={selectAll}
             />
           )}
           {/* 滚动加载哨兵：接近底部时触发加载下一页 */}

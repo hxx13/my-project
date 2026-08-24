@@ -134,6 +134,8 @@ export interface FormField {
   /** 说明文字（可空，支持富文本 HTML） */
   description?: string;
   type: FieldType;
+  /** 字段角色 VALUE/DERIVED/PK/FK（对齐 cage/NHP） */
+  role?: string;
   /** 是否必填（0/1 → boolean） */
   required?: boolean;
   /** choice 内联选项，或 dictKey 引用公共字典（二选一） */

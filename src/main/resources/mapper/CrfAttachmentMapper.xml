@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.nhp.mapper.CrfAttachmentMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO crf_attachment (record_id, file_id, file_name, created_by, deleted, created_at)
+        VALUES (#{recordId}, #{fileId}, #{fileName}, #{createdBy}, #{deleted}, NOW())
+    </insert>
+
+    <select id="selectByRecordIdAndFileId" resultType="com.example.demo.modules.nhp.entity.CrfAttachment">
+        SELECT * FROM crf_attachment WHERE record_id = #{recordId} AND file_id = #{fileId} LIMIT 1
+    </select>
+
+    <select id="selectByFileId" resultType="com.example.demo.modules.nhp.entity.CrfAttachment">
+        SELECT * FROM crf_attachment WHERE file_id = #{fileId} ORDER BY id DESC LIMIT 1
+    </select>
+
+    <select id="selectActiveByRecordId" resultType="com.example.demo.modules.nhp.entity.CrfAttachment">
+        SELECT * FROM crf_attachment WHERE record_id = #{recordId} AND deleted = 0
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <select id="countActiveByRecordId" resultType="int">
+        SELECT COUNT(*) FROM crf_attachment WHERE record_id = #{recordId} AND deleted = 0
+    </select>
+
+    <update id="softDeleteById">
+        UPDATE crf_attachment SET deleted = 1 WHERE id = #{id} AND deleted = 0
+    </update>
+
+</mapper>

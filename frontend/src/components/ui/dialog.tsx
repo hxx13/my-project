@@ -15,7 +15,9 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 top-16 z-[var(--z-overlay)] bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      // 全屏遮罩：勿加 top-16。否则会露出管理后台 sticky header，
+      // 叠在半透明顶栏上形成「透明顶栏 / 图层冲突」观感。
+      "fixed inset-0 z-[var(--z-overlay)] bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -54,7 +56,7 @@ const DialogContent = React.forwardRef<
         alwaysShowOverlay ? (
           <div
             className={cn(
-              "fixed inset-0 top-16 z-[var(--z-overlay)] bg-black/50",
+              "fixed inset-0 z-[var(--z-overlay)] bg-black/50",
               overlayClassName
             )}
             aria-hidden

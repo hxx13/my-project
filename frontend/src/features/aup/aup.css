@@ -999,6 +999,14 @@
   background: #f1f4f8;
 }
 
+/* 密集审计/变更记录表（通用，AUP/NHP/笼位共用，原寄放在 nhp.css 已迁回） */
+.aup-app .aup-wb-table--dense{font-size:12px}
+.aup-app .aup-wb-table--dense th{
+  padding:5px 8px;font-size:11px;position:sticky;top:0;z-index:2;
+  box-shadow:0 1px 0 var(--border)
+}
+.aup-app .aup-wb-table--dense td{padding:4px 8px;vertical-align:top;line-height:1.35}
+
 @media (max-width: 900px) {
   .aup-app .aup-wb-split,
   .aup-app .aup-wb-split.aup-wb-split--wide-aside {

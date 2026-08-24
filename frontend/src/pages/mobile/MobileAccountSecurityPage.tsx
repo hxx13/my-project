@@ -14,7 +14,8 @@ export default function MobileAccountSecurityPage() {
   const [resetting, setResetting] = useState(false);
 
   const userInfo = authStorage.getUserInfo();
-  const userId = userInfo?.username || userInfo?.id || "";
+  // PIN 以 aro_personnel.user_id 为 key（= sys_user.id = 19 位），不是 username（注册后可自定义）
+  const userId = userInfo?.id || userInfo?.username || "";
 
   useEffect(() => {
     if (!userId) {

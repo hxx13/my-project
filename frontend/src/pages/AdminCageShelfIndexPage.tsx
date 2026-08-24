@@ -22,10 +22,11 @@ function CellIdEditor({ cell, onSaved }: { cell: CageCellIndexEntry; onSaved: ()
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    const t = value.trim(); const id = t ? Number(t) : null;
-    if (t && (!Number.isFinite(id) || id! <= 0)) { toast.error("无效ID"); return; }
+    const t = value.trim();
+    const id = t || null;
+    if (t && !/^\d+$/.test(t)) { toast.error("无效ID"); return; }
     setSaving(true);
-    try { await updateCellAnimalCageId(cell.shelfIndexId, cell.positionX, cell.positionY, id as number | null); setEditing(false); onSaved(); }
+    try { await updateCellAnimalCageId(cell.shelfIndexId, cell.positionX, cell.positionY, id); setEditing(false); onSaved(); }
     catch (e) { toast.error(e instanceof Error ? e.message : "保存失败"); }
     finally { setSaving(false); }
   };
@@ -67,7 +68,7 @@ function CellGrid({ shelfIndexId }: { shelfIndexId: number }) {
     const row: CageCellIndexEntry[] = [];
     for (let x = 1; x <= maxX; x++) {
       row.push(cellMap.get(`${y}-${x}`) ?? {
-        id: 0, shelfIndexId, shelveId: 0, positionX: x, positionY: y,
+        id: 0, shelfIndexId, shelveId: "", positionX: x, positionY: y,
         animalCageId: null, hasCageBox: false, cageBoxCode: null,
         lastSyncStatus: isLoading ? "LOADING" : "PENDING", lastSyncError: null, syncedAt: null,
       } as CageCellIndexEntry);
@@ -134,8 +135,8 @@ export default function AdminCageShelfIndexPage() {
   });
 
   const handleLookup = useCallback(async () => {
-    const id = Number(lookupId.trim());
-    if (!Number.isFinite(id) || id <= 0) { toast.error("请输入有效的 animalCageId"); return; }
+    const id = lookupId.trim();
+    if (!/^\d+$/.test(id)) { toast.error("请输入有效的 animalCageId"); return; }
     try {
       const result = await lookupAnimalCageId(id);
       toast.success(`${result.campusName} / ${result.roomName} / ${result.shelveName} (${result.positionX},${result.positionY})`);

@@ -1187,7 +1187,9 @@ export default function AdminLayout() {
         ) : null}
         <header
           className={cn(
-            "sticky top-0 z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--twin-hairline)] px-4 py-2 shadow-twin-level-2 sm:px-6 md:h-16 md:flex-nowrap md:py-0",
+            // 用 --z-sticky(400)，低于 --z-overlay/--z-modal，避免挡住 Portal 弹层；
+            // 高于内容区 relative z-[1]，保证顶栏压住页内 sticky 工具条。
+            "sticky top-0 z-[var(--z-sticky)] flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--twin-hairline)] px-4 py-2 shadow-twin-level-2 sm:px-6 md:h-16 md:flex-nowrap md:py-0",
             isDark ? "bg-[var(--twin-canvas)]" : "bg-[var(--twin-canvas)]/95 backdrop-blur-md"
           )}
         >

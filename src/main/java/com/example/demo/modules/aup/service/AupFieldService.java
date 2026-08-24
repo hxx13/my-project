@@ -41,6 +41,9 @@ public class AupFieldService {
     /** 值域类题型：本质就是值域，必须选码表（checkbox/cascade 豁免）。 */
     private static final Set<String> VALUE_DOMAIN_TYPES = Set.of("choice", "select");
 
+    /** 字段角色（对齐 cage/NHP FieldRole）：VALUE 可填写 / DERIVED 自动获取只读 / PK 取号只读 / FK 实体只读。 */
+    private static final Set<String> FIELD_ROLES = Set.of("VALUE", "DERIVED", "PK", "FK");
+
     private final AupFieldDefMapper fieldDefMapper;
     private final AupFolderMapper folderMapper;
     private final FormTemplateMapper templateMapper;
@@ -93,10 +96,15 @@ public class AupFieldService {
         if (VALUE_DOMAIN_TYPES.contains(type) && isBlank(req.getDictKey())) {
             return Result.fail(400, "该题型必须选择码表");
         }
+        String role = isBlank(req.getRole()) ? "VALUE" : req.getRole().trim().toUpperCase();
+        if (!FIELD_ROLES.contains(role)) {
+            return Result.fail(400, "role 必须为 VALUE/DERIVED/PK/FK");
+        }
         AupFieldDef f = new AupFieldDef();
         f.setFieldCode(code);
         f.setLabel(req.getLabel().trim());
         f.setType(type);
+        f.setRole(role);
         f.setDictKey(req.getDictKey());
         f.setOptions(VALUE_DOMAIN_TYPES.contains(type) ? null : toJson(req.getOptions()));
         f.setRequired(Boolean.TRUE.equals(req.getRequired()));
@@ -126,6 +134,13 @@ public class AupFieldService {
         }
         if (req.getType() != null && !req.getType().isBlank()) {
             f.setType(req.getType().trim());
+        }
+        if (req.getRole() != null && !req.getRole().isBlank()) {
+            String role = req.getRole().trim().toUpperCase();
+            if (!FIELD_ROLES.contains(role)) {
+                return Result.fail(400, "role 必须为 VALUE/DERIVED/PK/FK");
+            }
+            f.setRole(role);
         }
         if (req.getDictKey() != null) {
             f.setDictKey(req.getDictKey());
@@ -412,6 +427,7 @@ public class AupFieldService {
         v.setFieldCode(f.getFieldCode());
         v.setLabel(f.getLabel());
         v.setType(f.getType());
+        v.setRole(f.getRole());
         v.setDictKey(f.getDictKey());
         v.setOptions(fromJson(f.getOptions()));
         v.setRequired(f.getRequired());

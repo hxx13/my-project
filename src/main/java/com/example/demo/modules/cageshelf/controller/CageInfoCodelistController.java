@@ -65,7 +65,7 @@ public class CageInfoCodelistController {
         Result<?> denied = requireAdmin(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         try {
-            return Result.success(codelistService.create(body));
+            return Result.success(codelistService.create(body, u.getId()));
         } catch (Exception e) {
             return handleServiceException(e);
         }
@@ -93,7 +93,7 @@ public class CageInfoCodelistController {
         Result<?> denied = requireAdmin(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         try {
-            return Result.success(codelistService.updateMeta(code, body));
+            return Result.success(codelistService.updateMeta(code, body, u.getId()));
         } catch (Exception e) {
             return handleServiceException(e);
         }
@@ -106,7 +106,7 @@ public class CageInfoCodelistController {
         Result<?> denied = requireAdmin(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         try {
-            codelistService.delete(code);
+            codelistService.delete(code, u.getId());
             return Result.success(null);
         } catch (Exception e) {
             return handleServiceException(e);
@@ -122,7 +122,7 @@ public class CageInfoCodelistController {
         Result<?> denied = requireAdmin(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         try {
-            return Result.success(codelistService.addItem(code, body));
+            return Result.success(codelistService.addItem(code, body, u.getId()));
         } catch (Exception e) {
             return handleServiceException(e);
         }
@@ -138,7 +138,7 @@ public class CageInfoCodelistController {
         Result<?> denied = requireAdmin(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         try {
-            codelistService.updateItem(code, itemId, body);
+            codelistService.updateItem(code, itemId, body, u.getId());
             return Result.success(null);
         } catch (Exception e) {
             return handleServiceException(e);
@@ -154,7 +154,126 @@ public class CageInfoCodelistController {
         Result<?> denied = requireAdmin(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         try {
-            codelistService.deleteItem(code, itemId);
+            codelistService.deleteItem(code, itemId, u.getId());
+            return Result.success(null);
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    // ── 引用链 ──
+
+    @GetMapping("/{code}/usage")
+    @Operation(summary = "码表引用链（字段 → 字典套 → 原子 → 组合）")
+    public Result<Map<String, Object>> usage(@PathVariable String code, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            return Result.success(codelistService.usage(code));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    // ── 状态机 ──
+
+    @PostMapping("/{code}/submit-review")
+    @Operation(summary = "提交校对")
+    public Result<Map<String, Object>> submitReview(@PathVariable String code, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            return Result.success(codelistService.submitReview(code, u.getId()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    @PostMapping("/{code}/approve")
+    @Operation(summary = "通过并冻结发布")
+    public Result<Map<String, Object>> approve(@PathVariable String code, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            return Result.success(codelistService.approve(code, u.getId()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    @PostMapping("/{code}/reject")
+    @Operation(summary = "驳回")
+    public Result<Map<String, Object>> reject(@PathVariable String code, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            return Result.success(codelistService.reject(code, u.getId()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    @PostMapping("/{code}/unfreeze")
+    @Operation(summary = "解冻本版")
+    public Result<Map<String, Object>> unfreeze(@PathVariable String code, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            return Result.success(codelistService.unfreeze(code, u.getId()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    @PostMapping("/actions/unfreeze-unused")
+    @Operation(summary = "批量解冻无引用码表")
+    public Result<Map<String, Object>> unfreezeUnused(HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            return Result.success(codelistService.unfreezeUnused(u.getId()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    // ── 子字典联动 ──
+
+    @PostMapping("/{code}/items/{itemId}/links")
+    @Operation(summary = "新增子字典联动")
+    public Result<Map<String, Object>> addLink(@PathVariable String code,
+                                               @PathVariable Long itemId,
+                                               @RequestBody Map<String, Object> body,
+                                               HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            Object raw = body == null ? null : body.get("childCodelistCode");
+            String childCode = raw == null ? null : String.valueOf(raw);
+            return Result.success(codelistService.addLink(code, itemId, childCode, u.getId()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    @DeleteMapping("/{code}/items/{itemId}/links/{linkId}")
+    @Operation(summary = "移除子字典联动")
+    public Result<?> removeLink(@PathVariable String code,
+                                @PathVariable Long itemId,
+                                @PathVariable Long linkId,
+                                HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            codelistService.removeLink(code, itemId, linkId, u.getId());
             return Result.success(null);
         } catch (Exception e) {
             return handleServiceException(e);

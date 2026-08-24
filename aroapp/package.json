@@ -2,7 +2,9 @@
   "name": "aroapp-miniprogram",
   "version": "1.0.0",
   "private": true,
-  "description": "微信小程序 aroapp",
+  "scripts": {
+    "postinstall": "node ../scripts/patch-vant-icon-font.mjs && node ../scripts/encode-vant-icon-font.mjs"
+  },
   "dependencies": {
     "@vant/weapp": "^1.11.7",
     "weapp-qrcode": "^1.0.0"

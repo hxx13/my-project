@@ -5,24 +5,32 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "@/features/nhp/components/FolderTreeManager";
-import { CODELIST_FOLDER_LABELS } from "@/features/nhp/utils/folderTreeLabels";
+import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "@/features/form-shared/FolderTreeManager";
+import { CAGE_CODELIST_FOLDER_LABELS } from "../utils/cageFolderLabels";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
-import { scheduleScrollAsideItem } from "@/features/nhp/utils/scrollAsideItem";
+import { scheduleScrollAsideItem } from "@/features/form-shared/scrollAsideItem";
 import {
+  addCageCodelistLink,
   addCageInfoCodelistItem,
+  approveCageCodelist,
   createCageInfoCodelist,
   deleteCageInfoCodelist,
   deleteCageInfoCodelistItem,
+  fetchCageCodelistUsage,
   fetchCageInfoCodelist,
   fetchCageInfoCodelists,
+  rejectCageCodelist,
+  removeCageCodelistLink,
+  submitCageCodelistReview,
+  unfreezeCageCodelist,
   updateCageInfoCodelistItem,
   updateCageInfoCodelistMeta,
   type CageCodelistItem,
   type CageCodelistSummary,
 } from "../api/cageForm.api";
+import { CageFormModalPortal } from "./CageFormModalPortal";
 import "@/features/aup/aup.css";
 
 const UNGROUPED = "未分类";
@@ -213,10 +221,19 @@ function loadPendingFolders(): Set<string> {
   }
 }
 
-export default function CageCodelistWorkbench() {
+export interface CageCodelistWorkbenchProps {
+  keyword: string;
+  onKeywordChange: (v: string) => void;
+  onStatsChange?: (stats: { codelistCount: number; folderCount: number }) => void;
+}
+
+export default function CageCodelistWorkbench({
+  keyword,
+  onKeywordChange,
+  onStatsChange,
+}: CageCodelistWorkbenchProps) {
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [keyword, setKeyword] = useState("");
   const [selected, setSelected] = useState<string | null>(() => searchParams.get("code"));
   const [itemModal, setItemModal] = useState<ItemModal | null>(null);
   const [createModal, setCreateModal] = useState<CreateCodelistModal | null>(null);
@@ -255,6 +272,12 @@ export default function CageCodelistWorkbench() {
     enabled: !!selected,
   });
 
+  const usageQuery = useQuery({
+    queryKey: ["cage-info", "codelist", "usage", selected],
+    queryFn: () => fetchCageCodelistUsage(selected!),
+    enabled: !!selected,
+  });
+
   const codelists = listQuery.data ?? [];
   const q = keyword.trim().toLowerCase();
 
@@ -262,7 +285,7 @@ export default function CageCodelistWorkbench() {
     const code = searchParams.get("code")?.trim();
     if (!code) return;
     setSelected(code);
-    setKeyword("");
+    onKeywordChange("");
     pendingScrollCode.current = code;
     if (listQuery.isSuccess) {
       const hit = codelists.find((c) => c.code === code);
@@ -321,7 +344,12 @@ export default function CageCodelistWorkbench() {
 
   const folderCount = useMemo(() => countTreeFolderNodes(folderTreeGroups), [folderTreeGroups]);
 
+  useEffect(() => {
+    onStatsChange?.({ codelistCount: filtered.length, folderCount });
+  }, [filtered.length, folderCount, onStatsChange]);
+
   const detail = detailQuery.data;
+  const editable = !!detail && (detail.status === "DRAFT" || detail.status === "ACTIVE" || detail.status == null);
   const items = useMemo(
     () => [...(detail?.items ?? [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     [detail?.items],
@@ -331,6 +359,7 @@ export default function CageCodelistWorkbench() {
     void qc.invalidateQueries({ queryKey: ["cage-info", "codelists"] });
     if (selected) {
       void qc.invalidateQueries({ queryKey: ["cage-info", "codelist", "detail", selected] });
+      void qc.invalidateQueries({ queryKey: ["cage-info", "codelist", "usage", selected] });
     }
   };
 
@@ -544,6 +573,40 @@ export default function CageCodelistWorkbench() {
     onError: (e: Error) => toast.error(e.message || "删除失败", { duration: 6000 }),
   });
 
+  const reviewMut = useMutation({
+    mutationFn: ({ action }: { action: "submit" | "approve" | "reject" | "unfreeze" }) => {
+      if (action === "submit") return submitCageCodelistReview(selected!);
+      if (action === "approve") return approveCageCodelist(selected!);
+      if (action === "reject") return rejectCageCodelist(selected!);
+      return unfreezeCageCodelist(selected!);
+    },
+    onSuccess: () => {
+      toast.success("操作成功");
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "操作失败"),
+  });
+
+  const addLinkMut = useMutation({
+    mutationFn: ({ itemId, childCode }: { itemId: number; childCode: string }) =>
+      addCageCodelistLink(selected!, itemId, childCode),
+    onSuccess: () => {
+      toast.success("已新增联动");
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "新增联动失败"),
+  });
+
+  const removeLinkMut = useMutation({
+    mutationFn: ({ itemId, linkId }: { itemId: number; linkId: number }) =>
+      removeCageCodelistLink(selected!, itemId, linkId),
+    onSuccess: () => {
+      toast.success("已移除联动");
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "移除联动失败"),
+  });
+
   const addMut = useMutation({
     mutationFn: (body: { itemCode: string; itemLabel: string }) => addCageInfoCodelistItem(selected!, body),
     onSuccess: () => {
@@ -607,12 +670,6 @@ export default function CageCodelistWorkbench() {
     </div>
   );
 
-  const countText = (
-    <>
-      共 {filtered.length} 个码表 · {folderCount} 个文件夹
-    </>
-  );
-
   const aside = (
     <FolderTreeManager
       folders={folderTreeGroups}
@@ -625,7 +682,7 @@ export default function CageCodelistWorkbench() {
       onCollapsedFoldersChange={setCollapsedFolders}
       deleteFolderPending={renameFolderMut.isPending}
       headerHint="文件夹为分类路径（无独立实体），嵌套用 / 分隔；重命名会批量更新其下全部码表与子路径。"
-      labels={CODELIST_FOLDER_LABELS}
+      labels={CAGE_CODELIST_FOLDER_LABELS}
       folderActions={(folderKey): FolderAction[] =>
         folderKey === UNGROUPED ? ["createItem"] : ["createItem", "createFolder", "rename", "delete"]
       }
@@ -633,6 +690,7 @@ export default function CageCodelistWorkbench() {
         group.key !== UNGROUPED && totalCount === 0 && (group.children?.length ?? 0) === 0
       }
       itemActions={() => ["moveItem"]}
+      getItemLabel={(item) => item.codelist.name || item.id}
       onCreateFolder={canMaintain ? () => void promptCreateFolder() : undefined}
       onCreateSubFolder={canMaintain ? (parent) => void promptCreateFolder(parent) : undefined}
       onCreateItem={canMaintain ? (fk) => openCreateInFolder(fk) : undefined}
@@ -727,12 +785,36 @@ export default function CageCodelistWorkbench() {
             )}
             <div style={{ flex: 1 }} />
             {canMaintain && (
-              <button
-                className="btn small primary"
-                onClick={() => setItemModal({ mode: "add", itemCode: "", itemLabel: "" })}
-              >
-                ＋ 新增项
-              </button>
+              <>
+                {detail.status === "DRAFT" && (
+                  <button className="btn small ghost" onClick={() => reviewMut.mutate({ action: "submit" })}>
+                    提交校对
+                  </button>
+                )}
+                {detail.status === "PENDING_REVIEW" && (
+                  <>
+                    <button className="btn small primary" onClick={() => reviewMut.mutate({ action: "approve" })}>
+                      通过并冻结发布
+                    </button>
+                    <button className="btn small ghost" onClick={() => reviewMut.mutate({ action: "reject" })}>
+                      驳回
+                    </button>
+                  </>
+                )}
+                {detail.status === "FROZEN" && (
+                  <button className="btn small ghost" onClick={() => reviewMut.mutate({ action: "unfreeze" })}>
+                    解冻本版
+                  </button>
+                )}
+                {editable && (
+                  <button
+                    className="btn small primary"
+                    onClick={() => setItemModal({ mode: "add", itemCode: "", itemLabel: "" })}
+                  >
+                    ＋ 新增项
+                  </button>
+                )}
+              </>
             )}
             {canMaintain && (
               <button
@@ -746,12 +828,13 @@ export default function CageCodelistWorkbench() {
           </div>
 
           <div className="aup-wb-table-wrap">
-            <table className="aup-wb-table" style={{ minWidth: 560 }}>
+            <table className="aup-wb-table" style={{ minWidth: 640 }}>
               <thead>
                 <tr>
                   <th style={{ width: 48 }}>序</th>
                   <th style={{ width: 180 }}>内部值（唯一）</th>
                   <th>展示文本</th>
+                  <th style={{ width: 200 }}>子字典联动</th>
                   <th style={{ width: 160 }}>操作</th>
                 </tr>
               </thead>
@@ -770,7 +853,48 @@ export default function CageCodelistWorkbench() {
                       </div>
                     </td>
                     <td>
-                      {canMaintain ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                        {(item.childLinks ?? []).map((link) => (
+                          <span key={link.linkId} className="aup-wb-chip" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            {link.childCodelistName || link.childCodelistCode}
+                            {canMaintain && editable && (
+                              <button
+                                type="button"
+                                style={{ border: "none", background: "none", cursor: "pointer", padding: 0, color: "var(--danger)" }}
+                                title="移除联动"
+                                onClick={() => removeLinkMut.mutate({ itemId: item.id, linkId: link.linkId })}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                        {canMaintain && editable && (
+                          <select
+                            className="select"
+                            style={{ width: "auto", fontSize: 11, padding: "2px 4px" }}
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                addLinkMut.mutate({ itemId: item.id, childCode: e.target.value });
+                                e.target.value = "";
+                              }
+                            }}
+                          >
+                            <option value="">＋ 联动…</option>
+                            {codelists
+                              .filter((c) => c.code !== detail.code)
+                              .map((c) => (
+                                <option key={c.code} value={c.code}>
+                                  {c.name || c.code}
+                                </option>
+                              ))}
+                          </select>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      {canMaintain && editable ? (
                         <div className="acts">
                           <button className="btn small ghost" title="上移" onClick={() => reorderLocal(i, -1)}>
                             ↑
@@ -804,14 +928,46 @@ export default function CageCodelistWorkbench() {
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={4} style={{ padding: 40, textAlign: "center", color: "var(--muted)" }}>
-                      暂无字典项{canMaintain ? "，点击「＋ 新增项」" : ""}
+                    <td colSpan={5} style={{ padding: 40, textAlign: "center", color: "var(--muted)" }}>
+                      暂无字典项{canMaintain && editable ? "，点击「＋ 新增项」" : ""}
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+
+          {/* 本版引用链 */}
+          {usageQuery.data && (
+            <div className="aup-wb-panel" style={{ marginTop: 16 }}>
+              <div className="aup-wb-panel-hd">
+                <span className="title">本版引用链</span>
+                <span className="aup-wb-chip muted">{usageQuery.data.refCount} 字段引用</span>
+              </div>
+              <div className="aup-wb-meta-grid" style={{ padding: 8 }}>
+                {usageQuery.data.fields.length === 0 && (
+                  <div className="aup-empty small" style={{ gridColumn: "1 / -1" }}>
+                    暂无字段引用本码表。
+                  </div>
+                )}
+                {usageQuery.data.fields.map((f) => (
+                  <div key={f.fieldId} className="aup-wb-meta-cell" style={{ gridColumn: "1 / -1" }}>
+                    <label>{f.label || f.canonical}</label>
+                    <div className="val" style={{ fontSize: 12, lineHeight: 1.6 }}>
+                      <span className="mono">{f.canonical}</span>
+                      {f.domainCode ? ` · 域 ${f.domainCode}` : ""}
+                      {f.atoms.length > 0
+                        ? ` · 原子：${f.atoms.map((a) => a.formKey).join("、")}`
+                        : ""}
+                      {f.atoms.some((a) => a.composites.length > 0)
+                        ? ` · 组合：${[...new Set(f.atoms.flatMap((a) => a.composites.map((c) => c.formKey)))].join("、")}`
+                        : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>
@@ -820,21 +976,6 @@ export default function CageCodelistWorkbench() {
   return (
     <div className="aup-app aup-app--workbench cage-form-wb min-h-0 flex-1">
       <div className="aup-wb">
-        <div className="aup-wb-toolbar">
-          <input
-            className="input"
-            placeholder="搜索码表中文名 / 编码 / 文件夹…"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-          {keyword.trim() && (
-            <button type="button" className="btn ghost small" onClick={() => setKeyword("")}>
-              清除
-            </button>
-          )}
-          <span className="aup-wb-count">{countText}</span>
-        </div>
-
         <div className="aup-wb-split aup-wb-split--wide-aside">
           <aside className="aup-wb-aside" ref={asideRef}>
             {aside}
@@ -844,6 +985,7 @@ export default function CageCodelistWorkbench() {
       </div>
 
       {editMetaModal && selected && (
+        <CageFormModalPortal>
         <div className="aup-modal-mask" onClick={() => setEditMetaModal(null)}>
           <div className="aup-modal" onClick={(e) => e.stopPropagation()}>
             <h3>编辑码表元数据</h3>
@@ -887,9 +1029,11 @@ export default function CageCodelistWorkbench() {
             </div>
           </div>
         </div>
+        </CageFormModalPortal>
       )}
 
       {createModal && (
+        <CageFormModalPortal>
         <div className="aup-modal-mask" onClick={() => setCreateModal(null)}>
           <div className="aup-modal" onClick={(e) => e.stopPropagation()}>
             <h3>新建码表{createModal.folder ? ` · ${createModal.folder}` : ""}</h3>
@@ -946,9 +1090,11 @@ export default function CageCodelistWorkbench() {
             </div>
           </div>
         </div>
+        </CageFormModalPortal>
       )}
 
       {itemModal && selected && (
+        <CageFormModalPortal>
         <div className="aup-modal-mask" onClick={() => setItemModal(null)}>
           <div className="aup-modal" onClick={(e) => e.stopPropagation()}>
             <h3>{itemModal.mode === "add" ? "新增码表项" : "编辑码表项"}</h3>
@@ -992,6 +1138,7 @@ export default function CageCodelistWorkbench() {
             </div>
           </div>
         </div>
+        </CageFormModalPortal>
       )}
     </div>
   );

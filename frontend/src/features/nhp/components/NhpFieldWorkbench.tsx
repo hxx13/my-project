@@ -41,11 +41,11 @@ import { fetchNhpCodelistById, fetchNhpCodelistPublishedOptions, fetchNhpCodelis
 import { buildNhpCodelistPath, buildNhpFieldPagePath, nhpPathOf, sanitizeNhpReturnTo } from "../utils/nhpAdminNav";
 import { compareBySortOrder, compareCodedId } from "../utils/domainSort";
 import { isBlankOrSameAsCode } from "../utils/nhpSectionTitle";
-import { scheduleScrollAsideItem } from "../utils/scrollAsideItem";
+import { scheduleScrollAsideItem } from "@/features/form-shared/scrollAsideItem";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
-import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "./FolderTreeManager";
+import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "@/features/form-shared/FolderTreeManager";
 import { FIELD_FOLDER_LABELS } from "../utils/folderTreeLabels";
 import "@/features/aup/aup.css";
 import "../nhp.css";

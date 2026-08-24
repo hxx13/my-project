@@ -170,6 +170,34 @@ public class NhpFieldController {
         return service.unfreeze(fieldId, operatorLabel(user));
     }
 
+    @PostMapping("/actions/batch-unfreeze")
+    @Operation(summary = "批量解冻字段（FROZEN→DRAFT）；无占用者解冻，占用者跳过并汇总")
+    public Result<?> batchUnfreeze(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody Map<String, Object> body) {
+        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        if (denied != null) {
+            return denied;
+        }
+        User user = authContextService.resolveUserFromBearer(auth);
+        List<Long> ids = new java.util.ArrayList<>();
+        Object raw = body == null ? null : body.get("fieldIds");
+        if (raw instanceof java.util.Collection<?> c) {
+            for (Object o : c) {
+                if (o instanceof Number n) {
+                    ids.add(n.longValue());
+                } else if (o != null) {
+                    try {
+                        ids.add(Long.parseLong(String.valueOf(o)));
+                    } catch (NumberFormatException ignored) {
+                        // 忽略非法 id
+                    }
+                }
+            }
+        }
+        return service.batchUnfreeze(ids, operatorLabel(user));
+    }
+
     @GetMapping("/{fieldId}/published-usage")
     @Operation(summary = "查询字段在已发布/冻结模板中的使用")
     public Result<List<Map<String, Object>>> publishedUsage(@PathVariable Long fieldId) {

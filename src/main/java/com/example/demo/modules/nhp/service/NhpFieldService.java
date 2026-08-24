@@ -175,8 +175,9 @@ public class NhpFieldService {
             if (clCheck != null) {
                 return clCheck;
             }
-            cur.setCodelistId(patch.getCodelistId());
         }
+        // 前端显式传 null 表示「无码表」；无条件设置（null=清空）
+        cur.setCodelistId(patch.getCodelistId());
         if (patch.getDescription() != null) cur.setDescription(patch.getDescription());
         if (patch.getCalcExpression() != null) cur.setCalcExpression(patch.getCalcExpression());
         if (patch.getCdiscDomain() != null) cur.setCdiscDomain(patch.getCdiscDomain());
@@ -325,6 +326,47 @@ public class NhpFieldService {
         after.put("status", "DRAFT");
         logChange("field", fieldId, "UNFREEZE", st, after, op, null);
         return Result.success(fieldMapper.findById(fieldId), "已解冻为草稿，可直接编辑");
+    }
+
+    /**
+     * 批量解冻：逐个走单字段解冻的占用校验；无占用者解冻，占用者跳过并汇总原因。
+     */
+    @Transactional
+    public Result<Map<String, Object>> batchUnfreeze(List<Long> fieldIds, String operator) {
+        if (fieldIds == null || fieldIds.isEmpty()) {
+            return Result.fail(400, "请至少选择一个字段");
+        }
+        List<Long> ids = fieldIds.stream().filter(id -> id != null).distinct().toList();
+        if (ids.isEmpty()) {
+            return Result.fail(400, "请至少选择一个字段");
+        }
+        int unfrozen = 0;
+        List<Long> unfrozenIds = new ArrayList<>();
+        List<String> blocked = new ArrayList<>();
+        for (Long id : ids) {
+            Result<?> r = unfreeze(id, operator);
+            if (Boolean.TRUE.equals(r.getSuccess())) {
+                unfrozen++;
+                unfrozenIds.add(id);
+            } else {
+                CrfField f = fieldMapper.findById(id);
+                String label = f != null
+                        ? (f.getNameCn() != null && !f.getNameCn().isBlank() ? f.getNameCn() : f.getFieldCode())
+                        : String.valueOf(id);
+                blocked.add(label + "：" + (r.getMessage() == null ? "解冻失败" : r.getMessage()));
+            }
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("unfrozenCount", unfrozen);
+        data.put("unfrozenIds", unfrozenIds);
+        data.put("blocked", blocked);
+        if (unfrozen == 0) {
+            return Result.fail(409, "批量解冻未成功解冻任何字段——" + String.join("；", blocked));
+        }
+        String msg = blocked.isEmpty()
+                ? ("已批量解冻 " + unfrozen + " 个字段")
+                : ("已批量解冻 " + unfrozen + " 个字段；部分失败：" + String.join("；", blocked));
+        return Result.success(data, msg);
     }
 
     /** 待校对队列（可按字典套过滤）。 */

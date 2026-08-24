@@ -22,7 +22,8 @@ export default function StudentSettingsPage() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const userInfo: AuthUserInfo | null = authStorage.getUserInfo();
-  const userId = userInfo?.username || userInfo?.id || "";
+  // PIN 以 aro_personnel.user_id 为 key（= sys_user.id = 19 位），不是 username（注册后可自定义）
+  const userId = userInfo?.id || userInfo?.username || "";
   const authProfile = userInfo?.authProfile;
   const isCasUser = authProfile === "CAS_LOGIN" || authProfile === "IAM_OAUTH";
 

@@ -174,13 +174,19 @@ public class AupSeedService {
     }
 
     private int seedFieldDefs(List<Map<String, Object>> fields, Long folderId) {
+        return seedFieldDefs(fields, folderId, "");
+    }
+
+    private int seedFieldDefs(List<Map<String, Object>> fields, Long folderId, String prefix) {
         int created = 0;
         int fallbackOrder = 0;
         for (Map<String, Object> f : fields) {
-            String fieldCode = str(f.get("fieldKey"));
-            if (fieldCode == null) {
+            String fieldKey = str(f.get("fieldKey"));
+            if (fieldKey == null) {
                 continue;
             }
+            // 嵌套字段全码：父字段 + [] + 子字段（如 B6.blocks[]line / A4.operators[]col_type）
+            String fieldCode = prefix.isEmpty() ? fieldKey : prefix + "[]" + fieldKey;
             if (fieldDefMapper.findByFieldCode(fieldCode) != null) {
                 continue;
             }
@@ -188,6 +194,7 @@ public class AupSeedService {
             def.setFieldCode(fieldCode);
             def.setLabel(str(f.get("label")));
             def.setType(str(f.get("type")));
+            def.setRole(resolveFieldRole(fieldCode));
             def.setDictKey(str(f.get("dictKey")));
             def.setOptions(null);
             def.setRequired(Boolean.TRUE.equals(f.get("required")));
@@ -202,8 +209,26 @@ public class AupSeedService {
             auditService.log("field", def.getId(), fieldCode, def.getLabel(), "CREATE", null, def, null, "seed");
             created++;
             fallbackOrder++;
+
+            // 递归嵌套：repeatGroup 的 config.fields / table 的 config.columns 也入字段字典
+            if (f.get("config") instanceof Map<?, ?> cfgMap) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> cfg = (Map<String, Object>) cfgMap;
+                List<Map<String, Object>> nested = list(cfg.get("fields"));
+                if (nested.isEmpty()) {
+                    nested = list(cfg.get("columns"));
+                }
+                if (!nested.isEmpty()) {
+                    created += seedFieldDefs(nested, folderId, fieldCode);
+                }
+            }
         }
         return created;
+    }
+
+    /** 字段角色（对齐 cage/NHP）：注册号等系统自动生成字段 DERIVED，其余 VALUE。 */
+    private String resolveFieldRole(String fieldCode) {
+        return ("0.regNo".equals(fieldCode) || "0.oldRegNo".equals(fieldCode)) ? "DERIVED" : "VALUE";
     }
 
     /* ── 原子域：每个顶层 section 一个 atom:* ── */
@@ -304,6 +329,31 @@ public class AupSeedService {
             return 1;
         }
         return 0;
+    }
+
+    /**
+     * 清空全部内置种子数据（码表/字段/原子域/组合域/文件夹），供「重置并重新导入」。
+     * 仅删 ATOM/COMPOSITE 模板及其结构，不碰 PROTOCOL 计划书模板与填写实例。
+     * 返回删除行数。
+     */
+    @Transactional
+    public int resetSeed() {
+        int n = 0;
+        n += jdbcTemplate.update("DELETE FROM aup_composite_atom");
+        n += jdbcTemplate.update("DELETE FROM form_field WHERE section_id IN "
+                + "(SELECT id FROM form_section WHERE template_id IN (SELECT id FROM form_template WHERE kind IN ('ATOM','COMPOSITE'))) "
+                + "OR subsection_id IN (SELECT id FROM form_subsection WHERE section_id IN "
+                + "(SELECT id FROM form_section WHERE template_id IN (SELECT id FROM form_template WHERE kind IN ('ATOM','COMPOSITE'))))");
+        n += jdbcTemplate.update("DELETE FROM form_subsection WHERE section_id IN "
+                + "(SELECT id FROM form_section WHERE template_id IN (SELECT id FROM form_template WHERE kind IN ('ATOM','COMPOSITE')))");
+        n += jdbcTemplate.update("DELETE FROM form_section WHERE template_id IN "
+                + "(SELECT id FROM form_template WHERE kind IN ('ATOM','COMPOSITE'))");
+        n += jdbcTemplate.update("DELETE FROM form_template WHERE kind IN ('ATOM','COMPOSITE')");
+        n += jdbcTemplate.update("DELETE FROM aup_field_def");
+        n += jdbcTemplate.update("DELETE FROM dict_item");
+        n += jdbcTemplate.update("DELETE FROM dict");
+        n += jdbcTemplate.update("DELETE FROM aup_folder WHERE owner_type IN ('CODELIST','FIELD','ATOM')");
+        return n;
     }
 
     /* ── section / subsection / field 插入（原子域与组合域共用） ── */

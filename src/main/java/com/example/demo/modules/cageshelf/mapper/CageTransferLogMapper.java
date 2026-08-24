@@ -14,4 +14,6 @@ public interface CageTransferLogMapper {
     List<CageTransferLog> selectByFrom(@Param("animalCageId") Long animalCageId);
 
     List<CageTransferLog> selectByTo(@Param("animalCageId") Long animalCageId);
+
+    List<CageTransferLog> selectByOccupant(@Param("occupantId") String occupantId);
 }

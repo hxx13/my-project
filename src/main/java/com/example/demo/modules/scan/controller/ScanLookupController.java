@@ -8,7 +8,7 @@ import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
-import com.example.demo.modules.cageshelf.mapper.CageClaimInfoValueMapper;
+import com.example.demo.modules.cageshelf.mapper.CageInfoValueMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,14 +30,14 @@ public class ScanLookupController {
     private final CageCellDetailMapper detailMapper;
     private final CageCellIndexMapper indexMapper;
     private final CageClaimMapper claimMapper;
-    private final CageClaimInfoValueMapper infoValueMapper;
+    private final CageInfoValueMapper infoValueMapper;
     private final AssetService assetService;
 
     public ScanLookupController(AuthContextService authContextService,
                                 CageCellDetailMapper detailMapper,
                                 CageCellIndexMapper indexMapper,
                                 CageClaimMapper claimMapper,
-                                CageClaimInfoValueMapper infoValueMapper,
+                                CageInfoValueMapper infoValueMapper,
                                 AssetService assetService) {
         this.authContextService = authContextService;
         this.detailMapper = detailMapper;
@@ -72,6 +72,8 @@ public class ScanLookupController {
                         Map<String, Object> cageCell = new LinkedHashMap<>();
                         cageCell.put("animalCageId", detail.getAnimalCageId());
                         cageCell.put("shelveId", pos.get("shelveId"));
+                        cageCell.put("shelveName", pos.get("shelveName"));
+                        cageCell.put("roomId", pos.get("roomId"));
                         cageCell.put("positionX", pos.get("positionX"));
                         cageCell.put("positionY", pos.get("positionY"));
                         Object px = pos.get("positionX");
@@ -90,7 +92,12 @@ public class ScanLookupController {
                             claim.put("claimStatus", active.getClaimStatus());
                             claim.put("claimantId", active.getClaimantId());
                             claim.put("claimantName", active.getClaimantName());
-                            claim.put("hasInfo", infoValueMapper.countByClaimId(active.getId()) > 0);
+                            claim.put("confirmRequired", active.getConfirmRequired());
+                            claim.put("aupId", active.getAupId());
+                            claim.put("aupNumber", detail.getAupNumber());
+                            claim.put("projectPiName", detail.getProjectPiName());
+                            claim.put("projectName", detail.getProjectName());
+                            claim.put("hasInfo", infoValueMapper.countByAnimalCageId(active.getAnimalCageId()) > 0);
                             result.put("claim", claim);
                         } else {
                             result.put("claim", null);
@@ -106,6 +113,17 @@ public class ScanLookupController {
                 result.put("type", "LEGACY_CAGE_BOX");
                 result.put("message", "旧盒码已废弃，请扫笼位码");
                 result.put("animalCageId", legacy.getAnimalCageId());
+                result.put("legacy", true);
+                Map<String, Object> legacyPos = indexMapper.lookupByAnimalCageId(legacy.getAnimalCageId());
+                if (legacyPos != null) {
+                    result.put("roomId", legacyPos.get("roomId"));
+                    result.put("shelveId", legacyPos.get("shelveId"));
+                    result.put("shelveName", legacyPos.get("shelveName"));
+                    result.put("positionX", legacyPos.get("positionX"));
+                    result.put("positionY", legacyPos.get("positionY"));
+                    result.put("campusName", legacyPos.getOrDefault("campusName", ""));
+                    result.put("roomName", legacyPos.getOrDefault("roomName", ""));
+                }
                 return Result.success(result);
             }
             // 本地DB未命中 → fallback 资产查询

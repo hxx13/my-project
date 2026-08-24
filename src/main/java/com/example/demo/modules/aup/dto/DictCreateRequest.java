@@ -7,6 +7,8 @@ import lombok.Data;
 public class DictCreateRequest {
     private String dictKey;
     private String name;
-    /** 分类（分组/文件夹；NULL=未分类） */
+    /** 分类（分组/文件夹；NULL=未分类，迁移数据源） */
     private String category;
+    /** → aup_folder(owner_type=CODELIST)；NULL=未分类 */
+    private Long folderId;
 }

@@ -1,7 +1,7 @@
 /**
- * NHP 填写实例管理（后台）：以手术实例为文件夹，卡片/列表切换，详情页审计追溯。
+ * NHP 项目管理（表单实例外壳）：以「项目」（crf_transplant，供体+受体对）为顶层文件夹。
  * 入口：/#/content-manager/nhp-records
- * 深链：?create=1&formKey=…&subjectId=…（管理端建实例）
+ * 一个项目 = 供体 + 受体两个对象 + 它们的表单实例；点开查看进度与历史表单。
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -10,24 +10,22 @@ import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import ContentManagerWorkbenchLayout from "@/layouts/ContentManagerWorkbenchLayout";
 import {
   createNhpRecord,
+  fetchNhpProjects,
   fetchNhpRecords,
   fetchNhpSubjects,
+  type NhpProject,
   type NhpSubject,
 } from "../../api/nhpRecord.api";
-import { fetchNhpSubjectBoard, lifecycleStageLabel } from "../../api/nhpSubjectBoard.api";
+import { lifecycleStageLabel } from "../../api/nhpSubjectBoard.api";
 import { fetchNhpTemplates, fillableFormId, isFillablePublished, type NhpTemplateListItem } from "../../api/nhpTemplate.api";
 import { animalTypeLabel } from "../../utils/nhpSubjectLabels";
 import { nhpNavState } from "../../utils/nhpAdminNav";
-import { surgeryContextFromCard, surgeryContextsFromRecords } from "../../utils/nhpSurgeryContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
 import "@/features/aup/aup.css";
 import "../../nhp.css";
 
 type ViewMode = "card" | "list";
-
-function isActiveRecord(row: { record: { status?: string | null } }): boolean {
-  return (row.record.status ?? "").toUpperCase() !== "DELETED";
-}
 
 export default function NhpRecordsPage() {
   const queryClient = useQueryClient();
@@ -48,7 +46,7 @@ export default function NhpRecordsPage() {
   const [pickFormKey, setPickFormKey] = useState(formKeyParam);
   const [creating, setCreating] = useState(false);
 
-  const boardQuery = useQuery({ queryKey: ["nhp", "subject-board"], queryFn: () => fetchNhpSubjectBoard() });
+  const projectsQuery = useQuery({ queryKey: ["nhp", "projects"], queryFn: fetchNhpProjects });
   const recordsQuery = useQuery({
     queryKey: ["nhp", "records-all"],
     queryFn: () => fetchNhpRecords({ page: 1, size: 500 }),
@@ -76,38 +74,41 @@ export default function NhpRecordsPage() {
     ]).catch((e: Error) => toast.error(e.message || "加载选项失败"));
   }, []);
 
-  const activeRecords = useMemo(
-    () => (recordsQuery.data?.items ?? []).filter(isActiveRecord),
-    [recordsQuery.data],
-  );
-
-  const recordCountBySubject = useMemo(() => {
+  const records = recordsQuery.data?.items ?? [];
+  const memberIdsOf = (p: NhpProject): Set<number> => {
+    const s = new Set<number>();
+    if (p.donor?.id) s.add(p.donor.id);
+    if (p.recipient?.id) s.add(p.recipient.id);
+    return s;
+  };
+  const recordCountByProject = useMemo(() => {
     const map = new Map<number, number>();
-    for (const row of activeRecords) {
+    for (const row of records) {
       const sid = row.record.subjectId;
-      map.set(sid, (map.get(sid) ?? 0) + 1);
+      for (const p of projectsQuery.data ?? []) {
+        if (memberIdsOf(p).has(sid)) {
+          map.set(p.id, (map.get(p.id) ?? 0) + 1);
+          break;
+        }
+      }
     }
     return map;
-  }, [activeRecords]);
+  }, [records, projectsQuery.data]);
 
-  const folders = useMemo(() => {
-    const boardById = new Map((boardQuery.data ?? []).map((card) => [card.id, card]));
+  const projects = useMemo(() => {
+    const list = projectsQuery.data ?? [];
     const qq = q.trim().toLowerCase();
-    // 文件夹仅来自有非 DELETED 实例的对象；board 仅用于补充阶段/时点等展示字段
-    let list = surgeryContextsFromRecords(activeRecords).map((ctx) => {
-      const card = boardById.get(ctx.subjectId);
-      return card ? surgeryContextFromCard(card) : ctx;
-    });
     if (!qq) return list;
-    return list.filter(
-      (f) =>
-        f.subjectCode.toLowerCase().includes(qq) ||
-        f.label.toLowerCase().includes(qq) ||
-        (f.currentTp ?? "").toLowerCase().includes(qq),
-    );
-  }, [activeRecords, boardQuery.data, q]);
+    return list.filter((p) => {
+      const hay = [p.donor?.subjectCode, p.recipient?.subjectCode, p.txCode ?? "", p.donor?.breed, p.recipient?.species]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(qq);
+    });
+  }, [projectsQuery.data, q]);
 
-  const openDetail = (subjectId: number) => {
+  const openSubjectRecords = (subjectId: number) => {
     navigate(`/content-manager/nhp-records/${subjectId}`, { state: nhpNavState(location) });
   };
 
@@ -115,7 +116,7 @@ export default function NhpRecordsPage() {
     const sid = Number(pickSubjectId);
     const tpl = templates.find((t) => t.formKey === pickFormKey);
     const formId = tpl ? fillableFormId(tpl) : undefined;
-    if (!sid || formId == null) {
+    if (!sid || !tpl || formId == null) {
       toast.error("请选择动物与已发布模板");
       return;
     }
@@ -123,7 +124,7 @@ export default function NhpRecordsPage() {
     try {
       const r = await createNhpRecord(sid, formId);
       await queryClient.invalidateQueries({ queryKey: ["nhp", "records-all"] });
-      toast.success(`已创建实例 #${r.id}`);
+      toast.success(`已创建「${tpl.title || tpl.formKey}」实例`);
       navigate(`/content-manager/nhp-entry/${r.id}`, { state: nhpNavState(location) });
     } catch (e) {
       toast.error((e as Error).message || "创建失败");
@@ -164,24 +165,14 @@ export default function NhpRecordsPage() {
   return (
     <ContentManagerWorkbenchLayout
       onBack={goBack}
-      searchPlaceholder="手术编号 / 时点"
+      searchPlaceholder="项目 / 供体 / 受体 / 品种 / 物种"
       searchValue={q}
       onSearchChange={setQ}
       toolbarExtra={toolbarExtra}
-      countText={`${folders.length} 个手术实例`}
+      countText={`${projects.length} 个项目`}
       split={false}
       main={
         <>
-          <div style={{ marginBottom: 12 }}>
-            <h1 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 4px" }}>手术实例管理</h1>
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>
-              以手术实例为文件夹 · 进入详情查看进度时间线与历史表单 ·{" "}
-              <Link to="/nhp/overview" style={{ color: "var(--primary)" }}>
-                研究总览
-              </Link>
-            </div>
-          </div>
-
           {showCreate && (
             <div
               style={{
@@ -221,92 +212,100 @@ export default function NhpRecordsPage() {
             </div>
           )}
 
-          {recordsQuery.isPending || recordsQuery.isFetching ? (
-            <div className="aup-wb-empty">加载手术实例…</div>
-          ) : folders.length === 0 ? (
+          {projectsQuery.isPending || recordsQuery.isPending ? (
+            <div className="aup-wb-empty">加载项目…</div>
+          ) : projects.length === 0 ? (
             <div className="aup-wb-empty">
-              暂无手术实例。
+              暂无项目。
               <Link to="/content-manager/nhp-entry" style={{ marginLeft: 8, color: "var(--primary)" }}>
-                前往数据采集入口
+                前往填报入口登记项目
               </Link>
             </div>
           ) : view === "card" ? (
             <div className="nhp-record-folder-grid">
-              {folders.map((f) => (
-                <button key={f.key} type="button" className="nhp-record-folder-card" onClick={() => openDetail(f.subjectId)}>
-                  <div className="aup-doc-stack">
-                    <div className="aup-doc">
-                      <div className="aup-doc-hd">
-                        <span className="aup-doc-title">手术实例</span>
-                        <span className="aup-doc-no">{f.subjectCode}</span>
-                      </div>
-                      <div className="aup-doc-body">
-                        <div style={{ fontSize: 13, lineHeight: 1.7 }}>
-                          <div>
-                            <span style={{ color: "var(--muted)" }}>类型 </span>
-                            {animalTypeLabel(f.subjectType)}
-                          </div>
-                          <div>
-                            <span style={{ color: "var(--muted)" }}>阶段 </span>
-                            {lifecycleStageLabel(f.lifecycleStage)}
-                          </div>
-                          <div>
-                            <span style={{ color: "var(--muted)" }}>时点 </span>
-                            {f.currentTp ?? "—"}
-                          </div>
-                          <div>
-                            <span style={{ color: "var(--muted)" }}>手术日 </span>
-                            {f.txDate ?? "术前"}
-                          </div>
+              {projects.map((p) => (
+                <div key={p.id} className="aup-doc-stack" style={{ cursor: "default" }}>
+                  <div className="aup-doc">
+                    <div className="aup-doc-hd">
+                      <span className="aup-doc-title">项目 #{p.id}</span>
+                      <span className="aup-doc-no">{p.txCode ?? "待取号"}</span>
+                    </div>
+                    <div className="aup-doc-body">
+                      <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+                        <div>
+                          <span style={{ color: "var(--muted)" }}>阶段 </span>
+                          {lifecycleStageLabel(p.lifecycleStage ?? undefined)}
                         </div>
-                      </div>
-                      <div className="aup-doc-foot">
-                        <div className="aup-doc-acts">
-                          <span className="aup-wb-chip muted">{recordCountBySubject.get(f.subjectId) ?? 0} 条实例</span>
-                          {(f.todoCount ?? 0) > 0 && (
-                            <span className="aup-wb-chip" style={{ background: "#fdeaea", color: "#dc2626" }}>
-                              {f.todoCount} 待办
-                            </span>
-                          )}
+                        <div>
+                          <span style={{ color: "var(--muted)" }}>供体 </span>
+                          {p.donor ? p.donor.subjectCode : "—"}
                         </div>
-                        <div className="aup-doc-foot-right" style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700 }}>
-                          查看详情 →
+                        <div>
+                          <span style={{ color: "var(--muted)" }}>受体 </span>
+                          {p.recipient ? p.recipient.subjectCode : "—"}
+                        </div>
+                        <div>
+                          <span style={{ color: "var(--muted)" }}>手术日 </span>
+                          {p.txDate ?? "术前"}
+                        </div>
+                        <div>
+                          <span style={{ color: "var(--muted)" }}>创建人 </span>
+                          {p.createdBy ?? "—"}
+                        </div>
+                        <div>
+                          <span style={{ color: "var(--muted)" }}>创建时间 </span>
+                          {p.createdAt ? formatDateTimeAsiaShanghaiShort(p.createdAt) : "—"}
                         </div>
                       </div>
                     </div>
+                    <div className="aup-doc-foot">
+                      <div className="aup-doc-acts">
+                        <span className="aup-wb-chip muted">{recordCountByProject.get(p.id) ?? 0} 条实例</span>
+                      </div>
+                      <div className="aup-doc-acts" style={{ gap: 6 }}>
+                        {p.donor && (
+                          <button type="button" className="btn ghost small" onClick={() => openSubjectRecords(p.donor!.id)}>
+                            供体实例
+                          </button>
+                        )}
+                        {p.recipient && (
+                          <button type="button" className="btn ghost small" onClick={() => openSubjectRecords(p.recipient!.id)}>
+                            受体实例
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           ) : (
             <table className="list-table">
               <thead>
                 <tr>
-                  <th>手术实例</th>
-                  <th>类型</th>
+                  <th>项目</th>
                   <th>阶段</th>
-                  <th>时点</th>
+                  <th>供体</th>
+                  <th>受体</th>
                   <th>手术日</th>
+                  <th>创建人</th>
+                  <th>创建时间</th>
                   <th>实例数</th>
-                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
-                {folders.map((f) => (
-                  <tr key={f.key} className="row">
+                {projects.map((p) => (
+                  <tr key={p.id} className="row">
                     <td>
-                      <strong>{f.subjectCode}</strong>
+                      <strong>#{p.id}</strong> {p.txCode ?? "待取号"}
                     </td>
-                    <td>{animalTypeLabel(f.subjectType)}</td>
-                    <td>{lifecycleStageLabel(f.lifecycleStage)}</td>
-                    <td>{f.currentTp ?? "—"}</td>
-                    <td>{f.txDate ?? "术前"}</td>
-                    <td>{recordCountBySubject.get(f.subjectId) ?? 0}</td>
-                    <td>
-                      <button type="button" className="btn ghost small" style={{ padding: 0 }} onClick={() => openDetail(f.subjectId)}>
-                        详情
-                      </button>
-                    </td>
+                    <td>{lifecycleStageLabel(p.lifecycleStage ?? undefined)}</td>
+                    <td>{p.donor?.subjectCode ?? "—"}</td>
+                    <td>{p.recipient?.subjectCode ?? "—"}</td>
+                    <td>{p.txDate ?? "术前"}</td>
+                    <td>{p.createdBy ?? "—"}</td>
+                    <td>{p.createdAt ? formatDateTimeAsiaShanghaiShort(p.createdAt) : "—"}</td>
+                    <td>{recordCountByProject.get(p.id) ?? 0}</td>
                   </tr>
                 ))}
               </tbody>

@@ -220,6 +220,10 @@ public class NhpTemplateService {
         String title = str(body == null ? null : body.get("title"));
         String formType = str(body == null ? null : body.get("formType"));
         String dictKey = str(body == null ? null : body.get("dictKey"));
+        String hostType = str(body == null ? null : body.get("hostType"));
+        if (hostType != null && !"DONOR".equals(hostType) && !"RECIPIENT".equals(hostType)) {
+            return Result.fail(400, "hostType 须为 DONOR/RECIPIENT");
+        }
         if (rawKey == null) {
             return Result.fail(400, "formKey / domainCode 不能为空");
         }
@@ -254,6 +258,10 @@ public class NhpTemplateService {
             defaultTitle = effectiveDict + " · " + defaultTitle;
         }
         CrfForm form = insertOrReactivate(newForm(atomKey, title != null ? title : defaultTitle, type, 1, "DRAFT"));
+        if (hostType != null) {
+            form.setHostType(hostType);
+            formMapper.update(form);
+        }
         return Result.success(buildTemplateJson(formMapper.findById(form.getId())));
     }
 
@@ -651,7 +659,7 @@ public class NhpTemplateService {
     }
 
     @Transactional
-    public Result<?> publish(String formKey) {
+    public Result<?> publish(String formKey, String hostType) {
         CrfForm form = resolveEditableOrLatest(formKey);
         if (form == null) {
             return Result.error("模板不存在");
@@ -663,6 +671,17 @@ public class NhpTemplateService {
         if (isAtom(form) && isAtomVersionPinned(form.getId())) {
             return Result.fail(409, "该原子版本已被组合钉住，请「新建版本」编辑后再发布独立表单。"
                     + formatPinBlockMessage(buildReferencedBy(form.getId())));
+        }
+        // 发布时确定「载体」（宿主）：原子须选供体/受体；组合（快照）不强制
+        if (hostType != null && !hostType.isBlank()) {
+            String ht = hostType.trim().toUpperCase();
+            if (!"DONOR".equals(ht) && !"RECIPIENT".equals(ht)) {
+                return Result.fail(400, "hostType 须为 DONOR/RECIPIENT");
+            }
+            if (!ht.equals(form.getHostType())) {
+                form.setHostType(ht);
+                formMapper.update(form);
+            }
         }
         // 同 code 上一 FROZEN → ARCHIVED
         for (CrfForm v : formMapper.listByCode(formKey)) {
@@ -879,6 +898,50 @@ public class NhpTemplateService {
     }
 
     /**
+     * 批量软删模板：按 formKey 逐个删全部活跃版本（复用单 key 删除的占用校验）。
+     * 被填写实例引用 / 被组合钉住的版本会跳过，汇总到 blocked。
+     */
+    @Transactional
+    public Result<Map<String, Object>> batchDeleteAllVersions(List<String> formKeys) {
+        if (formKeys == null || formKeys.isEmpty()) {
+            return Result.fail(400, "请至少选择一个模板");
+        }
+        List<String> keys = formKeys.stream()
+                .filter(k -> k != null && !k.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (keys.isEmpty()) {
+            return Result.fail(400, "请至少选择一个模板");
+        }
+        int deletedCount = 0;
+        List<String> deletedKeys = new ArrayList<>();
+        List<String> blocked = new ArrayList<>();
+        for (String key : keys) {
+            Result<?> r = deleteAllVersions(key);
+            if (Boolean.TRUE.equals(r.getSuccess())) {
+                deletedKeys.add(key);
+                if (r.getData() instanceof Map<?, ?> m && m.get("deletedCount") instanceof Number n) {
+                    deletedCount += n.intValue();
+                }
+            } else {
+                blocked.add(key + "：" + (r.getMessage() == null ? "无活跃版本可删或全部被引用" : r.getMessage()));
+            }
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("deletedCount", deletedCount);
+        data.put("deletedKeys", deletedKeys);
+        data.put("blocked", blocked);
+        if (deletedCount == 0) {
+            return Result.fail(409, "批量删除未成功删除任何版本——" + String.join("；", blocked));
+        }
+        String msg = blocked.isEmpty()
+                ? ("已批量删除 " + deletedKeys.size() + " 个模板（" + deletedCount + " 个版本）")
+                : ("已批量删除 " + deletedKeys.size() + " 个模板（" + deletedCount + " 个版本）；部分未删：" + String.join("；", blocked));
+        return Result.success(data, msg);
+    }
+
+    /**
      * Soft-delete SEED / AUTO_COMPOSE composites that have no fill instances.
      * Also soft-deletes sibling versions under the same formKey (e.g. early nhp-crf v1
      * without [SEED] description) so mislabeled stock is fully removed.
@@ -961,6 +1024,7 @@ public class NhpTemplateService {
         m.put("captureForm", f.getCaptureForm());
         m.put("eventAnchor", f.getEventAnchor());
         m.put("frequency", f.getFrequency());
+        m.put("hostType", f.getHostType());
         // 列表头可能是更新后的草稿；附带最新已发布版，避免「看不到已发布表」
         attachPublishedMeta(m, f.getCode());
         if (isAtom(f)) {
@@ -1025,6 +1089,7 @@ public class NhpTemplateService {
         out.put("captureForm", form.getCaptureForm());
         out.put("eventAnchor", form.getEventAnchor());
         out.put("frequency", form.getFrequency());
+        out.put("hostType", form.getHostType());
         if (isAtom(form)) {
             attachAtomSuiteMeta(out, form.getCode());
         }
@@ -1314,11 +1379,37 @@ public class NhpTemplateService {
         m.put("required", "YES".equals(f.getRequired()));
         if (f.getCodelistId() != null) {
             CrfCodelist cl = codelistMapper.findById(f.getCodelistId());
-            if (cl != null) m.put("dictKey", cl.getCode());
+            if (cl != null) {
+                m.put("dictKey", cl.getCode());
+                // 带码表 = 枚举选择；dataType 可能误标 STRING，这里按码表强制题型（下拉/多选）
+                m.put("type", "ENUM_MULTI".equals(f.getDataType()) ? "checkbox" : "select");
+            }
         }
         if (f.getUnit() != null) m.put("config", Map.of("unit", f.getUnit()));
         if (f.getDescription() != null && !f.getDescription().isBlank()) m.put("description", f.getDescription());
+        String role = resolveDictFieldRole(f);
+        if (role != null) m.put("role", role);
+        String idRule = f.getIdRuleType();
+        if ("PK".equals(role) && idRule != null && !idRule.isBlank()) {
+            m.put("roleMeta", Map.of("pkRule", idRule.trim().toUpperCase(Locale.ROOT)));
+        }
         return m;
+    }
+
+    /** 字段字典 crf_field.nature / id_rule_type → 模板 role（PK 取号 / FK / DERIVED / VALUE 采码）。 */
+    private static String resolveDictFieldRole(CrfField f) {
+        String nature = f.getNature() == null ? "" : f.getNature().trim().toUpperCase(Locale.ROOT);
+        return switch (nature) {
+            case "PK" -> "PK";
+            case "FK" -> "FK";
+            case "DERIVED" -> "DERIVED";
+            case "DATA" -> "VALUE";
+            default -> {
+                String idRule = f.getIdRuleType();
+                if (idRule != null && !idRule.isBlank()) yield "PK";
+                yield "VALUE";
+            }
+        };
     }
 
     private String defaultType(String dataType) {

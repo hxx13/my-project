@@ -1,32 +1,40 @@
 /**
  * NHP 题目渲染组件（role 优先，type 兜底）。
- *
- * 运行态：填写页按字段渲染控件。
- * role 四类（与 type 正交）：
- *   - PK 取号：灰锁只读，值由取号器预生成，不可手填
- *   - FK 实体：蓝实体选择器，从实体列表勾选，非自由文本
- *   - DERIVED 派生：青只读，值由算法/规则计算，显式标注来源
- *   - VALUE 采集：码表/直填，唯一允许手填，走 type 分发
- * 缺省（无 role）按 VALUE 处理，兼容旧数据。
- * 新增题型 = typeRegistry 加一行 + 本文件 type switch 加一个 case。
  */
-import type { FormField } from "../schema/formTemplate";
+import { useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import type { FormField, OptionItem } from "../schema/formTemplate";
 import { idRuleTypeZh } from "../utils/nhpIdRuleLabels";
+import { useNhpAttachments } from "../hooks/useNhpAttachments";
+import {
+  cascadeOptionsForLevel,
+  cascadePatch,
+  defaultImageAccept,
+  fileIdsFromValue,
+  multiSelectValues,
+  normalizeOptions,
+  parseCascadeValue,
+  validateFileUpload,
+} from "@/features/form-shared/fieldHelpers";
 
 interface Props {
   field: FormField;
   value?: unknown;
   onChange?: (value: unknown) => void;
   readOnly?: boolean;
-  /** FK 实体选择器的候选实体（由调用方按 roleMeta.entityType 取数后传入，避免本组件硬编码） */
   entityOptions?: { value: string; label: string }[];
-  /** 结构化字段（group）子字段取值与回写 */
   values?: Record<string, unknown>;
   onFieldChange?: (fieldKey: string, value: unknown) => void;
-  /** PK / DERIVED 预览值（未落库；提交/保存时正式生成或计算） */
   autoGenPreview?: string;
   /** @deprecated 使用 autoGenPreview */
   pkPreview?: string;
+  /** file/image 上传需要表单实例 id */
+  recordId?: number | null;
+  operatorId?: string;
+}
+
+function normalizeFieldOptions(field: FormField): OptionItem[] {
+  return normalizeOptions(field.options);
 }
 
 export default function NhpFormField({
@@ -39,12 +47,22 @@ export default function NhpFormField({
   onFieldChange,
   autoGenPreview,
   pkPreview,
+  recordId,
+  operatorId,
 }: Props) {
   const preview = autoGenPreview ?? pkPreview;
-  const { role, type, options, required, description } = field;
+  const { role, type, required, description } = field;
   const disabled = !!readOnly;
-
-  // ── role 优先于 type ──
+  const options = useMemo(() => normalizeFieldOptions(field), [field.options]);
+  const [fkFilter, setFkFilter] = useState("");
+  const filteredEntityOptions = useMemo(() => {
+    if (!entityOptions) return [];
+    const q = fkFilter.trim().toLowerCase();
+    if (!q) return entityOptions;
+    return entityOptions.filter(
+      (o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q),
+    );
+  }, [entityOptions, fkFilter]);
 
   if (role === "PK") {
     const hasPersisted = value != null && String(value).trim() !== "";
@@ -95,31 +113,39 @@ export default function NhpFormField({
     return (
       <div className="nhp-fk-box">
         <span className="nhp-role-badge fk">🔗 FK 实体</span>
-        <span className="nhp-entity-chip">{String(value ?? "未选择")}</span>
         {hasOptions ? (
-          // 最小闭环用受控 select；完整实体选择器（搜索 + 台账勾选）待后端实体列表端点就绪后替换
-          <select
-            className="select"
-            style={{ width: "auto", minWidth: 200, flex: 1 }}
-            value={(value as string) ?? ""}
-            disabled={disabled}
-            onChange={(e) => onChange?.(e.target.value)}
-          >
-            <option value="">请选择实体…</option>
-            {entityOptions!.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <>
+            {!readOnly && (
+              <input
+                className="input"
+                style={{ minWidth: 200, marginBottom: 4 }}
+                placeholder="搜索实体…"
+                value={fkFilter}
+                onChange={(e) => setFkFilter(e.target.value)}
+              />
+            )}
+            <select
+              className="select"
+              style={{ width: "auto", minWidth: 200, flex: 1 }}
+              value={(value as string) ?? ""}
+              disabled={disabled}
+              onChange={(e) => onChange?.(e.target.value)}
+            >
+              <option value="">请选择实体…</option>
+              {filteredEntityOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </>
         ) : (
-          <span className="nhp-role-hint">实体选择器 · 实体列表待接入</span>
+          <>
+            <span className="nhp-entity-chip">{String(value ?? "未选择")}</span>
+            <span className="nhp-role-hint">实体选择器 · 实体列表待接入</span>
+          </>
         )}
       </div>
     );
   }
-
-  // ── VALUE（或旧数据无 role）→ type 分发 ──
 
   switch (type) {
     case "text":
@@ -144,17 +170,22 @@ export default function NhpFormField({
           disabled={disabled}
         />
       );
-    case "number":
+    case "number": {
+      const unit = field.config?.unit;
       return (
-        <input
-          className="input"
-          type="number"
-          value={(value as number) ?? ""}
-          onChange={(e) => onChange?.(e.target.value === "" ? undefined : Number(e.target.value))}
-          required={required}
-          disabled={disabled}
-        />
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <input
+            className="input"
+            type="number"
+            value={(value as number) ?? ""}
+            onChange={(e) => onChange?.(e.target.value === "" ? undefined : Number(e.target.value))}
+            required={required}
+            disabled={disabled}
+          />
+          {unit ? <span style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>{unit}</span> : null}
+        </span>
       );
+    }
     case "date":
       return (
         <input
@@ -167,6 +198,15 @@ export default function NhpFormField({
         />
       );
     case "choice":
+      return (
+        <ChoiceControl
+          field={field}
+          options={options}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+        />
+      );
     case "select":
       return (
         <select
@@ -177,18 +217,37 @@ export default function NhpFormField({
           disabled={disabled}
         >
           <option value="">请选择</option>
-          {(options ?? []).map((o) => {
-            const v = typeof o === "string" ? o : o.value;
-            const l = typeof o === "string" ? o : o.label;
-            return (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            );
-          })}
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
         </select>
       );
     case "checkbox":
+      if (options.length > 0) {
+        const arr = multiSelectValues(value);
+        const toggle = (opt: string) => {
+          const next = arr.includes(opt) ? arr.filter((x) => x !== opt) : [...arr, opt];
+          onChange?.(next);
+        };
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {options.map((o) => {
+              const checked = arr.includes(o.value);
+              return (
+                <label key={o.value} className={"choice" + (checked ? " chosen" : "")} style={{ display: "flex", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={disabled}
+                    onChange={() => toggle(o.value)}
+                  />
+                  <span>{o.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        );
+      }
       return (
         <input
           type="checkbox"
@@ -198,10 +257,27 @@ export default function NhpFormField({
         />
       );
     case "signature":
-      return <div style={{ border: "1px dashed #d5dbe3", padding: 8 }}>签名（待实现）</div>;
+      return (
+        <input
+          className="input"
+          value={value == null ? "" : String(value)}
+          disabled={disabled}
+          placeholder={disabled ? "（未签署）" : "请输入手写签名"}
+          onChange={(e) => onChange?.(e.target.value)}
+        />
+      );
     case "file":
     case "image":
-      return <div style={{ border: "1px dashed #d5dbe3", padding: 8 }}>上传（待实现）</div>;
+      return (
+        <FileUploadControl
+          field={field}
+          value={value}
+          onChange={onChange}
+          readOnly={readOnly}
+          recordId={recordId}
+          operatorId={operatorId}
+        />
+      );
     case "dateRange": {
       const v = String(value ?? "").split("~");
       return (
@@ -235,27 +311,20 @@ export default function NhpFormField({
       );
     case "cascade":
       return (
-        <select
-          className="select"
-          value={(value as string) ?? ""}
+        <CascadeControl
+          field={field}
+          options={options}
+          value={value}
+          onChange={onChange}
           disabled={disabled}
-          onChange={(e) => onChange?.(e.target.value)}
-        >
-          <option value="">请选择</option>
-          {(options ?? []).map((o) => {
-            const v = typeof o === "string" ? o : o.value;
-            const l = typeof o === "string" ? o : o.label;
-            return (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            );
-          })}
-        </select>
+        />
       );
     case "description":
-    case "richText":
       return description ? <div dangerouslySetInnerHTML={{ __html: description }} /> : null;
+    case "richText":
+      return (
+        <RichTextControl value={value} onChange={onChange} disabled={disabled} placeholder={field.label} />
+      );
     case "divider":
       return <hr />;
     case "group":
@@ -271,6 +340,8 @@ export default function NhpFormField({
               values={values}
               onFieldChange={onFieldChange}
               entityOptions={entityOptions}
+              recordId={recordId}
+              operatorId={operatorId}
             />
           ))}
         </div>
@@ -286,11 +357,7 @@ export default function NhpFormField({
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>#{ri + 1}</span>
                 {!readOnly && (
-                  <button
-                    type="button"
-                    className="btn ghost small"
-                    onClick={() => updateRows(rows.filter((_, i) => i !== ri))}
-                  >
+                  <button type="button" className="btn ghost small" onClick={() => updateRows(rows.filter((_, i) => i !== ri))}>
                     删除
                   </button>
                 )}
@@ -302,6 +369,8 @@ export default function NhpFormField({
                     field={child}
                     value={row[child.fieldKey]}
                     readOnly={readOnly}
+                    recordId={recordId}
+                    operatorId={operatorId}
                     onChange={(v) =>
                       updateRows(rows.map((r, i) => (i === ri ? { ...r, [child.fieldKey]: v } : r)))
                     }
@@ -344,6 +413,8 @@ export default function NhpFormField({
                         field={c}
                         value={row[c.fieldKey]}
                         readOnly={readOnly}
+                        recordId={recordId}
+                        operatorId={operatorId}
                         onChange={(v) =>
                           updateRows(rows.map((r, i) => (i === ri ? { ...r, [c.fieldKey]: v } : r)))
                         }
@@ -372,4 +443,259 @@ export default function NhpFormField({
     default:
       return <div style={{ color: "#8a94a6" }}>{type}（待实现）</div>;
   }
+}
+
+function ChoiceControl({
+  field,
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  field: FormField;
+  options: OptionItem[];
+  value?: unknown;
+  onChange?: (v: unknown) => void;
+  disabled?: boolean;
+}) {
+  const multiple = field.config?.choiceType === "multiple";
+  const layout = field.config?.layout ?? "list";
+  const cols = Math.max(2, field.config?.cols ?? 3);
+  const arr = multiple ? multiSelectValues(value) : [];
+
+  const toggle = (opt: string) => {
+    const next = arr.includes(opt) ? arr.filter((x) => x !== opt) : [...arr, opt];
+    onChange?.(next);
+  };
+
+  const optionEl = (o: OptionItem) => {
+    const isFixed = !!o.fixed;
+    const checked = multiple ? isFixed || arr.includes(o.value) : isFixed || String(value ?? "") === o.value;
+    const off = !!disabled || isFixed;
+    return (
+      <label key={o.value} className={"choice" + (checked ? " chosen" : "") + (off ? " disabled" : "")}>
+        <input
+          type={multiple ? "checkbox" : "radio"}
+          name={multiple ? undefined : field.fieldKey}
+          checked={checked}
+          disabled={off}
+          onChange={() => !isFixed && (multiple ? toggle(o.value) : onChange?.(o.value))}
+        />
+        <span>{o.label}</span>
+      </label>
+    );
+  };
+
+  return (
+    <div
+      className={layout === "grid" ? "choice-grid" : undefined}
+      style={layout === "grid" ? { display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 6 } : { display: "flex", flexDirection: "column", gap: 4 }}
+    >
+      {options.map(optionEl)}
+    </div>
+  );
+}
+
+function CascadeControl({
+  field,
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  field: FormField;
+  options: OptionItem[];
+  value?: unknown;
+  onChange?: (v: unknown) => void;
+  disabled?: boolean;
+}) {
+  const levels = field.config?.levels;
+  const current = parseCascadeValue(value);
+
+  if (!levels || levels.length === 0) {
+    return (
+      <select
+        className="select"
+        value={current._legacy ?? ""}
+        disabled={disabled}
+        onChange={(e) => onChange?.(e.target.value)}
+      >
+        <option value="">请选择</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {levels.map((levelLabel, i) => {
+        const levelOpts = cascadeOptionsForLevel(options, levels, i, current);
+        const val = current[levelLabel] ?? "";
+        const prevFilled = i === 0 || Boolean(current[levels[i - 1]]);
+        if (!prevFilled && i > 0) return null;
+        return (
+          <div key={levelLabel}>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>{levelLabel}</div>
+            {levelOpts.length > 0 ? (
+              <select
+                className="select"
+                value={val}
+                disabled={disabled}
+                onChange={(e) => onChange?.(cascadePatch(levels, current, levelLabel, i, e.target.value))}
+              >
+                <option value="">请选择</option>
+                {levelOpts.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className="input"
+                value={val}
+                disabled={disabled}
+                placeholder={`输入${levelLabel}`}
+                onChange={(e) => onChange?.(cascadePatch(levels, current, levelLabel, i, e.target.value))}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RichTextControl({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: {
+  value?: unknown;
+  onChange?: (v: unknown) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const text = value == null ? "" : String(value);
+  const [showPreview, setShowPreview] = useState(false);
+  return (
+    <div>
+      <textarea
+        className="textarea rich"
+        value={text}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={(e) => onChange?.(e.target.value)}
+        rows={4}
+      />
+      {text.trim() && (
+        <button type="button" className="btn ghost small" style={{ marginTop: 4 }} onClick={() => setShowPreview((p) => !p)}>
+          {showPreview ? "隐藏预览" : "HTML 预览"}
+        </button>
+      )}
+      {showPreview && text.trim() && (
+        <div className="aup-desc" style={{ marginTop: 6, padding: 8, border: "1px solid var(--border)", borderRadius: 6 }} dangerouslySetInnerHTML={{ __html: text }} />
+      )}
+    </div>
+  );
+}
+
+function FileUploadControl({
+  field,
+  value,
+  onChange,
+  readOnly,
+  recordId,
+  operatorId,
+}: {
+  field: FormField;
+  value?: unknown;
+  onChange?: (v: unknown) => void;
+  readOnly?: boolean;
+  recordId?: number | null;
+  operatorId?: string;
+}) {
+  const { listQuery, uploadMutation, deleteMutation, download } = useNhpAttachments(recordId, operatorId);
+  const ids = fileIdsFromValue(value);
+  const files = (listQuery.data ?? []).filter((f) => ids.includes(f.fileId));
+  const accept = field.type === "image" ? (field.config?.accept ?? defaultImageAccept()) : field.config?.accept;
+  const maxCount = field.config?.maxCount ?? (field.type === "image" ? 5 : 1);
+  const isMulti = maxCount > 1;
+
+  const onPick = (file: File | null) => {
+    if (!file || !recordId) return;
+    const err = validateFileUpload(file, ids.length, field.config);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    uploadMutation.mutate(file, {
+      onSuccess: (uploaded) => {
+        const next = isMulti ? [...ids, uploaded.fileId] : uploaded.fileId;
+        onChange?.(next);
+      },
+    });
+  };
+
+  const doDownload = async (fileId: number) => {
+    try {
+      const { blob, fileName } = await download(fileId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* toast from hook */
+    }
+  };
+
+  return (
+    <div>
+      {files.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          {files.map((f) => (
+            <div key={f.fileId} className="attach-row" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+              <span>{f.fileName}</span>
+              {f.size != null && <span style={{ fontSize: 11, color: "var(--muted)" }}>{(f.size / 1024).toFixed(1)} KB</span>}
+              <button type="button" className="btn ghost small" onClick={() => doDownload(f.fileId)}>↓</button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="btn ghost small"
+                  onClick={() => {
+                    deleteMutation.mutate(f.fileId, {
+                      onSuccess: () => {
+                        const nextIds = ids.filter((x) => x !== f.fileId);
+                        onChange?.(isMulti ? nextIds : nextIds[0] ?? undefined);
+                      },
+                    });
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {!readOnly && (
+        <label className="btn ghost small" style={{ display: "inline-block", cursor: "pointer" }}>
+          {uploadMutation.isPending ? "上传中…" : "＋ 上传"}
+          <input
+            type="file"
+            hidden
+            accept={accept}
+            onChange={(e) => {
+              onPick(e.target.files?.[0] ?? null);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      )}
+      {!recordId && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>保存草稿后即可上传附件</div>}
+    </div>
+  );
 }

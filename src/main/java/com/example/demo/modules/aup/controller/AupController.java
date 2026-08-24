@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.aup.dto.AupBatchDeleteRequest;
 import com.example.demo.modules.aup.dto.AupCreateRequest;
 import com.example.demo.modules.aup.dto.AupDetailVO;
 import com.example.demo.modules.aup.dto.AupSaveRequest;
@@ -73,6 +74,7 @@ public class AupController {
                           @RequestParam(required = false) String registerNo,
                           @RequestParam(required = false) String stage,
                           @RequestParam(required = false) String excludeStage,
+                          @RequestParam(required = false) String excludeStages,
                           @RequestParam(required = false) String projectGroupName,
                           @RequestParam(defaultValue = "false") boolean excludeDraft,
                           @RequestParam(required = false) String draftSource,
@@ -82,11 +84,24 @@ public class AupController {
                           @RequestParam(required = false) String submitterName,
                           @RequestParam(required = false) String reviewerName,
                           @RequestParam(defaultValue = "false") boolean relatedToMe,
+                          @RequestParam(defaultValue = "false") boolean groupScopeOnly,
                           @RequestParam(required = false) String sortBy,
                           @RequestParam(required = false) String sortDir) {
         User user = requireUser(authorization);
-        return Result.success(aupService.list(user, page, size, keyword, registerNo, stage, excludeStage, projectGroupName, excludeDraft,
-                draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe, sortBy, sortDir));
+        List<String> excludeStageList = parseCsvStages(excludeStages);
+        return Result.success(aupService.list(user, page, size, keyword, registerNo, stage, excludeStage, excludeStageList, projectGroupName, excludeDraft,
+                draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe, groupScopeOnly, sortBy, sortDir));
+    }
+
+    /** 逗号分隔的阶段列表（如 approved,expired） */
+    private static List<String> parseCsvStages(String csv) {
+        if (!StringUtils.hasText(csv)) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .toList();
     }
 
     /** 列表筛选用：去重课题组名称（下拉选项） */
@@ -96,12 +111,11 @@ public class AupController {
         return Result.success(aupService.listProjectGroups());
     }
 
-    /** 订购侧：按课题组名列出已批准 AUP（下单必选 AUP 下拉） */
+    /** 订购侧：列出当前用户课题组下已批准 AUP（下单必选 AUP 下拉；不接受客户端指定课题组） */
     @GetMapping("/approved-for-order")
-    public Result<?> approvedForOrder(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                      @RequestParam(required = false) String projectGroupName) {
-        requireUser(authorization);
-        return Result.success(aupService.listApprovedForOrder(projectGroupName));
+    public Result<?> approvedForOrder(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = requireUser(authorization);
+        return Result.success(aupService.listApprovedForOrder(user));
     }
 
     /** 课题组下拉数据源（本地 project_group 字典） */
@@ -153,7 +167,7 @@ public class AupController {
     public Result<?> submit(@RequestHeader(value = "Authorization", required = false) String authorization,
                             @PathVariable("id") Long id) {
         User user = requireUser(authorization);
-        List<AupValidationErrorDTO> errors = aupService.validate(id);
+        List<AupValidationErrorDTO> errors = aupService.validate(id, user);
         if (!errors.isEmpty()) {
             return validationError(errors);
         }
@@ -167,8 +181,8 @@ public class AupController {
     @GetMapping("/{id}/validate")
     public Result<List<AupValidationErrorDTO>> validate(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                         @PathVariable("id") Long id) {
-        requireUser(authorization);
-        return Result.success(aupService.validate(id));
+        User user = requireUser(authorization);
+        return Result.success(aupService.validate(id, user));
     }
 
     @GetMapping("/{id}/snapshots")
@@ -244,6 +258,17 @@ public class AupController {
         User impersonator = authContextService.resolveImpersonator(authorization);
         aupService.delete(id, user, impersonator);
         return Result.success();
+    }
+
+    @PostMapping("/batch-delete")
+    public Result<Map<String, Object>> batchDelete(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                   @RequestBody AupBatchDeleteRequest body) {
+        User user = requireUser(authorization);
+        User impersonator = authContextService.resolveImpersonator(authorization);
+        if (body.isSelectAll()) {
+            return Result.success(aupService.batchDeleteAll(body, user, impersonator));
+        }
+        return Result.success(aupService.batchDelete(body.getIds(), user, impersonator));
     }
 
     @GetMapping("/{id}/traces")
@@ -330,6 +355,16 @@ public class AupController {
             throw TwinBusinessException.of(403, "仅管理员可同步 ARO 计划书");
         }
         return Result.success(aupAroSyncService.syncFromAro());
+    }
+
+  // ---- 选择器数据源 ----
+
+    @GetMapping("/pickers/{type}")
+    public Result<?> pickers(@RequestHeader(value = "Authorization", required = false) String authorization,
+                             @PathVariable("type") String type,
+                             @RequestParam Map<String, String> params) {
+        requireUser(authorization);
+        return Result.success(aupService.listPickers(type, params));
     }
 
     // ---- helpers ----

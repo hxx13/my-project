@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupCompositeAtomMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO aup_composite_atom (composite_template_id, atom_form_key, atom_template_id, sort_order)
+        VALUES (#{compositeTemplateId}, #{atomFormKey}, #{atomTemplateId}, #{sortOrder})
+    </insert>
+
+    <select id="listByCompositeTemplateId" resultType="com.example.demo.modules.aup.entity.AupCompositeAtom">
+        SELECT * FROM aup_composite_atom
+        WHERE composite_template_id = #{compositeTemplateId} ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <delete id="deleteByCompositeTemplateId">
+        DELETE FROM aup_composite_atom WHERE composite_template_id = #{compositeTemplateId}
+    </delete>
+
+    <select id="countByAtomTemplateId" resultType="int">
+        SELECT COUNT(1) FROM aup_composite_atom WHERE atom_template_id = #{atomTemplateId}
+    </select>
+
+    <select id="listByAtomTemplateId" resultType="com.example.demo.modules.aup.entity.AupCompositeAtom">
+        SELECT * FROM aup_composite_atom WHERE atom_template_id = #{atomTemplateId}
+    </select>
+
+</mapper>

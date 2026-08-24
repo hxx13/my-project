@@ -1,12 +1,16 @@
 package com.example.demo.modules.nhp.service;
 
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.nhp.entity.CrfQualityEvent;
 import com.example.demo.modules.nhp.mapper.CrfQualityEventMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -20,9 +24,12 @@ public class NhpQualityService {
     private static final Logger log = LoggerFactory.getLogger(NhpQualityService.class);
 
     private final CrfQualityEventMapper qualityEventMapper;
+    private final UserDisplayNameService userDisplayNameService;
 
-    public NhpQualityService(CrfQualityEventMapper qualityEventMapper) {
+    public NhpQualityService(CrfQualityEventMapper qualityEventMapper,
+                             UserDisplayNameService userDisplayNameService) {
         this.qualityEventMapper = qualityEventMapper;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     /** 异常值：值超 crf_reference_range（stub）。 */
@@ -71,7 +78,37 @@ public class NhpQualityService {
 
     public List<CrfQualityEvent> listEvents() {
         List<CrfQualityEvent> all = qualityEventMapper.listAll();
-        return all == null ? List.of() : all;
+        if (all == null) {
+            return List.of();
+        }
+        enrichReviewerNames(all);
+        return all;
+    }
+
+    private void enrichReviewerNames(List<CrfQualityEvent> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (CrfQualityEvent e : rows) {
+            if (e != null && StringUtils.hasText(e.getReviewer())) {
+                ids.add(e.getReviewer().trim());
+            }
+        }
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(new ArrayList<>(ids));
+        for (CrfQualityEvent e : rows) {
+            if (e == null || !StringUtils.hasText(e.getReviewer())) {
+                continue;
+            }
+            String id = e.getReviewer().trim();
+            String n = names.get(id);
+            if (StringUtils.hasText(n) && !n.equals(id)) {
+                e.setReviewerName(n);
+            }
+        }
     }
 
     public CrfQualityEvent recordEvent(CrfQualityEvent event) {

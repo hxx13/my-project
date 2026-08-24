@@ -1,4 +1,4 @@
-import type { FolderTreeManagerLabels } from "../components/FolderTreeManager";
+import type { FolderTreeManagerLabels } from "@/features/form-shared/FolderTreeManager";
 
 /** 码表页 FolderTreeManager 文案（与字段页菜单结构/顺序一致） */
 export const CODELIST_FOLDER_LABELS: FolderTreeManagerLabels = {

@@ -199,6 +199,23 @@
       ]
     },
     {
+      "dictKey": "a5IacucApproved",
+      "name": "是否通过该机构 IACUC 审批",
+      "folder": "A",
+      "source": "LOCAL",
+      "sourceRef": null,
+      "items": [
+        {
+          "value": "是",
+          "label": "是"
+        },
+        {
+          "value": "否",
+          "label": "否"
+        }
+      ]
+    },
+    {
       "dictKey": "a6Update",
       "name": "是否用于更新现有研究及使用计划",
       "folder": "A",
@@ -1182,6 +1199,23 @@
       ]
     },
     {
+      "dictKey": "l1AbsLevel",
+      "name": "是否有动物涉及ABSL-2级 或者 3级实验？",
+      "folder": "L",
+      "source": "LOCAL",
+      "sourceRef": null,
+      "items": [
+        {
+          "value": "否",
+          "label": "否"
+        },
+        {
+          "value": "是",
+          "label": "是"
+        }
+      ]
+    },
+    {
       "dictKey": "l1Cycle",
       "name": "实验动物饲养周期",
       "folder": "L",
@@ -1503,7 +1537,7 @@
               "config": {
                 "choiceType": "single"
               },
-              "dictKey": "a3InPerson"
+              "dictKey": "a5IacucApproved"
             },
             {
               "fieldKey": "A5.approvalNo",
@@ -3709,7 +3743,7 @@
               "config": {
                 "choiceType": "single"
               },
-              "dictKey": "a3InPerson"
+              "dictKey": "l1AbsLevel"
             },
             {
               "fieldKey": "L1.cycle",

@@ -64,13 +64,27 @@ public class LoggingAdminController {
         if (loggerName == null || levelStr == null) {
             return Map.of("ok", false, "message", "缺少 loggerName 或 level");
         }
+        LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
+        Logger logger = ctx.getLogger(loggerName);
+
+        // INHERIT：清除显式级别，恢复继承 ROOT（与 reset 单分类行为一致）
+        if ("INHERIT".equalsIgnoreCase(levelStr) || "NULL".equalsIgnoreCase(levelStr)) {
+            if (Logger.ROOT_LOGGER_NAME.equalsIgnoreCase(loggerName) || "ROOT".equalsIgnoreCase(loggerName)) {
+                return Map.of("ok", false, "message", "ROOT 不能设为继承");
+            }
+            logger.setLevel(null);
+            Level effective = logger.getEffectiveLevel();
+            return Map.of(
+                    "ok", true,
+                    "loggerName", loggerName,
+                    "level", effective != null ? effective.toString() : "继承 ROOT");
+        }
+
         Level level = Level.toLevel(levelStr, null);
         if (level == null && !"OFF".equalsIgnoreCase(levelStr)) {
             return Map.of("ok", false, "message", "无效的日志级别: " + levelStr + "，可选: " + String.join(", ", LEVEL_OPTIONS));
         }
 
-        LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
-        Logger logger = ctx.getLogger(loggerName);
         if ("OFF".equalsIgnoreCase(levelStr)) {
             logger.setLevel(Level.OFF);
         } else {
@@ -174,7 +188,8 @@ public class LoggingAdminController {
 
     private String getLoggerLevel(String loggerName) {
         LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
-        Level effective = ctx.getLogger(loggerName).getEffectiveLevel();
-        return effective != null ? effective.toString() : "继承 ROOT";
+        // 用显式 level：null 表示继承 ROOT；getEffectiveLevel() 永远非空，无法表达「继承」
+        Level explicit = ctx.getLogger(loggerName).getLevel();
+        return explicit != null ? explicit.toString() : "继承 ROOT";
     }
 }

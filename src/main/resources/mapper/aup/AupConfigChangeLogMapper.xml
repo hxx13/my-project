@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aup.mapper.AupConfigChangeLogMapper">
+
+    <sql id="logFilter">
+        <where>
+            <if test="entity != null and entity != ''">AND entity = #{entity}</if>
+            <if test="changeType != null and changeType != ''">AND change_type = #{changeType}</if>
+            <if test="operatorId != null">AND operator_id = #{operatorId}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (entity_code LIKE CONCAT('%',#{keyword},'%')
+                     OR entity_name LIKE CONCAT('%',#{keyword},'%')
+                     OR operator LIKE CONCAT('%',#{keyword},'%'))
+            </if>
+            <if test="dateFrom != null">AND created_at &gt;= #{dateFrom}</if>
+            <if test="dateTo != null">AND created_at &lt; #{dateTo}</if>
+        </where>
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO aup_config_change_log (entity, entity_id, entity_code, entity_name, change_type,
+            before_json, after_json, operator_id, operator, comment)
+        VALUES (#{entity}, #{entityId}, #{entityCode}, #{entityName}, #{changeType},
+            #{beforeJson}, #{afterJson}, #{operatorId}, #{operator}, #{comment})
+    </insert>
+
+    <select id="listByFilter" resultType="com.example.demo.modules.aup.entity.AupConfigChangeLog">
+        SELECT * FROM aup_config_change_log
+        <include refid="logFilter"/>
+        ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByFilter" resultType="int">
+        SELECT COUNT(1) FROM aup_config_change_log
+        <include refid="logFilter"/>
+    </select>
+
+    <select id="summarizeByEntity" resultType="map">
+        SELECT entity AS entity, COUNT(*) AS cnt FROM aup_config_change_log GROUP BY entity ORDER BY cnt DESC
+    </select>
+
+</mapper>

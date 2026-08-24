@@ -29,12 +29,19 @@ const DEFAULT_BACK_PARENT: Record<string, string> = {
   "/admin/material/manage": "/admin/material/review",
   "/admin/material/audit": "/admin/analytics?report=material_stats",
   "/admin/material/audit-export": "/admin/material/review",
+  "/admin/cage-shelves/forms": "/admin/cage-shelves",
+  "/admin/cage-shelves/forms/audit": "/admin/cage-shelves/forms",
+  "/admin/cage-shelves/forms/manage": "/admin/cage-shelves/forms",
+  "/admin/cage-shelves/forms/codelists": "/admin/cage-shelves/forms/manage",
+  "/admin/cage-shelves/forms/fields": "/admin/cage-shelves/forms/manage",
 };
 
 /** 动态子路由的默认回退（最长前缀匹配） */
 const DEFAULT_BACK_PARENT_PREFIX: { prefix: string; parent: string }[] = [
   { prefix: "/admin/report-fill/", parent: "/admin/report-fill" },
   { prefix: "/admin/report-form/", parent: "/admin/report-form" },
+  { prefix: "/admin/cage-shelves/forms/edit/", parent: "/admin/cage-shelves/forms" },
+  { prefix: "/admin/cage-shelves/forms/fields/", parent: "/admin/cage-shelves/forms/manage" },
 ];
 
 export function collectSidebarEntryPathsFromPerm(permNodes: PublicPagePermissionNode[]): Set<string> {
@@ -73,12 +80,26 @@ export function shouldShowAdminShellBack(pathname: string, permSidebarPaths: Set
 }
 
 /** 顶栏不展示标题的页面（页面自身已提供更强的视觉层级，重复标题属冗余） */
-const TITLE_SUPPRESSED_PATHS = new Set(["/admin/student-violations"]);
+const TITLE_SUPPRESSED_PATHS = new Set([
+  "/admin/student-violations",
+  "/admin/logging-console",
+  "/admin/cage-shelves/forms",
+  "/admin/cage-shelves/forms/audit",
+  "/admin/cage-shelves/forms/manage",
+  "/admin/cage-shelves/forms/codelists",
+  "/admin/cage-shelves/forms/fields",
+]);
+
+const TITLE_SUPPRESSED_PREFIXES = [
+  "/admin/cage-shelves/forms/edit/",
+  "/admin/cage-shelves/forms/fields/",
+];
 
 export function adminChromeTitle(pathname: string): string {
   const p = stripPathQuery(pathname);
   if (p === "/admin") return "后台工作台";
   if (TITLE_SUPPRESSED_PATHS.has(p)) return "";
+  if (TITLE_SUPPRESSED_PREFIXES.some((prefix) => p.startsWith(prefix) && p.length > prefix.length)) return "";
   return SECONDARY_ROUTE_TITLE[p] ?? titleForUnknownAdminPath(p);
 }
 

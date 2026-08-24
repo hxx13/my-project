@@ -21,5 +21,7 @@ public interface CageInfoCodelistMapper {
 
     int updateMeta(CageInfoCodelist row);
 
+    int updateStatus(CageInfoCodelist row);
+
     int deleteById(@Param("id") Long id);
 }

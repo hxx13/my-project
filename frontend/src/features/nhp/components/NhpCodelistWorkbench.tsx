@@ -40,9 +40,9 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { buildNhpFieldPagePath, nhpPathOf, sanitizeNhpReturnTo } from "../utils/nhpAdminNav";
 import { compareCodedId } from "../utils/domainSort";
-import { scheduleScrollAsideItem } from "../utils/scrollAsideItem";
+import { scheduleScrollAsideItem } from "@/features/form-shared/scrollAsideItem";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
-import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "./FolderTreeManager";
+import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "@/features/form-shared/FolderTreeManager";
 import { CODELIST_FOLDER_LABELS } from "../utils/folderTreeLabels";
 import "@/features/aup/aup.css";
 import "../nhp.css";
@@ -926,6 +926,7 @@ export default function NhpCodelistWorkbench({ onBack, backLabel }: NhpCodelistW
       deleteFolderPending={renameFolderMut.isPending}
       headerHint="文件夹为分类路径（无独立实体），嵌套用 / 分隔（如 移植/供体）；重命名会批量更新其下全部码表与子路径。"
       labels={CODELIST_FOLDER_LABELS}
+      getItemLabel={(item) => item.codelist.name || item.id}
       folderActions={(folderKey): FolderAction[] =>
         folderKey === UNGROUPED
           ? ["createItem"]

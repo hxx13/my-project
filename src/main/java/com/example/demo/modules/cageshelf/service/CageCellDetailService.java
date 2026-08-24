@@ -30,38 +30,51 @@ public class CageCellDetailService {
     private final ApprovalRecordMapper approvalMapper;
     private final CageCellHistoryMapper historyMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
+    private final CageFormAuditService auditService;
 
     public CageCellDetailService(CageCellDetailMapper detailMapper,
                                   CageClaimMapper claimMapper,
                                   ApprovalRecordMapper approvalMapper,
                                   CageCellHistoryMapper historyMapper,
-                                  AroPersonnelMapper aroPersonnelMapper) {
+                                  AroPersonnelMapper aroPersonnelMapper,
+                                  CageFormAuditService auditService) {
         this.detailMapper = detailMapper;
         this.claimMapper = claimMapper;
         this.approvalMapper = approvalMapper;
         this.historyMapper = historyMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
+        this.auditService = auditService;
     }
 
     /** 绑定笼盒 */
-    public CageCellDetail bindCageBox(Long animalCageId, String cageBoxCode) {
+    public CageCellDetail bindCageBox(Long animalCageId, String cageBoxCode, String operatorId) {
         CageCellDetail d = getOrCreate(animalCageId);
+        String beforeCode = d.getCageBoxCode();
         d.setHasCageBox(true);
         d.setCageBoxCode(cageBoxCode);
         d.setCageTypeCode(3); // 已预约(饲养中)
         detailMapper.batchUpsert(List.of(d));
+        auditService.logDataChange("BIND", "cage_box", animalCageId, cageBoxCode, cageBoxCode,
+                "animal_cage", animalCageId, "笼位 " + animalCageId,
+                "cage_box_code", "笼盒编号",
+                beforeCode, cageBoxCode, operatorId);
         log.info("[local] BIND animalCageId={} cageBoxCode={}", animalCageId, cageBoxCode);
         return d;
     }
 
     /** 解绑笼盒 — 清空特殊状态，变为空笼盒 */
-    public CageCellDetail unbindCageBox(Long animalCageId) {
+    public CageCellDetail unbindCageBox(Long animalCageId, String operatorId) {
         CageCellDetail d = getOrCreate(animalCageId);
+        String beforeCode = d.getCageBoxCode();
         d.setHasCageBox(false);
         d.setCageBoxCode(null);
         d.setCageTypeCode(2); // 已预约(空笼盒)
         clearSpecialStatuses(d);
         detailMapper.batchUpsert(List.of(d));
+        auditService.logDataChange("UNBIND", "cage_box", animalCageId, beforeCode, beforeCode,
+                "animal_cage", animalCageId, "笼位 " + animalCageId,
+                "cage_box_code", "笼盒编号",
+                beforeCode, null, operatorId);
         log.info("[local] UNBIND animalCageId={}", animalCageId);
         return d;
     }
@@ -140,6 +153,7 @@ public class CageCellDetailService {
             case "needs_division" -> Boolean.TRUE.equals(d.getNeedsDivision());
             case "needs_special_feeding" -> Boolean.TRUE.equals(d.getNeedsSpecialFeeding());
             case "has_health_abnormality" -> Boolean.TRUE.equals(d.getHasHealthAbnormality());
+            case "needs_cohabitation" -> Boolean.TRUE.equals(d.getNeedsCohabitation());
             default -> false;
         };
 
@@ -172,6 +186,7 @@ public class CageCellDetailService {
             case "needs_division" -> d.setNeedsDivision(!wasOn);
             case "needs_special_feeding" -> d.setNeedsSpecialFeeding(!wasOn);
             case "has_health_abnormality" -> d.setHasHealthAbnormality(!wasOn);
+            case "needs_cohabitation" -> d.setNeedsCohabitation(!wasOn);
         }
 
         // 状态从 OFF → ON：清空照片（全新开始），归档旧数据如果有

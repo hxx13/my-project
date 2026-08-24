@@ -65,6 +65,14 @@
         WHERE id = #{id}
     </update>
 
+    <update id="clearRegistryMeta">
+        UPDATE aup_record
+        SET animal_allowlist = NULL,
+            status = NULL,
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
     <select id="selectMaxSeqByYear" resultType="int">
         SELECT COALESCE(MAX(register_seq), 0) FROM aup_record WHERE register_year = #{year} FOR UPDATE
     </select>
@@ -124,6 +132,24 @@
             </if>
             <if test="excludeStage != null and excludeStage != ''">
                 AND r.current_stage != #{excludeStage}
+            </if>
+            <if test="excludeStages != null and excludeStages.size() > 0">
+                AND r.current_stage NOT IN
+                <foreach collection="excludeStages" item="es" open="(" separator="," close=")">
+                    #{es}
+                </foreach>
+            </if>
+            <if test="groupScopeOnly">
+                AND (
+                <choose>
+                    <when test="scopeProjectGroup != null and scopeProjectGroup != ''">
+                        r.project_group_name = #{scopeProjectGroup}
+                    </when>
+                    <otherwise>
+                        (r.created_by = #{scopeUserId} OR r.pi_user_id = #{scopeUserId})
+                    </otherwise>
+                </choose>
+                )
             </if>
             <if test="projectGroupName != null and projectGroupName != ''">
                 AND r.project_group_name = #{projectGroupName}

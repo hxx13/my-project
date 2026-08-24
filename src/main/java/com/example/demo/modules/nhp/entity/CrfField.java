@@ -40,7 +40,7 @@ public class CrfField {
     /** PI 校对意见 */
     private String verdictNote;
     /** 校对轮次，默认 1 */
-    private Integer reviewRound;
+    private Integer reviewRound = 1;
     /** DRAFT/PENDING_REVIEW/FROZEN/RETIRED */
     private String status;
     private Integer version;
