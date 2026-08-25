@@ -18,6 +18,7 @@
         <result property="projectName" column="project_name"/>
         <result property="departmentName" column="department_name"/>
         <result property="aupNumber" column="aup_number"/>
+        <result property="aupId" column="aup_id"/>
         <result property="experimenterName" column="experimenter_name"/>
         <result property="labAssistantName" column="lab_assistant_name"/>
         <result property="animalStrainName" column="animal_strain_name"/>
@@ -57,7 +58,7 @@
             animal_cage_id,
             cage_type_code, state, state_label, rent_type, cage_name,
             has_cage_box, cage_box_code, cage_box_id, cage_box_name,
-            pi_name, project_pi_name, project_name, department_name, aup_number,
+            pi_name, project_pi_name, project_name, department_name, aup_number, aup_id,
             experimenter_name, lab_assistant_name,
             animal_strain_name, animal_sex, animal_week_age,
             animal_male_number, animal_female_number, animal_come_from,
@@ -72,7 +73,7 @@
             #{d.animalCageId},
             #{d.cageTypeCode}, #{d.state}, #{d.stateLabel}, #{d.rentType}, #{d.cageName},
             #{d.hasCageBox}, #{d.cageBoxCode}, #{d.cageBoxId}, #{d.cageBoxName},
-            #{d.piName}, #{d.projectPiName}, #{d.projectName}, #{d.departmentName}, #{d.aupNumber},
+            #{d.piName}, #{d.projectPiName}, #{d.projectName}, #{d.departmentName}, #{d.aupNumber}, #{d.aupId},
             #{d.experimenterName}, #{d.labAssistantName},
             #{d.animalStrainName}, #{d.animalSex}, #{d.animalWeekAge},
             #{d.animalMaleNumber}, #{d.animalFemaleNumber}, #{d.animalComeFrom},
@@ -98,6 +99,7 @@
             project_name = VALUES(project_name),
             department_name = VALUES(department_name),
             aup_number = VALUES(aup_number),
+            aup_id = VALUES(aup_id),
             experimenter_name = VALUES(experimenter_name),
             lab_assistant_name = VALUES(lab_assistant_name),
             animal_strain_name = VALUES(animal_strain_name),

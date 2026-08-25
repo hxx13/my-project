@@ -143,8 +143,9 @@ public class CageLocalController {
         for (Object id : list) {
             Long animalCageId = toLong(id);
             if (animalCageId == null) continue;
-            CageCellDetail d = detailService.allocate(animalCageId, piName, aupNumber);
+            CageCellDetail d = detailService.allocate(animalCageId, piName, aupNumber, aupId);
             Map<String, Object> auto = new HashMap<>();
+            if (d.getPiName() != null && !d.getPiName().isBlank()) auto.put("pi_name", d.getPiName());
             if (d.getProjectPiName() != null && !d.getProjectPiName().isBlank()) auto.put("project_pi_name", d.getProjectPiName());
             if (d.getDepartmentName() != null && !d.getDepartmentName().isBlank()) auto.put("department_name", d.getDepartmentName());
             if (d.getAupNumber() != null && !d.getAupNumber().isBlank()) auto.put("aup_number", d.getAupNumber());

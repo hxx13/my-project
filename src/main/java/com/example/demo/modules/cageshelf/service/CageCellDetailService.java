@@ -81,14 +81,16 @@ public class CageCellDetailService {
 
     /** 分配笼位 */
     public CageCellDetail allocate(Long animalCageId) {
-        return allocate(animalCageId, null, null);
+        return allocate(animalCageId, null, null, null);
     }
 
-    /** 分配笼位 — 带课题组信息 */
-    public CageCellDetail allocate(Long animalCageId, String piName, String aupNumber) {
+    /** 分配笼位 — 写课题组组长(pi_name) + 项目组长(project_pi_name) + AUP注册号 + AUP ID 到笼位固定字段 */
+    public CageCellDetail allocate(Long animalCageId, String piName, String aupNumber, Long aupId) {
         CageCellDetail d = getOrCreate(animalCageId);
         d.setCageTypeCode(2); // 已预约(空笼盒)
         if (piName != null && !piName.isBlank()) {
+            // 课题组长与项目组长分配时同源（AUP 负责人），分别落 pi_name / project_pi_name
+            d.setPiName(piName);
             d.setProjectPiName(piName);
             // 从 personnel 库查询 PI 所属院系
             try {
@@ -103,8 +105,11 @@ public class CageCellDetailService {
         if (aupNumber != null && !aupNumber.isBlank()) {
             d.setAupNumber(aupNumber);
         }
+        if (aupId != null) {
+            d.setAupId(aupId);
+        }
         detailMapper.batchUpsert(List.of(d));
-        log.info("[local] ALLOCATE animalCageId={} piName={} aup={}", animalCageId, piName, aupNumber);
+        log.info("[local] ALLOCATE animalCageId={} piName={} aup={} aupId={}", animalCageId, piName, aupNumber, aupId);
         return d;
     }
 

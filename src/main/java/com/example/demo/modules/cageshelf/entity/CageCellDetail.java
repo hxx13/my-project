@@ -32,6 +32,7 @@ public class CageCellDetail {
     private String projectName;
     private String departmentName;
     private String aupNumber;
+    private Long aupId;              // AUP ID（分配时写入，判定所属课题组）
     private String experimenterName;
     private String labAssistantName;
 
@@ -113,6 +114,9 @@ public class CageCellDetail {
 
     public String getAupNumber() { return aupNumber; }
     public void setAupNumber(String v) { this.aupNumber = v; }
+
+    public Long getAupId() { return aupId; }
+    public void setAupId(Long v) { this.aupId = v; }
 
     public String getExperimenterName() { return experimenterName; }
     public void setExperimenterName(String v) { this.experimenterName = v; }
