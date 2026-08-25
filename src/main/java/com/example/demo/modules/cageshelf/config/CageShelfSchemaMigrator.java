@@ -91,6 +91,7 @@ public class CageShelfSchemaMigrator implements ApplicationRunner {
                         project_name VARCHAR(256) NULL COMMENT '项目名称',
                         department_name VARCHAR(256) NULL COMMENT '部门',
                         aup_number VARCHAR(128) NULL COMMENT 'AUP注册号',
+                        aup_id BIGINT NULL COMMENT 'AUP ID（分配时写入，判定所属课题组）',
                         experimenter_name VARCHAR(128) NULL COMMENT '实验员',
                         lab_assistant_name VARCHAR(128) NULL COMMENT '实验人员',
 
@@ -133,6 +134,8 @@ public class CageShelfSchemaMigrator implements ApplicationRunner {
             try { jdbcTemplate.execute("ALTER TABLE cage_cell_detail ADD COLUMN cage_box_id BIGINT NULL COMMENT 'ARO笼盒ID' AFTER cage_box_code"); }
             catch (Exception ignored) { /* 列已存在 */ }
             try { jdbcTemplate.execute("ALTER TABLE cage_cell_detail ADD COLUMN needs_cohabitation TINYINT(1) DEFAULT 0 COMMENT '需合笼（本地，无ARO源）' AFTER has_health_abnormality"); }
+            catch (Exception ignored) { /* 列已存在 */ }
+            try { jdbcTemplate.execute("ALTER TABLE cage_cell_detail ADD COLUMN aup_id BIGINT NULL COMMENT 'AUP ID（分配时写入，判定所属课题组）' AFTER aup_number"); }
             catch (Exception ignored) { /* 列已存在 */ }
             try { jdbcTemplate.execute("ALTER TABLE cage_cell_detail DROP COLUMN cage_box_qr_code"); }
             catch (Exception ignored) { /* 列已删除或不存在 */ }
