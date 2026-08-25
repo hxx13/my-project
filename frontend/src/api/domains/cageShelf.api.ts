@@ -642,7 +642,10 @@ export async function cancelCageAssignment(cageIds: string[], roomId?: string): 
 
 // ── 笼盒扫码操作 ──
 
-export type CageBoxAction = "DIVIDE" | "SPECIAL_BREEDING" | "HEALTH_CHECK";
+// 动作集合的唯一来源是 features/cage-shelf/constants 的 CAGE_BOX_ACTIONS 表；
+// 这里只做 type-only 转出（运行时完全擦除，不产生 import 环），保持既有引用路径不变。
+export type { CageBoxAction } from "@/features/cage-shelf/constants";
+import type { CageBoxAction } from "@/features/cage-shelf/constants";
 
 export interface CageBoxActionRequest {
   roomId: string;
@@ -677,8 +680,11 @@ export async function executeCageBoxAction(req: CageBoxActionRequest): Promise<C
 /** cancelColor 取值：1=特殊饲养 2=分笼 3=健康检查 */
 export type CancelColor = 1 | 2 | 3;
 
-/** Action → CancelColor 映射 */
-export const ACTION_CANCEL_COLOR: Record<CageBoxAction, CancelColor> = {
+/**
+ * Action → CancelColor 映射。仅覆盖 ARO 侧有颜色语义的三个动作；
+ * 合笼/动物转移是本地自定义状态，ARO 无对应颜色，故为 Partial（取值可能为 undefined）。
+ */
+export const ACTION_CANCEL_COLOR: Partial<Record<CageBoxAction, CancelColor>> = {
   DIVIDE: 2,
   SPECIAL_BREEDING: 1,
   HEALTH_CHECK: 3,
@@ -1075,24 +1081,6 @@ export async function localCancelAllocate(animalCageIds: (number | string)[]) {
 export async function localEdit(animalCageId: number | string, toggle: string, enable: boolean, cageBoxCode?: string) {
   const res = await authHttp.post<Result<any>>("/local/edit", { animalCageId, toggle, enable, cageBoxCode: cageBoxCode || "" });
   if (!res.data?.success) throw new Error(res.data?.message || "编辑失败");
-}
-
-// ═══════════════════════════════════════════════════════════
-// 退役桩：扫码绑定已退役（后端 /bind 返回 410）。
-// 保留仅用于移动端编译过渡，移动端绑定 UI 将在三端改造（Phase E2/E3）中移除。
-// ═══════════════════════════════════════════════════════════
-
-export async function bindCageBox(_animalCageId: string, _cageBoxCode: string, _roomId?: string): Promise<boolean> {
-  throw new Error("扫码绑定已退役，请使用预约/分配流程");
-}
-export async function unbindCageBox(_animalCageId: string, _roomId?: string): Promise<boolean> {
-  throw new Error("扫码绑定已退役，请使用预约/分配流程");
-}
-export async function localBind(_animalCageId: number | string, _cageBoxCode: string) {
-  throw new Error("扫码绑定已退役，请使用预约/分配流程");
-}
-export async function localUnbind(_animalCageId: number | string) {
-  throw new Error("扫码绑定已退役，请使用预约/分配流程");
 }
 
 /** 补全详情字段 — 从 ARO /list 批量拉取 PI/课题组/动物品系等 */

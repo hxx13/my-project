@@ -49,11 +49,18 @@ public class CageInfoCodelistController {
         return null;
     }
 
+    /** 读权限 = 任意登录用户（MEMBER+），供 H5/小程序详情弹窗读码表选项。 */
+    private Result<?> requireMember(User u) {
+        if (u == null) return Result.error("未登录");
+        if (u.getStatus() != null && u.getStatus() == 0) return Result.error("账号已禁用");
+        return null;
+    }
+
     @GetMapping
     @Operation(summary = "码表列表（含 itemCount / refCount）")
     public Result<List<Map<String, Object>>> list(HttpServletRequest req) {
         User u = resolveUser(req);
-        Result<?> denied = requireAdmin(u);
+        Result<?> denied = requireMember(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         return Result.success(codelistService.list());
     }
@@ -75,7 +82,7 @@ public class CageInfoCodelistController {
     @Operation(summary = "码表详情（含有序选项项）")
     public Result<Map<String, Object>> detail(@PathVariable String code, HttpServletRequest req) {
         User u = resolveUser(req);
-        Result<?> denied = requireAdmin(u);
+        Result<?> denied = requireMember(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         try {
             return Result.success(codelistService.detail(code));

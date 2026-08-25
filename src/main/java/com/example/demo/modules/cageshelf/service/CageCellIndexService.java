@@ -105,12 +105,7 @@ public class CageCellIndexService {
             }
 
             try {
-                // 先清掉该架子的旧数据（防止脏数据残留）
-                int deleted = cellIndexMapper.deleteByShelveId(shelveId);
-                log.info("[cell-sync] {} | shelveId={} idx={} 清理:{}条",
-                        location, shelveId, shelfIdxId, deleted);
-
-                // 调 ARO /back 获取笼位列表
+                // 先拉 /back，成功后才清旧索引：ARO 挂掉/返回空时保留本地旧数据，避免一键同步把索引清空
                 Map<String, Object> aroResp = aroService.fetchAnimalCagesByRoomAndShelve(sRoomId, shelveId);
                 Object dataObj = aroResp.get("data");
                 if (!(dataObj instanceof List<?> list)) {
@@ -120,7 +115,13 @@ public class CageCellIndexService {
                     continue;
                 }
 
-                // 解析每个笼位
+                // 拉取成功，再清掉该架子的旧索引
+                int deleted = cellIndexMapper.deleteByShelveId(shelveId);
+                log.info("[cell-sync] {} | shelveId={} idx={} 清理:{}条",
+                        location, shelveId, shelfIdxId, deleted);
+
+                // 解析每个笼位 —— 本步只写 cage_cell_index（ID/坐标/笼盒），
+                // 详情/状态由后续 /list（补全详情）与 /book（状态）负责，避免此步空字段冲掉已补全内容
                 List<CageCellIndex> batch = new ArrayList<>();
                 String now = DT_FMT.format(LocalDateTime.now());
 
@@ -160,15 +161,9 @@ public class CageCellIndexService {
                     totalCells += batch.size();
                 }
 
-                // 批量写入 cage_cell_detail（合并已有行：/back 缺 cageBoxVo 字段时勿用 null 冲掉 /list 已补全的 PI）
-                List<CageCellDetail> detailBatch = buildDetailBatch(list, shelfIdxId);
-                if (!detailBatch.isEmpty()) {
-                    detailMapper.batchUpsert(detailBatch);
-                }
-
                 successShelves++;
-                log.info("[cell-sync] {} | shelveId={} → {} cells, {} details",
-                        location, shelveId, batch.size(), detailBatch.size());
+                log.info("[cell-sync] {} | shelveId={} → {} cells",
+                        location, shelveId, batch.size());
 
             } catch (Exception e) {
                 failShelves++;
@@ -233,6 +228,21 @@ public class CageCellIndexService {
             for (CageCellDetail d : detailMapper.selectByAnimalCageIds(missingIds)) {
                 detailMap.put(d.getAnimalCageId(), d);
             }
+        }
+
+        // 状态标记以表单(cage_info_value)为真相源：覆盖 detail 的 5 个状态布尔，
+        // 后续 specialStatuses / 前端读侧（详情 chips、编辑模式反向使能）都以此为准。
+        Map<Long, Map<String, Boolean>> statusFlags = infoValueService.statusFlagsByCage(
+                new ArrayList<>(detailMap.keySet()));
+        for (Map.Entry<Long, CageCellDetail> e : detailMap.entrySet()) {
+            Map<String, Boolean> flags = statusFlags.get(e.getKey());
+            if (flags == null) continue;
+            CageCellDetail d = e.getValue();
+            if (flags.containsKey("needs_division")) d.setNeedsDivision(flags.get("needs_division"));
+            if (flags.containsKey("needs_special_feeding")) d.setNeedsSpecialFeeding(flags.get("needs_special_feeding"));
+            if (flags.containsKey("needs_transfer")) d.setNeedsTransfer(flags.get("needs_transfer"));
+            if (flags.containsKey("has_health_abnormality")) d.setHasHealthAbnormality(flags.get("has_health_abnormality"));
+            if (flags.containsKey("needs_cohabitation")) d.setNeedsCohabitation(flags.get("needs_cohabitation"));
         }
 
         // 批量解析占用者(所属人)姓名:复用 UserDisplayNameService,不裸返回 staff_id / aro_user_id
@@ -306,17 +316,15 @@ public class CageCellIndexService {
                 // 构建 specialStatuses（与 ARO 格式对齐，供前端 CageCellOverlays 渲染）
                 List<Map<String, String>> statuses = new ArrayList<>();
                 if (Boolean.TRUE.equals(detail.getNeedsDivision()))
-                    statuses.add(Map.of("code","NEED_DIVIDE","label","请分笼/密度超标","iconKey","divide"));
+                    statuses.add(Map.of("code","NEED_DIVIDE","label","需分笼","iconKey","divide"));
                 if (Boolean.TRUE.equals(detail.getNeedsSpecialFeeding()))
-                    statuses.add(Map.of("code","SPECIAL_FEEDING","label","特殊饲养","iconKey","feeding"));
+                    statuses.add(Map.of("code","SPECIAL_FEEDING","label","需特殊饲养","iconKey","feeding"));
                 if (Boolean.TRUE.equals(detail.getNeedsTransfer()))
                     statuses.add(Map.of("code","ANIMAL_TRANSFER","label","动物转移","iconKey","transfer"));
                 if (Boolean.TRUE.equals(detail.getHasHealthAbnormality()))
-                    statuses.add(Map.of("code","HEALTH_ABNORMAL","label","动物健康异常","iconKey","health"));
+                    statuses.add(Map.of("code","HEALTH_ABNORMAL","label","健康异常","iconKey","health"));
                 if (Boolean.TRUE.equals(detail.getNeedsCohabitation()))
-                    statuses.add(Map.of("code","NEED_COHABITATION","label","需合笼","iconKey","cohabitation"));
-                if (detail.getCohabitationDate() != null && !detail.getCohabitationDate().isBlank())
-                    statuses.add(Map.of("code","COHABITATION","label","合笼/繁殖","iconKey","cohabitation"));
+                    statuses.add(Map.of("code","COHABITATION","label","需合笼","iconKey","cohabitation"));
                 gc.put("specialStatuses", statuses);
 
                 gc.put("detail", detail); // 完整详情
@@ -424,7 +432,7 @@ public class CageCellIndexService {
 
                     Long animalCageId = (Long) mapped.get("animal_cage_id");
                     if (animalCageId == null) continue;
-                    // 双写：同步直连 cage_info_value（跳过固定表）
+                    // 双写：同步直连 cage_info_value（与固定表 cage_cell_detail 双写）
                     infoValueService.syncFromMapped(animalCageId, mapped);
                     boolean isNew = false;
                     CageCellDetail d = detailMap.get(animalCageId);
@@ -619,7 +627,7 @@ public class CageCellIndexService {
                     // 按位置取正确的 animalCageId
                     Long animalCageId = posToAnimalCageId.get(x + "-" + y);
                     if (animalCageId == null) continue;
-                    // 双写：同步直连 cage_info_value（跳过固定表）
+                    // 双写：同步直连 cage_info_value（与固定表 cage_cell_detail 双写）
                     infoValueService.syncFromMapped(animalCageId, mapped);
 
                     boolean isNew = false;
@@ -694,29 +702,10 @@ public class CageCellIndexService {
         result.put("startedAt", DT_FMT.format(startedAt));
         log.info("[local-pipeline] 开始一键同步 roomId={}", roomId);
 
-        // ① 全量 /back
+        // ① /list 补全详情（含 PI/动物/状态标记）
         try {
-            Map<String, Object> step1 = syncAllCells(roomId);
-            steps.put("syncAllCells", step1);
-            if (Boolean.FALSE.equals(step1.get("ok"))) {
-                result.put("failedStep", "syncAllCells");
-                result.put("failedMessage", String.valueOf(step1.getOrDefault("error", "全量同步失败")));
-                result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
-                return result;
-            }
-            completedSteps.add("syncAllCells");
-        } catch (Exception e) {
-            log.error("[local-pipeline] syncAllCells 异常: {}", e.getMessage(), e);
-            result.put("failedStep", "syncAllCells");
-            result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "全量同步异常");
-            result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
-            return result;
-        }
-
-        // ② /list 补全详情（含 PI）
-        try {
-            Map<String, Object> step2 = syncDetailFields(roomId);
-            steps.put("syncDetailFields", step2);
+            Map<String, Object> step1 = syncDetailFields(roomId);
+            steps.put("syncDetailFields", step1);
             completedSteps.add("syncDetailFields");
         } catch (Exception e) {
             log.error("[local-pipeline] syncDetailFields 异常: {}", e.getMessage(), e);
@@ -726,10 +715,10 @@ public class CageCellIndexService {
             return result;
         }
 
-        // ③ /book 仅状态列
+        // ② /book 仅状态列（cageType/state/rentType）
         try {
-            Map<String, Object> step3 = syncStatusFromBook(roomId);
-            steps.put("syncStatusFromBook", step3);
+            Map<String, Object> step2 = syncStatusFromBook(roomId);
+            steps.put("syncStatusFromBook", step2);
             completedSteps.add("syncStatusFromBook");
         } catch (Exception e) {
             log.error("[local-pipeline] syncStatusFromBook 异常: {}", e.getMessage(), e);
@@ -777,94 +766,6 @@ public class CageCellIndexService {
         return result;
     }
 
-    /**
-     * 从 ARO /back 响应构建 cage_cell_detail 批量数据 — 使用映射表翻译字段名。
-     * <p>合并已有 detail：仅当 {@code mapped.containsKey}（ARO 路径存在）才覆盖。
-     * 路径不存在 ≠ 空值；避免 /back 缺 cageBoxVo 时把 /list 已写入的 PI/项目冲成 null，
-     * 也避免把本地 experiment_desc / images_json 冲掉。
-     */
-    @SuppressWarnings("unchecked")
-    private List<CageCellDetail> buildDetailBatch(List<?> list, Long shelfIndexId) {
-        Map<Long, CageCellDetail> existingById = new LinkedHashMap<>();
-        if (shelfIndexId != null) {
-            for (CageCellDetail ex : detailMapper.selectByShelfIndexId(shelfIndexId)) {
-                existingById.put(ex.getAnimalCageId(), ex);
-            }
-        }
-
-        List<CageCellDetail> details = new ArrayList<>();
-        for (Object item : list) {
-            if (!(item instanceof Map<?, ?> cage)) continue;
-            Map<String, Object> raw = (Map<String, Object>) cage;
-
-            // 映射表翻译：ARO 字段名 → 规范字段名
-            Map<String, Object> mapped = mappingService.applyPull("back", raw);
-            if (mapped == null) continue; // 被过滤规则跳过（如 isCageBox）
-
-            Long animalCageId = (Long) mapped.get("animal_cage_id");
-            Integer x = (Integer) mapped.get("position_x");
-            Integer y = (Integer) mapped.get("position_y");
-            if (x == null || y == null || x < 1 || x > 8 || y < 1 || y > 10) continue;
-            if (animalCageId == null) continue;
-            // 双写：同步直连 cage_info_value（跳过固定表）
-            infoValueService.syncFromMapped(animalCageId, mapped);
-
-            CageCellDetail d = existingById.get(animalCageId);
-            if (d == null) {
-                d = detailMapper.selectByAnimalCageId(animalCageId);
-            }
-            if (d == null) {
-                d = new CageCellDetail();
-                d.setAnimalCageId(animalCageId);
-            }
-
-            // 仅路径存在才覆盖（空→null；缺键→保留本地旧值）
-            if (mapped.containsKey("cage_type_code")) d.setCageTypeCode((Integer) mapped.get("cage_type_code"));
-            if (mapped.containsKey("state")) d.setState((Integer) mapped.get("state"));
-            if (mapped.containsKey("state_label")) d.setStateLabel((String) mapped.get("state_label"));
-            if (mapped.containsKey("rent_type")) d.setRentType((Integer) mapped.get("rent_type"));
-            if (mapped.containsKey("cage_name")) d.setCageName((String) mapped.get("cage_name"));
-
-            if (mapped.containsKey("cage_box_code")) {
-                String cbc = (String) mapped.get("cage_box_code");
-                d.setHasCageBox(cbc != null && !cbc.isBlank());
-                d.setCageBoxCode(cbc);
-            }
-            if (mapped.containsKey("cage_box_name")) d.setCageBoxName((String) mapped.get("cage_box_name"));
-            // 从原始 cageBoxVo.id 提取 cageBoxId，避免 outbox 投递时再调 ARO 解析
-            Map<String, Object> cbv = castMap(raw.get("cageBoxVo"));
-            if (cbv != null && cbv.get("id") instanceof Number n) d.setCageBoxId(n.longValue());
-
-            if (mapped.containsKey("pi_name")) d.setPiName((String) mapped.get("pi_name"));
-            if (mapped.containsKey("project_pi_name")) d.setProjectPiName((String) mapped.get("project_pi_name"));
-            if (mapped.containsKey("project_name")) d.setProjectName((String) mapped.get("project_name"));
-            if (mapped.containsKey("department_name")) d.setDepartmentName((String) mapped.get("department_name"));
-            if (mapped.containsKey("aup_number")) d.setAupNumber((String) mapped.get("aup_number"));
-
-            if (mapped.containsKey("animal_strain_name")) d.setAnimalStrainName((String) mapped.get("animal_strain_name"));
-            if (mapped.containsKey("animal_sex")) d.setAnimalSex((String) mapped.get("animal_sex"));
-            if (mapped.containsKey("animal_week_age")) d.setAnimalWeekAge((String) mapped.get("animal_week_age"));
-            if (mapped.containsKey("animal_male_number")) d.setAnimalMaleNumber((Integer) mapped.get("animal_male_number"));
-            if (mapped.containsKey("animal_female_number")) d.setAnimalFemaleNumber((Integer) mapped.get("animal_female_number"));
-            if (mapped.containsKey("animal_come_from")) d.setAnimalComeFrom((String) mapped.get("animal_come_from"));
-            if (mapped.containsKey("experimenter_name")) d.setExperimenterName((String) mapped.get("experimenter_name"));
-            if (mapped.containsKey("lab_assistant_name")) d.setLabAssistantName((String) mapped.get("lab_assistant_name"));
-
-            if (mapped.containsKey("needs_division")) d.setNeedsDivision((Boolean) mapped.get("needs_division"));
-            if (mapped.containsKey("needs_special_feeding")) d.setNeedsSpecialFeeding((Boolean) mapped.get("needs_special_feeding"));
-            if (mapped.containsKey("needs_transfer")) d.setNeedsTransfer((Boolean) mapped.get("needs_transfer"));
-            if (mapped.containsKey("has_health_abnormality")) d.setHasHealthAbnormality((Boolean) mapped.get("has_health_abnormality"));
-            if (mapped.containsKey("cohabitation_date")) d.setCohabitationDate((String) mapped.get("cohabitation_date"));
-            if (mapped.containsKey("special_breeding_name")) d.setSpecialBreedingName((String) mapped.get("special_breeding_name"));
-            if (mapped.containsKey("special_breeding_desc")) d.setSpecialBreedingDesc((String) mapped.get("special_breeding_desc"));
-
-            d.setAroRawData(JSON.toJSONString(raw));
-            d.setMappingVersion(MAPPING_VERSION);
-            details.add(d);
-            existingById.put(animalCageId, d);
-        }
-        return details;
-    }
 
     private static String trimStr(Object v) {
         if (v == null) return null;

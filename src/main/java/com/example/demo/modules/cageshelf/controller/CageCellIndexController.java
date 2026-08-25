@@ -174,7 +174,7 @@ public class CageCellIndexController {
     // ── 一键本地同步（固定顺序：全量 → 补全详情 → 状态）──
 
     @PostMapping("/sync-local-pipeline")
-    @Operation(summary = "一键同步本地笼位：按固定顺序执行 /back 全量 → /list 补全详情 → /book 状态（仅超级管理员）")
+    @Operation(summary = "一键同步本地笼位：按固定顺序执行 /list 补全详情 → /book 状态（不含 ID 全量重拉，仅超级管理员）")
     public Result<Map<String, Object>> syncLocalPipeline(
             @RequestBody(required = false) Map<String, Object> body,
             HttpServletRequest request) {

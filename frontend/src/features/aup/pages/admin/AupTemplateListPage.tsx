@@ -9,8 +9,10 @@ import {
   createAupAtom,
   deleteAupTemplate,
   fetchAupTemplateById,
+  fetchAupTemplates,
   fetchAupTemplatesByKind,
   fetchAupTemplateUsage,
+  importAupSeed,
   publishAupTemplate,
   rejectAupTemplate,
   submitAupTemplateReview,
@@ -26,19 +28,18 @@ import "@/features/aup/aup.css";
 import "@/features/nhp/nhp.css";
 
 /* =====================================================================
- * AUP 版本管理：计划书模板 / 原子域 / 组合域 三 tab（kind=PROTOCOL/ATOM/COMPOSITE）。
+ * AUP 版本管理：已发布 / 含草稿 两 tab，原子域/组合域混排（不区分 kind）。
  * 每个 formKey 一组：版本轨 + 状态机（发布/提交审核/驳回/解冻/归档/新建原子域/新建组合域）。
  * ================================================================== */
 
-type Tab = "PROTOCOL" | "ATOM" | "COMPOSITE";
+type PublishFilter = "PUBLISHED" | "ALL";
 
-const TABS: { value: Tab; label: string; icon: string }[] = [
-  { value: "PROTOCOL", label: "计划书模板", icon: "🧬" },
-  { value: "ATOM", label: "原子域", icon: "⚛" },
-  { value: "COMPOSITE", label: "组合域", icon: "🧩" },
+const PUBLISH_FILTERS: { value: PublishFilter; label: string }[] = [
+  { value: "PUBLISHED", label: "已发布" },
+  { value: "ALL", label: "含草稿" },
 ];
 
-const KIND_LABEL: Record<Tab, string> = {
+const KIND_LABEL: Record<string, string> = {
   PROTOCOL: "计划书模板",
   ATOM: "原子域",
   COMPOSITE: "组合域",
@@ -88,7 +89,7 @@ interface ComposeModal {
 export default function AupTemplateListPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<Tab>("PROTOCOL");
+  const [publishFilter, setPublishFilter] = useState<PublishFilter>("PUBLISHED");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<number | null>(null);
   const [atomModal, setAtomModal] = useState<AtomModal | null>(null);
@@ -98,8 +99,8 @@ export default function AupTemplateListPage() {
   const canMaintain = hasMinRole(role, "ADMIN");
 
   const templatesQuery = useQuery({
-    queryKey: ["aup", "templates", tab],
-    queryFn: () => fetchAupTemplatesByKind(tab),
+    queryKey: ["aup", "templates", "ALL"],
+    queryFn: () => fetchAupTemplates(),
   });
   const atomTemplatesQuery = useQuery({
     queryKey: ["aup", "templates", "ATOM"],
@@ -109,7 +110,7 @@ export default function AupTemplateListPage() {
   const usageQuery = useQuery({
     queryKey: ["aup", "template", "usage", previewId],
     queryFn: () => fetchAupTemplateUsage(Number(previewId)),
-    enabled: tab === "ATOM" && previewId != null,
+    enabled: previewId != null,
   });
   const detailQuery = useQuery({
     queryKey: ["aup", "template", "detail", previewId],
@@ -118,7 +119,13 @@ export default function AupTemplateListPage() {
   });
 
   const allTemplates = useMemo(() => templatesQuery.data ?? [], [templatesQuery.data]);
-  const groups = useMemo(() => groupByFormKey(allTemplates), [allTemplates]);
+  const groups = useMemo(() => {
+    const g = groupByFormKey(allTemplates);
+    if (publishFilter === "PUBLISHED") {
+      return g.filter((versions) => versions.some((v) => (v.status ?? "").toUpperCase() === "PUBLISHED"));
+    }
+    return g;
+  }, [allTemplates, publishFilter]);
   const atomTemplates = useMemo(() => atomTemplatesQuery.data ?? [], [atomTemplatesQuery.data]);
 
   const selectedGroup = useMemo(
@@ -217,6 +224,16 @@ export default function AupTemplateListPage() {
       invalidate();
     },
     onError: (e: Error) => toast.error(e.message || "新建组合域失败"),
+  });
+  const seedMut = useMutation({
+    mutationFn: () => importAupSeed(),
+    onSuccess: (r) => {
+      const c = r?.codelists ?? 0, f = r?.fields ?? 0, a = r?.atoms ?? 0, p = r?.composite ?? 0;
+      toast.success(`已导入内置种子：码表 ${c}、字段 ${f}、原子域 ${a}、组合域 ${p}（组合域已发布）`);
+      invalidate();
+      setPublishFilter("ALL");
+    },
+    onError: (e: Error) => toast.error(e.message || "导入失败"),
   });
 
   const usageRefs = usageQuery.data?.refs ?? [];
@@ -343,34 +360,46 @@ export default function AupTemplateListPage() {
     <div className="aup-app aup-app--workbench">
       <div className="aup-wb">
         <div className="nhp-template-top-panel">
-          <div className="nhp-template-tabs" role="tablist" aria-label="模板类型">
-            {TABS.map((t) => {
-              const on = tab === t.value;
+          <div className="nhp-template-tabs" role="tablist" aria-label="发布状态">
+            {PUBLISH_FILTERS.map((f) => {
+              const on = publishFilter === f.value;
               return (
                 <button
-                  key={t.value}
+                  key={f.value}
                   type="button"
                   role="tab"
                   className={`nhp-template-tab${on ? " on" : ""}`}
                   onClick={() => {
-                    setTab(t.value);
+                    setPublishFilter(f.value);
                     setSelectedKey(null);
                     setPreviewId(null);
                   }}
                 >
-                  {t.icon} {t.label}
+                  {f.label}
                 </button>
               );
             })}
           </div>
           <span className="aup-wb-count">共 {groups.length} 个</span>
           <div className="nhp-template-toolbar-actions">
-            {tab === "ATOM" && canMaintain && (
-              <button className="btn primary small" onClick={() => setAtomModal({ name: "", formKey: "", code: "", description: "" })}>
+            {canMaintain && (
+              <button
+                className="btn primary small"
+                disabled={seedMut.isPending}
+                title="幂等灌入码表 + 字段 + 原子域 + 组合域（用我们自己的原子域/字段/码表），组合域 aup 直接发布"
+                onClick={async () => {
+                  if (await appConfirm("导入内置组合模板？将幂等灌入码表 + 字段 + 原子域，并组装/发布组合域 aup（已存在的不覆盖）。")) seedMut.mutate();
+                }}
+              >
+                {seedMut.isPending ? "导入中…" : "导入内置组合模板"}
+              </button>
+            )}
+            {canMaintain && (
+              <button className="btn ghost small" onClick={() => setAtomModal({ name: "", formKey: "", code: "", description: "" })}>
                 ＋ 新建原子域
               </button>
             )}
-            {tab === "COMPOSITE" && canMaintain && (
+            {canMaintain && (
               <button className="btn primary small" onClick={() => setComposeModal({ name: "", formKey: "", description: "" })}>
                 ＋ 新建组合域
               </button>
@@ -388,9 +417,9 @@ export default function AupTemplateListPage() {
             {templatesQuery.isLoading && <div className="aup-wb-empty">加载中…</div>}
             {!templatesQuery.isLoading && groups.length === 0 && (
               <div className="aup-wb-empty">
-                暂无{KIND_LABEL[tab]}
-                {tab === "ATOM" && canMaintain ? "，点击右上「＋ 新建原子域」" : ""}
-                {tab === "COMPOSITE" && canMaintain ? "，点击右上「＋ 新建组合域」" : ""}
+                {publishFilter === "PUBLISHED"
+                  ? "暂无已发布模板，可点「导入内置组合模板」或「＋ 新建组合域」"
+                  : "暂无模板"}
               </div>
             )}
             {groups.map((versions) => {
@@ -406,7 +435,7 @@ export default function AupTemplateListPage() {
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="lbl" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                      <span className="aup-wb-chip muted">{KIND_LABEL[(head.kind as Tab) ?? "PROTOCOL"]}</span>
+                      <span className="aup-wb-chip muted">{KIND_LABEL[head.kind ?? "PROTOCOL"]}</span>
                       <span>{head.name}</span>
                     </div>
                     <div className="meta" style={{ marginTop: 2, fontFamily: "ui-monospace, monospace" }}>
@@ -431,7 +460,7 @@ export default function AupTemplateListPage() {
               <div className="aup-wb-panel">
                 <div className="aup-wb-panel-hd">
                   <span className="title">{selectedGroup[0].name}</span>
-                  <span className="aup-wb-chip">{KIND_LABEL[(selectedGroup[0].kind as Tab) ?? "PROTOCOL"]}</span>
+                  <span className="aup-wb-chip">{KIND_LABEL[selectedGroup[0].kind ?? "PROTOCOL"]}</span>
                   <span className="aup-wb-chip" style={{ fontFamily: "ui-monospace, monospace" }}>
                     {selectedGroup[0].formKey}
                   </span>
@@ -483,7 +512,7 @@ export default function AupTemplateListPage() {
                 </div>
 
                 {/* ATOM 被组合域钉住 */}
-                {tab === "ATOM" && (
+                {selectedVersion?.kind === "ATOM" && (
                   <div style={{ margin: "4px 0 8px", fontSize: 12.5 }}>
                     <span style={{ fontWeight: 700 }}>被组合域钉住（{usageRefs.length}）</span>
                     {usageQuery.isLoading && <span style={{ color: "var(--muted)", marginLeft: 8 }}>…</span>}

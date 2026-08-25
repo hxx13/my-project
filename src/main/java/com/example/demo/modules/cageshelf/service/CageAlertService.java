@@ -228,11 +228,11 @@ public class CageAlertService {
         if (existing.isEmpty()) {
             log.info("[cage-alert] seeding defaults mode={}", mode);
             List<CageAlertConfig> defs = new ArrayList<>();
-            defs.add(makeCfg("NEED_DIVIDE", "请分笼/密度超标", 7));
-            defs.add(makeCfg("HEALTH_ABNORMAL", "动物健康异常", 3));
+            defs.add(makeCfg("NEED_DIVIDE", "需分笼", 7));
+            defs.add(makeCfg("HEALTH_ABNORMAL", "健康异常", 3));
             defs.add(makeCfg("ANIMAL_TRANSFER", "动物转移", 5));
-            defs.add(makeCfg("SPECIAL_FEEDING", "特殊饲养", 7));
-            defs.add(makeCfg("COHABITATION", "合笼/繁殖", 14));
+            defs.add(makeCfg("SPECIAL_FEEDING", "需特殊饲养", 7));
+            defs.add(makeCfg("COHABITATION", "需合笼", 14));
             for (CageAlertConfig c : defs) c.setMode(mode);
             try { configMapper.batchInsert(defs); }
             catch (Exception e) { log.warn("[cage-alert] seed insert failed (may already exist): {}", e.getMessage()); }

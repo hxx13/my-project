@@ -76,6 +76,7 @@ export function useStatusStyle(code: string | null): React.CSSProperties | undef
 /*  Cage type indicator dots                                            */
 /* ================================================================== */
 
+/** type 3(饲养中) 有意不给灯 — 无灯即饲养中，其余三类各有灯 */
 const DOT_VISIBLE_TYPES = new Set([1, 2, 4]);
 
 const CAGE_TYPE_DOT: Record<number, string> = {

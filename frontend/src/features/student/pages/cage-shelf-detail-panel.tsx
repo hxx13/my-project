@@ -3,6 +3,10 @@ import { Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authHttp } from "@/api/core/authHttp";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
+import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
+import { CAGE_BOX_ACTIONS, actionsFromFormValues } from "@/features/cage-shelf/constants";
+import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
+import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
 
 const CAGE_TYPE_COLORS: Record<number, { bg: string; border: string; label: string }> = {
   1: { bg: "var(--student-warning-soft)", border: "var(--student-warning)", label: "等待分配" },
@@ -10,14 +14,6 @@ const CAGE_TYPE_COLORS: Record<number, { bg: string; border: string; label: stri
   3: { bg: "var(--student-error-soft)", border: "var(--student-error)", label: "饲养中" },
   4: { bg: "var(--student-accent-telemetry-soft)", border: "var(--student-accent-telemetry)", label: "异常" },
 };
-
-const STATUS_CHIPS: Array<{ key: string; label: string; color: string }> = [
-  { key: "needsDivision", label: "需分笼", color: "var(--student-warning)" },
-  { key: "needsSpecialFeeding", label: "特殊饲养", color: "var(--student-error)" },
-  { key: "hasHealthAbnormality", label: "健康异常", color: "#a855f7" },
-  { key: "needsTransfer", label: "动物转移", color: "#06b6d4" },
-  { key: "cohabitationDate", label: "合笼", color: "var(--student-success)" },
-];
 
 interface CellDetailPanelProps {
   cell: CageShelfCell | null;
@@ -38,7 +34,16 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [formValues, setFormValues] = useState<CageInfoValueRow[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // 拉取表单值(cage_info_value)：状态标记唯一真相源，据此渲染状态 chips
+  useEffect(() => {
+    if (!animalCageId) { setFormValues(null); return; }
+    let cancelled = false;
+    fetchCageInfoValues(animalCageId).then(rows => { if (!cancelled) setFormValues(rows); }).catch(() => { if (!cancelled) setFormValues(null); });
+    return () => { cancelled = true; };
+  }, [animalCageId]);
 
   // 加载已有笔记和照片（通道一: statusPhotos, 通道二: imagesJson）
   useEffect(() => {
@@ -121,11 +126,9 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
 
   const ct = detail?.cageTypeCode;
   const typeInfo = CAGE_TYPE_COLORS[ct as number];
-  const cageBoxCode = detail?.cageBoxCode;
-  const statusChips = STATUS_CHIPS.filter(c => {
-    if (c.key === "cohabitationDate") return detail?.cohabitationDate && String(detail.cohabitationDate).trim() !== "";
-    return detail?.[c.key] === true;
-  });
+  // 状态 chips：以表单为真相源，只列已开启的状态（无合笼日期指示）
+  const activeActions = actionsFromFormValues(formValues);
+  const statusChips = CAGE_BOX_ACTIONS.filter(a => activeActions.has(a.action));
 
   return (
     <div className="flex-1 flex flex-col rounded-xl border border-[var(--student-hairline)] bg-[var(--app-color-surface-container)] overflow-hidden min-h-0">
@@ -138,7 +141,6 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
             </span>
           )}
           <span className="text-sm font-semibold text-[var(--student-ink)]">{cell.position.replace(/^([A-H])-(\d+)$/, (_,l:any,n:any)=>`${l}-${11-parseInt(n)}`).replace(/^(\d+)-(\d+)$/, (_,x:any,y:any)=>`${String.fromCharCode(64+parseInt(x))}-${11-parseInt(y)}`)}</span>
-          {cageBoxCode && <span className="text-[10px] font-mono text-[var(--student-mute)]">盒:{cageBoxCode}</span>}
         </div>
         <button onClick={onClose} className="rounded-md p-1 hover:bg-[var(--student-canvas-soft)]">
           <span className="text-lg text-[var(--student-mute)]">&times;</span>
@@ -146,31 +148,23 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {/* Personnel */}
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
-          {detail?.piName && <div className="truncate">👤 PI {detail.piName}</div>}
-          {detail?.projectPiName && detail.projectPiName !== detail.piName && <div className="truncate">👤 课题PI {detail.projectPiName}</div>}
-          {detail?.departmentName && <div className="truncate col-span-2">🏢 {detail.departmentName}</div>}
-          {detail?.aupNumber && <div className="truncate">📋 AUP {detail.aupNumber}</div>}
-          {detail?.experimenterName && <div className="truncate">🔬 {detail.experimenterName}</div>}
-          {detail?.animalStrainName && <div className="truncate">🧬 {detail.animalStrainName}</div>}
-          {detail?.animalSex && <div>⚥ {detail.animalSex}</div>}
-          {detail?.animalWeekAge && <div>🕐 {detail.animalWeekAge}周龄</div>}
-          {(detail?.animalMaleNumber || detail?.animalFemaleNumber) && <div>🔢 {detail.animalMaleNumber ? detail.animalMaleNumber + "♂" : ""}{detail.animalMaleNumber && detail.animalFemaleNumber ? "+" : ""}{detail.animalFemaleNumber ? detail.animalFemaleNumber + "♀" : ""}</div>}
-          {detail?.animalComeFrom && <div className="truncate col-span-2">📍 来源 {detail.animalComeFrom}</div>}
-          {detail?.labAssistantName && <div className="truncate">🧑‍🔬 {detail.labAssistantName}</div>}
-        </div>
+        {/* 关键信息表单(直接读表单,与 web 端一致) */}
+        <CageFormFill animalCageId={animalCageId || null} />
 
         {/* Status chips */}
         {statusChips.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            {statusChips.map(c => (
-              <span key={c.key} className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                style={{ background: c.color.startsWith("var(") ? `color-mix(in srgb, ${c.color} 9%, transparent)` : `${c.color}18`, color: c.color, border: `1px solid ${c.color.startsWith("var(") ? `color-mix(in srgb, ${c.color} 25%, transparent)` : `${c.color}40`}` }}>
-                {c.label}{c.key === "cohabitationDate" && detail?.cohabitationDate ? ` ${String(detail.cohabitationDate).substring(0, 10)}` : ""}
-              </span>
-            ))}
+            {statusChips.map(a => {
+              const c = DEFAULT_COLORS[a.statusCode] ?? { bg: "#ccc", border: "#999" };
+              return (
+                <span key={a.action} className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                  style={{ background: `${c.bg}18`, color: c.border, border: `1px solid ${c.border}40` }}>
+                  {a.label}
+                </span>
+              );
+            })}
             {detail?.specialBreedingName && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--student-error-soft)] text-[var(--student-error)] border border-[var(--student-error-soft)]">{detail.specialBreedingName}</span>}
+            {detail?.specialBreedingDesc && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--student-error-soft)] text-[var(--student-error)] border border-[var(--student-error-soft)]">{detail.specialBreedingDesc}</span>}
           </div>
         )}
 

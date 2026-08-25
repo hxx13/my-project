@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { getDominantStatusCode, useStatusStyle, CAGE_TYPE_LABEL, default as CageCellOverlays } from "@/features/cage-shelf/components/CageCellOverlays";
 import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
-import { displayPosition, nonEmptyText } from "../constants";
+import { displayPosition, nonEmptyText, CAGE_BOX_ACTIONS } from "../constants";
 import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains/cageShelf.api";
 
 /**
@@ -17,7 +17,7 @@ import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains
  *   - alert 告警态 — 左上角脉冲圆点 (NEED_DIVIDE/HEALTH_ABNORMAL/ANIMAL_TRANSFER/SPECIAL_FEEDING/COHABITATION)
  *   - bindHighlight — 蓝色 ring（绑定选中）
  *   - bindPending   — 绿色 ring（绑定缓存待提交）
- *   - editCache     — 右上角操作标记 (分/饲/健)
+ *   - editCache     — 编辑缓存动作色并入背景（预览选中状态，对齐 H5 GridCellButton）
  *   - isLastScanned — 红色 ring（扫码最后命中）
  *   - isCrossCol/Row— 红色 ring（十字交叉辅助线）
  *   - selected      — 蓝色边框 + 背景高亮
@@ -75,6 +75,10 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
       const c = ctxColors[s.code];
       if (c) allBgColors.push(c.bg);
     });
+  // 编辑缓存动作色（预览）：与 H5 GridCellButton 一致，选中即把该状态色并入背景
+  if (editCacheEntry) {
+    for (const a of CAGE_BOX_ACTIONS) if (editCacheEntry.currentActions.has(a.action)) allBgColors.push(ctxColors[a.statusCode]?.bg ?? "#ccc");
+  }
   const combinedBg = allBgColors.length >= 2
     ? `linear-gradient(to bottom, ${allBgColors.map((bg, i) => {
         const pct = Math.round((i / allBgColors.length) * 100);
@@ -119,18 +123,17 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     if (!cell.empty) onClick?.(cell);
   };
   const handleCheckboxClick = (e: React.MouseEvent) => { e.stopPropagation(); if (onToggle) onToggle(e); };
+  const handleCheckboxChange = () => { if (onToggle) onToggle({ stopPropagation: () => {} } as React.MouseEvent); };
   return <button type="button" className={cls} style={selected ? { ...style, borderColor: "#3b82f6", borderWidth: "2px" } : style}
     onClick={handleCardClick} disabled={cell.empty && !isSelectable}
     data-x={cell.x} data-y={cell.y}>
-    {allocMode && isSelectable && <div className="absolute top-0.5 left-0.5 z-20" onClick={handleCheckboxClick}><input type="checkbox" checked={selected ?? false} readOnly className="w-3 h-3 accent-blue-600 pointer-events-none" /></div>}
+    {allocMode && isSelectable && <input type="checkbox" checked={selected ?? false} onChange={handleCheckboxChange} onClick={(e) => e.stopPropagation()} className="absolute top-0.5 left-0.5 z-20 w-3 h-3 accent-blue-600" />}
     {!allocMode && alert && (() => { const ALERT_COLORS: Record<string, string> = { NEED_DIVIDE: "bg-amber-500 ring-amber-300", HEALTH_ABNORMAL: "bg-purple-500 ring-purple-300", ANIMAL_TRANSFER: "bg-cyan-500 ring-cyan-300", SPECIAL_FEEDING: "bg-red-500 ring-red-300", COHABITATION: "bg-emerald-500 ring-emerald-300" }; const ac = ALERT_COLORS[alert.statusCode] || "bg-red-500 ring-red-300"; return <div className="absolute top-0.5 left-0.5 z-20" title={`${alert.statusLabel} · persisted ${alert.spanDays ?? alert.persistedDays}d (threshold ${alert.thresholdDays}d)`}><div className={`w-4 h-4 rounded-full ring-1 flex items-center justify-center shadow-sm animate-pulse ${ac}`}><span className="text-white text-[9px] font-bold leading-none">!</span></div></div>; })()}
     {/* Bind highlight (selected = blue, cache-pending = green) */}
     {bindHighlight && !bindPending && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)] pointer-events-none" />}
     {bindPending && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-green-500 shadow-[0_0_10px_rgba(34,197,94,0.35)] pointer-events-none" />}
     {/* Claim mode pool cell highlight */}
     {claimMode && isPoolCell && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.35)] pointer-events-none" />}
-    {/* Edit cache markers */}
-    {editCacheEntry && editCacheEntry.currentActions.size > 0 && <div className="absolute top-0.5 right-0.5 z-20 flex gap-0.5">{Array.from(editCacheEntry.currentActions).map(a => <span key={a} className="text-[8px] px-1 rounded-full text-white font-bold" style={{ background: a === "DIVIDE" ? "#d97706" : a === "SPECIAL_BREEDING" ? "#dc2626" : "#7c3aed" }}>{a === "DIVIDE" ? "分" : a === "SPECIAL_BREEDING" ? "饲" : "健"}</span>)}</div>}
     {isLastScanned && <div className="absolute inset-0 z-10 rounded-twin-md ring-[3px] ring-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)] pointer-events-none" />}
     {flashOverlay && <div className="absolute inset-0 z-10 rounded-twin-md ring-[4px] ring-red-500/80 shadow-[0_0_16px_rgba(239,68,68,0.5)] scan-flash-overlay" />}
     {!cell.empty && <CageCellOverlays animalCageType={resolvedCageType} compact />}

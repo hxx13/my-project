@@ -32,6 +32,15 @@
         WHERE animal_cage_id = #{animalCageId}
     </select>
 
+    <select id="selectByAnimalCageIds" resultMap="CageInfoValueMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM cage_info_value
+        WHERE animal_cage_id IN
+        <foreach collection="animalCageIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
     <select id="countByAnimalCageId" resultType="int">
         SELECT COUNT(1) FROM cage_info_value WHERE animal_cage_id = #{animalCageId}
     </select>

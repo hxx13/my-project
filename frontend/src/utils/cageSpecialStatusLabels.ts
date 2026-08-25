@@ -1,12 +1,12 @@
 /**
- * 笼位特殊状态标准名称 — 与后端 SpecialStatusComputer.java / 扫描快照 statusLabel 对齐。
- * 前端禁止自行缩写或改写（如「合笼」「请分笼」「健康异常」）。
+ * 笼位特殊状态标准名称 — 与表单字段(cage_info_value canonical)中文名对齐：
+ * 需分笼 / 需特殊饲养 / 动物转移 / 健康异常 / 需合笼。
  */
 export const SPECIAL_STATUS_LABELS: Record<string, string> = {
-  COHABITATION: "合笼/繁殖",
-  SPECIAL_FEEDING: "特殊饲养",
-  NEED_DIVIDE: "请分笼/密度超标",
-  HEALTH_ABNORMAL: "动物健康异常",
+  COHABITATION: "需合笼",
+  SPECIAL_FEEDING: "需特殊饲养",
+  NEED_DIVIDE: "需分笼",
+  HEALTH_ABNORMAL: "健康异常",
   ANIMAL_TRANSFER: "动物转移",
   NORMAL: "正常",
 };

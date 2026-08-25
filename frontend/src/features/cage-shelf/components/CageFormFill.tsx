@@ -24,6 +24,13 @@ function flattenFields(template: CageTemplateDetail): Array<{ section: string; s
   return out;
 }
 
+/** 接口错误转文案：权限失败单独点名，避免和「表单未发布」混为一谈（历史上二者都渲染成后者）。 */
+function errText(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e ?? "");
+  if (/403|无权限|未登录|登录已过期/.test(msg)) return `无权读取表单：${msg || "403"}`;
+  return msg || "表单加载失败";
+}
+
 /**
  * 笼位详情内联填表：读取已发布组合模板（cage_detail，status=FROZEN）的三级结构。
  * 值读写走「笼位级表单值」GET/PUT。默认只读，`editable` 为 true 时提供「编辑」进入编辑态，
@@ -42,31 +49,44 @@ export default function CageFormFill({
   const [codelists, setCodelists] = useState<CodelistOptions>({});
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const initialValues = useRef<Record<string, unknown>>({});
 
-  // 载入发布模板 + 当前笼位的表单值
+  // 载入发布模板 + 当前笼位的表单值（两个请求一起收敛，避免 loading 早于模板落地）
   useEffect(() => {
     setLoading(true);
-    fetchCageTemplate(CAGE_FORM_KEY)
-      .then((t) => setTemplate(t))
-      .catch(() => setTemplate(null));
-    if (animalCageId != null) {
-      fetchCageInfoValues(animalCageId)
-        .then((rows) => {
-          const m: Record<string, unknown> = {};
-          for (const r of rows) m[r.canonical] = r.value;
-          initialValues.current = m;
-          setValues(m);
-        })
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    } else {
-      setValues({});
-      setLoading(false);
-    }
+    setLoadError(null);
     setEditing(false);
+    let cancelled = false;
+    void Promise.allSettled([
+      fetchCageTemplate(CAGE_FORM_KEY),
+      animalCageId != null ? fetchCageInfoValues(animalCageId) : Promise.resolve([]),
+    ]).then(([tplRes, valRes]) => {
+      if (cancelled) return;
+      if (tplRes.status === "fulfilled") {
+        setTemplate(tplRes.value);
+      } else {
+        setTemplate(null);
+        setLoadError(errText(tplRes.reason));
+      }
+      if (valRes.status === "fulfilled") {
+        const m: Record<string, unknown> = {};
+        for (const r of valRes.value) m[r.canonical] = r.value;
+        initialValues.current = m;
+        setValues(m);
+      } else {
+        initialValues.current = {};
+        setValues({});
+        // 模板读到了但值没读到，才把值的错误暴露出来（否则模板错误已经更能说明问题）
+        if (tplRes.status === "fulfilled") setLoadError(errText(valRes.reason));
+      }
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [animalCageId]);
 
   const fields = useMemo(() => (template ? flattenFields(template) : []), [template]);
@@ -133,6 +153,7 @@ export default function CageFormFill({
   };
 
   if (loading) return <div className="py-3 text-center text-[11px] text-[var(--twin-mute)]">加载中…</div>;
+  if (loadError) return <div className="py-3 text-center text-[11px] text-[var(--twin-danger,#ef4444)]">{loadError}</div>;
   if (!template) return <div className="py-3 text-center text-[11px] text-[var(--twin-mute)]">表单未发布</div>;
   if (template.status !== "FROZEN") return <div className="py-3 text-center text-[11px] text-[var(--twin-mute)]">表单未发布（当前状态：{template.status}）</div>;
   if (fields.length === 0) return <div className="py-3 text-center text-[11px] text-[var(--twin-mute)]">表单无字段</div>;

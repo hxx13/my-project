@@ -49,34 +49,6 @@
       "sourceRef": null,
       "items": [
         {
-          "value": "本科生",
-          "label": "本科生"
-        },
-        {
-          "value": "硕士研究生",
-          "label": "硕士研究生"
-        },
-        {
-          "value": "博士研究生",
-          "label": "博士研究生"
-        },
-        {
-          "value": "实验师",
-          "label": "实验师"
-        },
-        {
-          "value": "高级实验师",
-          "label": "高级实验师"
-        },
-        {
-          "value": "助理研究员",
-          "label": "助理研究员"
-        },
-        {
-          "value": "副研究员",
-          "label": "副研究员"
-        },
-        {
           "value": "学生",
           "label": "学生"
         },
@@ -89,6 +61,14 @@
           "label": "动科部工作人员"
         }
       ]
+    },
+    {
+      "dictKey": "institution",
+      "name": "附属医院/机构/高校",
+      "folder": "外部引用",
+      "source": "EXTERNAL",
+      "sourceRef": "INSTITUTION",
+      "items": []
     },
     {
       "dictKey": "projectSource",
@@ -1308,7 +1288,7 @@
             {
               "fieldKey": "A1.source",
               "label": "项目来源",
-              "type": "choice",
+              "type": "select",
               "required": true,
               "sortOrder": 1,
               "config": {
@@ -1473,7 +1453,7 @@
                   {
                     "fieldKey": "col_type",
                     "label": "人员类别",
-                    "type": "choice",
+                    "type": "select",
                     "dictKey": "userClass"
                   },
                   {
@@ -2213,8 +2193,10 @@
                   {
                     "fieldKey": "col_org",
                     "label": "附属医院/机构名称/高校",
-                    "type": "text",
-                    "required": true
+                    "type": "select",
+                    "required": true,
+                    "config": {},
+                    "dictKey": "institution"
                   },
                   {
                     "fieldKey": "col_contact",
@@ -3795,7 +3777,8 @@
                   {
                     "fieldKey": "category",
                     "label": "人员类别",
-                    "type": "text"
+                    "type": "select",
+                    "dictKey": "userClass"
                   },
                   {
                     "fieldKey": "name",
