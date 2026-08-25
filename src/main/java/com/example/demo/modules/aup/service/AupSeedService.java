@@ -108,13 +108,15 @@ public class AupSeedService {
             if (dictKey == null) {
                 continue;
             }
+            // folder 是码表的容器，先无条件确保存在（与 seedFields 对齐），
+            // 避免码表已存在（幂等跳过）时 CODELIST 文件夹缺失导致列表挂空。
+            Long folderId = ensureFolder("CODELIST", 0L, str(cl.get("folder")));
             if (dictMapper.findByKey(dictKey) != null) {
                 continue;
             }
             String name = str(cl.get("name"));
             String source = str(cl.get("source"));
             String sourceRef = str(cl.get("sourceRef"));
-            Long folderId = ensureFolder("CODELIST", 0L, str(cl.get("folder")));
 
             Dict dict = new Dict();
             dict.setDictKey(dictKey);
@@ -353,6 +355,9 @@ public class AupSeedService {
         n += jdbcTemplate.update("DELETE FROM dict_item");
         n += jdbcTemplate.update("DELETE FROM dict");
         n += jdbcTemplate.update("DELETE FROM aup_folder WHERE owner_type IN ('CODELIST','FIELD','ATOM')");
+        // 清空文件夹缓存：否则重置后重导时 ensureFolder 命中已被删除的旧文件夹 id，
+        // 导致 dict/field_def.folder_id 指向不存在的行（列表挂空）。
+        folderCache.clear();
         return n;
     }
 

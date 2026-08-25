@@ -6,6 +6,8 @@ import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.entity.UserAroBinding;
+import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.aup.dto.AupAttachmentVO;
@@ -95,6 +97,7 @@ public class AupService {
     private final AroService aroService;
     private final UserMapper userMapper;
     private final UserDisplayNameService userDisplayNameService;
+    private final UserAroBindingMapper userAroBindingMapper;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final AupDemoSeeder aupDemoSeeder;
@@ -129,6 +132,7 @@ public class AupService {
                       AroService aroService,
                       UserMapper userMapper,
                       UserDisplayNameService userDisplayNameService,
+                      UserAroBindingMapper userAroBindingMapper,
                       JdbcTemplate jdbcTemplate,
                       ObjectMapper objectMapper,
                       AupDemoSeeder aupDemoSeeder,
@@ -146,6 +150,7 @@ public class AupService {
         this.aroService = aroService;
         this.userMapper = userMapper;
         this.userDisplayNameService = userDisplayNameService;
+        this.userAroBindingMapper = userAroBindingMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.aupDemoSeeder = aupDemoSeeder;
@@ -192,9 +197,23 @@ public class AupService {
             return null;
         }
         try {
-            AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
+            // STAFF_* 账号需经 user_aro_binding 展开成 aro_user_id，再索引 aro_personnel
+            String aroUserId = userId;
+            if (userId.startsWith("STAFF_")) {
+                UserAroBinding binding = userAroBindingMapper.selectByUserId(userId);
+                if (binding != null && StringUtils.hasText(binding.getAroUserId())) {
+                    aroUserId = binding.getAroUserId();
+                }
+            }
+            AroPersonnel p = aroPersonnelMapper.findByUserId(aroUserId);
             if (p != null && StringUtils.hasText(p.getProjectGroupName())) {
                 return p.getProjectGroupName();
+            }
+            if (!aroUserId.equals(userId)) {
+                AroPersonnel p2 = aroPersonnelMapper.findByUserId(userId);
+                if (p2 != null && StringUtils.hasText(p2.getProjectGroupName())) {
+                    return p2.getProjectGroupName();
+                }
             }
             List<String> rows = jdbcTemplate.queryForList(
                     "SELECT project_group_name FROM sys_user WHERE id = ?", String.class, userId);

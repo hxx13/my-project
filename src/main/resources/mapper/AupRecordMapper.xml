@@ -152,7 +152,7 @@
                 )
             </if>
             <if test="projectGroupName != null and projectGroupName != ''">
-                AND r.project_group_name = #{projectGroupName}
+                AND r.project_group_name LIKE CONCAT('%', #{projectGroupName}, '%')
             </if>
             <if test="excludeDraft">
                 AND (r.current_stage != 'draft' OR r.draft_source != 'first' OR r.is_demo = 1)

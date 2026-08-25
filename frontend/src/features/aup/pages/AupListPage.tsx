@@ -536,17 +536,19 @@ export default function AupListPage() {
           )}
           <label style={FILTER_FIELD_STYLE}>
             课题组
-            <select
-              className="select"
+            <input
+              className="input"
               style={FILTER_CONTROL_STYLE}
+              placeholder="输入课题组名，模糊匹配"
               value={projectGroupName}
+              list="aup-project-group-options"
               onChange={(e) => { setProjectGroupName(e.target.value); }}
-            >
-              <option value="">全部课题组</option>
+            />
+            <datalist id="aup-project-group-options">
               {(projectGroupsQuery.data ?? []).map((g) => (
-                <option key={g} value={g}>{g}</option>
+                <option key={g} value={g} />
               ))}
-            </select>
+            </datalist>
           </label>
           <label style={FILTER_FIELD_STYLE}>
             提交人
