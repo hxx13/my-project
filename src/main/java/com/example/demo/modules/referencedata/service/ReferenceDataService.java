@@ -4,9 +4,13 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.animalorder.service.AnimalOrderTimePolicyService;
+import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aup.entity.AupRecord;
 import com.example.demo.modules.aup.mapper.AupRecordMapper;
 import com.example.demo.modules.aup.service.AupAnimalAllowlistCompat;
+import com.example.demo.modules.auth.entity.UserAroBinding;
+import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.referencedata.dto.*;
 import com.example.demo.modules.referencedata.entity.*;
@@ -20,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -50,6 +55,9 @@ public class ReferenceDataService {
     private final UserDisplayNameService userDisplayNameService;
     private final AnimalOrderTimePolicyService animalOrderTimePolicyService;
     private final AupAnimalAllowlistCompat allowlistCompat;
+    private final AroPersonnelMapper aroPersonnelMapper;
+    private final UserAroBindingMapper userAroBindingMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     public ReferenceDataService(ReferenceDataMapper referenceDataMapper,
                                 RefSpecTemplateMapper specTemplateMapper,
@@ -64,7 +72,10 @@ public class ReferenceDataService {
                                 AupRecordMapper aupRecordMapper,
                                 UserDisplayNameService userDisplayNameService,
                                 AnimalOrderTimePolicyService animalOrderTimePolicyService,
-                                AupAnimalAllowlistCompat allowlistCompat) {
+                                AupAnimalAllowlistCompat allowlistCompat,
+                                AroPersonnelMapper aroPersonnelMapper,
+                                UserAroBindingMapper userAroBindingMapper,
+                                JdbcTemplate jdbcTemplate) {
         this.referenceDataMapper = referenceDataMapper;
         this.specTemplateMapper = specTemplateMapper;
         this.cartMapper = cartMapper;
@@ -79,6 +90,9 @@ public class ReferenceDataService {
         this.userDisplayNameService = userDisplayNameService;
         this.animalOrderTimePolicyService = animalOrderTimePolicyService;
         this.allowlistCompat = allowlistCompat;
+        this.aroPersonnelMapper = aroPersonnelMapper;
+        this.userAroBindingMapper = userAroBindingMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     // ==================== RefData CRUD ====================
@@ -243,7 +257,7 @@ public class ReferenceDataService {
         if (refData == null) {
             return Result.error("参考数据不存在");
         }
-        AupRecord aup = resolveAupForOrder(req.getAupRecordId(), null);
+        AupRecord aup = resolveAupForOrder(req.getAupRecordId(), userId);
         if (aup == null) {
             return Result.error("所选 AUP 不存在或未获批准");
         }
@@ -411,7 +425,7 @@ public class ReferenceDataService {
         // 头 AUP：请求显式传入，或全部行同一 AUP 时写入展示字段
         AupRecord headerAup = null;
         if (req.getAupRecordId() != null) {
-            headerAup = resolveAupForOrder(req.getAupRecordId(), req.getProjectGroupName());
+            headerAup = resolveAupForOrder(req.getAupRecordId(), userId);
             if (headerAup == null) {
                 return Result.error("所选 AUP 不存在或未获批准");
             }
@@ -421,7 +435,7 @@ public class ReferenceDataService {
                     .filter(Objects::nonNull)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
             if (distinctAups.size() == 1) {
-                headerAup = resolveAupForOrder(distinctAups.iterator().next(), req.getProjectGroupName());
+                headerAup = resolveAupForOrder(distinctAups.iterator().next(), userId);
             }
         }
 
@@ -510,8 +524,8 @@ public class ReferenceDataService {
         return Result.success(toOrderView(orderMapper.findById(order.getId())));
     }
 
-    /** 解析并校验下单 AUP：必须存在、已批准、属于本课题组。返回 null 表示未传或未命中。 */
-    private AupRecord resolveAupForOrder(Long aupRecordId, String projectGroupName) {
+    /** 解析并校验下单 AUP：必须存在、已批准、属于当前登录用户的课题组。返回 null 表示未传或未命中。 */
+    private AupRecord resolveAupForOrder(Long aupRecordId, String userId) {
         if (aupRecordId == null) {
             return null;
         }
@@ -519,11 +533,44 @@ public class ReferenceDataService {
         if (aup == null || !"approved".equals(aup.getCurrentStage())) {
             return null;
         }
-        if (StringUtils.hasText(projectGroupName) && StringUtils.hasText(aup.getProjectGroupName())
-                && !projectGroupName.equals(aup.getProjectGroupName())) {
+        String userGroup = resolveProjectGroupName(userId);
+        if (StringUtils.hasText(userGroup) && StringUtils.hasText(aup.getProjectGroupName())
+                && !userGroup.equals(aup.getProjectGroupName())) {
             return null;
         }
         return aup;
+    }
+
+    /** 登录用户的课题组名：优先 aro_personnel，回退 sys_user。与订购侧下拉同源，杜绝客户端指定课题组绕过。 */
+    private String resolveProjectGroupName(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return null;
+        }
+        try {
+            // STAFF_* 账号需经 user_aro_binding 展开成 aro_user_id，再索引 aro_personnel
+            String aroUserId = userId;
+            if (userId.startsWith("STAFF_")) {
+                UserAroBinding binding = userAroBindingMapper.selectByUserId(userId);
+                if (binding != null && StringUtils.hasText(binding.getAroUserId())) {
+                    aroUserId = binding.getAroUserId();
+                }
+            }
+            AroPersonnel p = aroPersonnelMapper.findByUserId(aroUserId);
+            if (p != null && StringUtils.hasText(p.getProjectGroupName())) {
+                return p.getProjectGroupName();
+            }
+            if (!aroUserId.equals(userId)) {
+                AroPersonnel p2 = aroPersonnelMapper.findByUserId(userId);
+                if (p2 != null && StringUtils.hasText(p2.getProjectGroupName())) {
+                    return p2.getProjectGroupName();
+                }
+            }
+            List<String> rows = jdbcTemplate.queryForList(
+                    "SELECT project_group_name FROM sys_user WHERE id = ?", String.class, userId);
+            return rows.isEmpty() ? null : rows.get(0);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 按行用各自 aup_record_id 校验白名单。 */

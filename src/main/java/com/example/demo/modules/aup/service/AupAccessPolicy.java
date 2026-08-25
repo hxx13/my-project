@@ -3,6 +3,8 @@ package com.example.demo.modules.aup.service;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.entity.UserAroBinding;
+import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 import com.example.demo.modules.aup.entity.AupRecord;
 import com.example.demo.modules.identity.dto.IdentityTagVO;
 import com.example.demo.modules.identity.service.PersonIdentityService;
@@ -31,6 +33,7 @@ public class AupAccessPolicy {
 
     private final JdbcTemplate jdbcTemplate;
     private final PersonIdentityService personIdentityService;
+    private final UserAroBindingMapper userAroBindingMapper;
 
     @Value("${aup.identity.pi-code:PI}")
     private String piCode;
@@ -41,8 +44,10 @@ public class AupAccessPolicy {
     @Value("${aup.identity.expert-code:EXPERT}")
     private String expertCode;
 
-    public AupAccessPolicy(JdbcTemplate jdbcTemplate, PersonIdentityService personIdentityService) {
+    public AupAccessPolicy(JdbcTemplate jdbcTemplate, PersonIdentityService personIdentityService,
+                           UserAroBindingMapper userAroBindingMapper) {
         this.jdbcTemplate = jdbcTemplate;
+        this.userAroBindingMapper = userAroBindingMapper;
         this.personIdentityService = personIdentityService;
     }
 
@@ -145,17 +150,32 @@ public class AupAccessPolicy {
         }
     }
 
-    /** 用户所属课题组名（aro_personnel；教职工回退 sys_user.project_group_name）。 */
+    /** 用户所属课题组名（aro_personnel；STAFF_* 经 binding 展开；教职工回退 sys_user.project_group_name）。 */
     public String projectGroupNameOf(String userId) {
         if (userId == null || userId.isBlank()) {
             return null;
         }
         try {
+            String aroUserId = userId;
+            if (userId.startsWith("STAFF_")) {
+                UserAroBinding binding = userAroBindingMapper.selectByUserId(userId);
+                if (binding != null && StringUtils.hasText(binding.getAroUserId())) {
+                    aroUserId = binding.getAroUserId();
+                }
+            }
             List<String> rows = jdbcTemplate.queryForList(
                     "SELECT project_group_name FROM aro_personnel WHERE user_id = ? LIMIT 1",
-                    String.class, userId);
+                    String.class, aroUserId);
             if (!rows.isEmpty() && rows.get(0) != null && !rows.get(0).isBlank()) {
                 return rows.get(0);
+            }
+            if (!aroUserId.equals(userId)) {
+                rows = jdbcTemplate.queryForList(
+                        "SELECT project_group_name FROM aro_personnel WHERE user_id = ? LIMIT 1",
+                        String.class, userId);
+                if (!rows.isEmpty() && rows.get(0) != null && !rows.get(0).isBlank()) {
+                    return rows.get(0);
+                }
             }
             rows = jdbcTemplate.queryForList(
                     "SELECT project_group_name FROM sys_user WHERE id = ? LIMIT 1",

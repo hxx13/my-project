@@ -250,15 +250,12 @@ export default function AupTemplateListPage() {
     const isDraft = st === "DRAFT";
     const isPending = st === "PENDING_REVIEW";
     const isPublished = st === "PUBLISHED";
-    const isProtocol = t.kind === "PROTOCOL";
     const isAtom = t.kind === "ATOM";
     return (
       <div className="acts" style={{ flexWrap: "wrap", gap: 6 }}>
-        {isProtocol && (
-          <button className="btn ghost small" onClick={() => navigate(`/content-manager/aup-template/edit/${t.id}`)}>
-            {isDraft ? "编辑 ▸" : "查看 ▸"}
-          </button>
-        )}
+        <button className="btn ghost small" onClick={() => navigate(`/content-manager/aup-template/edit/${t.id}`)}>
+          {isDraft ? "编辑 ▸" : "查看 ▸"}
+        </button>
         {canMaintain && isDraft && (
           <button
             className="btn primary small"
