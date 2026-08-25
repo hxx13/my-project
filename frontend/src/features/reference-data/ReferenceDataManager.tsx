@@ -113,10 +113,15 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const typeConfig = getTypeConfig(activeTypeKey);
   const allTypes = getAllTypeConfigs();
 
-  // 共享购物车：pg-{projectGroupId}，否则归一化课题组名
+  // 共享购物车：pg-{projectGroupId}，否则归一化课题组名。
+  // 课题组名优先取登录用户（userInfo），缺失时回退到已批准 AUP 记录的 projectGroupName
+  // （STAFF_ 账号 sys_user.project_group_name 常为空，但 AUP 记录有值）。
   const groupId = useMemo(() => {
     const fromAup = approvedAups.find((a) => a.projectGroupId != null)?.projectGroupId;
-    return resolveSharedCartGroupId(fromAup ?? null, projectGroupName);
+    const effectiveGroupName =
+      projectGroupName ||
+      (approvedAups.find((a) => (a.projectGroupName || "").trim())?.projectGroupName ?? "");
+    return resolveSharedCartGroupId(fromAup ?? null, effectiveGroupName);
   }, [approvedAups, projectGroupName]);
 
   useEffect(() => {
@@ -574,6 +579,29 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] shadow-twin-level-2">
         <div className="flex shrink-0 items-center gap-2 bg-[var(--twin-canvas)] px-3 py-2 overflow-visible">
           <BreadcrumbBar stack={breadcrumbStack} onNavigate={handleBreadcrumbNavigate} />
+          <button
+            type="button"
+            onClick={() => setAupPickerOpen(true)}
+            className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap ${
+              activeAup
+                ? "border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"
+                : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+            }`}
+            title="当前加购 AUP，点击可切换"
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-wide opacity-70">AUP</span>
+            {activeAup ? (
+              <>
+                <span className="font-semibold">{activeAup.registerNo}</span>
+                {activeAup.projectGroupName ? (
+                  <span className="max-w-[10rem] truncate opacity-70">{activeAup.projectGroupName}</span>
+                ) : null}
+              </>
+            ) : (
+              <span>选择 AUP</span>
+            )}
+            <span className="opacity-60">切换</span>
+          </button>
           <div className="flex-1 min-w-0" />
           <input
             type="text"
