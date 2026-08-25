@@ -53,6 +53,20 @@
   --student-destructive-foreground: #ffffff;
   --student-primary-foreground: #ffffff;
 
+  /* 复用组件(CageFormFill 等使用 --twin-*)跟随 H5 学生中心壳层暖白令牌 */
+  --twin-ink: var(--student-ink);
+  --twin-body: var(--student-body);
+  --twin-mute: var(--student-mute);
+  --twin-canvas: var(--student-canvas);
+  --twin-canvas-soft: var(--student-canvas-soft);
+  --twin-canvas-soft-2: var(--student-canvas-soft-2);
+  --twin-hairline: var(--student-hairline);
+  --twin-hairline-strong: var(--student-hairline-strong);
+  --twin-primary: var(--student-ink);
+  --twin-on-primary: var(--student-on-primary);
+  --twin-warning: var(--student-warning);
+  --twin-success: var(--student-success);
+
   --student-radius-xs: 6px;
   --student-radius-sm: 8px;
   --student-radius-md: 12px;

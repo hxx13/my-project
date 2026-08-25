@@ -37,7 +37,14 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(adminAuthInterceptor)
                 .addPathPatterns("/api/admin/**", "/api/portal/admin/**",
-                        "/api/person-identity/**");
+                        "/api/person-identity/**")
+                // 笼位表单三条读路径供 H5/小程序详情弹窗使用（控制器内标注 MEMBER+ 可读）。
+                // 拦截器统一卡 STAFF 会把学生（MEMBER）挡在控制器之外，requireMember + 课题组脱敏成为死代码。
+                // 这三条路径上的写方法各自在控制器内 requireAdmin / requireEditor 自守，故整段排除是安全的；
+                // 更深的写路径（/codelists/*/items 等）不匹配单层通配，仍受本拦截器保护。
+                .excludePathPatterns("/api/admin/cage-info/templates/*",
+                        "/api/admin/cage-info/values/*",
+                        "/api/admin/cage-info/codelists/*");
 
         registry.addInterceptor(apiAuthInterceptor)
                 .addPathPatterns("/api/v1/**", "/api/me/**", "/api/chat/**",

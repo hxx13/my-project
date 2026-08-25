@@ -202,8 +202,16 @@ public class CageLocalController {
     // 编辑（特殊状态标记）
     // ═══════════════════════════════════════════
 
+    /** 状态标记的中文名，仅用于日志/审计摘要。新增状态时在此登记一行。 */
+    private static final Map<String, String> TOGGLE_LABELS = Map.of(
+            "needs_division", "需分笼",
+            "needs_special_feeding", "需特殊饲养",
+            "has_health_abnormality", "健康异常",
+            "needs_transfer", "动物转移",
+            "needs_cohabitation", "需合笼");
+
     @PostMapping("/edit")
-    @Operation(summary = "编辑笼位状态标记 → 写本地 + 异步投递ARO")
+    @Operation(summary = "编辑笼位状态标记 → 只写本地")
     public Result<?> edit(@RequestBody Map<String, Object> body, HttpServletRequest req) {
         User u = resolveUser(req.getHeader("Authorization"));
         Result<?> denied = requireRole(u, RoleEnum.STAFF);
@@ -215,54 +223,13 @@ public class CageLocalController {
         if (animalCageId == null || toggle == null)
             return Result.fail(400, "animalCageId 和 toggle 必填");
 
-        detailService.toggleStatus(animalCageId, toggle, operatorDisplayName(u));
-        String cageBoxCode = body.get("cageBoxCode") != null ? str(body, "cageBoxCode") : null;
-        if (cageBoxCode == null || cageBoxCode.isEmpty()) {
-            var detail = detailMapper.selectByAnimalCageId(animalCageId);
-            cageBoxCode = detail != null ? detail.getCageBoxCode() : null;
-        }
+        // 状态标记以表单(cage_info_value)为唯一真相源：只写表单，不回写固定表、不再 ARO 投递
+        infoValueService.setStatus(animalCageId, toggle, Boolean.TRUE.equals(enable), operatorDisplayName(u));
 
-        // enable=true → 标记（add 接口）; enable=false → 取消（cancelColor 接口）
-        String endpoint;
-        Map<String, Object> payload = new LinkedHashMap<>();
-        // 使用 canonical 命名（与 aro_field_mapping.json 对齐），同时保留 camelCase 兼容旧代码
-        payload.put("animal_cage_id", animalCageId);
-        payload.put("cage_box_code", cageBoxCode != null ? cageBoxCode : "");
-        // 关键：将业务字段写入 payload，供 OutboxService 通过 CageFieldMappingService 翻译为 ARO 字段
-        // e.g. "needs_division": true → mapping.applyPush("cageBoxAction") → {NeedDivideYn: 1}
-        payload.put(toggle, Boolean.TRUE.equals(enable));
-
-        if (Boolean.TRUE.equals(enable)) {
-            // 仅 needs_division 走专用端点 cageBoxAction（其映射 target: NeedDivideYn）
-            // needs_special_feeding / has_health_abnormality 走 updateAnimalCage
-            // （映射分别有 needFeedingYn / abnormalHealthYn），避免空映射端点
-            endpoint = switch (toggle) {
-                case "needs_division" -> "cageBoxAction";
-                default -> "updateAnimalCage";
-            };
-        } else {
-            endpoint = "cancelColor";
-            int color = switch (toggle) {
-                case "needs_special_feeding" -> 1;
-                case "needs_division" -> 2;
-                case "has_health_abnormality" -> 3;
-                default -> 0;
-            };
-            payload.put("color", color);
-        }
-        String toggleLabel = switch (toggle) {
-            case "needs_division" -> "需分笼";
-            case "needs_special_feeding" -> "需特殊饲养";
-            case "has_health_abnormality" -> "健康异常";
-            case "needs_transfer" -> "动物转移";
-            default -> toggle;
-        };
         String action = Boolean.TRUE.equals(enable) ? "标记" : "取消";
-        String pos = buildPositionLabel(animalCageId);
-        String summary = String.format("%s %s [%s] → 笼位 %d %s", operatorDisplayName(u), action, toggleLabel, animalCageId, pos);
-        outboxService.enqueue("cage_cell", String.valueOf(animalCageId), "edit", payload, endpoint, summary);
-
-        log.info("[local/edit] {}", summary);
+        String toggleLabel = TOGGLE_LABELS.getOrDefault(toggle, toggle);
+        log.info("[local/edit] {} {} [{}] → 笼位 {} {}",
+                operatorDisplayName(u), action, toggleLabel, animalCageId, buildPositionLabel(animalCageId));
         return Result.success(Map.of("ok", true, "local", true));
     }
 

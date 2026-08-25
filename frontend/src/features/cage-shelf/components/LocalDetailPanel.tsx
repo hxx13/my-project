@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { authHttp } from "@/api/core/authHttp";
-import { CAGE_TYPE_COLORS, STATUS_CHIPS } from "../constants";
+import { CAGE_TYPE_COLORS, CAGE_BOX_ACTIONS, actionsFromFormValues } from "../constants";
+import { DEFAULT_COLORS } from "./CageColorContext";
+import { fetchCageInfoValues, type CageInfoValueRow } from "../api/cageForm.api";
 import { type CageShelfCell } from "@/api/domains/cageShelf.api";
 import CageFormFill from "./CageFormFill";
 import toast from "react-hot-toast";
@@ -28,7 +30,7 @@ import { fetchMyIdentity } from "@/api/domains/personIdentity.api";
  *
  * 依赖:
  *   - @/api/core/authHttp      本地 API (annotate/history)
- *   - ../constants              CAGE_TYPE_COLORS, STATUS_CHIPS
+ *   - ../constants              CAGE_TYPE_COLORS, CAGE_BOX_ACTIONS, actionsFromFormValues
  *
  * ⚠️ 本组件只用于本地数据源。ARO 数据源走 AdminCageShelfPage 内联的 CAGE_BOX_INFO_FIELD_ORDER 渲染。
  */
@@ -47,6 +49,7 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
   const [qrZoom, setQrZoom] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [statusPhotos, setStatusPhotos] = useState<Record<string, string[]>>({});
+  const [formValues, setFormValues] = useState<CageInfoValueRow[] | null>(null);
 
   // ── 认领状态标识（表单值挂笼位，与认领无关；这里只判断是否已认领）──
   const claimed = !!((cell as any).activeClaimId);
@@ -68,6 +71,14 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
     authHttp.get(`/local/history/${animalCageId}`).then(r => {
       if (r.data?.success) setHistory(r.data.data || []);
     }).catch(() => { });
+  }, [animalCageId]);
+
+  // 拉取表单值(cage_info_value)：状态标记唯一真相源，据此渲染状态 chips
+  useEffect(() => {
+    if (!animalCageId) { setFormValues(null); return; }
+    let cancelled = false;
+    fetchCageInfoValues(animalCageId).then(rows => { if (!cancelled) setFormValues(rows); }).catch(() => { if (!cancelled) setFormValues(null); });
+    return () => { cancelled = true; };
   }, [animalCageId]);
 
   // 合并两个通道的所有照片 URL，供预览导航使用（必须在 statusPhotos 声明之后）
@@ -117,10 +128,9 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
   const ct = detail?.cageTypeCode;
   const typeInfo = CAGE_TYPE_COLORS[ct as number];
   const cageBoxCode = detail?.cageBoxCode;
-  const statusChips = STATUS_CHIPS.filter(c => {
-    if (c.key === "cohabitationDate") return detail?.cohabitationDate && String(detail.cohabitationDate).trim() !== "";
-    return detail?.[c.key] === true;
-  });
+  // 状态 chips：以表单为真相源，只列已开启的状态（无合笼日期指示）
+  const activeActions = actionsFromFormValues(formValues);
+  const statusChips = CAGE_BOX_ACTIONS.filter(a => activeActions.has(a.action));
 
   if (!detail) return <div className="text-xs text-[var(--twin-mute)] py-8 text-center">无本地详情数据（请先同步）</div>;
 
@@ -172,11 +182,12 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
 
     {/* 三级：状态标记 + 通道一：状态标记照片（只读，仅编辑模式可管理） */}
     {(statusChips.length > 0 || Object.keys(statusPhotos).some(k => k.startsWith("_") && (statusPhotos[k] || []).length > 0)) && <div className="space-y-2">
-      {statusChips.map(c => {
-        const sImgs: string[] = statusPhotos[c.key] || [];
-        return <div key={c.key} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-1.5">
+      {statusChips.map(a => {
+        const sImgs: string[] = statusPhotos[a.statusField] || [];
+        const c = DEFAULT_COLORS[a.statusCode] ?? { bg: "#ccc", border: "#999" };
+        return <div key={a.action} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-1.5">
           <div className="flex items-center gap-1.5 mb-1">
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `${c.color}18`, color: c.color, border: `1px solid ${c.color}40` }}>{c.icon} {c.label}{c.key === "cohabitationDate" && detail?.cohabitationDate ? ` ${String(detail.cohabitationDate).substring(0, 10)}` : ""}</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `${c.bg}18`, color: c.border, border: `1px solid ${c.border}40` }}>{a.label}</span>
             <span className="text-[9px] text-[var(--twin-mute)]">📷 {sImgs.length}张</span>
           </div>
           {sImgs.length > 0 && <div className="flex flex-wrap gap-1">

@@ -309,6 +309,26 @@ Page({
               '&roomName=' + (cb.roomName || '') +
               (cb.shelveId ? '&shelveId=' + cb.shelveId : '');
             wx.navigateTo({ url: url });
+          } else if (result.type === 'CAGE_CELL' && result.cageCell) {
+            var cc = result.cageCell;
+            var cageCellUrl = '/package-feature/pages/studentCageShelf/index' +
+              '?highlightX=' + cc.positionX +
+              '&highlightY=' + cc.positionY +
+              '&campusName=' + (cc.campusName || '') +
+              '&roomName=' + (cc.roomName || '') +
+              (cc.shelveId ? '&shelveId=' + cc.shelveId : '');
+            wx.navigateTo({ url: cageCellUrl });
+          } else if (result.type === 'LEGACY_CAGE_BOX') {
+            wx.showToast({ title: '旧盒码已废弃，请扫笼位码', icon: 'none' });
+            if (result.positionX != null && result.positionY != null) {
+              var legacyUrl = '/package-feature/pages/studentCageShelf/index' +
+                '?highlightX=' + result.positionX +
+                '&highlightY=' + result.positionY +
+                '&campusName=' + (result.campusName || '') +
+                '&roomName=' + (result.roomName || '') +
+                (result.shelveId ? '&shelveId=' + result.shelveId : '');
+              wx.navigateTo({ url: legacyUrl });
+            }
           } else if (result.type === 'ASSET' && result.asset) {
             var assetCode = result.asset.assetCode || code;
             wx.navigateTo({

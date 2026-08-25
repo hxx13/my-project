@@ -139,6 +139,55 @@ public class CageInfoValueService {
         return getInfo(animalCageId);
     }
 
+    /** 编辑模式切换状态标记 — 只写表单(cage_info_value)，不回写固定表、不再 ARO 投递。 */
+    @Transactional
+    public void setStatus(Long animalCageId, String canonical, boolean enable, String operatorId) {
+        if (animalCageId == null || canonical == null || canonical.isBlank()) return;
+        CageInfoField field = fieldMapper.selectByCanonical(canonical);
+        if (field == null || field.getId() == null) return;
+
+        Boolean before = null;
+        for (CageInfoValue v : valueMapper.selectByAnimalCageId(animalCageId)) {
+            if (v != null && field.getId().equals(v.getFieldId())) { before = v.getValueBool(); break; }
+        }
+
+        CageInfoValue v = new CageInfoValue();
+        v.setAnimalCageId(animalCageId);
+        v.setFieldId(field.getId());
+        v.setValueBool(enable);
+        v.setFillSource("MANUAL");
+        valueMapper.upsert(v);
+
+        if (!Objects.equals(before, enable)) {
+            auditService.logDataChange("UPDATE", "cage_box", animalCageId, String.valueOf(animalCageId), null,
+                    "animal_cage", animalCageId, String.valueOf(animalCageId),
+                    field.getCanonical(), field.getLabel(),
+                    stringify(before), stringify(enable), operatorId);
+        }
+    }
+
+    /** 批量读状态标记布尔（仅 5 个状态字段）→ cageId:{canonical:boolean}，供网格/详情从表单读侧切读。 */
+    public Map<Long, Map<String, Boolean>> statusFlagsByCage(List<Long> cageIds) {
+        Map<Long, Map<String, Boolean>> out = new LinkedHashMap<>();
+        if (cageIds == null || cageIds.isEmpty()) return out;
+        Set<String> statusCanonicals = Set.of(
+                "needs_division", "needs_special_feeding", "needs_transfer",
+                "has_health_abnormality", "needs_cohabitation");
+        Map<Long, String> canonicalByFieldId = new HashMap<>();
+        for (CageInfoField f : fieldMapper.selectAll()) {
+            if (f != null && f.getId() != null && f.getCanonical() != null && statusCanonicals.contains(f.getCanonical())) {
+                canonicalByFieldId.put(f.getId(), f.getCanonical());
+            }
+        }
+        for (CageInfoValue v : valueMapper.selectByAnimalCageIds(cageIds)) {
+            if (v == null || v.getAnimalCageId() == null || v.getFieldId() == null) continue;
+            String canonical = canonicalByFieldId.get(v.getFieldId());
+            if (canonical == null) continue;
+            out.computeIfAbsent(v.getAnimalCageId(), k -> new HashMap<>()).put(canonical, v.getValueBool());
+        }
+        return out;
+    }
+
     /** 从笼位详情(cage_cell_detail)同步老数据到笼位级值（fill_source=SYNC）。幂等：仅在有值字段上 upsert。 */
     @Transactional
     public void seedFromDetail(Long animalCageId) {

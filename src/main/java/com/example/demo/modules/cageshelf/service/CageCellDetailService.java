@@ -154,6 +154,7 @@ public class CageCellDetailService {
             case "needs_special_feeding" -> Boolean.TRUE.equals(d.getNeedsSpecialFeeding());
             case "has_health_abnormality" -> Boolean.TRUE.equals(d.getHasHealthAbnormality());
             case "needs_cohabitation" -> Boolean.TRUE.equals(d.getNeedsCohabitation());
+            case "needs_transfer" -> Boolean.TRUE.equals(d.getNeedsTransfer());
             default -> false;
         };
 
@@ -187,6 +188,7 @@ public class CageCellDetailService {
             case "needs_special_feeding" -> d.setNeedsSpecialFeeding(!wasOn);
             case "has_health_abnormality" -> d.setHasHealthAbnormality(!wasOn);
             case "needs_cohabitation" -> d.setNeedsCohabitation(!wasOn);
+            case "needs_transfer" -> d.setNeedsTransfer(!wasOn);
         }
 
         // 状态从 OFF → ON：清空照片（全新开始），归档旧数据如果有

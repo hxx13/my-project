@@ -4,6 +4,11 @@ import { ImagePlus, Save, X } from "lucide-react";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { fetchLocalAnnotate, localAnnotate } from "@/api/domains/cageShelf.api";
+import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
+import { CAGE_BOX_ACTIONS, actionsFromFormValues } from "@/features/cage-shelf/constants";
+import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
+import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
+import { useViewportHeight } from "./useViewportHeight";
 
 const BRAND = "#ac1736";
 
@@ -24,57 +29,10 @@ function dGet(
   return "";
 }
 
-function dBool(detail: Record<string, unknown> | undefined | null, key: string): boolean {
-  const v = detail?.[key];
-  return v === true || v === 1 || v === "1";
-}
-
 function dNum(detail: Record<string, unknown> | undefined | null, key: string): number | null {
   const v = detail?.[key];
   if (v == null || v === "") return null;
   return Number(v);
-}
-
-/** cage type badge: 1=等待分配 2=空笼盒 3=饲养中 4=异常 */
-function cageTypeLabel(t: unknown): string {
-  const n = Number(t);
-  if (n === 1) return "等待分配";
-  if (n === 2) return "已预约(空笼盒)";
-  if (n === 3) return "饲养中";
-  if (n === 4) return "异常";
-  return "未知";
-}
-
-function cageTypeBadgeStyle(t: unknown): { bg: string; color: string } {
-  const n = Number(t);
-  if (n === 1) return { bg: "#fef3c7", color: "#d97706" };
-  if (n === 2) return { bg: "#d1fae5", color: "#059669" };
-  if (n === 3) return { bg: "#ffe4e6", color: "#e11d48" };
-  if (n === 4) return { bg: "#dbeafe", color: "#2563eb" };
-  return { bg: "#f2f3f5", color: "#646566" };
-}
-
-function RowItem({
-  icon,
-  label,
-  value,
-}: {
-  icon: string;
-  label?: string;
-  value: string;
-}) {
-  if (!value) return null;
-  return (
-    <div className="flex items-center gap-2 py-1 text-[13px]" style={{ color: "#323233" }}>
-      <span className="shrink-0 text-base leading-none">{icon}</span>
-      {label && (
-        <span className="shrink-0 text-[11px]" style={{ color: "#969799" }}>
-          {label}
-        </span>
-      )}
-      <span className="truncate font-medium">{value}</span>
-    </div>
-  );
 }
 
 function parseImagesJson(raw: unknown): string[] {
@@ -103,34 +61,13 @@ export default function MobileCageCellDetailDialog({
 }) {
   const detail = (cell.detail ?? {}) as Record<string, unknown>;
   const cbi = (cell.cageBoxInfo ?? {}) as Record<string, unknown> | undefined;
+  const viewportHeight = useViewportHeight();
 
-  // ── 从 detail 读取核心字段 ──
+  // ── 头部(表外固定字段,来自 cage_cell_detail) ──
   const position = displayPosition(cell.position);
-  const ct = detail.cageTypeCode ?? cell.animalCageType;
-  const typeBadge = cageTypeBadgeStyle(ct);
-  const typeText = cageTypeLabel(ct);
-  const stateLabel = dGet(detail, cbi, "stateLabel") || (cell.stateLabel?.trim() ?? "");
-  const cageBoxCode = dGet(detail, cbi, "cageBoxCode");
-  const piName = dGet(detail, cbi, "piName") || dGet(detail, cbi, "projectPiName") || (cell.projectPiName?.trim() ?? "");
-  const deptName = dGet(detail, cbi, "departmentName") || (cell.departmentName?.trim() ?? "");
-  const aupNumber = dGet(detail, cbi, "aupNumber");
-  const experimenter = dGet(detail, cbi, "experimenterName");
-  const labAssistant = dGet(detail, cbi, "labAssistantName");
-
-  // 动物信息
-  const strain = dGet(detail, cbi, "animalStrainName");
-  const sex = dGet(detail, cbi, "animalSex");
-  const weekAge = dGet(detail, cbi, "animalWeekAge");
-  const maleN = dNum(detail, "animalMaleNumber");
-  const femaleN = dNum(detail, "animalFemaleNumber");
-  const comeFrom = dGet(detail, cbi, "animalComeFrom");
-
-  // 特殊状态 chip
-  const needsDivision = dBool(detail, "needsDivision");
-  const needsSpecialFeeding = dBool(detail, "needsSpecialFeeding");
-  const needsTransfer = dBool(detail, "needsTransfer");
-  const hasHealthAbnormality = dBool(detail, "hasHealthAbnormality");
-  const cohabitationDate = dGet(detail, cbi, "cohabitationDate");
+  const animalCageId: string = String(
+    (cell as any).id ?? (cell as any).animalCageId ?? detail.animalCageId ?? "",
+  );
 
   // ── 实验记录 & 照片 ──
   const [experimentDesc, setExperimentDesc] = useState("");
@@ -140,7 +77,25 @@ export default function MobileCageCellDetailDialog({
   const [uploading, setUploading] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [formValues, setFormValues] = useState<CageInfoValueRow[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 拉取表单值(cage_info_value)：状态标记唯一真相源，据此渲染状态 chips
+  useEffect(() => {
+    if (!animalCageId) { setFormValues(null); return; }
+    let cancelled = false;
+    fetchCageInfoValues(animalCageId).then(rows => { if (!cancelled) setFormValues(rows); }).catch(() => { if (!cancelled) setFormValues(null); });
+    return () => { cancelled = true; };
+  }, [animalCageId]);
+
+  // 特殊状态 chips：以表单为真相源，只列已开启的状态
+  const specialChips = useMemo(() => {
+    const active = actionsFromFormValues(formValues);
+    return CAGE_BOX_ACTIONS.filter(a => active.has(a.action)).map(a => {
+      const c = DEFAULT_COLORS[a.statusCode] ?? { bg: "#ccc", border: "#999" };
+      return { code: a.statusField, label: a.label, color: c.border, photoKey: a.statusField };
+    });
+  }, [formValues]);
 
   // 合并两个通道的所有照片 URL，供预览导航使用（必须在 statusPhotos 声明之后）
   const allPreviewUrls = (() => {
@@ -177,10 +132,6 @@ export default function MobileCageCellDetailDialog({
       });
     return () => { cancelled = true; };
   }, [cell]);
-
-  const animalCageId: string = String(
-    (cell as any).id ?? (cell as any).animalCageId ?? detail.animalCageId ?? "",
-  );
 
   const handleSave = useCallback(async () => {
     if (!animalCageId) return;
@@ -227,26 +178,17 @@ export default function MobileCageCellDetailDialog({
 
   const isPermitted = cell.visible;
 
-  // ── 构建特殊状态 chip 列表 ──
-  const chips = useMemo(() => {
-    const list: { label: string; active: boolean; color: string }[] = [];
-    if (needsDivision !== undefined)
-      list.push({ label: "需分笼", active: needsDivision, color: "#eab308" });
-    if (needsSpecialFeeding !== undefined)
-      list.push({ label: "特殊饲养", active: needsSpecialFeeding, color: "#ef4444" });
-    if (needsTransfer !== undefined)
-      list.push({ label: "动物转移", active: needsTransfer, color: "#06b6d4" });
-    if (hasHealthAbnormality !== undefined)
-      list.push({ label: "健康异常", active: hasHealthAbnormality, color: "#a855f7" });
-    if (cohabitationDate)
-      list.push({ label: `合笼 ${cohabitationDate}`, active: true, color: "#10b981" });
-    return list;
-  }, [needsDivision, needsSpecialFeeding, needsTransfer, hasHealthAbnormality, cohabitationDate]);
+  // 特殊状态 chips（与标题栏共享，见上方 specialChips）
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center p-4"
-      style={{ zIndex: "var(--z-modal, 800)", background: "rgba(0,0,0,0.45)" }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        zIndex: "var(--z-modal, 800)",
+        background: "rgba(0,0,0,0.45)",
+        height: viewportHeight > 0 ? viewportHeight : "100dvh",
+        padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 12px)",
+      }}
       onClick={onClose}
     >
       <div
@@ -254,7 +196,7 @@ export default function MobileCageCellDetailDialog({
         style={{
           background: "#fff",
           maxWidth: 400,
-          maxHeight: "min(88vh, 720px)",
+          maxHeight: "100%",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -263,16 +205,20 @@ export default function MobileCageCellDetailDialog({
           className="flex items-center justify-between px-4 py-3 border-b shrink-0"
           style={{ borderColor: "#ebedf0" }}
         >
-          <div className="min-w-0 pr-2 flex items-center gap-2 flex-wrap">
+          <div className="min-w-0 pr-2 flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-bold" style={{ color: "#323233" }}>
               {position}
             </span>
-            <span
-              className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-              style={{ background: typeBadge.bg, color: typeBadge.color }}
-            >
-              {typeText}
-            </span>
+            {/* 标题栏只展示特殊状态；无特殊状态则不展示任何笼型/状态徽标 */}
+            {specialChips.map((ch) => (
+              <span
+                key={ch.code}
+                className="inline-flex items-center rounded-md px-1.5 py-[1px] text-[10px] font-semibold"
+                style={{ color: ch.color, background: `color-mix(in srgb, ${ch.color} 14%, transparent)` }}
+              >
+                {ch.label}
+              </span>
+            ))}
           </div>
           <button type="button" onClick={onClose} className="p-1 rounded-lg shrink-0">
             <X className="size-5" style={{ color: "#94a3b8" }} />
@@ -282,81 +228,15 @@ export default function MobileCageCellDetailDialog({
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
           {isPermitted ? (
             <>
-              {/* ── 笼盒编号 ── */}
-              {cageBoxCode && (
-                <div
-                  className="flex items-center gap-2 py-1.5 px-3 rounded-lg text-[12px] font-mono"
-                  style={{ background: "#f7f8fa", color: "#646566" }}
-                >
-                  <span className="text-[10px] shrink-0" style={{ color: "#969799" }}>笼盒</span>
-                  <span className="font-semibold" style={{ color: "#323233" }}>{cageBoxCode}</span>
-                </div>
-              )}
+              {/* ── 关键信息表单(直接读表单,与 web 端一致) ── */}
+              <CageFormFill animalCageId={animalCageId || null} />
 
-              {/* ── 人员信息 ── */}
-              <div className="space-y-0">
-                <RowItem icon="👤" value={piName ? `PI ${piName}` : ""} />
-                <RowItem icon="🏢" value={deptName ? `部门 ${deptName}` : ""} />
-                <RowItem icon="📋" value={aupNumber ? `AUP ${aupNumber}` : ""} />
-              </div>
-
-              {/* ── 动物信息 ── */}
-              {(strain || sex || weekAge || maleN != null || femaleN != null) && (
-                <div
-                  className="rounded-lg px-3 py-2"
-                  style={{ background: "#f8f9fc", border: "1px solid #eef0f6" }}
-                >
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px]" style={{ color: "#323233" }}>
-                    {strain && (
-                      <span className="font-semibold">{strain}</span>
-                    )}
-                    {sex && <span>⚥ {sex}</span>}
-                    {weekAge && <span>{weekAge}周龄</span>}
-                    {(maleN != null || femaleN != null) && (
-                      <span>
-                        {(maleN ?? 0) > 0 && `${maleN}♂`}
-                        {(maleN ?? 0) > 0 && (femaleN ?? 0) > 0 && "+"}
-                        {(femaleN ?? 0) > 0 && `${femaleN}♀`}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <RowItem icon="📍" value={comeFrom ? `来源 ${comeFrom}` : ""} />
-              <RowItem icon="🔬" value={experimenter ? `实验员 ${experimenter}` : ""} />
-              <RowItem icon="🧪" value={labAssistant ? `实验助理 ${labAssistant}` : ""} />
-
-              {/* ── 特殊状态 chips ── */}
-              {chips.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {chips.map((ch) => (
-                    <span
-                      key={ch.label}
-                      className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium"
-                      style={{
-                        color: ch.active ? ch.color : "#94a3b8",
-                        background: ch.active
-                          ? `color-mix(in srgb, ${ch.color} 12%, transparent)`
-                          : "#f2f3f5",
-                        border: `1px solid ${ch.active ? ch.color : "#e5e7eb"}`,
-                      }}
-                    >
-                      <span
-                        className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 shrink-0"
-                        style={{ background: ch.active ? ch.color : "#cbd5e1" }}
-                      />
-                      {ch.label}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {/* 特殊状态 chips 已上移到标题栏，此处只保留其对应的照片 */}
 
               {/* 通道一：状态标记照片（只读，仅编辑模式可管理） */}
-              {chips.filter(ch=>ch.active&&(statusPhotos[ch.label==="需分笼"?"needs_division":ch.label==="特殊饲养"?"needs_special_feeding":ch.label==="动物转移"?"needs_transfer":"has_health_abnormality"]||[]).length>0).map(ch=>{
-                const spKey=ch.label==="需分笼"?"needs_division":ch.label==="特殊饲养"?"needs_special_feeding":ch.label==="动物转移"?"needs_transfer":"has_health_abnormality";
-                const spImgs=statusPhotos[spKey]||[];
-                return <div key={ch.label} className="rounded-lg px-2 py-1.5 mb-1" style={{background:"#f8f9fc",border:"1px solid #eef0f6"}}>
+              {specialChips.filter(ch=>ch.photoKey&&(statusPhotos[ch.photoKey]||[]).length>0).map(ch=>{
+                const spImgs=statusPhotos[ch.photoKey]||[];
+                return <div key={ch.code} className="rounded-lg px-2 py-1.5 mb-1" style={{background:"#f8f9fc",border:"1px solid #eef0f6"}}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <span className="text-[10px] font-semibold" style={{color:ch.color}}>{ch.label}照片 ({spImgs.length})</span>
                   </div>
@@ -514,7 +394,11 @@ export default function MobileCageCellDetailDialog({
         return (
         <div
           className="fixed inset-0 flex items-center justify-center"
-          style={{ zIndex: "var(--z-tooltip, 900)", background: "rgba(0,0,0,0.9)" }}
+          style={{
+            zIndex: "var(--z-tooltip, 900)",
+            background: "rgba(0,0,0,0.9)",
+            height: viewportHeight > 0 ? viewportHeight : "100dvh",
+          }}
           onClick={() => setPreviewUrl(null)}
         >
           <button

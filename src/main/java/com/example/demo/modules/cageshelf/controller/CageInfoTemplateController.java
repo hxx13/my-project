@@ -49,11 +49,18 @@ public class CageInfoTemplateController {
         return null;
     }
 
+    /** 读权限 = 任意登录用户（MEMBER+），供 H5/小程序详情弹窗读模板结构。 */
+    private Result<?> requireMember(User u) {
+        if (u == null) return Result.error("未登录");
+        if (u.getStatus() != null && u.getStatus() == 0) return Result.error("账号已禁用");
+        return null;
+    }
+
     @GetMapping
     @Operation(summary = "模板列表")
     public Result<List<Map<String, Object>>> list(HttpServletRequest req) {
         User u = resolveUser(req);
-        Result<?> denied = requireAdmin(u);
+        Result<?> denied = requireMember(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         return Result.success(templateService.list());
     }
@@ -62,7 +69,7 @@ public class CageInfoTemplateController {
     @Operation(summary = "模板详情（含结构树）")
     public Result<Map<String, Object>> detail(@PathVariable String formKey, HttpServletRequest req) {
         User u = resolveUser(req);
-        Result<?> denied = requireAdmin(u);
+        Result<?> denied = requireMember(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         try {
             return Result.success(templateService.detail(formKey));

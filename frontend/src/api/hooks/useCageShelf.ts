@@ -6,7 +6,6 @@ import {
   fetchCageShelfIndexes,
   importCageShelfCsv,
   updateAnimalCage,
-  bindCageBox,
   cancelCageBoxColor,
   type AnimalCageUpdatePayload,
   type CancelColor,
@@ -70,19 +69,6 @@ export function useUpdateAnimalCage() {
       toast.success("笼位更新成功");
     },
     onError: (e: Error) => toast.error(e.message || "笼位更新失败"),
-  });
-}
-
-export function useBindCageBox() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ animalCageId, cageBoxCode }: { animalCageId: string; cageBoxCode: string }) =>
-      bindCageBox(animalCageId, cageBoxCode),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.cageShelf.all });
-      toast.success("笼盒关联成功");
-    },
-    onError: (e: Error) => toast.error(e.message || "笼盒关联失败"),
   });
 }
 

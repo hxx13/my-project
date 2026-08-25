@@ -11,6 +11,8 @@ public interface CageInfoValueMapper {
 
     List<CageInfoValue> selectByAnimalCageId(@Param("animalCageId") Long animalCageId);
 
+    List<CageInfoValue> selectByAnimalCageIds(@Param("animalCageIds") List<Long> animalCageIds);
+
     int countByAnimalCageId(@Param("animalCageId") Long animalCageId);
 
     int upsert(CageInfoValue v);

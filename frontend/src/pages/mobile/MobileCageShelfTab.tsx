@@ -15,7 +15,6 @@ import {
 } from "@/api/domains/studentMobile.api";
 import CageCellOverlays, {
   CAGE_TYPE_LABEL,
-  getCellStatusDisplayLabel,
   getDominantStatusCode,
   useStatusStyle,
 } from "@/features/cage-shelf/components/CageCellOverlays";
@@ -25,12 +24,22 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
 import MobileSpecialStatusPanel from "./MobileSpecialStatusPanel";
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
+import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
 import MobileCageCellDetailDialog from "./MobileCageCellDetailDialog";
 import MobileScanDialog from "./MobileScanDialog";
-import { fetchFullTree, fetchLocalShelfGridByShelveId, localEdit, localBind, localUnbind, localAnnotate, bindCageBox, unbindCageBox, type CageBoxAction } from "@/api/domains/cageShelf.api";
+import { fetchFullTree, fetchLocalShelfGridByShelveId, localEdit, localAnnotate, lookupCode, confirmClaim, type CodeLookupResult, type CageBoxAction } from "@/api/domains/cageShelf.api";
 import toast from "react-hot-toast";
+import {
+  CAGE_BOX_ACTIONS,
+  cageBoxAction,
+  actionsFromFormValues,
+  actionsFromCageBoxInfo,
+  statusPhotoKeys,
+} from "@/features/cage-shelf/constants";
+import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
 import { buildPlaceholderGridCells } from "./mobileCageShelfGrid";
+import { useViewportHeight } from "./useViewportHeight";
 import {
   Dialog,
   DialogContent,
@@ -180,13 +189,6 @@ function nonEmptyText(s?: string | null): boolean {
   return typeof s === "string" && s.trim() !== "";
 }
 
-function cageTypeLabel(animalCageType?: number): string {
-  if (animalCageType === 1) return "等待分配";
-  if (animalCageType === 2) return "已预约(空笼盒)";
-  if (animalCageType === 3) return "已预约(饲养中)";
-  return "未知";
-}
-
 function cageCardTone(cell: CageShelfCell): string {
   if (cell.empty) {
     return "border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] text-[var(--student-mute)]";
@@ -194,17 +196,9 @@ function cageCardTone(cell: CageShelfCell): string {
   return "border-2 text-slate-900 active:brightness-95";
 }
 
-/** 缓存动作 → 临时替换底色 */
-const ACTION_BG: Record<string, string> = {
-  DIVIDE: "#fef08a",           // 请分笼 → 黄
-  SPECIAL_BREEDING: "#fecaca", // 特殊饲养 → 红
-  HEALTH_CHECK: "#e9d5ff",     // 健康检查 → 紫
-};
-const ACTION_BORDER: Record<string, string> = {
-  DIVIDE: "#eab308",
-  SPECIAL_BREEDING: "#ef4444",
-  HEALTH_CHECK: "#a855f7",
-};
+/** 缓存动作 → 临时替换底色（配色单一来源是 CageColorContext.DEFAULT_COLORS，用户可调色） */
+const ACTION_BG: Record<string, string> = Object.fromEntries(CAGE_BOX_ACTIONS.map(a => [a.action, DEFAULT_COLORS[a.statusCode]?.bg ?? "#ccc"]));
+const ACTION_BORDER: Record<string, string> = Object.fromEntries(CAGE_BOX_ACTIONS.map(a => [a.action, DEFAULT_COLORS[a.statusCode]?.border ?? "#999"]));
 
 const GridCellButton = memo(function GridCellButton({
   cell,
@@ -214,7 +208,6 @@ const GridCellButton = memo(function GridCellButton({
   isCached,
   isLastScanned,
   cachedActions,
-  isBindHighlight,
 }: {
   cell: CageShelfCell;
   onSelect: () => void;
@@ -223,7 +216,6 @@ const GridCellButton = memo(function GridCellButton({
   isCached?: boolean;
   isLastScanned?: boolean;
   cachedActions?: Set<CageBoxAction>;
-  isBindHighlight?: boolean;
 }) {
   const isCrossCol = crossCol != null && cell.x === crossCol;
   const isCrossRow = crossRow != null && cell.y === crossRow;
@@ -245,9 +237,7 @@ const GridCellButton = memo(function GridCellButton({
       if (c) allBgColors.push(c.bg);
     });
   if (cachedActions) {
-    if (cachedActions.has("DIVIDE")) allBgColors.push("#fef08a");
-    if (cachedActions.has("SPECIAL_BREEDING")) allBgColors.push("#fecaca");
-    if (cachedActions.has("HEALTH_CHECK")) allBgColors.push("#e9d5ff");
+    for (const a of CAGE_BOX_ACTIONS) if (cachedActions.has(a.action)) allBgColors.push(DEFAULT_COLORS[a.statusCode]?.bg ?? "#ccc");
   }
   const combinedBg = allBgColors.length >= 2
     ? (() => {
@@ -280,8 +270,6 @@ const GridCellButton = memo(function GridCellButton({
     }
     return "";
   })();
-  const statusLabel = cell.empty || !cell.visible ? "" : getCellStatusDisplayLabel(cell.specialStatuses, cell.cageBoxInfo);
-
   const statusCodes = formatSpecialStatusCodesForDisplay(
     Array.isArray(cell.specialStatuses) ? cell.specialStatuses : undefined,
     cell.cageBoxInfo,
@@ -311,7 +299,6 @@ const GridCellButton = memo(function GridCellButton({
         hit && "scale-[1.05] z-10",
         isCached && hasCacheActions && !isLastScanned && "ring-2 ring-[#d97706]/50 shadow-[0_0_4px_rgba(217,119,6,0.15)]",
         isInCross && !hit && "ring-2 ring-[#ac1736]/40 shadow-[0_0_4px_rgba(172,23,54,0.1)]",
-        isBindHighlight && "scale-[1.05] z-10 ring-2 ring-[#2563eb] shadow-[0_0_10px_rgba(37,99,235,0.3)]",
       )}
       style={isEmpty
         ? (isInCross ? { backgroundColor: "rgba(172,23,54,0.1)" } : undefined)
@@ -319,11 +306,6 @@ const GridCellButton = memo(function GridCellButton({
             ...statusStyle,
             boxShadow: `0 0 14px ${ringShadow}`,
             outline: `3px solid ${ringColor}`,
-            outlineOffset: -1,
-          } : isBindHighlight ? {
-            ...statusStyle,
-            boxShadow: "0 0 14px rgba(37,99,235,0.4)",
-            outline: "3px solid #2563eb",
             outlineOffset: -1,
           } : isInCross && !multiBg ? {
             ...statusStyle,
@@ -339,23 +321,12 @@ const GridCellButton = memo(function GridCellButton({
         {isEmpty ? (
           <div className="text-[8px]">空位</div>
         ) : cell.visible !== false ? (
-          <>
-            {nonEmptyText(piName) && (
-              <div className="w-full truncate text-[9px] font-semibold leading-tight"
-                style={{ color: "var(--app-color-text-primary, #1e293b)" }}>{piName}</div>
-            )}
-            {nonEmptyText(statusLabel) && (
-              <div className="w-full truncate text-[8px] leading-tight"
-                style={{ color: "var(--app-color-text-secondary, #475569)" }}>{statusLabel}</div>
-            )}
-          </>
+          nonEmptyText(piName) && (
+            <div className="w-full truncate text-[9px] font-semibold leading-tight"
+              style={{ color: "var(--app-color-text-primary, #1e293b)" }}>{piName}</div>
+          )
         ) : (
           <div className="text-[9px] text-[var(--student-mute)]">***</div>
-        )}
-        {!isEmpty && (
-          <div className="w-full text-[8px] opacity-70 truncate leading-tight">
-            {CAGE_TYPE_LABEL[cell.animalCageType ?? 0] || cageTypeLabel(cell.animalCageType)}
-          </div>
         )}
       </div>
     </button>
@@ -864,68 +835,71 @@ function countTotalDiffs(cache: Map<string, ScanCacheEntry>): number {
   return n;
 }
 
+/** 三端统一的笼架模式：查看(默认) / 扫码确认 / 编辑(ADMIN+) */
+type ShelfMode = "view" | "confirm" | "edit";
+
+/**
+ * 从 /v1/scan/lookup 结果提取坐标。
+ * CAGE_CELL 的字段在 cageCell 下；LEGACY_CAGE_BOX 兜底时平铺在顶层。
+ * shelveId 与笼架列表同一 ID 空间，不需要任何兼容映射。
+ */
+function lookupPosition(r: CodeLookupResult): { x: number; y: number; sid: string; label: string } | null {
+  if (r.type === "CAGE_CELL" && r.cageCell) {
+    const c = r.cageCell;
+    return {
+      x: Number(c.positionX),
+      y: Number(c.positionY),
+      sid: String(c.shelveId ?? ""),
+      label: c.positionLabel || `${c.positionX},${c.positionY}`,
+    };
+  }
+  if (r.type === "LEGACY_CAGE_BOX" && r.positionX != null && r.positionY != null) {
+    return {
+      x: Number(r.positionX),
+      y: Number(r.positionY),
+      sid: String(r.shelveId ?? ""),
+      label: `${r.positionX},${r.positionY}`,
+    };
+  }
+  return null;
+}
+
+const MODE_ITEMS: { key: ShelfMode; label: string }[] = [
+  { key: "view", label: "查看" },
+  { key: "confirm", label: "扫码确认" },
+  { key: "edit", label: "编辑" },
+];
+
 function CageShelfGridView({
-  shelf, detail, loading, error, onBack, onRetry, onCellClick,
-  staffView, scanOpen, onOpenScan, onCloseScan,
-  scanCache, lastScannedKey, onScanResult, onActionSubmit, actionSubmitting,
-  onToggleAction, onRemoveCache, onDismissCrosshair, editMode, onToggleRealtime,
-  bindMode, onToggleBindMode, bindSelectedKey,
-  bindScanOpen, onOpenBindScan, onCloseBindScan, onBindScanResult,
-  unbindActive, onToggleUnbind, bindScannedCode,
-  bindPairCache, bindPairCacheSize, onBatchBindSubmit, onClearBindCache, onRemoveBindPair, bindSubmitting,
-  unbindPairCache, unbindPairCacheSize, onBatchUnbindSubmit, onClearUnbindCache, onRemoveUnbindPair,
+  shelf, detail, loading, error, onRetry, onCellClick,
+  canEdit, mode, onSetMode,
+  scanOpen, onOpenScan, onCloseScan, onScanResult,
+  scanCache, lastScannedKey, onActionSubmit, actionSubmitting,
   scanLockHighlight,
-  scanLocateOpen, onOpenScanLocate, onCloseScanLocate, onScanLocateResult,
 }: {
   shelf: MobileCageShelfSummary;
   detail: CageShelfDetail | null;
   loading: boolean; error: string | null;
-  onBack: () => void; onRetry: () => void;
+  onRetry: () => void;
   onCellClick: (cell: CageShelfCell) => void;
-  staffView: boolean;
+  /** ADMIN+ 才渲染「编辑」模式项；其余角色只有 查看 / 扫码确认 */
+  canEdit: boolean;
+  mode: ShelfMode;
+  onSetMode: (m: ShelfMode) => void;
+  /** 单一常驻扫码入口，全角色可见，结果按 mode 分派 */
   scanOpen: boolean; onOpenScan: () => void; onCloseScan: () => void;
+  onScanResult: (text: string) => void;
   scanCache: Map<string, ScanCacheEntry>;
   lastScannedKey: string | null;
-  onScanResult: (text: string) => void;
   onActionSubmit: () => void; actionSubmitting: boolean;
-  onToggleAction: (key: string, action: CageBoxAction) => void;
-  onRemoveCache: (key: string) => void;
-  onDismissCrosshair: () => void;
-  editMode?: boolean;
-  onToggleRealtime?: () => void;
-  bindMode?: boolean;
-  onToggleBindMode?: () => void;
-  bindSelectedKey?: string | null;
-  bindScanOpen?: boolean;
-  onOpenBindScan?: () => void;
-  onCloseBindScan?: () => void;
-  onBindScanResult?: (text: string) => void;
-  unbindActive?: boolean;
-  onToggleUnbind?: () => void;
-  bindScannedCode?: string;
-  bindPairCacheSize?: number;
-  onBatchBindSubmit?: () => void;
-  onClearBindCache?: () => void;
-  onRemoveBindPair?: (key: string) => void;
-  bindPairCache?: Map<string, { cell: CageShelfCell; code: string }>;
-  bindSubmitting?: boolean;
-  unbindPairCache?: Set<string>;
-  unbindPairCacheSize?: number;
-  onBatchUnbindSubmit?: () => void;
-  onClearUnbindCache?: () => void;
-  onRemoveUnbindPair?: (key: string) => void;
   scanLockHighlight?: { sid: string; x: number; y: number } | null;
-  scanLocateOpen?: boolean;
-  onOpenScanLocate?: () => void;
-  onCloseScanLocate?: () => void;
-  onScanLocateResult?: (text: string) => void;
 }) {
   const cells = detail && detail.grid.length > 0 ? detail.grid : buildPlaceholderGridCells();
   const meta = detail?.shelfMeta;
   const title = meta?.shelveName || shelf.shelveName || shelf.shelveId;
   const [legendOpen, setLegendOpen] = useState(false);
-  const cacheSize = scanCache.size;
   const showLegend = legendOpen;
+  const editMode = mode === "edit";
 
   // 行/列交叉定位：仅编辑模式生效
   const lc = editMode ? lastScannedKey : null;
@@ -945,30 +919,20 @@ function CageShelfGridView({
       <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b"
         style={{ background: "rgba(255,255,255,0.92)", borderColor: "rgba(30,55,90,0.06)" }}>
         {/* 返回由 shell MobileTopNavBar 统管，此处不再重复 */}
-        {/* 编辑按钮 — 最左侧，独立排布（绑定时隐藏） */}
-        {staffView && !bindMode && (
-          <button type="button" onClick={onToggleRealtime}
-            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold active:scale-95 transition shrink-0"
-            style={{
-              color: editMode ? "#fff" : BRAND,
-              background: editMode ? BRAND : "rgba(172,23,54,0.1)",
-              border: `1px solid ${editMode ? BRAND : "rgba(172,23,54,0.25)"}`,
-            }}>
-            {editMode ? "编辑中" : "编辑"}
-          </button>
-        )}
-        {/* 绑定按钮 */}
-        {staffView && !editMode && (
-          <button type="button" onClick={onToggleBindMode}
-            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold active:scale-95 transition shrink-0"
-            style={{
-              color: bindMode ? "#fff" : "#2563eb",
-              background: bindMode ? "#2563eb" : "rgba(37,99,235,0.1)",
-              border: `1px solid ${bindMode ? "#2563eb" : "rgba(37,99,235,0.25)"}`,
-            }}>
-            {bindMode ? "绑定中" : "绑定"}
-          </button>
-        )}
+        {/* 模式选择器 — 查看(默认) / 扫码确认 / 编辑(仅 ADMIN+) */}
+        <div className="flex items-center gap-0.5 shrink-0 rounded-full p-0.5"
+          style={{ background: "rgba(15,23,42,0.05)" }}>
+          {MODE_ITEMS.filter((m) => m.key !== "edit" || canEdit).map((m) => {
+            const active = mode === m.key;
+            return (
+              <button key={m.key} type="button" onClick={() => onSetMode(m.key)}
+                className="rounded-full px-2 py-1 text-[10px] font-semibold active:scale-95 transition whitespace-nowrap"
+                style={{ color: active ? "#fff" : "#64748b", background: active ? BRAND : "transparent" }}>
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
         <div className="flex-1 min-w-0 text-center">
           <p className="text-[13px] font-bold truncate" style={{ color: "#1e293b" }}>{title}</p>
           {meta && <p className="text-[10px] truncate" style={{ color: "#94a3b8" }}>
@@ -977,6 +941,13 @@ function CageShelfGridView({
           </p>}
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {/* 常驻扫码入口（顶栏）：全角色可见，结果按当前模式分派 */}
+          <button type="button" onClick={onOpenScan}
+            className="flex items-center justify-center rounded-full w-7 h-7 active:scale-95 transition"
+            style={{ color: "#fff", background: BRAND }}
+            aria-label="扫码">
+            <Scan className="size-4" strokeWidth={2} />
+          </button>
           <button type="button" onClick={() => setLegendOpen((v) => !v)}
             className="flex items-center justify-center rounded-full w-7 h-7 active:scale-95 transition"
             style={{ color: legendOpen ? "#fff" : BRAND, background: legendOpen ? BRAND : "rgba(172,23,54,0.08)" }}
@@ -985,62 +956,13 @@ function CageShelfGridView({
             className="flex items-center justify-center rounded-full w-7 h-7 active:scale-95"
             style={{ background: "rgba(0,0,0,0.05)" }} aria-label="刷新">
             <RefreshCw className="size-3.5" style={{ color: "#969799" }} /></button>
-          {/* 编辑模式扫码（红色圆形） */}
-          {staffView && editMode && (<>
-                <button type="button" onClick={onOpenScan}
-                  className="relative flex items-center justify-center rounded-full w-7 h-7 active:scale-95 transition"
-                  style={{ background: totalDiffs > 0 ? "rgba(172,23,54,0.15)" : "rgba(172,23,54,0.12)" }} aria-label="扫码">
-                  <Scan className="size-4" style={{ color: BRAND }} strokeWidth={1.5} />
-                  {totalDiffs > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full text-white text-[9px] font-bold flex items-center justify-center" style={{ background: BRAND }}>{totalDiffs}</span>}
-                </button>
-                {(totalDiffs > 0) && (
-                  <button type="button" disabled={actionSubmitting} onClick={onActionSubmit}
-                    className="flex items-center gap-1 shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition disabled:opacity-50"
-                    style={{ background: BRAND }}>
-                    <Check className="size-3" strokeWidth={3} />提交{totalDiffs}
-                  </button>
-                )}
-              </>)}
-          {/* 绑定模式：扫码 + 解绑 */}
-          {staffView && bindMode && (
-            <>
-              <button type="button" onClick={onOpenBindScan}
-                className="relative flex items-center justify-center rounded-md w-7 h-7 active:scale-95 transition"
-                style={{ background: "rgba(37,99,235,0.12)" }} aria-label="绑定扫码">
-                <Scan className="size-4" style={{ color: "#2563eb" }} strokeWidth={1.5} />
-              </button>
-              <button type="button"
-                className="flex items-center gap-1 shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold active:scale-95 transition"
-                style={{
-                  color: unbindActive ? "#fff" : (bindScannedCode ? "#ef4444" : "#dc2626"),
-                  background: unbindActive ? "#dc2626" : "rgba(220,38,38,0.1)",
-                  border: `1px solid ${unbindActive ? "#dc2626" : "rgba(220,38,38,0.25)"}`,
-                }}
-                onClick={onToggleUnbind}>
-                {(unbindActive||bindScannedCode) ? "取消" : "解绑"}
-              </button>
-              {!unbindActive && bindPairCacheSize != null && bindPairCacheSize > 0 && <>
-                <button type="button" onClick={onBatchBindSubmit} disabled={bindSubmitting}
-                  className="flex items-center gap-1 shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition disabled:opacity-50"
-                  style={{ background: "#16a34a" }}>
-                  {bindSubmitting ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" strokeWidth={3} />}
-                  提交({bindPairCacheSize})
-                </button>
-                <button type="button" onClick={onClearBindCache}
-                  className="shrink-0 rounded-full px-2 py-1 text-[10px] text-slate-500 active:text-red-500 transition">清空</button>
-              </>}
-              {/* 解绑批量提交 */}
-              {unbindActive && unbindPairCacheSize != null && unbindPairCacheSize > 0 && <>
-                <button type="button" onClick={onBatchUnbindSubmit} disabled={bindSubmitting}
-                  className="flex items-center gap-1 shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition disabled:opacity-50"
-                  style={{ background: "#dc2626" }}>
-                  {bindSubmitting ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" strokeWidth={3} />}
-                  提交({unbindPairCacheSize})
-                </button>
-                <button type="button" onClick={onClearUnbindCache}
-                  className="shrink-0 rounded-full px-2 py-1 text-[10px] text-slate-500 active:text-red-500 transition">清空</button>
-              </>}
-            </>
+          {/* 编辑模式提交（扫码入口统一走右下常驻 FAB） */}
+          {editMode && totalDiffs > 0 && (
+            <button type="button" disabled={actionSubmitting} onClick={onActionSubmit}
+              className="flex items-center gap-1 shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition disabled:opacity-50"
+              style={{ background: BRAND }}>
+              <Check className="size-3" strokeWidth={3} />提交{totalDiffs}
+            </button>
           )}
         </div>
       </div>
@@ -1069,23 +991,6 @@ function CageShelfGridView({
       {/* ── 图例 ── */}
       {showLegend && <div className="shrink-0 px-3 pt-2"><CageShelfLegend collapsed /></div>}
 
-      {/* ── 批量绑定缓存面板 ── */}
-      {bindMode && !unbindActive && bindPairCacheSize != null && bindPairCacheSize > 0 && (
-        <div className="shrink-0 px-3 pt-2 pb-1">
-          <div className="flex flex-wrap gap-1.5">
-            {Array.from(bindPairCache?.entries() ?? []).map(([key, { cell, code }]) => (
-              <div key={key} className="rounded-lg px-2.5 py-1.5 text-[11px] bg-green-50 border border-green-200 flex items-center gap-1.5">
-                <span className="font-mono font-bold text-green-700">{code}</span>
-                <span className="text-[#969799]">→</span>
-                <span className="font-semibold text-[#1e293b]">{cell.position}</span>
-                <button type="button" onClick={() => onRemoveBindPair?.(key)}
-                  className="ml-1 text-xs text-[#969799] hover:text-red-500">✕</button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* ── 网格 ── */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-3">
         {loading ? <div className="flex items-center justify-center py-20"><Loader2 className="size-6 animate-spin" style={{ color: "#94a3b8" }} /></div>
@@ -1108,7 +1013,6 @@ function CageShelfGridView({
                       isCached={cachedKeys.has(ck)}
                       isLastScanned={ck === lastScannedKey}
                       cachedActions={cacheEntry?.currentActions}
-                      isBindHighlight={bindSelectedKey === ck}
                     />
                     {isLockHighlight && (
                       <div className="absolute inset-0 z-10 rounded-md ring-[4px] ring-red-500/80 shadow-[0_0_16px_rgba(239,68,68,0.5)] scan-flash-overlay" />
@@ -1120,29 +1024,29 @@ function CageShelfGridView({
           </div>}
       </div>
 
-      {/* ── 扫码定位 FAB（右下悬浮圆形按钮，底距 = Tab栏50px + 安全区 + 16px人体工学间距）── */}
-      {staffView && !editMode && !bindMode && (
-        <button
-          type="button"
-          onClick={onOpenScanLocate}
-          className="fixed right-4 flex items-center justify-center rounded-full active:scale-95 transition-transform"
-          style={{
-            width: 48,
-            height: 48,
-            bottom: "calc(50px + env(safe-area-inset-bottom, 0px) + 16px)",
-            background: BRAND,
-            boxShadow: "0 4px 16px rgba(172,23,54,0.35)",
-            zIndex: 50,
-          }}
-          aria-label="扫码定位"
-        >
-          <Scan className="size-6 text-white" strokeWidth={1.5} />
-        </button>
-      )}
+      {/* ── 常驻扫码 FAB：全角色可见，结果按当前模式分派（对齐 Web handleResidentScan）── */}
+      <button
+        type="button"
+        onClick={onOpenScan}
+        className="fixed right-4 flex items-center justify-center rounded-full active:scale-95 transition-transform"
+        style={{
+          width: 48,
+          height: 48,
+          bottom: "calc(50px + env(safe-area-inset-bottom, 0px) + 16px)",
+          background: BRAND,
+          boxShadow: "0 4px 16px rgba(172,23,54,0.35)",
+          zIndex: 50,
+        }}
+        aria-label={mode === "edit" ? "编辑扫码" : mode === "confirm" ? "扫码确认" : "扫码定位"}
+      >
+        <Scan className="size-6 text-white" strokeWidth={1.5} />
+        {editMode && totalDiffs > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-white text-[10px] font-bold flex items-center justify-center"
+            style={{ color: BRAND }}>{totalDiffs}</span>
+        )}
+      </button>
 
       <MobileScanDialog open={scanOpen} onClose={onCloseScan} onResult={onScanResult} />
-      {bindScanOpen && <MobileScanDialog open={bindScanOpen} onClose={onCloseBindScan!} onResult={onBindScanResult!} />}
-      {scanLocateOpen && <MobileScanDialog open={scanLocateOpen} onClose={onCloseScanLocate!} onResult={onScanLocateResult!} />}
     </div>
   );
 }
@@ -1184,28 +1088,24 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
 
   // ── 扫码缓存（支持连续扫码，统一提交） ──
   const [scanOpen, setScanOpen] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [bindMode, setBindMode] = useState(false);
-  const [bindScanOpen, setBindScanOpen] = useState(false);
-  const [bindScannedCode, setBindScannedCode] = useState("");
-  const [bindSelectedKey, setBindSelectedKey] = useState<string | null>(null);
-  const [bindSubmitting, setBindSubmitting] = useState(false);
-  const [bindConfirmOpen, setBindConfirmOpen] = useState(false);
-  const [unbindActive, setUnbindActive] = useState(false);
-  const [bindPairCache, setBindPairCache] = useState<Map<string, {cell: CageShelfCell; code: string}>>(new Map());
-  const [unbindPairCache, setUnbindPairCache] = useState<Set<string>>(new Set());
-  const [unbindCells, setUnbindCells] = useState<Map<string, CageShelfCell>>(new Map());
+  const [mode, setMode] = useState<ShelfMode>("view");
+  const editMode = mode === "edit";
   const [scanCache, setScanCache] = useState<Map<string, ScanCacheEntry>>(new Map());
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);  // "x:y" 刚扫的
   const [actionSubmitting, setActionSubmitting] = useState(false);
-  const [scanLocateOpen, setScanLocateOpen] = useState(false);
   const [scanLockHighlight, setScanLockHighlight] = useState<{sid: string; x: number; y: number} | null>(null);
+  // ── 扫码确认模式 ──
+  const [confirmLookup, setConfirmLookup] = useState<CodeLookupResult | null>(null);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
   const hasChanges = countTotalDiffs(scanCache) > 0;
 
   const staffSpecialStatusView = !!(
     html5PrivilegeBypass ||
     (jwtMode && hasMinRole(authStorage.getRole(), "STAFF"))
   );
+
+  /** 编辑模式仅 ADMIN+ 可见；html5PrivilegeBypass 的阈值本就是 ADMIN */
+  const canEdit = !!(html5PrivilegeBypass || hasMinRole(authStorage.getRole(), "ADMIN"));
 
   const specialStatusApiFn = useCallback(() => {
     return jwtMode
@@ -1282,7 +1182,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       .then((d) => { setDetail(d); })
       .catch((e) => { console.error('[detail] error:', e); setDetailError(e instanceof Error ? e.message : "加载笼架详情失败"); })
       .finally(() => setDetailLoading(false));
-  }, [token, jwtMode, selectedShelf, screen, detailReloadKey, editMode, bindMode]);
+  }, [token, jwtMode, selectedShelf, screen, detailReloadKey, editMode]);
 
   const openShelf = (shelf: MobileCageShelfSummary) => {
     setSelectedShelf(shelf);
@@ -1360,6 +1260,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
 
   // ── 编辑模式：当前正在编辑的笼位（action popup 目标）──
   const [editActionCell, setEditActionCell] = useState<CageShelfCell | null>(null);
+  const [editFormValues, setEditFormValues] = useState<CageInfoValueRow[] | null>(null);
+  const editViewportHeight = useViewportHeight();
   const [actionPhotos, setActionPhotos] = useState<string[]>([]);
   const [actionNote, setActionNote] = useState("");
   const [actionUploading, setActionUploading] = useState(false);
@@ -1390,35 +1292,6 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
 
   const handleCellClick = (cell: CageShelfCell) => {
     if (cell.empty) return;
-    // bind 模式：case2=绑定(需扫码) / case3=解绑(需点解绑按钮)
-    if (bindMode) {
-      const cellType = (cell as any).animalCageType;
-      // 绑定：加入批量缓存
-      if (cellType === 2) {
-        if (unbindActive) { toast.error("无需解绑"); return; }
-        if (!bindScannedCode) { toast.error("请先扫码获取笼盒编号"); return; }
-        const ck = `${cell.x}:${cell.y}`;
-        if (bindPairCache.has(ck)) { toast.error("该笼位已在缓存中"); return; }
-        setBindPairCache(prev => { const next = new Map(prev); next.set(ck, { cell, code: bindScannedCode }); return next; });
-        setBindScannedCode("");
-        setBindSelectedKey(`${cell.x}:${cell.y}`);
-        toast.success(`已缓存 (${bindPairCache.size + 1} 个待提交)`);
-        return;
-      }
-      // 解绑：加入批量缓存
-      if (cellType === 3) {
-        if (!unbindActive) { toast.error("请先进入解绑模式"); return; }
-        const ck = `${cell.x}:${cell.y}`;
-        if (unbindPairCache.has(ck)) { toast.error("该笼位已在缓存中"); return; }
-        setUnbindPairCache(prev => { const next = new Set(prev); next.add(ck); return next; });
-        setUnbindCells(prev => { const next = new Map(prev); next.set(ck, cell); return next; });
-        setBindSelectedKey(`${cell.x}:${cell.y}`);
-        toast.success(`已缓存 (${unbindPairCache.size + 1} 个待解绑)`);
-        return;
-      }
-      toast.error(cellType === 1 ? "该笼位尚未预约" : cellType === 4 ? "该笼位状态异常" : "该笼位不可操作");
-      return;
-    }
     // 编辑模式：点击单元格 → 打开 action popup（3 个 chip + 上传）
     if (editMode) {
       openEditActionPopup(cell);
@@ -1434,8 +1307,11 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     setActionPhotos([]);
     setActionNote("");
     setEditActionCell(cell);
+    setEditFormValues(null);
     const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
     if (cageId) {
+      // 拉取表单值(cage_info_value)：状态标记唯一真相源，据此反向使能按钮
+      fetchCageInfoValues(cageId).then(setEditFormValues).catch(() => setEditFormValues(null));
       authHttp.get(`/local/annotate/${cageId}`).then(r => {
         if (r.data?.success) {
           const d = r.data.data;
@@ -1460,7 +1336,6 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     if (cell && (actionPhotos.length > 0 || actionNote.trim())) {
       const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
       if (cageId) {
-        const ld2 = (cell as any).detail as Record<string,any>|undefined;
         // 合并后端的已有 statusPhotos，不覆盖其他 key 的照片
         let sp: Record<string,string[]> = {};
         try {
@@ -1471,9 +1346,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
           }
         } catch {}
         // 激活的状态 → 写入对应 key；同时 _status 兜底
-        if (ld2?.needsDivision===true) sp.needs_division = actionPhotos;
-        if (ld2?.needsSpecialFeeding===true) sp.needs_special_feeding = actionPhotos;
-        if (ld2?.hasHealthAbnormality===true) sp.has_health_abnormality = actionPhotos;
+        for (const k of statusPhotoKeys(actionsFromFormValues(editFormValues))) sp[k] = actionPhotos;
         if (actionPhotos.length > 0) sp._status = actionPhotos;
         if (actionNote.trim()) (sp as any)._note = actionNote;
         const body: Record<string,any> = { animalCageId: cageId, statusPhotos: JSON.stringify(sp) };
@@ -1503,94 +1376,103 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     finally { setActionUploading(false); }
   }, [actionPhotos, editActionCell]);
 
-  const handleScanResult = useCallback(async (text: string) => {
+  // ── 扫码定位：跳转到目标笼架并高亮闪烁 ──
+  const locateLookup = useCallback((r: CodeLookupResult): boolean => {
+    const p = lookupPosition(r);
+    if (!p) { toast.error("未找到对应笼位坐标"); return false; }
+    if (!p.sid) { toast.error("未找到关联笼架"); return false; }
+    const targetShelf = shelves.find((s) => String(s.shelveId) === p.sid);
+    if (!targetShelf) { toast.error("当前列表未找到对应笼架"); return false; }
+    setSelectedShelf(targetShelf);
+    setScreen("grid");
+    setScanLockHighlight({ sid: p.sid, x: p.x, y: p.y });
+    toast.success(`已定位: ${p.label}`, { icon: "📍" });
+    return true;
+  }, [shelves]);
+
+  // ── 编辑模式扫码：匹配格子 → 落入待提交缓存 → 打开动作弹窗 ──
+  const handleEditScan = useCallback(async (r: CodeLookupResult, code: string) => {
     if (!detail?.grid) return;
-    const code = text.trim(); if (!code) return;
-
-    // 本地DB扫码检索 — 支持笼盒码和笼位ID
-    try {
-      const r = await authHttp.get("/local/scan-lookup", { params: { code } });
-      if (!r.data?.success || r.data.data?.type === "NOT_FOUND") {
-        toast.error("未找到对应笼位: " + code);
-        setScanOpen(false);
-        return;
-      }
-      const d = r.data.data;
-      // 在 grid 中按坐标匹配
-      const matched = detail.grid.find((c: any) => c.x === d.positionX && c.y === d.positionY);
-      if (!matched) {
-        toast.error("当前笼架未找到坐标 (" + d.positionX + "," + d.positionY + ")");
-        setScanOpen(false);
-        return;
-      }
-      const key = `${matched.x}:${matched.y}`;
-      setScanCache((prev) => {
-        const next = new Map(prev);
-        if (!next.has(key)) {
-          const ld = (matched as any).detail as Record<string, any> | undefined;
-          const preActions = new Set<CageBoxAction>();
-          if (ld?.needsDivision === true) preActions.add("DIVIDE");
-          if (ld?.needsSpecialFeeding === true) preActions.add("SPECIAL_BREEDING");
-          if (ld?.hasHealthAbnormality === true) preActions.add("HEALTH_CHECK");
-          next.set(key, { cell: matched, code, initialActions: new Set(preActions), currentActions: new Set(preActions) });
-        }
-        return next;
-      });
-      setLastScannedKey(key);
-      setScanOpen(false);
-      openEditActionPopup(matched);
-    } catch {
-      toast.error("扫码查询失败");
-      setScanOpen(false);
+    if (r.type === "NOT_FOUND") { toast.error("未找到对应笼位"); return; }
+    if (r.type === "ASSET") { toast.error("该编码为资产编号，非笼位"); return; }
+    if (r.type === "LEGACY_CAGE_BOX") { toast.error("旧盒码已废弃，请扫笼位码"); return; }
+    const p = lookupPosition(r);
+    if (!p) { toast.error("未找到对应笼位坐标"); return; }
+    const matched = detail.grid.find((c: any) => c.x === p.x && c.y === p.y);
+    if (!matched) { toast.error(`当前笼架未找到坐标 (${p.x},${p.y})`); return; }
+    const key = `${matched.x}:${matched.y}`;
+    // 状态标记以表单为真相源：先拉表单值再建缓存条目
+    let preActions = new Set<CageBoxAction>();
+    const cageId = String((matched as any).id ?? (matched as any).animalCageId ?? "");
+    if (cageId) {
+      try {
+        const rows = await fetchCageInfoValues(cageId);
+        setEditFormValues(rows);
+        preActions = actionsFromFormValues(rows);
+      } catch { /* 拉取失败按空集，弹窗打开后仍会再拉一次 */ }
     }
-  }, [detail]);
+    setScanCache((prev) => {
+      const next = new Map(prev);
+      if (!next.has(key)) {
+        next.set(key, { cell: matched, code, initialActions: new Set(preActions), currentActions: new Set(preActions) });
+      }
+      return next;
+    });
+    setLastScannedKey(key);
+    openEditActionPopup(matched);
+  }, [detail, openEditActionPopup]);
 
-  // ── 绑定模式扫码：直接存编码 ──
-  const handleBindScanResult = useCallback((text: string) => {
-    console.log("[bind-scan] 扫码结果:", text);
-    setBindScannedCode(text);
-    setBindSelectedKey(null);
-    setBindScanOpen(false);
-    toast.success("已录入: " + text + "，请点击空笼盒格位完成绑定", { duration: 4000 });
-  }, []);
+  // ── 扫码确认模式：定位 → 判定认领状态 → 打开核对弹窗 ──
+  const handleConfirmScan = useCallback(async (r: CodeLookupResult) => {
+    if (r.type === "NOT_FOUND") { toast.error("未识别笼位"); return; }
+    if (r.type === "ASSET") { toast.error("该编码为资产编号，非笼位"); return; }
+    if (r.type === "LEGACY_CAGE_BOX") { toast.error("旧盒码已废弃，请扫笼位码"); locateLookup(r); return; }
+    locateLookup(r);
+    const claim = r.claim;
+    if (!claim) { toast.error("该笼位未分配"); return; }
+    if (claim.claimStatus === "locked") { setConfirmLookup(r); return; }
+    if (claim.claimStatus === "confirmed") { toast.success("该笼位已到位"); return; }
+    if (claim.claimStatus === "pending_approval") { toast.error("该笼位待审批"); return; }
+    if (claim.claimStatus === "pending_release_approval") { toast.error("该笼位待释放审批"); return; }
+    toast.error("该笼位状态：" + claim.claimStatus);
+  }, [locateLookup]);
 
-  // ── 扫码定位：查找笼位并跳转到对应笼架网格 ──
-  const handleScanLocateResult = useCallback(async (text: string) => {
+  // ── 确认到位（后端校验仅认领本人可确认）──
+  const handleConfirmArrival = useCallback(async () => {
+    if (!confirmLookup?.claim?.id) return;
+    setConfirmSubmitting(true);
+    try {
+      await confirmClaim(confirmLookup.claim.id);
+      toast.success("已确认到位");
+      setConfirmLookup(null);
+      setDetailReloadKey((k) => k + 1);
+    } catch (e: any) {
+      toast.error(e?.message || "确认失败（仅本人可确认）");
+    } finally {
+      setConfirmSubmitting(false);
+    }
+  }, [confirmLookup]);
+
+  // ── 常驻扫码入口：按当前模式分派（对齐 Web handleResidentScan）──
+  const handleResidentScan = useCallback(async (text: string) => {
+    setScanOpen(false);
     const code = text.trim();
     if (!code) return;
+    let r: CodeLookupResult;
     try {
-      const r = await authHttp.get("/local/scan-lookup", { params: { code } });
-      if (!r.data?.success || r.data.data?.type === "NOT_FOUND") {
-        toast.error("未找到对应笼位: " + code);
-        setScanLocateOpen(false);
-        return;
-      }
-      const d = r.data.data;
-      const sid = String(d.shelveId ?? d.sid ?? "");
-      if (!sid) {
-        toast.error("未找到关联笼架");
-        setScanLocateOpen(false);
-        return;
-      }
-      // 找到对应笼架
-      const targetShelf = shelves.find(s => String(s.shelveId) === sid);
-      if (!targetShelf) {
-        toast.error("当前列表未找到对应笼架");
-        setScanLocateOpen(false);
-        return;
-      }
-      const posLabel = d.positionLabel || `${d.positionX},${d.positionY}`;
-      // 导航到网格视图
-      setSelectedShelf(targetShelf);
-      setScreen("grid");
-      setScanLockHighlight({ sid, x: d.positionX, y: d.positionY });
-      setScanLocateOpen(false);
-      toast.success(`已定位: ${posLabel}`, { icon: "📍" });
-    } catch {
-      toast.error("扫码查询失败");
-      setScanLocateOpen(false);
+      r = await lookupCode(code);
+    } catch (e: any) {
+      toast.error(e?.message || "扫码查询失败");
+      return;
     }
-  }, [shelves]);
+    if (mode === "edit") { await handleEditScan(r, code); return; }
+    if (mode === "confirm") { await handleConfirmScan(r); return; }
+    // 查看模式：纯定位
+    if (r.type === "NOT_FOUND") { toast.error("未找到对应笼位"); return; }
+    if (r.type === "ASSET") { toast.error("该编码为资产编号，非笼位"); return; }
+    if (r.type === "LEGACY_CAGE_BOX") toast.error("旧盒码已废弃，请扫笼位码");
+    locateLookup(r);
+  }, [mode, handleEditScan, handleConfirmScan, locateLookup]);
 
   const handleScanActionsSubmit = useCallback(async () => {
     if (!selectedShelf || scanCache.size === 0) return;
@@ -1616,7 +1498,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     // 本地+异步投递 — 逐条调用 localEdit
     for (const { entry, action } of toAdd) {
       const cageId = String((entry.cell as any).id ?? (entry.cell as any).animalCageId ?? "");
-      const toggle = action === "DIVIDE" ? "needs_division" : action === "SPECIAL_BREEDING" ? "needs_special_feeding" : "has_health_abnormality";
+      const toggle = cageBoxAction(action).statusField;
       try {
         await localEdit(cageId, toggle, true, entry.code);
         okCount++;
@@ -1627,7 +1509,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     }
     for (const { entry, action } of toRemove) {
       const cageId = String((entry.cell as any).id ?? (entry.cell as any).animalCageId ?? "");
-      const toggle = action === "DIVIDE" ? "needs_division" : action === "SPECIAL_BREEDING" ? "needs_special_feeding" : "has_health_abnormality";
+      const toggle = cageBoxAction(action).statusField;
       try {
         await localEdit(cageId, toggle, false, entry.code);
         okCount++;
@@ -1641,7 +1523,6 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       if (editActionCell && (actionPhotos.length > 0 || actionNote.trim())) {
         const cageId = String((editActionCell as any).id ?? (editActionCell as any).animalCageId ?? "");
         if (cageId) {
-          const ld3 = (editActionCell as any).detail as Record<string,any>|undefined;
           let sp2: Record<string,string[]> = {};
           try {
             const r = await authHttp.get(`/local/annotate/${cageId}`);
@@ -1650,9 +1531,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               if (typeof existing === "object") sp2 = existing;
             }
           } catch {}
-          if (ld3?.needsDivision===true) sp2.needs_division = actionPhotos;
-          if (ld3?.needsSpecialFeeding===true) sp2.needs_special_feeding = actionPhotos;
-          if (ld3?.hasHealthAbnormality===true) sp2.has_health_abnormality = actionPhotos;
+          for (const k of statusPhotoKeys(actionsFromFormValues(editFormValues))) sp2[k] = actionPhotos;
           if (actionPhotos.length > 0) sp2._status = actionPhotos;
           if (actionNote.trim()) (sp2 as any)._note = actionNote;
           const body: Record<string,any> = { animalCageId: cageId, statusPhotos: JSON.stringify(sp2) };
@@ -1670,107 +1549,6 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     setActionSubmitting(false);
   }, [selectedShelf, detail, scanCache, editActionCell, actionPhotos, actionNote]);
 
-  // ── 绑定模式提交 ──
-  // ── 批量绑定提交 ──
-  const handleBatchBindSubmit = useCallback(async () => {
-    if (bindPairCache.size === 0 || !selectedShelf) return;
-    setBindSubmitting(true);
-    const entries = Array.from(bindPairCache.entries());
-    let ok = 0, fail = 0;
-    await Promise.all(entries.map(async ([key, { cell, code }]) => {
-      try {
-        const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
-        await localBind(cageId, code);
-        ok++;
-      } catch (e: any) { fail++; toast.error(`${cell.position}: ${e?.message || "失败"}`); }
-    }));
-    setBindPairCache(new Map());
-    setBindSubmitting(false);
-    setDetailReloadKey((k) => k + 1);
-    if (fail === 0) toast.success(`${ok} 个绑定全部成功！（本地+异步投递）`);
-    else toast(`${ok} 成功 / ${fail} 失败`, { icon: "⚠️" });
-  }, [bindPairCache, selectedShelf, setDetailReloadKey]);
-
-  // ── 批量解绑提交 ──
-  const handleBatchUnbindSubmit = useCallback(async () => {
-    if (unbindPairCache.size === 0 || !selectedShelf) return;
-    setBindSubmitting(true);
-    const ids = Array.from(unbindPairCache);
-    let ok = 0, fail = 0;
-    await Promise.all(ids.map(async (ck) => {
-      try {
-        const cell = unbindCells.get(ck);
-        const cageId = String((cell as any)?.id ?? (cell as any)?.animalCageId ?? "");
-        await localUnbind(cageId);
-        ok++;
-      } catch { fail++; }
-    }));
-    setUnbindPairCache(new Set()); setUnbindCells(new Map());
-    setBindSubmitting(false);
-    setDetailReloadKey((k) => k + 1);  // 刷新 grid 数据
-    if (fail === 0) toast.success(`${ok} 个解绑全部成功！`);
-    else toast(`${ok} 成功 / ${fail} 失败`, { icon: "⚠️" });
-  }, [unbindPairCache, unbindCells, selectedShelf, detail, setDetailReloadKey]);
-
-  // ── 绑定模式确认（Dialog，仅解绑用）──
-  const handleBindConfirm = useCallback(async () => {
-    if (!selectedCell || !bindScannedCode || !selectedShelf) return;
-    const cellType = (selectedCell as any).animalCageType;
-    if (cellType !== 2) { toast.error("只能绑定到「已预约(空笼盒)」的笼位"); return; }
-
-    setBindSubmitting(true);
-    try {
-      const cageData: any = detail?.grid?.find((c) => c.x === selectedCell.x && c.y === selectedCell.y) ?? selectedCell;
-      const cageId = String((cageData as any).id ?? (cageData?.cageBoxInfo as Record<string, any>)?.id ?? "");
-      const cageName = String((cageData as any).name ?? "");
-      const meta = detail?.shelfMeta;
-      const roomId = String((meta as any)?.roomId ?? selectedShelf.roomId ?? "");
-      const shelveId = String(selectedShelf.shelveId ?? "");
-
-      console.log("[bind-confirm] animalCageId:", cageId, "cageBoxCode:", bindScannedCode);
-
-      await bindCageBox(cageId, bindScannedCode, roomId);
-      toast.success("绑定成功！");
-      setBindConfirmOpen(false);
-      setBindScannedCode("");
-      setBindSelectedKey(null);
-      setSelectedCell(null);
-      setDetailReloadKey((k) => k + 1);
-      setBindMode(false);
-    } catch (e: any) {
-      toast.error(e?.message || "绑定失败");
-    } finally {
-      setBindSubmitting(false);
-    }
-  }, [selectedCell, bindScannedCode, selectedShelf, detail]);
-
-  // ── 绑定模式解绑提交 ──
-  const handleUnbindConfirm = useCallback(async () => {
-    if (!selectedCell || !selectedShelf) return;
-    const cellType = (selectedCell as any).animalCageType;
-    if (cellType !== 3) { toast.error("只能解绑「已预约(饲养中)」的笼位"); return; }
-
-    setBindSubmitting(true);
-    try {
-      const cageData: any = detail?.grid?.find((c) => c.x === selectedCell.x && c.y === selectedCell.y) ?? selectedCell;
-      const cageId = String((cageData as any).id ?? (cageData?.cageBoxInfo as Record<string, any>)?.id ?? "");
-      const meta = detail?.shelfMeta;
-      const roomId = String((meta as any)?.roomId ?? selectedShelf.roomId ?? "");
-
-      await unbindCageBox(cageId, roomId);
-      toast.success("解绑成功！");
-      setBindConfirmOpen(false);
-      setBindSelectedKey(null);
-      setSelectedCell(null);
-      setDetailReloadKey((k) => k + 1);
-      setUnbindActive(false);
-    } catch (e: any) {
-      toast.error(e?.message || "解绑失败");
-    } finally {
-      setBindSubmitting(false);
-    }
-  }, [selectedCell, selectedShelf, detail]);
-
   // ── 返回列表：检查未保存修改 ──
   const goBackToList = useCallback(async () => {
     if (hasChanges) {
@@ -1779,12 +1557,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     setScanCache(new Map());
     setLastScannedKey(null);
     setScanLockHighlight(null);
-    setEditMode(false);
-    // 绑定模式退出清空
-    setBindMode(false);
-    setBindScannedCode("");
-    setBindSelectedKey(null);
-    setUnbindActive(false);
+    setMode("view");
+    setConfirmLookup(null);
     setScreen("list");
     setSelectedCell(null);
     setDetailError(null);
@@ -1839,26 +1613,24 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
             autoExpandCampusName={jumpTarget?.campusName}
             autoExpandRoomName={jumpTarget?.roomName}
           />
-          {/* ── 扫码定位 FAB（列表页也常驻，底距 = Tab栏50px + 安全区 + 16px）── */}
-          {staffSpecialStatusView && (
-            <button
-              type="button"
-              onClick={() => setScanLocateOpen(true)}
-              className="fixed right-4 flex items-center justify-center rounded-full active:scale-95 transition-transform"
-              style={{
-                width: 48,
-                height: 48,
-                bottom: "calc(50px + env(safe-area-inset-bottom, 0px) + 16px)",
-                background: BRAND,
-                boxShadow: "0 4px 16px rgba(172,23,54,0.35)",
-                zIndex: 50,
-              }}
-              aria-label="扫码定位"
-            >
-              <Scan className="size-6 text-white" strokeWidth={1.5} />
-            </button>
-          )}
-          <MobileScanDialog open={scanLocateOpen} onClose={() => setScanLocateOpen(false)} onResult={handleScanLocateResult} />
+          {/* ── 扫码定位 FAB（列表页常驻，全角色可见）── */}
+          <button
+            type="button"
+            onClick={() => setScanOpen(true)}
+            className="fixed right-4 flex items-center justify-center rounded-full active:scale-95 transition-transform"
+            style={{
+              width: 48,
+              height: 48,
+              bottom: "calc(50px + env(safe-area-inset-bottom, 0px) + 16px)",
+              background: BRAND,
+              boxShadow: "0 4px 16px rgba(172,23,54,0.35)",
+              zIndex: 50,
+            }}
+            aria-label="扫码定位"
+          >
+            <Scan className="size-6 text-white" strokeWidth={1.5} />
+          </button>
+          <MobileScanDialog open={scanOpen} onClose={() => setScanOpen(false)} onResult={handleResidentScan} />
         </div>
 
         {screen === "grid" && selectedShelf && (
@@ -1868,87 +1640,38 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               detail={detail}
               loading={detailLoading}
               error={detailError}
-              onBack={goBackToList}
               onRetry={() => setDetailReloadKey((k) => k + 1)}
               onCellClick={handleCellClick}
-              staffView={staffSpecialStatusView}
+              canEdit={canEdit}
+              mode={mode}
+              onSetMode={async (next) => {
+                if (next === mode) return;
+                // 离开编辑模式且有未提交修改 → 先确认
+                if (mode === "edit" && hasChanges) {
+                  if (!await appConfirm("有未提交的修改，是否放弃？\n\n「确定」放弃修改并退出\n「取消」继续编辑")) return;
+                }
+                if (mode === "edit") { setScanCache(new Map()); setLastScannedKey(null); }
+                setConfirmLookup(null);
+                setSelectedCell(null);
+                setMode(next);
+                // 进入编辑模式需要实时数据
+                if (next === "edit" && selectedShelf) setDetailReloadKey((k) => k + 1);
+              }}
               scanOpen={scanOpen}
               onOpenScan={() => setScanOpen(true)}
               onCloseScan={() => setScanOpen(false)}
+              onScanResult={handleResidentScan}
               scanCache={scanCache}
               lastScannedKey={lastScannedKey}
-              onScanResult={handleScanResult}
               onActionSubmit={handleScanActionsSubmit}
               actionSubmitting={actionSubmitting}
-              onToggleAction={toggleScanAction}
-              onRemoveCache={removeScanCache}
-              onDismissCrosshair={dismissCrosshair}
-              editMode={editMode}
-              bindMode={bindMode}
-              bindSelectedKey={bindSelectedKey}
-              bindScanOpen={bindScanOpen}
-              onOpenBindScan={() => setBindScanOpen(true)}
-              onCloseBindScan={() => setBindScanOpen(false)}
-              onBindScanResult={handleBindScanResult}
-              unbindActive={unbindActive}
-              onToggleUnbind={() => {
-                  if (unbindActive) { setUnbindActive(false); setBindSelectedKey(null); return; }
-                  if (bindScannedCode) { setBindScannedCode(""); setBindSelectedKey(null); return; }
-                  setUnbindActive(true); setBindSelectedKey(null); setSelectedCell(null);
-                  toast.success("请点击饲养中格位完成解绑", { duration: 3000 });
-                }}
-                bindScannedCode={bindScannedCode}
-                bindPairCacheSize={bindPairCache.size}
-                bindPairCache={bindPairCache as any}
-                onBatchBindSubmit={handleBatchBindSubmit}
-                onClearBindCache={() => setBindPairCache(new Map())}
-                onRemoveBindPair={(key: string) => setBindPairCache(prev => { const next = new Map(prev); next.delete(key); return next; })}
-                bindSubmitting={bindSubmitting}
-                unbindPairCache={unbindPairCache}
-                unbindPairCacheSize={unbindPairCache.size}
-                onBatchUnbindSubmit={handleBatchUnbindSubmit}
-                onClearUnbindCache={() => { setUnbindPairCache(new Set()); setUnbindCells(new Map()); }}
-                onRemoveUnbindPair={(key: string) => {
-                  setUnbindPairCache(prev => { const next = new Set(prev); next.delete(key); return next; });
-                  setUnbindCells(prev => { const next = new Map(prev); next.delete(key); return next; });
-                }}
-              onToggleRealtime={async () => {
-                const next = !editMode;
-                // 退出编辑模式且有未提交修改 → 弹窗确认
-                if (!next && hasChanges) {
-                  if (!await appConfirm("有未提交的修改，是否放弃？\n\n「确定」放弃修改并退出\n「取消」继续编辑")) return;
-                }
-                setEditMode(next);
-                if (next && selectedShelf) {
-                  setDetailReloadKey((k) => k + 1);
-                } else {
-                  setScanCache(new Map());
-                  setLastScannedKey(null);
-                }
-              }}
-              onToggleBindMode={async () => {
-                if (bindMode) {
-                  if (bindPairCache.size > 0) {
-                    if (!await appConfirm(`有 ${bindPairCache.size} 个未提交的绑定，是否放弃？`)) return;
-                    setBindPairCache(new Map());
-                  }
-                  setBindMode(false); setBindScannedCode(""); setBindSelectedKey(null);
-                  setSelectedCell(null); setUnbindActive(false);
-                } else {
-                  setBindMode(true);
-                }
-              }}
               scanLockHighlight={scanLockHighlight}
-              scanLocateOpen={scanLocateOpen}
-              onOpenScanLocate={() => setScanLocateOpen(true)}
-              onCloseScanLocate={() => setScanLocateOpen(false)}
-              onScanLocateResult={handleScanLocateResult}
             />
           </div>
         )}
 
         {/* 普通模式：查看详情弹窗（编辑/绑定模式不显示） */}
-        {selectedCell && selectedShelf && !editMode && !bindMode && (
+        {selectedCell && selectedShelf && !editMode && (
           <MobileCageCellDetailDialog
             cell={selectedCell}
             onClose={() => setSelectedCell(null)}
@@ -1959,35 +1682,50 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
         {/* ── 编辑模式：轻量 action popup（3 个 chip + 上传按钮）── */}
         {editMode && editActionCell && (
           <div
-            className="fixed inset-0 flex items-center justify-center p-4"
-            style={{ zIndex: "var(--z-modal, 800)", background: "rgba(0,0,0,0.4)" }}
+            className="fixed inset-0 flex items-center justify-center"
+            style={{
+              zIndex: "var(--z-modal, 800)",
+              background: "rgba(0,0,0,0.4)",
+              height: editViewportHeight > 0 ? editViewportHeight : "100dvh",
+              padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 12px)",
+            }}
             onClick={saveAndCloseActionPopup}
           >
+            {/* 容器必须限高 + 内滚：照片一多内容就超过视口，
+                以前没有 max-height/overflow 会把底部的「保存标注」直接裁出可视区，
+                表现为「加完照片没有保存按钮」。 */}
             <div
-              className="w-full rounded-2xl overflow-hidden shadow-2xl"
-              style={{ background: "#fff", maxWidth: 320 }}
+              className="w-full flex flex-col rounded-2xl overflow-hidden shadow-2xl"
+              style={{ background: "#fff", maxWidth: 320, maxHeight: "100%" }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#ebedf0" }}>
+              <div className="flex items-center justify-between px-4 py-3 border-b shrink-0" style={{ borderColor: "#ebedf0" }}>
                 <span className="text-sm font-bold" style={{ color: "#323233" }}>
                   {displayPosition(editActionCell.position)}
                 </span>
-                <span className="text-[11px]" style={{ color: "#969799" }}>
-                  {CAGE_TYPE_LABEL[editActionCell.animalCageType ?? 0] || "未知"}
-                </span>
-                <button type="button" onClick={() => setEditActionCell(null)} className="p-1 rounded-lg">
+                {/* 走与点遮罩一致的保存后关闭，否则从 X 退出会丢掉刚上传的照片 */}
+                <button type="button" onClick={saveAndCloseActionPopup} className="p-1 rounded-lg">
                   <XIcon className="size-4" style={{ color: "#94a3b8" }} />
                 </button>
               </div>
 
-              <div className="px-4 py-4 space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  {(["DIVIDE", "SPECIAL_BREEDING", "HEALTH_CHECK"] as CageBoxAction[]).map((action) => {
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
+                <div className="grid grid-cols-2 gap-1.5">
+                  {CAGE_BOX_ACTIONS.map(({ action, label }) => {
                     const ck = `${editActionCell.x}:${editActionCell.y}`;
                     const entry = scanCache.get(ck);
-                    const active = entry?.currentActions.has(action) ?? false;
-                    const wasExisting = entry?.initialActions.has(action) ?? false;
-                    const label = action === "DIVIDE" ? "需分笼" : action === "SPECIAL_BREEDING" ? "特殊饲养" : "健康检查";
+                    // 无缓存条目时回退到格子当前状态（打开即同步，而非首次点击才懒加载）
+                    const cbi = editActionCell.cageBoxInfo as Record<string, any> | undefined;
+                    const cvo = cbi?.cageBoxVo ?? cbi?.['cageBoxVo'] ?? {};
+                    const srvHas = new Set([
+                      ...actionsFromFormValues(editFormValues),
+                      ...actionsFromCageBoxInfo(cbi, cvo),
+                    ]);
+                    if ((typeof cbi?.specialBreedingName === 'string' && cbi.specialBreedingName.trim())
+                        || (typeof cvo.specialBreedingName === 'string' && cvo.specialBreedingName.trim())) srvHas.add("SPECIAL_BREEDING");
+                    if (cbi?.animalHealthEntity != null || cvo.animalHealthEntity != null) srvHas.add("HEALTH_CHECK");
+                    const active = entry ? entry.currentActions.has(action) : srvHas.has(action);
+                    const wasExisting = entry ? entry.initialActions.has(action) : srvHas.has(action);
                     const accent = active ? (wasExisting ? "#10b981" : BRAND) : "#cbd5e1";
                     const bg = active ? (wasExisting ? "rgba(16,185,129,0.12)" : "rgba(172,23,54,0.08)") : "transparent";
                     return (
@@ -2000,13 +1738,15 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                           if (!scanCache.has(key)) {
                             const cbi = editActionCell.cageBoxInfo as Record<string, any> | undefined;
                             const cvo = cbi?.cageBoxVo ?? cbi?.['cageBoxVo'] ?? {};
-                            const initial = new Set<CageBoxAction>();
-                            if (cbi?.NeedDivideYn === 1 || cbi?.NeedDivideYn === "1" || cvo.needDivideYn === 1 || cvo.needDivideYn === "1") initial.add("DIVIDE");
-                            if (cbi?.NeedFeedingYn === 1 || cbi?.NeedFeedingYn === "1" || cvo.needFeedingYn === 1 || cvo.needFeedingYn === "1"
-                                || (typeof cbi?.specialBreedingName === 'string' && cbi.specialBreedingName.trim())
+                            // 本地状态字段与 ARO 快照都可能带信息，取并集
+                            const initial = new Set([
+                              ...actionsFromFormValues(editFormValues),
+                              ...actionsFromCageBoxInfo(cbi, cvo),
+                            ]);
+                            // ARO 侧的两个旁证字段：有特殊饲养名 / 有健康记录也视为已标记
+                            if ((typeof cbi?.specialBreedingName === 'string' && cbi.specialBreedingName.trim())
                                 || (typeof cvo.specialBreedingName === 'string' && cvo.specialBreedingName.trim())) initial.add("SPECIAL_BREEDING");
-                            if (cbi?.AbnormalHealthYn === 1 || cbi?.AbnormalHealthYn === "1" || cvo.abnormalHealthYn === 1 || cvo.abnormalHealthYn === "1"
-                                || cbi?.animalHealthEntity != null || cvo.animalHealthEntity != null) initial.add("HEALTH_CHECK");
+                            if (cbi?.animalHealthEntity != null || cvo.animalHealthEntity != null) initial.add("HEALTH_CHECK");
                             setScanCache(prev => {
                               const next = new Map(prev);
                               next.set(key, { cell: editActionCell, code: "", initialActions: initial, currentActions: new Set(initial) });
@@ -2015,12 +1755,12 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                           }
                           toggleScanAction(key, action);
                         }}
-                        className="rounded-full px-3 py-2 text-[12px] font-semibold active:scale-95 transition flex items-center gap-1"
+                        className="rounded-md px-2 py-1.5 text-[11px] font-semibold active:scale-[0.98] transition flex items-center justify-center gap-1 min-h-0"
                         style={{ color: active ? (wasExisting ? "#059669" : BRAND) : "#94a3b8", background: bg, border: `1.5px solid ${accent}` }}
                       >
                         {active && <Check className="size-3" strokeWidth={3} />}
                         {!active && wasExisting && <XIcon className="size-3" strokeWidth={2} />}
-                        {label}
+                        <span className="truncate">{label}</span>
                       </button>
                     );
                   })}
@@ -2081,7 +1821,6 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                         const cell = editActionCell;
                         const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
                         if (cageId) {
-                          const ld2 = (cell as any).detail as Record<string, any> | undefined;
                           let sp: Record<string,string[]> = {};
                           try {
                             const r = await authHttp.get('/local/annotate/' + cageId);
@@ -2090,9 +1829,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                               if (typeof existing === "object") sp = existing;
                             }
                           } catch { }
-                          if (ld2?.needsDivision === true || ld2?.needsDivision === 1) sp.needs_division = actionPhotos;
-                          if (ld2?.needsSpecialFeeding === true || ld2?.needsSpecialFeeding === 1) sp.needs_special_feeding = actionPhotos;
-                          if (ld2?.hasHealthAbnormality === true || ld2?.hasHealthAbnormality === 1) sp.has_health_abnormality = actionPhotos;
+                          for (const k of statusPhotoKeys(actionsFromFormValues(editFormValues))) sp[k] = actionPhotos;
                           if (actionPhotos.length > 0) sp._status = actionPhotos;
                           if (actionNote.trim()) (sp as any)._note = actionNote;
                           const body: Record<string, any> = { animalCageId: cageId, statusPhotos: JSON.stringify(sp) };
@@ -2117,7 +1854,6 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                         const cell = editActionCell;
                         const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
                         if (cageId) {
-                          const ld2 = (cell as any).detail as Record<string, any> | undefined;
                           let sp: Record<string,string[]> = {};
                           try {
                             const r = await authHttp.get('/local/annotate/' + cageId);
@@ -2126,9 +1862,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                               if (typeof existing === "object") sp = existing;
                             }
                           } catch { }
-                          if (ld2?.needsDivision === true || ld2?.needsDivision === 1) sp.needs_division = actionPhotos;
-                          if (ld2?.needsSpecialFeeding === true || ld2?.needsSpecialFeeding === 1) sp.needs_special_feeding = actionPhotos;
-                          if (ld2?.hasHealthAbnormality === true || ld2?.hasHealthAbnormality === 1) sp.has_health_abnormality = actionPhotos;
+                          for (const k of statusPhotoKeys(actionsFromFormValues(editFormValues))) sp[k] = actionPhotos;
                           if (actionPhotos.length > 0) sp._status = actionPhotos;
                           if (actionNote.trim()) (sp as any)._note = actionNote;
                           await authHttp.post("/local/annotate", { animalCageId: cageId, statusPhotos: JSON.stringify(sp) });
@@ -2156,7 +1890,9 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                   </summary>
                   <div className="space-y-1 max-h-[160px] overflow-y-auto">
                     {editHistory.map((h: any, i: number) => {
-                      const label = h.statusField === "needs_division" ? "需分笼" : h.statusField === "needs_special_feeding" ? "特殊饲养" : h.statusField === "_annotation" ? "标注记录" : "健康异常";
+                      const label = h.statusField === "_annotation"
+                        ? "标注记录"
+                        : (CAGE_BOX_ACTIONS.find(a => a.statusField === h.statusField)?.label ?? h.statusField);
                       return (
                         <div key={i} className="flex items-center gap-2 text-[10px] rounded border px-2 py-1" style={{ borderColor: "#ebedf0" }}>
                           <span className={h.action === "unmarked" ? "text-red-600" : h.action === "annotated" ? "text-blue-600" : "text-green-600"}>
@@ -2209,54 +1945,50 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
           variant={staffSpecialStatusView ? "staff" : "student"}
         />
 
-        {/* ── 绑定/解绑确认弹窗（居中 Dialog · 手机风格）── */}
-        <Dialog open={bindMode && bindConfirmOpen && !!selectedCell} onOpenChange={(o)=>{if(!o){setBindConfirmOpen(false);setSelectedCell(null);setBindSelectedKey(null);}}}>
-          <DialogContent className="z-[var(--z-modal)] !max-w-[280px] !p-0 !gap-0 !rounded-2xl overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,0.18)] border-0">
-            {/* Header */}
+        {/* ── 扫码确认 · 核对信息（对齐 Web AdminCageShelfPage 确认弹窗）── */}
+        <Dialog open={!!confirmLookup} onOpenChange={(o) => { if (!o) setConfirmLookup(null); }}>
+          <DialogContent className="z-[var(--z-modal)] !max-w-[320px] !p-0 !gap-0 !rounded-2xl overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,0.18)] border-0">
             <div className="px-5 pt-5 pb-2 text-center">
-              <DialogTitle className="!text-base font-bold" style={{color:unbindActive?"#dc2626":"#1e293b"}}>
-                {unbindActive?"确认解绑":"确认绑定"}
-              </DialogTitle>
+              <DialogTitle className="!text-base font-bold" style={{ color: "#1e293b" }}>扫码确认 · 核对信息</DialogTitle>
             </div>
-            {/* Body */}
-            <div className="px-5 pb-4 space-y-3">
-              {!unbindActive&&<div className="rounded-xl bg-blue-50 px-4 py-3 text-center">
-                <div className="text-[11px] text-blue-500 mb-0.5">笼盒编号</div>
-                <div className="text-sm font-mono font-bold text-blue-700 tracking-wide">{bindScannedCode}</div>
-              </div>}
-              <div className="space-y-2">
-                {(()=>{const cbi=selectedCell?.cageBoxInfo as Record<string,any>|undefined;
-                  const pi=cbi?.ProjectPiName||(selectedCell as any)?.projectPiName||(selectedCell as any)?.piName||"";
-                  const st=cbi?.StateName||(selectedCell as any)?.stateLabel||"";
-                  return <>
-                    <div className="text-center">
-                      <div className="text-[11px] text-[#969799]">目标笼位</div>
-                      <div className="text-sm font-semibold text-[#1e293b]">{selectedCell?selectedCell.position:""}</div>
+            <div className="px-4 pb-4 space-y-3 max-h-[60vh] overflow-y-auto">
+              <div className="rounded-xl border border-[#eef0f6] divide-y divide-[#eef0f6]">
+                {(() => {
+                  const cc = confirmLookup?.cageCell;
+                  const cl = confirmLookup?.claim;
+                  const rows: { label: string; value: string; em?: boolean }[] = [];
+                  if (cc) rows.push({ label: "笼位", value: cc.positionLabel || `${cc.positionX}-${cc.positionY}` });
+                  if (cc?.roomName) rows.push({ label: "房间", value: cc.roomName });
+                  if (cl?.claimantName) rows.push({ label: "认领人", value: cl.claimantName, em: true });
+                  if (cl?.projectPiName) rows.push({ label: "课题组 PI", value: cl.projectPiName, em: true });
+                  if (cl?.aupNumber) rows.push({ label: "AUP 编号", value: cl.aupNumber });
+                  if (cl?.projectName) rows.push({ label: "项目", value: cl.projectName });
+                  rows.push({ label: "当前状态", value: cl?.claimStatus === "locked" ? "待确认" : (cl?.claimStatus || "-"), em: true });
+                  return rows.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 text-[11px]">
+                      <span className="shrink-0 text-[#969799]">{r.label}</span>
+                      <span className={r.em ? "truncate font-semibold text-[#1e293b]" : "truncate text-[#1e293b]"}>{r.value || "-"}</span>
                     </div>
-                    {pi&&<div className="text-center">
-                      <div className="text-[11px] text-[#969799]">课题组 PI</div>
-                      <div className="text-[12px] font-semibold text-[#1e293b]">{pi}</div>
-                    </div>}
-                    {st&&<div className="text-center">
-                      <div className="text-[11px] text-[#969799]">当前状态</div>
-                      <div className="text-[12px] text-[#1e293b]">{st}</div>
-                    </div>}
-                  </>;
+                  ));
                 })()}
               </div>
-              {unbindActive&&<div className="rounded-xl bg-red-50 px-4 py-2.5 text-center">
-                <span className="text-[11px] text-red-500 font-medium">解绑后恢复「空笼盒」状态</span>
-              </div>}
+              {confirmLookup?.claim && !confirmLookup.claim.hasInfo && (
+                <div className="border-t border-[#eef0f6] pt-2">
+                  <div className="mb-1 text-[11px] font-semibold text-[#1e293b]">填写信息</div>
+                  <CageFormFill animalCageId={confirmLookup.cageCell?.animalCageId ?? null} claimed editable />
+                </div>
+              )}
+              <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-center">
+                <span className="text-[11px] font-semibold text-amber-700">确认该笼位已到位（由学生本人账号确认）</span>
+              </div>
             </div>
-            {/* Footer */}
             <div className="flex gap-3 px-5 pb-5 pt-1">
-              <button onClick={()=>{setBindConfirmOpen(false);setSelectedCell(null);setBindSelectedKey(null);}}
+              <button onClick={() => setConfirmLookup(null)}
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium text-[#646566] bg-[#f2f3f5] active:bg-[#ebedf0] transition-colors">取消</button>
-              <button onClick={()=>{if(selectedCell){unbindActive?handleUnbindConfirm():handleBindConfirm();}}}
-                disabled={bindSubmitting}
+              <button onClick={handleConfirmArrival} disabled={confirmSubmitting}
                 className="flex-1 py-2.5 rounded-xl text-sm text-white font-semibold active:opacity-80 disabled:opacity-50 transition-colors"
-                style={{background:unbindActive?"#dc2626":"#2563eb"}}>
-                {bindSubmitting?"处理中...":unbindActive?"确认解绑":"确认绑定"}
+                style={{ background: BRAND }}>
+                {confirmSubmitting ? "处理中..." : "确认到位"}
               </button>
             </div>
           </DialogContent>

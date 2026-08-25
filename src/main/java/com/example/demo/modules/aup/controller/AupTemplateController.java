@@ -43,9 +43,9 @@ public class AupTemplateController {
     }
 
     @GetMapping
-    @Operation(summary = "版本列表（默认 kind=PROTOCOL）")
+    @Operation(summary = "版本列表（默认全部 kind：PROTOCOL + ATOM + COMPOSITE 混排）")
     public Result<List<TemplateVersionVO>> list(@RequestParam(value = "kind", required = false) String kind) {
-        return Result.success(service.listTemplates(kind == null || kind.isBlank() ? "PROTOCOL" : kind));
+        return Result.success(service.listTemplates(kind));
     }
 
     @GetMapping("/published")

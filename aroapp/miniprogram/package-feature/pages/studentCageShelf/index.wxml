@@ -147,7 +147,7 @@
       <view class="list-pad-bottom" />
     </scroll-view>
     <!-- ── 扫码定位 FAB（列表页常驻）── -->
-    <view wx:if="{{ staffView }}" class="scan-float-btn" bindtap="onScanLock">
+    <view class="scan-float-btn" bindtap="onScanLock">
       <van-icon name="scan" size="44rpx" color="#fff" />
     </view>
   </view>
@@ -156,51 +156,31 @@
 <!-- Grid View -->
 <view wx:if="{{ screen === 'grid' }}" class="page grid-page">
   <subpage-nav-bar title="{{ gridMeta.shelveName || selectedShelf.shelveName }}" customBack="{{ true }}" bind:back="onBackToList" />
-  <!-- 操作栏：图例 + 刷新 + 扫描 + 提交 -->
+  <!-- 操作栏：图例 + 刷新 + 提交 -->
   <view class="grid-actions-bar" style="top: {{ navBarHeight }}px;">
     <view class="gt-left-btns">
-      <view wx:if="{{ staffView && !bindMode }}" class="gt-edit-btn {{ editMode ? 'gt-edit-btn--on' : '' }}" bindtap="onToggleRealtime">
-        <text>{{ editMode ? '编辑中' : '编辑' }}</text>
-      </view>
-      <view wx:if="{{ staffView && !editMode }}" class="gt-bind-btn {{ bindMode ? 'gt-bind-btn--on' : '' }}" bindtap="{{ bindMode ? 'onExitBindMode' : 'onEnterBindMode' }}">
-        <text>{{ bindMode ? '绑定中' : '绑定' }}</text>
+      <!-- 三模式分段切换（对齐 H5 样式） -->
+      <view class="gt-mode-seg">
+        <view class="gt-mode-btn {{ (!editMode && !confirmMode) ? 'gt-mode-btn--on' : '' }}" bindtap="onSelectViewMode">查看</view>
+        <view class="gt-mode-btn {{ (confirmMode && !editMode) ? 'gt-mode-btn--on' : '' }}" bindtap="onToggleConfirmMode">扫码确认</view>
+        <view wx:if="{{ adminView }}" class="gt-mode-btn {{ editMode ? 'gt-mode-btn--on' : '' }}" bindtap="onToggleRealtime">编辑</view>
       </view>
     </view>
     <view class="grid-actions-btns">
+      <!-- 常驻扫码入口（顶栏）：全角色可见，结果按当前模式分派 -->
+      <view class="gt-scan-btn" bindtap="onScanLock">
+        <van-icon name="scan" size="34rpx" color="#fff" />
+      </view>
       <view class="gt-legend-btn {{ legendOpen ? 'gt-legend-btn--on' : '' }}" bindtap="onToggleGridLegend">
         <van-icon name="warning-o" size="32rpx" color="{{ legendOpen ? '#fff' : '#ac1736' }}" />
       </view>
       <view class="gt-refresh" bindtap="onRetry">
         <van-icon name="replay" size="36rpx" color="#969799" />
       </view>
-      <!-- 编辑模式：扫码 + 提交 -->
-      <view wx:if="{{ staffView && editMode }}" class="gt-scan-btn" bindtap="onGridScanTap">
-        <van-icon name="scan" size="36rpx" color="#ac1736" />
-      </view>
-      <view wx:if="{{ staffView && editMode && scanTotalActions > 0 }}" class="gt-submit-btn" bindtap="onSubmitScanActions">
+      <!-- 编辑模式：提交（扫码由常驻 FAB 联动） -->
+      <view wx:if="{{ adminView && editMode && scanTotalActions > 0 }}" class="gt-submit-btn" bindtap="onSubmitScanActions">
         <van-icon name="goods-collect-o" size="32rpx" color="#fff" />
         <text>提交</text>
-      </view>
-      <!-- 绑定模式：扫码 + 解绑 -->
-      <view wx:if="{{ staffView && bindMode }}" class="gt-bind-scan" bindtap="onBindScanTap">
-        <van-icon name="scan" size="36rpx" color="#2563eb" />
-      </view>
-      <view wx:if="{{ staffView && bindMode }}" class="gt-unbind-btn {{ unbindActive ? 'gt-unbind-btn--on' : '' }}" bindtap="onToggleUnbind">
-        <text>{{ unbindActive || bindScannedCode ? '取消' : '解绑' }}</text>
-      </view>
-      <!-- 批量提交 + 清空（仅绑定模式，有缓存时显示） -->
-      <view wx:if="{{ staffView && bindMode && !unbindActive && bindPairCacheSize > 0 }}" class="gt-batch-actions">
-        <view class="gt-batch-submit {{ bindSubmitting ? 'gt-batch-submit--disabled' : '' }}" bindtap="{{ bindSubmitting ? '' : 'onBatchBindSubmit' }}">
-          {{ bindSubmitting ? '...' : '提交(' + bindPairCacheSize + ')' }}
-        </view>
-        <view class="gt-batch-clear" bindtap="onClearBindCache">清空</view>
-      </view>
-      <!-- 批量提交 + 清空（仅解绑模式，有缓存时显示） -->
-      <view wx:if="{{ staffView && bindMode && unbindActive && unbindPairCacheSize > 0 }}" class="gt-batch-actions">
-        <view class="gt-batch-unbind-submit {{ bindSubmitting ? 'gt-batch-submit--disabled' : '' }}" bindtap="{{ bindSubmitting ? '' : 'onBatchUnbindSubmit' }}">
-          {{ bindSubmitting ? '...' : '提交(' + unbindPairCacheSize + ')' }}
-        </view>
-        <view class="gt-batch-clear" bindtap="onClearUnbindCache">清空</view>
       </view>
     </view>
   </view>
@@ -208,36 +188,11 @@
   <!-- 固定操作栏占位（actions bar 为 position:fixed，需在文档流中为其留出空间） -->
   <view class="grid-actions-spacer"></view>
 
-  <!-- 绑定模式提示条 -->
-  <view wx:if="{{ bindMode }}" class="bind-banner">
-    <text wx:if="{{ !bindScannedCode }}" class="bind-banner-text">请先点击上方扫码按钮获取笼盒编号</text>
-    <text wx:else class="bind-banner-text">已录入 {{ bindScannedCode }}，请点击空笼盒格位完成绑定</text>
-  </view>
-  <view wx:if="{{ bindMode && unbindActive }}" class="bind-banner bind-banner--unbind">
-    <text class="bind-banner-text">请点击饲养中格位完成解绑</text>
-  </view>
-
-  <!-- 批量绑定缓存面板（仅展示已缓存的绑定条目） -->
-  <view wx:if="{{ bindMode && !unbindActive && bindPairCacheSize > 0 }}" class="bind-cache-bar">
-    <view class="bind-cache-chips">
-      <block wx:for="{{ bindPairCache }}" wx:key="key" wx:for-item="entry">
-        <view class="bind-cache-chip">
-          <text class="bind-cache-chip-pos">{{ entry.pos }}</text>
-          <view class="bind-cache-chip-close" data-key="{{ entry.key }}" catchtap="onRemoveBindPair">✕</view>
-        </view>
-      </block>
-    </view>
-  </view>
-
-  <!-- 批量解绑缓存面板 -->
-  <view wx:if="{{ bindMode && unbindActive && unbindPairCacheSize > 0 }}" class="bind-cache-bar bind-cache-bar--unbind">
-    <view class="bind-cache-chips">
-      <block wx:for="{{ unbindPairCache }}" wx:key="key" wx:for-item="entry">
-        <view class="bind-cache-chip bind-cache-chip--unbind">
-          <text class="bind-cache-chip-pos">{{ entry.pos }}</text>
-          <view class="bind-cache-chip-close" data-key="{{ entry.key }}" catchtap="onRemoveUnbindPair">✕</view>
-        </view>
-      </block>
+  <!-- 编辑历史预览条：只显示已编辑笼位的坐标标签（对齐 Web 顶部缓存预览 / H5 缓存预览） -->
+  <view wx:if="{{ editMode && cachePreviews.length }}" class="edit-cache-strip">
+    <view wx:for="{{ cachePreviews }}" wx:key="key" class="edit-cache-chip">
+      <text class="edit-cache-pos">{{ item.position }}</text>
+      <text class="edit-cache-diff">{{ item.diff }}</text>
     </view>
   </view>
 
@@ -288,19 +243,10 @@
       </view>
       <view class="scan-action-btns">
         <view
-          class="scan-action-btn {{ lastScannedEntry.act_DIVIDE ? 'scan-action-btn--on' : '' }}"
-          data-key="{{ lastScannedKey }}" data-act="DIVIDE" bindtap="onToggleAction">
-          <text wx:if="{{ lastScannedEntry.act_DIVIDE }}">✓ </text><text>请分笼</text>
-        </view>
-        <view
-          class="scan-action-btn {{ lastScannedEntry.act_SPECIAL_BREEDING ? 'scan-action-btn--on' : '' }}"
-          data-key="{{ lastScannedKey }}" data-act="SPECIAL_BREEDING" bindtap="onToggleAction">
-          <text wx:if="{{ lastScannedEntry.act_SPECIAL_BREEDING }}">✓ </text><text>特殊饲养</text>
-        </view>
-        <view
-          class="scan-action-btn {{ lastScannedEntry.act_HEALTH_CHECK ? 'scan-action-btn--on' : '' }}"
-          data-key="{{ lastScannedKey }}" data-act="HEALTH_CHECK" bindtap="onToggleAction">
-          <text wx:if="{{ lastScannedEntry.act_HEALTH_CHECK }}">✓ </text><text>健康检查</text>
+          wx:for="{{ CAGE_STATUS_ACTIONS }}" wx:key="action" wx:for-item="a"
+          class="scan-action-btn {{ lastScannedEntry[a._actKey] ? 'scan-action-btn--on' : '' }}"
+          data-key="{{ lastScannedKey }}" data-act="{{ a.action }}" bindtap="onToggleAction">
+          <text wx:if="{{ lastScannedEntry[a._actKey] }}">✓ </text><text>{{ a.label }}</text>
         </view>
       </view>
     </view>
@@ -352,89 +298,45 @@
     <view class="detail-root">
 
       <!-- 教职工动作选择（仅编辑模式） -->
-      <view wx:if="{{ staffView && editMode && cellDetailMeta && cellDetailMeta.permitted }}" class="detail-actions-bar">
-        <view class="detail-action-btn {{ detailActions.DIVIDE ? (initialDetailActions.DIVIDE ? 'detail-action-btn--keep' : 'detail-action-btn--on') : (initialDetailActions.DIVIDE ? 'detail-action-btn--off' : '') }}" data-act="DIVIDE" bindtap="onToggleDetailAction">
-          <text wx:if="{{ detailActions.DIVIDE }}">✓ </text>
-          <text wx:elif="{{ initialDetailActions.DIVIDE }}">✕ </text>
-          <text>请分笼</text>
-        </view>
-        <view class="detail-action-btn {{ detailActions.SPECIAL_BREEDING ? (initialDetailActions.SPECIAL_BREEDING ? 'detail-action-btn--keep' : 'detail-action-btn--on') : (initialDetailActions.SPECIAL_BREEDING ? 'detail-action-btn--off' : '') }}" data-act="SPECIAL_BREEDING" bindtap="onToggleDetailAction">
-          <text wx:if="{{ detailActions.SPECIAL_BREEDING }}">✓ </text>
-          <text wx:elif="{{ initialDetailActions.SPECIAL_BREEDING }}">✕ </text>
-          <text>特殊饲养</text>
-        </view>
-        <view class="detail-action-btn {{ detailActions.HEALTH_CHECK ? (initialDetailActions.HEALTH_CHECK ? 'detail-action-btn--keep' : 'detail-action-btn--on') : (initialDetailActions.HEALTH_CHECK ? 'detail-action-btn--off' : '') }}" data-act="HEALTH_CHECK" bindtap="onToggleDetailAction">
-          <text wx:if="{{ detailActions.HEALTH_CHECK }}">✓ </text>
-          <text wx:elif="{{ initialDetailActions.HEALTH_CHECK }}">✕ </text>
-          <text>健康检查</text>
+      <view wx:if="{{ adminView && editMode && cellDetailMeta && cellDetailMeta.permitted }}" class="detail-actions-bar">
+        <view
+          wx:for="{{ CAGE_STATUS_ACTIONS }}" wx:key="action" wx:for-item="a"
+          class="detail-action-btn {{ detailActions[a.action] ? (initialDetailActions[a.action] ? 'detail-action-btn--keep' : 'detail-action-btn--on') : (initialDetailActions[a.action] ? 'detail-action-btn--off' : '') }}"
+          data-act="{{ a.action }}" bindtap="onToggleDetailAction">
+          <text wx:if="{{ detailActions[a.action] }}">✓ </text>
+          <text wx:elif="{{ initialDetailActions[a.action] }}">✕ </text>
+          <text>{{ a.label }}</text>
         </view>
       </view>
 
-      <!-- Header: 位置 + 类型 + 笼盒编号 -->
+      <!-- Header: 位置 + 特殊状态（不再展示笼型） -->
       <view class="detail-head">
         <view class="detail-head-row">
-          <view wx:if="{{ cellDetail.cageTypeDotColor }}" class="detail-head-dot" style="background:{{ cellDetail.cageTypeDotColor }};">
-            <text>{{ cellDetail.cageTypeAbbr }}</text>
-          </view>
           <text class="detail-head-position">{{ cellDetail.position }}</text>
           <text class="detail-head-coords">{{ cellDetail.coords }}</text>
-          <text class="detail-head-type">{{ cellDetail.cageTypeLabel }}</text>
+          <!-- 标题栏只展示特殊状态；无特殊状态则不展示任何笼型/状态徽标 -->
+          <view wx:for="{{ cellDetail.statusChips }}" wx:key="code" class="detail-head-chip" style="color:{{ item.color }}; background:{{ item.bg }};">
+            <text>{{ item.label }}</text>
+          </view>
         </view>
-        <text wx:if="{{ cellDetail.cageBoxCode }}" class="detail-head-code">笼盒: {{ cellDetail.cageBoxCode }}</text>
       </view>
 
       <view class="detail-divider" />
 
-      <!-- PI & 部门 & AUP -->
-      <view class="detail-info-section">
-        <view class="detail-info-row">
-          <text class="detail-info-icon">👤</text>
-          <text class="detail-info-label">PI</text>
-          <text class="detail-info-value">{{ cellDetail.piName || '—' }}</text>
-        </view>
-        <view wx:if="{{ cellDetail.deptName }}" class="detail-info-row">
-          <text class="detail-info-icon">🏢</text>
-          <text class="detail-info-label">部门</text>
-          <text class="detail-info-value">{{ cellDetail.deptName }}</text>
-        </view>
-        <view wx:if="{{ cellDetail.aupNumber }}" class="detail-info-row">
-          <text class="detail-info-icon">📋</text>
-          <text class="detail-info-label">AUP</text>
-          <text class="detail-info-value">{{ cellDetail.aupNumber }}</text>
+      <!-- 关键信息表单（统一表单系统 cage_detail 动态渲染，与 H5 CageFormFill 同源） -->
+      <view wx:if="{{ cellDetailMeta && cellDetailMeta.permitted }}" class="detail-form-fields">
+        <view wx:if="{{ formLoading }}" class="detail-form-hint">加载表单…</view>
+        <view wx:elif="{{ formError }}" class="detail-form-hint detail-form-hint--error">{{ formError }}</view>
+        <view wx:elif="{{ !formRows.length }}" class="detail-form-hint">表单无字段</view>
+        <view wx:else class="detail-form-grid">
+          <view wx:for="{{ formRows }}" wx:key="key" class="detail-form-cell">
+            <text class="detail-form-cell-label">{{ item.label }}</text>
+            <text class="detail-form-cell-value">{{ item.value }}</text>
+          </view>
         </view>
       </view>
 
-      <!-- 动物信息 -->
-      <view wx:if="{{ cellDetail.strainName || cellDetail.sex || cellDetail.weekAge || cellDetail.animalCount || cellDetail.animalSource }}" class="detail-info-section">
-        <view wx:if="{{ cellDetail.strainName }}" class="detail-info-row">
-          <text class="detail-info-icon">🧬</text>
-          <text class="detail-info-label">品系</text>
-          <text class="detail-info-value">{{ cellDetail.strainName }}</text>
-        </view>
-        <view wx:if="{{ cellDetail.sex || cellDetail.weekAge || cellDetail.animalCount }}" class="detail-info-row">
-          <text class="detail-info-icon">⚥</text>
-          <text class="detail-info-value">
-            <text wx:if="{{ cellDetail.sex }}">{{ cellDetail.sex }}</text>
-            <text wx:if="{{ cellDetail.weekAge }}"> {{ cellDetail.weekAge }}周龄</text>
-            <text wx:if="{{ cellDetail.animalCount }}"> {{ cellDetail.animalCount }}</text>
-          </text>
-        </view>
-        <view wx:if="{{ cellDetail.animalSource }}" class="detail-info-row">
-          <text class="detail-info-icon">📍</text>
-          <text class="detail-info-label">来源</text>
-          <text class="detail-info-value">{{ cellDetail.animalSource }}</text>
-        </view>
-      </view>
-
-      <view wx:if="{{ cellDetail.statusChips.length }}" class="detail-divider" />
-
-      <!-- 特殊状态标签 -->
-      <view wx:if="{{ cellDetail.statusChips.length }}" class="detail-chips-section">
-        <view wx:for="{{ cellDetail.statusChips }}" wx:key="code" class="detail-chip" style="color:{{ item.color }}; background:{{ item.bg }}; border:1px solid {{ item.color }};">
-          <view class="detail-chip-dot" style="background:{{ item.color }};"></view>
-          <text>{{ item.label }}</text>
-        </view>
-      </view>
+      <!-- 特殊状态 chips 已上移到标题栏，此处只保留其对应的照片与备注 -->
 
       <!-- 通道一：状态专属照片（只读） + 标注备注（只读） -->
       <view wx:if="{{ detailStatusPhotos }}" class="detail-status-photos">
@@ -528,18 +430,18 @@
 >
   <view class="ea-header">
     <text class="ea-pos">{{ editActionCell._displayPosition || '' }}</text>
-    <text class="ea-type">{{ editActionCell._cageTypeLabel || '' }}</text>
   </view>
 
   <!-- 操作按钮 -->
   <view class="ea-actions">
-    <view wx:for="{{ ['DIVIDE','SPECIAL_BREEDING','HEALTH_CHECK'] }}" wx:key="*this" wx:for-item="a"
-      class="ea-chip {{ editActionCurrent[a] ? 'ea-chip-on' : '' }}"
-      style="{{ editActionCurrent[a] ? 'background:'+(a==='DIVIDE'?'#fef08a':a==='SPECIAL_BREEDING'?'#fecaca':'#e9d5ff')+';color:'+(a==='DIVIDE'?'#eab308':a==='SPECIAL_BREEDING'?'#ef4444':'#a855f7') : '' }}"
-      data-action="{{ a }}" bindtap="onEditActionToggle">
-      <text wx:if="{{ editActionCurrent[a] && !editActionInitial[a] }}" class="ea-chip-mark">+</text>
-      <text wx:if="{{ !editActionCurrent[a] && editActionInitial[a] }}" class="ea-chip-mark">−</text>
-      <text>{{ a==='DIVIDE'?'需分笼':a==='SPECIAL_BREEDING'?'特殊饲养':'健康检查' }}</text>
+    <view wx:for="{{ CAGE_STATUS_ACTIONS }}" wx:key="action" wx:for-item="a"
+      class="ea-chip {{ editActionCurrent[a.action] ? 'ea-chip-on' : '' }}"
+      style="{{ editActionCurrent[a.action] ? 'background:'+a.bg+';color:'+a.color+';border-color:'+a.color : '' }}"
+      hover-class="ea-chip-hover" hover-stay-time="60"
+      data-action="{{ a.action }}" bindtap="onEditActionToggle">
+      <text wx:if="{{ editActionCurrent[a.action] && !editActionInitial[a.action] }}" class="ea-chip-mark">+</text>
+      <text wx:if="{{ !editActionCurrent[a.action] && editActionInitial[a.action] }}" class="ea-chip-mark">−</text>
+      <text class="ea-chip-label">{{ a.label }}</text>
     </view>
   </view>
 
@@ -662,6 +564,51 @@
         </block>
       </view>
     </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 扫码确认核对弹窗 -->
+<van-popup
+  show="{{ showConfirmDialog }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  root-portal="{{ true }}"
+  z-index="{{ 22000 }}"
+  custom-style="width:90vw;max-width:600rpx;padding:24rpx;box-sizing:border-box;"
+  bind:close="onCloseConfirmDialog"
+>
+  <view class="cf-root">
+    <view class="cf-title">扫码确认 · 核对信息</view>
+    <view class="cf-rows">
+      <view wx:for="{{ confirmRows }}" wx:key="label" class="cf-row">
+        <text class="cf-row-label">{{ item.label }}</text>
+        <text class="cf-row-value {{ item.em ? 'cf-row-value--em' : '' }}">{{ item.value }}</text>
+      </view>
+    </view>
+
+    <!-- hasInfo === false 时内嵌笼位信息填写表单（复用统一表单渲染链路） -->
+    <view wx:if="{{ confirmLookup && confirmLookup.claim && !confirmLookup.claim.hasInfo }}" class="cf-form">
+      <view wx:if="{{ formLoading }}" class="detail-form-hint">加载表单…</view>
+      <view wx:elif="{{ formError }}" class="detail-form-hint detail-form-hint--error">{{ formError }}</view>
+      <view wx:elif="{{ !formRows.length }}" class="detail-form-hint">表单无字段</view>
+      <view wx:else class="detail-form-grid">
+        <view wx:for="{{ formRows }}" wx:key="key" class="detail-form-cell">
+          <text class="detail-form-cell-label">{{ item.label }}</text>
+          <text class="detail-form-cell-value">{{ item.value }}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="cf-tip">确认该笼位已到位（由学生本人账号确认）</view>
+
+    <view class="cf-btns">
+      <view class="cf-btn-cancel" bindtap="onCloseConfirmDialog">取消</view>
+      <view class="cf-btn-confirm {{ confirmSubmitting ? 'cf-btn-confirm--disabled' : '' }}" bindtap="{{ confirmSubmitting ? '' : 'handleConfirmArrival' }}">
+        {{ confirmSubmitting ? '处理中...' : '确认到位' }}
+      </view>
+    </view>
   </view>
 </van-popup>
 

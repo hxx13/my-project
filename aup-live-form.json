@@ -1,0 +1,265 @@
+[
+  {
+    "code": "A",
+    "label": "A:管理信息",
+    "subsections": [
+      {
+        "code": "A1",
+        "label": "A1:研究项目信息（如为更新的研究计划填写原计划书信息）",
+        "fields": [
+          {
+            "label": "项目名称",
+            "required": true,
+            "type": "text"
+          },
+          {
+            "label": "项目来源",
+            "required": true,
+            "type": "select",
+            "options": [
+              "国家自然科学基金",
+              "国家专项",
+              "非国家专项",
+              "上海市项目",
+              "教学项目",
+              "其他项目"
+            ]
+          },
+          {
+            "label": "项目来源",
+            "required": true,
+            "type": "text"
+          },
+          {
+            "label": "项目起止日期",
+            "required": true,
+            "type": "date"
+          },
+          {
+            "label": "项目起止日期",
+            "required": true,
+            "type": "date"
+          },
+          {
+            "label": "项目编号",
+            "required": true,
+            "type": "text"
+          },
+          {
+            "label": "项目负责人",
+            "required": true,
+            "type": "text"
+          },
+          {
+            "label": "项目联系人",
+            "required": true,
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "code": "A2",
+        "label": "A2:项目负责人信息",
+        "fields": [
+          {
+            "label": "课题组长",
+            "required": true,
+            "type": "text"
+          },
+          {
+            "label": "工号",
+            "required": true,
+            "type": "text"
+          },
+          {
+            "label": "部门",
+            "required": true,
+            "type": "text"
+          },
+          {
+            "label": "课题组",
+            "required": false,
+            "type": "select",
+            "options": [
+              "卢今的课题组"
+            ]
+          },
+          {
+            "label": "办公电话",
+            "required": true,
+            "type": "text"
+          },
+          {
+            "label": "移动电话",
+            "required": true,
+            "type": "text"
+          },
+          {
+            "label": "邮箱地址（Email）",
+            "required": true,
+            "type": "text"
+          },
+          {
+            "label": "办公地址",
+            "required": false,
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "code": "A3",
+        "label": "A3:课题负责人是否亲自接触动物实验",
+        "fields": []
+      },
+      {
+        "code": "A4",
+        "label": "A4:实验动物操作人员信息",
+        "fields": []
+      },
+      {
+        "code": "A5",
+        "label": "A5:合作单位",
+        "fields": []
+      },
+      {
+        "code": "A6",
+        "label": "A6:实验动物研究及使用计划更新",
+        "fields": []
+      },
+      {
+        "code": "A7",
+        "label": "A7:动物、动物组织及相关制品的出口或进口活动",
+        "fields": []
+      },
+      {
+        "code": "A8",
+        "label": "A8:包含在本申请中的其他补充部分（多选）",
+        "fields": []
+      }
+    ]
+  },
+  {
+    "code": "B",
+    "label": "B:实验动物使用信息",
+    "subsections": [
+      {
+        "code": "B1",
+        "label": "B1:目的",
+        "fields": []
+      },
+      {
+        "code": "B2",
+        "label": "B2:益处",
+        "fields": []
+      },
+      {
+        "code": "B3",
+        "label": "B3:通过文献查阅以寻求减少实验过程中动物疼痛的方法",
+        "fields": []
+      },
+      {
+        "code": "B4",
+        "label": "B4:活体动物实验应用的依据",
+        "fields": []
+      },
+      {
+        "code": "B5",
+        "label": "B5:实验动物种类选择",
+        "fields": []
+      },
+      {
+        "code": "B6",
+        "label": "B6:实验动物数量",
+        "fields": []
+      },
+      {
+        "code": "B7",
+        "label": "B7:实验动物数量计算依据",
+        "fields": []
+      },
+      {
+        "code": "B8",
+        "label": "B8：动物实验内容及时间节点描述",
+        "fields": []
+      },
+      {
+        "code": "B9",
+        "label": "B9：非药用化合物使用情况",
+        "fields": []
+      }
+    ]
+  },
+  {
+    "code": "C",
+    "label": "C：实验动物饲养",
+    "subsections": [
+      {
+        "code": "C1",
+        "label": "C1：动物饲养空间",
+        "fields": []
+      },
+      {
+        "code": "C2",
+        "label": "C2：特殊饲养要求",
+        "fields": []
+      },
+      {
+        "code": "C3",
+        "label": "C3：单笼饲养情况",
+        "fields": []
+      }
+    ]
+  },
+  {
+    "code": "D",
+    "label": "D：动物实验过程中所关心的其他问题",
+    "subsections": [
+      {
+        "code": "D1",
+        "label": "D1:乙醚的使用",
+        "fields": []
+      },
+      {
+        "code": "D2",
+        "label": "D2：动物保定",
+        "fields": []
+      },
+      {
+        "code": "D3",
+        "label": "D3: 免除麻醉药物或止痛药物使用说明",
+        "fields": []
+      }
+    ]
+  },
+  {
+    "code": "E",
+    "label": "E：实验动物安乐死及最终处置",
+    "subsections": [
+      {
+        "code": "E1",
+        "label": "E1：安乐死",
+        "fields": []
+      },
+      {
+        "code": "E2",
+        "label": "E2：动物的最终处置",
+        "fields": []
+      },
+      {
+        "code": "E3",
+        "label": "E3：动物尸体及组织的最终处置",
+        "fields": []
+      },
+      {
+        "code": "E4",
+        "label": "E4：动物组织和器官的合作使用",
+        "fields": []
+      }
+    ]
+  },
+  {
+    "code": "F",
+    "label": "F：课题组长声明",
+    "subsections": []
+  }
+]
