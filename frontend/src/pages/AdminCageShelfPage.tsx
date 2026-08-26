@@ -299,6 +299,23 @@ function Inner(){
   const[viewMode,setViewMode]=useState<"room"|"shelf">("room");
   const[shelfDetail,setShelfDetail]=useState<CageShelfDetail|null>(null);
   const[shelfLoading,setShelfLoading]=useState(false);
+  // 分配模式：只显示当前房间笼架里实际存在的 AUP（按 aup_number 过滤），避免满世界找
+  const roomAupNumbers = useMemo(() => {
+    const s = new Set<string>();
+    const add = (d: CageShelfDetail | null) => {
+      for (const c of d?.grid ?? []) {
+        const a = (c as any).aupNumber ?? (c as any).detail?.aupNumber;
+        if (a) s.add(String(a));
+      }
+    };
+    for (const d of details) add(d);
+    add(shelfDetail);
+    return s;
+  }, [details, shelfDetail]);
+  const allocAupList = useMemo(() => {
+    if (roomAupNumbers.size === 0) return aupList;
+    return aupList.filter((a) => roomAupNumbers.has(a.registerNo));
+  }, [aupList, roomAupNumbers]);
   const [configMode, setConfigMode] = useState<"auto"|"manual"|"off">("auto");
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const { data: batchList = [] } = useQuery({ queryKey: ["snapshotBatches"], queryFn: fetchSnapshotBatches, staleTime: 60_000 });
@@ -852,7 +869,8 @@ function Inner(){
       await adminConfirmClaim(confirmLookup.claim.id);
       toast.success("已确认到位");
       setConfirmLookup(null);
-    }catch(e:any){toast.error(e?.message||"确认失败（仅本人可确认）");}
+      setDetailReloadKey((k)=>k+1);
+    }catch(e:any){toast.error(e?.message||"确认失败");}
     finally{setConfirmSubmitting(false);}
   },[confirmLookup]);
 
@@ -1318,7 +1336,7 @@ function Inner(){
              DIALOGS — 分配弹窗 / 扫码弹窗 / 编辑状态弹窗 / 扫码确认核对 / CAS提示
              ═══════════════════════════════════════════════════ */}
     {/* ---- 分配确认弹窗 ---- */}
-    {allocDialogOpen&&<AllocDialog aupList={aupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
+    {allocDialogOpen&&<AllocDialog aupList={allocAupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
 
     {/* ---- 常驻扫码定位（按当前模式联动判定） ---- */}
     <MobileScanDialog open={scanLockOpen} onClose={()=>setScanLockOpen(false)} onResult={(code)=>{setScanLockOpen(false);handleResidentScan(code);}}/>
