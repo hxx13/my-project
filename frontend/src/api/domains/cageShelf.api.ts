@@ -1270,6 +1270,13 @@ export async function archiveCage(animalCageId: string | number, reason?: string
   if (!res.data?.success) throw new Error(res.data?.message || "归档失败");
 }
 
+/** 手动修正历史 confirmed 笼位（2→3 + 写占用者），返回修正条数 */
+export async function reconcileCageOccupancy(): Promise<number> {
+  const res = await authHttp.post<Result<{ fixed: number }>>("/admin/cage-claims/reconcile-occupancy");
+  if (!res.data?.success) throw new Error(res.data?.message || "修正失败");
+  return res.data.data?.fixed ?? 0;
+}
+
 /** 释放笼位 */
 export async function releaseClaim(id: number, reason?: string): Promise<void> {
   const res = await authHttp.post<Result<any>>(`/student/cage-claims/${id}/release`, { reason });

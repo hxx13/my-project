@@ -60,6 +60,10 @@
         SELECT * FROM cage_claims WHERE id = #{id} FOR UPDATE
     </select>
 
+    <select id="selectByStatus" resultMap="CageClaimMap">
+        SELECT * FROM cage_claims WHERE claim_status = #{status} ORDER BY id ASC
+    </select>
+
     <select id="selectActiveByAnimalCageId" resultMap="CageClaimMap">
         SELECT * FROM cage_claims
         WHERE animal_cage_id = #{animalCageId}

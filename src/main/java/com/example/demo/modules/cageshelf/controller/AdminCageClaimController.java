@@ -167,6 +167,22 @@ public class AdminCageClaimController {
         }
     }
 
+    // ── 手动修正历史 confirmed 笼位 ──
+
+    @PostMapping("/reconcile-occupancy")
+    @Operation(summary = "手动修正历史 confirmed 笼位（2→3 + 写占用者）")
+    public Result<Map<String, Object>> reconcileOccupancy(HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMinRole(u, RoleEnum.ADMIN);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            int fixed = claimService.reconcileConfirmedOccupancy();
+            return Result.success(Map.of("fixed", fixed));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
     // ── 分配候选人 ──
 
     @GetMapping("/assign-candidates")

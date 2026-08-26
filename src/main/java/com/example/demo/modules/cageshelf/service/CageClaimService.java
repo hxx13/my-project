@@ -562,6 +562,30 @@ public class CageClaimService {
         return out;
     }
 
+    /** 手动修正历史 confirmed 认领：笼位 2→3 + 写占用者。返回修正条数。 */
+    @Transactional
+    public int reconcileConfirmedOccupancy() {
+        List<CageClaim> claims = claimMapper.selectByStatus("confirmed");
+        int fixed = 0;
+        for (CageClaim claim : claims) {
+            Long cageId = claim.getAnimalCageId();
+            if (cageId == null) continue;
+            CageCellDetail d = detailMapper.selectByAnimalCageId(cageId);
+            if (d != null && d.getCageTypeCode() != null && d.getCageTypeCode() == 3) continue;
+            if (d == null) {
+                d = new CageCellDetail();
+                d.setAnimalCageId(cageId);
+            }
+            d.setCageTypeCode(3);
+            detailMapper.batchUpsert(List.of(d));
+            if (claim.getClaimantName() != null && !claim.getClaimantName().isBlank()) {
+                infoValueService.syncFromMapped(cageId, Map.of("experimenter_name", claim.getClaimantName()));
+            }
+            fixed++;
+        }
+        return fixed;
+    }
+
     // ═══════════════════════════════════════════
     // 管理端手动分配
     // ═══════════════════════════════════════════

@@ -19,6 +19,9 @@ public interface CageClaimMapper {
     /** FOR UPDATE 锁单条记录（审批用） */
     CageClaim selectByIdForUpdate(@Param("id") Long id);
 
+    /** 按状态查认领（手动修正历史 confirmed 用） */
+    List<CageClaim> selectByStatus(@Param("status") String status);
+
     /** 查某笼位当前活跃的认领（FOR UPDATE 用） */
     CageClaim selectActiveByAnimalCageId(@Param("animalCageId") Long animalCageId);
 
