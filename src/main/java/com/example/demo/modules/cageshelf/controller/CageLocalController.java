@@ -153,17 +153,8 @@ public class CageLocalController {
             cageIds.add(animalCageId);
         }
 
-        // ② 一条 outbox 批量推 ARO（bookCages 接口支持批量）
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("animalCageIds", cageIds);
-        payload.put("aupId", aupId);
-        payload.put("roomId", roomId);
-        payload.put("shelveId", shelveId);
         String summary = String.format("%s 分配 %d 个笼位到 AUP %s", operatorDisplayName(u), cageIds.size(),
                 aupId != null ? String.valueOf(aupId) : "?");
-        outboxService.enqueue("cage_cell", String.valueOf(cageIds.size()) + "_cages", "allocate",
-                payload, "cageBook", summary);
-
         log.info("[local/allocate] {}", summary);
         return Result.success(Map.of("ok", true, "count", cageIds.size(), "local", true));
     }
@@ -188,13 +179,7 @@ public class CageLocalController {
             cageIds.add(animalCageId);
         }
 
-        // ② 一条 outbox 批量推 ARO
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("animalCageIds", cageIds);
         String summary = String.format("%s 取消 %d 个笼位分配", operatorDisplayName(u), cageIds.size());
-        outboxService.enqueue("cage_cell", String.valueOf(cageIds.size()) + "_cages", "cancel_allocate",
-                payload, "cancelBook", summary);
-
         log.info("[local/cancel-allocate] {}", summary);
         return Result.success(Map.of("ok", true, "count", cageIds.size(), "local", true));
     }

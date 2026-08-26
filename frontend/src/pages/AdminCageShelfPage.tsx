@@ -593,7 +593,7 @@ function Inner(){
 
     // 本地数据源
     if(dataSource==="local"){
-      try{await localCancelAllocate(cageIds);toast.success(`已取消 ${cageIds.length} 个笼位分配（本地+异步投递）`);}
+      try{await localCancelAllocate(cageIds);toast.success(`已取消 ${cageIds.length} 个笼位分配（本地）`);}
       catch(e:any){toast.error(e?.message||"取消分配失败");}
       setSelectedCells(new Set());setAllocSubmitting(false);setDetailReloadKey(k=>k+1);
       return;
@@ -634,7 +634,7 @@ function Inner(){
       const aup=aupList.find(x=>String(x.id)===String(selectedAupId));
       const piName=aup?.piName||"";
       const aupNumber=aup?.registerNo||"";
-      try{await localAllocate(cageIds,selectedAupId,aRid,assignShelveId,piName,aupNumber);toast.success(`已分配 ${cageIds.length} 个笼位（本地+异步投递）`);}
+      try{await localAllocate(cageIds,selectedAupId,aRid,assignShelveId,piName,aupNumber);toast.success(`已分配 ${cageIds.length} 个笼位（本地）`);}
       catch(e:any){toast.error(e?.message||"分配失败");}
       setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
       setAllocSubmitting(false);setDetailReloadKey(k=>k+1);
@@ -784,7 +784,7 @@ function Inner(){
           catch(err:any){toast.error(`${e.cell.position} ${a}: ${err?.message||"失败"}`);fail++;}
         }
       }
-      if(fail===0){toast.success(`已完成 ${ok} 个操作（本地+异步投递）`);setScanCache(new Map());setLastScannedKey(null);setDetailReloadKey(k=>k+1);}
+      if(fail===0){toast.success(`已完成 ${ok} 个操作（本地）`);setScanCache(new Map());setLastScannedKey(null);setDetailReloadKey(k=>k+1);}
       else toast(`${ok} 成功 / ${fail} 失败`,{icon:"⚠️"});
       setActionSubmitting(false);
       return;

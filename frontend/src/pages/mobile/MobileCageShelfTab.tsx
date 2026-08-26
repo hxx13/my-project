@@ -1538,7 +1538,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
           try { await authHttp.post("/local/annotate", body); } catch { /* 非致命 */ }
         }
       }
-      toast.success(`已完成 ${okCount} 个操作（本地+异步投递）`);
+      toast.success(`已完成 ${okCount} 个操作（本地）`);
       setScanCache(new Map());
       setLastScannedKey(null);
       setEditActionCell(null); setActionPhotos([]); setActionNote("");

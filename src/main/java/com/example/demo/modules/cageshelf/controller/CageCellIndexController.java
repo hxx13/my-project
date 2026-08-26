@@ -247,19 +247,15 @@ public class CageCellIndexController {
             default -> { return Result.fail(400, "未支持: " + action); }
         }
 
-        // ② 入队 Outbox
         String operatorName = operatorDisplayName(user);
         String pos = buildPositionLabel(animalCageId);
         String summary = String.format("%s %s → 笼位 %d %s", operatorName, action, animalCageId, pos);
-        outboxService.enqueue("cage_cell", String.valueOf(animalCageId),
-                "cell_updated", outboxPayload, aroEndpoint, summary);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("ok", true);
         result.put("animalCageId", animalCageId == null ? null : String.valueOf(animalCageId));
         result.put("action", action);
         result.put("local", true);
-        result.put("syncedToAro", false); // 异步，稍后投递
         log.info("[local-action] {}", summary);
         return Result.success(result);
     }
