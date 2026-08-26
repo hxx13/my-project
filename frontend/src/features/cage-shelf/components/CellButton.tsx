@@ -26,14 +26,14 @@ import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains
  *
  * Props 共 21 个 — 如需新增请评估是否该拆出子组件
  */
-export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell }: {
+export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode }: {
   cell: CageShelfCell; onClick?: (c: CageShelfCell) => void; alert?: PersistedAlert;
   selectable?: boolean; selected?: boolean; onToggle?: (e: React.MouseEvent) => void; allocMode?: boolean;
   clickMode?: "toggle" | "checkbox";
   editCacheEntry?: { initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction> };
   isLastScanned?: boolean; bindHighlight?: boolean; bindPending?: boolean; editMode?: boolean; bindMode?: boolean;
   isCrossCol?: boolean; isCrossRow?: boolean; flashOverlay?: boolean;
-  claimMode?: boolean; isPoolCell?: boolean;
+  claimMode?: boolean; isPoolCell?: boolean; confirmMode?: boolean;
 }) {
   const dominant = getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
   const singleStyle = useStatusStyle(dominant);
@@ -134,6 +134,17 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     {bindPending && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-green-500 shadow-[0_0_10px_rgba(34,197,94,0.35)] pointer-events-none" />}
     {/* Claim mode pool cell highlight */}
     {claimMode && isPoolCell && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.35)] pointer-events-none" />}
+    {confirmMode && cell.claimStatus && (() => {
+      const badge: Record<string, { txt: string; cls: string }> = {
+        locked: { txt: "待确认", cls: "bg-amber-500 text-white" },
+        confirmed: { txt: "已到位", cls: "bg-slate-400 text-white" },
+        pending_approval: { txt: "待审批", cls: "bg-blue-500 text-white" },
+        pending_release_approval: { txt: "待释放", cls: "bg-orange-500 text-white" },
+      };
+      const s = badge[cell.claimStatus!];
+      if (!s) return null;
+      return <div className={`absolute top-0.5 right-0.5 z-20 px-1 py-px rounded text-[8px] font-bold leading-tight ${s.cls}`}>{s.txt}</div>;
+    })()}
     {isLastScanned && <div className="absolute inset-0 z-10 rounded-twin-md ring-[3px] ring-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)] pointer-events-none" />}
     {flashOverlay && <div className="absolute inset-0 z-10 rounded-twin-md ring-[4px] ring-red-500/80 shadow-[0_0_16px_rgba(239,68,68,0.5)] scan-flash-overlay" />}
     {!cell.empty && <CageCellOverlays animalCageType={resolvedCageType} compact />}

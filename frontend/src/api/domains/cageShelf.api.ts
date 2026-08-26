@@ -47,6 +47,8 @@ export interface CageShelfCell {
   cageBoxInfo?: Record<string, unknown>;
   detail?: Record<string, unknown>;
   specialStatuses?: SpecialStatusEntry[];
+  /** 该笼位 active claim 的状态（locked/confirmed/pending_approval/...，无 active claim 为 undefined） */
+  claimStatus?: string;
   annotation?: {
     richText?: string | null;
     images?: string | null;
@@ -63,6 +65,8 @@ export interface CageShelfDetail {
     roomName: string;
     shelveId: string;
     shelveName: string;
+    shelfIndexId?: number;
+    roomId?: string | number;
   };
   grid: CageShelfCell[];
   totalCells: number;
@@ -1187,6 +1191,15 @@ export interface CageClaimItem {
   note: string | null;
   createdAt: string;
   updatedAt: string;
+  campusName?: string;
+  areaName?: string;
+  floorName?: string;
+  roomName?: string;
+  shelveName?: string;
+  shelveId?: string;
+  positionLabel?: string;
+  aupNumber?: string;
+  latestRejectReason?: string | null;
 }
 
 /** 审批记录 */
@@ -1232,6 +1245,21 @@ export async function cancelClaim(id: number): Promise<void> {
 export async function confirmClaim(id: number | string): Promise<void> {
   const res = await authHttp.post<Result<any>>(`/student/cage-claims/${id}/confirm`);
   if (!res.data?.success) throw new Error(res.data?.message || "确认失败");
+}
+
+/** 管理端代学生确认到位（管理员/饲养组长） */
+export async function adminConfirmClaim(id: number | string): Promise<void> {
+  const res = await authHttp.post<Result<any>>(`/admin/cage-claims/${id}/confirm`);
+  if (!res.data?.success) throw new Error(res.data?.message || "确认失败");
+}
+
+/** 管理端批量通过待审批认领，返回 per-id 结果 */
+export async function batchApproveClaims(ids: number[]): Promise<Array<{ id: number; ok: boolean; status?: string; error?: string }>> {
+  const res = await authHttp.post<Result<Array<{ id: number; ok: boolean; status?: string; error?: string }>>>(
+    "/admin/cage-claims/batch-approve", { ids },
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "批量审批失败");
+  return res.data.data ?? [];
 }
 
 /** 释放笼位 */
