@@ -135,6 +135,38 @@ public class AdminCageClaimController {
         }
     }
 
+    // ── 代确认到位（管理员 / 饲养组长）──
+
+    @PostMapping("/{id}/confirm")
+    @Operation(summary = "代学生确认到位（管理员或饲养组长）")
+    public Result<Map<String, Object>> confirm(@PathVariable Long id, HttpServletRequest req) {
+        User u = resolveUser(req);
+        if (u == null) return Result.fail(401, "未登录");
+        try {
+            CageClaim claim = claimService.confirmOnBehalf(u, id);
+            return Result.success(Map.of("id", claim.getId(), "status", claim.getClaimStatus()));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
+    // ── 批量通过 ──
+
+    @PostMapping("/batch-approve")
+    @Operation(summary = "批量通过待审批认领")
+    public Result<List<Map<String, Object>>> batchApprove(@RequestBody Map<String, Object> body, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireApprover(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        List<Long> ids = toLongList(body.get("ids"));
+        if (ids == null || ids.isEmpty()) return Result.fail(400, "ids 必填且非空");
+        try {
+            return Result.success(claimService.batchApprove(u, ids));
+        } catch (Exception e) {
+            return handleServiceException(e);
+        }
+    }
+
     // ── 分配候选人 ──
 
     @GetMapping("/assign-candidates")
@@ -216,6 +248,16 @@ public class AdminCageClaimController {
         if (v instanceof Number n) return n.longValue();
         try { return Long.parseLong(String.valueOf(v).trim()); }
         catch (NumberFormatException e) { return null; }
+    }
+
+    private static List<Long> toLongList(Object o) {
+        if (!(o instanceof List<?> list)) return null;
+        List<Long> out = new ArrayList<>();
+        for (Object v : list) {
+            if (v == null) continue;
+            try { out.add(Long.parseLong(String.valueOf(v).trim())); } catch (NumberFormatException ignored) {}
+        }
+        return out;
     }
 
     @SuppressWarnings("unchecked")

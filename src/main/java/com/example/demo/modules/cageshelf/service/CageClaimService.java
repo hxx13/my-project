@@ -474,6 +474,44 @@ public class CageClaimService {
         return claim;
     }
 
+    @Transactional
+    public CageClaim confirmOnBehalf(User operator, Long claimId) {
+        boolean isAdmin = operator.getRole() != null && operator.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        if (!isAdmin && !personIdentityService.isBreedingGroupLeader(operator.getId())) {
+            throw new TwinBusinessException(403, "无代确认权限（仅管理员或饲养组长）");
+        }
+        CageClaim claim = claimMapper.selectByIdForUpdate(claimId);
+        if (claim == null) throw new TwinBusinessException(404, "认领记录不存在");
+        if ("confirmed".equals(claim.getClaimStatus())) return claim;
+        if (!"locked".equals(claim.getClaimStatus())) throw new TwinBusinessException(400, "当前状态不可确认");
+        claim.setClaimStatus("confirmed");
+        claim.setConfirmedAt(DT_FMT.format(LocalDateTime.now()));
+        claimMapper.update(claim);
+        ApprovalRecord ar = new ApprovalRecord();
+        ar.setTargetType("cage_confirm");
+        ar.setTargetId(claimId);
+        ar.setApproverId(operator.getId());
+        ar.setApproverName(displayNameOf(operator));
+        ar.setApproverRole(operator.getRole() != null ? operator.getRole().name() : "UNKNOWN");
+        ar.setDecision("confirmed");
+        approvalMapper.insert(ar);
+        return claim;
+    }
+
+    @Transactional
+    public List<Map<String, Object>> batchApprove(User approver, List<Long> ids) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Long id : ids) {
+            try {
+                CageClaim c = approve(approver, id, "approved", null);
+                out.add(Map.of("id", id, "ok", true, "status", c.getClaimStatus()));
+            } catch (Exception e) {
+                out.add(Map.of("id", id, "ok", false, "error", e.getMessage() == null ? "审批失败" : e.getMessage()));
+            }
+        }
+        return out;
+    }
+
     // ═══════════════════════════════════════════
     // 管理端手动分配
     // ═══════════════════════════════════════════
