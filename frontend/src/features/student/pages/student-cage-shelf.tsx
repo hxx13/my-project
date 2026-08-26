@@ -135,23 +135,36 @@ export default function StudentCageShelfPage() {
     const keys = Array.from(claimSelected);
     setClaimSubmitting(true);
     let ok = 0, fail = 0;
+    const okIds = new Set<string>();
+    const errors: string[] = [];
     for (const key of keys) {
       const aid = cellIdByKey.get(key);
-      if (!aid) { fail++; continue; }
+      if (!aid) { fail++; errors.push("无法定位笼位ID"); continue; }
       const pc = poolCells.get(aid);
-      if (!pc) { fail++; continue; }
+      if (!pc) { fail++; errors.push("该笼位已不在可申请池中"); continue; }
       const idxId = shelfIndexIdByShelveId.get(String(pc.shelveId));
-      if (!idxId) { fail++; continue; }
-      try { await claimCage(aid, idxId); ok++; } catch { fail++; }
+      if (!idxId) { fail++; errors.push("未找到笼架索引"); continue; }
+      try { await claimCage(aid, idxId); ok++; okIds.add(aid); }
+      catch (e: any) { fail++; errors.push(e?.message || "申请失败"); }
     }
     setClaimSubmitting(false);
     setClaimSelected(new Set());
-    setPoolCells((prev) => {
-      const n = new Map(prev);
-      for (const key of keys) { const aid = cellIdByKey.get(key); if (aid) n.delete(aid); }
-      return n;
-    });
-    await appAlert(ok > 0 ? `申请已提交：${ok} 成功${fail > 0 ? ` / ${fail} 失败` : ""}` : `申请失败 ${fail} 个`);
+    // 只移除真正申请成功的笼位；失败的保留在池中，避免视觉上像被占用
+    if (okIds.size > 0) {
+      setPoolCells((prev) => {
+        const n = new Map(prev);
+        for (const aid of okIds) n.delete(aid);
+        return n;
+      });
+    }
+    const firstErr = errors[0];
+    if (ok > 0 && fail > 0) {
+      await appAlert(`已提交 ${ok} 个申请；${fail} 个失败。${firstErr ? `失败原因：${firstErr}` : ""}`);
+    } else if (ok > 0) {
+      await appAlert(`申请已提交：${ok} 个`);
+    } else {
+      await appAlert(firstErr || `申请失败 ${fail} 个`);
+    }
   };
 
   useEffect(() => {
