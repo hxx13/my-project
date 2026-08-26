@@ -1081,7 +1081,7 @@ function Inner(){
           </div>
           <div className="flex items-center gap-1">
             {/* 本地模式：超管一键顺序同步（仅查看模式可见） */}
-            {pageMode==="view"&&!editMode&&!confirmMode&&dataSource==="local"&&isSuperAdmin&&(
+            {pageMode==="view"&&!editMode&&!confirmMode&&!archiveMode&&dataSource==="local"&&isSuperAdmin&&(
               <>
                 <button type="button" onClick={handleLocalPipelineSync} disabled={localPipelineSyncing}
                   className="inline-flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition mr-1"
@@ -1099,7 +1099,7 @@ function Inner(){
               </>
             )}
             {/* ---- 查看模式控件（本地模式/分配/预约/编辑时隐藏） ---- */}
-            {pageMode==="view"&&!editMode&&!confirmMode&&dataSource!=="local"&&<>
+            {pageMode==="view"&&!editMode&&!confirmMode&&!archiveMode&&dataSource!=="local"&&<>
               <div className="flex items-stretch rounded-twin-md border border-[var(--twin-hairline)] overflow-hidden mr-1">
                 <button type="button" onClick={() => { setConfigMode("auto"); localStorage.setItem("cageAlertConfigMode","auto"); }}
                   className={`px-2 py-1 text-[10px] font-bold transition ${configMode==="auto"?"bg-[var(--twin-link-deep)] text-white":"bg-[var(--twin-canvas)] text-[var(--twin-mute)]"}`}>自动</button>
@@ -1144,7 +1144,7 @@ function Inner(){
             </>}
             {/* ── 扫码确认模式：由常驻「扫码定位」联动判定，无专用输入 ── */}
             {/* 表单管理入口（仅查看模式可见） */}
-            {pageMode==="view"&&!editMode&&!confirmMode&&<a href={toAdminRoutePath("/admin/cage-shelves/forms")} onClick={e=>{e.preventDefault();nav(toAdminRoutePath("/admin/cage-shelves/forms"));}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold no-underline bg-[var(--twin-primary)] text-white hover:opacity-90 transition">表单管理</a>}
+            {pageMode==="view"&&!editMode&&!confirmMode&&!archiveMode&&<a href={toAdminRoutePath("/admin/cage-shelves/forms")} onClick={e=>{e.preventDefault();nav(toAdminRoutePath("/admin/cage-shelves/forms"));}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold no-underline bg-[var(--twin-primary)] text-white hover:opacity-90 transition">表单管理</a>}
             <button type="button" onClick={()=>setLegend(v=>!v)} className={`flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition ${legend?'bg-[var(--twin-link-deep)] text-white':'text-[var(--twin-mute)] hover:text-[var(--twin-ink)]'}`}><Info className="h-3 w-3"/>图例{legend?' ▲':' ▼'}</button>
             {isSuperAdmin&&<button type="button" onClick={()=>setSettingsOpen(true)} className="flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title="设置中心"><Settings2 className="h-3 w-3"/>设置</button>}
           </div>
@@ -1263,7 +1263,7 @@ function Inner(){
                   </div>
                 </div>;})()}
               {/* 查看模式：笼盒详情 */}
-              {!editMode&&!confirmMode&&(()=>{if(!cell)return<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><div className="text-4xl mb-3 opacity-20">📋</div>笼盒详情预备画面<br/><span className="text-[11px]">点击左侧笼位格子显示笼盒信息</span></div>;
+              {!editMode&&!confirmMode&&!archiveMode&&(()=>{if(!cell)return<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><div className="text-4xl mb-3 opacity-20">📋</div>笼盒详情预备画面<br/><span className="text-[11px]">点击左侧笼位格子显示笼盒信息</span></div>;
                 return<div className="flex-1 overflow-y-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3">
                 <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>setCell(null)}>清除</button></div>
                 {dataSource==="local"
@@ -1286,7 +1286,7 @@ function Inner(){
       </div>
     </div>
 
-    {cell&&viewMode!=="shelf"&&!editMode&&!confirmMode&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
+    {cell&&viewMode!=="shelf"&&!editMode&&!confirmMode&&!archiveMode&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
       <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-3" onClick={e=>e.stopPropagation()}>
         {dataSource==="local"
           ? <LocalDetailPanel cell={cell} onClose={()=>{setCell(null);setShelfId(null);}}/>
