@@ -49,6 +49,7 @@ public class CageShelfController {
     private final com.example.demo.modules.aro.AroPersonalTokenClient aroPersonalTokenClient;
     private final com.example.demo.modules.cageshelf.service.CageShelfRealtimeCooldown cooldown;
     private final CageQuotaService quotaService;
+    private final com.example.demo.modules.cageshelf.service.CageBookingLocalService bookingLocalService;
 
     public CageShelfController(AuthContextService authContextService,
                                CageShelfService cageShelfService,
@@ -61,7 +62,8 @@ public class CageShelfController {
                                com.example.demo.modules.aro.service.AroService aroService,
                                com.example.demo.modules.aro.AroPersonalTokenClient aroPersonalTokenClient,
                                com.example.demo.modules.cageshelf.service.CageShelfRealtimeCooldown cooldown,
-                               CageQuotaService quotaService) {
+                               CageQuotaService quotaService,
+                               com.example.demo.modules.cageshelf.service.CageBookingLocalService bookingLocalService) {
         this.authContextService = authContextService;
         this.cageShelfService = cageShelfService;
         this.studentCageShelfService = studentCageShelfService;
@@ -74,6 +76,7 @@ public class CageShelfController {
         this.aroPersonalTokenClient = aroPersonalTokenClient;
         this.cooldown = cooldown;
         this.quotaService = quotaService;
+        this.bookingLocalService = bookingLocalService;
     }
 
     @PostMapping("/import")
@@ -456,7 +459,7 @@ public class CageShelfController {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-        return Result.success(aroService.fetchAupListForAllocation());
+        return Result.success(bookingLocalService.aupDict());
     }
 
     @SuppressWarnings("unchecked")

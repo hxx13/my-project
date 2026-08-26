@@ -277,7 +277,8 @@
     <select id="selectApprovedForDict" resultType="map">
         SELECT CAST(id AS CHAR) AS id,
                register_no AS registerNo,
-               project_group_name AS projectGroupName
+               project_group_name AS projectGroupName,
+               pi_name AS piName
         FROM aup_record
         WHERE current_stage = 'approved'
         ORDER BY id ASC

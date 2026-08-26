@@ -629,8 +629,8 @@ function Inner(){
     // 本地数据源
     if(dataSource==="local"){
       const aup=aupList.find(x=>String(x.id)===String(selectedAupId));
-      const piName=aup?.projectPiName||"";
-      const aupNumber=aup?.registerNumber||"";
+      const piName=aup?.piName||"";
+      const aupNumber=aup?.registerNo||"";
       try{await localAllocate(cageIds,selectedAupId,aRid,assignShelveId,piName,aupNumber);toast.success(`已分配 ${cageIds.length} 个笼位（本地+异步投递）`);}
       catch(e:any){toast.error(e?.message||"分配失败");}
       setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
@@ -638,7 +638,7 @@ function Inner(){
       return;
     }
 
-    try{const aup=aupList.find(x=>String(x.id)===String(selectedAupId));await assignCages(aRid,assignShelveId,cageIds,selectedAupId,aup?.registerNumber);toast.success(`已分配 ${cageIds.length} 个笼位`);setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
+    try{const aup=aupList.find(x=>String(x.id)===String(selectedAupId));await assignCages(aRid,assignShelveId,cageIds,selectedAupId,aup?.registerNo);toast.success(`已分配 ${cageIds.length} 个笼位`);setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
       const r=await fetchRealtimeRefresh(aRid);setDetails(r.shelves??[]);setRealtimeMeta({fromRealtime:r.fromRealtime,cachedAt:r.cachedAt});
     }catch(e:any){toast.error(e instanceof Error?e.message:"分配失败");}
     finally{setAllocSubmitting(false);}

@@ -20,15 +20,15 @@ export default function AllocDialog({ aupList, selectedAupId, setSelectedAupId, 
     const q = search.trim().toLowerCase();
     const list = q
       ? aupList.filter(a =>
-          (a.projectPiName || "").toLowerCase().includes(q) ||
-          (a.registerNumber || "").toLowerCase().includes(q) ||
-          (a.projectName || "").toLowerCase().includes(q)
+          (a.projectGroupName || "").toLowerCase().includes(q) ||
+          (a.registerNo || "").toLowerCase().includes(q) ||
+          (a.piName || "").toLowerCase().includes(q)
         )
       : aupList;
     return [...list].sort((a, b) => {
       const parseNum = (s: string) => { const m = s.match(/(\d{4})-(\d+)/); return m ? [+m[1], +m[2]] : [0, 0]; };
-      const [ay, ai] = parseNum(a.registerNumber || "");
-      const [by, bi] = parseNum(b.registerNumber || "");
+      const [ay, ai] = parseNum(a.registerNo || "");
+      const [by, bi] = parseNum(b.registerNo || "");
       const cmp = ay !== by ? ay - by : ai - bi;
       return sortAsc ? cmp : -cmp;
     });
@@ -91,8 +91,8 @@ export default function AllocDialog({ aupList, selectedAupId, setSelectedAupId, 
                     : "hover:bg-[var(--app-color-surface-hover)] text-[var(--twin-ink)]"
                 }`}
               >
-                <span>{a.projectPiName || "—"}</span>
-                <span className="text-[10px] text-[var(--twin-mute)]">{a.registerNumber}</span>
+                <span>{a.projectGroupName || "—"}</span>
+                <span className="text-[10px] text-[var(--twin-mute)]">{a.registerNo}</span>
               </button>
             ))}
           </div>

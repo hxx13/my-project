@@ -582,9 +582,9 @@ export interface RealtimeRefreshResponse {
 
 export interface AupItem {
   id: string;
-  projectPiName: string;
-  registerNumber: string;
-  projectName?: string;
+  registerNo: string;
+  projectGroupName: string;
+  piName: string;
 }
 
 export interface CooldownStatus {
@@ -848,9 +848,9 @@ export async function saveRoomCapacity(roomId: string, capacity: number): Promis
   if (!res.data?.success) throw new Error(res.data?.message || "保存房间上限失败");
 }
 
-/** AUP 下拉字典（自己的字段口径：id/registerNo/projectGroupName） */
-export async function fetchAupDict(): Promise<{ id: string; registerNo: string; projectGroupName: string }[]> {
-  const res = await authHttp.get<Result<{ id: string; registerNo: string; projectGroupName: string }[]>>(
+/** AUP 下拉字典（自己的字段口径：id/registerNo/projectGroupName/piName） */
+export async function fetchAupDict(): Promise<{ id: string; registerNo: string; projectGroupName: string; piName: string }[]> {
+  const res = await authHttp.get<Result<{ id: string; registerNo: string; projectGroupName: string; piName: string }[]>>(
     "/v1/cage-shelves/booking/aups/dict"
   );
   return res.data?.data ?? [];
