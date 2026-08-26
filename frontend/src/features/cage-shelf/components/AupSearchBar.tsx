@@ -1,17 +1,25 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, ChevronDown, ArrowUpDown } from "lucide-react";
-import { fetchAupDict } from "@/api/domains/cageShelf.api";
+import toast from "react-hot-toast";
+import { fetchAupDict, fetchRoomsByRegisterNo } from "@/api/domains/cageShelf.api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type AupDictItem = { id: string; registerNo: string; projectGroupName: string; piName: string };
+type RoomItem = { roomId: string; roomName: string };
 
-export default function AupSearchBar() {
+interface Props {
+  onSelectRoom: (roomId: string, roomName: string) => void;
+}
+
+export default function AupSearchBar({ onSelectRoom }: Props) {
   const [search, setSearch] = useState("");
   const [aupOptions, setAupOptions] = useState<AupDictItem[]>([]);
   const [matched, setMatched] = useState<AupDictItem[]>([]);
+  const [roomCandidates, setRoomCandidates] = useState<RoomItem[]>([]);
   const [sortAsc, setSortAsc] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
+  const [roomPickOpen, setRoomPickOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,6 +37,28 @@ export default function AupSearchBar() {
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
+  // 选中某个 AUP → 填搜索框 → 用本地映射反查房间并跳转
+  const pickAup = async (aup: AupDictItem) => {
+    setSearch(aup.registerNo || "");
+    setDropdownOpen(false);
+    setMatched([]);
+    setResultOpen(false);
+    if (!aup.registerNo) return;
+    try {
+      const rooms = await fetchRoomsByRegisterNo(aup.registerNo);
+      if (rooms.length === 1) {
+        onSelectRoom(rooms[0].roomId, rooms[0].roomName);
+      } else if (rooms.length > 1) {
+        setRoomCandidates(rooms);
+        setRoomPickOpen(true);
+      } else {
+        toast("该 AUP 未关联房间");
+      }
+    } catch {
+      toast("查找房间失败");
+    }
+  };
+
   const doSearch = () => {
     const kw = search.trim().toLowerCase();
     if (!kw) return;
@@ -38,23 +68,17 @@ export default function AupSearchBar() {
       (a.piName || "").toLowerCase().includes(kw)
     );
     if (m.length === 1) {
-      setSearch(m[0].registerNo || "");
-      setMatched([]);
+      void pickAup(m[0]);
       return;
     }
     setMatched(m);
     setResultOpen(true);
   };
 
-  const quickSelect = (label: string) => {
-    setSearch(label);
-    setDropdownOpen(false);
-  };
-
-  const pickMatch = (registerNo: string) => {
-    setSearch(registerNo);
-    setMatched([]);
-    setResultOpen(false);
+  const selectRoom = (room: RoomItem) => {
+    setRoomPickOpen(false);
+    setRoomCandidates([]);
+    onSelectRoom(room.roomId, room.roomName);
   };
 
   const parseNum = (s: string) => { const m = s.match(/(\d{4})-(\d+)/); return m ? [+m[1], +m[2]] : [0, 0]; };
@@ -106,7 +130,7 @@ export default function AupSearchBar() {
               }).map(a => (
                 <button
                   key={a.id}
-                  onClick={() => quickSelect(a.registerNo || "")}
+                  onClick={() => void pickAup(a)}
                   className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)]"
                 >
                   <span className="font-medium text-[var(--twin-ink)]">{a.projectGroupName || "—"}</span>
@@ -127,13 +151,13 @@ export default function AupSearchBar() {
         搜索
       </button>
 
-      {/* results dialog */}
+      {/* matched AUP picker dialog */}
       <Dialog open={resultOpen} onOpenChange={(v) => { if (!v) setMatched([]); }}>
         <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>匹配的 AUP</DialogTitle>
           </DialogHeader>
-          <div className="text-xs text-[var(--twin-mute)] mb-2">共 {matched.length} 条匹配结果，点击填入搜索框：</div>
+          <div className="text-xs text-[var(--twin-mute)] mb-2">共 {matched.length} 条匹配结果，点击跳转：</div>
           <div className="max-h-64 overflow-y-auto space-y-1">
             {matched.length === 0 && (
               <div className="px-3 py-4 text-center text-xs text-[var(--twin-mute)]">无匹配结果</div>
@@ -141,7 +165,7 @@ export default function AupSearchBar() {
             {matched.map(a => (
               <button
                 key={a.id}
-                onClick={() => pickMatch(a.registerNo || "")}
+                onClick={() => void pickAup(a)}
                 className="w-full text-left px-3 py-2 rounded-twin-sm border border-[var(--twin-hairline)] hover:border-indigo-300 hover:bg-indigo-50/50 transition flex items-center justify-between"
               >
                 <span className="font-medium text-[var(--twin-ink)]">{a.projectGroupName || "—"}</span>
@@ -149,6 +173,27 @@ export default function AupSearchBar() {
                   <div>{a.piName}</div>
                   <div>{a.registerNo}</div>
                 </div>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* room picker dialog */}
+      <Dialog open={roomPickOpen} onOpenChange={(v) => { if (!v) { setRoomPickOpen(false); setRoomCandidates([]); } }}>
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>选择房间</DialogTitle>
+          </DialogHeader>
+          <div className="text-xs text-[var(--twin-mute)] mb-2">该 AUP 关联了 {roomCandidates.length} 个房间，请选择：</div>
+          <div className="max-h-64 overflow-y-auto space-y-1">
+            {roomCandidates.map(r => (
+              <button
+                key={r.roomId}
+                onClick={() => selectRoom(r)}
+                className="w-full text-left px-3 py-2 rounded-twin-sm border border-[var(--twin-hairline)] hover:border-indigo-300 hover:bg-indigo-50/50 transition"
+              >
+                <span className="font-medium text-[var(--twin-ink)]">{r.roomName || r.roomId}</span>
               </button>
             ))}
           </div>

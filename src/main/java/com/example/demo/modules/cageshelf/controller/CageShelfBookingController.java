@@ -134,6 +134,18 @@ public class CageShelfBookingController {
         return Result.success(bookingLocalService.aupDict());
     }
 
+    // ── AUP 注册号 → 房间（本地映射，跳转用） ──
+
+    @GetMapping("/aups/rooms")
+    @Operation(summary = "按 AUP 注册号反查房间（本地映射）")
+    public Result<?> aupRooms(@RequestHeader(value = "Authorization", required = false) String authorization,
+                              @RequestParam("registerNo") String registerNo) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        return Result.success(bookingLocalService.roomsByRegisterNo(registerNo));
+    }
+
     // ── AUP 跨房间搜索（本地 JOIN） ──
 
     @GetMapping("/aups/search")

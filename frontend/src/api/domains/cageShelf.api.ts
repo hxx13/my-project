@@ -856,6 +856,14 @@ export async function fetchAupDict(): Promise<{ id: string; registerNo: string; 
   return res.data?.data ?? [];
 }
 
+/** 按 AUP 注册号反查房间（本地映射，预约模式跳转用） */
+export async function fetchRoomsByRegisterNo(registerNo: string): Promise<{ roomId: string; roomName: string }[]> {
+  const res = await authHttp.get<Result<{ roomId: string; roomName: string }[]>>(
+    "/v1/cage-shelves/booking/aups/rooms", { params: { registerNo } },
+  );
+  return res.data?.data ?? [];
+}
+
 // ── 统一扫码查询 ──
 
 export interface CodeLookupCageBox {

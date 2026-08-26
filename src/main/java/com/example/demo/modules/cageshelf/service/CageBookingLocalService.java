@@ -101,6 +101,14 @@ public class CageBookingLocalService {
         return mapper.searchAups(keyword.trim());
     }
 
+    /** 按 AUP 注册号反查房间（本地映射，预约模式跳转用） */
+    public List<Map<String, Object>> roomsByRegisterNo(String registerNo) {
+        if (registerNo == null || registerNo.isBlank()) {
+            return new ArrayList<>();
+        }
+        return mapper.selectRoomsByRegisterNo(registerNo.trim());
+    }
+
     // ═══════════════════════════════════════════════════════════
     // 写（本地化，不再投递 ARO）
     // ═══════════════════════════════════════════════════════════

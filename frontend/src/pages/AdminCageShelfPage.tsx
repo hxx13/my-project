@@ -1075,7 +1075,7 @@ function Inner(){
                 <button onClick={async()=>{if(!aRid)return;try{const r=await forceRealtimeRefresh(aRid);setDetails(r.shelves??[]);setRealtimeMeta({fromRealtime:r.fromRealtime,cachedAt:r.cachedAt});toast.success("已刷新");}catch(e:any){toast.error("刷新失败");}}}
                   className="rounded-twin-md px-1.5 py-0.5 text-[10px] font-bold bg-blue-500 text-white hover:bg-blue-600 ml-1" title="强制刷新房间数据">↻</button>
               </>)}
-              {pageMode==="booking"&&<AupSearchBar />}
+              {pageMode==="booking"&&<AupSearchBar onSelectRoom={(rid,rname)=>{onOpenRoom(rid,rname);expandToRoom(rid);}}/>}
               {pageMode==="booking"&&<button type="button" onClick={handleBookingSync} disabled={bookingSyncing}
                 className="flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition">
                 {bookingSyncing?<Loader2 className="h-3 w-3 animate-spin"/>:null}🔄 同步 ARO

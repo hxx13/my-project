@@ -74,6 +74,16 @@
         ORDER BY id ASC
     </select>
 
+    <select id="selectRoomsByRegisterNo" resultType="map">
+        SELECT a.room_id AS roomId,
+               COALESCE(r.name, '') AS roomName
+        FROM cage_booking_room_aup a
+        LEFT JOIN cage_booking_room r ON a.room_id = r.room_id
+        WHERE a.register_number = #{registerNo}
+          AND a.deleted = 0
+        ORDER BY a.room_id
+    </select>
+
     <select id="searchAups" resultType="map">
         SELECT a.aup_id AS aupId,
                a.room_id AS roomId,
