@@ -158,6 +158,9 @@
             <if test="projectGroupName != null and projectGroupName != ''">
                 AND r.project_group_name LIKE CONCAT('%', #{projectGroupName}, '%')
             </if>
+            <if test="dept != null and dept != ''">
+                AND r.dept LIKE CONCAT('%', #{dept}, '%')
+            </if>
             <if test="excludeDraft">
                 AND (r.current_stage != 'draft' OR r.draft_source != 'first' OR r.is_demo = 1)
             </if>
@@ -280,7 +283,7 @@
                project_group_name AS projectGroupName,
                pi_name AS piName
         FROM aup_record
-        WHERE current_stage = 'approved'
+        WHERE current_stage IN ('approved', 'expired')
         ORDER BY id ASC
     </select>
 

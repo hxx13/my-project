@@ -762,7 +762,7 @@ public class AupService {
 
     public Map<String, Object> list(User user, int page, int size, String keyword, String registerNo,
                                     String stage, String excludeStage, List<String> excludeStages,
-                                    String projectGroupName,
+                                    String projectGroupName, String dept,
                                     boolean excludeDraft, String draftSource, Integer roundNo,
                                     String submitterId, String reviewerId,
                                     String submitterName, String reviewerName,
@@ -775,7 +775,7 @@ public class AupService {
         int safeSize = Math.min(Math.max(size, 1), 100);
         int offset = (safePage - 1) * safeSize;
         List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo,
-                stage, excludeStage, excludeStages, projectGroupName, excludeDraft, draftSource, roundNo,
+                stage, excludeStage, excludeStages, projectGroupName, dept, excludeDraft, draftSource, roundNo,
                 submitterId, reviewerId, submitterName, reviewerName, relatedToMe, groupScopeOnly, sortBy, sortDir, offset, safeSize);
         Map<Long, String> speciesByAup = loadSpeciesByAup(items);
         for (AupListItem item : items) {
@@ -785,7 +785,7 @@ public class AupService {
         Map<Long, Integer> expertRounds = resolveExpertRounds(items);
         fillNames(items, expertRounds);
         fillVoteNames(items, expertRounds);
-        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, excludeStages, projectGroupName, excludeDraft, draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe, groupScopeOnly);
+        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, excludeStages, projectGroupName, dept, excludeDraft, draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe, groupScopeOnly);
         Map<String, Object> data = new HashMap<>();
         data.put("total", total);
         data.put("items", items);
@@ -1198,7 +1198,7 @@ public class AupService {
 
     /** 按筛选条件分页遍历，返回全部匹配记录 id（供全选删除，含未加载分页）。 */
     public List<Long> listMatchingIds(User user, String keyword, String registerNo, String stage,
-                                      List<String> excludeStages, String projectGroupName, String draftSource,
+                                      List<String> excludeStages, String projectGroupName, String dept, String draftSource,
                                       Integer roundNo, String submitterName, String reviewerName,
                                       boolean relatedToMe, String sortBy, String sortDir) {
         String scopeRole = accessPolicy.resolveScopeRole(user);
@@ -1209,7 +1209,7 @@ public class AupService {
         int size = 100;
         while (true) {
             List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo,
-                    stage, null, excludeStages, projectGroupName, true, draftSource, roundNo,
+                    stage, null, excludeStages, projectGroupName, dept, true, draftSource, roundNo,
                     null, null, submitterName, reviewerName, relatedToMe, false, sortBy, sortDir, offset, size);
             if (items.isEmpty()) {
                 break;
@@ -1228,7 +1228,7 @@ public class AupService {
     /** 全选删除：按筛选条件取全部 id 后逐条删除（复用单删权限校验）。 */
     public Map<String, Object> batchDeleteAll(AupBatchDeleteRequest req, User user, User impersonator) {
         List<Long> ids = listMatchingIds(user, req.getKeyword(), req.getRegisterNo(), req.getStage(),
-                req.getExcludeStages(), req.getProjectGroupName(), req.getDraftSource(), req.getRoundNo(),
+                req.getExcludeStages(), req.getProjectGroupName(), req.getDept(), req.getDraftSource(), req.getRoundNo(),
                 req.getSubmitterName(), req.getReviewerName(), req.isRelatedToMe(), req.getSortBy(), req.getSortDir());
         return batchDelete(ids, user, impersonator);
     }
