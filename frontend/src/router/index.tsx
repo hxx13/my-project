@@ -77,6 +77,7 @@ import AdminCageShelfIndexPage from "@/pages/AdminCageShelfIndexPage";
 import CageShelfFormManagePage from "@/features/cage-shelf/pages/CageShelfFormManagePage";
 import CageFormListPage from "@/features/cage-shelf/pages/CageFormListPage";
 import CageFormAuditPage from "@/features/cage-shelf/pages/CageFormAuditPage";
+import CageOccupancyRecordsPage from "@/features/cage-shelf/pages/CageOccupancyRecordsPage";
 import CageFormEditorPage from "@/features/cage-shelf/pages/CageFormEditorPage";
 import CageCodelistPage from "@/features/cage-shelf/pages/CageCodelistPage";
 import CageFieldPage from "@/features/cage-shelf/pages/CageFieldPage";
@@ -160,6 +161,7 @@ import NhpFieldDictListPage from "@/features/nhp/pages/admin/NhpFieldDictListPag
 import NhpDataEntryPage from "@/features/nhp/pages/admin/NhpDataEntryPage";
 import NhpRecordsPage from "@/features/nhp/pages/admin/NhpRecordsPage";
 import NhpRecordDetailPage from "@/features/nhp/pages/admin/NhpRecordDetailPage";
+import NhpProjectDetailPage from "@/features/nhp/pages/admin/NhpProjectDetailPage";
 import NhpSubjectsPage from "@/features/nhp/pages/admin/NhpSubjectsPage";
 import NhpVisitPage from "@/features/nhp/pages/admin/NhpVisitPage";
 import NhpEventAssignmentPage from "@/features/nhp/pages/admin/NhpEventAssignmentPage";
@@ -173,6 +175,8 @@ import NhpCodelistReviewPage from "@/features/nhp/pages/admin/NhpCodelistReviewP
 import NhpOverviewPage from "@/features/nhp/pages/admin/NhpOverviewPage";
 import NhpReviewCenterPage from "@/features/nhp/pages/admin/NhpReviewCenterPage";
 import NhpNotificationCenterPage from "@/features/nhp/pages/admin/NhpNotificationCenterPage";
+import TeamListPage from "@/features/team/TeamListPage";
+import TeamDetailPage from "@/features/team/TeamDetailPage";
 import MobileStudentCenterRoute from "@/pages/mobile/MobileStudentCenterRoute";
 import MobileStudentCenterInvalidPage from "@/pages/mobile/MobileStudentCenterInvalidPage";
 import MobileLoginPage from "@/pages/mobile/auth/MobileLoginPage";
@@ -347,6 +351,7 @@ export const router = createHashRouter([
               { path: "cage-shelves/forms/codelists", element: <CageCodelistPage /> },
               { path: "cage-shelves/forms/fields", element: <CageFieldPage /> },
               { path: "cage-shelves/forms/fields/:dictKey", element: <CageFieldPage /> },
+              { path: "cage-shelves/records", element: <CageOccupancyRecordsPage /> },
               { path: "cage-shelf-indexes", element: <AdminCageShelfIndexPage /> },
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },
               { path: "aro-binding", element: <AdminAroBindingPage /> },
@@ -486,9 +491,12 @@ export const router = createHashRouter([
       { path: "nhp-field/:dictKey", element: <NhpFieldPage /> },
       { path: "nhp-subjects", element: <NhpSubjectsPage /> },
       { path: "nhp-records", element: <NhpRecordsPage /> },
+      { path: "nhp-records/project/:projectId", element: <NhpProjectDetailPage /> },
       { path: "nhp-records/:subjectId", element: <NhpRecordDetailPage /> },
       { path: "nhp-entry", element: <NhpDataEntryPage /> },
       { path: "nhp-entry/:id", element: <NhpDataEntryPage /> },
+      { path: "nhp-team", element: <TeamListPage /> },
+      { path: "nhp-team/:id", element: <TeamDetailPage /> },
     ],
   },
 

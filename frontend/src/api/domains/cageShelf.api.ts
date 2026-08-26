@@ -1325,3 +1325,24 @@ export async function fetchClaimHistory(id: number): Promise<ApprovalRecordItem[
   if (!res.data?.success) throw new Error(res.data?.message || "加载审批历史失败");
   return res.data.data ?? [];
 }
+
+// ── 笼位占用记录 ──
+
+export interface CageOccupancyRecord {
+  id: number; eventType: string; occupantId: number | null; occupantName?: string | null;
+  fromAnimalCageId?: string | null; toAnimalCageId?: string | null; operatorName?: string | null;
+  reason?: string | null; createdAt?: string | null;
+}
+
+export async function fetchCageOccupancyRecords(view: "cage" | "person", id: number | string): Promise<CageOccupancyRecord[]> {
+  const params = view === "cage" ? { view, cageId: id } : { view, occupantId: id };
+  const res = await authHttp.get<Result<CageOccupancyRecord[]>>("/admin/cage-info/occupancy/records", { params });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载记录失败");
+  return res.data.data ?? [];
+}
+
+export async function searchPersonnelByKeyword(keyword: string): Promise<Array<{ id: number; name: string }>> {
+  const res = await authHttp.get<Result<{ list?: Array<{ id: number; name: string }> }>>("/personnel", { params: { keyword, pageSize: 10 } });
+  if (!res.data?.success) throw new Error(res.data?.message || "搜索人员失败");
+  return (res.data.data?.list ?? []).map((p) => ({ id: p.id, name: p.name ?? String(p.id) }));
+}
