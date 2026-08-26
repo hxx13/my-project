@@ -176,6 +176,9 @@ public class CageClaimService {
         claim.setAupId(aup != null ? aup.getId() : null);
         claimMapper.insert(claim);
         infoValueService.seedFromDetail(claim.getAnimalCageId());
+        if ("confirmed".equals(initStatus)) {
+            applyOccupancy(claim);
+        }
 
         log.info("[cage-apply] student={} animalCageId={} status={} id={}", studentId, animalCageId, initStatus, claim.getId());
         return claim;
@@ -211,6 +214,21 @@ public class CageClaimService {
                 if (PersonnelProjectGroupUtil.belongsToGroup(aup.getProjectGroupName(), g)) { ok = true; break; }
             }
             if (!ok) throw new TwinBusinessException(403, "该笼位所属 AUP 不在你的课题组，无法申请");
+        }
+    }
+
+    private void applyOccupancy(CageClaim claim) {
+        Long cageId = claim.getAnimalCageId();
+        if (cageId == null) return;
+        // 状态是表外固定字段：cage_cell_detail.cage_type_code 2→3
+        CageCellDetail d = detailMapper.selectByAnimalCageId(cageId);
+        if (d != null) {
+            d.setCageTypeCode(3);
+            detailMapper.batchUpsert(List.of(d));
+        }
+        // 占用者（实验员）是表内表单字段：写 cage_info_value.experimenter_name
+        if (claim.getClaimantName() != null && !claim.getClaimantName().isBlank()) {
+            infoValueService.syncFromMapped(cageId, Map.of("experimenter_name", claim.getClaimantName()));
         }
     }
 
@@ -257,6 +275,7 @@ public class CageClaimService {
         claim.setClaimStatus("confirmed");
         claim.setConfirmedAt(DT_FMT.format(LocalDateTime.now()));
         claimMapper.update(claim);
+        applyOccupancy(claim);
 
         log.info("[cage-apply] confirm student={} claimId={} animalCageId={}", student.getId(), claimId, claim.getAnimalCageId());
         return claim;
@@ -450,7 +469,10 @@ public class CageClaimService {
             if (isClaimApproval) {
                 boolean confirmReq = Boolean.TRUE.equals(claim.getConfirmRequired());
                 claim.setClaimStatus(confirmReq ? "locked" : "confirmed");
-                if (!confirmReq) claim.setConfirmedAt(DT_FMT.format(LocalDateTime.now()));
+                if (!confirmReq) {
+                    claim.setConfirmedAt(DT_FMT.format(LocalDateTime.now()));
+                    applyOccupancy(claim);
+                }
             } else {
                 // 释放审批通过
                 claim.setClaimStatus("released");
@@ -488,6 +510,7 @@ public class CageClaimService {
         claim.setClaimStatus("confirmed");
         claim.setConfirmedAt(DT_FMT.format(LocalDateTime.now()));
         claimMapper.update(claim);
+        applyOccupancy(claim);
         ApprovalRecord ar = new ApprovalRecord();
         ar.setTargetType("cage_confirm");
         ar.setTargetId(claimId);
