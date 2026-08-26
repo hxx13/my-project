@@ -589,21 +589,25 @@ function Inner(){
 
   /* ---- 框选模式：点击两格自动矩形选中 ---- */
   const handleAllocateToggle=useCallback((shelveId:string,x:number,y:number,shiftKey?:boolean)=>{
+    const isAllocatable=(cx:number,cy:number)=>{
+      const c=cellAtKey.get(`${shelveId}:${cx}:${cy}`);
+      const ct=(c as any)?.cageTypeCode ?? (c as any)?.animalCageType;
+      return ct===1;
+    };
     if(boxSelectMode){
       const anchor=boxSelectAnchorRef.current;
       if(!anchor||anchor.shelveId!==shelveId){
-        // 第一格 → 设为锚点并选中
+        if(!isAllocatable(x,y)){toast("只能分配「等待分配」状态的笼位");return;}
         boxSelectAnchorRef.current={shelveId,x,y};
         setSelectedCells(prev=>{const next=new Set(prev);next.add(`${shelveId}:${x}:${y}`);return next;});
         anchorCellRef.current={shelveId,x,y};
         return;
       }
-      // 第二格 → 矩形框选 + 退出框选模式
       const minX=Math.min(anchor.x,x),maxX=Math.max(anchor.x,x);
       const minY=Math.min(anchor.y,y),maxY=Math.max(anchor.y,y);
       setSelectedCells(prev=>{
         const next=new Set(prev);
-        for(let cx=minX;cx<=maxX;cx++)for(let cy=minY;cy<=maxY;cy++)next.add(`${shelveId}:${cx}:${cy}`);
+        for(let cx=minX;cx<=maxX;cx++)for(let cy=minY;cy<=maxY;cy++) if(isAllocatable(cx,cy)) next.add(`${shelveId}:${cx}:${cy}`);
         return next;
       });
       boxSelectAnchorRef.current=null;
@@ -611,10 +615,23 @@ function Inner(){
       anchorCellRef.current={shelveId,x,y};
       return;
     }
-    // 非框选模式 → 走普通 toggle
     if(!shiftHintShownRef.current){shiftHintShownRef.current=true;toast('按住 Shift 键点击另一个笼位，可快速框选矩形区域',{icon:'💡',duration:4000});}
-    toggleCell(shelveId,x,y,shiftKey);
-  },[boxSelectMode,toggleCell]);
+    if(!isAllocatable(x,y)){toast("只能分配「等待分配」状态的笼位");return;}
+    setSelectedCells(prev=>{
+      const next=new Set(prev);
+      const anchor=anchorCellRef.current;
+      if(shiftKey && anchor && anchor.shelveId===shelveId){
+        const minX=Math.min(anchor.x,x),maxX=Math.max(anchor.x,x);
+        const minY=Math.min(anchor.y,y),maxY=Math.max(anchor.y,y);
+        for(let cx=minX;cx<=maxX;cx++)for(let cy=minY;cy<=maxY;cy++) if(isAllocatable(cx,cy)) next.add(`${shelveId}:${cx}:${cy}`);
+      }else{
+        const key=`${shelveId}:${x}:${y}`;
+        next.has(key)?next.delete(key):next.add(key);
+        anchorCellRef.current={shelveId,x,y};
+      }
+      return next;
+    });
+  },[boxSelectMode,cellAtKey]);
 
   /* ---- 认领模式：只允许选择已预约空笼盒(type2)且无活跃认领 ---- */
   const handleReserveToggle=useCallback((shelveId:string,x:number,y:number,shiftKey?:boolean)=>{
