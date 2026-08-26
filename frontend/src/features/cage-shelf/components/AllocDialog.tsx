@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Search, ArrowUpDown } from "lucide-react";
-import { searchPersonnelByKeyword, type AupItem } from "@/api/domains/cageShelf.api";
+import { type AupItem } from "@/api/domains/cageShelf.api";
 
 interface Props {
   aupList: AupItem[];
@@ -8,19 +8,13 @@ interface Props {
   setSelectedAupId: (id: string) => void;
   selectedCells: Set<string>;
   allocSubmitting: boolean;
-  allocPerson: { name: string; accountId: string } | null;
-  onPersonChange: (p: { name: string; accountId: string } | null) => void;
-  roomAupGroups: Set<string>;
   onClose: () => void;
   onConfirm: () => void;
 }
 
-export default function AllocDialog({ aupList, selectedAupId, setSelectedAupId, selectedCells, allocSubmitting, allocPerson, onPersonChange, roomAupGroups, onClose, onConfirm }: Props) {
+export default function AllocDialog({ aupList, selectedAupId, setSelectedAupId, selectedCells, allocSubmitting, onClose, onConfirm }: Props) {
   const [search, setSearch] = useState("");
   const [sortAsc, setSortAsc] = useState(true);
-  const [personQuery, setPersonQuery] = useState("");
-  const [personResults, setPersonResults] = useState<Array<{ id: number; name: string; accountId: string; projectGroupName: string }>>([]);
-  const [personSearching, setPersonSearching] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -49,20 +43,6 @@ export default function AllocDialog({ aupList, selectedAupId, setSelectedAupId, 
     }
     return arr;
   }, [selectedCells]);
-
-  const handlePersonSearch = async (kw: string) => {
-    setPersonQuery(kw);
-    if (!kw.trim()) { setPersonResults([]); return; }
-    setPersonSearching(true);
-    try {
-      const list = await searchPersonnelByKeyword(kw.trim());
-      setPersonResults(roomAupGroups.size > 0 ? list.filter((p) => roomAupGroups.has(p.projectGroupName)) : list);
-    } catch {
-      setPersonResults([]);
-    } finally {
-      setPersonSearching(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={onClose}>
@@ -116,50 +96,6 @@ export default function AllocDialog({ aupList, selectedAupId, setSelectedAupId, 
               </button>
             ))}
           </div>
-        </div>
-
-        {/* 人员选择（单人，可空） */}
-        <div className="mb-4">
-          <div className="text-xs text-[var(--twin-mute)] mb-1">占用者（可选）</div>
-          {allocPerson ? (
-            <div className="flex items-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1">
-              <span className="flex-1 text-xs text-[var(--twin-ink)]">{allocPerson.name}</span>
-              <button onClick={() => { onPersonChange(null); setPersonQuery(""); setPersonResults([]); }} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">✕</button>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1">
-                <Search className="h-3.5 w-3.5 text-[var(--twin-mute)] shrink-0" />
-                <input
-                  type="text"
-                  value={personQuery}
-                  onChange={e => handlePersonSearch(e.target.value)}
-                  placeholder="搜索人员…"
-                  className="flex-1 bg-transparent text-xs outline-none text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
-                />
-                {personQuery && <button onClick={() => handlePersonSearch("")} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">✕</button>}
-              </div>
-              {(personSearching || personResults.length > 0) && (
-                <div className="mt-1 border border-[var(--twin-hairline)] rounded-twin-md overflow-hidden">
-                  <div className="max-h-36 overflow-y-auto">
-                    {personSearching && <div className="px-3 py-2 text-center text-xs text-[var(--twin-mute)]">搜索中…</div>}
-                    {!personSearching && personResults.length === 0 && (
-                      <div className="px-3 py-2 text-center text-xs text-[var(--twin-mute)]">无匹配结果</div>
-                    )}
-                    {!personSearching && personResults.map(p => (
-                      <button
-                        key={p.id}
-                        onClick={() => { onPersonChange({ name: p.name, accountId: p.accountId }); setPersonResults([]); }}
-                        className="w-full text-left px-3 py-2 text-xs border-b border-[var(--twin-hairline)] last:border-b-0 hover:bg-[var(--app-color-surface-hover)] text-[var(--twin-ink)]"
-                      >
-                        {p.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
         </div>
 
         <div className="flex justify-end gap-2">

@@ -1348,8 +1348,8 @@ export async function searchPersonnelByKeyword(keyword: string): Promise<Array<{
 }
 
 export interface AssignBatchResult { animalCageId: string; ok: boolean; claimId?: number; error?: string }
-export async function assignBatchCages(animalCageIds: (string | number)[], aupId: string | number, roomId: string | number, shelveId: string | number, piName: string, aupNumber: string, studentUserId: string): Promise<AssignBatchResult[]> {
-  const res = await authHttp.post<Result<AssignBatchResult[]>>("/admin/cage-claims/assign-batch", { animalCageIds, aupId, roomId, shelveId, piName, aupNumber, studentUserId });
-  if (!res.data?.success) throw new Error(res.data?.message || "分配失败");
+export async function assignBatchCages(animalCageIds: (string | number)[], studentUserId: string): Promise<AssignBatchResult[]> {
+  const res = await authHttp.post<Result<AssignBatchResult[]>>("/admin/cage-claims/assign-batch", { animalCageIds, studentUserId });
+  if (!res.data?.success) throw new Error(res.data?.message || "认领失败");
   return res.data.data ?? [];
 }

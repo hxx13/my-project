@@ -631,20 +631,16 @@ public class CageClaimService {
     }
 
     @Transactional
-    public List<Map<String, Object>> assignBatch(User admin, List<Long> animalCageIds, Long aupId, Long roomId,
-                                                 String piName, String aupNumber, String studentUserId) {
+    public List<Map<String, Object>> assignBatch(User admin, List<Long> animalCageIds, String studentUserId) {
         User student = userMapper.findById(studentUserId);
         if (student == null) throw new TwinBusinessException(400, "目标学生不存在");
-        quotaService.assertCanAllocate(roomId, aupNumber, animalCageIds == null ? 0 : animalCageIds.size());
         List<Map<String, Object>> out = new ArrayList<>();
         for (Long cageId : animalCageIds) {
             try {
                 CageCellDetail locked = detailMapper.selectByAnimalCageIdForUpdate(cageId);
                 if (locked == null || locked.getCageTypeCode() == null || locked.getCageTypeCode() != 2) {
-                    throw new TwinBusinessException(400, "该笼位不可分配");
+                    throw new TwinBusinessException(400, "该笼位不可认领");
                 }
-                // AUP 归属（复用 detailService.allocate，写 pi/project_pi/dept/aup/type=2）
-                detailService.allocate(cageId, piName, aupNumber, aupId);
                 List<CageClaim> existing = claimMapper.selectByAnimalCageIdForUpdate(cageId);
                 for (CageClaim c : existing) if (c.isActive()) throw new TwinBusinessException(409, "该笼位已被认领");
                 CageClaim claim = new CageClaim();
@@ -653,12 +649,12 @@ public class CageClaimService {
                 claim.setClaimantId(studentUserId);
                 claim.setClaimantName(displayNameOf(student));
                 claim.setClaimantDept(locked.getDepartmentName());
-                claim.setAupId(aupId);
+                claim.setAupId(locked.getAupId());
                 claim.setAssignerId(admin.getId());
                 claim.setAssignerName(displayNameOf(admin));
                 claim.setConfirmRequired(getConfirmRequired());
                 claim.setRetryCount(0);
-                claim.setNote("管理员分配");
+                claim.setNote("管理员认领");
                 claimMapper.insert(claim);
                 if (claim.getClaimantName() != null && !claim.getClaimantName().isBlank()) {
                     infoValueService.syncFromMapped(cageId, Map.of("experimenter_name", claim.getClaimantName()));
@@ -666,7 +662,7 @@ public class CageClaimService {
                 infoValueService.seedFromDetail(cageId);
                 out.add(Map.of("animalCageId", cageId, "ok", true, "claimId", claim.getId()));
             } catch (Exception e) {
-                out.add(Map.of("animalCageId", cageId, "ok", false, "error", e.getMessage() == null ? "分配失败" : e.getMessage()));
+                out.add(Map.of("animalCageId", cageId, "ok", false, "error", e.getMessage() == null ? "认领失败" : e.getMessage()));
             }
         }
         return out;

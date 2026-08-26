@@ -77,7 +77,7 @@ import {
   fetchCellIndexByShelf, fetchLocalShelfGridByShelveId, localAllocate, localCancelAllocate, localEdit, localAnnotate, fetchLocalAnnotate, type CageCellIndexEntry,
   syncLocalCagePipeline, localPipelineStepLabel, syncAllCellIds,
   lookupCode, adminConfirmClaim, archiveCage, reconcileCageOccupancy, type CodeLookupResult,
-  assignBatchCages,
+  assignBatchCages, searchPersonnelByKeyword,
 } from "@/api/domains/cageShelf.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
@@ -153,7 +153,6 @@ function Inner(){
   const shiftHintShownRef=useRef(false); // 首次勾选时弹出 Shift 框选提示
   const[allocDialogOpen,setAllocDialogOpen]=useState(false);
   const[selectedAupId,setSelectedAupId]=useState("");
-  const[allocPerson,setAllocPerson]=useState<{ name: string; accountId: string } | null>(null);
   const[realtimeMeta,setRealtimeMeta]=useState<{fromRealtime:boolean;cachedAt:string}|null>(null);
   const[allocSubmitting,setAllocSubmitting]=useState(false);
   // ═══════════════════════════════════════════════════════════
@@ -185,6 +184,10 @@ function Inner(){
   const[archiveMode,setArchiveMode]=useState(false);
   const[archiveTarget,setArchiveTarget]=useState<{ animalCageId: string; positionLabel: string; occupantName?: string; projectPiName?: string; aupNumber?: string } | null>(null);
   const[archiveSubmitting,setArchiveSubmitting]=useState(false);
+  const[reserveMode,setReserveMode]=useState(false);
+  const[reservePerson,setReservePerson]=useState<{ name: string; accountId: string } | null>(null);
+  const[reserveSubmitting,setReserveSubmitting]=useState(false);
+  const[reserveOpen,setReserveOpen]=useState(false);
   const[settingsOpen,setSettingsOpen]=useState(false);
 
   // 弹窗A 打开时从 /local/annotate 加载备注和状态照片（不能用 onOpenChange，Radix 只在用户关闭时触发）
@@ -318,11 +321,6 @@ function Inner(){
     if (roomAupNumbers.size === 0) return aupList;
     return aupList.filter((a) => roomAupNumbers.has(a.registerNo));
   }, [aupList, roomAupNumbers]);
-  const roomAupGroups = useMemo(() => {
-    const s = new Set<string>();
-    for (const a of allocAupList) if (a.projectGroupName) s.add(a.projectGroupName);
-    return s;
-  }, [allocAupList]);
   const [configMode, setConfigMode] = useState<"auto"|"manual"|"off">("auto");
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const { data: batchList = [] } = useQuery({ queryKey: ["snapshotBatches"], queryFn: fetchSnapshotBatches, staleTime: 60_000 });
@@ -658,18 +656,6 @@ function Inner(){
       const aup=aupList.find(x=>String(x.id)===String(selectedAupId));
       const piName=aup?.piName||"";
       const aupNumber=aup?.registerNo||"";
-      if(allocPerson){
-        try{
-          const results=await assignBatchCages(cageIds,selectedAupId,aRid,assignShelveId,piName,aupNumber,allocPerson.accountId);
-          const failed=results.filter(r=>!r.ok).length;
-          if(failed>0){toast.error(`已分配 ${cageIds.length-failed} 个笼位给 ${allocPerson.name}，${failed} 个失败`);}
-          else{toast.success(`已分配 ${cageIds.length} 个笼位给 ${allocPerson.name}`);}
-        }catch(e:any){toast.error(e?.message||"分配失败");}
-        setAllocPerson(null);
-        setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
-        setAllocSubmitting(false);setDetailReloadKey(k=>k+1);
-        return;
-      }
       try{await localAllocate(cageIds,selectedAupId,aRid,assignShelveId,piName,aupNumber);toast.success(`已分配 ${cageIds.length} 个笼位（本地）`);}
       catch(e:any){toast.error(e?.message||"分配失败");}
       setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
@@ -682,6 +668,42 @@ function Inner(){
     }catch(e:any){toast.error(e instanceof Error?e.message:"分配失败");}
     finally{setAllocSubmitting(false);}
   };
+
+  /* ---- 认领模式：确认认领（建 locked 认领 + 填占用者，免审核） ---- */
+  const handleReserveConfirm=useCallback(async(p:{ name: string; accountId: string })=>{
+    if(selectedCells.size===0||!p.accountId)return;
+    const cageIds:string[]=[];
+    for(const key of selectedCells){
+      const [sid,xStr,yStr]=key.split(":");
+      const x=parseInt(xStr),y=parseInt(yStr);
+      for(const d of details){
+        if(String(d.shelfMeta?.shelveId)===sid){
+          const cell=d.grid?.find(c=>c.x===x&&c.y===y);
+          if(cell?.id)cageIds.push(String(cell.id));
+          break;
+        }
+      }
+      if(shelfDetail&&String(shelfDetail.shelfMeta?.shelveId)===sid){
+        const cell=shelfDetail.grid?.find(c=>c.x===x&&c.y===y);
+        if(cell?.id)cageIds.push(String(cell.id));
+      }
+    }
+    if(cageIds.length===0){toast.error("无法获取选中笼位的 ID");return;}
+    setReserveSubmitting(true);
+    try{
+      const results=await assignBatchCages(cageIds,p.accountId);
+      const failed=results.filter(r=>!r.ok).length;
+      if(failed>0){toast.error(`已认领 ${cageIds.length-failed} 个笼位给 ${p.name}，${failed} 个失败`);}
+      else{toast.success(`已认领 ${cageIds.length} 个笼位给 ${p.name}`);}
+    }catch(e:any){toast.error(e?.message||"认领失败");}
+    finally{
+      setReserveSubmitting(false);
+      setReservePerson(null);
+      setReserveOpen(false);
+      setSelectedCells(new Set());anchorCellRef.current=null;
+      setDetailReloadKey(k=>k+1);
+    }
+  },[selectedCells,details,shelfDetail]);
 
   // 从 details 或 shelfDetail 找到 cell 所属的 shelveId
   const findShelfIdForCell=(cell:CageShelfCell):string=>{
@@ -999,21 +1021,22 @@ function Inner(){
   },[editMode,confirmMode,archiveMode,handleEditScan,handleConfirmScan,handleArchiveScan,locateLookup]);
 
   // ── 统一模式切换（下拉选择用）──
-  const switchMode=useCallback((mode:"view"|"allocate"|"booking"|"edit"|"confirm"|"archive")=>{
+  const switchMode=useCallback((mode:"view"|"allocate"|"booking"|"edit"|"confirm"|"archive"|"reserve")=>{
     setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);
-    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setScanCache(new Map());setLastScannedKey(null);
+    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setReserveMode(false);setReservePerson(null);setReserveOpen(false);setScanCache(new Map());setLastScannedKey(null);
     if(mode==="allocate")setPageMode("allocate");
     else if(mode==="booking")setPageMode("booking");
     else setPageMode("view");
     if(mode==="edit")setEditMode(true);
     else if(mode==="confirm")setConfirmMode(true);
     else if(mode==="archive")setArchiveMode(true);
+    else if(mode==="reserve")setReserveMode(true);
   },[]);
 
   // ── 数据源切换（设置中心）──
   const switchDataSource=useCallback((ds:"aro"|"local")=>{
     setDataSource(ds);
-    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setScanCache(new Map());setLastScannedKey(null);
+    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setReserveMode(false);setReservePerson(null);setReserveOpen(false);setScanCache(new Map());setLastScannedKey(null);
     setSelectedCells(new Set());setCell(null);setShelfId(null);
   },[]);
 
@@ -1026,8 +1049,8 @@ function Inner(){
     }
   }, [pageMode]);
 
-  const currentMode: "view"|"allocate"|"booking"|"edit"|"confirm"|"archive" = editMode?"edit":confirmMode?"confirm":archiveMode?"archive":pageMode==="allocate"?"allocate":pageMode==="booking"?"booking":"view";
-  const currentModeLabel = currentMode==="edit"?"编辑":currentMode==="confirm"?"扫码确认":currentMode==="archive"?"归档":currentMode==="allocate"?"分配":currentMode==="booking"?"预约":"查看";
+  const currentMode: "view"|"allocate"|"booking"|"edit"|"confirm"|"archive"|"reserve" = editMode?"edit":confirmMode?"confirm":archiveMode?"archive":reserveMode?"reserve":pageMode==="allocate"?"allocate":pageMode==="booking"?"booking":"view";
+  const currentModeLabel = currentMode==="edit"?"编辑":currentMode==="confirm"?"扫码确认":currentMode==="archive"?"归档":currentMode==="reserve"?"认领":currentMode==="allocate"?"分配":currentMode==="booking"?"预约":"查看";
 
   // ═══════════════════════════════════════════════════════════
   //  RENDER
@@ -1084,8 +1107,8 @@ function Inner(){
                   {currentModeLabel}<span className="text-[10px] text-[var(--twin-mute)]">▾</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="min-w-[8rem]">
-                  {(["view","allocate","booking","edit","confirm","archive"] as const).map(m=>{
-                    const label=m==="edit"?"编辑":m==="confirm"?"扫码确认":m==="archive"?"归档":m==="allocate"?"分配":m==="booking"?"预约":"查看";
+                  {(["view","allocate","booking","edit","confirm","archive","reserve"] as const).map(m=>{
+                    const label=m==="edit"?"编辑":m==="confirm"?"扫码确认":m==="archive"?"归档":m==="reserve"?"认领":m==="allocate"?"分配":m==="booking"?"预约":"查看";
                     return <DropdownMenuItem key={m} onSelect={()=>switchMode(m)} className={currentMode===m?"bg-[var(--twin-canvas-soft)]":""}>
                       <span className={currentMode===m?"font-semibold text-[var(--twin-link-deep)]":""}>{currentMode===m?"✓ ":""}{label}</span>
                     </DropdownMenuItem>;
@@ -1176,6 +1199,12 @@ function Inner(){
               <button type="button" onClick={handleCancelAssign} disabled={allocSubmitting} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-red-500 text-white hover:bg-red-600 transition">取消笼位预约</button>
               <button type="button" onClick={()=>{setSelectedCells(new Set());anchorCellRef.current=null;}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-slate-200 text-slate-700 hover:bg-slate-300 transition">清除所有勾选({selectedCells.size})</button>
             </>}
+            {/* ---- 认领模式业务按钮（选中 >0 时出现） ---- */}
+            {reserveMode&&selectedCells.size>0&&<>
+              <button type="button" onClick={()=>setReserveOpen(true)} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition">确认认领({selectedCells.size})</button>
+              <button type="button" onClick={()=>{setSelectedCells(new Set());anchorCellRef.current=null;}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-slate-200 text-slate-700 hover:bg-slate-300 transition">清除所有勾选({selectedCells.size})</button>
+            </>}
+            {reserveMode&&<span className="text-[10px] text-[var(--twin-mute)] ml-1 select-none">🖱️ 点击勾选可认领的 type2 笼位 · <kbd className="text-[9px] px-0.5 py-px rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)]">Shift</kbd>+点击 矩形多选</span>}
             {pageMode==="allocate"&&!boxSelectMode&&<span className="text-[10px] text-[var(--twin-mute)] ml-1 select-none">🖱️ 点击选中 · <kbd className="text-[9px] px-0.5 py-px rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)]">Shift</kbd>+点击 矩形多选</span>}
             {boxSelectMode&&<span className="text-[10px] text-amber-600 font-medium ml-1 select-none animate-pulse">⬜ 请点击第一个笼位设置框选起点</span>}
 
@@ -1273,7 +1302,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,sid):confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,sid):confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode} selectedCells={pageMode==="allocate"||reserveMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"||reserveMode?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"||reserveMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/></div>;
             })}</div>}
           </>}
 
@@ -1283,7 +1312,7 @@ function Inner(){
             <div className="w-1/2 flex flex-col min-w-0">
               {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
               {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
-              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode} selectedCells={pageMode==="allocate"||reserveMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"||reserveMode?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"||reserveMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/>}
             </div>
             {/* Right: cell detail / edit actions / bind confirm */}
             <div className="w-1/2 flex flex-col min-w-0 gap-2">
@@ -1355,7 +1384,8 @@ function Inner(){
              DIALOGS — 分配弹窗 / 扫码弹窗 / 编辑状态弹窗 / 扫码确认核对 / CAS提示
              ═══════════════════════════════════════════════════ */}
     {/* ---- 分配确认弹窗 ---- */}
-    {allocDialogOpen&&<AllocDialog aupList={allocAupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} allocPerson={allocPerson} onPersonChange={setAllocPerson} roomAupGroups={roomAupGroups} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
+    {allocDialogOpen&&<AllocDialog aupList={allocAupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
+    <ReservePersonDialog open={reserveOpen} submitting={reserveSubmitting} onClose={()=>{setReserveOpen(false);setReservePerson(null);}} onConfirm={(p)=>{setReservePerson(p);handleReserveConfirm(p);}}/>
 
     {/* ---- 常驻扫码定位（按当前模式联动判定） ---- */}
     <MobileScanDialog open={scanLockOpen} onClose={()=>setScanLockOpen(false)} onResult={(code)=>{setScanLockOpen(false);handleResidentScan(code);}}/>
@@ -1667,4 +1697,73 @@ function Inner(){
     </Dialog>
     </div>
   </AdminPageShell>;
+}
+
+/* 预约模式：占用者选择弹窗（管理员侧，免审核） */
+function ReservePersonDialog({ open, submitting, onClose, onConfirm }: {
+  open: boolean;
+  submitting: boolean;
+  onClose: () => void;
+  onConfirm: (p: { name: string; accountId: string }) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Array<{ id: number; name: string; accountId: string; projectGroupName: string }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<{ name: string; accountId: string } | null>(null);
+
+  const search = async (kw: string) => {
+    setQuery(kw);
+    if (!kw.trim()) { setResults([]); return; }
+    setSearching(true);
+    try { setResults(await searchPersonnelByKeyword(kw.trim())); }
+    catch { setResults([]); }
+    finally { setSearching(false); }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { setSelected(null); onClose(); } }}>
+      <DialogContent className="z-[var(--z-modal)] sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>选择占用者</DialogTitle>
+          <DialogDescription>认领笼位后，该人员将成为占用者（免审核，直接锁定）</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <div className="flex items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1">
+            <Search className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]" />
+            <input type="text" value={query} onChange={(e) => search(e.target.value)} placeholder="搜索人员姓名/账号…"
+              className="flex-1 bg-transparent text-xs outline-none text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]" />
+            {query && <button onClick={() => { setSelected(null); search(""); }} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">✕</button>}
+          </div>
+          {selected ? (
+            <div className="flex items-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1.5">
+              <span className="flex-1 text-xs text-[var(--twin-ink)]">{selected.name}</span>
+              <button onClick={() => setSelected(null)} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">✕</button>
+            </div>
+          ) : (
+            (searching || results.length > 0) && (
+              <div className="border border-[var(--twin-hairline)] rounded-twin-md overflow-hidden">
+                <div className="max-h-48 overflow-y-auto">
+                  {searching && <div className="px-3 py-2 text-center text-xs text-[var(--twin-mute)]">搜索中…</div>}
+                  {!searching && results.length === 0 && <div className="px-3 py-2 text-center text-xs text-[var(--twin-mute)]">无匹配结果</div>}
+                  {!searching && results.map((p) => (
+                    <button key={p.id} onClick={() => setSelected({ name: p.name, accountId: p.accountId })}
+                      className="w-full text-left px-3 py-2 text-xs border-b border-[var(--twin-hairline)] last:border-b-0 hover:bg-[var(--app-color-surface-hover)] text-[var(--twin-ink)]">
+                      <span className="font-medium">{p.name}</span>
+                      {p.projectGroupName && <span className="ml-1 text-[10px] text-[var(--twin-mute)]">{p.projectGroupName}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <AdminButton type="button" tone="secondary" size="default" onClick={() => { setSelected(null); onClose(); }}>取消</AdminButton>
+          <AdminButton type="button" size="default" disabled={submitting || !selected} onClick={() => selected && onConfirm(selected)}>
+            {submitting ? "认领中..." : "确认认领"}
+          </AdminButton>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }

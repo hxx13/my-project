@@ -183,25 +183,21 @@ public class AdminCageClaimController {
         }
     }
 
-    // ── 管理员批量分配（写AUP归属+建locked认领+填占用者）──
+    // ── 管理员批量分配：建locked认领+填占用者（免审核）──
 
     @PostMapping("/assign-batch")
-    @Operation(summary = "管理员批量分配：写AUP归属+建locked认领+填占用者")
+    @Operation(summary = "管理员批量分配：建locked认领+填占用者（免审核）")
     public Result<List<Map<String, Object>>> assignBatch(@RequestBody Map<String, Object> body, HttpServletRequest req) {
         User u = resolveUser(req);
         Result<?> denied = requireMinRole(u, RoleEnum.ADMIN);
         if (denied != null) return Result.fail(403, denied.getMessage());
         List<Long> cageIds = toLongList(body.get("animalCageIds"));
-        Long aupId = toLong(body.get("aupId"));
-        Long roomId = toLong(body.get("roomId"));
-        String piName = body.get("piName") == null ? null : String.valueOf(body.get("piName"));
-        String aupNumber = body.get("aupNumber") == null ? null : String.valueOf(body.get("aupNumber"));
         String studentUserId = body.get("studentUserId") == null ? null : String.valueOf(body.get("studentUserId"));
         if (cageIds == null || cageIds.isEmpty() || studentUserId == null || studentUserId.isBlank()) {
             return Result.fail(400, "animalCageIds / studentUserId 必填");
         }
         try {
-            return Result.success(claimService.assignBatch(u, cageIds, aupId, roomId, piName, aupNumber, studentUserId));
+            return Result.success(claimService.assignBatch(u, cageIds, studentUserId));
         } catch (Exception e) {
             return handleServiceException(e);
         }
