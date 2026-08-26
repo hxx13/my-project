@@ -521,8 +521,13 @@ public class CageClaimService {
 
     public CageClaim getById(Long id) { return claimMapper.selectById(id); }
 
-    public List<CageClaim> getMyClaims(String studentId, String status) {
-        return claimMapper.selectByClaimantId(studentId, status);
+    public List<Map<String, Object>> getMyClaims(String studentId, String status) {
+        List<Map<String, Object>> rows = claimMapper.selectMyEnriched(studentId, status);
+        for (Map<String, Object> row : rows) {
+            if (row.get("animalCageId") != null) row.put("animalCageId", String.valueOf(row.get("animalCageId")));
+            if (row.get("shelveId") != null) row.put("shelveId", String.valueOf(row.get("shelveId")));
+        }
+        return rows;
     }
 
     public Map<String, Object> getPendingList(String status, String keyword, int page, int pageSize) {

@@ -26,6 +26,10 @@ public interface CageClaimMapper {
     List<CageClaim> selectByClaimantId(@Param("claimantId") String claimantId,
                                        @Param("status") String status);
 
+    /** 学生本人的认领列表（富化：网格位置/架子/AUP/最新驳回理由） */
+    List<Map<String, Object>> selectMyEnriched(@Param("claimantId") String claimantId,
+                                               @Param("status") String status);
+
     /** 管理端待审批列表（分页+筛选） */
     List<CageClaim> selectPending(@Param("status") String status,
                                   @Param("keyword") String keyword,

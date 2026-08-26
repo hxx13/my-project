@@ -275,6 +275,7 @@ public class CageCellIndexService {
             CageClaim activeClaim = activeClaimByCage.get(cell.getAnimalCageId());
             Long activeClaimId = activeClaim == null ? null : activeClaim.getId();
             gc.put("activeClaimId", activeClaimId);
+            gc.put("claimStatus", activeClaim == null ? null : activeClaim.getClaimStatus());
             // 所属人姓名（统一人员解析，不回退裸 id/ARO 空名）
             String claimantId = activeClaim == null ? null : activeClaim.getClaimantId();
             gc.put("occupantName", (claimantId != null && !claimantId.isBlank())
@@ -340,6 +341,8 @@ public class CageCellIndexService {
         meta.put("roomName", shelfIndex.getRoomName());
         meta.put("shelveId", String.valueOf(shelfIndex.getShelveId()));
         meta.put("shelveName", shelfIndex.getShelveName());
+        meta.put("shelfIndexId", shelfIndex.getId());
+        meta.put("roomId", String.valueOf(shelfIndex.getRoomId()));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("shelfMeta", meta);

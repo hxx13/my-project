@@ -76,6 +76,48 @@
         ORDER BY created_at DESC
     </select>
 
+    <select id="selectMyEnriched" resultType="map">
+        SELECT
+            c.id,
+            c.animal_cage_id AS animalCageId,
+            c.claim_status AS claimStatus,
+            c.claimant_id AS claimantId,
+            c.claimant_name AS claimantName,
+            c.claimant_dept AS claimantDept,
+            c.aup_id AS aupId,
+            c.assigner_id AS assignerId,
+            c.assigner_name AS assignerName,
+            c.confirm_required AS confirmRequired,
+            c.retry_count AS retryCount,
+            c.rejected_at AS rejectedAt,
+            c.confirmed_at AS confirmedAt,
+            c.released_at AS releasedAt,
+            c.note,
+            c.created_at AS createdAt,
+            c.updated_at AS updatedAt,
+            si.campus_name AS campusName,
+            si.area_name AS areaName,
+            si.floor_name AS floorName,
+            si.room_name AS roomName,
+            si.shelve_name AS shelveName,
+            si.shelve_id AS shelveId,
+            cci.position_x AS positionX,
+            cci.position_y AS positionY,
+            ccd.aup_number AS aupNumber,
+            (SELECT ar.reject_reason FROM approval_records ar
+              WHERE ar.target_type = 'cage_claim' AND ar.target_id = c.id AND ar.decision = 'rejected'
+              ORDER BY ar.created_at DESC, ar.id DESC LIMIT 1) AS latestRejectReason
+        FROM cage_claims c
+        LEFT JOIN cage_cell_index cci ON cci.animal_cage_id = c.animal_cage_id
+        LEFT JOIN cage_shelf_index si ON si.id = cci.shelf_index_id
+        LEFT JOIN cage_cell_detail ccd ON ccd.animal_cage_id = c.animal_cage_id
+        WHERE c.claimant_id = #{claimantId}
+        <if test="status != null and status != ''">
+            AND c.claim_status = #{status}
+        </if>
+        ORDER BY c.created_at DESC
+    </select>
+
     <select id="selectPending" resultMap="CageClaimMap">
         SELECT c.* FROM cage_claims c
         WHERE claim_status IN

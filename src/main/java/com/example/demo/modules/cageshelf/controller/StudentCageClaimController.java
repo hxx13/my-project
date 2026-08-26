@@ -208,7 +208,7 @@ public class StudentCageClaimController {
 
     @GetMapping("/my")
     @Operation(summary = "我的申请列表")
-    public Result<List<CageClaim>> my(@RequestParam(required = false) String status,
+    public Result<List<Map<String, Object>>> my(@RequestParam(required = false) String status,
                                        HttpServletRequest req) {
         User u = resolveUser(req);
         Result<?> denied = requireLogin(u);
