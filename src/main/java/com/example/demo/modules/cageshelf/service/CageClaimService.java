@@ -55,6 +55,7 @@ public class CageClaimService {
     private final AupRecordMapper aupRecordMapper;
     private final CageTransferLogMapper transferLogMapper;
     private final PersonnelService personnelService;
+    private final CageCellDetailService detailService;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -69,7 +70,8 @@ public class CageClaimService {
                             AroPersonnelMapper aroPersonnelMapper,
                             AupRecordMapper aupRecordMapper,
                             CageTransferLogMapper transferLogMapper,
-                            PersonnelService personnelService) {
+                            PersonnelService personnelService,
+                            CageCellDetailService detailService) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -84,6 +86,7 @@ public class CageClaimService {
         this.aupRecordMapper = aupRecordMapper;
         this.transferLogMapper = transferLogMapper;
         this.personnelService = personnelService;
+        this.detailService = detailService;
     }
 
     private String displayNameOf(User user) {
@@ -625,6 +628,48 @@ public class CageClaimService {
 
         log.info("[cage-apply] assign admin={} animalCageId={} → student={}", admin.getId(), animalCageId, studentUserId);
         return claim;
+    }
+
+    @Transactional
+    public List<Map<String, Object>> assignBatch(User admin, List<Long> animalCageIds, Long aupId, Long roomId,
+                                                 String piName, String aupNumber, String studentUserId) {
+        User student = userMapper.findById(studentUserId);
+        if (student == null) throw new TwinBusinessException(400, "目标学生不存在");
+        quotaService.assertCanAllocate(roomId, aupNumber, animalCageIds == null ? 0 : animalCageIds.size());
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Long cageId : animalCageIds) {
+            try {
+                CageCellDetail locked = detailMapper.selectByAnimalCageIdForUpdate(cageId);
+                if (locked == null || locked.getCageTypeCode() == null || locked.getCageTypeCode() != 2) {
+                    throw new TwinBusinessException(400, "该笼位不可分配");
+                }
+                // AUP 归属（复用 detailService.allocate，写 pi/project_pi/dept/aup/type=2）
+                detailService.allocate(cageId, piName, aupNumber, aupId);
+                List<CageClaim> existing = claimMapper.selectByAnimalCageIdForUpdate(cageId);
+                for (CageClaim c : existing) if (c.isActive()) throw new TwinBusinessException(409, "该笼位已被认领");
+                CageClaim claim = new CageClaim();
+                claim.setAnimalCageId(cageId);
+                claim.setClaimStatus("locked");
+                claim.setClaimantId(studentUserId);
+                claim.setClaimantName(displayNameOf(student));
+                claim.setClaimantDept(locked.getDepartmentName());
+                claim.setAupId(aupId);
+                claim.setAssignerId(admin.getId());
+                claim.setAssignerName(displayNameOf(admin));
+                claim.setConfirmRequired(getConfirmRequired());
+                claim.setRetryCount(0);
+                claim.setNote("管理员分配");
+                claimMapper.insert(claim);
+                if (claim.getClaimantName() != null && !claim.getClaimantName().isBlank()) {
+                    infoValueService.syncFromMapped(cageId, Map.of("experimenter_name", claim.getClaimantName()));
+                }
+                infoValueService.seedFromDetail(cageId);
+                out.add(Map.of("animalCageId", cageId, "ok", true, "claimId", claim.getId()));
+            } catch (Exception e) {
+                out.add(Map.of("animalCageId", cageId, "ok", false, "error", e.getMessage() == null ? "分配失败" : e.getMessage()));
+            }
+        }
+        return out;
     }
 
     // ═══════════════════════════════════════════

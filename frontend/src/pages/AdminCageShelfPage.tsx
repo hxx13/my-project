@@ -77,6 +77,7 @@ import {
   fetchCellIndexByShelf, fetchLocalShelfGridByShelveId, localAllocate, localCancelAllocate, localEdit, localAnnotate, fetchLocalAnnotate, type CageCellIndexEntry,
   syncLocalCagePipeline, localPipelineStepLabel, syncAllCellIds,
   lookupCode, adminConfirmClaim, archiveCage, reconcileCageOccupancy, type CodeLookupResult,
+  assignBatchCages,
 } from "@/api/domains/cageShelf.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
@@ -152,6 +153,7 @@ function Inner(){
   const shiftHintShownRef=useRef(false); // 首次勾选时弹出 Shift 框选提示
   const[allocDialogOpen,setAllocDialogOpen]=useState(false);
   const[selectedAupId,setSelectedAupId]=useState("");
+  const[allocPerson,setAllocPerson]=useState<{ name: string; accountId: string } | null>(null);
   const[realtimeMeta,setRealtimeMeta]=useState<{fromRealtime:boolean;cachedAt:string}|null>(null);
   const[allocSubmitting,setAllocSubmitting]=useState(false);
   // ═══════════════════════════════════════════════════════════
@@ -651,6 +653,18 @@ function Inner(){
       const aup=aupList.find(x=>String(x.id)===String(selectedAupId));
       const piName=aup?.piName||"";
       const aupNumber=aup?.registerNo||"";
+      if(allocPerson){
+        try{
+          const results=await assignBatchCages(cageIds,selectedAupId,aRid,assignShelveId,piName,aupNumber,allocPerson.accountId);
+          const failed=results.filter(r=>!r.ok).length;
+          if(failed>0){toast.error(`已分配 ${cageIds.length-failed} 个笼位给 ${allocPerson.name}，${failed} 个失败`);}
+          else{toast.success(`已分配 ${cageIds.length} 个笼位给 ${allocPerson.name}`);}
+        }catch(e:any){toast.error(e?.message||"分配失败");}
+        setAllocPerson(null);
+        setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
+        setAllocSubmitting(false);setDetailReloadKey(k=>k+1);
+        return;
+      }
       try{await localAllocate(cageIds,selectedAupId,aRid,assignShelveId,piName,aupNumber);toast.success(`已分配 ${cageIds.length} 个笼位（本地）`);}
       catch(e:any){toast.error(e?.message||"分配失败");}
       setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
@@ -1336,7 +1350,7 @@ function Inner(){
              DIALOGS — 分配弹窗 / 扫码弹窗 / 编辑状态弹窗 / 扫码确认核对 / CAS提示
              ═══════════════════════════════════════════════════ */}
     {/* ---- 分配确认弹窗 ---- */}
-    {allocDialogOpen&&<AllocDialog aupList={allocAupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
+    {allocDialogOpen&&<AllocDialog aupList={allocAupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} allocPerson={allocPerson} onPersonChange={setAllocPerson} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
 
     {/* ---- 常驻扫码定位（按当前模式联动判定） ---- */}
     <MobileScanDialog open={scanLockOpen} onClose={()=>setScanLockOpen(false)} onResult={(code)=>{setScanLockOpen(false);handleResidentScan(code);}}/>

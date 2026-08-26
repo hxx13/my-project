@@ -1341,8 +1341,15 @@ export async function fetchCageOccupancyRecords(view: "cage" | "person", id: num
   return res.data.data ?? [];
 }
 
-export async function searchPersonnelByKeyword(keyword: string): Promise<Array<{ id: number; name: string }>> {
-  const res = await authHttp.get<Result<{ list?: Array<{ id: number; name: string }> }>>("/personnel", { params: { keyword, pageSize: 10 } });
+export async function searchPersonnelByKeyword(keyword: string): Promise<Array<{ id: number; name: string; accountId: string }>> {
+  const res = await authHttp.get<Result<{ list?: Array<{ id: number; name: string; staffId?: string | null; aroUserId?: string | null }> }>>("/personnel", { params: { keyword, pageSize: 10 } });
   if (!res.data?.success) throw new Error(res.data?.message || "搜索人员失败");
-  return (res.data.data?.list ?? []).map((p) => ({ id: p.id, name: p.name ?? String(p.id) }));
+  return (res.data.data?.list ?? []).map((p) => ({ id: p.id, name: p.name ?? String(p.id), accountId: p.staffId || p.aroUserId || "" }));
+}
+
+export interface AssignBatchResult { animalCageId: string; ok: boolean; claimId?: number; error?: string }
+export async function assignBatchCages(animalCageIds: (string | number)[], aupId: string | number, roomId: string | number, shelveId: string | number, piName: string, aupNumber: string, studentUserId: string): Promise<AssignBatchResult[]> {
+  const res = await authHttp.post<Result<AssignBatchResult[]>>("/admin/cage-claims/assign-batch", { animalCageIds, aupId, roomId, shelveId, piName, aupNumber, studentUserId });
+  if (!res.data?.success) throw new Error(res.data?.message || "分配失败");
+  return res.data.data ?? [];
 }
