@@ -1264,6 +1264,12 @@ export async function batchApproveClaims(ids: number[]): Promise<Array<{ id: num
   return res.data.data ?? [];
 }
 
+/** 管理端归档一个占用中的笼位（回空笼盒 type2） */
+export async function archiveCage(animalCageId: string | number, reason?: string): Promise<void> {
+  const res = await authHttp.post<Result<any>>("/admin/cage-info/occupancy/archive", { animalCageId, reason });
+  if (!res.data?.success) throw new Error(res.data?.message || "归档失败");
+}
+
 /** 释放笼位 */
 export async function releaseClaim(id: number, reason?: string): Promise<void> {
   const res = await authHttp.post<Result<any>>(`/student/cage-claims/${id}/release`, { reason });

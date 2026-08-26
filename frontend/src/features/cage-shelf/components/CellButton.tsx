@@ -134,12 +134,12 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     {bindPending && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-green-500 shadow-[0_0_10px_rgba(34,197,94,0.35)] pointer-events-none" />}
     {/* Claim mode pool cell highlight */}
     {claimMode && isPoolCell && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.35)] pointer-events-none" />}
-    {confirmMode && cell.claimStatus && (() => {
+    {cell.claimStatus && (() => {
       const badge: Record<string, { txt: string; cls: string; pos: string }> = {
-        locked: { txt: "待确认", cls: "bg-amber-500 text-white", pos: "right-0.5" },
-        confirmed: { txt: "已到位", cls: "bg-slate-400 text-white", pos: "right-0.5" },
+        locked: { txt: "未到位", cls: "bg-amber-500 text-white", pos: "left-0.5" },
+        confirmed: { txt: "已到位", cls: "bg-slate-400 text-white", pos: "left-0.5" },
         pending_approval: { txt: "待审批", cls: "bg-blue-500 text-white", pos: "left-0.5" },
-        pending_release_approval: { txt: "待释放", cls: "bg-orange-500 text-white", pos: "right-0.5" },
+        pending_release_approval: { txt: "待释放", cls: "bg-orange-500 text-white", pos: "left-0.5" },
       };
       const s = badge[cell.claimStatus!];
       if (!s) return null;
