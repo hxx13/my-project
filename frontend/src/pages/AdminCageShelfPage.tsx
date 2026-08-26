@@ -321,6 +321,22 @@ function Inner(){
     if (roomAupNumbers.size === 0) return aupList;
     return aupList.filter((a) => roomAupNumbers.has(a.registerNo));
   }, [aupList, roomAupNumbers]);
+  const reserveAupGroupNames = useMemo(() => {
+    const byAup = new Map<string, string>();
+    for (const a of allocAupList) if (a.registerNo && a.projectGroupName) byAup.set(a.registerNo, a.projectGroupName);
+    const s = new Set<string>();
+    const add = (d: CageShelfDetail | null, sid: string) => {
+      for (const c of d?.grid ?? []) {
+        const key = `${sid}:${c.x}:${c.y}`;
+        if (!selectedCells.has(key)) continue;
+        const aup = (c as any).aupNumber ?? (c as any).detail?.aupNumber;
+        if (aup && byAup.has(String(aup))) s.add(byAup.get(String(aup))!);
+      }
+    };
+    for (const d of details) add(d, String(d.shelfMeta?.shelveId ?? ""));
+    if (shelfDetail) add(shelfDetail, String(shelfDetail.shelfMeta?.shelveId ?? ""));
+    return Array.from(s);
+  }, [selectedCells, details, shelfDetail, allocAupList]);
   const [configMode, setConfigMode] = useState<"auto"|"manual"|"off">("auto");
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const { data: batchList = [] } = useQuery({ queryKey: ["snapshotBatches"], queryFn: fetchSnapshotBatches, staleTime: 60_000 });
@@ -1386,7 +1402,7 @@ function Inner(){
              ═══════════════════════════════════════════════════ */}
     {/* ---- 分配确认弹窗 ---- */}
     {allocDialogOpen&&<AllocDialog aupList={allocAupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
-    <ReservePersonDialog open={reserveOpen} submitting={reserveSubmitting} onClose={()=>{setReserveOpen(false);setReservePerson(null);}} onConfirm={(p)=>{setReservePerson(p);handleReserveConfirm(p);}}/>
+    <ReservePersonDialog open={reserveOpen} submitting={reserveSubmitting} groupNames={reserveAupGroupNames} onClose={()=>{setReserveOpen(false);setReservePerson(null);}} onConfirm={(p)=>{setReservePerson(p);handleReserveConfirm(p);}}/>
 
     {/* ---- 常驻扫码定位（按当前模式联动判定） ---- */}
     <MobileScanDialog open={scanLockOpen} onClose={()=>setScanLockOpen(false)} onResult={(code)=>{setScanLockOpen(false);handleResidentScan(code);}}/>
@@ -1701,9 +1717,10 @@ function Inner(){
 }
 
 /* 预约模式：占用者选择弹窗（管理员侧，免审核） */
-function ReservePersonDialog({ open, submitting, onClose, onConfirm }: {
+function ReservePersonDialog({ open, submitting, groupNames, onClose, onConfirm }: {
   open: boolean;
   submitting: boolean;
+  groupNames: string[];
   onClose: () => void;
   onConfirm: (p: { name: string; accountId: string }) => void;
 }) {
@@ -1721,6 +1738,26 @@ function ReservePersonDialog({ open, submitting, onClose, onConfirm }: {
     finally { setSearching(false); }
   };
 
+  // 打开弹窗时自动预览该笼位 AUP 的课题组及其成员
+  useEffect(() => {
+    if (!open) return;
+    setSelected(null);
+    setQuery("");
+    if (groupNames.length === 0) { setResults([]); return; }
+    setSearching(true);
+    (async () => {
+      const all: Array<{ id: number; name: string; accountId: string; projectGroupName: string }> = [];
+      for (const g of groupNames) {
+        try {
+          const list = await searchPersonnelByKeyword(g);
+          all.push(...list.filter((p) => p.projectGroupName === g));
+        } catch {}
+      }
+      setResults(all);
+      setSearching(false);
+    })();
+  }, [open, groupNames]);
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { setSelected(null); onClose(); } }}>
       <DialogContent className="z-[var(--z-modal)] sm:max-w-md">
@@ -1735,6 +1772,9 @@ function ReservePersonDialog({ open, submitting, onClose, onConfirm }: {
               className="flex-1 bg-transparent text-xs outline-none text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]" />
             {query && <button onClick={() => { setSelected(null); search(""); }} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">✕</button>}
           </div>
+          {groupNames.length > 0 && (
+            <div className="text-[11px] text-[var(--twin-mute)]">课题组：{groupNames.join("、")}</div>
+          )}
           {selected ? (
             <div className="flex items-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1.5">
               <span className="flex-1 text-xs text-[var(--twin-ink)]">{selected.name}</span>
