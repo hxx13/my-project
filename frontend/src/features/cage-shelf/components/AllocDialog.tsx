@@ -10,15 +10,16 @@ interface Props {
   allocSubmitting: boolean;
   allocPerson: { name: string; accountId: string } | null;
   onPersonChange: (p: { name: string; accountId: string } | null) => void;
+  roomAupGroups: Set<string>;
   onClose: () => void;
   onConfirm: () => void;
 }
 
-export default function AllocDialog({ aupList, selectedAupId, setSelectedAupId, selectedCells, allocSubmitting, allocPerson, onPersonChange, onClose, onConfirm }: Props) {
+export default function AllocDialog({ aupList, selectedAupId, setSelectedAupId, selectedCells, allocSubmitting, allocPerson, onPersonChange, roomAupGroups, onClose, onConfirm }: Props) {
   const [search, setSearch] = useState("");
   const [sortAsc, setSortAsc] = useState(true);
   const [personQuery, setPersonQuery] = useState("");
-  const [personResults, setPersonResults] = useState<Array<{ id: number; name: string; accountId: string }>>([]);
+  const [personResults, setPersonResults] = useState<Array<{ id: number; name: string; accountId: string; projectGroupName: string }>>([]);
   const [personSearching, setPersonSearching] = useState(false);
 
   const filtered = useMemo(() => {
@@ -55,7 +56,7 @@ export default function AllocDialog({ aupList, selectedAupId, setSelectedAupId, 
     setPersonSearching(true);
     try {
       const list = await searchPersonnelByKeyword(kw.trim());
-      setPersonResults(list);
+      setPersonResults(roomAupGroups.size > 0 ? list.filter((p) => roomAupGroups.has(p.projectGroupName)) : list);
     } catch {
       setPersonResults([]);
     } finally {

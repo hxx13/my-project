@@ -1341,10 +1341,10 @@ export async function fetchCageOccupancyRecords(view: "cage" | "person", id: num
   return res.data.data ?? [];
 }
 
-export async function searchPersonnelByKeyword(keyword: string): Promise<Array<{ id: number; name: string; accountId: string }>> {
-  const res = await authHttp.get<Result<{ list?: Array<{ id: number; name: string; staffId?: string | null; aroUserId?: string | null }> }>>("/personnel", { params: { keyword, pageSize: 10 } });
+export async function searchPersonnelByKeyword(keyword: string): Promise<Array<{ id: number; name: string; accountId: string; projectGroupName: string }>> {
+  const res = await authHttp.get<Result<{ list?: Array<{ id: number; name: string; staffId?: string | null; aroUserId?: string | null; projectGroupName?: string | null }> }>>("/personnel", { params: { keyword, pageSize: 10 } });
   if (!res.data?.success) throw new Error(res.data?.message || "搜索人员失败");
-  return (res.data.data?.list ?? []).map((p) => ({ id: p.id, name: p.name ?? String(p.id), accountId: p.staffId || p.aroUserId || "" }));
+  return (res.data.data?.list ?? []).map((p) => ({ id: p.id, name: p.name ?? String(p.id), accountId: p.staffId || p.aroUserId || "", projectGroupName: p.projectGroupName || "" }));
 }
 
 export interface AssignBatchResult { animalCageId: string; ok: boolean; claimId?: number; error?: string }

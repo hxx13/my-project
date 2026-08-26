@@ -318,6 +318,11 @@ function Inner(){
     if (roomAupNumbers.size === 0) return aupList;
     return aupList.filter((a) => roomAupNumbers.has(a.registerNo));
   }, [aupList, roomAupNumbers]);
+  const roomAupGroups = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of allocAupList) if (a.projectGroupName) s.add(a.projectGroupName);
+    return s;
+  }, [allocAupList]);
   const [configMode, setConfigMode] = useState<"auto"|"manual"|"off">("auto");
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const { data: batchList = [] } = useQuery({ queryKey: ["snapshotBatches"], queryFn: fetchSnapshotBatches, staleTime: 60_000 });
@@ -1350,7 +1355,7 @@ function Inner(){
              DIALOGS — 分配弹窗 / 扫码弹窗 / 编辑状态弹窗 / 扫码确认核对 / CAS提示
              ═══════════════════════════════════════════════════ */}
     {/* ---- 分配确认弹窗 ---- */}
-    {allocDialogOpen&&<AllocDialog aupList={allocAupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} allocPerson={allocPerson} onPersonChange={setAllocPerson} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
+    {allocDialogOpen&&<AllocDialog aupList={allocAupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} allocPerson={allocPerson} onPersonChange={setAllocPerson} roomAupGroups={roomAupGroups} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
 
     {/* ---- 常驻扫码定位（按当前模式联动判定） ---- */}
     <MobileScanDialog open={scanLockOpen} onClose={()=>setScanLockOpen(false)} onResult={(code)=>{setScanLockOpen(false);handleResidentScan(code);}}/>
