@@ -98,6 +98,20 @@ public class CageOccupancyController {
         }
     }
 
+    @PostMapping("/archive")
+    @Operation(summary = "归档：释放占用并回退为空笼盒(type2)")
+    public Result<Map<String, Object>> archive(@RequestBody(required = false) Map<String, Object> body, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireEditor(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            Long animalCageId = toLong(body == null ? null : body.get("animalCageId"));
+            return Result.success(occupancyService.archive(animalCageId, u.getId(), str(body, "reason")));
+        } catch (Exception e) {
+            return handle(e);
+        }
+    }
+
     private static String str(Map<String, Object> body, String key) {
         if (body == null) return null;
         Object v = body.get(key);

@@ -292,6 +292,26 @@ public class CageInfoValueService {
         }
     }
 
+    private static final Set<String> ARCHIVE_CLEAR_CANONICALS = Set.of(
+            "experimenter_name", "lab_assistant_name",
+            "animal_strain_name", "animal_sex", "animal_week_age",
+            "animal_male_number", "animal_female_number", "animal_come_from",
+            "needs_division", "needs_special_feeding", "needs_transfer",
+            "has_health_abnormality", "needs_cohabitation",
+            "special_breeding_name", "special_breeding_desc", "cohabitation_date");
+
+    /** 归档：清空占用者/动物/状态标记，保留课题组归属(pi/aup/dept/project)。 */
+    @Transactional
+    public void clearArchiveFields(Long animalCageId) {
+        if (animalCageId == null) return;
+        for (CageInfoField f : fieldMapper.selectAll()) {
+            if (f == null || f.getId() == null || f.getCanonical() == null) continue;
+            if (ARCHIVE_CLEAR_CANONICALS.contains(f.getCanonical())) {
+                valueMapper.deleteByAnimalCageAndField(animalCageId, f.getId());
+            }
+        }
+    }
+
     /** 同步直写：ARO 映射结果(canonical → 值)upsert 进 cage_info_value(fill_source=SYNC)。空值/类型不匹配跳过,不阻塞整次同步。 */
     @Transactional
     public void syncFromMapped(Long animalCageId, Map<String, Object> mapped) {
