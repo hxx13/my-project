@@ -1031,9 +1031,10 @@ export async function fetchCellIndexByShelf(shelfIndexId: number): Promise<CageC
   return res.data.data ?? [];
 }
 
-export async function syncAllCellIds(roomId?: number): Promise<CellSyncStats> {
+export async function syncAllCellIds(roomId?: number, deleteExisting = true): Promise<CellSyncStats> {
   const res = await authHttp.post<Result<CellSyncStats>>("/cage-cell-index/sync", {
     roomId: roomId ?? undefined,
+    deleteExisting,
   });
   if (!res.data?.success) throw new Error(res.data?.message || "同步失败");
   return res.data.data!;

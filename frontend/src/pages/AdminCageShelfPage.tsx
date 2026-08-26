@@ -450,12 +450,15 @@ function Inner(){
   const loadBm=async()=>{setBmLoading(true);try{const list=await fetchBookmarks();setBmList(list);setPinned(new Set(list.map(b=>`${b.roomId}:${b.shelveId}`)));}catch{}finally{setBmLoading(false);}};
   useEffect(()=>{if(tab==="bookmarks")loadBm();},[tab]);
 
-  const handleCellIdSync=useCallback(async()=>{
+  const [cellIdSyncOpen, setCellIdSyncOpen] = useState(false);
+
+  const handleCellIdSync=useCallback(async(deleteExisting:boolean)=>{
     if(localPipelineSyncing)return;
+    setCellIdSyncOpen(false);
     setLocalPipelineSyncing(true);
-    const toastId=toast.loading("笼位ID同步中（删旧重拉 /back）…");
+    const toastId=toast.loading(deleteExisting?"笼位ID同步中（删旧重拉 /back）…":"笼位ID同步中（仅补充缺失）…");
     try{
-      const r=await syncAllCellIds();
+      const r=await syncAllCellIds(undefined, deleteExisting);
       toast.success(`笼位ID同步完成：写入 ${r.totalCellsWritten ?? 0} 个笼位`,{id:toastId,duration:5000});
       setDetailReloadKey(k=>k+1);
     }catch(e:any){
@@ -1096,9 +1099,9 @@ function Inner(){
                   {localPipelineSyncing?"同步中…":"一键同步本地笼位"}
                 </button>
                 {/* 笼位ID全量重拉（删旧重拉 /back）—— 独立，仅在新增笼位/索引脏时手动触发 */}
-                <button type="button" onClick={handleCellIdSync} disabled={localPipelineSyncing}
+                <button type="button" onClick={()=>setCellIdSyncOpen(true)} disabled={localPipelineSyncing}
                   className="inline-flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-slate-600 text-white hover:bg-slate-700 disabled:opacity-50 transition mr-1"
-                  title="删除旧笼位ID索引后重新拉取 /back（仅新增笼位或索引脏时使用，会先清空该架索引）">
+                  title="从 ARO 拉取笼位ID：可选择删旧重拉或仅补充缺失">
                   {localPipelineSyncing?<Loader2 className="h-3 w-3 animate-spin"/>:<RefreshCw className="h-3 w-3"/>}
                   {localPipelineSyncing?"同步中…":"笼位ID同步"}
                 </button>
@@ -1602,6 +1605,27 @@ function Inner(){
           </div>
         </div>
         <CageScanSettingsPanel />
+      </DialogContent>
+    </Dialog>
+    {/* ---- 笼位ID同步方式选择 ---- */}
+    <Dialog open={cellIdSyncOpen} onOpenChange={setCellIdSyncOpen}>
+      <DialogContent className="z-[var(--z-modal)] sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>笼位ID同步方式</DialogTitle>
+          <DialogDescription>请选择是否删除已存在的笼位ID索引</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <button type="button" onClick={()=>handleCellIdSync(false)}
+            className="w-full rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2.5 text-left hover:bg-[var(--twin-canvas-soft)] transition">
+            <div className="text-[12px] font-semibold text-[var(--twin-ink)]">仅补充缺失</div>
+            <div className="text-[10px] text-[var(--twin-mute)]">保留已有笼位ID，只补充新增/缺失的笼位（推荐）</div>
+          </button>
+          <button type="button" onClick={()=>handleCellIdSync(true)}
+            className="w-full rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2.5 text-left hover:bg-[var(--twin-canvas-soft)] transition">
+            <div className="text-[12px] font-semibold text-[var(--twin-ink)]">删旧重拉</div>
+            <div className="text-[10px] text-[var(--twin-mute)]">先清空每个架子的旧索引，再全量重拉（索引脏时用）</div>
+          </button>
+        </div>
       </DialogContent>
     </Dialog>
     </div>

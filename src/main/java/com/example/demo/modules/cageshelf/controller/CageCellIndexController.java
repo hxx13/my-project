@@ -134,8 +134,9 @@ public class CageCellIndexController {
         Result<?> denied = requireMinRole(user, RoleEnum.ADMIN);
         if (denied != null) return Result.fail(403, denied.getMessage());
         Long roomId = body != null ? toLong(body.get("roomId")) : null;
-        log.info("[cell-sync] 管理员 {} 触发笼位ID全量同步 roomId={}", user.getId(), roomId);
-        Map<String, Object> stats = cellIndexService.syncAllCells(roomId);
+        boolean deleteExisting = body == null || !"false".equals(String.valueOf(body.get("deleteExisting")));
+        log.info("[cell-sync] 管理员 {} 触发笼位ID全量同步 roomId={} deleteExisting={}", user.getId(), roomId, deleteExisting);
+        Map<String, Object> stats = cellIndexService.syncAllCells(roomId, deleteExisting);
         return Result.success(stats);
     }
 

@@ -59,7 +59,7 @@ public class CageCellIndexService {
      * @param roomId 可选，限定只同步某个房间
      * @return 同步统计
      */
-    public Map<String, Object> syncAllCells(Long roomId) {
+    public Map<String, Object> syncAllCells(Long roomId, boolean deleteExisting) {
         LocalDateTime startedAt = LocalDateTime.now();
         // 从本地索引表取所有架子
         List<Map<String, Object>> shelfList;
@@ -115,10 +115,12 @@ public class CageCellIndexService {
                     continue;
                 }
 
-                // 拉取成功，再清掉该架子的旧索引
-                int deleted = cellIndexMapper.deleteByShelveId(shelveId);
-                log.info("[cell-sync] {} | shelveId={} idx={} 清理:{}条",
-                        location, shelveId, shelfIdxId, deleted);
+                // 拉取成功后：删除模式先清旧索引；补充模式保留旧索引只 upsert 新增/更新
+                if (deleteExisting) {
+                    int deleted = cellIndexMapper.deleteByShelveId(shelveId);
+                    log.info("[cell-sync] {} | shelveId={} idx={} 清理:{}条",
+                            location, shelveId, shelfIdxId, deleted);
+                }
 
                 // 解析每个笼位 —— 本步只写 cage_cell_index（ID/坐标/笼盒），
                 // 详情/状态由后续 /list（补全详情）与 /book（状态）负责，避免此步空字段冲掉已补全内容
