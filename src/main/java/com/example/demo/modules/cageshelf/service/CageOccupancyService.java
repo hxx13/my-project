@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -178,6 +179,27 @@ public class CageOccupancyService {
         log.setDataSnapshot(snapshot);
         log.setReason(reason);
         transferLogMapper.insert(log);
+    }
+
+    public List<Map<String, Object>> records(String view, Long id) {
+        List<CageTransferLog> logs = "person".equals(view)
+                ? transferLogMapper.selectByOccupant(id)
+                : transferLogMapper.selectByCage(id);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (CageTransferLog l : logs) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", l.getId());
+            m.put("eventType", l.getEventType());
+            m.put("occupantId", l.getOccupantId());
+            m.put("occupantName", l.getOccupantName());
+            m.put("fromAnimalCageId", l.getFromAnimalCageId() == null ? null : String.valueOf(l.getFromAnimalCageId()));
+            m.put("toAnimalCageId", l.getToAnimalCageId() == null ? null : String.valueOf(l.getToAnimalCageId()));
+            m.put("operatorName", l.getOperatorName());
+            m.put("reason", l.getReason());
+            m.put("createdAt", l.getCreatedAt());
+            out.add(m);
+        }
+        return out;
     }
 
     private Map<String, Object> ok(String action) {

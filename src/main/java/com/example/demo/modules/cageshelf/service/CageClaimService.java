@@ -13,11 +13,15 @@ import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.ApprovalRecord;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
+import com.example.demo.modules.cageshelf.entity.CageTransferLog;
 import com.example.demo.modules.cageshelf.mapper.ApprovalRecordMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
+import com.example.demo.modules.cageshelf.mapper.CageTransferLogMapper;
 import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.identity.service.PersonIdentityService;
+import com.example.demo.modules.personnel.entity.Personnel;
+import com.example.demo.modules.personnel.service.PersonnelService;
 import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +53,8 @@ public class CageClaimService {
     private final CageFormAuditService auditService;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final AupRecordMapper aupRecordMapper;
+    private final CageTransferLogMapper transferLogMapper;
+    private final PersonnelService personnelService;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -61,7 +67,9 @@ public class CageClaimService {
                             CageInfoValueService infoValueService,
                             CageFormAuditService auditService,
                             AroPersonnelMapper aroPersonnelMapper,
-                            AupRecordMapper aupRecordMapper) {
+                            AupRecordMapper aupRecordMapper,
+                            CageTransferLogMapper transferLogMapper,
+                            PersonnelService personnelService) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -74,6 +82,8 @@ public class CageClaimService {
         this.auditService = auditService;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.aupRecordMapper = aupRecordMapper;
+        this.transferLogMapper = transferLogMapper;
+        this.personnelService = personnelService;
     }
 
     private String displayNameOf(User user) {
@@ -423,6 +433,22 @@ public class CageClaimService {
         mother.setReleasedAt(DT_FMT.format(LocalDateTime.now()));
         mother.setNote("分笼归档" + (reason != null ? "：" + reason : ""));
         claimMapper.update(mother);
+
+        // 分笼日志：为每个子笼写一条 cage_transfer_log
+        Personnel occ = personnelService.resolveByAccount(mother.getClaimantId());
+        Personnel op = personnelService.resolveByAccount(student.getId());
+        for (Long targetId : targets) {
+            CageTransferLog tl = new CageTransferLog();
+            tl.setEventType("divide");
+            tl.setOccupantId(occ != null ? occ.getId() : null);
+            tl.setOccupantName(mother.getClaimantName());
+            tl.setFromAnimalCageId(mother.getAnimalCageId());
+            tl.setToAnimalCageId(targetId);
+            tl.setOperatorId(op != null ? op.getId() : null);
+            tl.setOperatorName(displayNameOf(student));
+            tl.setReason(reason);
+            transferLogMapper.insert(tl);
+        }
 
         log.info("[cage-apply] divide motherClaimId={} animalCageId={} children={}",
                 mother.getId(), mother.getAnimalCageId(), childIds);
