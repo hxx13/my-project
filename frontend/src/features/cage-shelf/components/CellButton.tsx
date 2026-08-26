@@ -137,7 +137,6 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     {cell.claimStatus && (() => {
       const badge: Record<string, { txt: string; cls: string; pos: string }> = {
         locked: { txt: "未到位", cls: "bg-amber-500 text-white", pos: "left-0.5" },
-        confirmed: { txt: "已到位", cls: "bg-slate-400 text-white", pos: "left-0.5" },
         pending_approval: { txt: "待审批", cls: "bg-blue-500 text-white", pos: "left-0.5" },
         pending_release_approval: { txt: "待释放", cls: "bg-orange-500 text-white", pos: "left-0.5" },
       };
