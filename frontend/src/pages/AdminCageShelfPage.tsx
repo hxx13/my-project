@@ -967,10 +967,10 @@ function Inner(){
     setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setScanCache(new Map());setLastScannedKey(null);
     if(mode==="allocate")setPageMode("allocate");
     else if(mode==="booking")setPageMode("booking");
-    else if(mode==="edit")setEditMode(true);
+    else setPageMode("view");
+    if(mode==="edit")setEditMode(true);
     else if(mode==="confirm")setConfirmMode(true);
     else if(mode==="archive")setArchiveMode(true);
-    else setPageMode("view");
   },[]);
 
   // ── 数据源切换（设置中心）──
