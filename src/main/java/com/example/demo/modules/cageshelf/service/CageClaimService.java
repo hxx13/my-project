@@ -120,7 +120,7 @@ public class CageClaimService {
         // ① FOR UPDATE 锁笼位详情（防止并发竞态）
         CageCellDetail detail = detailMapper.selectByAnimalCageIdForUpdate(animalCageId);
         if (detail == null || detail.getCageTypeCode() == null || detail.getCageTypeCode() != 2) {
-            throw new TwinBusinessException(400, "该笼位不可认领（仅已预约空笼盒可认领）");
+            throw new TwinBusinessException(400, "该笼位当前不可申请");
         }
 
         // ①½ 课题组归属 + AUP 反查校验
@@ -130,7 +130,7 @@ public class CageClaimService {
         List<CageClaim> existing = claimMapper.selectByAnimalCageIdForUpdate(animalCageId);
         for (CageClaim c : existing) {
             if (c.isActive()) {
-                throw new TwinBusinessException(409, "该笼位已被认领");
+                throw new TwinBusinessException(409, "该笼位已被其他同学预约");
             }
         }
 
@@ -142,7 +142,7 @@ public class CageClaimService {
             try {
                 LocalDateTime last = LocalDateTime.parse(lastRejectedAt, DT_FMT);
                 if (LocalDateTime.now().isBefore(last.plusMinutes(cooldownMin))) {
-                    throw new TwinBusinessException(400, "驳回冷却中，请 " + cooldownMin + " 分钟后再试");
+                    throw new TwinBusinessException(400, "该笼位申请刚被驳回，请 " + cooldownMin + " 分钟后再试");
                 }
             } catch (Exception e) {
                 log.warn("[cage-apply] 驳回时间解析失败 animalCageId={} rejectedAt={}", animalCageId, lastRejectedAt);
@@ -150,7 +150,7 @@ public class CageClaimService {
         }
         int rejectCount = claimMapper.countRejectedByAnimalCage(animalCageId, studentId);
         if (rejectCount >= 3) {
-            throw new TwinBusinessException(400, "该笼位已被驳回 " + rejectCount + " 次，请联系管理员手动分配");
+            throw new TwinBusinessException(400, "该笼位你已被驳回 " + rejectCount + " 次，请联系管理员处理");
         }
 
         // ④ 决定初始状态（认领默认走审批流 pending_approval，仅 confirm_required 配置是否到位确认）
@@ -195,21 +195,22 @@ public class CageClaimService {
     private void assertClaimableByUser(User student, CageCellDetail detail) {
         List<String> groups = resolveUserGroupNames(student.getId());
         if (groups.isEmpty()) {
-            throw new TwinBusinessException(400, "您还没有课题组，无法选笼认领");
+            throw new TwinBusinessException(400, "你还没有加入课题组，暂时无法申请笼位，请联系管理员");
+        }
+        if (detail.getAupNumber() == null || detail.getAupNumber().isBlank()) {
+            throw new TwinBusinessException(400, "该笼位尚未关联课题组或 AUP，暂时无法申请，请联系管理员");
         }
         if (!PersonnelProjectGroupUtil.cellBelongsToAnyUserGroup(groups, detail.getProjectPiName(), detail.getDepartmentName())) {
-            throw new TwinBusinessException(403, "该笼位不属于你的课题组");
+            throw new TwinBusinessException(403, "该笼位不在你的课题组范围内，无法申请");
         }
-        if (detail.getAupNumber() != null && !detail.getAupNumber().isBlank()) {
-            AupRecord aup = aupRecordMapper.selectByRegisterNo(detail.getAupNumber());
-            if (aup == null) throw new TwinBusinessException(400, "该笼位的 AUP 不存在");
-            if (aup.getProjectGroupName() != null && !aup.getProjectGroupName().isBlank()) {
-                boolean ok = false;
-                for (String g : groups) {
-                    if (PersonnelProjectGroupUtil.belongsToGroup(aup.getProjectGroupName(), g)) { ok = true; break; }
-                }
-                if (!ok) throw new TwinBusinessException(403, "该笼位的 AUP 不属于你的课题组");
+        AupRecord aup = aupRecordMapper.selectByRegisterNo(detail.getAupNumber());
+        if (aup == null) throw new TwinBusinessException(400, "该笼位尚未关联 AUP，暂时无法申请");
+        if (aup.getProjectGroupName() != null && !aup.getProjectGroupName().isBlank()) {
+            boolean ok = false;
+            for (String g : groups) {
+                if (PersonnelProjectGroupUtil.belongsToGroup(aup.getProjectGroupName(), g)) { ok = true; break; }
             }
+            if (!ok) throw new TwinBusinessException(403, "该笼位所属 AUP 不在你的课题组，无法申请");
         }
     }
 
