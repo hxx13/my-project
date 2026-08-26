@@ -16,6 +16,8 @@ public interface AupRecordMapper {
 
     AupRecord selectById(@Param("id") Long id);
 
+    AupRecord selectByRegisterNo(@Param("registerNo") String registerNo);
+
     /** 审批结算用：锁定主记录行，防并发重复结算 */
     AupRecord selectForUpdateById(@Param("id") Long id);
 

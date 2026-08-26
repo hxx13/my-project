@@ -2,6 +2,10 @@ package com.example.demo.modules.cageshelf.service;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
+import com.example.demo.modules.aup.entity.AupRecord;
+import com.example.demo.modules.aup.mapper.AupRecordMapper;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
@@ -14,6 +18,7 @@ import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.identity.service.PersonIdentityService;
+import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -42,6 +47,8 @@ public class CageClaimService {
     private final CageQuotaService quotaService;
     private final CageInfoValueService infoValueService;
     private final CageFormAuditService auditService;
+    private final AroPersonnelMapper aroPersonnelMapper;
+    private final AupRecordMapper aupRecordMapper;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -52,7 +59,9 @@ public class CageClaimService {
                             UserDisplayNameService userDisplayNameService,
                             CageQuotaService quotaService,
                             CageInfoValueService infoValueService,
-                            CageFormAuditService auditService) {
+                            CageFormAuditService auditService,
+                            AroPersonnelMapper aroPersonnelMapper,
+                            AupRecordMapper aupRecordMapper) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -63,6 +72,8 @@ public class CageClaimService {
         this.quotaService = quotaService;
         this.infoValueService = infoValueService;
         this.auditService = auditService;
+        this.aroPersonnelMapper = aroPersonnelMapper;
+        this.aupRecordMapper = aupRecordMapper;
     }
 
     private String displayNameOf(User user) {
@@ -112,9 +123,8 @@ public class CageClaimService {
             throw new TwinBusinessException(400, "该笼位不可认领（仅已预约空笼盒可认领）");
         }
 
-        // ①½ 配额校验：认领也受「该 AUP 可用笼位数」限制
-        Long roomId = claimMapper.selectRoomIdByShelfIndexId(shelfIndexId);
-        quotaService.assertCanAllocate(roomId, detail.getAupNumber(), 1);
+        // ①½ 课题组归属 + AUP 反查校验
+        assertClaimableByUser(student, detail);
 
         // ② FOR UPDATE 锁已有活跃认领（只锁活跃态，不锁历史）
         List<CageClaim> existing = claimMapper.selectByAnimalCageIdForUpdate(animalCageId);
@@ -162,11 +172,45 @@ public class CageClaimService {
         claim.setClaimantDept(detail.getDepartmentName());
         claim.setConfirmRequired(confirmReq);
         claim.setRetryCount(0);
+        AupRecord aup = aupRecordMapper.selectByRegisterNo(detail.getAupNumber());
+        claim.setAupId(aup != null ? aup.getId() : null);
         claimMapper.insert(claim);
         infoValueService.seedFromDetail(claim.getAnimalCageId());
 
         log.info("[cage-apply] student={} animalCageId={} status={} id={}", studentId, animalCageId, initStatus, claim.getId());
         return claim;
+    }
+
+    private List<String> resolveUserGroupNames(String userId) {
+        try {
+            AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
+            if (personnel == null) return List.of();
+            return PersonnelProjectGroupUtil.splitGroups(personnel.getResolvedProjectGroupNames());
+        } catch (Exception e) {
+            log.warn("[cage-claim] 解析用户课题组失败 userId={}", userId, e);
+            return List.of();
+        }
+    }
+
+    private void assertClaimableByUser(User student, CageCellDetail detail) {
+        List<String> groups = resolveUserGroupNames(student.getId());
+        if (groups.isEmpty()) {
+            throw new TwinBusinessException(400, "您还没有课题组，无法选笼认领");
+        }
+        if (!PersonnelProjectGroupUtil.cellBelongsToAnyUserGroup(groups, detail.getProjectPiName(), detail.getDepartmentName())) {
+            throw new TwinBusinessException(403, "该笼位不属于你的课题组");
+        }
+        if (detail.getAupNumber() != null && !detail.getAupNumber().isBlank()) {
+            AupRecord aup = aupRecordMapper.selectByRegisterNo(detail.getAupNumber());
+            if (aup == null) throw new TwinBusinessException(400, "该笼位的 AUP 不存在");
+            if (aup.getProjectGroupName() != null && !aup.getProjectGroupName().isBlank()) {
+                boolean ok = false;
+                for (String g : groups) {
+                    if (PersonnelProjectGroupUtil.belongsToGroup(aup.getProjectGroupName(), g)) { ok = true; break; }
+                }
+                if (!ok) throw new TwinBusinessException(403, "该笼位的 AUP 不属于你的课题组");
+            }
+        }
     }
 
     // ═══════════════════════════════════════════

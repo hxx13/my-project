@@ -22,6 +22,10 @@
         SELECT * FROM aup_record WHERE id = #{id}
     </select>
 
+    <select id="selectByRegisterNo" resultType="com.example.demo.modules.aup.entity.AupRecord">
+        SELECT * FROM aup_record WHERE register_no = #{registerNo} LIMIT 1
+    </select>
+
     <select id="selectForUpdateById" resultType="com.example.demo.modules.aup.entity.AupRecord">
         SELECT * FROM aup_record WHERE id = #{id} FOR UPDATE
     </select>
