@@ -91,6 +91,7 @@ export default function StudentCageShelfPage() {
   const [poolCells, setPoolCells] = useState<Map<string, PoolCell>>(new Map()); // animalCageId → PoolCell
   const [claimSubmitting, setClaimSubmitting] = useState(false);
   const [claimSelected, setClaimSelected] = useState<Set<string>>(new Set());
+  const [claimReloadKey, setClaimReloadKey] = useState(0);
 
   // 进入申请模式时，加载当前房间所有架子的池数据
   useEffect(() => {
@@ -157,6 +158,7 @@ export default function StudentCageShelfPage() {
         return n;
       });
     }
+    if (ok > 0) setClaimReloadKey((k) => k + 1);
     const firstErr = errors[0];
     if (ok > 0 && fail > 0) {
       await appAlert(`已提交 ${ok} 个申请；${fail} 个失败。${firstErr ? `失败原因：${firstErr}` : ""}`);
@@ -181,7 +183,7 @@ export default function StudentCageShelfPage() {
       } catch { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [aRid, fullTree]);
+  }, [aRid, fullTree, claimReloadKey]);
 
   // Bookmarks
   const [pinned, setPinned] = useState<Set<string>>(new Set());
