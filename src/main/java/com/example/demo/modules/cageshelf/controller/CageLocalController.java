@@ -176,6 +176,7 @@ public class CageLocalController {
             Long animalCageId = toLong(id);
             if (animalCageId == null) continue;
             detailService.cancelAllocate(animalCageId);
+            infoValueService.clearOccupancyFields(animalCageId);
             cageIds.add(animalCageId);
         }
 

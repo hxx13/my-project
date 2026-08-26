@@ -140,6 +140,20 @@ public class CageCellDetailService {
         d.setCageTypeCode(1); // 等待分配
         d.setHasCageBox(false);
         d.setCageBoxCode(null);
+        d.setPiName(null);
+        d.setProjectPiName(null);
+        d.setProjectName(null);
+        d.setDepartmentName(null);
+        d.setAupNumber(null);
+        d.setAupId(null);
+        d.setExperimenterName(null);
+        d.setLabAssistantName(null);
+        d.setAnimalStrainName(null);
+        d.setAnimalSex(null);
+        d.setAnimalWeekAge(null);
+        d.setAnimalMaleNumber(null);
+        d.setAnimalFemaleNumber(null);
+        d.setAnimalComeFrom(null);
         clearSpecialStatuses(d);
         detailMapper.batchUpsert(List.of(d));
         log.info("[local] CANCEL_ALLOCATE animalCageId={}", animalCageId);
