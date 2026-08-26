@@ -57,7 +57,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, KeyRound, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2 } from "lucide-react";
+import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   fetchCageShelfDetail, fetchCageScanProgress, refreshCellDetail,
@@ -82,7 +82,6 @@ import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { Portal } from "@/components/Portal";
-import { useCasBinding } from "@/features/auth/CasBindingContext";
 import CageBookingPanel from "@/features/cage-shelf/components/CageBookingPanel";
 import AupSearchBar from "@/features/cage-shelf/components/AupSearchBar";
 import AllocDialog from "@/features/cage-shelf/components/AllocDialog";
@@ -185,7 +184,6 @@ function Inner(){
   const[archiveTarget,setArchiveTarget]=useState<{ animalCageId: string; positionLabel: string; occupantName?: string; projectPiName?: string; aupNumber?: string } | null>(null);
   const[archiveSubmitting,setArchiveSubmitting]=useState(false);
   const[settingsOpen,setSettingsOpen]=useState(false);
-  const { casStatus, openCasDialog } = useCasBinding();
 
   // 弹窗A 打开时从 /local/annotate 加载备注和状态照片（不能用 onOpenChange，Radix 只在用户关闭时触发）
   useEffect(()=>{
@@ -220,14 +218,6 @@ function Inner(){
     if(parts.length===3)return{crossSid:parts[0],crossX:Number(parts[1]),crossY:Number(parts[2])};
     return{};
   },[lastScannedKey,scanLockTarget]);
-  const [bindPromptOpen, setBindPromptOpen] = useState(false);
-
-  const ensureCasBinding = (): boolean => {
-    if (casStatus?.bound) return true;
-    setBindPromptOpen(true);
-    return false;
-  };
-
   // ═══════════════════════════════════════════════════════════
   //  STATE — 预约模式 (booking)
   // ═══════════════════════════════════════════════════════════
@@ -577,7 +567,6 @@ function Inner(){
 
   /* ---- 分配模式：取消分配 ---- */
   const handleCancelAssign=async()=>{
-    if(!ensureCasBinding())return;
     if(selectedCells.size===0)return;
     // 从 selectedCells 提取 cageId（shelveId:x:y → details 中的 cageId）
     const cageIds:string[]=[];
@@ -615,7 +604,6 @@ function Inner(){
 
   /* ---- 分配模式：确认分配 ---- */
   const handleConfirmAssign=async()=>{
-    if(!ensureCasBinding())return;
     if(!selectedAupId||selectedCells.size===0||!aRid)return;
     const cageIds:string[]=[];
     let assignShelveId="";
@@ -979,6 +967,15 @@ function Inner(){
     setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setScanCache(new Map());setLastScannedKey(null);
     setSelectedCells(new Set());setCell(null);setShelfId(null);
   },[]);
+
+  // 离开分配模式时清空勾选，防止切换模式/数据源后残留勾选
+  useEffect(() => {
+    if (pageMode !== "allocate") {
+      setSelectedCells(new Set());
+      setBoxSelectMode(false);
+      boxSelectAnchorRef.current = null;
+    }
+  }, [pageMode]);
 
   const currentMode: "view"|"allocate"|"booking"|"edit"|"confirm"|"archive" = editMode?"edit":confirmMode?"confirm":archiveMode?"archive":pageMode==="allocate"?"allocate":pageMode==="booking"?"booking":"view";
   const currentModeLabel = currentMode==="edit"?"编辑":currentMode==="confirm"?"扫码确认":currentMode==="archive"?"归档":currentMode==="allocate"?"分配":currentMode==="booking"?"预约":"查看";
@@ -1597,30 +1594,6 @@ function Inner(){
         <CageScanSettingsPanel />
       </DialogContent>
     </Dialog>
-    {/* ---- CAS 绑定提示弹窗 ---- */}
-    <Dialog open={bindPromptOpen} onOpenChange={setBindPromptOpen}>
-      <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>需要 ARO 个人认证</DialogTitle>
-          <DialogDescription>
-            您暂未绑定 ARO 个人认证 Token，无法进行笼位分配操作。请在右上角头像菜单中绑定后再试。
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-2">
-          <AdminButton type="button" tone="secondary" size="default" onClick={() => setBindPromptOpen(false)}>
-            取消
-          </AdminButton>
-          <AdminButton type="button" tone="primary" size="default" onClick={() => {
-            setBindPromptOpen(false);
-            openCasDialog();
-          }}>
-            <KeyRound className="mr-2 h-4 w-4" />
-            去绑定
-          </AdminButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-
     </div>
   </AdminPageShell>;
 }
