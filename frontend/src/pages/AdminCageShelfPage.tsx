@@ -337,6 +337,16 @@ function Inner(){
     if (shelfDetail) add(shelfDetail, String(shelfDetail.shelfMeta?.shelveId ?? ""));
     return Array.from(s);
   }, [selectedCells, details, shelfDetail, allocAupList]);
+  const cellAtKey = useMemo(() => {
+    const m = new Map<string, any>();
+    const add = (d: CageShelfDetail | null) => {
+      const sid = String(d?.shelfMeta?.shelveId ?? "");
+      for (const c of d?.grid ?? []) m.set(`${sid}:${c.x}:${c.y}`, c);
+    };
+    for (const d of details) add(d);
+    if (shelfDetail) add(shelfDetail);
+    return m;
+  }, [details, shelfDetail]);
   const [configMode, setConfigMode] = useState<"auto"|"manual"|"off">("auto");
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const { data: batchList = [] } = useQuery({ queryKey: ["snapshotBatches"], queryFn: fetchSnapshotBatches, staleTime: 60_000 });
@@ -605,6 +615,18 @@ function Inner(){
     if(!shiftHintShownRef.current){shiftHintShownRef.current=true;toast('按住 Shift 键点击另一个笼位，可快速框选矩形区域',{icon:'💡',duration:4000});}
     toggleCell(shelveId,x,y,shiftKey);
   },[boxSelectMode,toggleCell]);
+
+  /* ---- 认领模式：只允许选择已预约空笼盒(type2)且无活跃认领 ---- */
+  const handleReserveToggle=useCallback((shelveId:string,x:number,y:number,shiftKey?:boolean)=>{
+    const c=cellAtKey.get(`${shelveId}:${x}:${y}`);
+    const ct=(c as any)?.cageTypeCode ?? (c as any)?.animalCageType;
+    const status=(c as any)?.claimStatus;
+    if(ct!==2){toast("只能选择「已预约空笼盒」状态的笼位");return;}
+    if(status && ["pending_approval","locked","confirmed","pending_release_approval"].includes(status)){
+      toast("该笼位已有认领，不可重复选择");return;
+    }
+    toggleCell(shelveId,x,y,shiftKey);
+  },[cellAtKey,toggleCell]);
 
   /* ---- 分配模式：取消分配 ---- */
   const handleCancelAssign=async()=>{
@@ -1319,7 +1341,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,sid):confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode} selectedCells={pageMode==="allocate"||reserveMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"||reserveMode?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"||reserveMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,sid):confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode} selectedCells={pageMode==="allocate"||reserveMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:undefined} allocMode={pageMode==="allocate"||reserveMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/></div>;
             })}</div>}
           </>}
 
@@ -1329,7 +1351,7 @@ function Inner(){
             <div className="w-1/2 flex flex-col min-w-0">
               {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
               {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
-              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode} selectedCells={pageMode==="allocate"||reserveMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"||reserveMode?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"||reserveMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode} selectedCells={pageMode==="allocate"||reserveMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:undefined} allocMode={pageMode==="allocate"||reserveMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/>}
             </div>
             {/* Right: cell detail / edit actions / bind confirm */}
             <div className="w-1/2 flex flex-col min-w-0 gap-2">
