@@ -76,7 +76,7 @@ import {
   updateAnimalCage, type AnimalCageUpdatePayload,
   fetchCellIndexByShelf, fetchLocalShelfGridByShelveId, localAllocate, localCancelAllocate, localEdit, localAnnotate, fetchLocalAnnotate, type CageCellIndexEntry,
   syncLocalCagePipeline, localPipelineStepLabel, syncAllCellIds,
-  lookupCode, confirmClaim, type CodeLookupResult,
+  lookupCode, adminConfirmClaim, type CodeLookupResult,
 } from "@/api/domains/cageShelf.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
@@ -855,12 +855,47 @@ function Inner(){
     if(!confirmLookup?.claim?.id)return;
     setConfirmSubmitting(true);
     try{
-      await confirmClaim(confirmLookup.claim.id);
+      await adminConfirmClaim(confirmLookup.claim.id);
       toast.success("已确认到位");
       setConfirmLookup(null);
     }catch(e:any){toast.error(e?.message||"确认失败（仅本人可确认）");}
     finally{setConfirmSubmitting(false);}
   },[confirmLookup]);
+
+  // ── 扫码确认模式下点格子 → 直接开核对弹窗 ──
+  const handleConfirmCell = useCallback((c: any, sid?: string) => {
+    const status = c?.claimStatus;
+    if (!status) { toast.error("该笼位未分配"); return; }
+    if (status === "locked") {
+      setConfirmLookup({
+        type: "CAGE_CELL",
+        cageCell: {
+          animalCageId: String(c.id ?? c.animalCageId ?? ""),
+          positionLabel: displayPosition(c.position),
+          positionX: c.x,
+          positionY: c.y,
+          campusName: "",
+          roomName: "",
+          shelveId: sid ?? "",
+        } as any,
+        claim: {
+          id: Number(c.activeClaimId),
+          claimStatus: status,
+          claimantId: "",
+          claimantName: c.occupantName ?? "",
+          projectPiName: c.projectPiName ?? "",
+          aupNumber: c.aupNumber ?? c.detail?.aupNumber ?? "",
+          projectName: c.projectGroup ?? "",
+          hasInfo: true,
+        } as any,
+      });
+      return;
+    }
+    if (status === "confirmed") { toast.success("该笼位已到位"); return; }
+    if (status === "pending_approval") { toast.error("该笼位待审批"); return; }
+    if (status === "pending_release_approval") { toast.error("该笼位待释放审批"); return; }
+    toast.error("该笼位状态：" + status);
+  }, []);
 
   // ── 常驻「扫码定位」入口：按当前模式联动判定 ──
   const handleResidentScan=useCallback(async(code:string)=>{
@@ -1137,7 +1172,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/></div>;
             })}</div>}
           </>}
 
@@ -1147,7 +1182,7 @@ function Inner(){
             <div className="w-1/2 flex flex-col min-w-0">
               {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
               {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
-              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"} selectedCells={pageMode==="allocate"?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:undefined} allocMode={pageMode==="allocate"} clickMode="checkbox" scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/>}
             </div>
             {/* Right: cell detail / edit actions / bind confirm */}
             <div className="w-1/2 flex flex-col min-w-0 gap-2">
@@ -1437,7 +1472,7 @@ function Inner(){
               </div>
             )}
             <div className="rounded-twin-md bg-amber-50 border border-amber-200 px-3 py-2 text-center">
-              <span className="text-[11px] text-amber-700 font-semibold">确认该笼位已到位（由学生本人账号确认）</span>
+              <span className="text-[11px] text-amber-700 font-semibold">确认该笼位已到位（由管理员/饲养组长代确认）</span>
             </div>
           </DialogDescription>
         </DialogHeader>

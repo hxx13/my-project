@@ -14,7 +14,7 @@ import {
 } from "@/api/domains/scanDelay.api";
 import { fetchAdminMaterialItems, type MaterialItem } from "@/api/domains/material.api";
 import { fetchPendingTrainingSessions, auditTrainee, scoreTrainee, type PendingTrainingSession, type Trainee } from "@/api/domains/aro-training.api";
-import { fetchPendingClaims, approveClaim, type CageClaimItem } from "@/api/domains/cageShelf.api";
+import { fetchPendingClaims, approveClaim, batchApproveClaims, type CageClaimItem } from "@/api/domains/cageShelf.api";
 import { ScanDelayAutoApprovePanel } from "@/features/scan-delay-auto-approve/ScanDelayAutoApprovePanel";
 import { MaterialAutoApprovePanel } from "@/features/material-auto-approve/MaterialAutoApprovePanel";
 import { authStorage } from "@/features/auth/authStorage";
@@ -216,6 +216,23 @@ export default function MaterialReviewPage() {
       approveClaim(id, decision, reason),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cage-claims", "pending"] }); },
   });
+  const [selectedClaimIds, setSelectedClaimIds] = useState<Set<number>>(new Set());
+  const toggleClaimSelect = (id: number) =>
+    setSelectedClaimIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const handleBatchApproveClaims = async () => {
+    const ids = Array.from(selectedClaimIds);
+    if (ids.length === 0) return;
+    try {
+      const results = await batchApproveClaims(ids);
+      const ok = results.filter((r) => r.ok).length;
+      const fail = results.length - ok;
+      toast.success(`已通过 ${ok} 条${fail > 0 ? `，失败 ${fail} 条` : ""}`);
+      setSelectedClaimIds(new Set());
+      qc.invalidateQueries({ queryKey: ["cage-claims", "pending"] });
+    } catch (e: any) {
+      toast.error(e?.message || "批量审批失败");
+    }
+  };
 
   const CLAIM_STATUS_LABEL: Record<string, string> = {
     pending_approval: "申请审批中", pending_release_approval: "释放审批中",
@@ -836,6 +853,16 @@ export default function MaterialReviewPage() {
         </div>
       ) : tab === "cageClaims" ? (
         <div className="space-y-4">
+          {selectedClaimIds.size > 0 && (
+            <div className="flex items-center gap-2">
+              <button onClick={handleBatchApproveClaims} className="rounded-twin-md px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700">
+                批量通过({selectedClaimIds.size})
+              </button>
+              <button onClick={() => setSelectedClaimIds(new Set())} className="rounded-twin-md px-3 py-1.5 text-xs font-semibold border border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">
+                取消选择
+              </button>
+            </div>
+          )}
           {cageClaimsLoading ? <DataSkeleton variant="card" rows={5} /> : null}
           {cageClaimsPending.length === 0 && !cageClaimsLoading ? (
             <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无待审批的笼位申请</p>
@@ -844,6 +871,9 @@ export default function MaterialReviewPage() {
               {cageClaimsPending.map((c) => (
                 <div key={c.id} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4">
                   <div className="flex items-start justify-between gap-4">
+                    {c.claimStatus === "pending_approval" && (
+                      <input type="checkbox" checked={selectedClaimIds.has(c.id)} onChange={() => toggleClaimSelect(c.id)} className="w-3.5 h-3.5 accent-emerald-600 shrink-0" />
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-semibold text-[var(--twin-ink)]">{c.claimantName}</span>
