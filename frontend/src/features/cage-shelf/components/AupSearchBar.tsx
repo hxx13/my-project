@@ -1,19 +1,17 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, ChevronDown, Loader2, ArrowUpDown } from "lucide-react";
-import { fetchAupDict, searchAupsAcrossRooms, type AupSearchHit } from "@/api/domains/cageShelf.api";
+import { Search, ChevronDown, ArrowUpDown } from "lucide-react";
+import { fetchAupDict } from "@/api/domains/cageShelf.api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-interface Props {
-  onSelectRoom: (roomId: string, roomName: string) => void;
-}
+type AupDictItem = { id: string; registerNo: string; projectGroupName: string; piName: string };
 
-export default function AupSearchBar({ onSelectRoom }: Props) {
+export default function AupSearchBar() {
   const [search, setSearch] = useState("");
-  const [hits, setHits] = useState<AupSearchHit[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [aupOptions, setAupOptions] = useState<{ id: string; registerNo: string; projectGroupName: string }[]>([]);
+  const [aupOptions, setAupOptions] = useState<AupDictItem[]>([]);
+  const [matched, setMatched] = useState<AupDictItem[]>([]);
   const [sortAsc, setSortAsc] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,19 +29,21 @@ export default function AupSearchBar({ onSelectRoom }: Props) {
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
-  const doSearch = async () => {
-    const kw = search.trim();
+  const doSearch = () => {
+    const kw = search.trim().toLowerCase();
     if (!kw) return;
-    setSearching(true);
-    try {
-      const h = await searchAupsAcrossRooms(kw);
-      setHits(h);
-      if (h.length === 1) {
-        onSelectRoom(h[0].roomId, h[0].roomName);
-        setSearch(""); setHits([]);
-      }
-    } catch { setHits([]); }
-    finally { setSearching(false); }
+    const m = aupOptions.filter(a =>
+      (a.registerNo || "").toLowerCase().includes(kw) ||
+      (a.projectGroupName || "").toLowerCase().includes(kw) ||
+      (a.piName || "").toLowerCase().includes(kw)
+    );
+    if (m.length === 1) {
+      setSearch(m[0].registerNo || "");
+      setMatched([]);
+      return;
+    }
+    setMatched(m);
+    setResultOpen(true);
   };
 
   const quickSelect = (label: string) => {
@@ -51,10 +51,13 @@ export default function AupSearchBar({ onSelectRoom }: Props) {
     setDropdownOpen(false);
   };
 
-  const selectHit = (roomId: string, roomName: string) => {
-    onSelectRoom(roomId, roomName);
-    setSearch(""); setHits([]);
+  const pickMatch = (registerNo: string) => {
+    setSearch(registerNo);
+    setMatched([]);
+    setResultOpen(false);
   };
+
+  const parseNum = (s: string) => { const m = s.match(/(\d{4})-(\d+)/); return m ? [+m[1], +m[2]] : [0, 0]; };
 
   return (
     <div ref={ref} className="relative flex items-center gap-1.5 shrink-0">
@@ -70,7 +73,7 @@ export default function AupSearchBar({ onSelectRoom }: Props) {
           className="w-44 bg-transparent text-[11px] outline-none text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
         />
         {search && (
-          <button onClick={() => { setSearch(""); setHits([]); }} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">✕</button>
+          <button onClick={() => { setSearch(""); setMatched([]); }} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">✕</button>
         )}
       </div>
 
@@ -96,7 +99,6 @@ export default function AupSearchBar({ onSelectRoom }: Props) {
                 <div className="px-3 py-2 text-[10px] text-[var(--twin-mute)]">暂无 AUP 数据</div>
               )}
               {[...aupOptions].sort((a, b) => {
-                const parseNum = (s: string) => { const m = s.match(/(\d{4})-(\d+)/); return m ? [+m[1], +m[2]] : [0, 0]; };
                 const [ay, ai] = parseNum(a.registerNo || "");
                 const [by, bi] = parseNum(b.registerNo || "");
                 const cmp = ay !== by ? ay - by : ai - bi;
@@ -119,34 +121,33 @@ export default function AupSearchBar({ onSelectRoom }: Props) {
       {/* search button */}
       <button
         onClick={doSearch}
-        disabled={searching || !search.trim()}
+        disabled={!search.trim()}
         className="rounded-twin-md px-2.5 py-1 text-[10px] font-semibold bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 transition whitespace-nowrap"
       >
-        {searching ? <Loader2 className="h-3.5 w-3.5 animate-spin inline" /> : "搜索"}
+        搜索
       </button>
 
       {/* results dialog */}
-      <Dialog open={hits.length > 1} onOpenChange={(v) => { if (!v) setHits([]); }}>
+      <Dialog open={resultOpen} onOpenChange={(v) => { if (!v) setMatched([]); }}>
         <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>选择房间</DialogTitle>
+            <DialogTitle>匹配的 AUP</DialogTitle>
           </DialogHeader>
-          <div className="text-xs text-[var(--twin-mute)] mb-2">
-            搜索到的 AUP 存在于以下 {hits.length} 个房间中，请选择一个：
-          </div>
+          <div className="text-xs text-[var(--twin-mute)] mb-2">共 {matched.length} 条匹配结果，点击填入搜索框：</div>
           <div className="max-h-64 overflow-y-auto space-y-1">
-            {hits.map(h => (
+            {matched.length === 0 && (
+              <div className="px-3 py-4 text-center text-xs text-[var(--twin-mute)]">无匹配结果</div>
+            )}
+            {matched.map(a => (
               <button
-                key={h.roomId}
-                onClick={() => selectHit(h.roomId, h.roomName)}
+                key={a.id}
+                onClick={() => pickMatch(a.registerNo || "")}
                 className="w-full text-left px-3 py-2 rounded-twin-sm border border-[var(--twin-hairline)] hover:border-indigo-300 hover:bg-indigo-50/50 transition flex items-center justify-between"
               >
-                <div>
-                  <span className="font-medium text-[var(--twin-ink)]">{h.roomName}</span>
-                </div>
+                <span className="font-medium text-[var(--twin-ink)]">{a.projectGroupName || "—"}</span>
                 <div className="text-[10px] text-[var(--twin-mute)] text-right">
-                  <div>{h.piName}</div>
-                  <div>{h.registerNumber}</div>
+                  <div>{a.piName}</div>
+                  <div>{a.registerNo}</div>
                 </div>
               </button>
             ))}

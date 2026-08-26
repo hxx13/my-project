@@ -856,22 +856,6 @@ export async function fetchAupDict(): Promise<{ id: string; registerNo: string; 
   return res.data?.data ?? [];
 }
 
-/** AUP 跨房间搜索 */
-export interface AupSearchHit {
-  roomId: string;
-  roomName: string;
-  piName: string;
-  registerNumber: string;
-  aupId: string;
-  rentNumber: number;
-}
-export async function searchAupsAcrossRooms(keyword: string): Promise<AupSearchHit[]> {
-  const res = await authHttp.get<Result<AupSearchHit[]>>("/v1/cage-shelves/booking/aups/search", {
-    params: { keyword },
-  });
-  return res.data?.data ?? [];
-}
-
 // ── 统一扫码查询 ──
 
 export interface CodeLookupCageBox {
