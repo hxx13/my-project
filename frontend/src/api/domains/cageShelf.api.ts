@@ -1200,6 +1200,8 @@ export interface CageClaimItem {
   positionLabel?: string;
   aupNumber?: string;
   latestRejectReason?: string | null;
+  positionX?: number;
+  positionY?: number;
 }
 
 /** 审批记录 */
