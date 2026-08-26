@@ -97,7 +97,7 @@ public class CageClaimService {
         }
     }
 
-    private boolean getConfirmRequired()   { return "true".equalsIgnoreCase(getConfig("cage.claim.confirm_required", "false")); }
+    private boolean getConfirmRequired()   { return "true".equalsIgnoreCase(getConfig("cage.claim.confirm_required", "true")); }
 
     // ═══════════════════════════════════════════
     // 池查询
