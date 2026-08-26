@@ -1051,6 +1051,7 @@ function Inner(){
 
   const currentMode: "view"|"allocate"|"booking"|"edit"|"confirm"|"archive"|"reserve" = editMode?"edit":confirmMode?"confirm":archiveMode?"archive":reserveMode?"reserve":pageMode==="allocate"?"allocate":pageMode==="booking"?"booking":"view";
   const currentModeLabel = currentMode==="edit"?"编辑":currentMode==="confirm"?"扫码确认":currentMode==="archive"?"归档":currentMode==="reserve"?"认领":currentMode==="allocate"?"分配":currentMode==="booking"?"预约":"查看";
+  const viewOnly = currentMode === "view";
 
   // ═══════════════════════════════════════════════════════════
   //  RENDER
@@ -1150,7 +1151,7 @@ function Inner(){
           </div>
           <div className="flex items-center gap-1">
             {/* 本地模式：超管一键顺序同步（仅查看模式可见） */}
-            {pageMode==="view"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&dataSource==="local"&&isSuperAdmin&&(
+            {viewOnly&&dataSource==="local"&&isSuperAdmin&&(
               <>
                 <button type="button" onClick={handleLocalPipelineSync} disabled={localPipelineSyncing}
                   className="inline-flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition mr-1"
@@ -1168,7 +1169,7 @@ function Inner(){
               </>
             )}
             {/* ---- 查看模式控件（本地模式/分配/预约/编辑时隐藏） ---- */}
-            {pageMode==="view"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&dataSource!=="local"&&<>
+            {viewOnly&&dataSource!=="local"&&<>
               <div className="flex items-stretch rounded-twin-md border border-[var(--twin-hairline)] overflow-hidden mr-1">
                 <button type="button" onClick={() => { setConfigMode("auto"); localStorage.setItem("cageAlertConfigMode","auto"); }}
                   className={`px-2 py-1 text-[10px] font-bold transition ${configMode==="auto"?"bg-[var(--twin-link-deep)] text-white":"bg-[var(--twin-canvas)] text-[var(--twin-mute)]"}`}>自动</button>
@@ -1219,9 +1220,9 @@ function Inner(){
             </>}
             {/* ── 扫码确认模式：由常驻「扫码定位」联动判定，无专用输入 ── */}
             {/* 表单管理入口（仅查看模式可见） */}
-            {pageMode==="view"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&<a href={toAdminRoutePath("/admin/cage-shelves/records")} onClick={e=>{e.preventDefault();nav(toAdminRoutePath("/admin/cage-shelves/records"));}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold no-underline border border-[var(--twin-hairline)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas)] transition">记录</a>}
-            {pageMode==="view"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&<a href={toAdminRoutePath("/admin/cage-shelves/forms")} onClick={e=>{e.preventDefault();nav(toAdminRoutePath("/admin/cage-shelves/forms"));}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold no-underline bg-[var(--twin-primary)] text-white hover:opacity-90 transition">表单管理</a>}
-            {pageMode==="view"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&<button type="button" onClick={handleReconcileOccupancy} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold border border-[var(--twin-hairline)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas)] transition">修正占用</button>}
+            {viewOnly&&<a href={toAdminRoutePath("/admin/cage-shelves/records")} onClick={e=>{e.preventDefault();nav(toAdminRoutePath("/admin/cage-shelves/records"));}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold no-underline border border-[var(--twin-hairline)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas)] transition">记录</a>}
+            {viewOnly&&<a href={toAdminRoutePath("/admin/cage-shelves/forms")} onClick={e=>{e.preventDefault();nav(toAdminRoutePath("/admin/cage-shelves/forms"));}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold no-underline bg-[var(--twin-primary)] text-white hover:opacity-90 transition">表单管理</a>}
+            {viewOnly&&<button type="button" onClick={handleReconcileOccupancy} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold border border-[var(--twin-hairline)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas)] transition">修正占用</button>}
             <button type="button" onClick={()=>setLegend(v=>!v)} className={`flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition ${legend?'bg-[var(--twin-link-deep)] text-white':'text-[var(--twin-mute)] hover:text-[var(--twin-ink)]'}`}><Info className="h-3 w-3"/>图例{legend?' ▲':' ▼'}</button>
             {isSuperAdmin&&<button type="button" onClick={()=>setSettingsOpen(true)} className="flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title="设置中心"><Settings2 className="h-3 w-3"/>设置</button>}
           </div>
