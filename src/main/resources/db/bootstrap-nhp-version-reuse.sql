@@ -21,12 +21,22 @@ SET @sql = IF(@uk_form_old > 0,
   'SELECT ''uk_crf_form_study_code_ver already dropped''');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+-- 5.7 兼容：先补生成列 active_version，再在其上建唯一键（替代函数索引）
+SET @has_form_col := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'crf_form' AND COLUMN_NAME = 'active_version'
+);
+SET @sql = IF(@has_form_col = 0,
+  'ALTER TABLE crf_form ADD COLUMN active_version INT GENERATED ALWAYS AS (CASE WHEN `active` = 1 THEN `version` ELSE NULL END) VIRTUAL COMMENT ''活跃版号''',
+  'SELECT ''crf_form.active_version exists''');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 SET @uk_form_new := (
   SELECT COUNT(*) FROM information_schema.STATISTICS
   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'crf_form' AND INDEX_NAME = 'uk_crf_form_study_code_active_ver'
 );
 SET @sql = IF(@uk_form_new = 0,
-  'ALTER TABLE crf_form ADD UNIQUE KEY uk_crf_form_study_code_active_ver (study_id, code, ((CASE WHEN `active` = 1 THEN `version` ELSE NULL END)))',
+  'ALTER TABLE crf_form ADD UNIQUE KEY uk_crf_form_study_code_active_ver (study_id, code, active_version)',
   'SELECT ''uk_crf_form_study_code_active_ver exists''');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -40,11 +50,20 @@ SET @sql = IF(@uk_cl_old > 0,
   'SELECT ''uk_crf_codelist_code_ver already dropped''');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+SET @has_cl_col := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'crf_codelist' AND COLUMN_NAME = 'active_version'
+);
+SET @sql = IF(@has_cl_col = 0,
+  'ALTER TABLE crf_codelist ADD COLUMN active_version INT GENERATED ALWAYS AS (CASE WHEN `active` = 1 THEN `version` ELSE NULL END) VIRTUAL COMMENT ''活跃版号''',
+  'SELECT ''crf_codelist.active_version exists''');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 SET @uk_cl_new := (
   SELECT COUNT(*) FROM information_schema.STATISTICS
   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'crf_codelist' AND INDEX_NAME = 'uk_crf_codelist_code_active_ver'
 );
 SET @sql = IF(@uk_cl_new = 0,
-  'ALTER TABLE crf_codelist ADD UNIQUE KEY uk_crf_codelist_code_active_ver (code, ((CASE WHEN `active` = 1 THEN `version` ELSE NULL END)))',
+  'ALTER TABLE crf_codelist ADD UNIQUE KEY uk_crf_codelist_code_active_ver (code, active_version)',
   'SELECT ''uk_crf_codelist_code_active_ver exists''');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
