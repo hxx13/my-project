@@ -35,9 +35,10 @@ CREATE TABLE IF NOT EXISTS crf_form (
     status        VARCHAR(20)  NOT NULL DEFAULT 'DRAFT' COMMENT 'DRAFT/FREEZING/FROZEN（冻结=表单级，见 06）',
     description   VARCHAR(512) NULL,
     active        TINYINT      NOT NULL DEFAULT 1 COMMENT '软删 0/1',
+    active_version INT          GENERATED ALWAYS AS (CASE WHEN active = 1 THEN version ELSE NULL END) VIRTUAL COMMENT '活跃版号（生成列，5.7 兼容替代函数索引）',
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_crf_form_study_code_active_ver (study_id, code, ((CASE WHEN active = 1 THEN version ELSE NULL END))),
+    UNIQUE KEY uk_crf_form_study_code_active_ver (study_id, code, active_version),
     KEY idx_crf_form_study (study_id), KEY idx_crf_form_code (code), KEY idx_crf_form_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='NHP表单=数据域（含版本与冻结状态）';
 
@@ -99,9 +100,10 @@ CREATE TABLE IF NOT EXISTS crf_codelist (
     version    INT          NOT NULL DEFAULT 1 COMMENT '码表版本（整表版本）',
     status     VARCHAR(20)  NOT NULL DEFAULT 'DRAFT' COMMENT 'DRAFT/FROZEN/ARCHIVED/RETIRED（变更走版本，禁止直接改冻结取值）',
     active     TINYINT      NOT NULL DEFAULT 1 COMMENT '软删 0/1',
+    active_version INT       GENERATED ALWAYS AS (CASE WHEN active = 1 THEN version ELSE NULL END) VIRTUAL COMMENT '活跃版号（生成列，5.7 兼容替代函数索引）',
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_crf_codelist_code_active_ver (code, ((CASE WHEN active = 1 THEN version ELSE NULL END)))
+    UNIQUE KEY uk_crf_codelist_code_active_ver (code, active_version)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='NHP码表（整表版本+冻结）';
 
 CREATE TABLE IF NOT EXISTS crf_codelist_item (
