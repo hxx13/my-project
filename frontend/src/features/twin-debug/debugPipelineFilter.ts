@@ -1,3 +1,5 @@
+import { calendarDayKeyBeijing } from "@/utils/beijingTime";
+
 /** 与访问流水 debug 页（DebugTablePage）一致的筛选字段 */
 export type DebugPipelineFilter = {
   keyword: string;
@@ -10,16 +12,20 @@ export type DebugPipelineFilter = {
   excludeBlacklist: boolean;
 };
 
-export const defaultDebugPipelineFilter = (): DebugPipelineFilter => ({
-  keyword: "",
-  startTime: "",
-  endTime: "",
-  actionType: "",
-  campus: "",
-  floor: "",
-  roomName: "",
-  excludeBlacklist: true,
-});
+/** 默认只查今日，避免加载全量流水导致卡顿；与 FilterBar 的「今日」按钮行为一致 */
+export const defaultDebugPipelineFilter = (): DebugPipelineFilter => {
+  const today = calendarDayKeyBeijing(new Date());
+  return {
+    keyword: "",
+    startTime: today,
+    endTime: today,
+    actionType: "",
+    campus: "",
+    floor: "",
+    roomName: "",
+    excludeBlacklist: true,
+  };
+};
 
 /** 组装后端查询参数（与 twinApi fetchFilteredDebugLogs 一致） */
 export function buildDebugPipelineQueryParams(
