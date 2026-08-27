@@ -41,7 +41,7 @@ export default function NhpOverviewCockpitHeader({
           />
         ) : (
           <div className="nhp-cockpit-marquee nhp-cockpit-marquee--empty">
-            <span className="nhp-cockpit-marquee-stage">选择手术实例以查看进度</span>
+            <span className="nhp-cockpit-marquee-stage">选择项目以查看进度</span>
           </div>
         )}
       </div>
@@ -50,7 +50,7 @@ export default function NhpOverviewCockpitHeader({
 
       <div className="nhp-cockpit-header-surgery">
         <label className="nhp-cockpit-surgery-label" htmlFor="nhp-surgery-select">
-          本人参与的手术
+          本人团队的项目
         </label>
         <select
           id="nhp-surgery-select"
@@ -60,7 +60,7 @@ export default function NhpOverviewCockpitHeader({
           disabled={surgeries.length === 0}
         >
           {surgeries.length === 0 ? (
-            <option value="">暂无参与中的手术</option>
+            <option value="">暂无项目</option>
           ) : (
             surgeries.map((s) => (
               <option key={s.key} value={s.key}>

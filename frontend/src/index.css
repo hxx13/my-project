@@ -601,6 +601,16 @@ html.portal-landing-scroll-hidden::-webkit-scrollbar {
   display: none;
 }
 
+/* ── 全局滚动条：极窄、圆角、贴边，不遮卡片圆角 ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.16) transparent;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.16); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.3); }
+
 @media (prefers-reduced-motion: reduce) {
   @keyframes slideIn {
     from { opacity: 0; }

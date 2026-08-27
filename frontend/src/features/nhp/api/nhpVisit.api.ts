@@ -129,3 +129,32 @@ export async function saveNhpVisitPlan(
     .put<Result<NhpVisitPlan[]>>(`/nhp/visits/${visitId}/plan`, atoms)
     .then(({ data }) => data.data);
 }
+
+/** 项目级编排（crf_project_visit_plan 一行）：某项目在某 TP 采集的表单 */
+export interface NhpProjectVisitPlan {
+  id: number;
+  transplantId: number;
+  visitId: number;
+  atomId: number;
+  required: boolean;
+  captureForm?: NhpCaptureForm | null;
+  sortOrder?: number;
+}
+
+/** 项目级编排：该项目全部 TP 的表单指派（未配置即空） */
+export async function fetchNhpProjectVisitPlans(projectId: number): Promise<NhpProjectVisitPlan[]> {
+  return authHttp
+    .get<Result<NhpProjectVisitPlan[]>>(`/nhp/projects/${projectId}/visit-plans`)
+    .then(({ data }) => data.data);
+}
+
+/** 项目级编排：整体替换该项目某 TP 的表单指派 */
+export async function saveNhpProjectVisitPlan(
+  projectId: number,
+  visitId: number,
+  atoms: { atomId: number; required: boolean; captureForm?: NhpCaptureForm | null }[],
+): Promise<NhpProjectVisitPlan[]> {
+  return authHttp
+    .put<Result<NhpProjectVisitPlan[]>>(`/nhp/projects/${projectId}/visits/${visitId}/plan`, atoms)
+    .then(({ data }) => data.data);
+}

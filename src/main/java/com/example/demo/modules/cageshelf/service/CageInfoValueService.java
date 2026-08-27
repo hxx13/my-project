@@ -41,7 +41,7 @@ public class CageInfoValueService {
             "experimenter_name", "lab_assistant_name",
             "needs_division", "needs_special_feeding", "needs_transfer", "has_health_abnormality", "needs_cohabitation",
             "special_breeding_name", "special_breeding_desc",
-            "cohabitation_date", "animal_strain_name", "animal_sex", "animal_week_age",
+            "cage_use_time", "animal_strain_name", "animal_sex", "animal_week_age",
             "animal_male_number", "animal_female_number", "animal_come_from");
 
     /** 本地扩展字段（实验记录/照片/本地扩展数据），不属于 ARO 映射，锚定 cage_info_value。 */
@@ -188,6 +188,27 @@ public class CageInfoValueService {
         return out;
     }
 
+    /** 批量读某文本 canonical 字段（如 experimenter_name）→ cageId:值，供网格从表单读侧切读。 */
+    public Map<Long, String> textValueByCage(List<Long> cageIds, String canonical) {
+        Map<Long, String> out = new LinkedHashMap<>();
+        if (cageIds == null || cageIds.isEmpty() || canonical == null) return out;
+        Map<Long, String> canonicalByFieldId = new HashMap<>();
+        for (CageInfoField f : fieldMapper.selectAll()) {
+            if (f != null && f.getId() != null && canonical.equals(f.getCanonical())) {
+                canonicalByFieldId.put(f.getId(), canonical);
+            }
+        }
+        for (CageInfoValue v : valueMapper.selectByAnimalCageIds(cageIds)) {
+            if (v == null || v.getAnimalCageId() == null || v.getFieldId() == null) continue;
+            if (!canonicalByFieldId.containsKey(v.getFieldId())) continue;
+            // STRING 字段值在 value_string（如 experimenter_name），TEXT 字段在 value_text，两者都兼容
+            String val = v.getValueText();
+            if (val == null || val.isBlank()) val = v.getValueString();
+            if (val != null && !val.isBlank()) out.put(v.getAnimalCageId(), val.trim());
+        }
+        return out;
+    }
+
     /** 从笼位详情(cage_cell_detail)同步老数据到笼位级值（fill_source=SYNC）。幂等：仅在有值字段上 upsert。 */
     @Transactional
     public void seedFromDetail(Long animalCageId) {
@@ -210,14 +231,14 @@ public class CageInfoValueService {
         upsertBool(animalCageId, fieldIdByCanonical, "needs_special_feeding", detail.getNeedsSpecialFeeding());
         upsertBool(animalCageId, fieldIdByCanonical, "needs_transfer", detail.getNeedsTransfer());
         upsertBool(animalCageId, fieldIdByCanonical, "has_health_abnormality", detail.getHasHealthAbnormality());
-        upsertBool(animalCageId, fieldIdByCanonical, "needs_cohabitation", detail.getNeedsCohabitation());
+        // 合笼(needs_cohabitation)不从此迁移：ARO 源在 /back 的 cageBoxVo（syncAllCells 直写），
+        // detail 表恒为 0，若在此迁移会在每次启动时用 stale 的 0 覆盖同步结果。
 
         upsertText(animalCageId, fieldIdByCanonical, "pi_name", detail.getPiName());
         upsertText(animalCageId, fieldIdByCanonical, "project_pi_name", detail.getProjectPiName());
         upsertText(animalCageId, fieldIdByCanonical, "project_name", detail.getProjectName());
         upsertText(animalCageId, fieldIdByCanonical, "department_name", detail.getDepartmentName());
         upsertText(animalCageId, fieldIdByCanonical, "aup_number", detail.getAupNumber());
-        upsertText(animalCageId, fieldIdByCanonical, "cohabitation_date", detail.getCohabitationDate());
         upsertText(animalCageId, fieldIdByCanonical, "special_breeding_name", detail.getSpecialBreedingName());
         upsertText(animalCageId, fieldIdByCanonical, "special_breeding_desc", detail.getSpecialBreedingDesc());
         upsertText(animalCageId, fieldIdByCanonical, "experimenter_name", detail.getExperimenterName());
@@ -298,7 +319,7 @@ public class CageInfoValueService {
             "animal_male_number", "animal_female_number", "animal_come_from",
             "needs_division", "needs_special_feeding", "needs_transfer",
             "has_health_abnormality", "needs_cohabitation",
-            "special_breeding_name", "special_breeding_desc", "cohabitation_date");
+            "special_breeding_name", "special_breeding_desc", "cage_use_time");
 
     /** 归档：清空占用者/动物/状态标记，保留课题组归属(pi/aup/dept/project)。 */
     @Transactional
@@ -312,15 +333,24 @@ public class CageInfoValueService {
         }
     }
 
-    /** 同步直写：ARO 映射结果(canonical → 值)upsert 进 cage_info_value(fill_source=SYNC)。空值/类型不匹配跳过,不阻塞整次同步。 */
+    /** 同步直写：ARO 映射结果(canonical → 值)upsert 进 cage_info_value(fill_source=SYNC)。空值/类型不匹配跳过,不阻塞整次同步。变化时记字段级审计（操作人=SYNC）。 */
     @Transactional
     public void syncFromMapped(Long animalCageId, Map<String, Object> mapped) {
         if (animalCageId == null || mapped == null || mapped.isEmpty()) return;
         Map<String, CageInfoField> fieldByCanonical = new HashMap<>();
+        Map<Long, CageInfoField> fieldById = new HashMap<>();
         for (CageInfoField f : fieldMapper.selectAll()) {
             if (f != null && f.getCanonical() != null && f.getId() != null) {
                 fieldByCanonical.put(f.getCanonical(), f);
+                fieldById.put(f.getId(), f);
             }
+        }
+        // 读当前值（before），用于全字段变化审计
+        Map<Long, Object> beforeByFieldId = new HashMap<>();
+        for (CageInfoValue v : valueMapper.selectByAnimalCageId(animalCageId)) {
+            if (v == null || v.getFieldId() == null) continue;
+            CageInfoField f = fieldById.get(v.getFieldId());
+            if (f != null) beforeByFieldId.put(v.getFieldId(), readValue(f, v));
         }
         for (Map.Entry<String, Object> e : mapped.entrySet()) {
             CageInfoField field = fieldByCanonical.get(e.getKey());
@@ -336,6 +366,16 @@ public class CageInfoValueService {
                 if (applyValue(v, col, field, raw)) {
                     v.setFillSource("SYNC");
                     valueMapper.upsert(v);
+                    // 全字段追溯：同步写入也记字段变化（操作人=SYNC）
+                    Object after = readValue(field, v);
+                    Object before = beforeByFieldId.get(field.getId());
+                    if (!Objects.equals(stringify(before), stringify(after))) {
+                        auditService.logDataChange("UPDATE", "cage_box", animalCageId,
+                                String.valueOf(animalCageId), null,
+                                "animal_cage", animalCageId, String.valueOf(animalCageId),
+                                field.getCanonical(), field.getLabel(),
+                                stringify(before), stringify(after), "SYNC");
+                    }
                 }
             } catch (TwinBusinessException ex) {
                 // 同步值类型不匹配,跳过该字段

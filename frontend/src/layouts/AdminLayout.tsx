@@ -42,6 +42,7 @@ import { fetchPendingBadges, type PendingBadges } from "@/api/domains/me.api";
 import { fetchPendingMaterialRequests } from "@/api/domains/material.api";
 import { fetchPendingScanDelayRequests } from "@/api/domains/scanDelay.api";
 import { fetchPendingTrainingSessions } from "@/api/domains/aro-training.api";
+import { fetchPendingClaims } from "@/api/domains/cageShelf.api";
 import { materialQueryKeys } from "@/api/hooks/queryKeys";
 import { studentReviewPendingQueryOptions } from "@/features/student-review/studentReviewPoll";
 import { refreshAuthSession, sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
@@ -416,13 +417,20 @@ export default function AdminLayout() {
     enabled: studentReviewBadgeQueriesEnabled,
     ...studentReviewPendingQueryOptions,
   });
+  const { data: liveCageClaimsPending } = useQuery({
+    queryKey: ["cage-claims", "pending", "count"],
+    queryFn: () => fetchPendingClaims(undefined, undefined, 1, 1),
+    enabled: studentReviewBadgeQueriesEnabled,
+    ...studentReviewPendingQueryOptions,
+  });
   const liveTrainingPendingCount = useMemo(
     () => liveTrainingPending.reduce((sum, s) => sum + (s.trainees?.filter((t: any) => t.testYn === 0 || t.testFraction === 0).length ?? 0), 0),
     [liveTrainingPending],
   );
+  const liveCageClaimPendingCount = liveCageClaimsPending?.total ?? 0;
   const liveStudentReviewBadgeText = useMemo(
-    () => formatStudentReviewBadgeCount(liveMaterialPending.length, liveScanDelayPending.length, liveTrainingPendingCount),
-    [liveMaterialPending.length, liveScanDelayPending.length, liveTrainingPendingCount],
+    () => formatStudentReviewBadgeCount(liveMaterialPending.length, liveScanDelayPending.length, liveTrainingPendingCount, liveCageClaimPendingCount),
+    [liveMaterialPending.length, liveScanDelayPending.length, liveTrainingPendingCount, liveCageClaimPendingCount],
   );
 
   /** 全后台常驻一条通知 SSE：新消息/站内通知到达即刷新角标；此前仅子页订阅时，不点进通知页侧栏不会更新 */
@@ -1187,9 +1195,9 @@ export default function AdminLayout() {
         ) : null}
         <header
           className={cn(
-            // 用 --z-sticky(400)，低于 --z-overlay/--z-modal，避免挡住 Portal 弹层；
-            // 高于内容区 relative z-[1]，保证顶栏压住页内 sticky 工具条。
-            "sticky top-0 z-[var(--z-sticky)] flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--twin-hairline)] px-4 py-2 shadow-twin-level-2 sm:px-6 md:h-16 md:flex-nowrap md:py-0",
+            // 顶栏只压住内容区（z-[1]），z-30 远低于 dropdown/overlay/modal/全屏，
+            // 避免顶栏覆盖 Portal 弹层与全屏模式（同用 --z-sticky 时 DOM 顺序会导致顶栏盖住全屏）。
+            "sticky top-0 z-30 flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--twin-hairline)] px-4 py-2 shadow-twin-level-2 sm:px-6 md:h-16 md:flex-nowrap md:py-0",
             isDark ? "bg-[var(--twin-canvas)]" : "bg-[var(--twin-canvas)]/95 backdrop-blur-md"
           )}
         >

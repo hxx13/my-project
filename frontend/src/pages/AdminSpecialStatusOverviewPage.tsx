@@ -44,7 +44,7 @@ const TAB_OPTIONS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 ];
 
 function cageTypeLabel(t: number) {
-  return t === 1 ? "等待分配" : t === 2 ? "已预约(空笼盒)" : t === 3 ? "已预约(饲养中)" : t === 4 ? "异常" : "未知";
+  return t === 1 ? "(等待分配)" : t === 2 ? "(空笼位)" : t === 3 ? "(饲养中)" : t === 4 ? "(异常)" : "未知";
 }
 
 /* ================================================================== */

@@ -1,6 +1,6 @@
 var springAuth = require('../../../utils/springAuth.js');
 var pagePermission = require('../../../utils/pagePermission.js');
-var { hasMinRole } = require('../../../utils/roleAccess.js');
+var { isStudentAccount } = require('../../../utils/roleAccess.js');
 var { readCustomNavMetrics } = require('../../../utils/customNavMetrics.js');
 var { CAGE_FORM_KEY, flattenTemplateFields, buildCodelistDict, buildFormRows } = require('../../../utils/cageForm.js');
 var cageStatus = require('../../../utils/cageStatus.js');
@@ -42,7 +42,24 @@ var STATUS_BG_PRIORITY = [
   "SPECIAL_FEEDING", "COHABITATION", "NORMAL"
 ];
 
-var CAGE_TYPE_LABEL = { 1: "等待分配", 2: "已预约(空笼盒)", 3: "已预约(饲养中)", 4: "异常" };
+var CAGE_TYPE_LABEL = { 1: "(等待分配)", 2: "(空笼位)", 3: "(饲养中)", 4: "(异常)" };
+
+/**
+ * 分配模式笼位可选性判定。
+ * 与 Web/H5 的 `features/cage-shelf/constants.ts → allocSelectVerdict` 是同一套规则，
+ * 小程序是独立技术栈无法复用，改其中一处必须同步改另一处。
+ */
+function allocVerdict(cageTypeCode) {
+  var ct = Number(cageTypeCode);
+  if (ct === 1) return { ok: true, kind: 'allocate' };
+  if (ct === 2) return { ok: true, kind: 'cancel' };
+  if (ct === 3 || ct === 4) {
+    return { ok: false, reason: '该笼位为「' + CAGE_TYPE_LABEL[ct] + '」，需先归档' };
+  }
+  return { ok: false, reason: '该笼位状态未知，无法分配' };
+}
+
+var ALLOC_MIXED_KIND_HINT = '不能混选「等待分配」与「空笼位」，请分两批操作';
 var CAGE_TYPE_DOT_COLOR = { 1: "#f59e0b", 2: "#10b981", 3: "#f43f5e", 4: "#3b82f6" };
 var CAGE_TYPE_ABBR = { 1: "待", 2: "空", 3: "饲", 4: "异" };
 
@@ -67,6 +84,8 @@ var COLUMNS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 var ROWS = 10;
 var BRAND = "#ac1736";
 var PAGE_BG = "#eef0f6";
+// shelveId → cage_shelf_index.id（shelfIndexId），学生申请池接口用（来自 full-tree，非 local-grid）
+var shelfIndexIdMap = {};
 
 /* ================================================================== */
 /*  Helpers                                                             */
@@ -95,6 +114,64 @@ function unwrap(res) {
 
 function nonEmptyText(s) {
   return typeof s === 'string' && s.trim() !== '';
+}
+
+/** 笼位类型码：优先 cageTypeCode，回退 animalCageType / stateLabel 推断 */
+function cageTypeOf(cell) {
+  var ct = cell.cageTypeCode;
+  if (ct == null || ct === '') ct = cell.animalCageType;
+  if (ct == null || ct === '') return resolveAnimalCageType(cell);
+  var n = Number(ct);
+  return isNaN(n) ? null : n;
+}
+
+/** 是否处于活跃认领（待审批/未到位/已到位/待释放审批） */
+function hasActiveClaim(status) {
+  return status === 'pending_approval' || status === 'locked' || status === 'confirmed' || status === 'pending_release_approval';
+}
+
+/** 依视角生成模式选择器选项；命中后端下发的 visibleModes 才保留（label 用本地中文映射，key 不变） */
+function buildModeOptions(isStaffView, visibleModes) {
+  var base = isStaffView
+    ? [
+        { key: 'view', label: '查看' },
+        { key: 'allocate', label: '分配' },
+        { key: 'edit', label: '状态' },
+        { key: 'confirm', label: '确认' },
+        { key: 'archive', label: '归档' },
+        { key: 'reserve', label: '预定' },
+        { key: 'record', label: '记录' },
+        { key: 'booking', label: '预约' }
+      ]
+    : [
+        { key: 'view', label: '查看' },
+        { key: 'studentClaim', label: '申请预约' },
+        { key: 'confirm', label: '确认' }
+      ];
+  if (visibleModes && visibleModes.length > 0) {
+    var byKey = {};
+    for (var i = 0; i < base.length; i++) byKey[base[i].key] = base[i];
+    var out = [];
+    for (var j = 0; j < visibleModes.length; j++) {
+      if (byKey[visibleModes[j]]) out.push(byKey[visibleModes[j]]);
+    }
+    return out;
+  }
+  return base;
+}
+
+/** 认领状态中文标签（我的申请列表用） */
+function claimStatusLabel(status) {
+  var map = {
+    pending_approval: '待审批',
+    locked: '未到位',
+    confirmed: '已到位',
+    pending_release_approval: '待释放',
+    rejected: '已驳回',
+    released: '已释放',
+    cancelled: '已取消'
+  };
+  return map[status] || status || '—';
 }
 
 /* ================================================================== */
@@ -166,9 +243,8 @@ function getCellStyle(cell) {
   if (cell.empty) {
     return "background-color: #f1f5f9; border: 1px solid #cbd5e1;";
   }
-  if (cell.visible === false) {
-    return "background-color: #fff9c4; border: 1px solid #f59e0b;";
-  }
+  // 非本组笼位（visible=false）不再用黄色高亮，改走特殊状态色，与 admin 视图/Web/H5 一致；
+  // 「受限」通过格子内的 *** 文本体现，颜色不再区分权限。
   // 合并已有状态 + 缓存动作 → 统一分色
   var bgColors = [];
   (cell.specialStatuses || []).forEach(function(s) {
@@ -248,12 +324,21 @@ function enrichGridCell(cell) {
   enriched._cellStyle = getCellStyle(enriched);
   enriched._piShort = truncateText(enriched.projectPiName, 4);
   enriched._deptShort = truncateText(enriched.departmentName, 5);
+  enriched._experimenterShort = truncateText(enriched.experimenterName, 6);
   var ct = resolveAnimalCageType(enriched);
-  enriched._cageTypeAbbr = CAGE_TYPE_ABBR[ct] || '';
+  // 待到位（locked）是「已预约(空笼盒)→已预约(饲养中)」之间的过渡态：
+  // 左上角已有「未到位」徽标表意，右上角的「空」类型图标此时会误导，整体隐藏。
+  var pendingArrival = enriched.claimStatus === 'locked' || enriched.claimStatus === 'pending_approval';
+  enriched._cageTypeAbbr = pendingArrival ? '' : (CAGE_TYPE_ABBR[ct] || '');
   // 饲养中(type 3)不显示指示灯，对齐 H5 CageCellOverlays
-  enriched._cageTypeDotColor = ct === 3 ? '' : (CAGE_TYPE_DOT_COLOR[ct] || '');
+  enriched._cageTypeDotColor = (pendingArrival || ct === 3) ? '' : (CAGE_TYPE_DOT_COLOR[ct] || '');
   enriched._cageTypeLabel = CAGE_TYPE_LABEL[ct] || enriched.stateLabel || '—';
   enriched._hasStatusCodes = computeStatusCodesForDisplay(enriched);
+  // 认领徽标：未到位/待审批/待释放（对齐 H5 CellButton 左上角徽标）
+  var cs = enriched.claimStatus;
+  if (cs === 'locked') enriched._claimBadge = { text: '未到位', cls: 'gcell-badge--locked' };
+  else if (cs === 'pending_approval') enriched._claimBadge = { text: '待审批', cls: 'gcell-badge--pending' };
+  else if (cs === 'pending_release_approval') enriched._claimBadge = { text: '待释放', cls: 'gcell-badge--release' };
   // 显示坐标反转：A-1(顶)↔A-10(底)，内容不动仅编号反转
   enriched._displayPosition = (function(p) {
     var m = /^([A-H])-(\d+)$/.exec(p);
@@ -483,10 +568,51 @@ Page({
     gridMeta: null,
     filledCount: 0,
     totalCells: 80,
+    // 分配批次动作类型：'allocate'=下发AUP / 'cancel'=撤回AUP / ''=未起头
+    allocBatchKind: '',
 
-    // Scan mode (教职工视角)
-    staffView: false,
-    adminView: false,
+    // 模式系统（三端对齐：pageMode 单一真相源）
+    pageMode: 'view',             // view|allocate|edit|confirm|archive|reserve|record|booking|studentClaim
+    isStaffView: false,
+    modeOptions: [],              // 依视角生成
+    visibleModes: [],             // 后端下发的可见模式 key 列表（空=未返回，回退本地硬编码）
+    selectedCells: {},            // { "x:y": animalCageId } 各模式选中集
+    selectedCount: 0,
+    // 分配
+    aupList: [],
+    aupOptions: [],
+    selectedAupId: '',
+    allocSubmitting: false,
+    showAupDialog: false,
+    // 教职工认领
+    reservePersonOpen: false,
+    reserveKeyword: '',
+    reserveSearching: false,
+    reserveResults: [],
+    reserveGroups: [],      // 已选笼位所属 AUP 的课题组名，供弹窗提示
+    reserveSubmitting: false,
+    // 归档
+    archiveTarget: null,
+    showArchiveDialog: false,
+    archiveSubmitting: false,
+    // 记录
+    recordTarget: null,
+    recordOpen: false,
+    recordLoading: false,
+    recordGroups: [],
+    // 预约
+    bookingRooms: [],
+    bookingLoading: false,
+    bookingSyncing: false,
+    // 学生申请
+    poolByCageId: {},
+    claimSubmitting: false,
+    // 学生确认模式：本人待确认到位(locked)的 animalCageId 集合（网格琥珀高亮用）
+    myClaimCageIds: {},
+    // 我的申请
+    myClaimsOpen: false,
+    myClaimsLoading: false,
+    myClaims: [],
     scannedCellX: -1,
     scannedCellY: -1,
     scannedPosition: '',
@@ -508,8 +634,6 @@ Page({
     editActionUploading: false,
     editHistory: [],            // 弹窗内历史记录
     editHistoryLoading: false,
-    editMode: false,
-    confirmMode: false,
     confirmLookup: null,        // 扫码确认的 lookup 结果（含 cageCell + claim）
     confirmRows: [],            // 核对弹窗字段行
     showConfirmDialog: false,
@@ -587,13 +711,28 @@ Page({
       console.log('[mp-jump] parsed highlightTarget:', JSON.stringify(highlightTarget));
     }
 
+    // 视角统一收敛：教职工=!isStudentAccount()，学生=isStudentAccount()
+    var isStaffView = !isStudentAccount();
     self.setData({
-      staffView: hasMinRole(role, 'STAFF'),
-      adminView: hasMinRole(role, 'ADMIN'),
+      isStaffView: isStaffView,
+      pageMode: 'view',
+      modeOptions: buildModeOptions(isStaffView),
       highlightTarget: highlightTarget,
       ...readCustomNavMetrics()
     });
     self.loadShelves();
+
+    // 拉后端下发的可见模式列表（身份由后端算好）；失败保留本地硬编码默认 modeOptions
+    springAuth.springRequest({ url: '/api/cage-mode/visible', method: 'GET', data: {} }).then(function(res) {
+      var up = unwrap(res);
+      var modes = (up.ok && up.data && up.data.modes) || [];
+      if (modes.length > 0) {
+        self.setData({
+          visibleModes: modes,
+          modeOptions: buildModeOptions(self.data.isStaffView, modes)
+        });
+      }
+    }).catch(function() { /* 保留默认硬编码 modeOptions */ });
   },
 
   /* ------------------------------------------------------------------ */
@@ -629,10 +768,14 @@ Page({
       var treeResult = unwrap(results[1]);
       var treeData = treeResult.ok ? treeResult.data : [];
       var typeMap = {};
+      shelfIndexIdMap = {};
       for (var ti = 0; ti < (treeData || []).length; ti++) {
         var tn = treeData[ti];
         if (tn.shelveId) {
           typeMap[String(tn.shelveId)] = { t1: tn.type1 || 0, t2: tn.type2 || 0, t3: tn.type3 || 0, t4: tn.type4 || 0 };
+        }
+        if (tn.shelveId && tn.id != null) {
+          shelfIndexIdMap[String(tn.shelveId)] = tn.id;
         }
       }
       for (var si = 0; si < shelves.length; si++) {
@@ -755,18 +898,40 @@ Page({
       break;
     }
 
-    // 在匹配到的 campus+room 范围内取第一个 shelf 的 shelveId
+    // 优先：用 target.shelveId 精确匹配（首页扫码 / 审核页跳转都传了 shelveId），
+    // 避免多架房间里按 campus+room 取第一个笼架导致定位错。
     var listShelveId = null;
-    for (var ci2 = 0; ci2 < campusGroups.length && !listShelveId; ci2++) {
-      if (campusName && campusGroups[ci2].campusName !== campusName) continue;
-      var rooms2 = campusGroups[ci2].rooms;
-      for (var ri2 = 0; ri2 < rooms2.length && !listShelveId; ri2++) {
-        if (roomParentKey && rooms2[ri2].roomName !== roomParentKey) continue;
-        var sgs = rooms2[ri2].shelfGroups;
-        for (var gi2 = 0; gi2 < sgs.length && !listShelveId; gi2++) {
-          if (sgs[gi2].shelves.length > 0) {
-            listShelveId = sgs[gi2].shelves[0].shelveId;
-            console.log('[mp-jump] found listShelveId:', listShelveId, 'from group:', sgs[gi2].name || sgs[gi2].key);
+    if (target.shelveId) {
+      for (var ciS = 0; ciS < campusGroups.length && !listShelveId; ciS++) {
+        var roomsS = campusGroups[ciS].rooms || [];
+        for (var riS = 0; riS < roomsS.length && !listShelveId; riS++) {
+          var sgsS = roomsS[riS].shelfGroups || [];
+          for (var giS = 0; giS < sgsS.length && !listShelveId; giS++) {
+            var shelvesS = sgsS[giS].shelves || [];
+            for (var siS = 0; siS < shelvesS.length; siS++) {
+              if (String(shelvesS[siS].shelveId) === String(target.shelveId)) {
+                listShelveId = shelvesS[siS].shelveId;
+                console.log('[mp-jump] matched by shelveId:', listShelveId);
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+    // 回退：无 shelveId 或未精确命中时，取 campus+room 范围内第一个 shelf
+    if (!listShelveId) {
+      for (var ci2 = 0; ci2 < campusGroups.length && !listShelveId; ci2++) {
+        if (campusName && campusGroups[ci2].campusName !== campusName) continue;
+        var rooms2 = campusGroups[ci2].rooms;
+        for (var ri2 = 0; ri2 < rooms2.length && !listShelveId; ri2++) {
+          if (roomParentKey && rooms2[ri2].roomName !== roomParentKey) continue;
+          var sgs = rooms2[ri2].shelfGroups;
+          for (var gi2 = 0; gi2 < sgs.length && !listShelveId; gi2++) {
+            if (sgs[gi2].shelves.length > 0) {
+              listShelveId = sgs[gi2].shelves[0].shelveId;
+              console.log('[mp-jump] found listShelveId:', listShelveId, 'from group:', sgs[gi2].name || sgs[gi2].key);
+            }
           }
         }
       }
@@ -1086,6 +1251,11 @@ Page({
   loadShelfDetail: function(shelveId, opts) {
     var self = this;
     opts = opts || {};
+    if (!shelveId) {
+      // 兜底：无有效 shelveId 时不发 404 请求，回到列表并提示
+      self.setData({ loading: false, error: '未选择笼架', screen: 'list' });
+      return;
+    }
     self.setData({ loading: true, error: '', screen: 'grid' });
 
     springAuth.springRequest({
@@ -1121,6 +1291,10 @@ Page({
       }
 
       self.setData(patch);
+      // 网格重建后重新投影池内/选中标记（学生申请 & 各选中模式）
+      self.applyPoolToGrid();
+      self.applySelectionToGrid();
+      self.applyMyClaimToGrid();
     }).catch(function(e) {
       self.setData({ loading: false, error: (e && e.message) || '加载失败' });
     });
@@ -1150,8 +1324,9 @@ Page({
 
   /** 按当前模式分派扫码结果 */
   handleResidentScan: function(code) {
-    if (this.data.editMode) { this.handleEditScan(code); return; }
-    if (this.data.confirmMode) { this.handleConfirmScan(code); return; }
+    if (this.data.pageMode === 'edit') { this.handleEditScan(code); return; }
+    if (this.data.pageMode === 'confirm') { this.handleConfirmScan(code); return; }
+    if (this.data.pageMode === 'archive') { this.handleArchiveScan(code); return; }
     this.handleViewScan(code);
   },
 
@@ -1247,8 +1422,12 @@ Page({
     var claim = self.data.confirmLookup && self.data.confirmLookup.claim;
     if (!claim || !claim.id || self.data.confirmSubmitting) return;
     self.setData({ confirmSubmitting: true });
+    // 教职工走管理端代确认，学生走本人确认（对齐 AdminCageShelfPage / student-cage-shelf）
+    var url = self.data.isStaffView
+      ? '/api/admin/cage-claims/' + claim.id + '/confirm'
+      : '/api/student/cage-claims/' + claim.id + '/confirm';
     springAuth.springRequest({
-      url: '/api/student/cage-claims/' + claim.id + '/confirm',
+      url: url,
       method: 'POST',
       data: {}
     }).then(function(res) {
@@ -1270,66 +1449,637 @@ Page({
     this.setData({ confirmLookup: null, confirmRows: [], showConfirmDialog: false });
   },
 
-  /** 切回查看模式（默认态）：退出编辑/扫码确认，有未提交修改先确认 */
-  onSelectViewMode: function() {
-    var self = this;
-    if (self.data.editMode && self.data.scanCache && Object.keys(self.data.scanCache).length > 0) {
-      wx.showModal({
-        title: '未提交修改',
-        content: '有未提交的修改，是否放弃？',
-        confirmText: '放弃',
-        cancelText: '继续编辑',
-        success: function(res) { if (res.confirm) self._resetToViewMode(); }
-      });
-      return;
-    }
-    self._resetToViewMode();
+  /** 模式选择器点击 */
+  onSwitchMode: function(e) {
+    var mode = e.currentTarget.dataset.mode;
+    if (!mode) return;
+    this.switchMode(mode);
   },
 
-  _resetToViewMode: function() {
+  /** 统一模式切换：清空选中集/扫码缓存/待提交态，避免模式间状态串味 */
+  switchMode: function(mode) {
     var self = this;
     self.setData({
-      editMode: false,
-      confirmMode: false,
+      pageMode: mode,
+      selectedCells: {},
+      selectedCount: 0,
+      scanCache: {},
+      scanCacheSize: 0,
+      scanTotalActions: 0,
+      lastScannedKey: '',
+      lastScannedEntry: Object.assign({ position: '', code: '' }, cageStatus.newActionStateKeys()),
+      scannedCellX: -1,
+      scannedCellY: -1,
+      scannedCageBoxCode: '',
       confirmLookup: null,
       confirmRows: [],
       showConfirmDialog: false,
-      scanCache: {},
-      scanCacheSize: 0,
-      lastScannedKey: '',
-      scannedCellX: -1,
-      scannedCellY: -1,
-      detailActions: cageStatus.newActionState()
+      archiveTarget: null,
+      showArchiveDialog: false,
+      recordTarget: null,
+      recordOpen: false,
+      editActionPopup: false,
+      editActionCell: null,
+      detailActions: cageStatus.newActionState(),
+      actionSubmitting: false
+    }, function() {
+      self.applyCacheToGrid();
+      if (mode === 'allocate') self.loadAupList();
+      else if (mode === 'booking') self.loadBookingRooms();
+      else if (mode === 'studentClaim') self.loadPoolCells();
+      else if (mode === 'reserve') { self.loadAupList(); self.setData({ reserveKeyword: '', reserveResults: [], reserveGroups: [], reservePersonOpen: false }); }
+      if (mode === 'confirm' && !self.data.isStaffView) self.loadMyClaimCageIds();
+      else self.setData({ myClaimCageIds: {} });
+      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
     });
-    self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
   },
 
-  /** 切换扫码确认模式（与编辑模式互斥） */
-  onToggleConfirmMode: function() {
-    var self = this;
-    var next = !self.data.confirmMode;
-    if (next) {
-      self.setData({
-        confirmMode: true,
-        editMode: false,
-        confirmLookup: null,
-        confirmRows: [],
-        showConfirmDialog: false,
-        scanCache: {},
-        lastScannedKey: '',
-        scannedCellX: -1,
-        scannedCellY: -1,
-        detailActions: cageStatus.newActionState()
-      });
-    } else {
-      self.setData({
-        confirmMode: false,
-        confirmLookup: null,
-        confirmRows: [],
-        showConfirmDialog: false
-      });
-      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+  /* ------------------------------------------------------------------ */
+  /*  选中集（分配/认领/学生申请共用）                                     */
+  /* ------------------------------------------------------------------ */
+
+  onClearSelection: function() {
+    this.setData({ selectedCells: {}, selectedCount: 0 }, this.applySelectionToGrid.bind(this));
+  },
+
+  /** 仅切换选中（不校验类型） */
+  toggleCellInSelection: function(cell) {
+    var key = cell.x + ':' + cell.y;
+    var sel = this.data.selectedCells || {};
+    var newSel = {};
+    for (var k in sel) { if (Object.prototype.hasOwnProperty.call(sel, k)) newSel[k] = sel[k]; }
+    if (newSel[key]) delete newSel[key];
+    else newSel[key] = String(cell.id || cell.animalCageId || '');
+    this.setData({ selectedCells: newSel, selectedCount: Object.keys(newSel).length }, this.applySelectionToGrid.bind(this));
+  },
+
+  /**
+   * 分配模式选中：与 Web/H5 的 `allocSelectVerdict` 同一套规则。
+   * 1 等待分配       → 可选，本批动作 = 分配（下发 AUP）
+   * 2 已预约(空笼盒) → 可选，本批动作 = 取消分配（撤回 AUP，退回等待分配）
+   * 3/4              → 不可选，须先归档腾空
+   * 一批之内不允许混选两种动作，否则按钮语义不明。
+   */
+  toggleAllocateCell: function(cell) {
+    var key = cell.x + ':' + cell.y;
+    var sel = this.data.selectedCells || {};
+    // 已选中的再点一次是取消勾选，不过闸门
+    if (!sel[key]) {
+      var v = allocVerdict(cageTypeOf(cell));
+      if (!v.ok) { wx.showToast({ title: v.reason, icon: 'none' }); return; }
+      var batch = this.computeAllocBatchKind();
+      if (batch && v.kind !== batch) { wx.showToast({ title: ALLOC_MIXED_KIND_HINT, icon: 'none' }); return; }
     }
+    this.toggleCellInSelection(cell);
+  },
+
+  /** 本批已确定的分配动作类型（'allocate' / 'cancel'），空选返回 '' */
+  computeAllocBatchKind: function() {
+    var grid = this.data.grid || [];
+    var sel = this.data.selectedCells || {};
+    for (var i = 0; i < grid.length; i++) {
+      if (!sel[grid[i].x + ':' + grid[i].y]) continue;
+      var v = allocVerdict(cageTypeOf(grid[i]));
+      if (v.ok) return v.kind;
+    }
+    return '';
+  },
+
+  /** 认领模式（教职工）：type2（已预约空笼盒）且无活跃认领可选 */
+  toggleReserveCell: function(cell) {
+    if (cageTypeOf(cell) !== 2) { wx.showToast({ title: '只能选择「已预约空笼盒」状态的笼位', icon: 'none' }); return; }
+    if (cell.claimStatus && hasActiveClaim(cell.claimStatus)) { wx.showToast({ title: '该笼位已有预定，不可重复选择', icon: 'none' }); return; }
+    this.toggleCellInSelection(cell);
+  },
+
+  /** 学生申请模式：仅在笼位池内可选 */
+  toggleStudentClaimCell: function(cell) {
+    var cid = String(cell.id || cell.animalCageId || '');
+    if (!this.data.poolByCageId[cid]) { wx.showToast({ title: '该笼位不在你的可申请范围内', icon: 'none' }); return; }
+    this.toggleCellInSelection(cell);
+  },
+
+  /** 把选中集投影到 grid 的 _selected 标记 */
+  applySelectionToGrid: function() {
+    var grid = this.data.grid || [];
+    var sel = this.data.selectedCells || {};
+    var patch = {};
+    for (var i = 0; i < grid.length; i++) {
+      var ck = grid[i].x + ':' + grid[i].y;
+      patch['grid[' + i + ']._selected'] = !!sel[ck];
+    }
+    // 分配模式操作条按批次类型二选一，需把结果落到 data 供 wxml 判断
+    patch.allocBatchKind = this.computeAllocBatchKind();
+    this.setData(patch);
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  分配模式                                                            */
+  /* ------------------------------------------------------------------ */
+
+  loadAupList: function() {
+    var self = this;
+    springAuth.springRequest({ url: '/api/v1/cage-shelves/allocation/aups', method: 'GET', data: {} }).then(function(res) {
+      var p = unwrap(res);
+      var list = (p.ok && p.data) || [];
+      var options = list.map(function(a) { return { text: a.registerNo + ' · ' + (a.projectGroupName || a.piName || ''), value: String(a.id) }; });
+      self.setData({ aupList: list, aupOptions: options });
+    }).catch(function() { /* AUP 字典加载失败，分配按钮无选项 */ });
+  },
+
+  onOpenAupDialog: function() {
+    if (this.data.selectedCount === 0) { wx.showToast({ title: '请先选择笼位', icon: 'none' }); return; }
+    this.setData({ showAupDialog: true });
+  },
+
+  onCloseAupDialog: function() {
+    this.setData({ showAupDialog: false });
+  },
+
+  onAupSelect: function(e) {
+    var value = e.currentTarget.dataset.value;
+    if (value == null) return;
+    this.setData({ selectedAupId: String(value) });
+  },
+
+  handleConfirmAssign: function() {
+    var self = this;
+    var sel = self.data.selectedCells || {};
+    var cageIds = [];
+    for (var k in sel) { if (Object.prototype.hasOwnProperty.call(sel, k) && sel[k]) cageIds.push(sel[k]); }
+    if (!self.data.selectedAupId || cageIds.length === 0) { wx.showToast({ title: '请选择 AUP 与笼位', icon: 'none' }); return; }
+    var meta = self.data.gridMeta || {};
+    var aup = null;
+    for (var i = 0; i < self.data.aupList.length; i++) { if (String(self.data.aupList[i].id) === String(self.data.selectedAupId)) { aup = self.data.aupList[i]; break; } }
+    // 二次确认：批量写入前先核对笼位数与目标 AUP
+    var aupLabel = (aup && aup.registerNo) || self.data.selectedAupId;
+    if (aup && aup.piName) aupLabel += ' · ' + aup.piName;
+    wx.showModal({
+      title: '确认分配',
+      content: '确定将 ' + cageIds.length + ' 个笼位分配给「' + aupLabel + '」？',
+      success: function(res) {
+        if (!res.confirm) return;
+        self.setData({ allocSubmitting: true });
+        springAuth.springRequest({
+          url: '/api/v1/cage-shelves/allocation/assign',
+          method: 'POST',
+          data: { roomId: String(meta.roomId || ''), shelveId: String(meta.shelveId || ''), cageIds: cageIds, aupId: self.data.selectedAupId, registerNumber: aup ? aup.registerNo : '' }
+        }).then(function(res2) {
+          var p = unwrap(res2);
+          if (!p.ok) { self.setData({ allocSubmitting: false }); wx.showToast({ title: p.message || '分配失败', icon: 'none' }); return; }
+          self.setData({ allocSubmitting: false, selectedCells: {}, selectedCount: 0, selectedAupId: '', showAupDialog: false });
+          wx.showToast({ title: '已分配 ' + cageIds.length + ' 个笼位', icon: 'success' });
+          self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+        }).catch(function(e) {
+          self.setData({ allocSubmitting: false });
+          wx.showToast({ title: (e && e.message) || '分配失败', icon: 'none' });
+        });
+      }
+    });
+  },
+
+  handleCancelAssign: function() {
+    var self = this;
+    var sel = self.data.selectedCells || {};
+    var cageIds = [];
+    for (var k in sel) { if (Object.prototype.hasOwnProperty.call(sel, k) && sel[k]) cageIds.push(sel[k]); }
+    if (cageIds.length === 0) return;
+    var meta = self.data.gridMeta || {};
+    // 二次确认：取消分配会清空笼位 AUP 并退回「等待分配」，不可一键撤销
+    wx.showModal({
+      title: '取消分配',
+      content: '确定取消 ' + cageIds.length + ' 个笼位的分配？\n取消后笼位将清空 AUP，退回「等待分配」。',
+      success: function(res) {
+        if (!res.confirm) return;
+        self.setData({ allocSubmitting: true });
+        springAuth.springRequest({ url: '/api/v1/cage-shelves/allocation/cancel', method: 'POST', data: { cageIds: cageIds, roomId: String(meta.roomId || '') } }).then(function(res2) {
+          var p = unwrap(res2);
+          if (!p.ok) { self.setData({ allocSubmitting: false }); wx.showToast({ title: p.message || '取消分配失败', icon: 'none' }); return; }
+          self.setData({ allocSubmitting: false, selectedCells: {}, selectedCount: 0 });
+          wx.showToast({ title: '已取消 ' + cageIds.length + ' 个笼位分配', icon: 'success' });
+          self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+        }).catch(function(e) {
+          self.setData({ allocSubmitting: false });
+          wx.showToast({ title: (e && e.message) || '取消分配失败', icon: 'none' });
+        });
+      }
+    });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  认领模式（教职工批量认领 + 人员检索）                                */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * 打开选人弹窗，并自动预览「已选笼位所属 AUP 的课题组成员」。
+   * 与 Web/H5 的 ReservePersonDialog 行为一致：不必先手输关键字，打开即有候选人。
+   */
+  openReservePerson: function() {
+    if (this.data.selectedCount === 0) { wx.showToast({ title: '请先选择笼位', icon: 'none' }); return; }
+    this.setData({ reservePersonOpen: true, reserveKeyword: '', reserveResults: [], reserveSearching: false });
+    this.previewReserveCandidates();
+  },
+
+  /** 已选笼位的 aupNumber → 课题组名（去重）。依赖 aupList 字典。 */
+  reserveGroupNames: function() {
+    var byAup = {};
+    var aups = this.data.aupList || [];
+    for (var i = 0; i < aups.length; i++) {
+      if (aups[i].registerNo && aups[i].projectGroupName) byAup[String(aups[i].registerNo)] = aups[i].projectGroupName;
+    }
+    var grid = this.data.grid || [];
+    var sel = this.data.selectedCells || {};
+    var seen = {}, names = [];
+    for (var j = 0; j < grid.length; j++) {
+      if (!sel[grid[j].x + ':' + grid[j].y]) continue;
+      var no = grid[j].aupNumber || (grid[j].detail && grid[j].detail.aupNumber);
+      var g = no ? byAup[String(no)] : '';
+      if (g && !seen[g]) { seen[g] = 1; names.push(g); }
+    }
+    return names;
+  },
+
+  /** 按课题组批量拉成员作为默认候选；无课题组则留空等用户手搜 */
+  previewReserveCandidates: function() {
+    var self = this;
+    var names = self.reserveGroupNames();
+    self.setData({ reserveGroups: names });
+    if (names.length === 0) return;
+    self.setData({ reserveSearching: true });
+    var tasks = names.map(function(g) {
+      return springAuth.springRequest({ url: '/api/personnel', method: 'GET', data: { keyword: g, pageSize: 50 } })
+        .then(function(res) {
+          var p = unwrap(res);
+          var list = (p.ok && p.data && p.data.list) || [];
+          // 关键字检索是模糊匹配，需按课题组名精确过滤，避免混入他组人员
+          return list.filter(function(x) { return x.projectGroupName === g; });
+        })
+        .catch(function() { return []; });
+    });
+    Promise.all(tasks).then(function(groups) {
+      var all = [], seen = {};
+      for (var i = 0; i < groups.length; i++) {
+        for (var j = 0; j < groups[i].length; j++) {
+          var person = groups[i][j];
+          var accountId = person.staffId || person.aroUserId || '';
+          if (!accountId || seen[accountId]) continue;
+          seen[accountId] = 1;
+          all.push({
+            id: person.id,
+            name: person.name || String(person.id),
+            accountId: accountId,
+            projectGroupName: person.projectGroupName || ''
+          });
+        }
+      }
+      self.setData({ reserveSearching: false, reserveResults: all });
+    });
+  },
+
+  onCloseReservePerson: function() {
+    this.setData({ reservePersonOpen: false });
+  },
+
+  onReserveKeywordInput: function(e) {
+    this.setData({ reserveKeyword: e.detail.value || '' });
+  },
+
+  onReserveSearch: function() {
+    var self = this;
+    var kw = (self.data.reserveKeyword || '').trim();
+    if (!kw) { wx.showToast({ title: '请输入姓名/工号', icon: 'none' }); return; }
+    self.setData({ reserveSearching: true });
+    springAuth.springRequest({ url: '/api/personnel', method: 'GET', data: { keyword: kw, pageSize: 10 } }).then(function(res) {
+      var p = unwrap(res);
+      var list = (p.ok && p.data && p.data.list) || [];
+      var results = list.map(function(person) {
+        return { id: person.id, name: person.name || String(person.id), accountId: person.staffId || person.aroUserId || '', projectGroupName: person.projectGroupName || '' };
+      });
+      self.setData({ reserveSearching: false, reserveResults: results });
+      if (results.length === 0) wx.showToast({ title: '未找到人员', icon: 'none' });
+    }).catch(function() {
+      self.setData({ reserveSearching: false });
+      wx.showToast({ title: '搜索失败', icon: 'none' });
+    });
+  },
+
+  onReservePickPerson: function(e) {
+    var accountId = e.currentTarget.dataset.accountId;
+    var name = e.currentTarget.dataset.name;
+    if (!accountId) { wx.showToast({ title: '该人员无账号', icon: 'none' }); return; }
+    this.setData({ reservePersonOpen: false });
+    this.handleReserveConfirm({ name: name, accountId: accountId });
+  },
+
+  handleReserveConfirm: function(p) {
+    var self = this;
+    var sel = self.data.selectedCells || {};
+    var cageIds = [];
+    for (var k in sel) { if (Object.prototype.hasOwnProperty.call(sel, k) && sel[k]) cageIds.push(sel[k]); }
+    if (cageIds.length === 0 || !p.accountId) return;
+    self.setData({ reserveSubmitting: true });
+    springAuth.springRequest({ url: '/api/admin/cage-claims/assign-batch', method: 'POST', data: { animalCageIds: cageIds, studentUserId: p.accountId } }).then(function(res) {
+      var up = unwrap(res);
+      if (!up.ok) { self.setData({ reserveSubmitting: false }); wx.showToast({ title: up.message || '预定失败', icon: 'none' }); return; }
+      var results = up.data || [];
+      var failed = 0;
+      for (var i = 0; i < results.length; i++) { if (!results[i].ok) failed++; }
+      self.setData({ reserveSubmitting: false, selectedCells: {}, selectedCount: 0 });
+      if (failed > 0) wx.showToast({ title: '已预定 ' + (cageIds.length - failed) + ' 个，' + failed + ' 个失败', icon: 'none' });
+      else wx.showToast({ title: '已预定 ' + cageIds.length + ' 个笼位给 ' + (p.name || ''), icon: 'success' });
+      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+    }).catch(function(e) {
+      self.setData({ reserveSubmitting: false });
+      wx.showToast({ title: (e && e.message) || '预定失败', icon: 'none' });
+    });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  归档模式                                                            */
+  /* ------------------------------------------------------------------ */
+
+  openArchiveDialog: function(cell) {
+    if (cageTypeOf(cell) !== 3) { wx.showToast({ title: '该笼位当前无笼盒/未占用，无需归档', icon: 'none' }); return; }
+    var detail = cell.detail || {};
+    this.setData({
+      archiveTarget: {
+        animalCageId: String(cell.id || cell.animalCageId || ''),
+        positionLabel: cell._displayPosition || cell.position || '',
+        occupantName: cell.occupantName || '',
+        projectPiName: detail.projectPiName || cell.projectPiName || '',
+        aupNumber: detail.aupNumber || cell.aupNumber || ''
+      },
+      showArchiveDialog: true
+    });
+  },
+
+  /** 归档模式扫码：定位 → 开归档弹窗 */
+  handleArchiveScan: function(code) {
+    var self = this;
+    assetApi.lookupCode(code).then(function(r) {
+      if (r.type === 'NOT_FOUND') { wx.showToast({ title: '未识别笼位', icon: 'none' }); return; }
+      if (r.type === 'ASSET') { wx.showToast({ title: '该编码为资产编号，非笼位', icon: 'none' }); return; }
+      if (r.type === 'LEGACY_CAGE_BOX') { wx.showToast({ title: '旧盒码已废弃，请扫笼位码', icon: 'none' }); self._locateLookup(r); return; }
+      self._locateLookup(r);
+      if (r.claim) {
+        var cc = r.cageCell || {};
+        self.setData({
+          archiveTarget: { animalCageId: String(cc.animalCageId || ''), positionLabel: cc.positionLabel || '', occupantName: r.claim.claimantName || '', projectPiName: r.claim.projectPiName || '', aupNumber: r.claim.aupNumber || '' },
+          showArchiveDialog: true
+        });
+      } else {
+        wx.showToast({ title: '该笼位无占用记录，无需归档', icon: 'none' });
+      }
+    }).catch(function(e) {
+      wx.showToast({ title: (e && e.message) || '扫码查询失败', icon: 'none' });
+    });
+  },
+
+  onCloseArchiveDialog: function() {
+    this.setData({ showArchiveDialog: false, archiveTarget: null });
+  },
+
+  handleArchiveConfirm: function() {
+    var self = this;
+    var t = self.data.archiveTarget;
+    if (!t || !t.animalCageId || self.data.archiveSubmitting) return;
+    self.setData({ archiveSubmitting: true });
+    springAuth.springRequest({ url: '/api/admin/cage-info/occupancy/archive', method: 'POST', data: { animalCageId: t.animalCageId, reason: '' } }).then(function(res) {
+      var p = unwrap(res);
+      if (!p.ok) { self.setData({ archiveSubmitting: false }); wx.showToast({ title: p.message || '归档失败', icon: 'none' }); return; }
+      self.setData({ archiveSubmitting: false, showArchiveDialog: false, archiveTarget: null });
+      wx.showToast({ title: '已归档', icon: 'success' });
+      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+    }).catch(function(e) {
+      self.setData({ archiveSubmitting: false });
+      wx.showToast({ title: (e && e.message) || '归档失败', icon: 'none' });
+    });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  记录模式（笼位历史记录）                                            */
+  /* ------------------------------------------------------------------ */
+
+  openRecordDialog: function(cell) {
+    var self = this;
+    var cid = String(cell.id || cell.animalCageId || '');
+    if (!cid) { wx.showToast({ title: '该笼位无 ID', icon: 'none' }); return; }
+    self.setData({ recordTarget: { animalCageId: cid, positionLabel: cell._displayPosition || cell.position || '' }, recordOpen: true, recordLoading: true, recordGroups: [] });
+    springAuth.springRequest({ url: '/api/admin/cage-form/cage-history/' + cid, method: 'GET', data: {} }).then(function(res) {
+      var p = unwrap(res);
+      var groups = (p.ok && p.data && p.data.groups) || [];
+      self.setData({ recordLoading: false, recordGroups: groups });
+    }).catch(function(e) {
+      self.setData({ recordLoading: false });
+      wx.showToast({ title: (e && e.message) || '加载历史失败', icon: 'none' });
+    });
+  },
+
+  onCloseRecordDialog: function() {
+    this.setData({ recordOpen: false, recordTarget: null });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  扫码确认模式：点格子直接开核对弹窗（对齐 H5 handleConfirmCell）      */
+  /* ------------------------------------------------------------------ */
+
+  openConfirmDialogFromCell: function(cell) {
+    var status = cell.claimStatus;
+    if (!status) { wx.showToast({ title: '该笼位未分配', icon: 'none' }); return; }
+    if (status === 'locked') {
+      var cc = {
+        animalCageId: String(cell.id || cell.animalCageId || ''),
+        positionLabel: cell._displayPosition || cell.position || '',
+        positionX: cell.x,
+        positionY: cell.y,
+        roomName: (this.data.gridMeta && this.data.gridMeta.roomName) || '',
+        shelveId: String((this.data.gridMeta && this.data.gridMeta.shelveId) || '')
+      };
+      var claim = { id: Number(cell.activeClaimId), claimStatus: status, claimantName: cell.occupantName || '', projectPiName: cell.projectPiName || '', aupNumber: cell.aupNumber || '', projectName: cell.projectGroup || '', hasInfo: true };
+      var rows = [];
+      if (cc.positionLabel) rows.push({ label: '笼位', value: cc.positionLabel, em: false });
+      if (cc.roomName) rows.push({ label: '房间', value: cc.roomName, em: false });
+      if (claim.claimantName) rows.push({ label: '认领人', value: claim.claimantName, em: true });
+      if (claim.projectPiName) rows.push({ label: '课题组 PI', value: claim.projectPiName, em: true });
+      if (claim.aupNumber) rows.push({ label: 'AUP 编号', value: claim.aupNumber, em: false });
+      if (claim.projectName) rows.push({ label: '项目', value: claim.projectName, em: false });
+      rows.push({ label: '当前状态', value: '待确认', em: true });
+      this.setData({ confirmLookup: { type: 'CAGE_CELL', cageCell: cc, claim: claim }, confirmRows: rows, showConfirmDialog: true });
+      return;
+    }
+    if (status === 'confirmed') { wx.showToast({ title: '该笼位已到位', icon: 'success' }); return; }
+    if (status === 'pending_approval') { wx.showToast({ title: '该笼位待审批', icon: 'none' }); return; }
+    if (status === 'pending_release_approval') { wx.showToast({ title: '该笼位待释放审批', icon: 'none' }); return; }
+    wx.showToast({ title: '该笼位状态：' + status, icon: 'none' });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  预约模式（房间/AUP 汇总 + 同步）                                     */
+  /* ------------------------------------------------------------------ */
+
+  loadBookingRooms: function() {
+    var self = this;
+    self.setData({ bookingLoading: true });
+    springAuth.springRequest({ url: '/api/v1/cage-shelves/booking/rooms', method: 'GET', data: { pageNum: 1, pageSize: 200 } }).then(function(res) {
+      var p = unwrap(res);
+      var list = [];
+      if (p.ok && p.data && p.data.data && p.data.data.list) list = p.data.data.list;
+      else if (p.ok && p.data && p.data.list) list = p.data.list;
+      self.setData({ bookingLoading: false, bookingRooms: list });
+    }).catch(function() { self.setData({ bookingLoading: false, bookingRooms: [] }); });
+  },
+
+  handleBookingSync: function() {
+    var self = this;
+    self.setData({ bookingSyncing: true });
+    springAuth.springRequest({ url: '/api/v1/cage-shelves/booking/sync', method: 'POST', data: {} }).then(function(res) {
+      var p = unwrap(res);
+      if (!p.ok) { self.setData({ bookingSyncing: false }); wx.showToast({ title: p.message || '同步失败', icon: 'none' }); return; }
+      var d = p.data || {};
+      self.setData({ bookingSyncing: false });
+      wx.showToast({ title: '同步完成：' + (d.rooms || 0) + ' 房间 / ' + (d.aups || 0) + ' 分配', icon: 'success' });
+      self.loadBookingRooms();
+    }).catch(function(e) {
+      self.setData({ bookingSyncing: false });
+      wx.showToast({ title: (e && e.message) || '同步失败', icon: 'none' });
+    });
+  },
+
+  onCloseBooking: function() {
+    this.switchMode('view');
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  学生申请（认领）+ 我的申请                                          */
+  /* ------------------------------------------------------------------ */
+
+  loadPoolCells: function() {
+    var self = this;
+    var meta = self.data.gridMeta || {};
+    var shelveId = String(meta.shelveId || (self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
+    var sid = shelfIndexIdMap[shelveId];
+    if (sid == null || sid === '') { self.setData({ poolByCageId: {} }); return; }
+    springAuth.springRequest({ url: '/api/student/cage-claims/pool', method: 'GET', data: { shelfIndexId: sid } }).then(function(res) {
+      var p = unwrap(res);
+      var pool = (p.ok && p.data) || [];
+      var map = {};
+      for (var i = 0; i < pool.length; i++) { map[String(pool[i].animalCageId)] = true; }
+      self.setData({ poolByCageId: map }, self.applyPoolToGrid.bind(self));
+    }).catch(function() { self.setData({ poolByCageId: {} }); });
+  },
+
+  applyPoolToGrid: function() {
+    var grid = this.data.grid || [];
+    var map = this.data.poolByCageId || {};
+    var patch = {};
+    for (var i = 0; i < grid.length; i++) {
+      var cid = String(grid[i].id || grid[i].animalCageId || '');
+      patch['grid[' + i + ']._inPool'] = !!cid && !!map[cid];
+    }
+    this.setData(patch);
+  },
+
+  /** 学生确认模式：拉取本人待确认到位(locked)的笼位 id，供网格琥珀高亮（教职工不加载） */
+  loadMyClaimCageIds: function() {
+    var self = this;
+    springAuth.springRequest({ url: '/api/student/cage-claims/my', method: 'GET', data: {} }).then(function(res) {
+      if (self.data.pageMode !== 'confirm' || self.data.isStaffView) return;
+      var p = unwrap(res);
+      var list = (p.ok && p.data) || [];
+      var map = {};
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].claimStatus === 'locked') map[String(list[i].animalCageId)] = true;
+      }
+      self.setData({ myClaimCageIds: map }, self.applyMyClaimToGrid.bind(self));
+    }).catch(function() {
+      if (self.data.pageMode !== 'confirm') return;
+      self.setData({ myClaimCageIds: {} }, self.applyMyClaimToGrid.bind(self));
+    });
+  },
+
+  /** 把本人待确认集合投影到 grid 的 _myClaim 标记 */
+  applyMyClaimToGrid: function() {
+    var grid = this.data.grid || [];
+    var map = this.data.myClaimCageIds || {};
+    var patch = {};
+    for (var i = 0; i < grid.length; i++) {
+      var cid = String(grid[i].id || grid[i].animalCageId || '');
+      patch['grid[' + i + ']._myClaim'] = !!cid && !!map[cid];
+    }
+    this.setData(patch);
+  },
+
+  handleStudentClaim: function() {
+    var self = this;
+    var sel = self.data.selectedCells || {};
+    var keys = Object.keys(sel);
+    if (keys.length === 0) { wx.showToast({ title: '请先选择笼位', icon: 'none' }); return; }
+    var animalCageId = sel[keys[0]];
+    var meta = self.data.gridMeta || {};
+    var shelveId = String(meta.shelveId || (self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
+    var sid = shelfIndexIdMap[shelveId];
+    if (!animalCageId || sid == null || sid === '') { wx.showToast({ title: '无法获取笼位ID', icon: 'none' }); return; }
+    self.setData({ claimSubmitting: true });
+    springAuth.springRequest({ url: '/api/student/cage-claims', method: 'POST', data: { animalCageId: animalCageId, shelfIndexId: sid } }).then(function(res) {
+      var p = unwrap(res);
+      if (!p.ok) { self.setData({ claimSubmitting: false }); wx.showToast({ title: p.message || '申请失败', icon: 'none' }); return; }
+      var d = p.data || {};
+      self.setData({ claimSubmitting: false, selectedCells: {}, selectedCount: 0 });
+      wx.showToast({ title: d.needApproval ? '已提交申请，待审批' : '申请成功', icon: 'success' });
+      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+    }).catch(function(e) {
+      self.setData({ claimSubmitting: false });
+      wx.showToast({ title: (e && e.message) || '申请失败', icon: 'none' });
+    });
+  },
+
+  onOpenMyClaims: function() {
+    var self = this;
+    self.setData({ myClaimsOpen: true, myClaimsLoading: true, myClaims: [] });
+    springAuth.springRequest({ url: '/api/student/cage-claims/my', method: 'GET', data: {} }).then(function(res) {
+      var p = unwrap(res);
+      var list = (p.ok && p.data) || [];
+      list.forEach(function(it) { it._statusLabel = claimStatusLabel(it.claimStatus); });
+      self.setData({ myClaimsLoading: false, myClaims: list });
+    }).catch(function() {
+      self.setData({ myClaimsLoading: false });
+      wx.showToast({ title: '加载申请列表失败', icon: 'none' });
+    });
+  },
+
+  onCloseMyClaims: function() {
+    this.setData({ myClaimsOpen: false });
+  },
+
+  /** 取消申请：仅 claimStatus === 'pending_approval' 时由 wxml 显示入口 */
+  onCancelClaim: function(e) {
+    var self = this;
+    var id = e.currentTarget.dataset.id;
+    if (!id) return;
+    wx.showModal({
+      title: '取消申请',
+      content: '确定取消该申请？',
+      success: function(res) {
+        if (!res.confirm) return;
+        springAuth.springRequest({ url: '/api/student/cage-claims/' + id + '/cancel', method: 'POST', data: {} }).then(function(res2) {
+          var p = unwrap(res2);
+          if (!p.ok) { wx.showToast({ title: p.message || '取消失败', icon: 'none' }); return; }
+          wx.showToast({ title: '已取消申请', icon: 'success' });
+          self.onOpenMyClaims();
+        }).catch(function() { wx.showToast({ title: '取消失败', icon: 'none' }); });
+      }
+    });
+  },
+
+  /** 我的申请列表里「确认到位」：种子 confirmLookup 后复用 handleConfirmArrival */
+  onConfirmClaimFromList: function(e) {
+    var id = e.currentTarget.dataset.id;
+    if (!id) return;
+    var self = this;
+    this.setData({ confirmLookup: { claim: { id: Number(id) } } });
+    this.handleConfirmArrival();
+    // 确认后刷新列表（handleConfirmArrival 为 fire-and-forget，稍后重拉）
+    setTimeout(function() { if (self.data.myClaimsOpen) self.onOpenMyClaims(); }, 800);
   },
 
   /* ------------------------------------------------------------------ */
@@ -1368,8 +2118,13 @@ Page({
       scannedCageBoxCode: '',
       scanCache: {},
       lastScannedKey: '',
-      editMode: false,
-      confirmMode: false,
+      pageMode: 'view',
+      selectedCells: {},
+      selectedCount: 0,
+      archiveTarget: null,
+      showArchiveDialog: false,
+      recordTarget: null,
+      recordOpen: false,
       confirmLookup: null,
       confirmRows: [],
       showConfirmDialog: false,
@@ -1407,8 +2162,17 @@ Page({
     }
     if (!cell || cell.empty) return;
 
+    // 依当前模式分派点击（选中/归档/记录/确认/申请 → 各自处理，其余落到详情）
+    var mode = self.data.pageMode;
+    if (mode === 'allocate') { self.toggleAllocateCell(cell); return; }
+    if (mode === 'reserve') { self.toggleReserveCell(cell); return; }
+    if (mode === 'archive') { self.openArchiveDialog(cell); return; }
+    if (mode === 'record') { self.openRecordDialog(cell); return; }
+    if (mode === 'confirm') { self.openConfirmDialogFromCell(cell); return; }
+    if (mode === 'studentClaim') { self.toggleStudentClaimCell(cell); return; }
+
     // 编辑模式：弹出操作选择窗口而非详情
-    if (self.data.editMode && self.data.adminView) {
+    if (mode === 'edit') {
       var ck = cell.x + ':' + cell.y;
       var cacheEntry = (self.data.scanCache || {})[ck];
       // 优先从 scanCache 读取，否则空态（表单值到达后再用表单覆盖）
@@ -1824,7 +2588,7 @@ getCellStyleWxs: function(cell) {
     var old = this.data.detailActions;
     var newActions = cageStatus.toggleAction(old, act);
     var cell = this.data.selectedCell;
-    if (cell && this.data.editMode) {
+    if (cell && this.data.pageMode === 'edit') {
       var ck = cell.x + ':' + cell.y;
       // 确保缓存条目存在（点击格子 vs 扫码 → 统一走同一条缓存系统）
       var cache = this.data.scanCache || {};
@@ -2029,60 +2793,6 @@ getCellStyleWxs: function(cell) {
     delete cache[key];
     var lk = this.data.lastScannedKey === key ? '' : this.data.lastScannedKey;
     this.setData({ scanCache: cache, lastScannedKey: lk }, this.applyCacheToGrid.bind(this));
-  },
-
-  /** 切换图例 */
-  _doExitEditMode: function() {
-    this.setData({
-      editMode: false,
-      scanCache: {},
-      scanCacheSize: 0,
-      lastScannedKey: '',
-      scannedCellX: -1,
-      scannedCellY: -1,
-      detailActions: cageStatus.newActionState()
-    }, function() {
-      this.applyCacheToGrid();
-      this.loadShelfDetail(this.data.selectedShelf ? this.data.selectedShelf.shelveId : '');
-    }.bind(this));
-  },
-
-  onToggleRealtime: function() {
-    var self = this;
-    var next = !self.data.editMode;
-    // 退出编辑模式且有未提交修改 → 弹窗确认
-    if (!next && self.data.scanCache && Object.keys(self.data.scanCache).length > 0) {
-      wx.showModal({
-        title: '未提交修改',
-        content: '有未提交的修改，是否放弃？',
-        confirmText: '放弃',
-        cancelText: '继续编辑',
-        success: function(res) {
-          if (res.confirm) { self._doExitEditMode(); }
-        }
-      });
-      return;
-    }
-    if (!next) {
-      // 退出编辑模式（无缓存）→ 切回快照数据
-      self._doExitEditMode();
-      return;
-    }
-    self.setData({ editMode: next, confirmMode: false, confirmLookup: null, confirmRows: [], showConfirmDialog: false });
-    if (next && self.data.selectedShelf && self.data.selectedShelf.shelveId) {
-      // 进入编辑模式 → 从本地DB刷新
-      self.loadShelfDetail(self.data.selectedShelf.shelveId);
-    } else {
-      // 退出编辑模式 → 清除缓存、定位、交叉高亮
-      self.setData({
-        scanCache: {},
-        lastScannedKey: '',
-        scannedCellX: -1,
-        scannedCellY: -1,
-        detailActions: cageStatus.newActionState()
-      }, self.applyCacheToGrid.bind(self));
-      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
-    }
   },
 
   onToggleGridLegend: function() {

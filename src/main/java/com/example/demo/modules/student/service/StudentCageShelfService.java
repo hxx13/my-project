@@ -5,12 +5,15 @@ import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.entity.UserAroBinding;
+import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
-import com.example.demo.modules.cageshelf.mapper.CageShelfGridCacheMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
-import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
+import com.example.demo.modules.cageshelf.service.CageCellIndexService;
+import com.example.demo.modules.cageshelf.service.CageShelfLocalAggCache;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
+import com.example.demo.modules.identity.service.PersonScopeService;
 import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
 import com.example.demo.modules.student.mapper.CageCellAnnotationMapper;
 import com.example.demo.modules.student.mapper.StudentCageShelfPinMapper;
@@ -45,31 +48,37 @@ public class StudentCageShelfService {
     private final CageShelfService cageShelfService;
     private final AroService aroService;
     private final AroPersonnelMapper aroPersonnelMapper;
+    private final UserAroBindingMapper userAroBindingMapper;
     private final CageShelfMapper cageShelfMapper;
-    private final CageShelfGridCacheMapper gridCacheMapper;
     private final StudentCageShelfSnapshotMapper snapshotMapper;
     private final CageCellAnnotationMapper annotationMapper;
     private final StudentCageShelfPinMapper cageShelfPinMapper;
-    private final CageSpecialStatusSnapshotMapper specialStatusSnapshotMapper;
+    private final CageCellIndexService cageCellIndexService;
+    private final PersonScopeService personScopeService;
+    private final CageShelfLocalAggCache localAggCache;
 
     public StudentCageShelfService(CageShelfService cageShelfService,
                                    AroService aroService,
                                    AroPersonnelMapper aroPersonnelMapper,
+                                   UserAroBindingMapper userAroBindingMapper,
                                    CageShelfMapper cageShelfMapper,
-                                   CageShelfGridCacheMapper gridCacheMapper,
                                    StudentCageShelfSnapshotMapper snapshotMapper,
                                    CageCellAnnotationMapper annotationMapper,
                                    StudentCageShelfPinMapper cageShelfPinMapper,
-                                   CageSpecialStatusSnapshotMapper specialStatusSnapshotMapper) {
+                                   CageCellIndexService cageCellIndexService,
+                                   PersonScopeService personScopeService,
+                                   CageShelfLocalAggCache localAggCache) {
         this.cageShelfService = cageShelfService;
         this.aroService = aroService;
         this.aroPersonnelMapper = aroPersonnelMapper;
+        this.userAroBindingMapper = userAroBindingMapper;
         this.cageShelfMapper = cageShelfMapper;
-        this.gridCacheMapper = gridCacheMapper;
         this.snapshotMapper = snapshotMapper;
         this.annotationMapper = annotationMapper;
         this.cageShelfPinMapper = cageShelfPinMapper;
-        this.specialStatusSnapshotMapper = specialStatusSnapshotMapper;
+        this.cageCellIndexService = cageCellIndexService;
+        this.personScopeService = personScopeService;
+        this.localAggCache = localAggCache;
     }
 
     // ---- filter options ----
@@ -100,9 +109,13 @@ public class StudentCageShelfService {
         if (isAdminUser(user) || html5PrivilegeBypass) {
             rows = cageShelfMapper.listAllShelfSummaries();
         } else {
+            if (resolveUserGroupNames(user.getId()).isEmpty()) {
+                throw new IllegalStateException("您还没有课题组，无法选笼认领。课题组绑定 AUP，请先联系管理员绑定课题组");
+            }
             Set<String> ownGroupShelveIds = resolveOwnGroupShelveIds(user);
             if (ownGroupShelveIds.isEmpty()) {
-                throw new IllegalStateException("您还没有课题组，无法选笼认领。课题组绑定 AUP，请先联系管理员绑定课题组");
+                // 有课题组但本地数据暂无本组笼位：返回空列表展示空态，而非 500
+                return List.of();
             }
             rows = cageShelfMapper.listAllShelfSummaries();
             if (rows == null || rows.isEmpty()) {
@@ -121,65 +134,25 @@ public class StudentCageShelfService {
         }
         if (rows == null || rows.isEmpty()) return List.of();
 
-        // 批量查询笼位类型分布 — 从系统级扫描快照读取（snapshot-first）
-        List<String> allShelveIds = rows.stream()
-                .map(r -> objToStr(r.get("shelveId")))
-                .filter(id -> !id.isEmpty())
-                .distinct()
-                .toList();
+        // 本地数据源：从 cage_shelf_index + cage_cell_index + cage_cell_detail 联表统计类型分布
+        // （与 admin 本地视图同源，不再走扫描快照）
         Map<String, Map<String, Long>> typeCountsMap = new java.util.LinkedHashMap<>();
-        if (!allShelveIds.isEmpty()) {
-            List<Map<String, Object>> counts = null;
-            try {
-                specialStatusSnapshotMapper.ensureTable();
-                Map<String, Object> latestInfo = specialStatusSnapshotMapper.selectLatestBatchInfo();
-                if (latestInfo != null && !latestInfo.isEmpty()) {
-                    String batchId = String.valueOf(latestInfo.getOrDefault("scanBatchId", ""));
-                    if (!batchId.isBlank()) {
-                        counts = specialStatusSnapshotMapper.selectCageTypeCountsByBatch(batchId, allShelveIds);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("[student-cage-shelf] 快照类型计数查询失败，回退到 student snapshot: {}", e.getMessage());
-            }
-            if (counts == null || counts.isEmpty()) {
-                counts = snapshotMapper.selectCageTypeCountsByShelveIds(allShelveIds);
-            }
-            if (counts != null) {
-                for (Map<String, Object> row : counts) {
+        try {
+            List<Map<String, Object>> treeRows = localAggCache.typeCounts();
+            if (treeRows != null) {
+                for (Map<String, Object> row : treeRows) {
                     String sid = objToStr(row.get("shelveId"));
-                    Object typeObj = row.get("animalCageType");
-                    Object cntObj = row.get("cnt");
-                    String typeKey = typeObj == null ? "0" : String.valueOf(typeObj);
-                    long cnt = 0;
-                    if (cntObj instanceof Number n) cnt = n.longValue();
-                    typeCountsMap.computeIfAbsent(sid, k -> new java.util.LinkedHashMap<>()).put(typeKey, cnt);
+                    if (sid == null || sid.isBlank()) continue;
+                    Map<String, Long> tc = typeCountsMap.computeIfAbsent(sid,
+                            k -> new java.util.LinkedHashMap<>());
+                    tc.put("3", row.get("type3") instanceof Number n ? n.longValue() : 0L);
+                    tc.put("1", row.get("type1") instanceof Number n ? n.longValue() : 0L);
+                    tc.put("4", row.get("type4") instanceof Number n ? n.longValue() : 0L);
+                    tc.put("2", row.get("type2") instanceof Number n ? n.longValue() : 0L);
                 }
             }
-        }
-        // 网格表兜底：快照数据缺失时，从 cage_shelf_index + grid_cache 联表查询类型分布
-        // （对齐小程序：小程序并行调用 full-tree 获取 type1~4，不受快照有无影响）
-        boolean snapshotHasData = typeCountsMap.values().stream()
-                .flatMap(m -> m.values().stream())
-                .anyMatch(v -> v != null && v > 0);
-        if (!snapshotHasData) {
-            try {
-                List<Map<String, Object>> treeRows = cageShelfMapper.listFullTree();
-                if (treeRows != null) {
-                    for (Map<String, Object> row : treeRows) {
-                        String sid = objToStr(row.get("shelveId"));
-                        if (sid == null || sid.isBlank()) continue;
-                        Map<String, Long> tc = typeCountsMap.computeIfAbsent(sid,
-                                k -> new java.util.LinkedHashMap<>());
-                        tc.put("3", row.get("type3") instanceof Number n ? n.longValue() : 0L);
-                        tc.put("1", row.get("type1") instanceof Number n ? n.longValue() : 0L);
-                        tc.put("4", row.get("type4") instanceof Number n ? n.longValue() : 0L);
-                        tc.put("2", row.get("type2") instanceof Number n ? n.longValue() : 0L);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("[student-cage-shelf] 网格表类型计数回退失败: {}", e.getMessage());
-            }
+        } catch (Exception e) {
+            log.warn("[student-cage-shelf] 本地类型计数读取失败: {}", e.getMessage());
         }
         // 注入到每个 shelf
         for (Map<String, Object> shelf : rows) {
@@ -199,7 +172,7 @@ public class StudentCageShelfService {
     // ---- shelf detail (grid) ----
 
     /**
-     * 学生端笼架详情：复用教职工端缓存数据，叠加课题组可见性过滤。
+     * 学生端笼架详情：直读本地数据（cage_cell_detail + cage_info_value，与 admin 本地视图同源），叠加课题组可见性过滤。
      */
     public Map<String, Object> getShelfDetail(User user, String shelveId) {
         return getShelfDetail(user, shelveId, false, false);
@@ -211,7 +184,7 @@ public class StudentCageShelfService {
 
     /**
      * @param mobileHtml5PrivilegeBypass 手机 H5 特权
-     * @param realtime 扫码模式：跳过快照直读缓存
+     * @param realtime 兼容参数（本地数据源统一直读 grid_cache，不再区分快照/实时）
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getShelfDetail(User user, String shelveId, boolean mobileHtml5PrivilegeBypass, boolean realtime) {
@@ -223,20 +196,13 @@ public class StudentCageShelfService {
             throw new IllegalStateException("无权限查看该笼架");
         }
 
-        // realtime=true：直读缓存（编辑/分配模式用实时数据）
-        // realtime=false：取最新 snapshot，与 admin 页面同源
-        Map<String, Object> adminDetail;
-        if (realtime) {
-            adminDetail = cageShelfService.fetchShelfDetail(shelveId, true);
-        } else {
-            Map<String, Object> latestInfo = specialStatusSnapshotMapper.selectLatestBatchInfo();
-            String latestBatchId = latestInfo != null ? String.valueOf(latestInfo.getOrDefault("scanBatchId", "")) : "";
-            if (!latestBatchId.isBlank()) {
-                adminDetail = cageShelfService.fetchShelfDetail(shelveId, latestBatchId);
-            } else {
-                adminDetail = cageShelfService.fetchShelfDetail(shelveId, true);
-            }
+        // 本地数据源：直读 cage_cell_detail + cage_info_value（与 admin 本地视图 getLocalShelfGrid 同源），
+        // 不再走 grid_cache / 快照。仅 web 教职工视角的 ARO 切换使用快照数据。
+        CageShelfIndex idx = cageShelfMapper.findByShelveId(shelveId);
+        if (idx == null) {
+            throw new IllegalStateException("未找到该笼架索引");
         }
+        Map<String, Object> adminDetail = cageCellIndexService.getLocalShelfGrid(idx.getId());
 
         // 权限控制
         List<String> groupNames = isAdmin ? List.of() : resolveUserGroupNames(user.getId());
@@ -308,7 +274,8 @@ public class StudentCageShelfService {
                     c.put("piName", "***");
                     c.put("departmentName", "***");
                     c.put("aupNumber", "");
-                    c.put("specialStatuses", List.of());
+                    // specialStatuses（需分笼/健康异常等）是笼位状态，非课题组归属信息，保留不做脱敏，
+                    // 否则学生视角下非本组笼位的特殊状态色块会丢失。
                     Map<String, Object> detail = castMap(c.get("detail"));
                     if (detail != null) {
                         detail.put("projectPiName", "***");
@@ -552,37 +519,32 @@ public class StudentCageShelfService {
         return resolveOwnGroupShelveIds(user).contains(shelveId.trim());
     }
 
-    /** 本课题组有占用笼位的笼架 ID（快照优先：cage_special_status_snapshot + student_cage_shelf_snapshot） */
+    /**
+     * 本课题组有占用笼位的笼架 ID（本地数据源：cage_cell_detail 表单字段
+     * project_pi_name/pi_name/department_name 判定课题组归属，与 admin 本地视图
+     * getLocalShelfGrid 同源，不再走 grid_cache / 快照）。
+     */
     private Set<String> resolveOwnGroupShelveIds(User user) {
         List<String> groupNames = resolveUserGroupNames(user.getId());
         if (groupNames.isEmpty()) {
             return Set.of();
         }
         Set<String> shelveIds = new LinkedHashSet<>();
-
-        // 1) 从系统级扫描快照发现（snapshot-first）
         try {
-            specialStatusSnapshotMapper.ensureTable();
-            Map<String, Object> latestInfo = specialStatusSnapshotMapper.selectLatestBatchInfo();
-            if (latestInfo != null && !latestInfo.isEmpty()) {
-                String batchId = String.valueOf(latestInfo.getOrDefault("scanBatchId", ""));
-                if (!batchId.isBlank()) {
-                    for (Map<String, Object> row : specialStatusSnapshotMapper.selectDistinctShelvesByGroups(batchId, groupNames)) {
-                        String sid = objToStr(row.get("shelveId"));
-                        if (!sid.isBlank()) shelveIds.add(sid);
-                    }
+            for (Map<String, Object> row : localAggCache.attribution()) {
+                String sid = objToStr(row.get("shelveId"));
+                if (sid.isBlank()) continue;
+                String projectPi = objToStr(row.get("projectPiName"));
+                String pi = objToStr(row.get("piName"));
+                String dept = objToStr(row.get("departmentName"));
+                String cellPi = projectPi.isEmpty() ? pi : projectPi;
+                if (PersonnelProjectGroupUtil.cellBelongsToAnyUserGroup(groupNames, cellPi, dept)) {
+                    shelveIds.add(sid);
                 }
             }
         } catch (Exception e) {
-            log.warn("[student-cage-shelf] 快照笼架发现失败: {}", e.getMessage());
+            log.warn("[student-cage-shelf] 本地笼架归属发现失败: {}", e.getMessage());
         }
-
-        // 2) 补充从 student snapshot 发现
-        for (Map<String, Object> row : snapshotMapper.selectDistinctShelves(groupNames)) {
-            String sid = objToStr(row.get("shelveId"));
-            if (!sid.isBlank()) shelveIds.add(sid);
-        }
-
         return shelveIds;
     }
 
@@ -734,7 +696,15 @@ public class StudentCageShelfService {
 
     private List<String> resolveUserGroupNames(String userId) {
         try {
-            AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
+            // STAFF_* 账号须经 user_aro_binding 展开到 aro 人员编号，否则 aro_personnel 查不到课题组
+            String personnelUserId = userId;
+            if (userId != null && userId.startsWith("STAFF_")) {
+                UserAroBinding binding = userAroBindingMapper.selectByUserId(userId);
+                if (binding != null && binding.getAroUserId() != null && !binding.getAroUserId().isBlank()) {
+                    personnelUserId = binding.getAroUserId();
+                }
+            }
+            AroPersonnel personnel = aroPersonnelMapper.findByUserId(personnelUserId);
             if (personnel == null) {
                 return List.of();
             }
@@ -750,6 +720,43 @@ public class StudentCageShelfService {
     private boolean isAdminUser(User user) {
         if (user == null || user.getRole() == null) return false;
         return user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+    }
+
+    /**
+     * 数据范围判定（第一层）—— 笼架是否对当前用户可见。
+     * 优先级：ADMIN 全量 > 负责范围分配（校区/楼层/房间，取并集）> 课题组。
+     * - 有负责范围 → 笼架的 roomId/floorId/campusId 命中分配集即可见，忽略课题组；
+     * - 无负责范围 → 复用既有课题组过滤。
+     * @return true = 可见，false = 应隐藏（脱敏）
+     */
+    public boolean isShelfVisibleForUser(User user, CageShelfIndex shelf) {
+        if (shelf == null) return false;
+        return isShelfVisibleForUser(user, String.valueOf(shelf.getShelveId()),
+                String.valueOf(shelf.getRoomId()), String.valueOf(shelf.getFloorId()), String.valueOf(shelf.getCampusId()));
+    }
+
+    /** 是否有负责范围分配（校区/楼层/房间）。有分配时数据范围以分配为准，忽略课题组。 */
+    public boolean hasScopeAssignment(User user) {
+        if (user == null || isAdminUser(user)) return false;
+        return !personScopeService.listGroupedByType(user.getId()).isEmpty();
+    }
+
+    /**
+     * 数据范围判定（第一层）—— 仅在「有负责范围分配」时使用。
+     * roomId/floorId/campusId 命中分配集即可见（取并集），都不命中则不可见。
+     * 无负责范围时不应调用本方法（应走 cell 级课题组过滤 maskGridForUser）。
+     */
+    public boolean isShelfVisibleForUser(User user, String shelveId, String roomId, String floorId, String campusId) {
+        if (isAdminUser(user)) return true;
+        Map<String, List<String>> scope = personScopeService.listGroupedByType(user.getId());
+        if (scope.isEmpty()) return true; // 无分配 → 交由调用方走课题组过滤
+        List<String> rooms = scope.getOrDefault("ROOM", List.of());
+        List<String> floors = scope.getOrDefault("FLOOR", List.of());
+        List<String> campuses = scope.getOrDefault("CAMPUS", List.of());
+        if (roomId != null && rooms.contains(roomId)) return true;
+        if (floorId != null && floors.contains(floorId)) return true;
+        if (campusId != null && campuses.contains(campusId)) return true;
+        return false; // 有分配但都不命中 = 不可见
     }
 
     /** 教职工（STAFF+）或手机 HTML5 特权用户查看特殊状态总览时不做课题组过滤。 */
@@ -797,38 +804,6 @@ public class StudentCageShelfService {
         String pi = trim(firstNonNullOr(cageBoxVo, "projectPiName", cageBoxVo.get("ProjectPiName")));
         String dept = trim(firstNonNullOr(cageBoxVo, "departmentName", cageBoxVo.get("DepartmentName")));
         return new String[]{pi, dept};
-    }
-
-    private Map<String, Object> buildEmptyGridResponse(CageShelfIndex index) {
-        List<Map<String, Object>> grid = new ArrayList<>();
-        for (int y = 1; y <= 10; y++) {
-            for (int x = 1; x <= 8; x++) {
-                Map<String, Object> cell = new LinkedHashMap<>();
-                cell.put("x", x);
-                cell.put("y", y);
-                cell.put("position", toPosition(x, y));
-                cell.put("empty", true);
-                cell.put("stateLabel", "空位");
-                cell.put("visible", true);
-                grid.add(cell);
-            }
-        }
-
-        Map<String, Object> shelfMeta = new LinkedHashMap<>();
-        shelfMeta.put("campusName", index.getCampusName());
-        shelfMeta.put("areaName", index.getAreaName());
-        shelfMeta.put("floorName", index.getFloorName());
-        shelfMeta.put("roomName", index.getRoomName());
-        shelfMeta.put("shelveId", index.getShelveId());
-        shelfMeta.put("shelveName", index.getShelveName());
-
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("shelfMeta", shelfMeta);
-        out.put("grid", grid);
-        out.put("totalCells", grid.size());
-        out.put("filledCells", 0);
-        out.put("latestBatchId", null);
-        return out;
     }
 
     // ---- utility methods ported from CageShelfService ----
@@ -1206,7 +1181,9 @@ public class StudentCageShelfService {
 
     /**
      * 返回用户收藏的所有笼架详情。
-     * shelveId 全局唯一 → 从 cage_shelf_index 反向查 roomId，从 grid cache 读笼位数据。
+     * shelveId 全局唯一 → 从 cage_shelf_index 反向查 roomId，从本地 cage_cell_index 读笼位数据。
+     * 收藏只是收藏了索引，数据源与「筛选」tab 保持一致走本地库，
+     * 这样认领徽标（未到位/待审批/待释放）等本地字段在收藏 tab 同样可见。
      */
     public List<Map<String, Object>> getPinnedShelves(User user) {
         List<String> shelveIds = cageShelfPinMapper.selectPinnedShelveIds(user.getId());
@@ -1222,18 +1199,10 @@ public class StudentCageShelfService {
                     cageShelfPinMapper.delete(user.getId(), sid);
                     continue;
                 }
-                Map<String, Object> detail = getShelfDetail(user, sid);
-                // If the grid cache is empty, try to populate it from ARO
-                Object gridObj = detail.get("grid");
-                if (gridObj instanceof List && ((List<?>) gridObj).isEmpty()) {
-                    log.info("[CageShelf-Bookmark] Empty cache for shelveId={}, triggering refresh", sid);
-                    try {
-                        cageShelfService.refreshShelfDetail(sid);
-                        detail = getShelfDetail(user, sid); // re-read after refresh
-                    } catch (Exception refreshEx) {
-                        log.warn("[CageShelf-Bookmark] Refresh failed for shelveId={}: {}", sid, refreshEx.getMessage());
-                    }
-                }
+                // 本地网格（含 claimStatus / activeClaimId），与 /cage-cell-index/local-grid 同源。
+                // 出错时返回不可变 Map.of，故统一拷进可变 Map 再补字段。
+                Map<String, Object> detail =
+                        new LinkedHashMap<>(cageCellIndexService.getLocalShelfGrid(idx.getId()));
                 detail.put("isPinned", true);
                 detail.put("roomId", String.valueOf(idx.getRoomId()));
                 result.add(detail);

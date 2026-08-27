@@ -150,6 +150,7 @@ public class NhpIdService {
             case "XM" -> join(str(ctx, "donor", "DONOR", "DON"), str(ctx, "recip", "RECIP", "recipient"));
             case "TST" -> join(str(ctx, "lab", "实验室"), str(ctx, "yearmonth", "年月"));
             case "PERF" -> join(str(ctx, "don", "DON", "DONOR", "donor"), str(ctx, "date", "日期"));
+            case "NHP_PROJ" -> nz(year2(ctx));
             default -> join(str(ctx, "center", "centerCode"), year2(ctx));
         };
     }

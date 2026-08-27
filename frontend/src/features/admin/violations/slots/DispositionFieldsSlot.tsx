@@ -11,8 +11,6 @@ import {
   DISPOSITION_STRATEGY_LABEL,
   ensureForbidForStrategy,
   registryDispositionType,
-  applyUnlockExpiryLinkage,
-  actionsIncludeUnlock,
 } from "./dispositionTypes";
 import type {
   DispositionActionCode,
@@ -153,17 +151,14 @@ export function DispositionFieldsSlot({
 
   const actionOptions = capability.allowActions.map((a) => ACTION_OPTIONS[a]);
   const effectiveActions = value.actions.filter((a) => capability.allowActions.includes(a));
-  const unlockOn = actionsIncludeUnlock(effectiveActions);
   const days = value.expiry.mode === "RELATIVE" ? value.expiry.days : null;
-  // unlock 时展示空天数（即便 value 里仍残留旧天数，提交侧也会忽略）
-  const daysString = unlockOn || days == null ? "" : String(days);
-  const isClear = value.expiry.mode === "CLEAR" || (unlockOn && expiryMode === "edit");
+  const daysString = days == null ? "" : String(days);
+  const isClear = value.expiry.mode === "CLEAR";
   const expiryLabel = expiryCopy?.label ?? VIOLATION_FIELD_COPY.expireDays.label;
   const expiryPlaceholder = expiryCopy?.placeholder ?? VIOLATION_FIELD_COPY.expireDays.placeholder;
-  const expiryHint = unlockOn
-    ? VIOLATION_FIELD_COPY.expireDaysWhenUnlock.hint
-    : (expiryCopy?.hint ?? VIOLATION_FIELD_COPY.expireDays.hint);
-  const expiryControlsDisabled = disabled || unlockOn;
+  // 到期时间与验证后解禁可并存：不再因 unlock 禁用或改提示
+  const expiryHint = expiryCopy?.hint ?? VIOLATION_FIELD_COPY.expireDays.hint;
+  const expiryControlsDisabled = disabled;
   const registryType = registryDispositionType(value);
   const strategyOptions = strategies.map((s) => ({
     value: s.type,
@@ -185,7 +180,7 @@ export function DispositionFieldsSlot({
       // 非「仅展示」时取消禁入会立刻补回，避免交互处置沦为摆设
       actions: ensureForbidForStrategy(actions, value.strategy),
     };
-    onChange(applyUnlockExpiryLinkage(next, expiryMode));
+    onChange(next);
   };
   return (
     <InspectorGroup title="处置">
@@ -222,7 +217,7 @@ export function DispositionFieldsSlot({
                 // 选交互类策略（除仅展示）时连锁勾选立即禁入；切回仅展示不强制去掉
                 actions: ensureForbidForStrategy(value.actions, strategy),
               };
-              onChange(applyUnlockExpiryLinkage(next, expiryMode));
+              onChange(next);
             }}
             placeholder="请选择处置策略"
             disabled={disabled}
@@ -378,8 +373,8 @@ export function DispositionFieldsSlot({
         ? expiryMode === "create" ? (
             <InspectorRow
               label={expiryLabel}
-              tone={!unlockOn && days == null ? "warn" : "default"}
-              hint={unlockOn || days == null ? expiryHint : undefined}
+              tone={days == null ? "warn" : "default"}
+              hint={days == null ? expiryHint : undefined}
             >
               {(controlId) => (
                 <BareNumberWithUnit
@@ -395,8 +390,8 @@ export function DispositionFieldsSlot({
           ) : (
             <InspectorRow
               label={expiryLabel}
-              tone={!unlockOn && isClear ? "warn" : "default"}
-              hint={unlockOn || isClear ? expiryHint : undefined}
+              tone={isClear ? "warn" : "default"}
+              hint={isClear ? expiryHint : undefined}
             >
               {(controlId) => (
                 <div className="flex flex-col gap-2">
@@ -407,7 +402,7 @@ export function DispositionFieldsSlot({
                     onChange={(mode) => onChange({ ...value, expiry: expiryFromEditMode(mode) })}
                     disabled={expiryControlsDisabled}
                   />
-                  {value.expiry.mode === "RELATIVE" && !unlockOn ? (
+                  {value.expiry.mode === "RELATIVE" ? (
                     <>
                       <label htmlFor={daysInputId} className="sr-only">{expiryLabel}（重新起算）</label>
                       <BareNumberWithUnit

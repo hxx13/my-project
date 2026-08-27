@@ -136,16 +136,24 @@ export async function finalizeNhpSubject(
     .then(({ data }) => data.data);
 }
 
-/** 登记项目：仅建项目（crf_transplant），对象在保存 D1/D2 表单时才创建 */
-export async function createNhpProject(opts?: { createdBy?: string }): Promise<{
-  project: { id: number; txCode?: string | null; status?: string; donorSubjectId?: number | null; recipientSubjectId?: number | null; lifecycleStage?: string | null; createdBy?: string | null; createdAt?: string | null };
-}> {
+/** 项目计划书字段（器官/术式/手术日可后补） */
+export interface NhpProjectInput {
+  projectName?: string;
+  remark?: string;
+  teamId?: number | null;
+  currentTp?: string | null;
+  stageLock?: boolean;
+  txOrgan?: string;
+  procedureType?: string;
+  txDate?: string;
+}
+
+/** 登记项目：建 crf_transplant（项目编号由后端生成），对象在保存 D1/D2 表单时才创建 */
+export async function createNhpProject(
+  input?: NhpProjectInput & { createdBy?: string },
+): Promise<{ project: NhpProject }> {
   return authHttp
-    .post<
-      Result<{
-        project: { id: number; txCode?: string | null; status?: string; donorSubjectId?: number | null; recipientSubjectId?: number | null; lifecycleStage?: string | null; createdBy?: string | null; createdAt?: string | null };
-      }>
-    >("/nhp/projects", opts ?? {})
+    .post<Result<{ project: NhpProject }>>("/nhp/projects", input ?? {})
     .then(({ data }) => data.data);
 }
 
@@ -167,6 +175,13 @@ export async function ensureSubjectForRecord(recordId: number): Promise<NhpSubje
 export interface NhpProject {
   id: number;
   txCode?: string | null;
+  projectName?: string | null;
+  remark?: string | null;
+  teamId?: number | null;
+  currentTp?: string | null;
+  stageLock?: boolean;
+  txOrgan?: string | null;
+  procedureType?: string | null;
   status?: string;
   lifecycleStage?: string | null;
   txDate?: string | null;
@@ -176,9 +191,36 @@ export interface NhpProject {
   recipient?: NhpSubject | null;
 }
 
-/** 项目管理：列出全部项目（含供体/受体） */
-export async function fetchNhpProjects(): Promise<NhpProject[]> {
-  return authHttp.get<Result<NhpProject[]>>("/nhp/projects").then(({ data }) => data.data ?? []);
+/** 项目管理：列出项目（mine=true 只列当前用户所在团队） */
+export async function fetchNhpProjects(opts?: { mine?: boolean }): Promise<NhpProject[]> {
+  const params = opts?.mine ? { mine: true } : undefined;
+  return authHttp.get<Result<NhpProject[]>>("/nhp/projects", { params }).then(({ data }) => data.data ?? []);
+}
+
+/** 项目详情 */
+export async function fetchNhpProject(id: number): Promise<NhpProject> {
+  return authHttp.get<Result<NhpProject>>(`/nhp/projects/${id}`).then(({ data }) => data.data);
+}
+
+/** 回填项目计划书字段 */
+export async function updateNhpProject(id: number, body: NhpProjectInput & { status?: string }): Promise<NhpProject> {
+  return authHttp.put<Result<NhpProject>>(`/nhp/projects/${id}`, body).then(({ data }) => data.data);
+}
+
+/** 删除空项目（有表单实例后端会拒绝） */
+export async function deleteNhpProject(id: number): Promise<void> {
+  await authHttp.delete<Result<void>>(`/nhp/projects/${id}`).then(({ data }) => data.data);
+}
+
+/** 项目名下全部表单实例（供项目文件夹详情） */
+export async function fetchNhpProjectRecords(
+  projectId: number,
+): Promise<{ items: Array<{ record: NhpRecord; subject?: NhpSubject | null; formCode?: string | null; formName?: string | null }>; total: number }> {
+  return authHttp
+    .get<Result<{ items: Array<{ record: NhpRecord; subject?: NhpSubject | null; formCode?: string | null; formName?: string | null }>; total: number }>>(
+      `/nhp/projects/${projectId}/records`,
+    )
+    .then(({ data }) => data.data);
 }
 
 /** 更新动物（含身份标识；需 ADMIN+） */
@@ -243,6 +285,7 @@ export async function fetchNhpRecordDetail(recordId: number): Promise<{
   subject: NhpSubject | null;
   values: Record<string, unknown>;
   snapshotCount: number;
+  stageEditable?: boolean;
 }> {
   return authHttp
     .get<
@@ -251,6 +294,7 @@ export async function fetchNhpRecordDetail(recordId: number): Promise<{
         subject: NhpSubject | null;
         values: Record<string, unknown>;
         snapshotCount: number;
+        stageEditable?: boolean;
       }>
     >(`/nhp/records/${recordId}`)
     .then(({ data }) => data.data);

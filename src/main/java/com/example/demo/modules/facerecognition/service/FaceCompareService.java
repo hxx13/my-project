@@ -10,14 +10,12 @@ import ai.djl.ndarray.types.DataType;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ModelZoo;
 import ai.djl.repository.zoo.ZooModel;
-import com.example.demo.common.logging.banner.LoadingSpinner;
 import com.example.demo.modules.facerecognition.support.PredictorPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -112,41 +110,6 @@ public class FaceCompareService {
         }
     }
 
-    @PostConstruct
-    public void init() {
-        final long t0 = System.currentTimeMillis();
-        String embedUrl = modelPathResolver.resolveFaceFeatureModel();
-        new Thread(() -> {
-            try {
-                faceDetectService.waitUntilReady(120_000);
-                synchronized (initLock) {
-                    Criteria<NDList, NDList> embCriteria = Criteria.builder()
-                            .setTypes(NDList.class, NDList.class)
-                            .optModelUrls(embedUrl)
-                            .optModelName("face_feature")
-                            .optEngine("PyTorch")
-                            .build();
-                    LoadingSpinner.run("人脸特征模型 (face_feature)", () -> {
-                        try {
-                            embedModel = ModelZoo.loadModel(embCriteria);
-                        } catch (Exception e) {
-                            throw new RuntimeException(e);
-                        }
-                        embedderPool = new PredictorPool<>(predictorPoolSize, embedModel::newPredictor);
-                        initialized = true;
-                    });
-                }
-            } catch (Exception e) {
-                initError = e.getMessage();
-                consoleError("模型加载失败: " + e.getClass().getSimpleName() + " — " + e.getMessage(), e);
-            } finally {
-                synchronized (initLock) {
-                    initLock.notifyAll();
-                }
-            }
-        }, "face-model-loader").start();
-    }
-
     @PreDestroy
     public void destroy() {
         if (embedderPool != null) embedderPool.close();
@@ -168,38 +131,43 @@ public class FaceCompareService {
     public boolean waitUntilReady(long timeoutMs) {
         if (initialized) return true;
         if (initError != null) return false;
-        long deadline = System.currentTimeMillis() + Math.max(0, timeoutMs);
-        synchronized (initLock) {
-            while (!initialized && initError == null && System.currentTimeMillis() < deadline) {
-                long remain = deadline - System.currentTimeMillis();
-                if (remain <= 0) break;
-                try {
-                    initLock.wait(Math.min(500, remain));
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
+        try {
+            ensureReady();
+            return true;
+        } catch (IllegalStateException e) {
+            return false;
         }
-        return initialized;
     }
 
+    /** 懒加载：首次人脸比对时才同步加载 face_feature 模型，避免每次启动白付 PyTorch 原生库 + 100MB 模型加载成本 */
     private void ensureReady() {
-        if (initialized) return;
-        if (initError != null) {
-            throw new IllegalStateException("人脸比对模型未就绪: " + initError);
+        if (initialized) {
+            return;
         }
         synchronized (initLock) {
-            if (!initialized && initError == null) {
-                try {
-                    initLock.wait(120_000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
+            if (initialized) {
+                return;
             }
-        }
-        if (!initialized) {
-            throw new IllegalStateException("人脸比对模型初始化超时");
+            if (initError != null) {
+                throw new IllegalStateException("人脸比对模型加载失败: " + initError);
+            }
+            try {
+                String embedUrl = modelPathResolver.resolveFaceFeatureModel();
+                Criteria<NDList, NDList> embCriteria = Criteria.builder()
+                        .setTypes(NDList.class, NDList.class)
+                        .optModelUrls(embedUrl)
+                        .optModelName("face_feature")
+                        .optEngine("PyTorch")
+                        .build();
+                embedModel = ModelZoo.loadModel(embCriteria);
+                embedderPool = new PredictorPool<>(predictorPoolSize, embedModel::newPredictor);
+                initialized = true;
+                log.info("[FaceCompare] face_feature 模型懒加载完成");
+            } catch (Exception e) {
+                initError = e.getMessage();
+                consoleError("模型加载失败: " + e.getClass().getSimpleName() + " — " + e.getMessage(), e);
+                throw new IllegalStateException("人脸比对模型加载失败: " + initError, e);
+            }
         }
     }
 

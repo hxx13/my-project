@@ -44,6 +44,7 @@ export interface CageShelfCell {
   projectPiName?: string;
   activeClaimId?: string | number;
   occupantName?: string;
+  experimenterName?: string;
   cageBoxInfo?: Record<string, unknown>;
   detail?: Record<string, unknown>;
   specialStatuses?: SpecialStatusEntry[];
@@ -1341,10 +1342,66 @@ export async function fetchCageOccupancyRecords(view: "cage" | "person", id: num
   return res.data.data ?? [];
 }
 
+// ── 笼位历史记录（按笼盒分组）──
+
+export interface CageHistoryChange {
+  changeType: string; fieldName?: string | null; beforeValue?: string | null;
+  afterValue?: string | null; operator?: string | null; createdAt?: string | null;
+}
+
+export interface CageHistoryGroup {
+  cageBoxCode?: string | null; label: string; changes: CageHistoryChange[];
+}
+
+export async function fetchCageHistory(animalCageId: string | number): Promise<CageHistoryGroup[]> {
+  const res = await authHttp.get<Result<{ groups: CageHistoryGroup[] }>>(`/admin/cage-form/cage-history/${animalCageId}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "加载历史记录失败");
+  return res.data.data?.groups ?? [];
+}
+
 export async function searchPersonnelByKeyword(keyword: string): Promise<Array<{ id: number; name: string; accountId: string; projectGroupName: string }>> {
   const res = await authHttp.get<Result<{ list?: Array<{ id: number; name: string; staffId?: string | null; aroUserId?: string | null; projectGroupName?: string | null }> }>>("/personnel", { params: { keyword, pageSize: 10 } });
   if (!res.data?.success) throw new Error(res.data?.message || "搜索人员失败");
   return (res.data.data?.list ?? []).map((p) => ({ id: p.id, name: p.name ?? String(p.id), accountId: p.staffId || p.aroUserId || "", projectGroupName: p.projectGroupName || "" }));
+}
+
+// ── 人员负责范围 ──
+
+export interface PersonScopeEntry {
+  scopeType: "CAMPUS" | "FLOOR" | "ROOM";
+  scopeId: string;
+}
+
+/** GET /api/person-scope/{userId} — 查某人的负责范围（userId = 人员 accountId） */
+export async function fetchPersonScopes(userId: string): Promise<PersonScopeEntry[]> {
+  const res = await authHttp.get<Result<PersonScopeEntry[]>>(`/person-scope/${encodeURIComponent(userId)}`);
+  return res.data?.data ?? [];
+}
+
+/** PUT /api/person-scope/{userId} — 全量替换某人的负责范围 */
+export async function replacePersonScopes(userId: string, scopes: PersonScopeEntry[]): Promise<void> {
+  const res = await authHttp.put<Result<unknown>>(`/person-scope/${encodeURIComponent(userId)}`, scopes);
+  if (!res.data?.success) throw new Error(res.data?.message || "保存负责范围失败");
+}
+
+// ── 审核人归属（校区/楼层/房间范围）──
+
+export interface CageAuditScope {
+  scopeType: "CAMPUS" | "FLOOR" | "ROOM";
+  scopeId: string;
+}
+
+/** GET /api/cage-audit-assignment/{reviewerUserId} — 查某审核人的归属范围 */
+export async function fetchAuditAssignments(userId: string): Promise<CageAuditScope[]> {
+  const res = await authHttp.get<Result<CageAuditScope[]>>(`/cage-audit-assignment/${encodeURIComponent(userId)}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "加载审核归属失败");
+  return res.data.data ?? [];
+}
+
+/** PUT /api/cage-audit-assignment/{reviewerUserId} — 全量替换某审核人的归属范围 */
+export async function replaceAuditAssignments(userId: string, scopes: CageAuditScope[]): Promise<void> {
+  const res = await authHttp.put<Result<unknown>>(`/cage-audit-assignment/${encodeURIComponent(userId)}`, scopes);
+  if (!res.data?.success) throw new Error(res.data?.message || "保存审核归属失败");
 }
 
 export interface AssignBatchResult { animalCageId: string; ok: boolean; claimId?: number; error?: string }
@@ -1352,4 +1409,19 @@ export async function assignBatchCages(animalCageIds: (string | number)[], stude
   const res = await authHttp.post<Result<AssignBatchResult[]>>("/admin/cage-claims/assign-batch", { animalCageIds, studentUserId });
   if (!res.data?.success) throw new Error(res.data?.message || "认领失败");
   return res.data.data ?? [];
+}
+
+// ── 笼架模式可见性（后端统一算好身份，三端共用）──
+
+export interface CageModeVisibleResult {
+  modes: string[];
+  isStudent: boolean;
+  isSuperAdmin: boolean;
+}
+
+/** GET /api/cage-mode/visible — 当前用户可见的笼架模式 key 列表（含恒可见的 view） */
+export async function fetchCageModeVisible(): Promise<CageModeVisibleResult> {
+  const res = await authHttp.get<Result<CageModeVisibleResult>>("/cage-mode/visible");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载模式列表失败");
+  return res.data.data ?? { modes: [], isStudent: false, isSuperAdmin: false };
 }

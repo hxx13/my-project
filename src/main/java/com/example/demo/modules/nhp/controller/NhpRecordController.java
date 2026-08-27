@@ -6,10 +6,12 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.nhp.entity.CrfRecord;
 import com.example.demo.modules.nhp.entity.CrfRecordSnapshot;
+import com.example.demo.modules.nhp.entity.CrfTransplant;
 import com.example.demo.modules.nhp.entity.CrfSignature;
 import com.example.demo.modules.nhp.entity.CrfSubject;
 import com.example.demo.modules.nhp.service.NhpAttachmentService;
 import com.example.demo.modules.nhp.service.NhpRecordService;
+import com.example.demo.modules.team.service.TeamService;
 import com.example.demo.modules.upload.entity.UploadFileRecord;
 import com.example.demo.modules.upload.service.UploadFileService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,15 +41,18 @@ public class NhpRecordController {
     private final NhpAttachmentService attachmentService;
     private final UploadFileService uploadFileService;
     private final AuthContextService authContextService;
+    private final TeamService teamService;
 
     public NhpRecordController(NhpRecordService service,
                                NhpAttachmentService attachmentService,
                                UploadFileService uploadFileService,
-                               AuthContextService authContextService) {
+                               AuthContextService authContextService,
+                               TeamService teamService) {
         this.service = service;
         this.attachmentService = attachmentService;
         this.uploadFileService = uploadFileService;
         this.authContextService = authContextService;
+        this.teamService = teamService;
     }
 
     private Result<?> requireMinRole(String authHeader, RoleEnum minRole) {
@@ -103,21 +108,66 @@ public class NhpRecordController {
     }
 
     @PostMapping("/projects")
-    @Operation(summary = "登记项目（crf_transplant 为顶层：建项目 + 供体/受体占位对象）")
-    public Result<Map<String, Object>> createProject(@RequestBody Map<String, Object> body) {
+    @Operation(summary = "登记项目（自动归属到当前用户所在团队）")
+    public Result<Map<String, Object>> createProject(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody Map<String, Object> body) {
+        // 自动锁定到「我所在团队」：未显式指定 teamId 时，取当前用户 owner/member 的第一个团队
+        if (body != null && (body.get("teamId") == null || String.valueOf(body.get("teamId")).isBlank())) {
+            List<Long> myTeams = teamService.myTeamIds(authContextService.resolveUserFromBearer(auth));
+            if (!myTeams.isEmpty()) {
+                body.put("teamId", myTeams.get(0));
+            }
+        }
         return service.createProject(body);
     }
 
     @GetMapping("/projects")
-    @Operation(summary = "项目管理：列出全部项目（含供体/受体对象）")
-    public Result<List<Map<String, Object>>> listProjects() {
-        return Result.success(service.listProjects());
+    @Operation(summary = "项目管理：列出项目（mine=true 只列当前用户所在团队的项目）")
+    public Result<List<Map<String, Object>>> listProjects(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestParam(value = "mine", required = false, defaultValue = "false") boolean mine) {
+        List<Map<String, Object>> projects = service.listProjects();
+        if (mine) {
+            List<Long> myTeams = teamService.myTeamIds(authContextService.resolveUserFromBearer(auth));
+            java.util.Set<Long> teamSet = new java.util.HashSet<>(myTeams);
+            // team_id 为空视为「未归属」（历史项目），保留；只过滤明确归属到别人团队的项目
+            projects.removeIf(p -> {
+                Object tid = p.get("teamId");
+                return tid != null && !teamSet.contains(((Number) tid).longValue());
+            });
+        }
+        return Result.success(projects);
+    }
+
+    @GetMapping("/projects/{id}")
+    @Operation(summary = "项目详情")
+    public Result<?> getProject(@PathVariable Long id) {
+        return service.updateProject(id, null);
+    }
+
+    @PutMapping("/projects/{id}")
+    @Operation(summary = "回填项目计划书字段（编号/名称/备注/团队/器官/术式/手术日/状态）")
+    public Result<CrfTransplant> updateProject(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        return service.updateProject(id, body);
+    }
+
+    @DeleteMapping("/projects/{id}")
+    @Operation(summary = "删除空项目（有表单实例则拒绝）")
+    public Result<?> deleteProject(@PathVariable Long id) {
+        return service.deleteProject(id);
     }
 
     @PostMapping("/projects/{projectId}/records")
     @Operation(summary = "项目化建实例：为宿主表单建一条未绑定对象的记录（保存时才建研究对象）")
     public Result<CrfRecord> createRecordForProject(@PathVariable Long projectId, @RequestBody Map<String, Object> body) {
         return service.createRecordForProject(projectId, body);
+    }
+
+    @GetMapping("/projects/{projectId}/records")
+    @Operation(summary = "项目名下全部表单实例")
+    public Result<Map<String, Object>> listProjectRecords(@PathVariable Long projectId) {
+        return service.listProjectRecords(projectId);
     }
 
     @PostMapping("/records/{recordId}/ensure-subject")

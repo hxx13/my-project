@@ -22,5 +22,6 @@ CREATE TABLE IF NOT EXISTS agv_trajectory (
     created_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '服务端入库时间',
     recorded_at   DATETIME(3)  NOT NULL COMMENT 'AGV数据产生时间（create_on字段，已转UTC）',
     INDEX idx_robot_time (robot_ip, recorded_at),
-    INDEX idx_recorded_at (recorded_at)
+    INDEX idx_recorded_at (recorded_at),
+    INDEX idx_station_time (station, recorded_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AGV机器人轨迹数据';

@@ -138,7 +138,6 @@ public class CageOccupancyService {
             d.setNeedsTransfer(false);
             d.setHasHealthAbnormality(false);
             d.setNeedsCohabitation(false);
-            d.setCohabitationDate(null);
             d.setSpecialBreedingName(null);
             d.setSpecialBreedingDesc(null);
             detailMapper.batchUpsert(List.of(d));

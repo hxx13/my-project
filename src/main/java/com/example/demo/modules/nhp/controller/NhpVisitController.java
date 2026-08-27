@@ -1,6 +1,7 @@
 package com.example.demo.modules.nhp.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.modules.nhp.entity.CrfProjectVisitPlan;
 import com.example.demo.modules.nhp.entity.CrfVisit;
 import com.example.demo.modules.nhp.entity.CrfVisitPlan;
 import com.example.demo.modules.nhp.mapper.CrfVisitMapper;
@@ -80,6 +81,20 @@ public class NhpVisitController {
     public Result<List<CrfVisitPlan>> replaceVisitPlan(@PathVariable Long visitId,
                                                        @RequestBody List<Map<String, Object>> atoms) {
         return Result.success(visitService.replaceVisitPlan(visitId, atoms));
+    }
+
+    @GetMapping("/projects/{projectId}/visit-plans")
+    @Operation(summary = "项目级编排：该项目全部 TP 的表单指派（未配置即空）")
+    public Result<List<CrfProjectVisitPlan>> listProjectVisitPlans(@PathVariable Long projectId) {
+        return Result.success(visitService.listProjectVisitPlans(projectId));
+    }
+
+    @PutMapping("/projects/{projectId}/visits/{visitId}/plan")
+    @Operation(summary = "项目级编排：整体替换该项目某 TP 的表单指派")
+    public Result<List<CrfProjectVisitPlan>> replaceProjectVisitPlan(@PathVariable Long projectId,
+                                                                     @PathVariable Long visitId,
+                                                                     @RequestBody List<Map<String, Object>> atoms) {
+        return Result.success(visitService.replaceProjectVisitPlan(projectId, visitId, atoms));
     }
 
     private static Integer asInt(Object v) {

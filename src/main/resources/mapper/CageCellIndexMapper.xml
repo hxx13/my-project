@@ -156,8 +156,10 @@
             cci.has_cage_box AS hasCageBox,
             cci.cage_box_code AS cageBoxCode,
             si.campus_name AS campusName,
+            si.campus_id AS campusId,
             si.area_name AS areaName,
             si.floor_name AS floorName,
+            si.floor_id AS floorId,
             si.room_name AS roomName,
             si.room_id AS roomId,
             si.shelve_name AS shelveName

@@ -20,6 +20,7 @@ export default function MobileActivatePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const fromPortal = (location.state as any)?.fromPortal === true;
+  const returnTo = ((location.state as any)?.from as string) || (fromPortal ? "/" : "/m/login");
   const [step, setStep] = useState<Step>("qr");
   const [verifiedData, setVerifiedData] = useState<VerifiedData | null>(null);
   const [username, setUsername] = useState("");
@@ -82,8 +83,7 @@ export default function MobileActivatePage() {
       <button
         onClick={() => {
           if (step === "qr") {
-            if (fromPortal) navigate("/", { replace: true });
-            else navigate("/m/login");
+            navigate(returnTo, { replace: true });
           } else {
             setStep("qr");
           }
@@ -92,7 +92,7 @@ export default function MobileActivatePage() {
         style={{ background: "rgba(0,0,0,0.06)" }}
       >
         <ArrowLeft className="size-5" style={{ color: primary }} />
-        {step === "qr" && fromPortal && <span className="text-sm" style={{ color: secondary }}>返回首页</span>}
+        {step === "qr" && returnTo !== "/m/login" && <span className="text-sm" style={{ color: secondary }}>返回首页</span>}
       </button>
 
       <div className="w-full max-w-sm rounded-[var(--app-radius-container)] p-[var(--app-space-container-padding)]" style={{ background: cardBg }}>
@@ -104,7 +104,7 @@ export default function MobileActivatePage() {
             <p className="mt-2 text-sm" style={{ color: secondary }}>上传你的身份 QR 码验证身份，设置登录密码</p>
             <div className="mt-8 w-full"><QrUploader onVerified={handleVerified} /></div>
             <p className="mt-6 text-sm" style={{ color: secondary }}>
-              已有账号？<Link to="/m/login" className="ml-1 font-medium hover:underline" style={{ color: accent }}>去登录</Link>
+              已有账号？<Link to={returnTo} className="ml-1 font-medium hover:underline" style={{ color: accent }}>去登录</Link>
             </p>
           </div>
         )}

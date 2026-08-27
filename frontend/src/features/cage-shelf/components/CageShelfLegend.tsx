@@ -3,7 +3,7 @@ import { CAGE_TYPE_DOT, STATUS_COLOR_DOT } from "./CageCellOverlays";
 
 const STATUS_ITEMS: { code: string; label: string }[] = [
   { code: "NORMAL",          label: "正常" },
-  { code: "COHABITATION",   label: "需合笼" },
+  { code: "COHABITATION",   label: "合笼" },
   { code: "SPECIAL_FEEDING", label: "需特殊饲养" },
   { code: "NEED_DIVIDE",    label: "需分笼" },
   { code: "HEALTH_ABNORMAL", label: "健康异常" },
@@ -11,9 +11,9 @@ const STATUS_ITEMS: { code: string; label: string }[] = [
 ];
 
 const CAGE_ITEMS = [
-  { type: 1, label: "等待分配" },
-  { type: 2, label: "已预约(空笼盒)" },
-  { type: 3, label: "已预约(饲养中)" },
+  { type: 1, label: "(等待分配)" },
+  { type: 2, label: "(空笼位)" },
+  { type: 3, label: "(饲养中)" },
   { type: 4, label: "异常" },
 ];
 

@@ -535,6 +535,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/special-status", "STAFF"),
       },
       {
+        id: "cage-scope",
+        path: "/admin/cage-shelves/scope",
+        label: "负责范围分配",
+        icon: Users,
+        homeTone: "from-amber-400 to-orange-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/scope", "ADMIN"),
+      },
+      {
         id: "cage-forms",
         path: "/admin/cage-shelves/forms",
         label: "表单发布",
@@ -822,6 +831,7 @@ PATH_TITLE_MAP["/admin/dahua-swing-records"] = "门禁数据工作台";
 PATH_TITLE_MAP["/admin/access-audit-source"] = "门禁数据工作台";
 PATH_TITLE_MAP["/admin/access-fusion"] = "门禁数据工作台";
 PATH_TITLE_MAP["/admin/access-clean-rule-profiles"] = "门禁数据工作台";
+PATH_TITLE_MAP["/admin/cage-shelves/records"] = "人员追溯";
 
 function normalizePath(path: string): string {
   if (!path) return "";

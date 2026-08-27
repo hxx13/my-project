@@ -6,13 +6,13 @@ import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
 import { ShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import { CampusTree, buildTree } from "@/features/cage-shelf/components/CampusTree";
 import { displayPosition } from "@/features/cage-shelf/constants";
-import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, releaseClaim, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell } from "@/api/domains/cageShelf.api";
+import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell } from "@/api/domains/cageShelf.api";
 import { fetchPinnedCageShelves, toggleCageShelfPin, type PinnedCageShelfDetail } from "../api/student.api";
 import { CellDetailPanel } from "./cage-shelf-detail-panel";
 import { useQuery } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 
-import { appAlert, appPrompt } from "@/lib/appDialog";
+import { appAlert } from "@/lib/appDialog";
 /* ================================================================== */
 /*  Main Page — uses shared ShelfGrid / CampusTree / CellButton         */
 /* ================================================================== */
@@ -23,7 +23,7 @@ export default function StudentCageShelfPage() {
   const [claimsLoading, setClaimsLoading] = useState(false);
 
   const loadMyClaims = async () => { setClaimsLoading(true); try { setMyClaims(await fetchMyClaims()); } catch { setMyClaims([]); } finally { setClaimsLoading(false); } };
-  useEffect(() => { if (tab === "claims") loadMyClaims(); }, [tab]);
+  useEffect(() => { loadMyClaims(); }, []);
 
   const CLAIM_STATUS_LABEL: Record<string, string> = {
     pending_approval: "审批中", locked: "已锁定", confirmed: "已确认",
@@ -44,6 +44,20 @@ export default function StudentCageShelfPage() {
     const base = parts.length ? parts.join(" / ") : `笼位 #${c.animalCageId}`;
     return pos ? `${base} · ${pos}` : base;
   };
+  // 我的申请按 校区/房间 分组（条目内不再重复房间名，只留笼架·格位）
+  const claimShort = (c: CageClaimItem) => {
+    const pos = c.positionX != null && c.positionY != null ? displayPosition(`${c.positionX}-${c.positionY}`) : "";
+    return [c.shelveName, pos].filter(Boolean).join(" · ") || `笼位 #${c.animalCageId}`;
+  };
+  const claimGroups = useMemo(() => {
+    const m = new Map<string, CageClaimItem[]>();
+    for (const c of myClaims) {
+      const key = [c.campusName, c.roomName].filter(Boolean).join(" / ") || "未指定房间";
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(c);
+    }
+    return Array.from(m.entries());
+  }, [myClaims]);
   const [collapsed, setCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"room" | "shelf">("room");
   const [search, setSearch] = useState("");
@@ -86,8 +100,15 @@ export default function StudentCageShelfPage() {
   const [cell, setCell] = useState<CageShelfCell | null>(null);
   const [shelfId, setShelfId] = useState<string | null>(null);
 
-  // ── 申请模式 ──
+  // ── 申请模式（申请预约 = 预约审核）──
   const [claimMode, setClaimMode] = useState(false);
+  // ── 认领模式（到场确认）──
+  const [confirmMode, setConfirmMode] = useState(false);
+  // 本人待确认到位的笼位：认领模式下高亮，学生不必逐格猜哪个是自己的
+  const myLockedCageIds = useMemo(
+    () => new Set(myClaims.filter(c => c.claimStatus === "locked").map(c => String(c.animalCageId))),
+    [myClaims],
+  );
   const [poolCells, setPoolCells] = useState<Map<string, PoolCell>>(new Map()); // animalCageId → PoolCell
   const [claimSubmitting, setClaimSubmitting] = useState(false);
   const [claimSelected, setClaimSelected] = useState<Set<string>>(new Set());
@@ -121,7 +142,7 @@ export default function StudentCageShelfPage() {
     const key = `${sid}:${x}:${y}`;
     const aid = cellIdByKey.get(key);
     if (!aid || !poolCells.has(aid)) {
-      void appAlert("该笼位暂不可申请。\n\n仅「已预约(空笼盒)」状态的笼位可被申请。");
+      void appAlert("该笼位不在你的可申请范围内，无法申请。");
       return;
     }
     setClaimSelected((prev) => {
@@ -166,6 +187,27 @@ export default function StudentCageShelfPage() {
       await appAlert(`申请已提交：${ok} 个`);
     } else {
       await appAlert(firstErr || `申请失败 ${fail} 个`);
+    }
+  };
+
+  // 认领模式（到场确认）：点击自己 locked 的笼位确认到位
+  const handleConfirmCell = async (c: any) => {
+    const st = c.claimStatus;
+    const claimId = c.activeClaimId;
+    if (st === "locked" && claimId) {
+      try {
+        await confirmClaim(claimId);
+        await appAlert("已确认到位");
+        setClaimReloadKey(k => k + 1);
+      } catch (e: any) {
+        await appAlert(e.message);
+      }
+    } else if (st === "confirmed") {
+      await appAlert("该笼位已到位");
+    } else if (st === "pending_approval") {
+      await appAlert("该笼位待审批");
+    } else {
+      await appAlert("该笼位无待确认的认领");
     }
   };
 
@@ -253,17 +295,16 @@ export default function StudentCageShelfPage() {
                 <div className="flex items-center gap-1 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
                   <button onClick={() => setTab("bookmarks")} className={`flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${tab === "bookmarks" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><Star className="h-3 w-3" />收藏</button>
                   <button onClick={() => setTab("filter")} className={`flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${tab === "filter" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><LayoutGrid className="h-3 w-3" />筛选</button>
-                  <button onClick={() => setTab("claims")} className={`flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${tab === "claims" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><ClipboardList className="h-3 w-3" />我的申请</button>
+                  <button onClick={() => { setTab("claims"); loadMyClaims(); }} className={`flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${tab === "claims" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><ClipboardList className="h-3 w-3" />我的申请</button>
                 </div>
                 {tab === "filter" && <div className="flex items-center gap-1 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
                   <button onClick={() => setViewMode("room")} className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${viewMode === "room" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}>全房间</button>
                   <button onClick={() => setViewMode("shelf")} className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${viewMode === "shelf" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}>单笼架</button>
                 </div>}
-                {/* ── 申请模式按钮 ── */}
-                {tab === "filter" && <button
-                  onClick={() => { setClaimMode(v => !v); if (claimMode) setPoolCells(new Map()); }}
-                  className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${claimMode ? "bg-emerald-600 text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)] border border-dashed border-[var(--app-color-border-default)]"}`}
-                >{claimMode ? "申请中 ▾" : "📝 笼位申请"}</button>}
+                {tab === "filter" && <div className="flex items-center gap-1 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
+                  <button onClick={() => { setConfirmMode(false); setClaimMode(v => !v); if (claimMode) { setPoolCells(new Map()); setClaimSelected(new Set()); } }} className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${claimMode ? "bg-emerald-600 text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}>📝 申请预约</button>
+                  <button onClick={() => { setClaimMode(false); setConfirmMode(v => !v); }} className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${confirmMode ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}>认领</button>
+                </div>}
                 {claimMode && claimSelected.size > 0 && (
                   <button onClick={submitClaims} disabled={claimSubmitting}
                     className="rounded-student-sm px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
@@ -287,7 +328,7 @@ export default function StudentCageShelfPage() {
                 {!loading && aRid && details.length === 0 && <div className="rounded-student-lg border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
                 {details.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d, idx) => {
                   const sid = String(d.shelfMeta?.shelveId ?? ""), isBm = sid !== "" && pinned.has(sid);
-                  return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} alertMap={new Map()} onToggleBookmark={sid !== "" ? () => toggleBm(sid) : undefined} claimMode={claimMode} poolCells={poolCells} selectable={claimMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : undefined} allocMode={claimMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { setShelfId(sid); setCell(c); }} /></div>;
+                  return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} alertMap={new Map()} onToggleBookmark={sid !== "" ? () => toggleBm(sid) : undefined} claimMode={claimMode} poolCells={poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : undefined} allocMode={claimMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { if (confirmMode) { void handleConfirmCell(c); } else { setShelfId(sid); setCell(c); } }} /></div>;
                 })}</div>}
               </>}
 
@@ -296,7 +337,7 @@ export default function StudentCageShelfPage() {
                 <div className="w-1/2 flex flex-col min-w-0">
                   {shelfLoading && <div className="flex-1 rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] grid place-items-center text-sm text-[var(--app-color-text-tertiary)]">加载笼架…</div>}
                   {!shelfLoading && !shelfDetail && <div className="flex-1 rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] flex flex-col items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20" />点击左侧笼架<br /><span className="text-[11px]">选中后显示该笼架 8x10 笼位</span></div>}
-                  {!shelfLoading && shelfDetail && <ShelfGrid title={shelfDetail.shelfMeta?.shelveName || "笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" claimMode={claimMode} poolCells={poolCells} alertMap={new Map()} selectable={claimMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : undefined} allocMode={claimMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { setShelfId(String(shelfDetail.shelfMeta?.shelveId ?? "")); setCell(c); }} />}
+                  {!shelfLoading && shelfDetail && <ShelfGrid title={shelfDetail.shelfMeta?.shelveName || "笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" claimMode={claimMode} poolCells={poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} alertMap={new Map()} selectable={claimMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : undefined} allocMode={claimMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { if (confirmMode) { void handleConfirmCell(c); } else { setShelfId(String(shelfDetail.shelfMeta?.shelveId ?? "")); setCell(c); } }} />}
                 </div>
                 <div className="w-1/2 flex flex-col min-w-0">
                   {cell ? <CellDetailPanel cell={cell} gridMeta={shelfDetail?.shelfMeta ?? null} shelveId={shelfId ?? ""} onClose={() => setCell(null)} /> :
@@ -309,40 +350,46 @@ export default function StudentCageShelfPage() {
               {pinned.size === 0 && !bmLoading && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--app-color-text-tertiary)]"><Star className="h-10 w-10 mx-auto mb-3 opacity-20" />暂无收藏的笼架<br /><span className="text-[11px]">在筛选页面将笼架加入收藏后在此处查看</span></div>}
               {!bmLoading && bmList.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{bmList.map(b => {
                 const sid = b.shelfMeta.shelveId;
-                return <div key={sid}><ShelfGrid title={b.shelfMeta.shelveName || sid} detail={b} loading={false} emptyHint="暂无数据" isBookmarked={true} alertMap={new Map()} onToggleBookmark={() => toggleBm(sid)} claimMode={claimMode} poolCells={poolCells} selectable={claimMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : undefined} allocMode={claimMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { setCell(c); setShelfId(sid); }} /></div>;
+                return <div key={sid}><ShelfGrid title={b.shelfMeta.shelveName || sid} detail={b} loading={false} emptyHint="暂无数据" isBookmarked={true} alertMap={new Map()} onToggleBookmark={() => toggleBm(sid)} claimMode={claimMode} poolCells={poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : undefined} allocMode={claimMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { if (confirmMode) { void handleConfirmCell(c); } else { setCell(c); setShelfId(sid); } }} /></div>;
               })}</div>}
             </>}
 
             {tab === "claims" && <>
               {claimsLoading && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] h-full flex items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">加载中…</div>}
               {!claimsLoading && myClaims.length === 0 && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--app-color-text-tertiary)]"><ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-20" />暂无申请记录<br /><span className="text-[11px]">在筛选页面选择笼位后点击申请</span></div>}
-              {!claimsLoading && myClaims.length > 0 && <div className="space-y-2">
-                {myClaims.map(c => (
-                  <div key={c.id} className="rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">{claimLocation(c)}</span>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${CLAIM_STATUS_COLOR[c.claimStatus] || "text-[var(--app-color-text-tertiary)] bg-[var(--app-color-surface-hover)] border-[var(--app-color-border-default)]"}`}>{CLAIM_STATUS_LABEL[c.claimStatus] || c.claimStatus}</span>
+              {!claimsLoading && myClaims.length > 0 && <div className="space-y-3">
+                {claimGroups.map(([room, items]) => (
+                  <div key={room}>
+                    <div className="flex items-center gap-1.5 px-1 pb-1.5">
+                      <span className="text-[11px] font-semibold text-[var(--app-color-text-tertiary)]">{room}</span>
+                      <span className="text-[10px] text-[var(--app-color-text-tertiary)]/60">{items.length}</span>
                     </div>
-                    <div className="text-[11px] text-[var(--app-color-text-tertiary)] space-y-0.5">
-                      <div>申请时间：{c.createdAt?.substring(0, 16)?.replace("T", " ")}</div>
-                      {c.note && <div>备注：{c.note}</div>}
-                      {c.claimStatus === "rejected" && c.latestRejectReason && (
-                        <div className="text-[11px] text-[var(--student-error)]">驳回原因：{c.latestRejectReason}</div>
-                      )}
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      {(c.claimStatus === "pending_approval" || c.claimStatus === "locked") && (
-                        <button onClick={async () => { try { await cancelClaim(c.id); loadMyClaims(); } catch (e: any) { await appAlert(e.message); } }}
-                          className="rounded-student-sm px-2.5 py-1 text-[10px] font-semibold border border-red-300 text-red-600 hover:bg-red-50">取消</button>
-                      )}
-                      {c.claimStatus === "locked" && (
-                        <button onClick={async () => { try { await confirmClaim(c.id); loadMyClaims(); } catch (e: any) { await appAlert(e.message); } }}
-                          className="rounded-student-sm px-2.5 py-1 text-[10px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700">确认到位</button>
-                      )}
-                      {c.claimStatus === "confirmed" && (
-                        <button onClick={async () => { const reason = await appPrompt("释放原因（可选）："); try { await releaseClaim(c.id, reason || undefined); loadMyClaims(); } catch (e: any) { await appAlert(e.message); } }}
-                          className="rounded-student-sm px-2.5 py-1 text-[10px] font-semibold border border-orange-300 text-orange-600 hover:bg-orange-50">释放</button>
-                      )}
+                    <div className="space-y-1.5">
+                      {items.map(c => (
+                        <div key={c.id} className="flex items-center gap-2 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[12px] font-semibold truncate text-[var(--app-color-text-primary)]">{claimShort(c)}</span>
+                              <span className={`inline-flex items-center shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border ${CLAIM_STATUS_COLOR[c.claimStatus] || "text-[var(--app-color-text-tertiary)] bg-[var(--app-color-surface-hover)] border-[var(--app-color-border-default)]"}`}>{CLAIM_STATUS_LABEL[c.claimStatus] || c.claimStatus}</span>
+                            </div>
+                            <div className="text-[10px] truncate text-[var(--app-color-text-tertiary)]">
+                              申请时间：{c.createdAt?.substring(0, 16)?.replace("T", " ")}
+                              {c.claimStatus === "rejected" && c.latestRejectReason ? <span className="text-[var(--student-error)]"> · 驳回：{c.latestRejectReason}</span> : null}
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-1">
+                            {/* 学生仅在审核完毕前可取消；审核通过后不再提供取消/释放，释放由教职工发起 */}
+                            {c.claimStatus === "pending_approval" && (
+                              <button onClick={async () => { try { await cancelClaim(c.id); loadMyClaims(); } catch (e: any) { await appAlert(e.message); } }}
+                                className="rounded-student-sm px-2 py-1 text-[10px] font-semibold border border-red-300 text-red-600 hover:bg-red-50">取消</button>
+                            )}
+                            {c.claimStatus === "locked" && (
+                              <button onClick={async () => { try { await confirmClaim(c.id); loadMyClaims(); setClaimReloadKey(k => k + 1); } catch (e: any) { await appAlert(e.message); } }}
+                                className="rounded-student-sm px-2 py-1 text-[10px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700">确认到位</button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}

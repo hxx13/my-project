@@ -78,6 +78,7 @@ import CageShelfFormManagePage from "@/features/cage-shelf/pages/CageShelfFormMa
 import CageFormListPage from "@/features/cage-shelf/pages/CageFormListPage";
 import CageFormAuditPage from "@/features/cage-shelf/pages/CageFormAuditPage";
 import CageOccupancyRecordsPage from "@/features/cage-shelf/pages/CageOccupancyRecordsPage";
+import CageScopeAssignmentPage from "@/features/cage-shelf/pages/CageScopeAssignmentPage";
 import CageFormEditorPage from "@/features/cage-shelf/pages/CageFormEditorPage";
 import CageCodelistPage from "@/features/cage-shelf/pages/CageCodelistPage";
 import CageFieldPage from "@/features/cage-shelf/pages/CageFieldPage";
@@ -352,6 +353,7 @@ export const router = createHashRouter([
               { path: "cage-shelves/forms/fields", element: <CageFieldPage /> },
               { path: "cage-shelves/forms/fields/:dictKey", element: <CageFieldPage /> },
               { path: "cage-shelves/records", element: <CageOccupancyRecordsPage /> },
+              { path: "cage-shelves/scope", element: <CageScopeAssignmentPage /> },
               { path: "cage-shelf-indexes", element: <AdminCageShelfIndexPage /> },
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },
               { path: "aro-binding", element: <AdminAroBindingPage /> },

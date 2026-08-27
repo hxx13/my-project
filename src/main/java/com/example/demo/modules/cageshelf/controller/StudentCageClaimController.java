@@ -60,7 +60,7 @@ public class StudentCageClaimController {
         User u = resolveUser(req);
         Result<?> denied = requireLogin(u);
         if (denied != null) return Result.fail(401, denied.getMessage());
-        return Result.success(claimService.getPoolCells(shelfIndexId));
+        return Result.success(claimService.getPoolCells(shelfIndexId, u));
     }
 
     // ── 认领 ──

@@ -31,6 +31,7 @@ export default function StudentRegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [needsActivation, setNeedsActivation] = useState(false);
   const [formErrors, setFormErrors] = useState<{
     username?: string;
     password?: string;
@@ -107,6 +108,7 @@ export default function StudentRegisterPage() {
     try {
       setSubmitting(true);
       setFormErrors({});
+      setNeedsActivation(false);
       const result = await registerStudent(
         verifiedData.userId,
         username.trim(),
@@ -118,6 +120,11 @@ export default function StudentRegisterPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "注册失败，请重试";
       showToast(message, "error");
+      if (message.includes("未设密码") || message.includes("激活页面")) {
+        setNeedsActivation(true);
+      } else {
+        setNeedsActivation(false);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -288,6 +295,15 @@ export default function StudentRegisterPage() {
               >
                 {submitting ? "注册中..." : "完成注册"}
               </StudentButton>
+
+              {needsActivation && (
+                <p className="mt-3 rounded-[var(--student-radius-sm)] bg-[var(--student-warning-soft)] px-3 py-2 text-center text-sm text-[var(--student-warning)]">
+                  该账号已绑定但未设密码，请
+                  <Link to="/m/activate" className="ml-1 font-medium underline">
+                    前往激活页面设置密码
+                  </Link>
+                </p>
+              )}
             </div>
           </div>
         )}

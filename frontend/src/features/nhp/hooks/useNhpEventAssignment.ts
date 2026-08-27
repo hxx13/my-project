@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { assignableFormId, fetchAssignableNhpTemplates } from "../api/nhpTemplate.api";
-import { fetchNhpVisitPlans, fetchNhpVisits, saveNhpVisitPlan } from "../api/nhpVisit.api";
+import {
+  fetchNhpProjectVisitPlans,
+  fetchNhpVisitPlans,
+  fetchNhpVisits,
+  saveNhpProjectVisitPlan,
+  saveNhpVisitPlan,
+} from "../api/nhpVisit.api";
 import {
   assignmentCellKey,
   colKeys,
@@ -20,7 +26,7 @@ export const nhpEventAssignmentKeys = {
   visitPlans: ["nhp", "visit-plans"] as const,
 };
 
-export function useNhpEventAssignment() {
+export function useNhpEventAssignment(projectId?: number | null) {
   const queryClient = useQueryClient();
 
   const visitsQuery = useQuery({
@@ -31,9 +37,11 @@ export function useNhpEventAssignment() {
     queryKey: nhpEventAssignmentKeys.assignableTemplates,
     queryFn: fetchAssignableNhpTemplates,
   });
+  // 选中项目 → 读写项目级编排；否则读写全局 crf_visit_plan
   const plansQuery = useQuery({
-    queryKey: nhpEventAssignmentKeys.visitPlans,
-    queryFn: fetchNhpVisitPlans,
+    queryKey: ["nhp", "visit-plans", projectId ?? "global"],
+    queryFn: () => (projectId != null ? fetchNhpProjectVisitPlans(projectId) : fetchNhpVisitPlans()),
+    enabled: projectId != null ? !!projectId : true,
   });
 
   const visits = useMemo(
@@ -87,8 +95,8 @@ export function useNhpEventAssignment() {
   );
 
   const reset = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: nhpEventAssignmentKeys.visitPlans });
-  }, [queryClient]);
+    void queryClient.invalidateQueries({ queryKey: ["nhp", "visit-plans", projectId ?? "global"] });
+  }, [queryClient, projectId]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -97,7 +105,11 @@ export function useNhpEventAssignment() {
         const atoms = forms
           .filter((f) => assigned.has(assignmentCellKey(v.id, assignableFormId(f))))
           .map((f) => ({ atomId: assignableFormId(f), required: true }));
-        await saveNhpVisitPlan(v.id, atoms);
+        if (projectId != null) {
+          await saveNhpProjectVisitPlan(projectId, v.id, atoms);
+        } else {
+          await saveNhpVisitPlan(v.id, atoms);
+        }
         changed++;
       }
       return changed;
@@ -105,7 +117,7 @@ export function useNhpEventAssignment() {
     onSuccess: (changed) => {
       toast.success(`已保存 ${changed} 个事件的指派`);
       setLastSavedAt(Date.now());
-      void queryClient.invalidateQueries({ queryKey: nhpEventAssignmentKeys.visitPlans });
+      void queryClient.invalidateQueries({ queryKey: ["nhp", "visit-plans", projectId ?? "global"] });
     },
     onError: (e) => toast.error((e as Error).message || "保存失败"),
   });

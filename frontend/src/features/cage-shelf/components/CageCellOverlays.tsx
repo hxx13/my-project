@@ -87,7 +87,7 @@ const CAGE_TYPE_DOT: Record<number, string> = {
 };
 
 export const CAGE_TYPE_LABEL: Record<number, string> = {
-  1: "等待分配", 2: "已预约(空笼盒)", 3: "已预约(饲养中)", 4: "异常",
+  1: "(等待分配)", 2: "(空笼位)", 3: "(饲养中)", 4: "(异常)",
 };
 
 /** cageType → 进度条颜色（与 AdminCageShelfPage sidebar 对齐） */

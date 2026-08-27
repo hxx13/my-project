@@ -9,6 +9,7 @@ import com.example.demo.modules.cageshelf.mapper.CageShelfCellSnapshotMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
+import com.example.demo.modules.cageshelf.service.CageShelfLocalAggCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,17 +29,20 @@ public class CageShelfDataController {
     private final CageShelfBookmarkMapper bookmarkMapper;
     private final CageShelfMapper shelfMapper;
     private final CageSpecialStatusSnapshotMapper snapshotMapper;
+    private final CageShelfLocalAggCache localAggCache;
 
     public CageShelfDataController(AuthContextService auth,
                                     CageShelfCellSnapshotMapper cellMapper,
                                     CageShelfBookmarkMapper bookmarkMapper,
                                     CageShelfMapper shelfMapper,
-                                    CageSpecialStatusSnapshotMapper snapshotMapper) {
+                                    CageSpecialStatusSnapshotMapper snapshotMapper,
+                                    CageShelfLocalAggCache localAggCache) {
         this.auth = auth;
         this.cellMapper = cellMapper;
         this.bookmarkMapper = bookmarkMapper;
         this.shelfMapper = shelfMapper;
         this.snapshotMapper = snapshotMapper;
+        this.localAggCache = localAggCache;
     }
 
     // ── Cell snapshot ──────────────────────────────────────────────
@@ -84,7 +88,7 @@ public class CageShelfDataController {
     @GetMapping("/full-tree")
     public Result<?> getFullTree(HttpServletRequest request) {
         if (resolveUser(request) == null) return Result.fail(401, "未登录");
-        List<Map<String, Object>> rows = shelfMapper.listFullTree();
+        List<Map<String, Object>> rows = localAggCache.typeCounts();
         return Result.success(rows == null ? List.of() : rows);
     }
 

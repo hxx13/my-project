@@ -1,10 +1,12 @@
 package com.example.demo.modules.nhp.service;
 
+import com.example.demo.modules.nhp.entity.CrfProjectVisitPlan;
 import com.example.demo.modules.nhp.entity.CrfTodo;
 import com.example.demo.modules.nhp.entity.CrfTransplant;
 import com.example.demo.modules.nhp.entity.CrfVisit;
 import com.example.demo.modules.nhp.entity.CrfVisitInstance;
 import com.example.demo.modules.nhp.entity.CrfVisitPlan;
+import com.example.demo.modules.nhp.mapper.CrfProjectVisitPlanMapper;
 import com.example.demo.modules.nhp.mapper.CrfTodoMapper;
 import com.example.demo.modules.nhp.mapper.CrfTransplantMapper;
 import com.example.demo.modules.nhp.mapper.CrfVisitInstanceMapper;
@@ -34,17 +36,20 @@ public class NhpVisitService {
     private final CrfVisitInstanceMapper visitInstanceMapper;
     private final CrfTransplantMapper transplantMapper;
     private final CrfVisitPlanMapper visitPlanMapper;
+    private final CrfProjectVisitPlanMapper projectVisitPlanMapper;
     private final CrfTodoMapper todoMapper;
 
     public NhpVisitService(CrfVisitMapper visitMapper,
                            CrfVisitInstanceMapper visitInstanceMapper,
                            CrfTransplantMapper transplantMapper,
                            CrfVisitPlanMapper visitPlanMapper,
+                           CrfProjectVisitPlanMapper projectVisitPlanMapper,
                            CrfTodoMapper todoMapper) {
         this.visitMapper = visitMapper;
         this.visitInstanceMapper = visitInstanceMapper;
         this.transplantMapper = transplantMapper;
         this.visitPlanMapper = visitPlanMapper;
+        this.projectVisitPlanMapper = projectVisitPlanMapper;
         this.todoMapper = todoMapper;
     }
 
@@ -183,6 +188,66 @@ public class NhpVisitService {
             }
         }
         return visitPlanMapper.listByVisitId(visitId);
+    }
+
+    /** 项目级编排：该项目全部 TP 的表单指派（未配置即空，不 fallback 全局）。 */
+    public List<CrfProjectVisitPlan> listProjectVisitPlans(Long transplantId) {
+        if (transplantId == null) {
+            return List.of();
+        }
+        try {
+            List<CrfProjectVisitPlan> plans = projectVisitPlanMapper.listByTransplantId(transplantId);
+            return plans == null ? List.of() : plans;
+        } catch (Exception e) {
+            log.debug("crf_project_visit_plan not ready yet: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 项目级编排：某 TP 的表单指派。 */
+    public List<CrfProjectVisitPlan> listProjectAtomsForVisit(Long transplantId, Long visitId) {
+        if (transplantId == null || visitId == null) {
+            return List.of();
+        }
+        try {
+            List<CrfProjectVisitPlan> plans = projectVisitPlanMapper.listByVisitId(transplantId, visitId);
+            return plans == null ? List.of() : plans;
+        } catch (Exception e) {
+            log.debug("crf_project_visit_plan not ready yet: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 项目级编排：整体替换某 TP 的表单清单（先清后插）。 */
+    @Transactional
+    public List<CrfProjectVisitPlan> replaceProjectVisitPlan(Long transplantId, Long visitId, List<Map<String, Object>> atoms) {
+        if (transplantId == null || visitId == null) {
+            throw new IllegalArgumentException("transplantId and visitId required");
+        }
+        projectVisitPlanMapper.deleteByVisitId(transplantId, visitId);
+        List<CrfProjectVisitPlan> created = new ArrayList<>();
+        int order = 0;
+        if (atoms != null) {
+            for (Map<String, Object> atom : atoms) {
+                Long atomId = asLong(atom.get("atomId"));
+                if (atomId == null) continue;
+                CrfProjectVisitPlan row = new CrfProjectVisitPlan();
+                row.setTransplantId(transplantId);
+                row.setVisitId(visitId);
+                row.setAtomId(atomId);
+                Object req = atom.get("required");
+                row.setRequired(req == null ? Boolean.TRUE : Boolean.parseBoolean(String.valueOf(req)));
+                Object cf = atom.get("captureForm");
+                if (cf != null) {
+                    String cfStr = String.valueOf(cf).trim();
+                    row.setCaptureForm(cfStr.isBlank() ? null : cfStr);
+                }
+                row.setSortOrder(order++);
+                projectVisitPlanMapper.insert(row);
+                created.add(row);
+            }
+        }
+        return projectVisitPlanMapper.listByVisitId(transplantId, visitId);
     }
 
     private static Long asLong(Object v) {

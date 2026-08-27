@@ -84,12 +84,50 @@ public class CageCellIndexController {
         if (user == null || user.getRole() == null || user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
             return;
         }
+        // 有负责范围分配（校区/楼层/房间）→ 笼架级收口：命中才可见，忽略课题组。
+        if (studentCageShelfService.hasScopeAssignment(user)) {
+            Object metaObj = result.get("shelfMeta");
+            String shelveId = null, roomId = null, floorId = null, campusId = null;
+            if (metaObj instanceof Map<?, ?> meta) {
+                shelveId = str(meta.get("shelveId"));
+                roomId = str(meta.get("roomId"));
+                floorId = str(meta.get("floorId"));
+                campusId = str(meta.get("campusId"));
+            }
+            if (!studentCageShelfService.isShelfVisibleForUser(user, shelveId, roomId, floorId, campusId)) {
+                Object gridObj = result.get("grid");
+                if (gridObj instanceof List<?> list) {
+                    List<Map<String, Object>> masked = new ArrayList<>();
+                    for (Object o : list) {
+                        if (o instanceof Map<?, ?> cell) {
+                            Map<String, Object> c = new LinkedHashMap<>((Map<String, Object>) cell);
+                            if (!Boolean.TRUE.equals(c.get("empty"))) {
+                                c.put("visible", false);
+                                c.put("projectPiName", "***");
+                                c.put("piName", "***");
+                                c.put("departmentName", "***");
+                                c.put("aupNumber", "");
+                                // 保留 specialStatuses：笼位状态非敏感，脱敏只作用于课题组归属字段
+                            }
+                            masked.add(c);
+                        }
+                    }
+                    result.put("grid", masked);
+                }
+            }
+            return;
+        }
+        // 无负责范围 → 保持原有 cell 级课题组过滤，不改动（避免误伤本组笼架）。
         Object gridObj = result.get("grid");
         if (gridObj instanceof List<?> list) {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> grid = (List<Map<String, Object>>) list;
             result.put("grid", studentCageShelfService.maskGridForUser(user, grid));
         }
+    }
+
+    private String str(Object o) {
+        return o == null ? null : String.valueOf(o);
     }
 
     // ── 架子汇总列表 ──
@@ -227,7 +265,7 @@ public class CageCellIndexController {
                 return Result.fail(410, "扫码绑定已退役，请使用预约/分配流程");
             }
             case "ALLOCATE" -> {
-                detailService.allocate(animalCageId);
+                detailService.allocate(animalCageId, String.valueOf(user.getId()));
                 aroEndpoint = "cageBook";
                 // 从 cage_cell_index 解析 roomId/shelveId，补全投递所需字段
                 var idx = indexMapper.selectByAnimalCageId(animalCageId);
@@ -240,7 +278,7 @@ public class CageCellIndexController {
                 outboxPayload.put("animalCageIds", java.util.List.of(animalCageId));
             }
             case "CANCEL_ALLOCATE" -> {
-                detailService.cancelAllocate(animalCageId);
+                detailService.cancelAllocate(animalCageId, String.valueOf(user.getId()));
                 aroEndpoint = "cancelBook";
                 outboxPayload.put("animalCageIds", java.util.List.of(animalCageId));
             }

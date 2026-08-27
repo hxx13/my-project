@@ -312,7 +312,7 @@ public class NhpGovernanceQueryService {
                     : s.getLifecycleStage();
             card.put("lifecycleStage", lifecycle);
             card.put("txDate", txDate);
-            card.put("currentTp", resolveCurrentTp(s.getId(), txDate));
+            card.put("currentTp", resolveCurrentTp(s.getId(), txDate, project));
             card.put("todoCount", todoMapper.countOpenBySubject(s.getId()));
             card.put("overdueCount", todoMapper.countOverdueBySubject(s.getId()));
             out.add(card);
@@ -466,7 +466,11 @@ public class NhpGovernanceQueryService {
         return out;
     }
 
-    private String resolveCurrentTp(Long subjectId, String txDate) {
+    private String resolveCurrentTp(Long subjectId, String txDate, CrfTransplant project) {
+        // 手动选定的 TP 优先；未选定则退回自动推算（项目级 current_tp 覆盖所有消费方）
+        if (project != null && project.getCurrentTp() != null && !project.getCurrentTp().isBlank()) {
+            return project.getCurrentTp();
+        }
         List<CrfVisitInstance> instances = visitInstanceMapper.listBySubjectId(subjectId);
         if (instances == null || instances.isEmpty()) {
             if (txDate == null) return null;

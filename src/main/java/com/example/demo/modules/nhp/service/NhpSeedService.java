@@ -224,6 +224,7 @@ public class NhpSeedService {
                 {"SMP", "SMP-{TX}-{TP}-{样本类型}-{seq:2}", "0"},
                 {"TST", "TST-{实验室}{年月}-{seq:4}", "0"},
                 {"RS", "RS-{TEST_ID}-{项目码}", "1"},
+                {"NHP_PROJ", "NHP-{year}-{seq:4}", "0"},
         };
         int n = 0;
         for (String[] r : rules) {

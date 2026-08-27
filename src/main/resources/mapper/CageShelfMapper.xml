@@ -152,6 +152,25 @@
         ORDER BY c.campus_name ASC, c.area_name ASC, c.floor_name ASC, c.room_name ASC, c.shelve_id ASC
     </select>
 
+    <select id="selectShelvePiAttribution" resultType="map">
+        SELECT DISTINCT CAST(c.shelve_id AS CHAR) AS shelveId,
+               d.project_pi_name AS projectPiName,
+               d.pi_name AS piName,
+               d.department_name AS departmentName
+        FROM cage_shelf_index c
+        JOIN cage_cell_index i ON i.shelve_id = c.shelve_id
+        JOIN cage_cell_detail d ON d.animal_cage_id = i.animal_cage_id
+        WHERE c.deleted = 0
+          AND ((d.project_pi_name IS NOT NULL AND TRIM(d.project_pi_name) &lt;&gt; '')
+            OR (d.pi_name IS NOT NULL AND TRIM(d.pi_name) &lt;&gt; '')
+            OR (d.department_name IS NOT NULL AND TRIM(d.department_name) &lt;&gt; ''))
+    </select>
+
+    <select id="selectLocalDataVersion" resultType="map">
+        SELECT (SELECT MAX(updated_at) FROM cage_cell_detail) AS detailMax,
+               (SELECT MAX(update_time) FROM cage_shelf_index) AS shelfMax
+    </select>
+
     <select id="findById" resultMap="CageShelfIndexMap">
         SELECT * FROM cage_shelf_index WHERE id = #{id}
     </select>

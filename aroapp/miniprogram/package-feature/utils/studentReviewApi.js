@@ -211,6 +211,26 @@ async function fetchAroFavorites() {
   return unwrap(res.data) || [];
 }
 
+/** 待审批笼位申请列表（管理端，与 Web fetchPendingClaims 同源） */
+async function fetchPendingCageClaims() {
+  const res = await springAuth.springRequest({
+    url: '/api/admin/cage-claims/pending',
+    method: 'GET',
+    data: { page: 1, pageSize: 200 },
+  });
+  return unwrap(res.data) || { list: [], total: 0 };
+}
+
+/** 审批笼位申请 decision: 'approved' | 'rejected'（驳回必填 reason） */
+async function approveCageClaim(id, decision, reason) {
+  const res = await springAuth.springRequest({
+    url: `/api/admin/cage-claims/${encodeURIComponent(id)}/approve`,
+    method: 'POST',
+    data: { decision: decision, reason: reason || undefined },
+  });
+  return unwrap(res.data);
+}
+
 module.exports = {
   fetchPendingMaterialRequests,
   fetchFinishedMaterialRequests,
@@ -233,4 +253,6 @@ module.exports = {
   auditTrainee,
   scoreTrainee,
   fetchAroFavorites,
+  fetchPendingCageClaims,
+  approveCageClaim,
 };

@@ -46,7 +46,8 @@ export default function AllocDialog({ aupList, selectedAupId, setSelectedAupId, 
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3" onClick={e => e.stopPropagation()}>
+      {/* 手机上限高整体滚动 + 收小内边距；sm 以上保持桌面原样 */}
+      <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-4 sm:p-5 shadow-twin-level-3" onClick={e => e.stopPropagation()}>
         <div className="text-sm font-semibold text-[var(--twin-ink)] mb-3">分配选定笼位</div>
         <div className="text-xs text-[var(--twin-mute)] mb-3">
           已选笼位: {labels.slice(0, 8).join(", ")}{labels.length > 8 ? ` 等共${labels.length}个` : ` (共${labels.length}个)`}

@@ -97,4 +97,13 @@ public interface CageShelfMapper {
     /** 扫码索引：按 roomName 查第一个笼架的真实 shelveId（快照表的 shelve_id 不可靠） */
     CageShelfIndex findFirstByRoomNameAndCampus(@Param("roomName") String roomName,
                                                  @Param("campusName") String campusName);
+
+    /**
+     * 本地数据源课题组归属锚点：笼位→笼架的 project_pi_name / pi_name / department_name（表单字段）。
+     * 学生端据此过滤「属于本课题组的笼架」，与 admin 本地视图 getLocalShelfGrid 同源。
+     */
+    List<Map<String, Object>> selectShelvePiAttribution();
+
+    /** 本地笼架数据版本：cage_cell_detail.updated_at 与 cage_shelf_index.update_time 的最大值（聚合缓存失效判定） */
+    Map<String, Object> selectLocalDataVersion();
 }

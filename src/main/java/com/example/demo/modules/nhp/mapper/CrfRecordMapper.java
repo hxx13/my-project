@@ -20,6 +20,9 @@ public interface CrfRecordMapper {
     @Select("SELECT * FROM crf_record WHERE subject_id = #{subjectId} ORDER BY id")
     List<CrfRecord> listBySubjectId(Long subjectId);
 
+    @Select("SELECT * FROM crf_record WHERE transplant_id = #{transplantId} AND status <> 'DELETED' ORDER BY id")
+    List<CrfRecord> listByTransplantId(Long transplantId);
+
     @Select("<script>SELECT r.* FROM crf_record r " +
             "INNER JOIN crf_subject s ON s.id = r.subject_id WHERE 1=1 " +
             "<choose>" +

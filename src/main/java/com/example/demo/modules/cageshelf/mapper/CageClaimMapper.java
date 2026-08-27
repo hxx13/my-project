@@ -33,11 +33,11 @@ public interface CageClaimMapper {
     List<Map<String, Object>> selectMyEnriched(@Param("claimantId") String claimantId,
                                                @Param("status") String status);
 
-    /** 管理端待审批列表（分页+筛选） */
-    List<CageClaim> selectPending(@Param("status") String status,
-                                  @Param("keyword") String keyword,
-                                  @Param("offset") int offset,
-                                  @Param("limit") int limit);
+    /** 管理端待审批列表（分页+筛选，含校区/楼层/房间/笼架/坐标/AUP/课题组 join） */
+    List<Map<String, Object>> selectPending(@Param("status") String status,
+                                            @Param("keyword") String keyword,
+                                            @Param("offset") int offset,
+                                            @Param("limit") int limit);
 
     int countPending(@Param("status") String status,
                      @Param("keyword") String keyword);

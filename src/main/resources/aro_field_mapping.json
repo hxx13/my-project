@@ -1,5 +1,5 @@
 {
-  "version": "5",
+  "version": "6",
   "description": "ARO 字段名 → 本地规范名 双向映射。sources=拉取时ARO→本地, targets=推送时本地→ARO。空串视为真实空（写 null 清空本地），别名仅在路径不存在时回退。",
   "endpoints": {
     "back":   { "path": "/admin/cageBox/{roomId}/{shelveId}/animalCages/back", "direction": "pull" },
@@ -47,6 +47,12 @@
       "type": "string",
       "sources": { "back": ["cageBoxVo.cageBoxCode","cageBoxVo.cageBoxQrCode"], "list": ["cageBoxVo.cageBoxCode","cageBoxVo.cageBoxQrCode"] },
       "targets": { "cageRelatedBox": "cageBoxCode" }
+    },
+    {
+      "canonical": "cage_use_time",
+      "type": "string",
+      "comment": "使用时间：cageBoxVo.createTime（笼盒创建/挂上那一刻），替换原合笼日期 cohabitation_date",
+      "sources": { "back": "cageBoxVo.createTime", "list": "cageBoxVo.createTime" }
     },
     {
       "canonical": "pi_name",
@@ -114,6 +120,19 @@
       "type": "boolean",
       "sources": { "back": "cageBoxVo.abnormalHealthYn", "list": "cageBoxVo.abnormalHealthYn" },
       "targets": { "updateAnimalCage": "abnormalHealthYn" }
+    },
+    {
+      "canonical": "needs_cohabitation",
+      "sqlColumn": "needs_cohabitation",
+      "type": "boolean",
+      "comment": "合笼 0/1：closingdate 非空 且 (无取消 或 取消早于合笼)。ARO 无布尔字段，由两时间戳综合判定；cageBoxVo 不存在时不判定（保留旧值）。closingdate<=rescindDatetime 视为已解除。",
+      "computed": {
+        "rule": "cohabitationActive",
+        "inputs": {
+          "closing": "cageBoxVo.closingdate",
+          "rescind": "cageBoxVo.rescindDatetime"
+        }
+      }
     },
     {
       "canonical": "special_breeding_name",

@@ -29,4 +29,8 @@ public interface CageFormAuditLogMapper {
                        @Param("dateTo") String dateTo);
 
     List<Map<String, Object>> countByEntity(@Param("category") String category);
+
+    /** 某笼位(target_id)的全部 data 类审计，按时间升序（供按笼盒分组追溯）。 */
+    List<CageFormAuditLog> listByTargetId(@Param("targetId") Long targetId,
+                                          @Param("category") String category);
 }

@@ -7,11 +7,14 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageCellHistory;
+import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellHistoryMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
+import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import com.example.demo.modules.cageshelf.service.CageCellDetailService;
 import com.example.demo.modules.cageshelf.service.CageInfoValueService;
+import com.example.demo.modules.cageshelf.service.CageModeVisibilityService;
 import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.cageshelf.service.OutboxService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -46,6 +49,8 @@ public class CageLocalController {
     private final UserDisplayNameService userDisplayNameService;
     private final CageQuotaService quotaService;
     private final CageInfoValueService infoValueService;
+    private final CageModeVisibilityService modeVisibilityService;
+    private final CageClaimMapper claimMapper;
 
     public CageLocalController(AuthContextService authContextService,
                                CageCellDetailService detailService,
@@ -56,7 +61,9 @@ public class CageLocalController {
                                JdbcTemplate jdbcTemplate,
                                UserDisplayNameService userDisplayNameService,
                                CageQuotaService quotaService,
-                               CageInfoValueService infoValueService) {
+                               CageInfoValueService infoValueService,
+                               CageModeVisibilityService modeVisibilityService,
+                               CageClaimMapper claimMapper) {
         this.authContextService = authContextService;
         this.detailService = detailService;
         this.detailMapper = detailMapper;
@@ -67,6 +74,8 @@ public class CageLocalController {
         this.userDisplayNameService = userDisplayNameService;
         this.quotaService = quotaService;
         this.infoValueService = infoValueService;
+        this.modeVisibilityService = modeVisibilityService;
+        this.claimMapper = claimMapper;
     }
 
     private String operatorDisplayName(User u) {
@@ -143,7 +152,7 @@ public class CageLocalController {
         for (Object id : list) {
             Long animalCageId = toLong(id);
             if (animalCageId == null) continue;
-            CageCellDetail d = detailService.allocate(animalCageId, piName, aupNumber, aupId);
+            CageCellDetail d = detailService.allocate(animalCageId, piName, aupNumber, aupId, String.valueOf(u.getId()));
             Map<String, Object> auto = new HashMap<>();
             if (d.getPiName() != null && !d.getPiName().isBlank()) auto.put("pi_name", d.getPiName());
             if (d.getProjectPiName() != null && !d.getProjectPiName().isBlank()) auto.put("project_pi_name", d.getProjectPiName());
@@ -175,7 +184,7 @@ public class CageLocalController {
         for (Object id : list) {
             Long animalCageId = toLong(id);
             if (animalCageId == null) continue;
-            detailService.cancelAllocate(animalCageId);
+            detailService.cancelAllocate(animalCageId, String.valueOf(u.getId()));
             infoValueService.clearOccupancyFields(animalCageId);
             cageIds.add(animalCageId);
         }
@@ -195,14 +204,18 @@ public class CageLocalController {
             "needs_special_feeding", "需特殊饲养",
             "has_health_abnormality", "健康异常",
             "needs_transfer", "动物转移",
-            "needs_cohabitation", "需合笼");
+            "needs_cohabitation", "合笼");
 
     @PostMapping("/edit")
     @Operation(summary = "编辑笼位状态标记 → 只写本地")
     public Result<?> edit(@RequestBody Map<String, Object> body, HttpServletRequest req) {
         User u = resolveUser(req.getHeader("Authorization"));
-        Result<?> denied = requireRole(u, RoleEnum.STAFF);
+        Result<?> denied = requireRole(u, RoleEnum.MEMBER);
         if (denied != null) return denied;
+        // 状态模式：仅「能控制状态模式」的身份可改（读 cage_mode.edit 配置，替代旧的 STAFF 粗校验）
+        if (!modeVisibilityService.canUseMode(u, "edit")) {
+            return Result.fail(403, "无状态编辑权限（仅状态模式身份可操作）");
+        }
 
         Long animalCageId = toLong(body.get("animalCageId"));
         String toggle = str(body, "toggle");
@@ -253,12 +266,25 @@ public class CageLocalController {
         String imagesJson = body.containsKey("imagesJson") ? str(body, "imagesJson") : null;
         String statusPhotos = body.containsKey("statusPhotos") ? str(body, "statusPhotos") : null;
 
-        // 特殊状态照片仅教职工（STAFF+）可写，学生只能写实验记录/照片
-        boolean staff = u.getRole() != null && u.getRole().getLevel() >= RoleEnum.STAFF.getLevel();
+        // 字段级拆权：
+        //  - experimentDesc/imagesJson = 实验记录/图片，仅「该笼位占用者本人」可写；
+        //  - statusPhotos = 状态照片，仅「能控制状态模式」的身份可写。
+        boolean wantsRecord = experimentDesc != null || imagesJson != null;
+        boolean wantsStatusPhoto = statusPhotos != null;
+
+        if (wantsRecord) {
+            CageClaim claim = claimMapper.selectActiveByAnimalCageId(animalCageId);
+            boolean isOwner = claim != null && claim.getClaimantId() != null && claim.getClaimantId().equals(u.getId());
+            if (!isOwner) return Result.fail(403, "仅笼位占用者本人可编辑实验记录与图片");
+        }
+        if (wantsStatusPhoto && !modeVisibilityService.canUseMode(u, "edit")) {
+            return Result.fail(403, "无状态照片编辑权限（仅状态模式身份可操作）");
+        }
+
         Map<String, Object> values = new HashMap<>();
         if (experimentDesc != null) values.put("experiment_desc", experimentDesc);
         if (imagesJson != null) values.put("images_json", imagesJson);
-        if (statusPhotos != null && staff) values.put("extra_data", statusPhotos);
+        if (statusPhotos != null) values.put("extra_data", statusPhotos);
         infoValueService.saveLocalFields(animalCageId, values, u.getId());
 
         // 同时写入历史归档（标注类操作，statusField="_annotation"）

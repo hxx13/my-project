@@ -24,6 +24,7 @@
         <text class="list-count-text">共 {{ totalCount }} 个笼架</text>
         <text wx:if="{{ scannedAt }}" class="list-scanned-at">{{ scannedAt }}</text>
         <view class="list-special-status-btn" bindtap="onOpenSpecialStatus">特殊状态</view>
+        <view wx:if="{{ !isStaffView }}" class="list-special-status-btn list-my-claims-btn" bindtap="onOpenMyClaims">我的申请</view>
       </view>
       <view class="list-search-row">
         <view class="list-search-bar">
@@ -159,12 +160,12 @@
   <!-- 操作栏：图例 + 刷新 + 提交 -->
   <view class="grid-actions-bar" style="top: {{ navBarHeight }}px;">
     <view class="gt-left-btns">
-      <!-- 三模式分段切换（对齐 H5 样式） -->
-      <view class="gt-mode-seg">
-        <view class="gt-mode-btn {{ (!editMode && !confirmMode) ? 'gt-mode-btn--on' : '' }}" bindtap="onSelectViewMode">查看</view>
-        <view class="gt-mode-btn {{ (confirmMode && !editMode) ? 'gt-mode-btn--on' : '' }}" bindtap="onToggleConfirmMode">扫码确认</view>
-        <view wx:if="{{ adminView }}" class="gt-mode-btn {{ editMode ? 'gt-mode-btn--on' : '' }}" bindtap="onToggleRealtime">编辑</view>
-      </view>
+      <!-- 模式切换（横向滚动，8 项手机宽度放不下） -->
+      <scroll-view class="gt-mode-scroll" scroll-x enhanced show-scrollbar="{{ false }}">
+        <view class="gt-mode-seg">
+          <view wx:for="{{ modeOptions }}" wx:key="key" class="gt-mode-btn {{ pageMode === item.key ? 'gt-mode-btn--on' : '' }}" data-mode="{{ item.key }}" bindtap="onSwitchMode">{{ item.label }}</view>
+        </view>
+      </scroll-view>
     </view>
     <view class="grid-actions-btns">
       <!-- 常驻扫码入口（顶栏）：全角色可见，结果按当前模式分派 -->
@@ -172,24 +173,42 @@
         <van-icon name="scan" size="34rpx" color="#fff" />
       </view>
       <view class="gt-legend-btn {{ legendOpen ? 'gt-legend-btn--on' : '' }}" bindtap="onToggleGridLegend">
-        <van-icon name="warning-o" size="32rpx" color="{{ legendOpen ? '#fff' : '#ac1736' }}" />
+        <van-icon name="warning-o" size="26rpx" color="{{ legendOpen ? '#fff' : '#ac1736' }}" />
       </view>
-      <view class="gt-refresh" bindtap="onRetry">
-        <van-icon name="replay" size="36rpx" color="#969799" />
-      </view>
-      <!-- 编辑模式：提交（扫码由常驻 FAB 联动） -->
-      <view wx:if="{{ adminView && editMode && scanTotalActions > 0 }}" class="gt-submit-btn" bindtap="onSubmitScanActions">
-        <van-icon name="goods-collect-o" size="32rpx" color="#fff" />
-        <text>提交</text>
-      </view>
+      <view wx:if="{{ !isStaffView }}" class="gt-my-claims-btn" bindtap="onOpenMyClaims">我的申请</view>
     </view>
   </view>
 
   <!-- 固定操作栏占位（actions bar 为 position:fixed，需在文档流中为其留出空间） -->
   <view class="grid-actions-spacer"></view>
 
+  <!-- 模式操作条：各模式选中数 + 业务按钮 -->
+  <view wx:if="{{ pageMode === 'allocate' || pageMode === 'reserve' || pageMode === 'studentClaim' || pageMode === 'edit' }}" class="mode-actions-strip">
+    <!-- 分配按批次类型二选一：待分配→下发 AUP；已预约空笼盒→撤回 AUP 退回待分配 -->
+    <block wx:if="{{ pageMode === 'allocate' }}">
+      <view class="ma-count">{{ allocBatchKind === 'cancel' ? '撤回 AUP' : '待分配' }} · 已选 {{ selectedCount }}</view>
+      <view wx:if="{{ selectedCount > 0 && allocBatchKind === 'allocate' }}" class="ma-btn ma-btn--primary" bindtap="onOpenAupDialog">分配选定笼位</view>
+      <view wx:if="{{ selectedCount > 0 && allocBatchKind === 'cancel' }}" class="ma-btn ma-btn--danger" bindtap="handleCancelAssign">取消分配</view>
+      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--plain" bindtap="onClearSelection">清除</view>
+    </block>
+    <block wx:if="{{ pageMode === 'reserve' }}">
+      <view class="ma-count">已选 {{ selectedCount }}</view>
+      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--primary" bindtap="openReservePerson">确认预定</view>
+      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--plain" bindtap="onClearSelection">清除</view>
+    </block>
+    <block wx:if="{{ pageMode === 'studentClaim' }}">
+      <view class="ma-count">已选 {{ selectedCount }}</view>
+      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--primary" bindtap="handleStudentClaim">提交申请</view>
+      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--plain" bindtap="onClearSelection">清除</view>
+    </block>
+    <block wx:if="{{ pageMode === 'edit' }}">
+      <view wx:if="{{ scanTotalActions > 0 }}" class="ma-btn ma-btn--primary" bindtap="onSubmitScanActions">提交 ({{ scanTotalActions }})</view>
+      <view wx:if="{{ scanCacheSize > 0 }}" class="ma-btn ma-btn--plain" bindtap="onExitScanMode">清除</view>
+    </block>
+  </view>
+
   <!-- 编辑历史预览条：只显示已编辑笼位的坐标标签（对齐 Web 顶部缓存预览 / H5 缓存预览） -->
-  <view wx:if="{{ editMode && cachePreviews.length }}" class="edit-cache-strip">
+  <view wx:if="{{ pageMode === 'edit' && cachePreviews.length }}" class="edit-cache-strip">
     <view wx:for="{{ cachePreviews }}" wx:key="key" class="edit-cache-chip">
       <text class="edit-cache-pos">{{ item.position }}</text>
       <text class="edit-cache-diff">{{ item.diff }}</text>
@@ -207,7 +226,7 @@
       <view class="back-link" bindtap="onBackToList">返回列表</view>
     </view>
 
-  <scroll-view wx:if="{{ !loading && !error }}" class="grid-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+  <scroll-view wx:if="{{ !loading && !error }}" class="grid-scroll" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{ loading }}" bindrefresherrefresh="onRetry">
     <!-- 图例：默认收起，点 "!" 展开 -->
     <view wx:if="{{ legendOpen }}" class="grid-legend-card">
       <text class="legend-section-title">特殊状态 → 格子背景</text>
@@ -222,15 +241,15 @@
 
       <text class="legend-section-title legend-section-title--spaced">笼位状态 → 右上角指示灯</text>
       <view class="grid-legend grid-legend--cage-type">
-        <view class="legend-item"><view class="legend-cage-dot legend-cage-dot--wait"><text>待</text></view><text class="legend-label">等待分配</text></view>
-        <view class="legend-item"><view class="legend-cage-dot legend-cage-dot--empty"><text>空</text></view><text class="legend-label">已预约(空笼盒)</text></view>
-        <view class="legend-item"><view class="legend-cage-dot legend-cage-dot--feeding"><text>饲</text></view><text class="legend-label">已预约(饲养中)</text></view>
-        <view class="legend-item"><view class="legend-cage-dot legend-cage-dot--abnormal"><text>异</text></view><text class="legend-label">异常</text></view>
+        <view class="legend-item"><view class="legend-cage-dot legend-cage-dot--wait"><text>待</text></view><text class="legend-label">(等待分配)</text></view>
+        <view class="legend-item"><view class="legend-cage-dot legend-cage-dot--empty"><text>空</text></view><text class="legend-label">(空笼位)</text></view>
+        <view class="legend-item"><view class="legend-cage-dot legend-cage-dot--feeding"><text>饲</text></view><text class="legend-label">(饲养中)</text></view>
+        <view class="legend-item"><view class="legend-cage-dot legend-cage-dot--abnormal"><text>异</text></view><text class="legend-label">(异常)</text></view>
       </view>
     </view>
 
     <!-- 扫码结果面板（扫码后始终显示供切换选项，不受 diff 影响；提交按钮单独判断 scanTotalActions） -->
-    <view wx:if="{{ editMode && lastScannedKey && scanCacheSize > 0 }}" class="scan-result-panel">
+    <view wx:if="{{ pageMode === 'edit' && lastScannedKey && scanCacheSize > 0 }}" class="scan-result-panel">
       <view class="scan-result-top-row">
         <view class="scan-result-info">
           <text class="scan-result-label">已定位:</text>
@@ -256,15 +275,17 @@
         <view
           wx:for="{{ grid }}"
           wx:key="position"
-          class="grid-cell {{ item.empty ? 'gcell-empty' : (item.visible === false ? 'gcell-hidden' : 'gcell-filled') }} {{ item._cachedLast ? 'gcell-hit' : '' }} {{ item._cached && !item._cachedLast ? 'gcell-hit gcell-hit--cached' : '' }} {{ item._cachedBg ? 'gcell-cached' : '' }} {{ lastScannedKey && item.x === scannedCellX && item.y === scannedCellY ? '' : (lastScannedKey && (item.x === scannedCellX || item.y === scannedCellY) ? 'gcell-cross' : '') }}"
+          class="grid-cell {{ item.empty ? 'gcell-empty' : (item.visible === false ? 'gcell-hidden' : 'gcell-filled') }} {{ item._cachedLast ? 'gcell-hit' : '' }} {{ item._cached && !item._cachedLast ? 'gcell-hit gcell-hit--cached' : '' }} {{ item._cachedBg ? 'gcell-cached' : '' }} {{ lastScannedKey && item.x === scannedCellX && item.y === scannedCellY ? '' : (lastScannedKey && (item.x === scannedCellX || item.y === scannedCellY) ? 'gcell-cross' : '') }} {{ item._selected ? 'gcell-selected' : '' }} {{ item._inPool ? 'gcell-inpool' : '' }} {{ item._myClaim ? 'gcell-myclaim' : '' }}"
           style="{{ item._cellStyle }}"
           data-x="{{ item.x }}"
           data-y="{{ item.y }}"
           bindtap="onCellTap"
         >
           <text class="gcell-pos">{{ item._displayPosition || item.position }}</text>
+          <view wx:if="{{ item._claimBadge }}" class="gcell-badge {{ item._claimBadge.cls }}">{{ item._claimBadge.text }}</view>
           <block wx:if="{{ !item.empty && item.visible !== false }}">
             <text class="gcell-pi">{{ item._piShort || '' }}</text>
+            <text wx:if="{{ item._experimenterShort }}" class="gcell-exp">{{ item._experimenterShort }}</text>
             <view wx:if="{{ item._cageTypeDotColor }}" class="gcell-dot" style="background:{{ item._cageTypeDotColor }};">
               <text>{{ item._cageTypeAbbr }}</text>
             </view>
@@ -298,7 +319,7 @@
     <view class="detail-root">
 
       <!-- 教职工动作选择（仅编辑模式） -->
-      <view wx:if="{{ adminView && editMode && cellDetailMeta && cellDetailMeta.permitted }}" class="detail-actions-bar">
+      <view wx:if="{{ isStaffView && pageMode === 'edit' && cellDetailMeta && cellDetailMeta.permitted }}" class="detail-actions-bar">
         <view
           wx:for="{{ CAGE_STATUS_ACTIONS }}" wx:key="action" wx:for-item="a"
           class="detail-action-btn {{ detailActions[a.action] ? (initialDetailActions[a.action] ? 'detail-action-btn--keep' : 'detail-action-btn--on') : (initialDetailActions[a.action] ? 'detail-action-btn--off' : '') }}"
@@ -580,7 +601,7 @@
   bind:close="onCloseConfirmDialog"
 >
   <view class="cf-root">
-    <view class="cf-title">扫码确认 · 核对信息</view>
+    <view class="cf-title">确认 · 核对信息</view>
     <view class="cf-rows">
       <view wx:for="{{ confirmRows }}" wx:key="label" class="cf-row">
         <text class="cf-row-label">{{ item.label }}</text>
@@ -609,6 +630,193 @@
         {{ confirmSubmitting ? '处理中...' : '确认到位' }}
       </view>
     </view>
+  </view>
+</van-popup>
+
+<!-- 分配 AUP 选择弹窗 -->
+<van-popup
+  show="{{ showAupDialog }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  root-portal="{{ true }}"
+  z-index="{{ 22000 }}"
+  custom-style="width:90vw;max-width:600rpx;padding:24rpx;box-sizing:border-box;"
+  bind:close="onCloseAupDialog"
+>
+  <view class="cf-root">
+    <view class="cf-title">分配选定笼位 · 选择 AUP</view>
+    <scroll-view scroll-y class="aup-list">
+      <view wx:for="{{ aupOptions }}" wx:key="value" class="aup-row {{ selectedAupId === item.value ? 'aup-row--on' : '' }}" data-value="{{ item.value }}" bindtap="onAupSelect">
+        <text class="aup-row-text">{{ item.text }}</text>
+        <text wx:if="{{ selectedAupId === item.value }}" class="aup-row-check">✓</text>
+      </view>
+      <view wx:if="{{ aupOptions.length === 0 }}" class="aup-empty">暂无可用 AUP</view>
+    </scroll-view>
+    <view class="cf-btns">
+      <view class="cf-btn-cancel" bindtap="onCloseAupDialog">取消</view>
+      <view class="cf-btn-confirm {{ allocSubmitting ? 'cf-btn-confirm--disabled' : '' }}" bindtap="{{ allocSubmitting ? '' : 'handleConfirmAssign' }}">{{ allocSubmitting ? '分配中...' : '确认分配' }}</view>
+    </view>
+  </view>
+</van-popup>
+
+<!-- 教职工认领：人员检索弹窗 -->
+<van-popup
+  show="{{ reservePersonOpen }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  root-portal="{{ true }}"
+  z-index="{{ 22000 }}"
+  custom-style="width:90vw;max-width:600rpx;padding:24rpx;box-sizing:border-box;"
+  bind:close="onCloseReservePerson"
+>
+  <view class="cf-root">
+    <view class="cf-title">确认预定 · 选择占用者</view>
+    <view class="rp-search-row">
+      <input class="rp-input" type="text" value="{{ reserveKeyword }}" placeholder="姓名 / 工号" placeholder-class="list-search-placeholder" bindinput="onReserveKeywordInput" confirm-type="search" bindconfirm="onReserveSearch" />
+      <view class="rp-search-btn" bindtap="onReserveSearch">搜索</view>
+    </view>
+    <!-- 打开即按已选笼位的 AUP 课题组预览成员，无需先手输关键字 -->
+    <view wx:if="{{ reserveGroups.length > 0 }}" class="rp-groups">课题组：{{ reserveGroups }}</view>
+    <scroll-view scroll-y class="rp-list">
+      <view wx:if="{{ reserveSearching }}" class="rp-hint">加载中…</view>
+      <view wx:elif="{{ reserveResults.length === 0 }}" class="rp-hint">{{ reserveGroups.length > 0 ? '该课题组暂无可选成员，可手动搜索' : '输入关键字检索人员' }}</view>
+      <block wx:else>
+        <view wx:for="{{ reserveResults }}" wx:key="accountId" class="rp-row" data-account-id="{{ item.accountId }}" data-name="{{ item.name }}" bindtap="onReservePickPerson">
+          <text class="rp-name">{{ item.name }}</text>
+          <text class="rp-group">{{ item.projectGroupName }}</text>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 归档确认弹窗 -->
+<van-popup
+  show="{{ showArchiveDialog }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  root-portal="{{ true }}"
+  z-index="{{ 22000 }}"
+  custom-style="width:90vw;max-width:600rpx;padding:24rpx;box-sizing:border-box;"
+  bind:close="onCloseArchiveDialog"
+>
+  <view class="cf-root">
+    <view class="cf-title">归档笼位</view>
+    <view class="cf-rows">
+      <view wx:if="{{ archiveTarget.positionLabel }}" class="cf-row"><text class="cf-row-label">笼位</text><text class="cf-row-value">{{ archiveTarget.positionLabel }}</text></view>
+      <view wx:if="{{ archiveTarget.occupantName }}" class="cf-row"><text class="cf-row-label">占用者</text><text class="cf-row-value cf-row-value--em">{{ archiveTarget.occupantName }}</text></view>
+      <view wx:if="{{ archiveTarget.projectPiName }}" class="cf-row"><text class="cf-row-label">课题组 PI</text><text class="cf-row-value">{{ archiveTarget.projectPiName }}</text></view>
+      <view wx:if="{{ archiveTarget.aupNumber }}" class="cf-row"><text class="cf-row-label">AUP 编号</text><text class="cf-row-value">{{ archiveTarget.aupNumber }}</text></view>
+    </view>
+    <view class="cf-tip">确认归档该笼位？归档后释放占用并回到空笼盒</view>
+    <view class="cf-btns">
+      <view class="cf-btn-cancel" bindtap="onCloseArchiveDialog">取消</view>
+      <view class="cf-btn-confirm {{ archiveSubmitting ? 'cf-btn-confirm--disabled' : '' }}" bindtap="{{ archiveSubmitting ? '' : 'handleArchiveConfirm' }}">{{ archiveSubmitting ? '归档中...' : '确认归档' }}</view>
+    </view>
+  </view>
+</van-popup>
+
+<!-- 记录模式：笼位历史记录弹窗 -->
+<van-popup
+  show="{{ recordOpen }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  root-portal="{{ true }}"
+  z-index="{{ 22000 }}"
+  custom-style="width:90vw;max-width:600rpx;height:70vh;box-sizing:border-box;overflow:hidden;"
+  bind:close="onCloseRecordDialog"
+>
+  <view class="cf-root record-root">
+    <view class="cf-title">笼位历史 · {{ recordTarget.positionLabel }}</view>
+    <scroll-view scroll-y class="record-scroll">
+      <view wx:if="{{ recordLoading }}" class="rp-hint">加载中…</view>
+      <view wx:elif="{{ recordGroups.length === 0 }}" class="rp-hint">暂无历史记录</view>
+      <block wx:else>
+        <view wx:for="{{ recordGroups }}" wx:key="label" wx:for-item="grp" class="record-group">
+          <text class="record-group-label">{{ grp.label }}</text>
+          <view wx:for="{{ grp.changes }}" wx:key="*this" wx:for-item="ch" class="record-change">
+            <text class="record-change-type">{{ ch.changeType }}</text>
+            <text wx:if="{{ ch.fieldName }}" class="record-change-field">{{ ch.fieldName }}</text>
+            <text wx:if="{{ ch.beforeValue || ch.afterValue }}" class="record-change-val">{{ ch.beforeValue }} → {{ ch.afterValue }}</text>
+            <text wx:if="{{ ch.operator || ch.createdAt }}" class="record-change-meta">{{ ch.operator }} {{ ch.createdAt }}</text>
+          </view>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 预约模式：房间汇总 + 同步 -->
+<van-popup
+  show="{{ pageMode === 'booking' }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  root-portal="{{ true }}"
+  z-index="{{ 22000 }}"
+  custom-style="width:90vw;max-width:600rpx;height:70vh;box-sizing:border-box;overflow:hidden;"
+  bind:close="onCloseBooking"
+>
+  <view class="cf-root booking-root">
+    <view class="cf-title">笼位预约汇总</view>
+    <view class="booking-sync-btn {{ bookingSyncing ? 'booking-sync-btn--disabled' : '' }}" bindtap="{{ bookingSyncing ? '' : 'handleBookingSync' }}">{{ bookingSyncing ? '同步中…' : '🔄 同步 ARO' }}</view>
+    <scroll-view scroll-y class="record-scroll">
+      <view wx:if="{{ bookingLoading }}" class="rp-hint">加载中…</view>
+      <view wx:elif="{{ bookingRooms.length === 0 }}" class="rp-hint">暂无预约数据，请点击同步</view>
+      <block wx:else>
+        <view wx:for="{{ bookingRooms }}" wx:key="roomId" class="booking-row">
+          <view class="booking-row-top">
+            <text class="booking-name">{{ item.name || item.roomId }}</text>
+            <text class="booking-usage">{{ item.usedAnimalCageNumber }}/{{ item.animalCageNumber }}</text>
+          </view>
+          <view wx:if="{{ item.memo }}" class="booking-memo">{{ item.memo }}</view>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 我的申请列表 -->
+<van-popup
+  show="{{ myClaimsOpen }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  root-portal="{{ true }}"
+  z-index="{{ 22000 }}"
+  custom-style="width:90vw;max-width:600rpx;height:70vh;box-sizing:border-box;overflow:hidden;"
+  bind:close="onCloseMyClaims"
+>
+  <view class="cf-root my-claims-root">
+    <view class="cf-title">我的申请</view>
+    <scroll-view scroll-y class="record-scroll">
+      <view wx:if="{{ myClaimsLoading }}" class="rp-hint">加载中…</view>
+      <view wx:elif="{{ myClaims.length === 0 }}" class="rp-hint">暂无申请记录</view>
+      <block wx:else>
+        <view wx:for="{{ myClaims }}" wx:key="id" class="mc-item">
+          <view class="mc-item-top">
+            <text class="mc-item-pos">{{ item.positionLabel || item.animalCageId }}</text>
+            <text class="mc-item-status">{{ item._statusLabel }}</text>
+          </view>
+          <view wx:if="{{ item.roomName || item.shelveName }}" class="mc-item-sub">{{ item.campusName }} {{ item.roomName }} {{ item.shelveName }}</view>
+          <view wx:if="{{ item.latestRejectReason }}" class="mc-item-reject">驳回原因：{{ item.latestRejectReason }}</view>
+          <view class="mc-item-actions">
+            <view wx:if="{{ item.claimStatus === 'pending_approval' }}" class="mc-btn mc-btn--danger" data-id="{{ item.id }}" bindtap="onCancelClaim">取消申请</view>
+            <view wx:if="{{ item.claimStatus === 'locked' }}" class="mc-btn mc-btn--primary" data-id="{{ item.id }}" bindtap="onConfirmClaimFromList">确认到位</view>
+          </view>
+        </view>
+      </block>
+    </scroll-view>
   </view>
 </van-popup>
 

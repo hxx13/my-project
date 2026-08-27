@@ -932,7 +932,7 @@
 /* ===== 研究总览驾驶舱（/#/nhp/overview） ===== */
 /* Portal 壳：顶栏 + 工作台纵向 flex，避免 height:100% 在无父高时失效 */
 .nhp-cockpit-shell{
-  display:flex;flex-direction:column;min-height:100dvh;background:var(--bg,#f4f5f7)
+  display:flex;flex-direction:column;height:100dvh;overflow:hidden;background:var(--bg,#f4f5f7)
 }
 .nhp-cockpit-app.aup-app--workbench{
   flex:1;min-height:0;height:auto;background:var(--bg,#f4f5f7) !important
@@ -1085,6 +1085,64 @@
 .nhp-cockpit-activity-scroll{
   flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain
 }
+
+/* 项目驾驶舱重排：左/右列自然堆叠可滚，中栏放项目工作区 */
+.nhp-cockpit-col--left,
+.nhp-cockpit-col--right{
+  overflow-y:auto
+}
+.nhp-cockpit-col--left > *,
+.nhp-cockpit-col--right > *{
+  flex:0 0 auto
+}
+.nhp-cockpit-col--center > .nhp-project-workspace{
+  flex:1 1 0;min-height:0;overflow:hidden
+}
+.nhp-cockpit-card-body{padding:12px 14px}
+.nhp-cockpit-project-title{font-size:15px;font-weight:800;color:var(--text)}
+.nhp-cockpit-project-meta-line{font-size:12px;color:var(--muted);margin-top:3px}
+
+/* 项目驾驶舱三栏：左 TP 列表 · 中表单/动态 · 右项目名/待办/审核，各自内部滚动，页面不整滚 */
+.nhp-overview-project{
+  flex:1;min-height:0;display:grid;height:100%;
+  grid-template-columns:300px minmax(0,1fr) 300px;gap:14px
+}
+.nhp-overview-rail{max-height:none;height:100%}
+.nhp-overview-left{min-height:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.nhp-overview-left > .nhp-overview-rail{flex:1;min-height:0;max-height:none;width:100%}
+.nhp-overview-members{
+  flex:0 0 46%;min-height:0;display:flex;flex-direction:column;gap:12px;
+  overflow-y:auto;overscroll-behavior:contain
+}
+.nhp-overview-members > .nhp-cockpit-card{
+  flex:1 1 0;min-height:0;display:flex;flex-direction:column;overflow:hidden
+}
+.nhp-overview-members .nhp-cockpit-subject > .nhp-cockpit-subject-hero,
+.nhp-overview-members .nhp-cockpit-subject > .nhp-cockpit-subject-foot{flex-shrink:0}
+.nhp-overview-members .nhp-cockpit-subject > .nhp-cockpit-subject-body{
+  flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain
+}
+.nhp-overview-center,
+.nhp-overview-right{
+  min-height:0;display:flex;flex-direction:column;gap:12px;overflow:hidden
+}
+.nhp-overview-center > .aup-wb-panel,
+.nhp-overview-center > .nhp-cockpit-card,
+.nhp-overview-right > .aup-wb-panel,
+.nhp-overview-right > .nhp-cockpit-card{
+  flex:1 1 0;min-height:0;overflow:hidden;display:flex;flex-direction:column
+}
+.nhp-overview-subjects{
+  flex:1 1 0;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:12px;overflow-y:auto
+}
+/* 卡片/面板内部滚动：头部固定，正文超出即滚动 */
+.nhp-overview-center > .nhp-cockpit-card > :not(.nhp-cockpit-card-hd),
+.nhp-overview-right > .nhp-cockpit-card > :not(.nhp-cockpit-card-hd),
+.nhp-overview-center > .aup-wb-panel > :not(.aup-wb-panel-hd),
+.nhp-overview-right > .aup-wb-panel > :not(.aup-wb-panel-hd){
+  flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain
+}
+
 @media(max-width:960px){
   .nhp-cockpit-grid{
     grid-template-columns:1fr;
@@ -1365,6 +1423,16 @@
 .nhp-assign-kind--composite{background:#F3EFFF;color:#7C3AED}
 .nhp-assign-row-key{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+.nhp-assign-folder-row{cursor:pointer;background:var(--bg-weak,#F9FAFB)}
+.nhp-assign-folder-row:hover{background:#eef2f7}
+.nhp-assign-folder-hd{
+  display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:12.5px;font-weight:700;
+  border-bottom:1px solid var(--border,#E5E7EB)
+}
+.nhp-assign-folder-hd .chev{color:var(--muted);width:12px;font-size:11px}
+.nhp-assign-folder-hd .name{color:var(--text)}
+.nhp-assign-folder-hd .count{margin-left:auto;font-size:10px;font-weight:600;color:var(--muted)}
+
 .nhp-assign-check{cursor:pointer;accent-color:var(--primary,#002FA7);width:15px;height:15px}
 .nhp-assign-cell{
   text-align:center;padding:0;border-bottom:1px solid var(--border,#E5E7EB);
@@ -1390,6 +1458,62 @@
   .nhp-assign-stats{margin-left:0;width:100%}
   .nhp-assign-matrix-wrap{max-height:calc(100vh - 280px)}
 }
+
+/* ===== 项目工作区（TP 竖向导航 + 表单） ===== */
+.nhp-project-shell{max-width:1180px;margin:0 auto;padding:16px 20px 32px}
+.nhp-project-shell-hd{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.nhp-project-shell-hd h2{margin:0;font-size:22px;font-weight:800}
+.nhp-project-shell-sub{display:flex;gap:6px;flex-wrap:wrap}
+
+/* 项目头部卡片 */
+.nhp-project-header-card{
+  background:#fff;border:1px solid var(--border,#E5E7EB);border-radius:14px;
+  padding:18px 20px;display:flex;flex-direction:column;gap:12px;margin-bottom:16px
+}
+.nhp-project-header-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.nhp-project-header-top h2{margin:0;font-size:22px;font-weight:800;color:var(--text)}
+.nhp-project-header-badges{display:flex;gap:6px;flex-wrap:wrap}
+.nhp-project-header-meta{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.nhp-project-header-meta b{color:var(--text);font-weight:700;margin-left:4px}
+.nhp-project-header-remark{font-size:13px;color:var(--slate);line-height:1.65;padding-top:10px;border-top:1px solid var(--border,#E5E7EB)}
+
+/* 表单卡片列表 */
+.nhp-form-list{display:flex;flex-direction:column;gap:10px;padding:12px}
+.nhp-form-tile{
+  display:flex;align-items:center;gap:14px;padding:14px 16px;
+  background:#fff;border:1px solid var(--border,#E5E7EB);border-radius:12px;
+  transition:border-color .15s,box-shadow .15s
+}
+.nhp-form-tile:hover{border-color:var(--primary,#002FA7);box-shadow:0 4px 14px rgba(0,0,0,.06)}
+.nhp-form-tile-main{flex:1;min-width:0}
+.nhp-form-tile-title{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.nhp-form-tile-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:5px}
+.nhp-form-tile-key{font-family:ui-monospace,monospace;color:var(--slate)}
+.nhp-form-tile-acts{display:flex;gap:8px;flex-shrink:0}
+
+/* 项目信息元数据：标签左、值右 */
+.nhp-project-meta{display:flex;flex-direction:column;gap:8px}
+.nhp-project-meta-row{display:flex;justify-content:space-between;gap:12px;font-size:12px}
+.nhp-project-meta-row > span:first-child{color:var(--muted);flex-shrink:0}
+.nhp-project-meta-row > span:last-child{color:var(--text);font-weight:600;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nhp-project-workspace{display:flex;gap:16px;align-items:flex-start}
+.nhp-tp-rail{
+  width:250px;flex-shrink:0;display:flex;flex-direction:column;gap:4px;
+  background:#fff;border:1px solid var(--border,#E5E7EB);border-radius:12px;padding:8px;max-height:calc(100vh - 220px);overflow:auto
+}
+.nhp-tp-node{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;border:1px solid transparent
+}
+.nhp-tp-node:hover{background:var(--bg-weak,#F9FAFB)}
+.nhp-tp-node.active{background:var(--primary-weak,#EEF2FF);border-color:var(--primary,#002FA7)}
+.nhp-tp-node .tp-code{font-size:12px;font-weight:800;color:var(--primary,#002FA7);min-width:44px}
+.nhp-tp-node .tp-main{flex:1;min-width:0}
+.nhp-tp-node .tp-name{font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nhp-tp-node .tp-meta{font-size:11px;color:var(--muted);margin-top:1px}
+.nhp-tp-node .tp-count{font-size:10px;font-weight:700;color:var(--muted);background:var(--bg-weak,#F9FAFB);border-radius:999px;padding:1px 7px}
+.nhp-tp-node.current .tp-code::before{content:"● ";color:var(--success,#16a34a)}
+.nhp-workspace-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
+.nhp-workspace-main .aup-wb-panel{background:#fff}
 
 /* ===== 审计页：紧凑工具栏 + 密集表格 ===== */
 .nhp-audit-shell{display:flex;flex-direction:column;gap:8px;min-height:0;flex:1}

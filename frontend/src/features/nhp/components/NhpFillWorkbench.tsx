@@ -140,6 +140,7 @@ export default function NhpFillWorkbench({
   const [subject, setSubject] = useState<NhpSubject | null>(null);
   const [record, setRecord] = useState<NhpRecord | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
+  const [stageEditable, setStageEditable] = useState(true);
   const [dictOptions, setDictOptions] = useState<Record<string, { value: string; label: string }[]>>({});
   const [audits, setAudits] = useState<NhpAuditEntry[]>([]);
   const [snapshotCount, setSnapshotCount] = useState(0);
@@ -176,7 +177,7 @@ export default function NhpFillWorkbench({
   }, [captureForm, subject?.id]);
 
   const locked = (record?.status || "").toUpperCase() === "LOCKED";
-  const canEdit = !locked && !snapshotViewId;
+  const canEdit = !locked && !snapshotViewId && stageEditable;
   const statusUp = (record?.status || "").toUpperCase();
 
   const enterFill = () => {
@@ -219,6 +220,7 @@ export default function NhpFillWorkbench({
         setSubject(detail.subject);
         setValues(detail.values ?? {});
         setSnapshotCount(detail.snapshotCount ?? 0);
+        setStageEditable(detail.stageEditable !== false);
         const formId = detail.record.formId;
         if (formId) {
           try {

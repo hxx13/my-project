@@ -33,6 +33,8 @@ export interface PendingBadges {
   staffMessagesSidebarTotalText?: string;
   /** 与消息页「待处理」合并列表条数同源（后端 StaffUnifiedWorkInboxPendingCounter） */
   staffUnifiedWorkInboxPending?: number;
+  /** 后端 badgeCounters Map（新域走 Map，不新增顶层 int 字段），含 processCageClaim 等 */
+  badgeCounters?: Record<string, number>;
 }
 
 interface ResultBody {

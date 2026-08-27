@@ -58,6 +58,15 @@ public class CageFieldMappingService {
                 if (tgt != null) {
                     for (String ep : tgt.keySet()) entry.targets.put(ep, tgt.getString(ep));
                 }
+                JSONObject comp = m.getJSONObject("computed");
+                if (comp != null) {
+                    ComputedRule cr = new ComputedRule();
+                    cr.rule = comp.getString("rule");
+                    cr.inputs = new LinkedHashMap<>();
+                    JSONObject ins = comp.getJSONObject("inputs");
+                    if (ins != null) for (String k : ins.keySet()) cr.inputs.put(k, ins.getString(k));
+                    entry.computed = cr;
+                }
                 byCanonical.put(entry.canonical, entry);
             }
             // filters
@@ -98,6 +107,14 @@ public class CageFieldMappingService {
         }
         Map<String, Object> result = new LinkedHashMap<>();
         for (MappingEntry e : byCanonical.values()) {
+            if (e.computed != null) {
+                // 计算型字段：输入路径的父 map（如 cageBoxVo）存在才触发，否则跳过不写（保留旧值）
+                Map<String, Object> inputs = resolveComputedInputs(raw, e.computed);
+                if (inputs != null) {
+                    result.put(e.canonical, evalComputed(e.computed.rule, inputs));
+                }
+                continue;
+            }
             List<String> aliases = e.sources.get(endpoint);
             if (aliases == null) continue;
             for (String alias : aliases) {
@@ -113,6 +130,60 @@ public class CageFieldMappingService {
             }
         }
         return result;
+    }
+
+    /**
+     * 解析计算型字段的输入值。规则：每个输入路径的父 map 都必须存在；
+     * 输入键缺失时按 null 处理（父 map 有该键但值为 null 同理）。任一父 map 缺失 → 返回 null（不判定）。
+     */
+    private Map<String, Object> resolveComputedInputs(Map<String, Object> raw, ComputedRule rule) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (Map.Entry<String, String> in : rule.inputs.entrySet()) {
+            String[] parts = in.getValue().split("\\.");
+            Map<String, Object> parent = resolveNestedMap(raw, parts, parts.length - 1);
+            if (parent == null) return null;
+            String key = parts[parts.length - 1];
+            values.put(in.getKey(), parent.containsKey(key) ? parent.get(key) : null);
+        }
+        return values;
+    }
+
+    /** 按路径前 depth 段解析出 Map 节点（任一段缺失/非 Map → null）。 */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> resolveNestedMap(Map<String, Object> root, String[] parts, int depth) {
+        Object current = root;
+        for (int i = 0; i < depth; i++) {
+            if (!(current instanceof Map<?, ?> m)) return null;
+            Map<String, Object> map = (Map<String, Object>) m;
+            if (!map.containsKey(parts[i])) return null;
+            current = map.get(parts[i]);
+            if (current == null) return null;
+        }
+        return current instanceof Map<?, ?> ? (Map<String, Object>) current : null;
+    }
+
+    private Object evalComputed(String rule, Map<String, Object> inputs) {
+        return switch (rule) {
+            // 合笼活跃 0/1：closingdate 非空，且 (无取消 或 取消早于合笼)
+            case "cohabitationActive" -> cohabitationActive(inputs.get("closing"), inputs.get("rescind"));
+            default -> null;
+        };
+    }
+
+    /**
+     * 合笼活跃 0/1：closingdate 非空，且 (无 rescindDatetime 或 rescindDatetime < closingdate)。
+     * 两字段均为 "yyyy-MM-dd HH:mm:ss"，字符串比较即时间先后；取消晚于合笼(closingdate<=rescind) → 已解除。
+     */
+    private static boolean cohabitationActive(Object closing, Object rescind) {
+        if (!isNonBlank(closing)) return false;
+        if (!isNonBlank(rescind)) return true;
+        return String.valueOf(closing).compareTo(String.valueOf(rescind)) > 0;
+    }
+
+    private static boolean isNonBlank(Object v) {
+        if (v == null) return false;
+        String s = String.valueOf(v).trim();
+        return !s.isEmpty() && !"null".equalsIgnoreCase(s);
     }
 
     /** Push 方向：从规范字段 Map 生成 ARO 请求体，boolean→1/0，保持 ARO Yn 字段兼容 */
@@ -192,6 +263,13 @@ public class CageFieldMappingService {
         String canonical, type;
         Map<String, List<String>> sources; // endpoint → ARO field aliases
         Map<String, String> targets;       // endpoint → ARO field name
+        ComputedRule computed;             // 计算型字段（如 合笼 0/1 综合判定），非空时忽略 sources/targets
+    }
+
+    /** 计算型映射规则：rule=计算函数名，inputs=输入名 → ARO 嵌套路径。 */
+    static class ComputedRule {
+        String rule;
+        Map<String, String> inputs;
     }
     static class FilterRule {
         String endpoint, field;

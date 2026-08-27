@@ -56,6 +56,7 @@ export function ShelfGrid({
   claimMode,
   confirmMode,
   poolCells,
+  myClaimCageIds,
 }: {
   title: string;
   detail: CageShelfDetail | null;
@@ -84,6 +85,8 @@ export function ShelfGrid({
   claimMode?: boolean;
   confirmMode?: boolean;
   poolCells?: Map<string, PoolCell>;
+  /** 本人待确认到位的 animalCageId 集合；认领/确认模式下高亮 */
+  myClaimCageIds?: Set<string>;
 }) {
   const sid = detail?.shelfMeta?.shelveId ?? "";
   const cells = detail?.grid ?? [];
@@ -133,6 +136,7 @@ export function ShelfGrid({
               claimMode={claimMode}
               confirmMode={confirmMode}
               isPoolCell={claimMode && poolCells ? poolCells.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
+              isMyClaimCell={myClaimCageIds ? myClaimCageIds.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
             />
           );
         })}

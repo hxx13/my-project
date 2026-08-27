@@ -61,9 +61,9 @@ export const RENT_TYPE_LABEL: Record<number,string> = { 1:"空闲", 2:"正常租
    ═══════════════════════════════════════════════════════════ */
 
 export const CAGE_TYPE_COLORS: Record<number,{bg:string;border:string;label:string}> = {
-  1:{bg:"#fef3c7",border:"#f59e0b",label:"等待分配"},
-  2:{bg:"#d1fae5",border:"#10b981",label:"已预约(空笼盒)"},
-  3:{bg:"#ffe4e6",border:"#e11d48",label:"饲养中"},
+  1:{bg:"#fef3c7",border:"#f59e0b",label:"(等待分配)"},
+  2:{bg:"#d1fae5",border:"#10b981",label:"(空笼位)"},
+  3:{bg:"#ffe4e6",border:"#e11d48",label:"(饲养中)"},
   4:{bg:"#dbeafe",border:"#3b82f6",label:"异常"},
 };
 
@@ -187,3 +187,37 @@ export interface TreeNode {
   children:TreeNode[];
   raw?:any;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   分配模式 — 笼位可选性判定（三端唯一真相源）
+   ═══════════════════════════════════════════════════════════ */
+
+/** 分配模式下一次批量操作的动作类型 */
+export type AllocSelectKind = "allocate" | "cancel";
+
+export type AllocSelectVerdict =
+  | { ok: true; kind: AllocSelectKind }
+  | { ok: false; reason: string };
+
+/**
+ * 分配模式点击笼位的判定：
+ *
+ * - `1 等待分配`      → 可选，本批动作 = 分配（选 AUP 下发）
+ * - `2 已预约(空笼盒)` → 可选，本批动作 = 取消分配（撤掉 AUP，退回「等待分配」）
+ * - 其它（3 饲养中 / 4 异常）→ 不可选，须先归档腾空
+ *
+ * 一个批次内不允许混选两种动作，否则「分配 / 取消」按钮语义不明。
+ * H5 与 Web 直接调用本函数；小程序是独立技术栈，需按同一规则手写（见 index.js `allocVerdict`）。
+ */
+export function allocSelectVerdict(cageTypeCode?: number | null): AllocSelectVerdict {
+  const ct = Number(cageTypeCode);
+  if (ct === 1) return { ok: true, kind: "allocate" };
+  if (ct === 2) return { ok: true, kind: "cancel" };
+  if (ct === 3 || ct === 4) {
+    return { ok: false, reason: `该笼位为「${CAGE_TYPE_LABEL[ct]}」，需先归档当前笼位后才能分配` };
+  }
+  return { ok: false, reason: "该笼位状态未知，无法分配" };
+}
+
+/** 混选拦截文案（三端共用） */
+export const ALLOC_MIXED_KIND_HINT = "不能同时勾选「等待分配」与「空笼位」笼位，请分两批操作";

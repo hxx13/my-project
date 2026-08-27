@@ -6,21 +6,30 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 /** 教职工路由命名空间 */
 const STAFF_NS = "/console";
 
-/** 判断是否为学生库账号：role 优先（role≥STAFF 视为非学生，含切到学生视角仍保留教职工 role 的场景），再按 id 前缀/accountSource 兜底。 */
+/**
+ * 判断是否为学生库账号。
+ * 优先级：accountSource（后端明确返回的账号来源库）> role > id 前缀。
+ *
+ * accountSource 优先的原因：双视角绑定的学生账号，其 role 可能被抬到 STAFF+，
+ * 若按 role 优先会把它误判成教职工，导致学生账号登录却跳进教职工后台（/console/admin）。
+ * 而「教职工切学生视图」时展开的是原 userInfo，accountSource 仍是 STAFF，
+ * 所以 accountSource 优先不会破坏那个保留管理入口的场景。
+ */
 export function isStudentAccount(): boolean {
-  const role = authStorage.getRole() ?? "MEMBER";
-  // 权限统一不分视角：role ≥ STAFF 即视为非学生，杜绝「切视角后 id 变学号却被误判学生」而丢失管理入口
-  if (hasMinRole(role, "STAFF")) return false;
   const info = authStorage.getUserInfo();
+  const source = info?.accountSource;
+  if (source === "STUDENT") return true;
+  if (source === "STAFF") return false;
+
+  // 老账号无 accountSource：role ≥ STAFF 视为教职工（保护「切视角后 id 变学号」场景），再按 id 前缀兜底。
+  const role = authStorage.getRole() ?? "MEMBER";
+  if (hasMinRole(role, "STAFF")) return false;
   const id = info?.id;
   if (id) {
     const up = id.toUpperCase();
     if (up.startsWith("STAFF_") || up.startsWith("USR_") || up === "SYS_SUPER_ROOT") return false;
     if (/^\d+$/.test(id)) return true;
   }
-  const source = info?.accountSource;
-  if (source === "STUDENT") return true;
-  if (source === "STAFF") return false;
   return !hasMinRole(role, "STAFF");
 }
 

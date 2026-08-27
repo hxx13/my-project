@@ -74,6 +74,8 @@ export interface NhpTemplateListItem {
   captureForm?: string | null;
   /** 宿主：DONOR 供体域 / RECIPIENT 受体域（表单划分） */
   hostType?: "DONOR" | "RECIPIENT" | null;
+  /** 归属文件夹 FK→aup_folder.id（owner_type=NHP_FORM）；null=未分类 */
+  folderId?: number | null;
 }
 
 /** 是否可用于开填（头版本已发布，或同 key 另有已发布版） */
@@ -161,6 +163,13 @@ export async function fetchNhpTemplates(
 
 export async function fetchNhpAtoms(dictKey?: string): Promise<NhpTemplateListItem[]> {
   return fetchNhpTemplates("ATOM", dictKey ? { dictKey } : undefined);
+}
+
+/** 归类表单到文件夹（folderId 为空即移出到未分类；按 formKey 整组落库） */
+export async function setNhpTemplateFolder(formKey: string, folderId: number | null): Promise<NhpTemplateListItem> {
+  return authHttp
+    .put<Result<NhpTemplateListItem>>(`/nhp/templates/${encodeURIComponent(formKey)}/folder`, { folderId })
+    .then(({ data }) => data.data);
 }
 
 export async function fetchNhpTemplate(formKey: string): Promise<NhpFormTemplate> {
