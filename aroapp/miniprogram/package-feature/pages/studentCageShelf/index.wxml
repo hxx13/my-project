@@ -763,8 +763,6 @@
   </view>
 
   <scroll-view scroll-y class="booking-full-scroll">
-    <view class="booking-sync-btn {{ bookingSyncing ? 'booking-sync-btn--disabled' : '' }}" bindtap="{{ bookingSyncing ? '' : 'handleBookingSync' }}">{{ bookingSyncing ? '同步中…' : '同步 ARO' }}</view>
-
     <view wx:if="{{ bookingLoading }}" class="rp-hint">加载中…</view>
 
     <!-- 房间概览卡 -->

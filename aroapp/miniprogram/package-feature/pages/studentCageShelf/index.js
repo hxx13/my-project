@@ -603,7 +603,6 @@ Page({
     // 预约
     bookingRooms: [],
     bookingLoading: false,
-    bookingSyncing: false,
     bookingRoom: null,          // 当前笼架所在房间概览（含 remaining/bookedPct/usedPct）
     editingCapacity: false,
     capacityDraft: '',
@@ -2005,21 +2004,6 @@ Page({
     });
   },
 
-  handleBookingSync: function() {
-    var self = this;
-    self.setData({ bookingSyncing: true });
-    springAuth.springRequest({ url: '/api/v1/cage-shelves/booking/sync', method: 'POST', data: {} }).then(function(res) {
-      var p = unwrap(res);
-      if (!p.ok) { self.setData({ bookingSyncing: false }); wx.showToast({ title: p.message || '同步失败', icon: 'none' }); return; }
-      var d = p.data || {};
-      self.setData({ bookingSyncing: false });
-      wx.showToast({ title: '同步完成：' + (d.rooms || 0) + ' 房间 / ' + (d.aups || 0) + ' 分配', icon: 'success' });
-      self.loadBookingRoom();
-    }).catch(function(e) {
-      self.setData({ bookingSyncing: false });
-      wx.showToast({ title: (e && e.message) || '同步失败', icon: 'none' });
-    });
-  },
 
   onCloseBooking: function() {
     this.switchMode('view');
