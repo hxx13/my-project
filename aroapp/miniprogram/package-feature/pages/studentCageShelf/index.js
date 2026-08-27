@@ -604,6 +604,10 @@ Page({
     bookingRooms: [],
     bookingLoading: false,
     bookingSyncing: false,
+    bookingRoom: null,          // 当前笼架所在房间概览（含 remaining/bookedPct/usedPct）
+    editingCapacity: false,
+    capacityDraft: '',
+    savingCapacity: false,
     // 学生申请
     poolByCageId: {},
     claimSubmitting: false,
@@ -1481,11 +1485,13 @@ Page({
       editActionPopup: false,
       editActionCell: null,
       detailActions: cageStatus.newActionState(),
-      actionSubmitting: false
+      actionSubmitting: false,
+      editingCapacity: false,
+      capacityDraft: ''
     }, function() {
       self.applyCacheToGrid();
       if (mode === 'allocate') self.loadAupList();
-      else if (mode === 'booking') self.loadBookingRooms();
+      else if (mode === 'booking') self.loadBookingRoom();
       else if (mode === 'studentClaim') self.loadPoolCells();
       else if (mode === 'reserve') { self.loadAupList(); self.setData({ reserveKeyword: '', reserveResults: [], reserveGroups: [], reservePersonOpen: false }); }
       if (mode === 'confirm' && !self.data.isStaffView) self.loadMyClaimCageIds();
@@ -1914,19 +1920,89 @@ Page({
   },
 
   /* ------------------------------------------------------------------ */
-  /*  预约模式（房间/AUP 汇总 + 同步）                                     */
+  /*  预约模式（房间概览 + 同步）                                         */
   /* ------------------------------------------------------------------ */
 
   loadBookingRooms: function() {
     var self = this;
     self.setData({ bookingLoading: true });
-    springAuth.springRequest({ url: '/api/v1/cage-shelves/booking/rooms', method: 'GET', data: { pageNum: 1, pageSize: 200 } }).then(function(res) {
+    return springAuth.springRequest({ url: '/api/v1/cage-shelves/booking/rooms', method: 'GET', data: { pageNum: 1, pageSize: 200 } }).then(function(res) {
       var p = unwrap(res);
       var list = [];
       if (p.ok && p.data && p.data.data && p.data.data.list) list = p.data.data.list;
       else if (p.ok && p.data && p.data.list) list = p.data.list;
       self.setData({ bookingLoading: false, bookingRooms: list });
-    }).catch(function() { self.setData({ bookingLoading: false, bookingRooms: [] }); });
+      return list;
+    }).catch(function() { self.setData({ bookingLoading: false, bookingRooms: [] }); return []; });
+  },
+
+  /** 当前房间概览（bookingRooms 里找 roomId 命中，否则用 gridMeta 兜底） */
+  buildBookingRoom: function(room, meta) {
+    var r = room || {};
+    var total = Number(r.animalCageNumber) || 0;
+    var booked = Number(r.rentAnimalCageNumber) || 0;
+    var used = Number(r.usedAnimalCageNumber) || 0;
+    return {
+      name: r.name || (meta && meta.roomName) || '',
+      description: r.description || '',
+      animalCageNumber: total,
+      rentAnimalCageNumber: booked,
+      usedAnimalCageNumber: used,
+      memo: r.memo || '',
+      remaining: Math.max(0, total - booked),
+      bookedPct: total > 0 ? Math.round((booked / total) * 100) : 0,
+      usedPct: total > 0 ? Math.round((used / total) * 100) : 0
+    };
+  },
+
+  loadBookingRoom: function() {
+    var self = this;
+    var meta = self.data.gridMeta || {};
+    var roomId = String(meta.roomId || '');
+    if (!roomId) {
+      self.setData({ bookingRoom: null });
+      return;
+    }
+    self.loadBookingRooms().then(function(rooms) {
+      var found = null;
+      for (var i = 0; i < (rooms || []).length; i++) {
+        if (String(rooms[i].roomId) === roomId) { found = rooms[i]; break; }
+      }
+      self.setData({ bookingRoom: self.buildBookingRoom(found, meta) });
+    }).catch(function() {});
+  },
+
+  startCapacityEdit: function() {
+    var room = this.data.bookingRoom || {};
+    this.setData({ editingCapacity: true, capacityDraft: String(room.animalCageNumber || 0) });
+  },
+
+  cancelCapacityEdit: function() {
+    this.setData({ editingCapacity: false, capacityDraft: '' });
+  },
+
+  onCapacityDraftInput: function(e) {
+    this.setData({ capacityDraft: e.detail.value || '' });
+  },
+
+  saveCapacity: function() {
+    var self = this;
+    var meta = self.data.gridMeta || {};
+    var roomId = String(meta.roomId || '');
+    var cap = parseInt(self.data.capacityDraft) || 0;
+    if (cap < 0) { wx.showToast({ title: '上限不能为负数', icon: 'none' }); return; }
+    if (!roomId) { wx.showToast({ title: '无法获取房间ID', icon: 'none' }); return; }
+    self.setData({ savingCapacity: true });
+    springAuth.springRequest({ url: '/api/v1/cage-shelves/booking/rooms/' + roomId + '/capacity', method: 'POST', data: { capacity: cap } }).then(function(res) {
+      var p = unwrap(res);
+      if (!p.ok) { self.setData({ savingCapacity: false }); wx.showToast({ title: p.message || '保存失败', icon: 'none' }); return; }
+      self.setData({ savingCapacity: false, editingCapacity: false });
+      wx.showToast({ title: '房间上限已保存', icon: 'success' });
+      self.loadBookingRoom();
+    }).catch(function(e) {
+      self.setData({ savingCapacity: false });
+      wx.showToast({ title: (e && e.message) || '保存失败', icon: 'none' });
+    });
   },
 
   handleBookingSync: function() {
@@ -1938,7 +2014,7 @@ Page({
       var d = p.data || {};
       self.setData({ bookingSyncing: false });
       wx.showToast({ title: '同步完成：' + (d.rooms || 0) + ' 房间 / ' + (d.aups || 0) + ' 分配', icon: 'success' });
-      self.loadBookingRooms();
+      self.loadBookingRoom();
     }).catch(function(e) {
       self.setData({ bookingSyncing: false });
       wx.showToast({ title: (e && e.message) || '同步失败', icon: 'none' });

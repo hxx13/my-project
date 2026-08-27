@@ -754,36 +754,66 @@
   </view>
 </van-popup>
 
-<!-- 预约模式：房间汇总 + 同步 -->
-<van-popup
-  show="{{ pageMode === 'booking' }}"
-  position="center"
-  round
-  closeable
-  close-icon-position="top-right"
-  root-portal="{{ true }}"
-  z-index="{{ 22000 }}"
-  custom-style="width:90vw;max-width:600rpx;height:70vh;box-sizing:border-box;overflow:hidden;"
-  bind:close="onCloseBooking"
->
-  <view class="cf-root booking-root">
-    <view class="cf-title">笼位预约汇总</view>
-    <view class="booking-sync-btn {{ bookingSyncing ? 'booking-sync-btn--disabled' : '' }}" bindtap="{{ bookingSyncing ? '' : 'handleBookingSync' }}">{{ bookingSyncing ? '同步中…' : '🔄 同步 ARO' }}</view>
-    <scroll-view scroll-y class="record-scroll">
-      <view wx:if="{{ bookingLoading }}" class="rp-hint">加载中…</view>
-      <view wx:elif="{{ bookingRooms.length === 0 }}" class="rp-hint">暂无预约数据，请点击同步</view>
-      <block wx:else>
-        <view wx:for="{{ bookingRooms }}" wx:key="roomId" class="booking-row">
-          <view class="booking-row-top">
-            <text class="booking-name">{{ item.name || item.roomId }}</text>
-            <text class="booking-usage">{{ item.usedAnimalCageNumber }}/{{ item.animalCageNumber }}</text>
-          </view>
-          <view wx:if="{{ item.memo }}" class="booking-memo">{{ item.memo }}</view>
-        </view>
-      </block>
-    </scroll-view>
+<!-- 预约模式：内联全屏房间概览 -->
+<view wx:if="{{ pageMode === 'booking' }}" class="booking-full">
+  <view class="booking-full-head">
+    <view class="booking-full-back" bindtap="onCloseBooking">返回</view>
+    <text class="booking-full-title">笼位预约</text>
+    <view class="booking-full-back booking-full-back--ghost"></view>
   </view>
-</van-popup>
+
+  <scroll-view scroll-y class="booking-full-scroll">
+    <view class="booking-sync-btn {{ bookingSyncing ? 'booking-sync-btn--disabled' : '' }}" bindtap="{{ bookingSyncing ? '' : 'handleBookingSync' }}">{{ bookingSyncing ? '同步中…' : '同步 ARO' }}</view>
+
+    <view wx:if="{{ bookingLoading }}" class="rp-hint">加载中…</view>
+
+    <!-- 房间概览卡 -->
+    <view wx:elif="{{ bookingRoom }}" class="booking-card">
+      <view class="booking-card-head">
+        <view class="booking-card-title">
+          <text class="booking-name">{{ bookingRoom.name }}</text>
+          <text wx:if="{{ bookingRoom.description }}" class="booking-desc">{{ bookingRoom.description }}</text>
+        </view>
+        <view class="booking-remain">
+          <text class="booking-remain-num">{{ bookingRoom.remaining }}</text>
+          <text class="booking-remain-label">剩余可用</text>
+        </view>
+      </view>
+
+      <!-- 房间上限（可编辑） -->
+      <view class="booking-cap">
+        <text class="booking-cap-label">房间上限</text>
+        <view wx:if="{{ editingCapacity }}" class="booking-cap-edit">
+          <input class="booking-cap-input" type="number" value="{{ capacityDraft }}" bindinput="onCapacityDraftInput" />
+          <text class="booking-cap-btn booking-cap-btn--ok" bindtap="{{ savingCapacity ? '' : 'saveCapacity' }}">保存</text>
+          <text class="booking-cap-btn" bindtap="cancelCapacityEdit">取消</text>
+        </view>
+        <view wx:else class="booking-cap-view">
+          <text class="booking-cap-num">{{ bookingRoom.animalCageNumber }}</text>
+          <text class="booking-cap-btn" bindtap="startCapacityEdit">编辑</text>
+        </view>
+      </view>
+
+      <!-- 进度条 -->
+      <view class="booking-bar-block">
+        <view class="booking-bar-row">
+          <text class="booking-bar-label">已预约</text>
+          <text class="booking-bar-val">{{ bookingRoom.rentAnimalCageNumber }} / {{ bookingRoom.animalCageNumber }}</text>
+        </view>
+        <view class="booking-bar-track"><view class="booking-bar-fill booking-bar-fill--booked" style="width: {{ bookingRoom.bookedPct }}%;"></view></view>
+      </view>
+      <view class="booking-bar-block">
+        <view class="booking-bar-row">
+          <text class="booking-bar-label">已使用</text>
+          <text class="booking-bar-val">{{ bookingRoom.usedAnimalCageNumber }} / {{ bookingRoom.animalCageNumber }}</text>
+        </view>
+        <view class="booking-bar-track"><view class="booking-bar-fill booking-bar-fill--used" style="width: {{ bookingRoom.usedPct }}%;"></view></view>
+      </view>
+    </view>
+
+    <view wx:else class="rp-hint">当前房间暂无预约数据</view>
+  </scroll-view>
+</view>
 
 <!-- 我的申请列表 -->
 <van-popup
