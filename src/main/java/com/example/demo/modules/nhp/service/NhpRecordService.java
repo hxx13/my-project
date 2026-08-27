@@ -138,8 +138,21 @@ public class NhpRecordService {
             return Result.fail(400, resolved.error());
         }
         CrfTransplant tx = new CrfTransplant();
-        // 项目编号与实验内容无关：临时规则 NHP-{year}-{seq:4}，后续可改 pattern 无需动代码。
-        tx.setTxCode(idService.buildCode("NHP_PROJ", Map.of()));
+        // 项目编号与实验内容无关：临时规则 NHP-{year}-{seq:4}。取一次基准序号后手动顺延查重，
+        // 不依赖 crf_sequence 递增（兜底序列与存量数据不同步导致的 uk_crf_tx_code 冲突）。
+        long baseSeq = idService.next("NHP_PROJ", Map.of());
+        String txCode = null;
+        for (int attempt = 0; attempt < 500; attempt++) {
+            String candidate = idService.buildCode("NHP_PROJ", Map.of("seq", baseSeq + attempt));
+            if (transplantMapper.findByCode(candidate) == null) {
+                txCode = candidate;
+                break;
+            }
+        }
+        if (txCode == null) {
+            return Result.fail(500, "项目编号生成失败（连续冲突过多）");
+        }
+        tx.setTxCode(txCode);
         tx.setProjectName(str(body == null ? null : body.get("projectName")));
         tx.setRemark(str(body == null ? null : body.get("remark")));
         tx.setTeamId(asLong(body == null ? null : body.get("teamId")));

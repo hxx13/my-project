@@ -182,6 +182,125 @@
   <!-- 固定操作栏占位（actions bar 为 position:fixed，需在文档流中为其留出空间） -->
   <view class="grid-actions-spacer"></view>
 
+  <!-- 预约模式：房间概览（内联，位于模式栏下方） -->
+  <view wx:if="{{ pageMode === 'booking' }}" class="booking-inline">
+    <view wx:if="{{ bookingLoading }}" class="rp-hint">加载中…</view>
+    <view wx:elif="{{ bookingRoom }}" class="booking-card">
+      <view class="booking-card-head">
+        <view class="booking-card-title">
+          <text class="booking-name">{{ bookingRoom.name }}</text>
+          <text wx:if="{{ bookingRoom.description }}" class="booking-desc">{{ bookingRoom.description }}</text>
+        </view>
+        <view class="booking-remain">
+          <text class="booking-remain-num">{{ bookingRoom.remaining }}</text>
+          <text class="booking-remain-label">剩余可用</text>
+        </view>
+      </view>
+      <view class="booking-cap">
+        <text class="booking-cap-label">房间上限</text>
+        <view wx:if="{{ editingCapacity }}" class="booking-cap-edit">
+          <input class="booking-cap-input" type="number" value="{{ capacityDraft }}" bindinput="onCapacityDraftInput" />
+          <text class="booking-cap-btn booking-cap-btn--ok" bindtap="{{ savingCapacity ? '' : 'saveCapacity' }}">保存</text>
+          <text class="booking-cap-btn" bindtap="cancelCapacityEdit">取消</text>
+        </view>
+        <view wx:else class="booking-cap-view">
+          <text class="booking-cap-num">{{ bookingRoom.animalCageNumber }}</text>
+          <text class="booking-cap-btn" bindtap="startCapacityEdit">编辑</text>
+        </view>
+      </view>
+      <view class="booking-bar-block">
+        <view class="booking-bar-row">
+          <text class="booking-bar-label">已预约</text>
+          <text class="booking-bar-val">{{ bookingRoom.rentAnimalCageNumber }} / {{ bookingRoom.animalCageNumber }}</text>
+        </view>
+        <view class="booking-bar-track"><view class="booking-bar-fill booking-bar-fill--booked" style="width: {{ bookingRoom.bookedPct }}%;"></view></view>
+      </view>
+      <view class="booking-bar-block">
+        <view class="booking-bar-row">
+          <text class="booking-bar-label">已使用</text>
+          <text class="booking-bar-val">{{ bookingRoom.usedAnimalCageNumber }} / {{ bookingRoom.animalCageNumber }}</text>
+        </view>
+        <view class="booking-bar-track"><view class="booking-bar-fill booking-bar-fill--used" style="width: {{ bookingRoom.usedPct }}%;"></view></view>
+      </view>
+    </view>
+    <view wx:else class="rp-hint">当前房间暂无预约数据</view>
+
+    <!-- AUP 分配明细表 -->
+    <view wx:if="{{ bookingRoom }}" class="booking-aup-panel">
+      <view class="booking-aup-head">
+        <text class="booking-aup-title">AUP 分配明细</text>
+        <view class="booking-aup-add {{ bookingEditingId === 'new' ? 'booking-aup-add--disabled' : '' }}" bindtap="{{ bookingEditingId === 'new' ? '' : 'startBookingNew' }}">新增分配</view>
+      </view>
+
+      <view wx:if="{{ bookingAupLoading }}" class="rp-hint">加载明细中…</view>
+
+      <block wx:else>
+        <view wx:if="{{ bookingAups.length === 0 && bookingEditingId !== 'new' }}" class="rp-hint">暂无分配记录</view>
+
+        <!-- 表头 -->
+        <view wx:if="{{ bookingAups.length > 0 || bookingEditingId === 'new' }}" class="booking-table-head">
+          <text class="col-group">课题组</text>
+          <text class="col-aup">AUP 编号</text>
+          <text class="col-rent">预约</text>
+          <text class="col-used">已用</text>
+          <text class="col-memo">备注</text>
+          <text class="col-op">操作</text>
+        </view>
+
+        <!-- 新增行 -->
+        <view wx:if="{{ bookingEditingId === 'new' }}" class="booking-aup-row booking-aup-row--edit">
+          <view class="booking-edit-grid">
+            <picker class="booking-picker" range="{{ bookingPiNames }}" value="{{ bookingEditPiIndex }}" bindchange="onBookingPiChange">
+              <view class="booking-picker-box {{ bookingEdit.piName ? '' : 'booking-picker-box--empty' }}">{{ bookingEdit.piName || '选择课题组' }}</view>
+            </picker>
+            <picker class="booking-picker" range="{{ bookingEditAupOptions }}" range-key="registerNo" value="{{ bookingEditAupIndex }}" bindchange="onBookingAupChange" disabled="{{ !bookingEdit.piName }}">
+              <view class="booking-picker-box {{ bookingEdit.aupId ? '' : 'booking-picker-box--empty' }}">{{ bookingEdit.registerNumber || (bookingEdit.piName ? '选择 AUP 编号' : '先选课题组') }}</view>
+            </picker>
+            <input class="booking-edit-input" type="number" value="{{ bookingEdit.rentNumber }}" bindinput="onBookingRentInput" placeholder="预约数量" />
+            <input class="booking-edit-input" type="text" value="{{ bookingEdit.memo }}" bindinput="onBookingMemoInput" placeholder="备注" />
+          </view>
+          <view class="booking-row-ops">
+            <text class="booking-op-btn booking-op-btn--ok" bindtap="{{ bookingSaving ? '' : 'saveBookingAup' }}">{{ bookingSaving ? '保存中' : '保存' }}</text>
+            <text class="booking-op-btn" bindtap="cancelBookingEdit">取消</text>
+          </view>
+        </view>
+
+        <!-- 现有行 -->
+        <view wx:for="{{ bookingAups }}" wx:key="id" wx:for-item="aup" class="booking-aup-row">
+          <block wx:if="{{ bookingEditingId === aup.id }}">
+            <view class="booking-edit-grid">
+              <picker class="booking-picker" range="{{ bookingPiNames }}" value="{{ bookingEditPiIndex }}" bindchange="onBookingPiChange">
+                <view class="booking-picker-box {{ bookingEdit.piName ? '' : 'booking-picker-box--empty' }}">{{ bookingEdit.piName || '选择课题组' }}</view>
+              </picker>
+              <picker class="booking-picker" range="{{ bookingEditAupOptions }}" range-key="registerNo" value="{{ bookingEditAupIndex }}" bindchange="onBookingAupChange" disabled="{{ !bookingEdit.piName }}">
+                <view class="booking-picker-box {{ bookingEdit.aupId ? '' : 'booking-picker-box--empty' }}">{{ bookingEdit.registerNumber || (bookingEdit.piName ? '选择 AUP 编号' : '先选课题组') }}</view>
+              </picker>
+              <input class="booking-edit-input" type="number" value="{{ bookingEdit.rentNumber }}" bindinput="onBookingRentInput" placeholder="预约数量" />
+              <input class="booking-edit-input" type="text" value="{{ bookingEdit.memo }}" bindinput="onBookingMemoInput" placeholder="备注" />
+            </view>
+            <view class="booking-row-ops">
+              <text class="booking-op-btn booking-op-btn--ok" bindtap="{{ bookingSaving ? '' : 'saveBookingAup' }}">{{ bookingSaving ? '保存中' : '保存' }}</text>
+              <text class="booking-op-btn" bindtap="cancelBookingEdit">取消</text>
+            </view>
+          </block>
+          <block wx:else>
+            <view class="booking-aup-cols">
+              <text class="col-group">{{ aup.piName }}</text>
+              <text class="col-aup">{{ aup.registerNumber }}</text>
+              <text class="col-rent">{{ aup.rentNumber }}</text>
+              <text class="col-used">{{ aup.usedAnimalCageNumber }}</text>
+              <text class="col-memo">{{ aup.memo || '—' }}</text>
+              <view class="col-op">
+                <text class="booking-op-btn" data-id="{{ aup.id }}" bindtap="startBookingEdit">编辑</text>
+                <text class="booking-op-btn booking-op-btn--danger" data-id="{{ aup.id }}" bindtap="deleteBookingAup">删除</text>
+              </view>
+            </view>
+          </block>
+        </view>
+      </block>
+    </view>
+  </view>
+
   <!-- 模式操作条：各模式选中数 + 业务按钮 -->
   <view wx:if="{{ pageMode === 'allocate' || pageMode === 'reserve' || pageMode === 'studentClaim' || pageMode === 'edit' }}" class="mode-actions-strip">
     <!-- 分配按批次类型二选一：待分配→下发 AUP；已预约空笼盒→撤回 AUP 退回待分配 -->
@@ -226,7 +345,7 @@
       <view class="back-link" bindtap="onBackToList">返回列表</view>
     </view>
 
-  <scroll-view wx:if="{{ !loading && !error }}" class="grid-scroll" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{ loading }}" bindrefresherrefresh="onRetry">
+  <scroll-view wx:if="{{ !loading && !error && pageMode !== 'booking' }}" class="grid-scroll" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{ loading }}" bindrefresherrefresh="onRetry">
     <!-- 图例：默认收起，点 "!" 展开 -->
     <view wx:if="{{ legendOpen }}" class="grid-legend-card">
       <text class="legend-section-title">特殊状态 → 格子背景</text>
@@ -748,37 +867,6 @@
             <text wx:if="{{ ch.beforeValue || ch.afterValue }}" class="record-change-val">{{ ch.beforeValue }} → {{ ch.afterValue }}</text>
             <text wx:if="{{ ch.operator || ch.createdAt }}" class="record-change-meta">{{ ch.operator }} {{ ch.createdAt }}</text>
           </view>
-        </view>
-      </block>
-    </scroll-view>
-  </view>
-</van-popup>
-
-<!-- 预约模式：房间汇总 + 同步 -->
-<van-popup
-  show="{{ pageMode === 'booking' }}"
-  position="center"
-  round
-  closeable
-  close-icon-position="top-right"
-  root-portal="{{ true }}"
-  z-index="{{ 22000 }}"
-  custom-style="width:90vw;max-width:600rpx;height:70vh;box-sizing:border-box;overflow:hidden;"
-  bind:close="onCloseBooking"
->
-  <view class="cf-root booking-root">
-    <view class="cf-title">笼位预约汇总</view>
-    <view class="booking-sync-btn {{ bookingSyncing ? 'booking-sync-btn--disabled' : '' }}" bindtap="{{ bookingSyncing ? '' : 'handleBookingSync' }}">{{ bookingSyncing ? '同步中…' : '🔄 同步 ARO' }}</view>
-    <scroll-view scroll-y class="record-scroll">
-      <view wx:if="{{ bookingLoading }}" class="rp-hint">加载中…</view>
-      <view wx:elif="{{ bookingRooms.length === 0 }}" class="rp-hint">暂无预约数据，请点击同步</view>
-      <block wx:else>
-        <view wx:for="{{ bookingRooms }}" wx:key="roomId" class="booking-row">
-          <view class="booking-row-top">
-            <text class="booking-name">{{ item.name || item.roomId }}</text>
-            <text class="booking-usage">{{ item.usedAnimalCageNumber }}/{{ item.animalCageNumber }}</text>
-          </view>
-          <view wx:if="{{ item.memo }}" class="booking-memo">{{ item.memo }}</view>
         </view>
       </block>
     </scroll-view>
