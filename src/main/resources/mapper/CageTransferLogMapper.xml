@@ -33,4 +33,10 @@
         SELECT * FROM cage_transfer_log WHERE occupant_id = #{occupantId} ORDER BY created_at DESC
     </select>
 
+    <select id="selectByCage" resultMap="CageTransferLogMap">
+        SELECT * FROM cage_transfer_log
+        WHERE from_animal_cage_id = #{animalCageId} OR to_animal_cage_id = #{animalCageId}
+        ORDER BY created_at DESC
+    </select>
+
 </mapper>

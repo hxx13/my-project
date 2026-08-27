@@ -38,9 +38,10 @@ function configToDisposition(cfg: StrandedConfig): DispositionValue {
       maxEnterSuccess: null,
       puzzle,
     },
+    // 到期时间与验证后解禁可并存（到期后已验证者自动消弹窗）
     expiry: {
       mode: "RELATIVE",
-      days: actionsIncludeUnlock(actions) ? null : cfg.expireDays,
+      days: cfg.expireDays,
     },
   };
 }
@@ -57,7 +58,8 @@ function dispositionToConfigPatch(v: DispositionValue): Partial<StrandedConfig> 
     unlockOnVerify: unlock,
     challengeEnabled: puzzle,
     challengePhrase: phrase,
-    expireDays: unlock ? null : v.expiry.mode === "RELATIVE" ? v.expiry.days : null,
+    // 到期时间与验证后解禁可并存（到期后已验证者自动消弹窗）
+    expireDays: v.expiry.mode === "RELATIVE" ? v.expiry.days : null,
   };
 }
 

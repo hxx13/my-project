@@ -12,6 +12,7 @@ import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.support.CageFieldMappingService;
+import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -59,7 +60,7 @@ public class CageCellIndexService {
      * @param roomId 可选，限定只同步某个房间
      * @return 同步统计
      */
-    public Map<String, Object> syncAllCells(Long roomId) {
+    public Map<String, Object> syncAllCells(Long roomId, boolean deleteExisting) {
         LocalDateTime startedAt = LocalDateTime.now();
         // 从本地索引表取所有架子
         List<Map<String, Object>> shelfList;
@@ -115,10 +116,12 @@ public class CageCellIndexService {
                     continue;
                 }
 
-                // 拉取成功，再清掉该架子的旧索引
-                int deleted = cellIndexMapper.deleteByShelveId(shelveId);
-                log.info("[cell-sync] {} | shelveId={} idx={} 清理:{}条",
-                        location, shelveId, shelfIdxId, deleted);
+                // 拉取成功后：删除模式先清旧索引；补充模式保留旧索引只 upsert 新增/更新
+                if (deleteExisting) {
+                    int deleted = cellIndexMapper.deleteByShelveId(shelveId);
+                    log.info("[cell-sync] {} | shelveId={} idx={} 清理:{}条",
+                            location, shelveId, shelfIdxId, deleted);
+                }
 
                 // 解析每个笼位 —— 本步只写 cage_cell_index（ID/坐标/笼盒），
                 // 详情/状态由后续 /list（补全详情）与 /book（状态）负责，避免此步空字段冲掉已补全内容
@@ -141,6 +144,9 @@ public class CageCellIndexService {
                     boolean hasCageBox = cageBoxVo != null && cageBoxVo.get("cageBoxCode") != null
                             && !String.valueOf(cageBoxVo.get("cageBoxCode")).isBlank();
                     String cageBoxCode = hasCageBox ? String.valueOf(cageBoxVo.get("cageBoxCode")).trim() : null;
+
+                    // 合笼状态 + 使用时间：closingdate/rescindDatetime/createTime 只在 /back 的 cageBoxVo 里（/list、/book 均无）。
+                    writeCohabitationFields(animalCageId, cageBoxVo);
 
                     CageCellIndex cell = new CageCellIndex();
                     cell.setShelfIndexId(shelfIdxId);
@@ -245,6 +251,14 @@ public class CageCellIndexService {
             if (flags.containsKey("needs_cohabitation")) d.setNeedsCohabitation(flags.get("needs_cohabitation"));
         }
 
+        // 实验员姓名以表单(cage_info_value)为真相源：覆盖 detail.experimenterName（cage_cell_detail 可能未同步）
+        Map<Long, String> experimenterNames = infoValueService.textValueByCage(
+                new ArrayList<>(detailMap.keySet()), "experimenter_name");
+        for (Map.Entry<Long, CageCellDetail> e : detailMap.entrySet()) {
+            String name = experimenterNames.get(e.getKey());
+            if (name != null) e.getValue().setExperimenterName(name);
+        }
+
         // 批量解析占用者(所属人)姓名:复用 UserDisplayNameService,不裸返回 staff_id / aro_user_id
         Map<Long, CageClaim> activeClaimByCage = new LinkedHashMap<>();
         Set<String> claimantIds = new LinkedHashSet<>();
@@ -275,6 +289,7 @@ public class CageCellIndexService {
             CageClaim activeClaim = activeClaimByCage.get(cell.getAnimalCageId());
             Long activeClaimId = activeClaim == null ? null : activeClaim.getId();
             gc.put("activeClaimId", activeClaimId);
+            gc.put("claimStatus", activeClaim == null ? null : activeClaim.getClaimStatus());
             // 所属人姓名（统一人员解析，不回退裸 id/ARO 空名）
             String claimantId = activeClaim == null ? null : activeClaim.getClaimantId();
             gc.put("occupantName", (claimantId != null && !claimantId.isBlank())
@@ -297,6 +312,7 @@ public class CageCellIndexService {
                 gc.put("projectPiName", trimStr(detail.getProjectPiName()));
                 gc.put("departmentName", trimStr(detail.getDepartmentName()));
                 gc.put("aupNumber", trimStr(detail.getAupNumber()));
+                gc.put("experimenterName", trimStr(detail.getExperimenterName()));
                 // 与 ARO cageBoxInfo 对齐，供编辑侧栏 / 前端兜底读 ProjectPiName
                 String displayPi = trimStr(detail.getProjectPiName());
                 if (displayPi == null) displayPi = trimStr(detail.getPiName());
@@ -324,7 +340,7 @@ public class CageCellIndexService {
                 if (Boolean.TRUE.equals(detail.getHasHealthAbnormality()))
                     statuses.add(Map.of("code","HEALTH_ABNORMAL","label","健康异常","iconKey","health"));
                 if (Boolean.TRUE.equals(detail.getNeedsCohabitation()))
-                    statuses.add(Map.of("code","COHABITATION","label","需合笼","iconKey","cohabitation"));
+                    statuses.add(Map.of("code","COHABITATION","label","合笼","iconKey","cohabitation"));
                 gc.put("specialStatuses", statuses);
 
                 gc.put("detail", detail); // 完整详情
@@ -340,6 +356,8 @@ public class CageCellIndexService {
         meta.put("roomName", shelfIndex.getRoomName());
         meta.put("shelveId", String.valueOf(shelfIndex.getShelveId()));
         meta.put("shelveName", shelfIndex.getShelveName());
+        meta.put("shelfIndexId", shelfIndex.getId());
+        meta.put("roomId", String.valueOf(shelfIndex.getRoomId()));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("shelfMeta", meta);
@@ -691,6 +709,61 @@ public class CageCellIndexService {
      * 1) /back 全量建索引+详情骨架 → 2) /list 补全 PI 等详情 → 3) /book 只更新状态列。
      * 任一步硬失败（异常或 ok=false）即停止，返回 failedStep。
      */
+    /** 合笼 + 使用时间直写 cage_info_value：closingdate/rescindDatetime/createTime 只在 /back 的 cageBoxVo 里（/list、/book 均无）。 */
+    private void writeCohabitationFields(Long animalCageId, Map<String, Object> cageBoxVo) {
+        if (animalCageId == null) return;
+        Map<String, Object> boxFields = new LinkedHashMap<>();
+        boxFields.put("needs_cohabitation", SpecialStatusComputer.isCohabitationActive(cageBoxVo));
+        if (cageBoxVo != null && cageBoxVo.get("createTime") != null
+                && !String.valueOf(cageBoxVo.get("createTime")).isBlank()) {
+            boxFields.put("cage_use_time", String.valueOf(cageBoxVo.get("createTime")));
+        }
+        infoValueService.syncFromMapped(animalCageId, boxFields);
+    }
+
+    /** 合笼+使用时间同步：调 /back 遍历架子，只写 needs_cohabitation + cage_use_time（不重拉 id/坐标）。 */
+    public Map<String, Object> syncCohabitationFromBack(Long roomId) {
+        // listShelves 只返回 shelveId/shelveName（不返回 roomId），会导致 sRoomId 为 null；
+        // 一律用 listAllShelfSummaries（返回 roomId+shelveId），再在内存按 roomId 过滤。
+        List<Map<String, Object>> shelfList = shelfMapper.listAllShelfSummaries();
+        int totalShelves = shelfList != null ? shelfList.size() : 0;
+        int success = 0, fail = 0, written = 0;
+        for (Map<String, Object> shelf : shelfList) {
+            Long sRoomId = toLongSafe(shelf.get("roomId"));
+            Long shelveId = toLongSafe(shelf.get("shelveId"));
+            if (sRoomId == null || shelveId == null) { fail++; continue; }
+            if (roomId != null && !roomId.equals(sRoomId)) continue;
+            try {
+                Map<String, Object> aroResp = aroService.fetchAnimalCagesByRoomAndShelve(sRoomId, shelveId);
+                Object dataObj = aroResp.get("data");
+                if (!(dataObj instanceof List<?> list)) { fail++; continue; }
+                for (Object item : list) {
+                    if (!(item instanceof Map<?, ?> cage)) continue;
+                    Map<String, Object> cageMap = (Map<String, Object>) cage;
+                    if (isTruthy(cageMap.get("isCageBox"))) continue;
+                    Long animalCageId = toLongSafe(cageMap.get("id"));
+                    if (animalCageId != null) {
+                        writeCohabitationFields(animalCageId, castMap(cageMap.get("cageBoxVo")));
+                        written++;
+                    }
+                }
+                success++;
+            } catch (Exception e) {
+                fail++;
+                log.warn("[cohab-sync] shelveId={} 合笼同步失败: {}", shelveId, e.getMessage());
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("ok", true);
+        result.put("totalShelves", totalShelves);
+        result.put("successShelves", success);
+        result.put("failShelves", fail);
+        result.put("written", written);
+        result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
+        log.info("[cohab-sync] 完成: {}成功 {}失败, 写 {} 个笼位", success, fail, written);
+        return result;
+    }
+
     public Map<String, Object> syncLocalPipeline(Long roomId) {
         LocalDateTime startedAt = LocalDateTime.now();
         Map<String, Object> result = new LinkedHashMap<>();
@@ -724,6 +797,19 @@ public class CageCellIndexService {
             log.error("[local-pipeline] syncStatusFromBook 异常: {}", e.getMessage(), e);
             result.put("failedStep", "syncStatusFromBook");
             result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "状态同步异常");
+            result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
+            return result;
+        }
+
+        // ③ /back 合笼 + 使用时间（closingdate/rescindDatetime/createTime 只在 /back）
+        try {
+            Map<String, Object> step3 = syncCohabitationFromBack(roomId);
+            steps.put("syncCohabitationFromBack", step3);
+            completedSteps.add("syncCohabitationFromBack");
+        } catch (Exception e) {
+            log.error("[local-pipeline] syncCohabitationFromBack 异常: {}", e.getMessage(), e);
+            result.put("failedStep", "syncCohabitationFromBack");
+            result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "合笼同步异常");
             result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
             return result;
         }

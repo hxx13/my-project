@@ -14,6 +14,7 @@ const TAB_LABELS = {
   material: '物资审核',
   scanDelay: '延迟免冻结',
   aroTraining: '培训审核',
+  cage: '笼位申请',
 };
 
 const STATUS_ZH = {
@@ -445,7 +446,7 @@ function buildFilteredScanDelayLists(pendingRaw, historyRaw, optionReviewerMap, 
 
 function normalizeTab(raw) {
   const t = raw ? String(raw) : 'material';
-  if (t === 'scanDelay' || t === 'aroTraining') return t;
+  if (t === 'scanDelay' || t === 'aroTraining' || t === 'cage') return t;
   return 'material';
 }
 
@@ -457,6 +458,7 @@ function syncTabMeta(rawCounts) {
       material: formatBadgeText(c.filteredMaterialPending),
       scanDelay: formatBadgeText(c.filteredScanDelayPending),
       aroTraining: formatBadgeText(c.aroTrainingPending),
+      cage: formatBadgeText(c.cageClaimPending),
     },
   };
 }
@@ -572,6 +574,131 @@ function finalizeAroTrainingGrouped(rawGroups, collapseMap) {
   return stampAroSessionGroupCollapse(withStatusSplit, mergedCollapse);
 }
 
+/** ---- 笼位申请审核：拍平、分组、折叠 ---- */
+
+var CAGE_CLAIM_STATUS_ZH = {
+  pending_approval: '待审批',
+  locked: '未到位',
+  confirmed: '已到位',
+  pending_release_approval: '待释放',
+  rejected: '已驳回',
+  released: '已释放',
+  cancelled: '已取消',
+};
+
+/** positionLabel 由 positionX/positionY 推导 (char)('A'+x-1)+'-'+y */
+function cagePositionLabel(item) {
+  if (!item) return '';
+  if (item.positionLabel) return item.positionLabel;
+  var x = Number(item.positionX);
+  var y = Number(item.positionY);
+  if (item.positionX != null && item.positionY != null && !isNaN(x) && !isNaN(y) && x >= 1 && x <= 26) {
+    return String.fromCharCode(64 + x) + '-' + y;
+  }
+  return '';
+}
+
+function mapCageClaimRow(item) {
+  var pos = cagePositionLabel(item);
+  var locationParts = [];
+  if (item.campusName) locationParts.push(item.campusName);
+  if (item.floorName) locationParts.push(item.floorName);
+  if (item.roomName) locationParts.push(item.roomName);
+  if (item.shelveName) locationParts.push(item.shelveName);
+  if (pos) locationParts.push(pos);
+  return Object.assign({}, item, {
+    positionLabel: pos,
+    locationText: locationParts.join(' / '),
+    groupName: item.projectGroupName || item.claimantDept || '',
+    createdAtText: fmtTime(item.createdAt),
+    statusText: CAGE_CLAIM_STATUS_ZH[item.claimStatus] || item.claimStatus || '-',
+    isPending: item.claimStatus === 'pending_approval',
+  });
+}
+
+/** 分组维度：按空间 / 按课题组 / 按人员（分组键依次向下钻取） */
+function cageGroupKeys(dimension) {
+  // 树只到房间层，笼架/坐标/课题组/人员下沉到叶子卡片，避免树过深
+  if (dimension === 'space') return ['campusName', 'floorName', 'roomName'];
+  if (dimension === 'group') return ['projectGroupName', 'claimantName'];
+  return ['claimantName'];
+}
+
+/** 拍平成 [{ _type:'group'|'leaf', depth, ... }] 的渲染列表，供 WXML 单层 wx:for */
+function cageRenderList(items, keys, collapseMap, selectedIds) {
+  var out = [];
+  cageGroupRecursive(items || [], keys, 0, '', collapseMap || {}, selectedIds || {}, out);
+  return out;
+}
+
+function cageGroupRecursive(items, keys, depth, prefix, collapseMap, selectedIds, out) {
+  if (!keys.length) {
+    items.forEach(function (it) {
+      out.push({
+        _type: 'leaf',
+        _key: 'l:' + it.id,
+        item: it,
+        id: it.id,
+        x: it.positionX,
+        y: it.positionY,
+        campus: it.campusName || '',
+        room: it.roomName || '',
+        shelve: it.shelveId || '',
+        depth: depth,
+      });
+    });
+    return;
+  }
+  var keyField = keys[0];
+  var rest = keys.slice(1);
+  var map = {};
+  var order = [];
+  items.forEach(function (it) {
+    var k = String(it[keyField] || '未标注');
+    if (!map[k]) { map[k] = []; order.push(k); }
+    map[k].push(it);
+  });
+  order.sort(function (a, b) { return a.localeCompare(b, 'zh-CN'); });
+  order.forEach(function (k) {
+    var fullKey = prefix + '/' + k;
+    var collapsed = !!(collapseMap && collapseMap[fullKey]);
+    var groupItems = map[k];
+    var pendingIds = [];
+    groupItems.forEach(function (it) { if (it.isPending) pendingIds.push(it.id); });
+    var allSel = pendingIds.length > 0 && pendingIds.every(function (id) { return !!selectedIds[id]; });
+    out.push({
+      _type: 'group',
+      _key: 'g:' + fullKey,
+      key: fullKey,
+      label: k,
+      count: groupItems.length,
+      depth: depth,
+      _collapsed: collapsed,
+      pendingIds: pendingIds,
+      _selected: allSel,
+    });
+    if (!collapsed) {
+      cageGroupRecursive(groupItems, rest, depth + 1, fullKey, collapseMap, selectedIds, out);
+    }
+  });
+}
+
+/** 顶层分待审核（展开）/已审核（收起），各自按维度分组 */
+function buildCageView(list, dimension, collapseMap, selectedIds) {
+  var pending = [];
+  var done = [];
+  (list || []).forEach(function (it) {
+    if (it.isPending) pending.push(it); else done.push(it);
+  });
+  var keys = cageGroupKeys(dimension);
+  return {
+    pendingRender: cageRenderList(pending, keys, collapseMap, selectedIds),
+    doneRender: cageRenderList(done, keys, collapseMap, selectedIds),
+    pendingCount: pending.length,
+    doneCount: done.length,
+  };
+}
+
 Page({
   data: {
     activeTab: 'material',
@@ -609,6 +736,7 @@ Page({
       material: '',
       scanDelay: '',
       aroTraining: '',
+      cage: '',
     },
     autoApproveVisible: false,
     autoApproveKind: 'scanDelay',
@@ -624,6 +752,17 @@ Page({
     aroTrainingGroupedHistoryDone: [],
     aroTrainingSessionCollapseMap: {},
     aroTrainingFavorites: [],
+    cageGroupBy: 'space',
+    cageList: [],
+    cagePendingRender: [],
+    cageDoneRender: [],
+    cagePendingCount: 0,
+    cageDoneCount: 0,
+    cagePendingOpen: true,
+    cageDoneOpen: false,
+    cageCollapseMap: {},
+    cageSelectedIds: {},
+    cageSelectedCount: 0,
   },
 
   onLoad(options) {
@@ -810,6 +949,7 @@ Page({
         api.fetchScanDelayOptions(),
         api.fetchPendingTrainingSessions(),
         api.fetchAroFavorites(),
+        api.fetchPendingCageClaims(),
       ]);
       const pendingRaw = results[0];
       const finishedRes = results[1];
@@ -819,6 +959,7 @@ Page({
       const scanOptions = results[5];
       const aroTrainingRaw = results[6];
       const aroFavoritesRaw = results[7];
+      const cageRaw = results[8];
 
       // 审核人姓名映射（历史卡片显示）
       let reviewerNameMap = {};
@@ -845,6 +986,8 @@ Page({
         filteredScanDelayPending: scanView.pendingFiltered.length,
         /** 培训审批待处理数（按学员维度统计待审核或待评分） */
         aroTrainingPending: 0, // 下面 flatten 后重新计算
+        /** 笼位申请待审批数 */
+        cageClaimPending: 0,
       };
 
       // 培训审核数据（使用 sessionStartTime 代替不存在的 trainee.createdAt 做今天/历史分组）
@@ -868,6 +1011,11 @@ Page({
       const aroTrainingGroupedToday = groupAroTrainingBySession(aroTrainingToday);
       const aroTrainingGroupedHistoryPending = groupAroTrainingBySession(aroTrainingHistoryPending);
       const aroTrainingGroupedHistoryDone = groupAroTrainingBySession(aroTrainingHistoryDone);
+
+      // 笼位申请审核（待审/已审 + 可切换分组维度）
+      const cageList = ((cageRaw && cageRaw.list) || []).map(mapCageClaimRow);
+      const cageView = buildCageView(cageList, this.data.cageGroupBy || 'space', this.data.cageCollapseMap || {}, this.data.cageSelectedIds || {});
+      counts.cageClaimPending = cageView.pendingCount;
 
       if (!this._alive) return;
 
@@ -911,6 +1059,11 @@ Page({
         aroTrainingGroupedHistoryPending: finalizeAroTrainingGrouped(aroTrainingGroupedHistoryPending, this.data.aroTrainingSessionCollapseMap || {}),
         aroTrainingGroupedHistoryDone: finalizeAroTrainingGrouped(aroTrainingGroupedHistoryDone, {}),
         aroTrainingFavorites,
+        cageList,
+        cagePendingRender: cageView.pendingRender,
+        cageDoneRender: cageView.doneRender,
+        cagePendingCount: cageView.pendingCount,
+        cageDoneCount: cageView.doneCount,
         ...syncTabMeta(counts),
       });
       if (!silent) {
@@ -1250,6 +1403,175 @@ Page({
       aroTrainingGroupedToday: finalizeAroTrainingGrouped(groupAroTrainingBySession(aroTrainingToday), collapseMap),
       aroTrainingGroupedHistoryPending: finalizeAroTrainingGrouped(groupAroTrainingBySession(aroTrainingHistoryPending), collapseMap),
       aroTrainingGroupedHistoryDone: finalizeAroTrainingGrouped(groupAroTrainingBySession(aroTrainingHistoryDone), collapseMap),
+      counts,
+      ...syncTabMeta(counts),
+    });
+    pushGlobalReviewBadges();
+  },
+
+  /* ---- 笼位申请审核 ---- */
+
+  rebuildCageView() {
+    var view = buildCageView(this.data.cageList || [], this.data.cageGroupBy || 'space', this.data.cageCollapseMap || {}, this.data.cageSelectedIds || {});
+    this.setData({
+      cagePendingRender: view.pendingRender,
+      cageDoneRender: view.doneRender,
+      cagePendingCount: view.pendingCount,
+      cageDoneCount: view.doneCount,
+    });
+  },
+
+  onCageGroupByChange(e) {
+    var dim = e.currentTarget.dataset.dim;
+    if (!dim || dim === this.data.cageGroupBy) return;
+    this.setData({ cageGroupBy: dim });
+    this.rebuildCageView();
+  },
+
+  onCageToggleGroup(e) {
+    var key = e.currentTarget.dataset.key;
+    if (!key) return;
+    var map = Object.assign({}, this.data.cageCollapseMap || {});
+    map[key] = !map[key];
+    var view = buildCageView(this.data.cageList || [], this.data.cageGroupBy || 'space', map, this.data.cageSelectedIds || {});
+    this.setData({
+      cageCollapseMap: map,
+      cagePendingRender: view.pendingRender,
+      cageDoneRender: view.doneRender,
+      cageDoneCount: view.doneCount,
+    });
+  },
+
+  onCageTogglePending() {
+    this.setData({ cagePendingOpen: !this.data.cagePendingOpen });
+  },
+
+  onCageToggleDone() {
+    this.setData({ cageDoneOpen: !this.data.cageDoneOpen });
+  },
+
+  onCageGroupSelect(e) {
+    var raw = e.currentTarget.dataset.pendingIds;
+    var ids = [];
+    if (Array.isArray(raw)) ids = raw;
+    else if (raw) ids = String(raw).split(',').filter(Boolean).map(Number);
+    if (!ids.length) return;
+    var sel = Object.assign({}, this.data.cageSelectedIds || {});
+    var allSelected = ids.every(function (id) { return !!sel[id]; });
+    ids.forEach(function (id) {
+      if (allSelected) delete sel[id];
+      else sel[id] = true;
+    });
+    // 重算 group 节点 _selected 态（否则复选框视觉无反馈）
+    var view = buildCageView(this.data.cageList || [], this.data.cageGroupBy || 'space', this.data.cageCollapseMap || {}, sel);
+    this.setData({
+      cageSelectedIds: sel,
+      cageSelectedCount: Object.keys(sel).length,
+      cagePendingRender: view.pendingRender,
+      cageDoneRender: view.doneRender,
+    });
+  },
+
+  async onCageBatchApprove() {
+    var ids = Object.keys(this.data.cageSelectedIds || {}).map(Number);
+    if (!ids.length) return;
+    var self = this;
+    var ok = 0, fail = 0, okIds = {};
+    wx.showLoading({ title: '批量通过中…', mask: true });
+    for (var i = 0; i < ids.length; i++) {
+      try {
+        await api.approveCageClaim(ids[i], 'approved');
+        okIds[ids[i]] = true;
+        ok++;
+      } catch (e) { fail++; }
+    }
+    wx.hideLoading();
+    if (ok > 0) {
+      var list = (this.data.cageList || []).filter(function (it) { return !okIds[it.id]; });
+      var view = buildCageView(list, this.data.cageGroupBy || 'space', this.data.cageCollapseMap || {}, this.data.cageSelectedIds || {});
+      var counts = Object.assign({}, this.data.counts, { cageClaimPending: view.pendingCount });
+      this.setData({
+        cageList: list,
+        cagePendingRender: view.pendingRender,
+        cageDoneRender: view.doneRender,
+        cagePendingCount: view.pendingCount,
+        cageDoneCount: view.doneCount,
+        counts,
+        cageSelectedIds: {},
+        cageSelectedCount: 0,
+        ...syncTabMeta(counts),
+      });
+      pushGlobalReviewBadges();
+    }
+    wx.showToast({ title: '通过 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''), icon: 'none' });
+  },
+
+  onCageJump(e) {
+    var d = e.currentTarget.dataset;
+    var url = '/package-feature/pages/studentCageShelf/index'
+      + '?highlightX=' + (d.x || 0)
+      + '&highlightY=' + (d.y || 0)
+      + '&campusName=' + encodeURIComponent(d.campus || '')
+      + '&roomName=' + encodeURIComponent(d.room || '')
+      + '&shelveId=' + encodeURIComponent(d.shelve || '');
+    wx.navigateTo({ url: url });
+  },
+
+  async onCageApprove(e) {
+    var id = e.currentTarget.dataset.id;
+    if (id == null) return;
+    wx.showLoading({ title: '处理中…', mask: true });
+    try {
+      await api.approveCageClaim(id, 'approved');
+      this.removeCageRow(id);
+      wx.showToast({ title: '已通过', icon: 'success' });
+    } catch (err) {
+      wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  async onCageReject(e) {
+    var id = e.currentTarget.dataset.id;
+    if (id == null) return;
+    var self = this;
+    var content = await new Promise(function (resolve) {
+      wx.showModal({
+        title: '驳回申请',
+        editable: true,
+        placeholderText: '请填写驳回理由（必填）',
+        success: function (res) { resolve(res.confirm ? (res.content || '') : null); },
+        fail: function () { resolve(null); },
+      });
+    });
+    if (content == null) return;
+    if (!String(content).trim()) {
+      wx.showToast({ title: '驳回必须填写理由', icon: 'none' });
+      return;
+    }
+    wx.showLoading({ title: '处理中…', mask: true });
+    try {
+      await api.approveCageClaim(id, 'rejected', String(content).trim());
+      self.removeCageRow(id);
+      wx.showToast({ title: '已驳回', icon: 'success' });
+    } catch (err) {
+      wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  removeCageRow(id) {
+    var list = (this.data.cageList || []).filter(function (it) { return String(it.id) !== String(id); });
+    var view = buildCageView(list, this.data.cageGroupBy || 'space', this.data.cageCollapseMap || {}, this.data.cageSelectedIds || {});
+    var counts = Object.assign({}, this.data.counts, { cageClaimPending: view.pendingCount });
+    this.setData({
+      cageList: list,
+      cagePendingRender: view.pendingRender,
+      cageDoneRender: view.doneRender,
+      cagePendingCount: view.pendingCount,
+      cageDoneCount: view.doneCount,
       counts,
       ...syncTabMeta(counts),
     });

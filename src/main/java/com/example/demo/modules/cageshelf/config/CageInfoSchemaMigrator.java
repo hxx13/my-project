@@ -233,16 +233,13 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
         log.info("[cage-info-schema] cage_info_field 播种完成，共 {} 条 canonical", seeded);
     }
 
-    /** 本地扩展字段（不从 ARO 映射播种，属系统自有存储，role=VALUE 可填写）：实验记录/照片/本地扩展数据/合笼日期。 */
+    /** 本地扩展字段（不从 ARO 映射播种，属系统自有存储，role=VALUE 可填写）：实验记录/照片/本地扩展数据。 */
     private void seedLocalFields() {
         upsert("experiment_desc", "实验记录", "TEXT", null, 100, "VALUE");
         upsert("images_json", "照片", "FILE", null, 101, "VALUE");
         upsert("extra_data", "本地扩展数据", "FILE", null, 102, "VALUE");
-        // 合笼日期：自有字段（废弃 ARO closingdate 源，由系统自己的合笼动作写入）
-        upsert("cohabitation_date", "合笼日期", "STRING", null, 103, "VALUE");
-        // 需合笼：本地状态标记（无 ARO 源，饲养组长编辑模式切换）。保留在表单数据中（跟随占用迁移），详情弹窗不渲染（用专用指示标识）。
-        upsert("needs_cohabitation", "需合笼", "BOOLEAN", null, 104, "DERIVED");
-        log.info("[cage-info-schema] 本地扩展字段已播种(experiment_desc/images_json/extra_data/cohabitation_date/needs_cohabitation)");
+        // 使用时间(cage_use_time)与需合笼(needs_cohabitation)已改由 aro_field_mapping.json 播种（DERIVED），勿在此重复。
+        log.info("[cage-info-schema] 本地扩展字段已播种(experiment_desc/images_json/extra_data)");
 
         // 【预留】动物信息（动物品系/性别/周龄/雌雄数量/动物来源）应由「动物订购后到达」时用订单数据绑定并纳入笼位管理体系。
         // 目前「订单到达 → 回写笼位」尚未实现；后续接入时从这里直写对应字段，勿再依赖 ARO cageBoxVo 的动物字段。
@@ -250,7 +247,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
 
     /** 退役字段：state/state_label/rent_type 为 ARO 原始残留或不再需要，从字段字典与表单值中删除。 */
     private void retireStateFields() {
-        for (String canonical : new String[]{"state", "state_label", "rent_type", "cage_type_code", "cage_name", "cage_box_name", "animal_cage_id", "position_x", "position_y", "cage_box_code"}) {
+        for (String canonical : new String[]{"state", "state_label", "rent_type", "cage_type_code", "cage_name", "cage_box_name", "animal_cage_id", "position_x", "position_y", "cage_box_code", "cohabitation_date"}) {
             try {
                 Long fieldId = jdbcTemplate.queryForObject(
                         "SELECT id FROM cage_info_field WHERE canonical = ?", Long.class, canonical);
@@ -354,7 +351,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
         m.put("needs_special_feeding", "需特殊饲养");
         m.put("needs_transfer", "动物转移");
         m.put("has_health_abnormality", "健康异常");
-        m.put("cohabitation_date", "合笼日期");
+        m.put("cage_use_time", "使用时间");
         m.put("special_breeding_name", "特殊饲养名称");
         m.put("special_breeding_desc", "特殊饲养描述");
         m.put("experimenter_name", "实验员");
@@ -368,7 +365,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
         m.put("experiment_desc", "实验记录");
         m.put("images_json", "照片");
         m.put("extra_data", "本地扩展数据");
-        m.put("needs_cohabitation", "需合笼");
+        m.put("needs_cohabitation", "合笼");
         return m;
     }
 
@@ -380,7 +377,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
             {"项目信息", "pi_name", "project_pi_name", "project_name", "department_name", "aup_number",
                 "experimenter_name", "lab_assistant_name"},
             {"动物信息", "animal_strain_name", "animal_sex", "animal_week_age", "animal_male_number",
-                "animal_female_number", "animal_come_from", "cohabitation_date"},
+                "animal_female_number", "animal_come_from", "cage_use_time"},
             {"状态标记", "needs_division", "needs_special_feeding", "needs_transfer", "has_health_abnormality",
                 "needs_cohabitation", "special_breeding_name", "special_breeding_desc"},
         };

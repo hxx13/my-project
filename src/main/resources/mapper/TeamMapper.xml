@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.team.mapper.TeamMapper">
+
+    <resultMap id="TeamMap" type="com.example.demo.modules.team.entity.Team">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="avatar" column="avatar"/>
+        <result property="visibility" column="visibility"/>
+        <result property="status" column="status"/>
+        <result property="ownerPersonnelId" column="owner_personnel_id"/>
+        <result property="maxMembers" column="max_members"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="deleted" column="deleted"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="TeamMemberMap" type="com.example.demo.modules.team.entity.TeamMember">
+        <id property="id" column="id"/>
+        <result property="teamId" column="team_id"/>
+        <result property="personnelId" column="personnel_id"/>
+        <result property="roleCode" column="role_code"/>
+        <result property="joinedAt" column="joined_at"/>
+        <result property="deleted" column="deleted"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="TeamJoinRequestMap" type="com.example.demo.modules.team.entity.TeamJoinRequest">
+        <id property="id" column="id"/>
+        <result property="teamId" column="team_id"/>
+        <result property="personnelId" column="personnel_id"/>
+        <result property="type" column="type"/>
+        <result property="status" column="status"/>
+        <result property="message" column="message"/>
+        <result property="reviewerPersonnelId" column="reviewer_personnel_id"/>
+        <result property="reviewedAt" column="reviewed_at"/>
+        <result property="deleted" column="deleted"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <!-- ── team ── -->
+    <insert id="insertTeam" parameterType="com.example.demo.modules.team.entity.Team"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO team (name, description, avatar, visibility, status,
+                          owner_personnel_id, max_members, created_by)
+        VALUES (#{name}, #{description}, #{avatar}, #{visibility}, #{status},
+                #{ownerPersonnelId}, #{maxMembers}, #{createdBy})
+    </insert>
+
+    <update id="updateTeam" parameterType="com.example.demo.modules.team.entity.Team">
+        UPDATE team
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="visibility != null">visibility = #{visibility},</if>
+            <if test="avatar != null">avatar = #{avatar},</if>
+            updated_at = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateTeamOwner">
+        UPDATE team SET owner_personnel_id = #{ownerPersonnelId}, updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateTeamStatus">
+        UPDATE team SET status = #{status}, updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectTeamById" resultMap="TeamMap">
+        SELECT * FROM team WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectTeams" resultType="map">
+        SELECT t.id AS id,
+               t.name AS name,
+               t.description AS description,
+               t.visibility AS visibility,
+               t.status AS status,
+               t.owner_personnel_id AS ownerPersonnelId,
+               (SELECT p.name FROM personnel p WHERE p.id = t.owner_personnel_id LIMIT 1) AS ownerName,
+               (SELECT COUNT(*) FROM team_member m2 WHERE m2.team_id = t.id AND m2.deleted = 0) AS memberCount,
+               DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+        FROM team t
+        WHERE t.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (t.name LIKE CONCAT('%', #{keyword}, '%')
+                 OR t.description LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY t.id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countTeams" resultType="int">
+        SELECT COUNT(1) FROM team t
+        WHERE t.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (t.name LIKE CONCAT('%', #{keyword}, '%')
+                 OR t.description LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+
+    <select id="selectTeamsByPersonnelId" resultMap="TeamMap">
+        SELECT t.*
+        FROM team t
+        LEFT JOIN team_member m ON m.team_id = t.id AND m.deleted = 0
+        WHERE t.deleted = 0 AND t.status = 'ACTIVE'
+          AND (t.owner_personnel_id = #{personnelId} OR m.personnel_id = #{personnelId})
+        GROUP BY t.id
+        ORDER BY (t.owner_personnel_id = #{personnelId}) DESC, t.id ASC
+    </select>
+
+    <select id="selectOwnerName" resultType="string">
+        SELECT name FROM personnel WHERE id = #{personnelId} LIMIT 1
+    </select>
+
+    <!-- ── team_member ── -->
+    <insert id="insertMember" parameterType="com.example.demo.modules.team.entity.TeamMember"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO team_member (team_id, personnel_id, role_code, joined_at)
+        VALUES (#{teamId}, #{personnelId}, #{roleCode}, NOW())
+    </insert>
+
+    <insert id="upsertMember">
+        INSERT INTO team_member (team_id, personnel_id, role_code, joined_at, deleted)
+        VALUES (#{teamId}, #{personnelId}, #{roleCode}, NOW(), 0)
+        ON DUPLICATE KEY UPDATE role_code = VALUES(role_code), deleted = 0, updated_at = NOW()
+    </insert>
+
+    <update id="updateMemberRole">
+        UPDATE team_member SET role_code = #{roleCode}, updated_at = NOW()
+        WHERE id = #{memberId}
+    </update>
+
+    <update id="softDeleteMember">
+        UPDATE team_member SET deleted = 1, updated_at = NOW()
+        WHERE id = #{memberId}
+    </update>
+
+    <select id="selectMemberById" resultMap="TeamMemberMap">
+        SELECT * FROM team_member WHERE id = #{memberId} AND deleted = 0
+    </select>
+
+    <select id="selectMemberByTeamAndPersonnel" resultMap="TeamMemberMap">
+        SELECT * FROM team_member
+        WHERE team_id = #{teamId} AND personnel_id = #{personnelId} AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectMembersByTeam" resultType="map">
+        SELECT m.id AS memberId,
+               m.personnel_id AS personnelId,
+               p.name AS name,
+               p.staff_id AS staffId,
+               p.aro_user_id AS aroUserId,
+               p.job_number AS jobNumber,
+               p.department_name AS departmentName,
+               p.project_group_name AS projectGroupName,
+               m.role_code AS roleCode,
+               DATE_FORMAT(m.joined_at, '%Y-%m-%d %H:%i:%s') AS joinedAt
+        FROM team_member m
+        LEFT JOIN personnel p ON p.id = m.personnel_id
+        WHERE m.team_id = #{teamId} AND m.deleted = 0
+        ORDER BY m.id ASC
+    </select>
+
+    <!-- ── team_join_request ── -->
+    <insert id="insertRequest" parameterType="com.example.demo.modules.team.entity.TeamJoinRequest"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO team_join_request (team_id, personnel_id, type, status, message)
+        VALUES (#{teamId}, #{personnelId}, #{type}, #{status}, #{message})
+    </insert>
+
+    <select id="selectRequestById" resultMap="TeamJoinRequestMap">
+        SELECT * FROM team_join_request WHERE id = #{requestId} AND deleted = 0
+    </select>
+
+    <select id="selectRequestByIdForUpdate" resultMap="TeamJoinRequestMap">
+        SELECT * FROM team_join_request WHERE id = #{requestId} AND deleted = 0 FOR UPDATE
+    </select>
+
+    <select id="selectPendingRequestByTeamAndPersonnel" resultMap="TeamJoinRequestMap">
+        SELECT * FROM team_join_request
+        WHERE team_id = #{teamId} AND personnel_id = #{personnelId}
+          AND status = 'PENDING' AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <update id="updateRequestStatus">
+        UPDATE team_join_request
+        SET status = #{status},
+            reviewer_personnel_id = #{reviewerPersonnelId},
+            reviewed_at = NOW(),
+            updated_at = NOW()
+        WHERE id = #{requestId}
+    </update>
+
+    <select id="selectRequests" resultType="map">
+        SELECT r.id AS id,
+               r.team_id AS teamId,
+               r.personnel_id AS personnelId,
+               p.name AS name,
+               p.staff_id AS staffId,
+               p.aro_user_id AS aroUserId,
+               p.job_number AS jobNumber,
+               p.department_name AS departmentName,
+               p.project_group_name AS projectGroupName,
+               r.type AS type,
+               r.status AS status,
+               r.message AS message,
+               r.reviewer_personnel_id AS reviewerPersonnelId,
+               DATE_FORMAT(r.created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+               DATE_FORMAT(r.reviewed_at, '%Y-%m-%d %H:%i:%s') AS reviewedAt
+        FROM team_join_request r
+        LEFT JOIN personnel p ON p.id = r.personnel_id
+        WHERE r.team_id = #{teamId} AND r.deleted = 0
+        <if test="status != null and status != ''">
+            AND r.status = #{status}
+        </if>
+        ORDER BY r.id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countRequests" resultType="int">
+        SELECT COUNT(1) FROM team_join_request r
+        WHERE r.team_id = #{teamId} AND r.deleted = 0
+        <if test="status != null and status != ''">
+            AND r.status = #{status}
+        </if>
+    </select>
+
+    <!-- ── team_audit_log ── -->
+    <insert id="insertAuditLog" parameterType="com.example.demo.modules.team.entity.TeamAuditLog">
+        INSERT INTO team_audit_log (team_id, actor_personnel_id, action, target_type, target_id, detail)
+        VALUES (#{teamId}, #{actorPersonnelId}, #{action}, #{targetType}, #{targetId}, #{detail})
+    </insert>
+
+</mapper>

@@ -7,8 +7,6 @@ import {
   registryDispositionType,
   ensureForbidForStrategy,
   strategyRequiresForbid,
-  applyUnlockExpiryLinkage,
-  clearExpiryWhenUnlock,
   actionsIncludeUnlock,
   dueSecondaryLabel,
   summarizeDispositionForDetail,
@@ -182,21 +180,21 @@ describe("dispositionTypes 纯函数契约", () => {
     expect(ensureForbidForStrategy([], { type: "unset" })).toEqual([]);
   });
 
-  it("unlock 与封禁天数互斥：勾选 unlock 时 toCreate 忽略天数", () => {
+  it("unlock 与封禁天数可并存：勾选 unlock 时 toCreate 照传天数", () => {
     const out = toCreateDisposition(
       baseValue({ actions: ["forbid", "unlock"], expiry: { mode: "RELATIVE", days: 7 } })
     );
     expect(out.interactiveUnlockOnVerify).toBe(true);
-    expect(out.expireAfterDays).toBeNull();
+    expect(out.expireAfterDays).toBe(7);
   });
 
-  it("unlock 与封禁天数互斥：勾选 unlock + RELATIVE → toUpdate 改为 CLEAR 且天数 null", () => {
+  it("unlock + RELATIVE → toUpdate 保持 RELATIVE 且天数透传", () => {
     const out = toUpdateDisposition(
       baseValue({ actions: ["unlock"], expiry: { mode: "RELATIVE", days: 3 } })
     );
     expect(out.interactiveUnlockOnVerify).toBe(true);
-    expect(out.expireMode).toBe("CLEAR");
-    expect(out.expireAfterDays).toBeNull();
+    expect(out.expireMode).toBe("RELATIVE");
+    expect(out.expireAfterDays).toBe(3);
   });
 
   it("unlock + KEEP：toUpdate 保持 KEEP，天数 null", () => {
@@ -205,34 +203,19 @@ describe("dispositionTypes 纯函数契约", () => {
     expect(out.expireAfterDays).toBeNull();
   });
 
-  it("未勾选 unlock 时天数正常透传", () => {
+  it("天数与 actions 无关：无论是否勾选 unlock 都正常透传", () => {
     expect(
       toCreateDisposition(baseValue({ actions: ["forbid"], expiry: { mode: "RELATIVE", days: 5 } })).expireAfterDays
     ).toBe(5);
+    expect(
+      toCreateDisposition(baseValue({ actions: ["forbid", "unlock"], expiry: { mode: "RELATIVE", days: 5 } }))
+        .expireAfterDays
+    ).toBe(5);
   });
 
-  it("clearExpiryWhenUnlock / applyUnlockExpiryLinkage", () => {
-    expect(clearExpiryWhenUnlock({ mode: "RELATIVE", days: 7 }, "create")).toEqual({
-      mode: "RELATIVE",
-      days: null,
-    });
-    expect(clearExpiryWhenUnlock({ mode: "RELATIVE", days: 7 }, "edit")).toEqual({ mode: "CLEAR" });
-    expect(clearExpiryWhenUnlock({ mode: "KEEP" }, "edit")).toEqual({ mode: "KEEP" });
-
+  it("actionsIncludeUnlock", () => {
     expect(actionsIncludeUnlock(["forbid", "unlock"])).toBe(true);
     expect(actionsIncludeUnlock(["forbid"])).toBe(false);
-
-    const cleared = applyUnlockExpiryLinkage(
-      baseValue({ actions: ["unlock"], expiry: { mode: "RELATIVE", days: 7 } }),
-      "create"
-    );
-    expect(cleared.expiry).toEqual({ mode: "RELATIVE", days: null });
-
-    const untouched = applyUnlockExpiryLinkage(
-      baseValue({ actions: ["forbid"], expiry: { mode: "RELATIVE", days: 7 } }),
-      "create"
-    );
-    expect(untouched.expiry).toEqual({ mode: "RELATIVE", days: 7 });
   });
 
   it("dueSecondaryLabel：拼图+验证解禁无 expireAt → 验证后解禁，而非需人工解除", () => {

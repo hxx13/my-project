@@ -23,6 +23,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
@@ -635,8 +636,24 @@ public class ReferenceDataService {
         return List.of();
     }
 
-    /** 判断 refDataId 是否命中白名单；ARO 同步计划书（created_by=aro）走放宽匹配。 */
+    /**
+     * 判断 refDataId 是否命中白名单；ARO 同步计划书（created_by=aro）走放宽匹配。
+     *
+     * <p>当前默认<b>不判定</b>（{@code enforce=false} 直接放行）：AUP 的 B5/B6 最深只到品系，
+     * 订购链却有「规格(GENOTYPE) → 规格选项」两层更细的粒度，两侧口径尚未定稿。
+     * 白名单仍照常构建并写入 {@code aup_record.animal_allowlist}，接口与匹配算法全部保留，
+     * 口径定了把 {@code reference-data.animal-allowlist.enforce} 置 true 即可启用。
+     */
     private boolean isAllowedByAllowlist(AupRecord aup, List<Map<String, Object>> entries, Long leafId) {
+        // ponytail: 判定已暂停。启用前必须先修两处已知缺陷，否则口径是错的——
+        //   1) B5 生成的「品种/SUBTREE」比 B6 的「品系/EXACT」更宽，任一命中即放行，
+        //      导致品系限制被架空（申报了实验小鼠 → BALB/c 也能买）。
+        //   2) EXACT 仅在命中节点就是被订购叶子时成立；一旦 ref_data 建出 GENOTYPE(规格)
+        //      子节点，订购规格叶子会被误拒。现在不爆只因 GENOTYPE 表内 0 条。
+        // 升级路径：改为「每条动物记录取能解析到的最深节点 + 统一 SUBTREE」，见 AupAnimalAllowlistCompat。
+        if (!animalAllowlistEnforce) {
+            return true;
+        }
         if (aup != null && SYNC_ACTOR_ARO.equals(aup.getCreatedBy())) {
             return allowlistCompat.isAllowedRelaxed(entries, leafId, referenceDataMapper);
         }
@@ -644,6 +661,10 @@ public class ReferenceDataService {
     }
 
     private static final String SYNC_ACTOR_ARO = "aro";
+
+    /** AUP 动物白名单是否参与下单校验。默认 false = 仅留接口不判定。 */
+    @Value("${reference-data.animal-allowlist.enforce:false}")
+    private boolean animalAllowlistEnforce;
 
     private Long toLong(Object v) {
         if (v == null) {

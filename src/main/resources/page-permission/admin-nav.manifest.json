@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-25T09:06:05.712Z",
+  "generatedAt": "2026-08-27T07:44:55.062Z",
   "pages": [
     {
       "path": "/about",
@@ -127,6 +127,13 @@
       "fallbackMinRole": "ADMIN",
       "groupTitle": "ARO 房间与联动",
       "registryId": "cage-forms-audit"
+    },
+    {
+      "path": "/admin/cage-shelves/scope",
+      "label": "负责范围分配",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "ARO 房间与联动",
+      "registryId": "cage-scope"
     },
     {
       "path": "/admin/cage-shelves/special-status",

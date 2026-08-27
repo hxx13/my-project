@@ -36,7 +36,8 @@ public class CageQuotaService {
             return;
         }
         int used = quotaMapper.countAupUsedInRoom(roomId, registerNo);
-        int quota = quotaMapper.selectRentNumber(roomId, registerNo);
+        Integer rentQuota = quotaMapper.selectRentNumber(roomId, registerNo);
+        int quota = rentQuota == null ? 0 : rentQuota;
         if (used + additionalCount > quota) {
             throw new TwinBusinessException(409,
                     "超出 AUP 可用笼位数（已用 " + used + "，可用 " + quota + "，本次 " + additionalCount

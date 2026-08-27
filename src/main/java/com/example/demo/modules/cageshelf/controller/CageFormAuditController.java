@@ -9,6 +9,7 @@ import com.example.demo.modules.cageshelf.service.CageFormAuditService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -97,5 +98,14 @@ public class CageFormAuditController {
         out.put("publishedBy", latest == null ? null : latest.getPublishedBy());
         out.put("versions", versionRows);
         return Result.success(out);
+    }
+
+    @GetMapping("/cage-history/{animalCageId}")
+    @Operation(summary = "某笼位历史记录（按笼盒分组）")
+    public Result<Map<String, Object>> cageHistory(@PathVariable Long animalCageId, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMinRole(u, RoleEnum.STAFF);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        return Result.success(auditService.cageHistory(animalCageId));
     }
 }

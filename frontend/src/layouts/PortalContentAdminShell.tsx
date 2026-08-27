@@ -55,6 +55,12 @@ const NAV_SECTIONS: NavSection[] = [
       { path: "/content-manager/nhp-records", label: "项目管理", icon: "📁" },
     ],
   },
+  {
+    title: "NHP · 团队",
+    items: [
+      { path: "/content-manager/nhp-team", label: "团队管理", icon: "👥" },
+    ],
+  },
 ];
 
 export default function PortalContentAdminShell() {

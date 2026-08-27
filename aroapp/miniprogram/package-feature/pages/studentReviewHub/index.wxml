@@ -1,5 +1,5 @@
 <view class="page">
-  <view class="intro">审核学生物资申领、延迟免冻结与培训签到</view>
+  <view class="intro">审核学生物资申领、延迟免冻结、培训签到与笼位申请</view>
 
   <scroll-view scroll-x class="tabs-scroll" enhanced show-scrollbar="{{ false }}">
     <view class="tabs">
@@ -14,6 +14,10 @@
       <view class="tab tab-with-badge {{ activeTab === 'aroTraining' ? 'tab-on' : '' }}" data-tab="aroTraining" bindtap="onTabChange">
         <text>{{ tabLabels.aroTraining }}</text>
         <view wx:if="{{ tabBadges.aroTraining }}" class="tab-badge">{{ tabBadges.aroTraining }}</view>
+      </view>
+      <view class="tab tab-with-badge {{ activeTab === 'cage' ? 'tab-on' : '' }}" data-tab="cage" bindtap="onTabChange">
+        <text>{{ tabLabels.cage }}</text>
+        <view wx:if="{{ tabBadges.cage }}" class="tab-badge">{{ tabBadges.cage }}</view>
       </view>
     </view>
   </scroll-view>
@@ -580,6 +584,80 @@
               </block>
             </block>
           </view>
+        </block>
+      </view>
+    </block>
+  </block>
+
+  <!-- 笼位申请审核：待审/已审 + 可切换分组维度（按空间/按课题组/按人员） -->
+  <block wx:if="{{ !loading && activeTab === 'cage' }}">
+    <view class="switch-row">
+      <text class="switch-label">分组维度</text>
+      <view class="sub-tabs">
+        <view class="sub-tab {{ cageGroupBy === 'space' ? 'sub-tab-on' : '' }}" data-dim="space" bindtap="onCageGroupByChange">按空间</view>
+        <view class="sub-tab {{ cageGroupBy === 'group' ? 'sub-tab-on' : '' }}" data-dim="group" bindtap="onCageGroupByChange">按课题组</view>
+        <view class="sub-tab {{ cageGroupBy === 'person' ? 'sub-tab-on' : '' }}" data-dim="person" bindtap="onCageGroupByChange">按人员</view>
+      </view>
+    </view>
+    <view wx:if="{{ cageList.length === 0 }}" class="hint empty">暂无待审核的笼位申请</view>
+    <block wx:else>
+      <view wx:if="{{ cagePendingCount > 0 }}" class="time-group">
+        <view class="time-group-head" bindtap="onCageTogglePending">
+          <text class="time-group-arrow {{ cagePendingOpen ? 'open' : '' }}">▶</text>
+          <text>待审核 ({{ cagePendingCount }})</text>
+          <view wx:if="{{ cageSelectedCount > 0 }}" class="op op-primary cage-batch-btn" catchtap="onCageBatchApprove">一键通过 ({{ cageSelectedCount }})</view>
+        </view>
+        <block wx:if="{{ cagePendingOpen }}">
+          <block wx:for="{{ cagePendingRender }}" wx:key="_key" wx:for-item="node">
+            <view wx:if="{{ node._type === 'group' }}" class="cage-group-head" style="padding-left: {{ 8 + node.depth * 22 }}rpx;" bindtap="onCageToggleGroup" data-key="{{ node.key }}">
+              <view wx:if="{{ node.pendingIds.length > 0 }}" class="cage-check {{ node._selected ? 'cage-check--on' : '' }}" catchtap="onCageGroupSelect" data-pending-ids="{{ node.pendingIds }}">✓</view>
+              <text class="option-group-arrow {{ node._collapsed ? '' : 'open' }}">▶</text>
+              <text class="option-group-label">{{ node.label }}</text>
+              <text class="option-group-count">{{ node.count }} 条</text>
+            </view>
+            <view wx:elif="{{ node._type === 'leaf' }}" class="card" bindtap="onCageJump" data-id="{{ node.id }}" data-x="{{ node.x }}" data-y="{{ node.y }}" data-campus="{{ node.campus }}" data-room="{{ node.room }}" data-shelve="{{ node.shelve }}">
+              <view class="row-head">
+                <text class="mono">#{{ node.item.id }}</text>
+                <text class="tag {{ node.item.isPending ? 'tag-warn' : 'tag-muted' }}">{{ node.item.statusText }}</text>
+              </view>
+              <text class="title">{{ node.item.claimantName || '-' }}<text wx:if="{{ node.item.groupName }}" class="muted">（{{ node.item.groupName }}）</text></text>
+              <text class="body">{{ node.item.locationText }}</text>
+              <view class="card-footer">
+                <text wx:if="{{ node.item.createdAtText }}" class="meta">{{ node.item.createdAtText }}</text>
+                <view wx:if="{{ node.item.isPending }}" class="ops">
+                  <view class="op op-primary" data-id="{{ node.id }}" catchtap="onCageApprove">通过</view>
+                  <view class="op op-danger" data-id="{{ node.id }}" catchtap="onCageReject">驳回</view>
+                </view>
+              </view>
+            </view>
+          </block>
+        </block>
+      </view>
+      <view wx:if="{{ cageDoneCount > 0 }}" class="time-group">
+        <view class="time-group-head" bindtap="onCageToggleDone">
+          <text class="time-group-arrow {{ cageDoneOpen ? 'open' : '' }}">▶</text>
+          <text>已审核 ({{ cageDoneCount }})</text>
+        </view>
+        <block wx:if="{{ cageDoneOpen }}">
+          <block wx:for="{{ cageDoneRender }}" wx:key="_key" wx:for-item="node">
+            <view wx:if="{{ node._type === 'group' }}" class="cage-group-head" style="padding-left: {{ 8 + node.depth * 22 }}rpx;" bindtap="onCageToggleGroup" data-key="{{ node.key }}">
+              <view wx:if="{{ node.pendingIds.length > 0 }}" class="cage-check {{ node._selected ? 'cage-check--on' : '' }}" catchtap="onCageGroupSelect" data-pending-ids="{{ node.pendingIds }}">✓</view>
+              <text class="option-group-arrow {{ node._collapsed ? '' : 'open' }}">▶</text>
+              <text class="option-group-label">{{ node.label }}</text>
+              <text class="option-group-count">{{ node.count }} 条</text>
+            </view>
+            <view wx:elif="{{ node._type === 'leaf' }}" class="card" bindtap="onCageJump" data-id="{{ node.id }}" data-x="{{ node.x }}" data-y="{{ node.y }}" data-campus="{{ node.campus }}" data-room="{{ node.room }}" data-shelve="{{ node.shelve }}">
+              <view class="row-head">
+                <text class="mono">#{{ node.item.id }}</text>
+                <text class="tag tag-muted">{{ node.item.statusText }}</text>
+              </view>
+              <text class="title">{{ node.item.claimantName || '-' }}<text wx:if="{{ node.item.groupName }}" class="muted">（{{ node.item.groupName }}）</text></text>
+              <text class="body">{{ node.item.locationText }}</text>
+              <view class="card-footer">
+                <text wx:if="{{ node.item.createdAtText }}" class="meta">{{ node.item.createdAtText }}</text>
+              </view>
+            </view>
+          </block>
         </block>
       </view>
     </block>

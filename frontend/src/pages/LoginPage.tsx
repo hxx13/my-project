@@ -743,6 +743,12 @@ export default function LoginPage() {
                     </Link>
                   </p>
                   <p className="mt-3 text-center text-sm text-[#9a8b72]">
+                    已有身份但未设密码？
+                    <Link to="/m/activate" state={{ from: "/" }} className="ml-1 font-medium text-[#e8c547] hover:text-[#f5e6a8]">
+                      激活账号
+                    </Link>
+                  </p>
+                  <p className="mt-3 text-center text-sm text-[#9a8b72]">
                     <button
                       type="button"
                       onClick={() => setForgotMode(true)}

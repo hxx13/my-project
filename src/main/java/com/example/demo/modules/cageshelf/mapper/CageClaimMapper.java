@@ -19,6 +19,9 @@ public interface CageClaimMapper {
     /** FOR UPDATE 锁单条记录（审批用） */
     CageClaim selectByIdForUpdate(@Param("id") Long id);
 
+    /** 按状态查认领（手动修正历史 confirmed 用） */
+    List<CageClaim> selectByStatus(@Param("status") String status);
+
     /** 查某笼位当前活跃的认领（FOR UPDATE 用） */
     CageClaim selectActiveByAnimalCageId(@Param("animalCageId") Long animalCageId);
 
@@ -26,11 +29,15 @@ public interface CageClaimMapper {
     List<CageClaim> selectByClaimantId(@Param("claimantId") String claimantId,
                                        @Param("status") String status);
 
-    /** 管理端待审批列表（分页+筛选） */
-    List<CageClaim> selectPending(@Param("status") String status,
-                                  @Param("keyword") String keyword,
-                                  @Param("offset") int offset,
-                                  @Param("limit") int limit);
+    /** 学生本人的认领列表（富化：网格位置/架子/AUP/最新驳回理由） */
+    List<Map<String, Object>> selectMyEnriched(@Param("claimantId") String claimantId,
+                                               @Param("status") String status);
+
+    /** 管理端待审批列表（分页+筛选，含校区/楼层/房间/笼架/坐标/AUP/课题组 join） */
+    List<Map<String, Object>> selectPending(@Param("status") String status,
+                                            @Param("keyword") String keyword,
+                                            @Param("offset") int offset,
+                                            @Param("limit") int limit);
 
     int countPending(@Param("status") String status,
                      @Param("keyword") String keyword);

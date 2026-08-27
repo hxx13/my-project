@@ -20,6 +20,7 @@ import {
   formatBuiltinSeedImportToast,
   importNhpBuiltinSeedTemplates,
   publishNhpTemplate,
+  setNhpTemplateFolder,
   unfreezeNhpTemplate,
   versionOriginLabel,
   isFillablePublished,
@@ -32,9 +33,21 @@ import { fetchNhpDictStructure } from "../../api/nhpFieldDictionary.api";
 import { statusLabel } from "../../store/editorUtils";
 import { nhpNavState } from "../../utils/nhpAdminNav";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
-import { appConfirm } from "@/lib/appDialog";
+import { appConfirm, appPrompt } from "@/lib/appDialog";
+import FolderTreeManager, { type FolderTreeGroup } from "@/features/form-shared/FolderTreeManager";
+import { FORM_FOLDER_LABELS } from "../../utils/folderTreeLabels";
+import {
+  createAupFolder,
+  deleteAupFolder,
+  listAupFolders,
+  updateAupFolder,
+  type AupFolderVO,
+} from "@/features/aup/api/aup.api";
 import "@/features/aup/aup.css";
 import "../../nhp.css";
+
+const NHP_FORM_OWNER = "NHP_FORM";
+const UNGROUPED = "未分类";
 
 type PublishFilter = "PUBLISHED" | "ALL";
 
@@ -97,6 +110,37 @@ const PUBLISH_FILTERS: { value: PublishFilter; label: string }[] = [
   { value: "ALL", label: "含草稿" },
 ];
 
+type FormTreeItem = { id: string; t: NhpTemplateListItem };
+
+function buildFormFolderTree(folders: AupFolderVO[], templates: NhpTemplateListItem[]): FolderTreeGroup<FormTreeItem>[] {
+  const byFolder = new Map<number, NhpTemplateListItem[]>();
+  const ungrouped: NhpTemplateListItem[] = [];
+  for (const t of templates) {
+    if (t.folderId != null) {
+      const arr = byFolder.get(t.folderId) ?? [];
+      arr.push(t);
+      byFolder.set(t.folderId, arr);
+    } else {
+      ungrouped.push(t);
+    }
+  }
+  const toGroup = (folder: AupFolderVO, depth = 0): FolderTreeGroup<FormTreeItem> => ({
+    key: String(folder.id),
+    label: folder.name,
+    mutable: true,
+    items: (byFolder.get(folder.id) ?? []).map((t) => ({ id: t.formKey, t })),
+    headerStyle: depth > 0 ? { paddingLeft: 28, fontSize: 12, color: "var(--slate)", fontWeight: 600 } : undefined,
+    emptyHint: "空文件夹",
+    emptyActionLabel: "移动表单",
+    children: (folder.children ?? []).map((c) => toGroup(c, depth + 1)),
+  });
+  const top = (folders ?? []).map((f) => toGroup(f, 0));
+  if (ungrouped.length > 0) {
+    top.push({ key: UNGROUPED, label: UNGROUPED, mutable: false, items: ungrouped.map((t) => ({ id: t.formKey, t })) });
+  }
+  return top;
+}
+
 export default function NhpTemplateListPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -127,6 +171,21 @@ export default function NhpTemplateListPage() {
     queryKey: ["nhp", "templates", "by-id", previewFormId],
     queryFn: () => fetchNhpTemplateById(previewFormId!),
     enabled: !!previewFormId,
+  });
+
+  const foldersQuery = useQuery({
+    queryKey: ["aup", "folders", NHP_FORM_OWNER],
+    queryFn: () => listAupFolders(NHP_FORM_OWNER),
+  });
+
+  const moveFolderMut = useMutation({
+    mutationFn: ({ formKey, folderId }: { formKey: string; folderId: number | null }) =>
+      setNhpTemplateFolder(formKey, folderId),
+    onSuccess: () => {
+      toast.success("已移动");
+      qc.invalidateQueries({ queryKey: ["nhp", "templates"] });
+    },
+    onError: (e: Error) => toast.error(e.message || "移动失败", { duration: 6000 }),
   });
 
   const templates = useMemo(() => {
@@ -330,6 +389,57 @@ export default function NhpTemplateListPage() {
     setPreviewFormId(t.formId);
   };
 
+  /* ── 表单文件夹树 ── */
+  const folders = foldersQuery.data ?? [];
+  const folderTree = useMemo(() => buildFormFolderTree(folders, templates), [folders, templates]);
+
+  const folderIdOf = (key: string): number | undefined => (key === UNGROUPED ? undefined : Number(key));
+
+  const createFolderMut = useMutation({
+    mutationFn: (body: { parentId: number; name: string }) =>
+      createAupFolder({ ownerType: NHP_FORM_OWNER, ...body }),
+    onSuccess: () => {
+      toast.success("已新建文件夹");
+      qc.invalidateQueries({ queryKey: ["aup", "folders", NHP_FORM_OWNER] });
+    },
+    onError: (e: Error) => toast.error(e.message || "新建文件夹失败", { duration: 6000 }),
+  });
+
+  const renameFolderMut = useMutation({
+    mutationFn: (body: { id: number; name: string }) => updateAupFolder(body.id, { name: body.name }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["aup", "folders", NHP_FORM_OWNER] }),
+    onError: (e: Error) => toast.error(e.message || "重命名失败", { duration: 6000 }),
+  });
+
+  const deleteFolderMut = useMutation({
+    mutationFn: (id: number) => deleteAupFolder(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["aup", "folders", NHP_FORM_OWNER] }),
+    onError: (e: Error) => toast.error(e.message || "删除失败", { duration: 6000 }),
+  });
+
+  const handleCreateFolder = async (parentKey?: string) => {
+    const name = (await appPrompt(parentKey ? "新建子文件夹" : "新建文件夹", ""))?.trim() ?? "";
+    if (!name) return;
+    createFolderMut.mutate({ parentId: parentKey ? folderIdOf(parentKey) ?? 0 : 0, name });
+  };
+  const handleRenameFolder = async (folderKey: string) => {
+    if (folderKey === UNGROUPED) return;
+    const f = folders.find((x) => String(x.id) === folderKey);
+    const name = (await appPrompt("重命名文件夹", f?.name ?? ""))?.trim() ?? "";
+    if (!name || name === f?.name) return;
+    renameFolderMut.mutate({ id: Number(folderKey), name });
+  };
+  const handleDeleteFolder = async (folderKey: string) => {
+    if (folderKey === UNGROUPED) return;
+    const f = folders.find((x) => String(x.id) === folderKey);
+    if (!f) return;
+    if (!(await appConfirm(`确定删除空文件夹「${f.name}」？`))) return;
+    deleteFolderMut.mutate(f.id);
+  };
+  const handleMoveForm = (formKey: string, _from: string, toKey: string) => {
+    moveFolderMut.mutate({ formKey, folderId: folderIdOf(toKey) ?? null });
+  };
+
   const previewOrigin = previewQuery.data?.origin ?? versions.find((v) => v.formId === previewFormId)?.origin;
   const previewVersion = previewQuery.data?.version ?? versions.find((v) => v.formId === previewFormId)?.version;
 
@@ -442,71 +552,93 @@ export default function NhpTemplateListPage() {
                   : "暂无模板。点「导入内置种子」一键恢复字段包 + 45 个草稿原子模板，或用「＋ 去发布」新建。"}
               </div>
             )}
-            {templates.map((t) => {
-              const origin = versionOriginLabel(t.origin);
-              const on = selectedKey === t.formKey;
-              const k = templateKind(t);
-              const metaKey = k === "ATOM" ? atomListMetaKey(t) : t.formKey;
-              const rowSuite = (t.dictKey || "").trim() || "pig";
-              return (
-                <div
-                  key={`${t.formKey}-${t.formId}`}
-                  className={`aup-wb-row${on ? " on" : ""}`}
-                  style={{ paddingLeft: 10 }}
-                  onClick={() => selectRow(t)}
-                  title={t.description || t.title}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedFormKeys.has(t.formKey)}
-                    onChange={() => toggleSelect(t.formKey)}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ marginRight: 8, flexShrink: 0, cursor: "pointer", accentColor: "var(--primary, #002FA7)" }}
-                    title="勾选以批量删除"
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="lbl" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                      <span className={suiteBadgeClass(rowSuite)}>{suiteBadgeLabel(rowSuite)}</span>
-                      <span className="nhp-kind-chip">{itemKindLabel(t)}</span>
-                      {t.hostType === "DONOR" || t.hostType === "RECIPIENT" ? (
-                        <span className="aup-wb-chip muted" style={{ fontSize: 10 }}>
-                          {t.hostType === "DONOR" ? "供体载体" : "受体载体"}
-                        </span>
-                      ) : null}
-                      <span>{t.title || t.formKey}</span>
-                    </div>
-                    <div className="meta" style={{ marginTop: 2, fontFamily: "ui-monospace, monospace" }}>
-                      {metaKey} · v{t.version ?? "—"}
-                      {origin ? ` · ${origin}` : ""}
-                      {k === "COMPOSITE" && (t.atoms?.length ?? t.atomCount)
-                        ? ` · ${t.atoms?.length ?? t.atomCount} 原子`
-                        : ""}
-                      {t.hasPublished && !isPublished(t.status)
-                        ? ` · 已发布 v${t.publishedVersion ?? "?"}`
-                        : ""}
-                    </div>
-                  </div>
-                  {k === "COMPOSITE" ? (
-                    <span className="aup-wb-chip muted">
-                      {statusLabel(t.status)}
-                      {t.hasPublished && !isPublished(t.status) ? "·有发布" : ""}
-                    </span>
-                  ) : t.locked ? (
-                    <span className="aup-wb-chip muted">已锁定</span>
-                  ) : isPublished(t.status) ? (
-                    <span className="aup-wb-chip" style={{ background: "#e8f7ee", color: "#16a34a" }}>
-                      已发布
-                    </span>
-                  ) : t.hasPublished ? (
-                    <span className="aup-wb-chip muted">草稿·有发布</span>
-                  ) : (
-                    <span className="aup-wb-chip" style={{ background: "#eef2ff", color: "#002FA7" }}>
-                      草稿
-                    </span>
-                  )}
+            <FolderTreeManager<FormTreeItem>
+              folders={folderTree}
+              selectedItemId={selectedKey}
+              canMaintain
+              emptyState={
+                <div style={{ padding: 20, textAlign: "center" }}>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>尚无文件夹</div>
+                  <button type="button" className="btn ghost small" onClick={() => handleCreateFolder()}>
+                    ＋ 新建文件夹
+                  </button>
                 </div>
-              );
-            })}
+              }
+              onSelectItem={(formKey) => {
+                const hit = templates.find((x) => x.formKey === formKey);
+                if (hit) selectRow(hit);
+              }}
+              renderItem={(item) => {
+                const t = item.t;
+                const origin = versionOriginLabel(t.origin);
+                const k = templateKind(t);
+                const metaKey = k === "ATOM" ? atomListMetaKey(t) : t.formKey;
+                const rowSuite = (t.dictKey || "").trim() || "pig";
+                return (
+                  <div
+                    style={{ flex: 1, display: "flex", alignItems: "center", minWidth: 0 }}
+                    title={t.description || t.title}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedFormKeys.has(t.formKey)}
+                      onChange={() => toggleSelect(t.formKey)}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ marginRight: 8, flexShrink: 0, cursor: "pointer", accentColor: "var(--primary, #002FA7)" }}
+                      title="勾选以批量删除"
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="lbl" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <span className={suiteBadgeClass(rowSuite)}>{suiteBadgeLabel(rowSuite)}</span>
+                        <span className="nhp-kind-chip">{itemKindLabel(t)}</span>
+                        {t.hostType === "DONOR" || t.hostType === "RECIPIENT" ? (
+                          <span className="aup-wb-chip muted" style={{ fontSize: 10 }}>
+                            {t.hostType === "DONOR" ? "供体载体" : "受体载体"}
+                          </span>
+                        ) : null}
+                        <span>{t.title || t.formKey}</span>
+                      </div>
+                      <div className="meta" style={{ marginTop: 2, fontFamily: "ui-monospace, monospace" }}>
+                        {metaKey} · v{t.version ?? "—"}
+                        {origin ? ` · ${origin}` : ""}
+                        {k === "COMPOSITE" && (t.atoms?.length ?? t.atomCount)
+                          ? ` · ${t.atoms?.length ?? t.atomCount} 原子`
+                          : ""}
+                        {t.hasPublished && !isPublished(t.status)
+                          ? ` · 已发布 v${t.publishedVersion ?? "?"}`
+                          : ""}
+                      </div>
+                    </div>
+                    {k === "COMPOSITE" ? (
+                      <span className="aup-wb-chip muted">
+                        {statusLabel(t.status)}
+                        {t.hasPublished && !isPublished(t.status) ? "·有发布" : ""}
+                      </span>
+                    ) : t.locked ? (
+                      <span className="aup-wb-chip muted">已锁定</span>
+                    ) : isPublished(t.status) ? (
+                      <span className="aup-wb-chip" style={{ background: "#e8f7ee", color: "#16a34a" }}>
+                        已发布
+                      </span>
+                    ) : t.hasPublished ? (
+                      <span className="aup-wb-chip muted">草稿·有发布</span>
+                    ) : (
+                      <span className="aup-wb-chip" style={{ background: "#eef2ff", color: "#002FA7" }}>
+                        草稿
+                      </span>
+                    )}
+                  </div>
+                );
+              }}
+              onMoveItem={handleMoveForm}
+              onCreateFolder={() => handleCreateFolder()}
+              onCreateSubFolder={(folderKey) => handleCreateFolder(folderKey)}
+              onRenameFolder={handleRenameFolder}
+              onDeleteFolder={handleDeleteFolder}
+              folderActions={() => ["createFolder", "rename", "delete"]}
+              labels={FORM_FOLDER_LABELS}
+              itemActions={() => ["moveItem"]}
+            />
           </aside>
 
           <div className="aup-wb-main">

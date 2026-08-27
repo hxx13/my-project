@@ -12,6 +12,7 @@ import com.example.demo.modules.aup.mapper.AupFolderMapper;
 import com.example.demo.modules.aup.mapper.DictMapper;
 import com.example.demo.modules.aup.mapper.FormTemplateMapper;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.nhp.mapper.CrfFormMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,21 +27,29 @@ import java.util.Set;
 public class AupFolderService {
 
     private static final int MAX_LEVEL = 5;
-    private static final Set<String> ALLOWED_OWNER_TYPES = Set.of("CODELIST", "FIELD", "ATOM");
+    /**
+     * 表结构（owner_type/parent_id/name/sort_order）不含 aup 业务语义，故作为通用目录表复用。
+     * NHP_FORM 由 NHP 表单管理页使用（crf_form.folder_id 指向本表），删除保护见 countRefs。
+     * 新增取值时必须同步在 countRefs 里补引用计数分支，否则非空文件夹会被误删。
+     */
+    private static final Set<String> ALLOWED_OWNER_TYPES = Set.of("CODELIST", "FIELD", "ATOM", "NHP_FORM");
 
     private final AupFolderMapper folderMapper;
     private final DictMapper dictMapper;
     private final AupFieldDefMapper fieldDefMapper;
     private final FormTemplateMapper templateMapper;
+    private final CrfFormMapper crfFormMapper;
     private final AupConfigAuditService auditService;
 
     public AupFolderService(AupFolderMapper folderMapper, DictMapper dictMapper,
                             AupFieldDefMapper fieldDefMapper, FormTemplateMapper templateMapper,
+                            CrfFormMapper crfFormMapper,
                             AupConfigAuditService auditService) {
         this.folderMapper = folderMapper;
         this.dictMapper = dictMapper;
         this.fieldDefMapper = fieldDefMapper;
         this.templateMapper = templateMapper;
+        this.crfFormMapper = crfFormMapper;
         this.auditService = auditService;
     }
 
@@ -57,7 +66,7 @@ public class AupFolderService {
     public Result<AupFolderVO> create(AupFolderCreateRequest req, User user) {
         String ot = normalizeOwnerType(req.getOwnerType());
         if (ot == null) {
-            return Result.fail(400, "ownerType 必须为 CODELIST/FIELD/ATOM");
+            return Result.fail(400, "ownerType 必须为 CODELIST/FIELD/ATOM/NHP_FORM");
         }
         if (isBlank(req.getName())) {
             return Result.fail(400, "文件夹名称不能为空");
@@ -169,6 +178,7 @@ public class AupFolderService {
             case "CODELIST": return dictMapper.countByFolderId(folderId);
             case "FIELD": return fieldDefMapper.countByFolderId(folderId);
             case "ATOM": return templateMapper.countByFolderId(folderId);
+            case "NHP_FORM": return crfFormMapper.countByFolderId(folderId);
             default: return 0;
         }
     }

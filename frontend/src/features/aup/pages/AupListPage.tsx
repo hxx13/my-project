@@ -152,6 +152,7 @@ export default function AupListPage() {
   const [stage, setStage] = useState<AupStage | "">("");
   const [tab, setTab] = useState<ListTab>("pending");
   const [projectGroupName, setProjectGroupName] = useState("");
+  const [dept, setDept] = useState("");
   const [submitterName, setSubmitterName] = useState("");
   const [reviewerName, setReviewerName] = useState("");
   const [registerNo, setRegisterNo] = useState("");
@@ -192,13 +193,14 @@ export default function AupListPage() {
       draftSource: tab === "pending" ? draftSource || undefined : undefined,
       roundNo: tab === "pending" && roundNo ? Number(roundNo) : undefined,
       projectGroupName: projectGroupName.trim() || undefined,
+      dept: dept.trim() || undefined,
       submitterName: submitterName.trim() || undefined,
       reviewerName: reviewerName.trim() || undefined,
       relatedToMe: relatedToMe || undefined,
       sortBy: sortBy || undefined,
       sortDir: (desc ? "desc" : "asc") as "asc" | "desc",
     }),
-    [keyword, registerNo, stage, tab, draftSource, roundNo, projectGroupName, submitterName, reviewerName, relatedToMe, sortBy, desc]
+    [keyword, registerNo, stage, tab, draftSource, roundNo, projectGroupName, dept, submitterName, reviewerName, relatedToMe, sortBy, desc]
   );
 
   // 筛选/标签变化 → genKey 变化：重播入场动画 + 滚动回顶
@@ -549,6 +551,16 @@ export default function AupListPage() {
                 <option key={g} value={g} />
               ))}
             </datalist>
+          </label>
+          <label style={FILTER_FIELD_STYLE}>
+            部门
+            <input
+              className="input"
+              style={FILTER_CONTROL_STYLE}
+              placeholder="输入部门名，模糊匹配"
+              value={dept}
+              onChange={(e) => { setDept(e.target.value); }}
+            />
           </label>
           <label style={FILTER_FIELD_STYLE}>
             提交人

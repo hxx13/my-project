@@ -4,8 +4,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEventStore, type FeedProvenance, type UniversalEvent } from "@/store/useEventStore";
 import { fetchRealtimeFeed, fetchAutomationLogsNear, type AutomationLogRow } from "@/api/twinApi";
 import { PersonnelSearchDropdown } from "@/components/ui/PersonnelSearchDropdown"; // 💥 引入独立的人员预检组件
-import { Info, LogIn, LogOut, Activity } from "lucide-react"; // 💥 引入 Activity 图标作为标题Icon
+import { Info, LogIn, LogOut, Activity, Clock } from "lucide-react"; // 💥 引入 Activity 图标作为标题Icon
 import { detailTextToLines } from "@/utils/detailTextToLines";
+import { formatCountdown, remainingSecondsFromScheduledAt } from "@/utils/formatCountdown";
 import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
 import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 import { authStorage } from "@/features/auth/authStorage";
@@ -42,6 +43,14 @@ function feedProvenanceFromDbRow(item: Record<string, unknown>): FeedProvenance 
     const sum = String(item.feed_summary_zh ?? item.feedSummaryZh ?? "").trim();
     const det = String(item.feed_detail_zh ?? item.feedDetailZh ?? "").trim();
     const door = String(item.device_display_name ?? item.deviceDisplayName ?? "").trim();
+    if (String(item.action ?? "").toUpperCase() === "PENDING_EXIT") {
+        return {
+            channel: "SYSTEM",
+            feedSource: "SYSTEM",
+            summaryZh: "待签退倒计时",
+            detailZh: "该人员处于延时签退倒计时中，倒计时结束系统将自动签退。",
+        };
+    }
     if (sum || src) {
         return {
             channel: src || "ARO_OFFICIAL",
@@ -297,6 +306,15 @@ export function TimelineWaterfall() {
         setProvOpen({ evt, rect });
     }, []);
 
+    // 存在待签退倒计时条目时，本地每秒重算剩余秒数（按计划签退时刻实时推算）
+    const hasPendingExit = events.some((evt) => evt.action === "PENDING_EXIT");
+    const [, setCountdownTick] = useState(0);
+    useEffect(() => {
+        if (!hasPendingExit) return;
+        const id = setInterval(() => setCountdownTick((t) => t + 1), 1000);
+        return () => clearInterval(id);
+    }, [hasPendingExit]);
+
     // 开机拉取
     useEffect(() => {
         const loadInitialFeed = async () => {
@@ -308,15 +326,26 @@ export function TimelineWaterfall() {
                     const eventId = typeof rawId === "string" ? rawId : String(rawId);
                     const rawTs = item.create_time ?? item.timestamp ?? "";
                     const timestamp = typeof rawTs === "string" ? rawTs : String(rawTs);
-                    const nameRaw = item.name ?? "未知";
+                    // 兼容两套字段命名：普通流水是 snake_case，注入的待签退倒计时(PENDING_EXIT)是 camelCase
+                    const nameRaw = item.name ?? item.userName ?? "未知";
                     const roleRaw = item.user_type_names ?? "UNKNOWN";
-                    const groupRaw = item.project_group_names ?? "未知课题组";
+                    const groupRaw = item.project_group_names ?? item.groupName ?? "未知课题组";
+                    const rawAction = String(item.action ?? "").toUpperCase();
+                    const action = (
+                        rawAction === "PENDING_EXIT" || rawAction === "WARN" || rawAction === "UNKNOWN"
+                            ? rawAction
+                            : item.accessType === 1 || item.access_type === 1
+                              ? "ENTER"
+                              : "EXIT"
+                    ) as UniversalEvent["action"];
                     return {
-                        action: ((item.accessType === 1 || item.access_type === 1) ? "ENTER" : "EXIT") as UniversalEvent["action"],
+                        action,
                         eventId,
                         source: "DB",
                         category: "ACCESS",
                         timestamp,
+                        scheduledExitAt: typeof item.scheduledExitAt === "string" ? item.scheduledExitAt : undefined,
+                        countdownSeconds: typeof item.countdownSeconds === "number" ? item.countdownSeconds : undefined,
                         person: {
                             name: typeof nameRaw === "string" ? nameRaw : String(nameRaw),
                             role: typeof roleRaw === "string" ? roleRaw : String(roleRaw),
@@ -324,9 +353,9 @@ export function TimelineWaterfall() {
                             userId: String(item.user_id ?? item.userId ?? "").trim() || undefined,
                         },
                         location: {
-                            campus: String(item.area_name ?? ""),
-                            floor: String(item.floor_name ?? ""),
-                            room: String(item.room_name ?? ""),
+                            campus: String(item.area_name ?? item.areaName ?? ""),
+                            floor: String(item.floor_name ?? item.floorName ?? ""),
+                            room: String(item.room_name ?? item.roomName ?? ""),
                             roomId: String(item.room_id ?? item.roomId ?? "").trim() || undefined,
                         },
                         feedProvenance: feedProvenanceFromDbRow(item),
@@ -393,12 +422,24 @@ export function TimelineWaterfall() {
                 <AnimatePresence initial={false}>
                     {events.map((evt: UniversalEvent) => {
                         const isEnter = evt.action === "ENTER";
+                        const isPendingExit = evt.action === "PENDING_EXIT";
                         const isBootRecord = evt.source === "DB";
 
-                        const timeStr = evt.timestamp ? evt.timestamp.split(" ")[1].substring(0, 5) : "--:--";
+                        // 待签退倒计时条目：左侧胶囊显示计划签退时刻；普通流水显示进入时刻
+                        const capsuleSrc = isPendingExit ? evt.scheduledExitAt ?? evt.timestamp : evt.timestamp;
+                        const timeStr = capsuleSrc
+                            ? (capsuleSrc.split(" ")[1]?.substring(0, 5) ?? "--:--")
+                            : "--:--";
 
                         // 💥 新增：将时间拆分为小时和分钟，供给“遥测胶囊”使用
                         const [hour, minute] = timeStr.split(":");
+
+                        // 待签退倒计时：优先按计划时刻实时推算，回退到后端下发的剩余秒数
+                        const pendingRemaining = isPendingExit
+                            ? (remainingSecondsFromScheduledAt(evt.scheduledExitAt) ?? evt.countdownSeconds ?? null)
+                            : null;
+                        const pendingCountdownText =
+                            pendingRemaining != null ? formatCountdown(Math.max(0, pendingRemaining)) : null;
 
                         return (
                             <motion.div
@@ -417,19 +458,25 @@ export function TimelineWaterfall() {
                                 <div className="w-[52px] shrink-0 flex flex-col justify-center items-end pr-1">
                                     <div
                                         className={`flex items-center rounded-[4px] overflow-hidden border transition-all duration-300 ${
-                                            dashTone(
-                                                visual,
-                                                "border-cyan-500/35 shadow-sm group-hover:shadow-md group-hover:scale-105",
-                                                isEnter ? DASH_NIGHT_CLASS.timeCapsuleEnter : DASH_NIGHT_CLASS.timeCapsuleExit,
-                                                "border-slate-200/60 shadow-sm group-hover:shadow-md group-hover:scale-105",
-                                            )
+                                            isPendingExit
+                                                ? dashTone(visual, "border-amber-500/40 shadow-sm group-hover:shadow-md group-hover:scale-105", DASH_NIGHT_CLASS.timeCapsuleExit, "border-amber-300/70 shadow-sm group-hover:shadow-md group-hover:scale-105")
+                                                : dashTone(
+                                                      visual,
+                                                      "border-cyan-500/35 shadow-sm group-hover:shadow-md group-hover:scale-105",
+                                                      isEnter ? DASH_NIGHT_CLASS.timeCapsuleEnter : DASH_NIGHT_CLASS.timeCapsuleExit,
+                                                      "border-slate-200/60 shadow-sm group-hover:shadow-md group-hover:scale-105",
+                                                  )
                                         }`}
                                     >
                                         <span
                                             className={`backdrop-blur-md text-[10px] font-black px-1.5 py-[2px] leading-none
-                                            ${isEnter
-                                                ? dashTone(visual, "bg-cyan-500/30 text-cyan-100", DASH_NIGHT_CLASS.timeHourEnter, "bg-cyan-100 text-cyan-800")
-                                                : dashTone(visual, "bg-rose-500/25 text-rose-100", DASH_NIGHT_CLASS.timeHourExit, "bg-rose-100 text-rose-800")}`}
+                                            ${
+                                                isPendingExit
+                                                    ? dashTone(visual, "bg-amber-500/30 text-amber-100", DASH_NIGHT_CLASS.timeHourExit, "bg-amber-100 text-amber-800")
+                                                    : isEnter
+                                                      ? dashTone(visual, "bg-cyan-500/30 text-cyan-100", DASH_NIGHT_CLASS.timeHourEnter, "bg-cyan-100 text-cyan-800")
+                                                      : dashTone(visual, "bg-rose-500/25 text-rose-100", DASH_NIGHT_CLASS.timeHourExit, "bg-rose-100 text-rose-800")
+                                            }`}
                                         >
                                             {hour}
                                         </span>
@@ -461,10 +508,16 @@ export function TimelineWaterfall() {
                                                 ? isEnter
                                                     ? DASH_NIGHT_CLASS.hubEnter
                                                     : DASH_NIGHT_CLASS.hubExit
-                                                : `${isEnter ? "border-white bg-gradient-to-br from-blue-500 to-cyan-400 shadow-blue-400/30" : "border-white bg-gradient-to-br from-orange-400 to-rose-400 shadow-orange-400/30"}`
+                                                : isPendingExit
+                                                  ? "border-white bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-400/40"
+                                                  : isEnter
+                                                    ? "border-white bg-gradient-to-br from-blue-500 to-cyan-400 shadow-blue-400/30"
+                                                    : "border-white bg-gradient-to-br from-orange-400 to-rose-400 shadow-orange-400/30"
                                         } ${!visual.night && sf ? "border-slate-900 shadow-cyan-500/30" : ""}`}
                                     >
-                                        {isEnter ? (
+                                        {isPendingExit ? (
+                                            <Clock className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                                        ) : isEnter ? (
                                             <LogIn className="w-3.5 h-3.5 text-white ml-0.5" strokeWidth={3} />
                                         ) : (
                                             <LogOut className="w-3.5 h-3.5 text-white mr-0.5" strokeWidth={3} />
@@ -477,33 +530,42 @@ export function TimelineWaterfall() {
                                     ======================================= */}
                                 <div
                                     className={`flex-1 min-w-0 relative border rounded-[12px] p-2 flex items-center gap-1.5 group-hover:-translate-y-0.5 transition-all overflow-hidden cursor-default ${
-                                        isEnter
+                                        isPendingExit
                                             ? dashTone(
                                                   visual,
-                                                  "bg-cyan-950/35 border-cyan-500/25 shadow-[0_0_24px_rgba(34,211,238,0.12)] group-hover:bg-cyan-950/50 group-hover:shadow-[0_0_28px_rgba(34,211,238,0.2)]",
-                                                  `${DASH_NIGHT_CLASS.rowEnter} group-hover:-translate-y-0.5`,
-                                                  "bg-blue-50/40 border-blue-100/50 shadow-[0_2px_10px_rgba(59,130,246,0.03)] group-hover:bg-blue-50/70 group-hover:shadow-[0_6px_20px_rgba(59,130,246,0.08)]",
+                                                  "bg-amber-950/35 border-amber-500/30 shadow-[0_0_24px_rgba(245,158,11,0.14)] group-hover:bg-amber-950/50 group-hover:shadow-[0_0_28px_rgba(245,158,11,0.22)]",
+                                                  `${DASH_NIGHT_CLASS.rowWarn} group-hover:-translate-y-0.5`,
+                                                  "bg-amber-50/50 border-amber-200/60 shadow-[0_2px_10px_rgba(245,158,11,0.04)] group-hover:bg-amber-50/80 group-hover:shadow-[0_6px_20px_rgba(245,158,11,0.1)]",
                                               )
-                                            : dashTone(
-                                                  visual,
-                                                  "bg-rose-950/30 border-rose-500/25 shadow-[0_0_24px_rgba(244,63,94,0.12)] group-hover:bg-rose-950/45 group-hover:shadow-[0_0_28px_rgba(244,63,94,0.18)]",
-                                                  `${DASH_NIGHT_CLASS.rowExit} group-hover:-translate-y-0.5`,
-                                                  "bg-orange-50/40 border-orange-100/50 shadow-[0_2px_10px_rgba(249,115,22,0.03)] group-hover:bg-orange-50/70 group-hover:shadow-[0_6px_20px_rgba(249,115,22,0.08)]",
-                                              )
+                                            : isEnter
+                                              ? dashTone(
+                                                    visual,
+                                                    "bg-cyan-950/35 border-cyan-500/25 shadow-[0_0_24px_rgba(34,211,238,0.12)] group-hover:bg-cyan-950/50 group-hover:shadow-[0_0_28px_rgba(34,211,238,0.2)]",
+                                                    `${DASH_NIGHT_CLASS.rowEnter} group-hover:-translate-y-0.5`,
+                                                    "bg-blue-50/40 border-blue-100/50 shadow-[0_2px_10px_rgba(59,130,246,0.03)] group-hover:bg-blue-50/70 group-hover:shadow-[0_6px_20px_rgba(59,130,246,0.08)]",
+                                                )
+                                              : dashTone(
+                                                    visual,
+                                                    "bg-rose-950/30 border-rose-500/25 shadow-[0_0_24px_rgba(244,63,94,0.12)] group-hover:bg-rose-950/45 group-hover:shadow-[0_0_28px_rgba(244,63,94,0.18)]",
+                                                    `${DASH_NIGHT_CLASS.rowExit} group-hover:-translate-y-0.5`,
+                                                    "bg-orange-50/40 border-orange-100/50 shadow-[0_2px_10px_rgba(249,115,22,0.03)] group-hover:bg-orange-50/70 group-hover:shadow-[0_6px_20px_rgba(249,115,22,0.08)]",
+                                                )
                                     }`}
                                 >
                                     {!visual.night ? (
                                         <>
                                             <div
                                                 className={`absolute inset-y-0 left-0 w-12 bg-gradient-to-r to-transparent opacity-40 pointer-events-none ${
-                                                    isEnter ? "from-blue-300/40" : "from-orange-300/40"
+                                                    isPendingExit ? "from-amber-300/50" : isEnter ? "from-blue-300/40" : "from-orange-300/40"
                                                 }`}
                                             />
                                             <div
                                                 className={`absolute inset-y-0 left-0 w-[2.5px] ${
-                                                    isEnter
-                                                        ? "bg-gradient-to-b from-blue-400 to-cyan-300"
-                                                        : "bg-gradient-to-b from-orange-400 to-rose-300"
+                                                    isPendingExit
+                                                        ? "bg-gradient-to-b from-amber-400 to-orange-400"
+                                                        : isEnter
+                                                          ? "bg-gradient-to-b from-blue-400 to-cyan-300"
+                                                          : "bg-gradient-to-b from-orange-400 to-rose-300"
                                                 }`}
                                             />
                                         </>
@@ -573,6 +635,19 @@ export function TimelineWaterfall() {
                                             }`}
                                         >
                                             🧬 {evt.person.group}
+                                        </span>
+                                    )}
+
+                                    {isPendingExit && pendingCountdownText && (
+                                        <span
+                                            className={`relative z-10 ml-auto shrink-0 flex items-center gap-1 text-[10px] font-black tabular-nums px-1.5 py-0.5 rounded-md whitespace-nowrap border ${
+                                                visual.night
+                                                    ? DASH_NIGHT_CLASS.chipWarn
+                                                    : "bg-amber-500/15 border-amber-500/30 text-amber-700"
+                                            }`}
+                                        >
+                                            <Clock className="w-3 h-3 shrink-0" />
+                                            待签退 {pendingCountdownText}
                                         </span>
                                     )}
 

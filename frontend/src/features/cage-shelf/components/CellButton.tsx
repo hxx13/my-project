@@ -26,14 +26,16 @@ import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains
  *
  * Props 共 21 个 — 如需新增请评估是否该拆出子组件
  */
-export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell }: {
+export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell }: {
   cell: CageShelfCell; onClick?: (c: CageShelfCell) => void; alert?: PersistedAlert;
   selectable?: boolean; selected?: boolean; onToggle?: (e: React.MouseEvent) => void; allocMode?: boolean;
   clickMode?: "toggle" | "checkbox";
   editCacheEntry?: { initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction> };
   isLastScanned?: boolean; bindHighlight?: boolean; bindPending?: boolean; editMode?: boolean; bindMode?: boolean;
   isCrossCol?: boolean; isCrossRow?: boolean; flashOverlay?: boolean;
-  claimMode?: boolean; isPoolCell?: boolean;
+  claimMode?: boolean; isPoolCell?: boolean; confirmMode?: boolean;
+  /** 认领/扫码确认模式：该笼位是「本人待确认到位」的认领，高亮以便一眼找到 */
+  isMyClaimCell?: boolean;
 }) {
   const dominant = getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
   const singleStyle = useStatusStyle(dominant);
@@ -134,16 +136,31 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     {bindPending && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-green-500 shadow-[0_0_10px_rgba(34,197,94,0.35)] pointer-events-none" />}
     {/* Claim mode pool cell highlight */}
     {claimMode && isPoolCell && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.35)] pointer-events-none" />}
+    {/* 本人待确认到位的认领：琥珀环，与「未到位」徽标同色系，学生一眼定位自己的笼位 */}
+    {isMyClaimCell && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)] pointer-events-none" />}
+    {cell.claimStatus && (() => {
+      const badge: Record<string, { txt: string; cls: string; pos: string }> = {
+        locked: { txt: "未到位", cls: "bg-amber-500 text-white", pos: "left-0.5" },
+        pending_approval: { txt: "待审批", cls: "bg-blue-500 text-white", pos: "left-0.5" },
+        pending_release_approval: { txt: "待释放", cls: "bg-orange-500 text-white", pos: "left-0.5" },
+      };
+      const s = badge[cell.claimStatus!];
+      if (!s) return null;
+      return <div className={`absolute top-0.5 ${s.pos} z-20 px-1 py-px rounded text-[8px] font-bold leading-tight ${s.cls}`}>{s.txt}</div>;
+    })()}
     {isLastScanned && <div className="absolute inset-0 z-10 rounded-twin-md ring-[3px] ring-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)] pointer-events-none" />}
     {flashOverlay && <div className="absolute inset-0 z-10 rounded-twin-md ring-[4px] ring-red-500/80 shadow-[0_0_16px_rgba(239,68,68,0.5)] scan-flash-overlay" />}
-    {!cell.empty && <CageCellOverlays animalCageType={resolvedCageType} compact />}
+    {/* 待到位（locked）是「已预约(空笼盒)→已预约(饲养中)」之间的过渡态：
+        左上角已有「未到位」徽标表意，右上角的「空」类型图标此时会误导，隐藏。 */}
+    {!cell.empty && cell.claimStatus !== "locked" && cell.claimStatus !== "pending_approval" && <CageCellOverlays animalCageType={resolvedCageType} compact />}
     <div className="flex min-h-[76px] flex-col items-center justify-center gap-0 px-1 py-0.5 text-center">
       <div className="w-full font-bold text-[15px] leading-tight">{displayPosition(cell.position)}</div>
       {cell.empty
         ? <div className="text-[9px] text-[var(--twin-mute)]">空位</div>
         : <>
             {nonEmptyText(cell.projectGroup) && <div className="w-full truncate text-[10px] leading-tight">{cell.projectGroup}</div>}
-            {pi && <div className="w-full truncate text-[13px] leading-tight font-semibold text-[var(--twin-ink)]">{pi}</div>}
+            {pi && <div className="w-full truncate text-[11px] leading-tight font-semibold text-[var(--twin-ink)]">{pi}</div>}
+            {cell.experimenterName && <div className="w-full truncate text-[9px] leading-tight text-[var(--twin-ink)]">{cell.experimenterName}</div>}
             <div className="w-full text-[9px] text-[var(--twin-mute)]">{CAGE_TYPE_LABEL[resolvedCageType ?? 0] || cell.stateLabel}</div>
           </>}
     </div>

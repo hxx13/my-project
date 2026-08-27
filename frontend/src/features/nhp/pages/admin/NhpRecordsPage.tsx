@@ -10,6 +10,7 @@ import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import ContentManagerWorkbenchLayout from "@/layouts/ContentManagerWorkbenchLayout";
 import {
   createNhpRecord,
+  deleteNhpProject,
   fetchNhpProjects,
   fetchNhpRecords,
   fetchNhpSubjects,
@@ -20,7 +21,8 @@ import { lifecycleStageLabel } from "../../api/nhpSubjectBoard.api";
 import { fetchNhpTemplates, fillableFormId, isFillablePublished, type NhpTemplateListItem } from "../../api/nhpTemplate.api";
 import { animalTypeLabel } from "../../utils/nhpSubjectLabels";
 import { nhpNavState } from "../../utils/nhpAdminNav";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { appConfirm } from "@/lib/appDialog";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
 import "@/features/aup/aup.css";
 import "../../nhp.css";
@@ -46,7 +48,7 @@ export default function NhpRecordsPage() {
   const [pickFormKey, setPickFormKey] = useState(formKeyParam);
   const [creating, setCreating] = useState(false);
 
-  const projectsQuery = useQuery({ queryKey: ["nhp", "projects"], queryFn: fetchNhpProjects });
+  const projectsQuery = useQuery({ queryKey: ["nhp", "projects"], queryFn: () => fetchNhpProjects() });
   const recordsQuery = useQuery({
     queryKey: ["nhp", "records-all"],
     queryFn: () => fetchNhpRecords({ page: 1, size: 500 }),
@@ -110,6 +112,25 @@ export default function NhpRecordsPage() {
 
   const openSubjectRecords = (subjectId: number) => {
     navigate(`/content-manager/nhp-records/${subjectId}`, { state: nhpNavState(location) });
+  };
+
+  const openProject = (projectId: number) => {
+    navigate(`/content-manager/nhp-records/project/${projectId}`, { state: nhpNavState(location) });
+  };
+
+  const deleteProjectMut = useMutation({
+    mutationFn: (id: number) => deleteNhpProject(id),
+    onSuccess: () => {
+      toast.success("已删除项目");
+      void queryClient.invalidateQueries({ queryKey: ["nhp", "projects"] });
+      void queryClient.invalidateQueries({ queryKey: ["nhp", "records"] });
+    },
+    onError: (e: Error) => toast.error(e.message || "删除失败", { duration: 6000 }),
+  });
+
+  const onDeleteProject = async (p: NhpProject) => {
+    if (!(await appConfirm(`确定删除项目「${p.projectName || p.txCode || `#${p.id}`}」？`))) return;
+    deleteProjectMut.mutate(p.id);
   };
 
   const onCreateRecord = async () => {
@@ -227,7 +248,7 @@ export default function NhpRecordsPage() {
                 <div key={p.id} className="aup-doc-stack" style={{ cursor: "default" }}>
                   <div className="aup-doc">
                     <div className="aup-doc-hd">
-                      <span className="aup-doc-title">项目 #{p.id}</span>
+                      <span className="aup-doc-title">{p.projectName || `项目 #${p.id}`}</span>
                       <span className="aup-doc-no">{p.txCode ?? "待取号"}</span>
                     </div>
                     <div className="aup-doc-body">
@@ -263,6 +284,9 @@ export default function NhpRecordsPage() {
                         <span className="aup-wb-chip muted">{recordCountByProject.get(p.id) ?? 0} 条实例</span>
                       </div>
                       <div className="aup-doc-acts" style={{ gap: 6 }}>
+                        <button type="button" className="btn primary small" onClick={() => openProject(p.id)}>
+                          项目详情
+                        </button>
                         {p.donor && (
                           <button type="button" className="btn ghost small" onClick={() => openSubjectRecords(p.donor!.id)}>
                             供体实例
@@ -273,6 +297,14 @@ export default function NhpRecordsPage() {
                             受体实例
                           </button>
                         )}
+                        <button
+                          type="button"
+                          className="btn ghost small"
+                          style={{ color: "#dc2626" }}
+                          onClick={() => onDeleteProject(p)}
+                        >
+                          删除
+                        </button>
                       </div>
                     </div>
                   </div>

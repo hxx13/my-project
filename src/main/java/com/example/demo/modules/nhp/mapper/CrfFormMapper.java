@@ -76,6 +76,21 @@ public interface CrfFormMapper {
     @Select("SELECT COUNT(1) FROM crf_form WHERE code = #{code}")
     int countAnyByCode(String code);
 
+    /**
+     * 归类按 formKey 整组落库：同一 code 的所有版本行一起改，
+     * 新建版本时 folder_id 为 NULL 也不丢分组（读取侧按 code 取组内首个非空）。
+     */
+    @Update("UPDATE crf_form SET folder_id = #{folderId} WHERE code = #{code}")
+    int updateFolderByCode(@Param("code") String code, @Param("folderId") Long folderId);
+
+    /** 文件夹删除保护：统计归属该文件夹的表单（按 code 去重）。 */
+    @Select("SELECT COUNT(DISTINCT code) FROM crf_form WHERE active = 1 AND folder_id = #{folderId}")
+    int countByFolderId(Long folderId);
+
+    /** 组内首个非空归属：新建版本行 folder_id 为 NULL 时回退到同 code 的既有归属。 */
+    @Select("SELECT folder_id FROM crf_form WHERE code = #{code} AND folder_id IS NOT NULL LIMIT 1")
+    Long findFolderIdByCode(String code);
+
     @Update("UPDATE crf_form SET name = #{name}, form_type = #{formType}, description = #{description}, " +
             "event_anchor = #{eventAnchor}, frequency = #{frequency}, capture_form = #{captureForm}, " +
             "host_type = #{hostType} WHERE id = #{id}")

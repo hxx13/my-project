@@ -14,7 +14,7 @@ import {
 } from "@/api/domains/scanDelay.api";
 import { fetchAdminMaterialItems, type MaterialItem } from "@/api/domains/material.api";
 import { fetchPendingTrainingSessions, auditTrainee, scoreTrainee, type PendingTrainingSession, type Trainee } from "@/api/domains/aro-training.api";
-import { fetchPendingClaims, approveClaim, type CageClaimItem } from "@/api/domains/cageShelf.api";
+import { fetchPendingClaims, approveClaim, batchApproveClaims, type CageClaimItem } from "@/api/domains/cageShelf.api";
 import { ScanDelayAutoApprovePanel } from "@/features/scan-delay-auto-approve/ScanDelayAutoApprovePanel";
 import { MaterialAutoApprovePanel } from "@/features/material-auto-approve/MaterialAutoApprovePanel";
 import { authStorage } from "@/features/auth/authStorage";
@@ -40,6 +40,19 @@ import {
   scanDelayOptionWebColor,
   type ScanDelayOptionGroup,
 } from "@/utils/scanDelayReviewDisplay";
+import {
+  CAGE_CLAIM_DIMENSION_LABEL,
+  CAGE_CLAIM_DIMENSION_FIELDS,
+  buildGroupTree,
+  cagePositionLabel,
+  cageClaimJumpQuery,
+  countCageClaims,
+  countPendingCageClaims,
+  isPendingCageClaim,
+  collectApprovalClaimIds,
+  type CageClaimGroupDimension,
+  type CageClaimGroupNode,
+} from "@/utils/cageClaimReviewDisplay";
 
 import { appConfirm, appPrompt } from "@/lib/appDialog";
 type TabKey = "material" | "scanDelay" | "demands" | "aroTraining" | "cageClaims";
@@ -118,6 +131,11 @@ function formatSpecLabel(specJson: string | undefined | null): string {
     return Object.values(obj).join('·');
   } catch { return ''; }
 }
+
+const CLAIM_STATUS_LABEL: Record<string, string> = {
+  pending_approval: "申请审批中", pending_release_approval: "释放审批中",
+  locked: "已锁定", confirmed: "已确认", rejected: "已驳回", cancelled: "已取消", released: "已释放",
+};
 
 export default function MaterialReviewPage() {
   const role = authStorage.getRole() || "MEMBER";
@@ -216,10 +234,49 @@ export default function MaterialReviewPage() {
       approveClaim(id, decision, reason),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cage-claims", "pending"] }); },
   });
+  const [selectedClaimIds, setSelectedClaimIds] = useState<Set<number>>(new Set());
+  const toggleClaimSelect = (id: number) =>
+    setSelectedClaimIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  /** 树级多选：勾选/取消某分组下所有可批量通过的 claim */
+  const toggleGroupClaimSelect = (ids: number[]) =>
+    setSelectedClaimIds((prev) => {
+      const n = new Set(prev);
+      const allSelected = ids.length > 0 && ids.every((id) => n.has(id));
+      ids.forEach((id) => (allSelected ? n.delete(id) : n.add(id)));
+      return n;
+    });
+  const handleBatchApproveClaims = async () => {
+    const ids = Array.from(selectedClaimIds);
+    if (ids.length === 0) return;
+    try {
+      const results = await batchApproveClaims(ids);
+      const ok = results.filter((r) => r.ok).length;
+      const fail = results.length - ok;
+      toast.success(`已通过 ${ok} 条${fail > 0 ? `，失败 ${fail} 条` : ""}`);
+      setSelectedClaimIds(new Set());
+      qc.invalidateQueries({ queryKey: ["cage-claims", "pending"] });
+    } catch (e: any) {
+      toast.error(e?.message || "批量审批失败");
+    }
+  };
 
-  const CLAIM_STATUS_LABEL: Record<string, string> = {
-    pending_approval: "申请审批中", pending_release_approval: "释放审批中",
-    locked: "已锁定", confirmed: "已确认", rejected: "已驳回", cancelled: "已取消", released: "已释放",
+  // 笼位申请分组维度（三档可切换）
+  const [claimGroupDimension, setClaimGroupDimension] = useState<CageClaimGroupDimension>("space");
+  const cageClaimsPendingSection = useMemo(() => cageClaimsPending.filter(isPendingCageClaim), [cageClaimsPending]);
+  const cageClaimsDoneSection = useMemo(() => cageClaimsPending.filter((c) => !isPendingCageClaim(c)), [cageClaimsPending]);
+  const cageClaimFields = CAGE_CLAIM_DIMENSION_FIELDS[claimGroupDimension];
+  const cageClaimsPendingTree = useMemo(() => buildGroupTree(cageClaimsPendingSection, cageClaimFields), [cageClaimsPendingSection, cageClaimFields]);
+  const cageClaimsDoneTree = useMemo(() => buildGroupTree(cageClaimsDoneSection, cageClaimFields), [cageClaimsDoneSection, cageClaimFields]);
+  const handleClaimApprove = (c: CageClaimItem) => cageClaimsApproveMutation.mutate({ id: c.id, decision: "approved" });
+  const handleClaimReject = async (c: CageClaimItem) => {
+    const reason = await appPrompt("驳回理由（必填）：");
+    if (!reason) return;
+    cageClaimsApproveMutation.mutate({ id: c.id, decision: "rejected", reason });
+  };
+  const handleClaimJump = (c: CageClaimItem) => {
+    const query = cageClaimJumpQuery(c);
+    if (!query) { toast.error("该申请缺少笼位定位信息"); return; }
+    navigate(toAdminRoutePath("/admin/cage-shelves") + query);
   };
 
   const trainingTotalPending = useMemo(
@@ -518,11 +575,6 @@ export default function MaterialReviewPage() {
 
   return (
     <div className="space-y-6">
-      <AdminSubPageHeader
-        title={<span>学生审核{tab === "material" && <button type="button" onClick={() => navigate(`${toAdminRoutePath("/admin/material/audit-export")}`, { state: { returnTo: `${location.pathname}${location.search}` } })} className="ml-2 text-xs font-normal text-sky-600 hover:text-sky-700 hover:underline align-middle">申领审计导出 →</button>}</span>}
-        fallbackTo="/admin"
-        description="审核学生物资申领、延迟免冻结申请与需求建议。"
-      />
       <div className="flex flex-wrap items-center justify-between gap-1">
         <div className="flex flex-wrap gap-1">
           {([
@@ -735,6 +787,19 @@ export default function MaterialReviewPage() {
         {(tab === "material" || tab === "scanDelay") && (
           <button type="button" onClick={() => tab === "material" ? setMaterialAutoApproveOpen(true) : setAutoApproveOpen(true)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">自动审批</button>
         )}
+        {tab === "material" && (
+          <button type="button" onClick={() => navigate(`${toAdminRoutePath("/admin/material/audit-export")}`, { state: { returnTo: `${location.pathname}${location.search}` } })} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">申领审计导出 →</button>
+        )}
+        {tab === "cageClaims" && selectedClaimIds.size > 0 && (
+          <>
+            <button onClick={handleBatchApproveClaims} className="rounded-twin-sm px-2.5 py-1 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700">
+              批量通过({selectedClaimIds.size})
+            </button>
+            <button onClick={() => setSelectedClaimIds(new Set())} className="rounded-twin-sm px-2.5 py-1 text-xs font-semibold border border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">
+              取消选择
+            </button>
+          </>
+        )}
         </div>
       </div>
 
@@ -836,45 +901,49 @@ export default function MaterialReviewPage() {
         </div>
       ) : tab === "cageClaims" ? (
         <div className="space-y-4">
+          {/* 分组维度切换 */}
+          <div className="flex flex-wrap gap-1">
+            {(["space", "group", "person"] as CageClaimGroupDimension[]).map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setClaimGroupDimension(d)}
+                className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${claimGroupDimension === d ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}
+              >
+                {CAGE_CLAIM_DIMENSION_LABEL[d]}
+              </button>
+            ))}
+          </div>
           {cageClaimsLoading ? <DataSkeleton variant="card" rows={5} /> : null}
           {cageClaimsPending.length === 0 && !cageClaimsLoading ? (
             <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无待审批的笼位申请</p>
           ) : (
-            <div className="space-y-3">
-              {cageClaimsPending.map((c) => (
-                <div key={c.id} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold text-[var(--twin-ink)]">{c.claimantName}</span>
-                        <span className="text-[11px] text-[var(--twin-mute)]">{c.claimantDept}</span>
-                      </div>
-                      <div className="text-[12px] text-[var(--twin-mute)] space-y-0.5">
-                        <div>笼位 ID：{c.animalCageId}</div>
-                        <div>申请时间：{c.createdAt?.substring(0, 16)?.replace("T", " ")}</div>
-                        <div>状态：<span className="font-semibold">{CLAIM_STATUS_LABEL[c.claimStatus] || c.claimStatus}</span></div>
-                        {c.note && <div>备注：{c.note}</div>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={async () => {
-                          const reason = await appPrompt("驳回理由（必填）：");
-                          if (!reason) return;
-                          cageClaimsApproveMutation.mutate({ id: c.id, decision: "rejected", reason });
-                        }}
-                        disabled={cageClaimsApproveMutation.isPending}
-                        className="rounded-twin-md px-3 py-1.5 text-xs font-semibold border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                      >驳回</button>
-                      <button
-                        onClick={() => cageClaimsApproveMutation.mutate({ id: c.id, decision: "approved" })}
-                        disabled={cageClaimsApproveMutation.isPending}
-                        className="rounded-twin-md px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                      >通过</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-4">
+              <CageClaimSection
+                title="待审核"
+                tree={cageClaimsPendingTree}
+                count={cageClaimsPendingSection.length}
+                defaultOpen
+                selectedClaimIds={selectedClaimIds}
+                toggleClaimSelect={toggleClaimSelect}
+                toggleGroupClaimSelect={toggleGroupClaimSelect}
+                onApprove={handleClaimApprove}
+                onReject={handleClaimReject}
+                onJump={handleClaimJump}
+                actionPending={cageClaimsApproveMutation.isPending}
+              />
+              <CageClaimSection
+                title="已审核"
+                tree={cageClaimsDoneTree}
+                count={cageClaimsDoneSection.length}
+                selectedClaimIds={selectedClaimIds}
+                toggleClaimSelect={toggleClaimSelect}
+                toggleGroupClaimSelect={toggleGroupClaimSelect}
+                onApprove={handleClaimApprove}
+                onReject={handleClaimReject}
+                onJump={handleClaimJump}
+                actionPending={cageClaimsApproveMutation.isPending}
+              />
             </div>
           )}
         </div>
@@ -1046,6 +1115,211 @@ function TimeGroup({ label, count, children, defaultOpen = true, className }: { 
         {label} ({count})
       </button>
       {open && <div className={className || ""}>{children}</div>}
+    </div>
+  );
+}
+
+// ── 笼位申请：待审/已审分区 + 分组维度树 ──
+
+function CageClaimSection({
+  title,
+  tree,
+  count,
+  defaultOpen,
+  selectedClaimIds,
+  toggleClaimSelect,
+  toggleGroupClaimSelect,
+  onApprove,
+  onReject,
+  onJump,
+  actionPending,
+}: {
+  title: string;
+  tree: CageClaimGroupNode[];
+  count: number;
+  defaultOpen?: boolean;
+  selectedClaimIds: Set<number>;
+  toggleClaimSelect: (id: number) => void;
+  toggleGroupClaimSelect: (ids: number[]) => void;
+  onApprove: (c: CageClaimItem) => void;
+  onReject: (c: CageClaimItem) => void;
+  onJump: (c: CageClaimItem) => void;
+  actionPending: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+  if (count === 0) return null;
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-xs text-[var(--twin-mute)] hover:text-[var(--twin-body)] transition-colors"
+      >
+        <span className="transition-transform duration-200" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▼</span>
+        <span>{title}</span>
+        <span className="text-[11px]">{count} 条</span>
+      </button>
+      {open && (
+        <div className="space-y-1.5">
+          {tree.map((node) => (
+            <CageClaimGroupBranch
+              key={node.key}
+              node={node}
+              depth={0}
+              selectedClaimIds={selectedClaimIds}
+              toggleClaimSelect={toggleClaimSelect}
+              toggleGroupClaimSelect={toggleGroupClaimSelect}
+              onApprove={onApprove}
+              onReject={onReject}
+              onJump={onJump}
+              actionPending={actionPending}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CageClaimGroupBranch({
+  node,
+  depth,
+  selectedClaimIds,
+  toggleClaimSelect,
+  toggleGroupClaimSelect,
+  onApprove,
+  onReject,
+  onJump,
+  actionPending,
+}: {
+  node: CageClaimGroupNode;
+  depth: number;
+  selectedClaimIds: Set<number>;
+  toggleClaimSelect: (id: number) => void;
+  toggleGroupClaimSelect: (ids: number[]) => void;
+  onApprove: (c: CageClaimItem) => void;
+  onReject: (c: CageClaimItem) => void;
+  onJump: (c: CageClaimItem) => void;
+  actionPending: boolean;
+}) {
+  const [open, setOpen] = useState(true);
+  const leafProps = { selectedClaimIds, toggleClaimSelect, toggleGroupClaimSelect, onApprove, onReject, onJump, actionPending };
+  if (node.claims.length > 0) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3" style={{ paddingLeft: depth * 12 }}>
+        {node.claims.map((c) => (
+          <CageClaimCard key={c.id} claim={c} {...leafProps} />
+        ))}
+      </div>
+    );
+  }
+  const pendingCount = countPendingCageClaims(node);
+  const total = countCageClaims(node);
+  const approvalIds = collectApprovalClaimIds(node);
+  const allSelected = approvalIds.length > 0 && approvalIds.every((id) => selectedClaimIds.has(id));
+  const someSelected = approvalIds.some((id) => selectedClaimIds.has(id));
+  return (
+    <div className="space-y-1" style={{ paddingLeft: depth * 12 }}>
+      <div className="flex items-center gap-2 w-full py-0.5 hover:bg-[var(--twin-canvas-soft)] rounded-twin-sm transition-colors">
+        {approvalIds.length > 0 && (
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={(el) => { if (el) el.indeterminate = !allSelected && someSelected; }}
+            onClick={(e) => { e.stopPropagation(); toggleGroupClaimSelect(approvalIds); }}
+            onChange={() => {}}
+            className="w-3 h-3 accent-emerald-600 shrink-0 cursor-pointer"
+          />
+        )}
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="flex items-center gap-2 min-w-0 flex-1 text-left"
+        >
+          <span className={`text-[10px] transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>▶</span>
+          <span className="text-xs font-medium text-[var(--twin-body)] truncate">{node.label}</span>
+          {pendingCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium shrink-0">{pendingCount} 待审</span>
+          )}
+          <span className="text-[11px] text-[var(--twin-mute)] ml-auto shrink-0">{total} 条</span>
+        </button>
+      </div>
+      {open && (
+        <div className="space-y-1">
+          {node.children.map((ch) => (
+            <CageClaimGroupBranch key={ch.key} node={ch} depth={depth + 1} {...leafProps} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CageClaimCard({
+  claim,
+  selectedClaimIds,
+  toggleClaimSelect,
+  onApprove,
+  onReject,
+  onJump,
+  actionPending,
+}: {
+  claim: CageClaimItem;
+  selectedClaimIds: Set<number>;
+  toggleClaimSelect: (id: number) => void;
+  onApprove: (c: CageClaimItem) => void;
+  onReject: (c: CageClaimItem) => void;
+  onJump: (c: CageClaimItem) => void;
+  actionPending: boolean;
+}) {
+  const groupName = (claim as unknown as Record<string, unknown>).projectGroupName as string | undefined;
+  const posLabel = cagePositionLabel(claim.positionX, claim.positionY);
+  const canJump = claim.shelveId != null && claim.positionX != null && claim.positionY != null;
+  const isPendingApproval = claim.claimStatus === "pending_approval";
+  return (
+    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 shadow-twin-level-1">
+      <div className="flex items-start gap-3">
+        {isPendingApproval && (
+          <input type="checkbox" checked={selectedClaimIds.has(claim.id)} onChange={() => toggleClaimSelect(claim.id)} className="w-3.5 h-3.5 accent-emerald-600 shrink-0 mt-0.5" />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="text-sm font-semibold text-[var(--twin-ink)]">{claim.claimantName}</span>
+            {claim.claimantDept && <span className="text-[11px] text-[var(--twin-mute)]">{claim.claimantDept}</span>}
+            <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium bg-gray-50 text-gray-600 border-gray-200">{CLAIM_STATUS_LABEL[claim.claimStatus] || claim.claimStatus}</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-[var(--twin-mute)] mb-1">
+            {claim.shelveName && <span className="font-medium text-[var(--twin-body)]">笼架：{claim.shelveName}</span>}
+            {posLabel && <span>坐标：{posLabel}</span>}
+            {groupName && <span className="px-1.5 py-0.5 rounded-full bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]">{groupName}</span>}
+            {claim.aupNumber && <span>AUP：{claim.aupNumber}</span>}
+            <span className="text-[var(--twin-mute)]/70">ID：{claim.animalCageId}</span>
+          </div>
+          <div className="text-[11px] text-[var(--twin-mute)]">
+            申请时间：{claim.createdAt?.substring(0, 16)?.replace("T", " ") || "—"}
+            {claim.note && <span> · 备注：{claim.note}</span>}
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          {canJump && (
+            <button type="button" onClick={() => onJump(claim)} className="text-[11px] text-blue-600 hover:underline">定位</button>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onReject(claim)}
+              disabled={actionPending}
+              className="rounded-twin-md px-3 py-1.5 text-xs font-semibold border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >驳回</button>
+            <button
+              type="button"
+              onClick={() => onApprove(claim)}
+              disabled={actionPending}
+              className="rounded-twin-md px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+            >通过</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

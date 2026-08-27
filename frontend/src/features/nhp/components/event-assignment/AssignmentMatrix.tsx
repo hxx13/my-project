@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { Fragment, useMemo, useRef, useCallback, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import type { NhpTemplateListItem } from "../../api/nhpTemplate.api";
@@ -14,6 +14,8 @@ gsap.registerPlugin(useGSAP);
 interface AssignmentMatrixProps {
   visits: NhpVisit[];
   forms: NhpTemplateListItem[];
+  /** 文件夹（扁平，带缩进名），用于行分组；缺省则不分组 */
+  folders?: { id: number; name: string }[];
   assigned: Set<string>;
   stats: AssignmentMatrixStats;
   rowState: (formId: number) => AssignmentTriState;
@@ -24,9 +26,12 @@ interface AssignmentMatrixProps {
   matrixKey: string;
 }
 
+type Section = { key: string; label: string; forms: NhpTemplateListItem[] };
+
 export function AssignmentMatrix({
   visits,
   forms,
+  folders,
   assigned,
   stats,
   rowState,
@@ -38,6 +43,35 @@ export function AssignmentMatrix({
 }: AssignmentMatrixProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const sections = useMemo<Section[]>(() => {
+    if (!folders || folders.length === 0) {
+      return forms.length ? [{ key: "__all__", label: "全部表单", forms }] : [];
+    }
+    const byFolder = new Map<number, NhpTemplateListItem[]>();
+    const ungrouped: NhpTemplateListItem[] = [];
+    for (const f of forms) {
+      if (f.folderId != null) {
+        const list = byFolder.get(f.folderId) ?? [];
+        list.push(f);
+        byFolder.set(f.folderId, list);
+      } else {
+        ungrouped.push(f);
+      }
+    }
+    const out: Section[] = [];
+    for (const folder of folders) {
+      const list = byFolder.get(folder.id);
+      if (list && list.length > 0) {
+        out.push({ key: `f${folder.id}`, label: folder.name, forms: list });
+      }
+    }
+    if (ungrouped.length > 0) {
+      out.push({ key: "__ungrouped__", label: "未分类", forms: ungrouped });
+    }
+    return out;
+  }, [folders, forms]);
 
   useGSAP(
     () => {
@@ -73,6 +107,82 @@ export function AssignmentMatrix({
     );
   }, []);
 
+  const toggle = (key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const renderFormRow = (f: NhpTemplateListItem) => {
+    const meta = formRowMeta(f);
+    return (
+      <tr key={meta.formId} className="nhp-assign-row">
+        <td className="nhp-assign-row-hd">
+          <div className="nhp-assign-row-inner">
+            <TriStateCheckbox
+              state={rowState(meta.formId)}
+              onChange={() => onToggleRow(meta.formId)}
+              title="批量勾选该表单到所有事件"
+            />
+            <div className="nhp-assign-row-text">
+              <div className="nhp-assign-row-title" title={meta.title}>
+                {meta.title}
+              </div>
+              <div className="nhp-assign-row-sub">
+                <span className={`nhp-assign-kind nhp-assign-kind--${meta.kind}`}>
+                  {meta.kind === "composite" ? "组合" : "原子"}
+                </span>
+                <span className="nhp-assign-row-key">{meta.subtitle.split(" · ")[1] ?? meta.subtitle}</span>
+                {meta.hostType === "DONOR" || meta.hostType === "RECIPIENT" ? (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 6px",
+                      borderRadius: 999,
+                      background: meta.hostType === "DONOR" ? "#fff7ed" : "#ecfeff",
+                      color: meta.hostType === "DONOR" ? "#c2410c" : "#0e7490",
+                    }}
+                  >
+                    {meta.hostType === "DONOR" ? "供体载体" : "受体载体"}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </td>
+        {visits.map((v) => {
+          const k = assignmentCellKey(v.id, meta.formId);
+          const on = assigned.has(k);
+          return (
+            <td
+              key={v.id}
+              className={`nhp-assign-cell${on ? " nhp-assign-cell--on" : ""}`}
+              onClick={(e) => {
+                pulseCell(e.currentTarget, !on);
+                onToggleCell(v.id, meta.formId);
+              }}
+              role="checkbox"
+              aria-checked={on}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === " " || e.key === "Enter") {
+                  e.preventDefault();
+                  pulseCell(e.currentTarget, !on);
+                  onToggleCell(v.id, meta.formId);
+                }
+              }}
+            >
+              <span className="nhp-assign-cell-dot" aria-hidden />
+            </td>
+          );
+        })}
+      </tr>
+    );
+  };
+
   return (
     <div className="nhp-assign-matrix-wrap" ref={wrapRef}>
       <table className="nhp-assign-matrix" ref={tableRef}>
@@ -103,70 +213,32 @@ export function AssignmentMatrix({
           </tr>
         </thead>
         <tbody>
-          {forms.map((f) => {
-            const meta = formRowMeta(f);
+          {sections.map((section) => {
+            const isCollapsed = collapsed.has(section.key);
             return (
-              <tr key={meta.formId} className="nhp-assign-row">
-                <td className="nhp-assign-row-hd">
-                  <div className="nhp-assign-row-inner">
-                    <TriStateCheckbox
-                      state={rowState(meta.formId)}
-                      onChange={() => onToggleRow(meta.formId)}
-                      title="批量勾选该表单到所有事件"
-                    />
-                    <div className="nhp-assign-row-text">
-                      <div className="nhp-assign-row-title" title={meta.title}>
-                        {meta.title}
-                      </div>
-                      <div className="nhp-assign-row-sub">
-                        <span className={`nhp-assign-kind nhp-assign-kind--${meta.kind}`}>
-                          {meta.kind === "composite" ? "组合" : "原子"}
-                        </span>
-                        <span className="nhp-assign-row-key">{meta.subtitle.split(" · ")[1] ?? meta.subtitle}</span>
-                        {meta.hostType === "DONOR" || meta.hostType === "RECIPIENT" ? (
-                          <span
-                            style={{
-                              fontSize: 10,
-                              padding: "1px 6px",
-                              borderRadius: 999,
-                              background: meta.hostType === "DONOR" ? "#fff7ed" : "#ecfeff",
-                              color: meta.hostType === "DONOR" ? "#c2410c" : "#0e7490",
-                            }}
-                          >
-                            {meta.hostType === "DONOR" ? "供体载体" : "受体载体"}
-                          </span>
-                        ) : null}
-                      </div>
+              <Fragment key={section.key}>
+                <tr
+                  className="nhp-assign-folder-row"
+                  onClick={() => toggle(section.key)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === " " || e.key === "Enter") {
+                      e.preventDefault();
+                      toggle(section.key);
+                    }
+                  }}
+                >
+                  <td colSpan={visits.length + 1}>
+                    <div className="nhp-assign-folder-hd">
+                      <span className="chev">{isCollapsed ? "▸" : "▾"}</span>
+                      <span className="name">{section.label}</span>
+                      <span className="count">{section.forms.length} 表单</span>
                     </div>
-                  </div>
-                </td>
-                {visits.map((v) => {
-                  const k = assignmentCellKey(v.id, meta.formId);
-                  const on = assigned.has(k);
-                  return (
-                    <td
-                      key={v.id}
-                      className={`nhp-assign-cell${on ? " nhp-assign-cell--on" : ""}`}
-                      onClick={(e) => {
-                        pulseCell(e.currentTarget, !on);
-                        onToggleCell(v.id, meta.formId);
-                      }}
-                      role="checkbox"
-                      aria-checked={on}
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === " " || e.key === "Enter") {
-                          e.preventDefault();
-                          pulseCell(e.currentTarget, !on);
-                          onToggleCell(v.id, meta.formId);
-                        }
-                      }}
-                    >
-                      <span className="nhp-assign-cell-dot" aria-hidden />
-                    </td>
-                  );
-                })}
-              </tr>
+                  </td>
+                </tr>
+                {!isCollapsed && section.forms.map(renderFormRow)}
+              </Fragment>
             );
           })}
         </tbody>

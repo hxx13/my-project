@@ -34,8 +34,8 @@ public final class SpecialStatusComputer {
 
         List<SpecialStatusEntry> results = new ArrayList<>();
 
-        // 合笼/繁殖：closingdate 非空
-        if (isNonBlank(cageBoxVo.get("closingdate"))) {
+        // 合笼/繁殖：closingdate 非空，且 (无取消 或 取消早于合笼)。
+        if (isCohabitationActive(cageBoxVo)) {
             results.add(new SpecialStatusEntry(
                     CODE_COHABITATION, "合笼/繁殖", "cohabitation", null, null));
         }
@@ -73,6 +73,19 @@ public final class SpecialStatusComputer {
     }
 
     // ---- helpers ----
+
+    /**
+     * 合笼是否当前生效：closingdate 非空，且 (无 rescindDatetime 或 rescindDatetime 早于 closingdate)。
+     * closingdate<=rescindDatetime → 已解除（closingdate 残留）。口径与 aro_field_mapping.json 的 cohabitationActive 一致。
+     */
+    public static boolean isCohabitationActive(Map<String, Object> cageBoxVo) {
+        if (cageBoxVo == null || cageBoxVo.isEmpty()) return false;
+        Object closing = cageBoxVo.get("closingdate");
+        Object rescind = cageBoxVo.get("rescindDatetime");
+        if (!isNonBlank(closing)) return false;
+        if (!isNonBlank(rescind)) return true;
+        return String.valueOf(closing).compareTo(String.valueOf(rescind)) > 0;
+    }
 
     private static boolean isFlagOne(Object v) {
         if (v == null) {

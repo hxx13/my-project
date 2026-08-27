@@ -43,8 +43,15 @@ public class CageClaimConfigSeed implements ApplicationRunner {
             String boolOpts = "[\"true\",\"false\"]";
             def("cage_claim", "cage.claim.confirm_required", "是否需要到位确认",
                     "开启后认领需到场确认（locked），扫码确认到位后转 confirmed", "BOOLEAN",
-                    boolOpts, "false");
-            log.info("[cage-claim-config] 仅保留 confirm_required 配置，其余假配置已清理");
+                    boolOpts, "true");
+            // 默认开启到位确认：历史环境若仍停留在旧的默认 false，翻转为 true（审核通过 → locked 待确认，而非直接已到位）。
+            // 仅当该配置从未被人工改过（无 audit 记录）时翻转，避免覆盖管理员显式关闭的选择。
+            jdbc.update("UPDATE sys_system_config sc SET sc.config_value = 'true', sc.update_time = NOW() " +
+                    "WHERE sc.module = 'cage_claim' AND sc.config_key = 'cage.claim.confirm_required' " +
+                    "AND sc.config_value = 'false' " +
+                    "AND NOT EXISTS (SELECT 1 FROM sys_system_config_audit a " +
+                    "               WHERE a.module = 'cage_claim' AND a.config_key = 'cage.claim.confirm_required')");
+            log.info("[cage-claim-config] 仅保留 confirm_required 配置（默认开启到位确认），其余假配置已清理");
         } catch (Exception e) {
             log.warn("[cage-claim-config] 播种跳过: {}", e.getMessage());
         }

@@ -43,6 +43,8 @@ public class NhpRecordService {
     private final ObjectMapper objectMapper;
     private final NhpEventEngine eventEngine;
     private final CrfTransplantMapper transplantMapper;
+    private final CrfVisitMapper visitMapper;
+    private final CrfProjectVisitPlanMapper projectVisitPlanMapper;
 
     public NhpRecordService(CrfSubjectMapper subjectMapper, CrfRecordMapper recordMapper,
                             CrfRecordValueMapper valueMapper, CrfDataAuditLogMapper auditLogMapper,
@@ -50,7 +52,8 @@ public class NhpRecordService {
                             CrfCodelistItemMapper codelistItemMapper, CrfStudyMapper studyMapper,
                             CrfFormMapper formMapper, CrfCenterMapper centerMapper, NhpIdService idService,
                             NhpSnapshotService snapshotService, ObjectMapper objectMapper,
-                            NhpEventEngine eventEngine, CrfTransplantMapper transplantMapper) {
+                            NhpEventEngine eventEngine, CrfTransplantMapper transplantMapper,
+                            CrfVisitMapper visitMapper, CrfProjectVisitPlanMapper projectVisitPlanMapper) {
         this.subjectMapper = subjectMapper;
         this.recordMapper = recordMapper;
         this.valueMapper = valueMapper;
@@ -66,6 +69,8 @@ public class NhpRecordService {
         this.objectMapper = objectMapper;
         this.eventEngine = eventEngine;
         this.transplantMapper = transplantMapper;
+        this.visitMapper = visitMapper;
+        this.projectVisitPlanMapper = projectVisitPlanMapper;
     }
 
     @Transactional
@@ -123,8 +128,8 @@ public class NhpRecordService {
     }
 
     /**
-     * 登记项目：创建「项目」（crf_transplant，TX号占位）+ 供体/受体两个占位对象，挂到项目。
-     * TX号、DON/RCP 号在填 D1/D2 后由 finalizeProject / finalizeSubject 回填。
+     * 登记项目：建 crf_transplant 一行（项目计划书字段 + 自动生成项目编号）。
+     * 供体/受体对象在填 D1/D2 表单时才创建并回填；此处只建项目。
      */
     @Transactional
     public Result<Map<String, Object>> createProject(Map<String, Object> body) {
@@ -132,8 +137,15 @@ public class NhpRecordService {
         if (resolved.studyId() == null) {
             return Result.fail(400, resolved.error());
         }
-        // 仅建项目（供体/受体对象在填 D1/D2 表单时才创建并回填编号；此处区分的是项目编码）
         CrfTransplant tx = new CrfTransplant();
+        // 项目编号与实验内容无关：临时规则 NHP-{year}-{seq:4}，后续可改 pattern 无需动代码。
+        tx.setTxCode(idService.buildCode("NHP_PROJ", Map.of()));
+        tx.setProjectName(str(body == null ? null : body.get("projectName")));
+        tx.setRemark(str(body == null ? null : body.get("remark")));
+        tx.setTeamId(asLong(body == null ? null : body.get("teamId")));
+        tx.setTxOrgan(str(body == null ? null : body.get("txOrgan")));
+        tx.setProcedureType(str(body == null ? null : body.get("procedureType")));
+        tx.setTxDate(asDate(body == null ? null : body.get("txDate")));
         tx.setStatus("SCREENING");
         tx.setCreatedBy(str(body == null ? null : body.get("createdBy")));
         tx.setActive(true);
@@ -141,6 +153,45 @@ public class NhpRecordService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("project", transplantMapper.findById(tx.getId()));
         return Result.success(out);
+    }
+
+    /** 回填项目计划书字段（编号、名称、备注、团队、器官、术式、手术日）。 */
+    @Transactional
+    public Result<CrfTransplant> updateProject(Long id, Map<String, Object> body) {
+        CrfTransplant tx = transplantMapper.findById(id);
+        if (tx == null) {
+            return Result.error("项目不存在");
+        }
+        if (body == null) {
+            return Result.success(tx);
+        }
+        if (body.containsKey("projectName")) tx.setProjectName(str(body.get("projectName")));
+        if (body.containsKey("remark")) tx.setRemark(str(body.get("remark")));
+        if (body.containsKey("teamId")) tx.setTeamId(asLong(body.get("teamId")));
+        if (body.containsKey("txOrgan")) tx.setTxOrgan(str(body.get("txOrgan")));
+        if (body.containsKey("procedureType")) tx.setProcedureType(str(body.get("procedureType")));
+        if (body.containsKey("txDate")) tx.setTxDate(asDate(body.get("txDate")));
+        if (body.containsKey("currentTp")) tx.setCurrentTp(str(body.get("currentTp")));
+        if (body.containsKey("stageLock")) tx.setStageLock(asBool(body.get("stageLock")));
+        if (body.containsKey("status")) tx.setStatus(str(body.get("status")));
+        transplantMapper.update(tx);
+        return Result.success(transplantMapper.findById(id));
+    }
+
+    /** 删除空项目：有表单实例则拒绝；否则连同项目级编排一起删。 */
+    @Transactional
+    public Result<?> deleteProject(Long id) {
+        CrfTransplant tx = transplantMapper.findById(id);
+        if (tx == null) {
+            return Result.error("项目不存在");
+        }
+        List<CrfRecord> records = recordMapper.listByTransplantId(id);
+        if (records != null && !records.isEmpty()) {
+            return Result.fail(409, "项目下有 " + records.size() + " 条表单实例，无法删除");
+        }
+        projectVisitPlanMapper.deleteByTransplantId(id);
+        transplantMapper.deleteById(id);
+        return Result.success(null);
     }
 
     /** 项目管理：列出全部项目（crf_transplant），每个项目含供体/受体对象。 */
@@ -151,6 +202,13 @@ public class NhpRecordService {
             Map<String, Object> p = new LinkedHashMap<>();
             p.put("id", tx.getId());
             p.put("txCode", tx.getTxCode());
+            p.put("projectName", tx.getProjectName());
+            p.put("remark", tx.getRemark());
+            p.put("teamId", tx.getTeamId());
+            p.put("currentTp", tx.getCurrentTp());
+            p.put("stageLock", Boolean.TRUE.equals(tx.getStageLock()));
+            p.put("txOrgan", tx.getTxOrgan());
+            p.put("procedureType", tx.getProcedureType());
             p.put("status", tx.getStatus());
             p.put("lifecycleStage", tx.getLifecycleStage());
             p.put("txDate", tx.getTxDate() == null ? null : tx.getTxDate().toString());
@@ -200,15 +258,12 @@ public class NhpRecordService {
         if (form == null) {
             return Result.fail(400, "表单不存在: " + formId);
         }
-        String hostType = form.getHostType() == null ? null : form.getHostType().trim().toUpperCase();
-        if (!"DONOR".equals(hostType) && !"RECIPIENT".equals(hostType)) {
-            return Result.fail(400, "该表单无宿主对象（hostType 须为 DONOR/RECIPIENT），不能用项目化建实例");
-        }
         String formStatus = form.getStatus() == null ? "" : form.getStatus().trim().toUpperCase();
         if (!"FROZEN".equals(formStatus) && !"PUBLISHED".equals(formStatus)) {
             return Result.fail(400, "仅已发布（FROZEN/PUBLISHED）模板可创建填写实例，当前: "
                     + (formStatus.isEmpty() ? "未知" : formStatus));
         }
+        // 宿主表单（DONOR/RECIPIENT）在保存时才建对象；非宿主表单（样本/给药/随访等）为项目级，subject_id 保持 null。
         CrfRecord r = new CrfRecord();
         r.setSubjectId(null);
         r.setFormId(formId);
@@ -331,15 +386,11 @@ public class NhpRecordService {
             return Result.fail(400, "targetStage 必填");
         }
         target = target.trim().toUpperCase();
-        String current = s.getLifecycleStage() == null ? null : s.getLifecycleStage().toUpperCase();
         int ti = LIFECYCLE_ORDER.indexOf(target);
         if (ti < 0) {
             return Result.fail(400, "未知阶段: " + target);
         }
-        int ci = current == null || current.isBlank() ? -1 : LIFECYCLE_ORDER.indexOf(current);
-        if (ci >= 0 && ti <= ci) {
-            return Result.fail(400, "非法阶段推进：" + current + " → " + target);
-        }
+        // 推进仅作项目进度指示：允许任意阶段自由选择（含回退/跳级），不再校验顺序。
         subjectMapper.updateLifecycleStage(subjectId, target);
         s.setLifecycleStage(target);
         // 生命周期挪到项目：同步到 crf_transplant.lifecycle_stage（供体/受体任一推进都落在项目上）
@@ -547,6 +598,11 @@ public class NhpRecordService {
         if ("LOCKED".equals(record.getStatus())) {
             return Result.fail(400, "记录已锁定，不可修改");
         }
+        // 阶段锁定：项目 stage_lock=1 且表单不属于项目 current_tp → 仅作查看
+        Result<?> stageGate = checkStageEditable(record);
+        if (stageGate != null) {
+            return stageGate;
+        }
         int count = 0;
         if (values != null) {
             for (Map<String, Object> entry : values) {
@@ -724,6 +780,26 @@ public class NhpRecordService {
         return Result.success(out);
     }
 
+    /** 项目名下全部表单实例（含 formCode/formName，供项目文件夹详情）。 */
+    public Result<Map<String, Object>> listProjectRecords(Long projectId) {
+        List<CrfRecord> records = recordMapper.listByTransplantId(projectId);
+        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        for (CrfRecord r : records) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("record", r);
+            CrfSubject sub = r.getSubjectId() == null ? null : subjectMapper.findById(r.getSubjectId());
+            row.put("subject", sub);
+            CrfForm form = r.getFormId() == null ? null : formMapper.findById(r.getFormId());
+            row.put("formCode", form == null ? null : form.getCode());
+            row.put("formName", form == null ? null : form.getName());
+            items.add(row);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("items", items);
+        out.put("total", items.size());
+        return Result.success(out);
+    }
+
     /**
      * 快照回退：先对当前值打可逆快照，再按目标快照 data_json 覆盖 EAV，状态回 DRAFT，写审计。
      * 已 LOCKED 不可回退（需先解锁流程，本期未开放）。
@@ -829,6 +905,7 @@ public class NhpRecordService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("record", record);
         out.put("subject", subject);
+        out.put("stageEditable", checkStageEditable(record) == null);
         out.put("values", loadValueMap(recordId));
         out.put("snapshotCount", snapshotService.count(recordId));
         if (form != null) {
@@ -1164,6 +1241,34 @@ public class NhpRecordService {
         if (v == null) return null;
         if (v instanceof Number n) return n.longValue();
         try { return Long.parseLong(String.valueOf(v)); } catch (Exception e) { return null; }
+    }
+
+    /**
+     * 阶段锁定守卫：项目 stage_lock=1 且记录的表单不属于项目 current_tp → 返回 403（仅作查看）。
+     * 返回 null 表示放行。未编排到项目、或 current_tp 为空时放行。
+     */
+    private Result<?> checkStageEditable(CrfRecord record) {
+        if (record == null || record.getTransplantId() == null) {
+            return null;
+        }
+        CrfTransplant tx = transplantMapper.findById(record.getTransplantId());
+        if (tx == null || !Boolean.TRUE.equals(tx.getStageLock())) {
+            return null;
+        }
+        String currentTp = tx.getCurrentTp();
+        if (currentTp == null || currentTp.isBlank() || record.getAtomId() == null) {
+            return null;
+        }
+        CrfVisit cv = visitMapper.findByCode(currentTp);
+        if (cv == null) {
+            return null;
+        }
+        List<CrfProjectVisitPlan> plans = projectVisitPlanMapper.listByVisitId(record.getTransplantId(), cv.getId());
+        boolean belongs = plans != null && plans.stream().anyMatch(p -> record.getAtomId().equals(p.getAtomId()));
+        if (belongs) {
+            return null;
+        }
+        return Result.fail(403, "当前阶段（" + currentTp + "）不可编辑该表单，仅作查看");
     }
 
     private Integer asInt(Object v) {

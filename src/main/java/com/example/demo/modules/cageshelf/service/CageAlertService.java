@@ -232,7 +232,7 @@ public class CageAlertService {
             defs.add(makeCfg("HEALTH_ABNORMAL", "健康异常", 3));
             defs.add(makeCfg("ANIMAL_TRANSFER", "动物转移", 5));
             defs.add(makeCfg("SPECIAL_FEEDING", "需特殊饲养", 7));
-            defs.add(makeCfg("COHABITATION", "需合笼", 14));
+            defs.add(makeCfg("COHABITATION", "合笼", 14));
             for (CageAlertConfig c : defs) c.setMode(mode);
             try { configMapper.batchInsert(defs); }
             catch (Exception e) { log.warn("[cage-alert] seed insert failed (may already exist): {}", e.getMessage()); }

@@ -67,6 +67,8 @@ export interface AupListParams {
   excludeStages?: AupStage[];
   /** 课题组名称（学生端按课题组查本组的计划书） */
   projectGroupName?: string;
+  /** 部门（模糊匹配） */
+  dept?: string;
   /** 排除草稿（后台列表不显示未提交的草稿） */
   excludeDraft?: boolean;
   draftSource?: DraftSource;

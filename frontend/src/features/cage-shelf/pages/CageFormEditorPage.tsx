@@ -41,7 +41,7 @@ const CATEGORY_MAP: Record<string, string> = {
   animal_male_number: "动物信息",
   animal_female_number: "动物信息",
   animal_come_from: "动物信息",
-  cohabitation_date: "动物信息",
+  cage_use_time: "动物信息",
   needs_division: "状态标记",
   needs_special_feeding: "状态标记",
   needs_transfer: "状态标记",

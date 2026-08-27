@@ -621,7 +621,7 @@ export default function FolderTreeManager<T extends FolderTreeItem = FolderTreeI
                     setMoveTarget(null);
                   }}
                 >
-                  {f.key !== f.label ? f.key : f.label}
+                  {f.label}
                   <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--muted)" }}>
                     {countGroupItems(f)}
                   </span>

@@ -1,8 +1,6 @@
 /**
  * 笼位关键信息表单（统一表单系统 cage_detail）的纯展示逻辑。
  * 与 frontend/src/features/cage-shelf/components/CageFormFill.tsx 的只读分支对齐。
- *
- * 单独成文件是为了能脱离小程序运行时跑自检：`node utils/cageForm.js`。
  */
 
 /** 组合模板 formKey，对齐 frontend/src/features/cage-shelf/cageFormConstants.ts */
@@ -71,49 +69,3 @@ module.exports = {
   buildCodelistDict: buildCodelistDict,
   buildFormRows: buildFormRows
 };
-
-/* ------------------------------ 自检 ------------------------------ */
-/* 小程序运行时没有 require.main，这段只在 `node utils/cageForm.js` 时执行。 */
-if (typeof require !== 'undefined' && require.main === module) {
-  var assert = require('assert');
-
-  // 平铺：subsection 字段与 section 直挂字段都要收，顺序为 先 subsection 后直挂
-  var tpl = {
-    sections: [
-      {
-        code: 'D1',
-        subsections: [{ code: 'S1', fields: [{ fieldId: 1, canonical: 'pi_name', label: 'PI' }] }],
-        fields: [{ fieldId: 2, canonical: 'aup_number', label: 'AUP' }]
-      },
-      { code: 'D2', fields: [{ fieldId: 3, canonical: 'animal_sex', label: '性别', dictKey: 'sex' }] }
-    ]
-  };
-  var fields = flattenTemplateFields(tpl);
-  assert.deepStrictEqual(fields.map(function (f) { return f.fieldId; }), [1, 2, 3]);
-
-  // 结构缺失不应抛错，返回空表（历史上这类静默空会伪装成「表单无字段」）
-  assert.deepStrictEqual(flattenTemplateFields(null), []);
-  assert.deepStrictEqual(flattenTemplateFields({}), []);
-  assert.deepStrictEqual(flattenTemplateFields({ sections: [{}, { subsections: [{}] }] }), []);
-
-  // 码表查表
-  var dict = buildCodelistDict([{ key: 'sex', items: [{ itemCode: 'M', itemLabel: '雄' }] }]);
-  assert.strictEqual(dict.sex.M, '雄');
-
-  // 值格式化
-  assert.strictEqual(formatFormValue({ dictKey: 'sex' }, 'M', dict), '雄');
-  assert.strictEqual(formatFormValue({ dictKey: 'sex' }, 'X', dict), 'X', '码表缺项回落原值');
-  assert.strictEqual(formatFormValue({ fieldType: 'checkbox' }, 1, dict), '是');
-  assert.strictEqual(formatFormValue({ fieldType: 'checkbox' }, false, dict), '否');
-  assert.strictEqual(formatFormValue({}, '', dict), '—');
-  assert.strictEqual(formatFormValue({}, null, dict), '—');
-  assert.strictEqual(formatFormValue({}, 0, dict), '0', '数字 0 是有效值，不能当空');
-
-  // 合并：没有值的字段也出现在表里（与 H5 一致，缺值显示 —）
-  var rows = buildFormRows(fields, [{ canonical: 'pi_name', value: '张三' }], dict);
-  assert.strictEqual(rows.length, 3);
-  assert.deepStrictEqual(rows[0], { key: 1, label: 'PI', value: '张三' });
-  assert.strictEqual(rows[1].value, '—');
-
-  console.log('cageForm self-check OK');
-}

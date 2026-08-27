@@ -465,6 +465,13 @@
 }
 
 /* ---- 待审/已审子分区头 ---- */
+.cage-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 10rpx 4rpx 12rpx;
+}
+
 .status-sub-head {
   display: flex;
   align-items: center;
@@ -650,4 +657,26 @@
   display: flex;
   gap: 8rpx;
   padding: 6rpx 0 0;
+}
+
+.cage-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32rpx;
+  height: 32rpx;
+  border: 2rpx solid #cbd5e1;
+  border-radius: 6rpx;
+  font-size: 20rpx;
+  color: transparent;
+  flex-shrink: 0;
+  margin-right: 4rpx;
+}
+.cage-check--on {
+  background: #10b981;
+  border-color: #10b981;
+  color: #fff;
+}
+.cage-batch-btn {
+  margin-left: auto;
 }

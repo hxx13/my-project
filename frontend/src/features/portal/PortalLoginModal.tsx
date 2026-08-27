@@ -266,6 +266,12 @@ export function PortalLoginModal({ open, onClose }: PortalLoginModalProps) {
             </Link>
           </p>
           <p className="mt-2 text-center text-sm text-white/30">
+            已有身份但未设密码？
+            <Link to="/m/activate" onClick={onClose} state={{ from: "/" }} className="ml-1 font-medium text-white/50 hover:text-white/80">
+              激活账号
+            </Link>
+          </p>
+          <p className="mt-2 text-center text-sm text-white/30">
             <button type="button" onClick={() => setForgotMode(true)} className="font-medium text-white/50 hover:text-white/80">
               忘记密码？
             </button>

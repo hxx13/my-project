@@ -79,32 +79,9 @@ export function ensureForbidForStrategy(
   return [...actions, "forbid"];
 }
 
-/** 「验证后解禁」与「封禁天数 / 日历到期」互斥。 */
+/** 是否勾选「验证后解禁」。到期时间与验证后解禁可并存（到期后已验证者自动消弹窗）。 */
 export function actionsIncludeUnlock(actions: readonly DispositionActionCode[]): boolean {
   return actions.includes("unlock");
-}
-
-/**
- * 勾选 unlock 时清掉日历到期配置，避免与验证解禁并存。
- * - create：固定 RELATIVE + days=null
- * - edit：若正在配 RELATIVE 天数则改为 CLEAR（清除既有到期）；KEEP/CLEAR 不动
- */
-export function clearExpiryWhenUnlock(
-  expiry: ExpiryValue,
-  expiryMode: "create" | "edit" = "create"
-): ExpiryValue {
-  if (expiryMode === "create") return { mode: "RELATIVE", days: null };
-  if (expiry.mode === "RELATIVE") return { mode: "CLEAR" };
-  return expiry;
-}
-
-/** 勾选 unlock 时联动清 expiry；未勾选则原样返回。 */
-export function applyUnlockExpiryLinkage(
-  value: DispositionValue,
-  expiryMode: "create" | "edit" = "create"
-): DispositionValue {
-  if (!actionsIncludeUnlock(value.actions)) return value;
-  return { ...value, expiry: clearExpiryWhenUnlock(value.expiry, expiryMode) };
 }
 
 /** 映射到后端 disposition_type 注册表编码；unset 返回空串供 Select 占位。 */
@@ -213,8 +190,8 @@ export function toCreateDisposition(v: DispositionValue): CreateDispositionField
     interactiveUnlockOnVerify: unlock,
     interactiveChallenge: challengeOf(v),
     maxEnterSuccess: maxEnterOf(v),
-    // unlock 与日历封禁天数互斥：勾选后一律不传天数
-    expireAfterDays: unlock ? null : v.expiry.days,
+    // 到期时间与验证后解禁可并存（开单只接受 RELATIVE）
+    expireAfterDays: v.expiry.days,
     dispositionType: registryDispositionType(v),
     dispositionConfigJson: dispositionConfigJsonOf(v),
   };
@@ -225,16 +202,14 @@ export function toUpdateDisposition(v: DispositionValue): UpdateDispositionField
     throw new Error("请选择处置策略");
   }
   const unlock = actionsIncludeUnlock(v.actions);
-  // unlock + RELATIVE 天数矛盾：改为 CLEAR，避免后端同时落验证解禁与日历到期
-  const expireMode = unlock && v.expiry.mode === "RELATIVE" ? "CLEAR" : v.expiry.mode;
   return {
     forbidEnter: v.actions.includes("forbid"),
     showNoticeEveryScan: v.actions.includes("every"),
     interactiveUnlockOnVerify: unlock,
     interactiveChallenge: challengeOf(v),
     maxEnterSuccess: maxEnterOf(v),
-    expireMode,
-    expireAfterDays: unlock ? null : v.expiry.mode === "RELATIVE" ? v.expiry.days : null,
+    expireMode: v.expiry.mode,
+    expireAfterDays: v.expiry.mode === "RELATIVE" ? v.expiry.days : null,
     dispositionType: registryDispositionType(v),
     dispositionConfigJson: dispositionConfigJsonOf(v),
   };

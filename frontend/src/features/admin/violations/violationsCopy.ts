@@ -19,11 +19,6 @@ export const VIOLATION_FIELD_COPY = {
     hint: "留空 = 永久封禁，须人工解除",
     tone: "warn",
   },
-  /** 勾选「验证后解禁」时封禁天数控件禁用说明（与日历到期互斥） */
-  expireDaysWhenUnlock: {
-    label: "封禁天数",
-    hint: "已勾选验证完成后自动解除禁入，不可再配置封禁天数",
-  },
   maxEnterSuccess: { label: "进入次数上限", placeholder: "不限制" },
   challengePhrase: { label: "拼图短语", placeholder: "请输入拼图短语（必填）" },
   forbidEnter: { label: "立即禁止扫码进入" },

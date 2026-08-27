@@ -185,14 +185,14 @@ export default function CageFormFill({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1.5">
-        <span
-          className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-          style={claimed
-            ? { background: "#16a34a18", color: "#16a34a", border: "1px solid #16a34a40" }
-            : { background: "#64748b18", color: "#64748b", border: "1px solid #64748b40" }}
-        >
-          {claimed ? "已认领" : "未认领"}
-        </span>
+        {claimed && (
+          <span
+            className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+            style={{ background: "#16a34a18", color: "#16a34a", border: "1px solid #16a34a40" }}
+          >
+            已认领
+          </span>
+        )}
         {editing ? (
           <span className="text-[9px] text-[var(--twin-warning)]">编辑中 · 保存仅提交有改动的字段</span>
         ) : (

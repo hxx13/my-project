@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -96,6 +97,34 @@ public class CageOccupancyController {
         } catch (Exception e) {
             return handle(e);
         }
+    }
+
+    @PostMapping("/archive")
+    @Operation(summary = "归档：释放占用并回退为空笼盒(type2)")
+    public Result<Map<String, Object>> archive(@RequestBody(required = false) Map<String, Object> body, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireEditor(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            Long animalCageId = toLong(body == null ? null : body.get("animalCageId"));
+            return Result.success(occupancyService.archive(animalCageId, u.getId(), str(body, "reason")));
+        } catch (Exception e) {
+            return handle(e);
+        }
+    }
+
+    @GetMapping("/records")
+    @Operation(summary = "占用记录查询（view=cage 笼位视角 / view=person 个人视角）")
+    public Result<List<Map<String, Object>>> records(@RequestParam String view,
+                                                     @RequestParam(required = false) Long cageId,
+                                                     @RequestParam(required = false) Long occupantId,
+                                                     HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireEditor(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        Long id = "person".equals(view) ? occupantId : cageId;
+        if (id == null) return Result.fail(400, "缺少 cageId 或 occupantId");
+        return Result.success(occupancyService.records(view, id));
     }
 
     private static String str(Map<String, Object> body, String key) {

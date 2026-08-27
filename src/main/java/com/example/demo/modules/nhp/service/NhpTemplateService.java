@@ -141,6 +141,23 @@ public class NhpTemplateService {
         return out;
     }
 
+    /**
+     * 归类到文件夹（folderId 为 null 即移出到「未分类」）。
+     * 按 code 整组落库，同 formKey 的所有版本行归属一致。
+     */
+    @Transactional
+    public Result<?> setFolder(String formKey, Long folderId) {
+        if (formKey == null || formKey.isBlank()) {
+            return Result.fail(400, "formKey 必填");
+        }
+        CrfForm head = formMapper.findByCode(formKey.trim());
+        if (head == null) {
+            return Result.error("表单不存在: " + formKey);
+        }
+        formMapper.updateFolderByCode(head.getCode(), folderId);
+        return Result.success(toListItem(formMapper.findById(head.getId())));
+    }
+
     public Result<Object> get(String formKey) {
         CrfForm form = resolveEditableOrLatest(formKey);
         if (form == null) {
@@ -1009,6 +1026,14 @@ public class NhpTemplateService {
         }
     }
 
+    /** 归属挂在 formKey 上而非单个版本行：头行为新建版本时回退查同 code 的既有归属。 */
+    private Long resolveFolderId(CrfForm f) {
+        if (f.getFolderId() != null) {
+            return f.getFolderId();
+        }
+        return f.getCode() == null ? null : formMapper.findFolderIdByCode(f.getCode());
+    }
+
     private Map<String, Object> toListItem(CrfForm f) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("formId", f.getId());
@@ -1025,6 +1050,7 @@ public class NhpTemplateService {
         m.put("eventAnchor", f.getEventAnchor());
         m.put("frequency", f.getFrequency());
         m.put("hostType", f.getHostType());
+        m.put("folderId", resolveFolderId(f));
         // 列表头可能是更新后的草稿；附带最新已发布版，避免「看不到已发布表」
         attachPublishedMeta(m, f.getCode());
         if (isAtom(f)) {

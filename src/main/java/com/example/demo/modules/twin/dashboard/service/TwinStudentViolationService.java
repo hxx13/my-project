@@ -817,10 +817,9 @@ public class TwinStudentViolationService {
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setEnterSuccessCount(0);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
-        // 与前端一致：验证后自动解除禁入时忽略封禁天数（二者互斥）
-        if (unlockOnVerify == 1) {
-            row.setExpireAt(null);
-        } else if (expireAfterDays != null && expireAfterDays > 0) {
+        // 到期时间与「验证后解禁」可并存：到期后仅「已验证」者自动消弹窗（过期扫描撤回通知），
+        // 未验证者超期仍保持 ACTIVE 并继续展示（见 expireActivePastDue / selectActiveByTargetUserId）
+        if (expireAfterDays != null && expireAfterDays > 0) {
             row.setExpireAt(LocalDateTime.now().plusDays(expireAfterDays));
         } else {
             row.setExpireAt(null);
@@ -1300,10 +1299,8 @@ public class TwinStudentViolationService {
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
         String mode = expireMode != null ? expireMode.trim().toUpperCase() : "KEEP";
-        // 与前端一致：验证后自动解除禁入时清空 expire_at（忽略封禁天数）
-        if (unlockOnVerify == 1) {
-            row.setExpireAt(null);
-        } else if ("CLEAR".equals(mode)) {
+        // 到期时间与「验证后解禁」可并存：仅编辑显式 CLEAR 才清空（到期后已验证者自动消弹窗）
+        if ("CLEAR".equals(mode)) {
             row.setExpireAt(null);
         } else if ("RELATIVE".equals(mode) && expireAfterDays != null && expireAfterDays > 0) {
             row.setExpireAt(LocalDateTime.now().plusDays(expireAfterDays));

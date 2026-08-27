@@ -2,6 +2,10 @@ package com.example.demo.modules.cageshelf.service;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
+import com.example.demo.modules.aup.entity.AupRecord;
+import com.example.demo.modules.aup.mapper.AupRecordMapper;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
@@ -9,11 +13,17 @@ import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.ApprovalRecord;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
+import com.example.demo.modules.cageshelf.entity.CageTransferLog;
 import com.example.demo.modules.cageshelf.mapper.ApprovalRecordMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
+import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
+import com.example.demo.modules.cageshelf.mapper.CageTransferLogMapper;
 import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.identity.service.PersonIdentityService;
+import com.example.demo.modules.personnel.entity.Personnel;
+import com.example.demo.modules.personnel.service.PersonnelService;
+import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -42,6 +52,13 @@ public class CageClaimService {
     private final CageQuotaService quotaService;
     private final CageInfoValueService infoValueService;
     private final CageFormAuditService auditService;
+    private final AroPersonnelMapper aroPersonnelMapper;
+    private final AupRecordMapper aupRecordMapper;
+    private final CageTransferLogMapper transferLogMapper;
+    private final PersonnelService personnelService;
+    private final CageCellDetailService detailService;
+    private final CageAuditAssignmentService auditAssignmentService;
+    private final CageCellIndexMapper cellIndexMapper;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -52,7 +69,14 @@ public class CageClaimService {
                             UserDisplayNameService userDisplayNameService,
                             CageQuotaService quotaService,
                             CageInfoValueService infoValueService,
-                            CageFormAuditService auditService) {
+                            CageFormAuditService auditService,
+                            AroPersonnelMapper aroPersonnelMapper,
+                            AupRecordMapper aupRecordMapper,
+                            CageTransferLogMapper transferLogMapper,
+                            PersonnelService personnelService,
+                            CageCellDetailService detailService,
+                            CageAuditAssignmentService auditAssignmentService,
+                            CageCellIndexMapper cellIndexMapper) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -63,6 +87,13 @@ public class CageClaimService {
         this.quotaService = quotaService;
         this.infoValueService = infoValueService;
         this.auditService = auditService;
+        this.aroPersonnelMapper = aroPersonnelMapper;
+        this.aupRecordMapper = aupRecordMapper;
+        this.transferLogMapper = transferLogMapper;
+        this.personnelService = personnelService;
+        this.detailService = detailService;
+        this.auditAssignmentService = auditAssignmentService;
+        this.cellIndexMapper = cellIndexMapper;
     }
 
     private String displayNameOf(User user) {
@@ -71,6 +102,10 @@ public class CageClaimService {
         }
         String n = userDisplayNameService.resolveDisplayName(user.getId());
         return (n != null && !n.isBlank()) ? n : user.getId();
+    }
+
+    private String str(Object o) {
+        return o == null ? null : String.valueOf(o);
     }
 
     // ═══════════════════════════════════════════
@@ -86,18 +121,25 @@ public class CageClaimService {
         }
     }
 
-    private boolean getConfirmRequired()   { return "true".equalsIgnoreCase(getConfig("cage.claim.confirm_required", "false")); }
+    private boolean getConfirmRequired()   { return "true".equalsIgnoreCase(getConfig("cage.claim.confirm_required", "true")); }
 
     // ═══════════════════════════════════════════
     // 池查询
     // ═══════════════════════════════════════════
 
-    public List<Map<String, Object>> getPoolCells(Long shelfIndexId) {
+    public List<Map<String, Object>> getPoolCells(Long shelfIndexId, User student) {
         List<Map<String, Object>> rows = claimMapper.selectPoolCells(shelfIndexId);
+        // 申请池按当前用户的课题组过滤：高权限身份不放大可申请范围（否则越界）。
+        List<String> groups = resolveUserGroupNames(student.getId());
+        List<Map<String, Object>> out = new ArrayList<>();
         for (Map<String, Object> row : rows) {
+            String pi = row.get("projectPiName") == null ? "" : String.valueOf(row.get("projectPiName"));
+            String dept = row.get("departmentName") == null ? "" : String.valueOf(row.get("departmentName"));
+            if (!PersonnelProjectGroupUtil.cellBelongsToAnyUserGroup(groups, pi, dept)) continue;
             CageCellIndexService.stringifySnowflakeIds(row, "animalCageId", "shelveId");
+            out.add(row);
         }
-        return rows;
+        return out;
     }
 
     // ═══════════════════════════════════════════
@@ -109,18 +151,17 @@ public class CageClaimService {
         // ① FOR UPDATE 锁笼位详情（防止并发竞态）
         CageCellDetail detail = detailMapper.selectByAnimalCageIdForUpdate(animalCageId);
         if (detail == null || detail.getCageTypeCode() == null || detail.getCageTypeCode() != 2) {
-            throw new TwinBusinessException(400, "该笼位不可认领（仅已预约空笼盒可认领）");
+            throw new TwinBusinessException(400, "该笼位当前不可申请");
         }
 
-        // ①½ 配额校验：认领也受「该 AUP 可用笼位数」限制
-        Long roomId = claimMapper.selectRoomIdByShelfIndexId(shelfIndexId);
-        quotaService.assertCanAllocate(roomId, detail.getAupNumber(), 1);
+        // ①½ 课题组归属 + AUP 反查校验
+        assertClaimableByUser(student, detail);
 
         // ② FOR UPDATE 锁已有活跃认领（只锁活跃态，不锁历史）
         List<CageClaim> existing = claimMapper.selectByAnimalCageIdForUpdate(animalCageId);
         for (CageClaim c : existing) {
             if (c.isActive()) {
-                throw new TwinBusinessException(409, "该笼位已被认领");
+                throw new TwinBusinessException(409, "该笼位已被其他同学预约");
             }
         }
 
@@ -132,7 +173,7 @@ public class CageClaimService {
             try {
                 LocalDateTime last = LocalDateTime.parse(lastRejectedAt, DT_FMT);
                 if (LocalDateTime.now().isBefore(last.plusMinutes(cooldownMin))) {
-                    throw new TwinBusinessException(400, "驳回冷却中，请 " + cooldownMin + " 分钟后再试");
+                    throw new TwinBusinessException(400, "该笼位申请刚被驳回，请 " + cooldownMin + " 分钟后再试");
                 }
             } catch (Exception e) {
                 log.warn("[cage-apply] 驳回时间解析失败 animalCageId={} rejectedAt={}", animalCageId, lastRejectedAt);
@@ -140,7 +181,7 @@ public class CageClaimService {
         }
         int rejectCount = claimMapper.countRejectedByAnimalCage(animalCageId, studentId);
         if (rejectCount >= 3) {
-            throw new TwinBusinessException(400, "该笼位已被驳回 " + rejectCount + " 次，请联系管理员手动分配");
+            throw new TwinBusinessException(400, "该笼位你已被驳回 " + rejectCount + " 次，请联系管理员处理");
         }
 
         // ④ 决定初始状态（认领默认走审批流 pending_approval，仅 confirm_required 配置是否到位确认）
@@ -162,11 +203,89 @@ public class CageClaimService {
         claim.setClaimantDept(detail.getDepartmentName());
         claim.setConfirmRequired(confirmReq);
         claim.setRetryCount(0);
+        AupRecord aup = aupRecordMapper.selectByRegisterNo(detail.getAupNumber());
+        claim.setAupId(aup != null ? aup.getId() : null);
         claimMapper.insert(claim);
         infoValueService.seedFromDetail(claim.getAnimalCageId());
+        if ("confirmed".equals(initStatus)) {
+            applyOccupancy(claim);
+        }
 
         log.info("[cage-apply] student={} animalCageId={} status={} id={}", studentId, animalCageId, initStatus, claim.getId());
         return claim;
+    }
+
+    private List<String> resolveUserGroupNames(String userId) {
+        try {
+            AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
+            if (personnel == null) return List.of();
+            return PersonnelProjectGroupUtil.splitGroups(personnel.getResolvedProjectGroupNames());
+        } catch (Exception e) {
+            log.warn("[cage-claim] 解析用户课题组失败 userId={}", userId, e);
+            return List.of();
+        }
+    }
+
+    private void assertClaimableByUser(User student, CageCellDetail detail) {
+        List<String> groups = resolveUserGroupNames(student.getId());
+        if (groups.isEmpty()) {
+            throw new TwinBusinessException(400, "你还没有加入课题组，暂时无法申请笼位，请联系管理员");
+        }
+        if (detail.getAupNumber() == null || detail.getAupNumber().isBlank()) {
+            throw new TwinBusinessException(400, "该笼位尚未关联课题组或 AUP，暂时无法申请，请联系管理员");
+        }
+        if (!PersonnelProjectGroupUtil.cellBelongsToAnyUserGroup(groups, detail.getProjectPiName(), detail.getDepartmentName())) {
+            throw new TwinBusinessException(403, "该笼位不在你的课题组范围内，无法申请");
+        }
+        AupRecord aup = aupRecordMapper.selectByRegisterNo(detail.getAupNumber());
+        if (aup == null) throw new TwinBusinessException(400, "该笼位尚未关联 AUP，暂时无法申请");
+        if (aup.getProjectGroupName() != null && !aup.getProjectGroupName().isBlank()) {
+            boolean ok = false;
+            for (String g : groups) {
+                if (PersonnelProjectGroupUtil.belongsToGroup(aup.getProjectGroupName(), g)) { ok = true; break; }
+            }
+            if (!ok) throw new TwinBusinessException(403, "该笼位所属 AUP 不在你的课题组，无法申请");
+        }
+    }
+
+    /**
+     * 管理者「预定」给目标学生时的课题组/AUP 校验（与学生自己申请的 assertClaimableByUser 同规则，错误信息第三人称）。
+     * 高权限（ADMIN/SUPER_ADMIN）也不能把笼位分给不属于该笼位 AUP 课题组的人——否则是越界。
+     */
+    private void assertStudentInCageGroup(User student, CageCellDetail detail) {
+        List<String> groups = resolveUserGroupNames(student.getId());
+        if (groups.isEmpty()) {
+            throw new TwinBusinessException(400, "目标学生尚未加入课题组，无法分配该笼位");
+        }
+        if (detail.getAupNumber() == null || detail.getAupNumber().isBlank()) {
+            throw new TwinBusinessException(400, "该笼位尚未关联课题组或 AUP，无法分配");
+        }
+        if (!PersonnelProjectGroupUtil.cellBelongsToAnyUserGroup(groups, detail.getProjectPiName(), detail.getDepartmentName())) {
+            throw new TwinBusinessException(403, "目标学生不在该笼位的课题组范围内，无法分配");
+        }
+        AupRecord aup = aupRecordMapper.selectByRegisterNo(detail.getAupNumber());
+        if (aup != null && aup.getProjectGroupName() != null && !aup.getProjectGroupName().isBlank()) {
+            boolean ok = false;
+            for (String g : groups) {
+                if (PersonnelProjectGroupUtil.belongsToGroup(aup.getProjectGroupName(), g)) { ok = true; break; }
+            }
+            if (!ok) throw new TwinBusinessException(403, "该笼位所属 AUP 不在目标学生的课题组，无法分配");
+        }
+    }
+
+    private void applyOccupancy(CageClaim claim) {
+        Long cageId = claim.getAnimalCageId();
+        if (cageId == null) return;
+        // 状态是表外固定字段：cage_cell_detail.cage_type_code 2→3
+        CageCellDetail d = detailMapper.selectByAnimalCageId(cageId);
+        if (d != null) {
+            d.setCageTypeCode(3);
+            detailMapper.batchUpsert(List.of(d));
+        }
+        // 占用者（实验员）是表内表单字段：写 cage_info_value.experimenter_name
+        if (claim.getClaimantName() != null && !claim.getClaimantName().isBlank()) {
+            infoValueService.syncFromMapped(cageId, Map.of("experimenter_name", claim.getClaimantName()));
+        }
     }
 
     // ═══════════════════════════════════════════
@@ -212,6 +331,7 @@ public class CageClaimService {
         claim.setClaimStatus("confirmed");
         claim.setConfirmedAt(DT_FMT.format(LocalDateTime.now()));
         claimMapper.update(claim);
+        applyOccupancy(claim);
 
         log.info("[cage-apply] confirm student={} claimId={} animalCageId={}", student.getId(), claimId, claim.getAnimalCageId());
         return claim;
@@ -360,6 +480,22 @@ public class CageClaimService {
         mother.setNote("分笼归档" + (reason != null ? "：" + reason : ""));
         claimMapper.update(mother);
 
+        // 分笼日志：为每个子笼写一条 cage_transfer_log
+        Personnel occ = personnelService.resolveByAccount(mother.getClaimantId());
+        Personnel op = personnelService.resolveByAccount(student.getId());
+        for (Long targetId : targets) {
+            CageTransferLog tl = new CageTransferLog();
+            tl.setEventType("divide");
+            tl.setOccupantId(occ != null ? occ.getId() : null);
+            tl.setOccupantName(mother.getClaimantName());
+            tl.setFromAnimalCageId(mother.getAnimalCageId());
+            tl.setToAnimalCageId(targetId);
+            tl.setOperatorId(op != null ? op.getId() : null);
+            tl.setOperatorName(displayNameOf(student));
+            tl.setReason(reason);
+            transferLogMapper.insert(tl);
+        }
+
         log.info("[cage-apply] divide motherClaimId={} animalCageId={} children={}",
                 mother.getId(), mother.getAnimalCageId(), childIds);
         return mother;
@@ -383,8 +519,17 @@ public class CageClaimService {
         }
 
         boolean isAdmin = approver.getRole() != null && approver.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        // 审核人归属校验：ADMIN/PI 放行（既有口径），否则须配置了该笼位所在楼层/房间
+        boolean hasReviewScope = false;
         if (!isAdmin && !personIdentityService.isPi(approver.getId())) {
-            throw new TwinBusinessException(403, "无审批权限（仅管理员或组长）");
+            Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(claim.getAnimalCageId());
+            hasReviewScope = auditAssignmentService.canReview(approver,
+                    loc == null ? null : str(loc.get("roomId")),
+                    loc == null ? null : str(loc.get("floorId")),
+                    loc == null ? null : str(loc.get("campusId")));
+            if (!hasReviewScope) {
+                throw new TwinBusinessException(403, "非该楼层/房间审核人，无法审批");
+            }
         }
 
         if ("rejected".equals(decision)) {
@@ -405,7 +550,10 @@ public class CageClaimService {
             if (isClaimApproval) {
                 boolean confirmReq = Boolean.TRUE.equals(claim.getConfirmRequired());
                 claim.setClaimStatus(confirmReq ? "locked" : "confirmed");
-                if (!confirmReq) claim.setConfirmedAt(DT_FMT.format(LocalDateTime.now()));
+                if (!confirmReq) {
+                    claim.setConfirmedAt(DT_FMT.format(LocalDateTime.now()));
+                    applyOccupancy(claim);
+                }
             } else {
                 // 释放审批通过
                 claim.setClaimStatus("released");
@@ -430,6 +578,69 @@ public class CageClaimService {
         return claim;
     }
 
+    @Transactional
+    public CageClaim confirmOnBehalf(User operator, Long claimId) {
+        boolean isAdmin = operator.getRole() != null && operator.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        if (!isAdmin && !personIdentityService.isBreedingGroupLeader(operator.getId())) {
+            throw new TwinBusinessException(403, "无代确认权限（仅管理员或饲养组长）");
+        }
+        CageClaim claim = claimMapper.selectByIdForUpdate(claimId);
+        if (claim == null) throw new TwinBusinessException(404, "认领记录不存在");
+        if ("confirmed".equals(claim.getClaimStatus())) return claim;
+        if (!"locked".equals(claim.getClaimStatus())) throw new TwinBusinessException(400, "当前状态不可确认");
+        claim.setClaimStatus("confirmed");
+        claim.setConfirmedAt(DT_FMT.format(LocalDateTime.now()));
+        claimMapper.update(claim);
+        applyOccupancy(claim);
+        ApprovalRecord ar = new ApprovalRecord();
+        ar.setTargetType("cage_confirm");
+        ar.setTargetId(claimId);
+        ar.setApproverId(operator.getId());
+        ar.setApproverName(displayNameOf(operator));
+        ar.setApproverRole(operator.getRole() != null ? operator.getRole().name() : "UNKNOWN");
+        ar.setDecision("confirmed");
+        approvalMapper.insert(ar);
+        return claim;
+    }
+
+    @Transactional
+    public List<Map<String, Object>> batchApprove(User approver, List<Long> ids) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Long id : ids) {
+            try {
+                CageClaim c = approve(approver, id, "approved", null);
+                out.add(Map.of("id", id, "ok", true, "status", c.getClaimStatus()));
+            } catch (Exception e) {
+                out.add(Map.of("id", id, "ok", false, "error", e.getMessage() == null ? "审批失败" : e.getMessage()));
+            }
+        }
+        return out;
+    }
+
+    /** 手动修正历史 confirmed 认领：笼位 2→3 + 写占用者。返回修正条数。 */
+    @Transactional
+    public int reconcileConfirmedOccupancy() {
+        List<CageClaim> claims = claimMapper.selectByStatus("confirmed");
+        int fixed = 0;
+        for (CageClaim claim : claims) {
+            Long cageId = claim.getAnimalCageId();
+            if (cageId == null) continue;
+            CageCellDetail d = detailMapper.selectByAnimalCageId(cageId);
+            if (d != null && d.getCageTypeCode() != null && d.getCageTypeCode() == 3) continue;
+            if (d == null) {
+                d = new CageCellDetail();
+                d.setAnimalCageId(cageId);
+            }
+            d.setCageTypeCode(3);
+            detailMapper.batchUpsert(List.of(d));
+            if (claim.getClaimantName() != null && !claim.getClaimantName().isBlank()) {
+                infoValueService.syncFromMapped(cageId, Map.of("experimenter_name", claim.getClaimantName()));
+            }
+            fixed++;
+        }
+        return fixed;
+    }
+
     // ═══════════════════════════════════════════
     // 管理端手动分配
     // ═══════════════════════════════════════════
@@ -452,6 +663,9 @@ public class CageClaimService {
         User student = userMapper.findById(studentUserId);
         if (student == null) throw new TwinBusinessException(400, "目标学生不存在");
 
+        // 越界防护：管理者不能把笼位分给不属于该笼位 AUP 课题组的人
+        assertStudentInCageGroup(student, detail);
+
         CageClaim claim = new CageClaim();
         claim.setAnimalCageId(animalCageId);
         claim.setClaimStatus("locked");
@@ -471,14 +685,59 @@ public class CageClaimService {
         return claim;
     }
 
+    @Transactional
+    public List<Map<String, Object>> assignBatch(User admin, List<Long> animalCageIds, String studentUserId) {
+        User student = userMapper.findById(studentUserId);
+        if (student == null) throw new TwinBusinessException(400, "目标学生不存在");
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Long cageId : animalCageIds) {
+            try {
+                CageCellDetail locked = detailMapper.selectByAnimalCageIdForUpdate(cageId);
+                if (locked == null || locked.getCageTypeCode() == null || locked.getCageTypeCode() != 2) {
+                    throw new TwinBusinessException(400, "该笼位不可认领");
+                }
+                // 越界防护：逐个笼位校验目标学生是否属于其 AUP 课题组
+                assertStudentInCageGroup(student, locked);
+                List<CageClaim> existing = claimMapper.selectByAnimalCageIdForUpdate(cageId);
+                for (CageClaim c : existing) if (c.isActive()) throw new TwinBusinessException(409, "该笼位已被认领");
+                CageClaim claim = new CageClaim();
+                claim.setAnimalCageId(cageId);
+                claim.setClaimStatus("locked");
+                claim.setClaimantId(studentUserId);
+                claim.setClaimantName(displayNameOf(student));
+                claim.setClaimantDept(locked.getDepartmentName());
+                claim.setAupId(locked.getAupId());
+                claim.setAssignerId(admin.getId());
+                claim.setAssignerName(displayNameOf(admin));
+                claim.setConfirmRequired(getConfirmRequired());
+                claim.setRetryCount(0);
+                claim.setNote("管理员认领");
+                claimMapper.insert(claim);
+                if (claim.getClaimantName() != null && !claim.getClaimantName().isBlank()) {
+                    infoValueService.syncFromMapped(cageId, Map.of("experimenter_name", claim.getClaimantName()));
+                }
+                infoValueService.seedFromDetail(cageId);
+                out.add(Map.of("animalCageId", cageId, "ok", true, "claimId", claim.getId()));
+            } catch (Exception e) {
+                out.add(Map.of("animalCageId", cageId, "ok", false, "error", e.getMessage() == null ? "认领失败" : e.getMessage()));
+            }
+        }
+        return out;
+    }
+
     // ═══════════════════════════════════════════
     // 查询
     // ═══════════════════════════════════════════
 
     public CageClaim getById(Long id) { return claimMapper.selectById(id); }
 
-    public List<CageClaim> getMyClaims(String studentId, String status) {
-        return claimMapper.selectByClaimantId(studentId, status);
+    public List<Map<String, Object>> getMyClaims(String studentId, String status) {
+        List<Map<String, Object>> rows = claimMapper.selectMyEnriched(studentId, status);
+        for (Map<String, Object> row : rows) {
+            if (row.get("animalCageId") != null) row.put("animalCageId", String.valueOf(row.get("animalCageId")));
+            if (row.get("shelveId") != null) row.put("shelveId", String.valueOf(row.get("shelveId")));
+        }
+        return rows;
     }
 
     public Map<String, Object> getPendingList(String status, String keyword, int page, int pageSize) {
@@ -489,6 +748,23 @@ public class CageClaimService {
             "page", page,
             "pageSize", pageSize
         );
+    }
+
+    /** 待审数（按审核人过滤）：ADMIN/SUPER_ADMIN 全量；否则只数其负责楼层/房间内的待审。 */
+    public int countPendingForReviewer(User reviewer) {
+        List<Map<String, Object>> pending = claimMapper.selectPending(null, null, 0, 100000);
+        if (pending.isEmpty()) return 0;
+        boolean isAdmin = reviewer != null && reviewer.getRole() != null
+                && reviewer.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        if (isAdmin) return pending.size();
+        int count = 0;
+        for (Map<String, Object> c : pending) {
+            if (auditAssignmentService.canReview(reviewer,
+                    str(c.get("roomId")), str(c.get("floorId")), str(c.get("campusId")))) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public List<ApprovalRecord> getApprovalHistory(Long claimId) {

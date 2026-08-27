@@ -244,7 +244,17 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
             const isOpen = activeDropdown === entry.label;
             return (
               <div key={entry.label} className="relative" onMouseEnter={() => hasKids && hoverIn(entry.label)} onMouseLeave={() => hasKids && hoverOut()}>
-                <button type="button" onClick={() => hasKids ? (isOpen ? setActiveDropdown(null) : setActiveDropdown(entry.label)) : scrollTo(entry.href, entry.route)}
+                <button type="button"
+                  onClick={() => {
+                    if (!hasKids) { scrollTo(entry.href, entry.route); return; }
+                    // 有子菜单：展开/收起由 hover 控制，点击不再 toggle（避免 hover 展开后顺手点击又关闭）。
+                    // 点击只负责跳转：有独立路由就导航，无路由（如「实验动物」）则保持展开不动作。
+                    if (entry.route) {
+                      cancelDropdownClose();
+                      setActiveDropdown(null);
+                      navigate(entry.route);
+                    }
+                  }}
                   className={cn("flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-lg transition-colors",
                     isOpen ? "text-white bg-white/10" : "text-white/60 hover:text-white/90 hover:bg-white/5")}>
                   {entry.label}{hasKids && <ChevronDown className={cn("size-3 transition", isOpen && "rotate-180")} />}

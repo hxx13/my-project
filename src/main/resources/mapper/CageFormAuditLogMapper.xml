@@ -98,4 +98,14 @@
         GROUP BY entity
         ORDER BY cnt DESC
     </select>
+
+    <select id="listByTargetId" resultMap="CageFormAuditLogMap">
+        SELECT *
+        FROM cage_form_audit_log
+        WHERE target_id = #{targetId}
+        <if test="category != null and category != ''">
+            AND category = #{category}
+        </if>
+        ORDER BY created_at ASC, id ASC
+    </select>
 </mapper>

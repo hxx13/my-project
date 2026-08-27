@@ -38,6 +38,8 @@ class NhpRecordServiceTest {
     @Mock private NhpSnapshotService snapshotService;
     @Mock private NhpEventEngine eventEngine;
     @Mock private CrfTransplantMapper transplantMapper;
+    @Mock private CrfVisitMapper visitMapper;
+    @Mock private CrfProjectVisitPlanMapper projectVisitPlanMapper;
 
     private NhpRecordService service;
 
@@ -46,7 +48,8 @@ class NhpRecordServiceTest {
         service = new NhpRecordService(
                 subjectMapper, recordMapper, valueMapper, auditLogMapper, signatureMapper,
                 fieldMapper, codelistItemMapper, studyMapper, formMapper, centerMapper, idService,
-                snapshotService, new ObjectMapper(), eventEngine, transplantMapper);
+                snapshotService, new ObjectMapper(), eventEngine, transplantMapper,
+                visitMapper, projectVisitPlanMapper);
     }
 
     @Test

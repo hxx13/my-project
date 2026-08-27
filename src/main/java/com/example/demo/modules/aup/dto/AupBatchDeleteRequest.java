@@ -15,6 +15,7 @@ public class AupBatchDeleteRequest {
     private String stage;
     private List<String> excludeStages;
     private String projectGroupName;
+    private String dept;
     private String draftSource;
     private Integer roundNo;
     private String submitterName;

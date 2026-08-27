@@ -105,6 +105,16 @@ export default function StudentLoginPage() {
               立即注册
             </Link>
           </p>
+          <p className="text-[var(--student-mute)]">
+            已有身份但未设密码？
+            <Link
+              to="/m/activate"
+              state={{ from: "/student/login" }}
+              className="ml-1 font-medium text-[var(--student-primary)] hover:underline"
+            >
+              激活账号
+            </Link>
+          </p>
           <Link
             to="/"
             className="text-[var(--student-mute)] hover:text-[var(--student-primary)] transition-colors"

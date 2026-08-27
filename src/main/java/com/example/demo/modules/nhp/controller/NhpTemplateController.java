@@ -32,6 +32,14 @@ public class NhpTemplateController {
         return Result.success(service.list(kind, dictKey));
     }
 
+    @PutMapping("/{formKey}/folder")
+    @Operation(summary = "归类到文件夹（body.folderId 为空即移出到未分类；按 formKey 整组落库）")
+    public Result<?> setFolder(@PathVariable String formKey, @RequestBody(required = false) Map<String, Object> body) {
+        Object raw = body == null ? null : body.get("folderId");
+        Long folderId = raw == null ? null : Long.valueOf(String.valueOf(raw).trim());
+        return service.setFolder(formKey, folderId);
+    }
+
     @GetMapping("/by-id/{formId}")
     @Operation(summary = "按 formId 取模板结构（填写实例续填用，钉住历史版本）")
     public Result<Object> getById(@PathVariable Long formId) {

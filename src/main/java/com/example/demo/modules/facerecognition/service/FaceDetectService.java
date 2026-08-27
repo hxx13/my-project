@@ -5,8 +5,6 @@ import ai.djl.modality.cv.output.DetectedObjects;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ModelZoo;
 import ai.djl.repository.zoo.ZooModel;
-import com.example.demo.common.logging.banner.LoadingSpinner;
-import ai.djl.training.util.ProgressBar;
 import com.example.demo.modules.facerecognition.djl.FaceDetectionTranslator;
 import com.example.demo.modules.facerecognition.support.PredictorPool;
 import org.slf4j.Logger;
@@ -14,7 +12,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 
 @Service
@@ -41,34 +38,32 @@ public class FaceDetectService {
         this.modelPathResolver = modelPathResolver;
     }
 
-    @PostConstruct
-    public void init() {
-        new Thread(() -> {
+    /** 懒加载：首次人脸检测时才同步加载 UltraNet 检测模型，避免每次启动白付 PyTorch 原生库加载成本 */
+    private void ensureReady() {
+        if (initialized || initError != null) {
+            return;
+        }
+        synchronized (initLock) {
+            if (initialized || initError != null) {
+                return;
+            }
             try {
-                synchronized (initLock) {
-                    String modelUrl = modelPathResolver.resolveUltraNetModel();
-                    Criteria<Image, DetectedObjects> criteria = Criteria.builder()
-                            .setTypes(Image.class, DetectedObjects.class)
-                            .optModelUrls(modelUrl)
-                            .optTranslator(FaceDetectionTranslator.ultraLightDefaults())
-                            .optEngine("PyTorch")
-                            .build();
-                    LoadingSpinner.run("人脸检测模型 (UltraNet)", () -> {
-                        try { detectModel = ModelZoo.loadModel(criteria); }
-                        catch (Exception e) { throw new RuntimeException(e); }
-                        detectorPool = new PredictorPool<>(predictorPoolSize, detectModel::newPredictor);
-                        initialized = true;
-                    });
-                }
+                String modelUrl = modelPathResolver.resolveUltraNetModel();
+                Criteria<Image, DetectedObjects> criteria = Criteria.builder()
+                        .setTypes(Image.class, DetectedObjects.class)
+                        .optModelUrls(modelUrl)
+                        .optTranslator(FaceDetectionTranslator.ultraLightDefaults())
+                        .optEngine("PyTorch")
+                        .build();
+                detectModel = ModelZoo.loadModel(criteria);
+                detectorPool = new PredictorPool<>(predictorPoolSize, detectModel::newPredictor);
+                initialized = true;
+                log.info("[FaceDetect] UltraNet 检测模型懒加载完成");
             } catch (Exception e) {
                 initError = e.getMessage();
-                log.error("[FaceDetect] 加载失败: {}", e.getMessage(), e);
-            } finally {
-                synchronized (initLock) {
-                    initLock.notifyAll();
-                }
+                log.error("[FaceDetect] UltraNet 检测模型懒加载失败: {}", e.getMessage(), e);
             }
-        }, "face-detect-loader").start();
+        }
     }
 
     @PreDestroy
@@ -86,27 +81,17 @@ public class FaceDetectService {
     }
 
     public boolean waitUntilReady(long timeoutMs) {
-        if (initialized) return true;
-        if (initError != null) return false;
-        long deadline = System.currentTimeMillis() + Math.max(0, timeoutMs);
-        synchronized (initLock) {
-            while (!initialized && initError == null && System.currentTimeMillis() < deadline) {
-                long remain = deadline - System.currentTimeMillis();
-                if (remain <= 0) break;
-                try {
-                    initLock.wait(Math.min(500, remain));
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        }
+        ensureReady();
         return initialized;
     }
 
-    /** 检测并裁剪人脸；检测器未就绪或无人脸时返回 null */
+    /** 检测并裁剪人脸；检测器未就绪或无人脸时返回 null（首次调用触发懒加载） */
     public Image detectAndCropFace(Image img) {
-        if (img == null || !initialized || detectorPool == null) {
+        if (img == null) {
+            return null;
+        }
+        ensureReady();
+        if (!initialized || detectorPool == null) {
             return null;
         }
         try {

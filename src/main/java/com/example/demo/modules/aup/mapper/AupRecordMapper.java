@@ -16,6 +16,8 @@ public interface AupRecordMapper {
 
     AupRecord selectById(@Param("id") Long id);
 
+    AupRecord selectByRegisterNo(@Param("registerNo") String registerNo);
+
     /** 审批结算用：锁定主记录行，防并发重复结算 */
     AupRecord selectForUpdateById(@Param("id") Long id);
 
@@ -71,6 +73,7 @@ public interface AupRecordMapper {
                                  @Param("excludeStage") String excludeStage,
                                  @Param("excludeStages") List<String> excludeStages,
                                  @Param("projectGroupName") String projectGroupName,
+                                 @Param("dept") String dept,
                                  @Param("excludeDraft") boolean excludeDraft,
                                  @Param("draftSource") String draftSource,
                                  @Param("roundNo") Integer roundNo,
@@ -106,6 +109,7 @@ public interface AupRecordMapper {
                   @Param("excludeStage") String excludeStage,
                   @Param("excludeStages") List<String> excludeStages,
                   @Param("projectGroupName") String projectGroupName,
+                  @Param("dept") String dept,
                   @Param("excludeDraft") boolean excludeDraft,
                   @Param("draftSource") String draftSource,
                   @Param("roundNo") Integer roundNo,

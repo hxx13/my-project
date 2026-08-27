@@ -26,3 +26,16 @@ export const FIELD_FOLDER_LABELS: FolderTreeManagerLabels = {
   folderCreateItemLabel: "新增字段",
   folderCreateFolderLabel: "新建子模块",
 };
+
+/** 表单页（表单文件夹 → 已发布表单）FolderTreeManager 文案 */
+export const FORM_FOLDER_LABELS: FolderTreeManagerLabels = {
+  createFolder: "＋ 新建文件夹",
+  renameFolder: "编辑名称",
+  deleteFolder: "删除",
+  moveItem: "移动",
+  emptyFolder: "空文件夹",
+  emptyFolderAction: "新建文件夹",
+  moveModalTitle: "移动到文件夹",
+  moveModalHint: "选择目标文件夹",
+  folderCreateFolderLabel: "新建子文件夹",
+};

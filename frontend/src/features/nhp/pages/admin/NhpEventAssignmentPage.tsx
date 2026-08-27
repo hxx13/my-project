@@ -2,27 +2,55 @@
  * NHP 表单-事件指派矩阵（对齐 REDCap "Designate Instruments for Events"）。
  * 行 = 已发布表单（原子/组合）；列 = 事件（访视时点）；格 = 是否指派。
  */
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
+import { useQuery } from "@tanstack/react-query";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import { EVENT_ASSIGNMENT_PAGE } from "../../event-assignment/eventAssignment.config";
 import { useNhpEventAssignment } from "../../hooks/useNhpEventAssignment";
 import { AssignmentMatrix } from "../../components/event-assignment/AssignmentMatrix";
 import { AssignmentStatsBar } from "../../components/event-assignment/AssignmentStatsBar";
 import { AssignmentToolbar } from "../../components/event-assignment/AssignmentToolbar";
+import { listAupFolders, type AupFolderVO } from "@/features/aup/api/aup.api";
+import { fetchNhpProjects } from "../../api/nhpRecord.api";
 import "@/features/aup/aup.css";
 import "../../nhp.css";
 
 gsap.registerPlugin(useGSAP);
 
+const NHP_FORM_OWNER = "NHP_FORM";
+
+function flattenFolders(folders: AupFolderVO[]): AupFolderVO[] {
+  const out: AupFolderVO[] = [];
+  const walk = (list: AupFolderVO[], depth: number) => {
+    for (const f of list) {
+      out.push({ ...f, name: `${"　".repeat(depth)}${f.name}` });
+      if (f.children?.length) walk(f.children, depth + 1);
+    }
+  };
+  walk(folders ?? [], 0);
+  return out;
+}
+
 export default function NhpEventAssignmentPage() {
   const goBack = useGoBack(EVENT_ASSIGNMENT_PAGE.backPath);
   const pageRef = useRef<HTMLDivElement>(null);
+  const [projectId, setProjectId] = useState<number | null>(null);
+
+  const foldersQuery = useQuery({
+    queryKey: ["aup", "folders", NHP_FORM_OWNER],
+    queryFn: () => listAupFolders(NHP_FORM_OWNER),
+  });
+
+  const projectsQuery = useQuery({
+    queryKey: ["nhp", "projects"],
+    queryFn: () => fetchNhpProjects(),
+  });
 
   const {
     visits,
-    forms,
+    forms: allForms,
     assigned,
     stats,
     isDirty,
@@ -37,7 +65,10 @@ export default function NhpEventAssignmentPage() {
     save,
     isSaving,
     lastSavedAt,
-  } = useNhpEventAssignment();
+  } = useNhpEventAssignment(projectId);
+
+  const folders = flattenFolders(foldersQuery.data ?? []);
+  const forms = allForms;
 
   const matrixKey = `${forms.length}-${visits.length}-${isLoading}`;
 
@@ -69,6 +100,21 @@ export default function NhpEventAssignmentPage() {
             </button>
             <h1>{EVENT_ASSIGNMENT_PAGE.title}</h1>
             <div className="sub">{EVENT_ASSIGNMENT_PAGE.subtitle}</div>
+            <div style={{ marginTop: 8 }}>
+              <label style={{ fontSize: 12, color: "var(--muted)", marginRight: 8 }}>配置目标</label>
+              <select
+                value={projectId == null ? "" : String(projectId)}
+                onChange={(e) => setProjectId(e.target.value ? Number(e.target.value) : null)}
+                style={{ padding: "5px 8px", fontSize: 13, borderRadius: 6, minWidth: 220 }}
+              >
+                <option value="">全局模板</option>
+                {projectsQuery.data?.map((p) => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.projectName || p.txCode || `项目 #${p.id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           {!isLoading && !isError && forms.length > 0 && <AssignmentStatsBar stats={stats} />}
         </div>
@@ -92,6 +138,7 @@ export default function NhpEventAssignmentPage() {
               <AssignmentMatrix
                 visits={visits}
                 forms={forms}
+                folders={folders}
                 assigned={assigned}
                 stats={stats}
                 rowState={rowState}

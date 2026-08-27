@@ -1,6 +1,7 @@
 /** 手机版 — 笼架 Tab（列表 → 8×10 网格页 → 笼盒详情弹窗） */
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight, LayoutGrid, Loader2, RefreshCw, Search, WifiOff, Scan, AlertCircle, Check, X as XIcon } from "lucide-react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ChevronDown, ChevronRight, LayoutGrid, Loader2, Search, WifiOff, Scan, AlertCircle, Check, ClipboardList, MapPin, X as XIcon } from "lucide-react";
+import { useMobilePullToRefresh } from "./useMobilePullToRefresh";
 import { authHttp } from "@/api/core/authHttp";
 import { cn } from "@/lib/utils";
 import type { CageShelfCell, CageShelfDetail } from "@/api/domains/cageShelf.api";
@@ -20,15 +21,24 @@ import CageCellOverlays, {
 } from "@/features/cage-shelf/components/CageCellOverlays";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { formatSpecialStatusCodesForDisplay } from "@/utils/cageSpecialStatusLabels";
-import { hasMinRole } from "@/features/auth/roleAccess";
-import { authStorage } from "@/features/auth/authStorage";
+import { isStudentAccount } from "@/features/auth/postLoginNavigation";
 import MobileSpecialStatusPanel from "./MobileSpecialStatusPanel";
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
+import ReservePersonDialog from "@/features/cage-shelf/components/ReservePersonDialog";
+import AllocDialog from "@/features/cage-shelf/components/AllocDialog";
+import CageHistoryModal from "@/features/cage-shelf/components/CageHistoryModal";
+import CageBookingPanel from "@/features/cage-shelf/components/CageBookingPanel";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
 import MobileCageCellDetailDialog from "./MobileCageCellDetailDialog";
 import MobileScanDialog from "./MobileScanDialog";
-import { fetchFullTree, fetchLocalShelfGridByShelveId, localEdit, localAnnotate, lookupCode, confirmClaim, type CodeLookupResult, type CageBoxAction } from "@/api/domains/cageShelf.api";
+import {
+  fetchFullTree, fetchLocalShelfGridByShelveId, localEdit, lookupCode, confirmClaim, adminConfirmClaim,
+  fetchAllocationAups, type AupItem, localAllocate, localCancelAllocate, assignBatchCages,
+  archiveCage, fetchBookingRooms, type BookingRoom,
+  fetchPoolCells, type PoolCell, claimCage, fetchMyClaims, type CageClaimItem, cancelClaim,
+  type CodeLookupResult, type CageBoxAction, fetchCageModeVisible,
+} from "@/api/domains/cageShelf.api";
 import toast from "react-hot-toast";
 import {
   CAGE_BOX_ACTIONS,
@@ -36,6 +46,9 @@ import {
   actionsFromFormValues,
   actionsFromCageBoxInfo,
   statusPhotoKeys,
+  allocSelectVerdict,
+  ALLOC_MIXED_KIND_HINT,
+  type AllocSelectKind,
 } from "@/features/cage-shelf/constants";
 import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
 import { buildPlaceholderGridCells } from "./mobileCageShelfGrid";
@@ -208,6 +221,9 @@ const GridCellButton = memo(function GridCellButton({
   isCached,
   isLastScanned,
   cachedActions,
+  selected,
+  isPoolCell,
+  isMyClaimCell,
 }: {
   cell: CageShelfCell;
   onSelect: () => void;
@@ -216,6 +232,10 @@ const GridCellButton = memo(function GridCellButton({
   isCached?: boolean;
   isLastScanned?: boolean;
   cachedActions?: Set<CageBoxAction>;
+  selected?: boolean;
+  isPoolCell?: boolean;
+  /** 本人待确认到位的认领笼位 */
+  isMyClaimCell?: boolean;
 }) {
   const isCrossCol = crossCol != null && cell.x === crossCol;
   const isCrossRow = crossRow != null && cell.y === crossRow;
@@ -299,6 +319,12 @@ const GridCellButton = memo(function GridCellButton({
         hit && "scale-[1.05] z-10",
         isCached && hasCacheActions && !isLastScanned && "ring-2 ring-[#d97706]/50 shadow-[0_0_4px_rgba(217,119,6,0.15)]",
         isInCross && !hit && "ring-2 ring-[#ac1736]/40 shadow-[0_0_4px_rgba(172,23,54,0.1)]",
+        // 选中态（分配/认领/申请勾选）
+        selected && "ring-2 ring-blue-500/80 shadow-[0_0_4px_rgba(59,130,246,0.25)]",
+        // 申请模式：池内可用笼位（未选中时绿色描边提示）
+        isPoolCell && !selected && "ring-2 ring-emerald-400/70 shadow-[0_0_4px_rgba(52,211,153,0.2)]",
+        // 确认模式：本人待确认到位的笼位（琥珀环，与「未到位」徽标同色系）
+        isMyClaimCell && !selected && "ring-2 ring-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.35)]",
       )}
       style={isEmpty
         ? (isInCross ? { backgroundColor: "rgba(172,23,54,0.1)" } : undefined)
@@ -315,16 +341,45 @@ const GridCellButton = memo(function GridCellButton({
       onClick={isEmpty ? undefined : onSelect}
       title={isEmpty ? displayPosition(cell.position) : tooltip}
     >
-      {!isEmpty && <CageCellOverlays animalCageType={cell.animalCageType} compact />}
+      {/* 待到位（locked）过渡态：左上角已有「未到位」徽标，右上角「空」图标会误导，隐藏 */}
+      {!isEmpty && cell.claimStatus !== "locked" && cell.claimStatus !== "pending_approval" && <CageCellOverlays animalCageType={cell.animalCageType} compact />}
+      {/* 认领状态徽标：语义与 CellButton.tsx 完全一致（琥珀=未到位 / 蓝=待审批 / 橙=待释放） */}
+      {cell.claimStatus && (() => {
+        const badge: Record<string, { txt: string; bg: string }> = {
+          locked: { txt: "未到位", bg: "#f59e0b" },
+          pending_approval: { txt: "待审批", bg: "#3b82f6" },
+          pending_release_approval: { txt: "待释放", bg: "#f97316" },
+        };
+        const s = badge[cell.claimStatus];
+        if (!s) return null;
+        return (
+          <div className="absolute top-0.5 left-0.5 z-20 px-1 py-px rounded text-[8px] font-bold leading-tight text-white"
+            style={{ background: s.bg }}>
+            {s.txt}
+          </div>
+        );
+      })()}
+      {selected && (
+        <div className="absolute top-0.5 right-0.5 z-20 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold"
+          style={{ background: "#3b82f6" }}>
+          <Check className="size-2.5" strokeWidth={3} />
+        </div>
+      )}
       <div className="flex flex-col items-center justify-center gap-0.5 px-0.5 py-0.5 text-center w-full h-full">
         <div className="w-full font-bold text-[10px] leading-tight">{displayPosition(cell.position)}</div>
         {isEmpty ? (
           <div className="text-[8px]">空位</div>
         ) : cell.visible !== false ? (
-          nonEmptyText(piName) && (
-            <div className="w-full truncate text-[9px] font-semibold leading-tight"
-              style={{ color: "var(--app-color-text-primary, #1e293b)" }}>{piName}</div>
-          )
+          <>
+            {nonEmptyText(piName) && (
+              <div className="w-full truncate text-[8px] leading-tight font-semibold"
+                style={{ color: "var(--app-color-text-primary, #1e293b)" }}>{piName}</div>
+            )}
+            {nonEmptyText(cell.experimenterName) && (
+              <div className="w-full truncate text-[7px] leading-tight"
+                style={{ color: "var(--app-color-text-primary, #1e293b)" }}>{cell.experimenterName}</div>
+            )}
+          </>
         ) : (
           <div className="text-[9px] text-[var(--student-mute)]">***</div>
         )}
@@ -345,6 +400,8 @@ function CageShelfListView({
   showSpecialStatusEntry,
   autoExpandRoomName,
   autoExpandCampusName,
+  onOpenMyClaims,
+  showMyClaimsEntry,
 }: {
   loading: boolean;
   error: string | null;
@@ -357,6 +414,8 @@ function CageShelfListView({
   showSpecialStatusEntry: boolean;
   autoExpandRoomName?: string;
   autoExpandCampusName?: string;
+  onOpenMyClaims?: () => void;
+  showMyClaimsEntry?: boolean;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCampuses, setExpandedCampuses] = useState<Record<string, boolean>>({});
@@ -412,6 +471,10 @@ function CageShelfListView({
       }
     }
   }, [autoExpandRoomName, autoExpandCampusName, campusGroups]);
+
+  // 下拉刷新：与网格页共用同一个 hook，列表页顶栏因此不再需要刷新按钮
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const listPull = useMobilePullToRefresh(async () => { onRetry(); }, listScrollRef);
 
   const toggleCampus = (key: string) => {
     setExpandedCampuses((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -469,7 +532,22 @@ function CageShelfListView({
   }
 
   return (
-    <div className="h-full overflow-y-auto" style={{ background: PAGE_BG }}>
+    <div ref={listScrollRef} className="h-full overflow-y-auto" style={{ background: PAGE_BG }}
+      onTouchStart={listPull.handlers.onTouchStart}
+      onTouchMove={listPull.handlers.onTouchMove}
+      onTouchEnd={listPull.handlers.onTouchEnd}>
+      {(listPull.indicatorVisible || listPull.refreshing) && (
+        <div className="flex items-center justify-center gap-1.5 transition-opacity"
+          style={{
+            height: listPull.refreshing ? 24 : Math.min(24, listPull.pullDistance),
+            opacity: listPull.refreshing ? 1 : 0.35 + listPull.indicatorProgress * 0.65,
+          }}>
+          <Loader2 className={`size-3.5 ${listPull.refreshing ? "animate-spin" : ""}`} style={{ color: "#969799" }} />
+          <span className="text-[10px]" style={{ color: "#969799" }}>
+            {listPull.refreshing ? "刷新中…" : listPull.indicatorProgress >= 1 ? "松开刷新" : "下拉刷新"}
+          </span>
+        </div>
+      )}
       <div className="sticky top-0 z-10 px-3 pt-2 pb-2 space-y-2" style={{ background: PAGE_BG }}>
         {/* Row 1: 计数 + 时间戳 + 特殊状态 */}
         <div className="flex items-center justify-between gap-2">
@@ -488,23 +566,42 @@ function CageShelfListView({
               </span>
             )}
           </div>
-          {showSpecialStatusEntry && (
-            <button
-              type="button"
-              onClick={onOpenSpecialStatus}
-              className="flex items-center gap-0.5 px-2 py-1.5 rounded-xl active:bg-black/5 shrink-0"
-              style={{
-                color: BRAND,
-                background: "rgba(255,255,255,0.92)",
-                border: "1px solid rgba(30,55,90,0.08)",
-                boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
-              }}
-              aria-label="特殊状态总览"
-            >
-              <AlertTriangle className="size-3.5" />
-              <span className="text-[10px] font-medium whitespace-nowrap">特殊状态</span>
-            </button>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {showMyClaimsEntry && (
+              <button
+                type="button"
+                onClick={onOpenMyClaims}
+                className="flex items-center gap-0.5 px-2 py-1.5 rounded-xl active:bg-black/5 shrink-0"
+                style={{
+                  color: BRAND,
+                  background: "rgba(255,255,255,0.92)",
+                  border: "1px solid rgba(30,55,90,0.08)",
+                  boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
+                }}
+                aria-label="我的申请"
+              >
+                <ClipboardList className="size-3.5" />
+                <span className="text-[10px] font-medium whitespace-nowrap">我的申请</span>
+              </button>
+            )}
+            {showSpecialStatusEntry && (
+              <button
+                type="button"
+                onClick={onOpenSpecialStatus}
+                className="flex items-center gap-0.5 px-2 py-1.5 rounded-xl active:bg-black/5 shrink-0"
+                style={{
+                  color: BRAND,
+                  background: "rgba(255,255,255,0.92)",
+                  border: "1px solid rgba(30,55,90,0.08)",
+                  boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
+                }}
+                aria-label="特殊状态总览"
+              >
+                <AlertTriangle className="size-3.5" />
+                <span className="text-[10px] font-medium whitespace-nowrap">特殊状态</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Row 2: 搜索框 + 展开全部 + 刷新 */}
@@ -540,19 +637,7 @@ function CageShelfListView({
           >
             {anyExpanded ? "收起全部" : "展开全部"}
           </button>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="flex items-center justify-center size-8 rounded-full shrink-0 active:bg-black/5"
-            style={{
-              background: "rgba(255,255,255,0.92)",
-              border: "1px solid rgba(30,55,90,0.08)",
-              boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
-            }}
-            aria-label="刷新笼架列表"
-          >
-            <RefreshCw className="size-3.5" style={{ color: "#969799" }} />
-          </button>
+          {/* 刷新按钮已移除，改为整页下拉刷新 */}
         </div>
       </div>
 
@@ -809,6 +894,142 @@ function CageShelfListView({
   );
 }
 
+/** 预约模式（教职工）：房间级预约面板，横向滚动承载桌面端 CageBookingPanel */
+/**
+ * 预约模式（移动端）：房间**由当前笼架所在房间直接决定**，不提供房间切换。
+ *
+ * 移动端不再渲染自己的返回按钮（返回统一由 shell MobileTopNavBar 承担，
+ * 否则同屏出现两个返回），也不再提供「同步 ARO」——同步是管理端动作，
+ * 手机上只读当前房间的预约情况。跨房间浏览如后续确有需要，再单独适配。
+ */
+function CageBookingMobileView({ initialRoomId }: { initialRoomId?: string | number }) {
+  const [rooms, setRooms] = useState<BookingRoom[]>([]);
+  const [loading, setLoading] = useState(false);
+  const roomId = String(initialRoomId ?? "");
+
+  const loadRooms = useCallback(async () => {
+    setLoading(true);
+    try { const r = await fetchBookingRooms(1, 200); setRooms(r?.data?.list ?? []); }
+    catch { setRooms([]); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadRooms(); }, [loadRooms]);
+
+  const room = useMemo(() => rooms.find((r) => String(r.roomId) === roomId) ?? null, [rooms, roomId]);
+
+  return (
+    <div className="h-full flex flex-col overflow-hidden" style={{ background: PAGE_BG }}>
+      <div className="flex-1 min-h-0 overflow-hidden px-3 py-3">
+        {loading ? (
+          <div className="flex items-center justify-center py-20"><Loader2 className="size-6 animate-spin" style={{ color: "#94a3b8" }} /></div>
+        ) : room ? (
+          <CageBookingPanel room={room} roomId={String(room.roomId)} onChanged={loadRooms} />
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+            <LayoutGrid className="size-10" style={{ color: "#c8c9cc" }} />
+            <p className="text-xs" style={{ color: "#969799" }}>当前房间暂无预约数据</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const CLAIM_STATUS_LABEL: Record<string, string> = {
+  pending_approval: "审批中", locked: "已锁定", confirmed: "已确认",
+  pending_release_approval: "释放审批中", rejected: "已驳回", cancelled: "已取消", released: "已释放",
+};
+const CLAIM_STATUS_COLOR: Record<string, string> = {
+  pending_approval: "#d97706", locked: "#0284c7", confirmed: "#16a34a",
+  pending_release_approval: "#ea580c", rejected: "#dc2626", cancelled: "#969799", released: "#969799",
+};
+
+/** 学生「我的申请」列表：无释放入口，仅 pending_approval 可取消、locked 可确认到位 */
+function MyClaimsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [list, setList] = useState<CageClaimItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const viewportHeight = useViewportHeight();
+
+  const load = useCallback(() => {
+    setLoading(true);
+    fetchMyClaims().then(setList).catch(() => setList([])).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { if (open) load(); }, [open, load]);
+
+  if (!open) return null;
+
+  // 申请项短位置：房间已在分组标题里，条目只显示笼架 + 格位
+  const claimShort = (c: CageClaimItem) => {
+    const pos = c.positionX != null && c.positionY != null ? displayPosition(`${c.positionX}-${c.positionY}`) : "";
+    return [c.shelveName, pos].filter(Boolean).join(" · ") || `笼位 #${c.animalCageId}`;
+  };
+
+  // 按 校区/房间 分组，避免平铺
+  const groups = useMemo(() => {
+    const m = new Map<string, CageClaimItem[]>();
+    for (const c of list) {
+      const key = [c.campusName, c.roomName].filter(Boolean).join(" / ") || "未指定房间";
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(c);
+    }
+    return Array.from(m.entries());
+  }, [list]);
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: "var(--z-modal, 800)", background: "rgba(0,0,0,0.45)", height: viewportHeight > 0 ? viewportHeight : "100dvh", padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 12px)" }} onClick={onClose}>
+      <div className="w-full flex flex-col rounded-2xl overflow-hidden shadow-2xl" style={{ background: "#fff", maxWidth: 400, maxHeight: "100%" }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b shrink-0" style={{ borderColor: "#ebedf0" }}>
+          <span className="text-sm font-bold" style={{ color: "#323233" }}>我的申请</span>
+          <button type="button" onClick={onClose} className="p-1 rounded-lg"><XIcon className="size-5" style={{ color: "#94a3b8" }} /></button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3">
+          {loading ? (
+            <div className="flex items-center justify-center py-16"><Loader2 className="size-6 animate-spin" style={{ color: "#94a3b8" }} /></div>
+          ) : list.length === 0 ? (
+            <div className="py-16 text-center"><p className="text-xs" style={{ color: "#969799" }}>暂无申请记录</p></div>
+          ) : groups.map(([room, items]) => (
+            <div key={room} className="mb-3">
+              <div className="flex items-center gap-1.5 px-1 pb-1.5">
+                <MapPin className="size-3" style={{ color: "#94a3b8" }} />
+                <span className="text-[11px] font-semibold" style={{ color: "#64748b" }}>{room}</span>
+                <span className="text-[10px]" style={{ color: "#c0c4cc" }}>{items.length}</span>
+              </div>
+              <div className="space-y-1.5">
+                {items.map((c) => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg border px-2.5 py-2" style={{ borderColor: "#eef0f6", background: "#fafbfc" }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[12px] font-semibold truncate" style={{ color: "#1e293b" }}>{claimShort(c)}</span>
+                        <span className="inline-flex items-center shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold text-white" style={{ background: CLAIM_STATUS_COLOR[c.claimStatus] || "#969799" }}>{CLAIM_STATUS_LABEL[c.claimStatus] || c.claimStatus}</span>
+                      </div>
+                      <div className="text-[10px] truncate" style={{ color: "#969799" }}>
+                        申请时间：{c.createdAt?.substring(0, 16)?.replace("T", " ")}
+                        {c.claimStatus === "rejected" && c.latestRejectReason ? <span style={{ color: "#dc2626" }}> · 驳回：{c.latestRejectReason}</span> : null}
+                      </div>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-1">
+                      {c.claimStatus === "pending_approval" && (
+                        <button type="button" onClick={async () => { try { await cancelClaim(c.id); load(); toast.success("已取消"); } catch (e: any) { toast.error(e?.message || "取消失败"); } }}
+                          className="rounded-md px-2 py-1 text-[10px] font-semibold border border-red-300 active:scale-95 transition" style={{ color: "#dc2626" }}>取消</button>
+                      )}
+                      {c.claimStatus === "locked" && (
+                        <button type="button" onClick={async () => { try { await confirmClaim(c.id); load(); toast.success("已确认到位"); } catch (e: any) { toast.error(e?.message || "确认失败"); } }}
+                          className="rounded-md px-2 py-1 text-[10px] font-semibold text-white active:scale-95 transition" style={{ background: BRAND }}>确认到位</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type ScanCacheEntry = {
   cell: CageShelfCell;
   code: string;
@@ -835,8 +1056,12 @@ function countTotalDiffs(cache: Map<string, ScanCacheEntry>): number {
   return n;
 }
 
-/** 三端统一的笼架模式：查看(默认) / 扫码确认 / 编辑(ADMIN+) */
-type ShelfMode = "view" | "confirm" | "edit";
+/**
+ * 三端统一的笼架模式（只分教职工/学生两个视角）。
+ * 教职工 8 模式：查看/分配/预约/编辑/扫码确认/归档/认领/记录
+ * 学生 3 模式：查看/申请/扫码确认
+ */
+type ShelfMode = "view" | "allocate" | "booking" | "edit" | "confirm" | "archive" | "reserve" | "record" | "claim";
 
 /**
  * 从 /v1/scan/lookup 结果提取坐标。
@@ -864,28 +1089,45 @@ function lookupPosition(r: CodeLookupResult): { x: number; y: number; sid: strin
   return null;
 }
 
-const MODE_ITEMS: { key: ShelfMode; label: string }[] = [
+const STAFF_MODE_ITEMS: { key: ShelfMode; label: string }[] = [
   { key: "view", label: "查看" },
-  { key: "confirm", label: "扫码确认" },
-  { key: "edit", label: "编辑" },
+  { key: "allocate", label: "分配" },
+  { key: "booking", label: "预约" },
+  { key: "edit", label: "状态" },
+  { key: "confirm", label: "确认" },
+  { key: "archive", label: "归档" },
+  { key: "reserve", label: "预定" },
+  { key: "record", label: "记录" },
+];
+
+const STUDENT_MODE_ITEMS: { key: ShelfMode; label: string }[] = [
+  { key: "view", label: "查看" },
+  { key: "claim", label: "申请预约" },
+  { key: "confirm", label: "确认" },
 ];
 
 function CageShelfGridView({
   shelf, detail, loading, error, onRetry, onCellClick,
-  canEdit, mode, onSetMode,
+  isStaffView, mode, onSetMode, visibleModes,
   scanOpen, onOpenScan, onCloseScan, onScanResult,
   scanCache, lastScannedKey, onActionSubmit, actionSubmitting,
   scanLockHighlight,
+  selectedCells, claimPoolIds, myClaimCageIds,
+  onAllocateOpen, onAllocateCancel, allocSubmitting, allocBatchKind,
+  onReserveOpen, reserveSubmitting,
+  onClaimSubmit, claimSubmitting,
 }: {
   shelf: MobileCageShelfSummary;
   detail: CageShelfDetail | null;
   loading: boolean; error: string | null;
   onRetry: () => void;
   onCellClick: (cell: CageShelfCell) => void;
-  /** ADMIN+ 才渲染「编辑」模式项；其余角色只有 查看 / 扫码确认 */
-  canEdit: boolean;
+  /** 教职工视角（8 模式）；false = 学生视角（3 模式） */
+  isStaffView: boolean;
   mode: ShelfMode;
   onSetMode: (m: ShelfMode) => void;
+  /** 后端下发的可见模式 key 列表（null=尚未拉取或失败，回退本地硬编码） */
+  visibleModes?: string[] | null;
   /** 单一常驻扫码入口，全角色可见，结果按 mode 分派 */
   scanOpen: boolean; onOpenScan: () => void; onCloseScan: () => void;
   onScanResult: (text: string) => void;
@@ -893,13 +1135,40 @@ function CageShelfGridView({
   lastScannedKey: string | null;
   onActionSubmit: () => void; actionSubmitting: boolean;
   scanLockHighlight?: { sid: string; x: number; y: number } | null;
+  /** 分配/认领/申请三模式的勾选集（key = sid:x:y） */
+  selectedCells: Set<string>;
+  /** 申请模式：池内可用笼位 animalCageId 集合 */
+  claimPoolIds: Set<string>;
+  /** 本人待确认到位的 animalCageId 集合 */
+  myClaimCageIds: Set<string>;
+  onAllocateOpen: () => void;
+  onAllocateCancel: () => void;
+  /** 分配批次动作类型：allocate=下发AUP / cancel=撤回AUP；null=未起头 */
+  allocBatchKind: AllocSelectKind | null;
+  allocSubmitting: boolean;
+  onReserveOpen: () => void;
+  reserveSubmitting: boolean;
+  onClaimSubmit: () => void;
+  claimSubmitting: boolean;
 }) {
   const cells = detail && detail.grid.length > 0 ? detail.grid : buildPlaceholderGridCells();
   const meta = detail?.shelfMeta;
-  const title = meta?.shelveName || shelf.shelveName || shelf.shelveId;
   const [legendOpen, setLegendOpen] = useState(false);
+  // 下拉刷新：复用房间页同一个 hook，取代原顶栏的刷新按钮
+  const gridScrollRef = useRef<HTMLDivElement | null>(null);
+  const pullRefresh = useMobilePullToRefresh(async () => { onRetry(); }, gridScrollRef);
   const showLegend = legendOpen;
   const editMode = mode === "edit";
+  const baseModeItems = isStaffView ? STAFF_MODE_ITEMS : STUDENT_MODE_ITEMS;
+  // 后端下发的可见模式过滤本地常量（保留后端顺序、用常量 label）；拉取失败/未返回时回退硬编码
+  const modeItems = visibleModes && visibleModes.length > 0
+    ? visibleModes
+        .map((k) => baseModeItems.find((m) => m.key === k || (k === "studentClaim" && m.key === "claim")))
+        .filter((m): m is { key: ShelfMode; label: string } => m != null)
+    : baseModeItems;
+  const isAlloc = mode === "allocate" || mode === "reserve";
+  const isClaim = mode === "claim";
+  const sid = String(detail?.shelfMeta?.shelveId ?? shelf.shelveId ?? "");
 
   // 行/列交叉定位：仅编辑模式生效
   const lc = editMode ? lastScannedKey : null;
@@ -912,33 +1181,34 @@ function CageShelfGridView({
   // 总差异数（新增 + 反选），驱动提交按钮
   const totalDiffs = countTotalDiffs(scanCache);
 
+  // 预约模式：整页替换为房间级预约面板
+  if (mode === "booking") {
+    return <CageBookingMobileView initialRoomId={(meta as any)?.roomId ?? shelf.roomId} />;
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: PAGE_BG }}>
       <style>{`@keyframes scan-flash{0%{opacity:0.2;transform:scale(0.95)}30%{opacity:0.85;transform:scale(1.03)}100%{opacity:0.35;transform:scale(1)}}.scan-flash-overlay{animation:scan-flash 0.5s ease-in-out 2;pointer-events:none}`}</style>
-      {/* ── 顶栏：始终保留扫码按钮 ── */}
-      <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b"
+      {/* ── 顶栏：单行 = 模式选择器（横向滚动）+ 操作按钮 ──
+          返回由 shell MobileTopNavBar 统管；笼架名/房间名也已在 shell 标题栏显示，
+          此处不再重复渲染标题行，把整行宽度让给 8 个模式。
+          刷新改为网格区下拉刷新，不再占一个按钮位。 */}
+      <div className="shrink-0 flex items-center gap-1.5 px-3 py-2 border-b"
         style={{ background: "rgba(255,255,255,0.92)", borderColor: "rgba(30,55,90,0.06)" }}>
-        {/* 返回由 shell MobileTopNavBar 统管，此处不再重复 */}
-        {/* 模式选择器 — 查看(默认) / 扫码确认 / 编辑(仅 ADMIN+) */}
-        <div className="flex items-center gap-0.5 shrink-0 rounded-full p-0.5"
-          style={{ background: "rgba(15,23,42,0.05)" }}>
-          {MODE_ITEMS.filter((m) => m.key !== "edit" || canEdit).map((m) => {
-            const active = mode === m.key;
-            return (
-              <button key={m.key} type="button" onClick={() => onSetMode(m.key)}
-                className="rounded-full px-2 py-1 text-[10px] font-semibold active:scale-95 transition whitespace-nowrap"
-                style={{ color: active ? "#fff" : "#64748b", background: active ? BRAND : "transparent" }}>
-                {m.label}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex-1 min-w-0 text-center">
-          <p className="text-[13px] font-bold truncate" style={{ color: "#1e293b" }}>{title}</p>
-          {meta && <p className="text-[10px] truncate" style={{ color: "#94a3b8" }}>
-            已填 {detail?.filledCells ?? 0}/{detail?.totalCells ?? 80}
-            {meta.campusName && ` · ${meta.campusName}`}{meta.roomName && ` / ${meta.roomName}`}
-          </p>}
+        <div className="flex-1 min-w-0 overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+          <div className="inline-flex items-center gap-0.5 rounded-full p-0.5"
+            style={{ background: "rgba(15,23,42,0.05)" }}>
+            {modeItems.map((m) => {
+              const active = mode === m.key;
+              return (
+                <button key={m.key} type="button" onClick={() => onSetMode(m.key)}
+                  className="rounded-full px-2 py-1 text-[10px] font-semibold active:scale-95 transition whitespace-nowrap shrink-0"
+                  style={{ color: active ? "#fff" : "#64748b", background: active ? BRAND : "transparent" }}>
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {/* 常驻扫码入口（顶栏）：全角色可见，结果按当前模式分派 */}
@@ -952,10 +1222,6 @@ function CageShelfGridView({
             className="flex items-center justify-center rounded-full w-7 h-7 active:scale-95 transition"
             style={{ color: legendOpen ? "#fff" : BRAND, background: legendOpen ? BRAND : "rgba(172,23,54,0.08)" }}
             aria-label="图例"><AlertCircle className="size-4" strokeWidth={2} /></button>
-          <button type="button" onClick={onRetry}
-            className="flex items-center justify-center rounded-full w-7 h-7 active:scale-95"
-            style={{ background: "rgba(0,0,0,0.05)" }} aria-label="刷新">
-            <RefreshCw className="size-3.5" style={{ color: "#969799" }} /></button>
           {/* 编辑模式提交（扫码入口统一走右下常驻 FAB） */}
           {editMode && totalDiffs > 0 && (
             <button type="button" disabled={actionSubmitting} onClick={onActionSubmit}
@@ -966,6 +1232,38 @@ function CageShelfGridView({
           )}
         </div>
       </div>
+
+      {/* ── 分配/认领/申请：勾选操作条 ── */}
+      {(isAlloc || isClaim) && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b overflow-x-auto" style={{ background: "rgba(255,255,255,0.6)", borderColor: "rgba(30,55,90,0.06)" }}>
+          <span className="shrink-0 text-[10px] font-medium" style={{ color: "#64748b" }}>
+            {mode === "allocate"
+              ? (allocBatchKind === "cancel" ? "勾选「空笼位」撤回 AUP" : "勾选「等待分配」笼位")
+              : mode === "reserve" ? "勾选「已预约空笼盒」笼位" : "勾选可申请笼位"} · 已选 {selectedCells.size}
+          </span>
+          {/* 按批次类型二选一：待分配→下发 AUP；已预约空笼盒→撤回 AUP 退回待分配 */}
+          {mode === "allocate" && selectedCells.size > 0 && allocBatchKind === "allocate" && (
+            <button type="button" onClick={onAllocateOpen}
+              className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition"
+              style={{ background: "#3b82f6" }}>分配选定({selectedCells.size})</button>
+          )}
+          {mode === "allocate" && selectedCells.size > 0 && allocBatchKind === "cancel" && (
+            <button type="button" onClick={onAllocateCancel} disabled={allocSubmitting}
+              className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold border active:scale-95 transition disabled:opacity-50"
+              style={{ color: "#dc2626", borderColor: "#fca5a5" }}>取消分配({selectedCells.size})</button>
+          )}
+          {mode === "reserve" && selectedCells.size > 0 && (
+            <button type="button" onClick={onReserveOpen}
+              className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition"
+              style={{ background: "#059669" }}>确认预定({selectedCells.size})</button>
+          )}
+          {isClaim && selectedCells.size > 0 && (
+            <button type="button" onClick={onClaimSubmit} disabled={claimSubmitting}
+              className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition disabled:opacity-50"
+              style={{ background: "#059669" }}>{claimSubmitting ? "提交中…" : `提交申请(${selectedCells.size})`}</button>
+          )}
+        </div>
+      )}
 
       {/* ── 编辑模式缓存预览 ── */}
       {editMode && scanCache.size > 0 && (
@@ -991,8 +1289,23 @@ function CageShelfGridView({
       {/* ── 图例 ── */}
       {showLegend && <div className="shrink-0 px-3 pt-2"><CageShelfLegend collapsed /></div>}
 
-      {/* ── 网格 ── */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-2 py-3">
+      {/* ── 网格（下拉刷新，取代原顶栏刷新按钮）── */}
+      <div ref={gridScrollRef} className="flex-1 min-h-0 overflow-y-auto px-2 py-3"
+        onTouchStart={pullRefresh.handlers.onTouchStart}
+        onTouchMove={pullRefresh.handlers.onTouchMove}
+        onTouchEnd={pullRefresh.handlers.onTouchEnd}>
+        {(pullRefresh.indicatorVisible || pullRefresh.refreshing) && (
+          <div className="flex items-center justify-center gap-1.5 pb-2 transition-opacity"
+            style={{
+              height: pullRefresh.refreshing ? 24 : Math.min(24, pullRefresh.pullDistance),
+              opacity: pullRefresh.refreshing ? 1 : 0.35 + pullRefresh.indicatorProgress * 0.65,
+            }}>
+            <Loader2 className={`size-3.5 ${pullRefresh.refreshing ? "animate-spin" : ""}`} style={{ color: "#969799" }} />
+            <span className="text-[10px]" style={{ color: "#969799" }}>
+              {pullRefresh.refreshing ? "刷新中…" : pullRefresh.indicatorProgress >= 1 ? "松开刷新" : "下拉刷新"}
+            </span>
+          </div>
+        )}
         {loading ? <div className="flex items-center justify-center py-20"><Loader2 className="size-6 animate-spin" style={{ color: "#94a3b8" }} /></div>
         : error ? <div className="flex flex-col items-center justify-center gap-3 py-16"><WifiOff className="size-10" style={{ color: "#c8c9cc" }} /><p className="text-xs text-center px-4" style={{ color: "#969799" }}>{error}</p><button type="button" onClick={onRetry} className="px-5 py-2 rounded-full text-white text-sm font-medium" style={{ background: `linear-gradient(135deg, ${BRAND}, #8B1229)` }}>重新加载</button></div>
         : <div className="rounded-xl p-1.5" style={{ background: "rgba(255,255,255,0.85)", border: "1px solid rgba(30,55,90,0.06)", boxShadow: "0 2px 8px rgba(15,23,42,0.04)" }}>
@@ -1006,6 +1319,7 @@ function CageShelfGridView({
                   scanLockHighlight.x === cell.x &&
                   scanLockHighlight.y === cell.y
                 );
+                const aid = String((cell as any).id ?? (cell as any).animalCageId ?? "");
                 return (
                   <div key={cell.position} className="relative">
                     <GridCellButton cell={cell} onSelect={() => onCellClick(cell)}
@@ -1013,6 +1327,9 @@ function CageShelfGridView({
                       isCached={cachedKeys.has(ck)}
                       isLastScanned={ck === lastScannedKey}
                       cachedActions={cacheEntry?.currentActions}
+                      selected={(isAlloc || isClaim) && selectedCells.has(`${sid}:${cell.x}:${cell.y}`)}
+                      isPoolCell={isClaim && aid !== "" && claimPoolIds.has(aid)}
+                      isMyClaimCell={aid !== "" && myClaimCageIds.has(aid)}
                     />
                     {isLockHighlight && (
                       <div className="absolute inset-0 z-10 rounded-md ring-[4px] ring-red-500/80 shadow-[0_0_16px_rgba(239,68,68,0.5)] scan-flash-overlay" />
@@ -1037,7 +1354,7 @@ function CageShelfGridView({
           boxShadow: "0 4px 16px rgba(172,23,54,0.35)",
           zIndex: 50,
         }}
-        aria-label={mode === "edit" ? "编辑扫码" : mode === "confirm" ? "扫码确认" : "扫码定位"}
+        aria-label={mode === "edit" ? "状态扫码" : mode === "confirm" ? "确认" : "扫码定位"}
       >
         <Scan className="size-6 text-white" strokeWidth={1.5} />
         {editMode && totalDiffs > 0 && (
@@ -1089,6 +1406,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   // ── 扫码缓存（支持连续扫码，统一提交） ──
   const [scanOpen, setScanOpen] = useState(false);
   const [mode, setMode] = useState<ShelfMode>("view");
+  // 后端下发的可见模式 key 列表（null=尚未拉取/失败，网格页回退本地硬编码）
+  const [visibleModes, setVisibleModes] = useState<string[] | null>(null);
   const editMode = mode === "edit";
   const [scanCache, setScanCache] = useState<Map<string, ScanCacheEntry>>(new Map());
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);  // "x:y" 刚扫的
@@ -1099,13 +1418,55 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   const [confirmSubmitting, setConfirmSubmitting] = useState(false);
   const hasChanges = countTotalDiffs(scanCache) > 0;
 
-  const staffSpecialStatusView = !!(
-    html5PrivilegeBypass ||
-    (jwtMode && hasMinRole(authStorage.getRole(), "STAFF"))
-  );
+  // ── 分配/认领（教职工）勾选集 ──
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const [aupList, setAupList] = useState<AupItem[]>([]);
+  const [allocDialogOpen, setAllocDialogOpen] = useState(false);
+  const [selectedAupId, setSelectedAupId] = useState("");
+  const [allocSubmitting, setAllocSubmitting] = useState(false);
+  const [reserveOpen, setReserveOpen] = useState(false);
+  const [reserveSubmitting, setReserveSubmitting] = useState(false);
+  // ── 归档 ──
+  const [archiveTarget, setArchiveTarget] = useState<{ animalCageId: string; positionLabel: string; occupantName?: string; projectPiName?: string; aupNumber?: string } | null>(null);
+  const [archiveSubmitting, setArchiveSubmitting] = useState(false);
+  // ── 记录 ──
+  const [recordTarget, setRecordTarget] = useState<string | null>(null);
+  // ── 学生申请 ──
+  const [poolCells, setPoolCells] = useState<Map<string, PoolCell>>(new Map());
+  const [claimSubmitting, setClaimSubmitting] = useState(false);
+  const [myClaimsOpen, setMyClaimsOpen] = useState(false);
+  /**
+   * 本人待确认到位（locked）的笼位 id 集合 —— 供确认模式高亮。
+   * 教职工看到的 locked 是全院的，不属于「自己的」，故仅学生视角加载。
+   */
+  const [myClaimCageIds, setMyClaimCageIds] = useState<Set<string>>(new Set());
+  // shelveId → cage_shelf_index.id（shelfIndexId），申请模式反查池数据用
+  const [shelfIndexIdMap, setShelfIndexIdMap] = useState<Record<string, number>>({});
 
-  /** 编辑模式仅 ADMIN+ 可见；html5PrivilegeBypass 的阈值本就是 ADMIN */
-  const canEdit = !!(html5PrivilegeBypass || hasMinRole(authStorage.getRole(), "ADMIN"));
+  /** 只分两个视角：教职工 = html5PrivilegeBypass 或非学生账号 */
+  const isStaffView = !!(html5PrivilegeBypass || !isStudentAccount());
+
+  // 拉一次后端下发的可见模式列表（身份由后端算好）；失败保留 null，网格页回退本地硬编码
+  useEffect(() => {
+    let cancelled = false;
+    fetchCageModeVisible()
+      .then((r) => { if (!cancelled && r.modes?.length) setVisibleModes(r.modes); })
+      .catch(() => { /* 回退本地硬编码 */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // 学生视角进入确认模式时拉一次「我的认领」，用于高亮本人待到位的笼位
+  useEffect(() => {
+    if (isStaffView || mode !== "confirm") { setMyClaimCageIds(new Set()); return; }
+    let cancelled = false;
+    fetchMyClaims()
+      .then((list) => {
+        if (cancelled) return;
+        setMyClaimCageIds(new Set(list.filter((c) => c.claimStatus === "locked").map((c) => String(c.animalCageId))));
+      })
+      .catch(() => { if (!cancelled) setMyClaimCageIds(new Set()); });
+    return () => { cancelled = true; };
+  }, [isStaffView, mode, detailReloadKey]);
 
   const specialStatusApiFn = useCallback(() => {
     return jwtMode
@@ -1135,6 +1496,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
 
         // 从 full-tree 构建类型计数索引（网格表兜底）
         const treeMap: Record<string, { type1: number; type2: number; type3: number; type4: number }> = {};
+        const idxMap: Record<string, number> = {};
         for (const row of treeRows) {
           if (row.shelveId) {
             treeMap[String(row.shelveId)] = {
@@ -1143,8 +1505,10 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               type3: Number((row as any).type3 ?? 0),
               type4: Number((row as any).type4 ?? 0),
             };
+            if (row.id != null) idxMap[String(row.shelveId)] = row.id;
           }
         }
+        setShelfIndexIdMap(idxMap);
 
         const map: Record<string, { type1: number; type2: number; type3: number; type4: number }> = {};
         const roomAgg: Record<string, { type1: number; type2: number; type3: number; type4: number }> = {};
@@ -1290,14 +1654,144 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     }).catch(() => toast.error("删除失败"));
   }, []);
 
+  // 从勾选集提取笼位 cageId（H5 单笼架，key = sid:x:y）
+  const cageIdsFromSelection = useCallback((cells: Set<string>): string[] => {
+    const ids: string[] = [];
+    for (const key of cells) {
+      const parts = key.split(":");
+      const x = parseInt(parts[1]), y = parseInt(parts[2]);
+      const c = detail?.grid?.find((c) => c.x === x && c.y === y);
+      if (c) { const id = String((c as any).id ?? (c as any).animalCageId ?? ""); if (id) ids.push(id); }
+    }
+    return ids;
+  }, [detail]);
+
+  const currentSid = String(detail?.shelfMeta?.shelveId ?? selectedShelf?.shelveId ?? "");
+
+  /**
+   * 分配模式当前批次的动作类型（与 Web 管理端同一套规则）：
+   * `allocate` = 选中「等待分配」，下一步下发 AUP；
+   * `cancel`   = 选中「已预约(空笼盒)」，下一步撤回 AUP 退回「等待分配」。
+   * 空选为 null，两种都能起头；起头后不允许混选。
+   */
+  const allocBatchKind = useMemo(() => {
+    for (const key of selectedCells) {
+      const parts = key.split(":");
+      const x = parseInt(parts[1]), y = parseInt(parts[2]);
+      const c = detail?.grid?.find((g) => g.x === x && g.y === y);
+      if (!c) continue;
+      const v = allocSelectVerdict((c as any).cageTypeCode ?? c.animalCageType);
+      if (v.ok) return v.kind;
+    }
+    return null;
+  }, [selectedCells, detail]);
+
+  // 分配：等待分配(1)→分配；已预约空笼盒(2)→取消分配；其余须先归档
+  const handleAllocateToggle = useCallback((cell: CageShelfCell) => {
+    const key = `${currentSid}:${cell.x}:${cell.y}`;
+    // 已选中的再点一次是取消勾选，不必再过闸门
+    if (!selectedCells.has(key)) {
+      const v = allocSelectVerdict((cell as any).cageTypeCode ?? cell.animalCageType);
+      if (!v.ok) { toast(v.reason); return; }
+      if (allocBatchKind !== null && v.kind !== allocBatchKind) { toast(ALLOC_MIXED_KIND_HINT); return; }
+    }
+    setSelectedCells((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  }, [currentSid, selectedCells, allocBatchKind]);
+
+  // 认领（教职工）：仅 cageTypeCode===2 且无活跃认领
+  const handleReserveToggle = useCallback((cell: CageShelfCell) => {
+    const ct = (cell as any).cageTypeCode ?? cell.animalCageType;
+    const status = (cell as any).claimStatus;
+    if (ct !== 2) { toast("只能选择「已预约空笼盒」状态的笼位"); return; }
+    if (status && ["pending_approval", "locked", "confirmed", "pending_release_approval"].includes(status)) {
+      toast("该笼位已有预定，不可重复选择"); return;
+    }
+    const key = `${currentSid}:${cell.x}:${cell.y}`;
+    setSelectedCells((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  }, [currentSid]);
+
+  // 学生申请：仅池内
+  const handleClaimToggle = useCallback((cell: CageShelfCell) => {
+    const aid = String((cell as any).id ?? (cell as any).animalCageId ?? "");
+    if (!aid || !poolCells.has(aid)) {
+      toast.error("该笼位不在你的可申请范围内，无法申请。");
+      return;
+    }
+    const key = `${currentSid}:${cell.x}:${cell.y}`;
+    setSelectedCells((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  }, [poolCells, currentSid]);
+
+  // 扫码确认：点格子 → 开核对弹窗（仅 locked）
+  const handleConfirmCell = useCallback((cell: CageShelfCell) => {
+    const status = (cell as any).claimStatus;
+    const claimId = (cell as any).activeClaimId;
+    if (!status) { toast.error("该笼位未分配"); return; }
+    if (status === "locked" && claimId) {
+      setConfirmLookup({
+        type: "CAGE_CELL",
+        cageCell: {
+          animalCageId: String((cell as any).id ?? (cell as any).animalCageId ?? ""),
+          positionLabel: displayPosition(cell.position),
+          positionX: cell.x,
+          positionY: cell.y,
+          campusName: "",
+          roomName: "",
+          shelveId: currentSid,
+        } as any,
+        claim: {
+          id: Number(claimId),
+          claimStatus: status,
+          claimantId: "",
+          claimantName: (cell as any).occupantName ?? "",
+          projectPiName: (cell as any).projectPiName ?? "",
+          aupNumber: (cell as any).aupNumber ?? (cell as any).detail?.aupNumber ?? "",
+          projectName: (cell as any).projectGroup ?? "",
+          hasInfo: true,
+        } as any,
+      });
+      return;
+    }
+    if (status === "confirmed") { toast.success("该笼位已到位"); return; }
+    if (status === "pending_approval") { toast.error("该笼位待审批"); return; }
+    if (status === "pending_release_approval") { toast.error("该笼位待释放审批"); return; }
+    toast.error("该笼位状态：" + status);
+  }, [currentSid]);
+
+  // 归档：仅 cageTypeCode===3
+  const handleArchiveCell = useCallback((cell: CageShelfCell) => {
+    const ct = (cell as any).cageTypeCode ?? cell.animalCageType;
+    if (ct !== 3) { toast.error("该笼位当前无笼盒/未占用，无需归档"); return; }
+    setArchiveTarget({
+      animalCageId: String((cell as any).id ?? (cell as any).animalCageId ?? ""),
+      positionLabel: displayPosition(cell.position),
+      occupantName: (cell as any).occupantName,
+      projectPiName: (cell as any).projectPiName ?? (cell as any).detail?.projectPiName,
+      aupNumber: (cell as any).aupNumber ?? (cell as any).detail?.aupNumber,
+    });
+  }, []);
+
+  // 记录：任意非空笼位 → 历史弹窗
+  const handleRecordCell = useCallback((cell: CageShelfCell) => {
+    const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
+    if (cageId) setRecordTarget(cageId); else toast.error("该笼位无 ID");
+  }, []);
+
   const handleCellClick = (cell: CageShelfCell) => {
     if (cell.empty) return;
-    // 编辑模式：点击单元格 → 打开 action popup（3 个 chip + 上传）
-    if (editMode) {
+    // 编辑模式：点击单元格 → 打开 action popup（仅 cageTypeCode 3/4 可编辑）
+    if (mode === "edit") {
+      const ct = (cell as any).cageTypeCode ?? cell.animalCageType;
+      if (ct !== 3 && ct !== 4) { toast.error("该笼位不可标记状态"); return; }
       openEditActionPopup(cell);
       return;
     }
-    // 普通模式：打开详情弹窗
+    if (mode === "allocate") { handleAllocateToggle(cell); return; }
+    if (mode === "reserve") { handleReserveToggle(cell); return; }
+    if (mode === "claim") { handleClaimToggle(cell); return; }
+    if (mode === "confirm") { handleConfirmCell(cell); return; }
+    if (mode === "archive") { handleArchiveCell(cell); return; }
+    if (mode === "record") { handleRecordCell(cell); return; }
+    // 查看模式：打开详情弹窗
     setSelectedCell(cell);
   };
 
@@ -1437,21 +1931,41 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     toast.error("该笼位状态：" + claim.claimStatus);
   }, [locateLookup]);
 
-  // ── 确认到位（后端校验仅认领本人可确认）──
+  // ── 确认到位（教职工代确认 / 学生本人确认）──
   const handleConfirmArrival = useCallback(async () => {
     if (!confirmLookup?.claim?.id) return;
     setConfirmSubmitting(true);
     try {
-      await confirmClaim(confirmLookup.claim.id);
+      if (isStaffView) await adminConfirmClaim(confirmLookup.claim.id);
+      else await confirmClaim(confirmLookup.claim.id);
       toast.success("已确认到位");
       setConfirmLookup(null);
       setDetailReloadKey((k) => k + 1);
     } catch (e: any) {
-      toast.error(e?.message || "确认失败（仅本人可确认）");
+      toast.error(e?.message || "确认失败");
     } finally {
       setConfirmSubmitting(false);
     }
-  }, [confirmLookup]);
+  }, [confirmLookup, isStaffView]);
+
+  // ── 归档模式：扫码 → 定位 → 开归档弹窗 ──
+  const handleArchiveScan = useCallback(async (r: CodeLookupResult) => {
+    if (r.type === "NOT_FOUND") { toast.error("未识别笼位"); return; }
+    if (r.type === "ASSET") { toast.error("该编码为资产编号，非笼位"); return; }
+    if (r.type === "LEGACY_CAGE_BOX") { toast.error("旧盒码已废弃，请扫笼位码"); await locateLookup(r); return; }
+    await locateLookup(r);
+    if (r.claim) {
+      setArchiveTarget({
+        animalCageId: String(r.cageCell?.animalCageId ?? ""),
+        positionLabel: r.cageCell?.positionLabel ?? "",
+        occupantName: r.claim.claimantName,
+        projectPiName: r.claim.projectPiName ?? "",
+        aupNumber: r.claim.aupNumber ?? "",
+      });
+    } else {
+      toast.error("该笼位无占用记录，无需归档");
+    }
+  }, [locateLookup]);
 
   // ── 常驻扫码入口：按当前模式分派（对齐 Web handleResidentScan）──
   const handleResidentScan = useCallback(async (text: string) => {
@@ -1467,12 +1981,13 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     }
     if (mode === "edit") { await handleEditScan(r, code); return; }
     if (mode === "confirm") { await handleConfirmScan(r); return; }
-    // 查看模式：纯定位
+    if (mode === "archive") { await handleArchiveScan(r); return; }
+    // 查看/分配/认领/记录/预约/申请：纯定位（勾选靠点格子）
     if (r.type === "NOT_FOUND") { toast.error("未找到对应笼位"); return; }
     if (r.type === "ASSET") { toast.error("该编码为资产编号，非笼位"); return; }
     if (r.type === "LEGACY_CAGE_BOX") toast.error("旧盒码已废弃，请扫笼位码");
     locateLookup(r);
-  }, [mode, handleEditScan, handleConfirmScan, locateLookup]);
+  }, [mode, handleEditScan, handleConfirmScan, handleArchiveScan, locateLookup]);
 
   const handleScanActionsSubmit = useCallback(async () => {
     if (!selectedShelf || scanCache.size === 0) return;
@@ -1538,7 +2053,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
           try { await authHttp.post("/local/annotate", body); } catch { /* 非致命 */ }
         }
       }
-      toast.success(`已完成 ${okCount} 个操作（本地+异步投递）`);
+      toast.success(`已完成 ${okCount} 个操作（本地）`);
       setScanCache(new Map());
       setLastScannedKey(null);
       setEditActionCell(null); setActionPhotos([]); setActionNote("");
@@ -1548,6 +2063,140 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     }
     setActionSubmitting(false);
   }, [selectedShelf, detail, scanCache, editActionCell, actionPhotos, actionNote]);
+
+  // ── 分配/认领：进入对应模式时懒加载 AUP 列表 ──
+  useEffect(() => {
+    if (mode !== "allocate" && mode !== "reserve") return;
+    fetchAllocationAups().then(setAupList).catch(() => setAupList([]));
+  }, [mode]);
+
+  // ── 申请：进入申请模式时加载当前笼架池数据 ──
+  useEffect(() => {
+    if (mode !== "claim" || !selectedShelf) { setPoolCells(new Map()); return; }
+    const idxId = shelfIndexIdMap[String(selectedShelf.shelveId)];
+    if (!idxId) { setPoolCells(new Map()); return; }
+    let cancelled = false;
+    fetchPoolCells(idxId).then((list) => {
+      if (cancelled) return;
+      const m = new Map<string, PoolCell>();
+      for (const c of list) m.set(String(c.animalCageId), c);
+      setPoolCells(m);
+    }).catch(() => { if (!cancelled) setPoolCells(new Map()); });
+    return () => { cancelled = true; };
+  }, [mode, selectedShelf, shelfIndexIdMap, detailReloadKey]);
+
+  // 认领弹窗：按已选笼位的 AUP 课题组预览成员
+  const reserveAupGroupNames = useMemo(() => {
+    const byAup = new Map<string, string>();
+    for (const a of aupList) if (a.registerNo && a.projectGroupName) byAup.set(a.registerNo, a.projectGroupName);
+    const s = new Set<string>();
+    for (const key of selectedCells) {
+      const parts = key.split(":");
+      const x = parseInt(parts[1]), y = parseInt(parts[2]);
+      const c = detail?.grid?.find((c) => c.x === x && c.y === y);
+      const aup = (c as any)?.aupNumber ?? (c as any)?.detail?.aupNumber;
+      if (aup && byAup.has(String(aup))) s.add(byAup.get(String(aup))!);
+    }
+    return Array.from(s);
+  }, [selectedCells, detail, aupList]);
+
+  // ── 分配：确认分配（本地数据源） ──
+  const handleConfirmAlloc = useCallback(async () => {
+    if (!selectedAupId || selectedCells.size === 0) return;
+    const cageIds = cageIdsFromSelection(selectedCells);
+    if (cageIds.length === 0) { toast.error("无法获取选中笼位的 ID"); return; }
+    const roomId = String((detail?.shelfMeta as any)?.roomId ?? selectedShelf?.roomId ?? "");
+    const aup = aupList.find((x) => String(x.id) === String(selectedAupId));
+    // 二次确认：手机误触成本高，批量写入前先让用户核对笼位数与目标 AUP
+    if (!await appConfirm(`确定将 ${cageIds.length} 个笼位分配给「${aup?.registerNo || selectedAupId}${aup?.piName ? " · " + aup.piName : ""}」？`)) return;
+    setAllocSubmitting(true);
+    try {
+      await localAllocate(cageIds, selectedAupId, roomId, currentSid, aup?.piName || "", aup?.registerNo || "");
+      toast.success(`已分配 ${cageIds.length} 个笼位（本地）`);
+      setAllocDialogOpen(false);
+      setSelectedCells(new Set());
+      setSelectedAupId("");
+      setDetailReloadKey((k) => k + 1);
+    } catch (e: any) { toast.error(e?.message || "分配失败"); }
+    finally { setAllocSubmitting(false); }
+  }, [selectedAupId, selectedCells, cageIdsFromSelection, aupList, detail, selectedShelf, currentSid]);
+
+  // ── 分配：取消分配 ──
+  const handleCancelAlloc = useCallback(async () => {
+    const cageIds = cageIdsFromSelection(selectedCells);
+    if (cageIds.length === 0) return;
+    // 二次确认：取消分配会清空笼位 AUP 并退回「等待分配」，不可一键撤销
+    if (!await appConfirm(`确定取消 ${cageIds.length} 个笼位的分配？
+
+取消后笼位将清空 AUP，退回「等待分配」。`)) return;
+    setAllocSubmitting(true);
+    try {
+      await localCancelAllocate(cageIds);
+      toast.success(`已取消 ${cageIds.length} 个笼位分配（本地）`);
+      setSelectedCells(new Set());
+      setDetailReloadKey((k) => k + 1);
+    } catch (e: any) { toast.error(e?.message || "取消分配失败"); }
+    finally { setAllocSubmitting(false); }
+  }, [selectedCells, cageIdsFromSelection]);
+
+  // ── 认领：确认认领（指派占用者，免审核建 locked 认领） ──
+  const handleReserveConfirm = useCallback(async (p: { name: string; accountId: string }) => {
+    if (selectedCells.size === 0 || !p.accountId) return;
+    const cageIds = cageIdsFromSelection(selectedCells);
+    if (cageIds.length === 0) { toast.error("无法获取选中笼位的 ID"); return; }
+    setReserveSubmitting(true);
+    try {
+      const results = await assignBatchCages(cageIds, p.accountId);
+      const failed = results.filter((r) => !r.ok).length;
+      if (failed > 0) toast.error(`已预定 ${cageIds.length - failed} 个笼位给 ${p.name}，${failed} 个失败`);
+      else toast.success(`已预定 ${cageIds.length} 个笼位给 ${p.name}`);
+    } catch (e: any) { toast.error(e?.message || "预定失败"); }
+    finally {
+      setReserveSubmitting(false);
+      setReserveOpen(false);
+      setSelectedCells(new Set());
+      setDetailReloadKey((k) => k + 1);
+    }
+  }, [selectedCells, cageIdsFromSelection]);
+
+  // ── 归档：确认归档 ──
+  const handleArchiveConfirm = useCallback(async () => {
+    if (!archiveTarget?.animalCageId) return;
+    setArchiveSubmitting(true);
+    try {
+      await archiveCage(archiveTarget.animalCageId);
+      toast.success("已归档");
+      setArchiveTarget(null);
+      setDetailReloadKey((k) => k + 1);
+    } catch (e: any) { toast.error(e?.message || "归档失败"); }
+    finally { setArchiveSubmitting(false); }
+  }, [archiveTarget]);
+
+  // ── 学生：提交申请 ──
+  const submitClaims = useCallback(async () => {
+    if (selectedCells.size === 0) return;
+    const idxId = shelfIndexIdMap[String(selectedShelf?.shelveId ?? "")];
+    if (!idxId) { toast.error("未找到笼架索引"); return; }
+    setClaimSubmitting(true);
+    let ok = 0, fail = 0;
+    const errors: string[] = [];
+    for (const key of Array.from(selectedCells)) {
+      const parts = key.split(":");
+      const x = parseInt(parts[1]), y = parseInt(parts[2]);
+      const c = detail?.grid?.find((c) => c.x === x && c.y === y);
+      const aid = String((c as any)?.id ?? (c as any)?.animalCageId ?? "");
+      if (!aid) { fail++; errors.push("无法定位笼位ID"); continue; }
+      if (!poolCells.has(aid)) { fail++; errors.push("该笼位已不在可申请池中"); continue; }
+      try { await claimCage(aid, idxId); ok++; } catch (e: any) { fail++; errors.push(e?.message || "申请失败"); }
+    }
+    setClaimSubmitting(false);
+    setSelectedCells(new Set());
+    if (ok > 0) setDetailReloadKey((k) => k + 1);
+    const firstErr = errors[0];
+    if (ok > 0 && fail > 0) toast(`${ok} 成功 / ${fail} 失败${firstErr ? `：${firstErr}` : ""}`, { icon: "⚠️" });
+    else if (ok > 0) toast.success(`申请已提交：${ok} 个`);
+    else toast.error(firstErr || `申请失败 ${fail} 个`);
+  }, [selectedCells, shelfIndexIdMap, selectedShelf, detail, poolCells]);
 
   // ── 返回列表：检查未保存修改 ──
   const goBackToList = useCallback(async () => {
@@ -1559,6 +2208,14 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     setScanLockHighlight(null);
     setMode("view");
     setConfirmLookup(null);
+    setSelectedCells(new Set());
+    setArchiveTarget(null);
+    setRecordTarget(null);
+    setAllocDialogOpen(false);
+    setSelectedAupId("");
+    setReserveOpen(false);
+    setPoolCells(new Map());
+    setEditActionCell(null);
     setScreen("list");
     setSelectedCell(null);
     setDetailError(null);
@@ -1573,14 +2230,44 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       setSelectedCell(null);
       return true;
     }
+    // 预约模式整页替换了网格，且自身不再画返回按钮（避免与 shell 的返回并存）；
+    // 返回时先退回「查看」模式露出网格，再按一次才回列表。
+    if (screen === "grid" && mode === "booking") {
+      setMode("view");
+      return true;
+    }
     if (screen === "grid") {
       goBackToList();
       return true;
     }
     return false;
-  }, [specialStatusOpen, selectedCell, screen, goBackToList]);
+  }, [specialStatusOpen, selectedCell, screen, mode, goBackToList]);
 
   useImperativeHandle(ref, () => ({ pop: popNavigation }), [popNavigation]);
+
+  /** 统一模式切换：清空选中集 / 扫码缓存 / 待提交态，避免模式间状态串味（对齐 Web switchMode） */
+  const switchMode = useCallback(async (next: ShelfMode) => {
+    if (next === mode) return;
+    // 离开编辑模式且有未提交修改 → 先确认
+    if (mode === "edit" && hasChanges) {
+      if (!await appConfirm("有未提交的修改，是否放弃？\n\n「确定」放弃修改并退出\n「取消」继续编辑")) return;
+    }
+    setSelectedCells(new Set());
+    setScanCache(new Map());
+    setLastScannedKey(null);
+    setConfirmLookup(null);
+    setArchiveTarget(null);
+    setRecordTarget(null);
+    setAllocDialogOpen(false);
+    setSelectedAupId("");
+    setReserveOpen(false);
+    setPoolCells(new Map());
+    setEditActionCell(null);
+    setSelectedCell(null);
+    setMode(next);
+    // 进入编辑模式需要实时数据
+    if (next === "edit") setDetailReloadKey((k) => k + 1);
+  }, [mode, hasChanges]);
 
   const gridTitle =
     detail?.shelfMeta?.shelveName ||
@@ -1612,6 +2299,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
             showSpecialStatusEntry
             autoExpandCampusName={jumpTarget?.campusName}
             autoExpandRoomName={jumpTarget?.roomName}
+            onOpenMyClaims={() => setMyClaimsOpen(true)}
+            showMyClaimsEntry={!isStaffView}
           />
           {/* ── 扫码定位 FAB（列表页常驻，全角色可见）── */}
           <button
@@ -1642,21 +2331,10 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               error={detailError}
               onRetry={() => setDetailReloadKey((k) => k + 1)}
               onCellClick={handleCellClick}
-              canEdit={canEdit}
+              isStaffView={isStaffView}
               mode={mode}
-              onSetMode={async (next) => {
-                if (next === mode) return;
-                // 离开编辑模式且有未提交修改 → 先确认
-                if (mode === "edit" && hasChanges) {
-                  if (!await appConfirm("有未提交的修改，是否放弃？\n\n「确定」放弃修改并退出\n「取消」继续编辑")) return;
-                }
-                if (mode === "edit") { setScanCache(new Map()); setLastScannedKey(null); }
-                setConfirmLookup(null);
-                setSelectedCell(null);
-                setMode(next);
-                // 进入编辑模式需要实时数据
-                if (next === "edit" && selectedShelf) setDetailReloadKey((k) => k + 1);
-              }}
+              onSetMode={switchMode}
+              visibleModes={visibleModes}
               scanOpen={scanOpen}
               onOpenScan={() => setScanOpen(true)}
               onCloseScan={() => setScanOpen(false)}
@@ -1666,16 +2344,27 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               onActionSubmit={handleScanActionsSubmit}
               actionSubmitting={actionSubmitting}
               scanLockHighlight={scanLockHighlight}
+              selectedCells={selectedCells}
+              claimPoolIds={new Set(poolCells.keys())}
+              myClaimCageIds={myClaimCageIds}
+              onAllocateOpen={() => setAllocDialogOpen(true)}
+              onAllocateCancel={handleCancelAlloc}
+              allocBatchKind={allocBatchKind}
+              allocSubmitting={allocSubmitting}
+              onReserveOpen={() => setReserveOpen(true)}
+              reserveSubmitting={reserveSubmitting}
+              onClaimSubmit={submitClaims}
+              claimSubmitting={claimSubmitting}
             />
           </div>
         )}
 
-        {/* 普通模式：查看详情弹窗（编辑/绑定模式不显示） */}
-        {selectedCell && selectedShelf && !editMode && (
+        {/* 查看模式：查看详情弹窗 */}
+        {selectedCell && selectedShelf && mode === "view" && (
           <MobileCageCellDetailDialog
             cell={selectedCell}
             onClose={() => setSelectedCell(null)}
-            staffView={staffSpecialStatusView}
+            staffView={isStaffView}
           />
         )}
 
@@ -1942,14 +2631,14 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
           open={specialStatusOpen}
           onClose={() => setSpecialStatusOpen(false)}
           apiFn={specialStatusApiFn}
-          variant={staffSpecialStatusView ? "staff" : "student"}
+          variant={isStaffView ? "staff" : "student"}
         />
 
         {/* ── 扫码确认 · 核对信息（对齐 Web AdminCageShelfPage 确认弹窗）── */}
         <Dialog open={!!confirmLookup} onOpenChange={(o) => { if (!o) setConfirmLookup(null); }}>
           <DialogContent className="z-[var(--z-modal)] !max-w-[320px] !p-0 !gap-0 !rounded-2xl overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,0.18)] border-0">
             <div className="px-5 pt-5 pb-2 text-center">
-              <DialogTitle className="!text-base font-bold" style={{ color: "#1e293b" }}>扫码确认 · 核对信息</DialogTitle>
+              <DialogTitle className="!text-base font-bold" style={{ color: "#1e293b" }}>确认 · 核对信息</DialogTitle>
             </div>
             <div className="px-4 pb-4 space-y-3 max-h-[60vh] overflow-y-auto">
               <div className="rounded-xl border border-[#eef0f6] divide-y divide-[#eef0f6]">
@@ -1979,7 +2668,9 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                 </div>
               )}
               <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-center">
-                <span className="text-[11px] font-semibold text-amber-700">确认该笼位已到位（由学生本人账号确认）</span>
+                <span className="text-[11px] font-semibold text-amber-700">
+                  {isStaffView ? "确认该笼位已到位（由管理员/饲养组长代确认）" : "确认该笼位已到位（由学生本人账号确认）"}
+                </span>
               </div>
             </div>
             <div className="flex gap-3 px-5 pb-5 pt-1">
@@ -1989,6 +2680,55 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                 className="flex-1 py-2.5 rounded-xl text-sm text-white font-semibold active:opacity-80 disabled:opacity-50 transition-colors"
                 style={{ background: BRAND }}>
                 {confirmSubmitting ? "处理中..." : "确认到位"}
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── 分配弹窗 ── */}
+        {allocDialogOpen && (
+          <AllocDialog aupList={aupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} onClose={() => setAllocDialogOpen(false)} onConfirm={handleConfirmAlloc} />
+        )}
+        {/* ── 认领弹窗 ── */}
+        <ReservePersonDialog open={reserveOpen} submitting={reserveSubmitting} groupNames={reserveAupGroupNames} onClose={() => setReserveOpen(false)} onConfirm={handleReserveConfirm} />
+        {/* ── 记录模式历史弹窗 ── */}
+        <CageHistoryModal animalCageId={recordTarget} onClose={() => setRecordTarget(null)} />
+        {/* ── 学生「我的申请」 ── */}
+        <MyClaimsModal open={myClaimsOpen} onClose={() => setMyClaimsOpen(false)} />
+
+        {/* ── 归档弹窗 ── */}
+        <Dialog open={mode === "archive" && !!archiveTarget} onOpenChange={(o) => { if (!o) setArchiveTarget(null); }}>
+          <DialogContent className="z-[var(--z-modal)] !max-w-[320px] !p-0 !gap-0 !rounded-2xl overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,0.18)] border-0">
+            <div className="px-5 pt-5 pb-2 text-center">
+              <DialogTitle className="!text-base font-bold" style={{ color: "#1e293b" }}>归档笼位</DialogTitle>
+            </div>
+            <div className="px-4 pb-4 space-y-3">
+              <div className="rounded-xl border border-[#eef0f6] divide-y divide-[#eef0f6]">
+                {(() => {
+                  const rows: { label: string; value: string; em?: boolean }[] = [];
+                  if (archiveTarget?.positionLabel) rows.push({ label: "笼位", value: archiveTarget.positionLabel });
+                  if (archiveTarget?.occupantName) rows.push({ label: "占用者", value: archiveTarget.occupantName, em: true });
+                  if (archiveTarget?.projectPiName) rows.push({ label: "课题组 PI", value: archiveTarget.projectPiName });
+                  if (archiveTarget?.aupNumber) rows.push({ label: "AUP 编号", value: archiveTarget.aupNumber });
+                  return rows.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 text-[11px]">
+                      <span className="shrink-0 text-[#969799]">{r.label}</span>
+                      <span className={r.em ? "truncate font-semibold text-[#1e293b]" : "truncate text-[#1e293b]"}>{r.value || "-"}</span>
+                    </div>
+                  ));
+                })()}
+              </div>
+              <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-center">
+                <span className="text-[11px] font-semibold text-amber-700">确认归档该笼位？归档后释放占用并回到空笼盒</span>
+              </div>
+            </div>
+            <div className="flex gap-3 px-5 pb-5 pt-1">
+              <button onClick={() => setArchiveTarget(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium text-[#646566] bg-[#f2f3f5] active:bg-[#ebedf0] transition-colors">取消</button>
+              <button onClick={handleArchiveConfirm} disabled={archiveSubmitting}
+                className="flex-1 py-2.5 rounded-xl text-sm text-white font-semibold active:opacity-80 disabled:opacity-50 transition-colors"
+                style={{ background: BRAND }}>
+                {archiveSubmitting ? "归档中..." : "确认归档"}
               </button>
             </div>
           </DialogContent>

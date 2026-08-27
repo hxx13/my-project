@@ -44,9 +44,12 @@ export interface CageShelfCell {
   projectPiName?: string;
   activeClaimId?: string | number;
   occupantName?: string;
+  experimenterName?: string;
   cageBoxInfo?: Record<string, unknown>;
   detail?: Record<string, unknown>;
   specialStatuses?: SpecialStatusEntry[];
+  /** 该笼位 active claim 的状态（locked/confirmed/pending_approval/...，无 active claim 为 undefined） */
+  claimStatus?: string;
   annotation?: {
     richText?: string | null;
     images?: string | null;
@@ -63,6 +66,8 @@ export interface CageShelfDetail {
     roomName: string;
     shelveId: string;
     shelveName: string;
+    shelfIndexId?: number;
+    roomId?: string | number;
   };
   grid: CageShelfCell[];
   totalCells: number;
@@ -578,9 +583,9 @@ export interface RealtimeRefreshResponse {
 
 export interface AupItem {
   id: string;
-  projectPiName: string;
-  registerNumber: string;
-  projectName?: string;
+  registerNo: string;
+  projectGroupName: string;
+  piName: string;
 }
 
 export interface CooldownStatus {
@@ -844,27 +849,19 @@ export async function saveRoomCapacity(roomId: string, capacity: number): Promis
   if (!res.data?.success) throw new Error(res.data?.message || "保存房间上限失败");
 }
 
-/** AUP 下拉字典（自己的字段口径：id/registerNo/projectGroupName） */
-export async function fetchAupDict(): Promise<{ id: string; registerNo: string; projectGroupName: string }[]> {
-  const res = await authHttp.get<Result<{ id: string; registerNo: string; projectGroupName: string }[]>>(
+/** AUP 下拉字典（自己的字段口径：id/registerNo/projectGroupName/piName） */
+export async function fetchAupDict(): Promise<{ id: string; registerNo: string; projectGroupName: string; piName: string }[]> {
+  const res = await authHttp.get<Result<{ id: string; registerNo: string; projectGroupName: string; piName: string }[]>>(
     "/v1/cage-shelves/booking/aups/dict"
   );
   return res.data?.data ?? [];
 }
 
-/** AUP 跨房间搜索 */
-export interface AupSearchHit {
-  roomId: string;
-  roomName: string;
-  piName: string;
-  registerNumber: string;
-  aupId: string;
-  rentNumber: number;
-}
-export async function searchAupsAcrossRooms(keyword: string): Promise<AupSearchHit[]> {
-  const res = await authHttp.get<Result<AupSearchHit[]>>("/v1/cage-shelves/booking/aups/search", {
-    params: { keyword },
-  });
+/** 按 AUP 注册号反查房间（本地映射，预约模式跳转用） */
+export async function fetchRoomsByRegisterNo(registerNo: string): Promise<{ roomId: string; roomName: string }[]> {
+  const res = await authHttp.get<Result<{ roomId: string; roomName: string }[]>>(
+    "/v1/cage-shelves/booking/aups/rooms", { params: { registerNo } },
+  );
   return res.data?.data ?? [];
 }
 
@@ -1035,9 +1032,10 @@ export async function fetchCellIndexByShelf(shelfIndexId: number): Promise<CageC
   return res.data.data ?? [];
 }
 
-export async function syncAllCellIds(roomId?: number): Promise<CellSyncStats> {
+export async function syncAllCellIds(roomId?: number, deleteExisting = true): Promise<CellSyncStats> {
   const res = await authHttp.post<Result<CellSyncStats>>("/cage-cell-index/sync", {
     roomId: roomId ?? undefined,
+    deleteExisting,
   });
   if (!res.data?.success) throw new Error(res.data?.message || "同步失败");
   return res.data.data!;
@@ -1187,6 +1185,17 @@ export interface CageClaimItem {
   note: string | null;
   createdAt: string;
   updatedAt: string;
+  campusName?: string;
+  areaName?: string;
+  floorName?: string;
+  roomName?: string;
+  shelveName?: string;
+  shelveId?: string;
+  positionLabel?: string;
+  aupNumber?: string;
+  latestRejectReason?: string | null;
+  positionX?: number;
+  positionY?: number;
 }
 
 /** 审批记录 */
@@ -1232,6 +1241,34 @@ export async function cancelClaim(id: number): Promise<void> {
 export async function confirmClaim(id: number | string): Promise<void> {
   const res = await authHttp.post<Result<any>>(`/student/cage-claims/${id}/confirm`);
   if (!res.data?.success) throw new Error(res.data?.message || "确认失败");
+}
+
+/** 管理端代学生确认到位（管理员/饲养组长） */
+export async function adminConfirmClaim(id: number | string): Promise<void> {
+  const res = await authHttp.post<Result<any>>(`/admin/cage-claims/${id}/confirm`);
+  if (!res.data?.success) throw new Error(res.data?.message || "确认失败");
+}
+
+/** 管理端批量通过待审批认领，返回 per-id 结果 */
+export async function batchApproveClaims(ids: number[]): Promise<Array<{ id: number; ok: boolean; status?: string; error?: string }>> {
+  const res = await authHttp.post<Result<Array<{ id: number; ok: boolean; status?: string; error?: string }>>>(
+    "/admin/cage-claims/batch-approve", { ids },
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "批量审批失败");
+  return res.data.data ?? [];
+}
+
+/** 管理端归档一个占用中的笼位（回空笼盒 type2） */
+export async function archiveCage(animalCageId: string | number, reason?: string): Promise<void> {
+  const res = await authHttp.post<Result<any>>("/admin/cage-info/occupancy/archive", { animalCageId, reason });
+  if (!res.data?.success) throw new Error(res.data?.message || "归档失败");
+}
+
+/** 手动修正历史 confirmed 笼位（2→3 + 写占用者），返回修正条数 */
+export async function reconcileCageOccupancy(): Promise<number> {
+  const res = await authHttp.post<Result<{ fixed: number }>>("/admin/cage-claims/reconcile-occupancy");
+  if (!res.data?.success) throw new Error(res.data?.message || "修正失败");
+  return res.data.data?.fixed ?? 0;
 }
 
 /** 释放笼位 */
@@ -1288,4 +1325,103 @@ export async function fetchClaimHistory(id: number): Promise<ApprovalRecordItem[
   const res = await authHttp.get<Result<ApprovalRecordItem[]>>(`/admin/cage-claims/${id}/history`);
   if (!res.data?.success) throw new Error(res.data?.message || "加载审批历史失败");
   return res.data.data ?? [];
+}
+
+// ── 笼位占用记录 ──
+
+export interface CageOccupancyRecord {
+  id: number; eventType: string; occupantId: number | null; occupantName?: string | null;
+  fromAnimalCageId?: string | null; toAnimalCageId?: string | null; operatorName?: string | null;
+  reason?: string | null; createdAt?: string | null;
+}
+
+export async function fetchCageOccupancyRecords(view: "cage" | "person", id: number | string): Promise<CageOccupancyRecord[]> {
+  const params = view === "cage" ? { view, cageId: id } : { view, occupantId: id };
+  const res = await authHttp.get<Result<CageOccupancyRecord[]>>("/admin/cage-info/occupancy/records", { params });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载记录失败");
+  return res.data.data ?? [];
+}
+
+// ── 笼位历史记录（按笼盒分组）──
+
+export interface CageHistoryChange {
+  changeType: string; fieldName?: string | null; beforeValue?: string | null;
+  afterValue?: string | null; operator?: string | null; createdAt?: string | null;
+}
+
+export interface CageHistoryGroup {
+  cageBoxCode?: string | null; label: string; changes: CageHistoryChange[];
+}
+
+export async function fetchCageHistory(animalCageId: string | number): Promise<CageHistoryGroup[]> {
+  const res = await authHttp.get<Result<{ groups: CageHistoryGroup[] }>>(`/admin/cage-form/cage-history/${animalCageId}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "加载历史记录失败");
+  return res.data.data?.groups ?? [];
+}
+
+export async function searchPersonnelByKeyword(keyword: string): Promise<Array<{ id: number; name: string; accountId: string; projectGroupName: string }>> {
+  const res = await authHttp.get<Result<{ list?: Array<{ id: number; name: string; staffId?: string | null; aroUserId?: string | null; projectGroupName?: string | null }> }>>("/personnel", { params: { keyword, pageSize: 10 } });
+  if (!res.data?.success) throw new Error(res.data?.message || "搜索人员失败");
+  return (res.data.data?.list ?? []).map((p) => ({ id: p.id, name: p.name ?? String(p.id), accountId: p.staffId || p.aroUserId || "", projectGroupName: p.projectGroupName || "" }));
+}
+
+// ── 人员负责范围 ──
+
+export interface PersonScopeEntry {
+  scopeType: "CAMPUS" | "FLOOR" | "ROOM";
+  scopeId: string;
+}
+
+/** GET /api/person-scope/{userId} — 查某人的负责范围（userId = 人员 accountId） */
+export async function fetchPersonScopes(userId: string): Promise<PersonScopeEntry[]> {
+  const res = await authHttp.get<Result<PersonScopeEntry[]>>(`/person-scope/${encodeURIComponent(userId)}`);
+  return res.data?.data ?? [];
+}
+
+/** PUT /api/person-scope/{userId} — 全量替换某人的负责范围 */
+export async function replacePersonScopes(userId: string, scopes: PersonScopeEntry[]): Promise<void> {
+  const res = await authHttp.put<Result<unknown>>(`/person-scope/${encodeURIComponent(userId)}`, scopes);
+  if (!res.data?.success) throw new Error(res.data?.message || "保存负责范围失败");
+}
+
+// ── 审核人归属（校区/楼层/房间范围）──
+
+export interface CageAuditScope {
+  scopeType: "CAMPUS" | "FLOOR" | "ROOM";
+  scopeId: string;
+}
+
+/** GET /api/cage-audit-assignment/{reviewerUserId} — 查某审核人的归属范围 */
+export async function fetchAuditAssignments(userId: string): Promise<CageAuditScope[]> {
+  const res = await authHttp.get<Result<CageAuditScope[]>>(`/cage-audit-assignment/${encodeURIComponent(userId)}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "加载审核归属失败");
+  return res.data.data ?? [];
+}
+
+/** PUT /api/cage-audit-assignment/{reviewerUserId} — 全量替换某审核人的归属范围 */
+export async function replaceAuditAssignments(userId: string, scopes: CageAuditScope[]): Promise<void> {
+  const res = await authHttp.put<Result<unknown>>(`/cage-audit-assignment/${encodeURIComponent(userId)}`, scopes);
+  if (!res.data?.success) throw new Error(res.data?.message || "保存审核归属失败");
+}
+
+export interface AssignBatchResult { animalCageId: string; ok: boolean; claimId?: number; error?: string }
+export async function assignBatchCages(animalCageIds: (string | number)[], studentUserId: string): Promise<AssignBatchResult[]> {
+  const res = await authHttp.post<Result<AssignBatchResult[]>>("/admin/cage-claims/assign-batch", { animalCageIds, studentUserId });
+  if (!res.data?.success) throw new Error(res.data?.message || "认领失败");
+  return res.data.data ?? [];
+}
+
+// ── 笼架模式可见性（后端统一算好身份，三端共用）──
+
+export interface CageModeVisibleResult {
+  modes: string[];
+  isStudent: boolean;
+  isSuperAdmin: boolean;
+}
+
+/** GET /api/cage-mode/visible — 当前用户可见的笼架模式 key 列表（含恒可见的 view） */
+export async function fetchCageModeVisible(): Promise<CageModeVisibleResult> {
+  const res = await authHttp.get<Result<CageModeVisibleResult>>("/cage-mode/visible");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载模式列表失败");
+  return res.data.data ?? { modes: [], isStudent: false, isSuperAdmin: false };
 }

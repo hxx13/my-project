@@ -3,7 +3,7 @@
  * 需分笼 / 需特殊饲养 / 动物转移 / 健康异常 / 需合笼。
  */
 export const SPECIAL_STATUS_LABELS: Record<string, string> = {
-  COHABITATION: "需合笼",
+  COHABITATION: "合笼",
   SPECIAL_FEEDING: "需特殊饲养",
   NEED_DIVIDE: "需分笼",
   HEALTH_ABNORMAL: "健康异常",

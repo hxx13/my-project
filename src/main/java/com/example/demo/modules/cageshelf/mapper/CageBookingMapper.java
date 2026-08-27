@@ -36,6 +36,9 @@ public interface CageBookingMapper {
     /** 跨房间搜索：按 register_number / pi_name LIKE，排除软删 */
     List<Map<String, Object>> searchAups(@Param("keyword") String keyword);
 
+    /** 按 AUP 注册号反查房间（本地映射 cage_booking_room_aup → room，跳转用） */
+    List<Map<String, Object>> selectRoomsByRegisterNo(@Param("registerNo") String registerNo);
+
     /** upsert AUP 明细（同步用）；ON DUPLICATE KEY UPDATE 不触碰 deleted，已软删不复活 */
     int upsertRoomAups(@Param("list") List<Map<String, Object>> rows);
 

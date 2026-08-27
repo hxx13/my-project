@@ -159,6 +159,62 @@ public class CageFormAuditService {
         return out;
     }
 
+    /**
+     * 某笼位的历史记录，按笼盒分组：BIND 开新组（组名=新笼盒码）→ UPDATE 归当前组 → UNBIND 结束。
+     * 无笼盒时段的字段变化归「未绑定」组。每组的 changes 记字段名 + before→after + 操作人 + 时间。
+     */
+    public Map<String, Object> cageHistory(Long animalCageId) {
+        List<CageFormAuditLog> rows = auditLogMapper.listByTargetId(animalCageId, CATEGORY_DATA);
+        enrichOperatorNames(rows);
+
+        List<Map<String, Object>> groups = new ArrayList<>();
+        Map<String, Object> unbound = newGroup(null, "未绑定");
+        groups.add(unbound);
+        Map<String, Object> current = unbound;
+
+        for (CageFormAuditLog r : rows) {
+            if (r == null) continue;
+            String ct = r.getChangeType();
+            if ("BIND".equals(ct)) {
+                String boxCode = r.getAfterValue();
+                Map<String, Object> g = newGroup(boxCode, StringUtils.hasText(boxCode) ? boxCode : "未命名笼盒");
+                groups.add(g);
+                addChange(g, r);
+                current = g;
+            } else if ("UNBIND".equals(ct)) {
+                addChange(current, r);
+                current = unbound;
+            } else {
+                addChange(current, r);
+            }
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("animalCageId", animalCageId);
+        out.put("groups", groups);
+        return out;
+    }
+
+    private Map<String, Object> newGroup(String cageBoxCode, String label) {
+        Map<String, Object> g = new LinkedHashMap<>();
+        g.put("cageBoxCode", cageBoxCode);
+        g.put("label", label);
+        g.put("changes", new ArrayList<>());
+        return g;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void addChange(Map<String, Object> group, CageFormAuditLog r) {
+        Map<String, Object> c = new LinkedHashMap<>();
+        c.put("changeType", r.getChangeType());
+        c.put("fieldName", r.getFieldName());
+        c.put("beforeValue", r.getBeforeValue());
+        c.put("afterValue", r.getAfterValue());
+        c.put("operator", displayNameOrId(r.getOperatorName(), r.getOperatorId()));
+        c.put("createdAt", r.getCreatedAt());
+        ((List<Map<String, Object>>) group.get("changes")).add(c);
+    }
+
     private Map<String, Object> toMap(CageFormAuditLog row) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", row.getId());

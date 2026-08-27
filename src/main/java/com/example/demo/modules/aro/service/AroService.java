@@ -1010,29 +1010,6 @@ public class AroService {
     }
 
     @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> fetchAupListForAllocation() {
-        if (this.cachedToken == null && !login()) return Collections.emptyList();
-        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/cageBox/aups";
-        try {
-            java.net.URI uri = java.net.URI.create(urlString);
-            HttpEntity<String> entity = new HttpEntity<>(null, getAuthHeaders());
-            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Object data = response.getBody().get("data");
-                if (data instanceof List) return (List<Map<String, Object>>) data;
-            }
-        } catch (HttpClientErrorException e) {
-            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
-                this.cachedToken = null;
-                if (login()) return fetchAupListForAllocation();
-            }
-            log.warn("[aro] AUP 列表请求失败 err={}", e.getMessage());
-        } catch (Exception e) {
-            log.warn("[aro] AUP 列表网络异常 err={}", e.getMessage());
-        }
-        return Collections.emptyList();
-    }
-
     /**
      * 执行笼位分配（租用）。
      * POST /jtu/api/admin/book

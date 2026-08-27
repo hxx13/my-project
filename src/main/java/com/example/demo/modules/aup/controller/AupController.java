@@ -76,6 +76,7 @@ public class AupController {
                           @RequestParam(required = false) String excludeStage,
                           @RequestParam(required = false) String excludeStages,
                           @RequestParam(required = false) String projectGroupName,
+                          @RequestParam(required = false) String dept,
                           @RequestParam(defaultValue = "false") boolean excludeDraft,
                           @RequestParam(required = false) String draftSource,
                           @RequestParam(required = false) Integer roundNo,
@@ -89,7 +90,7 @@ public class AupController {
                           @RequestParam(required = false) String sortDir) {
         User user = requireUser(authorization);
         List<String> excludeStageList = parseCsvStages(excludeStages);
-        return Result.success(aupService.list(user, page, size, keyword, registerNo, stage, excludeStage, excludeStageList, projectGroupName, excludeDraft,
+        return Result.success(aupService.list(user, page, size, keyword, registerNo, stage, excludeStage, excludeStageList, projectGroupName, dept, excludeDraft,
                 draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe, groupScopeOnly, sortBy, sortDir));
     }
 

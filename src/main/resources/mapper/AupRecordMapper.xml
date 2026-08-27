@@ -22,6 +22,10 @@
         SELECT * FROM aup_record WHERE id = #{id}
     </select>
 
+    <select id="selectByRegisterNo" resultType="com.example.demo.modules.aup.entity.AupRecord">
+        SELECT * FROM aup_record WHERE register_no = #{registerNo} LIMIT 1
+    </select>
+
     <select id="selectForUpdateById" resultType="com.example.demo.modules.aup.entity.AupRecord">
         SELECT * FROM aup_record WHERE id = #{id} FOR UPDATE
     </select>
@@ -154,6 +158,9 @@
             <if test="projectGroupName != null and projectGroupName != ''">
                 AND r.project_group_name LIKE CONCAT('%', #{projectGroupName}, '%')
             </if>
+            <if test="dept != null and dept != ''">
+                AND r.dept LIKE CONCAT('%', #{dept}, '%')
+            </if>
             <if test="excludeDraft">
                 AND (r.current_stage != 'draft' OR r.draft_source != 'first' OR r.is_demo = 1)
             </if>
@@ -273,9 +280,10 @@
     <select id="selectApprovedForDict" resultType="map">
         SELECT CAST(id AS CHAR) AS id,
                register_no AS registerNo,
-               project_group_name AS projectGroupName
+               project_group_name AS projectGroupName,
+               pi_name AS piName
         FROM aup_record
-        WHERE current_stage = 'approved'
+        WHERE current_stage IN ('approved', 'expired')
         ORDER BY id ASC
     </select>
 

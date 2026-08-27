@@ -166,6 +166,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-personnel-room-authorization.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-personnel-role.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-identity-migrate-to-personnel-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-person-scope.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-audit-assignment.sql", ctx)) success++;
         total++; if (seedAupDemo(ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_baseline_multi.sql", ctx)) success++;
@@ -190,12 +192,19 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-aro-personnel-open-id.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-trajectory.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-trajectory-fields.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-agv-trajectory-index.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-coord-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-coord-config-offset.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-coord-config-scale.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-coord-preset.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-tag.sql", ctx)) success++;
-        total++; if (runScript("db/bootstrap-agv-trajectory-partition.sql", ctx)) success++;
+        // AGV 轨迹分区：PARTITION BY 会整表重写，仅在「尚未分区」时执行，避免每次启动重写大表
+        total++;
+        if (isTablePartitioned("agv_trajectory")) {
+            success++;
+        } else if (runScript("db/bootstrap-agv-trajectory-partition.sql", ctx)) {
+            success++;
+        }
         total++; if (runScript("db/bootstrap-agv-analysis.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-spatial-element-confidence.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-spatial-cleanup.sql", ctx)) success++;
@@ -267,6 +276,12 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-nhp-form-field-fk-target.sql", ctx)) success++;
         // 码表文件夹分类：crf_codelist 加 folder
         total++; if (runScript("db/bootstrap-nhp-codelist-folder.sql", ctx)) success++;
+        // 表单文件夹归类：crf_form 加 folder_id（文件夹本体复用 aup_folder owner_type=NHP_FORM）
+        total++; if (runScript("db/bootstrap-nhp-form-folder.sql", ctx)) success++;
+        // 项目计划书字段：crf_transplant 加 project_name/remark/team
+        total++; if (runScript("db/bootstrap-nhp-project-fields.sql", ctx)) success++;
+        // 项目级访视编排：crf_project_visit_plan（按项目配置每个 TP 采集的表单）
+        total++; if (runScript("db/bootstrap-nhp-project-visit-plan.sql", ctx)) success++;
         // 模板章节 code 加宽：对齐 snake_case 原子名（seedAtomsFromPriorityJson）
         total++; if (runScript("db/bootstrap-nhp-template-section-code.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-nhp-attachment.sql", ctx)) success++;
@@ -322,6 +337,20 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             });
         } catch (Exception e) {
             log.warn("[collation] 批量统一 0900 表跳过: {}", e.getMessage());
+        }
+    }
+
+    /** 判断表是否已分区（information_schema.PARTITIONS 中 PARTITION_NAME 非空的即分区表）。 */
+    private boolean isTablePartitioned(String tableName) {
+        try {
+            List<String> partitions = jdbcTemplate.queryForList(
+                    "SELECT PARTITION_NAME FROM information_schema.PARTITIONS "
+                            + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND PARTITION_NAME IS NOT NULL",
+                    String.class, tableName);
+            return !partitions.isEmpty();
+        } catch (Exception e) {
+            // 查询失败时返回 false，回退为执行脚本（幂等 DDL 失败会被 isBenignInChain 吞掉）
+            return false;
         }
     }
 

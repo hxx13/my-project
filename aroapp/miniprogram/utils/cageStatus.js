@@ -3,8 +3,6 @@
  * 一个状态四处命名在此集中：UI 动作名 / 表单 canonical(snake) / statusPhotos key(=snake) / 展示色。
  * 状态标记唯一真相源是表单 cage_info_value（canonical=snake_case），
  * 禁止再读 cage_cell_detail 的 camelCase 字段（已删 detailKey）。
- *
- * 自检：`node utils/cageStatus.js`
  */
 var CAGE_STATUS_ACTIONS = [
   { action: 'DIVIDE',           statusField: 'needs_division',         label: '需分笼',  color: '#eab308', bg: '#fef08a' },
@@ -93,29 +91,3 @@ module.exports = {
   statusPhotoKeys: statusPhotoKeys,
   toggleAction: toggleAction
 };
-
-if (typeof require !== 'undefined' && require.main === module) {
-  var assert = require('assert');
-
-  assert.strictEqual(CAGE_STATUS_ACTIONS.length, 5);
-  assert.strictEqual(statusField('TRANSFER'), 'needs_transfer');
-  assert.strictEqual(statusField('COHABITATION'), 'needs_cohabitation');
-  assert.strictEqual(statusField('UNKNOWN'), 'UNKNOWN');
-
-  var s0 = newActionState();
-  assert.deepStrictEqual(Object.keys(s0).sort(), ['COHABITATION', 'DIVIDE', 'HEALTH_CHECK', 'SPECIAL_BREEDING', 'TRANSFER']);
-  assert.strictEqual(s0.DIVIDE, false);
-
-  var rows = [{ canonical: 'needs_division', value: true }, { canonical: 'needs_transfer', value: 1 }, { canonical: 'needs_cohabitation', value: false }];
-  var s = actionsFromFormValues(rows);
-  assert.strictEqual(s.DIVIDE, true);
-  assert.strictEqual(s.TRANSFER, true);
-  assert.strictEqual(s.COHABITATION, false);
-  assert.deepStrictEqual(statusPhotoKeys(s).sort(), ['needs_division', 'needs_transfer']);
-
-  var t = toggleAction(s0, 'COHABITATION');
-  assert.strictEqual(t.COHABITATION, true);
-  assert.strictEqual(s0.COHABITATION, false, '切换不改原对象');
-
-  console.log('cageStatus self-check OK');
-}

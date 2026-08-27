@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { Outlet, useNavigate, useLocation, useBlocker } from "react-router-dom";
 import { StudentSidebar } from "./student-sidebar";
 import { readStudentNavLock, appendStudentNavRecent } from "./student-nav-personalization";
 import { StudentHeader } from "./student-header";
@@ -51,6 +51,26 @@ export default function StudentLayout() {
   useEffect(() => {
     if (location.pathname !== "/student/home") appendStudentNavRecent(location.pathname);
   }, [location.pathname]);
+
+  /*
+   * 离开学生视图（浏览器后退/鼠标侧键/手动改址）时退出模拟/镜像模式。
+   * 模拟/镜像的退出入口只挂在学生端 header，一旦 URL 回退到教职工路由，
+   * 冒充 token 仍留在 localStorage 且再无出口。用数据路由的 useBlocker 在真实导航
+   * 发生前兜底还原身份——不用 unmount 清理，因为 StrictMode 会假卸载导致误触发。
+   * 正常路径（返回首页按钮 / idle 超时 / 登出）都已在跳转前显式退出，此处幂等。
+   */
+  const blocker = useBlocker(({ nextLocation }) => {
+    const leavingStudent = !nextLocation.pathname.startsWith("/student/");
+    const simulating = authStorage.isMirrorMode() || Boolean(getImpersonationState()?.isImpersonating);
+    return leavingStudent && simulating;
+  });
+
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    if (authStorage.isMirrorMode()) authStorage.exitMirrorMode();
+    if (getImpersonationState()?.isImpersonating) returnToStaffView();
+    blocker.proceed();
+  }, [blocker]);
 
   /* Lock redirect */
   useEffect(() => {

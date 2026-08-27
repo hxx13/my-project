@@ -50,6 +50,7 @@ public class CageCellDetailService {
     public CageCellDetail bindCageBox(Long animalCageId, String cageBoxCode, String operatorId) {
         CageCellDetail d = getOrCreate(animalCageId);
         String beforeCode = d.getCageBoxCode();
+        String beforeType = cageTypeLabel(d.getCageTypeCode());
         d.setHasCageBox(true);
         d.setCageBoxCode(cageBoxCode);
         d.setCageTypeCode(3); // 已预约(饲养中)
@@ -58,6 +59,7 @@ public class CageCellDetailService {
                 "animal_cage", animalCageId, "笼位 " + animalCageId,
                 "cage_box_code", "笼盒编号",
                 beforeCode, cageBoxCode, operatorId);
+        auditField(animalCageId, "cage_type_code", "笼位状态", beforeType, "已预约(饲养中)", operatorId);
         log.info("[local] BIND animalCageId={} cageBoxCode={}", animalCageId, cageBoxCode);
         return d;
     }
@@ -66,6 +68,7 @@ public class CageCellDetailService {
     public CageCellDetail unbindCageBox(Long animalCageId, String operatorId) {
         CageCellDetail d = getOrCreate(animalCageId);
         String beforeCode = d.getCageBoxCode();
+        String beforeType = cageTypeLabel(d.getCageTypeCode());
         d.setHasCageBox(false);
         d.setCageBoxCode(null);
         d.setCageTypeCode(2); // 已预约(空笼盒)
@@ -75,18 +78,26 @@ public class CageCellDetailService {
                 "animal_cage", animalCageId, "笼位 " + animalCageId,
                 "cage_box_code", "笼盒编号",
                 beforeCode, null, operatorId);
+        auditField(animalCageId, "cage_type_code", "笼位状态", beforeType, "已预约(空笼盒)", operatorId);
         log.info("[local] UNBIND animalCageId={}", animalCageId);
         return d;
     }
 
     /** 分配笼位 */
-    public CageCellDetail allocate(Long animalCageId) {
-        return allocate(animalCageId, null, null, null);
+    public CageCellDetail allocate(Long animalCageId, String operatorId) {
+        return allocate(animalCageId, null, null, null, operatorId);
     }
 
     /** 分配笼位 — 写课题组组长(pi_name) + 项目组长(project_pi_name) + AUP注册号 + AUP ID 到笼位固定字段 */
-    public CageCellDetail allocate(Long animalCageId, String piName, String aupNumber, Long aupId) {
+    public CageCellDetail allocate(Long animalCageId, String piName, String aupNumber, Long aupId, String operatorId) {
         CageCellDetail d = getOrCreate(animalCageId);
+        String beforePi = d.getPiName();
+        String beforeProjectPi = d.getProjectPiName();
+        String beforeDept = d.getDepartmentName();
+        String beforeAupNumber = d.getAupNumber();
+        Long beforeAupId = d.getAupId();
+        String beforeType = cageTypeLabel(d.getCageTypeCode());
+
         d.setCageTypeCode(2); // 已预约(空笼盒)
         if (piName != null && !piName.isBlank()) {
             // 课题组长与项目组长分配时同源（AUP 负责人），分别落 pi_name / project_pi_name
@@ -109,12 +120,21 @@ public class CageCellDetailService {
             d.setAupId(aupId);
         }
         detailMapper.batchUpsert(List.of(d));
+
+        // 字段级审计（历史记录按笼盒分组需要每字段变化 + 操作人）
+        auditField(animalCageId, "pi_name", "课题组长", beforePi, d.getPiName(), operatorId);
+        auditField(animalCageId, "project_pi_name", "项目组长", beforeProjectPi, d.getProjectPiName(), operatorId);
+        auditField(animalCageId, "department_name", "部门", beforeDept, d.getDepartmentName(), operatorId);
+        auditField(animalCageId, "aup_number", "AUP注册号", beforeAupNumber, d.getAupNumber(), operatorId);
+        auditField(animalCageId, "aup_id", "AUP ID", str(beforeAupId), str(d.getAupId()), operatorId);
+        auditField(animalCageId, "cage_type_code", "笼位状态", beforeType, "已预约(空笼盒)", operatorId);
+
         log.info("[local] ALLOCATE animalCageId={} piName={} aup={} aupId={}", animalCageId, piName, aupNumber, aupId);
         return d;
     }
 
     /** 取消分配 — 同时检查并清理活跃认领 */
-    public CageCellDetail cancelAllocate(Long animalCageId) {
+    public CageCellDetail cancelAllocate(Long animalCageId, String operatorId) {
         // 检查活跃认领
         List<CageClaim> claims = claimMapper.selectByAnimalCageIdForUpdate(animalCageId);
         for (CageClaim claim : claims) {
@@ -137,13 +157,70 @@ public class CageCellDetailService {
         }
 
         CageCellDetail d = getOrCreate(animalCageId);
+        String beforePi = d.getPiName();
+        String beforeProjectPi = d.getProjectPiName();
+        String beforeProjectName = d.getProjectName();
+        String beforeDept = d.getDepartmentName();
+        String beforeAupNumber = d.getAupNumber();
+        Long beforeAupId = d.getAupId();
+        String beforeType = cageTypeLabel(d.getCageTypeCode());
+
         d.setCageTypeCode(1); // 等待分配
         d.setHasCageBox(false);
         d.setCageBoxCode(null);
+        d.setPiName(null);
+        d.setProjectPiName(null);
+        d.setProjectName(null);
+        d.setDepartmentName(null);
+        d.setAupNumber(null);
+        d.setAupId(null);
+        d.setExperimenterName(null);
+        d.setLabAssistantName(null);
+        d.setAnimalStrainName(null);
+        d.setAnimalSex(null);
+        d.setAnimalWeekAge(null);
+        d.setAnimalMaleNumber(null);
+        d.setAnimalFemaleNumber(null);
+        d.setAnimalComeFrom(null);
         clearSpecialStatuses(d);
         detailMapper.batchUpsert(List.of(d));
+
+        // 字段级审计（清空归属字段）
+        auditField(animalCageId, "pi_name", "课题组长", beforePi, null, operatorId);
+        auditField(animalCageId, "project_pi_name", "项目组长", beforeProjectPi, null, operatorId);
+        auditField(animalCageId, "project_name", "项目名称", beforeProjectName, null, operatorId);
+        auditField(animalCageId, "department_name", "部门", beforeDept, null, operatorId);
+        auditField(animalCageId, "aup_number", "AUP注册号", beforeAupNumber, null, operatorId);
+        auditField(animalCageId, "aup_id", "AUP ID", str(beforeAupId), null, operatorId);
+        auditField(animalCageId, "cage_type_code", "笼位状态", beforeType, "等待分配", operatorId);
+
         log.info("[local] CANCEL_ALLOCATE animalCageId={}", animalCageId);
         return d;
+    }
+
+    /** 字段级审计：仅在有变化的字段上记 UPDATE（before→after + 操作人），供历史记录按笼盒分组追溯。 */
+    private void auditField(Long animalCageId, String fieldCode, String fieldName,
+                            String before, String after, String operatorId) {
+        if (Objects.equals(before, after)) return;
+        auditService.logDataChange("UPDATE", "cage_box", animalCageId,
+                String.valueOf(animalCageId), null,
+                "animal_cage", animalCageId, "笼位 " + animalCageId,
+                fieldCode, fieldName, before, after, operatorId);
+    }
+
+    private static String str(Object v) {
+        return v == null ? null : String.valueOf(v);
+    }
+
+    private static String cageTypeLabel(Integer v) {
+        if (v == null) return null;
+        return switch (v) {
+            case 1 -> "等待分配";
+            case 2 -> "已预约(空笼盒)";
+            case 3 -> "已预约(饲养中)";
+            case 4 -> "异常";
+            default -> String.valueOf(v);
+        };
     }
 
     /** 切换特殊状态标记（无操作人，用于非交互路径） */
@@ -226,7 +303,6 @@ public class CageCellDetailService {
         d.setNeedsSpecialFeeding(false);
         d.setNeedsTransfer(false);
         d.setHasHealthAbnormality(false);
-        d.setCohabitationDate(null);
         d.setSpecialBreedingName(null);
         d.setSpecialBreedingDesc(null);
         d.setImagesJson(null);
