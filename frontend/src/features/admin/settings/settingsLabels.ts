@@ -69,6 +69,10 @@ const CONFIG_OPTION_LABELS: Record<string, string> = {
   OFF: "关闭",
   enabled: "启用",
   disabled: "停用",
+  morph: "MorphOrb（默认）",
+  ball: "球球",
+  nimbo: "云宝",
+  twinkle: "亮亮",
 };
 
 export function labelBizType(code: string): string {

@@ -450,9 +450,9 @@ public class TwinStudentViolationService {
                     // 单人笼架违规：文案前拼上 [状态标签]
                     String sc = groupStatusCode.getOrDefault(entry.getKey(), "");
                     String prefix = StringUtils.hasText(sc) ? "[" + statusLabel(sc) + "] " : "";
-                    dto.setSummary(prefix + buildSummary(applyTemplateVariables(single.getViolationText(), single.getTargetUserId()), maxLen));
-                    List<String> imgs = parseImageUrls(single.getImageUrls());
-                    dto.setCoverImageUrl(imgs.isEmpty() ? null : imgs.get(0));
+                    String text = applyTemplateVariables(single.getViolationText(), single.getTargetUserId());
+                    dto.setSummary(prefix + buildSummary(text, maxLen));
+                    dto.setImageUrls(mergeImages(extractBodyImageSrcs(text), parseImageUrls(single.getImageUrls())));
                     dto.setCreatedAt(single.getCreatedAt());
                     out.add(dto);
                 } else {
@@ -461,9 +461,21 @@ public class TwinStudentViolationService {
                     dto.setGroupName(entry.getKey());
                     dto.setDisplayName(entry.getKey());
                     String sc = groupStatusCode.getOrDefault(entry.getKey(), "");
-                    String prefix = StringUtils.hasText(sc) ? "[" + statusLabel(sc) + "] " : "";
-                    dto.setSummary(prefix + "共涉及 " + members.size() + " 名成员");
-                    dto.setCoverImageUrl(null);
+                    dto.setStatusLabel(StringUtils.hasText(sc) ? statusLabel(sc) : "笼位处理提示");
+                    // 组级说明：取首个成员实际违规文案（同组共享）
+                    TwinStudentViolation first = members.get(0);
+                    String groupText = applyTemplateVariables(first.getViolationText(), first.getTargetUserId());
+                    dto.setSummary(StringUtils.hasText(groupText) ? buildSummary(groupText, maxLen) : "该课题组存在相关处理提示，请及时跟进。");
+                    // 全员名单
+                    List<DashboardViolationBoardItemDTO.MemberDTO> memberDtos = new ArrayList<>();
+                    for (TwinStudentViolation m : members) {
+                        DashboardViolationBoardItemDTO.MemberDTO md = new DashboardViolationBoardItemDTO.MemberDTO();
+                        String mn = userDisplayNameService.resolveDisplayName(m.getTargetUserId());
+                        md.setName(StringUtils.hasText(mn) ? mn : m.getTargetUserId());
+                        memberDtos.add(md);
+                    }
+                    dto.setMembers(memberDtos);
+                    dto.setImageUrls(mergeImages(extractBodyImageSrcs(groupText), parseImageUrls(first.getImageUrls())));
                     dto.setCreatedAt(latestCageTime);
                     out.add(dto);
                 }
@@ -476,9 +488,9 @@ public class TwinStudentViolationService {
             dto.setId(row.getId());
             String name = userDisplayNameService.resolveDisplayName(row.getTargetUserId());
             dto.setDisplayName(StringUtils.hasText(name) ? name : row.getTargetUserId());
-            dto.setSummary(buildSummary(applyTemplateVariables(row.getViolationText(), row.getTargetUserId()), maxLen));
-            List<String> imgs = parseImageUrls(row.getImageUrls());
-            dto.setCoverImageUrl(imgs.isEmpty() ? null : imgs.get(0));
+            String text = applyTemplateVariables(row.getViolationText(), row.getTargetUserId());
+            dto.setSummary(buildSummary(text, maxLen));
+            dto.setImageUrls(mergeImages(extractBodyImageSrcs(text), parseImageUrls(row.getImageUrls())));
             dto.setCreatedAt(row.getCreatedAt());
             out.add(dto);
         }
@@ -574,6 +586,29 @@ public class TwinStudentViolationService {
             case "CLEARED", "PROCESSED", "EXPIRED", "SUPERSEDED" -> "processed";
             default -> "pending";
         };
+    }
+
+    /** 从正文 HTML 提取 <img src>，用于「提醒公示」随文多图内联展示 */
+    private static List<String> extractBodyImageSrcs(String html) {
+        if (!StringUtils.hasText(html)) {
+            return Collections.emptyList();
+        }
+        List<String> out = new ArrayList<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("<img[^>]+src=[\"']([^\"']+)[\"']", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(html);
+        while (m.find()) {
+            out.add(m.group(1));
+        }
+        return out;
+    }
+
+    /** 正文图片 + 旧记录单独上传图片（兼容历史），去重保序 */
+    private static List<String> mergeImages(List<String> body, List<String> legacy) {
+        LinkedHashSet<String> set = new LinkedHashSet<>();
+        if (body != null) set.addAll(body);
+        if (legacy != null) set.addAll(legacy);
+        return new ArrayList<>(set);
     }
 
     private static String buildSummary(String rawText, int maxLen) {
@@ -1056,6 +1091,7 @@ public class TwinStudentViolationService {
                 createdByUserId,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -1081,6 +1117,7 @@ public class TwinStudentViolationService {
                 expireAfterDays,
                 createdByUserId,
                 interactiveChallenge,
+                null,
                 null,
                 null);
     }
@@ -1109,6 +1146,7 @@ public class TwinStudentViolationService {
                 createdByUserId,
                 interactiveChallenge,
                 interactiveUnlockOnVerify,
+                null,
                 null);
     }
 
@@ -1124,7 +1162,8 @@ public class TwinStudentViolationService {
             String createdByUserId,
             String interactiveChallenge,
             Boolean interactiveUnlockOnVerify,
-            Long ruleId
+            Long ruleId,
+            Long cageViolationId
     ) {
         if (targetUserIds == null || targetUserIds.isEmpty()) {
             throw new IllegalArgumentException("缺少 targetUserIds");
@@ -1154,11 +1193,11 @@ public class TwinStudentViolationService {
                         showNoticeEveryScan,
                         expireAfterDays,
                         createdByUserId,
-                        "MANUAL",
+                        cageViolationId != null ? "CAGE_STATUS" : "MANUAL",
                         interactiveChallenge,
                         interactiveUnlockOnVerify,
                         ruleId,
-                        null
+                        cageViolationId
                 );
                 created++;
             } catch (Exception e) {

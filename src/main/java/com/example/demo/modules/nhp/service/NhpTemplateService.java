@@ -185,7 +185,17 @@ public class NhpTemplateService {
 
     @Transactional
     public Result<Object> save(String formKey, Map<String, Object> template) {
-        CrfForm form = resolveEditableOrLatest(formKey);
+        // 多草稿下按 body.formId 精确定位要保存的版本；缺省退回「最新草稿/最新版」兼容旧调用
+        Long targetId = asLong(template == null ? null : template.get("formId"));
+        CrfForm form = targetId != null ? formMapper.findById(targetId) : resolveEditableOrLatest(formKey);
+        if (targetId != null) {
+            if (form == null || !Boolean.TRUE.equals(form.getActive())) {
+                return Result.error("模板版本不存在");
+            }
+            if (form.getCode() == null || !form.getCode().equals(formKey)) {
+                return Result.fail(400, "formId 与 formKey 不匹配");
+            }
+        }
         String title = template == null ? null : str(template.get("title"));
         if (form == null) {
             boolean atom = looksLikeAtomCode(formKey);
@@ -730,11 +740,6 @@ public class NhpTemplateService {
         if (published == null) {
             return Result.error("模板不存在或无可解冻的已发布版本");
         }
-        CrfForm openDraft = formMapper.findDraftByCode(formKey.trim());
-        if (openDraft != null && !openDraft.getId().equals(published.getId())) {
-            return Result.fail(409, "已有草稿版本 v" + openDraft.getVersion()
-                    + "，请直接编辑该草稿；冻结版可保留给填写，或先处理草稿后再解冻");
-        }
         long fills = recordMapper.countActiveByFormId(published.getId());
         List<Map<String, Object>> pins = List.of();
         if (isAtom(published)) {
@@ -768,6 +773,36 @@ public class NhpTemplateService {
     }
 
     /**
+     * 恢复已归档版本为已发布（ARCHIVED → FROZEN），不进入草稿编辑态。
+     * 同 formKey 其它 FROZEN 归档，保证至多一个已发布版。
+     */
+    @Transactional
+    public Result<?> restoreArchived(String formKey, String operator) {
+        if (formKey == null || formKey.isBlank()) {
+            return Result.fail(400, "formKey 不能为空");
+        }
+        CrfForm archived = null;
+        for (CrfForm v : formMapper.listByCode(formKey.trim())) {
+            String st = v.getStatus() == null ? "" : v.getStatus().trim().toUpperCase();
+            if ("ARCHIVED".equals(st)) {
+                archived = v;
+                break;
+            }
+        }
+        if (archived == null) {
+            return Result.error("模板不存在或无可恢复的已归档版本");
+        }
+        for (CrfForm v : formMapper.listByCode(formKey.trim())) {
+            String st = v.getStatus() == null ? "" : v.getStatus().trim().toUpperCase();
+            if (!v.getId().equals(archived.getId()) && ("FROZEN".equals(st) || "PUBLISHED".equals(st))) {
+                formMapper.updateStatus(v.getId(), "ARCHIVED");
+            }
+        }
+        formMapper.updateStatus(archived.getId(), "FROZEN");
+        return Result.success(toListItem(formMapper.findById(archived.getId())), "已恢复为已发布版本");
+    }
+
+    /**
      * 新建版本：原子/组合均优先从最新已发布版克隆；若尚无发布则用最新版。已有草稿则冲突。
      */
     @Transactional
@@ -776,10 +811,8 @@ public class NhpTemplateService {
         if (source == null) {
             return Result.error("模板不存在");
         }
-        CrfForm draft = formMapper.findDraftByCode(formKey);
-        if (draft != null) {
-            return Result.fail(409, "已有草稿版本 v" + draft.getVersion() + "，请先编辑或发布该草稿");
-        }
+        // 允许多个 DRAFT 并存：版号由 NhpVersionAllocator 补位，天然不冲突；
+        // 每次从最新已发布版克隆，避免草稿之间互相污染。
         // 优先从最新 FROZEN/PUBLISHED 拷贝（原子独立发布后同样适用）
         CrfForm published = null;
         for (CrfForm v : formMapper.listByCode(formKey)) {

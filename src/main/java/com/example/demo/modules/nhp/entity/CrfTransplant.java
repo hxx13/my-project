@@ -15,6 +15,8 @@ public class CrfTransplant {
     private String projectName;
     private String remark;
     private Long teamId;
+    /** 项目选用的访视方案 FK→crf_visit_scheme.id（NULL=默认） */
+    private Long visitSchemeId;
     /** 手动选定的 TP 码（NULL=沿用后端自动推算） */
     private String currentTp;
     /** 阶段锁定：1=非当前 TP 表单只读（仅作查看） */

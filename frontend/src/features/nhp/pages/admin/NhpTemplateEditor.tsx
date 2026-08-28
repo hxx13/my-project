@@ -56,8 +56,9 @@ export default function NhpTemplateEditor() {
   const goBack = useGoBack("/content-manager/nhp-template");
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { formKey: formKeyParam } = useParams<{ formKey: string }>();
+  const { formKey: formKeyParam, formId: formIdParam } = useParams<{ formKey: string; formId: string }>();
   const formKey = formKeyParam ?? "";
+  const formId = formIdParam ? Number(formIdParam) : undefined;
 
   const {
     sections,
@@ -161,8 +162,8 @@ export default function NhpTemplateEditor() {
   useEffect(() => {
     if (!formKey) return;
     setBusy(true);
-    templateApi
-      .fetchNhpTemplate(formKey)
+    const req = formId != null ? templateApi.fetchNhpTemplateById(formId) : templateApi.fetchNhpTemplate(formKey);
+    req
       .then((t) => {
         load(sortSectionsByDomainCode(t.sections ?? []));
         setTitle(t.title ?? formKey);
@@ -194,7 +195,7 @@ export default function NhpTemplateEditor() {
       })
       .catch((e: Error) => toast.error(e.message || "加载模板失败"))
       .finally(() => setBusy(false));
-  }, [formKey, load]);
+  }, [formKey, formId, load]);
 
   const applyTemplatePayload = (t: templateApi.NhpFormTemplate) => {
     load(sortSectionsByDomainCode(t.sections ?? []));
@@ -267,6 +268,7 @@ export default function NhpTemplateEditor() {
         formKey,
         title,
         sections,
+        ...(formId != null ? { formId } : {}),
       };
       if (kind === "COMPOSITE") {
         payload.atoms = atoms.map((a) => ({
@@ -312,7 +314,9 @@ export default function NhpTemplateEditor() {
     if (!await appConfirm(tip)) return;
     run(async () => {
       const t = await templateApi.createNhpTemplateDraft(formKey);
-      applyTemplatePayload(t);
+      navigate(`/content-manager/nhp-template/edit/${encodeURIComponent(formKey)}/${t.formId}`, {
+        replace: true,
+      });
     }, kind === "ATOM" ? "已新建原子版本" : "已新建草稿版本");
   };
 
@@ -742,7 +746,6 @@ export default function NhpTemplateEditor() {
       {fieldPickerOpen && addMenu && (
         <FieldPicker
           defaultDictKey={editorDictKey}
-          filterDomainCode={addMenu.sectionCode.match(/^(D+\d+)/i)?.[1]?.toUpperCase()}
           onPick={async (field: NhpField, type: FieldType) => {
             const sec = sections.find((s) => s.code === addMenu.sectionCode);
             if (!sec) return;

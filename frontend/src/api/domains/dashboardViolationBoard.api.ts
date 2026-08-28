@@ -1,15 +1,24 @@
 /**
- * 主页「违规惩戒公示」接口（需登录）。
+ * 主页「提醒公示」接口（需登录）。
  * 与后端 PublicDashboardViolationBoardController 对接。
  */
+
+export type DashboardViolationBoardMember = {
+  name: string;
+};
 
 export type DashboardViolationBoardItem = {
   id: number;
   displayName: string;
   /** 课题组名（笼架联动批量违规时有值，前端以此区分单人/课题组渲染） */
   groupName?: string | null;
+  /** 组卡成员名单 */
+  members?: DashboardViolationBoardMember[] | null;
+  /** 状态标签（组卡彩色标签；个人违规为 null） */
+  statusLabel?: string | null;
   summary: string;
-  coverImageUrl?: string | null;
+  /** 展示图片列表（正文图片 + 旧记录单独上传图片，兼容历史） */
+  imageUrls?: string[] | null;
   createdAt?: string | null;
 };
 
@@ -34,11 +43,11 @@ export async function fetchDashboardViolationBoard(): Promise<DashboardViolation
     return { enabled: false, items: [] };
   }
   if (!res.ok) {
-    throw new Error(`大屏惩戒公示加载失败 (HTTP ${res.status})`);
+    throw new Error(`大屏提醒公示加载失败 (HTTP ${res.status})`);
   }
   const json = (await res.json()) as ApiResult<DashboardViolationBoardResponse>;
   if (!json?.success || !json.data) {
-    throw new Error(json?.message || "大屏惩戒公示加载失败");
+    throw new Error(json?.message || "大屏提醒公示加载失败");
   }
   const data = json.data;
   return {

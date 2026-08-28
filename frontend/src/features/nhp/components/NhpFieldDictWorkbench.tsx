@@ -9,6 +9,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
+  copyNhpFieldDictionary,
   createNhpFieldDictionary,
   deleteNhpFieldDictionary,
   fetchNhpFieldDictionaries,
@@ -19,7 +20,7 @@ import {
 } from "../api/nhpFieldDictionary.api";
 import { nhpNavState, nhpPathOf, sanitizeNhpReturnTo } from "../utils/nhpAdminNav";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
-import { appConfirm } from "@/lib/appDialog";
+import { appConfirm, appPrompt } from "@/lib/appDialog";
 import "@/features/aup/aup.css";
 import "../nhp.css";
 
@@ -121,6 +122,27 @@ export default function NhpFieldDictWorkbench({ onBack }: NhpFieldDictWorkbenchP
     },
     onError: (e: Error) => toast.error(e.message || "重导入失败"),
   });
+
+  const copyMutation = useMutation({
+    mutationFn: ({ source, target }: { source: string; target: string }) =>
+      copyNhpFieldDictionary({ sourceDictKey: source, targetDictKey: target }),
+    onSuccess: (d) => {
+      toast.success(`已复制数据域套 ${d.dictKey}（含大纲与字段）`);
+      invalidateList();
+      void qc.invalidateQueries({ queryKey: ["nhp", "fields"] });
+    },
+    onError: (e: Error) => toast.error(e.message || "复制失败", { duration: 6000 }),
+  });
+
+  const handleCopy = async (d: NhpFieldDictionary) => {
+    const target = (await appPrompt("复制到（目标 dictKey，如 pig-v2）", ""))?.trim();
+    if (!target) return;
+    if (target === d.dictKey) {
+      toast.error("目标键不能与源相同");
+      return;
+    }
+    copyMutation.mutate({ source: d.dictKey, target });
+  };
 
   const openEdit = (d: NhpFieldDictionary) => {
     setCreateOpen(false);
@@ -380,6 +402,15 @@ export default function NhpFieldDictWorkbench({ onBack }: NhpFieldDictWorkbenchP
                     </button>
                     <button type="button" className="btn ghost small" onClick={() => openEdit(d)}>
                       编辑
+                    </button>
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      disabled={copyMutation.isPending}
+                      onClick={() => void handleCopy(d)}
+                      title="复制该数据域套（含大纲与字段）到新 dictKey"
+                    >
+                      复制
                     </button>
                     <button
                       type="button"

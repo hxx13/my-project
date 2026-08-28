@@ -2,12 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import { ScanAssistantDock } from "@/components/scanner/scan-assistant/ScanAssistantDock";
-import {
-  collapseScanAssistantBubble,
-  expandScanAssistantFromCarrierClick,
-  getTrackedScanPopupPersonKey,
-} from "@/components/scanner/scan-assistant/scanAssistantSpeak";
-import { isTwinDashboardHomePath } from "@/features/admin/buildAdminNavModel";
+import { useQuery } from "@tanstack/react-query";
+import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
+import { CARRIER_IDS, type CarrierId } from "@/components/scanner/scan-assistant/carrier/carrier";
+import { isAdminAreaPath, isTwinDashboardHomePath } from "@/features/admin/buildAdminNavModel";
 import { usePrefersReducedMotion, useTypewriterText } from "@/hooks/useTypewriterText";
 import { useScanAssistantStore } from "@/store/useScanAssistantStore";
 import { useScanAssistantBubbleTransition } from "@/components/scanner/scan-assistant/useScanAssistantBubbleTransition";
@@ -26,10 +24,19 @@ export function ScanAssistantCarrier({ orbSize = 0.76 }: ScanAssistantCarrierPro
   const setDockVisible = useScanAssistantStore((s) => s.setDockVisible);
   const dockVisible = useScanAssistantStore((s) => s.dockVisible);
   const activeMessage = useScanAssistantStore((s) => s.activeMessage);
-  const bubbleCollapsed = useScanAssistantStore((s) => s.bubbleCollapsed);
+
+  const { data: runtimeConfig } = useQuery({
+    queryKey: ["scan-assistant-carrier"],
+    queryFn: fetchPublicRuntimeConfig,
+    staleTime: 60_000,
+  });
+  const carrier: CarrierId = (() => {
+    const v = runtimeConfig?.["scan.assistant.carrier"];
+    return CARRIER_IDS.includes(v as CarrierId) ? (v as CarrierId) : "morph";
+  })();
 
   useEffect(() => {
-    if (isTwinDashboardHomePath(pathname)) {
+    if (isTwinDashboardHomePath(pathname) || isAdminAreaPath(pathname)) {
       setDockVisible(true);
     } else if (!activeMessage) {
       setDockVisible(false);
@@ -88,34 +95,31 @@ export function ScanAssistantCarrier({ orbSize = 0.76 }: ScanAssistantCarrierPro
     return () => { stopSpeechAudio(); };
   }, [isStreaming, speechMessageId, reducedMotion, scanAutoPlay, stopSpeechAudio]);
 
-  // 气泡收起/消失时停语音
+  // 气泡消失时停语音
   useEffect(() => {
-    if (bubbleCollapsed || !activeMessage) {
+    if (!activeMessage) {
       stopSpeechAudio();
       speechPlayedRef.current = null;
     }
-  }, [bubbleCollapsed, activeMessage, stopSpeechAudio]);
+  }, [activeMessage, stopSpeechAudio]);
+
+  /** 无播报时点击载体 = 开合提问面板 */
+  const [askOpen, setAskOpen] = useState(false);
+  const dismissMessage = useScanAssistantStore((s) => s.dismissMessage);
 
   const handleOrbClick = useCallback(() => {
-    const personKey =
-      activeMessage?.personKey?.trim() || getTrackedScanPopupPersonKey()?.trim();
-    if (!personKey || !activeMessage) return;
+    setAskOpen((open) => !open);
+    if (activeMessage) dismissMessage();
+  }, [activeMessage, dismissMessage]);
 
-    if (bubbleCollapsed) {
-      void expandScanAssistantFromCarrierClick(personKey);
-      return;
-    }
-
-    collapseScanAssistantBubble();
-  }, [activeMessage, bubbleCollapsed]);
-
-  const shouldRender = dockVisible || Boolean(activeMessage);
+  const shouldRender = dockVisible || Boolean(activeMessage) || askOpen;
 
   if (!shouldRender) return null;
 
   return createPortal(
     <ScanAssistantDock
       orbSize={orbSize}
+      carrier={carrier}
       isSpeaking={speaking}
       activeMessage={bubbleMessage}
       bubblePhase={phase}
@@ -123,8 +127,10 @@ export function ScanAssistantCarrier({ orbSize = 0.76 }: ScanAssistantCarrierPro
       isStreaming={isStreaming}
       isAwaitingFirstToken={isAwaitingFirstToken}
       isTyping={isTyping}
-      bubbleCollapsed={bubbleCollapsed}
-      onCollapseBubble={collapseScanAssistantBubble}
+      bubbleCollapsed={false}
+      askOpen={askOpen}
+      onDismissMessage={dismissMessage}
+      onAskDismiss={() => setAskOpen(false)}
       onOrbClick={handleOrbClick}
     />,
     document.body,

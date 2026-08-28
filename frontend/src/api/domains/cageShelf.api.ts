@@ -152,10 +152,11 @@ export interface CageScanProgress {
   startedAt?: string;
 }
 
-export async function fetchCageScanProgress() {
-  const res = await authHttp.get<Result<CageScanProgress>>("/v1/cage-shelves/scan-progress");
+/** 一键本地同步进度（手动按钮触发，替代定时扫描进度展示） */
+export async function fetchLocalPipelineProgress() {
+  const res = await authHttp.get<Result<CageScanProgress>>("/cage-cell-index/local-pipeline-progress");
   if (!res.data?.success) {
-    throw new Error(res.data?.message || "获取扫描进度失败");
+    throw new Error(res.data?.message || "获取一键同步进度失败");
   }
   return res.data.data;
 }
@@ -1000,9 +1001,9 @@ export interface LocalSyncPipelineResult {
 }
 
 const LOCAL_PIPELINE_STEP_LABEL: Record<string, string> = {
-  syncAllCells: "全量同步笼位",
   syncDetailFields: "补全详情字段",
-  syncStatusFromBook: "同步状态",
+  syncStatusFromBook: "同步笼位状态",
+  syncCohabitationFromBack: "同步特殊状态",
 };
 
 export function localPipelineStepLabel(step: string | null | undefined): string {
@@ -1090,18 +1091,26 @@ export async function syncDetailFields(roomId?: number): Promise<CellSyncStats> 
   return res.data.data!;
 }
 
+/** 异步一键同步的启动结果（后端立即返回 started/alreadyRunning，实际进度走 /local-pipeline-progress 轮询）。 */
+export interface LocalSyncStartResult {
+  ok: boolean;
+  started?: boolean;
+  alreadyRunning?: boolean;
+  message?: string;
+}
+
 /**
- * 一键同步本地笼位（仅超管）：固定顺序
- * 1) /back 全量 → 2) /list 补全详情 → 3) /book 状态
+ * 一键同步本地笼位（仅超管）：固定顺序 /list 补全详情 → /book 状态 → /back 特殊状态。
+ * 后端异步执行，本接口只负责「启动」并立即返回；前端轮询 /local-pipeline-progress 看进度。
  */
-export async function syncLocalCagePipeline(roomId?: number): Promise<LocalSyncPipelineResult> {
-  const res = await authHttp.post<Result<LocalSyncPipelineResult>>(
+export async function syncLocalCagePipeline(roomId?: string | number): Promise<LocalSyncStartResult> {
+  const res = await authHttp.post<Result<LocalSyncStartResult>>(
     "/cage-cell-index/sync-local-pipeline",
     { roomId: roomId ?? undefined },
-    { timeout: 600_000 },
+    { timeout: 60_000 },
   );
-  if (!res.data?.success) throw new Error(res.data?.message || "一键同步失败");
-  return res.data.data!;
+  if (!res.data?.success) throw new Error(res.data?.message || "同步启动失败");
+  return res.data.data ?? { ok: false };
 }
 
 /** 本地数据源：通过 shelveId 加载笼架网格 */

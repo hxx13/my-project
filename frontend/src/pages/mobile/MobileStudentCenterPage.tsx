@@ -23,6 +23,7 @@ import { sortMobileAnnouncementsForDisplay } from "./mobileExemptAlertHelpers";
 import MobileHomeTab from "./MobileHomeTab";
 import MobileRoomsTab from "./MobileRoomsTab";
 import MobileMaterialTab from "./MobileMaterialTab";
+import MobileAnimalOrderView from "./MobileAnimalOrderView";
 import MobileRecordsTab from "./MobileRecordsTab";
 import MobileViolationsTab from "./MobileViolationsTab";
 import MobileMineTab from "./MobileMineTab";
@@ -632,9 +633,11 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             data={data}
             expiresAt={data.expiresAt}
             jwtMode={jwtMode}
+            onNav={setActiveTab}
             onOpenAnnouncements={() => openAnnouncements()}
           />
         )}
+        {activeTab === "animalOrder" && <MobileAnimalOrderView jwtMode={jwtMode} />}
       </main>
       <MobileNoticesPanel
         open={showAnnouncements}

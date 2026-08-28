@@ -2,9 +2,13 @@ package com.example.demo.modules.nhp.controller;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.modules.nhp.entity.CrfProjectVisitPlan;
+import com.example.demo.modules.nhp.entity.CrfTransplant;
 import com.example.demo.modules.nhp.entity.CrfVisit;
 import com.example.demo.modules.nhp.entity.CrfVisitPlan;
+import com.example.demo.modules.nhp.entity.CrfVisitScheme;
+import com.example.demo.modules.nhp.mapper.CrfTransplantMapper;
 import com.example.demo.modules.nhp.mapper.CrfVisitMapper;
+import com.example.demo.modules.nhp.mapper.CrfVisitSchemeMapper;
 import com.example.demo.modules.nhp.service.NhpVisitService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,18 +25,136 @@ import java.util.Map;
 public class NhpVisitController {
 
     private final CrfVisitMapper visitMapper;
+    private final CrfVisitSchemeMapper visitSchemeMapper;
+    private final CrfTransplantMapper transplantMapper;
     private final NhpVisitService visitService;
 
     public NhpVisitController(CrfVisitMapper visitMapper,
+                              CrfVisitSchemeMapper visitSchemeMapper,
+                              CrfTransplantMapper transplantMapper,
                               NhpVisitService visitService) {
         this.visitMapper = visitMapper;
+        this.visitSchemeMapper = visitSchemeMapper;
+        this.transplantMapper = transplantMapper;
         this.visitService = visitService;
     }
 
     @GetMapping("/visits")
-    @Operation(summary = "访视时点列表（TP01~TP12）")
-    public Result<List<CrfVisit>> listVisits() {
-        return Result.success(visitMapper.list());
+    @Operation(summary = "访视时点列表（schemeId 空=默认方案，否则按方案）")
+    public Result<List<CrfVisit>> listVisits(@RequestParam(required = false) Long schemeId) {
+        return Result.success(visitMapper.listBySchemeId(schemeId));
+    }
+
+    @PostMapping("/visits")
+    @Operation(summary = "新建访视时点（可归属某方案）")
+    public Result<CrfVisit> createVisit(@RequestBody Map<String, Object> body) {
+        String code = str(body.get("code"));
+        if (code == null || code.isBlank()) {
+            return Result.fail(400, "TP 码不能为空");
+        }
+        CrfVisit v = new CrfVisit();
+        v.setSchemeId(asLong(body.get("schemeId")));
+        v.setCode(code.trim());
+        v.setName(str(body.get("name")));
+        v.setSeq(asInt(body.get("seq")));
+        Boolean repeating = asBool(body.get("repeating"));
+        v.setRepeating(repeating == null ? Boolean.FALSE : repeating);
+        v.setPlannedDays(asInt(body.get("plannedDays")));
+        v.setEarlyDays(asInt(body.get("earlyDays")));
+        v.setLateDays(asInt(body.get("lateDays")));
+        v.setEndDays(asInt(body.get("endDays")));
+        v.setEventAnchor(str(body.get("eventAnchor")));
+        v.setActive(true);
+        visitMapper.insert(v);
+        return Result.success(visitMapper.findById(v.getId()));
+    }
+
+    @DeleteMapping("/visits/{id}")
+    @Operation(summary = "删除访视时点（软删 + 同方案剩余时点按 seq 顺排重编号 TP00..TPN）")
+    @Transactional
+    public Result<?> deleteVisit(@PathVariable Long id) {
+        CrfVisit v = visitMapper.findById(id);
+        if (v == null) return Result.fail(404, "访视不存在");
+        Long schemeId = v.getSchemeId();
+        visitMapper.softDelete(id);
+        // TP 码仅是序号：删除后同方案剩余时点顺排重编号，避免留空档
+        List<CrfVisit> rest = visitMapper.listBySchemeId(schemeId);
+        for (int i = 0; i < rest.size(); i++) {
+            String code = "TP" + String.format("%02d", i);
+            CrfVisit r = rest.get(i);
+            if (r.getCode() == null || !code.equals(r.getCode())) {
+                visitMapper.updateCode(r.getId(), code);
+            }
+        }
+        return Result.success();
+    }
+
+    @GetMapping("/visit-schemes")
+    @Operation(summary = "访视方案列表")
+    public Result<List<CrfVisitScheme>> listSchemes() {
+        return Result.success(visitSchemeMapper.list());
+    }
+
+    @PostMapping("/visit-schemes")
+    @Operation(summary = "新建访视方案")
+    public Result<CrfVisitScheme> createScheme(@RequestBody Map<String, Object> body) {
+        String name = str(body.get("name"));
+        if (name == null || name.isBlank()) {
+            return Result.fail(400, "方案名不能为空");
+        }
+        if (visitSchemeMapper.findByName(name.trim()) != null) {
+            return Result.fail(409, "方案名已存在: " + name.trim());
+        }
+        CrfVisitScheme s = new CrfVisitScheme();
+        s.setName(name.trim());
+        s.setDescription(str(body.get("description")));
+        s.setActive(true);
+        visitSchemeMapper.insert(s);
+        return Result.success(visitSchemeMapper.findById(s.getId()));
+    }
+
+    @PutMapping("/visit-schemes/{id}")
+    @Operation(summary = "重命名访视方案")
+    public Result<CrfVisitScheme> updateScheme(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        CrfVisitScheme s = visitSchemeMapper.findById(id);
+        if (s == null) return Result.fail(404, "方案不存在");
+        String name = str(body.get("name"));
+        if (name != null && !name.isBlank()) s.setName(name.trim());
+        if (body.containsKey("description")) s.setDescription(str(body.get("description")));
+        visitSchemeMapper.update(s);
+        return Result.success(visitSchemeMapper.findById(id));
+    }
+
+    @DeleteMapping("/visit-schemes/{id}")
+    @Operation(summary = "删除访视方案（无 TP 无项目引用时）")
+    public Result<?> deleteScheme(@PathVariable Long id) {
+        CrfVisitScheme s = visitSchemeMapper.findById(id);
+        if (s == null) return Result.fail(404, "方案不存在");
+        if (visitSchemeMapper.countVisitsByScheme(id) > 0) {
+            return Result.fail(409, "该方案下仍有访视时点，请先删除或移出");
+        }
+        if (visitSchemeMapper.countProjectsByScheme(id) > 0) {
+            return Result.fail(409, "仍有项目选用该方案，请先改选其它方案");
+        }
+        visitSchemeMapper.softDelete(id);
+        return Result.success();
+    }
+
+    @GetMapping("/projects/{projectId}/visit-scheme")
+    @Operation(summary = "项目选用的访视方案 id")
+    public Result<Long> getProjectVisitScheme(@PathVariable Long projectId) {
+        CrfTransplant tx = transplantMapper.findById(projectId);
+        return Result.success(tx == null ? null : tx.getVisitSchemeId());
+    }
+
+    @PutMapping("/projects/{projectId}/visit-scheme")
+    @Operation(summary = "项目选用访视方案（body.visitSchemeId 空=默认）")
+    public Result<CrfTransplant> setProjectVisitScheme(@PathVariable Long projectId, @RequestBody Map<String, Object> body) {
+        CrfTransplant tx = transplantMapper.findById(projectId);
+        if (tx == null) return Result.fail(404, "项目不存在");
+        tx.setVisitSchemeId(asLong(body == null ? null : body.get("visitSchemeId")));
+        transplantMapper.update(tx);
+        return Result.success(transplantMapper.findById(projectId));
     }
 
     @PutMapping("/visits/{id}")
@@ -103,6 +225,20 @@ public class NhpVisitController {
         String s = String.valueOf(v).trim();
         if (s.isEmpty() || "null".equalsIgnoreCase(s)) return null;
         return Integer.parseInt(s);
+    }
+
+    private static Long asLong(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number n) return n.longValue();
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty() || "null".equalsIgnoreCase(s)) return null;
+        return Long.parseLong(s);
+    }
+
+    private static String str(Object v) {
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
     }
 
     private static Boolean asBool(Object v) {

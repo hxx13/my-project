@@ -191,7 +191,7 @@ public class NhpRecordService {
         return Result.success(transplantMapper.findById(id));
     }
 
-    /** 删除空项目：有表单实例则拒绝；否则连同项目级编排一起删。 */
+    /** 删除项目：空壳实例（未保存、无对象）自动软删；有对象的真实实例仍拒绝。 */
     @Transactional
     public Result<?> deleteProject(Long id) {
         CrfTransplant tx = transplantMapper.findById(id);
@@ -199,12 +199,24 @@ public class NhpRecordService {
             return Result.error("项目不存在");
         }
         List<CrfRecord> records = recordMapper.listByTransplantId(id);
-        if (records != null && !records.isEmpty()) {
-            return Result.fail(409, "项目下有 " + records.size() + " 条表单实例，无法删除");
+        int orphans = 0;
+        int realCount = 0;
+        if (records != null) {
+            for (CrfRecord r : records) {
+                if (r.getSubjectId() == null) {
+                    recordMapper.updateStatus(r.getId(), "DELETED");
+                    orphans++;
+                } else {
+                    realCount++;
+                }
+            }
+        }
+        if (realCount > 0) {
+            return Result.fail(409, "项目下有 " + realCount + " 条表单实例，无法删除");
         }
         projectVisitPlanMapper.deleteByTransplantId(id);
         transplantMapper.deleteById(id);
-        return Result.success(null);
+        return Result.success(null, orphans > 0 ? "已清理 " + orphans + " 条空壳实例" : null);
     }
 
     /** 项目管理：列出全部项目（crf_transplant），每个项目含供体/受体对象。 */

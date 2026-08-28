@@ -12,4 +12,6 @@ public class ScanAssistantSpeakRequest {
     private Map<String, Object> context;
     /** mark-used 专用：auto | click */
     private String usageSource;
+    /** 提问（ask 端点专用）：用户自由提问文本 */
+    private String question;
 }

@@ -73,7 +73,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    title: "大屏惩戒公示",
+    title: "大屏提醒公示",
     fields: [
       { key: "dashboard.codex.violation_board_enabled", kind: "switch" },
       { key: "dashboard.codex.violation_board_max_items", kind: "number" },

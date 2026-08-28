@@ -108,6 +108,8 @@ export type ScanAssistantPegtopLoaderProps = {
   className?: string;
   /** false 时只显示一枚静止陀螺，留在正文行首 */
   animated?: boolean;
+  /** 待机态：单枚陀螺持续轻柔浮动（提问面板行首图标） */
+  idle?: boolean;
 };
 
 /**
@@ -117,6 +119,7 @@ export type ScanAssistantPegtopLoaderProps = {
 export function ScanAssistantPegtopLoader({
   className = "",
   animated = true,
+  idle = false,
 }: ScanAssistantPegtopLoaderProps) {
   const baseId = useId().replace(/:/g, "");
 
@@ -125,6 +128,7 @@ export function ScanAssistantPegtopLoader({
       className={[
         "scan-assistant-pegtop-loader",
         animated ? "" : "scan-assistant-pegtop-loader--static",
+        idle ? "scan-assistant-pegtop-loader--idle" : "",
         className,
       ]
         .filter(Boolean)

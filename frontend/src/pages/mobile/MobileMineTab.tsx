@@ -17,6 +17,7 @@ import {
   LogOut,
   Settings,
   Smartphone,
+  PawPrint,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { type MobileCenterData } from "@/api/domains/mobileStudent.api";
@@ -25,6 +26,7 @@ import { sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api"
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 import { toast } from "react-hot-toast";
 import RingAvatar from "./MobileRingAvatar";
+import { type MobileShellTabKey } from "./mobileShellLayout";
 import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
 
 import { appConfirm } from "@/lib/appDialog";
@@ -38,6 +40,7 @@ interface MobileMineTabProps {
   data: NonNullable<MobileCenterData>;
   expiresAt?: string;
   jwtMode?: boolean;
+  onNav?: (tab: MobileShellTabKey) => void;
   onOpenAnnouncements?: () => void;
 }
 
@@ -45,6 +48,7 @@ export default function MobileMineTab({
   data,
   expiresAt,
   jwtMode,
+  onNav,
   onOpenAnnouncements,
 }: MobileMineTabProps) {
   const navigate = useNavigate();
@@ -318,6 +322,9 @@ export default function MobileMineTab({
         }}
       >
         {[
+          ...(jwtMode
+            ? [{ label: "动物订购", color: "#0ea5e9", icon: PawPrint, action: () => onNav?.("animalOrder") }]
+            : []),
           { label: "我的房间", color: "#6366f1", icon: DoorOpen, action: undefined },
           { label: "出入记录", color: "#10b981", icon: FileText, action: undefined },
           { label: "数据统计", color: "#f59e0b", icon: BarChart3, action: undefined },

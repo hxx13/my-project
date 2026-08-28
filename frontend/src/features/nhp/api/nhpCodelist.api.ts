@@ -186,6 +186,13 @@ export async function unfreezeNhpCodelist(code: string): Promise<NhpCodelist> {
     .then(({ data }) => data.data);
 }
 
+/** 恢复已归档版本为已发布（ARCHIVED→FROZEN，不进入草稿编辑态） */
+export async function restoreNhpCodelistArchived(code: string): Promise<NhpCodelist> {
+  return authHttp
+    .post<Result<NhpCodelist>>(`/nhp/codelists/${encodeURIComponent(code)}/restore-archived`)
+    .then(({ data }) => data.data);
+}
+
 /** 批量解冻无字段引用的已冻结码表 */
 export async function unfreezeUnusedNhpCodelists(): Promise<{
   unfrozenCount: number;

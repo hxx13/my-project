@@ -84,7 +84,7 @@ export function EditAnalyticsViewModal(props: Props) {
       >
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h3 className="font-semibold text-neutral-900">编辑统计配置</h3>
-          <button type="button" onClick={onClose} className="rounded p-1 text-neutral-400 hover:bg-neutral-100">
+          <button type="button" onClick={onClose} className="rounded p-1 text-accent hover:bg-accent/10">
             <X className="h-5 w-5" />
           </button>
         </div>

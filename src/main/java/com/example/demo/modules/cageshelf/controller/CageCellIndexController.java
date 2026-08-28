@@ -212,6 +212,15 @@ public class CageCellIndexController {
 
     // ── 一键本地同步（固定顺序：全量 → 补全详情 → 状态）──
 
+    @GetMapping("/local-pipeline-progress")
+    @Operation(summary = "一键本地同步进度（前端轮询用）")
+    public Result<?> localPipelineProgress(HttpServletRequest request) {
+        User user = resolveUser(request.getHeader("Authorization"));
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        return Result.success(cellIndexService.getLocalPipelineProgress());
+    }
+
     @PostMapping("/sync-local-pipeline")
     @Operation(summary = "一键同步本地笼位：按固定顺序执行 /list 补全详情 → /book 状态（不含 ID 全量重拉，仅超级管理员）")
     public Result<Map<String, Object>> syncLocalPipeline(
@@ -222,7 +231,7 @@ public class CageCellIndexController {
         if (denied != null) return Result.fail(403, denied.getMessage());
         Long roomId = body != null ? toLong(body.get("roomId")) : null;
         log.info("[local-pipeline] 超级管理员 {} 触发一键本地同步 roomId={}", user.getId(), roomId);
-        Map<String, Object> stats = cellIndexService.syncLocalPipeline(roomId);
+        Map<String, Object> stats = cellIndexService.syncLocalPipelineAsync(roomId);
         return Result.success(stats);
     }
 

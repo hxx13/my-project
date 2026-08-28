@@ -39,14 +39,14 @@ class CohabitationActiveMappingTest {
     @Test
     void closingOnly_cohabitationActive() {
         mapping.load();
-        Map<String, Object> mapped = mapping.applyPull("list", cage("2026-07-10 00:00:00", null));
+        Map<String, Object> mapped = mapping.applyPull("back", cage("2026-07-10 00:00:00", null));
         assertEquals(Boolean.TRUE, mapped.get("needs_cohabitation"));
     }
 
     @Test
     void rescindAfterClosing_cancelled() {
         mapping.load();
-        Map<String, Object> mapped = mapping.applyPull("list",
+        Map<String, Object> mapped = mapping.applyPull("back",
                 cage("2026-03-07 00:00:00", "2026-03-10 00:00:00"));
         assertEquals(Boolean.FALSE, mapped.get("needs_cohabitation"));
     }
@@ -54,7 +54,7 @@ class CohabitationActiveMappingTest {
     @Test
     void rescindBeforeClosing_reEstablishedActive() {
         mapping.load();
-        Map<String, Object> mapped = mapping.applyPull("list",
+        Map<String, Object> mapped = mapping.applyPull("back",
                 cage("2026-03-07 00:00:00", "2026-02-25 00:00:00"));
         assertEquals(Boolean.TRUE, mapped.get("needs_cohabitation"));
     }
@@ -62,8 +62,15 @@ class CohabitationActiveMappingTest {
     @Test
     void noClosing_notActive() {
         mapping.load();
-        Map<String, Object> mapped = mapping.applyPull("list", cage(null, null));
+        Map<String, Object> mapped = mapping.applyPull("back", cage(null, null));
         assertEquals(Boolean.FALSE, mapped.get("needs_cohabitation"));
+    }
+
+    @Test
+    void listEndpoint_gated_skipNotWrite() {
+        mapping.load();
+        Map<String, Object> mapped = mapping.applyPull("list", cage("2026-07-10 00:00:00", null));
+        assertFalse(mapped.containsKey("needs_cohabitation"), "/list 无 closingdate，computed 已门控到 back，不应在 list 产出合笼");
     }
 
     @Test
@@ -71,7 +78,7 @@ class CohabitationActiveMappingTest {
         mapping.load();
         Map<String, Object> raw = new LinkedHashMap<>();
         raw.put("id", 1002L);
-        Map<String, Object> mapped = mapping.applyPull("list", raw);
+        Map<String, Object> mapped = mapping.applyPull("back", raw);
         assertFalse(mapped.containsKey("needs_cohabitation"), "cageBoxVo 缺失不应写入，保留旧值");
     }
 

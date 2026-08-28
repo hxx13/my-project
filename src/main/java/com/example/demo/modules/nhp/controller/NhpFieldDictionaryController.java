@@ -46,6 +46,12 @@ public class NhpFieldDictionaryController {
         return service.create(body);
     }
 
+    @PostMapping("/copy")
+    @Operation(summary = "复制字典套（字段文件夹：含大纲 + 字段；字段落 DRAFT v1）")
+    public Result<CrfFieldDictionary> copy(@RequestBody Map<String, Object> body) {
+        return service.copyDictionary(body);
+    }
+
     @PutMapping("/{dictKey}")
     @Operation(summary = "更新字典套元数据")
     public Result<CrfFieldDictionary> update(@PathVariable String dictKey, @RequestBody Map<String, Object> body) {
@@ -148,6 +154,22 @@ public class NhpFieldDictionaryController {
             @PathVariable String dictKey,
             @PathVariable String sourceDictKey) {
         return service.cloneStructureFrom(dictKey, sourceDictKey);
+    }
+
+    @PostMapping("/{dictKey}/structure/domains/copy")
+    @Operation(summary = "复制数据域（含子模块大纲 + 字段；字段落 DRAFT v1）")
+    public Result<Map<String, Object>> copyDomain(
+            @PathVariable String dictKey,
+            @RequestBody Map<String, Object> body) {
+        return service.copyDomain(dictKey, body);
+    }
+
+    @PostMapping("/{dictKey}/structure/submodules/copy")
+    @Operation(summary = "复制子模块（含字段；字段落 DRAFT v1）")
+    public Result<Map<String, Object>> copySubmodule(
+            @PathVariable String dictKey,
+            @RequestBody Map<String, Object> body) {
+        return service.copySubmodule(dictKey, body);
     }
 
     private Result<Map<String, Object>> withOptionalAtomSync(

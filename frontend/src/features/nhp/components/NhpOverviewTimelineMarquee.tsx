@@ -19,7 +19,7 @@ function visitLabel(v: NhpVisit): string {
 export default function NhpOverviewTimelineMarquee({ currentTp, day0, lifecycleStage }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
-  const visitsQuery = useQuery({ queryKey: ["nhp", "visits"], queryFn: fetchNhpVisits, staleTime: 60_000 });
+  const visitsQuery = useQuery({ queryKey: ["nhp", "visits"], queryFn: () => fetchNhpVisits(), staleTime: 60_000 });
   const visits = visitsQuery.data ?? [];
 
   const sorted = useMemo(() => [...visits].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)), [visits]);

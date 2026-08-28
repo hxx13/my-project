@@ -244,6 +244,112 @@ export async function streamScanAssistantSpeak(
   dispatchEvent();
 }
 
+/** 提问/问好共用的 SSE 流式解析 */
+async function postAskSse(
+  url: string,
+  body: unknown,
+  handlers: ScanAssistantStreamHandlers,
+  options?: { signal?: AbortSignal },
+) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      ...authHeaders(),
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify(body ?? {}),
+    signal: options?.signal,
+  });
+
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = (await res.json()) as { message?: string };
+      if (j.message) msg = j.message;
+    } catch {
+      // ignore
+    }
+    handlers.onError?.(msg);
+    throw new Error(msg);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("无响应流");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let eventName = "message";
+  let dataLines: string[] = [];
+
+  const dispatchEvent = () => {
+    if (dataLines.length === 0) {
+      eventName = "message";
+      return;
+    }
+    const raw = dataLines.join("\n");
+    dataLines = [];
+    const name = eventName;
+    eventName = "message";
+
+    let payload: Record<string, unknown> = {};
+    try {
+      payload = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      payload = { text: raw };
+    }
+
+    if (name === "delta" && typeof payload.text === "string") {
+      handlers.onDelta?.(payload.text, payload.fallback === true);
+    } else if (name === "started") {
+      handlers.onStarted?.();
+    } else if (name === "done") {
+      handlers.onDone?.({
+        text: typeof payload.text === "string" ? payload.text : undefined,
+        model: typeof payload.model === "string" ? payload.model : undefined,
+        sessionId: typeof payload.sessionId === "number" ? payload.sessionId : undefined,
+      });
+    } else if (name === "error") {
+      handlers.onError?.(typeof payload.message === "string" ? payload.message : "提问失败");
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (line === "") dispatchEvent();
+      else if (line.startsWith("event:")) eventName = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  if (buffer.trim().length > 0) {
+    if (buffer.startsWith("event:")) eventName = buffer.slice(6).trim();
+    else if (buffer.startsWith("data:")) dataLines.push(buffer.slice(5).trimStart());
+  }
+  dispatchEvent();
+}
+
+/** 智能载体提问（SSE 流式） */
+export async function streamScanAssistantAsk(
+  question: string,
+  handlers: ScanAssistantStreamHandlers,
+  options?: { signal?: AbortSignal },
+) {
+  return postAskSse("/api/v1/twin/scan-assistant/ask/stream", { question }, handlers, options);
+}
+
+/** 智能载体主动问好（打开面板即触发，SSE 流式） */
+export async function streamScanAssistantGreet(
+  handlers: ScanAssistantStreamHandlers,
+  options?: { signal?: AbortSignal },
+) {
+  return postAskSse("/api/v1/twin/scan-assistant/ask/greet/stream", {}, handlers, options);
+}
+
 /** 触发一次主动播报，返回播报文本或空 */
 export async function triggerProactiveBroadcast(): Promise<{ text: string; hasBroadcast: boolean }> {
   const res = await fetch("/api/v1/twin/scan-assistant/broadcast/proactive", {

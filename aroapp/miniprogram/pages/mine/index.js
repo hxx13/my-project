@@ -921,6 +921,15 @@ Page({
     wx.navigateTo({ url: '/package-feature/pages/notifications/index' });
   },
 
+  goAnimalOrder() {
+    const token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
+    if (!token) {
+      wx.showToast({ title: '请先完成校内绑定', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/animalOrder/index' });
+  },
+
   goRepairRequest() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
     if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/repairRequest/index', role, 'STAFF')) {

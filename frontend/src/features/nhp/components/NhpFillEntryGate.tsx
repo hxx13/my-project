@@ -4,8 +4,8 @@
  * 项目编号由后端按临时规则生成；项目与实验内容无关。
  * 点进项目后全宽渲染 NhpProjectWorkspace（左侧 TP 导航 + 右侧表单）。
  */
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
@@ -28,6 +28,14 @@ export default function NhpFillEntryGate({ mode = "portal" }: Props) {
 
   const [view, setView] = useState<View>("list");
   const [selected, setSelected] = useState<NhpProject | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  /** 进入项目工作区：projectId 写进 URL，保证「返回」能回退到项目而非项目列表 */
+  const openProject = (p: NhpProject) => {
+    setSelected(p);
+    setView("project");
+    setSearchParams({ projectId: String(p.id) });
+  };
 
   const [projectName, setProjectName] = useState("");
   const [remark, setRemark] = useState("");
@@ -46,8 +54,7 @@ export default function NhpFillEntryGate({ mode = "portal" }: Props) {
     onSuccess: (r) => {
       toast.success(`项目 ${r.project.txCode ?? ""} 已创建`);
       qc.invalidateQueries({ queryKey: ["nhp", "projects", { mine }] });
-      setSelected(r.project);
-      setView("project");
+      openProject(r.project);
     },
     onError: (e: Error) => toast.error(e.message || "创建项目失败", { duration: 6000 }),
   });
@@ -56,6 +63,7 @@ export default function NhpFillEntryGate({ mode = "portal" }: Props) {
     if (view === "project") {
       setSelected(null);
       setView("list");
+      setSearchParams({}, { replace: true });
       return;
     }
     if (view === "create") {
@@ -79,6 +87,18 @@ export default function NhpFillEntryGate({ mode = "portal" }: Props) {
   };
 
   const projects = projectsQuery.data ?? [];
+
+  // 从 /nhp/fill?projectId=123 进入时恢复项目视图
+  useEffect(() => {
+    if (view !== "list") return;
+    const pid = searchParams.get("projectId");
+    if (!pid) return;
+    const p = projectsQuery.data?.find((x) => String(x.id) === pid);
+    if (p) {
+      setSelected(p);
+      setView("project");
+    }
+  }, [view, searchParams, projectsQuery.data]);
 
   const projectTitle = selected
     ? selected.projectName || selected.txCode || "未命名项目"
@@ -146,10 +166,7 @@ export default function NhpFillEntryGate({ mode = "portal" }: Props) {
                     key={p.id}
                     className="aup-wb-row"
                     style={{ padding: "12px 14px", cursor: "pointer" }}
-                    onClick={() => {
-                      setSelected(p);
-                      setView("project");
-                    }}
+                    onClick={() => openProject(p)}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="lbl" style={{ fontWeight: 600 }}>

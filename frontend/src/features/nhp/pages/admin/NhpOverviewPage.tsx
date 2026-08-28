@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
+import { appConfirm } from "@/lib/appDialog";
 import { PortalHeader } from "@/features/portal/PortalHeader";
 import { fetchNhpProjects, type NhpProject, type NhpSubject } from "../../api/nhpRecord.api";
 import { fetchNhpTodoBySubject } from "../../api/nhpWorkbench.api";
@@ -45,9 +46,16 @@ function captureFormLabel(cf?: string | null): string {
 function statusShort(status?: string | null): string {
   const s = (status ?? "").toUpperCase();
   if (s === "LOCKED") return "已锁定";
+  if (s === "SIGNED") return "已签署";
+  if (s === "REVIEWED") return "已复核";
   if (s === "COMPLETE") return "已提交";
   if (s === "DRAFT") return "草稿";
   return status || "—";
+}
+
+function isDraftStatus(status?: string | null): boolean {
+  const s = (status ?? "").toUpperCase();
+  return s === "DRAFT" || s === "IN_REVIEW" || s === "";
 }
 
 export default function NhpOverviewPage() {
@@ -186,44 +194,66 @@ export default function NhpOverviewPage() {
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column" }}>
                         {w.activeForms.map(({ plan, form }) => {
-                          const draftId = w.draftByFormKey.get(form.formKey);
+                          const recs = w.recordsByFormKey.get(form.formKey) ?? [];
                           return (
                             <div
                               key={`${plan.id ?? form.formId}-${w.activeVisit?.id}`}
                               className="aup-wb-row"
-                              style={{ padding: "12px 14px", borderBottom: "1px solid var(--border,#E5E7EB)" }}
+                              style={{ padding: "12px 14px", borderBottom: "1px solid var(--border,#E5E7EB)", flexDirection: "column", alignItems: "stretch", gap: 8 }}
                             >
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div className="lbl" style={{ fontWeight: 600, fontSize: 14 }}>
-                                  {form.title || form.formKey}
-                                  <span className="aup-wb-chip muted" style={{ marginLeft: 8, fontSize: 11 }}>
-                                    {captureFormLabel(plan.captureForm)}
-                                  </span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div className="lbl" style={{ fontWeight: 600, fontSize: 14 }}>
+                                    {form.title || form.formKey}
+                                    <span className="aup-wb-chip muted" style={{ marginLeft: 8, fontSize: 11 }}>
+                                      {captureFormLabel(plan.captureForm)}
+                                    </span>
+                                  </div>
+                                  <div className="meta" style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                                    {form.formKey}
+                                    {recs.length > 0 ? ` · ${recs.length} 份` : " · 可新建"}
+                                  </div>
                                 </div>
-                                <div className="meta" style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                                  {form.formKey}
-                                  {draftId ? ` · ${statusShort("DRAFT")}` : " · 可新建"}
-                                </div>
-                              </div>
-                              <div style={{ display: "flex", gap: 8 }}>
-                                {draftId ? (
-                                  <button
-                                    type="button"
-                                    className="btn ghost small"
-                                    onClick={() => navigate(w.fillPath(draftId, form.formKey, plan.captureForm))}
-                                  >
-                                    续填
-                                  </button>
-                                ) : null}
                                 <button
                                   type="button"
                                   className="btn primary small"
                                   disabled={w.busy === form.formKey}
                                   onClick={() => w.onCreate(form, plan.captureForm)}
                                 >
-                                  {w.busy === form.formKey ? "…" : draftId ? "新建" : "填写"}
+                                  {w.busy === form.formKey ? "…" : "＋ 新建"}
                                 </button>
                               </div>
+                              {recs.length > 0 && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 4 }}>
+                                  {recs.map((r) => (
+                                    <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "ui-monospace, monospace" }}>
+                                        {r.subjectCode || `#${r.id}`} · {statusShort(r.status)}
+                                      </span>
+                                      <div style={{ display: "flex", gap: 6 }}>
+                                        <button
+                                          type="button"
+                                          className="btn ghost small"
+                                          onClick={() => navigate(w.fillPath(r.id, form.formKey, plan.captureForm))}
+                                        >
+                                          {isDraftStatus(r.status) ? "续填" : "查看"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn danger small"
+                                          onClick={async () => {
+                                            if (await appConfirm(`删除实例「${r.subjectCode || `#${r.id}`}」？此操作不可恢复。`, { danger: true })) {
+                                              w.deleteRecord(r.id);
+                                            }
+                                          }}
+                                        >
+                                          删除
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           );
                         })}

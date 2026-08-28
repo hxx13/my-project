@@ -79,7 +79,7 @@ public class NhpTemplateController {
     }
 
     @PostMapping("/{formKey}")
-    @Operation(summary = "保存草稿（整表 FormTemplate JSON；组合已发布须先新建草稿；原子被引用则锁）")
+    @Operation(summary = "保存草稿（整表 FormTemplate JSON；body 可带 formId 定位具体草稿版本，缺省落最新草稿）")
     public Result<Object> save(@PathVariable String formKey, @RequestBody Map<String, Object> template) {
         return service.save(formKey, template);
     }
@@ -106,6 +106,12 @@ public class NhpTemplateController {
     @Operation(summary = "解冻（FROZEN→DRAFT；无活跃填写实例且原子无组合钉住时可解冻）")
     public Result<?> unfreeze(@PathVariable String formKey) {
         return service.unfreeze(formKey, null);
+    }
+
+    @PostMapping("/{formKey}/restore-archived")
+    @Operation(summary = "恢复已归档版本为已发布（ARCHIVED→FROZEN，不进入草稿编辑态）")
+    public Result<?> restoreArchived(@PathVariable String formKey) {
+        return service.restoreArchived(formKey, null);
     }
 
     @PostMapping("/{formKey}/draft")

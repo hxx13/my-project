@@ -171,6 +171,19 @@ public class NhpCodelistController {
         return service.unfreeze(code, operatorLabel(user));
     }
 
+    @PostMapping("/{code}/restore-archived")
+    @Operation(summary = "恢复已归档版本为已发布（ARCHIVED→FROZEN，不进入草稿编辑态）")
+    public Result<?> restoreArchived(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable String code) {
+        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        if (denied != null) {
+            return denied;
+        }
+        User user = authContextService.resolveUserFromBearer(auth);
+        return service.restoreArchived(code, operatorLabel(user));
+    }
+
     @GetMapping("/{code}/review-items")
     @Operation(summary = "码表项审核列表（含 verdict）")
     public Result<List<Map<String, Object>>> reviewItems(@PathVariable String code) {

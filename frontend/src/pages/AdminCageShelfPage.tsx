@@ -61,7 +61,7 @@ import { useQuery } from "@tanstack/react-query";
 import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  fetchCageShelfDetail, fetchCageScanProgress, refreshCellDetail,
+  fetchCageShelfDetail, fetchLocalPipelineProgress, refreshCellDetail,
   type CageShelfCell, type CageShelfDetail,
   fetchBookmarks, toggleBookmarkApi,
   type BookmarkEntry,
@@ -444,7 +444,7 @@ function Inner(){
     return()=>{cancelled=true;};
   },[aRid,fullTree,selectedBatchId,pageMode,editMode,confirmMode,detailReloadKey,dataSource]);
 
-  const{data:scan}=useQuery({queryKey:["cageScanProgress"],queryFn:fetchCageScanProgress,refetchInterval:(q)=>q.state.data?.status==="running"?5000:30000});
+  const{data:scan}=useQuery({queryKey:["cageLocalPipelineProgress"],queryFn:fetchLocalPipelineProgress,refetchInterval:(q)=>{const s=q.state.data?.status;return s==="running"||s==="done"||s==="failed"?5000:30000;}});
   const [scanDismissed, setScanDismissed] = useState(false);
   useEffect(() => { if (scan?.status === "running") setScanDismissed(false); }, [scan?.status]);
   // 告警基线批次（独立于快照选择器）：自动=倒数第二个，手动=配置的对比基准
@@ -573,33 +573,42 @@ function Inner(){
   const handleLocalPipelineSync=useCallback(async()=>{
     if(localPipelineSyncing)return;
     setLocalPipelineSyncing(true);
-    const toastId=toast.loading("一键同步进行中（详情→状态→合笼）…");
     try{
       const result=await syncLocalCagePipeline();
-      if(result.ok){
-        toast.success("一键同步完成：详情 → 状态 → 合笼",{id:toastId,duration:5000});
-        setDetailReloadKey(k=>k+1);
-        if(aRid){
-          try{
-            if(viewMode==="shelf"&&shelfDetail?.shelfMeta?.shelveId){
-              const sid=String(shelfDetail.shelfMeta.shelveId);
-              const d=await fetchLocalShelfGridByShelveId(sid);
-              setShelfDetail(d);
-            }else if(viewMode==="room"){
-              // 触发房间网格重载：沿用 detailReloadKey 副作用
-            }
-          }catch{/* ignore refresh errors */}
-        }
+      if(result.alreadyRunning){
+        toast.error("同步正在进行中，请等待完成后再试");
+      }else if(result.started){
+        toast.success("同步已开始，进度见顶部进度条");
       }else{
-        const step=localPipelineStepLabel(result.failedStep);
-        toast.error(`同步中断于「${step}」：${result.failedMessage||"未知错误"}`,{id:toastId,duration:8000});
+        toast.error(result.message||"同步启动失败");
       }
     }catch(e:any){
-      toast.error(e?.message||"一键同步失败",{id:toastId});
+      toast.error(e?.message||"同步启动失败");
     }finally{
       setLocalPipelineSyncing(false);
     }
-  },[localPipelineSyncing,aRid,viewMode,shelfDetail]);
+  },[localPipelineSyncing]);
+
+  // 调试：仅同步当前房间（按 roomId 过滤，避免每次全量重写太慢）
+  const handleRoomPipelineSync=useCallback(async()=>{
+    if(localPipelineSyncing)return;
+    if(!aRid){toast.error("请先进入房间");return;}
+    setLocalPipelineSyncing(true);
+    try{
+      const result=await syncLocalCagePipeline(aRid);
+      if(result.alreadyRunning){
+        toast.error("同步正在进行中，请等待完成后再试");
+      }else if(result.started){
+        toast.success(`本房间（${aRname||aRid}）同步已开始，进度见顶部`);
+      }else{
+        toast.error(result.message||"同步启动失败");
+      }
+    }catch(e:any){
+      toast.error(e?.message||"本房间同步启动失败");
+    }finally{
+      setLocalPipelineSyncing(false);
+    }
+  },[localPipelineSyncing,aRid,aRname]);
 
   useEffect(()=>{if(!cell||!shelfId||cell.empty)return;let cancelled=false;void(async()=>{try{const fresh=await refreshCellDetail(shelfId,cell.x,cell.y);if(!cancelled)setCell(fresh);}catch{}})();return()=>{cancelled=true;};},[cell?.position,shelfId]);
   const onOpenRoom=(roomId:string,roomName:string)=>{
@@ -1298,11 +1307,18 @@ function Inner(){
             {/* 本地模式：超管一键顺序同步（仅查看模式可见） */}
             {viewOnly&&dataSource==="local"&&isSuperAdmin&&(
               <>
-                <button type="button" onClick={handleLocalPipelineSync} disabled={localPipelineSyncing}
+                <button type="button" onClick={handleLocalPipelineSync} disabled={localPipelineSyncing||scan?.status==="running"}
                   className="inline-flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition mr-1"
-                  title="按固定顺序：补全详情 → 同步状态 → 合笼，避免手动乱序冲空 PI（不再删旧重拉 ID）">
-                  {localPipelineSyncing?<Loader2 className="h-3 w-3 animate-spin"/>:<RefreshCw className="h-3 w-3"/>}
-                  {localPipelineSyncing?"同步中…":"一键同步本地笼位"}
+                  title="后台异步同步：补全详情 → 笼位状态 → 特殊状态，进度见顶部（不再删旧重拉 ID）">
+                  {(localPipelineSyncing||scan?.status==="running")?<Loader2 className="h-3 w-3 animate-spin"/>:<RefreshCw className="h-3 w-3"/>}
+                  {(localPipelineSyncing||scan?.status==="running")?"同步中…":"一键同步本地笼位"}
+                </button>
+                {/* 调试：仅同步当前房间，避免每次全量重写太慢 */}
+                <button type="button" onClick={handleRoomPipelineSync} disabled={localPipelineSyncing||!aRid||scan?.status==="running"}
+                  className="inline-flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 transition mr-1"
+                  title="仅同步当前房间（按 roomId 过滤，跳过其他房间）">
+                  {(localPipelineSyncing||scan?.status==="running")?<Loader2 className="h-3 w-3 animate-spin"/>:<RefreshCw className="h-3 w-3"/>}
+                  {(localPipelineSyncing||scan?.status==="running")?"同步中…":"同步本房间"}
                 </button>
                 {/* 笼位ID全量重拉（删旧重拉 /back）—— 独立，仅在新增笼位/索引脏时手动触发 */}
                 <button type="button" onClick={()=>setCellIdSyncOpen(true)} disabled={localPipelineSyncing}

@@ -284,6 +284,10 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-nhp-project-visit-plan.sql", ctx)) success++;
         // 模板章节 code 加宽：对齐 snake_case 原子名（seedAtomsFromPriorityJson）
         total++; if (runScript("db/bootstrap-nhp-template-section-code.sql", ctx)) success++;
+        // 访视方案：方案表 + crf_visit.scheme_id + crf_transplant.visit_scheme_id
+        total++; if (runScript("db/bootstrap-nhp-visit-scheme.sql", ctx)) success++;
+        // 字段版本：uk_crf_field_code → (field_code, version)
+        total++; if (runScript("db/bootstrap-nhp-field-version.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-nhp-attachment.sql", ctx)) success++;
 
         if (ctx == null) {

@@ -262,7 +262,8 @@ public class AdminTwinStudentViolationController {
                     admin.getId(),
                     body.getInteractiveChallenge(),
                     body.getInteractiveUnlockOnVerify(),
-                    effectiveRuleId
+                    effectiveRuleId,
+                    body.getCageViolationId()
             );
             return Result.success(summary);
         } catch (IllegalArgumentException e) {

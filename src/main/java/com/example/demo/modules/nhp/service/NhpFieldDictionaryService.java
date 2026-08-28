@@ -516,6 +516,200 @@ public class NhpFieldDictionaryService {
         return Result.success(out);
     }
 
+    /** 复制数据域套（字段文件夹）：新建套 + 复制大纲 + 复制字段（同 field_code，新 dictionary_id，字段落 DRAFT v1）。 */
+    @Transactional
+    public Result<CrfFieldDictionary> copyDictionary(Map<String, Object> body) {
+        String sourceKey = str(body == null ? null : body.get("sourceDictKey"));
+        String targetKey = str(body == null ? null : body.get("targetDictKey"));
+        String name = str(body == null ? null : body.get("name"));
+        if (sourceKey == null || sourceKey.isBlank()) {
+            return Result.fail(400, "sourceDictKey 不能为空");
+        }
+        if (targetKey == null || targetKey.isBlank()) {
+            return Result.fail(400, "targetDictKey 不能为空");
+        }
+        sourceKey = sourceKey.trim();
+        targetKey = targetKey.trim();
+        if (sourceKey.equalsIgnoreCase(targetKey)) {
+            return Result.fail(400, "目标键不能与源相同");
+        }
+        CrfFieldDictionary src = requireByKey(sourceKey);
+        if (dictionaryMapper.findByDictKey(targetKey) != null) {
+            return Result.fail(409, "目标数据域套已存在: " + targetKey);
+        }
+        CrfFieldDictionary neu = new CrfFieldDictionary();
+        neu.setDictKey(targetKey);
+        neu.setName(name != null ? name : (src.getName() != null ? src.getName() + " 副本" : targetKey));
+        neu.setSpecies(src.getSpecies());
+        neu.setDescription(src.getDescription());
+        neu.setStructureJson(src.getStructureJson());
+        neu.setVersion(1);
+        neu.setStatus("ACTIVE");
+        neu.setActive(true);
+        dictionaryMapper.insert(neu);
+        int copied = 0;
+        List<CrfField> srcFields = fieldMapper.listByDictionary(src.getId());
+        if (srcFields != null) {
+            for (CrfField f : srcFields) {
+                CrfField nf = new CrfField();
+                nf.setDictionaryId(neu.getId());
+                nf.setFieldCode(f.getFieldCode());
+                nf.setNameEn(f.getNameEn());
+                nf.setNameCn(f.getNameCn());
+                nf.setDataType(f.getDataType());
+                nf.setUnit(f.getUnit());
+                nf.setRequired(f.getRequired());
+                nf.setCodelistId(f.getCodelistId());
+                nf.setDescription(f.getDescription());
+                nf.setCalcExpression(f.getCalcExpression());
+                nf.setCdiscDomain(f.getCdiscDomain());
+                nf.setCdiscVariable(f.getCdiscVariable());
+                nf.setCdiscTestCode(f.getCdiscTestCode());
+                nf.setConceptCode(f.getConceptCode());
+                nf.setIdRuleType(f.getIdRuleType());
+                nf.setNature(f.getNature());
+                nf.setStatus("DRAFT");
+                nf.setVersion(1);
+                nf.setActive(true);
+                fieldMapper.insert(nf);
+                copied++;
+            }
+        }
+        return Result.success(neu);
+    }
+
+    /** 复制数据域（含其子模块大纲 + 字段）：字段编码前缀替换为目标域码，字段落 DRAFT v1。 */
+    @Transactional
+    public Result<Map<String, Object>> copyDomain(String dictKey, Map<String, Object> body) {
+        CrfFieldDictionary cur = requireByKey(dictKey);
+        String sourceCode = str(body == null ? null : body.get("sourceCode"));
+        String targetCode = str(body == null ? null : body.get("targetCode"));
+        if (sourceCode == null || !DOMAIN_CODE.matcher(sourceCode).matches()) {
+            return Result.fail(400, "源域编码须为 Dn 形式（如 D1）");
+        }
+        if (targetCode == null || !DOMAIN_CODE.matcher(targetCode).matches()) {
+            return Result.fail(400, "目标域编码须为 Dn 形式（如 D1）");
+        }
+        sourceCode = sourceCode.toUpperCase(Locale.ROOT);
+        targetCode = targetCode.toUpperCase(Locale.ROOT);
+        if (sourceCode.equalsIgnoreCase(targetCode)) {
+            return Result.fail(400, "目标域不能与源域相同");
+        }
+        StructureRoot root = readStructure(cur);
+        DomainNode srcDom = findDomain(root, sourceCode);
+        List<CrfField> srcFields = fieldMapper.listByDictionaryAndDomain(cur.getId(), sourceCode);
+        if (srcDom == null && (srcFields == null || srcFields.isEmpty())) {
+            return Result.fail(404, "源数据域不存在: " + sourceCode);
+        }
+        if (findDomain(root, targetCode) != null) {
+            return Result.fail(409, "目标数据域已存在: " + targetCode);
+        }
+        List<CrfField> targetFields = fieldMapper.listByDictionaryAndDomain(cur.getId(), targetCode);
+        if (targetFields != null && !targetFields.isEmpty()) {
+            return Result.fail(409, "目标数据域下已有字段: " + targetCode);
+        }
+        // 复制大纲：域 + 子模块（子模块码前缀替换）
+        DomainNode td = new DomainNode();
+        td.code = targetCode;
+        td.name = srcDom != null && srcDom.name != null ? srcDom.name : ("数据域 " + targetCode);
+        td.sortOrder = nextDomainSortOrder(root);
+        td.submodules = new ArrayList<>();
+        if (srcDom != null && srcDom.submodules != null) {
+            for (SubNode ss : srcDom.submodules) {
+                SubNode ns = new SubNode();
+                ns.code = targetCode + ss.code.substring(ss.code.indexOf('.'));
+                ns.name = ss.name;
+                ns.sortOrder = ss.sortOrder;
+                td.submodules.add(ns);
+            }
+        }
+        root.domains.add(td);
+        persistStructure(cur, root);
+        final String tc = targetCode;
+        int copied = copyFields(cur.getId(), srcFields, code -> tc + code.substring(code.indexOf('.')));
+        Map<String, Object> out = toMap(root);
+        out.put("copiedFields", copied);
+        return Result.success(out);
+    }
+
+    /** 复制子模块（含字段）：字段编码前缀替换为目标子模块码，字段落 DRAFT v1。 */
+    @Transactional
+    public Result<Map<String, Object>> copySubmodule(String dictKey, Map<String, Object> body) {
+        CrfFieldDictionary cur = requireByKey(dictKey);
+        String sourceCode = str(body == null ? null : body.get("sourceCode"));
+        String targetCode = str(body == null ? null : body.get("targetCode"));
+        if (sourceCode == null || !SUBMODULE_CODE.matcher(sourceCode).matches()) {
+            return Result.fail(400, "源子模块编码须为 Dn.mm（如 D1.01）");
+        }
+        if (targetCode == null || !SUBMODULE_CODE.matcher(targetCode).matches()) {
+            return Result.fail(400, "目标子模块编码须为 Dn.mm（如 D1.01）");
+        }
+        sourceCode = sourceCode.toUpperCase(Locale.ROOT);
+        targetCode = targetCode.toUpperCase(Locale.ROOT);
+        if (sourceCode.equalsIgnoreCase(targetCode)) {
+            return Result.fail(400, "目标子模块不能与源相同");
+        }
+        String srcDomain = sourceCode.substring(0, sourceCode.indexOf('.'));
+        String tgtDomain = targetCode.substring(0, targetCode.indexOf('.'));
+        StructureRoot root = readStructure(cur);
+        DomainNode srcDomNode = findDomain(root, srcDomain);
+        SubNode srcSub = srcDomNode != null ? findSub(srcDomNode, sourceCode) : null;
+        List<CrfField> srcFields = fieldMapper.listByDictionaryAndDomain(cur.getId(), sourceCode);
+        if (srcSub == null && (srcFields == null || srcFields.isEmpty())) {
+            return Result.fail(404, "源子模块不存在: " + sourceCode);
+        }
+        DomainNode tgtDomNode = findDomain(root, tgtDomain);
+        if (tgtDomNode == null) {
+            return Result.fail(400, "目标域不存在: " + tgtDomain);
+        }
+        if (findSub(tgtDomNode, targetCode) != null) {
+            return Result.fail(409, "目标子模块已存在: " + targetCode);
+        }
+        SubNode ns = new SubNode();
+        ns.code = targetCode;
+        ns.name = srcSub != null && srcSub.name != null ? srcSub.name : ("子模块 " + targetCode);
+        ns.sortOrder = srcSub != null ? srcSub.sortOrder : nextSubSortOrder(tgtDomNode);
+        if (tgtDomNode.submodules == null) tgtDomNode.submodules = new ArrayList<>();
+        tgtDomNode.submodules.add(ns);
+        persistStructure(cur, root);
+        final String tc = targetCode;
+        int copied = copyFields(cur.getId(), srcFields, code -> tc + code.substring(code.lastIndexOf('.')));
+        Map<String, Object> out = toMap(root);
+        out.put("copiedFields", copied);
+        return Result.success(out);
+    }
+
+    /** 复制字段：按 transform 重写 field_code，其余元数据克隆，落 DRAFT v1。 */
+    private int copyFields(Long dictionaryId, List<CrfField> source, java.util.function.Function<String, String> codeTransform) {
+        if (source == null || source.isEmpty()) return 0;
+        int n = 0;
+        for (CrfField src : source) {
+            CrfField neu = new CrfField();
+            neu.setDictionaryId(dictionaryId);
+            neu.setFieldCode(codeTransform.apply(src.getFieldCode()));
+            neu.setNameEn(src.getNameEn());
+            neu.setNameCn(src.getNameCn());
+            neu.setDataType(src.getDataType());
+            neu.setUnit(src.getUnit());
+            neu.setRequired(src.getRequired());
+            neu.setCodelistId(src.getCodelistId());
+            neu.setDescription(src.getDescription());
+            neu.setCalcExpression(src.getCalcExpression());
+            neu.setCdiscDomain(src.getCdiscDomain());
+            neu.setCdiscVariable(src.getCdiscVariable());
+            neu.setCdiscTestCode(src.getCdiscTestCode());
+            neu.setConceptCode(src.getConceptCode());
+            neu.setIdRuleType(src.getIdRuleType());
+            neu.setNature(src.getNature());
+            neu.setStatus("DRAFT");
+            neu.setVersion(1);
+            neu.setActive(true);
+            fieldMapper.insert(neu);
+            n++;
+        }
+        return n;
+    }
+
     /**
      * 若字典套已声明至少一个数据域，则新字段编码必须落在已有域·子模块下。
      * 无结构时不拦（兼容仅有字段推导树的存量套）。

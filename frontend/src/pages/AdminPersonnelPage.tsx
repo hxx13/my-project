@@ -156,7 +156,14 @@ export default function AdminPersonnelPage() {
   const openIdentityPicker = (userId: string, anchor: { x: number; y: number }) => {
     const current = identityMap.data?.get(userId) ?? [];
     setIdentityDraft(new Set(current.map((t) => t.id)));
-    setIdentityPicker({ userId, x: anchor.x, y: anchor.y });
+    // 弹窗 w-56(224px) 宽、约 280px 高：夹紧到视口内，避免锚点在屏幕边缘时弹窗溢出折行
+    let x = anchor.x, y = anchor.y;
+    if (typeof window !== "undefined") {
+      const MARGIN = 8, POPPER_W = 224, POPPER_H = 280;
+      x = Math.min(Math.max(x, MARGIN), window.innerWidth - POPPER_W - MARGIN);
+      y = Math.min(Math.max(y, MARGIN), window.innerHeight - POPPER_H - MARGIN);
+    }
+    setIdentityPicker({ userId, x, y });
   };
 
   const toggleIdentityDraft = (id: number) => {

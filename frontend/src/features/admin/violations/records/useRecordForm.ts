@@ -11,7 +11,6 @@ import {
   updateCageStatusViolation,
 } from "@/api/domains/cageStatusViolation.api";
 import { fetchSpecialStatusOverview } from "@/api/domains/cageShelf.api";
-import { uploadSingleImage } from "@/api/domains/upload.api";
 import { searchPersonnel } from "@/api/twinApi";
 import { normalizePersonnelRecord, type PersonnelRecordView } from "@/utils/personnelRecord";
 import { contentBodyFromHtml, serializeContentBody, type ContentBodyValue } from "../slots/ContentBodySlot";
@@ -95,7 +94,6 @@ export function useRecordForm(mode: RecordEditorMode) {
   const [disposition, setDisposition] = useState<DispositionValue>(() =>
     isEdit ? fromDispositionRow(row!) : DEFAULT_DISPOSITION);
   const [ruleId, setRuleId] = useState<number | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   /** 点击提交后若校验失败，高亮必填项 */
   const [showValidation, setShowValidation] = useState(false);
@@ -279,23 +277,6 @@ export function useRecordForm(mode: RecordEditorMode) {
   const selectAllMembers = () => setBatchSelectedIds(new Set(groupMembers.map((m) => m.userId)));
   const clearAllMembers = () => setBatchSelectedIds(new Set());
 
-  const onPickFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
-    const imgs = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    if (!imgs.length) { toast.error("未识别到图片"); return; }
-    setUploading(true);
-    try {
-      const urls: string[] = [];
-      for (const f of imgs) urls.push((await uploadSingleImage(f)).publicUrl);
-      setContent((prev) => ({ ...prev, imageUrls: [...prev.imageUrls, ...urls] }));
-      toast.success(`已上传 ${urls.length} 张`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "上传失败");
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const submit = async (): Promise<boolean> => {
     if (!isEdit) {
       if (lockMode === "single" && !picked) {
@@ -419,7 +400,7 @@ export function useRecordForm(mode: RecordEditorMode) {
     resetBatchGroup, groupKeyword, onGroupKeywordChange, groupSuggestions, groupSearching, selectedGroup,
     groupMembers, groupMembersLoading, batchSelectedIds, toggleMember, setBatchSelectedMemberIds, pickProjectGroup,
     selectAllMembers, clearAllMembers, cageStatusCode, setCageStatusCode, cagePick, setCagePick,
-    cageOptions, content, setContent, disposition, setDisposition, uploading, onPickFiles,
+    cageOptions, content, setContent, disposition, setDisposition,
     ruleId, setRuleId, rules, submitting, submit, showValidation, setShowValidation,
   };
 }

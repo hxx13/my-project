@@ -1,25 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import DOMPurify from "dompurify";
+import { useEffect, useRef, useState } from "react";
 import type { DashboardViolationBoardItem } from "@/api/domains/dashboardViolationBoard.api";
 import { PageHelpImageLightbox } from "@/features/page-help/PageHelpImageLightbox";
-import { useRichTextImageLightbox } from "@/components/rich-text/useRichTextImageLightbox";
 import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
 import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
-
-/**
- * 将富文本 HTML 转为适合 line-clamp 的行内格式：
- * - 块级标签 <p>/<div> 替换为 <br>（保留换行但不产生块盒）
- * - <img> 保留（行内元素，clamp 时计入行高）
- * - 其他标签通过 DOMPurify 消毒保留
- */
-function toInlineHtml(raw: string): string {
-  return DOMPurify.sanitize(raw || "—", { USE_PROFILES: { html: true } })
-    .replace(/<\/p>\s*/gi, "<br>")
-    .replace(/<p[^>]*>/gi, "")
-    .replace(/<\/div>\s*/gi, "<br>")
-    .replace(/<div[^>]*>/gi, "")
-    .replace(/(<br\s*\/?>\s*){3,}/gi, "<br><br>");
-}
 
 type Props = {
   item: DashboardViolationBoardItem;
@@ -27,114 +10,125 @@ type Props = {
 };
 
 /**
- * 惩戒公示单行：姓名 → 简短说明 → 末尾照片（无图不渲染占位）。
+ * 提醒公示单行：
+ * - 课题组违规：组卡（状态标签 + 组名 + 人数 + 组级说明 + 全员名字 chips + 多图内联）
+ * - 个人违规：姓名 → 说明 → 多图内联（无图不占位）
+ * 图片可点击放大预览，10 秒自动关闭；打开时通知父组件暂停自动滚动。
  */
 export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
   const visual = useDashboardVisual();
-  const [imgHidden, setImgHidden] = useState(false);
-  const [coverPreviewOpen, setCoverPreviewOpen] = useState(false);
-  const url = item.coverImageUrl?.trim();
-  const showImg = Boolean(url) && !imgHidden;
+  const isGroup = Boolean(item.groupName);
+  const images = (item.imageUrls ?? []).filter((u) => (u ?? "").trim() !== "");
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
 
-  const summaryHtml = useMemo(
-    () => toInlineHtml(item.summary || "—"),
-    [item.summary],
-  );
-  const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([summaryHtml]);
   const previewOpenRef = useRef(false);
-
+  const open = previewSrc != null;
   useEffect(() => {
-    const open = coverPreviewOpen || lightbox != null;
     if (open === previewOpenRef.current) return;
     previewOpenRef.current = open;
     onPreviewOpenChange?.(open);
-  }, [coverPreviewOpen, lightbox, onPreviewOpenChange]);
+  }, [open, onPreviewOpenChange]);
 
   const nameTone = dashTone(visual, "text-fuchsia-100", DASH_NIGHT_CLASS.title, "text-rose-900");
   const summaryTone = dashTone(visual, "text-fuchsia-100/85", DASH_NIGHT_CLASS.textMuted, "text-rose-950/85");
   const borderTone = dashTone(visual, "border-fuchsia-500/15", DASH_NIGHT_CLASS.header, "border-rose-200/50");
 
-  const isGroup = Boolean(item.groupName);
-
-  // 个人违规：姓名拆分为单字，固定3字宽容器 + space-between
-  // 课题组违规：普通文本 + truncate
-  const nameChars = isGroup ? [] : [...(item.displayName || "—")];
-
-  const closeCoverPreview = () => setCoverPreviewOpen(false);
-
-  return (
-    <>
-    <div
-      className={`flex items-center gap-2 border-b py-2.5 md:gap-3 md:py-3 ${borderTone}`}
-    >
-      {isGroup ? (
-        <span
-          className={`shrink-0 max-w-[140px] truncate text-xs font-bold md:text-sm ${nameTone}`}
-          title={item.displayName || ""}
-        >
-          {item.displayName || "—"}
-        </span>
-      ) : (
-        <span
-          className={`shrink-0 inline-flex justify-between text-xs font-bold md:text-sm ${nameTone}`}
-          style={{ width: "2.7em" }}
-        >
-          {nameChars.map((ch, i) => (
-            <span key={i}>{ch}</span>
-          ))}
-        </span>
-      )}
-      <div ref={containerRef} className="min-w-0 flex-1">
-        <p
-          className={`text-[11px] leading-snug md:text-xs [&_img]:my-1 [&_img]:max-h-16 [&_img]:cursor-zoom-in [&_img]:rounded-md ${summaryTone}`}
-          style={{
-            overflow: "hidden",
-            display: "-webkit-box",
-            WebkitBoxOrient: "vertical",
-            WebkitLineClamp: 3,
-          }}
-          dangerouslySetInnerHTML={{ __html: summaryHtml }}
-        />
-      </div>
-      {showImg ? (
+  const ImageStrip = images.length > 0 ? (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {images.map((u) => (
         <button
+          key={u}
           type="button"
-          className="shrink-0 cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-color-accent)]"
-          aria-label={`查看 ${item.displayName || "违规"} 惩戒图片大图`}
-          onClick={(event) => {
-            event.stopPropagation();
-            setCoverPreviewOpen(true);
-          }}
+          onClick={() => setPreviewSrc(u)}
+          className="shrink-0 cursor-zoom-in rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-color-accent)]"
+          aria-label={`查看 ${item.displayName || "人员"} 图片`}
         >
           <img
-            src={url}
+            src={u}
             alt=""
             loading="lazy"
             draggable={false}
-            className={`h-12 w-12 rounded-lg object-cover md:h-14 md:w-14 ${
-              dashTone(visual, "ring-1 ring-fuchsia-500/35", "ring-1 ring-[var(--dash-night-border-warm)]", "ring-1 ring-rose-200")
+            className={`h-12 w-12 rounded-md object-cover md:h-14 md:w-14 ${
+              isGroup
+                ? dashTone(visual, "ring-1 ring-amber-400/30", "ring-1 ring-[var(--dash-night-border-warm)]", "ring-1 ring-amber-200")
+                : dashTone(visual, "ring-1 ring-fuchsia-500/35", "ring-1 ring-[var(--dash-night-border-warm)]", "ring-1 ring-rose-200")
             }`}
-            onError={() => setImgHidden(true)}
           />
         </button>
-      ) : null}
+      ))}
     </div>
-    {coverPreviewOpen && url ? (
-      <PageHelpImageLightbox
-        src={url}
-        alt={`${item.displayName || "违规"}惩戒图片`}
-        onClose={closeCoverPreview}
-        autoCloseMs={10_000}
-      />
-    ) : null}
-    {lightbox ? (
-      <PageHelpImageLightbox
-        src={lightbox.src}
-        alt={lightbox.alt}
-        onClose={closeLightbox}
-        autoCloseMs={10_000}
-      />
-    ) : null}
+  ) : null;
+
+  const content = isGroup ? (
+    <div
+      className={`mb-2 rounded-[10px] border p-2.5 md:p-3 ${
+        dashTone(visual, "border-amber-400/35 bg-amber-950/30", DASH_NIGHT_CLASS.rowWarn, "border-amber-200/60 bg-amber-50/40")
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        {item.statusLabel ? (
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+              dashTone(visual, "border border-amber-400/40 bg-amber-500/15 text-amber-200", DASH_NIGHT_CLASS.chipWarn, "border border-amber-500/30 bg-amber-100 text-amber-800")
+            }`}
+          >
+            {item.statusLabel}
+          </span>
+        ) : null}
+        <span className={`text-xs font-bold md:text-sm ${nameTone}`}>{item.displayName || "—"}</span>
+        <span className={`text-[11px] ${dashTone(visual, "text-slate-400", DASH_NIGHT_CLASS.textMuted, "text-slate-500")}`}>
+          · {(item.members ?? []).length} 人
+        </span>
+      </div>
+      {item.summary ? (
+        <p className={`mt-1.5 text-[11px] leading-snug md:text-xs ${summaryTone}`}>{item.summary}</p>
+      ) : null}
+      {(item.members ?? []).length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {(item.members ?? []).map((m, i) => (
+            <span
+              key={`${m.name}-${i}`}
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                dashTone(visual, "border border-slate-600/40 bg-slate-800/60 text-slate-200", DASH_NIGHT_CLASS.chipMuted, "border border-slate-200 bg-white text-slate-600")
+              }`}
+            >
+              {m.name}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {ImageStrip}
+    </div>
+  ) : (
+    <div className={`flex items-start gap-2 border-b py-2.5 md:gap-3 md:py-3 ${borderTone}`}>
+      <span
+        className={`shrink-0 inline-flex justify-between text-xs font-bold md:text-sm ${nameTone}`}
+        style={{ width: "2.7em" }}
+      >
+        {[...(item.displayName || "—")].map((ch, i) => (
+          <span key={i}>{ch}</span>
+        ))}
+      </span>
+      <div className="min-w-0 flex-1">
+        {item.summary ? (
+          <p className={`text-[11px] leading-snug md:text-xs ${summaryTone}`}>{item.summary}</p>
+        ) : null}
+        {ImageStrip}
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {content}
+      {previewSrc ? (
+        <PageHelpImageLightbox
+          src={previewSrc}
+          alt={`${item.displayName || "人员"} 图片`}
+          onClose={() => setPreviewSrc(null)}
+          autoCloseMs={10_000}
+        />
+      ) : null}
     </>
   );
 }

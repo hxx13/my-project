@@ -142,6 +142,20 @@
     </view>
   </view>
 
+  <view wx:if="{{ springBound }}" class="mine-menu-group">
+    <text class="mine-menu-group-title">实验动物</text>
+    <view class="mine-list-card">
+      <van-cell-group inset="{{ false }}" border="{{ false }}">
+        <van-cell is-link bind:click="goAnimalOrder">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="orders-o" size="28rpx" color="#0ea5e9" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">动物订购</text>
+          </view>
+        </van-cell>
+      </van-cell-group>
+    </view>
+  </view>
+
   <view wx:if="{{ !isStudentView && canStaffOps && (canGoRepairRequest || canGoPurchaseRequest) }}" class="mine-menu-group">
     <text class="mine-menu-group-title">申请服务</text>
     <view class="mine-list-card">

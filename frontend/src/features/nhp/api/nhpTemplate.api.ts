@@ -191,7 +191,7 @@ export async function fetchNhpTemplateVersions(formKey: string): Promise<NhpTemp
 
 export async function saveNhpTemplate(
   formKey: string,
-  template: FormTemplate & { atoms?: NhpAtomRef[] },
+  template: FormTemplate & { atoms?: NhpAtomRef[]; formId?: number },
 ): Promise<NhpFormTemplate> {
   return authHttp
     .post<Result<NhpFormTemplate>>(`/nhp/templates/${formKey}`, template)
@@ -245,6 +245,13 @@ export async function publishNhpTemplate(
 export async function unfreezeNhpTemplate(formKey: string): Promise<NhpTemplateListItem> {
   return authHttp
     .post<Result<NhpTemplateListItem>>(`/nhp/templates/${encodeURIComponent(formKey)}/unfreeze`)
+    .then(({ data }) => data.data);
+}
+
+/** 恢复已归档版本为已发布（ARCHIVED→FROZEN，不进入草稿编辑态） */
+export async function restoreNhpTemplateArchived(formKey: string): Promise<NhpTemplateListItem> {
+  return authHttp
+    .post<Result<NhpTemplateListItem>>(`/nhp/templates/${encodeURIComponent(formKey)}/restore-archived`)
     .then(({ data }) => data.data);
 }
 

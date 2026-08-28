@@ -455,39 +455,47 @@ export function TimelineWaterfall() {
                                     ⏱️ 时间胶囊：绝对居中
                                     ======================================= */}
                                 {/* 💥 修复 2：去掉 pt-2，加入 items-center justify-center 保证绝对垂直居中 */}
-                                <div className="w-[52px] shrink-0 flex flex-col justify-center items-end pr-1">
-                                    <div
-                                        className={`flex items-center rounded-[4px] overflow-hidden border transition-all duration-300 ${
-                                            isPendingExit
-                                                ? dashTone(visual, "border-amber-500/40 shadow-sm group-hover:shadow-md group-hover:scale-105", DASH_NIGHT_CLASS.timeCapsuleExit, "border-amber-300/70 shadow-sm group-hover:shadow-md group-hover:scale-105")
-                                                : dashTone(
-                                                      visual,
-                                                      "border-cyan-500/35 shadow-sm group-hover:shadow-md group-hover:scale-105",
-                                                      isEnter ? DASH_NIGHT_CLASS.timeCapsuleEnter : DASH_NIGHT_CLASS.timeCapsuleExit,
-                                                      "border-slate-200/60 shadow-sm group-hover:shadow-md group-hover:scale-105",
-                                                  )
-                                        }`}
-                                    >
+                                <div className={`${isPendingExit ? "w-auto" : "w-[52px]"} shrink-0 flex flex-col justify-center items-end pr-1`}>
+                                    {isPendingExit && pendingCountdownText ? (
                                         <span
-                                            className={`backdrop-blur-md text-[10px] font-black px-1.5 py-[2px] leading-none
-                                            ${
-                                                isPendingExit
-                                                    ? dashTone(visual, "bg-amber-500/30 text-amber-100", DASH_NIGHT_CLASS.timeHourExit, "bg-amber-100 text-amber-800")
-                                                    : isEnter
-                                                      ? dashTone(visual, "bg-cyan-500/30 text-cyan-100", DASH_NIGHT_CLASS.timeHourEnter, "bg-cyan-100 text-cyan-800")
-                                                      : dashTone(visual, "bg-rose-500/25 text-rose-100", DASH_NIGHT_CLASS.timeHourExit, "bg-rose-100 text-rose-800")
+                                            className={`flex items-center gap-1 text-[10px] font-black tabular-nums px-1.5 py-[2px] rounded-[4px] whitespace-nowrap border ${
+                                                visual.night
+                                                    ? DASH_NIGHT_CLASS.chipWarn
+                                                    : "bg-amber-500/15 border-amber-500/30 text-amber-700"
                                             }`}
                                         >
-                                            {hour}
+                                            <Clock className="w-3 h-3 shrink-0" />
+                                            待签退 {pendingCountdownText}
                                         </span>
-                                        <span
-                                            className={`backdrop-blur-md text-[10px] font-black px-1.5 py-[2px] leading-none ${
-                                                dashTone(visual, "bg-slate-900/90 text-slate-300", DASH_NIGHT_CLASS.timeMin, "bg-white text-slate-500")
+                                    ) : (
+                                        <div
+                                            className={`flex items-center rounded-[4px] overflow-hidden border transition-all duration-300 ${
+                                                dashTone(
+                                                    visual,
+                                                    "border-cyan-500/35 shadow-sm group-hover:shadow-md group-hover:scale-105",
+                                                    isEnter ? DASH_NIGHT_CLASS.timeCapsuleEnter : DASH_NIGHT_CLASS.timeCapsuleExit,
+                                                    "border-slate-200/60 shadow-sm group-hover:shadow-md group-hover:scale-105",
+                                                )
                                             }`}
                                         >
-                                            {minute}
-                                        </span>
-                                    </div>
+                                            <span
+                                                className={`backdrop-blur-md text-[10px] font-black px-1.5 py-[2px] leading-none ${
+                                                    isEnter
+                                                        ? dashTone(visual, "bg-cyan-500/30 text-cyan-100", DASH_NIGHT_CLASS.timeHourEnter, "bg-cyan-100 text-cyan-800")
+                                                        : dashTone(visual, "bg-rose-500/25 text-rose-100", DASH_NIGHT_CLASS.timeHourExit, "bg-rose-100 text-rose-800")
+                                                }`}
+                                            >
+                                                {hour}
+                                            </span>
+                                            <span
+                                                className={`backdrop-blur-md text-[10px] font-black px-1.5 py-[2px] leading-none ${
+                                                    dashTone(visual, "bg-slate-900/90 text-slate-300", DASH_NIGHT_CLASS.timeMin, "bg-white text-slate-500")
+                                                }`}
+                                            >
+                                                {minute}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* =======================================
@@ -638,19 +646,6 @@ export function TimelineWaterfall() {
                                         </span>
                                     )}
 
-                                    {isPendingExit && pendingCountdownText && (
-                                        <span
-                                            className={`relative z-10 ml-auto shrink-0 flex items-center gap-1 text-[10px] font-black tabular-nums px-1.5 py-0.5 rounded-md whitespace-nowrap border ${
-                                                visual.night
-                                                    ? DASH_NIGHT_CLASS.chipWarn
-                                                    : "bg-amber-500/15 border-amber-500/30 text-amber-700"
-                                            }`}
-                                        >
-                                            <Clock className="w-3 h-3 shrink-0" />
-                                            待签退 {pendingCountdownText}
-                                        </span>
-                                    )}
-
                                     {showStaffFeedTools ? (
                                         <button
                                             type="button"
@@ -659,7 +654,7 @@ export function TimelineWaterfall() {
                                                     visual,
                                                     "text-cyan-400/80 hover:bg-cyan-500/15 hover:text-cyan-200",
                                                     "text-white/45 hover:bg-white/10 hover:text-white/80",
-                                                    "text-slate-400 hover:bg-slate-200/80 hover:text-slate-700",
+                                                    "text-accent hover:bg-accent/10 hover:text-accent",
                                                 )
                                             }`}
                                             title="溯源详情（锚点弹窗）"

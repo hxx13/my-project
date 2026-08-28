@@ -1,0 +1,205 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <subpage-nav-bar title="动物订购" />
+
+  <!-- AUP 选择条 -->
+  <view class="aup-bar {{ selectedAupId ? '' : 'aup-bar-empty' }}" bindtap="openAupSheet">
+    <text class="aup-tag">AUP</text>
+    <text class="aup-name">{{ selectedAupNo ? selectedAupNo : '点击选择加购上下文（必选）' }}</text>
+    <text class="aup-arrow">›</text>
+  </view>
+
+  <!-- 时间窗 -->
+  <view wx:if="{{ orderingBlocked && timePolicy }}" class="time-banner">
+    {{ timePolicy.closedReason }}<text wx:if="{{ timePolicy.nextOpenAt }}"> · 下次开放 {{ timePolicy.nextOpenAt }}</text>
+  </view>
+  <view wx:elif="{{ timePolicy && timePolicy.estimatedDeliveryDate }}" class="time-eta">
+    预计送达：{{ timePolicy.estimatedDeliveryDate }}
+  </view>
+
+  <!-- 面包屑 -->
+  <view wx:if="{{ drillStack.length }}" class="breadcrumb">
+    <view class="crumb-back" bindtap="goBackLevel">‹</view>
+    <block wx:for="{{ drillStack }}" wx:key="typeKey" wx:for-index="i">
+      <text wx:if="{{ i > 0 }}" class="crumb-sep">/</text>
+      <text class="crumb-item {{ i === drillStack.length - 1 ? 'crumb-on' : '' }}" data-index="{{ i }}" bindtap="onBreadcrumbTap">{{ item.label }}</text>
+    </block>
+  </view>
+
+  <!-- 列表：下钻 + 侧边栏 -->
+  <view class="main-area {{ drillStack.length > 0 ? 'main-area-split' : '' }}">
+    <scroll-view wx:if="{{ drillStack.length > 0 }}" class="side" scroll-y>
+      <view class="side-back" bindtap="goBackLevel">‹ 上一级</view>
+      <view class="side-title">{{ sidebarParentLabel }}</view>
+      <view
+        wx:for="{{ sidebarItems }}"
+        wx:key="id"
+        class="side-item {{ drillStack[drillStack.length - 1].id === item.id ? 'side-item-on' : '' }}"
+        data-id="{{ item.id }}"
+        bindtap="onSidebarTap"
+      >{{ item.label }}</view>
+    </scroll-view>
+
+    <scroll-view class="list" scroll-y>
+      <view wx:if="{{ loading }}" class="muted">加载中…</view>
+      <view wx:elif="{{ errorMsg }}" class="muted">{{ errorMsg }}</view>
+      <view wx:elif="{{ items.length === 0 }}" class="muted">暂无可选项</view>
+      <block wx:else>
+        <view wx:for="{{ items }}" wx:key="id" class="goods" data-id="{{ item.id }}" bindtap="onItemTap">
+          <image wx:if="{{ item.coverAbsUrl }}" class="goods-cover" src="{{ item.coverAbsUrl }}" mode="aspectFill" />
+          <view wx:else class="goods-cover goods-cover-ph"><text>{{ item.nameInitial }}</text></view>
+          <view class="goods-main">
+            <text class="goods-title">{{ item.title }}</text>
+            <text wx:if="{{ item.subtitle || item.description }}" class="goods-sub">{{ item.subtitle || item.description }}</text>
+          </view>
+          <view wx:if="{{ item.purchasable && item.hasSpec }}" class="goods-spec" catchtap="onBuyTap" data-id="{{ item.id }}">
+            <text>选择规格</text>
+            <view wx:if="{{ totalQtyByItem[item.id] > 0 }}" class="goods-spec-badge">{{ totalQtyByItem[item.id] }}</view>
+          </view>
+          <view wx:elif="{{ item.purchasable }}" class="step-inline">
+            <view class="step-btn {{ (plainQtyByItem[item.id] || 0) <= 0 ? 'step-btn-off' : '' }}" catchtap="onPlainDec" data-id="{{ item.id }}">−</view>
+            <text class="step-num">{{ plainQtyByItem[item.id] || 0 }}</text>
+            <view class="step-btn step-btn-plus" catchtap="onPlainAdd" data-id="{{ item.id }}">+</view>
+          </view>
+          <text wx:elif="{{ item.childCount > 0 }}" class="goods-arrow">›</text>
+        </view>
+      </block>
+      <view class="list-pad" />
+    </scroll-view>
+  </view>
+
+  <!-- 底部栏 -->
+  <view class="cart-bar">
+    <view class="cart-orders" bindtap="openOrders">订单</view>
+    <view class="cart-main" bindtap="openCartSheet">
+      <text>购物车</text>
+      <view wx:if="{{ cartCount > 0 }}" class="cart-badge">{{ cartCount > 99 ? '99+' : cartCount }}</view>
+    </view>
+  </view>
+</view>
+
+<!-- 规格选购 -->
+<van-popup show="{{ specSheetOpen }}" position="bottom" round closeable bind:close="closeSpec" custom-style="max-height:75vh;">
+  <view class="sheet" wx:if="{{ specItem }}">
+    <view class="sheet-head">
+      <text class="sheet-title">{{ specItem.title }} — 选购</text>
+    </view>
+    <scroll-view scroll-y class="sheet-scroll">
+      <view wx:if="{{ specOptionRows.length === 0 }}" class="muted pad">该物品未配置规格模板</view>
+      <block wx:else>
+        <view class="spec-row" wx:for="{{ specOptionRows }}" wx:key="key" wx:for-item="opt">
+          <text class="spec-label">{{ opt.label }}</text>
+          <view class="spec-step">
+            <view class="step-btn {{ (specQtys[opt.key] || 0) <= 0 ? 'step-btn-off' : '' }}" data-key="{{ opt.key }}" bindtap="onSpecDec">−</view>
+            <text class="step-num">{{ specQtys[opt.key] || 0 }}</text>
+            <view class="step-btn step-btn-plus" data-key="{{ opt.key }}" bindtap="onSpecInc">+</view>
+          </view>
+        </view>
+      </block>
+    </scroll-view>
+    <view class="sheet-foot">
+      <view class="foot-btn ghost" bindtap="closeSpec">取消</view>
+      <view class="foot-btn primary" bindtap="onSpecConfirm">加入购物车</view>
+    </view>
+  </view>
+</van-popup>
+
+<!-- 购物车 -->
+<van-popup show="{{ cartSheetOpen }}" position="bottom" round closeable bind:close="closeCartSheet" custom-style="max-height:70vh;">
+  <view class="sheet">
+    <view class="sheet-head"><text class="sheet-title">共享购物车 · {{ cartCount }} 件</text></view>
+    <scroll-view scroll-y class="sheet-scroll">
+      <view wx:if="{{ cart.length === 0 }}" class="muted pad">共享购物车是空的</view>
+      <block wx:else>
+        <view class="cart-line" wx:for="{{ cart }}" wx:key="id" wx:for-item="line">
+          <view class="cart-line-mid">
+            <text class="cart-line-name">{{ line.itemLabel }}</text>
+            <text class="cart-line-meta">
+              {{ line.specLabel ? line.specLabel + ' · ' : '' }}{{ line.packageStatus }}<text wx:if="{{ line.addedByLabel }}"> · {{ line.addedByLabel }}</text>
+            </text>
+          </view>
+          <view class="spec-step">
+            <view class="step-btn {{ line.qty <= 1 ? 'step-btn-off' : '' }}" data-id="{{ line.id }}" bindtap="onCartDec">−</view>
+            <text class="step-num">{{ line.qty }}</text>
+            <view class="step-btn step-btn-plus" data-id="{{ line.id }}" bindtap="onCartInc">+</view>
+          </view>
+        </view>
+      </block>
+    </scroll-view>
+
+    <block wx:if="{{ !isPi }}">
+      <view class="sheet-remark">
+        <input class="remark-input" placeholder="订单包统一备注（提交给 PI）" value="{{ packageRemark }}" bindinput="onPackageRemarkInput" />
+      </view>
+      <view class="sheet-foot">
+        <view wx:if="{{ myReadyCount > 0 }}" class="foot-btn ghost" bindtap="onWithdraw">撤回 READY</view>
+        <view class="foot-btn primary" bindtap="onMarkReady">提交给 PI</view>
+      </view>
+    </block>
+    <block wx:else>
+      <view class="sheet-foot">
+        <view class="foot-btn ghost" bindtap="onClearCart">清空</view>
+        <view class="foot-btn primary" bindtap="openSubmitConfirm">正式提交 ({{ readyCount }})</view>
+      </view>
+    </block>
+  </view>
+</van-popup>
+
+<!-- AUP 选择 -->
+<van-popup show="{{ aupSheetOpen }}" position="bottom" round closeable bind:close="closeAupSheet" custom-style="max-height:70vh;">
+  <view class="sheet">
+    <view class="sheet-head"><text class="sheet-title">选择加购 AUP</text></view>
+    <scroll-view scroll-y class="sheet-scroll">
+      <view wx:if="{{ aups.length === 0 }}" class="muted pad">本课题组暂无已批准的 AUP 计划书。</view>
+      <block wx:else>
+        <view class="aup-opt {{ selectedAupId === item.id ? 'aup-opt-on' : '' }}" wx:for="{{ aups }}" wx:key="id" wx:for-item="item" data-id="{{ item.id }}" bindtap="onSelectAup">
+          <text class="aup-opt-no">{{ item.registerNo }}</text>
+          <text wx:if="{{ item.projectGroupName }}" class="aup-opt-group">{{ item.projectGroupName }}</text>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 正式提交确认 -->
+<van-popup show="{{ submitConfirmOpen }}" position="center" round closeable bind:close="closeSubmitConfirm" custom-style="width:88%;max-width:640rpx;">
+  <view class="confirm">
+    <view class="confirm-title">正式提交申领单</view>
+    <view class="confirm-sub">将提交 {{ readyCount }} 条 READY 行，生成一张订单进入审批。</view>
+    <textarea class="confirm-input" placeholder="整单备注（可选）" value="{{ submitRemark }}" bindinput="onSubmitRemarkInput" />
+    <view class="confirm-actions">
+      <view class="foot-btn ghost" bindtap="closeSubmitConfirm">取消</view>
+      <view class="foot-btn primary" bindtap="onSubmitOrder">确认提交</view>
+    </view>
+  </view>
+</van-popup>
+
+<!-- 订单记录 -->
+<van-popup show="{{ orderHistoryOpen }}" position="right" custom-style="width:86%;height:100%;">
+  <view class="orders">
+    <view class="orders-head">
+      <text class="orders-title">我的订单</text>
+      <text class="orders-close" bindtap="closeOrders">✕</text>
+    </view>
+    <scroll-view scroll-y class="orders-scroll">
+      <view wx:if="{{ orders.length === 0 }}" class="muted pad">暂无订单</view>
+      <block wx:else>
+        <view class="order-card" wx:for="{{ orders }}" wx:key="id" wx:for-item="o">
+          <view class="order-row">
+            <text class="order-id">订单 #{{ o.id }}</text>
+            <text class="order-status">{{ o.status }}</text>
+          </view>
+          <text class="order-meta">{{ o.estimatedDeliveryDate ? '预计送达 ' + o.estimatedDeliveryDate : '' }}</text>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+</van-popup>
+</block>
+
+<block wx:else>
+<view class="gate">
+  <view class="gate-title">请先完成校内绑定</view>
+  <view class="gate-btn" bindtap="goLogin">返回</view>
+</view>
+</block>

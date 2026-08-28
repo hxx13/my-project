@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { MorphOrbLoader } from "@/components/scanner/MorphOrbLoader";
+import { CarrierVisual } from "./carrier/CarrierVisual";
+import type { CarrierId, CarrierState } from "./carrier/carrier";
 import { Z_INDEX } from "@/constants/zIndex";
 import type { ScanAssistantMessage } from "@/store/useScanAssistantStore";
 import type { BubbleSize } from "./computeBubblePlacement";
+import { ScanAssistantAskPanel } from "./ScanAssistantAskPanel";
 import { ScanAssistantBubble } from "./ScanAssistantBubble";
 import { DEFAULT_ORB_BOX } from "./snapGeometry";
 import type { ScanAssistantBubblePhase } from "./useScanAssistantBubbleTransition";
@@ -11,6 +13,7 @@ import "./scanAssistantDock.css";
 
 type ScanAssistantDockProps = {
   orbSize: number;
+  carrier: CarrierId;
   orbBox?: number;
   isSpeaking: boolean;
   activeMessage: ScanAssistantMessage | null;
@@ -20,12 +23,16 @@ type ScanAssistantDockProps = {
   isStreaming: boolean;
   isAwaitingFirstToken: boolean;
   isTyping: boolean;
-  onCollapseBubble: () => void;
+  /** 提问面板；与播报气泡共用锚点，播报优先 */
+  askOpen: boolean;
+  onDismissMessage: () => void;
+  onAskDismiss: () => void;
   onOrbClick: () => void;
 };
 
 export function ScanAssistantDock({
   orbSize,
+  carrier,
   orbBox = DEFAULT_ORB_BOX,
   isSpeaking,
   activeMessage,
@@ -35,7 +42,9 @@ export function ScanAssistantDock({
   isStreaming,
   isAwaitingFirstToken,
   isTyping,
-  onCollapseBubble,
+  askOpen,
+  onDismissMessage,
+  onAskDismiss,
   onOrbClick,
 }: ScanAssistantDockProps) {
   const bubbleAnchorRef = useRef<HTMLDivElement>(null);
@@ -47,8 +56,12 @@ export function ScanAssistantDock({
     !bubbleCollapsed &&
     (activeMessage!.text.trim().length > 0 || isStreaming);
 
+  /** 播报到达时让位：两者共用同一个锚点，不能同时挂 */
+  const showAsk = askOpen && !showBubble;
+  const showAnchor = showBubble || showAsk;
+
   useEffect(() => {
-    if (!showBubble) {
+    if (!showAnchor) {
       setBubbleSize(null);
       return;
     }
@@ -69,7 +82,7 @@ export function ScanAssistantDock({
     const observer = new ResizeObserver(() => measure());
     observer.observe(node);
     return () => observer.disconnect();
-  }, [showBubble, activeMessage?.id, bubbleText, isStreaming, isAwaitingFirstToken]);
+  }, [showAnchor, activeMessage?.id, bubbleText, isStreaming, isAwaitingFirstToken]);
 
   const {
     orbBox: resolvedOrbBox,
@@ -81,12 +94,21 @@ export function ScanAssistantDock({
   } = useScanAssistantDrag({
     orbBox,
     onOrbClick,
-    bubbleSize: showBubble ? bubbleSize : null,
-    constrainBubbleViewport: showBubble,
+    bubbleSize: showAnchor ? bubbleSize : null,
+    constrainBubbleViewport: showAnchor,
   });
 
+  const carrierState: CarrierState = {
+    isDragging,
+    isStreaming,
+    hasMessage: Boolean(activeMessage),
+    kind: activeMessage?.kind ?? null,
+  };
+
   const orbHint = !activeMessage
-    ? "拖动可移动位置"
+    ? askOpen
+      ? "点击收起提问，拖动可移动位置"
+      : "点击向助手提问，拖动可移动位置"
     : bubbleCollapsed
       ? "点击展开对话，拖动可移动位置"
       : "点击收起对话，拖动可移动位置";
@@ -96,7 +118,7 @@ export function ScanAssistantDock({
       className={[
         "scan-assistant-dock",
         isDragging ? "scan-assistant-dock--dragging" : "",
-        showBubble ? "scan-assistant-dock--has-bubble" : "",
+        showAnchor ? "scan-assistant-dock--has-bubble" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -117,7 +139,16 @@ export function ScanAssistantDock({
             placement={bubblePlacement}
             positionStyle={bubblePositionStyle}
             phase={bubblePhase}
-            onDismiss={onCollapseBubble}
+            onDismiss={onDismissMessage}
+          />
+        ) : null}
+
+        {showAsk ? (
+          <ScanAssistantAskPanel
+            anchorRef={bubbleAnchorRef}
+            placement={bubblePlacement}
+            positionStyle={bubblePositionStyle}
+            onDismiss={onAskDismiss}
           />
         ) : null}
 
@@ -143,7 +174,7 @@ export function ScanAssistantDock({
           }}
           {...orbDragHandlers}
         >
-          <MorphOrbLoader size={orbSize} />
+          <CarrierVisual carrier={carrier} size={orbSize} state={carrierState} />
         </div>
       </div>
     </div>

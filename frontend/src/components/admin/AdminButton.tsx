@@ -22,9 +22,9 @@ const toneClassNames: Record<AdminButtonTone, string> = {
   primary:
     "bg-[var(--app-color-accent)] text-white hover:bg-[var(--app-color-accent)]/90 focus-visible:ring-2 focus-visible:ring-[var(--app-color-accent)]/40 focus-visible:ring-offset-2 disabled:bg-[var(--app-color-accent)]/60",
   secondary:
-    "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-border-default)] focus-visible:ring-2 focus-visible:ring-[var(--app-color-border-default)]/60 focus-visible:ring-offset-2 disabled:bg-[var(--app-color-surface-container)] disabled:text-[var(--app-color-text-tertiary)]",
+    "bg-[var(--app-color-accent)]/15 text-[var(--app-color-accent)] hover:bg-[var(--app-color-accent)]/25 focus-visible:ring-2 focus-visible:ring-[var(--app-color-accent)]/40 focus-visible:ring-offset-2 disabled:bg-[var(--app-color-accent)]/5 disabled:text-[var(--app-color-text-tertiary)]",
   ghost:
-    "bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--app-color-border-default)]/40 focus-visible:ring-offset-2 disabled:text-[var(--app-color-text-tertiary)]",
+    "bg-[var(--app-color-accent)]/10 text-[var(--app-color-accent)] hover:bg-[var(--app-color-accent)]/20 focus-visible:ring-2 focus-visible:ring-[var(--app-color-accent)]/40 focus-visible:ring-offset-2 disabled:text-[var(--app-color-text-tertiary)]",
   destructive:
     "bg-red-500 text-white hover:bg-red-600 focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 disabled:bg-red-500/60",
 };

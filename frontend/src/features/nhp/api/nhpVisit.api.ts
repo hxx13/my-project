@@ -63,6 +63,8 @@ export const FREQUENCY_OPTIONS: EnumOption[] = [
 /** 访视时点（crf_visit 一行） */
 export interface NhpVisit {
   id: number;
+  /** 所属方案 id（空=默认方案） */
+  schemeId?: number | null;
   /** TP01~TP12（无横线） */
   code: string;
   /** 时点名，如「术前筛查」 */
@@ -80,12 +82,59 @@ export interface NhpVisit {
   seq?: number;
 }
 
-export async function fetchNhpVisits(): Promise<NhpVisit[]> {
-  return authHttp.get<Result<NhpVisit[]>>("/nhp/visits").then(({ data }) => data.data);
+/** 访视方案（一组 TP 定义；项目选方案决定事件矩阵列） */
+export interface NhpVisitScheme {
+  id: number;
+  name: string;
+  description?: string | null;
+  active?: boolean;
+  createdAt?: string;
+}
+
+export async function fetchNhpVisits(schemeId?: number | null): Promise<NhpVisit[]> {
+  const params = schemeId != null ? { schemeId } : undefined;
+  return authHttp.get<Result<NhpVisit[]>>("/nhp/visits", { params }).then(({ data }) => data.data);
 }
 
 export async function updateNhpVisit(id: number, patch: Partial<NhpVisit>): Promise<NhpVisit> {
   return authHttp.put<Result<NhpVisit>>(`/nhp/visits/${id}`, patch).then(({ data }) => data.data);
+}
+
+export async function createNhpVisit(body: Partial<NhpVisit>): Promise<NhpVisit> {
+  return authHttp.post<Result<NhpVisit>>("/nhp/visits", body).then(({ data }) => data.data);
+}
+
+export async function deleteNhpVisit(id: number): Promise<void> {
+  await authHttp.delete<Result<void>>(`/nhp/visits/${id}`);
+}
+
+export async function fetchNhpVisitSchemes(): Promise<NhpVisitScheme[]> {
+  return authHttp.get<Result<NhpVisitScheme[]>>("/nhp/visit-schemes").then(({ data }) => data.data ?? []);
+}
+
+export async function createNhpVisitScheme(name: string, description?: string): Promise<NhpVisitScheme> {
+  return authHttp
+    .post<Result<NhpVisitScheme>>("/nhp/visit-schemes", { name, description })
+    .then(({ data }) => data.data);
+}
+
+export async function updateNhpVisitScheme(id: number, patch: { name?: string; description?: string }): Promise<NhpVisitScheme> {
+  return authHttp.put<Result<NhpVisitScheme>>(`/nhp/visit-schemes/${id}`, patch).then(({ data }) => data.data);
+}
+
+export async function deleteNhpVisitScheme(id: number): Promise<void> {
+  await authHttp.delete<Result<void>>(`/nhp/visit-schemes/${id}`);
+}
+
+/** 项目选用的访视方案 id（空=默认） */
+export async function fetchNhpProjectVisitScheme(projectId: number): Promise<number | null> {
+  return authHttp
+    .get<Result<number | null>>(`/nhp/projects/${projectId}/visit-scheme`)
+    .then(({ data }) => data.data ?? null);
+}
+
+export async function saveNhpProjectVisitScheme(projectId: number, visitSchemeId: number | null): Promise<void> {
+  await authHttp.put(`/nhp/projects/${projectId}/visit-scheme`, { visitSchemeId });
 }
 
 /** 采集形态（表单-事件指派级，V2）：PANEL 事件面板 / LEDGER 台账 / SERIES 序列网格 */

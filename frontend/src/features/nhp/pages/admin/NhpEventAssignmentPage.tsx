@@ -2,10 +2,11 @@
  * NHP 表单-事件指派矩阵（对齐 REDCap "Designate Instruments for Events"）。
  * 行 = 已发布表单（原子/组合）；列 = 事件（访视时点）；格 = 是否指派。
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import { EVENT_ASSIGNMENT_PAGE } from "../../event-assignment/eventAssignment.config";
 import { useNhpEventAssignment } from "../../hooks/useNhpEventAssignment";
@@ -14,6 +15,11 @@ import { AssignmentStatsBar } from "../../components/event-assignment/Assignment
 import { AssignmentToolbar } from "../../components/event-assignment/AssignmentToolbar";
 import { listAupFolders, type AupFolderVO } from "@/features/aup/api/aup.api";
 import { fetchNhpProjects } from "../../api/nhpRecord.api";
+import {
+  fetchNhpProjectVisitScheme,
+  fetchNhpVisitSchemes,
+  saveNhpProjectVisitScheme,
+} from "../../api/nhpVisit.api";
 import "@/features/aup/aup.css";
 import "../../nhp.css";
 
@@ -37,6 +43,7 @@ export default function NhpEventAssignmentPage() {
   const goBack = useGoBack(EVENT_ASSIGNMENT_PAGE.backPath);
   const pageRef = useRef<HTMLDivElement>(null);
   const [projectId, setProjectId] = useState<number | null>(null);
+  const [schemeId, setSchemeId] = useState<number | null>(null);
 
   const foldersQuery = useQuery({
     queryKey: ["aup", "folders", NHP_FORM_OWNER],
@@ -46,6 +53,31 @@ export default function NhpEventAssignmentPage() {
   const projectsQuery = useQuery({
     queryKey: ["nhp", "projects"],
     queryFn: () => fetchNhpProjects(),
+  });
+
+  const schemesQuery = useQuery({
+    queryKey: ["nhp", "visit-schemes"],
+    queryFn: fetchNhpVisitSchemes,
+  });
+
+  const projectSchemeQuery = useQuery({
+    queryKey: ["nhp", "project-visit-scheme", projectId],
+    queryFn: () => fetchNhpProjectVisitScheme(projectId!),
+    enabled: projectId != null,
+  });
+
+  useEffect(() => {
+    if (projectId == null) {
+      setSchemeId(null);
+      return;
+    }
+    if (projectSchemeQuery.isSuccess) setSchemeId(projectSchemeQuery.data);
+  }, [projectId, projectSchemeQuery.isSuccess, projectSchemeQuery.data]);
+
+  const saveSchemeMut = useMutation({
+    mutationFn: (sid: number | null) => saveNhpProjectVisitScheme(projectId!, sid),
+    onSuccess: () => toast.success("已保存访视方案"),
+    onError: (e: Error) => toast.error(e.message || "保存方案失败"),
   });
 
   const {
@@ -65,7 +97,7 @@ export default function NhpEventAssignmentPage() {
     save,
     isSaving,
     lastSavedAt,
-  } = useNhpEventAssignment(projectId);
+  } = useNhpEventAssignment(projectId, schemeId);
 
   const folders = flattenFolders(foldersQuery.data ?? []);
   const forms = allForms;
@@ -114,6 +146,27 @@ export default function NhpEventAssignmentPage() {
                   </option>
                 ))}
               </select>
+              {projectId != null && (
+                <span style={{ marginLeft: 12 }}>
+                  <label style={{ fontSize: 12, color: "var(--muted)", marginRight: 8 }}>访视方案</label>
+                  <select
+                    value={schemeId == null ? "" : String(schemeId)}
+                    onChange={(e) => {
+                      const sid = e.target.value ? Number(e.target.value) : null;
+                      setSchemeId(sid);
+                      saveSchemeMut.mutate(sid);
+                    }}
+                    style={{ padding: "5px 8px", fontSize: 13, borderRadius: 6, minWidth: 160 }}
+                  >
+                    <option value="">默认方案</option>
+                    {schemesQuery.data?.map((s) => (
+                      <option key={s.id} value={String(s.id)}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              )}
             </div>
           </div>
           {!isLoading && !isError && forms.length > 0 && <AssignmentStatsBar stats={stats} />}
