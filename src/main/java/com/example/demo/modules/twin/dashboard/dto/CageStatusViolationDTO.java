@@ -24,6 +24,10 @@ public class CageStatusViolationDTO {
     private String campusName;
     private LocalDateTime triggeredAt;
     private String status;
+    /** 该父记录下全部子记录数（含已解除/已过期；与展开成员列表行数一致） */
+    private Integer memberCount;
+    /** 当前 ACTIVE 子记录数（分组可见性依据：至少一条生效才展示） */
+    private Integer activeMemberCount;
     private List<MemberViolationDTO> members;
 
     @Data

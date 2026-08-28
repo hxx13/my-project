@@ -8,27 +8,11 @@ import { AdminTableShell } from "@/components/admin/AdminPageShell";
 import { GroupRow, type CageGroup } from "./CageGroupedViewRows";
 
 import { appConfirm } from "@/lib/appDialog";
-const MEMBER_COUNTS_KEY = ["cage-status-violations", "member-counts"] as const;
 
 type CageGroupedViewProps = {
   keyword: string;
   onEdit: (row: StudentViolationRow) => void;
 };
-
-async function loadActiveMemberCounts(records: CageStatusViolationRow[]): Promise<Record<number, number>> {
-  const counts: Record<number, number> = {};
-  await Promise.all(
-    records.map(async (r) => {
-      try {
-        const d = await getCageStatusViolation(r.id);
-        counts[r.id] = (d.members ?? []).filter((m) => m.status === "ACTIVE").length;
-      } catch {
-        counts[r.id] = 0;
-      }
-    })
-  );
-  return counts;
-}
 
 export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.Element {
   const qc = useQueryClient();
@@ -47,27 +31,7 @@ export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.
     queryFn: () => listStudentViolations({ limit: 400 }),
   });
 
-  const recordIdsKey = useMemo(
-    () =>
-      cageRecords
-        .map((r) => r.id)
-        .slice()
-        .sort((a, b) => a - b)
-        .join(","),
-    [cageRecords]
-  );
-
-  // 缓存成员数：切回「按笼架」时可立刻用缓存过滤，避免先闪出无活跃成员的幽灵分组。
-  const { data: memberCounts = {}, isFetched: countsFetched } = useQuery({
-    queryKey: [...MEMBER_COUNTS_KEY, recordIdsKey],
-    queryFn: () => loadActiveMemberCounts(cageRecords),
-    enabled: !isLoading && cageRecords.length > 0,
-    staleTime: 30_000,
-  });
-  const countsReady = cageRecords.length === 0 || countsFetched;
-
   const groups = useMemo(() => {
-    if (!countsReady) return [];
     const map = new Map<string, { groupName: string; parents: CageStatusViolationRow[] }>();
     for (const rec of cageRecords) {
       const key = rec.projectGroupName?.trim() || "未命名课题组";
@@ -75,8 +39,9 @@ export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.
       map.get(key)!.parents.push(rec);
     }
     let list = Array.from(map.values()).filter((grp) =>
-      grp.parents.some((p) => (memberCounts[p.id] ?? 0) > 0)
+      grp.parents.some((p) => (p.activeMemberCount ?? 0) > 0)
     );
+    // 徽标人数=全部成员记录数（与展开列表行数一致）；分组可见性=至少一条 ACTIVE（避免展示已全部解除/过期的空组）
     if (keyword.trim()) {
       const kw = keyword.trim().toLowerCase();
       list = list.filter(
@@ -91,14 +56,10 @@ export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.
       );
     }
     return list;
-  }, [cageRecords, memberCounts, countsReady, keyword]);
+  }, [cageRecords, keyword]);
 
-  /** 有父记录时须等成员数就绪，否则会短暂展示随后被过滤掉的「不存在」分组。 */
-  const listPending = isLoading || !countsReady;
+  const listPending = isLoading;
 
-  const patchMemberCounts = (updater: (prev: Record<number, number>) => Record<number, number>) => {
-    qc.setQueryData<Record<number, number>>([...MEMBER_COUNTS_KEY, recordIdsKey], (prev) => updater(prev ?? {}));
-  };
   const toggleGroup = async (groupName: string) => {
     if (expanded === groupName) {
       setExpanded(null);
@@ -131,11 +92,6 @@ export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.
       for (const p of activeParents) {
         try { await clearCageStatusViolation(p.id); } catch {}
       }
-      patchMemberCounts((prev) => {
-        const n = { ...prev };
-        for (const p of activeParents) n[p.id] = 0;
-        return n;
-      });
       toast.success("已全部解除");
       qc.invalidateQueries({ queryKey: ["cage-status-violations"] });
       qc.invalidateQueries({ queryKey: ["studentViolations"] });
@@ -149,11 +105,6 @@ export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.
       for (const p of group.parents) {
         try { await deleteCageStatusViolation(p.id); } catch {}
       }
-      patchMemberCounts((prev) => {
-        const n = { ...prev };
-        for (const p of group.parents) n[p.id] = 0;
-        return n;
-      });
       toast.success("已全部删除");
       qc.invalidateQueries({ queryKey: ["cage-status-violations"] });
       qc.invalidateQueries({ queryKey: ["studentViolations"] });
@@ -166,12 +117,7 @@ export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.
     else toast.error("未在列表中找到此记录，请刷新后重试");
   };
 
-  const afterMemberMutation = (parentId: number) => {
-    patchMemberCounts((prev) => {
-      const n = { ...prev };
-      if (n[parentId] > 0) n[parentId]--;
-      return n;
-    });
+  const afterMemberMutation = (_parentId: number) => {
     qc.invalidateQueries({ queryKey: ["cage-status-violations"] });
     void toggleGroup(expanded!);
   };
@@ -211,7 +157,6 @@ export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.
               key={grp.groupName}
               group={grp}
               isExpanded={expanded === grp.groupName}
-              memberCounts={memberCounts}
               busy={busyGroup != null}
               detailBusy={busyGroup === expanded}
               detailMembers={groupMembers}
