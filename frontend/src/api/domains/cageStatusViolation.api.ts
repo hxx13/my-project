@@ -19,6 +19,8 @@ export interface CageStatusViolationRow {
   campusName?: string;
   triggeredAt: string;
   status: 'ACTIVE' | 'CLEARED' | 'EXPIRED';
+  memberCount?: number;
+  activeMemberCount?: number;
   members?: MemberViolationRow[];
 }
 

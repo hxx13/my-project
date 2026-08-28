@@ -19,7 +19,6 @@ export type CageGroup = {
 type GroupRowProps = {
   group: CageGroup;
   isExpanded: boolean;
-  memberCounts: Record<number, number>;
   busy: boolean;
   detailBusy: boolean;
   detailMembers: { parentId: number; members: CageStatusViolationRow["members"] }[];
@@ -33,7 +32,7 @@ type GroupRowProps = {
   onDeleteMember: (member: MemberViolationRow, parentId: number) => void;
 };
 
-export function GroupRow({ group, isExpanded, memberCounts, busy, detailBusy, detailMembers, detailLoading, cageRecords, onToggle, onClearGroup, onDeleteGroup, onEditMember, onClearMember, onDeleteMember }: GroupRowProps): JSX.Element {
+export function GroupRow({ group, isExpanded, busy, detailBusy, detailMembers, detailLoading, cageRecords, onToggle, onClearGroup, onDeleteGroup, onEditMember, onClearMember, onDeleteMember }: GroupRowProps): JSX.Element {
   const activeParents = group.parents.filter((p) => p.status === "ACTIVE");
   const latestTime = group.parents.reduce((max, p) => {
     const t = p.triggeredAt ?? "";
@@ -45,7 +44,7 @@ export function GroupRow({ group, isExpanded, memberCounts, busy, detailBusy, de
         <td className="px-3 py-2">
           <span className="font-semibold text-[var(--app-color-text-primary)]">{group.groupName}</span>
           {(() => {
-            const count = group.parents.reduce((s, p) => s + (memberCounts[p.id] ?? 0), 0);
+            const count = group.parents.reduce((s, p) => s + (p.memberCount ?? 0), 0);
             return count > 0 ? (
               <span className="ml-1.5 inline-flex items-center rounded-full bg-[var(--app-color-feedback-danger-soft)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--app-color-feedback-danger)]">
                 {count} 人
@@ -64,7 +63,7 @@ export function GroupRow({ group, isExpanded, memberCounts, busy, detailBusy, de
         </td>
         <td className="px-3 py-2 text-xs text-[var(--app-color-text-secondary)]">
           {(() => {
-            const total = group.parents.reduce((s, p) => s + (memberCounts[p.id] ?? 0), 0);
+            const total = group.parents.reduce((s, p) => s + (p.memberCount ?? 0), 0);
             return total > 0 ? `${total} 人` : "...";
           })()}
         </td>

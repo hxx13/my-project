@@ -14,6 +14,7 @@ import com.example.demo.modules.twin.dashboard.service.TwinViolationRuleService;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -86,7 +87,19 @@ public class AdminCageStatusViolationController {
     @GetMapping
     public Result<List<CageStatusViolationDTO>> list() {
         List<TwinCageStatusViolation> rows = mapper.selectAll();
-        List<CageStatusViolationDTO> dtos = rows.stream().map(this::toDTO).collect(Collectors.toList());
+        Map<Long, Integer> counts = new HashMap<>();
+        Map<Long, Integer> activeCounts = new HashMap<>();
+        for (Map<String, Object> r : mapper.countMembersByCage()) {
+            long cid = ((Number) r.get("cageViolationId")).longValue();
+            counts.put(cid, ((Number) r.get("cnt")).intValue());
+            activeCounts.put(cid, ((Number) r.get("activeCnt")).intValue());
+        }
+        List<CageStatusViolationDTO> dtos = rows.stream().map(r -> {
+            CageStatusViolationDTO dto = toDTO(r);
+            dto.setMemberCount(counts.getOrDefault(r.getId(), 0));
+            dto.setActiveMemberCount(activeCounts.getOrDefault(r.getId(), 0));
+            return dto;
+        }).collect(Collectors.toList());
         return Result.success(dtos);
     }
 
@@ -96,7 +109,10 @@ public class AdminCageStatusViolationController {
         TwinCageStatusViolation row = mapper.selectById(id);
         if (row == null) return Result.error("记录不存在");
         CageStatusViolationDTO dto = toDTO(row);
-        dto.setMembers(loadMembers(id));
+        List<CageStatusViolationDTO.MemberViolationDTO> members = loadMembers(id);
+        dto.setMembers(members);
+        dto.setMemberCount(members.size());
+        dto.setActiveMemberCount((int) members.stream().filter(m -> "ACTIVE".equals(m.getStatus())).count());
         return Result.success(dto);
     }
 

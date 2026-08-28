@@ -39,6 +39,15 @@
         SELECT * FROM twin_cage_status_violation ORDER BY triggered_at DESC
     </select>
 
+    <select id="countMembersByCage" resultType="map">
+        SELECT cage_violation_id AS cageViolationId,
+               COUNT(1) AS cnt,
+               SUM(status = 'ACTIVE') AS activeCnt
+        FROM twin_student_violation
+        WHERE cage_violation_id IS NOT NULL
+        GROUP BY cage_violation_id
+    </select>
+
     <select id="selectById" resultMap="BaseResultMap">
         SELECT * FROM twin_cage_status_violation WHERE id = #{id}
     </select>
