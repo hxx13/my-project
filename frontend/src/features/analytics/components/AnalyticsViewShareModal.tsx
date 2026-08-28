@@ -173,7 +173,7 @@ export function AnalyticsViewShareModal({
           <h3 className="font-semibold text-neutral-900">
             {mode === "create" ? "分享全部配置" : "导入分享码"}
           </h3>
-          <button type="button" onClick={onClose} className="rounded p-1 text-neutral-400 hover:bg-neutral-100">
+          <button type="button" onClick={onClose} className="rounded p-1 text-accent hover:bg-accent/10">
             <X className="h-5 w-5" />
           </button>
         </div>

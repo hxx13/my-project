@@ -56,7 +56,7 @@
 
 .scan-assistant-dock__orb--dragging {
   cursor: grabbing;
-  transform: scale(1.04);
+  transform: scale(1.6);
   transform-origin: center center;
   animation: none;
 }

@@ -126,6 +126,40 @@ public class ScanAssistantController {
         }
     }
 
+    @PostMapping(value = "/ask/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "智能载体提问（SSE：started / delta / done / error），内置占位提示词")
+    public SseEmitter askQuestion(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody ScanAssistantSpeakRequest body) {
+        try {
+            requireOperator(authorization);
+            String question = body != null ? body.getQuestion() : null;
+            SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+            heavyCalcExecutor.execute(() -> scanAssistantLlmService.askQuestion(question, emitter));
+            return emitter;
+        } catch (IllegalArgumentException e) {
+            SseEmitter err = new SseEmitter(0L);
+            err.completeWithError(e);
+            return err;
+        }
+    }
+
+    @PostMapping(value = "/ask/greet/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "智能载体主动问好（打开面板即触发，SSE：started / delta / done / error）")
+    public SseEmitter greet(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        try {
+            requireOperator(authorization);
+            SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+            heavyCalcExecutor.execute(() -> scanAssistantLlmService.greet(emitter));
+            return emitter;
+        } catch (IllegalArgumentException e) {
+            SseEmitter err = new SseEmitter(0L);
+            err.completeWithError(e);
+            return err;
+        }
+    }
+
     @PostMapping("/broadcast/proactive")
     @Operation(summary = "触发一次主动播报（定时器/手动调用），返回播报文本或 null")
     public Map<String, Object> proactiveBroadcast(

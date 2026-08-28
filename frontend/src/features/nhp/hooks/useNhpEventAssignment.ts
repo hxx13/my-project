@@ -26,12 +26,12 @@ export const nhpEventAssignmentKeys = {
   visitPlans: ["nhp", "visit-plans"] as const,
 };
 
-export function useNhpEventAssignment(projectId?: number | null) {
+export function useNhpEventAssignment(projectId?: number | null, schemeId?: number | null) {
   const queryClient = useQueryClient();
 
   const visitsQuery = useQuery({
-    queryKey: nhpEventAssignmentKeys.visits,
-    queryFn: fetchNhpVisits,
+    queryKey: ["nhp", "visits", schemeId ?? null],
+    queryFn: () => fetchNhpVisits(schemeId ?? null),
   });
   const formsQuery = useQuery({
     queryKey: nhpEventAssignmentKeys.assignableTemplates,

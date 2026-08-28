@@ -15,6 +15,7 @@ import toast from "react-hot-toast";
 import {
   batchUnfreezeNhpFields,
   createNhpField,
+  createNhpFieldDraft,
   deleteNhpField,
   fetchNhpFieldPublishedUsage,
   fetchNhpFields,
@@ -33,6 +34,8 @@ import {
   deleteNhpDictDomain,
   deleteNhpDictSubmodule,
   cloneNhpDictStructureFrom,
+  copyNhpDictDomain,
+  copyNhpDictSubmodule,
   renameNhpDictDomain,
   renameNhpDictSubmodule,
   syncNhpDictAtomLabels,
@@ -536,6 +539,26 @@ export default function NhpFieldWorkbench({ onBack }: NhpFieldWorkbenchProps) {
     onError: (e: Error) => toast.error(e.message || "克隆失败"),
   });
 
+  const copyDomainMut = useMutation({
+    mutationFn: ({ sourceCode, targetCode }: { sourceCode: string; targetCode: string }) =>
+      copyNhpDictDomain(dictKey, { sourceCode, targetCode }),
+    onSuccess: (r) => {
+      toast.success(`已复制数据域（复制字段 ${r.copiedFields ?? 0} 个）`);
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message || "复制数据域失败", { duration: 6000 }),
+  });
+
+  const copySubMut = useMutation({
+    mutationFn: ({ sourceCode, targetCode }: { sourceCode: string; targetCode: string }) =>
+      copyNhpDictSubmodule(dictKey, { sourceCode, targetCode }),
+    onSuccess: (r) => {
+      toast.success(`已复制子模块（复制字段 ${r.copiedFields ?? 0} 个）`);
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message || "复制子模块失败", { duration: 6000 }),
+  });
+
   const addSubMut = useMutation({
     mutationFn: () =>
       addNhpDictSubmodule(dictKey, {
@@ -723,6 +746,16 @@ export default function NhpFieldWorkbench({ onBack }: NhpFieldWorkbenchProps) {
     onError: (e: Error) => toast.error(e.message || "解冻失败", { duration: 8000 }),
   });
 
+  const newVersionMut = useMutation({
+    mutationFn: (id: number) => createNhpFieldDraft(id),
+    onSuccess: (f) => {
+      toast.success(`已新建版本 v${f.version}（草稿），编辑后重新提交校对`);
+      invalidate();
+      focusField(f);
+    },
+    onError: (e: Error) => toast.error(e.message || "新建版本失败", { duration: 8000 }),
+  });
+
   const batchUnfreezeMut = useMutation({
     mutationFn: (ids: number[]) => batchUnfreezeNhpFields(ids),
     onSuccess: (d) => {
@@ -781,8 +814,8 @@ export default function NhpFieldWorkbench({ onBack }: NhpFieldWorkbenchProps) {
   };
 
   const fieldFolderActions = (_folderKey: string, depth: number): FolderAction[] => {
-    if (depth === 0) return ["createItem", "createFolder", "rename", "delete"];
-    return ["createItem", "rename", "delete"];
+    if (depth === 0) return ["createItem", "createFolder", "rename", "copy", "delete"];
+    return ["createItem", "rename", "copy", "delete"];
   };
 
   /** 中文显示名（不含编码）；无信息量时返回空，由树节点只显示一次 code */
@@ -932,6 +965,20 @@ export default function NhpFieldWorkbench({ onBack }: NhpFieldWorkbenchProps) {
     const idx = folderKey.indexOf(":");
     if (idx >= 0) openRenameSub(folderKey.slice(idx + 1));
     else openRenameDomain(folderKey);
+  };
+
+  const handleFieldFolderCopy = async (folderKey: string) => {
+    const idx = folderKey.indexOf(":");
+    if (idx >= 0) {
+      const source = folderKey.slice(idx + 1);
+      const target = (await appPrompt(`复制子模块「${source}」到（目标编码 Dn.mm，如 ${source}）`, ""))?.trim().toUpperCase();
+      if (!target) return;
+      copySubMut.mutate({ sourceCode: source, targetCode: target });
+    } else {
+      const target = (await appPrompt(`复制数据域「${folderKey}」到（目标编码 Dn，如 ${folderKey}）`, ""))?.trim().toUpperCase();
+      if (!target) return;
+      copyDomainMut.mutate({ sourceCode: folderKey, targetCode: target });
+    }
   };
 
   const handleFieldFolderDelete = (folderKey: string) => {
@@ -1146,6 +1193,7 @@ export default function NhpFieldWorkbench({ onBack }: NhpFieldWorkbenchProps) {
           onCreateSubFolder={canMaintainDict ? openCreateSub : undefined}
           onCreateItem={canMaintainDict ? handleFieldFolderCreateItem : undefined}
           onRenameFolder={canMaintainDict ? handleFieldFolderRename : undefined}
+          onCopyFolder={canMaintainDict ? handleFieldFolderCopy : undefined}
           onDeleteFolder={canMaintainDict ? handleFieldFolderDelete : undefined}
           itemDataAttr={(item) => ({ "data-field-code": item.field.fieldCode })}
           itemRowClassName={(item) => (highlightCode === item.field.fieldCode ? "aup-wb-row--flash" : undefined)}
@@ -1230,6 +1278,20 @@ export default function NhpFieldWorkbench({ onBack }: NhpFieldWorkbenchProps) {
                 }}
               >
                 解冻
+              </button>
+            )}
+            {canPiReview && selected.status === "FROZEN" && (
+              <button
+                className="btn small primary"
+                disabled={newVersionMut.isPending}
+                title="从当前冻结版克隆一个新草稿版本（v+1），旧冻结版保留给已发布模板"
+                onClick={async () => {
+                  if (await appConfirm("从当前冻结版克隆一个新草稿版本？旧冻结版保留，编辑后重新提交校对。确认？")) {
+                    newVersionMut.mutate(selected.id);
+                  }
+                }}
+              >
+                新建版本
               </button>
             )}
             {canMaintainDict && selected.status === "DRAFT" && (

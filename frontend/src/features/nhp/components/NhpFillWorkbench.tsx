@@ -4,6 +4,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import {
@@ -123,6 +124,7 @@ export default function NhpFillWorkbench({
     preferHistory: mode !== "adminPreview",
   });
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { id: routeId } = useParams<{ id?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const snapshotViewId = searchParams.get("snapshot");
@@ -491,6 +493,10 @@ export default function NhpFillWorkbench({
     try {
       await fn();
       toast.success(ok);
+      // 保存/提交/锁定等操作后刷新项目记录与实例列表，避免回到项目页还要手动刷新
+      void qc.invalidateQueries({ queryKey: ["nhp", "project-records"] });
+      void qc.invalidateQueries({ queryKey: ["nhp", "records"] });
+      void qc.invalidateQueries({ queryKey: ["nhp", "projects"] });
     } catch (e) {
       toast.error((e as Error)?.message || "操作失败");
     } finally {

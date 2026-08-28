@@ -117,6 +117,11 @@
                 <view wx:else class="expand-thumb expand-thumb-ph"><text>{{ line.snapshotName ? line.snapshotName.charAt(0) : '?' }}</text></view>
                 <view class="expand-line-main">
                   <text class="expand-name">{{ line.snapshotName }}</text>
+                  <view class="expand-qty-row">
+                    <text class="expand-qty-label">发放数量</text>
+                    <text class="expand-qty-value">{{ line.fulfilledQty != null ? line.fulfilledQty : 0 }}</text>
+                    <text class="expand-qty-cap">/ {{ line.qty }}</text>
+                  </view>
                   <view wx:if="{{ remarkByLineCache[item.id][line.id] }}" class="expand-remark-readonly">
                     <text class="expand-remark-lbl">备注</text>
                     <text class="expand-remark-text">{{ remarkByLineCache[item.id][line.id] }}</text>

@@ -35,7 +35,7 @@ type Props = {
 
 export default function NhpSurgeryProgress({ surgery, compact }: Props) {
   const queryClient = useQueryClient();
-  const visitsQuery = useQuery({ queryKey: ["nhp", "visits"], queryFn: fetchNhpVisits, staleTime: 60_000 });
+  const visitsQuery = useQuery({ queryKey: ["nhp", "visits"], queryFn: () => fetchNhpVisits(), staleTime: 60_000 });
   const visits = visitsQuery.data ?? [];
   const bizIdx = lifecycleToBizIndex(surgery.lifecycleStage);
 

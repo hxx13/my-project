@@ -126,3 +126,17 @@ export async function batchUnfreezeNhpFields(fieldIds: number[]): Promise<{
     )
     .then(({ data }) => data.data);
 }
+
+/** 新建草稿版本（从最新 FROZEN 克隆；旧冻结版保留） */
+export async function createNhpFieldDraft(fieldId: number): Promise<NhpField> {
+  return authHttp
+    .post<Result<NhpField>>(`/nhp/fields/${fieldId}/draft`)
+    .then(({ data }) => data.data);
+}
+
+/** 字段版本列表（version DESC） */
+export async function fetchNhpFieldVersions(fieldId: number): Promise<NhpField[]> {
+  return authHttp
+    .get<Result<NhpField[]>>(`/nhp/fields/${fieldId}/versions`)
+    .then(({ data }) => data.data ?? []);
+}

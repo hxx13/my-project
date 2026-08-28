@@ -20,6 +20,7 @@ import {
   formatBuiltinSeedImportToast,
   importNhpBuiltinSeedTemplates,
   publishNhpTemplate,
+  restoreNhpTemplateArchived,
   setNhpTemplateFolder,
   unfreezeNhpTemplate,
   versionOriginLabel,
@@ -62,6 +63,10 @@ function isPublished(s: string): boolean {
   return u === "PUBLISHED" || u === "FROZEN";
 }
 
+function isArchived(s: string): boolean {
+  return (s || "").toUpperCase() === "ARCHIVED";
+}
+
 function itemKindLabel(t: NhpTemplateListItem): string {
   return templateKind(t) === "COMPOSITE" ? "组合模板" : "原子模板";
 }
@@ -101,8 +106,9 @@ function formatPinRefs(refs: NhpAtomReferencedBy[] | undefined): string {
     .join("、");
 }
 
-function editPath(formKey: string): string {
-  return `/content-manager/nhp-template/edit/${encodeURIComponent(formKey)}`;
+function editPath(formKey: string, formId?: number): string {
+  const base = `/content-manager/nhp-template/edit/${encodeURIComponent(formKey)}`;
+  return formId != null ? `${base}/${formId}` : base;
 }
 
 const PUBLISH_FILTERS: { value: PublishFilter; label: string }[] = [
@@ -280,7 +286,7 @@ export default function NhpTemplateListPage() {
     onSuccess: (t) => {
       toast.success("已创建空白组合草稿，请在编辑器中钉住原子或搭建章节");
       invalidate();
-      navigate(editPath(t.formKey), { state: nhpNavState(location) });
+      navigate(editPath(t.formKey, t.formId), { state: nhpNavState(location) });
     },
     onError: (e: Error) => toast.error(e.message || "创建组合草稿失败"),
   });
@@ -321,12 +327,21 @@ export default function NhpTemplateListPage() {
     onError: (e: Error) => toast.error(e.message || "解冻失败", { duration: 9000 }),
   });
 
+  const restoreMutation = useMutation({
+    mutationFn: (formKey: string) => restoreNhpTemplateArchived(formKey),
+    onSuccess: (t) => {
+      toast.success(`已恢复「${t.formKey}」@v${t.version ?? ""} 为已发布`);
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message || "恢复失败", { duration: 8000 }),
+  });
+
   const draftMutation = useMutation({
     mutationFn: (formKey: string) => createNhpTemplateDraft(formKey),
     onSuccess: (t) => {
       toast.success(`已新建版本 v${t.version ?? ""}，请修改后保存`);
       invalidate();
-      navigate(editPath(t.formKey), { state: nhpNavState(location) });
+      navigate(editPath(t.formKey, t.formId), { state: nhpNavState(location) });
     },
     onError: (e: Error) => toast.error(e.message || "新建版本失败"),
   });
@@ -442,6 +457,7 @@ export default function NhpTemplateListPage() {
 
   const previewOrigin = previewQuery.data?.origin ?? versions.find((v) => v.formId === previewFormId)?.origin;
   const previewVersion = previewQuery.data?.version ?? versions.find((v) => v.formId === previewFormId)?.version;
+  const previewItem = previewFormId != null ? versions.find((v) => v.formId === previewFormId) : undefined;
 
   return (
     <div className="aup-app aup-app--workbench nhp-template-admin">
@@ -664,9 +680,20 @@ export default function NhpTemplateListPage() {
                   <button
                     type="button"
                     className="btn small ghost"
-                    onClick={() => navigate(editPath(selected.formKey), { state: nhpNavState(location) })}
+                    title={
+                      previewFormId != null
+                        ? `编辑当前预览版本 (id=${previewFormId})`
+                        : undefined
+                    }
+                    onClick={() =>
+                      navigate(editPath(selected.formKey, previewFormId ?? selected.formId), {
+                        state: nhpNavState(location),
+                      })
+                    }
                   >
-                    {selectedKind === "ATOM" || selected.status === "DRAFT" ? "编辑 ▸" : "查看 ▸"}
+                    {selectedKind === "ATOM" || (previewItem?.status ?? selected.status) === "DRAFT"
+                      ? "编辑 ▸"
+                      : "查看 ▸"}
                   </button>
                   {selectedKind === "ATOM" && (
                     <button
@@ -756,6 +783,21 @@ export default function NhpTemplateListPage() {
                         </button>
                       )}
                     </>
+                  )}
+                  {isArchived(selected.status) && (
+                    <button
+                      type="button"
+                      className="btn small ghost"
+                      disabled={restoreMutation.isPending}
+                      title="恢复已归档版本为已发布（不进入草稿编辑态）"
+                      onClick={async () => {
+                        if (await appConfirm(`恢复「${selected.formKey}」已归档版本为已发布？`)) {
+                          restoreMutation.mutate(selected.formKey);
+                        }
+                      }}
+                    >
+                      恢复
+                    </button>
                   )}
                 </div>
 

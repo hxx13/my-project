@@ -97,28 +97,28 @@
       "canonical": "needs_division",
       "sqlColumn": "needs_division",
       "type": "boolean",
-      "sources": { "back": "cageBoxVo.needDivideYn", "list": "cageBoxVo.needDivideYn" },
+      "sources": { "back": "cageBoxVo.needDivideYn" },
       "targets": { "cageBoxAction": "NeedDivideYn", "updateAnimalCage": "needDivideYn" }
     },
     {
       "canonical": "needs_special_feeding",
       "sqlColumn": "needs_special_feeding",
       "type": "boolean",
-      "sources": { "back": "cageBoxVo.needFeedingYn", "list": "cageBoxVo.needFeedingYn" },
+      "sources": { "back": "cageBoxVo.needFeedingYn" },
       "targets": { "updateAnimalCage": "needFeedingYn" }
     },
     {
       "canonical": "needs_transfer",
       "sqlColumn": "needs_transfer",
       "type": "boolean",
-      "sources": { "back": "cageBoxVo.needTransferYn", "list": "cageBoxVo.needTransferYn" },
+      "sources": { "back": "cageBoxVo.needTransferYn" },
       "targets": { "updateAnimalCage": "needTransferYn" }
     },
     {
       "canonical": "has_health_abnormality",
       "sqlColumn": "has_health_abnormality",
       "type": "boolean",
-      "sources": { "back": "cageBoxVo.abnormalHealthYn", "list": "cageBoxVo.abnormalHealthYn" },
+      "sources": { "back": "cageBoxVo.abnormalHealthYn" },
       "targets": { "updateAnimalCage": "abnormalHealthYn" }
     },
     {
@@ -126,6 +126,7 @@
       "sqlColumn": "needs_cohabitation",
       "type": "boolean",
       "comment": "合笼 0/1：closingdate 非空 且 (无取消 或 取消早于合笼)。ARO 无布尔字段，由两时间戳综合判定；cageBoxVo 不存在时不判定（保留旧值）。closingdate<=rescindDatetime 视为已解除。",
+      "endpoints": ["back"],
       "computed": {
         "rule": "cohabitationActive",
         "inputs": {

@@ -1490,6 +1490,11 @@
 .nhp-form-tile-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:5px}
 .nhp-form-tile-key{font-family:ui-monospace,monospace;color:var(--slate)}
 .nhp-form-tile-acts{display:flex;gap:8px;flex-shrink:0}
+.nhp-form-tile--col{flex-direction:column;align-items:stretch;gap:10px}
+.nhp-form-tile-hd{display:flex;align-items:center;gap:14px}
+.nhp-form-records{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border,#E5E7EB);padding-top:10px}
+.nhp-form-record-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px}
+.nhp-form-record-meta{color:var(--muted);font-family:ui-monospace,monospace;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* 项目信息元数据：标签左、值右 */
 .nhp-project-meta{display:flex;flex-direction:column;gap:8px}

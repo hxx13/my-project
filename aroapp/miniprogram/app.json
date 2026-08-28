@@ -55,6 +55,7 @@
         "pages/studentAccessRecords/index",
         "pages/studentViolations/index",
         "pages/materialAdmin/index",
+        "pages/animalOrder/index",
         "pages/doorControl/index",
         "pages/newsDetail/newsDetail",
         "pages/allnews/allnews"

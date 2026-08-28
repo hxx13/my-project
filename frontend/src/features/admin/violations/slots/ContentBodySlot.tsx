@@ -62,7 +62,8 @@ type ContentBodySlotProps = {
   onChange: (next: ContentBodyValue) => void;
   placeholder?: string;
   uploading?: boolean;
-  onPickFiles: (files: FileList | null) => void;
+  /** 单独上传图片入口；不传则隐藏「添加图片」按钮（改用正文内联图片） */
+  onPickFiles?: (files: FileList | null) => void;
   templateSlot?: ReactNode;
   disabled?: boolean;
 };
@@ -136,9 +137,11 @@ export function ContentBodySlot({
         </div>
       ) : null}
 
-      <AdminFilePickButton multiple disabled={disabled || uploading} onFiles={onPickFiles} className="self-start">
-        {uploading ? "上传中…" : "添加图片"}
-      </AdminFilePickButton>
+      {onPickFiles != null ? (
+        <AdminFilePickButton multiple disabled={disabled || uploading} onFiles={onPickFiles} className="self-start">
+          {uploading ? "上传中…" : "添加图片"}
+        </AdminFilePickButton>
+      ) : null}
     </div>
   );
 }

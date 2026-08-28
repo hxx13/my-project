@@ -108,6 +108,7 @@ import {
 } from "@/features/admin/adminChromeContextMenuTarget";
 import { AdminCommandPalette } from "@/features/admin/AdminCommandPalette";
 import { PageHelpHost } from "@/features/page-help/PageHelpHost";
+import { ScanAssistantCarrier } from "@/components/scanner/ScanAssistantCarrier";
 import {
   ADMIN_SIDEBAR_OPEN_GROUPS_SESSION_KEY,
   ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY,
@@ -1543,6 +1544,8 @@ export default function AdminLayout() {
           </div>
         </main>
       </section>
+
+      <ScanAssistantCarrier />
 
       <AdminChromeContextMenu
         open={!!chromeCtx}

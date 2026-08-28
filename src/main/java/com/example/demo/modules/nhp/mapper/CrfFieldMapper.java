@@ -22,8 +22,23 @@ public interface CrfFieldMapper {
     CrfField findById(Long id);
 
     @Select("SELECT * FROM crf_field WHERE field_code = #{fieldCode} AND active = 1 " +
-            "AND (dictionary_id = #{dictionaryId} OR (#{dictionaryId} IS NULL AND dictionary_id IS NULL)) LIMIT 1")
+            "AND (dictionary_id = #{dictionaryId} OR (#{dictionaryId} IS NULL AND dictionary_id IS NULL)) ORDER BY version DESC LIMIT 1")
     CrfField findByFieldCodeInDict(@Param("dictionaryId") Long dictionaryId, @Param("fieldCode") String fieldCode);
+
+    /** 同码全部活跃版本（version DESC，头=最新）。 */
+    @Select("SELECT * FROM crf_field WHERE field_code = #{fieldCode} AND active = 1 " +
+            "AND (dictionary_id = #{dictionaryId} OR (#{dictionaryId} IS NULL AND dictionary_id IS NULL)) ORDER BY version DESC")
+    List<CrfField> listByFieldCodeInDict(@Param("dictionaryId") Long dictionaryId, @Param("fieldCode") String fieldCode);
+
+    @Select("SELECT * FROM crf_field WHERE field_code = #{fieldCode} AND version = #{version} AND active = 1 " +
+            "AND (dictionary_id = #{dictionaryId} OR (#{dictionaryId} IS NULL AND dictionary_id IS NULL)) LIMIT 1")
+    CrfField findByFieldCodeAndVersionInDict(@Param("dictionaryId") Long dictionaryId,
+                                             @Param("fieldCode") String fieldCode,
+                                             @Param("version") int version);
+
+    @Select("SELECT COALESCE(MAX(version), 0) FROM crf_field WHERE field_code = #{fieldCode} " +
+            "AND (dictionary_id = #{dictionaryId} OR (#{dictionaryId} IS NULL AND dictionary_id IS NULL))")
+    int findMaxVersionInDict(@Param("dictionaryId") Long dictionaryId, @Param("fieldCode") String fieldCode);
 
     /** 兼容旧调用：优先猪字典，否则任意活跃 */
     @Select("SELECT f.* FROM crf_field f " +
@@ -44,10 +59,10 @@ public interface CrfFieldMapper {
             "description = #{description}, concept_code = #{conceptCode} WHERE id = #{id}")
     int reactivateAndUpdate(CrfField row);
 
-    @Select("SELECT * FROM crf_field WHERE active = 1 ORDER BY field_code")
+    @Select("SELECT * FROM crf_field WHERE active = 1 ORDER BY field_code, version DESC")
     List<CrfField> list();
 
-    @Select("SELECT * FROM crf_field WHERE active = 1 AND dictionary_id = #{dictionaryId} ORDER BY field_code")
+    @Select("SELECT * FROM crf_field WHERE active = 1 AND dictionary_id = #{dictionaryId} ORDER BY field_code, version DESC")
     List<CrfField> listByDictionary(@Param("dictionaryId") Long dictionaryId);
 
     /** 按数据域查字段（field_code 形如 D1.02.003，前缀 D1 即域）。 */
@@ -60,7 +75,7 @@ public interface CrfFieldMapper {
                                              @Param("domain") String domain);
 
     /** 引用某码表的字段（反查）。排序由 Service 层按 D 编码数值序整理。 */
-    @Select("SELECT * FROM crf_field WHERE active = 1 AND codelist_id = #{codelistId}")
+    @Select("SELECT * FROM crf_field WHERE active = 1 AND codelist_id = #{codelistId} ORDER BY field_code, version DESC")
     List<CrfField> listByCodelistId(@Param("codelistId") Long codelistId);
 
     @Select("SELECT COUNT(1) FROM crf_field WHERE active = 1 AND codelist_id = #{codelistId}")

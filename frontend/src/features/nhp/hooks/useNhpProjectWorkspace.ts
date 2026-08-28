@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
   createNhpRecordForProject,
+  deleteNhpRecord,
   fetchNhpProjectRecords,
   updateNhpProject,
   type NhpProject,
@@ -14,7 +15,7 @@ import {
   indexTemplatesByFormId,
   type NhpTemplateListItem,
 } from "../api/nhpTemplate.api";
-import { fetchNhpProjectVisitPlans, fetchNhpVisits, type NhpProjectVisitPlan } from "../api/nhpVisit.api";
+import { fetchNhpProjectVisitPlans, fetchNhpProjectVisitScheme, fetchNhpVisits, type NhpProjectVisitPlan } from "../api/nhpVisit.api";
 
 export function useNhpProjectWorkspace(project: NhpProject | null, mode: "portal" | "adminPreview" = "portal") {
   const qc = useQueryClient();
@@ -25,7 +26,15 @@ export function useNhpProjectWorkspace(project: NhpProject | null, mode: "portal
   const [draftTp, setDraftTp] = useState<string | null>(project?.currentTp ?? null);
   const [draftLock, setDraftLock] = useState<boolean>(project?.stageLock === true);
 
-  const visitsQuery = useQuery({ queryKey: ["nhp", "visits"], queryFn: fetchNhpVisits });
+  const projectSchemeQuery = useQuery({
+    queryKey: ["nhp", "project-visit-scheme", project?.id],
+    queryFn: () => fetchNhpProjectVisitScheme(project!.id),
+    enabled: project != null,
+  });
+  const visitsQuery = useQuery({
+    queryKey: ["nhp", "visits", projectSchemeQuery.data ?? null],
+    queryFn: () => fetchNhpVisits(projectSchemeQuery.data ?? null),
+  });
   const plansQuery = useQuery({
     queryKey: ["nhp", "project-visit-plans", project?.id],
     queryFn: () => fetchNhpProjectVisitPlans(project!.id),
@@ -75,12 +84,19 @@ export function useNhpProjectWorkspace(project: NhpProject | null, mode: "portal
       .sort((a, b) => (a.plan.sortOrder ?? 0) - (b.plan.sortOrder ?? 0));
   }, [activeVisit, plansByVisit, formById]);
 
-  const draftByFormKey = useMemo(() => {
-    const m = new Map<string, number>();
+  /** formKey → 该表单在本项目的全部实例（同一表单可反复「新建」多条记录）。 */
+  const recordsByFormKey = useMemo(() => {
+    const m = new Map<string, { id: number; status: string; subjectCode?: string; subjectType?: string }[]>();
     for (const it of records) {
       const key = it.formCode || String(it.record.formId);
-      const s = (it.record.status ?? "").toUpperCase();
-      if ((s === "DRAFT" || s === "IN_REVIEW" || s === "") && !m.has(key)) m.set(key, it.record.id);
+      const list = m.get(key) ?? [];
+      list.push({
+        id: it.record.id,
+        status: it.record.status ?? "",
+        subjectCode: it.subject?.subjectCode,
+        subjectType: it.subject?.subjectType,
+      });
+      m.set(key, list);
     }
     return m;
   }, [records]);
@@ -109,6 +125,15 @@ export function useNhpProjectWorkspace(project: NhpProject | null, mode: "portal
     }
   };
 
+  const deleteRecordMut = useMutation({
+    mutationFn: (recordId: number) => deleteNhpRecord(recordId),
+    onSuccess: () => {
+      toast.success("已删除实例");
+      qc.invalidateQueries({ queryKey: ["nhp", "project-records", project?.id] });
+    },
+    onError: (e: Error) => toast.error(e.message || "删除失败", { duration: 6000 }),
+  });
+
   const loading = visitsQuery.isLoading || plansQuery.isLoading || formsQuery.isLoading || recordsQuery.isLoading;
 
   return {
@@ -118,12 +143,13 @@ export function useNhpProjectWorkspace(project: NhpProject | null, mode: "portal
     activeTp,
     activeVisit,
     activeForms,
-    draftByFormKey,
+    recordsByFormKey,
     selectedTp,
     setSelectedTp,
     busy,
     loading,
     onCreate,
+    deleteRecord: deleteRecordMut.mutate,
     fillPath,
     editing,
     setEditing,

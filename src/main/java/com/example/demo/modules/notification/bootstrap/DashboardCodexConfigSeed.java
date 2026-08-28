@@ -268,6 +268,18 @@ public class DashboardCodexConfigSeed implements ApplicationRunner {
                     0,
                     1
             );
+            ensureDef(
+                    "scanner",
+                    "scan.assistant.carrier",
+                    "AI 智能载体",
+                    "首页右下角智能助手的视觉载体：morph=默认 MorphOrb，ball=球球，nimbo=云宝，twinkle=亮亮。",
+                    "STRING",
+                    "[\"morph\",\"ball\",\"nimbo\",\"twinkle\"]",
+                    "morph",
+                    0,
+                    0,
+                    1
+            );
 
         } catch (Exception e) {
             log.warn("[dashboard_codex] 配置定义初始化跳过（可能尚未创建 sys_system_config_def 表）: {}", e.getMessage());

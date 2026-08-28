@@ -198,6 +198,24 @@ public class NhpFieldController {
         return service.batchUnfreeze(ids, operatorLabel(user));
     }
 
+    @PostMapping("/{fieldId}/draft")
+    @Operation(summary = "新建草稿版本（从最新 FROZEN 克隆；旧冻结版保留）")
+    public Result<?> createDraftVersion(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long fieldId) {
+        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        if (denied != null) {
+            return denied;
+        }
+        return service.createDraftVersion(fieldId);
+    }
+
+    @GetMapping("/{fieldId}/versions")
+    @Operation(summary = "字段版本列表（version DESC）")
+    public Result<List<CrfField>> listVersions(@PathVariable Long fieldId) {
+        return Result.success(service.listVersions(fieldId));
+    }
+
     @GetMapping("/{fieldId}/published-usage")
     @Operation(summary = "查询字段在已发布/冻结模板中的使用")
     public Result<List<Map<String, Object>>> publishedUsage(@PathVariable Long fieldId) {

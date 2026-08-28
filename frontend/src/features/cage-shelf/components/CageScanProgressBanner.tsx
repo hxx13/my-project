@@ -37,10 +37,10 @@ export default function CageScanProgressBanner({ progress, onDismiss }: Props) {
         {isRunning && <Loader2 className="h-4 w-4 animate-spin shrink-0" />}
         <span className="font-semibold flex-1">
           {isRunning
-            ? "笼位数据同步中…"
+            ? "一键同步进行中…"
             : isDone
-              ? "笼位数据同步完成"
-              : "笼位数据同步失败"}
+              ? "一键同步完成"
+              : "一键同步失败"}
         </span>
         {progress.startedAt && (
           <span className="opacity-60">· 开始于 {progress.startedAt}</span>
@@ -66,29 +66,17 @@ export default function CageScanProgressBanner({ progress, onDismiss }: Props) {
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-0.5 opacity-80">
             <span>
-              笼架: {progress.processedShelves} / {progress.totalShelves}
+              步骤: {progress.processedShelves} / {progress.totalShelves}
             </span>
             {progress.currentRoomName && (
-              <span>当前: {progress.currentRoomName}
-                {progress.currentShelveName ? ` · ${progress.currentShelveName}` : ""}
-              </span>
+              <span>当前: {progress.currentRoomName}</span>
             )}
-            <span>已拉取笼位: {progress.cagesScanned}</span>
-            <span>特殊状态: {progress.cagesWithStatus}</span>
           </div>
         </>
       )}
 
       {(isDone || isFailed) && (
-        <div className="opacity-80">
-          {progress.message}
-          {isDone && (
-            <span className="ml-2">
-              （笼架 {progress.processedShelves}/{progress.totalShelves}，
-              笼位 {progress.cagesScanned}，特殊状态 {progress.cagesWithStatus}）
-            </span>
-          )}
-        </div>
+        <div className="opacity-80">{progress.message}</div>
       )}
     </div>
   );

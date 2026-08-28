@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import type { ReactNode } from "react";
 import type { ScanAssistantMessageKind } from "@/store/useScanAssistantStore";
 import type { BubblePlacement } from "./computeBubblePlacement";
 import type { ScanAssistantBubblePhase } from "./useScanAssistantBubbleTransition";
@@ -19,6 +20,11 @@ export type ScanAssistantChatCardProps = {
   placement: BubblePlacement;
   phase: ScanAssistantBubblePhase;
   onDismiss: () => void;
+  /** 文案下方的交互区（提问输入框等）；播报气泡不传 */
+  footer?: ReactNode;
+  dismissLabel?: string;
+  /** 提问面板：内容底板比边框窄一档，露出旋转的彩虹边框环 */
+  askPanel?: boolean;
 };
 
 export function ScanAssistantChatCard({
@@ -30,6 +36,9 @@ export function ScanAssistantChatCard({
   placement,
   phase,
   onDismiss,
+  footer,
+  dismissLabel = "收起助手播报",
+  askPanel = false,
 }: ScanAssistantChatCardProps) {
   const metaLabel = KIND_META[kind];
   const showStreamCaret = isStreaming && text.length > 0;
@@ -47,6 +56,7 @@ export function ScanAssistantChatCard({
         phase === "entering" ? "scan-assistant-chat-card--entering" : "",
         phase === "exiting" ? "scan-assistant-chat-card--exiting" : "",
         isAwaitingFirstToken ? "scan-assistant-chat-card--loading" : "",
+        askPanel ? "scan-assistant-chat-card--ask" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -74,14 +84,14 @@ export function ScanAssistantChatCard({
             type="button"
             className="scan-assistant-chat-card__dismiss"
             onClick={onDismiss}
-            aria-label="收起助手播报"
+            aria-label={dismissLabel}
           >
             <X className="size-4" strokeWidth={2} />
           </button>
 
           <div className="scan-assistant-chat-card__body">
             <div className="scan-assistant-chat-card__message-row">
-              <ScanAssistantPegtopLoader animated={pegtopAnimated} />
+              <ScanAssistantPegtopLoader animated={pegtopAnimated} idle={askPanel && !pegtopAnimated} />
               {hasMessageCopy ? (
                 <div className="scan-assistant-chat-card__message-copy">
                   {showThinkingLabel ? (
@@ -107,6 +117,7 @@ export function ScanAssistantChatCard({
                 </div>
               ) : null}
             </div>
+            {footer}
           </div>
         </div>
       </div>

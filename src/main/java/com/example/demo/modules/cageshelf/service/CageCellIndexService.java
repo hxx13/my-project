@@ -6,6 +6,7 @@ import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageCellIndex;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
+import com.example.demo.modules.cageshelf.dto.CageScanProgressDto;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class CageCellIndexService {
@@ -36,6 +38,17 @@ public class CageCellIndexService {
     private final CageFieldMappingService mappingService;
     private final UserDisplayNameService userDisplayNameService;
     private final CageInfoValueService infoValueService;
+
+    /** 一键本地同步（手动按钮）进度，进程内内存；与定时扫描的 CageScanProgressService 相互独立。 */
+    private final AtomicReference<CageScanProgressDto> localPipelineProgress = new AtomicReference<>();
+
+    /** 一键同步后台执行器：单线程串行，避免并发同步互相写 cage_info_value 造成死锁；daemon 线程不阻塞停机。 */
+    private final java.util.concurrent.ExecutorService syncExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "cage-local-sync");
+                t.setDaemon(true);
+                return t;
+            });
 
     public CageCellIndexService(CageCellIndexMapper cellIndexMapper,
                                 CageCellDetailMapper detailMapper,
@@ -62,14 +75,8 @@ public class CageCellIndexService {
      */
     public Map<String, Object> syncAllCells(Long roomId, boolean deleteExisting) {
         LocalDateTime startedAt = LocalDateTime.now();
-        // 从本地索引表取所有架子
-        List<Map<String, Object>> shelfList;
-        if (roomId != null) {
-            shelfList = shelfMapper.listShelves(null, null, null, null, null,
-                    String.valueOf(roomId), null);
-        } else {
-            shelfList = shelfMapper.listAllShelfSummaries();
-        }
+        // 从本地索引表取所有架子（listAllShelfSummaries 才返回 roomId；listShelves 不返回会导致 sRoomId 为 null）
+        List<Map<String, Object>> shelfList = shelfMapper.listAllShelfSummaries();
 
         if (shelfList == null || shelfList.isEmpty()) {
             return Map.of("ok", false, "error", "本地架子索引为空，请先导入架子数据");
@@ -84,6 +91,7 @@ public class CageCellIndexService {
         log.info("[cell-sync] 开始全量笼位ID同步，共 {} 个架子", totalShelves);
 
         for (Map<String, Object> shelf : shelfList) {
+            if (roomId != null && !roomId.equals(toLongSafe(shelf.get("roomId")))) continue;
             Long sRoomId = toLongSafe(shelf.get("roomId"));
             Long shelveId = toLongSafe(shelf.get("shelveId"));
             Long shelfIdxId = toLongSafe(shelf.get("id"));
@@ -145,8 +153,8 @@ public class CageCellIndexService {
                             && !String.valueOf(cageBoxVo.get("cageBoxCode")).isBlank();
                     String cageBoxCode = hasCageBox ? String.valueOf(cageBoxVo.get("cageBoxCode")).trim() : null;
 
-                    // 合笼状态 + 使用时间：closingdate/rescindDatetime/createTime 只在 /back 的 cageBoxVo 里（/list、/book 均无）。
-                    writeCohabitationFields(animalCageId, cageBoxVo);
+                    // 5 个状态标记 + 使用时间：Yn/closingdate/rescindDatetime/createTime 只在 /back 的 cageBoxVo 里（/list、/book 均无）。
+                    writeStatusFlagsFromBack(animalCageId, cageBoxVo);
 
                     CageCellIndex cell = new CageCellIndex();
                     cell.setShelfIndexId(shelfIdxId);
@@ -384,13 +392,9 @@ public class CageCellIndexService {
     @SuppressWarnings("unchecked")
     public Map<String, Object> syncDetailFields(Long roomId) {
         LocalDateTime startedAt = LocalDateTime.now();
-        List<Map<String, Object>> shelfList;
-        if (roomId != null) {
-            shelfList = shelfMapper.listShelves(null, null, null, null, null,
-                    String.valueOf(roomId), null);
-        } else {
-            shelfList = shelfMapper.listAllShelfSummaries();
-        }
+        // listShelves 只返回 id/shelveId/shelveName，不返回 roomId/campusName/roomName；
+        // 统一用 listAllShelfSummaries，再在内存按 roomId 过滤。
+        List<Map<String, Object>> shelfList = shelfMapper.listAllShelfSummaries();
 
         int totalShelves = shelfList != null ? shelfList.size() : 0;
         int successShelves = 0, failShelves = 0, totalUpdated = 0, totalSkipped = 0;
@@ -399,6 +403,7 @@ public class CageCellIndexService {
 
         int count = 0;
         for (Map<String, Object> shelf : shelfList) {
+            if (roomId != null && !roomId.equals(toLongSafe(shelf.get("roomId")))) continue;
             Long shelveId = toLongSafe(shelf.get("shelveId"));
             Long shelfIdxId = toLongSafe(shelf.get("id"));
             String location = shelf.get("campusName") + "/" + shelf.get("roomName")
@@ -583,13 +588,9 @@ public class CageCellIndexService {
     @SuppressWarnings("unchecked")
     public Map<String, Object> syncStatusFromBook(Long roomId) {
         LocalDateTime startedAt = LocalDateTime.now();
-        List<Map<String, Object>> shelfList;
-        if (roomId != null) {
-            shelfList = shelfMapper.listShelves(null, null, null, null, null,
-                    String.valueOf(roomId), null);
-        } else {
-            shelfList = shelfMapper.listAllShelfSummaries();
-        }
+        // listShelves 只返回 id/shelveId/shelveName，不返回 roomId，会导致 sRoomId 为 null、每架都被跳过，
+        // /book 状态（cage_type_code）永远不同步。统一用 listAllShelfSummaries 再在内存按 roomId 过滤。
+        List<Map<String, Object>> shelfList = shelfMapper.listAllShelfSummaries();
 
         int totalShelves = shelfList != null ? shelfList.size() : 0;
         int successShelves = 0, failShelves = 0, totalUpdated = 0;
@@ -597,6 +598,7 @@ public class CageCellIndexService {
 
         int count = 0;
         for (Map<String, Object> shelf : shelfList) {
+            if (roomId != null && !roomId.equals(toLongSafe(shelf.get("roomId")))) continue;
             Long sRoomId = toLongSafe(shelf.get("roomId"));
             Long shelveId = toLongSafe(shelf.get("shelveId"));
             Long shelfIdxId = toLongSafe(shelf.get("id"));
@@ -706,22 +708,63 @@ public class CageCellIndexService {
 
     /**
      * 一键本地笼位同步（固定顺序，避免手动乱序冲空 PI）：
-     * 1) /back 全量建索引+详情骨架 → 2) /list 补全 PI 等详情 → 3) /book 只更新状态列。
+     * 1) /list 补全详情（PI/动物等）→ 2) /book 只更新笼位状态列 → 3) /back 写全 5 个状态标记。
+     * 5 个状态标记只由 /back 写（/list、/book 不再碰），空笼位时显式清 false。
      * 任一步硬失败（异常或 ok=false）即停止，返回 failedStep。
      */
-    /** 合笼 + 使用时间直写 cage_info_value：closingdate/rescindDatetime/createTime 只在 /back 的 cageBoxVo 里（/list、/book 均无）。 */
-    private void writeCohabitationFields(Long animalCageId, Map<String, Object> cageBoxVo) {
+    /**
+     * 从 /back 的 cageBoxVo 直写 5 个状态标记到 cage_info_value（fill_source=SYNC）。
+     * 5 个状态（4 个 Yn + 合笼）的唯一真相源是 /back：cageBoxVo 只在 /back 可靠返回，
+     * 空笼位时为 null。空笼时必须显式写 false 清残留，而不是跳过（否则旧值停留，
+     * 见「等待分配却残留需分笼」问题）。
+     */
+    private void writeStatusFlagsFromBack(Long animalCageId, Map<String, Object> cageBoxVo) {
         if (animalCageId == null) return;
-        Map<String, Object> boxFields = new LinkedHashMap<>();
-        boxFields.put("needs_cohabitation", SpecialStatusComputer.isCohabitationActive(cageBoxVo));
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("needs_division", isYnOne(cageBoxVo, "needDivideYn"));
+        fields.put("needs_special_feeding", isYnOne(cageBoxVo, "needFeedingYn"));
+        fields.put("needs_transfer", isYnOne(cageBoxVo, "needTransferYn"));
+        fields.put("has_health_abnormality", isYnOne(cageBoxVo, "abnormalHealthYn"));
+        fields.put("needs_cohabitation", SpecialStatusComputer.isCohabitationActive(cageBoxVo));
         if (cageBoxVo != null && cageBoxVo.get("createTime") != null
                 && !String.valueOf(cageBoxVo.get("createTime")).isBlank()) {
-            boxFields.put("cage_use_time", String.valueOf(cageBoxVo.get("createTime")));
+            fields.put("cage_use_time", String.valueOf(cageBoxVo.get("createTime")));
         }
-        infoValueService.syncFromMapped(animalCageId, boxFields);
+        // 死锁重试：与定时扫描等并发写 cage_info_value 时可能瞬时死锁（MySQL 1213），重试即可成功。
+        for (int attempt = 1; ; attempt++) {
+            try {
+                infoValueService.syncFromMapped(animalCageId, fields);
+                return;
+            } catch (RuntimeException e) {
+                if (attempt >= 3 || !isDeadlock(e)) throw e;
+                log.warn("[status-sync] cage_info_value 死锁，重试 {}/3 cage={}", attempt, animalCageId);
+                try { Thread.sleep(60L * attempt); }
+                catch (InterruptedException ie) { Thread.currentThread().interrupt(); throw e; }
+            }
+        }
     }
 
-    /** 合笼+使用时间同步：调 /back 遍历架子，只写 needs_cohabitation + cage_use_time（不重拉 id/坐标）。 */
+    /** 判断异常链是否为 MySQL 死锁（DeadlockLoserDataAccessException 或 message 含 deadlock）。 */
+    private boolean isDeadlock(Throwable t) {
+        for (Throwable cur = t; cur != null; cur = cur.getCause()) {
+            if (cur instanceof org.springframework.dao.DeadlockLoserDataAccessException) return true;
+            if (cur instanceof com.mysql.cj.jdbc.exceptions.MySQLTransactionRollbackException) return true;
+            if (cur.getMessage() != null && cur.getMessage().toLowerCase().contains("deadlock")) return true;
+        }
+        return false;
+    }
+
+    /** ARO Yn 字段 → boolean；cageBoxVo 为 null（空笼位）时返回 false 用于清残留，口径与映射 convert(boolean) 一致。 */
+    private boolean isYnOne(Map<String, Object> cageBoxVo, String key) {
+        if (cageBoxVo == null) return false;
+        Object v = cageBoxVo.get(key);
+        if (v == null) return false;
+        if (v instanceof Number n) return n.intValue() == 1;
+        String s = String.valueOf(v).trim();
+        return "1".equals(s) || "true".equalsIgnoreCase(s);
+    }
+
+    /** 从 /back 同步 5 个状态标记（4 Yn + 合笼）+ 使用时间：遍历架子，只写这些状态字段（不重拉 id/坐标）。 */
     public Map<String, Object> syncCohabitationFromBack(Long roomId) {
         // listShelves 只返回 shelveId/shelveName（不返回 roomId），会导致 sRoomId 为 null；
         // 一律用 listAllShelfSummaries（返回 roomId+shelveId），再在内存按 roomId 过滤。
@@ -743,7 +786,7 @@ public class CageCellIndexService {
                     if (isTruthy(cageMap.get("isCageBox"))) continue;
                     Long animalCageId = toLongSafe(cageMap.get("id"));
                     if (animalCageId != null) {
-                        writeCohabitationFields(animalCageId, castMap(cageMap.get("cageBoxVo")));
+                        writeStatusFlagsFromBack(animalCageId, castMap(cageMap.get("cageBoxVo")));
                         written++;
                     }
                 }
@@ -774,14 +817,17 @@ public class CageCellIndexService {
         result.put("completedSteps", completedSteps);
         result.put("startedAt", DT_FMT.format(startedAt));
         log.info("[local-pipeline] 开始一键同步 roomId={}", roomId);
+        pipelineStart(3);
 
         // ① /list 补全详情（含 PI/动物/状态标记）
         try {
             Map<String, Object> step1 = syncDetailFields(roomId);
             steps.put("syncDetailFields", step1);
             completedSteps.add("syncDetailFields");
+            pipelineStep(1, "补全详情字段");
         } catch (Exception e) {
             log.error("[local-pipeline] syncDetailFields 异常: {}", e.getMessage(), e);
+            pipelineFail("详情补全失败：" + (e.getMessage() != null ? e.getMessage() : "详情补全异常"));
             result.put("failedStep", "syncDetailFields");
             result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "详情补全异常");
             result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
@@ -793,33 +839,114 @@ public class CageCellIndexService {
             Map<String, Object> step2 = syncStatusFromBook(roomId);
             steps.put("syncStatusFromBook", step2);
             completedSteps.add("syncStatusFromBook");
+            pipelineStep(2, "同步状态");
         } catch (Exception e) {
             log.error("[local-pipeline] syncStatusFromBook 异常: {}", e.getMessage(), e);
+            pipelineFail("状态同步失败：" + (e.getMessage() != null ? e.getMessage() : "状态同步异常"));
             result.put("failedStep", "syncStatusFromBook");
             result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "状态同步异常");
             result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
             return result;
         }
 
-        // ③ /back 合笼 + 使用时间（closingdate/rescindDatetime/createTime 只在 /back）
+        // ③ /back 写全 5 个状态标记 + 使用时间（Yn/closingdate/rescindDatetime/createTime 只在 /back）
         try {
             Map<String, Object> step3 = syncCohabitationFromBack(roomId);
             steps.put("syncCohabitationFromBack", step3);
             completedSteps.add("syncCohabitationFromBack");
+            pipelineStep(3, "特殊状态同步");
         } catch (Exception e) {
             log.error("[local-pipeline] syncCohabitationFromBack 异常: {}", e.getMessage(), e);
+            pipelineFail("特殊状态同步失败：" + (e.getMessage() != null ? e.getMessage() : "特殊状态同步异常"));
             result.put("failedStep", "syncCohabitationFromBack");
-            result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "合笼同步异常");
+            result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "特殊状态同步异常");
             result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
             return result;
         }
 
+        pipelineDone("一键同步完成：详情 → 笼位状态 → 特殊状态");
         result.put("ok", true);
         result.put("failedStep", null);
         result.put("failedMessage", null);
         result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
         log.info("[local-pipeline] 一键同步完成 roomId={} steps={}", roomId, completedSteps);
         return result;
+    }
+
+    /**
+     * 异步触发一键同步：后台线程执行，立即返回 started/alreadyRunning。
+     * 前端轮询 /local-pipeline-progress 看进度；running 守卫 + 单线程串行避免重复触发与并发死锁。
+     */
+    public Map<String, Object> syncLocalPipelineAsync(Long roomId) {
+        CageScanProgressDto current = localPipelineProgress.get();
+        if (current != null && "running".equals(current.getStatus())) {
+            return Map.of("ok", false, "alreadyRunning", true, "message", "同步正在进行中，请等待完成后再试");
+        }
+        syncExecutor.submit(() -> {
+            try {
+                syncLocalPipeline(roomId);
+            } catch (Exception e) {
+                log.error("[local-pipeline] 异步同步异常: {}", e.getMessage(), e);
+                pipelineFail("同步异常：" + (e.getMessage() != null ? e.getMessage() : "未知错误"));
+            }
+        });
+        return Map.of("ok", true, "started", true);
+    }
+
+    public CageScanProgressDto getLocalPipelineProgress() {
+        CageScanProgressDto dto = localPipelineProgress.get();
+        if (dto != null) {
+            // done/failed 只展示一小段时间，之后回 idle，避免顶部进度框常驻（前端刷新后仍显示）
+            if (("done".equals(dto.getStatus()) || "failed".equals(dto.getStatus()))
+                    && System.currentTimeMillis() - dto.getUpdatedAtMs() > 20_000) {
+                localPipelineProgress.set(null);
+                dto = null;
+            }
+        }
+        if (dto != null) return dto;
+        CageScanProgressDto idle = new CageScanProgressDto();
+        idle.setStatus("idle");
+        idle.setMessage("无同步任务");
+        return idle;
+    }
+
+    private void pipelineStart(int totalSteps) {
+        CageScanProgressDto dto = new CageScanProgressDto();
+        dto.setStatus("running");
+        dto.setTotalShelves(totalSteps);
+        dto.setProcessedShelves(0);
+        dto.setPercent(0);
+        dto.setMessage("准备同步…");
+        dto.setStartedAt(DT_FMT.format(LocalDateTime.now()));
+        dto.setUpdatedAtMs(System.currentTimeMillis());
+        localPipelineProgress.set(dto);
+    }
+
+    private void pipelineStep(int processed, String stepLabel) {
+        CageScanProgressDto dto = localPipelineProgress.get();
+        if (dto == null) return;
+        dto.setProcessedShelves(processed);
+        dto.setPercent(Math.min(99, processed * 100 / Math.max(1, dto.getTotalShelves())));
+        dto.setCurrentRoomName(stepLabel);
+        dto.setMessage("正在执行：" + stepLabel);
+        dto.setUpdatedAtMs(System.currentTimeMillis());
+    }
+
+    private void pipelineDone(String message) {
+        CageScanProgressDto dto = localPipelineProgress.get();
+        if (dto == null) return;
+        dto.setStatus("done");
+        dto.setPercent(100);
+        dto.setMessage(message);
+        dto.setUpdatedAtMs(System.currentTimeMillis());
+    }
+
+    private void pipelineFail(String message) {
+        CageScanProgressDto dto = localPipelineProgress.get();
+        if (dto == null) return;
+        dto.setStatus("failed");
+        dto.setMessage(message);
+        dto.setUpdatedAtMs(System.currentTimeMillis());
     }
 
     /** 全局反查：根据 animalCageId 定位笼位 */

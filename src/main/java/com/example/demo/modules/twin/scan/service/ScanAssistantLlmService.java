@@ -282,6 +282,107 @@ public class ScanAssistantLlmService {
 
     // ---- per-user session management ----
 
+    /**
+     * 智能载体「主动问好」：打开对话面板即触发，环境提示词（system）+ 问好提示词（user），
+     * 让 AI 主动发第一段问候，不等用户提问。
+     */
+    public void greet(SseEmitter emitter) {
+        if (!canUseLlm()) {
+            sendFallbackAndComplete(emitter, ASK_GREET_FALLBACK, "rule");
+            return;
+        }
+        try { sendEvent(emitter, "started", Map.of("kind", "greet")); }
+        catch (SseClientDisconnectedException e) { return; }
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", ASK_ENV_PROMPT));
+        messages.add(Map.of("role", "user", "content", ASK_GREET_PROMPT));
+        streamAskReply(messages, emitter);
+    }
+
+    /** 智能载体「提问」：环境提示词（system）+ 用户问题（user）。后续接正式管理界面时改为可配置提示词与数据包 */
+    public void askQuestion(String question, SseEmitter emitter) {
+        String q = question == null ? "" : question.trim();
+        if (!canUseLlm()) {
+            sendFallbackAndComplete(emitter, ASK_UNAVAILABLE_FALLBACK, "rule");
+            return;
+        }
+        if (!StringUtils.hasText(q)) {
+            sendFallbackAndComplete(emitter, "你好，请问有什么需要帮助的吗？", "rule");
+            return;
+        }
+
+        try { sendEvent(emitter, "started", Map.of("kind", "ask")); }
+        catch (SseClientDisconnectedException e) { return; }
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", ASK_ENV_PROMPT));
+        messages.add(Map.of("role", "user", "content", q));
+        streamAskReply(messages, emitter);
+    }
+
+    /** 流式应答公共逻辑：delta → done；空响应回退占位文案 */
+    private void streamAskReply(List<Map<String, String>> messages, SseEmitter emitter) {
+        StringBuilder answer = new StringBuilder();
+        try {
+            chatClient.streamChatWithFallback(
+                    messages,
+                    new DashScopeChatClient.StreamConsumer() {
+                        @Override
+                        public void onDelta(String text) {
+                            answer.append(text);
+                            sendEvent(emitter, "delta", Map.of("text", text));
+                        }
+                        @Override
+                        public void onComplete(String model) {
+                            String finalText = answer.toString().trim();
+                            if (!StringUtils.hasText(finalText)) {
+                                finalText = ASK_UNAVAILABLE_FALLBACK;
+                                sendEvent(emitter, "delta", Map.of("text", finalText, "fallback", true));
+                            }
+                            sendEvent(emitter, "done", Map.of("model", model != null ? model : "", "text", finalText));
+                            emitter.complete();
+                        }
+                    },
+                    llmConfigService.getAssistantMaxTokens(),
+                    llmConfigService.getAssistantTemperature());
+        } catch (SseClientDisconnectedException e) {
+            log.debug("[scan-assistant] ask SSE disconnected: {}", e.getMessage());
+        } catch (Exception e) {
+            if (SseClientDisconnectedException.isClientDisconnect(e)) return;
+            log.warn("[scan-assistant] ask LLM failed: {}", e.getMessage());
+            sendFallbackAndComplete(emitter, ASK_UNAVAILABLE_FALLBACK, "rule");
+        }
+    }
+
+    /** 环境提示词（system）：只用于让 AI 理解工作环境，本身不需回答 */
+    private static final String ASK_ENV_PROMPT = """
+            你是实验室智能助手，服务于动物实验中心的一体化管理系统（教职工后台 + 手机端学生中心两大入口）。
+            你对该系统的业务门儿清，包括：门禁与出入管理（刷卡/人脸进出、进出记录与统计、滞留监控、未签退与超时提醒、
+            违规记录与处罚）、智能扫码识别与主动提醒、笼架与笼位管理（笼位申请/审核、饲养密度与分笼预警）、
+            动物实验计划书（AUP）、动物订购审批、通知公告与提醒公示。
+            你的提问回答功能还在接入中：遇到需要查具体数据的问题，如实说明暂时查不到，不要编造数据，也别假装系统里已有现成答案。
+            用口语化中文像同事一样自然交流，语气轻松、有人情味。每一次回复都要「换着法子说」：换个开场、换个说法、换个口气，
+            同一意思尽量换不同表达，绝不允许照抄上一次的句式或模板。
+            不要向用户罗列你的能力清单，也不要在回复里复述「我熟悉门禁、笼位、AUP」这类自我介绍，直接接话就好。
+            禁止「您好用户」「尊敬的」等生硬措辞；不用 markdown、列表、编号；只输出对话正文，不含引号或前缀。""";
+
+    /** 问好提示词（user）：主动触发 AI 发送第一段问候 */
+    private static final String ASK_GREET_PROMPT = """
+            现在轮到你主动开口了。想一句自然又有新鲜感的话向用户问好：开场可以变着花样来——
+            关心一下今天忙不忙、随口提一句实验室近况、或者俏皮地问候一声，别一本正经地自我介绍，也别罗列你能干什么。
+            提一句你是这里的智能助手就够了，然后顺带说一句提问功能还在接入中、马上就能正式用。
+            注意：每次都要随机换一种开场和说法，不要每次都复读同一套词；控制在 2～3 句，
+            像老朋友随口聊天那样自然，轻松随意一点。""";
+
+    private static final String ASK_GREET_FALLBACK =
+            "你好，我是实验室智能助手。提问功能还在接入中，很快就能正式使用啦。";
+
+    private static final String ASK_UNAVAILABLE_FALLBACK =
+            "你好，提问功能还在接入中，暂时只能简单聊两句，正式版稍后就到。";
+
+
+
     private LlmConversationSession getOrCreateUserSession(String userId, String name) {
         if (!StringUtils.hasText(userId)) {
             return conversationService.getActiveSession("scan_assistant"); // fallback

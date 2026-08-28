@@ -67,6 +67,11 @@ public class CageFieldMappingService {
                     if (ins != null) for (String k : ins.keySet()) cr.inputs.put(k, ins.getString(k));
                     entry.computed = cr;
                 }
+                JSONArray eps = m.getJSONArray("endpoints");
+                if (eps != null) {
+                    entry.endpoints = new ArrayList<>();
+                    for (int j = 0; j < eps.size(); j++) entry.endpoints.add(eps.getString(j));
+                }
                 byCanonical.put(entry.canonical, entry);
             }
             // filters
@@ -108,6 +113,9 @@ public class CageFieldMappingService {
         Map<String, Object> result = new LinkedHashMap<>();
         for (MappingEntry e : byCanonical.values()) {
             if (e.computed != null) {
+                // 计算型字段仅在声明 endpoints 的接口计算（如合笼只在 /back 有 closingdate）；
+                // 其余接口跳过不产出，避免用空日期误算 false 覆盖旧值。
+                if (e.endpoints != null && !e.endpoints.contains(endpoint)) continue;
                 // 计算型字段：输入路径的父 map（如 cageBoxVo）存在才触发，否则跳过不写（保留旧值）
                 Map<String, Object> inputs = resolveComputedInputs(raw, e.computed);
                 if (inputs != null) {
@@ -264,6 +272,7 @@ public class CageFieldMappingService {
         Map<String, List<String>> sources; // endpoint → ARO field aliases
         Map<String, String> targets;       // endpoint → ARO field name
         ComputedRule computed;             // 计算型字段（如 合笼 0/1 综合判定），非空时忽略 sources/targets
+        List<String> endpoints;            // 计算型字段生效的 endpoint 白名单；null=所有接口都算
     }
 
     /** 计算型映射规则：rule=计算函数名，inputs=输入名 → ARO 嵌套路径。 */

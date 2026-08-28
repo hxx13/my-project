@@ -107,8 +107,6 @@ export function RecordEditorView({ mode, onDone, onCancel }: RecordEditorViewPro
     <ContentBodySlot
       value={form.content}
       onChange={form.setContent}
-      uploading={form.uploading}
-      onPickFiles={form.onPickFiles}
       templateSlot={templateSlot}
       placeholder="支持富文本与插图，展示效果与「扫码弹窗公告」一致"
     />

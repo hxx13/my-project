@@ -169,6 +169,32 @@ export async function cloneNhpDictStructureFrom(
     .then(({ data }) => data.data);
 }
 
+/** 复制数据域（含子模块大纲 + 字段） */
+export async function copyNhpDictDomain(
+  dictKey: string,
+  body: { sourceCode: string; targetCode: string },
+): Promise<NhpDictStructure & { copiedFields?: number }> {
+  return authHttp
+    .post<Result<NhpDictStructure & { copiedFields?: number }>>(
+      `/nhp/field-dictionaries/${encodeURIComponent(dictKey)}/structure/domains/copy`,
+      body,
+    )
+    .then(({ data }) => data.data);
+}
+
+/** 复制子模块（含字段） */
+export async function copyNhpDictSubmodule(
+  dictKey: string,
+  body: { sourceCode: string; targetCode: string },
+): Promise<NhpDictStructure & { copiedFields?: number }> {
+  return authHttp
+    .post<Result<NhpDictStructure & { copiedFields?: number }>>(
+      `/nhp/field-dictionaries/${encodeURIComponent(dictKey)}/structure/submodules/copy`,
+      body,
+    )
+    .then(({ data }) => data.data);
+}
+
 export async function createNhpFieldDictionary(body: {
   dictKey: string;
   name: string;
@@ -177,6 +203,17 @@ export async function createNhpFieldDictionary(body: {
 }): Promise<NhpFieldDictionary> {
   return authHttp
     .post<Result<NhpFieldDictionary>>("/nhp/field-dictionaries", body)
+    .then(({ data }) => data.data);
+}
+
+/** 复制数据域套（字段文件夹：含大纲 + 字段；字段落 DRAFT v1） */
+export async function copyNhpFieldDictionary(body: {
+  sourceDictKey: string;
+  targetDictKey: string;
+  name?: string;
+}): Promise<NhpFieldDictionary> {
+  return authHttp
+    .post<Result<NhpFieldDictionary>>("/nhp/field-dictionaries/copy", body)
     .then(({ data }) => data.data);
 }
 

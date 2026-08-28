@@ -391,7 +391,7 @@ export function AnalyticsLlmInsightDialog({ target, onClose }: Props) {
             </h2>
             <p className="truncate text-xs text-slate-500">{periodLabel || "清算快照"}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="关闭">
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-accent hover:bg-accent/10" aria-label="关闭">
             <X className="h-5 w-5" />
           </button>
         </header>

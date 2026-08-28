@@ -27,6 +27,7 @@ import {
   fetchNhpCodelistUsage,
   fetchNhpCodelistVersions,
   rejectNhpCodelistReview,
+  restoreNhpCodelistArchived,
   removeNhpCodelistLink,
   submitNhpCodelistReview,
   unfreezeNhpCodelist,
@@ -80,6 +81,11 @@ function isEditableStatus(status?: string): boolean {
 function isPublishedStatus(status?: string): boolean {
   const s = (status ?? "").toUpperCase();
   return s === "FROZEN" || s === "PUBLISHED";
+}
+
+function isArchivedStatus(status?: string): boolean {
+  const s = (status ?? "").toUpperCase();
+  return s === "ARCHIVED";
 }
 
 interface ItemModal {
@@ -712,6 +718,16 @@ export default function NhpCodelistWorkbench({ onBack, backLabel }: NhpCodelistW
     onError: (e: Error) => toast.error(e.message || "解冻失败", { duration: 9000 }),
   });
 
+  const restoreMut = useMutation({
+    mutationFn: () => restoreNhpCodelistArchived(selected!),
+    onSuccess: (row) => {
+      toast.success(`已恢复「${row.code}」@v${row.version} 为已发布`);
+      if (row?.version != null) setSelectedVersion(row.version);
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message || "恢复失败", { duration: 8000 }),
+  });
+
   const unfreezeUnusedMut = useMutation({
     mutationFn: () => unfreezeUnusedNhpCodelists(),
     onSuccess: (d) => {
@@ -1039,14 +1055,22 @@ export default function NhpCodelistWorkbench({ onBack, backLabel }: NhpCodelistW
               <span className="aup-wb-chip muted">{detail.refCount} 字段占用本版</span>
             )}
             <div style={{ flex: 1 }} />
-            {canMaintain && isPublishedStatus(detail.status) && (
+            {canMaintain && (isPublishedStatus(detail.status) || isArchivedStatus(detail.status)) && (
               <>
                 <button
                   className="btn small ghost"
-                  disabled={unfreezeMut.isPending}
-                  title="无活跃字段占用本版时可解冻；否则请新建版本"
+                  disabled={isArchivedStatus(detail.status) ? restoreMut.isPending : unfreezeMut.isPending}
+                  title={
+                    isArchivedStatus(detail.status)
+                      ? "恢复已归档版本为已发布（不进入草稿编辑态）"
+                      : "无活跃字段占用本版时可解冻；否则请新建版本"
+                  }
                   onClick={async () => {
-                    if (
+                    if (isArchivedStatus(detail.status)) {
+                      if (await appConfirm(`恢复码表「${detail.name || selected}」已归档版本为已发布？`)) {
+                        restoreMut.mutate();
+                      }
+                    } else if (
                       await appConfirm(
                         `解冻码表「${detail.name || selected}」当前版为草稿？仅当无活跃字段引用本版时允许。确认？`,
                       )
@@ -1055,23 +1079,25 @@ export default function NhpCodelistWorkbench({ onBack, backLabel }: NhpCodelistW
                     }
                   }}
                 >
-                  解冻本版
+                  {isArchivedStatus(detail.status) ? "恢复本版" : "解冻本版"}
                 </button>
-                <button
-                  className="btn small primary"
-                  disabled={draftMut.isPending}
-                  onClick={async () => {
-                    if (
-                      await appConfirm(
-                        "基于最新已发布版克隆新草稿（版号自动补位空缺）。占用中的历史版本会保留。确认？",
-                      )
-                    ) {
-                      draftMut.mutate();
-                    }
-                  }}
-                >
-                  ＋ 新建版本
-                </button>
+                {isPublishedStatus(detail.status) && (
+                  <button
+                    className="btn small primary"
+                    disabled={draftMut.isPending}
+                    onClick={async () => {
+                      if (
+                        await appConfirm(
+                          "基于最新已发布版克隆新草稿（版号自动补位空缺）。占用中的历史版本会保留。确认？",
+                        )
+                      ) {
+                        draftMut.mutate();
+                      }
+                    }}
+                  >
+                    ＋ 新建版本
+                  </button>
+                )}
               </>
             )}
             {canMaintain && editable && (

@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useNhpProjectWorkspace } from "../hooks/useNhpProjectWorkspace";
 import { CAPTURE_FORM_OPTIONS } from "../api/nhpVisit.api";
 import type { NhpProject } from "../api/nhpRecord.api";
+import { appConfirm } from "@/lib/appDialog";
 import "../nhp.css";
 
 type Props = {
@@ -15,6 +16,21 @@ type Props = {
 
 function captureFormLabel(cf?: string | null): string {
   return CAPTURE_FORM_OPTIONS.find((o) => o.value === cf)?.label ?? cf ?? "事件面板";
+}
+
+function recordStatusLabel(status?: string): string {
+  const s = (status ?? "").toUpperCase();
+  if (s === "LOCKED") return "已锁定";
+  if (s === "SIGNED") return "已签署";
+  if (s === "REVIEWED") return "已复核";
+  if (s === "COMPLETE") return "已提交";
+  if (s === "DRAFT" || s === "IN_REVIEW" || s === "") return "草稿";
+  return status || "—";
+}
+
+function isDraftStatus(status?: string): boolean {
+  const s = (status ?? "").toUpperCase();
+  return s === "DRAFT" || s === "IN_REVIEW" || s === "";
 }
 
 export default function NhpProjectWorkspace({ project, mode = "portal" }: Props) {
@@ -67,40 +83,70 @@ export default function NhpProjectWorkspace({ project, mode = "portal" }: Props)
           ) : (
             <div className="nhp-form-list">
               {w.activeForms.map(({ plan, form }) => {
-                const draftId = w.draftByFormKey.get(form.formKey);
+                const recs = w.recordsByFormKey.get(form.formKey) ?? [];
                 return (
-                  <div key={`${plan.id ?? form.formId}-${w.activeVisit?.id}`} className="nhp-form-tile">
-                    <div className="nhp-form-tile-main">
-                      <div className="nhp-form-tile-title">
-                        {form.title || form.formKey}
-                        <span className="aup-wb-chip muted" style={{ fontSize: 11 }}>
-                          {captureFormLabel(plan.captureForm)}
-                        </span>
+                  <div key={`${plan.id ?? form.formId}-${w.activeVisit?.id}`} className="nhp-form-tile nhp-form-tile--col">
+                    <div className="nhp-form-tile-hd">
+                      <div className="nhp-form-tile-main">
+                        <div className="nhp-form-tile-title">
+                          {form.title || form.formKey}
+                          <span className="aup-wb-chip muted" style={{ fontSize: 11 }}>
+                            {captureFormLabel(plan.captureForm)}
+                          </span>
+                        </div>
+                        <div className="nhp-form-tile-sub">
+                          <span className="nhp-form-tile-key">{form.formKey}</span>
+                          {recs.length > 0 ? (
+                            <span className="aup-wb-chip">{recs.length} 份</span>
+                          ) : (
+                            <span className="aup-wb-chip muted">暂无记录</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="nhp-form-tile-sub">
-                        <span className="nhp-form-tile-key">{form.formKey}</span>
-                        {draftId ? <span className="aup-wb-chip">草稿</span> : <span className="aup-wb-chip muted">可新建</span>}
-                      </div>
-                    </div>
-                    <div className="nhp-form-tile-acts">
-                      {draftId ? (
+                      <div className="nhp-form-tile-acts">
                         <button
                           type="button"
-                          className="btn ghost small"
-                          onClick={() => navigate(w.fillPath(draftId, form.formKey, plan.captureForm))}
+                          className="btn primary small"
+                          disabled={w.busy === form.formKey}
+                          onClick={() => w.onCreate(form, plan.captureForm)}
                         >
-                          续填
+                          {w.busy === form.formKey ? "…" : "＋ 新建"}
                         </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="btn primary small"
-                        disabled={w.busy === form.formKey}
-                        onClick={() => w.onCreate(form, plan.captureForm)}
-                      >
-                        {w.busy === form.formKey ? "…" : draftId ? "新建" : "填写"}
-                      </button>
+                      </div>
                     </div>
+                    {recs.length > 0 && (
+                      <div className="nhp-form-records">
+                        {recs.map((r) => (
+                          <div key={r.id} className="nhp-form-record-row">
+                            <span className="nhp-form-record-meta">
+                              {r.subjectCode || `#${r.id}`}
+                              {" · "}
+                              {recordStatusLabel(r.status)}
+                            </span>
+                            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                              <button
+                                type="button"
+                                className="btn ghost small"
+                                onClick={() => navigate(w.fillPath(r.id, form.formKey, plan.captureForm))}
+                              >
+                                {isDraftStatus(r.status) ? "续填" : "查看"}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn danger small"
+                                onClick={async () => {
+                                  if (await appConfirm(`删除实例「${r.subjectCode || `#${r.id}`}」？此操作不可恢复。`, { danger: true })) {
+                                    w.deleteRecord(r.id);
+                                  }
+                                }}
+                              >
+                                删除
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}

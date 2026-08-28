@@ -15,8 +15,8 @@ type Props = {
 };
 
 /**
- * 惩戒 Tab：单一滚动容器，整表统一纵向自动滚动；
- * 每行「姓名 → 简短说明 → 末尾照片（无图不占位）」。
+ * 提醒公示 Tab：单一滚动容器，整表统一纵向自动滚动（纯展示，无点击）。
+ * 课题组违规为「组卡 + 全员名字 chips」，个人违规为「姓名 + 说明 + 多图内联」。
  */
 export function CodexViolationBoardPanel({
   active,
@@ -78,7 +78,7 @@ export function CodexViolationBoardPanel({
   if (isLoading) {
     return (
       <div className={`flex h-full items-center justify-center text-sm ${emptyTone}`}>
-        惩戒公示加载中…
+        提醒公示加载中…
       </div>
     );
   }
@@ -86,7 +86,7 @@ export function CodexViolationBoardPanel({
   if (isError) {
     return (
       <div className={`flex h-full items-center justify-center px-2 text-center text-sm ${emptyTone}`}>
-        惩戒公示加载失败
+        提醒公示加载失败
       </div>
     );
   }
@@ -94,7 +94,7 @@ export function CodexViolationBoardPanel({
   if (!enabled) {
     return (
       <div className={`flex h-full items-center justify-center px-2 text-center text-sm ${emptyTone}`}>
-        惩戒公示已关闭
+        提醒公示已关闭
       </div>
     );
   }
@@ -113,8 +113,7 @@ export function CodexViolationBoardPanel({
         <ShieldAlert
           className={`h-4 w-4 shrink-0 md:h-5 md:w-5 ${dashTone(visual, "text-fuchsia-400", DASH_NIGHT_CLASS.legendWarm, "text-rose-600")}`}
         />
-        <span className="text-sm font-bold tracking-wide md:text-base">违规惩戒公示</span>
-        <span className={`text-xs font-normal ${metaTone}`}>· 共 {items.length} 人</span>
+        <span className={`text-xs font-normal ${metaTone}`}>共 {items.length} 人</span>
       </div>
       <div
         ref={ref}

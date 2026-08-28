@@ -272,6 +272,13 @@
   flex-shrink: 0;
 }
 
+.expand-qty-value {
+  font-size: 24rpx;
+  color: #323233;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
 .expand-remark-inline {
   flex: 1;
   min-width: 100rpx;

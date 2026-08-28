@@ -1,10 +1,9 @@
-import { useRef, useMemo, useEffect } from "react";
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useMemo } from "react";
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { useEventStore } from '@/store/useEventStore';
-import type { UniversalEvent } from '@/store/useEventStore';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { fetchLineChartData } from '@/api/twinApi';
 import type { LineStats } from '@/api/twinApi';
@@ -13,9 +12,6 @@ import { TimelineWaterfall } from '@/features/realtime-stream/TimelineWaterfall'
 import { NestedPieChart } from '@/features/dashboard/NestedPieChart';
 import DashboardQrCarousel from '@/features/dashboard/DashboardQrCarousel';
 import { UnifiedRankingCard } from '@/features/dashboard/UnifiedRankingCard';
-import { DashboardHeatmapChart } from '@/features/dashboard/DashboardHeatmapChart';
-import { RoomPreferenceChart } from '@/features/dashboard/RoomPreferenceChart';
-import { fetchStudentActivityHeatmap, fetchStudentActivityRoomUsage } from '@/api/domains/analytics.api';
 import { RetentionRadarStream } from '@/features/realtime-stream/RetentionRadarStream';
 import { RuleCodexCard } from '@/features/dashboard/RuleCodexCard';
 import { SciFiDashboardChrome } from '@/features/dashboard-scifi-theme/SciFiDashboardChrome';
@@ -25,7 +21,6 @@ import { useTheme } from '@/features/theme/ThemeProvider';
 
 export default function DashboardPage() {
     useEventStore((state) => state.setInitialFeed);
-    const queryClient = useQueryClient();
     const sciFiTheme = useTwinChromeTheme();
     const { effectiveMode } = useTheme();
     const isDark = effectiveMode === 'dark';
@@ -47,130 +42,6 @@ export default function DashboardPage() {
         queryFn: fetchLineChartData,
         refetchInterval: 1000 * 60 * 5 // 每 5 分钟自动静默刷新一次
     });
-
-    // 本周起止时间
-    const thisWeekRange = useMemo(() => {
-      const now = new Date();
-      const day = now.getDay();
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-      monday.setHours(0, 0, 0, 0);
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-      sunday.setHours(23, 59, 59, 999);
-      const fmt = (d: Date) => {
-        const y = d.getFullYear();
-        const mo = String(d.getMonth() + 1).padStart(2, "0");
-        const da = String(d.getDate()).padStart(2, "0");
-        const h = String(d.getHours()).padStart(2, "0");
-        const mi = String(d.getMinutes()).padStart(2, "0");
-        const s = String(d.getSeconds()).padStart(2, "0");
-        return `${y}-${mo}-${da} ${h}:${mi}:${s}`;
-      };
-      return { startTime: fmt(monday), endTime: fmt(sunday) };
-    }, []);
-
-    // 本月起止时间
-    const thisMonthRange = useMemo(() => {
-      const now = new Date();
-      const first = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
-      const last = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-      const fmt = (d: Date) => {
-        const y = d.getFullYear();
-        const mo = String(d.getMonth() + 1).padStart(2, "0");
-        const da = String(d.getDate()).padStart(2, "0");
-        const h = String(d.getHours()).padStart(2, "0");
-        const mi = String(d.getMinutes()).padStart(2, "0");
-        const s = String(d.getSeconds()).padStart(2, "0");
-        return `${y}-${mo}-${da} ${h}:${mi}:${s}`;
-      };
-      return { startTime: fmt(first), endTime: fmt(last) };
-    }, []);
-
-    // ---- 实时 WebSocket 事件 ----
-    const realtimeEvents = useEventStore((s) => s.realtimeEvents);
-
-    // 最新进入的人的课题组
-    const activeGroup = useMemo(() => {
-      const now = new Date();
-      const d = now.getDay();
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - (d === 0 ? 6 : d - 1));
-      monday.setHours(0, 0, 0, 0);
-
-      const latestEnter = realtimeEvents.find((evt) => {
-        if (evt.action !== "ENTER") return false;
-        return new Date(evt.timestamp) >= monday;
-      });
-      return latestEnter?.person?.group ?? "";
-    }, [realtimeEvents]);
-
-    // 本周/本月自动切换（10s 轮换）
-    const [timeRange, setTimeRange] = useState<"week" | "month">("week");
-    useEffect(() => {
-      const timer = setInterval(() => {
-        setTimeRange((prev) => (prev === "week" ? "month" : "week"));
-      }, 10_000);
-      return () => clearInterval(timer);
-    }, []);
-
-    const activeTimeRange = timeRange === "week" ? thisWeekRange : thisMonthRange;
-
-    const { data: heatmapData, isLoading: isHeatmapLoading } = useQuery({
-        queryKey: ["dashboard", "heatmap", activeGroup, activeTimeRange.startTime, activeTimeRange.endTime],
-        queryFn: () => fetchStudentActivityHeatmap({
-            groupName: activeGroup,
-            startTime: activeTimeRange.startTime,
-            endTime: activeTimeRange.endTime,
-        }),
-        refetchInterval: 300_000,
-    });
-
-    const { data: roomUsageData, isLoading: isRoomLoading } = useQuery({
-        queryKey: ["dashboard", "roomUsage", activeGroup, activeTimeRange.startTime, activeTimeRange.endTime],
-        queryFn: () => fetchStudentActivityRoomUsage({
-            groupName: activeGroup,
-            startTime: activeTimeRange.startTime,
-            endTime: activeTimeRange.endTime,
-        }),
-        refetchInterval: 300_000,
-    });
-
-    // 本周一的 Date 对象（用于过滤本周事件）
-    const thisMonday = useMemo(() => {
-      const now = new Date();
-      const d = now.getDay();
-      const m = new Date(now);
-      m.setDate(now.getDate() - (d === 0 ? 6 : d - 1));
-      m.setHours(0, 0, 0, 0);
-      return m;
-    }, []);
-
-    // 从实时事件中提取本周 ENTER 事件
-    const liveEntries = useMemo<UniversalEvent[]>(() => {
-      return realtimeEvents.filter((evt) => {
-        if (evt.action !== "ENTER") return false;
-        const ts = new Date(evt.timestamp);
-        return ts >= thisMonday;
-      });
-    }, [realtimeEvents, thisMonday]);
-
-    // 有新 ENTER 事件时 → 触发 API 重新拉取（保证数据准确，不手动叠加）
-    const lastEntryIdRef = useRef<string | null>(null);
-    useEffect(() => {
-      const latest = liveEntries[0];
-      if (!latest || latest.eventId === lastEntryIdRef.current) return;
-      lastEntryIdRef.current = latest.eventId;
-      queryClient.invalidateQueries({ queryKey: ["dashboard", "heatmap"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard", "roomUsage"] });
-    }, [liveEntries, queryClient]);
-
-    // activeGroup 变化时也触发重新拉取
-    useEffect(() => {
-      if (!activeGroup) return;
-      queryClient.invalidateQueries({ queryKey: ["dashboard", "heatmap"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard", "roomUsage"] });
-    }, [activeGroup, queryClient]);
 
     const dashboardVisual = useMemo(
         () => ({ sciFi: sciFiTheme.enabled && !isDark, night: isDark }),
@@ -222,22 +93,11 @@ export default function DashboardPage() {
                             <TimelineWaterfall />
                         </GlassCard>
                     </div>
-                    <div className="flex min-h-0 flex-[2.5] dash-card">
-                        <GlassCard blobColor="rgba(124,58,237,0.15)">
-                            <DashboardHeatmapChart
-                                data={heatmapData ?? []}
-                                loading={isHeatmapLoading}
-                                groupName={activeGroup ? `${activeGroup} · ${timeRange === "week" ? "本周" : "本月"}` : undefined}
-                            />
-                        </GlassCard>
-                    </div>
-                    <div className="flex min-h-0 flex-[1.5] dash-card">
-                        <GlassCard blobColor="rgba(236,72,153,0.12)">
-                            <RoomPreferenceChart
-                                data={roomUsageData ?? []}
-                                loading={isRoomLoading}
-                                groupName={activeGroup ? `${activeGroup} · ${timeRange === "week" ? "本周" : "本月"}` : undefined}
-                            />
+                    <div className="flex min-h-0 flex-[4] dash-card">
+                        <GlassCard blobColor="rgba(45,92,247,0.3)">
+                            <DashboardQrCarousel qrUrl={`${window.location.origin}/#/m/login`}>
+                                <NestedPieChart />
+                            </DashboardQrCarousel>
                         </GlassCard>
                     </div>
                 </div>
@@ -253,9 +113,9 @@ export default function DashboardPage() {
                             </GlassCard>
                         </div>
                         <div className="flex min-h-0 min-w-0 flex-1 basis-0 dash-card">
-                            {/* 💥 将霓虹法典直接嵌入光晕卡片中！ */}
+                            {/* 💥 排行榜板块 */}
                             <GlassCard blobColor="rgba(244,63,94,0.3)" compact>
-                                <RuleCodexCard />
+                                <UnifiedRankingCard />
                             </GlassCard>
                         </div>
                     </div>
@@ -282,16 +142,9 @@ export default function DashboardPage() {
 
                 {/* 右侧 25% */}
                 <div className="flex min-h-0 flex-col gap-[15px]">
-                    <div className="flex min-h-0 flex-[6] dash-card">
+                    <div className="flex min-h-0 flex-1 dash-card">
                         <GlassCard blobColor="rgba(191,90,242,0.3)">
-                            <UnifiedRankingCard />
-                        </GlassCard>
-                    </div>
-                    <div className="flex min-h-0 flex-[4] dash-card">
-                        <GlassCard blobColor="rgba(45,92,247,0.3)">
-                            <DashboardQrCarousel qrUrl={`${window.location.origin}/#/m/login`}>
-                                <NestedPieChart />
-                            </DashboardQrCarousel>
+                            <RuleCodexCard />
                         </GlassCard>
                     </div>
                 </div>

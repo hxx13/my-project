@@ -57,21 +57,21 @@
   --scan-assistant-chat-card-rainbow-cyan: hsl(185 82% 46%);
   --scan-assistant-chat-card-rainbow-blue: hsl(220 88% 56%);
   --scan-assistant-chat-card-rainbow-violet: hsl(280 72% 58%);
-  /* 拖尾占半周（180deg）：尾端渐隐 → 七彩虹 → 高亮头部 */
+  /* 拖尾渐隐 → 七彩虹 → 高亮头部：彩色弧段拉长约 240deg，头部仍留白渐隐收尾 */
   --scan-assistant-chat-card-border-beam: conic-gradient(
     from 0deg,
-    transparent 0deg 180deg,
-    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-red) 8%, transparent) 192deg,
-    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-orange) 14%, transparent) 208deg,
-    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-yellow) 22%, transparent) 224deg,
-    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-green) 34%, transparent) 242deg,
-    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-cyan) 48%, transparent) 262deg,
-    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-blue) 62%, transparent) 282deg,
-    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-violet) 78%, transparent) 302deg,
-    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-violet) 94%, white) 328deg,
-    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-blue) 90%, white) 346deg,
-    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-cyan) 84%, white) 358deg,
-    transparent 359deg 360deg
+    transparent 0deg 120deg,
+    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-red) 6%, transparent) 136deg,
+    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-orange) 12%, transparent) 156deg,
+    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-yellow) 20%, transparent) 176deg,
+    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-green) 32%, transparent) 198deg,
+    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-cyan) 46%, transparent) 220deg,
+    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-blue) 60%, transparent) 242deg,
+    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-violet) 78%, transparent) 264deg,
+    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-violet) 94%, white) 300deg,
+    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-blue) 90%, white) 330deg,
+    color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-cyan) 84%, white) 354deg,
+    transparent 358deg 360deg
   );
   --scan-assistant-chat-card-border-flow-duration: 2.5s;
   --scan-assistant-chat-card-border-rainbow-fallback: linear-gradient(
@@ -249,7 +249,7 @@
   z-index: 2;
   margin: 2.5px;
   border-radius: calc(var(--app-radius-container) - 2.5px);
-  background: var(--app-color-surface-raised);
+  background: var(--app-color-surface-elevated, #ffffff);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--app-color-text-primary) 6%, transparent),
     0 0 28px color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-violet) 22%, transparent),
@@ -586,6 +586,118 @@
     opacity: 0;
     transform: translateX(-8px) scale(0.96);
   }
+}
+
+/* ── 提问面板：内容底板比边框窄一档，露出旋转彩虹环 ── */
+.scan-assistant-chat-card--ask .scan-assistant-chat-card__panel {
+  margin: 3px;
+  border-radius: calc(var(--app-radius-container) - 3px);
+}
+
+/* ── 提问输入区（ScanAssistantAskPanel 的 footer） ── */
+.scan-assistant-ask {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-element-gap, 0.75rem);
+  margin-top: var(--app-space-element-gap, 0.75rem);
+}
+
+.scan-assistant-ask__history {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-element-gap, 0.75rem);
+  margin-top: var(--app-space-element-gap, 0.75rem);
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.scan-assistant-ask__row {
+  display: flex;
+}
+
+.scan-assistant-ask__row--user {
+  justify-content: flex-end;
+}
+
+.scan-assistant-ask__row--assistant {
+  justify-content: flex-start;
+}
+
+.scan-assistant-ask__bubble {
+  max-width: 82%;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--app-radius-element);
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.scan-assistant-ask__bubble--user {
+  background: var(--app-color-accent);
+  color: var(--app-color-text-inverse);
+}
+
+.scan-assistant-ask__bubble--assistant {
+  /* 随主题翻转：亮色下 50% warm-200 + 白色 ≈ warm-100 奶油色；暗色下自动混合出暗暖色调，避免固定原色在暗色下发白发花 */
+  background: color-mix(in srgb, var(--color-warm-200) 50%, var(--app-color-surface-elevated));
+  border: 1px solid color-mix(in srgb, var(--color-warm-300) 40%, var(--app-color-border-default));
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-page);
+  color: var(--app-color-text-primary);
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.5;
+}
+
+.scan-assistant-ask__input:focus-visible {
+  outline: 2px solid var(--app-color-accent);
+  outline-offset: 1px;
+}
+
+.scan-assistant-ask__send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-accent);
+  color: var(--app-color-text-inverse);
+  cursor: pointer;
+  transition: opacity var(--app-motion-hover, 150ms ease-out);
+}
+
+.scan-assistant-ask__send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.scan-assistant-ask__send:focus-visible {
+  outline: 2px solid var(--app-color-accent);
+  outline-offset: 2px;
+}
+
+.scan-assistant-ask__send:not(:disabled) svg {
+  transition: transform var(--app-motion-hover, 150ms ease-out);
+}
+
+.scan-assistant-ask__send:not(:disabled):hover svg {
+  transform: translateX(2px) scale(1.1);
 }
 
 @keyframes scan-assistant-chat-card-border-flow {

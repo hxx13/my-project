@@ -88,11 +88,11 @@ function CodexTabButtons({
   const visual = useDashboardVisual();
   const labels: Record<CodexTabId, string> = {
     notice: "公告",
-    violation: violationCount != null && violationCount > 0 ? `惩戒公示 (${violationCount})` : "惩戒公示",
+    violation: violationCount != null && violationCount > 0 ? `提醒公示 (${violationCount})` : "提醒公示",
   };
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5 sm:gap-2" role="tablist" aria-label="公告与惩戒切换">
+    <div className="flex shrink-0 items-center gap-1.5 sm:gap-2" role="tablist" aria-label="公告与提醒切换">
       {tabs.map((t) => {
         const active = t === current;
         return (

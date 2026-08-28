@@ -94,9 +94,19 @@ public class NhpFieldService {
                     .filter(f -> NhpAtomFormKeys.fieldBelongsToDomain(f.getFieldCode(), domainCode))
                     .toList();
         }
-        List<CrfField> ordered = new ArrayList<>(rows);
+        List<CrfField> ordered = new ArrayList<>(dedupHead(rows));
         ordered.sort(BY_FIELD_CODE);
         return ordered;
+    }
+
+    /** 头版本：同 field_code 只保留最新版本（mapper 已按 version DESC 排序，先到先留）。 */
+    private List<CrfField> dedupHead(List<CrfField> rows) {
+        Map<String, CrfField> heads = new LinkedHashMap<>();
+        for (CrfField f : rows) {
+            if (f.getFieldCode() == null) continue;
+            heads.putIfAbsent(f.getFieldCode(), f);
+        }
+        return new ArrayList<>(heads.values());
     }
 
     /** 查询字段在已发布/冻结模板中的使用（供删除前警告）。 */
@@ -249,12 +259,73 @@ public class NhpFieldService {
         String op = (operator == null || operator.isBlank()) ? "unknown" : operator.trim();
         String note = comment == null ? "" : comment.trim();
         fieldMapper.updateFreeze(fieldId, "FROZEN", LocalDateTime.now(), op);
+        // 归档旧冻结版本：同 field_code 其它 FROZEN → RETIRED，保证每 code 至多一个 FROZEN
+        for (CrfField v : fieldMapper.listByFieldCodeInDict(cur.getDictionaryId(), cur.getFieldCode())) {
+            if (v.getId().equals(fieldId)) continue;
+            String vs = (v.getStatus() == null ? "" : v.getStatus()).toUpperCase();
+            if ("FROZEN".equals(vs) || "PUBLISHED".equals(vs)) {
+                fieldMapper.softDelete(v.getId());
+            }
+        }
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("status", "FROZEN");
         after.put("frozenBy", op);
         after.put("comment", note);
         logChange("field", fieldId, "APPROVE_REVIEW", "PENDING_REVIEW", after, op, note);
         return Result.success(null);
+    }
+
+    /** 某字段的全部版本（version DESC）。 */
+    public List<CrfField> listVersions(Long fieldId) {
+        CrfField cur = fieldMapper.findById(fieldId);
+        if (cur == null) return List.of();
+        return fieldMapper.listByFieldCodeInDict(cur.getDictionaryId(), cur.getFieldCode());
+    }
+
+    /**
+     * 新建草稿版本：从最新 FROZEN 克隆出新版本（DRAFT），旧冻结版保留。
+     * 已有草稿/待校对则 409（同码一次只允许一个在改版本）。
+     */
+    @Transactional
+    public Result<CrfField> createDraftVersion(Long fieldId) {
+        CrfField cur = fieldMapper.findById(fieldId);
+        if (cur == null || Boolean.FALSE.equals(cur.getActive())) {
+            return Result.error("字段不存在");
+        }
+        String st = (cur.getStatus() == null ? "" : cur.getStatus()).toUpperCase();
+        if (!"FROZEN".equals(st) && !"PUBLISHED".equals(st)) {
+            return Result.fail(400, "仅已冻结字段可新建版本，当前 " + cur.getStatus());
+        }
+        for (CrfField v : fieldMapper.listByFieldCodeInDict(cur.getDictionaryId(), cur.getFieldCode())) {
+            String vs = (v.getStatus() == null ? "" : v.getStatus()).toUpperCase();
+            if ("DRAFT".equals(vs) || "PENDING_REVIEW".equals(vs)) {
+                return Result.fail(409, "已有草稿/待校对版本 v" + v.getVersion() + "，请先完成或删除");
+            }
+        }
+        int next = fieldMapper.findMaxVersionInDict(cur.getDictionaryId(), cur.getFieldCode()) + 1;
+        CrfField neu = new CrfField();
+        neu.setDictionaryId(cur.getDictionaryId());
+        neu.setFieldCode(cur.getFieldCode());
+        neu.setNameEn(cur.getNameEn());
+        neu.setNameCn(cur.getNameCn());
+        neu.setDataType(cur.getDataType());
+        neu.setUnit(cur.getUnit());
+        neu.setRequired(cur.getRequired());
+        neu.setCodelistId(cur.getCodelistId());
+        neu.setDescription(cur.getDescription());
+        neu.setCalcExpression(cur.getCalcExpression());
+        neu.setCdiscDomain(cur.getCdiscDomain());
+        neu.setCdiscVariable(cur.getCdiscVariable());
+        neu.setCdiscTestCode(cur.getCdiscTestCode());
+        neu.setConceptCode(cur.getConceptCode());
+        neu.setIdRuleType(cur.getIdRuleType());
+        neu.setNature(cur.getNature());
+        neu.setStatus("DRAFT");
+        neu.setVersion(next);
+        neu.setActive(true);
+        fieldMapper.insert(neu);
+        logChange("field", neu.getId(), "NEW_VERSION", cur.getId(), Map.of("version", next));
+        return Result.success(neu);
     }
 
     /**

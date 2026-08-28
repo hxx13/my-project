@@ -8,6 +8,8 @@ import java.time.LocalDateTime;
 @Data
 public class CrfVisit {
     private Long id;
+    /** 所属方案 FK→crf_visit_scheme.id（NULL=默认） */
+    private Long schemeId;
     /** 时点码 TP-01~TP-12 */
     private String code;
     private String name;

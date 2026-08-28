@@ -372,6 +372,40 @@ public class NhpCodelistService {
     }
 
     /**
+     * 恢复已归档版本为已发布（ARCHIVED → FROZEN），不进入草稿编辑态。
+     * 同 code 其它 FROZEN 归档，保证至多一个已发布版。
+     */
+    @Transactional
+    public Result<?> restoreArchived(String code, String operator) {
+        if (code == null || code.isBlank()) {
+            return Result.fail(400, "code 不能为空");
+        }
+        CrfCodelist archived = null;
+        for (CrfCodelist v : codelistMapper.listByCode(code.trim())) {
+            if (isArchived(v.getStatus())) {
+                archived = v;
+                break;
+            }
+        }
+        if (archived == null) {
+            return Result.error("码表不存在或无可恢复的已归档版本");
+        }
+        for (CrfCodelist v : codelistMapper.listByCode(code.trim())) {
+            if (!v.getId().equals(archived.getId()) && isPublished(v.getStatus())) {
+                codelistMapper.updateStatus(v.getId(), "ARCHIVED");
+            }
+        }
+        String op = blankToUnknown(operator);
+        String before = archived.getStatus();
+        codelistMapper.updateStatus(archived.getId(), "FROZEN");
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("status", "FROZEN");
+        logChange(archived.getId(), "RESTORE_ARCHIVED", before, after, op, null);
+        return Result.success(toListItem(codelistMapper.findById(archived.getId()), loadRefCounts()),
+                "已恢复为已发布版本");
+    }
+
+    /**
      * 批量解冻：所有「无活跃字段引用」的已冻结码表版本 → DRAFT。
      * 有引用的跳过并汇总；用于种子/重导入后批量回草稿。
      */
@@ -895,6 +929,11 @@ public class NhpCodelistService {
     private static boolean isPublished(String status) {
         String s = status == null ? "" : status.toUpperCase();
         return "FROZEN".equals(s) || "PUBLISHED".equals(s);
+    }
+
+    private static boolean isArchived(String status) {
+        String s = status == null ? "" : status.toUpperCase();
+        return "ARCHIVED".equals(s);
     }
 
     private static String normalizeFolder(String folder) {

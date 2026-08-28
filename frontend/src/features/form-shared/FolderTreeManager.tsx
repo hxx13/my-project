@@ -32,7 +32,7 @@ export type FolderTreeGroup<T extends FolderTreeItem = FolderTreeItem> = {
   emptyAction?: FolderAction;
 };
 
-export type FolderAction = "createItem" | "createFolder" | "rename" | "delete" | "moveItem";
+export type FolderAction = "createItem" | "createFolder" | "rename" | "delete" | "moveItem" | "copy";
 
 export type FolderTreeManagerLabels = {
   createFolder?: string;
@@ -40,6 +40,7 @@ export type FolderTreeManagerLabels = {
   renameFolder?: string;
   deleteFolder?: string;
   moveItem?: string;
+  copyFolder?: string;
   emptyFolder?: string;
   emptyFolderAction?: string;
   moveModalTitle?: string;
@@ -56,6 +57,7 @@ const DEFAULT_LABELS: Required<FolderTreeManagerLabels> = {
   renameFolder: "编辑名称",
   deleteFolder: "删除",
   moveItem: "移动",
+  copyFolder: "复制",
   emptyFolder: "尚无内容",
   emptyFolderAction: "新建",
   moveModalTitle: "移动到文件夹",
@@ -106,6 +108,12 @@ const ICON = {
   move: (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
       <path d="M2 8h12M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  copy: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="5.5" y="5.5" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5" stroke="currentColor" strokeWidth="1.2" />
     </svg>
   ),
 } as const;
@@ -224,6 +232,7 @@ function FolderGroupHeader({
     onCreateItem?: (folderKey: string) => void;
     onCreateFolder?: (folderKey: string) => void;
     onRename?: (folderKey: string) => void;
+    onCopy?: (folderKey: string) => void;
     onDelete?: (folderKey: string) => void;
   };
   deletePending?: boolean;
@@ -256,6 +265,14 @@ function FolderGroupHeader({
         label: labels.renameFolder,
         icon: ICON.rename,
         onClick: () => handlers.onRename!(group.key),
+      });
+    }
+    if (actions.includes("copy") && handlers.onCopy) {
+      entries.push({
+        action: "copy",
+        label: labels.copyFolder,
+        icon: ICON.copy,
+        onClick: () => handlers.onCopy!(group.key),
       });
     }
     if (showDelete !== false && actions.includes("delete") && handlers.onDelete) {
@@ -320,6 +337,7 @@ export interface FolderTreeManagerProps<T extends FolderTreeItem = FolderTreeIte
   onCreateFolder?: (folderKey?: string) => void;
   onCreateItem?: (folderKey: string) => void;
   onRenameFolder?: (folderKey: string) => void;
+  onCopyFolder?: (folderKey: string) => void;
   onDeleteFolder?: (folderKey: string) => void;
   onMoveItem?: (itemId: string, fromFolderKey: string, toFolderKey: string) => void;
   /** 按文件夹节点配置可用操作 */
@@ -373,6 +391,7 @@ export default function FolderTreeManager<T extends FolderTreeItem = FolderTreeI
   onCreateFolder,
   onCreateItem,
   onRenameFolder,
+  onCopyFolder,
   onDeleteFolder,
   onMoveItem,
   folderActions: folderActionsProp,
@@ -442,6 +461,7 @@ export default function FolderTreeManager<T extends FolderTreeItem = FolderTreeI
         }
       : undefined,
     onRename: onRenameFolder,
+    onCopy: onCopyFolder,
     onDelete: onDeleteFolder,
   };
 

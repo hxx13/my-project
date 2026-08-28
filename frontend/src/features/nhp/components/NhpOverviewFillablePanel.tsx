@@ -54,7 +54,7 @@ export default function NhpOverviewFillablePanel({ surgery, records, mode = "por
   const [busy, setBusy] = useState<string | null>(null);
   const isAdmin = mode === "adminPreview";
 
-  const visitsQuery = useQuery({ queryKey: ["nhp", "visits"], queryFn: fetchNhpVisits });
+  const visitsQuery = useQuery({ queryKey: ["nhp", "visits"], queryFn: () => fetchNhpVisits() });
   const plansQuery = useQuery({ queryKey: ["nhp", "visit-plans"], queryFn: fetchNhpVisitPlans });
   const formsQuery = useQuery({ queryKey: ["nhp", "assignable-templates"], queryFn: fetchAssignableNhpTemplates });
 

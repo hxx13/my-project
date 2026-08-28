@@ -479,6 +479,7 @@ export const router = createHashRouter([
       { path: "aup-reviewers", element: <AupReviewerConfigPage /> },
       { path: "nhp-template", element: <NhpTemplateListPage /> },
       { path: "nhp-template/edit/:formKey", element: <NhpTemplateEditor /> },
+      { path: "nhp-template/edit/:formKey/:formId", element: <NhpTemplateEditor /> },
       { path: "nhp-codelist", element: <NhpCodelistPage /> },
       { path: "nhp-visits", element: <NhpVisitPage /> },
       { path: "nhp-event-assignment", element: <NhpEventAssignmentPage /> },
