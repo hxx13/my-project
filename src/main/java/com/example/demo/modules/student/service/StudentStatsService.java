@@ -88,7 +88,7 @@ public class StudentStatsService {
         // Violation count in period
         int violationCount = 0;
         try {
-            List<TwinStudentViolation> allViolations = violationMapper.selectRecent(user.getId(), 10000);
+            List<TwinStudentViolation> allViolations = violationMapper.selectRecent(user.getId(), null, null, null, null, 10000);
             if (allViolations != null) {
                 for (TwinStudentViolation v : allViolations) {
                     if (v.getCreatedAt() == null) continue;

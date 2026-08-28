@@ -625,7 +625,13 @@ public class TwinStudentViolationService {
         return folded.substring(0, maxLen) + "…";
     }
 
-    public List<TwinStudentViolation> listRecent(String targetUserId, int limit) {
+    public List<TwinStudentViolation> listRecent(
+            String targetUserId,
+            List<String> statuses,
+            List<String> sources,
+            Boolean excludeCage,
+            Boolean lockedOnly,
+            int limit) {
         if (violationTableAbsent.get()) {
             return Collections.emptyList();
         }
@@ -637,6 +643,7 @@ public class TwinStudentViolationService {
         try {
             return violationMapper.selectRecent(
                     StringUtils.hasText(targetUserId) ? targetUserId.trim() : null,
+                    statuses, sources, excludeCage, lockedOnly,
                     lim
             );
         } catch (Exception e) {

@@ -26,7 +26,7 @@ public class StudentViolationService {
 
     public Map<String, Object> getViolations(User user, int page, int size, String startDate, String endDate) {
         int offset = (page - 1) * size;
-        List<TwinStudentViolation> allViolations = violationMapper.selectRecent(user.getId(), 10000);
+        List<TwinStudentViolation> allViolations = violationMapper.selectRecent(user.getId(), null, null, null, null, 10000);
 
         List<TwinStudentViolation> filtered = new ArrayList<>();
         if (allViolations != null) {

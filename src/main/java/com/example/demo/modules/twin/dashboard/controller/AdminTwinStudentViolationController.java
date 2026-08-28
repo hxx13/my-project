@@ -106,14 +106,18 @@ public class AdminTwinStudentViolationController {
     public Result<?> list(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(value = "targetUserId", required = false) String targetUserId,
-            @RequestParam(value = "limit", defaultValue = "100") int limit
+            @RequestParam(value = "limit", defaultValue = "100") int limit,
+            @RequestParam(value = "statuses", required = false) List<String> statuses,
+            @RequestParam(value = "sources", required = false) List<String> sources,
+            @RequestParam(value = "excludeCage", required = false) Boolean excludeCage,
+            @RequestParam(value = "lockedOnly", required = false) Boolean lockedOnly
     ) {
         Result<?> denied = requireAdmin(authorization);
         if (denied != null) {
             return denied;
         }
         int lim = Math.min(Math.max(limit, 1), 500);
-        List<TwinStudentViolation> rows = violationService.listRecent(targetUserId, lim);
+        List<TwinStudentViolation> rows = violationService.listRecent(targetUserId, statuses, sources, excludeCage, lockedOnly, lim);
         Set<String> idSet = new HashSet<>();
         for (TwinStudentViolation v : rows) {
             if (v == null) continue;

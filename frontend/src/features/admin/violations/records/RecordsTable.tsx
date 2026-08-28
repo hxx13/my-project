@@ -118,15 +118,30 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
   const qc = useQueryClient();
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
+  // 状态/来源/禁入/笼架排除已下沉到服务端 SQL（过滤在 LIMIT 之前），列表对该筛选确定且完整，
+  // 不再因 400 条截断窗口滑动而出现「幻影」记录；keyword 仍依赖展示名/规则名，留在前端收窄。
+  const personListKey = useMemo(
+    () => ["studentViolations", filters.statuses, filters.sources, filters.enterLocks] as const,
+    [filters.statuses, filters.sources, filters.enterLocks]
+  );
+
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["studentViolations"],
-    queryFn: () => listStudentViolations({ limit: 400 }),
+    queryKey: personListKey,
+    queryFn: () =>
+      listStudentViolations({
+        limit: 400,
+        excludeCage: true,
+        statuses: filters.statuses.length ? filters.statuses : undefined,
+        sources: filters.sources.length ? filters.sources : undefined,
+        // enterLocks 三态：[]=不过滤 / [LOCKED]=仅禁入 / [UNLOCKED]=仅可进入 / [两个]=全部
+        lockedOnly:
+          filters.enterLocks.length === 1 ? filters.enterLocks[0] === "LOCKED" : undefined,
+      }),
     placeholderData: (prev) => prev,
   });
 
   const filteredRows = useMemo(() => {
-    // 排除笼架联动违规（已在「按笼架」视图中单独展示）
-    let filtered = rows.filter((r) => r.cageViolationId == null);
+    let filtered = rows;
     if (filters.keyword.trim()) {
       const kw = filters.keyword.trim().toLowerCase();
       filtered = filtered.filter(
@@ -136,16 +151,8 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
           (r.ruleName ?? "").toLowerCase().includes(kw)
       );
     }
-    if (filters.statuses.length > 0) filtered = filtered.filter((r) => filters.statuses.some((s) => s === r.status));
-    if (filters.sources.length > 0) filtered = filtered.filter((r) => filters.sources.some((s) => s === r.source));
-    if (filters.enterLocks.length > 0) {
-      filtered = filtered.filter((r) => {
-        const locked = violationEnterLocked(r);
-        return filters.enterLocks.some((v) => (v === "LOCKED" ? locked : !locked));
-      });
-    }
     return filtered;
-  }, [rows, filters.keyword, filters.statuses, filters.sources, filters.enterLocks]);
+  }, [rows, filters.keyword]);
 
   const handleClear = async (id: number) => {
     if (!await appConfirm("解除后该条将不再在扫码弹窗展示，记录仍保留。确定？")) return;
@@ -163,7 +170,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     try {
       await deleteStudentViolation(r.id);
       toast.success("已删除");
-      qc.setQueryData<StudentViolationRow[]>(["studentViolations"], (prev) => (prev ?? []).filter((x) => x.id !== r.id));
+      qc.setQueryData<StudentViolationRow[]>(personListKey, (prev) => (prev ?? []).filter((x) => x.id !== r.id));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "删除失败");
     }
