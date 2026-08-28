@@ -142,6 +142,46 @@
             <if test="targetUserId != null and targetUserId != ''">
                 AND v.target_user_id = #{targetUserId}
             </if>
+            <if test="excludeCage != null and excludeCage">
+                AND v.cage_violation_id IS NULL
+            </if>
+            <if test="statuses != null and statuses.size() > 0">
+                AND v.status IN
+                <foreach collection="statuses" item="s" open="(" separator="," close=")">
+                    #{s}
+                </foreach>
+            </if>
+            <if test="sources != null and sources.size() > 0">
+                AND v.source IN
+                <foreach collection="sources" item="src" open="(" separator="," close=")">
+                    #{src}
+                </foreach>
+            </if>
+            <!-- lockedOnly 三元：null=不过滤 / true=仅禁入 / false=仅可进入；须与前端 violationEnterLocked 一致 -->
+            <if test="lockedOnly != null">
+                AND (
+                    <choose>
+                        <when test="lockedOnly">
+                            v.status = 'ACTIVE'
+                            AND (
+                                v.forbid_enter = 1
+                                OR (v.interactive_challenge IS NOT NULL AND TRIM(v.interactive_challenge) &lt;&gt; '' AND v.interactive_challenge_verified_at IS NULL)
+                                OR (v.max_enter_success IS NOT NULL AND v.enter_success_count &gt;= v.max_enter_success)
+                            )
+                        </when>
+                        <otherwise>
+                            NOT (
+                                v.status = 'ACTIVE'
+                                AND (
+                                    v.forbid_enter = 1
+                                    OR (v.interactive_challenge IS NOT NULL AND TRIM(v.interactive_challenge) &lt;&gt; '' AND v.interactive_challenge_verified_at IS NULL)
+                                    OR (v.max_enter_success IS NOT NULL AND v.enter_success_count &gt;= v.max_enter_success)
+                                )
+                            )
+                        </otherwise>
+                    </choose>
+                )
+            </if>
         </where>
         ORDER BY v.id DESC
         LIMIT #{limit}

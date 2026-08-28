@@ -33,8 +33,16 @@ public interface TwinStudentViolationMapper {
 
     int incrementEnterSuccess(@Param("id") long id);
 
+    /**
+     * 管理端/学生端共用列表。管理端传入 statuses/sources/excludeCage/lockedOnly 在 SQL 层过滤后再 LIMIT，
+     * 避免先截断窗口再前端过滤导致的「幻影」记录；学生端传 null 即全量。
+     */
     List<TwinStudentViolation> selectRecent(
             @Param("targetUserId") String targetUserId,
+            @Param("statuses") List<String> statuses,
+            @Param("sources") List<String> sources,
+            @Param("excludeCage") Boolean excludeCage,
+            @Param("lockedOnly") Boolean lockedOnly,
             @Param("limit") int limit
     );
 
