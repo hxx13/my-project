@@ -1,5 +1,6 @@
 <!-- List View -->
-<view wx:if="{{ screen === 'list' }}" class="page">
+<!-- ponytail: 列表始终渲染，grid 以固定覆盖层叠在上面，列表 scroll-view 从不 display:none → 滚动位置原生保留 -->
+<view class="page">
   <subpage-nav-bar title="笼架" />
   <view wx:if="{{ loading }}" class="center-box">
     <van-loading size="24px" color="#ac1736" />
@@ -334,18 +335,18 @@
     </view>
   </view>
 
-  <view wx:if="{{ loading }}" class="center-box">
+  <view wx:if="{{ gridLoading }}" class="center-box">
       <van-loading size="28px" color="#ac1736" />
     </view>
 
-    <view wx:elif="{{ error }}" class="error-box">
+    <view wx:elif="{{ gridError }}" class="error-box">
       <text class="error-icon">!</text>
-      <text class="error-text">{{ error }}</text>
+      <text class="error-text">{{ gridError }}</text>
       <view class="retry-btn" bindtap="onRetry">重新加载</view>
       <view class="back-link" bindtap="onBackToList">返回列表</view>
     </view>
 
-  <scroll-view wx:if="{{ !loading && !error && pageMode !== 'booking' }}" class="grid-scroll" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{ loading }}" bindrefresherrefresh="onRetry">
+  <scroll-view wx:if="{{ !gridLoading && !gridError && pageMode !== 'booking' }}" class="grid-scroll" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{ gridLoading }}" bindrefresherrefresh="onRetry">
     <!-- 图例：默认收起，点 "!" 展开 -->
     <view wx:if="{{ legendOpen }}" class="grid-legend-card">
       <text class="legend-section-title">特殊状态 → 格子背景</text>

@@ -16,6 +16,13 @@
 
 .grid-page {
   overflow: hidden;
+  /* ponytail: 覆盖层而非隐藏列表——列表 scroll-view 常驻可视，返回时滚动位置原生保留 */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
 }
 
 /* ================================================================== */

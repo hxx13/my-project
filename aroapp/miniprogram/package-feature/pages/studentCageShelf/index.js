@@ -549,6 +549,8 @@ Page({
   data: {
     loading: true,
     error: '',
+    gridLoading: false,       // grid 独立加载态，不共用 list 的 loading（避免切 grid 时销毁列表 DOM 丢滚动）
+    gridError: '',
     screen: 'list',           // 'list' | 'grid'
     shelves: [],
     shelfGroups: [],          // [{roomName, shelves:[], expanded:false}]
@@ -1269,7 +1271,7 @@ Page({
       self.setData({ loading: false, error: '未选择笼架', screen: 'list' });
       return;
     }
-    self.setData({ loading: true, error: '', screen: 'grid' });
+    self.setData({ gridLoading: true, gridError: '', screen: 'grid' });
 
     springAuth.springRequest({
       url: '/api/cage-cell-index/local-grid/by-shelve/' + shelveId,
@@ -1277,7 +1279,7 @@ Page({
     }).then(function(res) {
       var p = unwrap(res);
       if (!p.ok) {
-        self.setData({ loading: false, error: p.message });
+        self.setData({ gridLoading: false, gridError: p.message });
         return;
       }
       var data = p.data || {};
@@ -1286,8 +1288,8 @@ Page({
       var grid = buildGrid(gridCells);
 
       var patch = {
-        loading: false,
-        error: '',
+        gridLoading: false,
+        gridError: '',
         selectedShelf: shelfMeta,
         grid: grid,
         gridMeta: shelfMeta,
@@ -1309,7 +1311,7 @@ Page({
       self.applySelectionToGrid();
       self.applyMyClaimToGrid();
     }).catch(function(e) {
-      self.setData({ loading: false, error: (e && e.message) || '加载失败' });
+      self.setData({ gridLoading: false, gridError: (e && e.message) || '加载失败' });
     });
   },
 
@@ -2351,6 +2353,8 @@ Page({
       screen: 'list',
       loading: false,
       error: '',
+      gridLoading: false,
+      gridError: '',
       selectedShelf: null,
       grid: [],
       gridMeta: null,
