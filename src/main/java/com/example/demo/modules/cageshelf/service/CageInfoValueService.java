@@ -227,12 +227,8 @@ public class CageInfoValueService {
         upsertInt(animalCageId, fieldIdByCanonical, "animal_male_number", detail.getAnimalMaleNumber());
         upsertInt(animalCageId, fieldIdByCanonical, "animal_female_number", detail.getAnimalFemaleNumber());
 
-        upsertBool(animalCageId, fieldIdByCanonical, "needs_division", detail.getNeedsDivision());
-        upsertBool(animalCageId, fieldIdByCanonical, "needs_special_feeding", detail.getNeedsSpecialFeeding());
-        upsertBool(animalCageId, fieldIdByCanonical, "needs_transfer", detail.getNeedsTransfer());
-        upsertBool(animalCageId, fieldIdByCanonical, "has_health_abnormality", detail.getHasHealthAbnormality());
-        // 合笼(needs_cohabitation)不从此迁移：ARO 源在 /back 的 cageBoxVo（syncAllCells 直写），
-        // detail 表恒为 0，若在此迁移会在每次启动时用 stale 的 0 覆盖同步结果。
+        // 5 个状态标记（4 Yn + 合笼）不从此迁移：ARO 源只在 /back 的 cageBoxVo（writeStatusFlagsFromBack 直写）。
+        // cage_cell_detail.needs_* 是手动 toggle/历史残留，可能陈旧，若在此迁移会在每次启动/认领时用 stale 值覆盖同步结果。
 
         upsertText(animalCageId, fieldIdByCanonical, "pi_name", detail.getPiName());
         upsertText(animalCageId, fieldIdByCanonical, "project_pi_name", detail.getProjectPiName());
