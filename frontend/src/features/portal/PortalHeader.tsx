@@ -77,26 +77,24 @@ function useNavEntries(modelCats: { name: string }[]): NavEntry[] {
 /*  Dropdown — dark theme, solid bg；支持向右展开的二级菜单             */
 /* ------------------------------------------------------------------ */
 
-const DROPDOWN_CLOSE_DELAY_MS = 200;
-
 function NavDropdown({
   entry,
   navigate,
-  onHoverIn,
-  onHoverOut,
   onNavigateClose,
 }: {
   entry: NavEntry;
   navigate: ReturnType<typeof useNavigate>;
-  onHoverIn: () => void;
-  onHoverOut: () => void;
   onNavigateClose: () => void;
 }) {
   const [flyoutLabel, setFlyoutLabel] = useState<string | null>(null);
   if (!entry.children?.length) return null;
 
   const handleClick = (item: DropdownItem) => {
-    if (item.children?.length) return; // 有子菜单的项不直接跳转
+    if (item.children?.length) {
+      // 有子菜单：点击展开/收起二级菜单
+      setFlyoutLabel((prev) => (prev === item.label ? null : item.label));
+      return;
+    }
     onNavigateClose();
     if (item.route) {
       navigate(item.route);
@@ -106,21 +104,13 @@ function NavDropdown({
   };
 
   return (
-    <div
-      className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 pt-1 w-52 z-50"
-      onMouseEnter={onHoverIn}
-      onMouseLeave={() => { setFlyoutLabel(null); onHoverOut(); }}
-    >
+    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 pt-1 w-52 z-50">
       <div className="rounded-xl border border-white/10 bg-[#1e293b] shadow-xl py-1">
       {entry.children.map((item) => {
         const hasSub = !!(item.children?.length);
         const subOpen = flyoutLabel === item.label;
         return (
-          <div
-            key={item.label}
-            className="relative"
-            onMouseEnter={() => setFlyoutLabel(hasSub ? item.label : null)}
-          >
+          <div key={item.label} className="relative">
             <button
               type="button"
               onClick={() => handleClick(item)}
@@ -189,7 +179,7 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const dropdownTimer = useRef<number | null>(null);
+  const navRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -197,6 +187,13 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [userMenuOpen]);
+
+  useEffect(() => {
+    if (!activeDropdown) return;
+    const handler = (e: MouseEvent) => { if (navRef.current && !navRef.current.contains(e.target as Node)) setActiveDropdown(null); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [activeDropdown]);
 
   const scrollTo = (href: string, route?: string) => {
     setMobileOpen(false); setActiveDropdown(null);
@@ -210,25 +207,6 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
     document.querySelector(href)?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const cancelDropdownClose = () => {
-    if (dropdownTimer.current) {
-      clearTimeout(dropdownTimer.current);
-      dropdownTimer.current = null;
-    }
-  };
-
-  const hoverIn = (label: string) => {
-    cancelDropdownClose();
-    setActiveDropdown(label);
-  };
-
-  const hoverOut = () => {
-    cancelDropdownClose();
-    dropdownTimer.current = window.setTimeout(() => setActiveDropdown(null), DROPDOWN_CLOSE_DELAY_MS);
-  };
-
-  useEffect(() => () => cancelDropdownClose(), []);
-
   return (
     <>
       <header className="sticky top-0 z-[var(--z-sticky)] flex h-16 items-center justify-between border-b border-white/10 bg-[#0f172a]/95 backdrop-blur-sm px-6">
@@ -238,22 +216,16 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
         </a>
 
         {/* Desktop nav */}
-        <nav className="hidden lg:flex items-center gap-1">
+        <nav ref={navRef} className="hidden lg:flex items-center gap-1">
           {navEntries.map((entry) => {
             const hasKids = !!(entry.children?.length);
             const isOpen = activeDropdown === entry.label;
             return (
-              <div key={entry.label} className="relative" onMouseEnter={() => hasKids && hoverIn(entry.label)} onMouseLeave={() => hasKids && hoverOut()}>
+              <div key={entry.label} className="relative">
                 <button type="button"
                   onClick={() => {
                     if (!hasKids) { scrollTo(entry.href, entry.route); return; }
-                    // 有子菜单：展开/收起由 hover 控制，点击不再 toggle（避免 hover 展开后顺手点击又关闭）。
-                    // 点击只负责跳转：有独立路由就导航，无路由（如「实验动物」）则保持展开不动作。
-                    if (entry.route) {
-                      cancelDropdownClose();
-                      setActiveDropdown(null);
-                      navigate(entry.route);
-                    }
+                    setActiveDropdown((prev) => (prev === entry.label ? null : entry.label));
                   }}
                   className={cn("flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-lg transition-colors",
                     isOpen ? "text-white bg-white/10" : "text-white/60 hover:text-white/90 hover:bg-white/5")}>
@@ -263,9 +235,7 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
                   <NavDropdown
                     entry={entry}
                     navigate={navigate}
-                    onHoverIn={cancelDropdownClose}
-                    onHoverOut={hoverOut}
-                    onNavigateClose={() => { cancelDropdownClose(); setActiveDropdown(null); }}
+                    onNavigateClose={() => setActiveDropdown(null)}
                   />
                 )}
               </div>
