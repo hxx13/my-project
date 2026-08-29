@@ -213,6 +213,8 @@ public class CageInfoValueService {
     @Transactional
     public void seedFromDetail(Long animalCageId) {
         if (animalCageId == null) return;
+        // 幂等：该笼位已有表单值（已同步/已seed）则跳过，避免每次启动/认领用陈旧的 detail 覆盖同步结果，并与同步并发写死锁。
+        if (!valueMapper.selectByAnimalCageId(animalCageId).isEmpty()) return;
         CageCellDetail detail = detailMapper.selectByAnimalCageId(animalCageId);
         if (detail == null) return;
 

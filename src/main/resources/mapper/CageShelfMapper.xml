@@ -126,10 +126,11 @@
                shelve_name AS shelveName,
                CAST(room_id AS CHAR) AS roomId,
                room_name AS roomName,
-               campus_name AS campusName
+               campus_name AS campusName,
+               floor_name AS floorName
         FROM cage_shelf_index
         WHERE deleted = 0
-        ORDER BY campus_name ASC, room_name ASC, shelve_id ASC
+        ORDER BY campus_name ASC, floor_name ASC, room_name ASC, shelve_id ASC
     </select>
 
     <select id="listFullTree" resultType="map">

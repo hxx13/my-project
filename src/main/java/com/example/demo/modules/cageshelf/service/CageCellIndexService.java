@@ -456,7 +456,7 @@ public class CageCellIndexService {
                     Long animalCageId = (Long) mapped.get("animal_cage_id");
                     if (animalCageId == null) continue;
                     // 双写：同步直连 cage_info_value（与固定表 cage_cell_detail 双写）
-                    infoValueService.syncFromMapped(animalCageId, mapped);
+                    syncFromMappedWithRetry(animalCageId, mapped);
                     boolean isNew = false;
                     CageCellDetail d = detailMap.get(animalCageId);
                     if (d == null) {
@@ -648,7 +648,7 @@ public class CageCellIndexService {
                     Long animalCageId = posToAnimalCageId.get(x + "-" + y);
                     if (animalCageId == null) continue;
                     // 双写：同步直连 cage_info_value（与固定表 cage_cell_detail 双写）
-                    infoValueService.syncFromMapped(animalCageId, mapped);
+                    syncFromMappedWithRetry(animalCageId, mapped);
 
                     boolean isNew = false;
                     CageCellDetail d = detailById.get(animalCageId);
@@ -730,15 +730,19 @@ public class CageCellIndexService {
                 && !String.valueOf(cageBoxVo.get("createTime")).isBlank()) {
             fields.put("cage_use_time", String.valueOf(cageBoxVo.get("createTime")));
         }
-        // 死锁重试：与定时扫描等并发写 cage_info_value 时可能瞬时死锁（MySQL 1213），重试即可成功。
+        syncFromMappedWithRetry(animalCageId, fields);
+    }
+
+    /** 带死锁重试的同步直写：并发写 cage_info_value（如启动迁移/认领）时可能瞬时死锁（MySQL 1213），重试即可成功。 */
+    private void syncFromMappedWithRetry(Long animalCageId, Map<String, Object> mapped) {
         for (int attempt = 1; ; attempt++) {
             try {
-                infoValueService.syncFromMapped(animalCageId, fields);
+                infoValueService.syncFromMapped(animalCageId, mapped);
                 return;
             } catch (RuntimeException e) {
-                if (attempt >= 3 || !isDeadlock(e)) throw e;
-                log.warn("[status-sync] cage_info_value 死锁，重试 {}/3 cage={}", attempt, animalCageId);
-                try { Thread.sleep(60L * attempt); }
+                if (attempt >= 5 || !isDeadlock(e)) throw e;
+                log.warn("[cage-sync] cage_info_value 死锁，重试 {}/5 cage={}", attempt, animalCageId);
+                try { Thread.sleep(100L * attempt); }
                 catch (InterruptedException ie) { Thread.currentThread().interrupt(); throw e; }
             }
         }
@@ -810,67 +814,85 @@ public class CageCellIndexService {
     public Map<String, Object> syncLocalPipeline(Long roomId) {
         LocalDateTime startedAt = LocalDateTime.now();
         Map<String, Object> result = new LinkedHashMap<>();
-        Map<String, Object> steps = new LinkedHashMap<>();
-        List<String> completedSteps = new ArrayList<>();
         result.put("ok", false);
-        result.put("steps", steps);
-        result.put("completedSteps", completedSteps);
         result.put("startedAt", DT_FMT.format(startedAt));
-        log.info("[local-pipeline] 开始一键同步 roomId={}", roomId);
-        pipelineStart(3);
 
-        // ① /list 补全详情（含 PI/动物/状态标记）
-        try {
-            Map<String, Object> step1 = syncDetailFields(roomId);
-            steps.put("syncDetailFields", step1);
-            completedSteps.add("syncDetailFields");
-            pipelineStep(1, "补全详情字段");
-        } catch (Exception e) {
-            log.error("[local-pipeline] syncDetailFields 异常: {}", e.getMessage(), e);
-            pipelineFail("详情补全失败：" + (e.getMessage() != null ? e.getMessage() : "详情补全异常"));
-            result.put("failedStep", "syncDetailFields");
-            result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "详情补全异常");
+        // 全量同步按房间顺序一个房间一个房间串行执行（与单房间同步走完全相同的 /list→/book→/back 三步），
+        // 避免一次性遍历 527 个架子出现单房间同步没有的异常。
+        List<Map<String, Object>> rooms = distinctRooms();
+        if (roomId != null) {
+            rooms = rooms.stream().filter(r -> roomId.equals(toLongSafe(r.get("roomId")))).toList();
+        }
+        if (rooms.isEmpty()) {
+            result.put("failedMessage", "无房间可同步");
             result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
             return result;
         }
 
-        // ② /book 仅状态列（cageType/state/rentType）
-        try {
-            Map<String, Object> step2 = syncStatusFromBook(roomId);
-            steps.put("syncStatusFromBook", step2);
-            completedSteps.add("syncStatusFromBook");
-            pipelineStep(2, "同步状态");
-        } catch (Exception e) {
-            log.error("[local-pipeline] syncStatusFromBook 异常: {}", e.getMessage(), e);
-            pipelineFail("状态同步失败：" + (e.getMessage() != null ? e.getMessage() : "状态同步异常"));
-            result.put("failedStep", "syncStatusFromBook");
-            result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "状态同步异常");
-            result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
-            return result;
+        log.info("[local-pipeline] 开始一键同步，共 {} 个房间", rooms.size());
+        pipelineStart(rooms.size());
+
+        int successRooms = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        for (int i = 0; i < rooms.size(); i++) {
+            Long rid = toLongSafe(rooms.get(i).get("roomId"));
+            String rname = String.valueOf(rooms.get(i).getOrDefault("roomName", rid));
+            try {
+                // ① /list 补全详情 → ② /book 笼位状态 → ③ /back 特殊状态
+                syncDetailFields(rid);
+                syncStatusFromBook(rid);
+                syncCohabitationFromBack(rid);
+                successRooms++;
+            } catch (Exception e) {
+                log.error("[local-pipeline] 房间 {} 同步失败: {}", rname, e.getMessage(), e);
+                Map<String, Object> f = new LinkedHashMap<>();
+                f.put("roomId", String.valueOf(rid));
+                f.put("roomName", rname);
+                f.put("error", e.getMessage() != null ? e.getMessage() : "未知错误");
+                failures.add(f);
+            }
+            pipelineStep(i + 1, rname);
         }
 
-        // ③ /back 写全 5 个状态标记 + 使用时间（Yn/closingdate/rescindDatetime/createTime 只在 /back）
-        try {
-            Map<String, Object> step3 = syncCohabitationFromBack(roomId);
-            steps.put("syncCohabitationFromBack", step3);
-            completedSteps.add("syncCohabitationFromBack");
-            pipelineStep(3, "特殊状态同步");
-        } catch (Exception e) {
-            log.error("[local-pipeline] syncCohabitationFromBack 异常: {}", e.getMessage(), e);
-            pipelineFail("特殊状态同步失败：" + (e.getMessage() != null ? e.getMessage() : "特殊状态同步异常"));
-            result.put("failedStep", "syncCohabitationFromBack");
-            result.put("failedMessage", e.getMessage() != null ? e.getMessage() : "特殊状态同步异常");
-            result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
-            return result;
-        }
-
-        pipelineDone("一键同步完成：详情 → 笼位状态 → 特殊状态");
-        result.put("ok", true);
-        result.put("failedStep", null);
-        result.put("failedMessage", null);
+        pipelineDone("一键同步完成：" + successRooms + "/" + rooms.size() + " 房间");
+        result.put("ok", failures.isEmpty());
+        result.put("successRooms", successRooms);
+        result.put("totalRooms", rooms.size());
+        if (!failures.isEmpty()) result.put("failures", failures);
         result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
-        log.info("[local-pipeline] 一键同步完成 roomId={} steps={}", roomId, completedSteps);
+        log.info("[local-pipeline] 一键同步完成 {} 成功 / {} 失败", successRooms, failures.size());
         return result;
+    }
+
+    /** 全部房间（按 listAllShelfSummaries 顺序去重，含 roomId + 校区/楼层/房间 完整标签），用于房间级串行同步。 */
+    private List<Map<String, Object>> distinctRooms() {
+        Map<Long, String> labelById = new LinkedHashMap<>();
+        for (Map<String, Object> shelf : shelfMapper.listAllShelfSummaries()) {
+            Long rid = toLongSafe(shelf.get("roomId"));
+            if (rid == null || labelById.containsKey(rid)) continue;
+            labelById.put(rid, joinLabel(shelf.get("campusName"), shelf.get("floorName"), shelf.get("roomName")));
+        }
+        List<Map<String, Object>> rooms = new ArrayList<>();
+        for (Map.Entry<Long, String> e : labelById.entrySet()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("roomId", e.getKey());
+            m.put("roomName", e.getValue());
+            rooms.add(m);
+        }
+        return rooms;
+    }
+
+    /** 拼接校区/楼层/房间标签，跳过空段。 */
+    private String joinLabel(Object... parts) {
+        StringBuilder sb = new StringBuilder();
+        for (Object p : parts) {
+            if (p == null) continue;
+            String s = String.valueOf(p).trim();
+            if (s.isEmpty()) continue;
+            if (sb.length() > 0) sb.append("/");
+            sb.append(s);
+        }
+        return sb.length() > 0 ? sb.toString() : "未知";
     }
 
     /**
