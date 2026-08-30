@@ -253,16 +253,15 @@ public class AdminNavConfigService {
                 Integer.class, groupId, scope);
         int sortOrder = (maxSort != null ? maxSort : -1) + 1;
 
-        // INSERT ... ON DUPLICATE KEY UPDATE —— UNIQUE(scope, item_path) 保证无竞态重复
+        // INSERT IGNORE —— UNIQUE(scope, item_path) 保证无竞态重复。
+        // 已存在则完全跳过：不覆盖用户在 nav-manager 里对入口的移动(parent_id)/重命名(title)/排序/显隐编辑。
         String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         int affected = jdbcTemplate.update(
-                "INSERT INTO admin_nav_config (id, parent_id, type, scope, title, item_path, item_icon, sort_order, visible) " +
-                "VALUES (?, ?, 'ITEM', ?, ?, ?, ?, ?, 1) " +
-                "ON DUPLICATE KEY UPDATE title = VALUES(title), parent_id = VALUES(parent_id), " +
-                "item_icon = VALUES(item_icon), sort_order = VALUES(sort_order), visible = 1",
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, scope, title, item_path, item_icon, sort_order, visible) " +
+                "VALUES (?, ?, 'ITEM', ?, ?, ?, ?, ?, 1)",
                 id, groupId, scope, label, path, icon, sortOrder);
         if (affected == 0) {
-            // duplicate key hit an existing row but no update needed
+            // 入口已存在：返回现有 id，不覆盖用户编辑
             List<String> existing = jdbcTemplate.queryForList(
                     "SELECT id FROM admin_nav_config WHERE item_path = ? AND type = 'ITEM' AND scope = ?",
                     String.class, path, scope);

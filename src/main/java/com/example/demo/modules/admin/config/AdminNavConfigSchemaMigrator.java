@@ -48,13 +48,10 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
             jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
                 "VALUES ('item-material-audit-export', 'material-review', 'ITEM', '申领审计导出', '/admin/material/audit-export', 'Download', 2)");
-            // 属性更新仍然按 id 精确执行（不受 UNIQUE 影响）
+            // 属性更新仍然按 id 精确执行（不受 UNIQUE 影响）。
+            // 不覆盖 title：用户在 nav-manager 里重命名后，启动迁移若强制改回会吞掉重命名。
             jdbcTemplate.update(
                 "UPDATE admin_nav_config SET item_badge_key = 'processMaterialText' WHERE id = 'item-material-review'");
-            jdbcTemplate.update(
-                "UPDATE admin_nav_config SET title = '学生审核' WHERE id = 'material-review'");
-            jdbcTemplate.update(
-                "UPDATE admin_nav_config SET title = '学生审核' WHERE id = 'item-material-review'");
 
 
             hideMergedDahuaSwingHubEntries();
