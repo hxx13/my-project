@@ -50,6 +50,7 @@ import { useCardReaderEnterGuard, setGlobalScannerOpen } from '@/components/scan
 import {
     greetScanAssistantUser,
     notifyScanPopupVisible,
+    closeScanAssistantAsk,
 } from '@/components/scanner/scan-assistant/scanAssistantSpeak';
 import { isTwinDashboardHomePath } from '@/features/admin/buildAdminNavModel';
 import toast from 'react-hot-toast';
@@ -406,36 +407,78 @@ export default function DebugNav() {
 
     useEffect(() => {
         let buffer = '';
-        let lastKeyTime = Date.now();
+        let lastKeyTime = 0;
+        let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+        let pendingInput: HTMLInputElement | HTMLTextAreaElement | null = null;
+
+        // 50ms 内没有后续连发字符 → 判定人工打字，把拦下的字符补回原输入框
+        const flushPendingRestore = () => {
+            if (restoreTimer) { clearTimeout(restoreTimer); restoreTimer = null; }
+            const chars = buffer;
+            const el = pendingInput;
+            buffer = '';
+            pendingInput = null;
+            if (!chars || !el || document.activeElement !== el) return;
+            try { document.execCommand('insertText', false, chars); } catch { /* 补回失败忽略 */ }
+        };
 
         const handleKeyDown = (e: KeyboardEvent) => {
             if (scannerLockRef.current) return; // 💥 只有网络请求时才拦截，弹窗展示时绝不拦截！
 
-            const activeTag = document.activeElement?.tagName;
-            if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
-                const activeId = document.activeElement?.id;
-                if (activeId !== 'debug-scanner-input') return;
-            }
+            // 焦点在扫码输入框自身时，交给该 input 的 onKeyDown 处理，这里不重复捕获；
+            // 其余情况（body/按钮/其他输入框）一律走全局缓冲，刷卡识别不依赖焦点。
+            const activeEl = document.activeElement as HTMLElement | null;
+            if (activeEl && activeEl.id === 'debug-scanner-input') return;
 
+            const isForeignInput = !!activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
             const now = Date.now();
-            if (now - lastKeyTime > 50) buffer = '';
-            lastKeyTime = now;
 
             if (e.key === 'Enter') {
                 if (buffer.length > 2) {
-                    e.preventDefault();
-                    setIsScannerOpen(true);
-                    setInputValue(buffer);
-                    handleScanAction(buffer);
+                    // 刷卡：识别并关闭 AI 提问面板，避免卡号残留
+                    const code = buffer;
                     buffer = '';
+                    pendingInput = null;
+                    if (restoreTimer) { clearTimeout(restoreTimer); restoreTimer = null; }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeScanAssistantAsk();
+                    setIsScannerOpen(true);
+                    setInputValue(code);
+                    handleScanAction(code);
+                } else {
+                    // 人工 Enter：先补回可能被拦下的字符
+                    flushPendingRestore();
                 }
-            } else if (typeof e.key === 'string' && e.key.length === 1) {
-                buffer += e.key;
+                lastKeyTime = 0;
+                return;
+            }
+
+            if (typeof e.key === 'string' && e.key.length === 1) {
+                const rapid = now - lastKeyTime <= 50;
+                lastKeyTime = now;
+
+                if (isForeignInput) {
+                    // 焦点在其他输入框：拦下字符延迟判定，避免刷卡字符污染该输入框
+                    e.preventDefault();
+                    if (!rapid) buffer = '';
+                    buffer += e.key;
+                    pendingInput = activeEl as HTMLInputElement | HTMLTextAreaElement;
+                    if (restoreTimer) clearTimeout(restoreTimer);
+                    restoreTimer = setTimeout(flushPendingRestore, 50);
+                } else {
+                    // 焦点不在输入框（body/按钮）：直接累积，无需 preventDefault
+                    if (!rapid) buffer = '';
+                    buffer += e.key;
+                }
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            if (restoreTimer) clearTimeout(restoreTimer);
+        };
         // handleScanAction 在 effect 之后声明，此处故意不列入 deps，避免重复绑定全局监听
         // eslint-disable-next-line react-hooks/exhaustive-deps -- 扫码枪缓冲逻辑稳定，仅依赖 handleScanAction 闭包最新实现
     }, []);

@@ -9,6 +9,7 @@ import { isAdminAreaPath, isTwinDashboardHomePath } from "@/features/admin/build
 import { usePrefersReducedMotion, useTypewriterText } from "@/hooks/useTypewriterText";
 import { useScanAssistantStore } from "@/store/useScanAssistantStore";
 import { useScanAssistantBubbleTransition } from "@/components/scanner/scan-assistant/useScanAssistantBubbleTransition";
+import { registerScanAssistantAskClose } from "@/components/scanner/scan-assistant/scanAssistantSpeak";
 
 type ScanAssistantCarrierProps = {
   /** orb 缩放（相对 100px 基准），默认 0.76（2× 原 0.38） */
@@ -106,6 +107,12 @@ export function ScanAssistantCarrier({ orbSize = 0.76 }: ScanAssistantCarrierPro
   /** 无播报时点击载体 = 开合提问面板 */
   const [askOpen, setAskOpen] = useState(false);
   const dismissMessage = useScanAssistantStore((s) => s.dismissMessage);
+
+  // 注册提问面板关闭通道：DebugNav 识别刷卡时通过 closeScanAssistantAsk() 关闭面板
+  useEffect(() => {
+    registerScanAssistantAskClose(() => setAskOpen(false));
+    return () => registerScanAssistantAskClose(null);
+  }, []);
 
   const handleOrbClick = useCallback(() => {
     setAskOpen((open) => !open);

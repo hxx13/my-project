@@ -95,10 +95,11 @@ export function useCardReaderEnterGuard(
           cardKeyCountRef.current >= MIN_CARD_KEYS &&
           now - lastCardKeyTimeRef.current < CARD_KEY_GAP_MS;
 
-        // 读卡器活跃 + 焦点在按钮/链接上 → 拦截 Enter
+        // 读卡器活跃 + 焦点在按钮/链接上 → 阻止 Enter 触发 click。
+        // 不 stopPropagation：让 bubble 阶段的 DebugNav keydown 监听器也能收到 Enter，
+        // 从而不依赖焦点地把刷卡输入路由到扫码逻辑。
         if (isCardReaderActive && (tag === "BUTTON" || tag === "A" || tag === "SUMMARY")) {
           e.preventDefault();
-          e.stopPropagation();
         }
 
         // Enter 后重置计数

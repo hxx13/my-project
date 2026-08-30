@@ -362,3 +362,17 @@ export function greetScanAssistantUser(data: AnalyzeResponse) {
 
   void speakScanAssistantFromAnalyze(data, "welcome");
 }
+
+/* ── 提问面板关闭通道（跨组件） ── */
+
+let askPanelCloseHandler: (() => void) | null = null;
+
+/** ScanAssistantCarrier 挂载时注册关闭回调，卸载时置空 */
+export function registerScanAssistantAskClose(handler: (() => void) | null) {
+  askPanelCloseHandler = handler;
+}
+
+/** 关闭 AI 提问面板（DebugNav 识别刷卡时调用） */
+export function closeScanAssistantAsk() {
+  askPanelCloseHandler?.();
+}
