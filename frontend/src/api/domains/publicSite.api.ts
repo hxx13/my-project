@@ -65,8 +65,13 @@ export interface PortalFooterData {
 
 /** 获取页脚配置。返回 null 时前端回退默认页脚。 */
 export async function fetchPortalFooter(): Promise<PortalFooterData | null> {
-  // TODO: 接后端公共页脚端点（admin 已有 /api/admin/site/portal-footer，公共端尚未建）
-  return null;
+  try {
+    const response = await axios.get<Result<PortalFooterData>>("/api/public/portal-footer");
+    if (!response.data?.success) return null;
+    return response.data.data ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /* ── 今日进出统计（首页数据大盘） ── */

@@ -14,6 +14,8 @@ public class PortalFooterVo {
 
     private List<FooterGroup> groups = new ArrayList<>();
 
+    private String copyright = "";
+
     @Data
     public static class ContactInfo {
         private String phone = "";
