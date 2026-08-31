@@ -5,6 +5,7 @@ import com.example.demo.modules.nhp.entity.CrfForm;
 import com.example.demo.modules.nhp.entity.CrfStudy;
 import com.example.demo.modules.nhp.entity.CrfSubject;
 import com.example.demo.modules.nhp.mapper.*;
+import com.example.demo.modules.team.service.TeamService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,8 @@ class NhpRecordServiceTest {
     @Mock private CrfTransplantMapper transplantMapper;
     @Mock private CrfVisitMapper visitMapper;
     @Mock private CrfProjectVisitPlanMapper projectVisitPlanMapper;
+    @Mock private NhpPermissionService permissionService;
+    @Mock private TeamService teamService;
 
     private NhpRecordService service;
 
@@ -49,7 +52,7 @@ class NhpRecordServiceTest {
                 subjectMapper, recordMapper, valueMapper, auditLogMapper, signatureMapper,
                 fieldMapper, codelistItemMapper, studyMapper, formMapper, centerMapper, idService,
                 snapshotService, new ObjectMapper(), eventEngine, transplantMapper,
-                visitMapper, projectVisitPlanMapper);
+                visitMapper, projectVisitPlanMapper, permissionService, teamService);
     }
 
     @Test
