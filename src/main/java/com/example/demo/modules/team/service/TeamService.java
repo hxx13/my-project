@@ -11,6 +11,7 @@ import com.example.demo.modules.team.entity.TeamAuditLog;
 import com.example.demo.modules.team.entity.TeamJoinRequest;
 import com.example.demo.modules.team.entity.TeamMember;
 import com.example.demo.modules.team.mapper.TeamMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,13 +30,16 @@ public class TeamService {
     private final TeamMapper teamMapper;
     private final PersonnelService personnelService;
     private final PersonnelMapper personnelMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     public TeamService(TeamMapper teamMapper,
                        PersonnelService personnelService,
-                       PersonnelMapper personnelMapper) {
+                       PersonnelMapper personnelMapper,
+                       JdbcTemplate jdbcTemplate) {
         this.teamMapper = teamMapper;
         this.personnelService = personnelService;
         this.personnelMapper = personnelMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     // ═══════════════════════════════════════════
@@ -79,6 +83,11 @@ public class TeamService {
         return ids;
     }
 
+    /** NHP 等下游复用：当前用户在团队内的角色（非成员 null；SUPER_ADMIN 越权 OWNER）。 */
+    public String teamRoleOf(User user, Long teamId) {
+        return memberRoleOf(user, teamId);
+    }
+
     /** 当前用户在团队内的角色；SUPER_ADMIN 越权视为 OWNER。 */
     private String memberRoleOf(User user, Long teamId) {
         if (user == null) return null;
@@ -95,6 +104,80 @@ public class TeamService {
         if (role == null || !allowedRoles.contains(role)) {
             throw new TwinBusinessException(403, "无权限");
         }
+    }
+
+    /** 团队查看权限：仅成员（或 SUPER_ADMIN）可查看详情/成员名单；非成员（含公开团队）仅可看列表并申请加入。 */
+    private void requireTeamViewable(User user, Team team) {
+        if (isSuperAdmin(user)) {
+            return;
+        }
+        if (team != null && memberRoleOf(user, team.getId()) != null) {
+            return;
+        }
+        throw new TwinBusinessException(403, "无权查看该团队");
+    }
+
+    // ═══════════════════════════════════════════
+    // 团队角色字典（内置 team_id=0 + 团队自定义）
+    // ═══════════════════════════════════════════
+
+    /** 团队角色列表（内置 + 团队自定义）。 */
+    public List<Map<String, Object>> listRoles(Long teamId) {
+        return jdbcTemplate.queryForList(
+                "SELECT id, team_id, code, label, sort_order, active FROM team_role "
+                        + "WHERE team_id = 0 OR team_id = ? ORDER BY sort_order, id",
+                teamId);
+    }
+
+    /** 新增团队自定义角色（仅负责人）。 */
+    public Map<String, Object> createRole(User user, Long teamId, String code, String label) {
+        requireTeam(teamId);
+        requireTeamRole(user, teamId, OWNER_ROLES);
+        String c = code == null ? null : code.trim().toUpperCase();
+        String l = label == null ? null : label.trim();
+        if (c == null || c.isBlank() || l == null || l.isBlank()) {
+            throw new TwinBusinessException(400, "角色 code 与名称必填");
+        }
+        Integer builtin = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM team_role WHERE team_id = 0 AND code = ?", Integer.class, c);
+        if (builtin != null && builtin > 0) {
+            throw new TwinBusinessException(409, "内置角色 code 不可重复: " + c);
+        }
+        try {
+            jdbcTemplate.update(
+                    "INSERT INTO team_role (team_id, code, label, sort_order, active) VALUES (?, ?, ?, 100, 1)",
+                    teamId, c, l);
+        } catch (Exception e) {
+            throw new TwinBusinessException(409, "角色 code 已存在: " + c);
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id, team_id, code, label, sort_order, active FROM team_role WHERE team_id = ? AND code = ?",
+                teamId, c);
+        return rows.isEmpty() ? Map.of("teamId", teamId, "code", c, "label", l) : rows.get(0);
+    }
+
+    /** 删除团队自定义角色（仅负责人；被成员引用时拒绝）。 */
+    public void deleteRole(User user, Long teamId, Long roleId) {
+        requireTeam(teamId);
+        requireTeamRole(user, teamId, OWNER_ROLES);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT team_id, code FROM team_role WHERE id = ?", roleId);
+        if (rows.isEmpty()) {
+            throw new TwinBusinessException(404, "角色不存在");
+        }
+        Map<String, Object> role = rows.get(0);
+        long rt = ((Number) role.get("team_id")).longValue();
+        if (rt != teamId.longValue()) {
+            throw new TwinBusinessException(404, "角色不存在");
+        }
+        String code = String.valueOf(role.get("code"));
+        Integer refs = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM team_member WHERE team_id = ? AND role_code = ? AND deleted = 0",
+                Integer.class, teamId, code);
+        if (refs != null && refs > 0) {
+            throw new TwinBusinessException(409, "该角色已被 " + refs + " 名成员引用，无法删除");
+        }
+        jdbcTemplate.update("DELETE FROM team_role WHERE id = ?", roleId);
     }
 
     private Team requireTeam(Long id) {
@@ -130,6 +213,19 @@ public class TeamService {
     // 查询
     // ═══════════════════════════════════════════
 
+    /** 团队精简摘要：名称 / 负责人名 / 成员数。id 为空或团队缺失时返回 null（或对应字段为 null）。 */
+    public Map<String, Object> teamSummary(Long id) {
+        if (id == null) return null;
+        Team t = teamMapper.selectTeamById(id);
+        if (t == null) return null;
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("name", t.getName());
+        map.put("ownerName", t.getOwnerPersonnelId() == null ? null : teamMapper.selectOwnerName(t.getOwnerPersonnelId()));
+        List<Map<String, Object>> members = teamMapper.selectMembersByTeam(id);
+        map.put("memberCount", members == null ? null : members.size());
+        return map;
+    }
+
     private Map<String, Object> buildDetail(Long id) {
         Team t = requireTeam(id);
         Map<String, Object> map = new LinkedHashMap<>();
@@ -150,30 +246,36 @@ public class TeamService {
     }
 
     public Map<String, Object> list(User user, String keyword, int page, int pageSize) {
-        requireAdmin(user);
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
         int offset = (page - 1) * pageSize;
+        List<Map<String, Object>> teams = teamMapper.selectTeams(keyword, offset, pageSize);
+        for (Map<String, Object> t : teams) {
+            Object idObj = t.get("id");
+            Long tid = idObj == null ? null : Long.valueOf(String.valueOf(idObj));
+            t.put("myRole", memberRoleOf(user, tid));
+        }
         return Map.of(
-                "list", teamMapper.selectTeams(keyword, offset, pageSize),
+                "list", teams,
                 "total", teamMapper.countTeams(keyword),
                 "page", page,
                 "pageSize", pageSize);
     }
 
     public Map<String, Object> getDetail(User user, Long id) {
-        requireAdmin(user);
-        return buildDetail(id);
+        requireTeamViewable(user, requireTeam(id));
+        Map<String, Object> detail = buildDetail(id);
+        // 当前用户在该团队的角色（OWNER/MANAGER/MEMBER/null），前端据此显隐操作按钮
+        detail.put("myRole", memberRoleOf(user, id));
+        return detail;
     }
 
     public List<Map<String, Object>> listMembers(User user, Long id) {
-        requireAdmin(user);
-        requireTeam(id);
+        requireTeamViewable(user, requireTeam(id));
         return teamMapper.selectMembersByTeam(id);
     }
 
     public Map<String, Object> listRequests(User user, Long id, String status, int page, int pageSize) {
-        requireAdmin(user);
         requireTeam(id);
         requireTeamRole(user, id, MANAGE_ROLES);
         if (page < 1) page = 1;
@@ -192,7 +294,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> create(User user, TeamCreateRequest body) {
-        requireAdmin(user);
         String name = body.getName() == null ? "" : body.getName().trim();
         if (name.isEmpty()) throw new TwinBusinessException(400, "团队名称不能为空");
         Long ownerPid = currentPersonnelId(user);
@@ -220,7 +321,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> edit(User user, Long id, TeamUpdateRequest body) {
-        requireAdmin(user);
         Team t = requireTeam(id);
         requireTeamRole(user, id, MANAGE_ROLES);
 
@@ -238,7 +338,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> dissolve(User user, Long id) {
-        requireAdmin(user);
         Team t = requireTeam(id);
         requireTeamRole(user, id, OWNER_ROLES);
         teamMapper.updateTeamStatus(id, "DISSOLVED");
@@ -248,7 +347,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> transfer(User user, Long id, Long targetMemberId) {
-        requireAdmin(user);
         Team t = requireTeam(id);
         requireTeamRole(user, id, OWNER_ROLES);
         if (targetMemberId == null) throw new TwinBusinessException(400, "targetMemberId 不能为空");
@@ -277,7 +375,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> addMember(User user, Long id, AddMemberRequest body) {
-        requireAdmin(user);
         Team t = requireTeam(id);
         requireTeamRole(user, id, MANAGE_ROLES);
         if (isDissolved(t)) throw new TwinBusinessException(400, "团队已解散");
@@ -299,7 +396,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> changeRole(User user, Long id, Long memberId, String roleCode) {
-        requireAdmin(user);
         requireTeam(id);
         requireTeamRole(user, id, OWNER_ROLES);
 
@@ -319,7 +415,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> removeMember(User user, Long id, Long memberId) {
-        requireAdmin(user);
         requireTeam(id);
         requireTeamRole(user, id, MANAGE_ROLES);
 
@@ -340,7 +435,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> invite(User user, Long id, InviteRequest body) {
-        requireAdmin(user);
         Team t = requireTeam(id);
         requireTeamRole(user, id, MANAGE_ROLES);
         if (isDissolved(t)) throw new TwinBusinessException(400, "团队已解散");
@@ -369,11 +463,11 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> apply(User user, Long id, JoinApplyRequest body) {
-        requireAdmin(user);
         Team t = requireTeam(id);
         if (isDissolved(t)) throw new TwinBusinessException(400, "团队已解散，不接受申请");
 
-        Long pid = requirePersonnel(body.getPersonnelId());
+        Long pid = currentPersonnelId(user);
+        if (pid == null) throw new TwinBusinessException(400, "当前账号未关联人员档案");
         if (teamMapper.selectMemberByTeamAndPersonnel(id, pid) != null) {
             throw new TwinBusinessException(409, "该人员已是团队成员");
         }
@@ -399,7 +493,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> approve(User user, Long id, Long requestId) {
-        requireAdmin(user);
         requireTeam(id);
         requireTeamRole(user, id, MANAGE_ROLES);
 
@@ -416,7 +509,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> reject(User user, Long id, Long requestId, String reason) {
-        requireAdmin(user);
         requireTeam(id);
         requireTeamRole(user, id, MANAGE_ROLES);
 
@@ -432,7 +524,6 @@ public class TeamService {
 
     @Transactional
     public Map<String, Object> cancel(User user, Long id, Long requestId) {
-        requireAdmin(user);
         requireTeam(id);
 
         TeamJoinRequest r = teamMapper.selectRequestByIdForUpdate(requestId);
