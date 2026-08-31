@@ -236,6 +236,21 @@
         </if>
     </select>
 
+    <select id="selectMyInvites" resultType="map">
+        SELECT r.id AS id,
+               r.team_id AS teamId,
+               t.name AS teamName,
+               r.message AS message,
+               DATE_FORMAT(r.created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+        FROM team_join_request r
+        JOIN team t ON t.id = r.team_id AND t.deleted = 0
+        WHERE r.personnel_id = #{personnelId}
+          AND r.type = 'INVITE'
+          AND r.status = 'PENDING'
+          AND r.deleted = 0
+        ORDER BY r.id DESC
+    </select>
+
     <!-- ── team_audit_log ── -->
     <insert id="insertAuditLog" parameterType="com.example.demo.modules.team.entity.TeamAuditLog">
         INSERT INTO team_audit_log (team_id, actor_personnel_id, action, target_type, target_id, detail)

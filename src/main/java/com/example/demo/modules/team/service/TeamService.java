@@ -267,6 +267,8 @@ public class TeamService {
         Map<String, Object> detail = buildDetail(id);
         // 当前用户在该团队的角色（OWNER/MANAGER/MEMBER/null），前端据此显隐操作按钮
         detail.put("myRole", memberRoleOf(user, id));
+        // 当前用户 personnelId，前端据此隐藏「本人行」的操作按钮（本人不能改本人）
+        detail.put("myPersonnelId", currentPersonnelId(user));
         return detail;
     }
 
@@ -538,5 +540,49 @@ public class TeamService {
         teamMapper.updateRequestStatus(requestId, "CANCELLED", pid);
         audit(id, pid, "CANCEL", "request", requestId, "取消申请");
         return buildDetail(id);
+    }
+
+    // ═══════════════════════════════════════════
+    // 受邀人：接收邀请
+    // ═══════════════════════════════════════════
+
+    /** 我收到的待处理邀请（type=INVITE & PENDING & personnelId=当前用户）。 */
+    public List<Map<String, Object>> listMyInvites(User user) {
+        Long pid = currentPersonnelId(user);
+        if (pid == null) return List.of();
+        return teamMapper.selectMyInvites(pid);
+    }
+
+    /** 接受邀请：受邀人本人确认加入 → 写入成员并置 APPROVED。 */
+    @Transactional
+    public Map<String, Object> acceptInvite(User user, Long requestId) {
+        Long pid = currentPersonnelId(user);
+        if (pid == null) throw new TwinBusinessException(400, "当前账号未关联人员档案");
+        TeamJoinRequest r = teamMapper.selectRequestByIdForUpdate(requestId);
+        if (r == null) throw new TwinBusinessException(404, "邀请不存在");
+        if (!"INVITE".equals(r.getType()) || !pid.equals(r.getPersonnelId())) {
+            throw new TwinBusinessException(403, "无权限处理该邀请");
+        }
+        if (!"PENDING".equals(r.getStatus())) throw new TwinBusinessException(400, "当前状态不可处理");
+        teamMapper.upsertMember(r.getTeamId(), pid, "MEMBER");
+        teamMapper.updateRequestStatus(requestId, "APPROVED", pid);
+        audit(r.getTeamId(), pid, "ACCEPT_INVITE", "request", requestId, "接受邀请");
+        return buildDetail(r.getTeamId());
+    }
+
+    /** 拒绝邀请：受邀人本人拒绝 → 置 REJECTED。 */
+    @Transactional
+    public Map<String, Object> declineInvite(User user, Long requestId) {
+        Long pid = currentPersonnelId(user);
+        if (pid == null) throw new TwinBusinessException(400, "当前账号未关联人员档案");
+        TeamJoinRequest r = teamMapper.selectRequestByIdForUpdate(requestId);
+        if (r == null) throw new TwinBusinessException(404, "邀请不存在");
+        if (!"INVITE".equals(r.getType()) || !pid.equals(r.getPersonnelId())) {
+            throw new TwinBusinessException(403, "无权限处理该邀请");
+        }
+        if (!"PENDING".equals(r.getStatus())) throw new TwinBusinessException(400, "当前状态不可处理");
+        teamMapper.updateRequestStatus(requestId, "REJECTED", pid);
+        audit(r.getTeamId(), pid, "DECLINE_INVITE", "request", requestId, "拒绝邀请");
+        return buildDetail(r.getTeamId());
     }
 }

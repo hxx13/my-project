@@ -74,6 +74,9 @@ public interface TeamMapper {
 
     int countRequests(@Param("teamId") Long teamId, @Param("status") String status);
 
+    /** 某人收到的待处理邀请（type=INVITE & PENDING），含团队名。 */
+    List<Map<String, Object>> selectMyInvites(@Param("personnelId") Long personnelId);
+
     // ── team_audit_log ──
     int insertAuditLog(TeamAuditLog log);
 }

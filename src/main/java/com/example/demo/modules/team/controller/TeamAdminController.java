@@ -101,6 +101,28 @@ public class TeamAdminController {
         return Result.success(teamService.removeMember(resolveUser(auth), id, memberId));
     }
 
+    @GetMapping("/{id}/roles")
+    public Result<List<Map<String, Object>>> listRoles(@PathVariable Long id) {
+        return Result.success(teamService.listRoles(id));
+    }
+
+    @PostMapping("/{id}/roles")
+    public Result<Map<String, Object>> createRole(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                  @PathVariable Long id,
+                                                  @RequestBody Map<String, Object> body) {
+        String code = body.get("code") == null ? null : String.valueOf(body.get("code"));
+        String label = body.get("label") == null ? null : String.valueOf(body.get("label"));
+        return Result.success(teamService.createRole(resolveUser(auth), id, code, label));
+    }
+
+    @DeleteMapping("/{id}/roles/{roleId}")
+    public Result<?> deleteRole(@RequestHeader(value = "Authorization", required = false) String auth,
+                                @PathVariable Long id,
+                                @PathVariable Long roleId) {
+        teamService.deleteRole(resolveUser(auth), id, roleId);
+        return Result.success();
+    }
+
     @PostMapping("/{id}/invite")
     public Result<Map<String, Object>> invite(@RequestHeader(value = "Authorization", required = false) String auth,
                                               @PathVariable Long id,
@@ -144,5 +166,25 @@ public class TeamAdminController {
                                               @PathVariable Long id,
                                               @PathVariable Long requestId) {
         return Result.success(teamService.cancel(resolveUser(auth), id, requestId));
+    }
+
+    @GetMapping("/my-invites")
+    public Result<List<Map<String, Object>>> myInvites(
+            @RequestHeader(value = "Authorization", required = false) String auth) {
+        return Result.success(teamService.listMyInvites(resolveUser(auth)));
+    }
+
+    @PostMapping("/my-invites/{requestId}/accept")
+    public Result<Map<String, Object>> acceptInvite(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long requestId) {
+        return Result.success(teamService.acceptInvite(resolveUser(auth), requestId));
+    }
+
+    @PostMapping("/my-invites/{requestId}/decline")
+    public Result<Map<String, Object>> declineInvite(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long requestId) {
+        return Result.success(teamService.declineInvite(resolveUser(auth), requestId));
     }
 }
