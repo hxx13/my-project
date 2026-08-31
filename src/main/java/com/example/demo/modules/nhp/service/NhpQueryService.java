@@ -1,6 +1,7 @@
 package com.example.demo.modules.nhp.service;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.nhp.entity.CrfConcept;
 import com.example.demo.modules.nhp.entity.CrfTodo;
 import com.example.demo.modules.nhp.mapper.CrfConceptMapper;
@@ -116,8 +117,8 @@ public class NhpQueryService {
         return Result.success(todos);
     }
 
-    public Result<List<Map<String, Object>>> listMyTasks() {
-        return Result.success(governanceQueryService.listMyTasks());
+    public Result<List<Map<String, Object>>> listMyTasks(User user) {
+        return Result.success(governanceQueryService.listMyTasks(user));
     }
 
     /** 更新待办状态（OPEN/DONE/CANCELLED）；OVERDUE 为派生态不接受写入。 */

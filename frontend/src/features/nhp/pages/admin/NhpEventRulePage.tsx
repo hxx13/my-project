@@ -87,7 +87,7 @@ function TextCell({ value, onCommit }: { value: string; onCommit: (v: string | n
 
 export default function NhpEventRulePage() {
   const qc = useQueryClient();
-  const goBack = useGoBack("/content-manager/nhp-template");
+  const goBack = useGoBack("/nhp-admin/template");
 
   const rulesQuery = useQuery({ queryKey: ["nhp", "event-rules"], queryFn: fetchNhpEventRules });
   const rules = useMemo(

@@ -6,7 +6,7 @@
 /** 猪套临床域显示名（与后端 NhpTemplateService.DOMAIN_LABELS 对齐） */
 export const NHP_DOMAIN_LABELS: Record<string, string> = {
   D1: "供体猪域",
-  D2: "受体NHP域",
+  D2: "受体猴域",
   D3: "配型与手术域",
   D4: "样本与检测域",
   D5: "随访与事件域",

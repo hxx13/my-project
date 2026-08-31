@@ -1,7 +1,7 @@
 /**
  * NHP 标准库 API 层。
  *
- * 对接后端契约（后端未实现，前端按 22 §3.7 先行定义）：
+ * 对接后端契约（已实现，读 crf_standard_version）：
  * - crf_standard_version：D12 统一标准库版本实体（PANEL/CRITERIA/PROTOCOL/DICT）
  * - 方案库 crf_regimen_library（immu_code + dose_rule/target_range）为独立内容，待后续补
  * 经 authHttp（baseURL `/api`）解包 Result<T>。
@@ -17,7 +17,7 @@ interface Result<T> {
 
 /** standard_code 类别（码表 VER） */
 export const STANDARD_CODE_OPTIONS = [
-  { value: "PANEL", label: "panel" },
+  { value: "PANEL", label: "事件面板" },
   { value: "CRITERIA", label: "放行标准" },
   { value: "PROTOCOL", label: "协议" },
   { value: "DICT", label: "字典" },

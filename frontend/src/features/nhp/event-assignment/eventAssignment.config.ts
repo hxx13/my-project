@@ -5,14 +5,13 @@ import type { AssignmentToolbarAction } from "./eventAssignment.types";
 
 /** Page-level copy & navigation — extend here without touching render logic */
 export const EVENT_ASSIGNMENT_PAGE = {
-  title: "采集方案",
-  subtitle: "行 = 表单 · 列 = 事件；勾选格子 = 该事件采集该表单。点行头/列头批量。",
+  title: "事件指派",
   backLabel: "← 返回",
-  backPath: "/content-manager/nhp-visits",
+  backPath: "/nhp-admin/template",
   panelTitle: "表单-事件指派矩阵",
   cornerLabel: "表单 \\ 事件",
-  emptyForms: "暂无已发布表单。请先在「表单发布」页发布原子或组合模板。",
-  emptyVisits: "暂无访视时点。请先在「访视 / 时点」页配置 TP 列表。",
+  emptyForms: "暂无已发布表单。请先在「表单模板」页发布原子或组合模板。",
+  emptyVisits: "该方案暂无访视时点，点横轴「＋」添加时点。",
   loading: "加载指派数据…",
   error: "加载失败，请刷新重试",
 } as const;

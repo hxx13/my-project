@@ -1,12 +1,12 @@
 package com.example.demo.modules.nhp.controller;
 
 import com.example.demo.common.dto.Result;
-import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.nhp.entity.CrfField;
 import com.example.demo.modules.nhp.service.NhpFieldDictionaryService;
 import com.example.demo.modules.nhp.service.NhpFieldService;
+import com.example.demo.modules.nhp.service.NhpPermissionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
@@ -20,30 +20,28 @@ import java.util.Map;
 @Tag(name = "NHP 字段字典", description = "字段 CRUD + 校对流（提交/通过/驳回）")
 public class NhpFieldController {
 
-    /** 校对通过/驳回：与内容管理壳一致，ADMIN+（PI 角色绑定落地前由管理员代行）。 */
-    private static final RoleEnum REVIEW_MIN_ROLE = RoleEnum.ADMIN;
-
     private final NhpFieldService service;
     private final NhpFieldDictionaryService dictionaryService;
     private final AuthContextService authContextService;
+    private final NhpPermissionService permissionService;
 
     public NhpFieldController(NhpFieldService service,
                               NhpFieldDictionaryService dictionaryService,
-                              AuthContextService authContextService) {
+                              AuthContextService authContextService,
+                              NhpPermissionService permissionService) {
         this.service = service;
         this.dictionaryService = dictionaryService;
         this.authContextService = authContextService;
+        this.permissionService = permissionService;
     }
 
-    private Result<?> requireMinRole(String authHeader, RoleEnum minRole) {
+    private Result<?> requireNhpExpert(String authHeader) {
         User user = authContextService.resolveUserFromBearer(authHeader);
         if (user == null) {
             return Result.fail(401, "未登录或 Token 无效");
         }
-        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
-        if (role.getLevel() < minRole.getLevel()) {
-            return Result.fail(403, "无权限：需要 " + minRole.getCode()
-                    + " 及以上（字段校对由管理员代行，待 PI 身份标签落地）");
+        if (!permissionService.isNhpExpert(user)) {
+            return Result.fail(403, "无权限：需 NHP专家 身份");
         }
         return null;
     }
@@ -131,7 +129,7 @@ public class NhpFieldController {
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long fieldId,
             @RequestBody(required = false) Map<String, Object> body) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }
@@ -147,7 +145,7 @@ public class NhpFieldController {
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long fieldId,
             @RequestBody(required = false) Map<String, Object> body) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }
@@ -162,7 +160,7 @@ public class NhpFieldController {
     public Result<?> unfreeze(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long fieldId) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }
@@ -175,7 +173,7 @@ public class NhpFieldController {
     public Result<?> batchUnfreeze(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @RequestBody Map<String, Object> body) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }
@@ -203,7 +201,7 @@ public class NhpFieldController {
     public Result<?> createDraftVersion(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long fieldId) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }

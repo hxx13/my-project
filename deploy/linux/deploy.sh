@@ -65,8 +65,13 @@ echo "  当前 commit: $(git rev-parse --short HEAD)"
 echo "=== Step 2/8: DB 备份 ==="
 mkdir -p "$BACKUP_DIR"
 BACKUP_FILE="$BACKUP_DIR/backup-$(date +%Y%m%d-%H%M%S).sql.gz"
-sudo mysqldump --single-transaction --no-create-info twin_system 2>/dev/null | gzip > "$BACKUP_FILE" || echo "  备份失败（不阻断部署）"
-echo "  备份完成: $BACKUP_FILE"
+# 补认证参数 + stderr 落日志：原来缺 -u -p 导致 Access denied，且 2>/dev/null 吞报错 → 产出 20 字节空备份
+sudo mysqldump -u root -p"$DB_PASSWORD" --single-transaction --no-create-info twin_system 2>"$BACKUP_DIR/mysqldump.err" | gzip > "$BACKUP_FILE"
+if [ "${PIPESTATUS[0]}" != "0" ]; then
+    echo "  ❌ 备份失败（mysqldump 退出码 ${PIPESTATUS[0]}，详见 $BACKUP_DIR/mysqldump.err）"
+else
+    echo "  备份完成: $BACKUP_FILE"
+fi
 
 # 只保留最近 5 次部署备份
 sudo ls -t "$BACKUP_DIR"/backup-*.sql.gz 2>/dev/null | tail -n +6 | xargs sudo rm -f 2>/dev/null || true

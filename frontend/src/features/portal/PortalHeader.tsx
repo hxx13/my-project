@@ -8,6 +8,8 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { ChevronDown, ChevronRight, Smartphone, LayoutDashboard, FileEdit, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchPublicCategories } from "@/api/domains/portalContent.api";
+import { fetchMyIdentity } from "@/api/domains/personIdentity.api";
+import { useQuery } from "@tanstack/react-query";
 
 /* ------------------------------------------------------------------ */
 /*  Nav data                                                            */
@@ -23,7 +25,7 @@ interface DropdownItem {
 }
 interface NavEntry { label: string; href: string; route?: string; children?: DropdownItem[] }
 
-function useNavEntries(modelCats: { name: string }[]): NavEntry[] {
+function useNavEntries(modelCats: { name: string }[], opts: { hasToken: boolean; isNhpExpert: boolean }): NavEntry[] {
   return useMemo(() => [
     { label: "首页", href: "#", route: "/" },
     {
@@ -54,8 +56,9 @@ function useNavEntries(modelCats: { name: string }[]): NavEntry[] {
           children: [
             { label: "总览驾驶舱", href: "#", route: "/nhp/overview", desc: "研究总览" },
             { label: "进入工作台", href: "#", route: "/nhp/fill", desc: "采集与时间线" },
-            { label: "采集侧 · 病例墙", href: "#", route: "/content-manager/nhp-records", desc: "选动物开填" },
             { label: "审核中心", href: "#", route: "/nhp/review-center", desc: "校对复核签署" },
+            ...(opts.hasToken ? [{ label: "我的团队", href: "#", route: "/nhp-team", desc: "团队协作" }] : []),
+            ...(opts.hasToken && opts.isNhpExpert ? [{ label: "后台配置", href: "#", route: "/nhp-admin", desc: "研究设计配置" }] : []),
           ],
         },
         { label: "填写AUP计划书", href: "#", route: "/aup/fill", desc: "IACUC 使用计划" },
@@ -70,7 +73,7 @@ function useNavEntries(modelCats: { name: string }[]): NavEntry[] {
         { label: "联系我们", href: "#", route: "/contact", desc: "联系方式" },
       ],
     },
-  ], [modelCats]);
+  ], [modelCats, opts.hasToken, opts.isNhpExpert]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -168,7 +171,14 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
   useEffect(() => {
     fetchPublicCategories("MODEL_RESOURCE").then((list) => setModelCats(list.map((c) => ({ name: c.name })))).catch(() => {});
   }, []);
-  const navEntries = useNavEntries(modelCats);
+  const { data: myIdentity } = useQuery({
+    queryKey: ["personIdentity", "me"] as const,
+    queryFn: fetchMyIdentity,
+    enabled: hasToken,
+  });
+  const isNhpExpert = hasMinRole(authStorage.getRole(), "PLATFORM_OWNER")
+    || (myIdentity ?? []).some((t) => t.code === "NHP_EXPERT");
+  const navEntries = useNavEntries(modelCats, { hasToken, isNhpExpert });
   const role = authStorage.getRole() ?? "MEMBER";
   const userInfo = authStorage.getUserInfo();
   const displayName = userInfo?.displayName || userInfo?.username || "";
@@ -311,7 +321,7 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
 
                   {/* 退出 + 手机版 */}
                   <div className="flex items-center px-4 py-2">
-                    <button onClick={() => { setUserMenuOpen(false); fullLogout(); }}
+                    <button onClick={() => { setUserMenuOpen(false); fullLogout(); navigate("/"); }}
                       className="flex items-center gap-3 text-sm text-red-400 hover:text-red-300 hover:bg-white/5 transition-colors rounded px-2 py-1 -ml-2">
                       <LogOut className="size-4" />
                       退出登录
@@ -373,7 +383,7 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
               <>
                 <button onClick={() => { setMobileOpen(false); navigate(backgroundTarget || "/"); }}
                   className="text-left px-3 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg">进入后台</button>
-                <button onClick={() => { setMobileOpen(false); fullLogout(); }}
+                <button onClick={() => { setMobileOpen(false); fullLogout(); navigate("/"); }}
                   className="text-left px-3 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-white/5 rounded-lg">退出登录</button>
               </>
             ) : (

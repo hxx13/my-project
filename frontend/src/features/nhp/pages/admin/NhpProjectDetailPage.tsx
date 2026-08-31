@@ -1,6 +1,6 @@
 /**
  * 项目文件夹详情：完整 TP 时间线 × 每 TP 的表单（管理者视角，看到所有项目）。
- * 路由：/#/content-manager/nhp-records/project/:projectId
+ * 路由：/#/nhp-admin/records/project/:projectId
  */
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -14,7 +14,7 @@ import "../../nhp.css";
 export default function NhpProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const id = projectId ? Number(projectId) : NaN;
-  const goBack = useGoBack("/content-manager/nhp-records");
+  const goBack = useGoBack("/nhp-admin/records");
 
   const projectQuery = useQuery({
     queryKey: ["nhp", "project", id],

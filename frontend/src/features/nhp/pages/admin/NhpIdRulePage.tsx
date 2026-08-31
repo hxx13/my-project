@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
+import { appConfirm } from "@/lib/appDialog";
 import {
   fetchNhpIdRules,
   updateNhpIdRule,
@@ -39,6 +40,27 @@ const INSERTABLE_PLACEHOLDERS: { token: string; label: string }[] = [
   { token: "{项目码}", label: "检测项目码" },
 ];
 
+/** 16+1 类 ID 规则的种子默认值（对齐后端 NhpSeedService.seedIdRules） */
+const ID_RULE_DEFAULTS: Record<string, { pattern: string; derived: boolean }> = {
+  DON: { pattern: "DON-{base}{year}-{seq:4}", derived: false },
+  RCP: { pattern: "RCP-{center}{year}-{seq:3}", derived: false },
+  XM: { pattern: "XM-{DONOR}-{RECIP}-{seq:2}", derived: false },
+  TX: { pattern: "TX-{center}{year}-{seq:3}", derived: false },
+  FU: { pattern: "FU-{TX}-{TP}-{seq:2}", derived: false },
+  AE: { pattern: "AE-{TX}-{日期}-{seq:2}", derived: false },
+  REG: { pattern: "REG-{TX}-{seq:2}", derived: false },
+  MED: { pattern: "MED-{REG}-{seq:4}", derived: false },
+  LVL: { pattern: "LVL-{TX}-{日期}-{seq:2}", derived: false },
+  ANES: { pattern: "ANES-{TX}", derived: true },
+  PATH: { pattern: "PATH-{TX}-{TP}-{seq:2}", derived: false },
+  HX: { pattern: "HX-{TX}", derived: true },
+  PERF: { pattern: "PERF-{DON}-{日期}", derived: false },
+  SMP: { pattern: "SMP-{TX}-{TP}-{样本类型}-{seq:2}", derived: false },
+  TST: { pattern: "TST-{实验室}{年月}-{seq:4}", derived: false },
+  RS: { pattern: "RS-{TEST_ID}-{项目码}", derived: true },
+  NHP_PROJ: { pattern: "NHP-{year}-{seq:4}", derived: false },
+};
+
 /** 详情面板表单行（对齐 NhpCodelistPage 的 row() 内联写法，不用 .aup-row） */
 function FormRow({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -53,7 +75,7 @@ function FormRow({ label, children }: { label: string; children: ReactNode }) {
 
 export default function NhpIdRulePage() {
   const qc = useQueryClient();
-  const goBack = useGoBack("/content-manager/nhp-template");
+  const goBack = useGoBack("/nhp-admin/template");
 
   const rulesQuery = useQuery({ queryKey: ["nhp", "idrules"], queryFn: fetchNhpIdRules });
   const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
@@ -77,21 +99,35 @@ export default function NhpIdRulePage() {
     onError: (e: Error) => toast.error(e.message || "保存失败"),
   });
 
-  const patch = (p: Partial<NhpIdRule>) => selected && updateMut.mutate({ id: selected.id, patch: p });
-
-  // pattern 草稿（提升到父级，支持占位符点选插入）
+  // pattern / derived 草稿（提升到父级；不再失焦即存，改显式「保存」）
   const [patternDraft, setPatternDraft] = useState("");
+  const [derivedDraft, setDerivedDraft] = useState(false);
   const patternInputRef = useRef<HTMLInputElement>(null);
   const [trialCode, setTrialCode] = useState<string | null>(null);
 
   useEffect(() => {
     setPatternDraft(selected?.pattern ?? "");
+    setDerivedDraft(selected?.derived ?? false);
     setTrialCode(null);
   }, [selected?.id]);
 
-  const commitPattern = () => {
-    if (selected && patternDraft.trim() !== (selected.pattern ?? "")) {
-      patch({ pattern: patternDraft.trim() });
+  const dirty =
+    selected != null && (patternDraft.trim() !== (selected.pattern ?? "") || derivedDraft !== selected.derived);
+
+  const handleSave = () => {
+    if (!selected || !dirty) return;
+    updateMut.mutate({ id: selected.id, patch: { pattern: patternDraft.trim(), derived: derivedDraft } });
+  };
+
+  const handleResetDefault = async () => {
+    if (!selected) return;
+    const def = ID_RULE_DEFAULTS[selected.idType];
+    if (!def) {
+      toast.error("该规则无默认值");
+      return;
+    }
+    if (await appConfirm(`恢复「${idRuleTypeZh(selected.idType)}」为默认规则？当前修改将丢失。`, { danger: true })) {
+      updateMut.mutate({ id: selected.id, patch: { pattern: def.pattern, derived: def.derived } });
     }
   };
 
@@ -187,33 +223,46 @@ export default function NhpIdRulePage() {
                   <span className={selected.derived ? "aup-wb-chip" : "aup-wb-chip muted"}>
                     {selected.derived ? "derived · 派生键不走取号器" : "取号器"}
                   </span>
-                  {!selected.derived && (
-                    <>
-                      <button
-                        type="button"
-                        className="btn ghost small"
-                        style={{ marginLeft: "auto" }}
-                        disabled={trialNextMut.isPending}
-                        onClick={() => trialNextMut.mutate()}
-                      >
-                        试取号
-                      </button>
-                      {trialCode && (
-                        <code
-                          style={{
-                            fontSize: 12,
-                            fontFamily: "ui-monospace, monospace",
-                            color: "var(--success)",
-                            background: "var(--success-weak)",
-                            padding: "2px 8px",
-                            borderRadius: 4,
-                          }}
+                  {dirty && <span className="aup-wb-chip warn">未保存</span>}
+                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+                    {!selected.derived && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn ghost small"
+                          disabled={trialNextMut.isPending}
+                          onClick={() => trialNextMut.mutate()}
                         >
-                          {trialCode}
-                        </code>
-                      )}
-                    </>
-                  )}
+                          试取号
+                        </button>
+                        {trialCode && (
+                          <code
+                            style={{
+                              fontSize: 12,
+                              fontFamily: "ui-monospace, monospace",
+                              color: "var(--success)",
+                              background: "var(--success-weak)",
+                              padding: "2px 8px",
+                              borderRadius: 4,
+                            }}
+                          >
+                            {trialCode}
+                          </code>
+                        )}
+                      </>
+                    )}
+                    <button type="button" className="btn ghost small" onClick={() => void handleResetDefault()}>
+                      重置默认
+                    </button>
+                    <button
+                      type="button"
+                      className="btn primary small"
+                      disabled={!dirty || updateMut.isPending}
+                      onClick={handleSave}
+                    >
+                      {updateMut.isPending ? "保存中…" : "保存"}
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ marginTop: 12 }}>
@@ -224,7 +273,6 @@ export default function NhpIdRulePage() {
                       style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }}
                       value={patternDraft}
                       onChange={(e) => setPatternDraft(e.target.value)}
-                      onBlur={commitPattern}
                     />
                   </FormRow>
 
@@ -232,8 +280,8 @@ export default function NhpIdRulePage() {
                     <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, paddingTop: 8, cursor: "pointer" }}>
                       <input
                         type="checkbox"
-                        checked={selected.derived}
-                        onChange={(e) => patch({ derived: e.target.checked })}
+                        checked={derivedDraft}
+                        onChange={(e) => setDerivedDraft(e.target.checked)}
                       />
                       派生键（不走取号器）
                     </label>

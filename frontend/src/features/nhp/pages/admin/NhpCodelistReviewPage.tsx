@@ -20,7 +20,7 @@ import "../../nhp.css";
 
 export default function NhpCodelistReviewPage() {
   const qc = useQueryClient();
-  const goBack = useGoBack("/content-manager/nhp-template");
+  const goBack = useGoBack("/nhp-admin/codelist");
   const [selected, setSelected] = useState<string | null>(null);
 
   const listQuery = useQuery({ queryKey: ["nhp", "codelists"], queryFn: fetchNhpCodelists });

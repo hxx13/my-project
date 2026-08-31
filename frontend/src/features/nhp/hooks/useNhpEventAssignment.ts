@@ -118,6 +118,7 @@ export function useNhpEventAssignment(projectId?: number | null, schemeId?: numb
       toast.success(`已保存 ${changed} 个事件的指派`);
       setLastSavedAt(Date.now());
       void queryClient.invalidateQueries({ queryKey: ["nhp", "visit-plans", projectId ?? "global"] });
+      void queryClient.invalidateQueries({ queryKey: ["nhp", "project-visit-plans"] });
     },
     onError: (e) => toast.error((e as Error).message || "保存失败"),
   });

@@ -23,6 +23,18 @@ const PAGE_SIZE = 50;
 
 const DATA_CHANGE_TYPES = ["INSERT", "UPDATE", "DELETE"];
 const DICT_CHANGE_TYPES = ["CREATE", "UPDATE", "FREEZE", "RETIRE"];
+
+const CHANGE_TYPE_LABELS: Record<string, string> = {
+  INSERT: "新增",
+  UPDATE: "修改",
+  DELETE: "删除",
+  CREATE: "新建",
+  FREEZE: "冻结",
+  RETIRE: "停用",
+};
+function changeTypeLabel(type: string) {
+  return CHANGE_TYPE_LABELS[type] ?? type;
+}
 const DICT_ENTITY_TYPES = [
   { value: "field", label: "字段" },
   { value: "codelist", label: "码表" },
@@ -115,7 +127,7 @@ function ChangeBadge({ type }: { type: string }) {
   const tone = changeTypeTone(type);
   return (
     <span className="nhp-audit-badge" style={{ background: tone.bg, color: tone.color }}>
-      {type}
+      {changeTypeLabel(type)}
     </span>
   );
 }
@@ -140,7 +152,7 @@ function AuditDetailRow({ colSpan, before, after }: { colSpan: number; before?: 
 }
 
 export default function NhpAuditPage() {
-  const goBack = useGoBack("/content-manager/nhp-template");
+  const goBack = useGoBack("/nhp-admin/template");
   const [tab, setTab] = useState<Tab>("data");
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -314,7 +326,7 @@ export default function NhpAuditPage() {
                 <option value="">全部操作</option>
                 {(tab === "data" ? DATA_CHANGE_TYPES : DICT_CHANGE_TYPES).map((t) => (
                   <option key={t} value={t}>
-                    {t}
+                    {changeTypeLabel(t)}
                   </option>
                 ))}
               </select>
@@ -437,7 +449,7 @@ export default function NhpAuditPage() {
                               <td>
                                 {r.recordId != null ? (
                                   <Link
-                                    to={`/content-manager/nhp-entry/${r.recordId}`}
+                                    to={`/nhp-admin/entry/${r.recordId}`}
                                     className="nhp-audit-cell-sub"
                                     style={{ color: "var(--primary)", fontWeight: 600 }}
                                     onClick={(e) => e.stopPropagation()}

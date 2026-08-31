@@ -67,6 +67,7 @@ public class PersonIdentityTagSeedBootstrap implements ApplicationRunner {
             created += seed("DIRECTOR", "主任", 8);
             created += seed("VETERINARIAN", "兽医", 9);
             created += seed("GROUP_STEWARD", "课题组管家", 10);
+            created += seed("NHP_EXPERT", "NHP专家", 11);
             // 默认「实验员」：给所有无身份标识的人员补 LAB_MEMBER 标签（幂等，key=personnel.id）
             try {
                 int assigned = jdbcTemplate.update(

@@ -1,6 +1,6 @@
 /**
  * NHP 研究对象记录：以供体/受体为中心的数据中心。
- * 入口：/#/content-manager/nhp-subjects
+ * 入口：/#/nhp-admin/subjects
  * 每只对象一张卡，聚合其身份信息（由 D1/D2 入组表单回填）+ 所属项目 + 表单实例数。
  */
 import { useEffect, useMemo, useState } from "react";
@@ -150,10 +150,10 @@ export default function NhpSubjectsPage() {
           <button type="button" className="btn ghost small" disabled={busy} onClick={() => void load()}>
             刷新
           </button>
-          <Link to="/content-manager/nhp-entry" className="btn primary small" style={{ textDecoration: "none" }} state={nhpNavState(location)}>
+          <Link to="/nhp-admin/entry" className="btn primary small" style={{ textDecoration: "none" }} state={nhpNavState(location)}>
             登记项目
           </Link>
-          <Link to="/content-manager/nhp-records" className="btn ghost small" style={{ textDecoration: "none" }} state={nhpNavState(location)}>
+          <Link to="/nhp-admin/records" className="btn ghost small" style={{ textDecoration: "none" }} state={nhpNavState(location)}>
             项目管理
           </Link>
         </div>
@@ -167,7 +167,7 @@ export default function NhpSubjectsPage() {
           <div style={{ fontSize: 13, color: "var(--muted)", maxWidth: 420, margin: "0 auto 16px", lineHeight: 1.7 }}>
             请在填报入口「登记项目」——一次登记创建供体 + 受体两个对象，再依次填写入组表单。
           </div>
-          <Link to="/content-manager/nhp-entry" className="btn primary small" style={{ textDecoration: "none" }}>
+          <Link to="/nhp-admin/entry" className="btn primary small" style={{ textDecoration: "none" }}>
             前往登记项目
           </Link>
         </div>
@@ -214,7 +214,7 @@ export default function NhpSubjectsPage() {
                   <div className="aup-doc-acts" style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                     <span className="aup-wb-chip muted">{recordCountBySubject.get(s.id) ?? 0} 条实例</span>
                     <Link
-                      to={`/content-manager/nhp-entry?subjectId=${s.id}`}
+                      to={`/nhp-admin/entry?subjectId=${s.id}`}
                       className="btn small primary"
                       style={{ textDecoration: "none" }}
                       state={nhpNavState(location)}
@@ -222,7 +222,7 @@ export default function NhpSubjectsPage() {
                       开填
                     </Link>
                     <Link
-                      to={`/content-manager/nhp-records/${s.id}`}
+                      to={`/nhp-admin/records/${s.id}`}
                       className="btn ghost small"
                       style={{ textDecoration: "none" }}
                       state={nhpNavState(location)}

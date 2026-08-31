@@ -33,4 +33,7 @@ public interface CrfVisitSchemeMapper {
 
     @Select("SELECT COUNT(1) FROM crf_transplant WHERE visit_scheme_id = #{schemeId} AND active = 1")
     long countProjectsByScheme(Long schemeId);
+
+    @Update("UPDATE crf_transplant SET visit_scheme_id = NULL WHERE visit_scheme_id = #{schemeId}")
+    int unsetProjectsByScheme(@Param("schemeId") Long schemeId);
 }

@@ -12,8 +12,8 @@ import java.util.List;
 @Mapper
 public interface CrfFormMapper {
 
-    @Insert("INSERT INTO crf_form (study_id, code, name, form_type, version, status, description, event_anchor, frequency, capture_form, host_type, active) " +
-            "VALUES (#{studyId}, #{code}, #{name}, #{formType}, #{version}, #{status}, #{description}, #{eventAnchor}, #{frequency}, #{captureForm}, #{hostType}, #{active})")
+    @Insert("INSERT INTO crf_form (study_id, code, name, form_type, version, status, description, event_anchor, frequency, capture_form, host_type, team_id, active) " +
+            "VALUES (#{studyId}, #{code}, #{name}, #{formType}, #{version}, #{status}, #{description}, #{eventAnchor}, #{frequency}, #{captureForm}, #{hostType}, #{teamId}, #{active})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CrfForm row);
 
@@ -93,7 +93,7 @@ public interface CrfFormMapper {
 
     @Update("UPDATE crf_form SET name = #{name}, form_type = #{formType}, description = #{description}, " +
             "event_anchor = #{eventAnchor}, frequency = #{frequency}, capture_form = #{captureForm}, " +
-            "host_type = #{hostType} WHERE id = #{id}")
+            "host_type = #{hostType}, team_id = #{teamId} WHERE id = #{id}")
     int update(CrfForm row);
 
     @Update("UPDATE crf_form SET status = #{status} WHERE id = #{id}")

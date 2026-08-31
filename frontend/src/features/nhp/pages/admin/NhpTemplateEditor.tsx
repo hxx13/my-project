@@ -53,7 +53,7 @@ function parseAtomScope(formKey: string): { dictKey: string; domainCode: string 
 }
 
 export default function NhpTemplateEditor() {
-  const goBack = useGoBack("/content-manager/nhp-template");
+  const goBack = useGoBack("/nhp-admin/template");
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { formKey: formKeyParam, formId: formIdParam } = useParams<{ formKey: string; formId: string }>();
@@ -287,7 +287,7 @@ export default function NhpTemplateEditor() {
       const t = await templateApi.generateFromDict(scopedKey, title || domainCode, dictKey);
       applyTemplatePayload(t);
       if (t.formKey && t.formKey !== formKey) {
-        navigate(`/content-manager/nhp-template/edit/${encodeURIComponent(t.formKey)}`, { replace: true });
+        navigate(`/nhp-admin/template/edit/${encodeURIComponent(t.formKey)}`, { replace: true });
       }
       setDictGenerateOpen(false);
     }, "已从字段字典生成");
@@ -314,7 +314,7 @@ export default function NhpTemplateEditor() {
     if (!await appConfirm(tip)) return;
     run(async () => {
       const t = await templateApi.createNhpTemplateDraft(formKey);
-      navigate(`/content-manager/nhp-template/edit/${encodeURIComponent(formKey)}/${t.formId}`, {
+      navigate(`/nhp-admin/template/edit/${encodeURIComponent(formKey)}/${t.formId}`, {
         replace: true,
       });
     }, kind === "ATOM" ? "已新建原子版本" : "已新建草稿版本");

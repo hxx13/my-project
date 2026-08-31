@@ -24,7 +24,7 @@ export function buildNhpFieldPagePath(
   const fc = (opts?.fieldCode || "").trim();
   if (fc) p.set("fieldCode", fc);
   const q = p.toString();
-  return `/content-manager/nhp-field/${encodeURIComponent(dictKey)}${q ? `?${q}` : ""}`;
+  return `/nhp-admin/field/${encodeURIComponent(dictKey)}${q ? `?${q}` : ""}`;
 }
 
 export function buildNhpCodelistPath(opts?: {
@@ -39,7 +39,7 @@ export function buildNhpCodelistPath(opts?: {
   const dictKey = (opts?.dictKey || "").trim();
   if (dictKey) p.set("dictKey", dictKey);
   const q = p.toString();
-  return `/content-manager/nhp-codelist${q ? `?${q}` : ""}`;
+  return `/nhp-admin/codelist${q ? `?${q}` : ""}`;
 }
 
 export function buildNhpTemplatePath(opts?: { formKey?: string | null; dictKey?: string | null }): string {
@@ -49,7 +49,7 @@ export function buildNhpTemplatePath(opts?: { formKey?: string | null; dictKey?:
   const dictKey = (opts?.dictKey || "").trim();
   if (dictKey) p.set("dictKey", dictKey);
   const q = p.toString();
-  return `/content-manager/nhp-template${q ? `?${q}` : ""}`;
+  return `/nhp-admin/template${q ? `?${q}` : ""}`;
 }
 
 function normalizeNhpPath(path: string): string {

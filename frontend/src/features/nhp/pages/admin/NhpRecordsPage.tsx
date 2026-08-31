@@ -1,6 +1,6 @@
 /**
  * NHP 项目管理（表单实例外壳）：以「项目」（crf_transplant，供体+受体对）为顶层文件夹。
- * 入口：/#/content-manager/nhp-records
+ * 入口：/#/nhp-admin/records
  * 一个项目 = 供体 + 受体两个对象 + 它们的表单实例；点开查看进度与历史表单。
  */
 import { useEffect, useMemo, useState } from "react";
@@ -111,11 +111,11 @@ export default function NhpRecordsPage() {
   }, [projectsQuery.data, q]);
 
   const openSubjectRecords = (subjectId: number) => {
-    navigate(`/content-manager/nhp-records/${subjectId}`, { state: nhpNavState(location) });
+    navigate(`/nhp-admin/records/${subjectId}`, { state: nhpNavState(location) });
   };
 
   const openProject = (projectId: number) => {
-    navigate(`/content-manager/nhp-records/project/${projectId}`, { state: nhpNavState(location) });
+    navigate(`/nhp-admin/records/project/${projectId}`, { state: nhpNavState(location) });
   };
 
   const deleteProjectMut = useMutation({
@@ -146,7 +146,7 @@ export default function NhpRecordsPage() {
       const r = await createNhpRecord(sid, formId);
       await queryClient.invalidateQueries({ queryKey: ["nhp", "records-all"] });
       toast.success(`已创建「${tpl.title || tpl.formKey}」实例`);
-      navigate(`/content-manager/nhp-entry/${r.id}`, { state: nhpNavState(location) });
+      navigate(`/nhp-admin/entry/${r.id}`, { state: nhpNavState(location) });
     } catch (e) {
       toast.error((e as Error).message || "创建失败");
     } finally {
@@ -238,7 +238,7 @@ export default function NhpRecordsPage() {
           ) : projects.length === 0 ? (
             <div className="aup-wb-empty">
               暂无项目。
-              <Link to="/content-manager/nhp-entry" style={{ marginLeft: 8, color: "var(--primary)" }}>
+              <Link to="/nhp-admin/entry" style={{ marginLeft: 8, color: "var(--primary)" }}>
                 前往填报入口登记项目
               </Link>
             </div>

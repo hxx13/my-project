@@ -1,7 +1,7 @@
 /**
  * NHP 快照 API 层。
  *
- * 对接后端契约（后端未实现，前端按 24 §3.8 先行定义）：
+ * 对接后端契约（已实现，读 crf_record_snapshot）：
  * - crf_record_snapshot：快照列表 / 字段级对比 / 回滚
  * 经 authHttp（baseURL `/api`）解包 Result<T>。
  */

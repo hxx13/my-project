@@ -1,6 +1,9 @@
 package com.example.demo.modules.nhp.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.nhp.entity.CrfProjectVisitPlan;
 import com.example.demo.modules.nhp.entity.CrfTransplant;
 import com.example.demo.modules.nhp.entity.CrfVisit;
@@ -9,6 +12,7 @@ import com.example.demo.modules.nhp.entity.CrfVisitScheme;
 import com.example.demo.modules.nhp.mapper.CrfTransplantMapper;
 import com.example.demo.modules.nhp.mapper.CrfVisitMapper;
 import com.example.demo.modules.nhp.mapper.CrfVisitSchemeMapper;
+import com.example.demo.modules.nhp.service.NhpPermissionService;
 import com.example.demo.modules.nhp.service.NhpVisitService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,15 +32,32 @@ public class NhpVisitController {
     private final CrfVisitSchemeMapper visitSchemeMapper;
     private final CrfTransplantMapper transplantMapper;
     private final NhpVisitService visitService;
+    private final AuthContextService authContextService;
+    private final NhpPermissionService permissionService;
 
     public NhpVisitController(CrfVisitMapper visitMapper,
                               CrfVisitSchemeMapper visitSchemeMapper,
                               CrfTransplantMapper transplantMapper,
-                              NhpVisitService visitService) {
+                              NhpVisitService visitService,
+                              AuthContextService authContextService,
+                              NhpPermissionService permissionService) {
         this.visitMapper = visitMapper;
         this.visitSchemeMapper = visitSchemeMapper;
         this.transplantMapper = transplantMapper;
         this.visitService = visitService;
+        this.authContextService = authContextService;
+        this.permissionService = permissionService;
+    }
+
+    /** 配置写守卫：默认访视方案/时点/编排仅平台所有者（团队方案待 Phase 5）。 */
+    private void requirePlatformOwner(String auth) {
+        User user = authContextService.resolveUserFromBearer(auth);
+        if (user == null) {
+            throw new TwinBusinessException(401, "未登录或 Token 无效");
+        }
+        if (!permissionService.isPlatformOwner(user)) {
+            throw new TwinBusinessException(403, "无权限：需平台所有者");
+        }
     }
 
     @GetMapping("/visits")
@@ -47,7 +68,10 @@ public class NhpVisitController {
 
     @PostMapping("/visits")
     @Operation(summary = "新建访视时点（可归属某方案）")
-    public Result<CrfVisit> createVisit(@RequestBody Map<String, Object> body) {
+    public Result<CrfVisit> createVisit(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody Map<String, Object> body) {
+        requirePlatformOwner(auth);
         String code = str(body.get("code"));
         if (code == null || code.isBlank()) {
             return Result.fail(400, "TP 码不能为空");
@@ -72,7 +96,10 @@ public class NhpVisitController {
     @DeleteMapping("/visits/{id}")
     @Operation(summary = "删除访视时点（软删 + 同方案剩余时点按 seq 顺排重编号 TP00..TPN）")
     @Transactional
-    public Result<?> deleteVisit(@PathVariable Long id) {
+    public Result<?> deleteVisit(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long id) {
+        requirePlatformOwner(auth);
         CrfVisit v = visitMapper.findById(id);
         if (v == null) return Result.fail(404, "访视不存在");
         Long schemeId = v.getSchemeId();
@@ -80,7 +107,7 @@ public class NhpVisitController {
         // TP 码仅是序号：删除后同方案剩余时点顺排重编号，避免留空档
         List<CrfVisit> rest = visitMapper.listBySchemeId(schemeId);
         for (int i = 0; i < rest.size(); i++) {
-            String code = "TP" + String.format("%02d", i);
+            String code = "TP" + String.format("%02d", i + 1);
             CrfVisit r = rest.get(i);
             if (r.getCode() == null || !code.equals(r.getCode())) {
                 visitMapper.updateCode(r.getId(), code);
@@ -96,8 +123,12 @@ public class NhpVisitController {
     }
 
     @PostMapping("/visit-schemes")
-    @Operation(summary = "新建访视方案")
-    public Result<CrfVisitScheme> createScheme(@RequestBody Map<String, Object> body) {
+    @Operation(summary = "新建访视方案（以默认方案为底版克隆时点）")
+    @Transactional
+    public Result<CrfVisitScheme> createScheme(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody Map<String, Object> body) {
+        requirePlatformOwner(auth);
         String name = str(body.get("name"));
         if (name == null || name.isBlank()) {
             return Result.fail(400, "方案名不能为空");
@@ -110,12 +141,32 @@ public class NhpVisitController {
         s.setDescription(str(body.get("description")));
         s.setActive(true);
         visitSchemeMapper.insert(s);
+        // 以默认方案（scheme_id IS NULL）为底版克隆一份时点，用户再自由修改
+        List<CrfVisit> defaults = visitMapper.listBySchemeId(null);
+        for (CrfVisit d : defaults) {
+            CrfVisit copy = new CrfVisit();
+            copy.setSchemeId(s.getId());
+            copy.setCode(d.getCode());
+            copy.setName(d.getName());
+            copy.setSeq(d.getSeq());
+            copy.setRepeating(d.getRepeating());
+            copy.setPlannedDays(d.getPlannedDays());
+            copy.setEarlyDays(d.getEarlyDays());
+            copy.setLateDays(d.getLateDays());
+            copy.setEndDays(d.getEndDays());
+            copy.setEventAnchor(d.getEventAnchor());
+            copy.setActive(true);
+            visitMapper.insert(copy);
+        }
         return Result.success(visitSchemeMapper.findById(s.getId()));
     }
 
     @PutMapping("/visit-schemes/{id}")
     @Operation(summary = "重命名访视方案")
-    public Result<CrfVisitScheme> updateScheme(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public Result<CrfVisitScheme> updateScheme(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long id, @RequestBody Map<String, Object> body) {
+        requirePlatformOwner(auth);
         CrfVisitScheme s = visitSchemeMapper.findById(id);
         if (s == null) return Result.fail(404, "方案不存在");
         String name = str(body.get("name"));
@@ -126,16 +177,16 @@ public class NhpVisitController {
     }
 
     @DeleteMapping("/visit-schemes/{id}")
-    @Operation(summary = "删除访视方案（无 TP 无项目引用时）")
-    public Result<?> deleteScheme(@PathVariable Long id) {
+    @Operation(summary = "删除访视方案（级联：软删方案 + 其下时点 + 解除项目引用回退默认）")
+    @Transactional
+    public Result<?> deleteScheme(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long id) {
+        requirePlatformOwner(auth);
         CrfVisitScheme s = visitSchemeMapper.findById(id);
         if (s == null) return Result.fail(404, "方案不存在");
-        if (visitSchemeMapper.countVisitsByScheme(id) > 0) {
-            return Result.fail(409, "该方案下仍有访视时点，请先删除或移出");
-        }
-        if (visitSchemeMapper.countProjectsByScheme(id) > 0) {
-            return Result.fail(409, "仍有项目选用该方案，请先改选其它方案");
-        }
+        visitMapper.softDeleteByScheme(id);
+        visitSchemeMapper.unsetProjectsByScheme(id);
         visitSchemeMapper.softDelete(id);
         return Result.success();
     }
@@ -149,7 +200,10 @@ public class NhpVisitController {
 
     @PutMapping("/projects/{projectId}/visit-scheme")
     @Operation(summary = "项目选用访视方案（body.visitSchemeId 空=默认）")
-    public Result<CrfTransplant> setProjectVisitScheme(@PathVariable Long projectId, @RequestBody Map<String, Object> body) {
+    public Result<CrfTransplant> setProjectVisitScheme(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long projectId, @RequestBody Map<String, Object> body) {
+        requirePlatformOwner(auth);
         CrfTransplant tx = transplantMapper.findById(projectId);
         if (tx == null) return Result.fail(404, "项目不存在");
         tx.setVisitSchemeId(asLong(body == null ? null : body.get("visitSchemeId")));
@@ -160,7 +214,10 @@ public class NhpVisitController {
     @PutMapping("/visits/{id}")
     @Operation(summary = "更新访视行（eventAnchor/窗口天数等）")
     @Transactional
-    public Result<CrfVisit> updateVisit(@PathVariable Long id, @RequestBody Map<String, Object> patch) {
+    public Result<CrfVisit> updateVisit(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long id, @RequestBody Map<String, Object> patch) {
+        requirePlatformOwner(auth);
         CrfVisit row = visitMapper.findById(id);
         if (row == null) {
             return Result.fail(404, "访视不存在");
@@ -200,8 +257,11 @@ public class NhpVisitController {
 
     @PutMapping("/visits/{visitId}/plan")
     @Operation(summary = "整体替换访视原子清单（表单-事件指派）")
-    public Result<List<CrfVisitPlan>> replaceVisitPlan(@PathVariable Long visitId,
-                                                       @RequestBody List<Map<String, Object>> atoms) {
+    public Result<List<CrfVisitPlan>> replaceVisitPlan(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long visitId,
+            @RequestBody List<Map<String, Object>> atoms) {
+        requirePlatformOwner(auth);
         return Result.success(visitService.replaceVisitPlan(visitId, atoms));
     }
 
@@ -213,9 +273,12 @@ public class NhpVisitController {
 
     @PutMapping("/projects/{projectId}/visits/{visitId}/plan")
     @Operation(summary = "项目级编排：整体替换该项目某 TP 的表单指派")
-    public Result<List<CrfProjectVisitPlan>> replaceProjectVisitPlan(@PathVariable Long projectId,
-                                                                     @PathVariable Long visitId,
-                                                                     @RequestBody List<Map<String, Object>> atoms) {
+    public Result<List<CrfProjectVisitPlan>> replaceProjectVisitPlan(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long projectId,
+            @PathVariable Long visitId,
+            @RequestBody List<Map<String, Object>> atoms) {
+        requirePlatformOwner(auth);
         return Result.success(visitService.replaceProjectVisitPlan(projectId, visitId, atoms));
     }
 

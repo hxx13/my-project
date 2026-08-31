@@ -10,10 +10,10 @@ import OptionsEditor, { type CodelistOption } from "./OptionsEditor";
 import ShowWhenEditor from "./ShowWhenEditor";
 
 const ROLE_OPTIONS: { value: FieldRole; label: string }[] = [
-  { value: "VALUE", label: "VALUE 采集（码表 / 直填）" },
-  { value: "PK", label: "PK 取号（自动生成，只读）" },
-  { value: "FK", label: "FK 实体（选择器）" },
-  { value: "DERIVED", label: "DERIVED 派生（计算，只读）" },
+  { value: "VALUE", label: "采集值（码表 / 直填）" },
+  { value: "PK", label: "取号（自动生成，只读）" },
+  { value: "FK", label: "关联实体（选择器）" },
+  { value: "DERIVED", label: "派生计算（只读）" },
 ];
 
 interface Props {

@@ -1,6 +1,7 @@
 package com.example.demo.modules.nhp.service;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.nhp.entity.*;
 import com.example.demo.modules.nhp.mapper.*;
@@ -41,6 +42,7 @@ public class NhpGovernanceQueryService {
     private final NhpFieldService fieldService;
     private final UserDisplayNameService userDisplayNameService;
     private final NhpSnapshotService snapshotService;
+    private final NhpPermissionService permissionService;
 
     public NhpGovernanceQueryService(CrfDataAuditLogMapper dataAuditLogMapper,
                                      CrfDictChangeLogMapper dictChangeLogMapper,
@@ -60,7 +62,8 @@ public class NhpGovernanceQueryService {
                                      CrfQueryMapper queryMapper,
                                      NhpFieldService fieldService,
                                      UserDisplayNameService userDisplayNameService,
-                                     NhpSnapshotService snapshotService) {
+                                     NhpSnapshotService snapshotService,
+                                     NhpPermissionService permissionService) {
         this.dataAuditLogMapper = dataAuditLogMapper;
         this.dictChangeLogMapper = dictChangeLogMapper;
         this.snapshotMapper = snapshotMapper;
@@ -80,6 +83,7 @@ public class NhpGovernanceQueryService {
         this.fieldService = fieldService;
         this.userDisplayNameService = userDisplayNameService;
         this.snapshotService = snapshotService;
+        this.permissionService = permissionService;
     }
 
     public List<Map<String, Object>> listDataAuditLog(int limit) {
@@ -261,15 +265,16 @@ public class NhpGovernanceQueryService {
         if (a == null || b == null) {
             return Result.fail(404, "快照不存在");
         }
-        Map<String, Object> left = parseJsonMap(a.getDataJson());
-        Map<String, Object> right = parseJsonMap(b.getDataJson());
+        // 语义：对比「otherId（上一版）→ id（当前）」。a=当前(id) → after，b=上一版(otherId) → before。
+        Map<String, Object> current = parseJsonMap(a.getDataJson());
+        Map<String, Object> previous = parseJsonMap(b.getDataJson());
         Set<String> keys = new TreeSet<>();
-        keys.addAll(left.keySet());
-        keys.addAll(right.keySet());
+        keys.addAll(current.keySet());
+        keys.addAll(previous.keySet());
         List<Map<String, Object>> diffs = new ArrayList<>();
         for (String key : keys) {
-            String before = stringify(left.get(key));
-            String after = stringify(right.get(key));
+            String before = stringify(previous.get(key));
+            String after = stringify(current.get(key));
             if (Objects.equals(before, after)) continue;
             Map<String, Object> d = new LinkedHashMap<>();
             d.put("fieldCode", key);
@@ -421,9 +426,19 @@ public class NhpGovernanceQueryService {
         return out;
     }
 
-    public List<Map<String, Object>> listMyTasks() {
+    /** 记录可见性：平台所有者全见；未归属(teamId=null)全见；否则仅本团队成员见。 */
+    private boolean canViewRecordByTeam(User user, Long recordId) {
+        if (permissionService.isPlatformOwner(user)) return true;
+        Long tid = permissionService.teamIdOfRecord(recordId);
+        if (tid == null) return true;
+        return permissionService.isTeamMember(user, tid);
+    }
+
+    public List<Map<String, Object>> listMyTasks(User user) {
         List<Map<String, Object>> out = new ArrayList<>();
+        boolean nhpExpert = permissionService.isNhpExpert(user);
         for (CrfField f : fieldService.listPendingReview(null)) {
+            if (!nhpExpert) continue; // 字段校对仅 NHP专家
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", f.getId());
             m.put("tab", "FIELD_REVIEW");
@@ -434,6 +449,7 @@ public class NhpGovernanceQueryService {
             out.add(m);
         }
         for (CrfRecord r : recordMapper.listPaged("COMPLETE", null, null, 0, 50)) {
+            if (!canViewRecordByTeam(user, r.getId())) continue;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", r.getId());
             m.put("tab", "SIGN");
@@ -444,6 +460,7 @@ public class NhpGovernanceQueryService {
             out.add(m);
         }
         for (CrfRecord r : recordMapper.listPaged("IN_REVIEW", null, null, 0, 50)) {
+            if (!canViewRecordByTeam(user, r.getId())) continue;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", r.getId());
             m.put("tab", "RECORD_REVIEW");
@@ -454,6 +471,7 @@ public class NhpGovernanceQueryService {
             out.add(m);
         }
         for (CrfQuery q : queryMapper.listOpenRecent(50)) {
+            if (!canViewRecordByTeam(user, q.getRecordId())) continue;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", q.getId());
             m.put("tab", "QUESTION");

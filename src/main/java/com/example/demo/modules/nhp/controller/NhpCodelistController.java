@@ -1,12 +1,12 @@
 package com.example.demo.modules.nhp.controller;
 
 import com.example.demo.common.dto.Result;
-import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.nhp.entity.CrfCodelistItem;
 import com.example.demo.modules.nhp.entity.CrfCodelistLink;
 import com.example.demo.modules.nhp.service.NhpCodelistService;
+import com.example.demo.modules.nhp.service.NhpPermissionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
@@ -20,26 +20,25 @@ import java.util.Map;
 @Tag(name = "NHP 码表", description = "码表版本 + 校对（提交/通过/驳回）+ 引用链")
 public class NhpCodelistController {
 
-    /** 校对通过/驳回：与字段页一致，ADMIN+（PI 角色绑定落地前由管理员代行）。 */
-    private static final RoleEnum REVIEW_MIN_ROLE = RoleEnum.ADMIN;
-
     private final NhpCodelistService service;
     private final AuthContextService authContextService;
+    private final NhpPermissionService permissionService;
 
-    public NhpCodelistController(NhpCodelistService service, AuthContextService authContextService) {
+    public NhpCodelistController(NhpCodelistService service,
+                                 AuthContextService authContextService,
+                                 NhpPermissionService permissionService) {
         this.service = service;
         this.authContextService = authContextService;
+        this.permissionService = permissionService;
     }
 
-    private Result<?> requireMinRole(String authHeader, RoleEnum minRole) {
+    private Result<?> requireNhpExpert(String authHeader) {
         User user = authContextService.resolveUserFromBearer(authHeader);
         if (user == null) {
             return Result.fail(401, "未登录或 Token 无效");
         }
-        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
-        if (role.getLevel() < minRole.getLevel()) {
-            return Result.fail(403, "无权限：需要 " + minRole.getCode()
-                    + " 及以上（码表校对由管理员代行，待 PI 身份标签落地）");
+        if (!permissionService.isNhpExpert(user)) {
+            return Result.fail(403, "无权限：需 NHP专家 身份");
         }
         return null;
     }
@@ -132,7 +131,7 @@ public class NhpCodelistController {
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String code,
             @RequestBody(required = false) Map<String, Object> body) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }
@@ -148,7 +147,7 @@ public class NhpCodelistController {
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String code,
             @RequestBody(required = false) Map<String, Object> body) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }
@@ -163,7 +162,7 @@ public class NhpCodelistController {
     public Result<?> unfreeze(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String code) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }
@@ -176,7 +175,7 @@ public class NhpCodelistController {
     public Result<?> restoreArchived(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String code) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }
@@ -208,7 +207,7 @@ public class NhpCodelistController {
     public Result<?> freeze(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String code) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }
@@ -220,7 +219,7 @@ public class NhpCodelistController {
     @Operation(summary = "批量解冻无字段引用的已冻结码表（软删字段不计占用）")
     public Result<?> unfreezeUnused(
             @RequestHeader(value = "Authorization", required = false) String auth) {
-        Result<?> denied = requireMinRole(auth, REVIEW_MIN_ROLE);
+        Result<?> denied = requireNhpExpert(auth);
         if (denied != null) {
             return denied;
         }
