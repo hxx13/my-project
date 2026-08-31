@@ -157,10 +157,10 @@ export async function createNhpProject(
     .then(({ data }) => data.data);
 }
 
-/** 项目化建实例：为宿主表单建一条未绑定对象的记录（保存时才建研究对象） */
-export async function createNhpRecordForProject(projectId: number, formId: number): Promise<NhpRecord> {
+/** 项目化建实例：为宿主表单建一条未绑定对象的记录（保存时才建研究对象）。记录 createdBy（创建人），供表单级权限判定本人/他人。 */
+export async function createNhpRecordForProject(projectId: number, formId: number, createdBy?: string): Promise<NhpRecord> {
   return authHttp
-    .post<Result<NhpRecord>>(`/nhp/projects/${projectId}/records`, { formId })
+    .post<Result<NhpRecord>>(`/nhp/projects/${projectId}/records`, { formId, createdBy })
     .then(({ data }) => data.data);
 }
 
@@ -187,6 +187,9 @@ export interface NhpProject {
   txDate?: string | null;
   createdBy?: string | null;
   createdAt?: string | null;
+  teamName?: string | null;
+  teamOwnerName?: string | null;
+  teamMemberCount?: number | null;
   donor?: NhpSubject | null;
   recipient?: NhpSubject | null;
 }

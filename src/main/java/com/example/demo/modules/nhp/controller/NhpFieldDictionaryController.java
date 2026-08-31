@@ -1,8 +1,12 @@
 package com.example.demo.modules.nhp.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.nhp.entity.CrfFieldDictionary;
 import com.example.demo.modules.nhp.service.NhpFieldDictionaryService;
+import com.example.demo.modules.nhp.service.NhpPermissionService;
 import com.example.demo.modules.nhp.service.NhpTemplateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -12,7 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** NHP 字段字典套（猪/猴等目录壳）。 */
+/** NHP 字段字典套（猪/猴等目录壳）。写操作：NHP专家准入（暂不细粒度，后续审核机制）。 */
 @RestController
 @RequestMapping("/api/nhp/field-dictionaries")
 @Tag(name = "NHP 字段字典套", description = "字典套列表/新建/更新/软删；字段归属某套，互不覆盖")
@@ -20,10 +24,27 @@ public class NhpFieldDictionaryController {
 
     private final NhpFieldDictionaryService service;
     private final NhpTemplateService templateService;
+    private final AuthContextService authContextService;
+    private final NhpPermissionService permissionService;
 
-    public NhpFieldDictionaryController(NhpFieldDictionaryService service, NhpTemplateService templateService) {
+    public NhpFieldDictionaryController(NhpFieldDictionaryService service,
+                                        NhpTemplateService templateService,
+                                        AuthContextService authContextService,
+                                        NhpPermissionService permissionService) {
         this.service = service;
         this.templateService = templateService;
+        this.authContextService = authContextService;
+        this.permissionService = permissionService;
+    }
+
+    private void requireNhpExpert(String auth) {
+        User user = authContextService.resolveUserFromBearer(auth);
+        if (user == null) {
+            throw new TwinBusinessException(401, "未登录或 Token 无效");
+        }
+        if (!permissionService.isNhpExpert(user)) {
+            throw new TwinBusinessException(403, "无权限：需 NHP专家 身份");
+        }
     }
 
     @GetMapping
@@ -42,27 +63,38 @@ public class NhpFieldDictionaryController {
 
     @PostMapping
     @Operation(summary = "新建字典套")
-    public Result<CrfFieldDictionary> create(@RequestBody Map<String, Object> body) {
+    public Result<CrfFieldDictionary> create(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody Map<String, Object> body) {
+        requireNhpExpert(auth);
         return service.create(body);
     }
 
     @PostMapping("/copy")
     @Operation(summary = "复制字典套（字段文件夹：含大纲 + 字段；字段落 DRAFT v1）")
-    public Result<CrfFieldDictionary> copy(@RequestBody Map<String, Object> body) {
+    public Result<CrfFieldDictionary> copy(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody Map<String, Object> body) {
+        requireNhpExpert(auth);
         return service.copyDictionary(body);
     }
 
     @PutMapping("/{dictKey}")
     @Operation(summary = "更新字典套元数据")
-    public Result<CrfFieldDictionary> update(@PathVariable String dictKey, @RequestBody Map<String, Object> body) {
+    public Result<CrfFieldDictionary> update(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable String dictKey, @RequestBody Map<String, Object> body) {
+        requireNhpExpert(auth);
         return service.update(dictKey, body);
     }
 
     @DeleteMapping("/{dictKey}")
     @Operation(summary = "软删字典套（有字段/原子须 cascade；含 FROZEN 字段拒绝；不硬删猪种子行）")
     public Result<Map<String, Object>> delete(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String dictKey,
             @RequestParam(defaultValue = "false") boolean cascade) {
+        requireNhpExpert(auth);
         return service.delete(dictKey, cascade);
     }
 
@@ -74,101 +106,128 @@ public class NhpFieldDictionaryController {
 
     @PostMapping("/{dictKey}/structure/domains")
     @Operation(summary = "新建数据域（可先于字段）")
-    public Result<Map<String, Object>> addDomain(@PathVariable String dictKey, @RequestBody Map<String, Object> body) {
+    public Result<Map<String, Object>> addDomain(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable String dictKey, @RequestBody Map<String, Object> body) {
+        requireNhpExpert(auth);
         return service.addDomain(dictKey, body);
     }
 
     @PostMapping("/{dictKey}/structure/submodules")
     @Operation(summary = "在数据域下新建子模块")
-    public Result<Map<String, Object>> addSubmodule(@PathVariable String dictKey, @RequestBody Map<String, Object> body) {
+    public Result<Map<String, Object>> addSubmodule(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable String dictKey, @RequestBody Map<String, Object> body) {
+        requireNhpExpert(auth);
         return service.addSubmodule(dictKey, body);
     }
 
     @PatchMapping("/{dictKey}/structure/domains/{domainCode}")
     @Operation(summary = "更新套内数据域显示名（写入 structure_json；默认同步到该套原子/组合章节 label）")
     public Result<Map<String, Object>> renameDomain(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String dictKey,
             @PathVariable String domainCode,
             @RequestBody Map<String, Object> body,
             @RequestParam(defaultValue = "true") boolean syncAtoms) {
+        requireNhpExpert(auth);
         return withOptionalAtomSync(service.renameDomain(dictKey, domainCode, body), dictKey, syncAtoms);
     }
 
     @PutMapping("/{dictKey}/structure/domains/{domainCode}")
     @Operation(summary = "更新套内数据域显示名（PUT，同 PATCH）")
     public Result<Map<String, Object>> renameDomainPut(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String dictKey,
             @PathVariable String domainCode,
             @RequestBody Map<String, Object> body,
             @RequestParam(defaultValue = "true") boolean syncAtoms) {
+        requireNhpExpert(auth);
         return withOptionalAtomSync(service.renameDomain(dictKey, domainCode, body), dictKey, syncAtoms);
     }
 
     @PatchMapping("/{dictKey}/structure/submodules/{submoduleCode:.+}")
     @Operation(summary = "更新子模块显示名（写入 structure_json；默认同步到该套原子/组合章节 label）")
     public Result<Map<String, Object>> renameSubmodule(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String dictKey,
             @PathVariable String submoduleCode,
             @RequestBody Map<String, Object> body,
             @RequestParam(defaultValue = "true") boolean syncAtoms) {
+        requireNhpExpert(auth);
         return withOptionalAtomSync(service.renameSubmodule(dictKey, submoduleCode, body), dictKey, syncAtoms);
     }
 
     @PutMapping("/{dictKey}/structure/submodules/{submoduleCode:.+}")
     @Operation(summary = "更新子模块显示名（PUT，同 PATCH）")
     public Result<Map<String, Object>> renameSubmodulePut(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String dictKey,
             @PathVariable String submoduleCode,
             @RequestBody Map<String, Object> body,
             @RequestParam(defaultValue = "true") boolean syncAtoms) {
+        requireNhpExpert(auth);
         return withOptionalAtomSync(service.renameSubmodule(dictKey, submoduleCode, body), dictKey, syncAtoms);
     }
 
     @PostMapping("/{dictKey}/structure/sync-atom-labels")
     @Operation(summary = "将大纲中文名同步到本套原子/组合模板章节 label（不改字段）")
-    public Result<Map<String, Object>> syncAtomLabels(@PathVariable String dictKey) {
+    public Result<Map<String, Object>> syncAtomLabels(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable String dictKey) {
+        requireNhpExpert(auth);
         return templateService.syncOutlineNamesFromStructure(dictKey);
     }
 
     @DeleteMapping("/{dictKey}/structure/domains/{domainCode}")
     @Operation(summary = "删除套内数据域（空域直接删；有字段须 cascade，含 FROZEN 则拒绝）")
     public Result<Map<String, Object>> deleteDomain(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String dictKey,
             @PathVariable String domainCode,
             @RequestParam(defaultValue = "false") boolean cascade) {
+        requireNhpExpert(auth);
         return service.deleteDomain(dictKey, domainCode, cascade);
     }
 
     @DeleteMapping("/{dictKey}/structure/submodules/{submoduleCode:.+}")
     @Operation(summary = "删除子模块（空壳直接删；有字段须 cascade，含 FROZEN 则拒绝）")
     public Result<Map<String, Object>> deleteSubmodule(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String dictKey,
             @PathVariable String submoduleCode,
             @RequestParam(defaultValue = "false") boolean cascade) {
+        requireNhpExpert(auth);
         return service.deleteSubmodule(dictKey, submoduleCode, cascade);
     }
 
     @PostMapping("/{dictKey}/structure/clone-from/{sourceDictKey}")
     @Operation(summary = "从另一数据域套克隆域/子模块大纲（不复制字段；须显式调用，不会自动带猪 D1–D10）")
     public Result<Map<String, Object>> cloneStructure(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String dictKey,
             @PathVariable String sourceDictKey) {
+        requireNhpExpert(auth);
         return service.cloneStructureFrom(dictKey, sourceDictKey);
     }
 
     @PostMapping("/{dictKey}/structure/domains/copy")
     @Operation(summary = "复制数据域（含子模块大纲 + 字段；字段落 DRAFT v1）")
     public Result<Map<String, Object>> copyDomain(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String dictKey,
             @RequestBody Map<String, Object> body) {
+        requireNhpExpert(auth);
         return service.copyDomain(dictKey, body);
     }
 
     @PostMapping("/{dictKey}/structure/submodules/copy")
     @Operation(summary = "复制子模块（含字段；字段落 DRAFT v1）")
     public Result<Map<String, Object>> copySubmodule(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable String dictKey,
             @RequestBody Map<String, Object> body) {
+        requireNhpExpert(auth);
         return service.copySubmodule(dictKey, body);
     }
 

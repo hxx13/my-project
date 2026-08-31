@@ -1,7 +1,7 @@
 package com.example.demo.modules.nhp.controller;
 
 import com.example.demo.common.dto.Result;
-import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.nhp.entity.CrfRecord;
@@ -10,6 +10,7 @@ import com.example.demo.modules.nhp.entity.CrfTransplant;
 import com.example.demo.modules.nhp.entity.CrfSignature;
 import com.example.demo.modules.nhp.entity.CrfSubject;
 import com.example.demo.modules.nhp.service.NhpAttachmentService;
+import com.example.demo.modules.nhp.service.NhpPermissionService;
 import com.example.demo.modules.nhp.service.NhpRecordService;
 import com.example.demo.modules.team.service.TeamService;
 import com.example.demo.modules.upload.entity.UploadFileRecord;
@@ -34,59 +35,145 @@ import java.util.Map;
 @Tag(name = "NHP 数据采集", description = "研究对象 + 表单实例 + 字段值 EAV + 快照")
 public class NhpRecordController {
 
-    /** 与内容管理壳一致：删除/改身份标识需 ADMIN+。 */
-    private static final RoleEnum DELETE_MIN_ROLE = RoleEnum.ADMIN;
-
     private final NhpRecordService service;
     private final NhpAttachmentService attachmentService;
     private final UploadFileService uploadFileService;
     private final AuthContextService authContextService;
     private final TeamService teamService;
+    private final NhpPermissionService permissionService;
 
     public NhpRecordController(NhpRecordService service,
                                NhpAttachmentService attachmentService,
                                UploadFileService uploadFileService,
                                AuthContextService authContextService,
-                               TeamService teamService) {
+                               TeamService teamService,
+                               NhpPermissionService permissionService) {
         this.service = service;
         this.attachmentService = attachmentService;
         this.uploadFileService = uploadFileService;
         this.authContextService = authContextService;
         this.teamService = teamService;
+        this.permissionService = permissionService;
     }
 
-    private Result<?> requireMinRole(String authHeader, RoleEnum minRole) {
-        User user = authContextService.resolveUserFromBearer(authHeader);
+    private Result<?> requireManagePerm(String auth, Long teamId, String ownerId) {
+        User user = authContextService.resolveUserFromBearer(auth);
         if (user == null) {
             return Result.fail(401, "未登录或 Token 无效");
         }
-        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
-        if (role.getLevel() < minRole.getLevel()) {
-            return Result.fail(403, "无权限：需要 " + minRole.getCode() + " 及以上");
+        if (permissionService.isTeamOwner(user, teamId)) {
+            return null;
         }
-        return null;
+        if (ownerId != null && ownerId.equals(user.getId())) {
+            return null;
+        }
+        return Result.fail(403, "无权限：需平台所有者/团队负责人/本人");
+    }
+
+    private void requireProjectRead(String auth, Long projectId) {
+        User user = authContextService.resolveUserFromBearer(auth);
+        if (user == null) {
+            throw new TwinBusinessException(401, "未登录或 Token 无效");
+        }
+        if (!permissionService.isTeamMember(user, permissionService.teamIdOfProject(projectId))) {
+            throw new TwinBusinessException(403, "无权限：非本团队成员");
+        }
+    }
+
+    private void requireProjectManage(String auth, Long projectId) {
+        User user = authContextService.resolveUserFromBearer(auth);
+        if (user == null) {
+            throw new TwinBusinessException(401, "未登录或 Token 无效");
+        }
+        if (!permissionService.canManageTeam(user, permissionService.teamIdOfProject(projectId))) {
+            throw new TwinBusinessException(403, "无权限：需平台所有者/团队负责人/管理员");
+        }
+    }
+
+    private void requireProjectOwner(String auth, Long projectId) {
+        User user = authContextService.resolveUserFromBearer(auth);
+        if (user == null) {
+            throw new TwinBusinessException(401, "未登录或 Token 无效");
+        }
+        if (!permissionService.isTeamOwner(user, permissionService.teamIdOfProject(projectId))) {
+            throw new TwinBusinessException(403, "无权限：需平台所有者/团队负责人");
+        }
+    }
+
+    private void requireRecordRead(String auth, Long recordId) {
+        User user = authContextService.resolveUserFromBearer(auth);
+        if (user == null) {
+            throw new TwinBusinessException(401, "未登录或 Token 无效");
+        }
+        if (!permissionService.hasRecordCapability(user, recordId, "crf:view")) {
+            throw new TwinBusinessException(403, "无权限：角色无「查看」能力");
+        }
+        String formKey = permissionService.formKeyOfRecord(recordId);
+        String owner = permissionService.createdByOfRecord(recordId);
+        if (permissionService.canViewRecord(user, recordId, formKey, owner)) {
+            return;
+        }
+        throw new TwinBusinessException(403, "无权限：表单权限不允许查看");
+    }
+
+    private void requireRecordEdit(String auth, Long recordId) {
+        User user = authContextService.resolveUserFromBearer(auth);
+        if (user == null) {
+            throw new TwinBusinessException(401, "未登录或 Token 无效");
+        }
+        if (!permissionService.hasRecordCapability(user, recordId, "crf:edit")) {
+            throw new TwinBusinessException(403, "无权限：角色无「编辑」能力");
+        }
+        String formKey = permissionService.formKeyOfRecord(recordId);
+        String owner = permissionService.createdByOfRecord(recordId);
+        if (permissionService.canEditRecord(user, recordId, formKey, owner)) {
+            return;
+        }
+        throw new TwinBusinessException(403, "无权限：表单锁定或权限不允许编辑");
+    }
+
+    private void requireRecordFreeze(String auth, Long recordId) {
+        User user = authContextService.resolveUserFromBearer(auth);
+        if (user == null) {
+            throw new TwinBusinessException(401, "未登录或 Token 无效");
+        }
+        if (!permissionService.hasRecordCapability(user, recordId, "crf:freeze")) {
+            throw new TwinBusinessException(403, "无权限：角色无「冻结」能力");
+        }
+    }
+
+    private void requireDelete(String auth, Long teamId) {
+        User user = authContextService.resolveUserFromBearer(auth);
+        if (user == null) {
+            throw new TwinBusinessException(401, "未登录或 Token 无效");
+        }
+        if (!permissionService.hasCapability(user, teamId, "crf:delete")) {
+            throw new TwinBusinessException(403, "无权限：角色无「删除」能力");
+        }
     }
 
     @GetMapping("/subjects")
     @Operation(summary = "研究对象分页列表")
     public Result<Map<String, Object>> listSubjects(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @RequestParam(required = false) String subjectType,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.listSubjects(subjectType, status, q, page, size);
+        return service.listSubjects(authContextService.resolveUserFromBearer(auth), subjectType, status, q, page, size);
     }
 
     @GetMapping("/records")
     @Operation(summary = "表单实例分页列表（可浏览续填）")
     public Result<Map<String, Object>> listRecords(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long subjectId,
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.listRecords(status, subjectId, q, page, size);
+        return service.listRecords(authContextService.resolveUserFromBearer(auth), status, subjectId, q, page, size);
     }
 
     @PostMapping("/subjects")
@@ -142,19 +229,29 @@ public class NhpRecordController {
 
     @GetMapping("/projects/{id}")
     @Operation(summary = "项目详情")
-    public Result<?> getProject(@PathVariable Long id) {
+    public Result<?> getProject(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long id) {
+        requireProjectRead(auth, id);
         return service.updateProject(id, null);
     }
 
     @PutMapping("/projects/{id}")
     @Operation(summary = "回填项目计划书字段（编号/名称/备注/团队/器官/术式/手术日/状态）")
-    public Result<CrfTransplant> updateProject(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public Result<CrfTransplant> updateProject(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long id, @RequestBody Map<String, Object> body) {
+        requireProjectManage(auth, id);
         return service.updateProject(id, body);
     }
 
     @DeleteMapping("/projects/{id}")
     @Operation(summary = "删除空项目（有表单实例则拒绝）")
-    public Result<?> deleteProject(@PathVariable Long id) {
+    public Result<?> deleteProject(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long id) {
+        requireProjectOwner(auth, id);
+        requireDelete(auth, permissionService.teamIdOfProject(id));
         return service.deleteProject(id);
     }
 
@@ -166,7 +263,10 @@ public class NhpRecordController {
 
     @GetMapping("/projects/{projectId}/records")
     @Operation(summary = "项目名下全部表单实例")
-    public Result<Map<String, Object>> listProjectRecords(@PathVariable Long projectId) {
+    public Result<Map<String, Object>> listProjectRecords(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long projectId) {
+        requireProjectRead(auth, projectId);
         return service.listProjectRecords(projectId);
     }
 
@@ -182,7 +282,7 @@ public class NhpRecordController {
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long subjectId,
             @RequestBody Map<String, Object> body) {
-        Result<?> denied = requireMinRole(auth, DELETE_MIN_ROLE);
+        Result<?> denied = requireManagePerm(auth, permissionService.teamIdOfSubject(subjectId), null);
         if (denied != null) return denied;
         return service.updateSubject(subjectId, body);
     }
@@ -193,7 +293,7 @@ public class NhpRecordController {
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long subjectId,
             @RequestBody Map<String, Object> body) {
-        Result<?> denied = requireMinRole(auth, DELETE_MIN_ROLE);
+        Result<?> denied = requireManagePerm(auth, permissionService.teamIdOfSubject(subjectId), null);
         if (denied != null) return denied;
         return service.advanceStage(subjectId, body);
     }
@@ -204,8 +304,9 @@ public class NhpRecordController {
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long subjectId,
             @RequestParam(defaultValue = "false") boolean cascade) {
-        Result<?> denied = requireMinRole(auth, DELETE_MIN_ROLE);
+        Result<?> denied = requireManagePerm(auth, permissionService.teamIdOfSubject(subjectId), null);
         if (denied != null) return denied;
+        requireDelete(auth, permissionService.teamIdOfSubject(subjectId));
         return service.deleteSubject(subjectId, cascade);
     }
 
@@ -214,8 +315,9 @@ public class NhpRecordController {
     public Result<?> deleteRecord(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long recordId) {
-        Result<?> denied = requireMinRole(auth, DELETE_MIN_ROLE);
+        Result<?> denied = requireManagePerm(auth, permissionService.teamIdOfRecord(recordId), permissionService.createdByOfRecord(recordId));
         if (denied != null) return denied;
+        requireDelete(auth, permissionService.teamIdOfRecord(recordId));
         return service.deleteRecord(recordId);
     }
 
@@ -227,19 +329,28 @@ public class NhpRecordController {
 
     @GetMapping("/records/{recordId}")
     @Operation(summary = "表单实例详情（含值与快照数）")
-    public Result<Map<String, Object>> recordDetail(@PathVariable Long recordId) {
+    public Result<Map<String, Object>> recordDetail(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long recordId) {
+        requireRecordRead(auth, recordId);
         return service.recordDetail(recordId);
     }
 
     @GetMapping("/records/{recordId}/values")
     @Operation(summary = "字段值 map（fieldCode→value）")
-    public Result<Map<String, Object>> listValues(@PathVariable Long recordId) {
+    public Result<Map<String, Object>> listValues(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long recordId) {
+        requireRecordRead(auth, recordId);
         return service.listValues(recordId);
     }
 
     @PutMapping("/records/{recordId}/values")
     @Operation(summary = "批量 upsert 字段值（EAV）")
-    public Result<?> upsertValues(@PathVariable Long recordId, @RequestBody Map<String, Object> body) {
+    public Result<?> upsertValues(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long recordId, @RequestBody Map<String, Object> body) {
+        requireRecordEdit(auth, recordId);
         Object values = body == null ? null : body.get("values");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> list = values instanceof List ? (List<Map<String, Object>>) values : null;
@@ -249,14 +360,19 @@ public class NhpRecordController {
 
     @PutMapping("/records/{recordId}/status")
     @Operation(summary = "更新状态（COMPLETE/LOCKED 自动打快照）")
-    public Result<CrfRecord> updateStatus(@PathVariable Long recordId, @RequestBody Map<String, Object> body) {
+    public Result<CrfRecord> updateStatus(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @PathVariable Long recordId, @RequestBody Map<String, Object> body) {
+        requireRecordFreeze(auth, recordId);
         return service.updateStatus(recordId, body);
     }
 
     @PostMapping("/records/{recordId}/snapshots")
     @Operation(summary = "手动创建不可变快照")
     public Result<CrfRecordSnapshot> createSnapshot(
+            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long recordId, @RequestBody(required = false) Map<String, Object> body) {
+        requireRecordEdit(auth, recordId);
         return service.createSnapshot(recordId, body);
     }
 

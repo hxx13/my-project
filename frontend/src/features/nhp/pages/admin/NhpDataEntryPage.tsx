@@ -1,5 +1,5 @@
 /**
- * NHP 数据采集 — 内容管理侧：/#/content-manager/nhp-entry/:id
+ * NHP 数据采集 — 内容管理侧：/#/nhp-admin/entry/:id
  * 无 :id → 与门户共用选/登记对象入口；有 :id → 缓冲页 / 工作台。
  */
 import { useParams } from "react-router-dom";

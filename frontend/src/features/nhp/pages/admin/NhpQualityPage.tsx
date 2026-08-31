@@ -34,7 +34,7 @@ function eventTypeTone(v: string): "danger" | "warn" | "ok" | undefined {
 }
 
 export default function NhpQualityPage() {
-  const goBack = useGoBack("/content-manager/nhp-template");
+  const goBack = useGoBack("/nhp-admin/template");
   const [typeFilter, setTypeFilter] = useState("");
 
   const eventsQuery = useQuery({ queryKey: ["nhp", "quality-events"], queryFn: fetchNhpQualityEvents });

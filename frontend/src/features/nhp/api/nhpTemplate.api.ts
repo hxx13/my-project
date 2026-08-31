@@ -261,6 +261,13 @@ export async function createNhpTemplateDraft(formKey: string): Promise<NhpFormTe
     .then(({ data }) => data.data);
 }
 
+/** 复制模板到团队名下（body.teamId 空则复制为 _COPY） */
+export async function copyNhpTemplate(formKey: string, teamId?: number | null): Promise<NhpFormTemplate> {
+  return authHttp
+    .post<Result<NhpFormTemplate>>(`/nhp/templates/${encodeURIComponent(formKey)}/copy`, teamId ? { teamId } : {})
+    .then(({ data }) => data.data);
+}
+
 /** 新建空白组合模板草稿（v1 DRAFT，首存即落库） */
 export async function createNhpCompositeDraft(title = "新建组合模板"): Promise<NhpFormTemplate> {
   const formKey = `nhp-crftpl-${Date.now().toString(36)}`;

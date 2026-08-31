@@ -71,7 +71,7 @@ function parseStatusFilter(raw: string | null): StatusFilter | null {
 /** 仅猪套种子参考名；其它数据域套勿默认套用 */
 const PIG_DOMAIN_HINTS: { code: string; label: string }[] = [
   { code: "D1", label: "供体猪域" },
-  { code: "D2", label: "受体 NHP 域" },
+  { code: "D2", label: "受体猴域" },
   { code: "D3", label: "配型与手术域" },
   { code: "D4", label: "样本与检测域" },
   { code: "D5", label: "随访与事件域" },
@@ -80,7 +80,7 @@ const PIG_DOMAIN_HINTS: { code: string; label: string }[] = [
   { code: "D8", label: "病理诊断域" },
   { code: "D9", label: "心脏移植模块" },
   { code: "D10", label: "体外肝灌注模块" },
-  { code: "D11", label: "平台治理域" },
+  { code: "D11", label: "公共数据层" },
   { code: "D12", label: "标准与版本域" },
   { code: "D13", label: "用户与权限域" },
 ];
@@ -214,7 +214,7 @@ export default function NhpFieldWorkbench({ onBack }: NhpFieldWorkbenchProps) {
 
   useEffect(() => {
     if (!dictKey) {
-      navigate("/content-manager/nhp-template", { replace: true });
+      navigate("/nhp-admin/template", { replace: true });
     }
   }, [dictKey, navigate]);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1077,7 +1077,7 @@ export default function NhpFieldWorkbench({ onBack }: NhpFieldWorkbenchProps) {
       navigate(rt, { replace: true });
       return;
     }
-    navigate("/content-manager/nhp-field", { replace: true });
+    navigate("/nhp-admin/field", { replace: true });
   };
 
   const toolbarExtra = (

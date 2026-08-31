@@ -16,7 +16,7 @@ import "@/features/aup/aup.css";
 import "../../nhp.css";
 
 export default function NhpStandardPage() {
-  const goBack = useGoBack("/content-manager/nhp-template");
+  const goBack = useGoBack("/nhp-admin/template");
 
   const standardsQuery = useQuery({ queryKey: ["nhp", "standards"], queryFn: fetchNhpStandards });
   const standards = useMemo(() => standardsQuery.data ?? [], [standardsQuery.data]);

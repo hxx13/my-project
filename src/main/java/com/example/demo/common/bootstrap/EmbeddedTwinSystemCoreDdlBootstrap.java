@@ -286,9 +286,20 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-nhp-template-section-code.sql", ctx)) success++;
         // 访视方案：方案表 + crf_visit.scheme_id + crf_transplant.visit_scheme_id
         total++; if (runScript("db/bootstrap-nhp-visit-scheme.sql", ctx)) success++;
+        // 访视时点 code 唯一键：全局 (code) → (scheme_id, code)，支持多方案各自拥有 TP01..TP12
+        total++; if (runScript("db/bootstrap-nhp-visit-code-uk.sql", ctx)) success++;
         // 字段版本：uk_crf_field_code → (field_code, version)
         total++; if (runScript("db/bootstrap-nhp-field-version.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-nhp-attachment.sql", ctx)) success++;
+        // NHP 权限体系：能力字典 + 通用授权矩阵（泛化 crf_form_role）
+        total++; if (runScript("db/bootstrap-nhp-capability.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-nhp-permission.sql", ctx)) success++;
+        // 团队归属补列 + 码表种子标记（frozen_by）
+        total++; if (runScript("db/bootstrap-nhp-team-id.sql", ctx)) success++;
+        // 表单级访问设置（锁定/查看/编辑组合）
+        total++; if (runScript("db/bootstrap-nhp-form-access.sql", ctx)) success++;
+        // 团队角色字典（内置 6 角色 + 团队自定义）
+        total++; if (runScript("db/bootstrap-nhp-team-role.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");

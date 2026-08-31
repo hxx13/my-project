@@ -41,7 +41,7 @@ const NHP_SPECIFIC_TEMPLATES: FieldTemplate[] = [
         label: "受体猴",
         type: "select",
         required: true,
-        description: "关联 D2 受体 NHP 域（RCP-XXX）",
+        description: "关联 D2 受体猴域（RCP-XXX）",
       },
     ],
   },

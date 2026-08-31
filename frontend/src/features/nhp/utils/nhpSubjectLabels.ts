@@ -9,7 +9,7 @@ export function animalTypeLabel(t?: string | null): string {
 
 export function animalTypeLongLabel(t?: string | null): string {
   const u = (t || "").toUpperCase();
-  if (u === "DONOR") return "供体动物";
-  if (u === "RECIPIENT") return "受体动物";
+  if (u === "DONOR") return "供体猪";
+  if (u === "RECIPIENT") return "受体猴";
   return t || "动物";
 }

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
-import { createTeam, type TeamSummary, type TeamVisibility } from "@/api/domains/team.api";
+import { acceptTeamInvite, createTeam, declineTeamInvite, fetchMyInvites, requestTeamJoin, type TeamSummary, type TeamVisibility } from "@/api/domains/team.api";
 import { useTeams } from "./hooks/useTeams";
 import "@/features/aup/aup.css";
 
@@ -116,8 +116,11 @@ function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
 export default function TeamListPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
-  const goBack = useGoBack("/content-manager/content");
+  const inAdmin = location.pathname.startsWith("/nhp-admin");
+  const teamBase = inAdmin ? "/nhp-admin/team" : "/nhp-team";
+  const goBack = useGoBack(inAdmin ? "/nhp-admin/template" : "/content-manager/content");
 
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
@@ -128,6 +131,32 @@ export default function TeamListPage() {
   const rows: TeamSummary[] = data?.list ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const joinMut = useMutation({
+    mutationFn: (teamId: number) => requestTeamJoin(teamId, { personnelId: 0 }),
+    onSuccess: () => {
+      toast.success("已提交申请，等待管理员审核");
+      void qc.invalidateQueries({ queryKey: ["team", "list"] });
+    },
+    onError: (e: Error) => toast.error(e.message || "申请失败"),
+  });
+
+  const myInvitesQuery = useQuery({ queryKey: ["team", "my-invites"], queryFn: fetchMyInvites });
+  const invites = myInvitesQuery.data ?? [];
+  const invalidateInvites = () => {
+    void qc.invalidateQueries({ queryKey: ["team", "my-invites"] });
+    void qc.invalidateQueries({ queryKey: ["team", "list"] });
+  };
+  const acceptMut = useMutation({
+    mutationFn: acceptTeamInvite,
+    onSuccess: () => { toast.success("已接受邀请"); invalidateInvites(); },
+    onError: (e: Error) => toast.error(e.message || "操作失败"),
+  });
+  const declineMut = useMutation({
+    mutationFn: declineTeamInvite,
+    onSuccess: () => { toast.success("已拒绝邀请"); invalidateInvites(); },
+    onError: (e: Error) => toast.error(e.message || "操作失败"),
+  });
 
   return (
     <div className="aup-app aup-app--workbench">
@@ -146,6 +175,33 @@ export default function TeamListPage() {
             </button>
           </div>
         </div>
+
+        {invites.length > 0 && (
+          <div className="aup-wb-panel" style={{ marginBottom: 12 }}>
+            <div className="aup-wb-panel-hd">
+              <span className="title">我收到的邀请</span>
+              <span className="aup-wb-chip">{invites.length}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {invites.map((inv) => (
+                <div key={inv.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{inv.teamName}</div>
+                    <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 2 }}>
+                      {inv.message || "邀请你加入团队"} · {inv.createdAt ? inv.createdAt.replace("T", " ").slice(0, 16) : ""}
+                    </div>
+                  </div>
+                  <button type="button" className="btn primary small" disabled={acceptMut.isPending} onClick={() => acceptMut.mutate(inv.id)}>
+                    接受
+                  </button>
+                  <button type="button" className="btn ghost small" disabled={declineMut.isPending} onClick={() => declineMut.mutate(inv.id)}>
+                    拒绝
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="aup-wb-toolbar">
           <input
@@ -181,16 +237,20 @@ export default function TeamListPage() {
                   <th>成员数</th>
                   <th>创建者</th>
                   <th>创建时间</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((t) => {
                   const st = statusMeta(t.status);
+                  const isMember = !!t.myRole;
+                  if (!isMember && t.visibility !== "PUBLIC") return null;
                   return (
                     <tr
                       key={t.id}
                       className="row"
-                      onClick={() => navigate(`/content-manager/nhp-team/${t.id}`)}
+                      onClick={isMember ? () => navigate(`${teamBase}/${t.id}`) : undefined}
+                      style={isMember ? undefined : { cursor: "default" }}
                     >
                       <td className="proj-name">{t.name}</td>
                       <td style={{ color: "var(--muted)", maxWidth: 320 }}>{t.description || "—"}</td>
@@ -203,6 +263,20 @@ export default function TeamListPage() {
                       <td>{t.memberCount}</td>
                       <td>{t.ownerName || "—"}</td>
                       <td style={{ color: "var(--muted)" }}>{fmt(t.createdAt)}</td>
+                      <td>
+                        {isMember ? (
+                          <span style={{ color: "var(--muted)", fontSize: 12 }}>已加入</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn primary small"
+                            disabled={joinMut.isPending}
+                            onClick={(e) => { e.stopPropagation(); joinMut.mutate(t.id); }}
+                          >
+                            申请加入
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -237,7 +311,7 @@ export default function TeamListPage() {
           onCreated={(id) => {
             setCreateOpen(false);
             void qc.invalidateQueries({ queryKey: ["team", "list"] });
-            navigate(`/content-manager/nhp-team/${id}`);
+            navigate(`${teamBase}/${id}`);
           }}
         />
       )}

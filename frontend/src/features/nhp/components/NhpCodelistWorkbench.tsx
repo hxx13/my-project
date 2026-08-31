@@ -890,7 +890,7 @@ export default function NhpCodelistWorkbench({ onBack, backLabel }: NhpCodelistW
       navigate(buildNhpFieldPagePath(fromDictKey, { fieldCode: fc || null }), { replace: true });
       return;
     }
-    navigate("/content-manager/nhp-template", { replace: true });
+    navigate("/nhp-admin/template", { replace: true });
   };
 
   const row = (label: string, input: ReactNode) => (
@@ -1398,8 +1398,8 @@ export default function NhpCodelistWorkbench({ onBack, backLabel }: NhpCodelistW
                   ? `${f.dictName || f.dictKey}（${f.dictKey}）`
                   : "未归属字典套";
                 const fieldHref = f.dictKey
-                  ? `/content-manager/nhp-field/${encodeURIComponent(f.dictKey)}?fieldCode=${encodeURIComponent(f.fieldCode)}`
-                  : `/content-manager/nhp-field?fieldCode=${encodeURIComponent(f.fieldCode)}`;
+                  ? `/nhp-admin/field/${encodeURIComponent(f.dictKey)}?fieldCode=${encodeURIComponent(f.fieldCode)}`
+                  : `/nhp-admin/field?fieldCode=${encodeURIComponent(f.fieldCode)}`;
                 return (
                   <div
                     key={f.fieldId}
@@ -1498,6 +1498,9 @@ export default function NhpCodelistWorkbench({ onBack, backLabel }: NhpCodelistW
           )}
           {toolbarExtra}
           <span className="aup-wb-count">{countText}</span>
+          <Link to="/nhp-admin/codelist-review" className="btn ghost small" style={{ flexShrink: 0 }}>
+            码表审核 ▸
+          </Link>
         </div>
 
         <div className="aup-wb-split aup-wb-split--wide-aside">

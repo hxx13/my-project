@@ -4,8 +4,10 @@
  */
 import { useNavigate } from "react-router-dom";
 import { useNhpProjectWorkspace } from "../hooks/useNhpProjectWorkspace";
-import { CAPTURE_FORM_OPTIONS } from "../api/nhpVisit.api";
 import type { NhpProject } from "../api/nhpRecord.api";
+import { isCompositeTemplate, type NhpTemplateListItem } from "../api/nhpTemplate.api";
+import type { NhpProjectVisitPlan } from "../api/nhpVisit.api";
+import NhpTemplateStructurePreview from "./NhpTemplateStructurePreview";
 import { appConfirm } from "@/lib/appDialog";
 import "../nhp.css";
 
@@ -15,7 +17,9 @@ type Props = {
 };
 
 function captureFormLabel(cf?: string | null): string {
-  return CAPTURE_FORM_OPTIONS.find((o) => o.value === cf)?.label ?? cf ?? "事件面板";
+  if (cf === "LEDGER") return "台账";
+  if (cf === "SERIES") return "序列网格";
+  return ""; // PANEL / 未配置 = 普通表单，不额外标注
 }
 
 function recordStatusLabel(status?: string): string {
@@ -33,9 +37,54 @@ function isDraftStatus(status?: string): boolean {
   return s === "DRAFT" || s === "IN_REVIEW" || s === "";
 }
 
+function FormRecordList({
+  recs,
+  fillPath,
+  onDelete,
+}: {
+  recs: { id: number; status: string; subjectCode?: string }[];
+  fillPath: (id: number) => void;
+  onDelete: (id: number) => void;
+}) {
+  if (recs.length === 0) return null;
+  return (
+    <div className="nhp-form-records">
+      {recs.map((r) => (
+        <div key={r.id} className="nhp-form-record-row">
+          <span className="nhp-form-record-meta">
+            {r.subjectCode || `#${r.id}`}
+            {" · "}
+            {recordStatusLabel(r.status)}
+          </span>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button type="button" className="btn ghost small" onClick={() => fillPath(r.id)}>
+              {isDraftStatus(r.status) ? "续填" : "查看"}
+            </button>
+            <button
+              type="button"
+              className="btn danger small"
+              onClick={async () => {
+                if (await appConfirm(`删除实例「${r.subjectCode || `#${r.id}`}」？此操作不可恢复。`, { danger: true })) {
+                  onDelete(r.id);
+                }
+              }}
+            >
+              删除
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function NhpProjectWorkspace({ project, mode = "portal" }: Props) {
   const navigate = useNavigate();
   const w = useNhpProjectWorkspace(project, mode);
+
+  const expanded = w.expandedFormKey
+    ? w.activeForms.find((x) => x.form.formKey === w.expandedFormKey)
+    : undefined;
 
   return (
     <div className="nhp-project-workspace">
@@ -43,7 +92,6 @@ export default function NhpProjectWorkspace({ project, mode = "portal" }: Props)
         {w.visits.map((v) => {
           const isCur = v.code === project.currentTp;
           const isActive = v.code === w.activeTp;
-          const count = w.plansByVisit.get(v.id)?.length ?? 0;
           return (
             <div
               key={v.id}
@@ -51,15 +99,7 @@ export default function NhpProjectWorkspace({ project, mode = "portal" }: Props)
               onClick={() => w.setSelectedTp(v.code)}
             >
               <span className="tp-code">{v.code}</span>
-              <span className="tp-main">
-                <span className="tp-name">{v.name}</span>
-                <span className="tp-meta">
-                  {v.plannedDays != null ? `D+${v.plannedDays}` : ""}
-                  {v.plannedDays != null && count > 0 ? " · " : ""}
-                  {count > 0 ? `${count} 表单` : "未配置"}
-                </span>
-              </span>
-              <span className="tp-count">{count}</span>
+              <span className="tp-name">{v.name}</span>
             </div>
           );
         })}
@@ -67,11 +107,6 @@ export default function NhpProjectWorkspace({ project, mode = "portal" }: Props)
 
       <div className="nhp-workspace-main">
         <div className="aup-wb-panel">
-          <div className="aup-wb-panel-hd">
-            <span className="title">{w.activeVisit ? `${w.activeVisit.code} · ${w.activeVisit.name}` : "表单"}</span>
-            <span className="aup-wb-chip muted">{w.activeForms.length} 个表单</span>
-          </div>
-
           {w.loading ? (
             <div style={{ padding: 24, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>加载表单…</div>
           ) : w.activeForms.length === 0 ? (
@@ -84,68 +119,51 @@ export default function NhpProjectWorkspace({ project, mode = "portal" }: Props)
             <div className="nhp-form-list">
               {w.activeForms.map(({ plan, form }) => {
                 const recs = w.recordsByFormKey.get(form.formKey) ?? [];
+                const isExpanded = w.expandedFormKey === form.formKey;
+                const isHidden = w.expandedFormKey != null && !isExpanded;
                 return (
-                  <div key={`${plan.id ?? form.formId}-${w.activeVisit?.id}`} className="nhp-form-tile nhp-form-tile--col">
+                  <div
+                    key={`${plan.id ?? form.formId}-${w.activeVisit?.id}`}
+                    className={`nhp-form-tile nhp-form-tile--col${isExpanded ? " selected" : ""}`}
+                    style={isHidden ? { display: "none" } : undefined}
+                    onClick={() => w.setExpandedFormKey(form.formKey)}
+                  >
                     <div className="nhp-form-tile-hd">
                       <div className="nhp-form-tile-main">
                         <div className="nhp-form-tile-title">
                           {form.title || form.formKey}
-                          <span className="aup-wb-chip muted" style={{ fontSize: 11 }}>
-                            {captureFormLabel(plan.captureForm)}
-                          </span>
+                          {captureFormLabel(plan.captureForm) ? (
+                            <span className="aup-wb-chip muted" style={{ fontSize: 11 }}>
+                              {captureFormLabel(plan.captureForm)}
+                            </span>
+                          ) : null}
                         </div>
                         <div className="nhp-form-tile-sub">
-                          <span className="nhp-form-tile-key">{form.formKey}</span>
-                          {recs.length > 0 ? (
-                            <span className="aup-wb-chip">{recs.length} 份</span>
-                          ) : (
-                            <span className="aup-wb-chip muted">暂无记录</span>
-                          )}
+                          {isCompositeTemplate(form) ? "组合快照" : "数据域原子"} · v{form.publishedVersion ?? form.version} · {recs.length} 份记录
                         </div>
                       </div>
-                      <div className="nhp-form-tile-acts">
-                        <button
-                          type="button"
-                          className="btn primary small"
-                          disabled={w.busy === form.formKey}
-                          onClick={() => w.onCreate(form, plan.captureForm)}
-                        >
-                          {w.busy === form.formKey ? "…" : "＋ 新建"}
-                        </button>
-                      </div>
+                      {!isExpanded && (
+                        <div className="nhp-form-tile-acts">
+                          <button
+                            type="button"
+                            className="btn primary small"
+                            disabled={w.busy === form.formKey}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              w.onCreate(form, plan.captureForm);
+                            }}
+                          >
+                            {w.busy === form.formKey ? "…" : "＋ 新建"}
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {recs.length > 0 && (
-                      <div className="nhp-form-records">
-                        {recs.map((r) => (
-                          <div key={r.id} className="nhp-form-record-row">
-                            <span className="nhp-form-record-meta">
-                              {r.subjectCode || `#${r.id}`}
-                              {" · "}
-                              {recordStatusLabel(r.status)}
-                            </span>
-                            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                              <button
-                                type="button"
-                                className="btn ghost small"
-                                onClick={() => navigate(w.fillPath(r.id, form.formKey, plan.captureForm))}
-                              >
-                                {isDraftStatus(r.status) ? "续填" : "查看"}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn danger small"
-                                onClick={async () => {
-                                  if (await appConfirm(`删除实例「${r.subjectCode || `#${r.id}`}」？此操作不可恢复。`, { danger: true })) {
-                                    w.deleteRecord(r.id);
-                                  }
-                                }}
-                              >
-                                删除
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                    {!isExpanded && (
+                      <FormRecordList
+                        recs={recs}
+                        fillPath={(id) => navigate(w.fillPath(id, form.formKey, plan.captureForm))}
+                        onDelete={w.deleteRecord}
+                      />
                     )}
                   </div>
                 );
@@ -153,6 +171,40 @@ export default function NhpProjectWorkspace({ project, mode = "portal" }: Props)
             </div>
           )}
         </div>
+
+        {w.expandedFormKey && expanded && (
+          <div className="aup-wb-panel nhp-form-expanded">
+            <div className="nhp-form-expanded-hd">
+              <div className="nhp-form-tile-title">
+                {expanded.form.title || expanded.form.formKey}
+                {captureFormLabel(expanded.plan.captureForm) ? (
+                  <span className="aup-wb-chip muted" style={{ fontSize: 11 }}>
+                    {captureFormLabel(expanded.plan.captureForm)}
+                  </span>
+                ) : null}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  className="btn primary small"
+                  disabled={w.busy === expanded.form.formKey}
+                  onClick={() => w.onCreate(expanded.form, expanded.plan.captureForm)}
+                >
+                  {w.busy === expanded.form.formKey ? "…" : "＋ 新建"}
+                </button>
+                <button type="button" className="btn ghost small" onClick={() => w.setExpandedFormKey(null)}>
+                  × 收起
+                </button>
+              </div>
+            </div>
+            <NhpTemplateStructurePreview template={w.expandedTemplate} />
+            <FormRecordList
+              recs={w.recordsByFormKey.get(expanded.form.formKey) ?? []}
+              fillPath={(id) => navigate(w.fillPath(id, expanded.form.formKey, expanded.plan.captureForm))}
+              onDelete={w.deleteRecord}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 /**
  * NHP CRF 流程前门：配置模板 → 填报入口登记/选对象开填；研究对象与表单实例为运维。
- * 入口：/#/content-manager/nhp-hub
+ * 入口：/#/nhp-admin/hub
  */
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -24,7 +24,7 @@ type Counts = {
 
 export default function NhpWorkflowHubPage() {
   const location = useLocation();
-  const goBack = useGoBack("/content-manager/nhp-template");
+  const goBack = useGoBack("/nhp-admin/template");
   const [counts, setCounts] = useState<Counts | null>(null);
   const [latestDraftId, setLatestDraftId] = useState<number | null>(null);
   const [conceptCount, setConceptCount] = useState<number | null>(null);
@@ -81,7 +81,7 @@ export default function NhpWorkflowHubPage() {
     !counts || counts.published === 0
       ? {
           label: "去发布原子/组合",
-          to: "/content-manager/nhp-template",
+          to: "/nhp-admin/template",
           hint: "尚无已发布模板。可发布单个原子为独立表单，或组合后发布；列表头若是草稿但有「已发布」徽标仍可开填。",
         }
       : counts.subjects === 0
@@ -114,7 +114,7 @@ export default function NhpWorkflowHubPage() {
               ? `有原子 ${counts.atoms} / 组合 ${counts.composites}，待发布`
               : "尚未配置原子/组合",
       done: (counts?.published ?? 0) > 0,
-      to: "/content-manager/nhp-template",
+      to: "/nhp-admin/template",
       cta: "打开 CRF 模板（原子/组合）",
     },
     {
@@ -125,7 +125,7 @@ export default function NhpWorkflowHubPage() {
       done: (counts?.subjects ?? 0) > 0,
       to: "/nhp/fill",
       cta: "填报入口",
-      secondaryTo: "/content-manager/nhp-subjects",
+      secondaryTo: "/nhp-admin/subjects",
       secondaryCta: "研究对象（维护）",
     },
     {
@@ -136,7 +136,7 @@ export default function NhpWorkflowHubPage() {
       done: (counts?.records ?? 0) > 0,
       to: "/nhp/fill",
       cta: "打开门户填写",
-      secondaryTo: "/content-manager/nhp-records",
+      secondaryTo: "/nhp-admin/records",
       secondaryCta: "表单实例",
     },
     {
@@ -178,7 +178,7 @@ export default function NhpWorkflowHubPage() {
           <Link to="/nhp/fill" className="btn ghost small" style={{ textDecoration: "none" }}>
             门户填写
           </Link>
-          <Link to="/content-manager/nhp-records" className="btn ghost small" style={{ textDecoration: "none" }} state={nhpNavState(location)}>
+          <Link to="/nhp-admin/records" className="btn ghost small" style={{ textDecoration: "none" }} state={nhpNavState(location)}>
             表单实例
           </Link>
           <button type="button" className="btn ghost small" disabled={seeding} onClick={() => void onSeed()}>

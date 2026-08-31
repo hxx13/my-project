@@ -115,15 +115,19 @@ export default function NhpFillEntryGate({ mode = "portal" }: Props) {
             <h2>{projectTitle}</h2>
             <div className="nhp-project-header-badges">
               {selected.status ? <span className="aup-wb-chip">{selected.status}</span> : null}
-              <span className="aup-wb-chip muted">{selected.stageLock ? "阶段锁定" : "仅作进度指示"}</span>
             </div>
           </div>
           <div className="nhp-project-header-meta">
             <span>编号 <b>{selected.txCode ?? "待编号"}</b></span>
-            <span>当前 TP <b>{selected.currentTp ?? "自动推算"}</b></span>
+            {selected.currentTp ? <span>当前 TP <b>{selected.currentTp}</b></span> : null}
             {selected.txDate ? <span>手术日 <b>{selected.txDate}</b></span> : null}
             {selected.txOrgan ? <span>器官 <b>{selected.txOrgan}</b></span> : null}
             {selected.procedureType ? <span>术式 <b>{selected.procedureType}</b></span> : null}
+            <span>
+              所属团队 {selected.teamName ? <b>{selected.teamName}</b> : <b>未关联团队</b>}
+              {selected.teamName && selected.teamMemberCount != null ? ` ${selected.teamMemberCount} 人` : ""}
+            </span>
+            <span>负责人 <b>{selected.createdBy || "—"}</b></span>
           </div>
           {selected.remark ? <div className="nhp-project-header-remark">{selected.remark}</div> : null}
         </div>
@@ -259,11 +263,11 @@ export default function NhpFillEntryGate({ mode = "portal" }: Props) {
 
         {isAdmin && (
           <div style={{ marginTop: 20, fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
-            <Link to="/content-manager/nhp-records" className="nhp-admin-preview-link">
+            <Link to="/nhp-admin/records" className="nhp-admin-preview-link">
               项目管理
             </Link>
             {" · "}
-            <Link to="/content-manager/nhp-event-assignment" className="nhp-admin-preview-link">
+            <Link to="/nhp-admin/event-assignment" className="nhp-admin-preview-link">
               采集方案
             </Link>
           </div>

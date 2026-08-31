@@ -340,6 +340,8 @@ export interface FolderTreeManagerProps<T extends FolderTreeItem = FolderTreeIte
   onCopyFolder?: (folderKey: string) => void;
   onDeleteFolder?: (folderKey: string) => void;
   onMoveItem?: (itemId: string, fromFolderKey: string, toFolderKey: string) => void;
+  onCopyItem?: (itemId: string, folderKey: string) => void;
+  onDeleteItem?: (itemId: string, folderKey: string) => void;
   /** 按文件夹节点配置可用操作 */
   folderActions?: (folderKey: string, depth: number) => FolderAction[];
   /** @deprecated 使用 folderActions */
@@ -394,6 +396,8 @@ export default function FolderTreeManager<T extends FolderTreeItem = FolderTreeI
   onCopyFolder,
   onDeleteFolder,
   onMoveItem,
+  onCopyItem,
+  onDeleteItem,
   folderActions: folderActionsProp,
   getFolderActions,
   itemActions = defaultItemActions,
@@ -551,6 +555,23 @@ export default function FolderTreeManager<T extends FolderTreeItem = FolderTreeI
                     itemLabel: getItemLabel?.(item) || item.id,
                   });
                 },
+              });
+            }
+            if (canMaintain && onCopyItem && rowActions.includes("copy")) {
+              itemEntries.push({
+                action: "copy",
+                label: labels.copyFolder,
+                icon: ICON.copy,
+                onClick: () => onCopyItem(item.id, group.key),
+              });
+            }
+            if (canMaintain && onDeleteItem && rowActions.includes("delete")) {
+              itemEntries.push({
+                action: "delete",
+                label: labels.deleteFolder,
+                icon: ICON.delete,
+                danger: true,
+                onClick: () => onDeleteItem(item.id, group.key),
               });
             }
             const extraClass = itemRowClassName?.(item, group.key, { selected }) ?? "";

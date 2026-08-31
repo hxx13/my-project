@@ -1,5 +1,6 @@
 package com.example.demo.modules.nhp.controller;
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.nhp.entity.CrfConcept;
 import com.example.demo.modules.nhp.entity.CrfTodo;
 import com.example.demo.modules.nhp.service.NhpQueryService;
@@ -14,8 +15,10 @@ import java.util.Map;
 @Tag(name = "NHP 读侧查询", description = "概念序列 / 待办 / 审核任务")
 public class NhpQueryController {
     private final NhpQueryService queryService;
-    public NhpQueryController(NhpQueryService queryService) {
+    private final AuthContextService authContextService;
+    public NhpQueryController(NhpQueryService queryService, AuthContextService authContextService) {
         this.queryService = queryService;
+        this.authContextService = authContextService;
     }
     @GetMapping({"/listSeries", "/series"})
     @Operation(summary = "序列网格（有/无 conceptCode；形状 {indicators,rows}）")
@@ -38,8 +41,9 @@ public class NhpQueryController {
     }
     @GetMapping("/listMyTasks")
     @Operation(summary = "审核中心四 tab 队列")
-    public Result<List<Map<String, Object>>> listMyTasks() {
-        return queryService.listMyTasks();
+    public Result<List<Map<String, Object>>> listMyTasks(
+            @RequestHeader(value = "Authorization", required = false) String auth) {
+        return queryService.listMyTasks(authContextService.resolveUserFromBearer(auth));
     }
 
 

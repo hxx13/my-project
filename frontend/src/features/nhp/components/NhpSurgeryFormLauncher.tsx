@@ -102,7 +102,7 @@ export default function NhpSurgeryFormLauncher({ projectId, records, mode = "por
     if (formKey) q.set("formKey", formKey);
     if (captureForm) q.set("captureForm", captureForm);
     const qs = q.toString();
-    const base = isAdmin ? `/content-manager/nhp-entry/${id}` : `/nhp/fill/${id}`;
+    const base = isAdmin ? `/nhp-admin/entry/${id}` : `/nhp/fill/${id}`;
     return qs ? `${base}?${qs}` : base;
   };
 

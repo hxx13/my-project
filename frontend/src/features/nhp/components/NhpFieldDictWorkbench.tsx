@@ -67,7 +67,7 @@ export default function NhpFieldDictWorkbench({ onBack }: NhpFieldDictWorkbenchP
       setCreateOpen(false);
       setDictKey("");
       setName("");
-      navigate(`/content-manager/nhp-field/${d.dictKey}`, { state: nhpNavState(location) });
+      navigate(`/nhp-admin/field/${d.dictKey}`, { state: nhpNavState(location) });
     },
     onError: (e: Error) => toast.error(e.message || "创建失败"),
   });
@@ -238,7 +238,7 @@ export default function NhpFieldDictWorkbench({ onBack }: NhpFieldDictWorkbenchP
       navigate(rt, { replace: true });
       return;
     }
-    navigate("/content-manager/nhp-template", { replace: true });
+    navigate("/nhp-admin/template", { replace: true });
   };
 
   const toolbarExtra = (
@@ -272,7 +272,7 @@ export default function NhpFieldDictWorkbench({ onBack }: NhpFieldDictWorkbenchP
         ＋ 新建数据域套
       </button>
       <Link
-        to="/content-manager/nhp-codelist"
+        to="/nhp-admin/codelist"
         state={nhpNavState(location)}
         className="btn ghost small"
         style={{ textDecoration: "none" }}
@@ -395,7 +395,7 @@ export default function NhpFieldDictWorkbench({ onBack }: NhpFieldDictWorkbenchP
                       type="button"
                       className="btn primary small"
                       onClick={() =>
-                        navigate(`/content-manager/nhp-field/${d.dictKey}`, { state: nhpNavState(location) })
+                        navigate(`/nhp-admin/field/${d.dictKey}`, { state: nhpNavState(location) })
                       }
                     >
                       管理结构与字段 ▸

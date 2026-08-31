@@ -28,6 +28,9 @@ public interface CrfVisitMapper {
     @Update("UPDATE crf_visit SET active = 0 WHERE id = #{id}")
     int softDelete(@Param("id") Long id);
 
+    @Update("UPDATE crf_visit SET active = 0 WHERE scheme_id = #{schemeId} AND active = 1")
+    int softDeleteByScheme(@Param("schemeId") Long schemeId);
+
     @Update("UPDATE crf_visit SET code = #{code} WHERE id = #{id}")
     int updateCode(@Param("id") Long id, @Param("code") String code);
 
@@ -42,8 +45,13 @@ public interface CrfVisitMapper {
     @Select("SELECT * FROM crf_visit WHERE id = #{id}")
     CrfVisit findById(Long id);
 
-    @Select("SELECT * FROM crf_visit WHERE code = #{code}")
+    @Select("SELECT * FROM crf_visit WHERE code = #{code} LIMIT 1")
     CrfVisit findByCode(String code);
+
+    @Select("<script>SELECT * FROM crf_visit WHERE active = 1 AND code = #{code} " +
+            "<choose><when test='schemeId != null'>AND scheme_id = #{schemeId}</when>" +
+            "<otherwise>AND scheme_id IS NULL</otherwise></choose> ORDER BY seq LIMIT 1</script>")
+    CrfVisit findBySchemeAndCode(@Param("schemeId") Long schemeId, @Param("code") String code);
 
     @Select("SELECT * FROM crf_visit WHERE active = 1 ORDER BY seq")
     List<CrfVisit> list();

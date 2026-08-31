@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
+import { authStorage } from "@/features/auth/authStorage";
 import {
   createNhpRecordForProject,
   deleteNhpRecord,
@@ -12,6 +12,8 @@ import {
 import {
   assignableFormId,
   fetchAssignableNhpTemplates,
+  fetchNhpTemplateById,
+  fillableFormId,
   indexTemplatesByFormId,
   type NhpTemplateListItem,
 } from "../api/nhpTemplate.api";
@@ -19,12 +21,13 @@ import { fetchNhpProjectVisitPlans, fetchNhpProjectVisitScheme, fetchNhpVisits, 
 
 export function useNhpProjectWorkspace(project: NhpProject | null, mode: "portal" | "adminPreview" = "portal") {
   const qc = useQueryClient();
-  const navigate = useNavigate();
-  const [selectedTp, setSelectedTp] = useState<string | null>(null);
+  const [selectedTp, setSelectedTpState] = useState<string | null>(null);
+  const [expandedFormKey, setExpandedFormKey] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draftTp, setDraftTp] = useState<string | null>(project?.currentTp ?? null);
   const [draftLock, setDraftLock] = useState<boolean>(project?.stageLock === true);
+  const operatorId = authStorage.getUserInfo()?.id?.trim() || undefined;
 
   const projectSchemeQuery = useQuery({
     queryKey: ["nhp", "project-visit-scheme", project?.id],
@@ -39,12 +42,14 @@ export function useNhpProjectWorkspace(project: NhpProject | null, mode: "portal
     queryKey: ["nhp", "project-visit-plans", project?.id],
     queryFn: () => fetchNhpProjectVisitPlans(project!.id),
     enabled: project != null,
+    staleTime: 0,
   });
   const formsQuery = useQuery({ queryKey: ["nhp", "assignable-templates"], queryFn: fetchAssignableNhpTemplates });
   const recordsQuery = useQuery({
     queryKey: ["nhp", "project-records", project?.id],
     queryFn: () => fetchNhpProjectRecords(project!.id),
     enabled: project != null,
+    staleTime: 0,
   });
 
   const visits = useMemo(() => [...(visitsQuery.data ?? [])].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)), [visitsQuery.data]);
@@ -84,6 +89,26 @@ export function useNhpProjectWorkspace(project: NhpProject | null, mode: "portal
       .sort((a, b) => (a.plan.sortOrder ?? 0) - (b.plan.sortOrder ?? 0));
   }, [activeVisit, plansByVisit, formById]);
 
+  /** 切换 TP 时收起就地展开（避免跨 TP 残留上一个表单的详情）。 */
+  const setSelectedTp = (tp: string | null) => {
+    setSelectedTpState(tp);
+    setExpandedFormKey(null);
+  };
+
+  const expandedForm = expandedFormKey
+    ? activeForms.find((x) => x.form.formKey === expandedFormKey)?.form
+    : undefined;
+
+  const expandedTemplateQuery = useQuery({
+    queryKey: [
+      "nhp",
+      "template-by-id",
+      expandedForm ? fillableFormId(expandedForm) ?? expandedForm.formId : null,
+    ],
+    queryFn: () => fetchNhpTemplateById(fillableFormId(expandedForm!) ?? expandedForm!.formId),
+    enabled: expandedForm != null,
+  });
+
   /** formKey → 该表单在本项目的全部实例（同一表单可反复「新建」多条记录）。 */
   const recordsByFormKey = useMemo(() => {
     const m = new Map<string, { id: number; status: string; subjectCode?: string; subjectType?: string }[]>();
@@ -103,21 +128,21 @@ export function useNhpProjectWorkspace(project: NhpProject | null, mode: "portal
 
   const fillPath = (id: number, formKey?: string, captureForm?: string | null) => {
     const q = new URLSearchParams();
+    q.set("enter", "1");
     if (formKey) q.set("formKey", formKey);
     if (captureForm) q.set("captureForm", captureForm);
-    const qs = q.toString();
-    const base = mode === "adminPreview" ? `/content-manager/nhp-entry/${id}` : `/nhp/fill/${id}`;
-    return qs ? `${base}?${qs}` : base;
+    const base = mode === "adminPreview" ? `/nhp-admin/entry/${id}` : `/nhp/fill/${id}`;
+    return `${base}?${q.toString()}`;
   };
 
-  const onCreate = async (form: NhpTemplateListItem, captureForm?: string | null) => {
+  const onCreate = async (form: NhpTemplateListItem, _captureForm?: string | null) => {
     if (!project) return;
     const formId = assignableFormId(form);
     setBusy(form.formKey);
     try {
-      const r = await createNhpRecordForProject(project.id, formId);
-      toast.success(`已创建实例 #${r.id}`);
-      navigate(fillPath(r.id, form.formKey, captureForm));
+      const r = await createNhpRecordForProject(project.id, formId, operatorId);
+      toast.success(`已创建草稿 #${r.id}，点击「续填」进入`);
+      qc.invalidateQueries({ queryKey: ["nhp", "project-records", project.id] });
     } catch (e) {
       toast.error((e as Error).message || "创建实例失败");
     } finally {
@@ -146,6 +171,9 @@ export function useNhpProjectWorkspace(project: NhpProject | null, mode: "portal
     recordsByFormKey,
     selectedTp,
     setSelectedTp,
+    expandedFormKey,
+    setExpandedFormKey,
+    expandedTemplate: expandedTemplateQuery.data,
     busy,
     loading,
     onCreate,

@@ -120,7 +120,7 @@ export default function NhpFillWorkbench({
 }: {
   mode?: "portal" | "adminPreview";
 }) {
-  const goBack = useGoBack(mode === "adminPreview" ? "/content-manager/nhp-records" : "/nhp/fill", {
+  const goBack = useGoBack(mode === "adminPreview" ? "/nhp-admin/records" : "/nhp/fill", {
     preferHistory: mode !== "adminPreview",
   });
   const navigate = useNavigate();
@@ -128,7 +128,7 @@ export default function NhpFillWorkbench({
   const { id: routeId } = useParams<{ id?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const snapshotViewId = searchParams.get("snapshot");
-  const entered = searchParams.get("enter") === "1";
+  const entered = searchParams.get("enter") !== "0";
   /** 采集形态（表单-事件指派级）：PANEL 长表单 / SERIES 序列网格 / LEDGER 台账 */
   const captureForm = (searchParams.get("captureForm") || "PANEL").toUpperCase();
 
@@ -181,12 +181,6 @@ export default function NhpFillWorkbench({
   const locked = (record?.status || "").toUpperCase() === "LOCKED";
   const canEdit = !locked && !snapshotViewId && stageEditable;
   const statusUp = (record?.status || "").toUpperCase();
-
-  const enterFill = () => {
-    const next = new URLSearchParams(searchParams);
-    next.set("enter", "1");
-    setSearchParams(next, { replace: true });
-  };
 
   useEffect(() => {
     setListLoading(true);
@@ -742,12 +736,6 @@ export default function NhpFillWorkbench({
     goBack();
   };
 
-  const exitToLanding = () => {
-    const next = new URLSearchParams(searchParams);
-    next.delete("enter");
-    setSearchParams(next, { replace: true });
-  };
-
   const primarySubmit =
     canEdit && record && entryPass === 1
       ? statusUp === "DRAFT"
@@ -789,73 +777,9 @@ export default function NhpFillWorkbench({
     );
   }
 
-  /* ---------- 有 :id 但未 enter：缓冲页（对齐 AUP aup-landing，文案克制） ---------- */
-  if (!entered) {
-    if (detailLoading && !record) {
-      return <div className="aup-empty">加载表单实例…</div>;
-    }
-    const ctaLabel =
-      statusUp === "LOCKED" || statusUp === "COMPLETE" || snapshotViewId
-        ? "查看表单"
-        : Object.keys(values).some((k) => hasFieldValue(values[k]))
-          ? "继续填写"
-          : "开始填写";
-    const subjectLine = subject
-      ? `${animalTypeLabel(subject.subjectType)} ${subject.subjectCode}`
-      : "对象加载中…";
-    return (
-      <div className="aup-landing-wrap">
-        <div className="aup-landing">
-        <button type="button" className="btn ghost small aup-landing-back" onClick={goBackList}>
-          ← 返回
-        </button>
-        <h2>准备填写</h2>
-        <ol className="nhp-fill-process" aria-label="采集流程" style={{ marginBottom: 20 }}>
-          <li className="done">
-            <span className="n">1</span>
-            <span className="t">选择 / 登记对象</span>
-          </li>
-          <li className="done">
-            <span className="n">2</span>
-            <span className="t">选择模板 / 实例</span>
-          </li>
-          <li className="on">
-            <span className="n">3</span>
-            <span className="t">开始填写</span>
-          </li>
-        </ol>
-        <div className="aup-landing-desc" style={{ textAlign: "center", marginBottom: 24 }}>
-          <strong style={{ color: "var(--text)", fontSize: 15 }}>
-            {subjectLine}
-            {" · "}
-            {formKey || formTitle}
-            {" · "}
-            {statusLabel(record?.status)}
-          </strong>
-          <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
-            {template?.title ? template.title : "表单实例"}
-          </div>
-        </div>
-        <div className="aup-landing-cta">
-          <button type="button" className="btn primary" onClick={enterFill}>
-            {ctaLabel}
-          </button>
-          <Link
-            to={mode === "adminPreview" ? "/content-manager/nhp-entry" : "/nhp/fill"}
-            className="btn ghost"
-            style={{ textDecoration: "none" }}
-          >
-            重选对象
-          </Link>
-          {mode === "adminPreview" && (
-            <Link to="/content-manager/nhp-records" className="nhp-admin-preview-link" style={{ alignSelf: "center" }}>
-              表单实例
-            </Link>
-          )}
-        </div>
-        </div>
-      </div>
-    );
+  /* ---------- 记录加载中：等待（已删除「准备填写」缓冲页，从草稿直接进填单） ---------- */
+  if (detailLoading && !record) {
+    return <div className="aup-empty">加载表单实例…</div>;
   }
 
   /* ---------- 正式填写工作台 ---------- */
@@ -909,11 +833,10 @@ export default function NhpFillWorkbench({
                 门户正式填写
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={exitToLanding}>回缓冲页</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Link
-          to={mode === "adminPreview" ? "/content-manager/nhp-records" : "/nhp/fill"}
+          to={mode === "adminPreview" ? "/nhp-admin/records" : "/nhp/fill"}
           className="btn ghost small"
           style={{ textDecoration: "none" }}
         >

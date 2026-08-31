@@ -1,9 +1,9 @@
 /**
  * NHP 表单发布：已发布组合 / 原子模板列表 + 版本预览。
- * 字段字典为父源（/#/content-manager/nhp-field）；本页仅管理呈现层发布与版本。
+ * 字段字典为父源（/#/nhp-admin/field）；本页仅管理呈现层发布与版本。
  */
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
@@ -12,6 +12,7 @@ import {
   createNhpAtom,
   createNhpCompositeDraft,
   createNhpTemplateDraft,
+  copyNhpTemplate,
   deleteNhpTemplateAllVersions,
   deleteNhpTemplateVersion,
   fetchNhpTemplateById,
@@ -31,6 +32,7 @@ import {
 import NhpTemplateStructurePreview from "../../components/NhpTemplateStructurePreview";
 import { AtomPickList, buildDomainNameMap } from "../../utils/nhpAtomDisplay";
 import { fetchNhpDictStructure } from "../../api/nhpFieldDictionary.api";
+import { fetchTeams } from "@/api/domains/team.api";
 import { statusLabel } from "../../store/editorUtils";
 import { nhpNavState } from "../../utils/nhpAdminNav";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
@@ -71,6 +73,17 @@ function itemKindLabel(t: NhpTemplateListItem): string {
   return templateKind(t) === "COMPOSITE" ? "组合模板" : "原子模板";
 }
 
+/** 列表行统一状态文案（收敛为单 chip，避免组合/原子各一套状态拼法） */
+function listStatusText(t: NhpTemplateListItem): string {
+  if (templateKind(t) === "COMPOSITE") {
+    return t.hasPublished && !isPublished(t.status) ? "草稿·有发布" : statusLabel(t.status);
+  }
+  if (t.locked) return "已锁定";
+  if (isPublished(t.status)) return "已发布";
+  if (t.hasPublished) return "草稿·有发布";
+  return "草稿";
+}
+
 function suiteBadgeLabel(dictKey?: string | null): string {
   const k = (dictKey || "").trim() || "pig";
   if (k === "pig") return "猪字典";
@@ -107,7 +120,7 @@ function formatPinRefs(refs: NhpAtomReferencedBy[] | undefined): string {
 }
 
 function editPath(formKey: string, formId?: number): string {
-  const base = `/content-manager/nhp-template/edit/${encodeURIComponent(formKey)}`;
+  const base = `/nhp-admin/template/edit/${encodeURIComponent(formKey)}`;
   return formId != null ? `${base}/${formId}` : base;
 }
 
@@ -150,11 +163,27 @@ function buildFormFolderTree(folders: AupFolderVO[], templates: NhpTemplateListI
 export default function NhpTemplateListPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const goBack = useGoBack("/content-manager/nhp-template");
+  const goBack = useGoBack("/nhp-admin/template");
   const qc = useQueryClient();
-  const [publishFilter, setPublishFilter] = useState<PublishFilter>("PUBLISHED");
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const publishFilter: PublishFilter = searchParams.get("status") === "ALL" ? "ALL" : "PUBLISHED";
+  const selectedKey = searchParams.get("formKey") ?? null;
   const [previewFormId, setPreviewFormId] = useState<number | null>(null);
+
+  // tab 与选中项写进 URL，返回时经 returnTo 恢复浏览位置
+  const setPublishFilter = (v: PublishFilter) => {
+    const next = new URLSearchParams(searchParams);
+    if (v === "ALL") next.set("status", "ALL");
+    else next.delete("status");
+    next.delete("formKey");
+    setSearchParams(next, { replace: true });
+  };
+  const setSelectedKey = (key: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (key) next.set("formKey", key);
+    else next.delete("formKey");
+    setSearchParams(next, { replace: true });
+  };
   const [selectedFormKeys, setSelectedFormKeys] = useState<Set<string>>(new Set());
   const [atomOpen, setAtomOpen] = useState(false);
   const [atomFormKey, setAtomFormKey] = useState("");
@@ -230,8 +259,10 @@ export default function NhpTemplateListPage() {
   );
 
   const openCompositeInList = (formKey: string, formId?: number) => {
-    setPublishFilter("ALL");
-    setSelectedKey(formKey);
+    const next = new URLSearchParams(searchParams);
+    next.set("status", "ALL");
+    next.set("formKey", formKey);
+    setSearchParams(next, { replace: true });
     if (formId != null) setPreviewFormId(formId);
   };
 
@@ -346,6 +377,23 @@ export default function NhpTemplateListPage() {
     onError: (e: Error) => toast.error(e.message || "新建版本失败"),
   });
 
+  const copyMutation = useMutation({
+    mutationFn: (args: { formKey: string; teamId: number | null }) => copyNhpTemplate(args.formKey, args.teamId),
+    onSuccess: (t) => {
+      toast.success(`已复制为「${t.formKey}」，可在此基础上修改`);
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message || "复制失败"),
+  });
+
+  const [copyPendingFormKey, setCopyPendingFormKey] = useState<string | null>(null);
+  const [copyTeamId, setCopyTeamId] = useState<number | null>(null);
+  const myTeamsQuery = useQuery({
+    queryKey: ["team", "my"] as const,
+    queryFn: async () => (await fetchTeams(1, 100)).list.filter((t) => !!t.myRole),
+  });
+  const myTeams = myTeamsQuery.data ?? [];
+
   const deleteVersionMutation = useMutation({
     mutationFn: (formId: number) => deleteNhpTemplateVersion(formId),
     onSuccess: (d) => {
@@ -454,6 +502,22 @@ export default function NhpTemplateListPage() {
   const handleMoveForm = (formKey: string, _from: string, toKey: string) => {
     moveFolderMut.mutate({ formKey, folderId: folderIdOf(toKey) ?? null });
   };
+  const handleCopyForm = async (itemId: string) => {
+    if (!(await appConfirm("复制整份表单（含全部版本，复制后全部变草稿），在此基础上修改不影响原模板。确认？"))) return;
+    if (myTeams.length === 0) {
+      copyMutation.mutate({ formKey: itemId, teamId: null });
+    } else if (myTeams.length === 1) {
+      copyMutation.mutate({ formKey: itemId, teamId: myTeams[0].id });
+    } else {
+      setCopyPendingFormKey(itemId);
+      setCopyTeamId(myTeams[0].id);
+    }
+  };
+  const handleDeleteForm = async (itemId: string) => {
+    if (await appConfirm(`删除「${itemId}」的全部版本？被填写实例/组合钉住引用的版本会跳过。确认？`, { danger: true })) {
+      deleteAllMutation.mutate(itemId);
+    }
+  };
 
   const previewOrigin = previewQuery.data?.origin ?? versions.find((v) => v.formId === previewFormId)?.origin;
   const previewVersion = previewQuery.data?.version ?? versions.find((v) => v.formId === previewFormId)?.version;
@@ -476,7 +540,6 @@ export default function NhpTemplateListPage() {
                 className={`nhp-template-tab${publishFilter === f.value ? " on" : ""}`}
                 onClick={() => {
                   setPublishFilter(f.value);
-                  setSelectedKey(null);
                   setPreviewFormId(null);
                 }}
               >
@@ -548,7 +611,7 @@ export default function NhpTemplateListPage() {
             <button
               type="button"
               className="btn ghost small"
-              onClick={() => navigate("/content-manager/nhp-field", { state: nhpNavState(location) })}
+              onClick={() => navigate("/nhp-admin/field", { state: nhpNavState(location) })}
               title="维护字段字典（域/子模块/字段）"
             >
               🗂️ 管理字段
@@ -586,13 +649,13 @@ export default function NhpTemplateListPage() {
               }}
               renderItem={(item) => {
                 const t = item.t;
-                const origin = versionOriginLabel(t.origin);
                 const k = templateKind(t);
                 const metaKey = k === "ATOM" ? atomListMetaKey(t) : t.formKey;
-                const rowSuite = (t.dictKey || "").trim() || "pig";
+                const hostType = t.hostType === "DONOR" ? "供体" : t.hostType === "RECIPIENT" ? "受体" : "";
+                const isPub = isPublished(t.status);
                 return (
                   <div
-                    style={{ flex: 1, display: "flex", alignItems: "center", minWidth: 0 }}
+                    style={{ flex: 1, display: "flex", alignItems: "center", minWidth: 0, gap: 8 }}
                     title={t.description || t.title}
                   >
                     <input
@@ -600,60 +663,47 @@ export default function NhpTemplateListPage() {
                       checked={selectedFormKeys.has(t.formKey)}
                       onChange={() => toggleSelect(t.formKey)}
                       onClick={(e) => e.stopPropagation()}
-                      style={{ marginRight: 8, flexShrink: 0, cursor: "pointer", accentColor: "var(--primary, #002FA7)" }}
+                      style={{ flexShrink: 0, cursor: "pointer", accentColor: "var(--primary, #002FA7)" }}
                       title="勾选以批量删除"
                     />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="lbl" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                        <span className={suiteBadgeClass(rowSuite)}>{suiteBadgeLabel(rowSuite)}</span>
-                        <span className="nhp-kind-chip">{itemKindLabel(t)}</span>
-                        {t.hostType === "DONOR" || t.hostType === "RECIPIENT" ? (
-                          <span className="aup-wb-chip muted" style={{ fontSize: 10 }}>
-                            {t.hostType === "DONOR" ? "供体载体" : "受体载体"}
-                          </span>
-                        ) : null}
-                        <span>{t.title || t.formKey}</span>
+                      <div className="lbl" style={{ fontWeight: 600, fontSize: 13 }}>
+                        {t.title || t.formKey}
                       </div>
-                      <div className="meta" style={{ marginTop: 2, fontFamily: "ui-monospace, monospace" }}>
-                        {metaKey} · v{t.version ?? "—"}
-                        {origin ? ` · ${origin}` : ""}
+                      <div className="meta" style={{ marginTop: 1, fontSize: 11, color: "var(--muted)" }}>
+                        {itemKindLabel(t)}
+                        <span style={{ fontFamily: "ui-monospace, monospace", marginLeft: 4 }}>{metaKey}</span>
+                        <span style={{ marginLeft: 4 }}>v{t.version ?? "—"}</span>
+                        {hostType ? <span style={{ marginLeft: 4 }}>· {hostType}</span> : null}
                         {k === "COMPOSITE" && (t.atoms?.length ?? t.atomCount)
-                          ? ` · ${t.atoms?.length ?? t.atomCount} 原子`
-                          : ""}
-                        {t.hasPublished && !isPublished(t.status)
-                          ? ` · 已发布 v${t.publishedVersion ?? "?"}`
-                          : ""}
+                          ? <span style={{ marginLeft: 4 }}>· {t.atoms?.length ?? t.atomCount} 原子</span>
+                          : null}
                       </div>
                     </div>
-                    {k === "COMPOSITE" ? (
-                      <span className="aup-wb-chip muted">
-                        {statusLabel(t.status)}
-                        {t.hasPublished && !isPublished(t.status) ? "·有发布" : ""}
-                      </span>
-                    ) : t.locked ? (
-                      <span className="aup-wb-chip muted">已锁定</span>
-                    ) : isPublished(t.status) ? (
-                      <span className="aup-wb-chip" style={{ background: "#e8f7ee", color: "#16a34a" }}>
-                        已发布
-                      </span>
-                    ) : t.hasPublished ? (
-                      <span className="aup-wb-chip muted">草稿·有发布</span>
-                    ) : (
-                      <span className="aup-wb-chip" style={{ background: "#eef2ff", color: "#002FA7" }}>
-                        草稿
-                      </span>
-                    )}
+                    <span
+                      className="aup-wb-chip"
+                      style={{
+                        flexShrink: 0,
+                        background: isPub ? "#e8f7ee" : t.locked ? "#f1f5f9" : "#eef2ff",
+                        color: isPub ? "#16a34a" : t.locked ? "#64748b" : "#002FA7",
+                      }}
+                    >
+                      {listStatusText(t)}
+                    </span>
                   </div>
                 );
               }}
               onMoveItem={handleMoveForm}
               onCreateFolder={() => handleCreateFolder()}
               onCreateSubFolder={(folderKey) => handleCreateFolder(folderKey)}
+              onCreateItem={() => setAtomOpen(true)}
               onRenameFolder={handleRenameFolder}
               onDeleteFolder={handleDeleteFolder}
-              folderActions={() => ["createFolder", "rename", "delete"]}
+              onCopyItem={handleCopyForm}
+              onDeleteItem={handleDeleteForm}
+              folderActions={() => ["createItem", "createFolder", "rename", "delete"]}
               labels={FORM_FOLDER_LABELS}
-              itemActions={() => ["moveItem"]}
+              itemActions={() => ["copy", "moveItem", "delete"]}
             />
           </aside>
 
@@ -662,21 +712,25 @@ export default function NhpTemplateListPage() {
 
             {selected && selectedKind && (
               <div className="aup-wb-panel nhp-template-detail">
-                <div className="aup-wb-panel-hd">
-                  <span className="title">{selected.title || selected.formKey}</span>
-                  <span className="aup-wb-chip">{itemKindLabel(selected)}</span>
-                  <span className="aup-wb-chip" style={{ fontFamily: "ui-monospace, monospace" }}>
-                    {selectedKind === "ATOM" ? atomListMetaKey(selected) : selected.formKey}
-                  </span>
-                  {previewVersion != null && (
-                    <span className="aup-wb-chip muted">预览 v{previewVersion}</span>
-                  )}
-                  {versionOriginLabel(previewOrigin) && (
-                    <span className="aup-wb-chip" style={{ background: "#fff7ed", color: "#c2410c" }}>
-                      {versionOriginLabel(previewOrigin)}
-                    </span>
-                  )}
-                  <div style={{ flex: 1 }} />
+                <div className="aup-wb-panel-hd" style={{ alignItems: "flex-start", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", lineHeight: 1.3 }}>
+                      {selected.title || selected.formKey}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3, lineHeight: 1.5 }}>
+                      {itemKindLabel(selected)}
+                      <span style={{ fontFamily: "ui-monospace, monospace", marginLeft: 6 }}>
+                        {selectedKind === "ATOM" ? atomListMetaKey(selected) : selected.formKey}
+                      </span>
+                      <span style={{ marginLeft: 6 }}>v{previewVersion ?? selected.version ?? "?"}</span>
+                      {selected.hostType === "DONOR" || selected.hostType === "RECIPIENT" ? (
+                        <span style={{ marginLeft: 6 }}>· {selected.hostType === "DONOR" ? "供体表单" : "受体表单"}</span>
+                      ) : null}
+                      {versionOriginLabel(previewOrigin) ? (
+                        <span style={{ marginLeft: 6, color: "#c2410c" }}>· {versionOriginLabel(previewOrigin)}</span>
+                      ) : null}
+                    </div>
+                  </div>
                   <button
                     type="button"
                     className="btn small ghost"
@@ -997,23 +1051,59 @@ export default function NhpTemplateListPage() {
           </div>
         </div>
       )}
+      {copyPendingFormKey && (
+        <div className="aup-modal-mask" onClick={() => setCopyPendingFormKey(null)}>
+          <div className="aup-modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <h3>复制到团队</h3>
+            <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+              您属于多个团队，请选择副本归属的团队：
+            </p>
+            <select
+              className="select"
+              style={{ width: "100%", marginBottom: 12 }}
+              value={copyTeamId ?? ""}
+              onChange={(e) => setCopyTeamId(Number(e.target.value))}
+            >
+              {myTeams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <div className="aup-modal-actions">
+              <button type="button" className="btn ghost" onClick={() => setCopyPendingFormKey(null)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={copyMutation.isPending || copyTeamId == null}
+                onClick={() => {
+                  copyMutation.mutate({ formKey: copyPendingFormKey, teamId: copyTeamId });
+                  setCopyPendingFormKey(null);
+                }}
+              >
+                {copyMutation.isPending ? "复制中…" : "复制"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {publishAtomOpen && (
         <div className="aup-modal-mask" onClick={() => setPublishAtomOpen(false)}>
           <div className="aup-modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
             <h3>发布为独立表单</h3>
             <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-              发布时确定该表单的「载体」（宿主）：供体域挂供体对象，受体域挂受体对象。
+              发布时确定该表单的「宿主」：供体域挂供体对象，受体域挂受体对象。
             </p>
             <label style={{ fontSize: 13 }}>
-              载体（hostType）
+              宿主（hostType）
               <select
                 className="select"
                 style={{ width: "100%", marginTop: 4 }}
                 value={publishAtomHostType}
                 onChange={(e) => setPublishAtomHostType(e.target.value as "DONOR" | "RECIPIENT")}
               >
-                <option value="RECIPIENT">受体载体（术后表单挂受体）</option>
-                <option value="DONOR">供体载体（供体表单挂供体）</option>
+                <option value="RECIPIENT">受体表单（术后表单挂受体）</option>
+                <option value="DONOR">供体表单（供体表单挂供体）</option>
               </select>
             </label>
             <div className="aup-modal-actions">

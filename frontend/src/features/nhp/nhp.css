@@ -1399,8 +1399,8 @@
 
 .nhp-assign-col-hd{
   position:sticky;top:0;z-index:2;background:var(--bg-weak,#F9FAFB);
-  padding:8px 10px;border-bottom:1px solid var(--border,#E5E7EB);text-align:center;white-space:nowrap;
-  min-width:88px
+  padding:8px 6px;border-bottom:1px solid var(--border,#E5E7EB);text-align:center;white-space:nowrap;
+  min-width:64px
 }
 .nhp-assign-col-code{font-weight:800;font-size:12px;color:var(--text)}
 .nhp-assign-col-name{
@@ -1436,7 +1436,7 @@
 .nhp-assign-check{cursor:pointer;accent-color:var(--primary,#002FA7);width:15px;height:15px}
 .nhp-assign-cell{
   text-align:center;padding:0;border-bottom:1px solid var(--border,#E5E7EB);
-  cursor:pointer;transition:background .15s ease;width:72px;height:44px;vertical-align:middle;
+  cursor:pointer;transition:background .15s ease;width:56px;height:44px;vertical-align:middle;
   outline:none
 }
 .nhp-assign-cell:hover{background:#f8fafc}
@@ -1453,6 +1453,26 @@
 }
 
 .nhp-assign-toolbar{display:flex;justify-content:flex-end;gap:8px;padding:0 4px}
+
+/* 横轴列管理：悬停显示重命名/删除，尾部「＋」添加时点 */
+.nhp-assign-col-act{position:absolute;top:4px;right:4px;display:none;gap:2px;z-index:1}
+.nhp-assign-col-hd:hover .nhp-assign-col-act{display:flex}
+.nhp-assign-col-act button{
+  width:18px;height:18px;padding:0;border:1px solid var(--border,#E5E7EB);border-radius:4px;
+  background:#fff;color:var(--slate,#64748B);font-size:11px;line-height:1;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center
+}
+.nhp-assign-col-act button:hover{background:#fef2f2;color:var(--danger,#B91C1C);border-color:#fecaca}
+.nhp-assign-add-col{
+  position:sticky;top:0;right:0;z-index:3;background:var(--bg-weak,#F9FAFB);
+  border-bottom:1px solid var(--border,#E5E7EB);border-left:1px solid var(--border,#E5E7EB);
+  padding:6px 8px;vertical-align:middle;width:48px
+}
+.nhp-assign-add-btn{
+  width:28px;height:28px;padding:0;border:1px dashed var(--border,#CBD5E1);border-radius:6px;
+  background:#fff;color:var(--primary,#002FA7);font-size:16px;line-height:1;cursor:pointer
+}
+.nhp-assign-add-btn:hover{background:var(--primary-weak,#EEF2FF);border-color:var(--primary,#002FA7)}
 
 @media(max-width:768px){
   .nhp-assign-stats{margin-left:0;width:100%}
@@ -1495,6 +1515,10 @@
 .nhp-form-records{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border,#E5E7EB);padding-top:10px}
 .nhp-form-record-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px}
 .nhp-form-record-meta{color:var(--muted);font-family:ui-monospace,monospace;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nhp-form-tile{cursor:pointer}
+.nhp-form-tile.selected{border-color:var(--primary,#002FA7);box-shadow:0 4px 14px rgba(0,0,0,.06)}
+.nhp-form-expanded{display:flex;flex-direction:column;gap:14px;padding:14px 16px}
+.nhp-form-expanded-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 
 /* 项目信息元数据：标签左、值右 */
 .nhp-project-meta{display:flex;flex-direction:column;gap:8px}

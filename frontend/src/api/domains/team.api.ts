@@ -12,6 +12,8 @@ export interface TeamSummary {
   ownerName: string;
   memberCount: number;
   createdAt: string;
+  /** 当前用户在该团队的角色：OWNER/MANAGER/MEMBER，非成员为 null */
+  myRole?: string | null;
 }
 
 export interface TeamMember {
@@ -30,6 +32,8 @@ export interface TeamMember {
 export interface TeamDetail extends TeamSummary {
   members: TeamMember[];
   pendingCount: number;
+  /** 当前用户 personnelId，用于隐藏「本人行」的操作按钮（本人不能改本人） */
+  myPersonnelId?: number | null;
 }
 
 export interface TeamJoinRequest {
@@ -151,4 +155,52 @@ export async function rejectTeamJoinRequest(id: number | string, requestId: numb
 
 export async function cancelTeamJoinRequest(id: number | string, requestId: number) {
   await authHttp.post(`${BASE}/${id}/join-requests/${requestId}/cancel`);
+}
+
+// ── 我收到的邀请（受邀人视角） ──
+
+export interface TeamInvite {
+  id: number;
+  teamId: number;
+  teamName: string;
+  message?: string;
+  createdAt: string;
+}
+
+export async function fetchMyInvites(): Promise<TeamInvite[]> {
+  const res = await authHttp.get<Result<TeamInvite[]>>(`${BASE}/my-invites`);
+  return res.data.data ?? [];
+}
+
+export async function acceptTeamInvite(requestId: number): Promise<void> {
+  await authHttp.post(`${BASE}/my-invites/${requestId}/accept`);
+}
+
+export async function declineTeamInvite(requestId: number): Promise<void> {
+  await authHttp.post(`${BASE}/my-invites/${requestId}/decline`);
+}
+
+// ── 团队角色字典 ──
+
+export interface TeamRole {
+  id: number;
+  teamId: number;
+  code: string;
+  label: string;
+  sortOrder?: number;
+  active?: number;
+}
+
+export async function fetchTeamRoles(id: number | string): Promise<TeamRole[]> {
+  const res = await authHttp.get<Result<TeamRole[]>>(`${BASE}/${id}/roles`);
+  return res.data.data ?? [];
+}
+
+export async function createTeamRole(id: number | string, body: { code: string; label: string }): Promise<TeamRole> {
+  const res = await authHttp.post<Result<TeamRole>>(`${BASE}/${id}/roles`, body);
+  return res.data.data;
+}
+
+export async function deleteTeamRole(id: number | string, roleId: number): Promise<void> {
+  await authHttp.delete(`${BASE}/${id}/roles/${roleId}`);
 }

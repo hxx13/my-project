@@ -864,6 +864,54 @@ public class NhpTemplateService {
         return Result.success(buildTemplateJson(formMapper.findById(neu.getId())));
     }
 
+    /**
+     * 复制模板（整表单，含全部版本）到团队名下。所有版本一并复制且全部变为草稿（多草稿模式）。
+     * 新 code = formKey_T{teamId}（无 teamId 时 _COPY），避免与默认方案唯一键冲突。
+     * 原子（表单/数据域）与组合模板（组合原子域）均支持。
+     */
+    @Transactional
+    public Result<Object> copyTemplate(String formKey, Long teamId) {
+        List<CrfForm> versions = formMapper.listByCode(formKey);
+        if (versions == null || versions.isEmpty()) {
+            return Result.error("模板不存在");
+        }
+        String newCode = formKey + (teamId != null ? "_T" + teamId : "_COPY");
+        if (formMapper.countAnyByCode(newCode) > 0) {
+            return Result.fail(409, "已存在副本: " + newCode);
+        }
+        Long firstNewId = null;
+        for (CrfForm src : versions) {
+            String nextType = src.getFormType() != null ? src.getFormType() : atomTypeFor(src.getCode());
+            String newName = (src.getName() != null ? src.getName() : src.getCode()) + "（团队副本）";
+            // 保留版本号，状态一律 DRAFT（复制后全部变草稿，便于在此基础上修改）
+            CrfForm neu = newForm(newCode, newName, nextType, src.getVersion(), "DRAFT");
+            neu.setStudyId(src.getStudyId());
+            neu.setTeamId(teamId);
+            neu.setDescription("[COPY] 复制自 " + formKey + " v" + src.getVersion());
+            neu = insertOrReactivate(neu);
+            if (firstNewId == null) firstNewId = neu.getId();
+
+            Map<String, Object> json = buildTemplateJson(src);
+            persistSections(neu.getId(), sectionsOf(json));
+
+            if (isComposite(src)) {
+                List<CrfCompositeAtom> refs = compositeAtomMapper.listByCompositeFormId(src.getId());
+                if (refs != null && !refs.isEmpty()) {
+                    List<Map<String, Object>> atomSpecs = new ArrayList<>();
+                    for (CrfCompositeAtom r : refs) {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("atomCode", r.getAtomCode());
+                        m.put("atomFormId", r.getAtomFormId());
+                        m.put("sortOrder", r.getSortOrder());
+                        atomSpecs.add(m);
+                    }
+                    persistAtomRefs(neu.getId(), atomSpecs);
+                }
+            }
+        }
+        return Result.success(buildTemplateJson(formMapper.findById(firstNewId)));
+    }
+
 
     /**
      * Soft-delete one template version (atom or composite).

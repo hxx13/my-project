@@ -1,6 +1,6 @@
 /**
  * NHP 手术实例审计详情：阶段摘要 + 分阶段历史表单 + 快照追溯。
- * 路由：/#/content-manager/nhp-records/:subjectId
+ * 路由：/#/nhp-admin/records/:subjectId
  */
 import { useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
@@ -120,7 +120,7 @@ export default function NhpRecordDetailPage() {
   const { subjectId: subjectIdParam } = useParams<{ subjectId: string }>();
   const subjectId = Number(subjectIdParam);
   const location = useLocation();
-  const goBack = useGoBack("/content-manager/nhp-records");
+  const goBack = useGoBack("/nhp-admin/records");
   const queryClient = useQueryClient();
 
   const [snapshotRecordId, setSnapshotRecordId] = useState<number | null>(null);
@@ -186,7 +186,7 @@ export default function NhpRecordDetailPage() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Link
-            to={`/content-manager/nhp-entry/${r.id}`}
+            to={`/nhp-admin/entry/${r.id}`}
             state={nhpNavState(location)}
             className="btn primary small"
             style={{ textDecoration: "none" }}

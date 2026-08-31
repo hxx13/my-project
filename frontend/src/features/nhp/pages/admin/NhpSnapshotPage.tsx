@@ -23,7 +23,7 @@ function stageTone(stage: string): string {
 }
 
 export default function NhpSnapshotPage() {
-  const goBack = useGoBack("/content-manager/nhp-template");
+  const goBack = useGoBack("/nhp-admin/template");
   const [diffFor, setDiffFor] = useState<{ id: number; otherId: number } | null>(null);
 
   const snapshotsQuery = useQuery({ queryKey: ["nhp", "snapshots"], queryFn: () => fetchNhpSnapshots() });

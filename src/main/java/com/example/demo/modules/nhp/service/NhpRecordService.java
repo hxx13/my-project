@@ -1,9 +1,11 @@
 package com.example.demo.modules.nhp.service;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.nhp.entity.*;
 import com.example.demo.modules.nhp.mapper.*;
 import com.example.demo.modules.nhp.util.NhpAtomFormKeys;
+import com.example.demo.modules.team.service.TeamService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +47,8 @@ public class NhpRecordService {
     private final CrfTransplantMapper transplantMapper;
     private final CrfVisitMapper visitMapper;
     private final CrfProjectVisitPlanMapper projectVisitPlanMapper;
+    private final NhpPermissionService permissionService;
+    private final TeamService teamService;
 
     public NhpRecordService(CrfSubjectMapper subjectMapper, CrfRecordMapper recordMapper,
                             CrfRecordValueMapper valueMapper, CrfDataAuditLogMapper auditLogMapper,
@@ -53,7 +57,8 @@ public class NhpRecordService {
                             CrfFormMapper formMapper, CrfCenterMapper centerMapper, NhpIdService idService,
                             NhpSnapshotService snapshotService, ObjectMapper objectMapper,
                             NhpEventEngine eventEngine, CrfTransplantMapper transplantMapper,
-                            CrfVisitMapper visitMapper, CrfProjectVisitPlanMapper projectVisitPlanMapper) {
+                            CrfVisitMapper visitMapper, CrfProjectVisitPlanMapper projectVisitPlanMapper,
+                            NhpPermissionService permissionService, TeamService teamService) {
         this.subjectMapper = subjectMapper;
         this.recordMapper = recordMapper;
         this.valueMapper = valueMapper;
@@ -71,6 +76,8 @@ public class NhpRecordService {
         this.transplantMapper = transplantMapper;
         this.visitMapper = visitMapper;
         this.projectVisitPlanMapper = projectVisitPlanMapper;
+        this.permissionService = permissionService;
+        this.teamService = teamService;
     }
 
     @Transactional
@@ -239,6 +246,11 @@ public class NhpRecordService {
             p.put("txDate", tx.getTxDate() == null ? null : tx.getTxDate().toString());
             p.put("createdBy", tx.getCreatedBy());
             p.put("createdAt", tx.getCreatedAt() == null ? null : tx.getCreatedAt().toString());
+            // ponytail: 逐项目查团队名 N+1，与 subjectCard 同构；项目列表小，可接受
+            Map<String,Object> ts = teamService.teamSummary(tx.getTeamId());
+            p.put("teamName", ts == null ? null : ts.get("name"));
+            p.put("teamOwnerName", ts == null ? null : ts.get("ownerName"));
+            p.put("teamMemberCount", ts == null ? null : ts.get("memberCount"));
             p.put("donor", subjectCard(tx.getDonorSubjectId()));
             p.put("recipient", subjectCard(tx.getRecipientSubjectId()));
             out.add(p);
@@ -760,7 +772,14 @@ public class NhpRecordService {
     }
 
     /** 研究对象分页列表。 */
-    public Result<Map<String, Object>> listSubjects(String subjectType, String status, String q, int page, int size) {
+    /** 团队可见性：平台所有者全见；未归属(teamId=null)全见；否则仅本团队成员见。 */
+    private boolean canViewByTeam(User user, Long teamId) {
+        if (permissionService.isPlatformOwner(user)) return true;
+        if (teamId == null) return true;
+        return permissionService.isTeamMember(user, teamId);
+    }
+
+    public Result<Map<String, Object>> listSubjects(User user, String subjectType, String status, String q, int page, int size) {
         int p = Math.max(page, 1);
         int sz = Math.min(Math.max(size, 1), 100);
         int offset = (p - 1) * sz;
@@ -768,6 +787,8 @@ public class NhpRecordService {
         String st = blankToNull(status);
         String typ = blankToNull(subjectType);
         List<CrfSubject> items = subjectMapper.listPaged(typ, st, qq, offset, sz);
+        // ponytail: 列表级团队过滤在分页后做（N+1 teamId 查询）；数据量大时下沉 SQL
+        items.removeIf(s -> !canViewByTeam(user, permissionService.teamIdOfSubject(s.getId())));
         long total = subjectMapper.countPaged(typ, st, qq);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("items", items);
@@ -778,13 +799,15 @@ public class NhpRecordService {
     }
 
     /** 表单实例分页列表（可按研究对象/状态/关键词）。 */
-    public Result<Map<String, Object>> listRecords(String status, Long subjectId, String q, int page, int size) {
+    public Result<Map<String, Object>> listRecords(User user, String status, Long subjectId, String q, int page, int size) {
         int p = Math.max(page, 1);
         int sz = Math.min(Math.max(size, 1), 100);
         int offset = (p - 1) * sz;
         String qq = blankToNull(q);
         String st = blankToNull(status);
         List<CrfRecord> records = recordMapper.listPaged(st, subjectId, qq, offset, sz);
+        // ponytail: 列表级团队过滤在分页后做（N+1 teamId 查询）；数据量大时下沉 SQL
+        records.removeIf(r -> !canViewByTeam(user, permissionService.teamIdOfRecord(r.getId())));
         long total = recordMapper.countPaged(st, subjectId, qq);
         List<Map<String, Object>> items = new java.util.ArrayList<>();
         for (CrfRecord r : records) {
@@ -1284,7 +1307,7 @@ public class NhpRecordService {
         if (currentTp == null || currentTp.isBlank() || record.getAtomId() == null) {
             return null;
         }
-        CrfVisit cv = visitMapper.findByCode(currentTp);
+        CrfVisit cv = visitMapper.findBySchemeAndCode(tx.getVisitSchemeId(), currentTp);
         if (cv == null) {
             return null;
         }

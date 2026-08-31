@@ -20,6 +20,8 @@ public class CrfForm {
     private String description;
     /** 归属文件夹 FK→aup_folder.id（owner_type=NHP_FORM）；NULL=未分类。按 code 整组维护 */
     private Long folderId;
+    /** 归属团队 FK→team.id（NULL=平台默认/系统种子） */
+    private Long teamId;
     /** 事件锚点 ENROLL/PRE_TX/DAY0/POST_TX/…（V34 schedule） */
     private String eventAnchor;
     /** 频次 ONCE/PER_TP/EVENT/…；≠ONCE 即重复（无 repeat_flag） */

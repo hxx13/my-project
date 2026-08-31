@@ -51,7 +51,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/upload/**", "/api/notifications/**", "/api/supplies/**",
                         "/api/repair/**", "/api/purchase/**", "/api/mp/**",
                         "/api/face/**", "/api/scan/**", "/api/user/**",
-                        "/api/aup/**", "/api/aup-template/**")
+                        "/api/aup/**", "/api/aup-template/**",
+                        "/api/nhp/**")
                 .excludePathPatterns("/api/auth/**", "/api/public/**",
                         "/api/event/**", "/api/upload/files/**",
                         "/api/upload/sync/**", "/api/upload/records/*",
