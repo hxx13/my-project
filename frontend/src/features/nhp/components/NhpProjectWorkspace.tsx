@@ -142,25 +142,29 @@ export default function NhpProjectWorkspace({ project, mode = "portal" }: Props)
                           {isCompositeTemplate(form) ? "组合快照" : "数据域原子"} · v{form.publishedVersion ?? form.version} · {recs.length} 份记录
                         </div>
                       </div>
-                      <div className="nhp-form-tile-acts">
-                        <button
-                          type="button"
-                          className="btn primary small"
-                          disabled={w.busy === form.formKey}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            w.onCreate(form, plan.captureForm);
-                          }}
-                        >
-                          {w.busy === form.formKey ? "…" : "＋ 新建"}
-                        </button>
-                      </div>
+                      {!isExpanded && (
+                        <div className="nhp-form-tile-acts">
+                          <button
+                            type="button"
+                            className="btn primary small"
+                            disabled={w.busy === form.formKey}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              w.onCreate(form, plan.captureForm);
+                            }}
+                          >
+                            {w.busy === form.formKey ? "…" : "＋ 新建"}
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <FormRecordList
-                      recs={recs}
-                      fillPath={(id) => navigate(w.fillPath(id, form.formKey, plan.captureForm))}
-                      onDelete={w.deleteRecord}
-                    />
+                    {!isExpanded && (
+                      <FormRecordList
+                        recs={recs}
+                        fillPath={(id) => navigate(w.fillPath(id, form.formKey, plan.captureForm))}
+                        onDelete={w.deleteRecord}
+                      />
+                    )}
                   </div>
                 );
               })}
