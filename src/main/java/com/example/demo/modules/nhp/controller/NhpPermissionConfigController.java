@@ -144,6 +144,10 @@ public class NhpPermissionConfigController {
         if (subjectType == null || subjectCode == null || resourceType == null || capabilityCode == null) {
             return Result.fail(400, "subjectType/subjectCode/resourceType/capabilityCode 必填");
         }
+        if ("team_role".equals(subjectType)
+                && !permissionService.canModifyRole(authContextService.resolveUserFromBearer(auth), teamId, subjectCode)) {
+            return Result.fail(403, "不能修改自己角色或 OWNER 角色的权限");
+        }
         Long resourceId = body.get("resourceId") == null || String.valueOf(body.get("resourceId")).isBlank()
                 ? null : Long.valueOf(String.valueOf(body.get("resourceId")).trim());
         try {
@@ -161,12 +165,19 @@ public class NhpPermissionConfigController {
     public Result<?> deletePermission(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long id) {
-        List<Long> teamIds = jdbcTemplate.queryForList(
-                "SELECT team_id FROM crf_permission WHERE id = ?", Long.class, id);
-        if (teamIds.isEmpty()) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT subject_type, subject_code, team_id FROM crf_permission WHERE id = ?", id);
+        if (rows.isEmpty()) {
             return Result.fail(404, "授权不存在或已被删除");
         }
-        requireConfigTeam(auth, teamIds.get(0));
+        String subjectType = str(rows.get(0).get("subject_type"));
+        String subjectCode = str(rows.get(0).get("subject_code"));
+        Long teamId = rows.get(0).get("team_id") == null ? null : ((Number) rows.get(0).get("team_id")).longValue();
+        requireConfigTeam(auth, teamId);
+        if ("team_role".equals(subjectType)
+                && !permissionService.canModifyRole(authContextService.resolveUserFromBearer(auth), teamId, subjectCode)) {
+            return Result.fail(403, "不能修改自己角色或 OWNER 角色的权限");
+        }
         jdbcTemplate.update("DELETE FROM crf_permission WHERE id = ?", id);
         return Result.success();
     }

@@ -28,6 +28,7 @@ export default function NhpPermissionPage() {
 
   const caps = capsQuery.data ?? [];
   const roles = rolesQuery.data ?? [];
+  const myRole = myTeams.find((t) => t.id === teamId)?.myRole ?? null;
 
   const permMap = new Map<string, number>();
   for (const p of permsQuery.data ?? []) {
@@ -103,19 +104,20 @@ export default function NhpPermissionPage() {
                   const role = roleOf(rowId);
                   const cap = capOf(colId);
                   if (!role || !cap) return false;
-                  if (role.code === "OWNER" && cap.code === "config:manage") return true;
+                  if (role.code === "OWNER") return true;
                   return permMap.has(`${role.code}:${cap.code}`);
                 }}
                 onToggleCell={(rowId, colId) => {
                   const role = roleOf(rowId);
                   const cap = capOf(colId);
                   if (!role || !cap) return;
-                  if (role.code === "OWNER" && cap.code === "config:manage") return; // OWNER 配置权限不可取消，防锁死
+                  if (role.code === "OWNER" || role.code === myRole) return; // 负责人默认全开 + 本人角色不可自改
                   toggleCell(role.code, cap.code, !permMap.has(`${role.code}:${cap.code}`));
                 }}
-                cellDisabled={(rowId, colId) =>
-                  roleOf(rowId)?.code === "OWNER" && capOf(colId)?.code === "config:manage"
-                }
+                cellDisabled={(rowId, colId) => {
+                  const code = roleOf(rowId)?.code;
+                  return code === "OWNER" || code === myRole;
+                }}
                 cornerLabel="角色 \\ 能力"
                 matrixKey={`perm-${teamId}`}
               />
