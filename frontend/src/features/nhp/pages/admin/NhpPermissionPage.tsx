@@ -103,16 +103,19 @@ export default function NhpPermissionPage() {
                   const role = roleOf(rowId);
                   const cap = capOf(colId);
                   if (!role || !cap) return false;
-                  if (role.code === "OWNER") return true;
+                  if (role.code === "OWNER" && cap.code === "config:manage") return true;
                   return permMap.has(`${role.code}:${cap.code}`);
                 }}
                 onToggleCell={(rowId, colId) => {
                   const role = roleOf(rowId);
                   const cap = capOf(colId);
-                  if (!role || !cap || role.code === "OWNER") return;
+                  if (!role || !cap) return;
+                  if (role.code === "OWNER" && cap.code === "config:manage") return; // OWNER 配置权限不可取消，防锁死
                   toggleCell(role.code, cap.code, !permMap.has(`${role.code}:${cap.code}`));
                 }}
-                cellDisabled={(rowId) => roleOf(rowId)?.code === "OWNER"}
+                cellDisabled={(rowId, colId) =>
+                  roleOf(rowId)?.code === "OWNER" && capOf(colId)?.code === "config:manage"
+                }
                 cornerLabel="角色 \\ 能力"
                 matrixKey={`perm-${teamId}`}
               />

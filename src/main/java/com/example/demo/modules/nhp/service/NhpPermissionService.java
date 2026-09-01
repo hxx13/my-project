@@ -272,8 +272,32 @@ public class NhpPermissionService {
         if (teamId == null) return false;
         String role = teamService.teamRoleOf(user, teamId);
         if (role == null) return false;
-        if ("OWNER".equals(role)) return true; // 负责人默认全开，不可取消
+        if ("OWNER".equals(role) && !hasOwnerGrants(teamId)) {
+            return true; // ponytail: 旧团队尚未显式授权 OWNER 前保持全开，seed 后转矩阵判定
+        }
         return hasGrant("team_role", role, "global", null, capabilityCode, teamId);
+    }
+
+    /** 该团队是否已为 OWNER 角色显式授权（区分「未初始化」与「已取消」）。 */
+    private boolean hasOwnerGrants(Long teamId) {
+        try {
+            Integer n = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM crf_permission WHERE subject_type='team_role' AND subject_code='OWNER' AND team_id=?",
+                    Integer.class, teamId);
+            return n != null && n > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 为团队 OWNER 角色补齐全部能力授权（仅当尚未授权，幂等；供权限矩阵可编辑）。 */
+    public void ensureOwnerGrants(Long teamId) {
+        if (teamId == null || hasOwnerGrants(teamId)) return;
+        List<String> caps = jdbcTemplate.queryForList("SELECT code FROM crf_capability WHERE active = 1", String.class);
+        for (String cap : caps) {
+            jdbcTemplate.update("INSERT IGNORE INTO crf_permission (subject_type, subject_code, resource_type, resource_id, capability_code, team_id) "
+                    + "VALUES ('team_role', 'OWNER', 'global', NULL, ?, ?)", cap, teamId);
+        }
     }
 
     /** 是否可配置该团队权限：平台所有者 / 团队负责人 / 持有「配置权限」能力。 */
@@ -291,6 +315,7 @@ public class NhpPermissionService {
         List<Map<String, Object>> out = new java.util.ArrayList<>();
         for (Long id : ids) {
             if (!canConfigTeam(user, id)) continue;
+            ensureOwnerGrants(id); // 保证 OWNER 角色有显式授权，权限矩阵可编辑
             Map<String, Object> m = new java.util.LinkedHashMap<>();
             m.put("id", id);
             Map<String, Object> s = teamService.teamSummary(id);
