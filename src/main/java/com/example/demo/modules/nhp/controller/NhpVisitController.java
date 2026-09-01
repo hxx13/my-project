@@ -60,6 +60,17 @@ public class NhpVisitController {
         }
     }
 
+    /** 项目级编排写守卫：项目所属团队 OWNER/MANAGER 或平台所有者（无团队项目仅平台所有者）。 */
+    private void requireProjectManage(String auth, Long projectId) {
+        User user = authContextService.resolveUserFromBearer(auth);
+        if (user == null) {
+            throw new TwinBusinessException(401, "未登录或 Token 无效");
+        }
+        if (!permissionService.canManageTeam(user, permissionService.teamIdOfProject(projectId))) {
+            throw new TwinBusinessException(403, "无权限：需平台所有者/团队负责人/管理员");
+        }
+    }
+
     @GetMapping("/visits")
     @Operation(summary = "访视时点列表（schemeId 空=默认方案，否则按方案）")
     public Result<List<CrfVisit>> listVisits(@RequestParam(required = false) Long schemeId) {
@@ -203,7 +214,7 @@ public class NhpVisitController {
     public Result<CrfTransplant> setProjectVisitScheme(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long projectId, @RequestBody Map<String, Object> body) {
-        requirePlatformOwner(auth);
+        requireProjectManage(auth, projectId);
         CrfTransplant tx = transplantMapper.findById(projectId);
         if (tx == null) return Result.fail(404, "项目不存在");
         tx.setVisitSchemeId(asLong(body == null ? null : body.get("visitSchemeId")));
@@ -278,7 +289,7 @@ public class NhpVisitController {
             @PathVariable Long projectId,
             @PathVariable Long visitId,
             @RequestBody List<Map<String, Object>> atoms) {
-        requirePlatformOwner(auth);
+        requireProjectManage(auth, projectId);
         return Result.success(visitService.replaceProjectVisitPlan(projectId, visitId, atoms));
     }
 
