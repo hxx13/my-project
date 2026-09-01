@@ -199,11 +199,13 @@ public class NhpRecordController {
     public Result<Map<String, Object>> createProject(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @RequestBody Map<String, Object> body) {
-        // 自动锁定到「我所在团队」：未显式指定 teamId 时，取当前用户 owner/member 的第一个团队
+        // 项目强制归属团队：未显式指定 teamId 时取当前用户第一个团队；无团队则拒绝创建
         if (body != null && (body.get("teamId") == null || String.valueOf(body.get("teamId")).isBlank())) {
             List<Long> myTeams = teamService.myTeamIds(authContextService.resolveUserFromBearer(auth));
             if (!myTeams.isEmpty()) {
                 body.put("teamId", myTeams.get(0));
+            } else {
+                return Result.fail(400, "当前账号未加入任何团队，无法创建项目");
             }
         }
         return service.createProject(body);
@@ -216,13 +218,15 @@ public class NhpRecordController {
             @RequestParam(value = "mine", required = false, defaultValue = "false") boolean mine) {
         List<Map<String, Object>> projects = service.listProjects();
         if (mine) {
-            List<Long> myTeams = teamService.myTeamIds(authContextService.resolveUserFromBearer(auth));
-            java.util.Set<Long> teamSet = new java.util.HashSet<>(myTeams);
-            // team_id 为空视为「未归属」（历史项目），保留；只过滤明确归属到别人团队的项目
-            projects.removeIf(p -> {
-                Object tid = p.get("teamId");
-                return tid != null && !teamSet.contains(((Number) tid).longValue());
-            });
+            User u = authContextService.resolveUserFromBearer(auth);
+            // 平台所有者全见；否则仅见本团队项目（无归属项目亦不外泄）
+            if (u != null && !permissionService.isPlatformOwner(u)) {
+                java.util.Set<Long> teamSet = new java.util.HashSet<>(teamService.myTeamIds(u));
+                projects.removeIf(p -> {
+                    Object tid = p.get("teamId");
+                    return tid == null || !teamSet.contains(((Number) tid).longValue());
+                });
+            }
         }
         return Result.success(projects);
     }

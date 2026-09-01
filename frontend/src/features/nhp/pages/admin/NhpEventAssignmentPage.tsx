@@ -71,8 +71,8 @@ export default function NhpEventAssignmentPage() {
   });
 
   const projectsQuery = useQuery({
-    queryKey: ["nhp", "projects"],
-    queryFn: () => fetchNhpProjects(),
+    queryKey: ["nhp", "projects", "mine"],
+    queryFn: () => fetchNhpProjects({ mine: true }),
     staleTime: 0,
   });
 
