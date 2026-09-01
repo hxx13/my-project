@@ -28,6 +28,7 @@ export default function NhpPermissionPage() {
 
   const caps = capsQuery.data ?? [];
   const roles = rolesQuery.data ?? [];
+  const myRole = myTeams.find((t) => t.id === teamId)?.myRole ?? null;
 
   const permMap = new Map<string, number>();
   for (const p of permsQuery.data ?? []) {
@@ -109,10 +110,14 @@ export default function NhpPermissionPage() {
                 onToggleCell={(rowId, colId) => {
                   const role = roleOf(rowId);
                   const cap = capOf(colId);
-                  if (!role || !cap || role.code === "OWNER") return;
+                  if (!role || !cap) return;
+                  if (role.code === "OWNER" || role.code === myRole) return; // 负责人默认全开 + 本人角色不可自改
                   toggleCell(role.code, cap.code, !permMap.has(`${role.code}:${cap.code}`));
                 }}
-                cellDisabled={(rowId) => roleOf(rowId)?.code === "OWNER"}
+                cellDisabled={(rowId, colId) => {
+                  const code = roleOf(rowId)?.code;
+                  return code === "OWNER" || code === myRole;
+                }}
                 cornerLabel="角色 \\ 能力"
                 matrixKey={`perm-${teamId}`}
               />

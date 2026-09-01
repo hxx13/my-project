@@ -276,6 +276,14 @@ public class NhpPermissionService {
         return hasGrant("team_role", role, "global", null, capabilityCode, teamId);
     }
 
+    /** 是否可修改该团队内某角色的授权：平台所有者全放；OWNER 角色全开不可改；本人角色不可自改（防自锁/自升权）。 */
+    public boolean canModifyRole(User user, Long teamId, String roleCode) {
+        if (isPlatformOwner(user)) return true;
+        if ("OWNER".equals(roleCode)) return false;
+        String myRole = teamService.teamRoleOf(user, teamId);
+        return myRole == null || !myRole.equals(roleCode);
+    }
+
     /** 是否可配置该团队权限：平台所有者 / 团队负责人 / 持有「配置权限」能力。 */
     public boolean canConfigTeam(User user, Long teamId) {
         if (isPlatformOwner(user)) return true;
@@ -295,6 +303,7 @@ public class NhpPermissionService {
             m.put("id", id);
             Map<String, Object> s = teamService.teamSummary(id);
             m.put("name", s == null ? null : s.get("name"));
+            m.put("myRole", teamService.teamRoleOf(user, id));
             out.add(m);
         }
         return out;

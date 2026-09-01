@@ -49,9 +49,9 @@ export async function fetchNhpPermissions(): Promise<NhpPermissionRow[]> {
   return res.data.data ?? [];
 }
 
-/** 当前用户可配置权限的团队列表（OWNER 或持有 config:manage 能力）。 */
-export async function fetchNhpConfigTeams(): Promise<{ id: number; name: string }[]> {
-  const res = await authHttp.get<Result<{ id: number; name: string }[]>>("/nhp/permissions/config-teams");
+/** 当前用户可配置权限的团队列表（OWNER 或持有 config:manage 能力），含我在该团队的角色。 */
+export async function fetchNhpConfigTeams(): Promise<{ id: number; name: string; myRole?: string | null }[]> {
+  const res = await authHttp.get<Result<{ id: number; name: string; myRole?: string | null }[]>>("/nhp/permissions/config-teams");
   return res.data.data ?? [];
 }
 
