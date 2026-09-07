@@ -1,16 +1,24 @@
 package com.example.demo.modules.personnel.service;
 
+import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.personnel.dto.PersonnelFilter;
 import com.example.demo.modules.personnel.entity.Personnel;
+import com.example.demo.modules.personnel.entity.PersonnelRoomAuthorization;
 import com.example.demo.modules.personnel.mapper.PersonnelMapper;
+import com.example.demo.modules.personnel.mapper.PersonnelRoomAuthorizationMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -23,14 +31,27 @@ public class PersonnelService {
 
     private static final int NAME_MAX_LEN = 128;
 
+    private static final ObjectMapper ROOM_JSON = new ObjectMapper();
+
     private final PersonnelMapper personnelMapper;
     private final UserMapper userMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final AroPersonnelMapper aroPersonnelMapper;
+    private final PersonnelRoomAuthorizationMapper roomAuthorizationMapper;
 
     public PersonnelService(PersonnelMapper personnelMapper, UserMapper userMapper, JdbcTemplate jdbcTemplate) {
+        this(personnelMapper, userMapper, jdbcTemplate, null, null);
+    }
+
+    @Autowired
+    public PersonnelService(PersonnelMapper personnelMapper, UserMapper userMapper, JdbcTemplate jdbcTemplate,
+                            AroPersonnelMapper aroPersonnelMapper,
+                            PersonnelRoomAuthorizationMapper roomAuthorizationMapper) {
         this.personnelMapper = personnelMapper;
         this.userMapper = userMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.aroPersonnelMapper = aroPersonnelMapper;
+        this.roomAuthorizationMapper = roomAuthorizationMapper;
     }
 
     /** 统一人员查询（分页 + 多维度筛选）。groupId/departmentId 已在 controller 解析为名称。 */
@@ -162,6 +183,103 @@ public class PersonnelService {
             jdbcTemplate.update("UPDATE aro_personnel SET name = ? WHERE user_id = ?", name, aroUid);
             userMapper.updateNameById(aroUid, name);
         }
+    }
+
+    /**
+     * 读取人员的房间授权。本地覆盖层（room_auth_managed=1）优先读 personnel_room_authorization；
+     * 否则回官方 aro_personnel.allowed_rooms_json，返回原始 id 列表 + 快照条目。
+     */
+    public Map<String, Object> getRoomAuthorization(String personnelId) {
+        Personnel p = findByIdOrNull(personnelId);
+        String aroUserId = p == null ? null : p.getAroUserId();
+        if (aroUserId == null || aroUserId.isBlank()) {
+            return Map.of("managed", 0, "roomIds", List.of(), "rooms", List.of());
+        }
+        aroUserId = aroUserId.trim();
+        AroPersonnel aro = aroPersonnelMapper.findByUserId(aroUserId);
+        if (aro != null && Integer.valueOf(1).equals(aro.getRoomAuthManaged())) {
+            List<String> roomIds = new ArrayList<>();
+            for (PersonnelRoomAuthorization row : roomAuthorizationMapper.selectByUser(aroUserId)) {
+                if (row.getRoomId() != null && !row.getRoomId().isBlank()) {
+                    roomIds.add(row.getRoomId());
+                }
+            }
+            return Map.of("managed", 1, "roomIds", roomIds, "rooms", List.of());
+        }
+        List<Map<String, Object>> rooms = parseAllowedRooms(aro == null ? null : aro.getAllowedRoomsJson());
+        return Map.of("managed", 0, "roomIds", extractRoomIds(rooms), "rooms", rooms);
+    }
+
+    /**
+     * 写入人员的本地房间授权（覆盖层）。置 room_auth_managed=1 后整表重建该人的授权行；
+     * roomIds 为空 = 撤销全部房间。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> updateRoomAuthorization(String personnelId, List<String> roomIds, String operatorId) {
+        Personnel p = findByIdOrNull(personnelId);
+        if (p == null) {
+            throw new RuntimeException("人员不存在");
+        }
+        String aroUserId = p.getAroUserId();
+        if (aroUserId == null || aroUserId.isBlank()) {
+            throw new RuntimeException("该人员无 ARO 身份，无法设置房间授权");
+        }
+        aroUserId = aroUserId.trim();
+        aroPersonnelMapper.updateRoomAuthManaged(aroUserId, 1);
+        roomAuthorizationMapper.deleteByUser(aroUserId);
+        LocalDateTime now = LocalDateTime.now();
+        if (roomIds != null) {
+            for (String roomId : roomIds) {
+                if (roomId == null || roomId.isBlank()) continue;
+                PersonnelRoomAuthorization row = new PersonnelRoomAuthorization();
+                row.setAroUserId(aroUserId);
+                row.setRoomId(roomId.trim());
+                row.setUpdatedAt(now);
+                row.setUpdatedBy(operatorId);
+                roomAuthorizationMapper.insert(row);
+            }
+        }
+        return Map.of("ok", true, "managed", 1);
+    }
+
+    private Personnel findByIdOrNull(String personnelId) {
+        if (personnelId == null || personnelId.isBlank()) return null;
+        try {
+            return personnelMapper.findById(Long.parseLong(personnelId.trim()));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** 解析官方 allowed_rooms_json（数组），返回原始条目快照；解析失败返回空。 */
+    private List<Map<String, Object>> parseAllowedRooms(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            JsonNode root = ROOM_JSON.readTree(json);
+            if (root == null || !root.isArray()) return List.of();
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (JsonNode n : root) {
+                if (n == null || n.isNull() || !n.isObject()) continue;
+                Map<String, Object> entry = new HashMap<>();
+                n.fields().forEachRemaining(e -> entry.put(e.getKey(), e.getValue().asText()));
+                result.add(entry);
+            }
+            return result;
+        } catch (Exception e) {
+            log.warn("[room-auth] 解析 allowed_rooms_json 失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 从快照条目提取房间 id（优先 officialRoomId，缺省回退 id）。 */
+    private List<String> extractRoomIds(List<Map<String, Object>> rooms) {
+        List<String> ids = new ArrayList<>();
+        for (Map<String, Object> r : rooms) {
+            Object v = r.get("officialRoomId");
+            if (v == null || String.valueOf(v).isBlank()) v = r.get("id");
+            if (v != null && !String.valueOf(v).isBlank()) ids.add(String.valueOf(v));
+        }
+        return ids;
     }
 
     /**

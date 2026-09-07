@@ -12,6 +12,7 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -139,6 +140,48 @@ public class PersonnelController {
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    @GetMapping("/{id}/room-authorization")
+    @Operation(summary = "读取人员的房间授权（本地覆盖层优先，否则回官方 allowed_rooms_json）")
+    public Result<Map<String, Object>> getRoomAuthorization(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                            @PathVariable Long id) {
+        User u = resolveUser(authorization);
+        if (u == null) return Result.fail(401, "未登录");
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        try {
+            return Result.success(personnelService.getRoomAuthorization(String.valueOf(id)));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PutMapping("/{id}/room-authorization")
+    @Operation(summary = "写入人员的本地房间授权（本地覆盖层，roomIds 为空 = 撤销全部）")
+    public Result<?> updateRoomAuthorization(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @PathVariable Long id,
+                                            @RequestBody Map<String, Object> body) {
+        User u = resolveUser(authorization);
+        if (u == null) return Result.fail(401, "未登录");
+        Result<?> denied = requireAdmin(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        List<String> roomIds = extractStringList(body == null ? null : body.get("roomIds"));
+        String operatorId = u.getId() != null ? u.getId() : (u.getUsername() != null ? u.getUsername() : "");
+        try {
+            return Result.success(personnelService.updateRoomAuthorization(String.valueOf(id), roomIds, operatorId));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    private static List<String> extractStringList(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<String> result = new ArrayList<>();
+        for (Object o : list) {
+            if (o != null && !String.valueOf(o).isBlank()) result.add(String.valueOf(o));
+        }
+        return result;
     }
 
     private static String trimToNull(String s) {
