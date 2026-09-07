@@ -1,15 +1,11 @@
 import {
   ArrowLeft,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Clock,
   History,
   Home,
-  KeyRound,
-  Loader2,
   LogIn,
   LogOut,
   Mail,
@@ -20,11 +16,9 @@ import {
   Search,
   Settings,
   Star,
-  Unlink,
   UserRound,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CasBindingContext } from "@/features/auth/CasBindingContext";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PageTransition } from "@/components/animation/PageTransition";
@@ -99,7 +93,6 @@ import {
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { adminInputClass } from "@/features/admin/adminFormUi";
-import { decodeQrFromFile } from "@/utils/decodeQrFromFile";
 import { AdminChromeContextMenu, type AdminChromeContextMenuPayload } from "@/features/admin/AdminChromeContextMenu";
 import {
   parseAdminNavLinkFromEventTarget,
@@ -121,7 +114,6 @@ import {
   scrollAdminContentTo,
 } from "@/features/admin/adminTelemetryNav";
 import { Button } from "@/components/ui/button";
-import { AdminButton } from "@/components/admin/AdminButton";
 import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
 import {
   Dialog,
@@ -131,12 +123,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  fetchCasBindingStatus,
-  bindCasAccount,
-  unbindCasAccount,
-  type CasBindingStatus,
-} from "@/api/domains/admin.api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -189,21 +175,6 @@ export default function AdminLayout() {
   const [sessionUser, setSessionUser] = useState(() => authStorage.getUserInfo());
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [sidebarLogoBroken, setSidebarLogoBroken] = useState(false);
-
-  /** ARO account binding — STAFF and above */
-  const [aroBinding, setAroBinding] = useState<null | false | { aroUserId: string; name: string; departmentName: string; createdAt: string }>(null);
-  const [aroBindDialogOpen, setAroBindDialogOpen] = useState(false);
-  const [aroBindUserId, setAroBindUserId] = useState("");
-  // CAS token binding
-  const [casStatus, setCasStatus] = useState<CasBindingStatus | null>(null);
-  const [casDialogOpen, setCasDialogOpen] = useState(false);
-  const [casBinding, setCasBinding] = useState(false);
-  const [casPopupReady, setCasPopupReady] = useState(false);
-  const [casRenewing, setCasRenewing] = useState(false);
-  const casPasteRef = useRef<HTMLTextAreaElement>(null);
-  const [aroAccount, setAroAccount] = useState("");
-  const [aroPassword, setAroPassword] = useState("");
-  const [aroUnbindDialogOpen, setAroUnbindDialogOpen] = useState(false);
 
   /** Email / SendKey binding */
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -301,28 +272,6 @@ export default function AdminLayout() {
     return () => {
       cancelled = true;
     };
-  }, [role]);
-
-  /** Fetch ARO account binding status for STAFF and above */
-  useEffect(() => {
-    if (!hasMinRole(role, "STAFF")) return;
-    const token = authStorage.getToken();
-    if (!token) return;
-    fetch("/api/admin/account/binding", {
-      headers: { Authorization: "Bearer " + token },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch binding");
-        return res.json();
-      })
-      .then((wrapper) => setAroBinding(wrapper?.data || false))
-      .catch(() => setAroBinding(false));
-  }, [role]);
-
-  /** Fetch CAS token binding status */
-  useEffect(() => {
-    if (!hasMinRole(role, "STAFF")) return;
-    fetchCasBindingStatus().then(setCasStatus).catch(() => {});
   }, [role]);
 
   /** Fetch current email and SendKey */
@@ -1065,57 +1014,6 @@ export default function AdminLayout() {
     );
   };
 
-  // ── CAS binding context for child pages ──
-  const casContextValue = useMemo(
-    () => ({ casStatus, openCasDialog: () => setCasDialogOpen(true) }),
-    [casStatus],
-  );
-
-  // ── CAS token bind handlers ──
-  const handleCasFetch = () => {
-    setCasPopupReady(false);
-    window.open("https://aro.shsmu.edu.cn/jtu/api/loginAuth?loginAuthType=CAS", "aro-cas-fetch", "width=500,height=400");
-    setTimeout(() => setCasPopupReady(true), 1500);
-  };
-  const handleCasPaste = (e: React.ClipboardEvent) => {
-    const text = e.clipboardData?.getData("text") || "";
-    let token = "";
-    try { const json = JSON.parse(text); token = json?.data?.token || json?.token || ""; } catch { if (text.startsWith("eyJ")) token = text.trim(); }
-    if (token) { e.preventDefault(); doCasBindToken(token); }
-  };
-  const doCasBindToken = async (aroToken: string) => {
-    setCasBinding(true);
-    try { await bindCasAccount(aroToken); toast.success("ARO认证绑定成功"); setCasPopupReady(false); setCasDialogOpen(false); fetchCasBindingStatus().then(setCasStatus); }
-    catch (e: any) { toast.error(e?.message || "绑定失败"); }
-    finally { setCasBinding(false); }
-  };
-  const doCasBindPwd = async (account: string, pwd: string) => {
-    setCasBinding(true);
-    try {
-      const res = await fetch("/api/admin/account/binding/cas-bind", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + authStorage.getToken() }, body: JSON.stringify({ aroAccount: account, aroPassword: pwd }) });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.message || "登录失败");
-      toast.success("ARO认证绑定成功"); setCasDialogOpen(false); setAroAccount(""); setAroPassword("");
-      fetchCasBindingStatus().then(setCasStatus);
-    } catch (e: any) { toast.error(e?.message || "绑定失败"); }
-    finally { setCasBinding(false); }
-  };
-  const handleCasRenew = async () => {
-    setCasRenewing(true);
-    try {
-      const res = await fetch("/api/admin/account/binding/cas-renew", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + authStorage.getToken() }, body: "{}" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.message || "续期失败");
-      toast.success("Token已续期"); fetchCasBindingStatus().then(setCasStatus);
-    } catch (e: any) { toast.error(e?.message || "续期失败"); }
-    finally { setCasRenewing(false); }
-  };
-  const handleCasUnbind = async () => {
-    if (!await appConfirm("确定解绑ARO个人认证吗？")) return;
-    try { await unbindCasAccount(); toast.success("已解绑"); setCasStatus(null); }
-    catch (e: any) { toast.error(e?.message || "解绑失败"); }
-  };
-  const casRemaining = casStatus?.remainingSeconds;
-  const casExpiring = casRemaining != null && casRemaining < 3 * 86400;
-
   const handleSendBindCode = async () => {
     if (!emailDraft.trim()) { toast.error("请输入邮箱地址"); return; }
     setEmailCodeSending(true);
@@ -1281,15 +1179,6 @@ export default function AdminLayout() {
                   <span className="hidden min-w-0 flex-col text-left sm:flex">
                     <span className="inline-flex items-center gap-1.5 truncate text-sm font-medium text-[var(--twin-ink)]">
                       {headerPrimaryLabel}
-                      {hasMinRole(role, "STAFF") && (
-                        <span
-                          className={cn(
-                            "inline-block h-2 w-2 rounded-full shrink-0",
-                            casStatus?.bound ? "bg-emerald-400" : "bg-neutral-300",
-                          )}
-                          title={casStatus?.bound ? `ARO已绑定: ${casStatus.casAccount}` : "ARO未绑定"}
-                        />
-                      )}
                     </span>
                     {headerUsername ? (
                       <span className="truncate text-[11px] text-[var(--twin-mute)]">@{headerUsername}</span>
@@ -1302,103 +1191,10 @@ export default function AdminLayout() {
                 <div className="px-2 py-1.5 sm:hidden">
                   <div className="inline-flex items-center gap-1.5 truncate text-sm font-medium text-[var(--twin-ink)]">
                     {headerPrimaryLabel}
-                    {hasMinRole(role, "STAFF") && (
-                      <span className={cn("inline-block h-2 w-2 rounded-full shrink-0", casStatus?.bound ? "bg-emerald-400" : "bg-neutral-300")} />
-                    )}
                   </div>
                   {headerUsername ? <div className="truncate text-[11px] text-[var(--twin-mute)]">@{headerUsername}</div> : null}
                 </div>
                 <div className="px-2 py-1 text-[10px] text-[var(--twin-mute)] sm:block">当前角色 · {role}</div>
-                <DropdownMenuSeparator />
-                {hasMinRole(role, "STAFF") && aroBinding === false && (
-                  <DropdownMenuItem onSelect={() => setAroBindDialogOpen(true)}>
-                    <UserRound className="mr-2 h-4 w-4" />
-                    绑定ARO账号
-                  </DropdownMenuItem>
-                )}
-                {hasMinRole(role, "STAFF") && aroBinding && (
-                  <>
-                    <DropdownMenuItem disabled className="text-[var(--twin-mute)] opacity-70">
-                      <UserRound className="mr-2 h-4 w-4" />
-                      ARO绑定: {aroBinding.name} ({aroBinding.aroUserId})
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={async () => {
-                        const currentToken = authStorage.getToken();
-                        const currentRole = authStorage.getRole();
-                        const currentUserInfo = authStorage.getUserInfo();
-                        try {
-                          localStorage.setItem("admin_original_auth", JSON.stringify({
-                            token: currentToken,
-                            role: currentRole,
-                            userInfo: currentUserInfo,
-                          }));
-                        } catch {
-                          /* ignore */
-                        }
-                        try {
-                          const res = await fetch("/api/auth/impersonate", {
-                            method: "POST",
-                            headers: { Authorization: "Bearer " + currentToken },
-                          });
-                          if (!res.ok) throw new Error("Impersonation failed");
-                          const wrapper = await res.json() as { code: number; data: { token: string; aroUserId: string } };
-                          const { token, aroUserId } = wrapper.data;
-                          const aroName = aroBinding?.name || aroUserId;
-                          // 统一权限：角色沿用教职工最高权限；身份 id 切到学生（数据 scope）
-                          authStorage.setAuth(token, currentRole, {
-                            ...(currentUserInfo ?? {}),
-                            id: aroUserId,
-                            username: aroUserId,
-                            displayName: aroName,
-                          } as any);
-                          toast.success("已切换至学生视图");
-                          navigate("/student/home");
-                        } catch {
-                          toast.error("切换学生视图失败");
-                        }
-                      }}
-                    >
-                      <UserRound className="mr-2 h-4 w-4" />
-                      切换学生视图
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setAroUnbindDialogOpen(true)}>
-                      <UserRound className="mr-2 h-4 w-4" />
-                      解除ARO绑定
-                    </DropdownMenuItem>
-                  </>
-                )}
-                {hasMinRole(role, "STAFF") && (
-                  <>
-                    <DropdownMenuSeparator />
-                    {casStatus?.bound ? (
-                      <>
-                        <DropdownMenuItem disabled className="text-[var(--twin-mute)] opacity-70">
-                          <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
-                          ARO认证: {casStatus.casAccount}
-                          {casRemaining != null && casRemaining > 0 && (
-                            <span className={cn("ml-1 text-[10px]", casExpiring && "text-amber-500")}>
-                              ({Math.floor(casRemaining / 86400)}天)
-                            </span>
-                          )}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={handleCasRenew}>
-                          <Clock className="mr-2 h-4 w-4" />
-                          {casRenewing ? "续期中..." : "续期Token"}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={handleCasUnbind}>
-                          <Unlink className="mr-2 h-4 w-4" />
-                          解绑认证
-                        </DropdownMenuItem>
-                      </>
-                    ) : (
-                      <DropdownMenuItem onSelect={() => setCasDialogOpen(true)}>
-                        <KeyRound className="mr-2 h-4 w-4" />
-                        绑定ARO认证
-                      </DropdownMenuItem>
-                    )}
-                  </>
-                )}
                 {hasMinRole(role, "STAFF") ? (
                   <>
                     <DropdownMenuSeparator />
@@ -1536,9 +1332,7 @@ export default function AdminLayout() {
                 duration={0.3}
                 className="flex h-full min-h-0 flex-col"
               >
-              <CasBindingContext.Provider value={casContextValue}>
-                <Outlet />
-              </CasBindingContext.Provider>
+              <Outlet />
               </PageTransition>
             ) : null}
           </div>
@@ -1598,191 +1392,6 @@ export default function AdminLayout() {
               退出登录
             </button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ARO 绑定弹窗 */}
-      <Dialog open={aroBindDialogOpen} onOpenChange={setAroBindDialogOpen}>
-        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>绑定ARO账号</DialogTitle>
-            <DialogDescription>输入要绑定的ARO用户ID</DialogDescription>
-          </DialogHeader>
-          <div className="py-2 space-y-2">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                title="扫描二维码识别ARO ID"
-                className="shrink-0 flex h-10 w-10 items-center justify-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] transition-colors"
-                onClick={() => {
-                  const inp = document.createElement("input");
-                  inp.type = "file";
-                  inp.accept = "image/*";
-                  inp.onchange = async () => {
-                    const file = inp.files?.[0];
-                    if (!file) return;
-                    toast.loading("识别二维码中…", { id: "qr-decode" });
-                    const qrText = await decodeQrFromFile(file);
-                    toast.dismiss("qr-decode");
-                    if (qrText) {
-                      setAroBindUserId(qrText);
-                      toast.success("已识别");
-                    } else {
-                      toast.error("未识别到二维码，请重试");
-                    }
-                  };
-                  inp.click();
-                }}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-              </button>
-              <input
-                className={`${adminInputClass} flex-1`}
-                placeholder="ARO用户ID"
-                value={aroBindUserId}
-                onChange={(e) => setAroBindUserId(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && aroBindUserId.trim()) {
-                    e.preventDefault();
-                    const btn = document.getElementById("aro-bind-submit-btn") as HTMLButtonElement | null;
-                    btn?.click();
-                  }
-                }}
-              />
-            </div>
-            <p className="text-[10px] text-[var(--twin-mute)]">可手动输入或点击左侧扫码图标上传二维码图片自动识别</p>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button
-              variant="outline"
-              size="default"
-              onClick={() => {
-                setAroBindDialogOpen(false);
-                setAroBindUserId("");
-              }}
-            >
-              取消
-            </Button>
-            <Button
-              id="aro-bind-submit-btn"
-              size="default"
-              disabled={!aroBindUserId.trim()}
-              onClick={async () => {
-                const token = authStorage.getToken();
-                try {
-                  const res = await fetch("/api/admin/account/bind-aro", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: "Bearer " + token,
-                    },
-                    body: JSON.stringify({ aroUserId: aroBindUserId.trim() }),
-                  });
-                  if (!res.ok) {
-                    const errData = await res.json().catch(() => ({}));
-                    throw new Error((errData as any).message || "绑定失败");
-                  }
-                  toast.success("绑定成功");
-                  setAroBindDialogOpen(false);
-                  setAroBindUserId("");
-                  // Refresh binding status
-                  try {
-                    const bindRes = await fetch("/api/admin/account/binding", {
-                      headers: { Authorization: "Bearer " + token },
-                    });
-                    if (bindRes.ok) {
-                      const wrapper = await bindRes.json();
-                      setAroBinding(wrapper?.data || false);
-                    }
-                  } catch {
-                    /* ignore */
-                  }
-                } catch (e: any) {
-                  toast.error(e?.message || "绑定失败，请检查ARO用户ID是否正确");
-                }
-              }}
-            >
-              确认绑定
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ARO 解绑确认弹窗 */}
-      <Dialog open={aroUnbindDialogOpen} onOpenChange={setAroUnbindDialogOpen}>
-        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>解除ARO绑定</DialogTitle>
-            <DialogDescription>
-              确定要解除当前账号的ARO绑定吗？
-              {aroBinding && (
-                <span className="mt-1 block">当前绑定: {aroBinding.name} ({aroBinding.aroUserId})</span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button
-              variant="outline"
-              size="default"
-              onClick={() => setAroUnbindDialogOpen(false)}
-            >
-              取消
-            </Button>
-            <Button
-              variant="destructive"
-              size="default"
-              onClick={async () => {
-                const token = authStorage.getToken();
-                try {
-                  const res = await fetch("/api/admin/account/bind-aro", {
-                    method: "DELETE",
-                    headers: { Authorization: "Bearer " + token },
-                  });
-                  if (!res.ok) throw new Error("解除绑定失败");
-                  toast.success("已解除ARO绑定");
-                  setAroUnbindDialogOpen(false);
-                  setAroBinding(false);
-                } catch {
-                  toast.error("解除绑定失败");
-                }
-              }}
-            >
-              解除绑定
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ARO 认证绑定弹窗 */}
-      <Dialog open={casDialogOpen} onOpenChange={setCasDialogOpen}>
-        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>绑定 ARO 个人认证</DialogTitle>
-            <DialogDescription>选择一种方式获取你的 ARO Token。</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            {/* 方式一：账号密码 */}
-            <div className="rounded border p-3 space-y-2">
-              <p className="text-xs font-medium">方式一：账号密码（推荐）</p>
-              <input type="text" value={aroAccount} onChange={e => setAroAccount(e.target.value)} placeholder="ARO 账号（如 YF0408）" className="w-full rounded border px-3 py-2 text-sm" />
-              <input type="password" value={aroPassword} onChange={e => setAroPassword(e.target.value)} placeholder="ARO 密码" className="w-full rounded border px-3 py-2 text-sm" onKeyDown={e => { if (e.key === "Enter" && aroAccount.trim() && aroPassword) doCasBindPwd(aroAccount.trim(), aroPassword); }} />
-              <AdminButton type="button" tone="primary" size="default" className="w-full" disabled={!aroAccount.trim() || !aroPassword || casBinding} onClick={() => doCasBindPwd(aroAccount.trim(), aroPassword)}>{casBinding ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />绑定中...</> : "绑定"}</AdminButton>
-            </div>
-
-            {/* 方式二：统一认证登录 */}
-            <div className="rounded border p-3 space-y-2">
-              <p className="text-xs font-medium">方式二：统一认证登录</p>
-              <p className="text-[10px] text-[var(--twin-mute)]">点击按钮打开弹窗。若已有 ARO 会话则直接 Ctrl+A C V 粘贴 Token；若没有请先完成 CAS 登录。</p>
-              <AdminButton type="button" tone="primary" size="default" className="w-full" onClick={handleCasFetch}>一键获取 Token</AdminButton>
-              <AdminButton type="button" tone="secondary" size="default" className="w-full" onClick={() => { const w = window.open("https://auth2.shsmu.edu.cn/cas/logout", "aro-cas-lo", "width=1,height=1"); setTimeout(() => { if (w) w.close(); window.open("https://auth2.shsmu.edu.cn/cas/login?service=https://aro.shsmu.edu.cn", "aro-cas", "width=800,height=600"); }, 800); }}>完成 CAS 登录</AdminButton>
-              {casPopupReady && (
-                <div className="space-y-2">
-                  <div className="rounded bg-blue-50 border border-blue-200 p-2 text-xs text-blue-700 leading-relaxed">在弹窗中 <strong>Ctrl+A</strong> 全选 → <strong>Ctrl+C</strong> 复制 → 回到此处 <strong>Ctrl+V</strong> 粘贴</div>
-                  <textarea ref={casPasteRef} onPaste={handleCasPaste} placeholder="在此 Ctrl+V 粘贴..." className="w-full h-16 rounded border px-3 py-2 text-xs font-mono resize-none" autoFocus />
-                </div>
-              )}
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
 
