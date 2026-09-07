@@ -177,6 +177,22 @@ export async function updatePersonnelField(id: number, field: string, value: str
   await authHttp.put(`/personnel/${id}/field`, { field, value });
 }
 
+/** 房间授权有效态：managed=1 表示本地覆盖层生效，roomIds 为有效房间 id 列表 */
+export interface PersonnelRoomAuthorization {
+  managed: number;
+  roomIds: string[];
+  rooms: Array<{ roomId: string; roomName?: string; regionName?: string; floorName?: string }>;
+}
+
+export async function fetchPersonnelRoomAuthorization(id: number | string): Promise<PersonnelRoomAuthorization> {
+  const res = await authHttp.get<Result<PersonnelRoomAuthorization>>(`/personnel/${id}/room-authorization`);
+  return res.data.data ?? { managed: 0, roomIds: [], rooms: [] };
+}
+
+export async function updatePersonnelRoomAuthorization(id: number | string, roomIds: string[]) {
+  await authHttp.put(`/personnel/${id}/room-authorization`, { roomIds });
+}
+
 /** 修改真实姓名（personnel.name），不会改登录账号 username */
 export async function updatePersonnelName(id: number, name: string) {
   await authHttp.put(`/personnel/${id}/name`, { name });

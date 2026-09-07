@@ -1,12 +1,19 @@
 import * as React from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { usePrefersReducedMotion } from "@/hooks/useTypewriterText";
 import { Briefcase, GraduationCap, Mail, Send, Smartphone, Building2, IdCard, ShieldCheck } from "lucide-react";
+import { toast } from "react-hot-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/api/hooks/queryKeys";
 import type { UnifiedPersonnelRecord } from "@/api/domains/admin.api";
+import { fetchPersonnelRoomAuthorization, updatePersonnelRoomAuthorization, type PersonnelRoomAuthorization } from "@/api/domains/admin.api";
+import { fetchRoomMappingRooms, type RoomMappingRoomRow } from "@/api/twinApi";
 import type { IdentityTag } from "@/api/domains/personIdentity.api";
 import { hasMinRole } from "@/features/auth/roleAccess";
+import { AdminButton } from "@/components/admin/AdminButton";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, SysBadge, StatusPill, ROLE_LABEL_MAP } from "./PersonnelRichList";
 
 // 直接进入本页（不经 AUP 页面）也能保证 useGSAP 生效；registerPlugin 幂等
@@ -213,13 +220,7 @@ export function PersonnelDetailCard({
             <div className="flex justify-between gap-2 py-0.5 text-[11px]"><span className="text-[var(--twin-mute)]">手机</span><span className="text-[var(--twin-body)]">{row.mobilePhone || "—"}</span></div>
             <div className="flex justify-between gap-2 py-0.5 text-[11px]">
               <span className="shrink-0 text-[var(--twin-mute)]">房间授权</span>
-              <div className="flex flex-wrap justify-end gap-1">
-                {(() => {
-                  const rooms = (row.allowedRoomsDisplayZh || "").split(/[、，,;；]/).map((s) => s.trim()).filter(Boolean);
-                  if (rooms.length === 0) return <span className="text-[var(--twin-body)]">{row.hasOfficialRoomPermission === 1 ? "有" : "无"}</span>;
-                  return rooms.map((r, i) => (<span key={i} className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700">{r}</span>));
-                })()}
-              </div>
+              <RoomAuthorizationField personId={row.id} fallbackZh={row.allowedRoomsDisplayZh} fallbackOfficial={row.hasOfficialRoomPermission} />
             </div>
           </div>
         </section>
@@ -325,6 +326,129 @@ function EditableText({
         className={valueCls} title="点击编辑姓名（不等于账号名）">
         {value || "—"}
       </span>
+    </div>
+  );
+}
+
+/** 房间授权：本地覆盖层编辑。展示有效房间，弹窗按区域→楼层分组勾选。 */
+function RoomAuthorizationField({ personId, fallbackZh, fallbackOfficial }: {
+  personId: number;
+  fallbackZh: string | null;
+  fallbackOfficial: number | null;
+}) {
+  const qc = useQueryClient();
+  const [auth, setAuth] = useState<PersonnelRoomAuthorization | null>(null);
+  const [catalog, setCatalog] = useState<RoomMappingRoomRow[]>([]);
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let on = true;
+    fetchPersonnelRoomAuthorization(personId)
+      .then((d) => { if (on) setAuth(d); })
+      .catch(() => {});
+    fetchRoomMappingRooms({ page: 1, pageSize: 500 })
+      .then(({ list }) => { if (on) setCatalog(list); })
+      .catch(() => {});
+    return () => { on = false; };
+  }, [personId]);
+
+  const groups = useMemo(() => {
+    const g: Record<string, Record<string, RoomMappingRoomRow[]>> = {};
+    for (const r of catalog) {
+      const region = r.regionName || "其他";
+      const floor = r.floorName || "其他";
+      if (!g[region]) g[region] = {};
+      if (!g[region][floor]) g[region][floor] = [];
+      g[region][floor].push(r);
+    }
+    return g;
+  }, [catalog]);
+
+  // 展示：优先后端 rooms（含名称），其次用目录补全 roomIds，未加载时回退旧文案
+  const chips: string[] = (() => {
+    if (auth) {
+      if (auth.rooms?.length) return auth.rooms.map((r) => r.roomName || r.roomId);
+      if (auth.roomIds?.length) {
+        const byId = new Map(catalog.map((r) => [r.roomId, r]));
+        return auth.roomIds.map((id) => byId.get(id)?.roomName || id);
+      }
+      return [];
+    }
+    return (fallbackZh || "").split(/[、，,;；]/).map((s) => s.trim()).filter(Boolean);
+  })();
+
+  const openPicker = () => {
+    setSelected(new Set(auth?.roomIds ?? []));
+    setOpen(true);
+  };
+
+  const toggle = (roomId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(roomId)) next.delete(roomId); else next.add(roomId);
+      return next;
+    });
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await updatePersonnelRoomAuthorization(personId, [...selected]);
+      toast.success("房间授权已更新");
+      setOpen(false);
+      setAuth(await fetchPersonnelRoomAuthorization(personId));
+      qc.invalidateQueries({ queryKey: queryKeys.personnel.all });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      {chips.length === 0 ? (
+        <span className="text-[var(--twin-body)]">{auth ? "无" : fallbackOfficial === 1 ? "有" : "无"}</span>
+      ) : chips.map((r, i) => (
+        <span key={i} className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700">{r}</span>
+      ))}
+      <button type="button" className="shrink-0 text-[11px] text-[var(--twin-link)] hover:underline" onClick={openPicker}>修改</button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+          <DialogHeader>
+            <DialogTitle className="text-[var(--twin-ink)]">房间授权</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto pr-1">
+            {catalog.length === 0 ? (
+              <div className="py-6 text-center text-xs text-[var(--twin-mute)]">房间目录加载中…</div>
+            ) : Object.entries(groups).map(([region, floors]) => (
+              <div key={region} className="mb-3">
+                <div className="text-xs font-semibold text-[var(--twin-ink)]">{region}</div>
+                {Object.entries(floors).map(([floor, rooms]) => (
+                  <div key={floor} className="mt-1 pl-2">
+                    <div className="text-[11px] text-[var(--twin-mute)]">{floor}</div>
+                    <div className="mt-1 space-y-0.5">
+                      {rooms.map((r) => (
+                        <label key={r.roomId} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 hover:bg-[var(--twin-canvas-soft)]">
+                          <input type="checkbox" checked={selected.has(r.roomId)} onChange={() => toggle(r.roomId)} className="h-3.5 w-3.5 accent-[var(--twin-ink)]" />
+                          <span className="text-xs text-[var(--twin-body)]">{r.roomName || r.roomId}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <AdminButton type="button" tone="secondary" size="sm" onClick={() => setOpen(false)}>取消</AdminButton>
+            <AdminButton type="button" tone="primary" size="sm" loading={saving} onClick={save}>保存</AdminButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
