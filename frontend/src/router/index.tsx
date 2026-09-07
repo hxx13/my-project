@@ -84,6 +84,7 @@ import CageCodelistPage from "@/features/cage-shelf/pages/CageCodelistPage";
 import CageFieldPage from "@/features/cage-shelf/pages/CageFieldPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
 import AdminAroBindingPage from "@/pages/AdminAroBindingPage";
+import ExamPaperAdminPage from "@/features/exam/pages/ExamPaperAdminPage";
 import AdminExpStatsPage from "@/pages/AdminExpStatsPage";
 import AnimalRoomTelemetryPage from "@/pages/AnimalRoomTelemetryPage";
 import AnimalRoomCockpitPage from "@/pages/AnimalRoomCockpitPage";
@@ -383,6 +384,7 @@ export const router = createHashRouter([
                   { path: "door-group-storage", element: <AdminDoorGroupStoragePage /> },
                   { path: "device-channels", element: <AdminDeviceChannelPage /> },
                   { path: "aro-rooms", element: <AdminRoomMappingPage /> },
+                  { path: "exam-papers", element: <ExamPaperAdminPage /> },
                   { path: "room-mapping", element: <Navigate to={`${STAFF_NS}/admin/aro-rooms`} replace /> },
                   { path: "access-rules", element: <AdminAccessRulesPage /> },
                   { path: "department-storage", element: <AdminDepartmentStoragePage /> },

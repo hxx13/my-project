@@ -206,6 +206,13 @@
       "registryId": "door-group"
     },
     {
+      "path": "/admin/exam-papers",
+      "label": "试卷管理",
+      "fallbackMinRole": "STAFF",
+      "groupTitle": "ARO 房间与联动",
+      "registryId": "exam-papers"
+    },
+    {
       "path": "/admin/exp-stats",
       "label": "经验值统计",
       "fallbackMinRole": "STAFF",

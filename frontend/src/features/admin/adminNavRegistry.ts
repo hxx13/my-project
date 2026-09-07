@@ -572,6 +572,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         fallbackMinRole: "STAFF",
         sidebarVisible: (ctx) => show(ctx, "/admin/aro-binding", "STAFF"),
       },
+      {
+        id: "exam-papers",
+        path: "/admin/exam-papers",
+        label: "试卷管理",
+        icon: FileText,
+        homeTone: "from-blue-400 to-cyan-500",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx) => show(ctx, "/admin/exam-papers", "STAFF"),
+      },
 
     ],
   },
