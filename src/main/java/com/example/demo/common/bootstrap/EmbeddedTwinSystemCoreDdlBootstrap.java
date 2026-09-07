@@ -128,6 +128,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-dahua-record-id-unique.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-door-swipe-rule.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-exam-paper.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-push-channel-master.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-twin-violation-text-template.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-upload-file-record.sql", ctx)) success++;
