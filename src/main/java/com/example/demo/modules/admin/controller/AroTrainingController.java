@@ -8,7 +8,6 @@ import com.example.demo.modules.aro.entity.AroTrainingTrainee;
 import com.example.demo.modules.aro.mapper.AroTrainingFavoriteMapper;
 import com.example.demo.modules.aro.mapper.AroTrainingSessionMapper;
 import com.example.demo.modules.aro.mapper.AroTrainingTraineeMapper;
-import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.aro.service.AroTrainingSyncService;
 import com.example.demo.modules.auth.entity.User;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,7 +27,6 @@ public class AroTrainingController {
     private final AroTrainingTraineeMapper traineeMapper;
     private final AroTrainingFavoriteMapper favoriteMapper;
     private final AroTrainingSyncService syncService;
-    private final AroService aroService;
     private final AuthContextService authContextService;
     private final HttpServletRequest request;
 
@@ -36,14 +34,12 @@ public class AroTrainingController {
                                   AroTrainingTraineeMapper traineeMapper,
                                   AroTrainingFavoriteMapper favoriteMapper,
                                   AroTrainingSyncService syncService,
-                                  AroService aroService,
                                   AuthContextService authContextService,
                                   HttpServletRequest request) {
         this.sessionMapper = sessionMapper;
         this.traineeMapper = traineeMapper;
         this.favoriteMapper = favoriteMapper;
         this.syncService = syncService;
-        this.aroService = aroService;
         this.authContextService = authContextService;
         this.request = request;
     }
@@ -218,7 +214,6 @@ public class AroTrainingController {
     public Result<?> audit(@RequestBody Map<String, Object> body) {
         User user = resolveUser();
         if (user == null) return Result.fail(401, "未登录");
-        aroService.requireJtuApiToken(); // CAS token 有效性检查
         Long examSignId = toLong(body.get("examSignId"));
         Integer state = toInt(body.get("state"));
         if (examSignId == null || state == null) {
@@ -234,7 +229,6 @@ public class AroTrainingController {
     public Result<?> score(@RequestBody Map<String, Object> body) {
         User user = resolveUser();
         if (user == null) return Result.fail(401, "未登录");
-        aroService.requireJtuApiToken();
         Long examSignId = toLong(body.get("examSignId"));
         Integer state = toInt(body.get("state"));
         if (examSignId == null || state == null) {
@@ -250,7 +244,6 @@ public class AroTrainingController {
     public Result<?> updateRooms(@RequestBody Map<String, Object> body) {
         User user = resolveUser();
         if (user == null) return Result.fail(401, "未登录");
-        aroService.requireJtuApiToken();
         String userId = body.get("userId") instanceof String s ? s : String.valueOf(body.get("userId"));
         @SuppressWarnings("unchecked")
         List<String> roomIds = body.get("roomIds") instanceof List<?> l ? (List<String>) l : Collections.emptyList();
