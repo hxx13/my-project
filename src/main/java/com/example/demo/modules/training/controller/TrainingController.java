@@ -8,8 +8,6 @@ import com.example.demo.modules.training.service.TrainingService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -69,8 +67,9 @@ public class TrainingController {
 
     @GetMapping("/pending")
     public Result<?> listPending() {
-        if (resolveUser() == null) return Result.fail(401, "未登录");
-        return Result.success(service.listPending());
+        User user = resolveUser();
+        if (user == null) return Result.fail(401, "未登录");
+        return Result.success(service.listPending(user.getId()));
     }
 
     @GetMapping("/favorites")
@@ -123,15 +122,6 @@ public class TrainingController {
         User user = resolveUser();
         if (user == null) return Result.fail(401, "未登录");
         return Result.success(service.unpublish(id, user));
-    }
-
-    @PostMapping("/{id}/schedule-publish")
-    public Result<?> schedulePublish(@PathVariable Long id, @RequestBody Map<String, Object> body) {
-        User user = resolveUser();
-        if (user == null) return Result.fail(401, "未登录");
-        LocalDateTime publishAt = toDateTime(body.get("publishAt"));
-        if (publishAt == null) return Result.fail(400, "缺少 publishAt（yyyy-MM-dd HH:mm:ss）");
-        return Result.success(service.schedulePublish(id, publishAt, user));
     }
 
     // ========================================================================
@@ -278,19 +268,5 @@ public class TrainingController {
         if (v == null) return null;
         String s = String.valueOf(v).trim();
         return s.isEmpty() ? null : s;
-    }
-
-    private static final DateTimeFormatter SPACE_DT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-    private LocalDateTime toDateTime(Object v) {
-        if (v == null) return null;
-        if (v instanceof LocalDateTime ldt) return ldt;
-        String s = String.valueOf(v).trim();
-        if (s.isEmpty()) return null;
-        try {
-            return LocalDateTime.parse(s.replace('T', ' '), SPACE_DT);
-        } catch (Exception e) {
-            return null;
-        }
     }
 }

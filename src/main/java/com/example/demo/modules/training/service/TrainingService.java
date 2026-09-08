@@ -35,7 +35,8 @@ import java.util.Set;
 
 /**
  * 培训（系列/场次/报名）CRUD。写操作（系列更新、场次/报名变更、审核、成绩、房间）均校验
- * 当前用户为该培训的所属人（ownerId）或平台所有者（PLATFORM_OWNER 及以上）。
+ * 当前用户为该培训的所属人（ownerId）或超级管理员（SUPER_ADMIN 及以上，含 PLATFORM_OWNER），
+ * 使 ARO 同步的培训（ownerId 为空）也可被 SUPER_ADMIN/PLATFORM_OWNER 编辑。
  */
 @Service
 public class TrainingService {
@@ -138,14 +139,6 @@ public class TrainingService {
         Training t = requireTraining(id);
         checkOwner(user, t);
         trainingMapper.publishNow(id);
-        return get(id);
-    }
-
-    @Transactional
-    public Map<String, Object> schedulePublish(Long id, LocalDateTime publishAt, User user) {
-        Training t = requireTraining(id);
-        checkOwner(user, t);
-        trainingMapper.schedulePublish(id, publishAt);
         return get(id);
     }
 
@@ -294,9 +287,9 @@ public class TrainingService {
         return out;
     }
 
-    /** 待审核/待评分学员（跨全部培训，含培训/场次信息） */
-    public List<Map<String, Object>> listPending() {
-        return enrollmentMapper.listPending();
+    /** 待审核/待评分学员（仅当前用户作为所属人的培训，含培训/场次信息） */
+    public List<Map<String, Object>> listPending(String userId) {
+        return enrollmentMapper.listPendingByOwner(userId);
     }
 
     // ========================================================================
@@ -417,11 +410,11 @@ public class TrainingService {
         return trainingOfOccurrence(requireEnrollment(enrollmentId).getOccurrenceId());
     }
 
-    /** 所属人或平台所有者（PLATFORM_OWNER 及以上）可写。 */
+    /** 所属人或超级管理员（SUPER_ADMIN 及以上，含 PLATFORM_OWNER）可写。 */
     private void checkOwner(User user, Training training) {
         if (user.getId() != null && user.getId().equals(training.getOwnerId())) return;
-        if (user.getRole() != null && user.getRole().getLevel() >= RoleEnum.PLATFORM_OWNER.getLevel()) return;
-        throw TwinBusinessException.of(403, "仅培训所属人或平台所有者可操作");
+        if (user.getRole() != null && user.getRole().getLevel() >= RoleEnum.SUPER_ADMIN.getLevel()) return;
+        throw TwinBusinessException.of(403, "仅培训所属人或超级管理员可操作");
     }
 
     private Map<String, Object> toSeriesJson(Training t) {
@@ -437,7 +430,6 @@ public class TrainingService {
         m.put("recurrenceDay", t.getRecurrenceDay());
         m.put("recurrenceTime", t.getRecurrenceTime());
         m.put("status", t.getStatus());
-        m.put("publishAt", t.getPublishAt());
         m.put("createdBy", t.getCreatedBy());
         m.put("createdAt", t.getCreatedAt());
         m.put("updatedAt", t.getUpdatedAt());
