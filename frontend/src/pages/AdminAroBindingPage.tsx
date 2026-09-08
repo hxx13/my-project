@@ -411,7 +411,7 @@ export default function AdminAroBindingPage() {
         <td className="px-3 py-2.5 font-medium text-[var(--app-color-text-primary)]">{e.name}</td>
         <td className="px-3 py-2.5 text-[var(--twin-mute)] font-mono text-xs">{e.jobNumber || "—"}</td>
         <td className="px-3 py-2.5 text-[var(--twin-mute)] max-w-[160px] truncate">{e.projectGroup || "—"}</td>
-        <td className="px-3 py-2.5 relative">
+        <td className="px-3 py-2.5 relative min-w-[160px] max-w-[260px]">
           <div className="flex flex-wrap items-center gap-1">
             {roomIds.length === 0 && <span className="text-[11px] text-[var(--twin-mute)]">无</span>}
             {roomIds.map((rid) => {
@@ -457,7 +457,7 @@ export default function AdminAroBindingPage() {
       <table className="w-full min-w-max text-left text-sm border-collapse">
         <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className={cn("bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold", sticky && "sticky top-0 z-[2]")}>
           {hasLead && <th className="px-3 py-2">场次</th>}
-          <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th><th className="px-3 py-2">课题组</th><th className="px-3 py-2">允许房间</th><th className="px-3 py-2">审批</th><th className="px-3 py-2">评分</th>
+          <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th><th className="px-3 py-2">课题组</th><th className="px-3 py-2 min-w-[160px] max-w-[260px]">允许房间</th><th className="px-3 py-2">审批</th><th className="px-3 py-2">评分</th>
         </tr></thead>
         <tbody>
           {list.length === 0 ? <tr><td colSpan={hasLead ? 7 : 6} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无学员</td></tr>
