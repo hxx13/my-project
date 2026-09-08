@@ -339,7 +339,7 @@ export default function AdminTrainingPublishPage() {
           </div>
         </AdminFormCard>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-auto">
+        <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-2 gap-3 overflow-auto items-start">
           <AdminFormCard title="基本信息">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
