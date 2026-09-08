@@ -7,8 +7,9 @@ export interface TrainingSeries {
   code?: string | null;
   name: string;
   type?: number | null;
+  typeName?: string | null;
   paperIds?: number[];
-  ownerId?: string | null;
+  ownerIds?: string[];
   recurrence?: string | null;
   recurrenceDay?: number | null;
   recurrenceTime?: string | null;
@@ -118,6 +119,22 @@ export async function unpublishTraining(id: number | string): Promise<TrainingDe
 
 export async function deleteTraining(id: number | string): Promise<void> {
   await adminHttp.delete(`/training/${id}`);
+}
+
+// ---- type presets ----
+
+export async function fetchTrainingTypePresets(): Promise<{ id: number; name: string }[]> {
+  const r = await adminHttp.get("/training/type-presets");
+  return (r.data?.data ?? []) as { id: number; name: string }[];
+}
+
+export async function createTrainingTypePreset(name: string): Promise<{ id: number; name: string }> {
+  const r = await adminHttp.post("/training/type-presets", { name });
+  return r.data?.data as { id: number; name: string };
+}
+
+export async function deleteTrainingTypePreset(id: number): Promise<void> {
+  await adminHttp.delete(`/training/type-presets/${id}`);
 }
 
 // ---- location presets ----

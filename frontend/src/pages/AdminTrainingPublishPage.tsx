@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { ChevronLeft, ChevronDown, Plus, Search, Trash2, Loader2, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronDown, Plus, Search, Trash2, Loader2, Pencil, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
@@ -18,6 +18,8 @@ import {
   deleteOccurrence,
   fetchTrainingLocations,
   addTrainingLocation,
+  fetchTrainingTypePresets,
+  createTrainingTypePreset,
 } from "@/api/domains/training.api";
 import { fetchExamPapers, fetchExamFolders } from "@/features/exam/api/examPaper.api";
 import type { ExamPaperSummary, ExamPaperFolder } from "@/features/exam/api/examPaper.api";
@@ -163,12 +165,12 @@ export default function AdminTrainingPublishPage() {
   const editing = editingId != null;
 
   const [name, setName] = useState("");
-  const [type, setType] = useState(1);
+  const [typeName, setTypeName] = useState("");
   const [recurrence, setRecurrence] = useState("");
   const [recurrenceDay, setRecurrenceDay] = useState(1);
   const [recurrenceTime, setRecurrenceTime] = useState("");
-  const [ownerId, setOwnerId] = useState("");
-  const [ownerName, setOwnerName] = useState("");
+  const [ownerIds, setOwnerIds] = useState<string[]>([]);
+  const [ownerNames, setOwnerNames] = useState<string[]>([]);
   const [paperIds, setPaperIds] = useState<number[]>([]);
   const [occurrences, setOccurrences] = useState<OccurrenceRow[]>([]);
   const [form, setForm] = useState<OccurrenceRow>(emptyOccurrence());
@@ -192,6 +194,11 @@ export default function AdminTrainingPublishPage() {
     queryFn: fetchTrainingLocations,
   });
 
+  const { data: typePresets = [], refetch: refetchTypePresets } = useQuery({
+    queryKey: ["training-type-presets"],
+    queryFn: fetchTrainingTypePresets,
+  });
+
   const { data: folders = [] } = useQuery({
     queryKey: ["exam-folders"],
     queryFn: fetchExamFolders,
@@ -206,12 +213,12 @@ export default function AdminTrainingPublishPage() {
   useEffect(() => {
     if (!editing || !editDetail) return;
     setName(editDetail.name ?? "");
-    setType(editDetail.type ?? 1);
+    setTypeName(editDetail.typeName ?? "");
     setRecurrence(editDetail.recurrence ?? "");
     setRecurrenceDay(editDetail.recurrenceDay ?? 1);
     setRecurrenceTime(editDetail.recurrenceTime ?? "");
-    setOwnerId(editDetail.ownerId ?? "");
-    setOwnerName(editDetail.ownerId ?? "");
+    setOwnerIds(editDetail.ownerIds ?? []);
+    setOwnerNames(editDetail.ownerIds ?? []);
     setPaperIds(editDetail.paperIds ?? []);
     const occs = (editDetail.occurrences ?? []).map((o) => ({
       id: o.id,
@@ -262,9 +269,9 @@ export default function AdminTrainingPublishPage() {
     try {
       const base = {
         name: name.trim(),
-        type,
+        typeName: typeName || undefined,
         paperIds,
-        ownerId: ownerId || undefined,
+        ownerIds,
         recurrence: recurrence.trim() || null,
         recurrenceDay: recurrence ? recurrenceDay : null,
         recurrenceTime: recurrence ? recurrenceTime || null : null,
@@ -297,6 +304,19 @@ export default function AdminTrainingPublishPage() {
       toast.error(e?.response?.data?.message || e?.message || "保存失败");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleNewType = async () => {
+    const name = await appPrompt("类型名称", "", { allowEmpty: false, placeholder: "如 准入培训" });
+    if (name == null) return;
+    try {
+      const created = await createTrainingTypePreset(name.trim());
+      await refetchTypePresets();
+      setTypeName(created.name);
+      toast.success("类型已添加");
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || "添加类型失败");
     }
   };
 
@@ -353,27 +373,53 @@ export default function AdminTrainingPublishPage() {
               </div>
               <div className="space-y-1.5">
                 <label className={adminLabelClass}>类型</label>
-                <select
-                  className={adminInputClass}
-                  value={type}
-                  onChange={(e) => setType(Number(e.target.value))}
-                >
-                  <option value={1}>准入培训</option>
-                  <option value={2}>手术培训</option>
-                </select>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    className={adminInputClass}
+                    value={typeName}
+                    onChange={(e) => setTypeName(e.target.value)}
+                  >
+                    <option value="">选择类型…</option>
+                    {typePresets.map((t) => (
+                      <option key={t.id} value={t.name}>{t.name}</option>
+                    ))}
+                  </select>
+                  <AdminButton type="button" tone="secondary" size="sm" onClick={handleNewType} title="新建类型">
+                    <Plus className="h-3.5 w-3.5" />
+                  </AdminButton>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <label className={adminLabelClass}>所属人</label>
-                <button
-                  type="button"
-                  onClick={() => setPickerOpen(true)}
-                  className={cn(adminInputClass, "flex items-center justify-between text-left")}
-                >
-                  <span className={ownerName ? "text-neutral-900" : "text-neutral-400"}>
-                    {ownerName || "选择所属人…"}
-                  </span>
-                  <ChevronDown className="h-4 w-4 shrink-0 text-neutral-400" />
-                </button>
+                <div className={cn(adminInputClass, "flex min-h-[2.5rem] flex-wrap items-center gap-1.5")}>
+                  {ownerNames.length === 0 && <span className="text-neutral-400">未选择</span>}
+                  {ownerNames.map((n, i) => (
+                    <span
+                      key={ownerIds[i] ?? i}
+                      className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700"
+                    >
+                      {n}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOwnerIds((prev) => prev.filter((_, idx) => idx !== i));
+                          setOwnerNames((prev) => prev.filter((_, idx) => idx !== i));
+                        }}
+                        className="text-neutral-400 transition-colors hover:text-rose-500"
+                        aria-label="移除"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen(true)}
+                    className="inline-flex items-center gap-1 text-xs text-[var(--app-color-primary)] hover:underline"
+                  >
+                    <Plus className="h-3 w-3" />选择所属人
+                  </button>
+                </div>
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <label className={adminLabelClass}>试卷（可选，多选）</label>
@@ -586,8 +632,8 @@ export default function AdminTrainingPublishPage() {
           <PersonnelPicker
             onClose={() => setPickerOpen(false)}
             onConfirm={(ids, names) => {
-              setOwnerId(ids[0] ?? "");
-              setOwnerName(names[0] ?? ids[0] ?? "");
+              setOwnerIds(ids);
+              setOwnerNames(names);
               setPickerOpen(false);
             }}
           />,

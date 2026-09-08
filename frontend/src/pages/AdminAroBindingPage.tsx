@@ -32,8 +32,9 @@ import {
 const PAGE_SIZE = 20;
 const ENROLL_PAGE_SIZE = 20;
 
-function typeLabel(t?: number | null): string {
-  return t === 1 ? "准入培训" : t === 2 ? "手术培训" : "—";
+function typeLabel(typeName?: string | null, type?: number | null): string {
+  if (typeName) return typeName;
+  return type === 1 ? "准入培训" : type === 2 ? "手术培训" : "—";
 }
 
 function seriesStatusBadge(s?: string | null) {
@@ -142,7 +143,7 @@ export default function AdminAroBindingPage() {
     }
   };
 
-  const canWriteSeries = (s: TrainingSeries) => isPlatformOwner || currentUserId === s.ownerId;
+  const canWriteSeries = (s: TrainingSeries) => isPlatformOwner || (s.ownerIds ?? []).includes(currentUserId);
 
   const seriesAction = async (fn: () => Promise<unknown>, ok: string) => {
     try {
@@ -160,7 +161,7 @@ export default function AdminAroBindingPage() {
   const series = sd?.list ?? [];
   const sTotal = sd?.total ?? 0;
   const sPages = Math.max(1, Math.ceil(sTotal / PAGE_SIZE));
-  const canWrite = !!selected && (isPlatformOwner || currentUserId === selected.ownerId);
+  const canWrite = !!selected && (isPlatformOwner || (selected.ownerIds ?? []).includes(currentUserId));
 
   const roomById = useMemo(() => {
     const m = new Map<string, RoomMappingRoomRow>();
@@ -346,8 +347,8 @@ export default function AdminAroBindingPage() {
                         </button>
                       </td>
                       <td className="px-3 py-2.5"><div className="font-medium text-[var(--app-color-text-primary)]">{s.name}</div><div className="text-[11px] text-[var(--twin-mute)] mt-0.5 line-clamp-1">{s.code || ""}</div></td>
-                      <td className="px-3 py-2.5 text-[var(--twin-mute)]">{typeLabel(s.type)}</td>
-                      <td className="px-3 py-2.5 text-[var(--twin-mute)] whitespace-nowrap">{s.ownerId || "—"}{s.ownerId === currentUserId && <span className="ml-1 text-[10px] text-blue-600">（我）</span>}</td>
+                      <td className="px-3 py-2.5 text-[var(--twin-mute)]">{typeLabel(s.typeName, s.type)}</td>
+                      <td className="px-3 py-2.5 text-[var(--twin-mute)] whitespace-nowrap">{(s.ownerIds ?? []).join("、") || "—"}{(s.ownerIds ?? []).includes(currentUserId) && <span className="ml-1 text-[10px] text-blue-600">（我）</span>}</td>
                       <td className="px-3 py-2.5"><OccurrenceCount id={s.id} /></td>
                       <td className="px-3 py-2.5">{seriesStatusBadge(s.status)}</td>
                       <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
@@ -548,7 +549,7 @@ export default function AdminAroBindingPage() {
             <AdminButton type="button" tone="secondary" size="default" onClick={goList}><ChevronLeft className="h-4 w-4 mr-1" />返回</AdminButton>
             <div className="min-w-0">
               <h2 className="text-base font-bold text-[var(--app-color-text-primary)] truncate">{selected?.name}</h2>
-              <p className="text-xs text-[var(--twin-mute)]">{typeLabel(detail?.type ?? selected?.type)} · 所属人 {selected?.ownerId || "—"}{selected?.ownerId === currentUserId && "（我）"} · {seriesStatusBadge(detail?.status ?? selected?.status)}</p>
+              <p className="text-xs text-[var(--twin-mute)]">{typeLabel(detail?.typeName ?? selected?.typeName, detail?.type ?? selected?.type)} · 所属人 {(selected?.ownerIds ?? []).join("、") || "—"}{(selected?.ownerIds ?? []).includes(currentUserId) && "（我）"} · {seriesStatusBadge(detail?.status ?? selected?.status)}</p>
             </div>
           </div>
           <div className={cn("flex items-center gap-1.5 h-9 rounded border border-[var(--app-color-border-default)] bg-sky-50/50 px-3 cursor-text min-w-[220px]", gsearch && "ring-1 ring-blue-300")}>
