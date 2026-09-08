@@ -9,15 +9,15 @@ import java.util.List;
 public interface TrainingMapper {
 
     @Insert("""
-            INSERT INTO training (code, name, type, paper_id, owner_id, time_limit, recurrence, recurrence_day, recurrence_time, status, created_by, created_at, updated_at)
-            VALUES (#{code}, #{name}, #{type}, #{paperId}, #{ownerId}, #{timeLimit}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{status}, #{createdBy}, NOW(), NOW())
+            INSERT INTO training (code, name, type, paper_ids_json, owner_id, time_limit, recurrence, recurrence_day, recurrence_time, status, created_by, created_at, updated_at)
+            VALUES (#{code}, #{name}, #{type}, #{paperIdsJson}, #{ownerId}, #{timeLimit}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{status}, #{createdBy}, NOW(), NOW())
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Training training);
 
     @Select("""
             SELECT id, code, name, type,
-                   paper_id AS paperId,
+                   paper_ids_json AS paperIdsJson,
                    owner_id AS ownerId,
                    time_limit AS timeLimit,
                    recurrence,
@@ -33,7 +33,7 @@ public interface TrainingMapper {
 
     @Select("""
             SELECT id, code, name, type,
-                   paper_id AS paperId,
+                   paper_ids_json AS paperIdsJson,
                    owner_id AS ownerId,
                    time_limit AS timeLimit,
                    recurrence,
@@ -49,7 +49,7 @@ public interface TrainingMapper {
 
     @Select("""
             SELECT id, code, name, type,
-                   paper_id AS paperId,
+                   paper_ids_json AS paperIdsJson,
                    owner_id AS ownerId,
                    time_limit AS timeLimit,
                    recurrence,
@@ -65,7 +65,7 @@ public interface TrainingMapper {
 
     @Select("""
             SELECT id, code, name, type,
-                   paper_id AS paperId,
+                   paper_ids_json AS paperIdsJson,
                    owner_id AS ownerId,
                    time_limit AS timeLimit,
                    recurrence,
@@ -83,7 +83,7 @@ public interface TrainingMapper {
             UPDATE training SET
                 name = #{name},
                 type = #{type},
-                paper_id = #{paperId},
+                paper_ids_json = #{paperIdsJson},
                 owner_id = #{ownerId},
                 time_limit = #{timeLimit},
                 recurrence = #{recurrence},

@@ -7,7 +7,7 @@ export interface TrainingSeries {
   code?: string | null;
   name: string;
   type?: number | null;
-  paperId?: number | null;
+  paperIds?: number[];
   ownerId?: string | null;
   timeLimit?: number | null;
   recurrence?: string | null;

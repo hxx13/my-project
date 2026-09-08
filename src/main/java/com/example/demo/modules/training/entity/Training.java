@@ -9,7 +9,7 @@ public class Training {
     private String code;
     private String name;
     private Integer type;
-    private Long paperId;
+    private String paperIdsJson;
     private String ownerId;
     private Integer timeLimit;
     private String recurrence;

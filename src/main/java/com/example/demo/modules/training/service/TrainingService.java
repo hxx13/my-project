@@ -106,7 +106,7 @@ public class TrainingService {
         t.setCode(str(body.get("code")));
         t.setName(str(body.get("name")));
         t.setType(toInt(body.get("type")));
-        t.setPaperId(toLong(body.get("paperId")));
+        t.setPaperIdsJson(toJson(body.get("paperIds")));
         t.setOwnerId(str(body.get("ownerId")) != null ? str(body.get("ownerId")) : operatorId);
         t.setTimeLimit(toInt(body.get("timeLimit")));
         t.setRecurrence(str(body.get("recurrence")));
@@ -124,7 +124,7 @@ public class TrainingService {
         checkOwner(user, t);
         if (body.containsKey("name")) t.setName(str(body.get("name")));
         if (body.containsKey("type")) t.setType(toInt(body.get("type")));
-        if (body.containsKey("paperId")) t.setPaperId(toLong(body.get("paperId")));
+        if (body.containsKey("paperIds")) t.setPaperIdsJson(toJson(body.get("paperIds")));
         if (body.containsKey("ownerId")) t.setOwnerId(str(body.get("ownerId")));
         if (body.containsKey("timeLimit")) t.setTimeLimit(toInt(body.get("timeLimit")));
         if (body.containsKey("recurrence")) t.setRecurrence(str(body.get("recurrence")));
@@ -423,7 +423,7 @@ public class TrainingService {
         m.put("code", t.getCode());
         m.put("name", t.getName());
         m.put("type", t.getType());
-        m.put("paperId", t.getPaperId());
+        m.put("paperIds", roomList(t.getPaperIdsJson()));
         m.put("ownerId", t.getOwnerId());
         m.put("timeLimit", t.getTimeLimit());
         m.put("recurrence", t.getRecurrence());
@@ -488,10 +488,6 @@ public class TrainingService {
 
     private Integer toInt(Object v) {
         return v instanceof Number n ? n.intValue() : null;
-    }
-
-    private Long toLong(Object v) {
-        return v instanceof Number n ? n.longValue() : null;
     }
 
     private boolean contains(String v, String k) {

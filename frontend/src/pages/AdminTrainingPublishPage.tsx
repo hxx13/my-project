@@ -17,7 +17,8 @@ import {
   fetchTrainingLocations,
   addTrainingLocation,
 } from "@/api/domains/training.api";
-import { fetchExamPapers } from "@/features/exam/api/examPaper.api";
+import { fetchExamPapers, fetchExamFolders } from "@/features/exam/api/examPaper.api";
+import type { ExamPaperSummary, ExamPaperFolder } from "@/features/exam/api/examPaper.api";
 import { fetchUnifiedPersonnel } from "@/api/domains/admin.api";
 import { appPrompt } from "@/lib/appDialog";
 
@@ -144,6 +145,87 @@ function OwnerPicker({
   );
 }
 
+/** 试卷多选绑定：按文件夹分组、可折叠、支持按标题/编码搜索 */
+function PaperPicker({
+  papers,
+  folders,
+  selected,
+  onToggle,
+}: {
+  papers: ExamPaperSummary[];
+  folders: ExamPaperFolder[];
+  selected: number[];
+  onToggle: (id: number) => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  const folderName = (folderId?: number | null) =>
+    folderId == null ? "未分类" : folders.find((f) => f.id === folderId)?.name ?? "未分类";
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? papers.filter(
+        (p) =>
+          (p.title ?? "").toLowerCase().includes(q) ||
+          (p.code ?? "").toLowerCase().includes(q),
+      )
+    : papers;
+
+  const groups: { name: string; items: ExamPaperSummary[] }[] = [];
+  const byFolder = new Map<string, ExamPaperSummary[]>();
+  for (const p of filtered) {
+    const key = folderName(p.folderId);
+    const arr = byFolder.get(key);
+    if (arr) arr.push(p);
+    else byFolder.set(key, [p]);
+  }
+  for (const [name, items] of byFolder) groups.push({ name, items });
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="搜索试卷标题 / 编码"
+          className={cn(adminInputClass, "pl-8")}
+        />
+      </div>
+      <div className="max-h-64 space-y-1 overflow-auto rounded-lg border border-neutral-200 p-2">
+        {groups.length === 0 && (
+          <div className="px-2 py-3 text-center text-xs text-neutral-400">无匹配试卷</div>
+        )}
+        {groups.map((g) => (
+          <details key={g.name} className="rounded-md border border-neutral-100" open>
+            <summary className="cursor-pointer select-none px-2 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50">
+              {g.name}
+              <span className="ml-1 font-normal text-neutral-400">({g.items.length})</span>
+            </summary>
+            <div className="space-y-0.5 border-t border-neutral-100 p-1">
+              {g.items.map((p) => (
+                <label
+                  key={p.id}
+                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(p.id)}
+                    onChange={() => onToggle(p.id)}
+                    className="h-3.5 w-3.5 accent-[var(--app-color-primary)]"
+                  />
+                  <span className="truncate">{p.title}</span>
+                  <span className="ml-auto shrink-0 font-mono text-xs text-neutral-400">{p.code}</span>
+                </label>
+              ))}
+            </div>
+          </details>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminTrainingPublishPage() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -158,13 +240,13 @@ export default function AdminTrainingPublishPage() {
   const [recurrenceTime, setRecurrenceTime] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [ownerName, setOwnerName] = useState("");
-  const [paperId, setPaperId] = useState("");
+  const [paperIds, setPaperIds] = useState<number[]>([]);
   const [occurrences, setOccurrences] = useState<OccurrenceRow[]>([emptyOccurrence()]);
   const [saving, setSaving] = useState(false);
 
   const { data: paperData } = useQuery({
     queryKey: ["exam-papers", "published"],
-    queryFn: async () => fetchExamPapers({ page: 1, pageSize: 200 }),
+    queryFn: async () => fetchExamPapers({ page: 1, pageSize: 500 }),
   });
   const papers = useMemo(
     () => (paperData?.list ?? []).filter((p) => p.status === "PUBLISHED"),
@@ -174,6 +256,11 @@ export default function AdminTrainingPublishPage() {
   const { data: locations = [], refetch: refetchLocations } = useQuery({
     queryKey: ["training-locations"],
     queryFn: fetchTrainingLocations,
+  });
+
+  const { data: folders = [] } = useQuery({
+    queryKey: ["exam-folders"],
+    queryFn: fetchExamFolders,
   });
 
   const { data: editDetail } = useQuery({
@@ -192,7 +279,7 @@ export default function AdminTrainingPublishPage() {
     setRecurrenceTime(editDetail.recurrenceTime ?? "");
     setOwnerId(editDetail.ownerId ?? "");
     setOwnerName(editDetail.ownerId ?? "");
-    setPaperId(editDetail.paperId != null ? String(editDetail.paperId) : "");
+    setPaperIds(editDetail.paperIds ?? []);
     const occs = (editDetail.occurrences ?? []).map((o) => ({
       id: o.id,
       startTime: toDatetimeLocal(o.startTime),
@@ -205,6 +292,9 @@ export default function AdminTrainingPublishPage() {
 
   const patchOccurrence = (i: number, patch: Partial<OccurrenceRow>) =>
     setOccurrences((prev) => prev.map((o, idx) => (idx === i ? { ...o, ...patch } : o)));
+
+  const togglePaper = (id: number) =>
+    setPaperIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const occurrenceBody = (o: OccurrenceRow) => ({
     startTime: o.startTime || undefined,
@@ -223,7 +313,7 @@ export default function AdminTrainingPublishPage() {
       const base = {
         name: name.trim(),
         type,
-        paperId: paperId ? Number(paperId) : undefined,
+        paperIds,
         ownerId: ownerId || undefined,
         timeLimit: timeLimit ? Number(timeLimit) : undefined,
         recurrence: recurrence.trim() || null,
@@ -379,20 +469,14 @@ export default function AdminTrainingPublishPage() {
                 <label className={adminLabelClass}>所属人</label>
                 <OwnerPicker ownerId={ownerId} ownerName={ownerName} onSelect={(id, n) => { setOwnerId(id); setOwnerName(n); }} />
               </div>
-              <div className="space-y-1.5">
-                <label className={adminLabelClass}>试卷（可选）</label>
-                <select
-                  className={adminInputClass}
-                  value={paperId}
-                  onChange={(e) => setPaperId(e.target.value)}
-                >
-                  <option value="">不绑定试卷</option>
-                  {papers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title}
-                    </option>
-                  ))}
-                </select>
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className={adminLabelClass}>试卷（可选，多选）</label>
+                <PaperPicker
+                  papers={papers}
+                  folders={folders}
+                  selected={paperIds}
+                  onToggle={togglePaper}
+                />
               </div>
             </div>
           </AdminFormCard>
