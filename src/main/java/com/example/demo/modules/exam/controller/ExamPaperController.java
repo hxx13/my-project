@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.exam.service.ExamPaperService;
+import com.example.demo.modules.exam.service.ExamSeedService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,15 +17,33 @@ import java.util.Map;
 public class ExamPaperController {
 
     private final ExamPaperService service;
+    private final ExamSeedService seedService;
     private final AuthContextService authContextService;
     private final HttpServletRequest request;
 
     public ExamPaperController(ExamPaperService service,
+                               ExamSeedService seedService,
                                AuthContextService authContextService,
                                HttpServletRequest request) {
         this.service = service;
+        this.seedService = seedService;
         this.authContextService = authContextService;
         this.request = request;
+    }
+
+    @GetMapping("/seeds")
+    public Result<?> listSeeds() {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        return Result.success(seedService.listSeeds());
+    }
+
+    @PostMapping("/import-seeds")
+    public Result<?> importSeeds(@RequestBody Map<String, Object> body) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        List<String> codes = body.get("codes") instanceof List<?> l
+                ? l.stream().map(String::valueOf).toList()
+                : List.of();
+        return Result.success(Map.of("imported", seedService.importSeeds(codes)));
     }
 
     @GetMapping
