@@ -1,0 +1,44 @@
+package com.example.demo.modules.training.mapper;
+
+import com.example.demo.modules.training.entity.PersonQualification;
+import org.apache.ibatis.annotations.*;
+
+import java.util.List;
+
+@Mapper
+public interface PersonQualificationMapper {
+
+    @Insert("""
+            INSERT INTO person_qualification (person_id, item_key, state, file_ref, updated_at)
+            VALUES (#{personId}, #{itemKey}, #{state}, #{fileRef}, NOW())
+            ON DUPLICATE KEY UPDATE state = #{state}, file_ref = #{fileRef}, updated_at = NOW()
+            """)
+    int upsert(PersonQualification q);
+
+    @Update("""
+            UPDATE person_qualification SET state = #{state}, updated_at = NOW()
+            WHERE person_id = #{personId} AND item_key = #{itemKey}
+            """)
+    int updateStateOnly(@Param("personId") String personId,
+                        @Param("itemKey") String itemKey,
+                        @Param("state") Integer state);
+
+    @Select("""
+            SELECT id, person_id AS personId, item_key AS itemKey, state, file_ref AS fileRef, updated_at AS updatedAt
+            FROM person_qualification WHERE person_id = #{personId} AND item_key = #{itemKey}
+            """)
+    PersonQualification findByPersonAndItem(@Param("personId") String personId, @Param("itemKey") String itemKey);
+
+    @Select("""
+            <script>
+            SELECT id, person_id AS personId, item_key AS itemKey, state, file_ref AS fileRef, updated_at AS updatedAt
+            FROM person_qualification
+            WHERE item_key = #{itemKey}
+            <if test="personIds != null and personIds.size() > 0">
+              AND person_id IN
+              <foreach collection="personIds" item="p" open="(" separator="," close=")">#{p}</foreach>
+            </if>
+            </script>
+            """)
+    List<PersonQualification> listByItem(@Param("itemKey") String itemKey, @Param("personIds") List<String> personIds);
+}
