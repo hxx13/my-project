@@ -21,6 +21,8 @@ export interface ExamPaperDetail {
   code: string;
   title: string;
   status: string;
+  qualifyScore?: number | null;
+  totalTime?: number | null;
   sections: FormSection[];
 }
 
@@ -101,9 +103,14 @@ export async function createExamPaper(body: { code: string; title: string }): Pr
   return { ...d, sections: mapSections(d.sections) };
 }
 
-export async function saveExamPaper(id: number, body: { title: string; sections: FormSection[] }): Promise<ExamPaperDetail> {
+export async function saveExamPaper(
+  id: number,
+  body: { title: string; sections: FormSection[]; qualifyScore?: number | null; totalTime?: number | null },
+): Promise<ExamPaperDetail> {
   const r = await adminHttp.put(`/exam-papers/${id}`, {
     title: body.title,
+    qualifyScore: body.qualifyScore,
+    totalTime: body.totalTime,
     sections: mapToPaperSections(body.sections),
   });
   const d = r.data?.data as ExamPaperSummary & { sections?: PaperSectionJson[] };
@@ -167,4 +174,35 @@ export async function fetchExamSeeds(): Promise<ExamSeed[]> {
 export async function importExamSeeds(codes: string[]): Promise<{ imported: number }> {
   const r = await adminHttp.post("/exam-papers/import-seeds", { codes });
   return (r.data?.data ?? { imported: 0 }) as { imported: number };
+}
+
+export interface QualificationBinding {
+  itemKey: string;
+  formId: number;
+  wordTemplateId?: string | null;
+}
+
+export async function fetchQualificationBinding(): Promise<QualificationBinding | null> {
+  const r = await adminHttp.get("/training/qualifications/config");
+  return (r.data?.data ?? null) as QualificationBinding | null;
+}
+
+export async function saveQualificationBinding(body: {
+  formId: number;
+  wordTemplateId?: string | null;
+}): Promise<QualificationBinding> {
+  const r = await adminHttp.put("/training/qualifications/config", body);
+  return r.data?.data as QualificationBinding;
+}
+
+export async function fetchQualificationPreview(params: {
+  formId: number;
+  wordTemplateId?: string | null;
+  submissionId?: number | null;
+}): Promise<Blob> {
+  const r = await adminHttp.get("/training/qualifications/preview", {
+    params,
+    responseType: "blob",
+  });
+  return r.data as Blob;
 }
