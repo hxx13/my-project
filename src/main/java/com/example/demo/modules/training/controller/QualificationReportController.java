@@ -4,6 +4,8 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.training.service.QualificationReportService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,6 +13,8 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/admin/training/qualifications")
 public class QualificationReportController {
+
+    private static final Logger log = LoggerFactory.getLogger(QualificationReportController.class);
 
     private final QualificationReportService reportService;
     private final AuthContextService authContextService;
@@ -41,6 +45,8 @@ public class QualificationReportController {
                     .header("Content-Disposition", "inline; filename=\"preview.pdf\"")
                     .body(pdf);
         } catch (Exception e) {
+            log.error("[qualification] 预览失败 form={} template={} submission={}: {}",
+                    formId, wordTemplateId, submissionId, e.getMessage(), e);
             return ResponseEntity.status(500).build();
         }
     }
