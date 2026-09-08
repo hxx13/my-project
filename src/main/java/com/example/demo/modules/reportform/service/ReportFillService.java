@@ -11,11 +11,13 @@ import com.example.demo.modules.reportform.entity.ReportFormSubmissionLog;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormSubmissionLogMapper;
+import com.example.demo.modules.reportform.event.ReportFormSubmittedEvent;
 import com.example.demo.modules.reportform.validator.FieldValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -35,19 +37,22 @@ public class ReportFillService {
     private final ObjectMapper objectMapper;
     private final UserMapper userMapper;
     private final UserDisplayNameService userDisplayNameService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ReportFillService(ReportFormDefinitionMapper definitionMapper,
                              ReportFormSubmissionMapper submissionMapper,
                              ReportFormSubmissionLogMapper logMapper,
                              ObjectMapper objectMapper,
                              UserMapper userMapper,
-                             UserDisplayNameService userDisplayNameService) {
+                             UserDisplayNameService userDisplayNameService,
+                             ApplicationEventPublisher eventPublisher) {
         this.definitionMapper = definitionMapper;
         this.submissionMapper = submissionMapper;
         this.logMapper = logMapper;
         this.objectMapper = objectMapper;
         this.userMapper = userMapper;
         this.userDisplayNameService = userDisplayNameService;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -598,7 +603,9 @@ public class ReportFillService {
         // 写入提交日志（快照提交时的数据）
         writeLog(sub.getId(), userId, "submit", sub.getFieldValuesJson());
 
-        return submissionMapper.selectById(sub.getId());
+        ReportFormSubmission saved = submissionMapper.selectById(sub.getId());
+        eventPublisher.publishEvent(new ReportFormSubmittedEvent(saved.getFormId(), saved.getId(), userId));
+        return saved;
     }
 
     /** 提交列表附带填报人昵称（个人表展示用） */
