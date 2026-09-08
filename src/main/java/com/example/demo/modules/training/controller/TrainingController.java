@@ -2,6 +2,7 @@ package com.example.demo.modules.training.controller;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.aro.service.AroTrainingSyncService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.training.service.TrainingService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,15 +18,30 @@ import java.util.Map;
 public class TrainingController {
 
     private final TrainingService service;
+    private final AroTrainingSyncService syncService;
     private final AuthContextService authContextService;
     private final HttpServletRequest request;
 
     public TrainingController(TrainingService service,
+                              AroTrainingSyncService syncService,
                               AuthContextService authContextService,
                               HttpServletRequest request) {
         this.service = service;
+        this.syncService = syncService;
         this.authContextService = authContextService;
         this.request = request;
+    }
+
+    /** 手动触发一次 ARO 培训同步（拉取场次/学员写入本地 training 表） */
+    @PostMapping("/sync")
+    public Result<?> sync() {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        try {
+            syncService.syncAll();
+            return Result.success(Map.of("ok", true));
+        } catch (Exception e) {
+            return Result.fail(500, "同步失败: " + e.getMessage());
+        }
     }
 
     @GetMapping

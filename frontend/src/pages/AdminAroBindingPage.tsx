@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { ChevronDown, ChevronLeft, Clock, MapPin, Loader2, Check, Search, Plus, ShieldCheck, ShieldX, CheckCircle2, XCircle, UserPlus, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, Clock, MapPin, Loader2, Check, Search, Plus, RefreshCw, ShieldCheck, ShieldX, CheckCircle2, XCircle, UserPlus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
@@ -18,6 +18,7 @@ import {
   auditEnrollment,
   scoreEnrollment,
   setEnrollmentRooms,
+  syncTrainings,
   type TrainingSeries,
   type TrainingOccurrence,
   type TrainingEnrollment,
@@ -69,6 +70,21 @@ export default function AdminAroBindingPage() {
   const [roomNav, setRoomNav] = useState<{ area: string; floor: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await syncTrainings();
+      toast.success("培训同步完成");
+      qc.invalidateQueries({ queryKey: ["training-list"] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || "同步失败");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setKeyword(kwInput), 300);
@@ -282,6 +298,7 @@ export default function AdminAroBindingPage() {
               <input value={kwInput} onChange={(e) => { setKwInput(e.target.value); setSPage(1); }} placeholder="搜索名称/编号..." className="flex-1 min-w-[60px] bg-transparent border-none outline-none text-sm" />
               {kwInput && <button onClick={() => setKwInput("")} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"><X className="h-3.5 w-3.5" /></button>}
             </div>
+            <AdminButton type="button" tone="secondary" size="default" disabled={syncing} onClick={handleSync}>{syncing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}同步培训</AdminButton>
             <AdminButton type="button" tone="primary" size="default" onClick={() => navigate("/console/admin/training/new")}><Plus className="h-4 w-4 mr-1" />发布培训</AdminButton>
           </div>
         </div>

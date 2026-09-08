@@ -159,3 +159,7 @@ export async function fetchPendingEnrollments(): Promise<PendingEnrollment[]> {
   const r = await adminHttp.get("/training/pending");
   return (r.data?.data ?? []) as PendingEnrollment[];
 }
+
+export async function syncTrainings(): Promise<void> {
+  await adminHttp.post("/training/sync");
+}
