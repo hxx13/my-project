@@ -154,6 +154,8 @@ export default function AdminTrainingPublishPage() {
   const [type, setType] = useState(1);
   const [timeLimit, setTimeLimit] = useState("");
   const [recurrence, setRecurrence] = useState("");
+  const [recurrenceDay, setRecurrenceDay] = useState(1);
+  const [recurrenceTime, setRecurrenceTime] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [paperId, setPaperId] = useState("");
@@ -187,6 +189,8 @@ export default function AdminTrainingPublishPage() {
     setType(editDetail.type ?? 1);
     setTimeLimit(editDetail.timeLimit != null ? String(editDetail.timeLimit) : "");
     setRecurrence(editDetail.recurrence ?? "");
+    setRecurrenceDay(editDetail.recurrenceDay ?? 1);
+    setRecurrenceTime(editDetail.recurrenceTime ?? "");
     setOwnerId(editDetail.ownerId ?? "");
     setOwnerName(editDetail.ownerId ?? "");
     setPaperId(editDetail.paperId != null ? String(editDetail.paperId) : "");
@@ -224,7 +228,9 @@ export default function AdminTrainingPublishPage() {
         paperId: paperId ? Number(paperId) : undefined,
         ownerId: ownerId || undefined,
         timeLimit: timeLimit ? Number(timeLimit) : undefined,
-        recurrence: recurrence.trim() || undefined,
+        recurrence: recurrence.trim() || null,
+        recurrenceDay: recurrence ? recurrenceDay : null,
+        recurrenceTime: recurrence ? recurrenceTime || null : null,
       };
       const rows = occurrences.filter(
         (o) => o.startTime || o.endTime || o.address || o.examinerName,
@@ -331,14 +337,46 @@ export default function AdminTrainingPublishPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className={adminLabelClass}>周期规则</label>
-                <input
+                <label className={adminLabelClass}>循环</label>
+                <select
                   className={adminInputClass}
                   value={recurrence}
                   onChange={(e) => setRecurrence(e.target.value)}
-                  placeholder="如 每周"
-                />
+                >
+                  <option value="">无循环</option>
+                  <option value="WEEKLY">每周</option>
+                  <option value="DAILY">每天</option>
+                </select>
               </div>
+              {recurrence === "WEEKLY" && (
+                <div className="space-y-1.5">
+                  <label className={adminLabelClass}>星期几</label>
+                  <select
+                    className={adminInputClass}
+                    value={recurrenceDay}
+                    onChange={(e) => setRecurrenceDay(Number(e.target.value))}
+                  >
+                    <option value={1}>周一</option>
+                    <option value={2}>周二</option>
+                    <option value={3}>周三</option>
+                    <option value={4}>周四</option>
+                    <option value={5}>周五</option>
+                    <option value={6}>周六</option>
+                    <option value={7}>周日</option>
+                  </select>
+                </div>
+              )}
+              {recurrence && (
+                <div className="space-y-1.5">
+                  <label className={adminLabelClass}>起始时刻</label>
+                  <input
+                    className={adminInputClass}
+                    type="time"
+                    value={recurrenceTime}
+                    onChange={(e) => setRecurrenceTime(e.target.value)}
+                  />
+                </div>
+              )}
               {editing && (
                 <div className="space-y-1.5">
                   <label className={adminLabelClass}>定时发布时间</label>

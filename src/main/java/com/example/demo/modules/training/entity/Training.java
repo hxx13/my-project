@@ -13,6 +13,8 @@ public class Training {
     private String ownerId;
     private Integer timeLimit;
     private String recurrence;
+    private Integer recurrenceDay;
+    private String recurrenceTime;
     private String status;
     private LocalDateTime publishAt;
     private String createdBy;

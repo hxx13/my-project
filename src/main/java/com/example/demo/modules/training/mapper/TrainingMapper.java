@@ -10,8 +10,8 @@ import java.util.List;
 public interface TrainingMapper {
 
     @Insert("""
-            INSERT INTO training (code, name, type, paper_id, owner_id, time_limit, recurrence, status, publish_at, created_by, created_at, updated_at)
-            VALUES (#{code}, #{name}, #{type}, #{paperId}, #{ownerId}, #{timeLimit}, #{recurrence}, #{status}, #{publishAt}, #{createdBy}, NOW(), NOW())
+            INSERT INTO training (code, name, type, paper_id, owner_id, time_limit, recurrence, recurrence_day, recurrence_time, status, publish_at, created_by, created_at, updated_at)
+            VALUES (#{code}, #{name}, #{type}, #{paperId}, #{ownerId}, #{timeLimit}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{status}, #{publishAt}, #{createdBy}, NOW(), NOW())
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Training training);
@@ -22,6 +22,8 @@ public interface TrainingMapper {
                    owner_id AS ownerId,
                    time_limit AS timeLimit,
                    recurrence,
+                   recurrence_day AS recurrenceDay,
+                   recurrence_time AS recurrenceTime,
                    status,
                    publish_at AS publishAt,
                    created_by AS createdBy,
@@ -37,6 +39,8 @@ public interface TrainingMapper {
                    owner_id AS ownerId,
                    time_limit AS timeLimit,
                    recurrence,
+                   recurrence_day AS recurrenceDay,
+                   recurrence_time AS recurrenceTime,
                    status,
                    publish_at AS publishAt,
                    created_by AS createdBy,
@@ -52,6 +56,8 @@ public interface TrainingMapper {
                    owner_id AS ownerId,
                    time_limit AS timeLimit,
                    recurrence,
+                   recurrence_day AS recurrenceDay,
+                   recurrence_time AS recurrenceTime,
                    status,
                    publish_at AS publishAt,
                    created_by AS createdBy,
@@ -61,6 +67,23 @@ public interface TrainingMapper {
             """)
     List<Training> list();
 
+    @Select("""
+            SELECT id, code, name, type,
+                   paper_id AS paperId,
+                   owner_id AS ownerId,
+                   time_limit AS timeLimit,
+                   recurrence,
+                   recurrence_day AS recurrenceDay,
+                   recurrence_time AS recurrenceTime,
+                   status,
+                   publish_at AS publishAt,
+                   created_by AS createdBy,
+                   created_at AS createdAt,
+                   updated_at AS updatedAt
+            FROM training WHERE status = 'PUBLISHED' AND recurrence IN ('WEEKLY','DAILY')
+            """)
+    List<Training> listWithRecurrence();
+
     @Update("""
             UPDATE training SET
                 name = #{name},
@@ -69,6 +92,8 @@ public interface TrainingMapper {
                 owner_id = #{ownerId},
                 time_limit = #{timeLimit},
                 recurrence = #{recurrence},
+                recurrence_day = #{recurrenceDay},
+                recurrence_time = #{recurrenceTime},
                 publish_at = #{publishAt},
                 updated_at = NOW()
             WHERE id = #{id}

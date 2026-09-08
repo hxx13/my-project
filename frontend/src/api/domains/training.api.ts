@@ -11,6 +11,8 @@ export interface TrainingSeries {
   ownerId?: string | null;
   timeLimit?: number | null;
   recurrence?: string | null;
+  recurrenceDay?: number | null;
+  recurrenceTime?: string | null;
   status?: string | null;
   publishAt?: string | null;
   createdBy?: string | null;

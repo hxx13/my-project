@@ -21,13 +21,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 培训（系列/场次/报名）CRUD。写操作（系列更新、场次/报名变更、审核、成绩、房间）均校验
@@ -105,6 +109,8 @@ public class TrainingService {
         t.setOwnerId(str(body.get("ownerId")) != null ? str(body.get("ownerId")) : operatorId);
         t.setTimeLimit(toInt(body.get("timeLimit")));
         t.setRecurrence(str(body.get("recurrence")));
+        t.setRecurrenceDay(toInt(body.get("recurrenceDay")));
+        t.setRecurrenceTime(str(body.get("recurrenceTime")));
         t.setStatus("DRAFT");
         t.setCreatedBy(operatorId);
         trainingMapper.insert(t);
@@ -121,6 +127,8 @@ public class TrainingService {
         if (body.containsKey("ownerId")) t.setOwnerId(str(body.get("ownerId")));
         if (body.containsKey("timeLimit")) t.setTimeLimit(toInt(body.get("timeLimit")));
         if (body.containsKey("recurrence")) t.setRecurrence(str(body.get("recurrence")));
+        if (body.containsKey("recurrenceDay")) t.setRecurrenceDay(toInt(body.get("recurrenceDay")));
+        if (body.containsKey("recurrenceTime")) t.setRecurrenceTime(str(body.get("recurrenceTime")));
         trainingMapper.update(t);
         return get(id);
     }
@@ -230,6 +238,48 @@ public class TrainingService {
         checkOwner(user, requireTraining(o.getTrainingId()));
         enrollmentMapper.deleteByOccurrenceId(id);
         return occurrenceMapper.delete(id);
+    }
+
+    /**
+     * 按循环规则补齐未来场次（WEEKLY/DAILY）。由定时任务每日调用，也无需用户校验。
+     * 未来 28 天为 horizon；WEEKLY 仅匹配 recurrenceDay（1=周一..7=周日），DAILY 每天一次。
+     * 起始时刻为 recurrenceTime（"HH:mm"），结束 = 起始 + 2 小时；同一 (trainingId, startTime) 去重。
+     * 返回本次新增场次数。
+     */
+    @Transactional
+    public int generateOccurrences(Long trainingId) {
+        Training t = trainingMapper.findById(trainingId);
+        if (t == null) return 0;
+        String rec = t.getRecurrence() == null ? null : t.getRecurrence().trim().toUpperCase();
+        if (!"WEEKLY".equals(rec) && !"DAILY".equals(rec)) return 0;
+
+        LocalTime time = parseTime(t.getRecurrenceTime());
+        if (time == null) return 0;
+
+        Set<LocalDateTime> existing = new HashSet<>();
+        for (TrainingOccurrence o : occurrenceMapper.listByTrainingId(trainingId)) {
+            if (o.getStartTime() != null) existing.add(o.getStartTime());
+        }
+
+        LocalDate today = LocalDate.now();
+        int generated = 0;
+        for (int i = 0; i < 28; i++) {
+            LocalDate day = today.plusDays(i);
+            if ("WEEKLY".equals(rec) && (t.getRecurrenceDay() == null || day.getDayOfWeek().getValue() != t.getRecurrenceDay())) {
+                continue;
+            }
+            LocalDateTime start = LocalDateTime.of(day, time);
+            if (existing.contains(start)) continue;
+            TrainingOccurrence o = new TrainingOccurrence();
+            o.setTrainingId(trainingId);
+            o.setStartTime(start);
+            o.setEndTime(start.plusHours(2));
+            o.setStatus("AUTO");
+            occurrenceMapper.insert(o);
+            existing.add(start);
+            generated++;
+        }
+        return generated;
     }
 
     // ========================================================================
@@ -384,6 +434,8 @@ public class TrainingService {
         m.put("ownerId", t.getOwnerId());
         m.put("timeLimit", t.getTimeLimit());
         m.put("recurrence", t.getRecurrence());
+        m.put("recurrenceDay", t.getRecurrenceDay());
+        m.put("recurrenceTime", t.getRecurrenceTime());
         m.put("status", t.getStatus());
         m.put("publishAt", t.getPublishAt());
         m.put("createdBy", t.getCreatedBy());
@@ -467,6 +519,16 @@ public class TrainingService {
         if (s == null || s.isBlank()) return null;
         try {
             return objectMapper.readValue(s, Object.class);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** "HH:mm"（也接受 "HH:mm:ss"）→ LocalTime，解析失败返回 null。 */
+    private static LocalTime parseTime(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return LocalTime.parse(s.trim());
         } catch (Exception e) {
             return null;
         }
