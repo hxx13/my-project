@@ -497,7 +497,7 @@ export default function AdminTrainingPublishPage() {
       </div>
 
       <Dialog open={occurrenceDialogOpen} onOpenChange={setOccurrenceDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" closeOnOverlayClick={false}>
           <DialogHeader>
             <DialogTitle>{editingIndex == null ? "添加场次" : "编辑场次"}</DialogTitle>
           </DialogHeader>
@@ -562,7 +562,7 @@ export default function AdminTrainingPublishPage() {
       </Dialog>
 
       <Dialog open={recurrenceDialogOpen} onOpenChange={setRecurrenceDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" closeOnOverlayClick={false}>
           <DialogHeader>
             <DialogTitle>自动发布场次配置</DialogTitle>
           </DialogHeader>
