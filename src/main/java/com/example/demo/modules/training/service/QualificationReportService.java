@@ -132,7 +132,9 @@ public class QualificationReportService {
         wordService.suggestBookmarkMapping(form.getLayoutJson(), wordService.parseBookmarks(templateBytes))
                 .forEach(bookmarkMapping::putIfAbsent);
 
-        byte[] docx = wordService.exportWord(formId, submissionId, templateBytes, bookmarkMapping, null);
+        byte[] docx = submissionId == null
+                ? wordService.exportWordLayoutPreview(formId, wordTemplateId)
+                : wordService.exportWord(formId, submissionId, templateBytes, bookmarkMapping, null);
         return converter.convert(docx);
     }
 }
