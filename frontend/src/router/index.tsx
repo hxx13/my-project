@@ -84,6 +84,7 @@ import CageCodelistPage from "@/features/cage-shelf/pages/CageCodelistPage";
 import CageFieldPage from "@/features/cage-shelf/pages/CageFieldPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
 import AdminAroBindingPage from "@/pages/AdminAroBindingPage";
+import AdminTrainingPublishPage from "@/pages/AdminTrainingPublishPage";
 import ExamPaperAdminPage from "@/features/exam/pages/ExamPaperAdminPage";
 import AdminExpStatsPage from "@/pages/AdminExpStatsPage";
 import AnimalRoomTelemetryPage from "@/pages/AnimalRoomTelemetryPage";
@@ -106,6 +107,7 @@ import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
 import AdminNavManager from "@/features/admin/AdminNavManager";
 import AdminConversationArchivePage from "@/pages/AdminConversationArchivePage";
 import AdminPushConfigPage from "@/pages/AdminPushConfigPage";
+import AdminDoorSwipeRulesPage from "@/pages/AdminDoorSwipeRulesPage";
 import AdminNotificationDigestPage from "@/pages/AdminNotificationDigestPage";
 import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
@@ -370,6 +372,7 @@ export const router = createHashRouter([
               { path: "cage-shelf-indexes", element: <AdminCageShelfIndexPage /> },
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },
               { path: "aro-binding", element: <AdminAroBindingPage /> },
+              { path: "training/new", element: <AdminTrainingPublishPage /> },
               { path: "notification-digest", element: <AdminNotificationDigestPage /> },
               { path: "exp-stats", element: <AdminExpStatsPage /> },
               { path: "supplies/audit-export", element: <AdminSuppliesAuditExportPage /> },
@@ -395,7 +398,7 @@ export const router = createHashRouter([
                   { path: "report-form/:id/design", element: <ReportFormDesignPage /> },
                   { path: "report-form/:id/submissions", element: <SubmissionManagePage /> },
                   { path: "telemetry-insights", element: <AdminTelemetryInsightsPage /> },
-                  { path: "telemetry-insights-config", element: <AdminTelemetryInsightsConfigPage /> },
+                  { path: "telemetry-insights/config", element: <AdminTelemetryInsightsConfigPage /> },
                   { path: "dahua-swing-tasks", element: <AdminDahuaSwingTasksPage /> },
                   { path: "dahua-swing-stats-tasks", element: <AdminDahuaSwingStatsDailyPage /> },
                   { path: "dahua-swing-stats-backfill", element: <AdminDahuaSwingStatsBackfillPage /> },
@@ -436,6 +439,7 @@ export const router = createHashRouter([
                   { path: "nav-manager", element: <AdminNavManager /> },
                   { path: "push-config", element: <AdminPushConfigPage /> },
                   { path: "push-dashboard", element: <AdminPushDashboardPage /> },
+                  { path: "door-swipe-rules", element: <AdminDoorSwipeRulesPage /> },
                   { path: "face-debug", element: <FaceDebugPage /> },
                   { path: "door-control", element: <AdminDoorControlPage /> },
                   { path: "telemetry-watchlists", element: <AdminTelemetryWatchlistsPage /> },
