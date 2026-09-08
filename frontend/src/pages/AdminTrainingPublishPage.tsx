@@ -163,7 +163,8 @@ export default function AdminTrainingPublishPage() {
   const [ownerId, setOwnerId] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [paperIds, setPaperIds] = useState<number[]>([]);
-  const [occurrences, setOccurrences] = useState<OccurrenceRow[]>([emptyOccurrence()]);
+  const [occurrences, setOccurrences] = useState<OccurrenceRow[]>([]);
+  const [draft, setDraft] = useState<OccurrenceRow>(emptyOccurrence());
   const [saving, setSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -209,11 +210,13 @@ export default function AdminTrainingPublishPage() {
       address: o.address ?? "",
       timeLimit: o.timeLimit != null ? String(o.timeLimit) : "",
     }));
-    setOccurrences(occs.length ? occs : [emptyOccurrence()]);
+    setOccurrences(occs);
   }, [editing, editDetail]);
 
-  const patchOccurrence = (i: number, patch: Partial<OccurrenceRow>) =>
-    setOccurrences((prev) => prev.map((o, idx) => (idx === i ? { ...o, ...patch } : o)));
+  const addOccurrenceRow = () => {
+    setOccurrences((prev) => [...prev, draft]);
+    setDraft(emptyOccurrence());
+  };
 
   const togglePaper = (id: number) =>
     setPaperIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -272,7 +275,7 @@ export default function AdminTrainingPublishPage() {
     }
   };
 
-  const handleNewLocation = async (i: number) => {
+  const handleNewLocation = async () => {
     const name = await appPrompt("地点名称", "", { allowEmpty: false, placeholder: "如 浦东实验室" });
     if (name == null) return;
     const address = await appPrompt("地点地址", "", { allowEmpty: false, placeholder: "详细地址" });
@@ -280,7 +283,7 @@ export default function AdminTrainingPublishPage() {
     try {
       await addTrainingLocation(name.trim(), address.trim());
       await refetchLocations();
-      patchOccurrence(i, { address: address.trim() });
+      setDraft((d) => ({ ...d, address: address.trim() }));
       toast.success("地点已添加");
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || "添加地点失败");
@@ -371,7 +374,9 @@ export default function AdminTrainingPublishPage() {
                   >
                     <option value="">无循环</option>
                     <option value="WEEKLY">每周</option>
-                    <option value="DAILY">每天</option>
+                    <option value="MONTHLY">每月</option>
+                    <option value="QUARTERLY">每三个月</option>
+                    <option value="YEARLY">每年</option>
                   </select>
                 </div>
                 {recurrence === "WEEKLY" && (
@@ -392,6 +397,20 @@ export default function AdminTrainingPublishPage() {
                     </select>
                   </div>
                 )}
+                {["MONTHLY", "QUARTERLY", "YEARLY"].includes(recurrence) && (
+                  <div className="space-y-1.5">
+                    <label className={adminLabelClass}>几号</label>
+                    <select
+                      className={adminInputClass}
+                      value={recurrenceDay}
+                      onChange={(e) => setRecurrenceDay(Number(e.target.value))}
+                    >
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                        <option key={d} value={d}>{d}号</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {recurrence && (
                   <div className="space-y-1.5">
                     <label className={adminLabelClass}>起始时刻</label>
@@ -407,84 +426,96 @@ export default function AdminTrainingPublishPage() {
             </details>
           </AdminFormCard>
 
-          <AdminFormCard
-            title="场次"
-            actions={
-              <AdminButton
-                type="button"
-                tone="secondary"
-                size="sm"
-                onClick={() => setOccurrences((prev) => [...prev, emptyOccurrence()])}
-              >
-                <Plus className="mr-1 h-4 w-4" />添加场次
-              </AdminButton>
-            }
-          >
-            <div className="space-y-3">
-              {occurrences.map((o, i) => (
-                <div key={i} className="rounded-lg border border-neutral-200 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-neutral-500">场次 {i + 1}</span>
-                    <button
-                      type="button"
-                      onClick={() => setOccurrences((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="text-neutral-400 transition-colors hover:text-rose-500"
-                      aria-label="删除场次"
+          <AdminFormCard title="场次">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
+              <div className="space-y-3 self-start rounded-lg border border-neutral-200 p-3">
+                <h3 className="text-sm font-semibold text-neutral-700">添加场次</h3>
+                <div className="space-y-1.5">
+                  <label className={adminLabelClass}>开始时间</label>
+                  <input
+                    className={adminInputClass}
+                    type="datetime-local"
+                    value={draft.startTime}
+                    onChange={(e) => setDraft((d) => ({ ...d, startTime: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={adminLabelClass}>结束时间</label>
+                  <input
+                    className={adminInputClass}
+                    type="datetime-local"
+                    value={draft.endTime}
+                    onChange={(e) => setDraft((d) => ({ ...d, endTime: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={adminLabelClass}>地点</label>
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      className={adminInputClass}
+                      value={draft.address}
+                      onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))}
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <label className={adminLabelClass}>开始时间</label>
-                      <input
-                        className={adminInputClass}
-                        type="datetime-local"
-                        value={o.startTime}
-                        onChange={(e) => patchOccurrence(i, { startTime: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className={adminLabelClass}>结束时间</label>
-                      <input
-                        className={adminInputClass}
-                        type="datetime-local"
-                        value={o.endTime}
-                        onChange={(e) => patchOccurrence(i, { endTime: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className={adminLabelClass}>地点</label>
-                      <div className="flex items-center gap-1.5">
-                        <select
-                          className={adminInputClass}
-                          value={o.address}
-                          onChange={(e) => patchOccurrence(i, { address: e.target.value })}
-                        >
-                          <option value="">选择地点…</option>
-                          {locations.map((l) => (
-                            <option key={l.id} value={l.address}>{l.name}</option>
-                          ))}
-                        </select>
-                        <AdminButton type="button" tone="secondary" size="sm" onClick={() => handleNewLocation(i)} title="新建地点">
-                          <Plus className="h-3.5 w-3.5" />
-                        </AdminButton>
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className={adminLabelClass}>时间限制（分钟）</label>
-                      <input
-                        className={adminInputClass}
-                        type="number"
-                        min={0}
-                        value={o.timeLimit}
-                        onChange={(e) => patchOccurrence(i, { timeLimit: e.target.value })}
-                        placeholder="如 60"
-                      />
-                    </div>
+                      <option value="">选择地点…</option>
+                      {locations.map((l) => (
+                        <option key={l.id} value={l.address}>{l.name}</option>
+                      ))}
+                    </select>
+                    <AdminButton type="button" tone="secondary" size="sm" onClick={handleNewLocation} title="新建地点">
+                      <Plus className="h-3.5 w-3.5" />
+                    </AdminButton>
                   </div>
                 </div>
-              ))}
+                <div className="space-y-1.5">
+                  <label className={adminLabelClass}>时间限制（分钟）</label>
+                  <input
+                    className={adminInputClass}
+                    type="number"
+                    min={0}
+                    value={draft.timeLimit}
+                    onChange={(e) => setDraft((d) => ({ ...d, timeLimit: e.target.value }))}
+                    placeholder="如 60"
+                  />
+                </div>
+                <AdminButton type="button" tone="primary" size="default" className="w-full" onClick={addOccurrenceRow}>
+                  <Plus className="mr-1 h-4 w-4" />添加场次
+                </AdminButton>
+              </div>
+
+              <div className="self-start rounded-lg border border-neutral-200 p-3">
+                <h3 className="mb-2 text-sm font-semibold text-neutral-700">已添加场次</h3>
+                {occurrences.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-neutral-400">暂无场次，请在左侧添加</div>
+                ) : (
+                  <div className="space-y-2">
+                    {occurrences.map((o, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 px-3 py-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-neutral-800">
+                            {o.startTime ? o.startTime.replace("T", " ") : "—"} ~{" "}
+                            {o.endTime ? o.endTime.replace("T", " ") : "—"}
+                          </div>
+                          <div className="truncate text-xs text-neutral-500">
+                            {o.address || "未指定地点"}
+                            {o.timeLimit ? ` · 限时 ${o.timeLimit} 分钟` : ""}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setOccurrences((prev) => prev.filter((_, idx) => idx !== i))}
+                          className="text-neutral-400 transition-colors hover:text-rose-500"
+                          aria-label="删除场次"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </AdminFormCard>
         </div>
