@@ -10,6 +10,7 @@ public class TrainingOccurrence {
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private String address;
+    private Integer timeLimit;
     private String examinerName;
     private String examinerNumber;
     private String status;

@@ -9,8 +9,8 @@ import java.util.List;
 public interface TrainingMapper {
 
     @Insert("""
-            INSERT INTO training (code, name, type, paper_ids_json, owner_id, time_limit, recurrence, recurrence_day, recurrence_time, status, created_by, created_at, updated_at)
-            VALUES (#{code}, #{name}, #{type}, #{paperIdsJson}, #{ownerId}, #{timeLimit}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{status}, #{createdBy}, NOW(), NOW())
+            INSERT INTO training (code, name, type, paper_ids_json, owner_id, recurrence, recurrence_day, recurrence_time, status, created_by, created_at, updated_at)
+            VALUES (#{code}, #{name}, #{type}, #{paperIdsJson}, #{ownerId}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{status}, #{createdBy}, NOW(), NOW())
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Training training);
@@ -19,7 +19,6 @@ public interface TrainingMapper {
             SELECT id, code, name, type,
                    paper_ids_json AS paperIdsJson,
                    owner_id AS ownerId,
-                   time_limit AS timeLimit,
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
@@ -35,7 +34,6 @@ public interface TrainingMapper {
             SELECT id, code, name, type,
                    paper_ids_json AS paperIdsJson,
                    owner_id AS ownerId,
-                   time_limit AS timeLimit,
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
@@ -51,7 +49,6 @@ public interface TrainingMapper {
             SELECT id, code, name, type,
                    paper_ids_json AS paperIdsJson,
                    owner_id AS ownerId,
-                   time_limit AS timeLimit,
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
@@ -67,7 +64,6 @@ public interface TrainingMapper {
             SELECT id, code, name, type,
                    paper_ids_json AS paperIdsJson,
                    owner_id AS ownerId,
-                   time_limit AS timeLimit,
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
@@ -85,7 +81,6 @@ public interface TrainingMapper {
                 type = #{type},
                 paper_ids_json = #{paperIdsJson},
                 owner_id = #{ownerId},
-                time_limit = #{timeLimit},
                 recurrence = #{recurrence},
                 recurrence_day = #{recurrenceDay},
                 recurrence_time = #{recurrenceTime},

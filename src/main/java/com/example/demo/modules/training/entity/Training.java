@@ -11,7 +11,6 @@ public class Training {
     private Integer type;
     private String paperIdsJson;
     private String ownerId;
-    private Integer timeLimit;
     private String recurrence;
     private Integer recurrenceDay;
     private String recurrenceTime;

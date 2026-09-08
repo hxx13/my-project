@@ -9,8 +9,8 @@ import java.util.List;
 public interface TrainingOccurrenceMapper {
 
     @Insert("""
-            INSERT INTO training_occurrence (training_id, start_time, end_time, address, examiner_name, examiner_number, status, created_at, updated_at)
-            VALUES (#{trainingId}, #{startTime}, #{endTime}, #{address}, #{examinerName}, #{examinerNumber}, #{status}, NOW(), NOW())
+            INSERT INTO training_occurrence (training_id, start_time, end_time, address, time_limit, examiner_name, examiner_number, status, created_at, updated_at)
+            VALUES (#{trainingId}, #{startTime}, #{endTime}, #{address}, #{timeLimit}, #{examinerName}, #{examinerNumber}, #{status}, NOW(), NOW())
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(TrainingOccurrence occurrence);
@@ -20,6 +20,7 @@ public interface TrainingOccurrenceMapper {
                    start_time AS startTime,
                    end_time AS endTime,
                    address,
+                   time_limit AS timeLimit,
                    examiner_name AS examinerName,
                    examiner_number AS examinerNumber,
                    status,
@@ -34,6 +35,7 @@ public interface TrainingOccurrenceMapper {
                    start_time AS startTime,
                    end_time AS endTime,
                    address,
+                   time_limit AS timeLimit,
                    examiner_name AS examinerName,
                    examiner_number AS examinerNumber,
                    status,
@@ -48,6 +50,7 @@ public interface TrainingOccurrenceMapper {
                 start_time = #{startTime},
                 end_time = #{endTime},
                 address = #{address},
+                time_limit = #{timeLimit},
                 examiner_name = #{examinerName},
                 examiner_number = #{examinerNumber},
                 status = #{status},

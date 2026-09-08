@@ -108,7 +108,6 @@ public class TrainingService {
         t.setType(toInt(body.get("type")));
         t.setPaperIdsJson(toJson(body.get("paperIds")));
         t.setOwnerId(str(body.get("ownerId")) != null ? str(body.get("ownerId")) : operatorId);
-        t.setTimeLimit(toInt(body.get("timeLimit")));
         t.setRecurrence(str(body.get("recurrence")));
         t.setRecurrenceDay(toInt(body.get("recurrenceDay")));
         t.setRecurrenceTime(str(body.get("recurrenceTime")));
@@ -126,7 +125,6 @@ public class TrainingService {
         if (body.containsKey("type")) t.setType(toInt(body.get("type")));
         if (body.containsKey("paperIds")) t.setPaperIdsJson(toJson(body.get("paperIds")));
         if (body.containsKey("ownerId")) t.setOwnerId(str(body.get("ownerId")));
-        if (body.containsKey("timeLimit")) t.setTimeLimit(toInt(body.get("timeLimit")));
         if (body.containsKey("recurrence")) t.setRecurrence(str(body.get("recurrence")));
         if (body.containsKey("recurrenceDay")) t.setRecurrenceDay(toInt(body.get("recurrenceDay")));
         if (body.containsKey("recurrenceTime")) t.setRecurrenceTime(str(body.get("recurrenceTime")));
@@ -204,6 +202,7 @@ public class TrainingService {
         o.setStartTime(toDateTime(body.get("startTime")));
         o.setEndTime(toDateTime(body.get("endTime")));
         o.setAddress(str(body.get("address")));
+        o.setTimeLimit(toInt(body.get("timeLimit")));
         o.setExaminerName(str(body.get("examinerName")));
         o.setExaminerNumber(str(body.get("examinerNumber")));
         o.setStatus(str(body.get("status")) != null ? str(body.get("status")) : "DRAFT");
@@ -218,6 +217,7 @@ public class TrainingService {
         if (body.containsKey("startTime")) o.setStartTime(toDateTime(body.get("startTime")));
         if (body.containsKey("endTime")) o.setEndTime(toDateTime(body.get("endTime")));
         if (body.containsKey("address")) o.setAddress(str(body.get("address")));
+        if (body.containsKey("timeLimit")) o.setTimeLimit(toInt(body.get("timeLimit")));
         if (body.containsKey("examinerName")) o.setExaminerName(str(body.get("examinerName")));
         if (body.containsKey("examinerNumber")) o.setExaminerNumber(str(body.get("examinerNumber")));
         if (body.containsKey("status")) o.setStatus(str(body.get("status")));
@@ -425,7 +425,6 @@ public class TrainingService {
         m.put("type", t.getType());
         m.put("paperIds", roomList(t.getPaperIdsJson()));
         m.put("ownerId", t.getOwnerId());
-        m.put("timeLimit", t.getTimeLimit());
         m.put("recurrence", t.getRecurrence());
         m.put("recurrenceDay", t.getRecurrenceDay());
         m.put("recurrenceTime", t.getRecurrenceTime());
@@ -443,6 +442,7 @@ public class TrainingService {
         m.put("startTime", o.getStartTime());
         m.put("endTime", o.getEndTime());
         m.put("address", o.getAddress());
+        m.put("timeLimit", o.getTimeLimit());
         m.put("examinerName", o.getExaminerName());
         m.put("examinerNumber", o.getExaminerNumber());
         m.put("status", o.getStatus());
