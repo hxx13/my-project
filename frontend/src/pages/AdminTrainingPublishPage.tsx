@@ -179,6 +179,9 @@ export default function AdminTrainingPublishPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [occurrenceDialogOpen, setOccurrenceDialogOpen] = useState(false);
   const [recurrenceDialogOpen, setRecurrenceDialogOpen] = useState(false);
+  const [locationDialogOpen, setLocationDialogOpen] = useState(false);
+  const [locName, setLocName] = useState("");
+  const [locAddress, setLocAddress] = useState("");
   const [saving, setSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -326,15 +329,18 @@ export default function AdminTrainingPublishPage() {
     }
   };
 
-  const handleNewLocation = async () => {
-    const name = await appPrompt("地点名称", "", { allowEmpty: false, placeholder: "如 浦东实验室" });
-    if (name == null) return;
-    const address = await appPrompt("地点地址", "", { allowEmpty: false, placeholder: "详细地址" });
-    if (address == null) return;
+  const submitNewLocation = async () => {
+    const name = locName.trim();
+    const address = locAddress.trim();
+    if (!name || !address) {
+      toast.error("请填写地点名称和地址");
+      return;
+    }
     try {
-      await addTrainingLocation(name.trim(), address.trim());
+      await addTrainingLocation(name, address);
       await refetchLocations();
-      setForm((f) => ({ ...f, address: address.trim() }));
+      setForm((f) => ({ ...f, address }));
+      setLocationDialogOpen(false);
       toast.success("地点已添加");
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || "添加地点失败");
@@ -497,7 +503,7 @@ export default function AdminTrainingPublishPage() {
       </div>
 
       <Dialog open={occurrenceDialogOpen} onOpenChange={setOccurrenceDialogOpen}>
-        <DialogContent className="max-w-md" closeOnOverlayClick={false}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{editingIndex == null ? "添加场次" : "编辑场次"}</DialogTitle>
           </DialogHeader>
@@ -533,7 +539,7 @@ export default function AdminTrainingPublishPage() {
                     <option key={l.id} value={l.address}>{l.name}</option>
                   ))}
                 </select>
-                <AdminButton type="button" tone="secondary" size="sm" onClick={handleNewLocation} title="新建地点">
+                <AdminButton type="button" tone="secondary" size="sm" onClick={() => { setLocName(""); setLocAddress(""); setLocationDialogOpen(true); }} title="新建地点">
                   <Plus className="h-3.5 w-3.5" />
                 </AdminButton>
               </div>
@@ -561,8 +567,44 @@ export default function AdminTrainingPublishPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={locationDialogOpen} onOpenChange={setLocationDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>新建地点</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className={adminLabelClass}>地点名称</label>
+              <input
+                className={adminInputClass}
+                value={locName}
+                onChange={(e) => setLocName(e.target.value)}
+                placeholder="如 浦东实验室"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className={adminLabelClass}>地点地址</label>
+              <input
+                className={adminInputClass}
+                value={locAddress}
+                onChange={(e) => setLocAddress(e.target.value)}
+                placeholder="详细地址"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <AdminButton type="button" tone="secondary" size="default" onClick={() => setLocationDialogOpen(false)}>
+              取消
+            </AdminButton>
+            <AdminButton type="button" tone="primary" size="default" onClick={submitNewLocation}>
+              确定
+            </AdminButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={recurrenceDialogOpen} onOpenChange={setRecurrenceDialogOpen}>
-        <DialogContent className="max-w-md" closeOnOverlayClick={false}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>自动发布场次配置</DialogTitle>
           </DialogHeader>
