@@ -30,6 +30,7 @@ import {
 } from "@/api/domains/training.api";
 
 const PAGE_SIZE = 20;
+const ENROLL_PAGE_SIZE = 20;
 
 function typeLabel(t?: number | null): string {
   return t === 1 ? "准入培训" : t === 2 ? "手术培训" : "—";
@@ -72,6 +73,7 @@ export default function AdminAroBindingPage() {
 
   const [gsearch, setGsearch] = useState("");
   const [expandedOccs, setExpandedOccs] = useState<Set<number>>(new Set());
+  const [enrollPageByOcc, setEnrollPageByOcc] = useState<Record<number, number>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [roomPickers, setRoomPickers] = useState<Record<string, Set<string>>>({});
   const [roomNav, setRoomNav] = useState<{ area: string; floor: string } | null>(null);
@@ -297,6 +299,7 @@ export default function AdminAroBindingPage() {
     setImportOpen(false);
     setGsearch("");
     setExpandedOccs(new Set());
+    setEnrollPageByOcc({});
     setOccPage(1);
   };
   const goDetail = (s: TrainingSeries) => {
@@ -305,6 +308,7 @@ export default function AdminAroBindingPage() {
     setExpanded(null);
     setGsearch("");
     setExpandedOccs(new Set());
+    setEnrollPageByOcc({});
     setOccPage(1);
   };
 
@@ -475,6 +479,10 @@ export default function AdminAroBindingPage() {
         ) : pageOccurrences.map((o) => {
           const open = expandedOccs.has(o.id);
           const count = o.enrollments?.length ?? 0;
+          const enrolls = o.enrollments ?? [];
+          const page = enrollPageByOcc[o.id] ?? 0;
+          const totalPages = Math.max(1, Math.ceil(enrolls.length / ENROLL_PAGE_SIZE));
+          const paged = enrolls.slice(page * ENROLL_PAGE_SIZE, (page + 1) * ENROLL_PAGE_SIZE);
           return (
             <div key={o.id} className="rounded-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] overflow-hidden">
               <div className="flex items-center gap-1">
@@ -492,9 +500,18 @@ export default function AdminAroBindingPage() {
                 )}
               </div>
               {open && (
-                <div className="border-t border-[var(--twin-hairline)] overflow-auto max-h-[50vh]">
-                  {renderEnrollmentTable(o.enrollments ?? [])}
-                </div>
+                <>
+                  <div className="border-t border-[var(--twin-hairline)] overflow-auto max-h-[50vh]">
+                    {renderEnrollmentTable(paged, { sticky: false })}
+                  </div>
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-end gap-1.5 px-3 py-2 border-t border-[var(--twin-hairline)]">
+                      <button type="button" disabled={page === 0} onClick={() => setEnrollPageByOcc((p) => ({ ...p, [o.id]: page - 1 }))} className="w-6 h-6 rounded-twin-sm border border-[var(--twin-hairline)] text-[var(--twin-ink)] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--twin-canvas)] transition leading-none">‹</button>
+                      <span className="text-[10px] text-[var(--twin-mute)]">第 {page + 1} / {totalPages} 页</span>
+                      <button type="button" disabled={page >= totalPages - 1} onClick={() => setEnrollPageByOcc((p) => ({ ...p, [o.id]: page + 1 }))} className="w-6 h-6 rounded-twin-sm border border-[var(--twin-hairline)] text-[var(--twin-ink)] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--twin-canvas)] transition leading-none">›</button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           );
