@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, X } from "lucide-react";
 
@@ -17,11 +17,13 @@ export function PdfPreviewDialog({
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fetchRef = useRef(fetchPdf);
+  fetchRef.current = fetchPdf;
 
   useEffect(() => {
     let revoke: string | null = null;
     let cancelled = false;
-    fetchPdf()
+    fetchRef.current()
       .then((blob) => {
         if (cancelled) return;
         const objectUrl = URL.createObjectURL(blob);
@@ -35,7 +37,8 @@ export function PdfPreviewDialog({
       cancelled = true;
       if (revoke) URL.revokeObjectURL(revoke);
     };
-  }, [fetchPdf]);
+    // 只在挂载时拉一次；调用方传内联箭头不会触发重复请求
+  }, []);
 
   return createPortal(
     <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
