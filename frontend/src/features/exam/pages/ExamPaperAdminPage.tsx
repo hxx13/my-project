@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
+import { fetchFormPage, fetchWordTemplates } from "@/features/report-form/api/reportForm.api";
+import { PdfPreviewDialog } from "@/components/common/PdfPreviewDialog";
 import { Download, FileText, Loader2, Plus, Save, Search, Trash2, Undo2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminButton } from "@/components/admin/AdminButton";
@@ -16,12 +19,15 @@ import {
   fetchExamPaper,
   fetchExamPapers,
   fetchExamSeeds,
+  fetchQualificationBinding,
+  fetchQualificationPreview,
   importExamSeeds,
   moveExamPaperToFolder,
   publishExamPaper,
   renameExamFolder,
   unpublishExamPaper,
   saveExamPaper,
+  saveQualificationBinding,
   type ExamPaperSummary,
   type ExamSeed,
 } from "../api/examPaper.api";
@@ -34,6 +40,7 @@ import TypeMenu from "../editor/TypeMenu";
 import FieldEditorPanel from "../editor/FieldEditorPanel";
 import ExamFormField from "../components/ExamFormField";
 import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "@/features/form-shared/FolderTreeManager";
+import { fetchExamSubmissions } from "../api/examSubmission.api";
 import "@/features/aup/aup.css";
 
 function statusBadge(status: string) {
@@ -62,12 +69,14 @@ const FOLDER_LABELS = {
 
 export default function ExamPaperAdminPage() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<0 | 1>(0);
+  const [tab, setTab] = useState<0 | 1 | 2 | 3>(0);
   const [keyword, setKeyword] = useState("");
 
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [currentCode, setCurrentCode] = useState("");
   const [title, setTitle] = useState("");
+  const [qualifyScore, setQualifyScore] = useState<number>(80);
+  const [totalTime, setTotalTime] = useState<number | null>(null);
   const [loadingPaper, setLoadingPaper] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
 
@@ -105,11 +114,32 @@ export default function ExamPaperAdminPage() {
   });
   const folders = foldersQuery.data ?? [];
 
+  const { data: submissions, isLoading: submissionsLoading } = useQuery({
+    queryKey: ["exam-submissions"],
+    queryFn: () => fetchExamSubmissions(),
+  });
+  const { data: allPapersData } = useQuery({
+    queryKey: ["exam-papers", "all"],
+    queryFn: () => fetchExamPapers({ page: 1, pageSize: 1000 }),
+  });
+  const allPapers = allPapersData?.list ?? [];
+
   const selectedField = useMemo(
     () => sections.flatMap((s) => s.fields ?? []).find((f) => f.fieldKey === selectedFieldKey) ?? null,
     [sections, selectedFieldKey],
   );
   const fieldCatalog = useMemo(() => buildFieldCatalog(sections), [sections]);
+
+  const totalScore = useMemo(() => {
+    let sum = 0;
+    for (const s of sections) {
+      for (const f of s.fields ?? []) {
+        const sc = f.type === "choice" ? f.config?.score : undefined;
+        if (sc != null) sum += sc;
+      }
+    }
+    return sum;
+  }, [sections]);
 
   const openPaper = async (p: ExamPaperSummary) => {
     try {
@@ -119,6 +149,8 @@ export default function ExamPaperAdminPage() {
       setCurrentId(p.id);
       setCurrentCode(p.code);
       setTitle(d.title);
+      setQualifyScore(d.qualifyScore ?? 80);
+      setTotalTime(d.totalTime ?? null);
     } catch (e: any) {
       toast.error(e?.message || "加载失败");
     } finally {
@@ -139,6 +171,8 @@ export default function ExamPaperAdminPage() {
       setCurrentId(d.id);
       setCurrentCode(d.code);
       setTitle(d.title);
+      setQualifyScore(80);
+      setTotalTime(null);
     } catch (e: any) {
       toast.error(e?.message || "创建失败");
     }
@@ -212,6 +246,8 @@ export default function ExamPaperAdminPage() {
       setCurrentId(d.id);
       setCurrentCode(d.code);
       setTitle(d.title);
+      setQualifyScore(80);
+      setTotalTime(null);
     } catch (e: any) {
       toast.error(e?.message || "创建失败");
     }
@@ -241,7 +277,7 @@ export default function ExamPaperAdminPage() {
   const handleSave = async () => {
     if (currentId == null) return;
     try {
-      await saveExamPaper(currentId, { title, sections });
+      await saveExamPaper(currentId, { title, sections, qualifyScore, totalTime });
       toast.success("已保存");
       qc.invalidateQueries({ queryKey: ["exam-papers"] });
     } catch (e: any) {
@@ -485,6 +521,30 @@ export default function ExamPaperAdminPage() {
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="试卷标题"
               />
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 12, fontSize: 12, color: "var(--mu)", whiteSpace: "nowrap" }}>
+                及格分
+                <input
+                  className="aup-input"
+                  type="number"
+                  min={0}
+                  style={{ width: 64 }}
+                  value={qualifyScore ?? 80}
+                  onChange={(e) => setQualifyScore(e.target.value ? Number(e.target.value) : 80)}
+                />
+              </label>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 8, fontSize: 12, color: "var(--mu)", whiteSpace: "nowrap" }}>
+                时限(分)
+                <input
+                  className="aup-input"
+                  type="number"
+                  min={0}
+                  style={{ width: 64 }}
+                  value={totalTime ?? ""}
+                  placeholder="不限"
+                  onChange={(e) => setTotalTime(e.target.value ? Number(e.target.value) : null)}
+                />
+              </label>
+              <span style={{ marginLeft: 12, fontSize: 12, color: "var(--mu)", whiteSpace: "nowrap" }}>总分 {totalScore}</span>
               <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                 <button
                   type="button"
@@ -535,7 +595,7 @@ export default function ExamPaperAdminPage() {
         ) : papers.length === 0 ? (
           <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">暂无试卷</div>
         ) : (
-          <table className="w-full min-w-max text-left text-sm border-collapse">
+          <table className="w-full min-w-max text-left text-sm border-collapse twin-table">
             <thead className="border-b-2 border-[var(--app-color-border-strong)]">
               <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                 <th className="px-3 py-2">编码</th><th className="px-3 py-2">标题</th><th className="px-3 py-2">状态</th><th className="px-3 py-2 w-40">操作</th>
@@ -568,6 +628,154 @@ export default function ExamPaperAdminPage() {
     </div>
   );
 
+  // ── 成绩管理 tab（人 × 试卷透视）──
+  const scoreRows = useMemo(() => {
+    const people = new Map<string, { name: string; job: string }>();
+    const byPerson = new Map<string, Map<number, { score: number | null; qualify: number }>>();
+    (submissions ?? []).forEach((s) => {
+      if (!people.has(s.personId)) people.set(s.personId, { name: s.personName || s.personId, job: s.jobNumber || "" });
+      const m = byPerson.get(s.personId) ?? new Map<number, { score: number | null; qualify: number }>();
+      m.set(s.paperId, { score: s.totalScore ?? null, qualify: s.qualifyYn ?? 0 });
+      byPerson.set(s.personId, m);
+    });
+    const papers = allPapers ?? [];
+    return [...people.entries()].map(([personId, info]) => {
+      const scores = byPerson.get(personId) ?? new Map();
+      const cells = papers.map((p) => scores.get(p.id) ?? { score: null, qualify: 0 });
+      return { personId, name: info.name, job: info.job, cells };
+    });
+  }, [submissions, allPapers]);
+
+  const scoresTab = (
+    <div className="flex flex-col h-full rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
+      <div className="shrink-0 px-3 py-2 border-b border-[var(--app-color-border-default)] text-xs text-[var(--app-color-text-tertiary)]">
+        共 {scoreRows.length} 人 · {allPapers.length} 套试卷
+      </div>
+      <div className="flex-1 min-h-0 overflow-auto">
+        {submissionsLoading ? (
+          <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>
+        ) : scoreRows.length === 0 ? (
+          <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">暂无答题记录</div>
+        ) : (
+          <table className="w-full min-w-max text-left text-sm border-collapse twin-table">
+            <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+              <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold">
+                <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th>
+                {allPapers.map((p) => <th key={p.id} className="px-3 py-2 whitespace-nowrap">{p.title}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {scoreRows.map((r) => (
+                <tr key={r.personId} className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors">
+                  <td className="px-3 py-2.5 font-medium text-[var(--app-color-text-primary)]">{r.name}</td>
+                  <td className="px-3 py-2.5 text-[var(--twin-mute)] font-mono text-xs">{r.job || "—"}</td>
+                  {r.cells.map((c, i) => (
+                    <td key={i} className="px-3 py-2.5">
+                      {c.score == null ? (
+                        <span className="text-[var(--twin-mute)]">—</span>
+                      ) : (
+                        <span className={cn("font-medium", c.qualify === 1 ? "text-emerald-600" : "text-rose-600")}>{c.score}</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+
+  // ── 健康报告 tab ──
+  const navigate = useNavigate();
+  const [bindingFormId, setBindingFormId] = useState<number | null>(null);
+  const [bindingWtId, setBindingWtId] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const { data: binding } = useQuery({
+    queryKey: ["qualification-binding"],
+    queryFn: fetchQualificationBinding,
+  });
+  const { data: forms = [] } = useQuery({
+    queryKey: ["report-forms", "all"],
+    queryFn: () => fetchFormPage(1, 100),
+  });
+  const effectiveFormId = bindingFormId ?? binding?.formId ?? null;
+  const { data: wordTemplates = [] } = useQuery({
+    queryKey: ["word-templates", effectiveFormId],
+    queryFn: () => fetchWordTemplates(effectiveFormId!),
+    enabled: effectiveFormId != null,
+  });
+  const effectiveWtId = bindingWtId ?? binding?.wordTemplateId ?? wordTemplates[0]?.id ?? null;
+
+  const saveBinding = async () => {
+    if (effectiveFormId == null) { toast.error("请先选择表单"); return; }
+    try {
+      await saveQualificationBinding({ formId: effectiveFormId, wordTemplateId: effectiveWtId });
+      toast.success("已保存");
+      qc.invalidateQueries({ queryKey: ["qualification-binding"] });
+    } catch (e: any) { toast.error(e?.message || "保存失败"); }
+  };
+
+  const healthTab = (
+    <AdminFormCard title="健康报告配置" fill>
+      {forms.length === 0 ? (
+        <div className="py-8 text-center text-sm text-neutral-400">
+          还没有报表。先去「填报报表管理」用「Word 创建」上传健康报告模板，再回来这里选。
+        </div>
+      ) : (
+        <div className="space-y-4 max-w-xl">
+          <div className="space-y-1.5">
+            <label className="text-xs text-[var(--app-color-text-secondary)]">表单</label>
+            <select
+              className="w-full rounded border border-[var(--app-color-border-default)] px-2 py-1.5 text-sm"
+              value={effectiveFormId ?? ""}
+              onChange={(e) => { setBindingFormId(e.target.value ? Number(e.target.value) : null); setBindingWtId(null); }}
+            >
+              <option value="">选择表单…</option>
+              {forms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-[var(--app-color-text-secondary)]">Word 模板（决定页眉页脚）</label>
+            <select
+              className="w-full rounded border border-[var(--app-color-border-default)] px-2 py-1.5 text-sm"
+              value={effectiveWtId ?? ""}
+              onChange={(e) => setBindingWtId(e.target.value || null)}
+              disabled={effectiveFormId == null}
+            >
+              <option value="">第一份模板</option>
+              {wordTemplates.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <AdminButton type="button" tone="primary" size="sm" onClick={saveBinding}>保存绑定</AdminButton>
+            {effectiveFormId != null && (
+              <AdminButton type="button" tone="secondary" size="sm"
+                onClick={() => navigate(`/console/admin/report-form/${effectiveFormId}/design`)}>
+                去设计字段
+              </AdminButton>
+            )}
+            {effectiveFormId != null && effectiveWtId != null && (
+              <AdminButton type="button" tone="secondary" size="sm" onClick={() => setPreviewOpen(true)}>预览</AdminButton>
+            )}
+          </div>
+          <p className="text-xs text-[var(--app-color-text-tertiary)]">
+            预览渲染的是空白数据版式；真实数据版式在学生提交后生成。
+          </p>
+        </div>
+      )}
+      {previewOpen && effectiveFormId != null && (
+        <PdfPreviewDialog
+          title="健康报告预览"
+          fetchPdf={() => fetchQualificationPreview({ formId: effectiveFormId, wordTemplateId: effectiveWtId })}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
+    </AdminFormCard>
+  );
+
   return (
     <AdminPageShell>
       <div className="flex flex-col h-[calc(100dvh-var(--admin-chrome-offset))]">
@@ -576,6 +784,8 @@ export default function ExamPaperAdminPage() {
             <div className="flex items-center gap-1">
               {tabBtn(tab === 0, "配置题目", () => setTab(0))}
               {tabBtn(tab === 1, "发布题目", () => setTab(1))}
+              {tabBtn(tab === 2, "成绩管理", () => setTab(2))}
+              {tabBtn(tab === 3, "健康报告", () => setTab(3))}
             </div>
             <div className="flex items-center gap-2">
               <AdminButton type="button" tone="secondary" size="sm" onClick={handleNew}><Plus className="h-4 w-4 mr-1" />新建试卷</AdminButton>
@@ -584,7 +794,7 @@ export default function ExamPaperAdminPage() {
             </div>
           </div>
         </AdminFormCard>
-        <div className="flex-1 min-h-0">{tab === 0 ? configTab : publishTab}</div>
+        <div className="flex-1 min-h-0">{tab === 0 ? configTab : tab === 1 ? publishTab : tab === 2 ? scoresTab : healthTab}</div>
       </div>
 
       <Dialog open={seedOpen} onOpenChange={(v) => { if (!v) setSeedOpen(false); }}>
