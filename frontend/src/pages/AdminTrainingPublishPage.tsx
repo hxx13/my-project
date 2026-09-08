@@ -174,6 +174,7 @@ export default function AdminTrainingPublishPage() {
   const [form, setForm] = useState<OccurrenceRow>(emptyOccurrence());
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [occurrenceDialogOpen, setOccurrenceDialogOpen] = useState(false);
+  const [recurrenceDialogOpen, setRecurrenceDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -384,78 +385,19 @@ export default function AdminTrainingPublishPage() {
                 />
               </div>
             </div>
-            <details className="rounded-lg border border-neutral-200 bg-neutral-50/50">
-              <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-neutral-700">
-                自动发布场次配置
-              </summary>
-              <div className="grid grid-cols-1 gap-4 border-t border-neutral-200 p-3 sm:grid-cols-3">
-                <div className="space-y-1.5">
-                  <label className={adminLabelClass}>循环</label>
-                  <select
-                    className={adminInputClass}
-                    value={recurrence}
-                    onChange={(e) => setRecurrence(e.target.value)}
-                  >
-                    <option value="">无循环</option>
-                    <option value="WEEKLY">每周</option>
-                    <option value="MONTHLY">每月</option>
-                    <option value="QUARTERLY">每三个月</option>
-                    <option value="YEARLY">每年</option>
-                  </select>
-                </div>
-                {recurrence === "WEEKLY" && (
-                  <div className="space-y-1.5">
-                    <label className={adminLabelClass}>星期几</label>
-                    <select
-                      className={adminInputClass}
-                      value={recurrenceDay}
-                      onChange={(e) => setRecurrenceDay(Number(e.target.value))}
-                    >
-                      <option value={1}>周一</option>
-                      <option value={2}>周二</option>
-                      <option value={3}>周三</option>
-                      <option value={4}>周四</option>
-                      <option value={5}>周五</option>
-                      <option value={6}>周六</option>
-                      <option value={7}>周日</option>
-                    </select>
-                  </div>
-                )}
-                {["MONTHLY", "QUARTERLY", "YEARLY"].includes(recurrence) && (
-                  <div className="space-y-1.5">
-                    <label className={adminLabelClass}>几号</label>
-                    <select
-                      className={adminInputClass}
-                      value={recurrenceDay}
-                      onChange={(e) => setRecurrenceDay(Number(e.target.value))}
-                    >
-                      {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                        <option key={d} value={d}>{d}号</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {recurrence && (
-                  <div className="space-y-1.5">
-                    <label className={adminLabelClass}>起始时刻</label>
-                    <input
-                      className={adminInputClass}
-                      type="time"
-                      value={recurrenceTime}
-                      onChange={(e) => setRecurrenceTime(e.target.value)}
-                    />
-                  </div>
-                )}
-              </div>
-            </details>
           </AdminFormCard>
 
           <AdminFormCard
             title="场次"
             actions={
-              <AdminButton type="button" tone="primary" size="sm" onClick={() => openOccurrenceDialog(null)}>
-                <Plus className="mr-1 h-3.5 w-3.5" />添加场次
-              </AdminButton>
+              <div className="flex items-center gap-2">
+                <AdminButton type="button" tone="secondary" size="sm" onClick={() => setRecurrenceDialogOpen(true)}>
+                  [配置]
+                </AdminButton>
+                <AdminButton type="button" tone="primary" size="sm" onClick={() => openOccurrenceDialog(null)}>
+                  <Plus className="mr-1 h-3.5 w-3.5" />添加场次
+                </AdminButton>
+              </div>
             }
           >
             {occurrences.length === 0 ? (
@@ -560,6 +502,78 @@ export default function AdminTrainingPublishPage() {
               取消
             </AdminButton>
             <AdminButton type="button" tone="primary" size="default" onClick={confirmOccurrence}>
+              确定
+            </AdminButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={recurrenceDialogOpen} onOpenChange={setRecurrenceDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>自动发布场次配置</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className={adminLabelClass}>循环</label>
+              <select
+                className={adminInputClass}
+                value={recurrence}
+                onChange={(e) => setRecurrence(e.target.value)}
+              >
+                <option value="">无循环</option>
+                <option value="WEEKLY">每周</option>
+                <option value="MONTHLY">每月</option>
+                <option value="QUARTERLY">每三个月</option>
+                <option value="YEARLY">每年</option>
+              </select>
+            </div>
+            {recurrence === "WEEKLY" && (
+              <div className="space-y-1.5">
+                <label className={adminLabelClass}>星期几</label>
+                <select
+                  className={adminInputClass}
+                  value={recurrenceDay}
+                  onChange={(e) => setRecurrenceDay(Number(e.target.value))}
+                >
+                  <option value={1}>周一</option>
+                  <option value={2}>周二</option>
+                  <option value={3}>周三</option>
+                  <option value={4}>周四</option>
+                  <option value={5}>周五</option>
+                  <option value={6}>周六</option>
+                  <option value={7}>周日</option>
+                </select>
+              </div>
+            )}
+            {["MONTHLY", "QUARTERLY", "YEARLY"].includes(recurrence) && (
+              <div className="space-y-1.5">
+                <label className={adminLabelClass}>几号</label>
+                <select
+                  className={adminInputClass}
+                  value={recurrenceDay}
+                  onChange={(e) => setRecurrenceDay(Number(e.target.value))}
+                >
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>{d}号</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {recurrence && (
+              <div className="space-y-1.5">
+                <label className={adminLabelClass}>起始时刻</label>
+                <input
+                  className={adminInputClass}
+                  type="time"
+                  value={recurrenceTime}
+                  onChange={(e) => setRecurrenceTime(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <AdminButton type="button" tone="primary" size="default" onClick={() => setRecurrenceDialogOpen(false)}>
               确定
             </AdminButton>
           </DialogFooter>
