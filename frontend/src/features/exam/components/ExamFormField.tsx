@@ -142,6 +142,12 @@ function ChoiceControl({
   const cols = Math.max(2, field.config?.cols ?? 3);
   const arr = multiple ? multiSelectValues(value) : [];
 
+  const answer = field.config?.answer;
+  const answers = field.config?.answers;
+  const correctValues = multiple
+    ? Array.isArray(answers) ? answers : answer ? [answer] : []
+    : answer ? [answer] : [];
+
   const toggle = (opt: string) => {
     const next = arr.includes(opt) ? arr.filter((x) => x !== opt) : [...arr, opt];
     onChange?.(next);
@@ -151,6 +157,7 @@ function ChoiceControl({
     const isFixed = !!o.fixed;
     const checked = multiple ? isFixed || arr.includes(o.value) : isFixed || String(value ?? "") === o.value;
     const off = !!disabled || isFixed;
+    const correct = correctValues.includes(o.value);
     return (
       <label key={o.value} className={"choice" + (checked ? " chosen" : "") + (off ? " disabled" : "")}>
         <input
@@ -160,7 +167,8 @@ function ChoiceControl({
           disabled={off}
           onChange={() => !isFixed && (multiple ? toggle(o.value) : onChange?.(o.value))}
         />
-        <span>{o.label}</span>
+        <span style={correct ? { color: "#16a34a", fontWeight: 600 } : undefined}>{o.label}</span>
+        {correct && <span style={{ color: "#16a34a", marginLeft: 4 }} title="正确答案">✓</span>}
       </label>
     );
   };

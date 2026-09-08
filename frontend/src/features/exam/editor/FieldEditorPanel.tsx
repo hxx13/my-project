@@ -3,6 +3,7 @@
  */
 import type { ChoiceType, FormField, NoteTone } from "../schema/formTemplate";
 import { FIELD_TYPES, TYPES_WITH_OPTIONS, typeMetaOf } from "../schema/typeRegistry";
+import { normalizeOptions } from "../store/editorUtils";
 import type { FieldCatalogEntry } from "../store/editorUtils";
 import OptionsEditor from "./OptionsEditor";
 import ShowWhenEditor from "./ShowWhenEditor";
@@ -29,6 +30,21 @@ export default function FieldEditorPanel({
   const cfg = field.config ?? {};
 
   const setCfg = (patch: Partial<FormField["config"]>) => onChange({ config: { ...cfg, ...patch } });
+
+  const handleAnswerChange = (answer: string | string[]) => {
+    if ((cfg.choiceType ?? "single") === "multiple") setCfg({ answers: answer as string[] });
+    else setCfg({ answer: answer as string });
+  };
+
+  const answerLabels = (() => {
+    const multiple = (cfg.choiceType ?? "single") === "multiple";
+    const vals = multiple
+      ? Array.isArray(cfg.answers) ? cfg.answers : cfg.answer ? [cfg.answer] : []
+      : cfg.answer ? [cfg.answer] : [];
+    return vals
+      .map((v) => normalizeOptions(field.options).find((o) => o.value === v)?.label ?? v)
+      .filter(Boolean);
+  })();
 
   return (
     <div className="aup-drawer" onClick={(e) => e.stopPropagation()}>
@@ -215,9 +231,18 @@ export default function FieldEditorPanel({
         {hasOptions && (
           <>
             <div className="aup-subh">选项</div>
+            {field.type === "choice" && (
+              <div className="aup-row">
+                <label>正确答案</label>
+                <span className="aup-muted">{answerLabels.length ? answerLabels.join("、") : "未设置"}</span>
+              </div>
+            )}
             <OptionsEditor
               options={field.options}
               editable={editable}
+              choiceType={field.type === "choice" ? cfg.choiceType ?? "single" : undefined}
+              answer={field.type === "choice" ? cfg.answer ?? cfg.answers : undefined}
+              onAnswerChange={field.type === "choice" ? handleAnswerChange : undefined}
               onChange={(patch) => onChange(patch)}
             />
           </>

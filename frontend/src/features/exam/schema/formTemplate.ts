@@ -81,6 +81,10 @@ export interface FieldConfig {
   maxLength?: number;
   /** choice：单选 / 多选 */
   choiceType?: ChoiceType;
+  /** choice：单选题正确答案（选项 value） */
+  answer?: string;
+  /** choice：多选题正确答案（选项 value 数组） */
+  answers?: string[];
   /** choice：选项排版（list 竖排 / grid 多列 / grouped 分组标题），缺省 list */
   layout?: "list" | "grid" | "grouped";
   /** choice/group：grid/grouped 时每行列数（2/3/4） */

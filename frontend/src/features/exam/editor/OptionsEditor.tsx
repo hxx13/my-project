@@ -2,23 +2,58 @@
  * 选项编辑：手动填写（对齐 AUP OptionsEditor + 设计 15）。
  */
 import { move, normalizeOptions } from "../store/editorUtils";
-import type { FormField, OptionItem } from "../schema/formTemplate";
+import type { ChoiceType, FormField, OptionItem } from "../schema/formTemplate";
 
 interface Props {
   options: FormField["options"];
   onChange: (patch: { options?: FormField["options"] }) => void;
   editable?: boolean;
+  /** 提供后（choice 题）渲染「正确答案」单选/复选控件 */
+  choiceType?: ChoiceType;
+  answer?: string | string[];
+  onAnswerChange?: (answer: string | string[]) => void;
 }
 
-export default function OptionsEditor({ options, onChange, editable = true }: Props) {
+export default function OptionsEditor({
+  options,
+  onChange,
+  editable = true,
+  choiceType = "single",
+  answer,
+  onAnswerChange,
+}: Props) {
   const opts = normalizeOptions(options) as OptionItem[];
+  const multiple = choiceType === "multiple";
+  const answerArr = multiple ? (Array.isArray(answer) ? answer : answer ? [answer] : []) : [];
 
   const setOpts = (next: OptionItem[]) => onChange({ options: next });
+
+  const isCorrect = (v: string) => (multiple ? answerArr.includes(v) : answer === v);
+
+  const toggleAnswer = (v: string) => {
+    if (!onAnswerChange) return;
+    if (multiple) {
+      onAnswerChange(answerArr.includes(v) ? answerArr.filter((x) => x !== v) : [...answerArr, v]);
+    } else {
+      onAnswerChange(v);
+    }
+  };
 
   return (
     <div>
       {opts.map((o, i) => (
         <div key={i} className="aup-opt-row">
+          {onAnswerChange && (
+            <input
+              type={multiple ? "checkbox" : "radio"}
+              name={multiple ? undefined : "correct-answer"}
+              className="aup-answer-mark"
+              title="正确答案"
+              checked={isCorrect(o.value)}
+              disabled={!editable}
+              onChange={() => toggleAnswer(o.value)}
+            />
+          )}
           <input
             className="aup-input"
             placeholder="选项文字"
