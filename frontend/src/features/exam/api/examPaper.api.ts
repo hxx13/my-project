@@ -114,3 +114,20 @@ export async function deleteExamPaper(id: number): Promise<{ ok: boolean; rows: 
   const r = await adminHttp.delete(`/exam-papers/${id}`);
   return (r.data?.data ?? { ok: false, rows: 0 }) as { ok: boolean; rows: number };
 }
+
+export interface ExamSeed {
+  code: string;
+  title: string;
+  questionCount: number;
+  imported: boolean;
+}
+
+export async function fetchExamSeeds(): Promise<ExamSeed[]> {
+  const r = await adminHttp.get("/exam-papers/seeds");
+  return (r.data?.data ?? []) as ExamSeed[];
+}
+
+export async function importExamSeeds(codes: string[]): Promise<{ imported: number }> {
+  const r = await adminHttp.post("/exam-papers/import-seeds", { codes });
+  return (r.data?.data ?? { imported: 0 }) as { imported: number };
+}

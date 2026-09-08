@@ -1,19 +1,23 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { FileText, Loader2, Plus, Save, Search, Trash2, Upload } from "lucide-react";
+import { Download, FileText, Loader2, Plus, Save, Search, Trash2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   createExamPaper,
   deleteExamPaper,
   fetchExamPaper,
   fetchExamPapers,
+  fetchExamSeeds,
+  importExamSeeds,
   publishExamPaper,
   saveExamPaper,
   type ExamPaperSummary,
+  type ExamSeed,
 } from "../api/examPaper.api";
 import { useTemplateEditor } from "../store/useTemplateEditor";
 import { buildFieldCatalog, nextFieldKey } from "../store/editorUtils";
@@ -46,6 +50,12 @@ export default function ExamPaperAdminPage() {
   const [title, setTitle] = useState("");
   const [loadingPaper, setLoadingPaper] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+
+  const [seedOpen, setSeedOpen] = useState(false);
+  const [seeds, setSeeds] = useState<ExamSeed[]>([]);
+  const [seedsLoading, setSeedsLoading] = useState(false);
+  const [seedSelected, setSeedSelected] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
 
   const {
     sections,
@@ -176,6 +186,47 @@ export default function ExamPaperAdminPage() {
       qc.invalidateQueries({ queryKey: ["exam-papers"] });
     } catch (e: any) {
       toast.error(e?.message || "删除失败");
+    }
+  };
+
+  const importableSeeds = seeds.filter((s) => !s.imported);
+  const selectedImportable = importableSeeds.filter((s) => seedSelected.has(s.code));
+
+  const openSeedDialog = async () => {
+    setSeedOpen(true);
+    setSeedsLoading(true);
+    setSeedSelected(new Set());
+    try {
+      setSeeds(await fetchExamSeeds());
+    } catch (e: any) {
+      toast.error(e?.message || "加载种子试卷失败");
+    } finally {
+      setSeedsLoading(false);
+    }
+  };
+
+  const toggleSeed = (code: string) => {
+    setSeedSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
+
+  const handleImportSeeds = async () => {
+    const codes = selectedImportable.map((s) => s.code);
+    if (codes.length === 0) return;
+    setImporting(true);
+    try {
+      const d = await importExamSeeds(codes);
+      toast.success(`已导入 ${d.imported} 份种子试卷`);
+      qc.invalidateQueries({ queryKey: ["exam-papers"] });
+      setSeedOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || "导入失败");
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -393,12 +444,68 @@ export default function ExamPaperAdminPage() {
             </div>
             <div className="flex items-center gap-2">
               <AdminButton type="button" tone="secondary" size="sm" onClick={handleNew}><Plus className="h-4 w-4 mr-1" />新建试卷</AdminButton>
+              <AdminButton type="button" tone="secondary" size="sm" onClick={openSeedDialog}><Download className="h-4 w-4 mr-1" />导入种子试卷</AdminButton>
               {currentId != null && <AdminButton type="button" tone="primary" size="sm" onClick={handleSave}><Save className="h-4 w-4 mr-1" />保存</AdminButton>}
             </div>
           </div>
         </AdminFormCard>
         <div className="flex-1 min-h-0">{tab === 0 ? configTab : publishTab}</div>
       </div>
+
+      <Dialog open={seedOpen} onOpenChange={(v) => { if (!v) setSeedOpen(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>导入种子试卷</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto">
+            {seedsLoading ? (
+              <div className="flex min-h-[120px] items-center justify-center text-xs text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-1" />加载中…</div>
+            ) : seeds.length === 0 ? (
+              <div className="flex min-h-[120px] items-center justify-center text-xs text-[var(--app-color-text-tertiary)]">暂无可用种子试卷</div>
+            ) : (
+              <>
+                <div className="mb-2 flex items-center justify-between px-1">
+                  <span className="text-xs text-[var(--app-color-text-tertiary)]">{importableSeeds.length} 份可导入</span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" className="text-xs text-[var(--app-color-accent)]" onClick={() => setSeedSelected(new Set(importableSeeds.map((s) => s.code)))}>全选</button>
+                    <button type="button" className="text-xs text-[var(--app-color-text-secondary)]" onClick={() => setSeedSelected(new Set())}>清空</button>
+                  </div>
+                </div>
+                {seeds.map((s) => {
+                  const checked = s.imported || seedSelected.has(s.code);
+                  return (
+                    <label
+                      key={s.code}
+                      className={cn(
+                        "flex items-center gap-2 rounded px-2 py-2 hover:bg-[var(--app-color-surface-hover)]",
+                        s.imported ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={s.imported}
+                        checked={checked}
+                        onChange={() => toggleSeed(s.code)}
+                        className="h-4 w-4 accent-[var(--app-color-accent)]"
+                      />
+                      <span className="flex-1 truncate text-sm text-[var(--app-color-text-primary)]">{s.title}</span>
+                      <span className="whitespace-nowrap text-xs text-[var(--twin-mute)]">{s.questionCount} 题</span>
+                      {s.imported && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">已导入</span>}
+                    </label>
+                  );
+                })}
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <AdminButton type="button" tone="secondary" size="sm" onClick={() => setSeedOpen(false)}>取消</AdminButton>
+            <AdminButton type="button" tone="primary" size="sm" onClick={handleImportSeeds} disabled={importing || selectedImportable.length === 0}>
+              {importing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
+              {importing ? "导入中…" : selectedImportable.length > 0 ? `导入 (${selectedImportable.length})` : "导入"}
+            </AdminButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminPageShell>
   );
 }
