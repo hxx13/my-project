@@ -3,7 +3,6 @@ package com.example.demo.modules.training.service;
 import com.example.demo.modules.document.service.DocxToPdfConverter;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
-import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
 import com.example.demo.modules.reportform.service.ReportFormWordService;
 import com.example.demo.modules.training.entity.PersonQualification;
 import com.example.demo.modules.training.entity.QualificationItemConfig;
@@ -16,11 +15,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /** 资格报告归档：把表单提交渲染成带页眉页脚的 PDF 并落盘。 */
 @Service
@@ -30,7 +32,6 @@ public class QualificationReportService {
 
     private final QualificationItemConfigMapper configMapper;
     private final ReportFormDefinitionMapper definitionMapper;
-    private final ReportFormSubmissionMapper submissionMapper;
     private final ReportFormWordService wordService;
     private final DocxToPdfConverter converter;
     private final PersonQualificationMapper qualificationMapper;
@@ -39,18 +40,16 @@ public class QualificationReportService {
 
     public QualificationReportService(QualificationItemConfigMapper configMapper,
                                       ReportFormDefinitionMapper definitionMapper,
-                                      ReportFormSubmissionMapper submissionMapper,
                                       ReportFormWordService wordService,
                                       DocxToPdfConverter converter,
                                       PersonQualificationMapper qualificationMapper,
                                       @Value("${app.qualification.storage-dir:./data/qualification-reports}") String storageDir) {
         this.configMapper = configMapper;
         this.definitionMapper = definitionMapper;
-        this.submissionMapper = submissionMapper;
         this.wordService = wordService;
         this.converter = converter;
         this.qualificationMapper = qualificationMapper;
-        this.storageDir = Path.of(storageDir);
+        this.storageDir = Path.of(storageDir).toAbsolutePath().normalize();
     }
 
     /**
@@ -65,8 +64,15 @@ public class QualificationReportService {
         try {
             byte[] pdf = generate(formId, submissionId, cfg.getWordTemplateId());
             Files.createDirectories(storageDir);
-            String fileName = personId + "-" + cfg.getItemKey() + "-" + System.currentTimeMillis() + ".pdf";
-            Files.write(storageDir.resolve(fileName), pdf);
+            String fileName = personId + "-" + cfg.getItemKey() + "-" + UUID.randomUUID() + ".pdf";
+            Path target = storageDir.resolve(fileName);
+            Path tmp = Files.createTempFile(storageDir, "report-", ".part");
+            Files.write(tmp, pdf);
+            try {
+                Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
 
             PersonQualification q = new PersonQualification();
             q.setPersonId(personId);
@@ -87,8 +93,12 @@ public class QualificationReportService {
         if (q == null || q.getFileRef() == null || q.getFileRef().isBlank()) {
             throw new IllegalStateException("报告尚未生成");
         }
+        Path file = storageDir.resolve(q.getFileRef()).normalize();
+        if (!file.startsWith(storageDir)) {
+            throw new IllegalStateException("非法报告路径");
+        }
         try {
-            return Files.readAllBytes(storageDir.resolve(q.getFileRef()));
+            return Files.readAllBytes(file);
         } catch (Exception e) {
             throw new IllegalStateException("报告文件读取失败: " + e.getMessage());
         }

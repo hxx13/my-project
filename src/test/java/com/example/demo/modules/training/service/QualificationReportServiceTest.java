@@ -3,7 +3,6 @@ package com.example.demo.modules.training.service;
 import com.example.demo.modules.document.service.DocxToPdfConverter;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
-import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
 import com.example.demo.modules.reportform.service.ReportFormWordService;
 import com.example.demo.modules.training.entity.QualificationItemConfig;
 import com.example.demo.modules.training.mapper.PersonQualificationMapper;
@@ -17,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -30,7 +30,6 @@ class QualificationReportServiceTest {
     void onSubmitted_writesPdfAndFileRef() throws Exception {
         QualificationItemConfigMapper configMapper = mock(QualificationItemConfigMapper.class);
         ReportFormDefinitionMapper definitionMapper = mock(ReportFormDefinitionMapper.class);
-        ReportFormSubmissionMapper submissionMapper = mock(ReportFormSubmissionMapper.class);
         ReportFormWordService wordService = mock(ReportFormWordService.class);
         DocxToPdfConverter converter = mock(DocxToPdfConverter.class);
         PersonQualificationMapper qualificationMapper = mock(PersonQualificationMapper.class);
@@ -50,7 +49,7 @@ class QualificationReportServiceTest {
         when(converter.convert(any())).thenReturn(new byte[]{'%', 'P', 'D', 'F'});
 
         QualificationReportService service = new QualificationReportService(
-                configMapper, definitionMapper, submissionMapper, wordService, converter,
+                configMapper, definitionMapper, wordService, converter,
                 qualificationMapper, tempDir.toString());
 
         service.onSubmitted(7L, 9L, "12345");
@@ -70,10 +69,29 @@ class QualificationReportServiceTest {
         PersonQualificationMapper qualificationMapper = mock(PersonQualificationMapper.class);
 
         new QualificationReportService(configMapper, mock(ReportFormDefinitionMapper.class),
-                mock(ReportFormSubmissionMapper.class), mock(ReportFormWordService.class),
+                mock(ReportFormWordService.class),
                 mock(DocxToPdfConverter.class), qualificationMapper, tempDir.toString())
                 .onSubmitted(7L, 9L, "12345");
 
         verifyNoInteractions(qualificationMapper);
+    }
+
+    @Test
+    void load_rejectsPathTraversal() {
+        PersonQualificationMapper qm = mock(PersonQualificationMapper.class);
+        var q = new com.example.demo.modules.training.entity.PersonQualification();
+        q.setFileRef("../../etc/passwd");
+        when(qm.findByPersonAndItem("1", "health_report")).thenReturn(q);
+
+        QualificationReportService service = new QualificationReportService(
+                mock(QualificationItemConfigMapper.class),
+                mock(ReportFormDefinitionMapper.class),
+                mock(ReportFormWordService.class),
+                mock(DocxToPdfConverter.class),
+                qm, tempDir.toString());
+
+        assertThatThrownBy(() -> service.load("1", "health_report"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("非法报告路径");
     }
 }
