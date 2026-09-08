@@ -8,6 +8,8 @@ import com.example.demo.modules.training.service.TrainingService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -114,6 +116,48 @@ public class TrainingController {
         User user = resolveUser();
         if (user == null) return Result.fail(401, "未登录");
         return Result.success(service.publish(id, user));
+    }
+
+    @PostMapping("/{id}/unpublish")
+    public Result<?> unpublish(@PathVariable Long id) {
+        User user = resolveUser();
+        if (user == null) return Result.fail(401, "未登录");
+        return Result.success(service.unpublish(id, user));
+    }
+
+    @PostMapping("/{id}/schedule-publish")
+    public Result<?> schedulePublish(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        User user = resolveUser();
+        if (user == null) return Result.fail(401, "未登录");
+        LocalDateTime publishAt = toDateTime(body.get("publishAt"));
+        if (publishAt == null) return Result.fail(400, "缺少 publishAt（yyyy-MM-dd HH:mm:ss）");
+        return Result.success(service.schedulePublish(id, publishAt, user));
+    }
+
+    // ========================================================================
+    // 地点预设库
+    // ========================================================================
+
+    @GetMapping("/locations")
+    public Result<?> listLocations() {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        return Result.success(service.listLocations());
+    }
+
+    @PostMapping("/locations")
+    public Result<?> addLocation(@RequestBody Map<String, Object> body) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        String name = str(body.get("name"));
+        String address = str(body.get("address"));
+        if (name == null || address == null) return Result.fail(400, "缺少 name/address");
+        return Result.success(service.addLocation(name, address));
+    }
+
+    @DeleteMapping("/locations/{id}")
+    public Result<?> deleteLocation(@PathVariable Long id) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        int rows = service.deleteLocation(id);
+        return Result.success(Map.of("ok", rows > 0, "rows", rows));
     }
 
     @DeleteMapping("/{id}")
@@ -228,5 +272,25 @@ public class TrainingController {
 
     private Integer toInt(Object v) {
         return v instanceof Number n ? n.intValue() : null;
+    }
+
+    private String str(Object v) {
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    private static final DateTimeFormatter SPACE_DT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    private LocalDateTime toDateTime(Object v) {
+        if (v == null) return null;
+        if (v instanceof LocalDateTime ldt) return ldt;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        try {
+            return LocalDateTime.parse(s.replace('T', ' '), SPACE_DT);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

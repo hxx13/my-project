@@ -9,9 +9,11 @@ import com.example.demo.modules.personnel.mapper.PersonnelRoomAuthorizationMappe
 import com.example.demo.modules.training.entity.Training;
 import com.example.demo.modules.training.entity.TrainingEnrollment;
 import com.example.demo.modules.training.entity.TrainingFavorite;
+import com.example.demo.modules.training.entity.TrainingLocationPreset;
 import com.example.demo.modules.training.entity.TrainingOccurrence;
 import com.example.demo.modules.training.mapper.TrainingEnrollmentMapper;
 import com.example.demo.modules.training.mapper.TrainingFavoriteMapper;
+import com.example.demo.modules.training.mapper.TrainingLocationPresetMapper;
 import com.example.demo.modules.training.mapper.TrainingMapper;
 import com.example.demo.modules.training.mapper.TrainingOccurrenceMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -40,6 +42,7 @@ public class TrainingService {
     private final TrainingOccurrenceMapper occurrenceMapper;
     private final TrainingEnrollmentMapper enrollmentMapper;
     private final TrainingFavoriteMapper favoriteMapper;
+    private final TrainingLocationPresetMapper locationPresetMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final PersonnelRoomAuthorizationMapper roomAuthMapper;
     private final ObjectMapper objectMapper;
@@ -48,6 +51,7 @@ public class TrainingService {
                            TrainingOccurrenceMapper occurrenceMapper,
                            TrainingEnrollmentMapper enrollmentMapper,
                            TrainingFavoriteMapper favoriteMapper,
+                           TrainingLocationPresetMapper locationPresetMapper,
                            AroPersonnelMapper aroPersonnelMapper,
                            PersonnelRoomAuthorizationMapper roomAuthMapper,
                            ObjectMapper objectMapper) {
@@ -55,6 +59,7 @@ public class TrainingService {
         this.occurrenceMapper = occurrenceMapper;
         this.enrollmentMapper = enrollmentMapper;
         this.favoriteMapper = favoriteMapper;
+        this.locationPresetMapper = locationPresetMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.roomAuthMapper = roomAuthMapper;
         this.objectMapper = objectMapper;
@@ -124,7 +129,23 @@ public class TrainingService {
     public Map<String, Object> publish(Long id, User user) {
         Training t = requireTraining(id);
         checkOwner(user, t);
-        trainingMapper.updateStatus(id, "PUBLISHED");
+        trainingMapper.publishNow(id);
+        return get(id);
+    }
+
+    @Transactional
+    public Map<String, Object> schedulePublish(Long id, LocalDateTime publishAt, User user) {
+        Training t = requireTraining(id);
+        checkOwner(user, t);
+        trainingMapper.schedulePublish(id, publishAt);
+        return get(id);
+    }
+
+    @Transactional
+    public Map<String, Object> unpublish(Long id, User user) {
+        Training t = requireTraining(id);
+        checkOwner(user, t);
+        trainingMapper.unpublish(id);
         return get(id);
     }
 
@@ -137,6 +158,36 @@ public class TrainingService {
         }
         occurrenceMapper.deleteByTrainingId(id);
         return trainingMapper.delete(id);
+    }
+
+    // ========================================================================
+    // 地点预设库（location preset）
+    // ========================================================================
+
+    public List<Map<String, Object>> listLocations() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (TrainingLocationPreset p : locationPresetMapper.list()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", p.getId());
+            m.put("name", p.getName());
+            m.put("address", p.getAddress());
+            out.add(m);
+        }
+        return out;
+    }
+
+    @Transactional
+    public Map<String, Object> addLocation(String name, String address) {
+        TrainingLocationPreset p = new TrainingLocationPreset();
+        p.setName(name);
+        p.setAddress(address);
+        locationPresetMapper.insert(p);
+        return Map.of("id", p.getId(), "name", p.getName(), "address", p.getAddress());
+    }
+
+    @Transactional
+    public int deleteLocation(Long id) {
+        return locationPresetMapper.delete(id);
     }
 
     // ========================================================================
@@ -334,6 +385,7 @@ public class TrainingService {
         m.put("timeLimit", t.getTimeLimit());
         m.put("recurrence", t.getRecurrence());
         m.put("status", t.getStatus());
+        m.put("publishAt", t.getPublishAt());
         m.put("createdBy", t.getCreatedBy());
         m.put("createdAt", t.getCreatedAt());
         m.put("updatedAt", t.getUpdatedAt());

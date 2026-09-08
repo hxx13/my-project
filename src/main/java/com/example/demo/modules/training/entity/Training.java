@@ -14,6 +14,7 @@ public class Training {
     private Integer timeLimit;
     private String recurrence;
     private String status;
+    private LocalDateTime publishAt;
     private String createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
