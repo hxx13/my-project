@@ -16,9 +16,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class DocxToPdfConverterTest {
 
+    /** 可用 -Dsoffice.path=... 指定二进制；Windows 上需指向 soffice.com（GUI 版 soffice.exe 在管道下不可用）。 */
+    private static final String SOFFICE = System.getProperty("soffice.path", "soffice");
+
     private static boolean sofficeAvailable() {
         try {
-            Process p = new ProcessBuilder("soffice", "--version").redirectErrorStream(true).start();
+            Process p = new ProcessBuilder(SOFFICE, "--version").redirectErrorStream(true).start();
             p.waitFor();
             return p.exitValue() == 0;
         } catch (Exception e) {
@@ -30,19 +33,21 @@ class DocxToPdfConverterTest {
     void convert_keepsFooterTextInPdf() throws Exception {
         assumeTrue(sofficeAvailable(), "本机未安装 LibreOffice，跳过真实转换测试");
 
-        byte[] pdf = new DocxToPdfConverter("soffice", 60_000L)
+        byte[] pdf = new DocxToPdfConverter(SOFFICE, 60_000L)
                 .convert(buildDocxWithFooter("页脚测试-版本2.0"));
 
         assertThat(new String(pdf, 0, 4)).isEqualTo("%PDF");
         try (PDDocument doc = Loader.loadPDF(pdf)) {
             assertThat(doc.getNumberOfPages()).isGreaterThanOrEqualTo(1);
-            assertThat(new PDFTextStripper().getText(doc)).contains("页脚测试-版本2.0");
+            // LibreOffice 可能在汉字与数字之间插入空格，比较前去掉所有空白
+            String text = new PDFTextStripper().getText(doc).replaceAll("\\s+", "");
+            assertThat(text).contains("页脚测试-版本2.0");
         }
     }
 
     @Test
     void convert_emptyBytes_throws() {
-        assertThatThrownBy(() -> new DocxToPdfConverter("soffice", 60_000L).convert(new byte[0]))
+        assertThatThrownBy(() -> new DocxToPdfConverter(SOFFICE, 60_000L).convert(new byte[0]))
                 .hasMessageContaining("文档内容为空");
     }
 
