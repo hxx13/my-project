@@ -163,3 +163,18 @@ export async function fetchPendingEnrollments(): Promise<PendingEnrollment[]> {
 export async function syncTrainings(): Promise<void> {
   await adminHttp.post("/training/sync");
 }
+
+// ---- favorites ----
+
+export async function fetchTrainingFavorites(): Promise<number[]> {
+  const r = await adminHttp.get("/training/favorites");
+  return (r.data?.data ?? []) as number[];
+}
+
+export async function starTraining(id: number | string): Promise<void> {
+  await adminHttp.post(`/training/${id}/favorite`);
+}
+
+export async function unstarTraining(id: number | string): Promise<void> {
+  await adminHttp.delete(`/training/${id}/favorite`);
+}

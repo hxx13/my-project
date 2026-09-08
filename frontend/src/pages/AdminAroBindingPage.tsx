@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { ChevronDown, ChevronLeft, Clock, MapPin, Loader2, Check, Search, Plus, RefreshCw, ShieldCheck, ShieldX, CheckCircle2, XCircle, UserPlus, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, Clock, MapPin, Loader2, Check, Search, Plus, RefreshCw, Star, ShieldCheck, ShieldX, CheckCircle2, XCircle, UserPlus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
@@ -14,6 +14,9 @@ import { fetchRoomMappingRooms, type RoomMappingRoomRow } from "@/api/twinApi";
 import {
   fetchTrainings,
   fetchTraining,
+  fetchTrainingFavorites,
+  starTraining,
+  unstarTraining,
   addEnrollments,
   auditEnrollment,
   scoreEnrollment,
@@ -62,9 +65,10 @@ export default function AdminAroBindingPage() {
   const [kwInput, setKwInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [selected, setSelected] = useState<TrainingSeries | null>(null);
-  const [selectedOcc, setSelectedOcc] = useState<TrainingOccurrence | null>(null);
+  const [importOcc, setImportOcc] = useState<TrainingOccurrence | null>(null);
 
-  const [tf, setTf] = useState({ pg: "", audit: "", score: "", search: "" });
+  const [gsearch, setGsearch] = useState("");
+  const [expandedOccs, setExpandedOccs] = useState<Set<number>>(new Set());
   const [expanded, setExpanded] = useState<string | null>(null);
   const [roomPickers, setRoomPickers] = useState<Record<string, Set<string>>>({});
   const [roomNav, setRoomNav] = useState<{ area: string; floor: string } | null>(null);
@@ -117,6 +121,20 @@ export default function AdminAroBindingPage() {
     queryFn: async () => (await fetchRoomMappingRooms({ pageSize: 10000, includeChannels: false })).list,
     staleTime: 5 * 60_000,
   });
+  const { data: favorites = [] } = useQuery({
+    queryKey: ["training-favorites"],
+    queryFn: fetchTrainingFavorites,
+  });
+  const favSet = useMemo(() => new Set(favorites), [favorites]);
+  const toggleFavorite = async (id: number) => {
+    try {
+      if (favSet.has(id)) await unstarTraining(id);
+      else await starTraining(id);
+      qc.invalidateQueries({ queryKey: ["training-favorites"] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || "操作失败");
+    }
+  };
 
   const series = sd?.list ?? [];
   const sTotal = sd?.total ?? 0;
@@ -128,25 +146,6 @@ export default function AdminAroBindingPage() {
     (allRooms ?? []).forEach((r) => r.roomId && !m.has(r.roomId) && m.set(r.roomId, r));
     return m;
   }, [allRooms]);
-
-  // ── 报名筛选（数据已随详情嵌套返回，纯客户端过滤）──
-  const enrollments = selectedOcc?.enrollments ?? [];
-  const filtered = useMemo(() => {
-    let list = [...enrollments];
-    const s = tf.search.trim().toLowerCase();
-    if (s) list = list.filter((e) => (e.name ?? "").toLowerCase().includes(s) || (e.jobNumber ?? "").toLowerCase().includes(s));
-    if (tf.pg) list = list.filter((e) => e.projectGroup === tf.pg);
-    if (tf.audit === "1") list = list.filter((e) => e.testYn === 1);
-    if (tf.audit === "0") list = list.filter((e) => e.testYn !== 1);
-    if (tf.score === "1") list = list.filter((e) => e.testFraction === 1);
-    if (tf.score === "0") list = list.filter((e) => e.testFraction !== 1);
-    return list;
-  }, [enrollments, tf]);
-  const pgs = useMemo(() => {
-    const s = new Set<string>();
-    enrollments.forEach((e) => e.projectGroup && s.add(e.projectGroup));
-    return [...s].sort();
-  }, [enrollments]);
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     try {
@@ -254,7 +253,7 @@ export default function AdminAroBindingPage() {
 
   // ── 导入学员 ──
   const doImport = async () => {
-    if (!selectedOcc) return;
+    if (!importOcc) return;
     const rows = importText
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -268,23 +267,25 @@ export default function AdminAroBindingPage() {
       toast.error("请按「姓名 编号 课题组」每行一条填写");
       return;
     }
-    await run(() => addEnrollments(selectedOcc.id, rows), `已导入 ${rows.length} 人`);
+    await run(() => addEnrollments(importOcc.id, rows), `已导入 ${rows.length} 人`);
     setImportOpen(false);
     setImportText("");
   };
 
   const goList = () => {
     setSelected(null);
-    setSelectedOcc(null);
-    setTf({ pg: "", audit: "", score: "", search: "" });
+    setImportOcc(null);
     setExpanded(null);
     setImportOpen(false);
+    setGsearch("");
+    setExpandedOccs(new Set());
   };
   const goDetail = (s: TrainingSeries) => {
     setSelected(s);
-    setSelectedOcc(null);
-    setTf({ pg: "", audit: "", score: "", search: "" });
+    setImportOcc(null);
     setExpanded(null);
+    setGsearch("");
+    setExpandedOccs(new Set());
   };
 
   const slist = (
@@ -308,12 +309,17 @@ export default function AdminAroBindingPage() {
           {sl ? <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>
             : <table className="w-full min-w-max text-left text-sm border-collapse">
               <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
-                <th className="px-3 py-2">培训名称</th><th className="px-3 py-2">类型</th><th className="px-3 py-2">所属人</th><th className="px-3 py-2">场次</th><th className="px-3 py-2">状态</th>
+                <th className="px-2 py-2 w-8"></th><th className="px-3 py-2">培训名称</th><th className="px-3 py-2">类型</th><th className="px-3 py-2">所属人</th><th className="px-3 py-2">场次</th><th className="px-3 py-2">状态</th>
               </tr></thead>
               <tbody>
-                {series.length === 0 && !sl ? <tr><td colSpan={5} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无培训</td></tr>
+                {series.length === 0 && !sl ? <tr><td colSpan={6} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无培训</td></tr>
                   : series.map((s) => (
                     <tr key={s.id} className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors cursor-pointer" onClick={() => goDetail(s)}>
+                      <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <button type="button" onClick={() => toggleFavorite(s.id)} className="p-1 rounded hover:bg-[var(--app-color-surface-hover)]" aria-label="收藏">
+                          <Star className={cn("h-4 w-4", favSet.has(s.id) ? "fill-amber-400 text-amber-400" : "text-[var(--twin-mute)] hover:text-amber-400")} />
+                        </button>
+                      </td>
                       <td className="px-3 py-2.5"><div className="font-medium text-[var(--app-color-text-primary)]">{s.name}</div><div className="text-[11px] text-[var(--twin-mute)] mt-0.5 line-clamp-1">{s.code || ""}</div></td>
                       <td className="px-3 py-2.5 text-[var(--twin-mute)]">{typeLabel(s.type)}</td>
                       <td className="px-3 py-2.5 text-[var(--twin-mute)] whitespace-nowrap">{s.ownerId || "—"}{s.ownerId === currentUserId && <span className="ml-1 text-[10px] text-blue-600">（我）</span>}</td>
@@ -331,100 +337,134 @@ export default function AdminAroBindingPage() {
 
   const occurrences = detail?.occurrences ?? [];
 
+  const toggleOcc = (id: number) => setExpandedOccs((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const occTag = (o?: TrainingOccurrence) => (
+    <span className="inline-block text-[11px] px-2 py-0.5 rounded bg-[var(--app-color-surface-hover)] text-[var(--twin-mute)] whitespace-nowrap">{o ? (o.startTime ?? o.address ?? "—") : "—"}</span>
+  );
+
+  // ── 全局搜索：跨所有场次的学员（纯客户端过滤）──
+  const flatMatches = useMemo(() => {
+    const s = gsearch.trim().toLowerCase();
+    if (!s) return [] as TrainingEnrollment[];
+    const out: TrainingEnrollment[] = [];
+    occurrences.forEach((o) => (o.enrollments ?? []).forEach((e) => {
+      if ((e.name ?? "").toLowerCase().includes(s) || (e.jobNumber ?? "").toLowerCase().includes(s)) out.push(e);
+    }));
+    return out;
+  }, [occurrences, gsearch]);
+  const occByEnrollment = useMemo(() => {
+    const m = new Map<number, TrainingOccurrence>();
+    occurrences.forEach((o) => (o.enrollments ?? []).forEach((e) => m.set(e.id, o)));
+    return m;
+  }, [occurrences]);
+
+  const renderEnrollmentRow = (e: TrainingEnrollment, lead?: React.ReactNode) => {
+    const uid = String(e.id);
+    const roomIds = e.roomIds ?? [];
+    const ak = `a-${e.id}`;
+    const sk = `s-${e.id}`;
+    return (
+      <tr key={e.id} className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors">
+        {lead != null && <td className="px-3 py-2.5 text-[var(--twin-mute)]">{lead}</td>}
+        <td className="px-3 py-2.5 font-medium text-[var(--app-color-text-primary)]">{e.name}</td>
+        <td className="px-3 py-2.5 text-[var(--twin-mute)] font-mono text-xs">{e.jobNumber || "—"}</td>
+        <td className="px-3 py-2.5 text-[var(--twin-mute)] max-w-[160px] truncate">{e.projectGroup || "—"}</td>
+        <td className="px-3 py-2.5 relative">
+          <div className="flex flex-wrap items-center gap-1">
+            {roomIds.length === 0 && <span className="text-[11px] text-[var(--twin-mute)]">无</span>}
+            {roomIds.map((rid) => {
+              const rm = roomById.get(rid);
+              return <span key={rid} className="text-xs bg-[var(--app-color-surface-hover)] px-2 py-0.5 rounded whitespace-nowrap">{rm ? `${rm.regionName || ""} ${rm.roomName || rid}`.trim() : rid}</span>;
+            })}
+            {canWrite && <button data-dt onClick={(ev) => toggleRoom(uid, roomIds, ev)} className={cn("shrink-0 text-[10px] px-1.5 py-0.5 rounded transition-colors", expanded === uid ? "bg-blue-100 text-blue-700 font-medium" : "text-[var(--twin-mute)] hover:bg-[var(--app-color-surface-hover)]")}>{expanded === uid ? "选择中" : "修改"}</button>}
+          </div>
+          {canWrite && expanded === uid && roomDropdown(uid, e.id)}
+        </td>
+        <td className="px-3 py-2.5 relative">
+          <div className="relative inline-block">
+            {canWrite ? (
+              <>
+                <button data-dt onClick={() => setExpanded(expanded === ak ? null : ak)} className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded cursor-pointer transition-colors", e.testYn === 1 ? "text-emerald-600 bg-emerald-50" : e.testYn === 2 ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50")}>{e.testYn === 1 ? <ShieldCheck className="h-3.5 w-3.5" /> : e.testYn === 2 ? <ShieldX className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}{e.testYn === 1 ? "已通过" : e.testYn === 2 ? "已拒绝" : "待审核"}</button>
+                {expanded === ak && <div data-dd className="absolute left-0 top-full mt-1 z-50 w-24 rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-0.5">{e.testYn !== 1 && <button onClick={() => { handleAudit(e.id, 1); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-emerald-600"><ShieldCheck className="h-3.5 w-3.5" />通过</button>}{e.testYn !== 2 && <button onClick={() => { handleAudit(e.id, 2); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-rose-600"><ShieldX className="h-3.5 w-3.5" />拒绝</button>}</div>}
+              </>
+            ) : (
+              <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded", e.testYn === 1 ? "text-emerald-600 bg-emerald-50" : e.testYn === 2 ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50")}>{e.testYn === 1 ? "已通过" : e.testYn === 2 ? "已拒绝" : "待审核"}</span>
+            )}
+          </div>
+        </td>
+        <td className="px-3 py-2.5 relative">
+          <div className="relative inline-block">
+            {canWrite ? (
+              <>
+                <button data-dt onClick={() => setExpanded(expanded === sk ? null : sk)} className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded cursor-pointer transition-colors", e.testFraction === 1 ? "text-emerald-600 bg-emerald-50" : e.testFraction === 2 ? "text-rose-600 bg-rose-50" : "text-[var(--twin-mute)] bg-[var(--app-color-surface-hover)]")}>{e.testFraction === 1 ? <CheckCircle2 className="h-3.5 w-3.5" /> : e.testFraction === 2 ? <XCircle className="h-3.5 w-3.5" /> : null}{e.testFraction === 1 ? "合格" : e.testFraction === 2 ? "不合格" : "待评分"}</button>
+                {expanded === sk && <div data-dd className="absolute left-0 top-full mt-1 z-50 w-24 rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-0.5"><button onClick={() => { handleScore(e.id, 1); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />合格</button><button onClick={() => { handleScore(e.id, 2); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-rose-600"><XCircle className="h-3.5 w-3.5" />不合格</button></div>}
+              </>
+            ) : (
+              <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded", e.testFraction === 1 ? "text-emerald-600 bg-emerald-50" : e.testFraction === 2 ? "text-rose-600 bg-rose-50" : "text-[var(--twin-mute)] bg-[var(--app-color-surface-hover)]")}>{e.testFraction === 1 ? "合格" : e.testFraction === 2 ? "不合格" : "待评分"}</span>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  const renderEnrollmentTable = (list: TrainingEnrollment[], opts?: { leadOf?: (e: TrainingEnrollment) => React.ReactNode; sticky?: boolean }) => {
+    const hasLead = !!opts?.leadOf;
+    const sticky = opts?.sticky !== false;
+    return (
+      <table className="w-full min-w-max text-left text-sm border-collapse">
+        <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className={cn("bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]", sticky && "sticky top-0 z-[2]")}>
+          {hasLead && <th className="px-3 py-2">场次</th>}
+          <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th><th className="px-3 py-2">课题组</th><th className="px-3 py-2">允许房间</th><th className="px-3 py-2">审批</th><th className="px-3 py-2">评分</th>
+        </tr></thead>
+        <tbody>
+          {list.length === 0 ? <tr><td colSpan={hasLead ? 7 : 6} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无学员</td></tr>
+            : list.map((e) => renderEnrollmentRow(e, opts?.leadOf?.(e)))}
+        </tbody>
+      </table>
+    );
+  };
+
   const occurrenceList = (
     <div className="flex-1 min-h-0 overflow-auto">
       {dl ? <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>
         : <table className="w-full min-w-max text-left text-sm border-collapse">
           <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
-            <th className="px-3 py-2">时间</th><th className="px-3 py-2">地点</th><th className="px-3 py-2">考官</th><th className="px-3 py-2">人数</th><th className="px-3 py-2">状态</th>
+            <th className="px-3 py-2">时间</th><th className="px-3 py-2">地点</th><th className="px-3 py-2">考官</th><th className="px-3 py-2">人数</th><th className="px-3 py-2 text-right">操作</th>
           </tr></thead>
           <tbody>
             {occurrences.length === 0 && !dl ? <tr><td colSpan={5} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无场次</td></tr>
-              : occurrences.map((o) => (
-                <tr key={o.id} className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors cursor-pointer" onClick={() => { setSelectedOcc(o); setTf({ pg: "", audit: "", score: "", search: "" }); setExpanded(null); }}>
-                  <td className="px-3 py-2.5 text-[var(--twin-mute)] whitespace-nowrap"><Clock className="h-3 w-3 inline mr-1" />{o.startTime ?? "—"} ~ {o.endTime ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-[var(--twin-mute)]"><MapPin className="h-3 w-3 inline mr-1" />{o.address || "—"}</td>
-                  <td className="px-3 py-2.5 text-[var(--twin-mute)]">{o.examinerName || o.examinerNumber || "—"}</td>
-                  <td className="px-3 py-2.5 text-[var(--twin-mute)]">{o.enrollments?.length ?? 0} 人</td>
-                  <td className="px-3 py-2.5">{seriesStatusBadge(o.status)}</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>}
-    </div>
-  );
-
-  const enrollmentTable = (
-    <div className="flex-1 min-h-0 flex flex-col">
-      <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-[var(--app-color-border-default)] overflow-x-auto">
-        <select value={tf.pg} onChange={(e) => setTf((p) => ({ ...p, pg: e.target.value }))} className="h-9 rounded border border-[var(--app-color-border-default)] bg-violet-50/50 px-3 text-sm min-w-[140px]"><option value="">全部课题组</option>{pgs.map((g) => <option key={g} value={g}>{g}</option>)}</select>
-        <select value={tf.audit} onChange={(e) => setTf((p) => ({ ...p, audit: e.target.value }))} className="h-9 rounded border border-[var(--app-color-border-default)] bg-amber-50/50 px-3 text-sm min-w-[130px]"><option value="">全部审批</option><option value="1">已通过</option><option value="0">待审核/已拒绝</option></select>
-        <select value={tf.score} onChange={(e) => setTf((p) => ({ ...p, score: e.target.value }))} className="h-9 rounded border border-[var(--app-color-border-default)] bg-emerald-50/50 px-3 text-sm min-w-[130px]"><option value="">全部评分</option><option value="1">合格</option><option value="0">未评分/不合格</option></select>
-        <div className={cn("flex items-center gap-1.5 h-9 rounded border border-[var(--app-color-border-default)] bg-sky-50/50 px-3 cursor-text min-w-[200px]", tf.search && "ring-1 ring-blue-300")}>
-          <Search className="h-4 w-4 text-[var(--twin-mute)] shrink-0" />
-          <input value={tf.search} onChange={(e) => setTf((p) => ({ ...p, search: e.target.value }))} placeholder="搜索姓名/编号..." className="flex-1 min-w-[60px] bg-transparent border-none outline-none text-sm" />
-          {tf.search && <button onClick={() => setTf((p) => ({ ...p, search: "" }))} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"><X className="h-3.5 w-3.5" /></button>}
-        </div>
-        {canWrite && <AdminButton type="button" tone="primary" size="default" onClick={() => setImportOpen(true)}><UserPlus className="h-4 w-4 mr-1" />导入学员</AdminButton>}
-      </div>
-      <div className="flex-1 min-h-0 overflow-auto">
-        <table className="w-full min-w-max text-left text-sm border-collapse">
-          <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
-            <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th><th className="px-3 py-2">课题组</th><th className="px-3 py-2">允许房间</th><th className="px-3 py-2">审批</th><th className="px-3 py-2">评分</th>
-          </tr></thead>
-          <tbody>
-            {filtered.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无学员</td></tr>
-              : filtered.map((e) => {
-                const uid = String(e.id);
-                const roomIds = e.roomIds ?? [];
-                const ak = `a-${e.id}`;
-                const sk = `s-${e.id}`;
+              : occurrences.map((o) => {
+                const open = expandedOccs.has(o.id);
                 return (
-                  <tr key={e.id} className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors">
-                    <td className="px-3 py-2.5 font-medium text-[var(--app-color-text-primary)]">{e.name}</td>
-                    <td className="px-3 py-2.5 text-[var(--twin-mute)] font-mono text-xs">{e.jobNumber || "—"}</td>
-                    <td className="px-3 py-2.5 text-[var(--twin-mute)] max-w-[160px] truncate">{e.projectGroup || "—"}</td>
-                    <td className="px-3 py-2.5 relative">
-                      <div className="flex flex-wrap items-center gap-1">
-                        {roomIds.length === 0 && <span className="text-[11px] text-[var(--twin-mute)]">无</span>}
-                        {roomIds.map((rid) => {
-                          const rm = roomById.get(rid);
-                          return <span key={rid} className="text-xs bg-[var(--app-color-surface-hover)] px-2 py-0.5 rounded whitespace-nowrap">{rm ? `${rm.regionName || ""} ${rm.roomName || rid}`.trim() : rid}</span>;
-                        })}
-                        {canWrite && <button data-dt onClick={(ev) => toggleRoom(uid, roomIds, ev)} className={cn("shrink-0 text-[10px] px-1.5 py-0.5 rounded transition-colors", expanded === uid ? "bg-blue-100 text-blue-700 font-medium" : "text-[var(--twin-mute)] hover:bg-[var(--app-color-surface-hover)]")}>{expanded === uid ? "选择中" : "修改"}</button>}
-                      </div>
-                      {canWrite && expanded === uid && roomDropdown(uid, e.id)}
-                    </td>
-                    <td className="px-3 py-2.5 relative">
-                      <div className="relative inline-block">
-                        {canWrite ? (
-                          <>
-                            <button data-dt onClick={() => setExpanded(expanded === ak ? null : ak)} className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded cursor-pointer transition-colors", e.testYn === 1 ? "text-emerald-600 bg-emerald-50" : e.testYn === 2 ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50")}>{e.testYn === 1 ? <ShieldCheck className="h-3.5 w-3.5" /> : e.testYn === 2 ? <ShieldX className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}{e.testYn === 1 ? "已通过" : e.testYn === 2 ? "已拒绝" : "待审核"}</button>
-                            {expanded === ak && <div data-dd className="absolute left-0 top-full mt-1 z-50 w-24 rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-0.5">{e.testYn !== 1 && <button onClick={() => { handleAudit(e.id, 1); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-emerald-600"><ShieldCheck className="h-3.5 w-3.5" />通过</button>}{e.testYn !== 2 && <button onClick={() => { handleAudit(e.id, 2); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-rose-600"><ShieldX className="h-3.5 w-3.5" />拒绝</button>}</div>}
-                          </>
-                        ) : (
-                          <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded", e.testYn === 1 ? "text-emerald-600 bg-emerald-50" : e.testYn === 2 ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50")}>{e.testYn === 1 ? "已通过" : e.testYn === 2 ? "已拒绝" : "待审核"}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 relative">
-                      <div className="relative inline-block">
-                        {canWrite ? (
-                          <>
-                            <button data-dt onClick={() => setExpanded(expanded === sk ? null : sk)} className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded cursor-pointer transition-colors", e.testFraction === 1 ? "text-emerald-600 bg-emerald-50" : e.testFraction === 2 ? "text-rose-600 bg-rose-50" : "text-[var(--twin-mute)] bg-[var(--app-color-surface-hover)]")}>{e.testFraction === 1 ? <CheckCircle2 className="h-3.5 w-3.5" /> : e.testFraction === 2 ? <XCircle className="h-3.5 w-3.5" /> : null}{e.testFraction === 1 ? "合格" : e.testFraction === 2 ? "不合格" : "待评分"}</button>
-                            {expanded === sk && <div data-dd className="absolute left-0 top-full mt-1 z-50 w-24 rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-0.5"><button onClick={() => { handleScore(e.id, 1); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />合格</button><button onClick={() => { handleScore(e.id, 2); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-rose-600"><XCircle className="h-3.5 w-3.5" />不合格</button></div>}
-                          </>
-                        ) : (
-                          <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded", e.testFraction === 1 ? "text-emerald-600 bg-emerald-50" : e.testFraction === 2 ? "text-rose-600 bg-rose-50" : "text-[var(--twin-mute)] bg-[var(--app-color-surface-hover)]")}>{e.testFraction === 1 ? "合格" : e.testFraction === 2 ? "不合格" : "待评分"}</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                  <Fragment key={o.id}>
+                    <tr className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors cursor-pointer" onClick={() => toggleOcc(o.id)}>
+                      <td className="px-3 py-2.5 text-[var(--twin-mute)] whitespace-nowrap"><Clock className="h-3 w-3 inline mr-1" />{o.startTime ?? "—"} ~ {o.endTime ?? "—"}</td>
+                      <td className="px-3 py-2.5 text-[var(--twin-mute)]"><MapPin className="h-3 w-3 inline mr-1" />{o.address || "—"}</td>
+                      <td className="px-3 py-2.5 text-[var(--twin-mute)]">{o.examinerName || o.examinerNumber || "—"}</td>
+                      <td className="px-3 py-2.5 text-[var(--twin-mute)]">{o.enrollments?.length ?? 0} 人</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center justify-end gap-2">
+                          {canWrite && <button type="button" onClick={(ev) => { ev.stopPropagation(); setImportOcc(o); setImportOpen(true); }} className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"><UserPlus className="h-3.5 w-3.5" />导入</button>}
+                          <ChevronDown className={cn("h-4 w-4 text-[var(--twin-mute)] transition-transform", open && "rotate-180")} />
+                        </div>
+                      </td>
+                    </tr>
+                    {open && (
+                      <tr className="border-b bg-[var(--app-color-surface-hover)]">
+                        <td colSpan={5} className="px-3 py-2">{renderEnrollmentTable(o.enrollments ?? [], { sticky: false })}</td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
           </tbody>
-        </table>
-      </div>
+        </table>}
     </div>
   );
 
@@ -439,18 +479,21 @@ export default function AdminAroBindingPage() {
               <p className="text-xs text-[var(--twin-mute)]">{typeLabel(detail?.type ?? selected?.type)} · 所属人 {selected?.ownerId || "—"}{selected?.ownerId === currentUserId && "（我）"} · {seriesStatusBadge(detail?.status ?? selected?.status)}</p>
             </div>
           </div>
-          {selectedOcc && (
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-sm font-medium text-[var(--app-color-text-primary)]">{selectedOcc.address || "场次"} · {selectedOcc.startTime ?? ""}</span>
-              <AdminButton type="button" tone="secondary" size="sm" onClick={() => { setSelectedOcc(null); setTf({ pg: "", audit: "", score: "", search: "" }); setExpanded(null); }}><ChevronLeft className="h-4 w-4 mr-1" />返回场次</AdminButton>
-            </div>
-          )}
+          <div className={cn("flex items-center gap-1.5 h-9 rounded border border-[var(--app-color-border-default)] bg-sky-50/50 px-3 cursor-text min-w-[220px]", gsearch && "ring-1 ring-blue-300")}>
+            <Search className="h-4 w-4 text-[var(--twin-mute)] shrink-0" />
+            <input value={gsearch} onChange={(e) => setGsearch(e.target.value)} placeholder="全局搜索姓名/编号..." className="flex-1 min-w-[60px] bg-transparent border-none outline-none text-sm" />
+            {gsearch && <button onClick={() => setGsearch("")} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"><X className="h-3.5 w-3.5" /></button>}
+          </div>
         </div>
       </AdminFormCard>
       <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
-        {selectedOcc ? enrollmentTable : occurrenceList}
+        {gsearch.trim() ? (
+          <div className="flex-1 min-h-0 overflow-auto">
+            {renderEnrollmentTable(flatMatches, { leadOf: (e) => occTag(occByEnrollment.get(e.id)) })}
+          </div>
+        ) : occurrenceList}
       </div>
-      {importOpen && selectedOcc && (
+      {importOpen && importOcc && (
         <Portal>
           <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.45)" }} onClick={() => setImportOpen(false)}>
             <div className="relative w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 text-slate-900 shadow-lg" onClick={(e) => e.stopPropagation()}>
@@ -471,7 +514,7 @@ export default function AdminAroBindingPage() {
 
   return (
     <AdminPageShell>
-      <div key={selected ? (selectedOcc ? "enroll" : "occurrence") : "list"}>{selected ? tdetail : slist}</div>
+      <div key={selected ? "detail" : "list"}>{selected ? tdetail : slist}</div>
     </AdminPageShell>
   );
 }
