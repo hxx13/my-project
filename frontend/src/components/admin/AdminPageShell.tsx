@@ -47,7 +47,7 @@ type AdminFillScrollRegionProps = {
 /** fillHeight 页壳内的可滚动主体（表格、长列表） */
 export function AdminFillScrollRegion({ children, className }: AdminFillScrollRegionProps) {
   return (
-    <div className={cn("min-h-0 flex-1 overflow-auto overscroll-y-contain", className)}>
+    <div className={cn("min-h-0 flex-1 overflow-auto overscroll-y-contain [scrollbar-gutter:stable]", className)}>
       {children}
     </div>
   );
@@ -120,7 +120,7 @@ export function AdminTableShell({
       <div
         className={cn(
           "admin-table-shell-inner min-w-0",
-          scrollable && "max-h-[min(72vh,780px)] overflow-y-auto overscroll-y-contain"
+          scrollable && "max-h-[min(72vh,780px)] overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]"
         )}
       >
         {children}
@@ -150,7 +150,7 @@ export function AdminDataTableWrap({ children, className, scrollable }: AdminDat
       <div
         className={cn(
           "admin-data-table-wrap min-w-0",
-          scrollable && "max-h-[min(72vh,780px)] overflow-y-auto overscroll-y-contain"
+          scrollable && "max-h-[min(72vh,780px)] overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]"
         )}
       >
         {children}

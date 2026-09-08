@@ -305,10 +305,10 @@ export default function AdminAroBindingPage() {
         </div>
       </AdminFormCard>
       <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]">
           {sl ? <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>
             : <table className="w-full min-w-max text-left text-sm border-collapse">
-              <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
+              <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold">
                 <th className="px-2 py-2 w-8"></th><th className="px-3 py-2">培训名称</th><th className="px-3 py-2">类型</th><th className="px-3 py-2">所属人</th><th className="px-3 py-2">场次</th><th className="px-3 py-2">状态</th>
               </tr></thead>
               <tbody>
@@ -418,7 +418,7 @@ export default function AdminAroBindingPage() {
     const sticky = opts?.sticky !== false;
     return (
       <table className="w-full min-w-max text-left text-sm border-collapse">
-        <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className={cn("bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]", sticky && "sticky top-0 z-[2]")}>
+        <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className={cn("bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold", sticky && "sticky top-0 z-[2]")}>
           {hasLead && <th className="px-3 py-2">场次</th>}
           <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th><th className="px-3 py-2">课题组</th><th className="px-3 py-2">允许房间</th><th className="px-3 py-2">审批</th><th className="px-3 py-2">评分</th>
         </tr></thead>
@@ -431,10 +431,10 @@ export default function AdminAroBindingPage() {
   };
 
   const occurrenceList = (
-    <div className="flex-1 min-h-0 overflow-auto">
+    <div className="flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]">
       {dl ? <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>
         : <table className="w-full min-w-max text-left text-sm border-collapse">
-          <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
+          <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold">
             <th className="px-3 py-2">时间</th><th className="px-3 py-2">地点</th><th className="px-3 py-2">考官</th><th className="px-3 py-2">人数</th><th className="px-3 py-2 text-right">操作</th>
           </tr></thead>
           <tbody>
@@ -488,7 +488,7 @@ export default function AdminAroBindingPage() {
       </AdminFormCard>
       <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
         {gsearch.trim() ? (
-          <div className="flex-1 min-h-0 overflow-auto">
+          <div className="flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]">
             {renderEnrollmentTable(flatMatches, { leadOf: (e) => occTag(occByEnrollment.get(e.id)) })}
           </div>
         ) : occurrenceList}
