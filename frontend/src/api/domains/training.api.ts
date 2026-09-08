@@ -9,7 +9,6 @@ export interface TrainingSeries {
   type?: number | null;
   paperIds?: number[];
   ownerId?: string | null;
-  timeLimit?: number | null;
   recurrence?: string | null;
   recurrenceDay?: number | null;
   recurrenceTime?: string | null;
@@ -46,6 +45,7 @@ export interface TrainingOccurrence {
   startTime?: string | null;
   endTime?: string | null;
   address?: string | null;
+  timeLimit?: number | null;
   examinerName?: string | null;
   examinerNumber?: string | null;
   status?: string | null;

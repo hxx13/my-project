@@ -68,6 +68,7 @@ export default function AdminAroBindingPage() {
   const [keyword, setKeyword] = useState("");
   const [selected, setSelected] = useState<TrainingSeries | null>(null);
   const [importOcc, setImportOcc] = useState<TrainingOccurrence | null>(null);
+  const [occPage, setOccPage] = useState(1);
 
   const [gsearch, setGsearch] = useState("");
   const [expandedOccs, setExpandedOccs] = useState<Set<number>>(new Set());
@@ -296,6 +297,7 @@ export default function AdminAroBindingPage() {
     setImportOpen(false);
     setGsearch("");
     setExpandedOccs(new Set());
+    setOccPage(1);
   };
   const goDetail = (s: TrainingSeries) => {
     setSelected(s);
@@ -303,6 +305,7 @@ export default function AdminAroBindingPage() {
     setExpanded(null);
     setGsearch("");
     setExpandedOccs(new Set());
+    setOccPage(1);
   };
 
   const slist = (
@@ -365,6 +368,11 @@ export default function AdminAroBindingPage() {
   );
 
   const occurrences = detail?.occurrences ?? [];
+
+  const OCC_PAGE_SIZE = 10;
+  const occTotal = occurrences.length;
+  const occPages = Math.max(1, Math.ceil(occTotal / OCC_PAGE_SIZE));
+  const pageOccurrences = occurrences.slice((occPage - 1) * OCC_PAGE_SIZE, occPage * OCC_PAGE_SIZE);
 
   const toggleOcc = (id: number) => setExpandedOccs((prev) => {
     const next = new Set(prev);
@@ -464,7 +472,7 @@ export default function AdminAroBindingPage() {
       {dl ? <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>
         : occurrences.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] py-12 text-center text-sm text-[var(--twin-mute)]">暂无场次</div>
-        ) : occurrences.map((o) => {
+        ) : pageOccurrences.map((o) => {
           const open = expandedOccs.has(o.id);
           const count = o.enrollments?.length ?? 0;
           return (
@@ -474,7 +482,6 @@ export default function AdminAroBindingPage() {
                   <span className="w-2 h-2 rounded-full bg-[var(--twin-mute)] shrink-0" />
                   <span className="text-sm font-medium text-[var(--twin-ink)] whitespace-nowrap"><Clock className="h-3.5 w-3.5 inline mr-1 text-[var(--twin-mute)]" />{o.startTime ?? "—"} ~ {o.endTime ?? "—"}</span>
                   <span className="text-sm text-[var(--twin-body)] whitespace-nowrap"><MapPin className="h-3.5 w-3.5 inline mr-1 text-[var(--twin-mute)]" />{o.address || "—"}</span>
-                  <span className="text-sm text-[var(--twin-mute)] whitespace-nowrap">考官 {o.examinerName || "—"}</span>
                   <span className="rounded-full bg-[var(--twin-canvas-soft)] px-2.5 py-0.5 text-xs text-[var(--twin-body)] font-medium">{count} 人</span>
                   <span className="ml-auto shrink-0 text-xs text-[var(--twin-mute)]">{open ? "收起 ▲" : "展开 ▼"}</span>
                 </button>
@@ -492,6 +499,16 @@ export default function AdminAroBindingPage() {
             </div>
           );
         })}
+        {occTotal > OCC_PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-3 pt-1 text-sm">
+            <span className="text-xs text-[var(--app-color-text-tertiary)]">共 {occTotal} 场</span>
+            <div className="flex items-center gap-2">
+              <AdminButton type="button" tone="secondary" size="sm" disabled={occPage <= 1} onClick={() => setOccPage((p) => p - 1)}>上一页</AdminButton>
+              <span className="text-xs text-[var(--app-color-text-secondary)]">{occPage} / {occPages}</span>
+              <AdminButton type="button" tone="secondary" size="sm" disabled={occPage >= occPages} onClick={() => setOccPage((p) => p + 1)}>下一页</AdminButton>
+            </div>
+          </div>
+        )}
     </div>
   );
 
