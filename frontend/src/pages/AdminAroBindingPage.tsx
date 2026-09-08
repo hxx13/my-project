@@ -74,6 +74,7 @@ export default function AdminAroBindingPage() {
   const [gsearch, setGsearch] = useState("");
   const [expandedOccs, setExpandedOccs] = useState<Set<number>>(new Set());
   const [enrollPageByOcc, setEnrollPageByOcc] = useState<Record<number, number>>({});
+  const [enrollSearchByOcc, setEnrollSearchByOcc] = useState<Record<number, string>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [roomPickers, setRoomPickers] = useState<Record<string, Set<string>>>({});
   const [roomNav, setRoomNav] = useState<{ area: string; floor: string } | null>(null);
@@ -479,7 +480,8 @@ export default function AdminAroBindingPage() {
         ) : pageOccurrences.map((o) => {
           const open = expandedOccs.has(o.id);
           const count = o.enrollments?.length ?? 0;
-          const enrolls = o.enrollments ?? [];
+          const kw = (enrollSearchByOcc[o.id] ?? "").trim().toLowerCase();
+          const enrolls = (o.enrollments ?? []).filter((e) => !kw || (e.name ?? "").toLowerCase().includes(kw) || (e.jobNumber ?? "").toLowerCase().includes(kw));
           const page = enrollPageByOcc[o.id] ?? 0;
           const totalPages = Math.max(1, Math.ceil(enrolls.length / ENROLL_PAGE_SIZE));
           const paged = enrolls.slice(page * ENROLL_PAGE_SIZE, (page + 1) * ENROLL_PAGE_SIZE);
@@ -501,6 +503,15 @@ export default function AdminAroBindingPage() {
               </div>
               {open && (
                 <>
+                  <div className="flex items-center gap-1.5 px-3 py-2 border-t border-[var(--twin-hairline)]">
+                    <Search className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]" />
+                    <input
+                      value={enrollSearchByOcc[o.id] ?? ""}
+                      onChange={(e) => { setEnrollSearchByOcc((p) => ({ ...p, [o.id]: e.target.value })); setEnrollPageByOcc((p) => ({ ...p, [o.id]: 0 })); }}
+                      placeholder="场次内搜索姓名/编号..."
+                      className="flex-1 min-w-0 bg-transparent border-none outline-none text-sm text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
+                    />
+                  </div>
                   <div className="border-t border-[var(--twin-hairline)] overflow-auto max-h-[50vh]">
                     {renderEnrollmentTable(paged, { sticky: false })}
                   </div>
