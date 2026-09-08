@@ -71,7 +71,7 @@ public interface TrainingMapper {
                    created_by AS createdBy,
                    created_at AS createdAt,
                    updated_at AS updatedAt
-            FROM training WHERE status = 'PUBLISHED' AND recurrence IN ('WEEKLY','DAILY')
+            FROM training WHERE status = 'PUBLISHED' AND recurrence IN ('WEEKLY','MONTHLY','QUARTERLY','YEARLY','DAILY')
             """)
     List<Training> listWithRecurrence();
 
