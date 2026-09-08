@@ -383,10 +383,18 @@ public class TrainingService {
         String json = toJson(roomIds);
         enrollmentMapper.updateRooms(enrollmentId, json, json);
         if (traineeId != null && !traineeId.isBlank()) {
+            // 重新计算该人「所有报名场次」的房间并集，避免改一场清掉其它培训授的房间
+            HashSet<String> union = new HashSet<>();
+            for (TrainingEnrollment en : enrollmentMapper.listByTraineeId(traineeId)) {
+                Object o = fromJson(en.getRoomIdsJson());
+                if (o instanceof List<?> l) {
+                    for (Object x : l) if (x != null) union.add(String.valueOf(x));
+                }
+            }
             aroPersonnelMapper.updateRoomAuthManaged(traineeId, 1);
             roomAuthMapper.deleteByUser(traineeId);
             LocalDateTime now = LocalDateTime.now();
-            for (String roomId : roomIds) {
+            for (String roomId : union) {
                 PersonnelRoomAuthorization row = new PersonnelRoomAuthorization();
                 row.setAroUserId(traineeId);
                 row.setRoomId(roomId);

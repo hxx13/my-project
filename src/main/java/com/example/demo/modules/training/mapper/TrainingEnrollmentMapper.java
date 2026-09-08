@@ -48,6 +48,22 @@ public interface TrainingEnrollmentMapper {
             """)
     TrainingEnrollment findById(@Param("id") Long id);
 
+    @Select("""
+            SELECT id, occurrence_id AS occurrenceId,
+                   trainee_id AS traineeId,
+                   name,
+                   job_number AS jobNumber,
+                   project_group AS projectGroup,
+                   test_yn AS testYn,
+                   test_fraction AS testFraction,
+                   room_ids_json AS roomIdsJson,
+                   rooms_json AS roomsJson,
+                   created_at AS createdAt,
+                   updated_at AS updatedAt
+            FROM training_enrollment WHERE trainee_id = #{traineeId} ORDER BY id ASC
+            """)
+    List<TrainingEnrollment> listByTraineeId(@Param("traineeId") String traineeId);
+
     @Update("UPDATE training_enrollment SET test_yn = #{yn}, updated_at = NOW() WHERE id = #{id}")
     int updateTestYn(@Param("id") Long id, @Param("yn") Integer yn);
 
