@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import type { ReactNode } from "react";
-import { useSearchParams, useNavigate, useLocation, Link } from "react-router-dom";
+import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { usePendingMaterialRequests, useFinishedMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useRevokeMaterialRequest, useDeleteMaterialRequest } from "@/api/hooks/useMaterial";
 import { fetchAllMaterialDemands, resolveMaterialDemand, exportMaterialAuditTrail, type MaterialDemand } from "@/api/domains/material.api";
@@ -13,7 +12,7 @@ import {
   type ScanDelayHistoryRequest,
 } from "@/api/domains/scanDelay.api";
 import { fetchAdminMaterialItems, type MaterialItem } from "@/api/domains/material.api";
-import { fetchPendingTrainingSessions, auditTrainee, scoreTrainee, type PendingTrainingSession, type Trainee } from "@/api/domains/aro-training.api";
+import { fetchPendingEnrollments, auditEnrollment, scoreEnrollment, type PendingEnrollment } from "@/api/domains/training.api";
 import { fetchPendingClaims, approveClaim, batchApproveClaims, type CageClaimItem } from "@/api/domains/cageShelf.api";
 import { ScanDelayAutoApprovePanel } from "@/features/scan-delay-auto-approve/ScanDelayAutoApprovePanel";
 import { MaterialAutoApprovePanel } from "@/features/material-auto-approve/MaterialAutoApprovePanel";
@@ -32,7 +31,6 @@ import { MATERIAL_REVIEW_FINISHED_PAGE } from "@/features/student-review/materia
 import {
   ADMIN_NOTIFICATION_SSE_PUSH_EVENT,
   ADMIN_PENDING_BADGES_REFRESH_EVENT,
-  ARO_TRAINING_PENDING_SSE_EVENT,
 } from "@/features/admin/adminPendingBadgesEvents";
 import {
   groupScanDelayByOption,
@@ -181,45 +179,22 @@ export default function MaterialReviewPage() {
   });
 
   // ── 培训审批 ──
-  const { data: pendingSessions = [], isLoading: trainingLoading } = useQuery({
-    queryKey: ["aro-training", "sessions", "pending"],
-    queryFn: fetchPendingTrainingSessions,
+  const { data: pendingEnrollments = [], isLoading: trainingLoading } = useQuery({
+    queryKey: ["training", "pending"],
+    queryFn: fetchPendingEnrollments,
     enabled: tab === "aroTraining",
     ...studentReviewPendingQueryOptions,
   });
 
   const trainingAuditMutation = useMutation({
-    mutationFn: ({ examSignId, state }: { examSignId: string; state: 1 | 2 }) => auditTrainee(examSignId, state),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["aro-training", "sessions", "pending"] }); },
+    mutationFn: ({ enrollmentId, state }: { enrollmentId: number; state: 1 | 2 }) => auditEnrollment(enrollmentId, state),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["training", "pending"] }); },
   });
 
   const trainingScoreMutation = useMutation({
-    mutationFn: ({ examSignId, state }: { examSignId: string; state: 1 | 2 }) => scoreTrainee(examSignId, state),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["aro-training", "sessions", "pending"] }); },
+    mutationFn: ({ enrollmentId, state }: { enrollmentId: number; state: 1 | 2 }) => scoreEnrollment(enrollmentId, state),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["training", "pending"] }); },
   });
-
-  // 培训审批：按时间分组
-  const trainingGroups = useMemo(() => {
-    const today: PendingTrainingSession[] = [];
-    const historyPending: PendingTrainingSession[] = [];
-    const historyDone: PendingTrainingSession[] = [];
-    for (const sess of pendingSessions) {
-      // 按 session 中的 trainees 判定：若全部 trainee 已审核（testYn !== 0）且已评分（testFraction !== 0），归为"历史"
-      const allDone = sess.trainees.every((t) => t.testYn !== 0 && t.testFraction !== 0);
-      if (allDone) {
-        historyDone.push(sess);
-        continue;
-      }
-      // 按场次开始时间判定今天/历史待审（trainee 无有效 createdAt）
-      const sessionTime = sess.session.startTime;
-      if (sessionTime && isToday(sessionTime)) {
-        today.push(sess);
-      } else {
-        historyPending.push(sess);
-      }
-    }
-    return { today, historyPending, historyDone };
-  }, [pendingSessions]);
 
   // ── 笼位申请审批 ──
   const { data: cageClaimsData, isLoading: cageClaimsLoading } = useQuery({
@@ -280,8 +255,8 @@ export default function MaterialReviewPage() {
   };
 
   const trainingTotalPending = useMemo(
-    () => pendingSessions.reduce((sum, s) => sum + s.trainees.filter((t) => t.testYn === 0 || t.testFraction === 0).length, 0),
-    [pendingSessions],
+    () => pendingEnrollments.filter((e) => (e.testYn ?? 0) === 0 || (e.testFraction ?? 0) === 0).length,
+    [pendingEnrollments],
   );
 
   const { data: allItems = [] } = useQuery<MaterialItem[]>({
@@ -334,16 +309,11 @@ export default function MaterialReviewPage() {
         void qc.invalidateQueries({ queryKey: ["scan-delay", "history"] });
       }
     };
-    const refreshTraining = () => {
-      void qc.invalidateQueries({ queryKey: ["aro-training", "sessions", "pending"] });
-    };
     window.addEventListener(ADMIN_PENDING_BADGES_REFRESH_EVENT, refreshPending);
     window.addEventListener(ADMIN_NOTIFICATION_SSE_PUSH_EVENT, refreshPending);
-    window.addEventListener(ARO_TRAINING_PENDING_SSE_EVENT, refreshTraining);
     return () => {
       window.removeEventListener(ADMIN_PENDING_BADGES_REFRESH_EVENT, refreshPending);
       window.removeEventListener(ADMIN_NOTIFICATION_SSE_PUSH_EVENT, refreshPending);
-      window.removeEventListener(ARO_TRAINING_PENDING_SSE_EVENT, refreshTraining);
     };
   }, [qc, tab]);
 
@@ -948,61 +918,21 @@ export default function MaterialReviewPage() {
           )}
         </div>
       ) : tab === "aroTraining" ? (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {trainingLoading ? <DataSkeleton variant="card" rows={5} /> : null}
-          {pendingSessions.length === 0 && !trainingLoading ? (
+          {pendingEnrollments.length === 0 && !trainingLoading ? (
             <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无待审批培训</p>
           ) : (
-            <>
-              {/* 今天 */}
-              {trainingGroups.today.length > 0 && (
-                <TimeGroup label="今天" count={trainingGroups.today.reduce((s, sess) => s + sess.trainees.length, 0)} defaultOpen={true}>
-                  <div className="space-y-4">
-                    {trainingGroups.today.map((sess) => (
-                      <TrainingSessionGroup
-                        key={sess.session.id}
-                        session={sess.session}
-                        trainees={sess.trainees}
-                        onAudit={(examSignId, state) => trainingAuditMutation.mutate({ examSignId, state })}
-                        onScore={(examSignId, state) => trainingScoreMutation.mutate({ examSignId, state })}
-                      />
-                    ))}
-                  </div>
-                </TimeGroup>
-              )}
-              {/* 待审核（历史） */}
-              {trainingGroups.historyPending.length > 0 && (
-                <TimeGroup label="待审核（历史）" count={trainingGroups.historyPending.reduce((s, sess) => s + sess.trainees.length, 0)} defaultOpen={true}>
-                  <div className="space-y-4">
-                    {trainingGroups.historyPending.map((sess) => (
-                      <TrainingSessionGroup
-                        key={sess.session.id}
-                        session={sess.session}
-                        trainees={sess.trainees}
-                        onAudit={(examSignId, state) => trainingAuditMutation.mutate({ examSignId, state })}
-                        onScore={(examSignId, state) => trainingScoreMutation.mutate({ examSignId, state })}
-                      />
-                    ))}
-                  </div>
-                </TimeGroup>
-              )}
-              {/* 历史 */}
-              {trainingGroups.historyDone.length > 0 && (
-                <TimeGroup label="历史" count={trainingGroups.historyDone.reduce((s, sess) => s + sess.trainees.length, 0)} defaultOpen={false}>
-                  <div className="space-y-4">
-                    {trainingGroups.historyDone.map((sess) => (
-                      <TrainingSessionGroup
-                        key={sess.session.id}
-                        session={sess.session}
-                        trainees={sess.trainees}
-                        onAudit={(examSignId, state) => trainingAuditMutation.mutate({ examSignId, state })}
-                        onScore={(examSignId, state) => trainingScoreMutation.mutate({ examSignId, state })}
-                      />
-                    ))}
-                  </div>
-                </TimeGroup>
-              )}
-            </>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {pendingEnrollments.map((e) => (
+                <PendingEnrollmentCard
+                  key={e.enrollmentId}
+                  enrollment={e}
+                  onAudit={(state) => trainingAuditMutation.mutate({ enrollmentId: e.enrollmentId, state })}
+                  onScore={(state) => trainingScoreMutation.mutate({ enrollmentId: e.enrollmentId, state })}
+                />
+              ))}
+            </div>
           )}
         </div>
       ) : (
@@ -1102,19 +1032,6 @@ export default function MaterialReviewPage() {
       )}
       <ScanDelayAutoApprovePanel open={autoApproveOpen} onClose={() => setAutoApproveOpen(false)} />
       <MaterialAutoApprovePanel open={materialAutoApproveOpen} onClose={() => setMaterialAutoApproveOpen(false)} />
-    </div>
-  );
-}
-
-function TimeGroup({ label, count, children, defaultOpen = true, className }: { label: string; count: number; children: ReactNode; defaultOpen?: boolean; className?: string }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="space-y-3">
-      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-2 text-sm font-medium text-[var(--twin-ink)]">
-        <span className={`transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
-        {label} ({count})
-      </button>
-      {open && <div className={className || ""}>{children}</div>}
     </div>
   );
 }
@@ -1723,113 +1640,55 @@ function traineeScoreBadge(fraction: number): string {
   return "bg-[var(--app-color-surface-hover)] text-[var(--twin-mute)] border-[var(--twin-hairline)]";
 }
 
-function traineeCardTint(t: Trainee): string {
-  if (t.testYn === 2) return "bg-[var(--twin-card-rejected)]";
-  if (t.testYn === 1 && t.testFraction !== 0) return "bg-[var(--twin-card-approved)]";
-  return "bg-[var(--twin-card-pending)]";
-}
-
-/** 按培训场次分组，可折叠 */
-function TrainingSessionGroup({
-  session,
-  trainees,
+/** 单个待审批报名卡片（扁平列表，非按场次嵌套） */
+function PendingEnrollmentCard({
+  enrollment,
   onAudit,
   onScore,
 }: {
-  session: import("@/api/domains/aro-training.api").TrainingSession;
-  trainees: Trainee[];
-  onAudit: (examSignId: string, state: 1 | 2) => void;
-  onScore: (examSignId: string, state: 1 | 2) => void;
+  enrollment: PendingEnrollment;
+  onAudit: (state: 1 | 2) => void;
+  onScore: (state: 1 | 2) => void;
 }) {
-  const [open, setOpen] = useState(true);
-  const pendingCount = trainees.filter((t) => t.testYn === 0 || t.testFraction === 0).length;
-  return (
-    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--twin-canvas-soft)] transition-colors text-left"
-      >
-        <span className="text-xs transition-transform duration-200" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▼</span>
-        <span className="text-sm font-semibold text-[var(--twin-body)]">{session.title}</span>
-        <span className="text-[11px] text-[var(--twin-mute)]">{session.address}</span>
-        <span className="text-[11px] text-[var(--twin-mute)]">{session.startTime}</span>
-        {pendingCount > 0 && (
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)] font-medium">{pendingCount} 待处理</span>
-        )}
-        <span className="text-[11px] text-[var(--twin-mute)] ml-auto">{trainees.length} 人</span>
-        <Link
-          to="/console/admin/aro-binding"
-          className="text-[10px] text-[var(--twin-link)] hover:underline shrink-0 ml-2"
-          onClick={(e) => e.stopPropagation()}
-        >
-          点击前往授权
-        </Link>
-      </button>
-      {open && (
-        <div className="px-4 pb-4 border-t border-[var(--twin-hairline)] pt-3">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {trainees.map((t) => (
-              <TrainingTraineeCard
-                key={t.examSignId || t.userId}
-                trainee={t}
-                onAudit={onAudit}
-                onScore={onScore}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 单个学员审批卡片 */
-function TrainingTraineeCard({
-  trainee,
-  onAudit,
-  onScore,
-}: {
-  trainee: Trainee;
-  onAudit: (examSignId: string, state: 1 | 2) => void;
-  onScore: (examSignId: string, state: 1 | 2) => void;
-}) {
-  const isPendingAudit = trainee.testYn === 0;
-  const isPendingScore = trainee.testFraction === 0;
-  const hasAnyAction = isPendingAudit || isPendingScore;
-  const tint = traineeCardTint(trainee);
+  const testYn = enrollment.testYn ?? 0;
+  const testFraction = enrollment.testFraction ?? 0;
+  const isPendingAudit = testYn === 0;
+  const isPendingScore = testFraction === 0;
   const [auditMore, setAuditMore] = useState(false);
   const [scoreMore, setScoreMore] = useState(false);
+  const occurrenceLabel = enrollment.startTime || enrollment.endTime
+    ? `${enrollment.startTime ?? ""}${enrollment.startTime && enrollment.endTime ? " ~ " : ""}${enrollment.endTime ?? ""}`
+    : "—";
   return (
-    <div className={`rounded-twin-lg border border-[var(--twin-hairline)] p-3 shadow-twin-level-1 flex flex-col gap-2 ${tint}`}>
-      {/* 顶行: 姓名 + 课题组 + 状态标签 */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="font-bold text-sm text-[var(--twin-primary)]">{trainee.name}</span>
-          {trainee.projectGroupName && (
-            <span className="text-[11px] text-[var(--twin-mute)]">({trainee.projectGroupName})</span>
-          )}
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${traineeAuditBadge(trainee.testYn)}`}>
-            {traineeAuditStatusLabel(trainee.testYn)}
-          </span>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${traineeScoreBadge(trainee.testFraction)}`}>
-            {traineeScoreLabel(trainee.testFraction)}
-          </span>
-        </div>
+    <div className="rounded-twin-lg border border-[var(--twin-hairline)] p-3 shadow-twin-level-1 flex flex-col gap-2">
+      {/* 顶行：培训名称 + 场次时间 */}
+      <div className="flex items-start justify-between gap-2">
+        <span className="font-bold text-sm text-[var(--twin-primary)] min-w-0 truncate">{enrollment.trainingName || "—"}</span>
+        <span className="text-[11px] text-[var(--twin-mute)] shrink-0 text-right">{occurrenceLabel}</span>
       </div>
-      {/* 中行: 工号 + 电话 */}
-      <div className="flex items-center gap-3 text-[11px] text-[var(--twin-mute)]">
-        <span>工号: {trainee.jobNumber || "—"}</span>
-        <span>电话: {trainee.mobilePhone || "—"}</span>
+      {enrollment.address ? <div className="text-[11px] text-[var(--twin-mute)]">地点：{enrollment.address}</div> : null}
+      {/* 中行：姓名 + 编号 + 课题组 */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-semibold text-[var(--twin-ink)]">{enrollment.name || "—"}</span>
+        <span className="text-[11px] text-[var(--twin-mute)]">编号：{enrollment.jobNumber || "—"}</span>
+        {enrollment.projectGroup && (
+          <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]">{enrollment.projectGroup}</span>
+        )}
       </div>
-      {/* 底行: 审批 + 评分各自独立状态，待处理=split button，已完成=状态标记 */}
+      {/* 状态标签：审批 + 评分 */}
+      <div className="flex items-center gap-1">
+        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${traineeAuditBadge(testYn)}`}>
+          {traineeAuditStatusLabel(testYn)}
+        </span>
+        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${traineeScoreBadge(testFraction)}`}>
+          {traineeScoreLabel(testFraction)}
+        </span>
+      </div>
+      {/* 底行：审批 + 评分各自独立操作 */}
       <div className="flex items-center gap-1.5">
-        {/* 审批 */}
         {isPendingAudit ? (
           <div className="relative inline-flex rounded-twin-sm overflow-visible">
-            <button type="button" onClick={() => onAudit(trainee.examSignId, 1)}
+            <button type="button" onClick={() => onAudit(1)}
               className="bg-[var(--app-color-accent)] px-2.5 py-1 text-[11px] font-medium text-white hover:brightness-90 rounded-l-twin-sm transition-colors">
               通过
             </button>
@@ -1839,7 +1698,7 @@ function TrainingTraineeCard({
             </button>
             {auditMore && (
               <div className="absolute top-full left-0 mt-1 z-[var(--z-dropdown)] bg-[var(--app-color-surface-elevated)] border border-[var(--twin-hairline)] rounded-twin-md p-1 shadow-twin-level-2">
-                <button type="button" onClick={() => { onAudit(trainee.examSignId, 2); setAuditMore(false); }}
+                <button type="button" onClick={() => { onAudit(2); setAuditMore(false); }}
                   className="rounded-twin-sm bg-[var(--app-color-feedback-danger)] px-2.5 py-1 text-[10px] font-medium text-white hover:opacity-90 whitespace-nowrap transition-colors">
                   拒绝
                 </button>
@@ -1847,14 +1706,11 @@ function TrainingTraineeCard({
             )}
           </div>
         ) : (
-          <span className="text-[10px] text-[var(--twin-mute)]">
-            {trainee.testYn === 1 ? '已通过' : trainee.testYn === 2 ? '已拒绝' : ''}
-          </span>
+          <span className="text-[10px] text-[var(--twin-mute)]">{testYn === 1 ? "已通过" : "已拒绝"}</span>
         )}
-        {/* 评分 */}
         {isPendingScore ? (
           <div className="relative inline-flex rounded-twin-sm overflow-visible">
-            <button type="button" onClick={() => onScore(trainee.examSignId, 1)}
+            <button type="button" onClick={() => onScore(1)}
               className="bg-[var(--app-color-accent)] px-2.5 py-1 text-[11px] font-medium text-white hover:brightness-90 rounded-l-twin-sm transition-colors">
               合格
             </button>
@@ -1864,7 +1720,7 @@ function TrainingTraineeCard({
             </button>
             {scoreMore && (
               <div className="absolute top-full left-0 mt-1 z-[var(--z-dropdown)] bg-[var(--app-color-surface-elevated)] border border-[var(--twin-hairline)] rounded-twin-md p-1 shadow-twin-level-2">
-                <button type="button" onClick={() => { onScore(trainee.examSignId, 2); setScoreMore(false); }}
+                <button type="button" onClick={() => { onScore(2); setScoreMore(false); }}
                   className="rounded-twin-sm bg-[var(--app-color-feedback-danger)] px-2.5 py-1 text-[10px] font-medium text-white hover:opacity-90 whitespace-nowrap transition-colors">
                   不合格
                 </button>
@@ -1872,19 +1728,8 @@ function TrainingTraineeCard({
             )}
           </div>
         ) : (
-          <span className="text-[10px] text-[var(--twin-mute)]">
-            {trainee.testFraction === 1 ? '已评分：合格' : trainee.testFraction === 2 ? '已评分：不合格' : ''}
-          </span>
+          <span className="text-[10px] text-[var(--twin-mute)]">{testFraction === 1 ? "已评分：合格" : "已评分：不合格"}</span>
         )}
-        {!hasAnyAction && (
-          <span className="text-[10px] text-[var(--twin-mute)]">
-            {trainee.reviewedAt ? formatBeijingDateTimeFull(trainee.reviewedAt) : ''}
-          </span>
-        )}
-        <Link to="/console/admin/aro-binding"
-          className="text-[10px] text-[var(--twin-link)] hover:underline ml-auto">
-          点击前往授权
-        </Link>
       </div>
     </div>
   );

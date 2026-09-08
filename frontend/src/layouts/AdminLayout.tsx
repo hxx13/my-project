@@ -35,7 +35,7 @@ import {
 import { fetchPendingBadges, type PendingBadges } from "@/api/domains/me.api";
 import { fetchPendingMaterialRequests } from "@/api/domains/material.api";
 import { fetchPendingScanDelayRequests } from "@/api/domains/scanDelay.api";
-import { fetchPendingTrainingSessions } from "@/api/domains/aro-training.api";
+import { fetchPendingEnrollments } from "@/api/domains/training.api";
 import { fetchPendingClaims } from "@/api/domains/cageShelf.api";
 import { materialQueryKeys } from "@/api/hooks/queryKeys";
 import { studentReviewPendingQueryOptions } from "@/features/student-review/studentReviewPoll";
@@ -385,8 +385,8 @@ export default function AdminLayout() {
     ...studentReviewPendingQueryOptions,
   });
   const { data: liveTrainingPending = [] } = useQuery({
-    queryKey: ["aro-training", "sessions", "pending"],
-    queryFn: fetchPendingTrainingSessions,
+    queryKey: ["training", "pending"],
+    queryFn: fetchPendingEnrollments,
     enabled: studentReviewBadgeQueriesEnabled,
     ...studentReviewPendingQueryOptions,
   });
@@ -397,7 +397,7 @@ export default function AdminLayout() {
     ...studentReviewPendingQueryOptions,
   });
   const liveTrainingPendingCount = useMemo(
-    () => liveTrainingPending.reduce((sum, s) => sum + (s.trainees?.filter((t: any) => t.testYn === 0 || t.testFraction === 0).length ?? 0), 0),
+    () => liveTrainingPending.filter((e) => (e.testYn ?? 0) === 0 || (e.testFraction ?? 0) === 0).length,
     [liveTrainingPending],
   );
   const liveCageClaimPendingCount = liveCageClaimsPending?.total ?? 0;

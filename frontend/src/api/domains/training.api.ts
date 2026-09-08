@@ -56,6 +56,22 @@ export interface TrainingListResult {
   page: number;
 }
 
+export interface PendingEnrollment {
+  enrollmentId: number;
+  name?: string;
+  jobNumber?: string;
+  projectGroup?: string | null;
+  testYn?: number;
+  testFraction?: number;
+  trainingId: number;
+  trainingName?: string;
+  occurrenceId: number;
+  address?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  examinerName?: string | null;
+}
+
 // ---- series ----
 
 export async function fetchTrainings(params: {
@@ -137,4 +153,9 @@ export async function scoreEnrollment(enrollmentId: number | string, state: 1 | 
 
 export async function setEnrollmentRooms(enrollmentId: number | string, roomIds: string[]): Promise<void> {
   await adminHttp.post(`/training/enrollments/${enrollmentId}/rooms`, { roomIds });
+}
+
+export async function fetchPendingEnrollments(): Promise<PendingEnrollment[]> {
+  const r = await adminHttp.get("/training/pending");
+  return (r.data?.data ?? []) as PendingEnrollment[];
 }
