@@ -8,13 +8,18 @@ import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell
 import { appConfirm, appPrompt } from "@/lib/appDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
+  createExamFolder,
   createExamPaper,
+  deleteExamFolder,
   deleteExamPaper,
+  fetchExamFolders,
   fetchExamPaper,
   fetchExamPapers,
   fetchExamSeeds,
   importExamSeeds,
+  moveExamPaperToFolder,
   publishExamPaper,
+  renameExamFolder,
   unpublishExamPaper,
   saveExamPaper,
   type ExamPaperSummary,
@@ -28,8 +33,8 @@ import SectionTree from "../editor/SectionTree";
 import TypeMenu from "../editor/TypeMenu";
 import FieldEditorPanel from "../editor/FieldEditorPanel";
 import ExamFormField from "../components/ExamFormField";
-
-const PAGE_SIZE = 20;
+import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "@/features/form-shared/FolderTreeManager";
+import "@/features/aup/aup.css";
 
 function statusBadge(status: string) {
   const published = status === "PUBLISHED";
@@ -40,10 +45,24 @@ function statusBadge(status: string) {
   );
 }
 
+const UNGROUPED_KEY = "__ungrouped__";
+
+const FOLDER_LABELS = {
+  createFolder: "＋ 新建文件夹",
+  createItem: "＋ 新建试卷",
+  renameFolder: "编辑名称",
+  deleteFolder: "删除",
+  moveItem: "移动",
+  emptyFolder: "空文件夹",
+  emptyFolderAction: "新建试卷",
+  moveModalTitle: "移动试卷到…",
+  moveModalHint: "选择目标文件夹",
+  folderCreateItemLabel: "＋试卷",
+};
+
 export default function ExamPaperAdminPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<0 | 1>(0);
-  const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
 
   const [currentId, setCurrentId] = useState<number | null>(null);
@@ -73,14 +92,18 @@ export default function ExamPaperAdminPage() {
   } = useTemplateEditor();
 
   const { data: pd, isLoading: pl } = useQuery({
-    queryKey: ["exam-papers", page, keyword],
-    queryFn: () => fetchExamPapers({ page, pageSize: PAGE_SIZE, keyword }),
+    queryKey: ["exam-papers", keyword],
+    queryFn: () => fetchExamPapers({ page: 1, pageSize: 1000, keyword }),
     placeholderData: (prev) => prev,
   });
 
   const papers = pd?.list ?? [];
-  const total = pd?.total ?? 0;
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const foldersQuery = useQuery({
+    queryKey: ["exam-paper-folders"],
+    queryFn: fetchExamFolders,
+  });
+  const folders = foldersQuery.data ?? [];
 
   const selectedField = useMemo(
     () => sections.flatMap((s) => s.fields ?? []).find((f) => f.fieldKey === selectedFieldKey) ?? null,
@@ -119,6 +142,100 @@ export default function ExamPaperAdminPage() {
     } catch (e: any) {
       toast.error(e?.message || "创建失败");
     }
+  };
+
+  const handleCreateFolder = async () => {
+    const name = (await appPrompt("新建文件夹", "", { placeholder: "如 上岗考核" }))?.trim();
+    if (!name) return;
+    try {
+      await createExamFolder(name);
+      toast.success("已创建文件夹");
+      qc.invalidateQueries({ queryKey: ["exam-paper-folders"] });
+    } catch (e: any) {
+      toast.error(e?.message || "创建文件夹失败");
+    }
+  };
+
+  const handleRenameFolder = async (folderKey: string) => {
+    const folder = folders.find((f) => String(f.id) === folderKey);
+    if (!folder) return;
+    const name = (await appPrompt("重命名文件夹", folder.name))?.trim();
+    if (!name || name === folder.name) return;
+    try {
+      await renameExamFolder(folder.id, name);
+      toast.success("已重命名");
+      qc.invalidateQueries({ queryKey: ["exam-paper-folders"] });
+    } catch (e: any) {
+      toast.error(e?.message || "重命名失败");
+    }
+  };
+
+  const handleDeleteFolder = async (folderKey: string) => {
+    const folder = folders.find((f) => String(f.id) === folderKey);
+    if (!folder) return;
+    const count = papers.filter((p) => p.folderId === folder.id).length;
+    if (!(await appConfirm(`删除文件夹「${folder.name}」？其下 ${count} 份试卷将移入「未分类」。`, { danger: true }))) return;
+    try {
+      await deleteExamFolder(folder.id);
+      toast.success("已删除文件夹");
+      qc.invalidateQueries({ queryKey: ["exam-paper-folders"] });
+      qc.invalidateQueries({ queryKey: ["exam-papers"] });
+    } catch (e: any) {
+      toast.error(e?.message || "删除失败");
+    }
+  };
+
+  const handleMovePaper = async (itemId: string, toFolderKey: string) => {
+    const folderId = toFolderKey === UNGROUPED_KEY ? null : Number(toFolderKey);
+    try {
+      await moveExamPaperToFolder(Number(itemId), folderId);
+      toast.success("已移动");
+      qc.invalidateQueries({ queryKey: ["exam-papers"] });
+    } catch (e: any) {
+      toast.error(e?.message || "移动失败");
+    }
+  };
+
+  const handleCreateInFolder = async (folderKey: string) => {
+    const code = (await appPrompt("试卷编码（唯一）", "", { placeholder: "如 EXAM-001" }))?.trim();
+    if (!code) return;
+    const title = (await appPrompt("试卷标题", "", { placeholder: "如 上岗考核试卷" }))?.trim();
+    if (!title) return;
+    try {
+      const d = await createExamPaper({ code, title });
+      if (folderKey !== UNGROUPED_KEY) {
+        await moveExamPaperToFolder(d.id, Number(folderKey));
+      }
+      toast.success("已创建");
+      qc.invalidateQueries({ queryKey: ["exam-papers"] });
+      load(d.sections);
+      setCurrentId(d.id);
+      setCurrentCode(d.code);
+      setTitle(d.title);
+    } catch (e: any) {
+      toast.error(e?.message || "创建失败");
+    }
+  };
+
+  const folderTreeGroups = useMemo((): FolderTreeGroup<{ id: string; paper: ExamPaperSummary }>[] => {
+    const groups: FolderTreeGroup<{ id: string; paper: ExamPaperSummary }>[] = folders.map((f) => ({
+      key: String(f.id),
+      label: f.name,
+      mutable: true,
+      items: papers.filter((p) => p.folderId === f.id).map((p) => ({ id: String(p.id), paper: p })),
+    }));
+    groups.push({
+      key: UNGROUPED_KEY,
+      label: "未分类",
+      mutable: false,
+      items: papers.filter((p) => p.folderId == null).map((p) => ({ id: String(p.id), paper: p })),
+    });
+    return groups;
+  }, [folders, papers]);
+
+  const handleSelectItem = (id: string) => {
+    const p = papers.find((x) => String(x.id) === id);
+    if (p) void openPaper(p);
   };
 
   const handleSave = async () => {
@@ -295,52 +412,55 @@ export default function ExamPaperAdminPage() {
 
   const configTab = (
     <div className="flex h-full gap-3 min-h-0">
-      {/* 左：试卷列表 */}
+      {/* 左：试卷文件夹树 */}
       <div className="w-64 shrink-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
         <div className="shrink-0 p-2 border-b border-[var(--app-color-border-default)]">
           <div className="flex items-center gap-1.5 h-8 rounded border border-[var(--app-color-border-default)] px-2">
             <Search className="h-3.5 w-3.5 text-[var(--twin-mute)] shrink-0" />
             <input
               value={keyword}
-              onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
+              onChange={(e) => setKeyword(e.target.value)}
               placeholder="搜索编码/标题"
               className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs"
             />
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-auto">
-          {pl ? (
-            <div className="flex min-h-[120px] items-center justify-center text-xs text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-1" />加载中…</div>
-          ) : papers.length === 0 ? (
-            <div className="flex min-h-[120px] items-center justify-center text-xs text-[var(--app-color-text-tertiary)]">暂无试卷</div>
-          ) : (
-            papers.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => openPaper(p)}
-                className={cn(
-                  "w-full text-left px-3 py-2.5 border-b border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)] transition-colors",
-                  currentId === p.id && "bg-[var(--app-color-surface-hover)]",
-                )}
-              >
-                <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--app-color-text-primary)]">
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]" />
-                  <span className="truncate">{p.title}</span>
-                </div>
-                <div className="mt-0.5 pl-5 flex items-center gap-1.5 text-[11px] text-[var(--twin-mute)]">
-                  <span className="font-mono">{p.code}</span>
-                  {statusBadge(p.status)}
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-        <div className="shrink-0 flex items-center justify-between gap-2 px-2 py-1.5 border-t border-[var(--app-color-border-default)]">
-          <span className="text-[11px] text-[var(--app-color-text-tertiary)]">共 {total} 份</span>
-          <div className="flex items-center gap-1">
-            <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>上一页</AdminButton>
-            <span className="text-[11px] text-[var(--app-color-text-secondary)]">{page}/{pages}</span>
-            <AdminButton type="button" tone="secondary" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>下一页</AdminButton>
+          <div className="aup-app" style={{ minHeight: "auto", background: "transparent" }}>
+            <FolderTreeManager
+              folders={folderTreeGroups}
+              selectedItemId={currentId == null ? null : String(currentId)}
+              onSelectItem={handleSelectItem}
+              loading={pl || foldersQuery.isLoading}
+              canMaintain
+              ungroupedKey={UNGROUPED_KEY}
+              labels={FOLDER_LABELS}
+              getItemLabel={(item) => item.paper.title}
+              folderActions={(folderKey): FolderAction[] =>
+                folderKey === UNGROUPED_KEY ? ["createItem"] : ["createItem", "rename", "delete"]
+              }
+              itemActions={() => ["moveItem"]}
+              onCreateFolder={handleCreateFolder}
+              onCreateItem={(fk) => void handleCreateInFolder(fk)}
+              onRenameFolder={(fk) => void handleRenameFolder(fk)}
+              onDeleteFolder={(fk) => void handleDeleteFolder(fk)}
+              onMoveItem={(itemId, _from, to) => void handleMovePaper(itemId, to)}
+              renderItem={(item) => {
+                const p = item.paper;
+                return (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600 }}>
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]" />
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
+                    </div>
+                    <div style={{ marginTop: 2, paddingLeft: 20, display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--twin-mute)" }}>
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{p.code}</span>
+                      {statusBadge(p.status)}
+                    </div>
+                  </div>
+                );
+              }}
+            />
           </div>
         </div>
       </div>

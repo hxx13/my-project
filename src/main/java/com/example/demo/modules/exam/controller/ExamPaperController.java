@@ -60,6 +60,41 @@ public class ExamPaperController {
                 "page", (int) Math.ceil((double) total / pageSize)));
     }
 
+    @GetMapping("/folders")
+    public Result<?> listFolders() {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        return Result.success(service.listFolders());
+    }
+
+    @PostMapping("/folders")
+    public Result<?> createFolder(@RequestBody Map<String, Object> body) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        String name = str(body.get("name"));
+        if (name == null) return Result.fail(400, "缺少 name");
+        return Result.success(service.createFolder(name));
+    }
+
+    @PutMapping("/folders/{id}")
+    public Result<?> renameFolder(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        String name = str(body.get("name"));
+        if (name == null) return Result.fail(400, "缺少 name");
+        return Result.success(Map.of("ok", service.renameFolder(id, name)));
+    }
+
+    @DeleteMapping("/folders/{id}")
+    public Result<?> deleteFolder(@PathVariable Long id) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        return Result.success(Map.of("ok", service.deleteFolder(id) > 0));
+    }
+
+    @PutMapping("/{id}/folder")
+    public Result<?> movePaper(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        Long folderId = body.get("folderId") instanceof Number n ? n.longValue() : null;
+        return Result.success(Map.of("ok", service.movePaper(id, folderId)));
+    }
+
     @GetMapping("/{id}")
     public Result<?> get(@PathVariable Long id) {
         if (resolveUser() == null) return Result.fail(401, "未登录");

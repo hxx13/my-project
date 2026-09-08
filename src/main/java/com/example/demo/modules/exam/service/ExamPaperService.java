@@ -1,8 +1,10 @@
 package com.example.demo.modules.exam.service;
 
 import com.example.demo.modules.exam.entity.ExamPaper;
+import com.example.demo.modules.exam.entity.ExamPaperFolder;
 import com.example.demo.modules.exam.entity.ExamPaperQuestion;
 import com.example.demo.modules.exam.entity.ExamPaperSection;
+import com.example.demo.modules.exam.mapper.ExamPaperFolderMapper;
 import com.example.demo.modules.exam.mapper.ExamPaperMapper;
 import com.example.demo.modules.exam.mapper.ExamPaperQuestionMapper;
 import com.example.demo.modules.exam.mapper.ExamPaperSectionMapper;
@@ -23,15 +25,18 @@ import java.util.Map;
 public class ExamPaperService {
 
     private final ExamPaperMapper paperMapper;
+    private final ExamPaperFolderMapper folderMapper;
     private final ExamPaperSectionMapper sectionMapper;
     private final ExamPaperQuestionMapper questionMapper;
     private final ObjectMapper objectMapper;
 
     public ExamPaperService(ExamPaperMapper paperMapper,
+                            ExamPaperFolderMapper folderMapper,
                             ExamPaperSectionMapper sectionMapper,
                             ExamPaperQuestionMapper questionMapper,
                             ObjectMapper objectMapper) {
         this.paperMapper = paperMapper;
+        this.folderMapper = folderMapper;
         this.sectionMapper = sectionMapper;
         this.questionMapper = questionMapper;
         this.objectMapper = objectMapper;
@@ -51,6 +56,7 @@ public class ExamPaperService {
             m.put("code", p.getCode());
             m.put("title", p.getTitle());
             m.put("status", p.getStatus());
+            m.put("folderId", p.getFolderId());
             m.put("createdAt", p.getCreatedAt());
             m.put("updatedAt", p.getUpdatedAt());
             out.add(m);
@@ -158,6 +164,43 @@ public class ExamPaperService {
         sectionMapper.deleteByPaperId(id);
         questionMapper.deleteByPaperId(id);
         return paperMapper.delete(id);
+    }
+
+    // ── 文件夹 ──
+
+    public List<ExamPaperFolder> listFolders() {
+        return folderMapper.list();
+    }
+
+    @Transactional
+    public ExamPaperFolder createFolder(String name) {
+        ExamPaperFolder f = new ExamPaperFolder();
+        f.setName(name);
+        folderMapper.insert(f);
+        return f;
+    }
+
+    @Transactional
+    public boolean renameFolder(Long id, String name) {
+        if (folderMapper.findById(id) == null) return false;
+        folderMapper.updateName(id, name);
+        return true;
+    }
+
+    /** 删除文件夹：先将其下试卷的 folder_id 置空，再删文件夹本体。 */
+    @Transactional
+    public int deleteFolder(Long id) {
+        if (folderMapper.findById(id) == null) return 0;
+        paperMapper.clearFolder(id);
+        return folderMapper.delete(id);
+    }
+
+    /** 试卷归入/移出文件夹（folderId 可为 null 表示未分类）。 */
+    @Transactional
+    public boolean movePaper(Long paperId, Long folderId) {
+        if (paperMapper.findById(paperId) == null) return false;
+        paperMapper.moveToFolder(paperId, folderId);
+        return true;
     }
 
     private Map<String, Object> toFieldJson(ExamPaperQuestion q) {

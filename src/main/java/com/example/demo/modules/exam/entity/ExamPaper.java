@@ -10,6 +10,7 @@ public class ExamPaper {
     private String title;
     private String status;
     private String createdBy;
+    private Long folderId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

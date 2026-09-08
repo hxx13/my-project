@@ -6,8 +6,14 @@ export interface ExamPaperSummary {
   code: string;
   title: string;
   status: string;
+  folderId?: number | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface ExamPaperFolder {
+  id: number;
+  name: string;
 }
 
 export interface ExamPaperDetail {
@@ -119,6 +125,31 @@ export async function unpublishExamPaper(id: number): Promise<ExamPaperDetail> {
 export async function deleteExamPaper(id: number): Promise<{ ok: boolean; rows: number }> {
   const r = await adminHttp.delete(`/exam-papers/${id}`);
   return (r.data?.data ?? { ok: false, rows: 0 }) as { ok: boolean; rows: number };
+}
+
+export async function fetchExamFolders(): Promise<ExamPaperFolder[]> {
+  const r = await adminHttp.get("/exam-papers/folders");
+  return (r.data?.data ?? []) as ExamPaperFolder[];
+}
+
+export async function createExamFolder(name: string): Promise<ExamPaperFolder> {
+  const r = await adminHttp.post("/exam-papers/folders", { name });
+  return r.data?.data as ExamPaperFolder;
+}
+
+export async function renameExamFolder(id: number, name: string): Promise<{ ok: boolean }> {
+  const r = await adminHttp.put(`/exam-papers/folders/${id}`, { name });
+  return (r.data?.data ?? { ok: false }) as { ok: boolean };
+}
+
+export async function deleteExamFolder(id: number): Promise<{ ok: boolean }> {
+  const r = await adminHttp.delete(`/exam-papers/folders/${id}`);
+  return (r.data?.data ?? { ok: false }) as { ok: boolean };
+}
+
+export async function moveExamPaperToFolder(paperId: number, folderId: number | null): Promise<{ ok: boolean }> {
+  const r = await adminHttp.put(`/exam-papers/${paperId}/folder`, { folderId });
+  return (r.data?.data ?? { ok: false }) as { ok: boolean };
 }
 
 export interface ExamSeed {
