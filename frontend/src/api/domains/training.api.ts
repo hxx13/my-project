@@ -13,6 +13,8 @@ export interface TrainingSeries {
   recurrence?: string | null;
   recurrenceDay?: number | null;
   recurrenceTime?: string | null;
+  recurrenceStart?: string | null;
+  recurrenceEnd?: string | null;
   status?: string | null;
   createdBy?: string | null;
   createdAt?: string | null;

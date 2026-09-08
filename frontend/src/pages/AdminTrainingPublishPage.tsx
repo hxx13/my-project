@@ -169,6 +169,8 @@ export default function AdminTrainingPublishPage() {
   const [recurrence, setRecurrence] = useState("");
   const [recurrenceDay, setRecurrenceDay] = useState(1);
   const [recurrenceTime, setRecurrenceTime] = useState("");
+  const [recurrenceStart, setRecurrenceStart] = useState("");
+  const [recurrenceEnd, setRecurrenceEnd] = useState("");
   const [ownerIds, setOwnerIds] = useState<string[]>([]);
   const [ownerNames, setOwnerNames] = useState<string[]>([]);
   const [paperIds, setPaperIds] = useState<number[]>([]);
@@ -217,6 +219,8 @@ export default function AdminTrainingPublishPage() {
     setRecurrence(editDetail.recurrence ?? "");
     setRecurrenceDay(editDetail.recurrenceDay ?? 1);
     setRecurrenceTime(editDetail.recurrenceTime ?? "");
+    setRecurrenceStart(editDetail.recurrenceStart ?? "");
+    setRecurrenceEnd(editDetail.recurrenceEnd ?? "");
     setOwnerIds(editDetail.ownerIds ?? []);
     setOwnerNames(editDetail.ownerIds ?? []);
     setPaperIds(editDetail.paperIds ?? []);
@@ -275,6 +279,8 @@ export default function AdminTrainingPublishPage() {
         recurrence: recurrence.trim() || null,
         recurrenceDay: recurrence ? recurrenceDay : null,
         recurrenceTime: recurrence ? recurrenceTime || null : null,
+        recurrenceStart: recurrenceStart.trim() || null,
+        recurrenceEnd: recurrenceEnd.trim() || null,
       };
       const rows = occurrences.filter(
         (o) => o.startTime || o.endTime || o.address || o.timeLimit,
@@ -618,6 +624,24 @@ export default function AdminTrainingPublishPage() {
                 />
               </div>
             )}
+            <div className="space-y-1.5">
+              <label className={adminLabelClass}>起始日期</label>
+              <input
+                className={adminInputClass}
+                type="date"
+                value={recurrenceStart}
+                onChange={(e) => setRecurrenceStart(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className={adminLabelClass}>截至日期</label>
+              <input
+                className={adminInputClass}
+                type="date"
+                value={recurrenceEnd}
+                onChange={(e) => setRecurrenceEnd(e.target.value)}
+              />
+            </div>
           </div>
           <DialogFooter>
             <AdminButton type="button" tone="primary" size="default" onClick={() => setRecurrenceDialogOpen(false)}>
