@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { ChevronLeft, Plus, Search, Trash2, Loader2 } from "lucide-react";
@@ -7,16 +7,28 @@ import { cn } from "@/lib/utils";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
-import { createTraining, addOccurrence } from "@/api/domains/training.api";
+import {
+  createTraining,
+  updateTraining,
+  fetchTraining,
+  addOccurrence,
+  updateOccurrence,
+  deleteOccurrence,
+  fetchTrainingLocations,
+  addTrainingLocation,
+} from "@/api/domains/training.api";
 import { fetchExamPapers } from "@/features/exam/api/examPaper.api";
 import { fetchUnifiedPersonnel } from "@/api/domains/admin.api";
+import { appPrompt } from "@/lib/appDialog";
 
 interface OccurrenceRow {
+  id?: number;
   startTime: string;
   endTime: string;
   address: string;
   examinerName: string;
-  examinerNumber: string;
+  /** 用户选择「自定义地点」，地址走自由文本 */
+  customAddress?: boolean;
 }
 
 const emptyOccurrence = (): OccurrenceRow => ({
@@ -24,8 +36,10 @@ const emptyOccurrence = (): OccurrenceRow => ({
   endTime: "",
   address: "",
   examinerName: "",
-  examinerNumber: "",
 });
+
+/** "yyyy-MM-dd HH:mm:ss"（后端墙钟）→ datetime-local 的 "yyyy-MM-ddTHH:mm" */
+const toDatetimeLocal = (s?: string | null) => (s ? s.replace(" ", "T").slice(0, 16) : "");
 
 /** 所属人：按姓名搜索统一人员库，选中即回填 id */
 function OwnerPicker({
@@ -132,6 +146,9 @@ function OwnerPicker({
 
 export default function AdminTrainingPublishPage() {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const editingId = id ? Number(id) : null;
+  const editing = editingId != null;
 
   const [name, setName] = useState("");
   const [type, setType] = useState(1);
@@ -140,6 +157,7 @@ export default function AdminTrainingPublishPage() {
   const [ownerId, setOwnerId] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [paperId, setPaperId] = useState("");
+  const [publishAt, setPublishAt] = useState("");
   const [occurrences, setOccurrences] = useState<OccurrenceRow[]>([emptyOccurrence()]);
   const [saving, setSaving] = useState(false);
 
@@ -152,8 +170,46 @@ export default function AdminTrainingPublishPage() {
     [paperData],
   );
 
+  const { data: locations = [], refetch: refetchLocations } = useQuery({
+    queryKey: ["training-locations"],
+    queryFn: fetchTrainingLocations,
+  });
+
+  const { data: editDetail } = useQuery({
+    queryKey: ["training", editingId],
+    queryFn: () => fetchTraining(editingId!),
+    enabled: editing,
+  });
+
+  useEffect(() => {
+    if (!editing || !editDetail) return;
+    setName(editDetail.name ?? "");
+    setType(editDetail.type ?? 1);
+    setTimeLimit(editDetail.timeLimit != null ? String(editDetail.timeLimit) : "");
+    setRecurrence(editDetail.recurrence ?? "");
+    setOwnerId(editDetail.ownerId ?? "");
+    setOwnerName(editDetail.ownerId ?? "");
+    setPaperId(editDetail.paperId != null ? String(editDetail.paperId) : "");
+    setPublishAt(toDatetimeLocal(editDetail.publishAt));
+    const occs = (editDetail.occurrences ?? []).map((o) => ({
+      id: o.id,
+      startTime: toDatetimeLocal(o.startTime),
+      endTime: toDatetimeLocal(o.endTime),
+      address: o.address ?? "",
+      examinerName: o.examinerName ?? "",
+    }));
+    setOccurrences(occs.length ? occs : [emptyOccurrence()]);
+  }, [editing, editDetail]);
+
   const patchOccurrence = (i: number, patch: Partial<OccurrenceRow>) =>
     setOccurrences((prev) => prev.map((o, idx) => (idx === i ? { ...o, ...patch } : o)));
+
+  const occurrenceBody = (o: OccurrenceRow) => ({
+    startTime: o.startTime || undefined,
+    endTime: o.endTime || undefined,
+    address: o.address || undefined,
+    examinerName: o.examinerName || undefined,
+  });
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -162,33 +218,57 @@ export default function AdminTrainingPublishPage() {
     }
     setSaving(true);
     try {
-      const created = await createTraining({
-        code: `training-${Date.now()}`,
+      const base = {
         name: name.trim(),
         type,
         paperId: paperId ? Number(paperId) : undefined,
         ownerId: ownerId || undefined,
         timeLimit: timeLimit ? Number(timeLimit) : undefined,
         recurrence: recurrence.trim() || undefined,
-      });
+      };
       const rows = occurrences.filter(
-        (o) => o.startTime || o.endTime || o.address || o.examinerName || o.examinerNumber,
+        (o) => o.startTime || o.endTime || o.address || o.examinerName,
       );
-      for (const o of rows) {
-        await addOccurrence(created.id, {
-          startTime: o.startTime || undefined,
-          endTime: o.endTime || undefined,
-          address: o.address || undefined,
-          examinerName: o.examinerName || undefined,
-          examinerNumber: o.examinerNumber || undefined,
+      if (editing && editingId != null) {
+        await updateTraining(editingId, base);
+        const existingIds = new Set((editDetail?.occurrences ?? []).map((o) => o.id));
+        for (const oid of existingIds) {
+          if (!rows.some((r) => r.id === oid)) await deleteOccurrence(oid);
+        }
+        for (const o of rows) {
+          if (o.id != null) await updateOccurrence(o.id, occurrenceBody(o));
+          else await addOccurrence(editingId, occurrenceBody(o));
+        }
+      } else {
+        const created = await createTraining({
+          code: `training-${Date.now()}`,
+          ...base,
         });
+        for (const o of rows) {
+          await addOccurrence(created.id, occurrenceBody(o));
+        }
       }
-      toast.success("已发布");
+      toast.success(editing ? "已保存" : "已创建");
       navigate("/console/admin/aro-binding");
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || "保存失败");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleNewLocation = async (i: number) => {
+    const name = await appPrompt("地点名称", "", { allowEmpty: false, placeholder: "如 浦东实验室" });
+    if (name == null) return;
+    const address = await appPrompt("地点地址", "", { allowEmpty: false, placeholder: "详细地址" });
+    if (address == null) return;
+    try {
+      await addTrainingLocation(name.trim(), address.trim());
+      await refetchLocations();
+      patchOccurrence(i, { address: address.trim(), customAddress: false });
+      toast.success("地点已添加");
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || "添加地点失败");
     }
   };
 
@@ -203,7 +283,7 @@ export default function AdminTrainingPublishPage() {
               <AdminButton type="button" tone="secondary" size="default" onClick={back}>
                 <ChevronLeft className="mr-1 h-4 w-4" />返回
               </AdminButton>
-              <h2 className="text-base font-bold text-[var(--app-color-text-primary)]">发布培训</h2>
+              <h2 className="text-base font-bold text-[var(--app-color-text-primary)]">{editing ? "编辑培训" : "发布培训"}</h2>
             </div>
             <div className="flex items-center gap-2">
               <AdminButton type="button" tone="secondary" size="default" onClick={back}>
@@ -259,6 +339,17 @@ export default function AdminTrainingPublishPage() {
                   placeholder="如 每周"
                 />
               </div>
+              {editing && (
+                <div className="space-y-1.5">
+                  <label className={adminLabelClass}>定时发布时间</label>
+                  <input
+                    className={adminInputClass}
+                    type="datetime-local"
+                    value={publishAt}
+                    onChange={(e) => setPublishAt(e.target.value)}
+                  />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <label className={adminLabelClass}>所属人</label>
                 <OwnerPicker ownerId={ownerId} ownerName={ownerName} onSelect={(id, n) => { setOwnerId(id); setOwnerName(n); }} />
@@ -329,12 +420,38 @@ export default function AdminTrainingPublishPage() {
                     </div>
                     <div className="space-y-1.5">
                       <label className={adminLabelClass}>地点</label>
-                      <input
-                        className={adminInputClass}
-                        value={o.address}
-                        onChange={(e) => patchOccurrence(i, { address: e.target.value })}
-                        placeholder="地点"
-                      />
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          className={adminInputClass}
+                          value={
+                            o.customAddress || (o.address && !locations.some((l) => l.address === o.address))
+                              ? "__custom__"
+                              : o.address
+                          }
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === "__custom__") patchOccurrence(i, { customAddress: true, address: "" });
+                            else patchOccurrence(i, { customAddress: false, address: v });
+                          }}
+                        >
+                          <option value="">选择地点…</option>
+                          {locations.map((l) => (
+                            <option key={l.id} value={l.address}>{l.name}</option>
+                          ))}
+                          <option value="__custom__">自定义地点…</option>
+                        </select>
+                        <AdminButton type="button" tone="secondary" size="sm" onClick={() => handleNewLocation(i)} title="新建地点">
+                          <Plus className="h-3.5 w-3.5" />
+                        </AdminButton>
+                      </div>
+                      {(o.customAddress || (o.address && !locations.some((l) => l.address === o.address))) && (
+                        <input
+                          className={adminInputClass}
+                          value={o.address}
+                          onChange={(e) => patchOccurrence(i, { address: e.target.value })}
+                          placeholder="自定义地址"
+                        />
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <label className={adminLabelClass}>考官</label>
@@ -343,15 +460,6 @@ export default function AdminTrainingPublishPage() {
                         value={o.examinerName}
                         onChange={(e) => patchOccurrence(i, { examinerName: e.target.value })}
                         placeholder="考官姓名"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className={adminLabelClass}>考官编号</label>
-                      <input
-                        className={adminInputClass}
-                        value={o.examinerNumber}
-                        onChange={(e) => patchOccurrence(i, { examinerNumber: e.target.value })}
-                        placeholder="考官编号"
                       />
                     </div>
                   </div>

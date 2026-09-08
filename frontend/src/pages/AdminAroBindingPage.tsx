@@ -8,7 +8,7 @@ import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import { Portal } from "@/components/Portal";
-import { appConfirm } from "@/lib/appDialog";
+import { appConfirm, appPrompt } from "@/lib/appDialog";
 import { authStorage } from "@/features/auth/authStorage";
 import { fetchRoomMappingRooms, type RoomMappingRoomRow } from "@/api/twinApi";
 import {
@@ -17,6 +17,9 @@ import {
   fetchTrainingFavorites,
   starTraining,
   unstarTraining,
+  publishTraining,
+  unpublishTraining,
+  schedulePublishTraining,
   addEnrollments,
   auditEnrollment,
   scoreEnrollment,
@@ -134,6 +137,29 @@ export default function AdminAroBindingPage() {
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || "操作失败");
     }
+  };
+
+  const canWriteSeries = (s: TrainingSeries) => isPlatformOwner || currentUserId === s.ownerId;
+
+  const seriesAction = async (fn: () => Promise<unknown>, ok: string) => {
+    try {
+      await fn();
+      toast.success(ok);
+      qc.invalidateQueries({ queryKey: ["training-list"] });
+      qc.invalidateQueries({ queryKey: ["training", selected?.id] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || "操作失败");
+    }
+  };
+  const handlePublish = (s: TrainingSeries) => seriesAction(() => publishTraining(s.id), "已发布");
+  const handleUnpublish = (s: TrainingSeries) => seriesAction(() => unpublishTraining(s.id), "已取消发布");
+  const handleSchedule = async (s: TrainingSeries) => {
+    const v = await appPrompt("定时发布时间（yyyy-MM-dd HH:mm:ss）", "", {
+      allowEmpty: false,
+      placeholder: "yyyy-MM-dd HH:mm:ss",
+    });
+    if (v == null) return;
+    await seriesAction(() => schedulePublishTraining(s.id, v.trim()), "已定时发布");
   };
 
   const series = sd?.list ?? [];
@@ -309,10 +335,10 @@ export default function AdminAroBindingPage() {
           {sl ? <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>
             : <table className="w-full min-w-max text-left text-sm border-collapse">
               <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold">
-                <th className="px-2 py-2 w-8"></th><th className="px-3 py-2">培训名称</th><th className="px-3 py-2">类型</th><th className="px-3 py-2">所属人</th><th className="px-3 py-2">场次</th><th className="px-3 py-2">状态</th>
+                <th className="px-2 py-2 w-8"></th><th className="px-3 py-2">培训名称</th><th className="px-3 py-2">类型</th><th className="px-3 py-2">所属人</th><th className="px-3 py-2">场次</th><th className="px-3 py-2">状态</th><th className="px-3 py-2 text-right">操作</th>
               </tr></thead>
               <tbody>
-                {series.length === 0 && !sl ? <tr><td colSpan={6} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无培训</td></tr>
+                {series.length === 0 && !sl ? <tr><td colSpan={7} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无培训</td></tr>
                   : series.map((s) => (
                     <tr key={s.id} className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors cursor-pointer" onClick={() => goDetail(s)}>
                       <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
@@ -325,6 +351,23 @@ export default function AdminAroBindingPage() {
                       <td className="px-3 py-2.5 text-[var(--twin-mute)] whitespace-nowrap">{s.ownerId || "—"}{s.ownerId === currentUserId && <span className="ml-1 text-[10px] text-blue-600">（我）</span>}</td>
                       <td className="px-3 py-2.5"><OccurrenceCount id={s.id} /></td>
                       <td className="px-3 py-2.5">{seriesStatusBadge(s.status)}</td>
+                      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        {canWriteSeries(s) && (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <AdminButton type="button" tone="secondary" size="sm" onClick={() => navigate(`/console/admin/training/edit/${s.id}`)}>编辑</AdminButton>
+                            {s.status === "PUBLISHED" ? (
+                              <AdminButton type="button" tone="secondary" size="sm" onClick={() => handleUnpublish(s)}>取消发布</AdminButton>
+                            ) : s.status === "DRAFT" && s.publishAt ? (
+                              <span className="text-[11px] text-amber-600 whitespace-nowrap">已定时发布</span>
+                            ) : s.status === "DRAFT" ? (
+                              <AdminButton type="button" tone="primary" size="sm" onClick={() => handlePublish(s)}>发布</AdminButton>
+                            ) : null}
+                            {(s.status === "DRAFT" || s.status === "PUBLISHED") && (
+                              <button type="button" onClick={() => handleSchedule(s)} className="text-[11px] text-[var(--twin-mute)] hover:text-blue-600 whitespace-nowrap" title="定时发布">定时发布</button>
+                            )}
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))}
               </tbody>
@@ -446,7 +489,7 @@ export default function AdminAroBindingPage() {
                     <tr className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors cursor-pointer" onClick={() => toggleOcc(o.id)}>
                       <td className="px-3 py-2.5 text-[var(--twin-mute)] whitespace-nowrap"><Clock className="h-3 w-3 inline mr-1" />{o.startTime ?? "—"} ~ {o.endTime ?? "—"}</td>
                       <td className="px-3 py-2.5 text-[var(--twin-mute)]"><MapPin className="h-3 w-3 inline mr-1" />{o.address || "—"}</td>
-                      <td className="px-3 py-2.5 text-[var(--twin-mute)]">{o.examinerName || o.examinerNumber || "—"}</td>
+                      <td className="px-3 py-2.5 text-[var(--twin-mute)]">{o.examinerName || "—"}</td>
                       <td className="px-3 py-2.5 text-[var(--twin-mute)]">{o.enrollments?.length ?? 0} 人</td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center justify-end gap-2">

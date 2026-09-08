@@ -12,9 +12,16 @@ export interface TrainingSeries {
   timeLimit?: number | null;
   recurrence?: string | null;
   status?: string | null;
+  publishAt?: string | null;
   createdBy?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+export interface TrainingLocation {
+  id: number;
+  name: string;
+  address: string;
 }
 
 export interface TrainingEnrollment {
@@ -103,8 +110,34 @@ export async function publishTraining(id: number | string): Promise<TrainingDeta
   return r.data?.data as TrainingDetail;
 }
 
+export async function unpublishTraining(id: number | string): Promise<TrainingDetail> {
+  const r = await adminHttp.post(`/training/${id}/unpublish`);
+  return r.data?.data as TrainingDetail;
+}
+
+export async function schedulePublishTraining(id: number | string, publishAt: string): Promise<TrainingDetail> {
+  const r = await adminHttp.post(`/training/${id}/schedule-publish`, { publishAt });
+  return r.data?.data as TrainingDetail;
+}
+
 export async function deleteTraining(id: number | string): Promise<void> {
   await adminHttp.delete(`/training/${id}`);
+}
+
+// ---- location presets ----
+
+export async function fetchTrainingLocations(): Promise<TrainingLocation[]> {
+  const r = await adminHttp.get("/training/locations");
+  return (r.data?.data ?? []) as TrainingLocation[];
+}
+
+export async function addTrainingLocation(name: string, address: string): Promise<TrainingLocation> {
+  const r = await adminHttp.post("/training/locations", { name, address });
+  return r.data?.data as TrainingLocation;
+}
+
+export async function deleteTrainingLocation(id: number | string): Promise<void> {
+  await adminHttp.delete(`/training/locations/${id}`);
 }
 
 // ---- occurrences ----

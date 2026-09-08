@@ -373,6 +373,7 @@ export const router = createHashRouter([
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },
               { path: "aro-binding", element: <AdminAroBindingPage /> },
               { path: "training/new", element: <AdminTrainingPublishPage /> },
+              { path: "training/edit/:id", element: <AdminTrainingPublishPage /> },
               { path: "notification-digest", element: <AdminNotificationDigestPage /> },
               { path: "exp-stats", element: <AdminExpStatsPage /> },
               { path: "supplies/audit-export", element: <AdminSuppliesAuditExportPage /> },
