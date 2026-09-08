@@ -75,4 +75,7 @@ public interface TrainingMapper {
 
     @Delete("DELETE FROM training WHERE id = #{id}")
     int delete(@Param("id") Long id);
+
+    @Delete("DELETE FROM training WHERE code LIKE #{prefix}")
+    int deleteByCodePrefix(@Param("prefix") String prefix);
 }

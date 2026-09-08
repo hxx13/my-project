@@ -49,6 +49,12 @@ public class TrainingController {
         return Result.success(service.create(body, user.getId()));
     }
 
+    @GetMapping("/pending")
+    public Result<?> listPending() {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        return Result.success(service.listPending());
+    }
+
     @GetMapping("/{id}")
     public Result<?> get(@PathVariable Long id) {
         if (resolveUser() == null) return Result.fail(401, "未登录");

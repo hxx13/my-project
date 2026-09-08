@@ -188,6 +188,11 @@ public class TrainingService {
         return out;
     }
 
+    /** 待审核/待评分学员（跨全部培训，含培训/场次信息） */
+    public List<Map<String, Object>> listPending() {
+        return enrollmentMapper.listPending();
+    }
+
     @Transactional
     public List<Map<String, Object>> addEnrollments(Long occurrenceId, List<Map<String, Object>> rows, User user) {
         TrainingOccurrence o = requireOccurrence(occurrenceId);

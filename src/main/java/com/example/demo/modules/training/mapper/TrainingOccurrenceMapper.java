@@ -61,4 +61,7 @@ public interface TrainingOccurrenceMapper {
 
     @Delete("DELETE FROM training_occurrence WHERE training_id = #{trainingId}")
     int deleteByTrainingId(@Param("trainingId") Long trainingId);
+
+    @Delete("DELETE o FROM training_occurrence o JOIN training t ON o.training_id = t.id WHERE t.code LIKE #{prefix}")
+    int deleteByTrainingCodePrefix(@Param("prefix") String prefix);
 }
