@@ -707,7 +707,8 @@ export default function ExamPaperAdminPage() {
     queryFn: () => fetchWordTemplates(effectiveFormId!),
     enabled: effectiveFormId != null,
   });
-  const effectiveWtId = bindingWtId ?? binding?.wordTemplateId ?? wordTemplates[0]?.id ?? null;
+  const effectiveWtId =
+    bindingWtId ?? (effectiveFormId === binding?.formId ? binding?.wordTemplateId : null) ?? wordTemplates[0]?.id ?? null;
 
   const saveBinding = async () => {
     if (effectiveFormId == null) { toast.error("请先选择表单"); return; }
