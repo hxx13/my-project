@@ -11,11 +11,13 @@ import com.example.demo.modules.training.entity.TrainingEnrollment;
 import com.example.demo.modules.training.entity.TrainingFavorite;
 import com.example.demo.modules.training.entity.TrainingLocationPreset;
 import com.example.demo.modules.training.entity.TrainingOccurrence;
+import com.example.demo.modules.training.entity.TrainingTypePreset;
 import com.example.demo.modules.training.mapper.TrainingEnrollmentMapper;
 import com.example.demo.modules.training.mapper.TrainingFavoriteMapper;
 import com.example.demo.modules.training.mapper.TrainingLocationPresetMapper;
 import com.example.demo.modules.training.mapper.TrainingMapper;
 import com.example.demo.modules.training.mapper.TrainingOccurrenceMapper;
+import com.example.demo.modules.training.mapper.TrainingTypePresetMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,8 +37,8 @@ import java.util.Set;
 
 /**
  * 培训（系列/场次/报名）CRUD。写操作（系列更新、场次/报名变更、审核、成绩、房间）均校验
- * 当前用户为该培训的所属人（ownerId）或超级管理员（SUPER_ADMIN 及以上，含 PLATFORM_OWNER），
- * 使 ARO 同步的培训（ownerId 为空）也可被 SUPER_ADMIN/PLATFORM_OWNER 编辑。
+ * 当前用户为该培训的所属人（ownerIds，多选）或超级管理员（SUPER_ADMIN 及以上，含 PLATFORM_OWNER），
+ * 使 ARO 同步的培训（ownerIds 为空）也可被 SUPER_ADMIN/PLATFORM_OWNER 编辑。
  */
 @Service
 public class TrainingService {
@@ -48,6 +50,7 @@ public class TrainingService {
     private final TrainingEnrollmentMapper enrollmentMapper;
     private final TrainingFavoriteMapper favoriteMapper;
     private final TrainingLocationPresetMapper locationPresetMapper;
+    private final TrainingTypePresetMapper typePresetMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final PersonnelRoomAuthorizationMapper roomAuthMapper;
     private final ObjectMapper objectMapper;
@@ -57,6 +60,7 @@ public class TrainingService {
                            TrainingEnrollmentMapper enrollmentMapper,
                            TrainingFavoriteMapper favoriteMapper,
                            TrainingLocationPresetMapper locationPresetMapper,
+                           TrainingTypePresetMapper typePresetMapper,
                            AroPersonnelMapper aroPersonnelMapper,
                            PersonnelRoomAuthorizationMapper roomAuthMapper,
                            ObjectMapper objectMapper) {
@@ -65,6 +69,7 @@ public class TrainingService {
         this.enrollmentMapper = enrollmentMapper;
         this.favoriteMapper = favoriteMapper;
         this.locationPresetMapper = locationPresetMapper;
+        this.typePresetMapper = typePresetMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.roomAuthMapper = roomAuthMapper;
         this.objectMapper = objectMapper;
@@ -106,8 +111,10 @@ public class TrainingService {
         t.setCode(str(body.get("code")));
         t.setName(str(body.get("name")));
         t.setType(toInt(body.get("type")));
+        t.setTypeName(str(body.get("typeName")));
         t.setPaperIdsJson(toJson(body.get("paperIds")));
-        t.setOwnerId(str(body.get("ownerId")) != null ? str(body.get("ownerId")) : operatorId);
+        List<String> ownerIds = strList(body.get("ownerIds"));
+        t.setOwnerIdsJson(toJson(ownerIds != null && !ownerIds.isEmpty() ? ownerIds : List.of(operatorId)));
         t.setRecurrence(str(body.get("recurrence")));
         t.setRecurrenceDay(toInt(body.get("recurrenceDay")));
         t.setRecurrenceTime(str(body.get("recurrenceTime")));
@@ -123,8 +130,9 @@ public class TrainingService {
         checkOwner(user, t);
         if (body.containsKey("name")) t.setName(str(body.get("name")));
         if (body.containsKey("type")) t.setType(toInt(body.get("type")));
+        if (body.containsKey("typeName")) t.setTypeName(str(body.get("typeName")));
         if (body.containsKey("paperIds")) t.setPaperIdsJson(toJson(body.get("paperIds")));
-        if (body.containsKey("ownerId")) t.setOwnerId(str(body.get("ownerId")));
+        if (body.containsKey("ownerIds")) t.setOwnerIdsJson(toJson(strList(body.get("ownerIds"))));
         if (body.containsKey("recurrence")) t.setRecurrence(str(body.get("recurrence")));
         if (body.containsKey("recurrenceDay")) t.setRecurrenceDay(toInt(body.get("recurrenceDay")));
         if (body.containsKey("recurrenceTime")) t.setRecurrenceTime(str(body.get("recurrenceTime")));
@@ -190,6 +198,34 @@ public class TrainingService {
     }
 
     // ========================================================================
+    // 类型预设库（type preset）
+    // ========================================================================
+
+    public List<Map<String, Object>> listTypePresets() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (TrainingTypePreset p : typePresetMapper.list()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", p.getId());
+            m.put("name", p.getName());
+            out.add(m);
+        }
+        return out;
+    }
+
+    @Transactional
+    public Map<String, Object> createTypePreset(String name) {
+        TrainingTypePreset p = new TrainingTypePreset();
+        p.setName(name);
+        typePresetMapper.insert(p);
+        return Map.of("id", p.getId(), "name", p.getName());
+    }
+
+    @Transactional
+    public int deleteTypePreset(Long id) {
+        return typePresetMapper.delete(id);
+    }
+
+    // ========================================================================
     // 场次（occurrence）
     // ========================================================================
 
@@ -249,26 +285,33 @@ public class TrainingService {
         LocalTime time = parseTime(t.getRecurrenceTime());
         if (time == null) return 0;
 
-        Set<LocalDateTime> existing = new HashSet<>();
-        for (TrainingOccurrence o : occurrenceMapper.listByTrainingId(trainingId)) {
-            if (o.getStartTime() != null) existing.add(o.getStartTime());
-        }
+        List<TrainingOccurrence> existing = occurrenceMapper.listByTrainingId(trainingId);
 
         LocalDate today = LocalDate.now();
         int generated = 0;
         for (LocalDate day : candidateDates(today, rec, t.getRecurrenceDay())) {
             LocalDateTime start = LocalDateTime.of(day, time);
-            if (existing.contains(start)) continue;
+            LocalDateTime end = start.plusHours(2);
+            if (overlaps(existing, start, end)) continue;
             TrainingOccurrence o = new TrainingOccurrence();
             o.setTrainingId(trainingId);
             o.setStartTime(start);
-            o.setEndTime(start.plusHours(2));
+            o.setEndTime(end);
             o.setStatus("AUTO");
             occurrenceMapper.insert(o);
-            existing.add(start);
+            existing.add(o);
             generated++;
         }
         return generated;
+    }
+
+    /** 判断候选时间段是否与已有场次（手动+自动）重叠，避免时间冲突。 */
+    private static boolean overlaps(List<TrainingOccurrence> existing, LocalDateTime start, LocalDateTime end) {
+        for (TrainingOccurrence o : existing) {
+            if (o.getStartTime() == null || o.getEndTime() == null) continue;
+            if (o.getStartTime().isBefore(end) && start.isBefore(o.getEndTime())) return true;
+        }
+        return false;
     }
 
     /** 按循环类型生成未来候选日期列表。 */
@@ -442,8 +485,8 @@ public class TrainingService {
 
     /** 所属人或超级管理员（SUPER_ADMIN 及以上，含 PLATFORM_OWNER）可写。 */
     private void checkOwner(User user, Training training) {
-        if (user.getId() != null && user.getId().equals(training.getOwnerId())) return;
         if (user.getRole() != null && user.getRole().getLevel() >= RoleEnum.SUPER_ADMIN.getLevel()) return;
+        if (user.getId() != null && parseOwnerIds(training.getOwnerIdsJson()).contains(user.getId())) return;
         throw TwinBusinessException.of(403, "仅培训所属人或超级管理员可操作");
     }
 
@@ -453,8 +496,9 @@ public class TrainingService {
         m.put("code", t.getCode());
         m.put("name", t.getName());
         m.put("type", t.getType());
+        m.put("typeName", t.getTypeName());
         m.put("paperIds", roomList(t.getPaperIdsJson()));
-        m.put("ownerId", t.getOwnerId());
+        m.put("ownerIds", parseOwnerIds(t.getOwnerIdsJson()));
         m.put("recurrence", t.getRecurrence());
         m.put("recurrenceDay", t.getRecurrenceDay());
         m.put("recurrenceTime", t.getRecurrenceTime());
@@ -522,6 +566,26 @@ public class TrainingService {
 
     private boolean contains(String v, String k) {
         return v != null && v.toLowerCase().contains(k);
+    }
+
+    /** owner_ids_json → List<String>（解析失败/空返回空列表）。 */
+    private List<String> parseOwnerIds(String json) {
+        Object o = fromJson(json);
+        if (!(o instanceof List<?> list)) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Object x : list) if (x != null) out.add(String.valueOf(x));
+        return out;
+    }
+
+    /** 请求体里的字符串数组 → 去空 List；非数组返回 null。 */
+    private List<String> strList(Object v) {
+        if (!(v instanceof List<?> list)) return null;
+        List<String> out = new ArrayList<>();
+        for (Object x : list) {
+            String s = str(x);
+            if (s != null) out.add(s);
+        }
+        return out;
     }
 
     private String toJson(Object o) {

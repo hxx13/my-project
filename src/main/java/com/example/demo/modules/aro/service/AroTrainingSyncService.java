@@ -130,6 +130,7 @@ public class AroTrainingSyncService {
             training.setName(s.getString("title"));
             Integer certType = s.getInteger("examCertType");
             training.setType(certType != null && certType == 2 ? 2 : 1);
+            training.setTypeName(certType != null && certType == 2 ? "手术培训" : "准入培训");
             training.setStatus("PUBLISHED");
             training.setCreatedBy("ARO_SYNC");
             trainingMapper.insert(training);

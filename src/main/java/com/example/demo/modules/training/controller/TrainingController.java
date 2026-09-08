@@ -150,6 +150,31 @@ public class TrainingController {
         return Result.success(Map.of("ok", rows > 0, "rows", rows));
     }
 
+    // ========================================================================
+    // 类型预设库
+    // ========================================================================
+
+    @GetMapping("/type-presets")
+    public Result<?> listTypePresets() {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        return Result.success(service.listTypePresets());
+    }
+
+    @PostMapping("/type-presets")
+    public Result<?> addTypePreset(@RequestBody Map<String, Object> body) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        String name = str(body.get("name"));
+        if (name == null) return Result.fail(400, "缺少 name");
+        return Result.success(service.createTypePreset(name));
+    }
+
+    @DeleteMapping("/type-presets/{id}")
+    public Result<?> deleteTypePreset(@PathVariable Long id) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        int rows = service.deleteTypePreset(id);
+        return Result.success(Map.of("ok", rows > 0, "rows", rows));
+    }
+
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable Long id) {
         User user = resolveUser();

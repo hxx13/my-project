@@ -98,7 +98,7 @@ public interface TrainingEnrollmentMapper {
             SELECT COUNT(*) FROM training_enrollment e
             JOIN training_occurrence o ON e.occurrence_id = o.id
             JOIN training t ON o.training_id = t.id
-            WHERE t.owner_id = #{userId}
+            WHERE t.owner_ids_json LIKE CONCAT('%\"', #{userId}, '\"%')
               AND (e.test_yn = 0 OR (e.test_yn = 1 AND (e.test_fraction IS NULL OR e.test_fraction = 0)))
             """)
     int countPendingByOwner(@Param("userId") String userId);
@@ -126,7 +126,7 @@ public interface TrainingEnrollmentMapper {
             FROM training_enrollment e
             JOIN training_occurrence o ON e.occurrence_id = o.id
             JOIN training t ON o.training_id = t.id
-            WHERE t.owner_id = #{userId}
+            WHERE t.owner_ids_json LIKE CONCAT('%\"', #{userId}, '\"%')
               AND (e.test_yn = 0 OR (e.test_yn = 1 AND (e.test_fraction IS NULL OR e.test_fraction = 0)))
             ORDER BY o.start_time DESC, e.id ASC
             """)

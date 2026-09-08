@@ -9,8 +9,9 @@ public class Training {
     private String code;
     private String name;
     private Integer type;
+    private String typeName;
     private String paperIdsJson;
-    private String ownerId;
+    private String ownerIdsJson;
     private String recurrence;
     private Integer recurrenceDay;
     private String recurrenceTime;

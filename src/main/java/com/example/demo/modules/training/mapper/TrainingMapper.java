@@ -9,16 +9,17 @@ import java.util.List;
 public interface TrainingMapper {
 
     @Insert("""
-            INSERT INTO training (code, name, type, paper_ids_json, owner_id, recurrence, recurrence_day, recurrence_time, status, created_by, created_at, updated_at)
-            VALUES (#{code}, #{name}, #{type}, #{paperIdsJson}, #{ownerId}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{status}, #{createdBy}, NOW(), NOW())
+            INSERT INTO training (code, name, type, type_name, paper_ids_json, owner_ids_json, recurrence, recurrence_day, recurrence_time, status, created_by, created_at, updated_at)
+            VALUES (#{code}, #{name}, #{type}, #{typeName}, #{paperIdsJson}, #{ownerIdsJson}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{status}, #{createdBy}, NOW(), NOW())
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Training training);
 
     @Select("""
             SELECT id, code, name, type,
+                   type_name AS typeName,
                    paper_ids_json AS paperIdsJson,
-                   owner_id AS ownerId,
+                   owner_ids_json AS ownerIdsJson,
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
@@ -32,8 +33,9 @@ public interface TrainingMapper {
 
     @Select("""
             SELECT id, code, name, type,
+                   type_name AS typeName,
                    paper_ids_json AS paperIdsJson,
-                   owner_id AS ownerId,
+                   owner_ids_json AS ownerIdsJson,
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
@@ -47,8 +49,9 @@ public interface TrainingMapper {
 
     @Select("""
             SELECT id, code, name, type,
+                   type_name AS typeName,
                    paper_ids_json AS paperIdsJson,
-                   owner_id AS ownerId,
+                   owner_ids_json AS ownerIdsJson,
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
@@ -62,8 +65,9 @@ public interface TrainingMapper {
 
     @Select("""
             SELECT id, code, name, type,
+                   type_name AS typeName,
                    paper_ids_json AS paperIdsJson,
-                   owner_id AS ownerId,
+                   owner_ids_json AS ownerIdsJson,
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
@@ -79,8 +83,9 @@ public interface TrainingMapper {
             UPDATE training SET
                 name = #{name},
                 type = #{type},
+                type_name = #{typeName},
                 paper_ids_json = #{paperIdsJson},
-                owner_id = #{ownerId},
+                owner_ids_json = #{ownerIdsJson},
                 recurrence = #{recurrence},
                 recurrence_day = #{recurrenceDay},
                 recurrence_time = #{recurrenceTime},
