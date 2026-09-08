@@ -339,8 +339,8 @@ export default function AdminTrainingPublishPage() {
           </div>
         </AdminFormCard>
 
-        <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-2 gap-3 overflow-auto items-start">
-          <AdminFormCard title="基本信息">
+        <div className="min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-2 gap-3 overflow-hidden">
+          <AdminFormCard title="基本信息" fill>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <label className={adminLabelClass}>名称</label>
@@ -389,6 +389,7 @@ export default function AdminTrainingPublishPage() {
 
           <AdminFormCard
             title="场次"
+            fill
             actions={
               <div className="flex items-center gap-2">
                 <AdminButton type="button" tone="secondary" size="sm" onClick={() => setRecurrenceDialogOpen(true)}>
