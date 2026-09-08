@@ -110,6 +110,12 @@ export async function publishExamPaper(id: number): Promise<ExamPaperDetail> {
   return { ...d, sections: mapSections(d.sections) };
 }
 
+export async function unpublishExamPaper(id: number): Promise<ExamPaperDetail> {
+  const r = await adminHttp.post(`/exam-papers/${id}/unpublish`);
+  const d = r.data?.data as ExamPaperSummary & { sections?: PaperSectionJson[] };
+  return { ...d, sections: mapSections(d.sections) };
+}
+
 export async function deleteExamPaper(id: number): Promise<{ ok: boolean; rows: number }> {
   const r = await adminHttp.delete(`/exam-papers/${id}`);
   return (r.data?.data ?? { ok: false, rows: 0 }) as { ok: boolean; rows: number };

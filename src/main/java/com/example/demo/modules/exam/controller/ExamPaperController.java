@@ -95,6 +95,14 @@ public class ExamPaperController {
         return Result.success(paper);
     }
 
+    @PostMapping("/{id}/unpublish")
+    public Result<?> unpublish(@PathVariable Long id) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        Map<String, Object> paper = service.unpublish(id);
+        if (paper == null) return Result.fail(404, "试卷不存在");
+        return Result.success(paper);
+    }
+
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable Long id) {
         if (resolveUser() == null) return Result.fail(401, "未登录");

@@ -145,6 +145,14 @@ public class ExamPaperService {
         return get(id);
     }
 
+    /** 取消发布：状态回到草稿，题目保留不动 */
+    @Transactional
+    public Map<String, Object> unpublish(Long id) {
+        if (paperMapper.findById(id) == null) return null;
+        paperMapper.updateStatus(id, "DRAFT");
+        return get(id);
+    }
+
     @Transactional
     public int delete(Long id) {
         sectionMapper.deleteByPaperId(id);

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { Download, FileText, Loader2, Plus, Save, Search, Trash2, Upload } from "lucide-react";
+import { Download, FileText, Loader2, Plus, Save, Search, Trash2, Undo2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
@@ -15,6 +15,7 @@ import {
   fetchExamSeeds,
   importExamSeeds,
   publishExamPaper,
+  unpublishExamPaper,
   saveExamPaper,
   type ExamPaperSummary,
   type ExamSeed,
@@ -169,6 +170,16 @@ export default function ExamPaperAdminPage() {
       qc.invalidateQueries({ queryKey: ["exam-papers"] });
     } catch (e: any) {
       toast.error(e?.message || "发布失败");
+    }
+  };
+
+  const handleUnpublish = async (id: number) => {
+    try {
+      await unpublishExamPaper(id);
+      toast.success("已取消发布");
+      qc.invalidateQueries({ queryKey: ["exam-papers"] });
+    } catch (e: any) {
+      toast.error(e?.message || "取消发布失败");
     }
   };
 
@@ -418,10 +429,14 @@ export default function ExamPaperAdminPage() {
                   <td className="px-3 py-2.5">{statusBadge(p.status)}</td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1.5">
-                      {p.status !== "PUBLISHED" && (
-                        <AdminButton type="button" tone="primary" size="sm" onClick={() => handlePublish(p.id)}><Upload className="h-3.5 w-3.5 mr-1" />发布</AdminButton>
+                      {p.status === "PUBLISHED" ? (
+                        <AdminButton type="button" tone="secondary" size="sm" onClick={() => handleUnpublish(p.id)}><Undo2 className="h-3.5 w-3.5 mr-1" />取消发布</AdminButton>
+                      ) : (
+                        <>
+                          <AdminButton type="button" tone="primary" size="sm" onClick={() => handlePublish(p.id)}><Upload className="h-3.5 w-3.5 mr-1" />发布</AdminButton>
+                          <AdminButton type="button" tone="destructive" size="sm" onClick={() => handleDelete(p)}><Trash2 className="h-3.5 w-3.5 mr-1" />删除</AdminButton>
+                        </>
                       )}
-                      <AdminButton type="button" tone="destructive" size="sm" onClick={() => handleDelete(p)}><Trash2 className="h-3.5 w-3.5 mr-1" />删除</AdminButton>
                     </div>
                   </td>
                 </tr>
