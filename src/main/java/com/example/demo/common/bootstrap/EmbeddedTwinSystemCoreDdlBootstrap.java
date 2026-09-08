@@ -134,6 +134,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-training-favorite.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-publish-location.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-recurrence.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-recurrence-period.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-paper-ids.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-owner-ids.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-type-name.sql", ctx)) success++;

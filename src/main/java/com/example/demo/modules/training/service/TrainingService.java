@@ -118,6 +118,8 @@ public class TrainingService {
         t.setRecurrence(str(body.get("recurrence")));
         t.setRecurrenceDay(toInt(body.get("recurrenceDay")));
         t.setRecurrenceTime(str(body.get("recurrenceTime")));
+        t.setRecurrenceStart(parseDate(body.get("recurrenceStart")));
+        t.setRecurrenceEnd(parseDate(body.get("recurrenceEnd")));
         t.setStatus("DRAFT");
         t.setCreatedBy(operatorId);
         trainingMapper.insert(t);
@@ -136,6 +138,8 @@ public class TrainingService {
         if (body.containsKey("recurrence")) t.setRecurrence(str(body.get("recurrence")));
         if (body.containsKey("recurrenceDay")) t.setRecurrenceDay(toInt(body.get("recurrenceDay")));
         if (body.containsKey("recurrenceTime")) t.setRecurrenceTime(str(body.get("recurrenceTime")));
+        if (body.containsKey("recurrenceStart")) t.setRecurrenceStart(parseDate(body.get("recurrenceStart")));
+        if (body.containsKey("recurrenceEnd")) t.setRecurrenceEnd(parseDate(body.get("recurrenceEnd")));
         trainingMapper.update(t);
         return get(id);
     }
@@ -288,8 +292,10 @@ public class TrainingService {
         List<TrainingOccurrence> existing = occurrenceMapper.listByTrainingId(trainingId);
 
         LocalDate today = LocalDate.now();
+        LocalDate rangeStart = t.getRecurrenceStart() != null ? t.getRecurrenceStart() : today;
+        LocalDate rangeEnd = t.getRecurrenceEnd() != null ? t.getRecurrenceEnd() : defaultEnd(rangeStart, rec);
         int generated = 0;
-        for (LocalDate day : candidateDates(today, rec, t.getRecurrenceDay())) {
+        for (LocalDate day : candidateDates(rangeStart, rangeEnd, rec, t.getRecurrenceDay())) {
             LocalDateTime start = LocalDateTime.of(day, time);
             LocalDateTime end = start.plusHours(2);
             if (overlaps(existing, start, end)) continue;
@@ -314,24 +320,37 @@ public class TrainingService {
         return false;
     }
 
-    /** 按循环类型生成未来候选日期列表。 */
-    private static List<LocalDate> candidateDates(LocalDate today, String rec, Integer recurrenceDay) {
+    /** 按循环类型在 [start, end] 区间内生成候选日期列表（含起止边界）。 */
+    private static List<LocalDate> candidateDates(LocalDate start, LocalDate end, String rec, Integer recurrenceDay) {
         List<LocalDate> out = new ArrayList<>();
+        if (start == null || end == null || start.isAfter(end)) return out;
+        LocalDate d = start;
         if ("WEEKLY".equals(rec)) {
             if (recurrenceDay == null) return out;
-            LocalDate next = today.plusDays(1);
-            while (next.getDayOfWeek().getValue() != recurrenceDay) next = next.plusDays(1);
-            for (int k = 0; k < 12; k++) out.add(next.plusDays(7L * k));
-        } else if ("MONTHLY".equals(rec)) {
-            for (int k = 1; k <= 12; k++) out.add(clampDay(today.plusMonths(k), recurrenceDay));
-        } else if ("QUARTERLY".equals(rec)) {
-            for (int k = 1; k <= 8; k++) out.add(clampDay(today.plusMonths(3L * k), recurrenceDay));
-        } else if ("YEARLY".equals(rec)) {
-            for (int k = 1; k <= 3; k++) out.add(clampDay(today.plusYears(k), recurrenceDay));
+            while (d.getDayOfWeek().getValue() != recurrenceDay) d = d.plusDays(1);
+            while (!d.isAfter(end)) { out.add(d); d = d.plusDays(7); }
+        } else if ("MONTHLY".equals(rec) || "QUARTERLY".equals(rec) || "YEARLY".equals(rec)) {
+            d = d.withDayOfMonth(1);
+            while (!d.isAfter(end)) {
+                LocalDate occ = clampDay(d, recurrenceDay);
+                if (!occ.isBefore(start) && !occ.isAfter(end)) out.add(occ);
+                if ("MONTHLY".equals(rec)) d = d.plusMonths(1);
+                else if ("QUARTERLY".equals(rec)) d = d.plusMonths(3);
+                else d = d.plusYears(1);
+            }
         } else if ("DAILY".equals(rec)) {
-            for (int i = 0; i < 28; i++) out.add(today.plusDays(i));
+            while (!d.isAfter(end)) { out.add(d); d = d.plusDays(1); }
         }
         return out;
+    }
+
+    /** 未设截至日期时的默认 horizon（沿用旧行为：每周12期/每月12期/每季8期/每年3期/每天28天）。 */
+    private static LocalDate defaultEnd(LocalDate start, String rec) {
+        if ("WEEKLY".equals(rec)) return start.plusWeeks(12);
+        if ("MONTHLY".equals(rec)) return start.plusMonths(12);
+        if ("QUARTERLY".equals(rec)) return start.plusMonths(24);
+        if ("YEARLY".equals(rec)) return start.plusYears(3);
+        return start.plusDays(28);
     }
 
     /** 取指定月的第 recurrenceDay 天，超出当月天数时回退到月末。 */
@@ -502,6 +521,8 @@ public class TrainingService {
         m.put("recurrence", t.getRecurrence());
         m.put("recurrenceDay", t.getRecurrenceDay());
         m.put("recurrenceTime", t.getRecurrenceTime());
+        m.put("recurrenceStart", t.getRecurrenceStart());
+        m.put("recurrenceEnd", t.getRecurrenceEnd());
         m.put("status", t.getStatus());
         m.put("createdBy", t.getCreatedBy());
         m.put("createdAt", t.getCreatedAt());
@@ -562,6 +583,14 @@ public class TrainingService {
 
     private Integer toInt(Object v) {
         return v instanceof Number n ? n.intValue() : null;
+    }
+
+    private static LocalDate parseDate(Object v) {
+        if (v == null) return null;
+        if (v instanceof LocalDate ld) return ld;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        try { return LocalDate.parse(s.length() > 10 ? s.substring(0, 10) : s); } catch (Exception ignore) { return null; }
     }
 
     private boolean contains(String v, String k) {

@@ -9,8 +9,8 @@ import java.util.List;
 public interface TrainingMapper {
 
     @Insert("""
-            INSERT INTO training (code, name, type, type_name, paper_ids_json, owner_ids_json, recurrence, recurrence_day, recurrence_time, status, created_by, created_at, updated_at)
-            VALUES (#{code}, #{name}, #{type}, #{typeName}, #{paperIdsJson}, #{ownerIdsJson}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{status}, #{createdBy}, NOW(), NOW())
+            INSERT INTO training (code, name, type, type_name, paper_ids_json, owner_ids_json, recurrence, recurrence_day, recurrence_time, recurrence_start, recurrence_end, status, created_by, created_at, updated_at)
+            VALUES (#{code}, #{name}, #{type}, #{typeName}, #{paperIdsJson}, #{ownerIdsJson}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{recurrenceStart}, #{recurrenceEnd}, #{status}, #{createdBy}, NOW(), NOW())
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Training training);
@@ -23,6 +23,8 @@ public interface TrainingMapper {
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
+                   recurrence_start AS recurrenceStart,
+                   recurrence_end AS recurrenceEnd,
                    status,
                    created_by AS createdBy,
                    created_at AS createdAt,
@@ -39,6 +41,8 @@ public interface TrainingMapper {
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
+                   recurrence_start AS recurrenceStart,
+                   recurrence_end AS recurrenceEnd,
                    status,
                    created_by AS createdBy,
                    created_at AS createdAt,
@@ -55,6 +59,8 @@ public interface TrainingMapper {
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
+                   recurrence_start AS recurrenceStart,
+                   recurrence_end AS recurrenceEnd,
                    status,
                    created_by AS createdBy,
                    created_at AS createdAt,
@@ -71,6 +77,8 @@ public interface TrainingMapper {
                    recurrence,
                    recurrence_day AS recurrenceDay,
                    recurrence_time AS recurrenceTime,
+                   recurrence_start AS recurrenceStart,
+                   recurrence_end AS recurrenceEnd,
                    status,
                    created_by AS createdBy,
                    created_at AS createdAt,
@@ -89,6 +97,8 @@ public interface TrainingMapper {
                 recurrence = #{recurrence},
                 recurrence_day = #{recurrenceDay},
                 recurrence_time = #{recurrenceTime},
+                recurrence_start = #{recurrenceStart},
+                recurrence_end = #{recurrenceEnd},
                 updated_at = NOW()
             WHERE id = #{id}
             """)
