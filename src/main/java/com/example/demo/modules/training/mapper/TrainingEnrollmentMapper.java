@@ -70,6 +70,15 @@ public interface TrainingEnrollmentMapper {
     int countPending();
 
     @Select("""
+            SELECT COUNT(*) FROM training_enrollment e
+            JOIN training_occurrence o ON e.occurrence_id = o.id
+            JOIN training_favorite f ON f.training_id = o.training_id
+            WHERE f.user_id = #{userId}
+              AND (e.test_yn = 0 OR (e.test_yn = 1 AND (e.test_fraction IS NULL OR e.test_fraction = 0)))
+            """)
+    int countPendingByUser(@Param("userId") String userId);
+
+    @Select("""
             SELECT e.id AS enrollmentId, e.name, e.job_number AS jobNumber, e.project_group AS projectGroup,
                    e.test_yn AS testYn, e.test_fraction AS testFraction,
                    t.id AS trainingId, t.name AS trainingName,

@@ -71,6 +71,29 @@ public class TrainingController {
         return Result.success(service.listPending());
     }
 
+    @GetMapping("/favorites")
+    public Result<?> listFavorites() {
+        User user = resolveUser();
+        if (user == null) return Result.fail(401, "未登录");
+        return Result.success(service.listFavorites(user.getId()));
+    }
+
+    @PostMapping("/{id}/favorite")
+    public Result<?> star(@PathVariable Long id) {
+        User user = resolveUser();
+        if (user == null) return Result.fail(401, "未登录");
+        service.star(id, user.getId());
+        return Result.success(Map.of("ok", true));
+    }
+
+    @DeleteMapping("/{id}/favorite")
+    public Result<?> unstar(@PathVariable Long id) {
+        User user = resolveUser();
+        if (user == null) return Result.fail(401, "未登录");
+        service.unstar(id, user.getId());
+        return Result.success(Map.of("ok", true));
+    }
+
     @GetMapping("/{id}")
     public Result<?> get(@PathVariable Long id) {
         if (resolveUser() == null) return Result.fail(401, "未登录");

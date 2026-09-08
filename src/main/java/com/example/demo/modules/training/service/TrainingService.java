@@ -8,8 +8,10 @@ import com.example.demo.modules.personnel.entity.PersonnelRoomAuthorization;
 import com.example.demo.modules.personnel.mapper.PersonnelRoomAuthorizationMapper;
 import com.example.demo.modules.training.entity.Training;
 import com.example.demo.modules.training.entity.TrainingEnrollment;
+import com.example.demo.modules.training.entity.TrainingFavorite;
 import com.example.demo.modules.training.entity.TrainingOccurrence;
 import com.example.demo.modules.training.mapper.TrainingEnrollmentMapper;
+import com.example.demo.modules.training.mapper.TrainingFavoriteMapper;
 import com.example.demo.modules.training.mapper.TrainingMapper;
 import com.example.demo.modules.training.mapper.TrainingOccurrenceMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,6 +39,7 @@ public class TrainingService {
     private final TrainingMapper trainingMapper;
     private final TrainingOccurrenceMapper occurrenceMapper;
     private final TrainingEnrollmentMapper enrollmentMapper;
+    private final TrainingFavoriteMapper favoriteMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final PersonnelRoomAuthorizationMapper roomAuthMapper;
     private final ObjectMapper objectMapper;
@@ -44,12 +47,14 @@ public class TrainingService {
     public TrainingService(TrainingMapper trainingMapper,
                            TrainingOccurrenceMapper occurrenceMapper,
                            TrainingEnrollmentMapper enrollmentMapper,
+                           TrainingFavoriteMapper favoriteMapper,
                            AroPersonnelMapper aroPersonnelMapper,
                            PersonnelRoomAuthorizationMapper roomAuthMapper,
                            ObjectMapper objectMapper) {
         this.trainingMapper = trainingMapper;
         this.occurrenceMapper = occurrenceMapper;
         this.enrollmentMapper = enrollmentMapper;
+        this.favoriteMapper = favoriteMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.roomAuthMapper = roomAuthMapper;
         this.objectMapper = objectMapper;
@@ -191,6 +196,28 @@ public class TrainingService {
     /** 待审核/待评分学员（跨全部培训，含培训/场次信息） */
     public List<Map<String, Object>> listPending() {
         return enrollmentMapper.listPending();
+    }
+
+    // ========================================================================
+    // 收藏订阅（favorite）
+    // ========================================================================
+
+    public List<Long> listFavorites(String userId) {
+        return favoriteMapper.listTrainingIdsByUser(userId);
+    }
+
+    public void star(Long trainingId, String userId) {
+        requireTraining(trainingId);
+        if (favoriteMapper.exists(userId, trainingId) == 0) {
+            TrainingFavorite f = new TrainingFavorite();
+            f.setUserId(userId);
+            f.setTrainingId(trainingId);
+            favoriteMapper.insert(f);
+        }
+    }
+
+    public void unstar(Long trainingId, String userId) {
+        favoriteMapper.delete(userId, trainingId);
     }
 
     @Transactional

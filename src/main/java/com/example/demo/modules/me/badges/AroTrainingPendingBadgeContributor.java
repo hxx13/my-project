@@ -32,7 +32,7 @@ public class AroTrainingPendingBadgeContributor implements PendingBadgeContribut
 
         int totalPending = 0;
         try {
-            totalPending = enrollmentMapper.countPending();
+            totalPending = enrollmentMapper.countPendingByUser(user.getId());
         } catch (Exception e) {
             log.warn("[aro-training-badge] 统计待审核学员失败: {}", e.getMessage());
         }
