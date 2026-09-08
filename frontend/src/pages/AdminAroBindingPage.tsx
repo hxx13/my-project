@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
@@ -8,7 +8,7 @@ import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import { Portal } from "@/components/Portal";
-import { appConfirm, appPrompt } from "@/lib/appDialog";
+import { appConfirm } from "@/lib/appDialog";
 import { authStorage } from "@/features/auth/authStorage";
 import { fetchRoomMappingRooms, type RoomMappingRoomRow } from "@/api/twinApi";
 import {
@@ -19,7 +19,6 @@ import {
   unstarTraining,
   publishTraining,
   unpublishTraining,
-  schedulePublishTraining,
   addEnrollments,
   auditEnrollment,
   scoreEnrollment,
@@ -153,14 +152,6 @@ export default function AdminAroBindingPage() {
   };
   const handlePublish = (s: TrainingSeries) => seriesAction(() => publishTraining(s.id), "已发布");
   const handleUnpublish = (s: TrainingSeries) => seriesAction(() => unpublishTraining(s.id), "已取消发布");
-  const handleSchedule = async (s: TrainingSeries) => {
-    const v = await appPrompt("定时发布时间（yyyy-MM-dd HH:mm:ss）", "", {
-      allowEmpty: false,
-      placeholder: "yyyy-MM-dd HH:mm:ss",
-    });
-    if (v == null) return;
-    await seriesAction(() => schedulePublishTraining(s.id, v.trim()), "已定时发布");
-  };
 
   const series = sd?.list ?? [];
   const sTotal = sd?.total ?? 0;
@@ -357,14 +348,9 @@ export default function AdminAroBindingPage() {
                             <AdminButton type="button" tone="secondary" size="sm" onClick={() => navigate(`/console/admin/training/edit/${s.id}`)}>编辑</AdminButton>
                             {s.status === "PUBLISHED" ? (
                               <AdminButton type="button" tone="secondary" size="sm" onClick={() => handleUnpublish(s)}>取消发布</AdminButton>
-                            ) : s.status === "DRAFT" && s.publishAt ? (
-                              <span className="text-[11px] text-amber-600 whitespace-nowrap">已定时发布</span>
                             ) : s.status === "DRAFT" ? (
                               <AdminButton type="button" tone="primary" size="sm" onClick={() => handlePublish(s)}>发布</AdminButton>
                             ) : null}
-                            {(s.status === "DRAFT" || s.status === "PUBLISHED") && (
-                              <button type="button" onClick={() => handleSchedule(s)} className="text-[11px] text-[var(--twin-mute)] hover:text-blue-600 whitespace-nowrap" title="定时发布">定时发布</button>
-                            )}
                           </div>
                         )}
                       </td>
@@ -474,40 +460,38 @@ export default function AdminAroBindingPage() {
   };
 
   const occurrenceList = (
-    <div className="flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]">
+    <div className="flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable] px-3 py-3 space-y-3">
       {dl ? <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>
-        : <table className="w-full min-w-max text-left text-sm border-collapse">
-          <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold">
-            <th className="px-3 py-2">时间</th><th className="px-3 py-2">地点</th><th className="px-3 py-2">考官</th><th className="px-3 py-2">人数</th><th className="px-3 py-2 text-right">操作</th>
-          </tr></thead>
-          <tbody>
-            {occurrences.length === 0 && !dl ? <tr><td colSpan={5} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无场次</td></tr>
-              : occurrences.map((o) => {
-                const open = expandedOccs.has(o.id);
-                return (
-                  <Fragment key={o.id}>
-                    <tr className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors cursor-pointer" onClick={() => toggleOcc(o.id)}>
-                      <td className="px-3 py-2.5 text-[var(--twin-mute)] whitespace-nowrap"><Clock className="h-3 w-3 inline mr-1" />{o.startTime ?? "—"} ~ {o.endTime ?? "—"}</td>
-                      <td className="px-3 py-2.5 text-[var(--twin-mute)]"><MapPin className="h-3 w-3 inline mr-1" />{o.address || "—"}</td>
-                      <td className="px-3 py-2.5 text-[var(--twin-mute)]">{o.examinerName || "—"}</td>
-                      <td className="px-3 py-2.5 text-[var(--twin-mute)]">{o.enrollments?.length ?? 0} 人</td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center justify-end gap-2">
-                          {canWrite && <button type="button" onClick={(ev) => { ev.stopPropagation(); setImportOcc(o); setImportOpen(true); }} className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"><UserPlus className="h-3.5 w-3.5" />导入</button>}
-                          <ChevronDown className={cn("h-4 w-4 text-[var(--twin-mute)] transition-transform", open && "rotate-180")} />
-                        </div>
-                      </td>
-                    </tr>
-                    {open && (
-                      <tr className="border-b bg-[var(--app-color-surface-hover)]">
-                        <td colSpan={5} className="px-3 py-2">{renderEnrollmentTable(o.enrollments ?? [], { sticky: false })}</td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-          </tbody>
-        </table>}
+        : occurrences.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] py-12 text-center text-sm text-[var(--twin-mute)]">暂无场次</div>
+        ) : occurrences.map((o) => {
+          const open = expandedOccs.has(o.id);
+          const count = o.enrollments?.length ?? 0;
+          return (
+            <div key={o.id} className="rounded-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] overflow-hidden">
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => toggleOcc(o.id)} className="flex-1 min-w-0 flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--twin-canvas-soft)] transition">
+                  <span className="w-2 h-2 rounded-full bg-[var(--twin-mute)] shrink-0" />
+                  <span className="text-sm font-medium text-[var(--twin-ink)] whitespace-nowrap"><Clock className="h-3.5 w-3.5 inline mr-1 text-[var(--twin-mute)]" />{o.startTime ?? "—"} ~ {o.endTime ?? "—"}</span>
+                  <span className="text-sm text-[var(--twin-body)] whitespace-nowrap"><MapPin className="h-3.5 w-3.5 inline mr-1 text-[var(--twin-mute)]" />{o.address || "—"}</span>
+                  <span className="text-sm text-[var(--twin-mute)] whitespace-nowrap">考官 {o.examinerName || "—"}</span>
+                  <span className="rounded-full bg-[var(--twin-canvas-soft)] px-2.5 py-0.5 text-xs text-[var(--twin-body)] font-medium">{count} 人</span>
+                  <span className="ml-auto shrink-0 text-xs text-[var(--twin-mute)]">{open ? "收起 ▲" : "展开 ▼"}</span>
+                </button>
+                {canWrite && (
+                  <button type="button" onClick={() => { setImportOcc(o); setImportOpen(true); }} className="shrink-0 mr-3 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50">
+                    <UserPlus className="h-3.5 w-3.5" />导入学员
+                  </button>
+                )}
+              </div>
+              {open && (
+                <div className="border-t border-[var(--twin-hairline)] overflow-auto max-h-[50vh]">
+                  {renderEnrollmentTable(o.enrollments ?? [])}
+                </div>
+              )}
+            </div>
+          );
+        })}
     </div>
   );
 

@@ -14,7 +14,6 @@ export interface TrainingSeries {
   recurrenceDay?: number | null;
   recurrenceTime?: string | null;
   status?: string | null;
-  publishAt?: string | null;
   createdBy?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -114,11 +113,6 @@ export async function publishTraining(id: number | string): Promise<TrainingDeta
 
 export async function unpublishTraining(id: number | string): Promise<TrainingDetail> {
   const r = await adminHttp.post(`/training/${id}/unpublish`);
-  return r.data?.data as TrainingDetail;
-}
-
-export async function schedulePublishTraining(id: number | string, publishAt: string): Promise<TrainingDetail> {
-  const r = await adminHttp.post(`/training/${id}/schedule-publish`, { publishAt });
   return r.data?.data as TrainingDetail;
 }
 

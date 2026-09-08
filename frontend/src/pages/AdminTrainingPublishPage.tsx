@@ -159,7 +159,6 @@ export default function AdminTrainingPublishPage() {
   const [ownerId, setOwnerId] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [paperId, setPaperId] = useState("");
-  const [publishAt, setPublishAt] = useState("");
   const [occurrences, setOccurrences] = useState<OccurrenceRow[]>([emptyOccurrence()]);
   const [saving, setSaving] = useState(false);
 
@@ -194,7 +193,6 @@ export default function AdminTrainingPublishPage() {
     setOwnerId(editDetail.ownerId ?? "");
     setOwnerName(editDetail.ownerId ?? "");
     setPaperId(editDetail.paperId != null ? String(editDetail.paperId) : "");
-    setPublishAt(toDatetimeLocal(editDetail.publishAt));
     const occs = (editDetail.occurrences ?? []).map((o) => ({
       id: o.id,
       startTime: toDatetimeLocal(o.startTime),
@@ -374,17 +372,6 @@ export default function AdminTrainingPublishPage() {
                     type="time"
                     value={recurrenceTime}
                     onChange={(e) => setRecurrenceTime(e.target.value)}
-                  />
-                </div>
-              )}
-              {editing && (
-                <div className="space-y-1.5">
-                  <label className={adminLabelClass}>定时发布时间</label>
-                  <input
-                    className={adminInputClass}
-                    type="datetime-local"
-                    value={publishAt}
-                    onChange={(e) => setPublishAt(e.target.value)}
                   />
                 </div>
               )}
