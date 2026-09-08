@@ -1,0 +1,3664 @@
+{
+ "papers": [
+  {
+   "code": "seed-01",
+   "title": "动物抓伤咬伤紧急情况处理",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "被动物抓伤或咬伤后使用首先采取以下哪一项处理措施：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "使用清水冲洗"
+        },
+        {
+         "value": "B",
+         "label": "使用生理盐水冲洗"
+        },
+        {
+         "value": "C",
+         "label": "使用肥皂水冲洗"
+        },
+        {
+         "value": "D",
+         "label": "用嘴允吸伤口"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 14.28,
+        "level": 1
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "抓伤咬伤后伤口如果结痂需做如下处理：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "每天清洗结痂部位"
+        },
+        {
+         "value": "B",
+         "label": "结痂脱落后反复冲洗，直至无血流出"
+        },
+        {
+         "value": "C",
+         "label": "结痂脱落后反复冲洗，直至稍有出血即可"
+        },
+        {
+         "value": "D",
+         "label": "及时剥落结痂 "
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 14.28,
+        "level": 1
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "抓伤咬伤处理和注射狂犬疫苗应前往以下哪家医院：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "瑞金医院"
+        },
+        {
+         "value": "B",
+         "label": "仁济医院"
+        },
+        {
+         "value": "C",
+         "label": "第九人民医院"
+        },
+        {
+         "value": "D",
+         "label": "第二人民医院"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 14.28,
+        "level": 1
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "如眼睛暴露于非人类灵长类唾液、排泄物应首先做如下处理：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "迅速使用清水冲洗"
+        },
+        {
+         "value": "B",
+         "label": "清洗双手后揉擦双眼"
+        },
+        {
+         "value": "C",
+         "label": "不做任何处理，并前往医务室处理"
+        },
+        {
+         "value": "D",
+         "label": "等待兽医咨询后处理"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 14.28,
+        "level": 1
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "狂犬疫苗注射时间应：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "越早越好"
+        },
+        {
+         "value": "B",
+         "label": "咬伤后24小时"
+        },
+        {
+         "value": "C",
+         "label": "咬伤后18小时"
+        },
+        {
+         "value": "D",
+         "label": "咬伤后48小时"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 14.28,
+        "level": 1
+       },
+       "sortOrder": 4
+      },
+      {
+       "questionKey": "Q6",
+       "label": "狂犬疫苗注射针数：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "2次"
+        },
+        {
+         "value": "B",
+         "label": "4次"
+        },
+        {
+         "value": "C",
+         "label": "5次"
+        },
+        {
+         "value": "D",
+         "label": "6次"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 14.28,
+        "level": 1
+       },
+       "sortOrder": 5
+      },
+      {
+       "questionKey": "Q7",
+       "label": "狂犬疫苗注射期间应注意不应该：（    ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "从事动物实验"
+        },
+        {
+         "value": "B",
+         "label": "饮用浓茶"
+        },
+        {
+         "value": "C",
+         "label": "使用电脑"
+        },
+        {
+         "value": "D",
+         "label": "前往公众场所"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 14.28,
+        "level": 1
+       },
+       "sortOrder": 6
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-02",
+   "title": "动物尸体处理及动物运输",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "动物尸体包装方式如下：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "黄色生物安全袋"
+        },
+        {
+         "value": "B",
+         "label": "透明塑料袋"
+        },
+        {
+         "value": "C",
+         "label": "黑色塑料袋"
+        },
+        {
+         "value": "D",
+         "label": "任何可以包装动物尸体的容器"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "动物尸体包装后需做如下处理：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "直接丢入动物尸体冰箱"
+        },
+        {
+         "value": "B",
+         "label": "填写“动物尸体处理标签”并贴在包装袋上"
+        },
+        {
+         "value": "C",
+         "label": "直接丢入生物安全垃圾箱"
+        },
+        {
+         "value": "D",
+         "label": "直接丢入生活垃圾箱 "
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "实验动物垫料应丢弃在以下区域：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "动物尸体冰箱前的垃圾箱"
+        },
+        {
+         "value": "B",
+         "label": "医学院3号楼4号楼之间的生物垃圾存放区域"
+        },
+        {
+         "value": "C",
+         "label": "实验动物科学部6号楼北侧动物垫料存放区域"
+        },
+        {
+         "value": "D",
+         "label": "任何生活垃圾箱"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "动物从实验动物科学部转移至课题组实验区域采样需使用以下容器：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "使用实验动物科学部外借笼盒"
+        },
+        {
+         "value": "B",
+         "label": "使用塑料袋"
+        },
+        {
+         "value": "C",
+         "label": "使用布袋"
+        },
+        {
+         "value": "D",
+         "label": "使用任何容器，只要可以防止动物逃跑"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "动物实验后注射器丢弃应采用以下方式：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "将注射器的帽盖好后再丢弃入“生物安全锐气回收盒”"
+        },
+        {
+         "value": "B",
+         "label": "将注射不盖帽状态下丢弃入“生物安全锐气回收盒”"
+        },
+        {
+         "value": "C",
+         "label": "将注射器的帽盖好后再丢弃入垃圾桶"
+        },
+        {
+         "value": "D",
+         "label": "将注射不盖帽状态下丢弃入垃圾桶"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 4
+      },
+      {
+       "questionKey": "Q6",
+       "label": "医学院动物尸体的处理方式：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "课题组自行处理"
+        },
+        {
+         "value": "B",
+         "label": "课题组专人处理"
+        },
+        {
+         "value": "C",
+         "label": "课题组专人负责，统一移交给实验动物科学部处理"
+        },
+        {
+         "value": "D",
+         "label": "实验动物科学部前往课题组协助处理"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 5
+      },
+      {
+       "questionKey": "Q7",
+       "label": "实验动物科学部动物尸体冰箱开启时间：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "每周星期一，星期二，星期三工作时间开放"
+        },
+        {
+         "value": "B",
+         "label": "每周星期一至五工作时间开放"
+        },
+        {
+         "value": "C",
+         "label": "每周一、三、五下午1:00-4:30"
+        },
+        {
+         "value": "D",
+         "label": "每周一、三、五上午9:00-12:30"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 6
+      },
+      {
+       "questionKey": "Q8",
+       "label": "涉及生物安全及大批量动物尸体回收事宜，相关部门应提前至少多少个工作日向实验动物科学部预约：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "3日"
+        },
+        {
+         "value": "B",
+         "label": "4日"
+        },
+        {
+         "value": "C",
+         "label": "5日"
+        },
+        {
+         "value": "D",
+         "label": "6日"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 7
+      },
+      {
+       "questionKey": "Q9",
+       "label": "在实验动物科学部不同饲养区域间转移动物时应使用：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "向动科部申购纸质笼盒"
+        },
+        {
+         "value": "B",
+         "label": "普通动物饲养笼盒"
+        },
+        {
+         "value": "C",
+         "label": "普通纸盒"
+        },
+        {
+         "value": "D",
+         "label": "密封袋"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 8
+      },
+      {
+       "questionKey": "Q10",
+       "label": "课题组需将饲养在实验动物科学部设施内的动物转移至课题组管理区域不可以使用：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "纸质笼盒"
+        },
+        {
+         "value": "B",
+         "label": "动科部外借笼盒"
+        },
+        {
+         "value": "C",
+         "label": "塑料袋"
+        },
+        {
+         "value": "D",
+         "label": "纸盒"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 9
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-03",
+   "title": "饲养密度相关制度",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "对“饲养密度超标事件”定义正确的为：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "接到饲养密度超标通知1个工作日后仍未解决相关问题"
+        },
+        {
+         "value": "B",
+         "label": "接到饲养密度超标通知3个工作日后仍未解决相关问题"
+        },
+        {
+         "value": "C",
+         "label": "星期一接到饲养密度超标通知星期三仍未解决相关问题"
+        },
+        {
+         "value": "D",
+         "label": "星期一接到饲养密度超标通知星期四仍未解决相关问题"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "接到“饲养密度超标”通知几次后仍未解决相关问题，实验动物科学部在通知课题组长后有权对密度超标笼盒进行分笼或安乐死相关动物：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "2次"
+        },
+        {
+         "value": "B",
+         "label": "3次"
+        },
+        {
+         "value": "C",
+         "label": "4次"
+        },
+        {
+         "value": "D",
+         "label": "5次"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "标准小鼠笼盒饲养小鼠（＞25克）密度为：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "4只/笼"
+        },
+        {
+         "value": "B",
+         "label": "5只/笼"
+        },
+        {
+         "value": "C",
+         "label": "6只/笼"
+        },
+        {
+         "value": "D",
+         "label": "7只/笼"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 11,
+        "level": 1
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "新生仔鼠断奶后分笼饲养密度为：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "4只/笼"
+        },
+        {
+         "value": "B",
+         "label": "5只/笼"
+        },
+        {
+         "value": "C",
+         "label": "6只/笼"
+        },
+        {
+         "value": "D",
+         "label": "7只/笼"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "繁殖笼小鼠饲养密度为：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "3只成年与1窝仔鼠"
+        },
+        {
+         "value": "B",
+         "label": "2只成年与1窝仔鼠"
+        },
+        {
+         "value": "C",
+         "label": "3只成年与2窝仔鼠"
+        },
+        {
+         "value": "D",
+         "label": "2只成年与2窝仔鼠"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 4
+      },
+      {
+       "questionKey": "Q6",
+       "label": "小鼠断奶时间为：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "出生后19天"
+        },
+        {
+         "value": "B",
+         "label": "出生后20天"
+        },
+        {
+         "value": "C",
+         "label": "出生后21天"
+        },
+        {
+         "value": "D",
+         "label": "出生后22天"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 5
+      },
+      {
+       "questionKey": "Q7",
+       "label": "一窝小鼠定义为：（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "一只雌性小鼠单次分娩所生产的仔鼠定义为一窝小鼠"
+        },
+        {
+         "value": "B",
+         "label": "一笼雌性小鼠单次分娩所生产的仔鼠定义为一窝小鼠"
+        },
+        {
+         "value": "C",
+         "label": "五只成年小鼠在同一笼盒内定义为一窝小鼠"
+        },
+        {
+         "value": "D",
+         "label": "一只雄性小鼠和一只雌性小鼠定义为一窝小鼠"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 6
+      },
+      {
+       "questionKey": "Q8",
+       "label": "如果在几个（     ）工作日内课题组已经解决“饲养密度超标”问题，该事件不计为“饲养密度超标事件”： ",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "1个工作日"
+        },
+        {
+         "value": "B",
+         "label": "2个工作日"
+        },
+        {
+         "value": "C",
+         "label": "3个工作日"
+        },
+        {
+         "value": "D",
+         "label": "4个工作日"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 7
+      },
+      {
+       "questionKey": "Q9",
+       "label": "“经常性饲养密度超标事件”定义（     ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "主要指在1个月内发生5次或以上“饲养密度超标事件"
+        },
+        {
+         "value": "B",
+         "label": "主要指在1个月内发生3次或以上“饲养密度超标事件"
+        },
+        {
+         "value": "C",
+         "label": "主要指在3个月内发生5次或以上“饲养密度超标事件"
+        },
+        {
+         "value": "D",
+         "label": "主要指在3个月内发生3次或以上“饲养密度超标事件"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 8
+      },
+      {
+       "questionKey": "Q10",
+       "label": "剪趾法对动物进行识别和个体鉴定，只能用于小于（     ）日龄的小鼠进行操作",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "出生后7天"
+        },
+        {
+         "value": "B",
+         "label": "出生后15天"
+        },
+        {
+         "value": "C",
+         "label": "出生后21天"
+        },
+        {
+         "value": "D",
+         "label": "出生后30天"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 9
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-04",
+   "title": "肿瘤模型动物研究政策",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "对肿瘤研究及癌症相关动物模型的饲养和实验过程，对动物的健康状况做出合理的评估。及时对政策允许范围外的动物所承受的痛苦进行止痛或执行安乐死的是（  ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "实验人员"
+        },
+        {
+         "value": "B",
+         "label": "IACUC"
+        },
+        {
+         "value": "C",
+         "label": "课题组长"
+        },
+        {
+         "value": "D",
+         "label": "兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 20,
+        "level": 0
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "所有涉及肿瘤相关的动物实验项目都应在“实验动物研究及使用计划中”对所涉及到的动物疼痛以及缓解疼痛的措施进行详细描述。为了避免动物承受不必要的疼痛或不适，（ ）应对相关课题进行定期检查，确保动物福利的实施",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "实验动物科学部各楼层组长"
+        },
+        {
+         "value": "B",
+         "label": "上海交通大学医学院IACUC"
+        },
+        {
+         "value": "C",
+         "label": "各课题组组长"
+        },
+        {
+         "value": "D",
+         "label": "兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 20,
+        "level": 0
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "在选择肿瘤注射部位时应选取能够满足肿瘤生长空间的部位，以减少动物在肿瘤生长过程中所承受的痛苦。以下（）不适合肿瘤接种",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "背侧皮下"
+        },
+        {
+         "value": "B",
+         "label": "腹侧皮下"
+        },
+        {
+         "value": "C",
+         "label": "腋下靠近背侧"
+        },
+        {
+         "value": "D",
+         "label": "臀部皮下"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 20,
+        "level": 1
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "当肿瘤实验涉及到肺部转移时，应通过隔膜指压的方法检查动物的身体状况。具体操作方法：使用食指轻轻按压隔膜处（ ），强迫动物停止膈呼吸，使用肋呼吸，如果动物出现呼吸困难，证明动物在肿瘤细胞肺部转移过程中承受着不可逆的痛苦。出现以上情况应由兽医判定，并通知课题组后对动物实施安乐死。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "第7肋处  5秒钟"
+        },
+        {
+         "value": "B",
+         "label": "第7肋处  3秒钟 "
+        },
+        {
+         "value": "C",
+         "label": "第5肋处  5秒钟 "
+        },
+        {
+         "value": "D",
+         "label": "第5肋处  3秒钟"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 20,
+        "level": 1
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "通过肿瘤大小判定大、小鼠安乐死，正确的是（ ）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "小鼠皮下肿瘤直径最大允许生长到40mm"
+        },
+        {
+         "value": "B",
+         "label": "小鼠皮下肿瘤直径最大允许生长到2000mg"
+        },
+        {
+         "value": "C",
+         "label": "大鼠皮下肿瘤直径最大允许生长到40mm"
+        },
+        {
+         "value": "D",
+         "label": "大鼠皮下肿瘤直径最大允许生长到4000mg"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 20,
+        "level": 1
+       },
+       "sortOrder": 4
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-05",
+   "title": "呼吸防护用品适应性测试",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "为确保上海交通大学医学院实验动物科学部从业人员能够正确的选择和使用呼吸防护用具，根据(    )制定该规章制度。\n",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "国务院标准：GB/T 18664-2002 《呼吸防护用品的选择、使用与维护》"
+        },
+        {
+         "value": "B",
+         "label": "中华人民共和国国家标准：GB/T 18664-2002 《呼吸防护用品的选择、使用与维护》"
+        },
+        {
+         "value": "C",
+         "label": "上海市人民政府地方标准：GB/T 18664-2002 《呼吸防护用品的选择、使用与维护》"
+        },
+        {
+         "value": "D",
+         "label": "根据《实验动物管理条例》制定的标准"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 20,
+        "level": 0
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "为确保上海交通大学医学院实验动物科学部从业人员能够正确的选择和使用呼吸防护用具，实验动物科学部全部佩戴呼吸防护用品人员必须（  ）该适应性检测。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "每年接受一次"
+        },
+        {
+         "value": "B",
+         "label": "每年接受三次"
+        },
+        {
+         "value": "C",
+         "label": "每年接受四次"
+        },
+        {
+         "value": "D",
+         "label": "每年接受二次"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 20,
+        "level": 0
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "为确保上海交通大学医学院实验动物科学部从业人员能够正确的选择和使用呼吸防护用具，（  ）每年都需要进行呼吸防护用品的适应性测试。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "实验动物科学部全体工作人员"
+        },
+        {
+         "value": "B",
+         "label": "全部需要佩戴呼吸防护用具的人员"
+        },
+        {
+         "value": "C",
+         "label": "啮齿类动物屏障饲养区工作人员"
+        },
+        {
+         "value": "D",
+         "label": "啮齿类动物隔离包屏障饲养区工作人员"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 20,
+        "level": 0
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "为确保上海交通大学医学院实验动物科学部从业人员能够正确的选择和使用呼吸防护用具，规范检测( )的方法，并分为定性适合性检验和定量适合性检验以及佩戴口罩身体状态的相关医学评估测试。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "医用面罩对具体使用者适合程度的方法"
+        },
+        {
+         "value": "B",
+         "label": "N95 防护口罩对具体使用者适合程度的方法"
+        },
+        {
+         "value": "C",
+         "label": "呼吸器密合型面罩对具体使用者适合程度"
+        },
+        {
+         "value": "D",
+         "label": "3M 呼吸过滤防毒面具对具体使用者适合程度的方法"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 20,
+        "level": 0
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "鉴于呼吸防护的有效性=良好的防护性能+与佩戴者脸部良好的适合性。任何一种面罩都不能确保适合每个人的脸型，如果面罩和佩戴者的脸部不适合，（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "再好的过滤材料也不能起到防护作用"
+        },
+        {
+         "value": "B",
+         "label": "良好的过滤材料能够单独起到防护作用"
+        },
+        {
+         "value": "C",
+         "label": "再好的过滤材料也不能单独起到防护作用"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 20,
+        "level": 0
+       },
+       "sortOrder": 4
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-06",
+   "title": "化学物品及有毒有害物品的管理制度",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "为规范和加强（  ）危险化学品安全管理，保障工作人员和实验人员的生命安全，结合实际危险品及化学物使用情况，制定本管理制度。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "实验动物科学部办公室"
+        },
+        {
+         "value": "B",
+         "label": "实验动物科学部实验室"
+        },
+        {
+         "value": "C",
+         "label": "实验动物科学部屏障实验室"
+        },
+        {
+         "value": "D",
+         "label": "实验动物科学部隔离包实验室"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "危险化学品必须存放在专用仓库（危险化学品专用仓库），并设专人管理。危险化学品应当分类分项存放，堆垛之间的主要通道应当有安全距离，不得超量储存。（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "已领用的危险化学品放置在实验室的防爆保险柜内，实行双人双锁"
+        },
+        {
+         "value": "B",
+         "label": "已领用的危险化学品放置在实验室的保险柜内，实行双人双锁"
+        },
+        {
+         "value": "C",
+         "label": "已领用的危险化学品放置在实验室的防爆保险柜内，实行双人单锁"
+        },
+        {
+         "value": "D",
+         "label": "已领用的危险化学品放置在专用仓库的防爆保险柜内，实行双人双锁"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "危险品仓库或存放柜仅储藏危险品，不得存放其他药品及仪器。（  ）的危险化学品，不得在同一仓库或同一存储室存放。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "化学性质或防护、使用方法相互抵触"
+        },
+        {
+         "value": "B",
+         "label": "化学性质或防护、灭火方法相互抵触"
+        },
+        {
+         "value": "C",
+         "label": "化学性质或防护、运输方法相互抵触"
+        },
+        {
+         "value": "D",
+         "label": "化学性质或防护、保存方法相互抵触"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "实验动物科学部药品管理员必须严格按领用单上用量发放，定期盘库，清点库房内的危险品数量和过期药品。发现剧毒化学品被盗，丢失或错误发用时，必须立即向（  ）报告。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "后勤负责人"
+        },
+        {
+         "value": "B",
+         "label": "动物部主任"
+        },
+        {
+         "value": "C",
+         "label": "课题组长"
+        },
+        {
+         "value": "D",
+         "label": "学校"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "药品采购一般由实验人员根据实验内容提出申购计划。后勤管理人员交由物资科，由物资科统一购买。特殊情况可由（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "管理人员向正规经销商采购"
+        },
+        {
+         "value": "B",
+         "label": "专业人员向医药公司采购"
+        },
+        {
+         "value": "C",
+         "label": "后勤管理人员向正规经销商采购"
+        },
+        {
+         "value": "D",
+         "label": "专业人员向正规经销商采购"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 4
+      },
+      {
+       "questionKey": "Q6",
+       "label": "实验动物科学部的消毒类危险化学品由部门统一购买存放在危险品仓库内。\n（  ）按照实际使用数量领取，并填写《登记表》，领用的化学品存放在带锁的仓库内。\n",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "各楼层组长"
+        },
+        {
+         "value": "B",
+         "label": "各楼层饲养员"
+        },
+        {
+         "value": "C",
+         "label": "实验室负责人"
+        },
+        {
+         "value": "D",
+         "label": "生产主管"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 5
+      },
+      {
+       "questionKey": "Q7",
+       "label": "由于实验动物的特殊性，仓库管理员必须保证各类消毒液的及时、充足供应，一旦发现消毒液库存少或进货不畅，必须及时向(  )反映，保证消毒液不间断供应。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "各楼层组长"
+        },
+        {
+         "value": "B",
+         "label": "动科部主任"
+        },
+        {
+         "value": "C",
+         "label": "后勤负责人"
+        },
+        {
+         "value": "D",
+         "label": "实验室负责人"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 6
+      },
+      {
+       "questionKey": "Q8",
+       "label": "相关危险品的容器、器皿废液必须上报后勤管理员。管理员按照学校要求填写废液处理单，并将（  ）。过期失效的危险品，必须填写《实验室危险品报废申请表》，由学校专人统一销毁。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "废液放置在实验动物科学部指定处理地点"
+        },
+        {
+         "value": "B",
+         "label": "废液放置在基础医学院指定处理地点"
+        },
+        {
+         "value": "C",
+         "label": "废液放置在学校指定处理地点"
+        },
+        {
+         "value": "D",
+         "label": "废液放置在后勤物质科学校指定处理地点"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 7
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-07",
+   "title": "物理性危害实验用品管理",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "实验动物科学部存在的（  ）包括但不限于：液氮罐、压缩气体钢瓶、高压灭菌锅、用电系统、辐射危害、电动工具、噪音、针头等利器等。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "实验室物理性危害品"
+        },
+        {
+         "value": "B",
+         "label": "实验室化学性危害品"
+        },
+        {
+         "value": "C",
+         "label": "实验室生物性危害品"
+        },
+        {
+         "value": "D",
+         "label": "实验室生产性危害品"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "实验动物科学部主要存在的辐射危害包括（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "小动物CT"
+        },
+        {
+         "value": "B",
+         "label": "小动物活体成像系统和小动物辐照仪"
+        },
+        {
+         "value": "C",
+         "label": "小动物超声仪"
+        },
+        {
+         "value": "D",
+         "label": "小动物人工呼吸机"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "小动物辐照仪是由持有执照的专业厂家生产，并通过环保部门环境安全评估的安全仪器。正常使用小动物辐照仪是安全的。使用时，（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "操作人员需注意关闭铅制舱门之前需先打开射线"
+        },
+        {
+         "value": "B",
+         "label": "操作人员需注意关闭实验室大门后才能打开射线"
+        },
+        {
+         "value": "C",
+         "label": "操作人员需注意关闭铅制舱门后才能打开射线"
+        },
+        {
+         "value": "D",
+         "label": "操作人员需注意关闭铅制舱门后才能接通电源"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "高压灭菌锅在投入使用前，须具有产品检验合格证及使用许可证。(  )，操作时应严格按照安全操作规程操作，认真填写运行记录。高压锅设备由上海市计量局每年检测并发证。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "操作人员须持证上岗"
+        },
+        {
+         "value": "B",
+         "label": "操作人员须经过实验动物科学部培训"
+        },
+        {
+         "value": "C",
+         "label": "操作人员须持有实验动物上岗证"
+        },
+        {
+         "value": "D",
+         "label": "操作人员无须持证上岗"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "高压灭菌锅在使用时，（  ）。如遇灭菌器突然出现质量问题，工作人员应先停止使用，报告后勤负责人，待问题解决后方可使用。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "严禁超温超时运行；严禁带压操作；严禁快速升温升压"
+        },
+        {
+         "value": "B",
+         "label": "严禁超温超压运行；严禁带压操作；严禁快速升温升压"
+        },
+        {
+         "value": "C",
+         "label": "严禁超温超压运行；严禁带压操作；严禁快速降温降压"
+        },
+        {
+         "value": "D",
+         "label": "严禁超温超压超时运行；严禁带压操作；严禁快速升温升压"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 4
+      },
+      {
+       "questionKey": "Q6",
+       "label": "动物实验后的锋利废弃物应统一扔入利器盒中，扔满（  ）统一处理。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "2/3容量的利器盒应关闭一次性盒盖，由兽医"
+        },
+        {
+         "value": "B",
+         "label": "2/3容量的利器盒应关闭一次性盒盖，由实验人员"
+        },
+        {
+         "value": "C",
+         "label": "2/3容量的利器盒应关闭一次性盒盖，由饲养人员"
+        },
+        {
+         "value": "D",
+         "label": "2/3容量的利器盒应关闭一次性盒盖，由处理医疗废弃物的人员"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 5
+      },
+      {
+       "questionKey": "Q7",
+       "label": "根据国家标准在实验室中进行合理的噪音控制，避免（  ）等对工作人员和动物产生不良影响。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "动物的呼吸声和仪器的运行声音"
+        },
+        {
+         "value": "B",
+         "label": "动物吃饲料的声音和仪器的运行声音"
+        },
+        {
+         "value": "C",
+         "label": "动物的尖叫和仪器的运行声音"
+        },
+        {
+         "value": "D",
+         "label": "实验人员的讲话声和仪器的运行声音"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 6
+      },
+      {
+       "questionKey": "Q8",
+       "label": "在犬和猪等大型动物实验区域的工作人员，应佩戴（  ），防止噪音的侵袭。（2019年起实验动物科学部已经不再饲养实验猪）",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "相应的耳塞或耳罩"
+        },
+        {
+         "value": "B",
+         "label": "相应的隔音耳塞"
+        },
+        {
+         "value": "C",
+         "label": "相应的隔音耳罩"
+        },
+        {
+         "value": "D",
+         "label": "相应的隔音耳塞或耳罩"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 12.5,
+        "level": 0
+       },
+       "sortOrder": 7
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-08",
+   "title": "动物设施个人防护穿戴规章制度",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "个人防护设备属于（ ），即操作人员和操作对象的隔离，既保护人也保护操作对象。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "一级屏障"
+        },
+        {
+         "value": "B",
+         "label": "三级屏障"
+        },
+        {
+         "value": "C",
+         "label": "四级屏障"
+        },
+        {
+         "value": "D",
+         "label": "二级屏障"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "正确穿戴防护设备是进入实验动物设施的必备要求，常用的个体防护设备有很多，个人防护设备的选择应根据不同动物种类及动物设施安全等级划分，下列选项中，（  ）包括了不必要的个体防护设备。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "口罩、一次性隔离服、手套"
+        },
+        {
+         "value": "B",
+         "label": "听力保护器、帽子、隔离服"
+        },
+        {
+         "value": "C",
+         "label": "眼镜、隔离服、安全帽"
+        },
+        {
+         "value": "D",
+         "label": "手套、脚套、胶鞋"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "实验动物科学部工作人员，在进入设施前必须换上工作服，（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "不得烫发和化妆等"
+        },
+        {
+         "value": "B",
+         "label": "脱下佩戴的手环和项链等物品"
+        },
+        {
+         "value": "C",
+         "label": "必须刷牙和洗澡"
+        },
+        {
+         "value": "D",
+         "label": "身上不得穿着羊毛衫等物品"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "所有（ ）都张贴有进入该设施的穿戴要求照片，所有进入该设施的人员需按照照片要求穿戴完整后方可入内。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "风淋室入口"
+        },
+        {
+         "value": "B",
+         "label": "更衣室入口"
+        },
+        {
+         "value": "C",
+         "label": "内准备室入口"
+        },
+        {
+         "value": "D",
+         "label": "动物设施入口"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "进入啮齿类动物屏障饲养区，必须保证头发和皮肤都不能露出隔离服外，但下列选项中（  ）是错误的描述。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "进入外准备间的人员必须穿戴鞋套及防滑胶鞋"
+        },
+        {
+         "value": "B",
+         "label": "进入外准备间的人员必须穿戴工作服和一次性医用手套"
+        },
+        {
+         "value": "C",
+         "label": "进入外准备间的人员如需操作高压灭菌锅，还需佩戴隔热手套"
+        },
+        {
+         "value": "D",
+         "label": "所有人员进入屏障饲养区域，均需穿戴手术口罩、隔离服和隔热手套"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 4
+      },
+      {
+       "questionKey": "Q6",
+       "label": "进入啮齿类动物隔离包屏障饲养区的人员，根据工作区域和特点必须做到以下几点，但（  ）除外。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "啮齿类动物隔离检疫室：人员进入需穿着手术口罩、手套、白大褂或一次性隔离服进入房间。"
+        },
+        {
+         "value": "B",
+         "label": "动物繁殖用保种隔离包：人员进入前穿着手术口罩、手套、白大褂或一次性隔离服进入动物饲养房间。"
+        },
+        {
+         "value": "C",
+         "label": "啮齿类动物隔离检疫室：人员进入需穿着手术口罩、手套、一次性隔离服和穿戴鞋套进入房间。"
+        },
+        {
+         "value": "D",
+         "label": "动物繁殖用保种隔离包：人员进入前穿着手术口罩、手套、白大褂或一次性隔离服进入动物饲养房间，无需穿戴鞋套。"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 5
+      },
+      {
+       "questionKey": "Q7",
+       "label": "屏障设施传递窗消毒喷雾时，工作人员必须（  ）方可进行操作",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "先佩戴手术口罩及手套后"
+        },
+        {
+         "value": "B",
+         "label": "先佩戴全面罩式防毒呼吸器，戴手套后"
+        },
+        {
+         "value": "C",
+         "label": "先佩戴全面罩式防毒呼吸器，穿戴手套和鞋套后"
+        },
+        {
+         "value": "D",
+         "label": "先佩戴全面罩式防毒呼吸器，戴手套和穿着一次性隔离服后"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 10,
+        "level": 1
+       },
+       "sortOrder": 6
+      },
+      {
+       "questionKey": "Q8",
+       "label": "下列选项中，除（  ）外，都是实验动物设施内清洗间的正确工作要求",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "脏区：需穿戴工作服，佩戴手套、N95防护口罩，胶鞋和鞋套"
+        },
+        {
+         "value": "B",
+         "label": "洁净区：需穿戴工作服，佩戴手套、手术口罩，胶鞋和鞋套"
+        },
+        {
+         "value": "C",
+         "label": "进入清洗间任何区域都需要佩戴耳塞和耳罩"
+        },
+        {
+         "value": "D",
+         "label": "进入清洗间任何区域都不需要佩戴耳塞和耳罩"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 7
+      },
+      {
+       "questionKey": "Q9",
+       "label": "下列选项中，除（  ）外，都是实验动物设施内消毒剂配制的标准工作要求。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "在配制2L及以下用量消毒剂（不包括含氯泡腾片）时，应佩戴N95防护口罩"
+        },
+        {
+         "value": "B",
+         "label": "在配制2L以上用量消毒剂及含氯泡腾片消毒剂时，应佩戴3M呼吸过滤防毒面具"
+        },
+        {
+         "value": "C",
+         "label": "在配制2L及以下用量消毒剂（不包括含氯泡腾片）时，应佩戴医用防护口罩"
+        },
+        {
+         "value": "D",
+         "label": "佩戴N95防护口罩及3M呼吸过滤防毒面具时，需按照“DALA-MP-HR.42呼吸防护用品的适应性测试（version2.0）”，进行适应性测试及医学评估"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 8
+      },
+      {
+       "questionKey": "Q10",
+       "label": "个人防护设备是指工作人员在工作中，为了防护(    )等外界因素伤害人体，而穿戴和配备对的各种器材和用品。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "温度、氨气、病原体等外界因素伤害人体"
+        },
+        {
+         "value": "B",
+         "label": "细菌、病毒、寄生虫等外界因素伤害人体"
+        },
+        {
+         "value": "C",
+         "label": "物理、化学、生物等外界因素伤害人体"
+        },
+        {
+         "value": "D",
+         "label": "噪声、药品、有害气体等外界因素伤害人体"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 9
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-09",
+   "title": "动物疼痛及痛苦评估标准",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "在科学研究中，对实验动物的使用应避免对动物造成疼痛或者不适，或应将动物的疼痛最小化。下列选项中，（  ）是错误的选项。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "研究者应考虑在人身上可以造成疼痛和应激的操作同样可能在动物身上造成疼痛和应激"
+        },
+        {
+         "value": "B",
+         "label": "操作过程中如果造成动物非暂时的或非轻微的疼痛，应该使用适当的镇静剂、镇痛剂或者麻醉剂"
+        },
+        {
+         "value": "C",
+         "label": "不可以对没有使用麻醉剂而仅仅采用肌肉松弛药的动物进行外科手术"
+        },
+        {
+         "value": "D",
+         "label": "可以对没有使用麻醉剂而仅仅采用肌肉松弛药的动物进行外科手术"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "可能造成不适、应激和疼痛的操作应该配以合适的镇静药、镇痛剂或者麻醉剂，如有在动物产生疼痛时需免除以上药物的情况应要得到（  ）的认可，并只限于必要的时间内进行。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "实验人员"
+        },
+        {
+         "value": "B",
+         "label": "IACUC"
+        },
+        {
+         "value": "C",
+         "label": "课题组长"
+        },
+        {
+         "value": "D",
+         "label": "兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 6.25,
+        "level": 1
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "科研机构的（  ）应制定明确的动物疼痛评估标准以便于科研人员界定疼痛的等级，应用合适的药物实施，止痛和镇定操作。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "IACUC"
+        },
+        {
+         "value": "B",
+         "label": "实验人员"
+        },
+        {
+         "value": "C",
+         "label": "行政领导"
+        },
+        {
+         "value": "D",
+         "label": "兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "上海交通大学医学院根据国家科委《实验动物管理条例》，美国《实验动物饲养管理及使用指南（Guide）》以及美国农业部对实验动物疼痛分级标准将实验动物所承受的疼痛（  ）。课题组在提交“实验动物研究及使用计划”时应根据以上目录所规范的内容对所使用的动物进行分类并严格计算不同目录所包含动物的数量。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "分为A、B、C、D、E五个目录"
+        },
+        {
+         "value": "B",
+         "label": "分为B、C、D三个目录"
+        },
+        {
+         "value": "C",
+         "label": "分为B、C、D、E四个目录"
+        },
+        {
+         "value": "D",
+         "label": "分为A、B、C、D四个目录"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "课题组应根据（  ）的建议并参考疼痛分级目录对所使用的实验动物进行分类，并注明不同疼痛目录中所需要使用的动物数量。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "IACUC"
+        },
+        {
+         "value": "B",
+         "label": "实验人员"
+        },
+        {
+         "value": "C",
+         "label": "课题组长"
+        },
+        {
+         "value": "D",
+         "label": "兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 4
+      },
+      {
+       "questionKey": "Q6",
+       "label": "当同一只动物适用于两种或两种以上分类目录时，应将该动物分入高等级疼痛目录，也可将其在不同目录中填写，（  ），不得将该种动物只分入低等级疼痛目录。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "无需在所提交的“实验动物研究及使用计划”动物数量计算中进行说明"
+        },
+        {
+         "value": "B",
+         "label": "但需在所提交的“实验动物研究及使用计划”动物体重计算中进行说明"
+        },
+        {
+         "value": "C",
+         "label": "但需在所提交的“实验动物研究及使用计划”动物分组计算中进行说明"
+        },
+        {
+         "value": "D",
+         "label": "但需在所提交的“实验动物研究及使用计划”动物数量计算中进行说明"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 5
+      },
+      {
+       "questionKey": "Q7",
+       "label": "针对基因修饰动物在疼痛分类时应遵循下列规则，但（  ）是错误的选项。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "出现表型变化的基因修饰动物应选择将其分为C类"
+        },
+        {
+         "value": "B",
+         "label": "如果动物在表型出现变化的同时，出现了疼痛反应，但是通过IACUC批准的方法减轻了相应的痛苦应将其分为D类"
+        },
+        {
+         "value": "C",
+         "label": "如果动物在表型出现变化的同时，出现了疼痛反应，但由于采用止痛措施会影响动物实验结果，因此没有采取任何措施减轻相应的痛苦，应将其分为E类"
+        },
+        {
+         "value": "D",
+         "label": "出现表型变化的基因修饰动物应选择将其分为B类"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 6
+      },
+      {
+       "questionKey": "Q8",
+       "label": "对基因修饰动物疼痛等级分类的修改应由（  ）判断，在课题组做出合理解释后方可修改动物分类。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "IACUC"
+        },
+        {
+         "value": "B",
+         "label": "实验人员"
+        },
+        {
+         "value": "C",
+         "label": "课题组长"
+        },
+        {
+         "value": "D",
+         "label": "实验动物设施兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 7
+      },
+      {
+       "questionKey": "Q9",
+       "label": "如果动物未经任何操作，且在实验结束后采取医学院IACUC公布的可接受的方法安乐死，则动物应归类为（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "目录B或者更高级目录"
+        },
+        {
+         "value": "B",
+         "label": "目录C或者更高级目录"
+        },
+        {
+         "value": "C",
+         "label": "目录D或者更高级目录"
+        },
+        {
+         "value": "D",
+         "label": "目录E或者更高级目录"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 8
+      },
+      {
+       "questionKey": "Q10",
+       "label": "如果动物麻醉后采集的器官或组织可以导致动物死亡，则应通过判断操作程序是否是一个快速的导致动物失去知觉并伴随着器官或组织的采集过程。如果是快速的新鲜器官或组织的采集应归为安乐死一类则为目录C范围；如果操作过程较长则应归类为目录D，即一个非存活手术过程。此种情况下归为（  ）的实验应在“实验动物研究及使用计划“中描述不采用安乐死后采集足够致命的器官或组织的科学依据。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "目录D"
+        },
+        {
+         "value": "B",
+         "label": "目录B"
+        },
+        {
+         "value": "C",
+         "label": "目录C"
+        },
+        {
+         "value": "D",
+         "label": "目录E"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 9
+      },
+      {
+       "questionKey": "Q11",
+       "label": "对动物麻醉后（  ）同样适用上面的以操作时长来判别归属类别的原则。如果长时间的全身灌注操作则归为目录D，如果仅对动物麻醉后血管内一段时间的注射则归为安乐死，即目录C范围。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "采用化学物质灌注并最终安乐死的过程"
+        },
+        {
+         "value": "B",
+         "label": "采集器官并最终安乐死的过程"
+        },
+        {
+         "value": "C",
+         "label": "采用化学物质灌注并采集器官组织致死的过程"
+        },
+        {
+         "value": "D",
+         "label": "采用手术方法并最终安乐死的过程"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 10
+      },
+      {
+       "questionKey": "Q12",
+       "label": "上海交通大学医学院（  ）将对所有涉及动物疼痛的科研项目进行审查和监督，并向科研人员提供必要的止痛和麻醉程序的咨询。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "饲养负责人"
+        },
+        {
+         "value": "B",
+         "label": "动物实验设施负责人"
+        },
+        {
+         "value": "C",
+         "label": "动科部办公室"
+        },
+        {
+         "value": "D",
+         "label": "IACUC及实验动物设施兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 11
+      },
+      {
+       "questionKey": "Q13",
+       "label": "在涉及C类以及D类动物科研项目中，课题组在提交“实验动物研究及使用计划“时，应对存活手术或操作过程进行详细的描述，经过（  ）批准后方可实施相关操作。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "IACUC"
+        },
+        {
+         "value": "B",
+         "label": "动物实验设施负责人"
+        },
+        {
+         "value": "C",
+         "label": "动科部办公室"
+        },
+        {
+         "value": "D",
+         "label": "实验动物设施兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 12
+      },
+      {
+       "questionKey": "Q14",
+       "label": "在IACUC对实验动物项目进行（  ）时，应统计不同目录的所使用的动物数量，在3R原则的指导下尽量减少动物的使用量，同时减少目录C或更高目所包含动物数量。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "年度审查"
+        },
+        {
+         "value": "B",
+         "label": "季度审查"
+        },
+        {
+         "value": "C",
+         "label": "月度审查"
+        },
+        {
+         "value": "D",
+         "label": "半年度审查"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 13
+      },
+      {
+       "questionKey": "Q15",
+       "label": "如果动物麻醉后手术没采集足够致命的器官或组织（例如：肝脏或皮肤活检），然后使动物从麻醉状态恢复，则动物应归类为（ ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "目录B"
+        },
+        {
+         "value": "B",
+         "label": "目录C"
+        },
+        {
+         "value": "C",
+         "label": "目录D"
+        },
+        {
+         "value": "D",
+         "label": "目录E"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 14
+      },
+      {
+       "questionKey": "Q16",
+       "label": "动物在实验过程中被实施任何操作都应该（），例如剪尾或者实施安乐死等操作。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "至少列入目录B或者更高"
+        },
+        {
+         "value": "B",
+         "label": "至少列入目录C或者更高"
+        },
+        {
+         "value": "C",
+         "label": "至少列入目录D或者更高"
+        },
+        {
+         "value": "D",
+         "label": "至少列入目录E或者更高"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 15
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-10",
+   "title": "对动物使用，伦理福利所关心及发现不遵守行为的上报政策",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "上海交通大学医学院实验动物科学部工作人员及在医学院动物设施从事动\n物实验的全体人员，有义务及时（   ）汇报动物出现的疾病或异常现象。\n",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "向IACUC和实验动物科学部兽医"
+        },
+        {
+         "value": "B",
+         "label": "向IACUC和实验动物科学部领导"
+        },
+        {
+         "value": "C",
+         "label": "向医学院领导和IACUC"
+        },
+        {
+         "value": "D",
+         "label": "向实验动物科学部办公室和兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 14.3,
+        "level": 0
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "动物饲养人员及工作人员如发现任何违反动物福利，医学院相关规定及国家法律法规的行为和现象，应及时做出相应的反应并向(    )报告",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "IACUC和实验动物科学部办公室"
+        },
+        {
+         "value": "B",
+         "label": "各区域负责人和实验动物科学部办公室"
+        },
+        {
+         "value": "C",
+         "label": "各区域负责人和实验动物科学部兽医"
+        },
+        {
+         "value": "D",
+         "label": "实验动物科学部主任和实验动物科学部兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 14.3,
+        "level": 0
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "作为上海交通大学医学院的教职员工有责任和义务对实验动物实施关心，并严格遵守动物福利规定接触实验动物。下面选项中，除（  ）外都是正确的。\n",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "课题组实验人员和实验动物科学部饲养人员,需按照该规章制度所提供的方式上报相关问题"
+        },
+        {
+         "value": "B",
+         "label": "IACUC及其成员接到相关上报情况后应及时做出反应，并沟通实验动物科学部工作人员进行处理"
+        },
+        {
+         "value": "C",
+         "label": "兽医对上报的动物异常状况以及不符合动物福利的问题及时做出处理，减少动物所承受的痛苦以及动物福利的充分实施"
+        },
+        {
+         "value": "D",
+         "label": "部主任对上报的动物异常状况以及不符合动物福利的问题及时做出处理，减少动物所承受的痛苦以及动物福利的充分实施"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 14.3,
+        "level": 0
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "作为医学院教职员工、学生、实验人员如发现任何动物福利和法律法规所关心问题应首先通过电话或邮件向(  )报告。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "医学院办公室"
+        },
+        {
+         "value": "B",
+         "label": "基础医学院办公室"
+        },
+        {
+         "value": "C",
+         "label": "实验动物科学部办公室"
+        },
+        {
+         "value": "D",
+         "label": "IACUC"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 14.3,
+        "level": 0
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "上海交通大学医学院杜绝任何动物保护组织的示威行为，任何个人或组织对实验动物个体，实验动物设施以及相关工作人员的不正当行为都将视为违反中华人民共和国《社会治安管理条例》第十九条第一款，并上报公安机关做出相应处罚。医学院教职员工、学生、实验人员如受到上述个人或组织的影响可通过电话或邮件上报（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "学校治安科和实验动物科学部办公室"
+        },
+        {
+         "value": "B",
+         "label": "实验动物科学部主任或办公室"
+        },
+        {
+         "value": "C",
+         "label": "医学院办公室和实验动物科学部办公室"
+        },
+        {
+         "value": "D",
+         "label": "基础医学院办公室和实验动物科学部办公室"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 14.3,
+        "level": 0
+       },
+       "sortOrder": 4
+      },
+      {
+       "questionKey": "Q6",
+       "label": "意见箱的存放位置在实验动物科学部一楼B区楼梯拐角处，下列选项中除（ ）之外，其他选项都是正确的",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "此处无摄像头"
+        },
+        {
+         "value": "B",
+         "label": "没有大的人流"
+        },
+        {
+         "value": "C",
+         "label": "确保举报人的隐私受保护"
+        },
+        {
+         "value": "D",
+         "label": "设置隐蔽，不易找到"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 14.3,
+        "level": 0
+       },
+       "sortOrder": 5
+      },
+      {
+       "questionKey": "Q7",
+       "label": "意见箱开启频率为每月一次，由IACUC主席保管钥匙，开启人为（  ）进行开启，开启后将举报建议汇总至IACUC主席处，并在最近一次IACUC会议室进行讨论处理。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "IACUC主席指定实验动物科学部人员"
+        },
+        {
+         "value": "B",
+         "label": "IACUC主席指定非实验动物科学部人员"
+        },
+        {
+         "value": "C",
+         "label": "IACUC主席本人"
+        },
+        {
+         "value": "D",
+         "label": "IACUC主席指定实验动物科学部主任"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 14.3,
+        "level": 0
+       },
+       "sortOrder": 6
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-11",
+   "title": "实验动物镇静、止痛与麻醉",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "很大一部分实验动物手术或操作需要使用动物镇静、止痛（包括术前止痛）和麻醉手段。然而，由于动物麻醉与人类麻醉的差异性，导致实验人员误用麻醉药物或剂量，影响到（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "实验过程以及动物福利"
+        },
+        {
+         "value": "B",
+         "label": "实验方法以及动物福利"
+        },
+        {
+         "value": "C",
+         "label": "实验结果以及动物福利"
+        },
+        {
+         "value": "D",
+         "label": "实验结果以及动物健康"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "制定本政策来规范上海交通大学医学院（  ）镇静、止痛和麻醉使用指导方针。本政策借鉴了BSAVA《小动物药物手册》第七版中推荐的药物。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "实验动物科学部范围内"
+        },
+        {
+         "value": "B",
+         "label": "基础医学院范围内"
+        },
+        {
+         "value": "C",
+         "label": "实验动物科学部屏障设施范围内"
+        },
+        {
+         "value": "D",
+         "label": "实验动物科学部实验室范围内"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "任何镇静、止痛和麻醉药物的使用都应该包括在课题组提交的“实验动物研究及使用计划”中，并由（  ）仔细审核。并且在操作时根据动物情况、手术情况等合理使用麻醉手段。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "课题组长和IACUC"
+        },
+        {
+         "value": "B",
+         "label": "兽医和IACUC"
+        },
+        {
+         "value": "C",
+         "label": "IACUC"
+        },
+        {
+         "value": "D",
+         "label": "兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "上海交通大学医学院实验动物科学部使用的药品保险柜为“宝辰”牌管制药品保险柜，需要使用（  ）才能够打开。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "两把钥匙"
+        },
+        {
+         "value": "B",
+         "label": "一组密码"
+        },
+        {
+         "value": "C",
+         "label": "两把钥匙及密码双重保险"
+        },
+        {
+         "value": "D",
+         "label": "钥匙及密码双重保险"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "实验动物麻醉前，实验人员应认真检查所用麻醉/止痛剂的（  ），过期的麻醉药物做无害化处理。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "有效使用日期"
+        },
+        {
+         "value": "B",
+         "label": "出厂批号"
+        },
+        {
+         "value": "C",
+         "label": "使用方式"
+        },
+        {
+         "value": "D",
+         "label": "有效剂量"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 4
+      },
+      {
+       "questionKey": "Q6",
+       "label": "整个麻醉程序应填写以下几份记录文件：（  ），麻醉监护单（包括使用的麻醉剂、止痛剂或镇静剂名称、剂量、给药途径、时间和负责人签字）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "实验动物科学部研究及使用计划编号"
+        },
+        {
+         "value": "B",
+         "label": "IACUC实验动物研究及使用计划编号"
+        },
+        {
+         "value": "C",
+         "label": "医学院实验动物研究及使用计划编号"
+        },
+        {
+         "value": "D",
+         "label": "基础医学院实验动物研究及使用计划编号"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 5
+      },
+      {
+       "questionKey": "Q7",
+       "label": "实施麻醉/镇定前应具备完整的麻醉计划。药物的选择和用量应根据动物物种、年龄、品种和体型；疼痛的程度；对特定器官系统的作用；手术的持续时间和性质；药物对于（  ）等因素综合考虑。麻醉计划还应该包括可能会用到的拮抗剂和急救药物的名称和用量。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "实验人员的安全性"
+        },
+        {
+         "value": "B",
+         "label": "模型动物的安全性"
+        },
+        {
+         "value": "C",
+         "label": "模型动物的有效性"
+        },
+        {
+         "value": "D",
+         "label": "使用方便"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 6
+      },
+      {
+       "questionKey": "Q8",
+       "label": "对于所有的脊椎动物，推荐使用吸入麻醉（  ）方法，在麻醉前15-30分钟应注射诱导麻醉/镇痛药物（术前止痛剂）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "美托咪定+咪达唑仑"
+        },
+        {
+         "value": "B",
+         "label": "氯胺酮"
+        },
+        {
+         "value": "C",
+         "label": "异氟烷"
+        },
+        {
+         "value": "D",
+         "label": "咪达唑仑+氯胺酮"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 7
+      },
+      {
+       "questionKey": "Q9",
+       "label": "动物手术后恢复正常活动时，（    ），随后几天必须定时对手术并发症进行观察，以及对疼痛反应进行评分。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "可以与其它动物放回同一笼或一个动物房间"
+        },
+        {
+         "value": "B",
+         "label": "不可以与其它动物放回同一笼或一个动物房间"
+        },
+        {
+         "value": "C",
+         "label": "可以与不同性别动物放回同一笼或一个动物房间"
+        },
+        {
+         "value": "D",
+         "label": "不可以与其他种类动物放回同一笼或一个动物房间"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 8
+      },
+      {
+       "questionKey": "Q10",
+       "label": "恢复期动物可与正处于恢复期的同一品系动物放在一个笼盒中，也可单独放在一个饲养笼内，但（  ），防止恢复期动物受伤。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "可与未麻醉的动物放在一起"
+        },
+        {
+         "value": "B",
+         "label": "不可与处于麻醉状态的动物放在一起"
+        },
+        {
+         "value": "C",
+         "label": "不要与未麻醉的动物放在一起"
+        },
+        {
+         "value": "D",
+         "label": "可与处于麻醉状态的动物放在一起"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 10,
+        "level": 0
+       },
+       "sortOrder": 9
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "code": "seed-12",
+   "title": "实验动物安乐死",
+   "status": "PUBLISHED",
+   "qualifyScore": 80,
+   "totalTime": 60,
+   "sections": [
+    {
+     "code": "S1",
+     "label": "单选题",
+     "sortOrder": 0,
+     "questions": [
+      {
+       "questionKey": "Q1",
+       "label": "安乐死是动物承受不可缓解的病痛以及非存活手术和样本采集时,对动物实施的一种（  ）的死亡方式，安乐死操作过程通常分为主要方法和辅助性物理致死方法两步骤组成。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "痛苦感最低或无痛苦感"
+        },
+        {
+         "value": "B",
+         "label": "符合伦理或无痛苦感"
+        },
+        {
+         "value": "C",
+         "label": "痛苦感最低或无恐惧感"
+        },
+        {
+         "value": "D",
+         "label": "恐惧感最低或无痛苦感"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 0
+      },
+      {
+       "questionKey": "Q2",
+       "label": "安乐死容器通常采用饲养笼盒或特殊的有机玻璃容器，能够将动物放入并通入二氧化碳，该容器应为（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "封闭器皿以防动物逃逸"
+        },
+        {
+         "value": "B",
+         "label": "透明器皿以便随时观察动物状态"
+        },
+        {
+         "value": "C",
+         "label": "金属器皿以保证牢固耐用"
+        },
+        {
+         "value": "D",
+         "label": "价格便宜的一次性透明器皿"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 1
+      },
+      {
+       "questionKey": "Q3",
+       "label": "课题组长和所有列入“实验动物研究及使用计划”的课题组实验人员，都需（  ）。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "遵守实验动物福利，并对动物实施“人道终点”"
+        },
+        {
+         "value": "B",
+         "label": "遵守《实验动物管理条例》，并对动物实施“人道终点”"
+        },
+        {
+         "value": "C",
+         "label": "遵守实验动物科学部的规章制度，并对动物实施“人道终点”"
+        },
+        {
+         "value": "D",
+         "label": "遵守《实验动物保护法》，并对动物实施“人道终点”"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 2
+      },
+      {
+       "questionKey": "Q4",
+       "label": "对动物实施“人道终点”时，安乐死的操作方法必须列入“实验动物研究及使用计划”或采用（  ）的其他方法。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "经过兽医批准"
+        },
+        {
+         "value": "B",
+         "label": "经过IACUC批准"
+        },
+        {
+         "value": "C",
+         "label": "经过实验动物科学部批准"
+        },
+        {
+         "value": "D",
+         "label": "经过课题组长批准"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 3
+      },
+      {
+       "questionKey": "Q5",
+       "label": "在进行安乐死过程中，大鼠和小鼠不能同时放入同一安乐死容器中进行操作，因为（  ），无法达到安乐死的目的",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "不同种动物间会造成激烈打斗"
+        },
+        {
+         "value": "B",
+         "label": "不同种动物间会影响安乐死时间"
+        },
+        {
+         "value": "C",
+         "label": "不同种动物间会造成应激反应"
+        },
+        {
+         "value": "D",
+         "label": "不同种动物间会影响安乐死操作"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 4
+      },
+      {
+       "questionKey": "Q6",
+       "label": "动物实施安乐死后，需使用辅助性物理致死方法来确保动物不会从安乐死状态中恢复，下列方法中（  ）不作为辅助性物理致死方法。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "打开动物双侧胸部"
+        },
+        {
+         "value": "B",
+         "label": "颈椎脱臼法"
+        },
+        {
+         "value": "C",
+         "label": "头颈部剪刀断头"
+        },
+        {
+         "value": "D",
+         "label": "股动脉放血"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 5
+      },
+      {
+       "questionKey": "Q7",
+       "label": "本动物实验设施内，除（  ）以外都是小鼠和大鼠的安乐死方法。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "二氧化碳（CO2）窒息"
+        },
+        {
+         "value": "B",
+         "label": "麻醉状态下颈椎脱臼（仅限于500g以下动物）"
+        },
+        {
+         "value": "C",
+         "label": "麻醉状态下断头"
+        },
+        {
+         "value": "D",
+         "label": "麻醉状态下放血"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "B",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 6
+      },
+      {
+       "questionKey": "Q8",
+       "label": "本动物实验设施内，课题组实验人员和实验动物科学部饲养人员，必须遵守除（  ）之外的各项内容。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "确保采用正确的方法对动物实施安乐死"
+        },
+        {
+         "value": "B",
+         "label": "所采用的方法必须是课题组提交的“实验动物研究及使用计划”中所描述的"
+        },
+        {
+         "value": "C",
+         "label": "如需对安乐死方法进行修改，需经过IACUC批准后方可实施"
+        },
+        {
+         "value": "D",
+         "label": "进行安乐死时必须由兽医在场"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 7
+      },
+      {
+       "questionKey": "Q9",
+       "label": "下列选项中，只有（  ）是错误的选项。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "安乐死操作过程通常分为主要方法和辅助性物理致死方法两步骤组成"
+        },
+        {
+         "value": "B",
+         "label": "安乐死容器通常采用动物饲养笼盒或特殊的有机玻璃容器"
+        },
+        {
+         "value": "C",
+         "label": "安乐死容器应采用透明牢固的玻璃缸"
+        },
+        {
+         "value": "D",
+         "label": "安乐死容器应为透明器皿以便随时观察动物状态"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 8
+      },
+      {
+       "questionKey": "Q10",
+       "label": "下列选项中，只有（  ）是错误的选项。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "小于15日龄的新生大、小鼠不适用于二氧化碳安乐死方法"
+        },
+        {
+         "value": "B",
+         "label": "二氧化碳安乐死方法必须使用专业气体公司提供的钢瓶灌装的二氧化碳气体（由专业的气体公司提供）"
+        },
+        {
+         "value": "C",
+         "label": "二氧化碳安乐死方法推荐使用饲养笼盒作为二氧化碳安乐死容器"
+        },
+        {
+         "value": "D",
+         "label": "干冰、灭火器及其他化学方法制备的二氧化碳气体亦可应用到大、小鼠的安乐死 "
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 9
+      },
+      {
+       "questionKey": "Q11",
+       "label": "下列选项中，只有（  ）是错误的选项。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "可接受的安乐死方法：是指那些容易实现并且完全做到“人道终点“的安乐死方法"
+        },
+        {
+         "value": "B",
+         "label": "不可接受的安乐死方法：那些对动物伤害大，并且无法完成“人道终点“的方法"
+        },
+        {
+         "value": "C",
+         "label": "条件性接受的安乐死方法，必须经动科部批准后方可实施"
+        },
+        {
+         "value": "D",
+         "label": "条件性接受的安乐死方法，必须经IACUC批准后方可实施"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 10
+      },
+      {
+       "questionKey": "Q12",
+       "label": "下列选项中，只有（  ）是错误的选项。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "其他动物的新生动物及胎儿的安乐死政策请咨询动物饲养主管"
+        },
+        {
+         "value": "B",
+         "label": "胎儿及断奶前的新生动物都应根据不同发育阶段的特殊生理特性实施“人道终点”安乐死程序"
+        },
+        {
+         "value": "C",
+         "label": "新生动物及胎儿的安乐死政策只适用于大鼠和小鼠"
+        },
+        {
+         "value": "D",
+         "label": "其他动物的新生动物及胎儿的安乐死政策请咨询兽医"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "A",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 11
+      },
+      {
+       "questionKey": "Q13",
+       "label": "下列选项中，只有（  ）是错误的选项。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "子宫内怀孕14天以内胎儿的安乐死,可以采用安乐死母鼠的方法从而导致子宫内胎儿的死亡"
+        },
+        {
+         "value": "B",
+         "label": "怀孕15天或以上至出生前的胎儿安乐死,对母鼠采用吸入式麻醉或二氧化碳窒息的方法安乐死后，再取出胎儿对其使用断头操作才能确保其死亡"
+        },
+        {
+         "value": "C",
+         "label": "新生大、小鼠至发育到15日龄的安乐死,动科部推荐对这个阶段的动物采用断头的方式实施"
+        },
+        {
+         "value": "D",
+         "label": "大于15日龄的大、小鼠适用于采用颈椎脱臼的安乐死方法"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 12
+      },
+      {
+       "questionKey": "Q14",
+       "label": "下列选项中，除（  ）外都是实验兔安乐死方法的正确选项。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "戊巴比妥类药物注射是对实验兔实施安乐死较为快速和可靠的方法"
+        },
+        {
+         "value": "B",
+         "label": "兔安乐死过程中，必要时使用镇静和麻醉的方法来辅助安乐死程序"
+        },
+        {
+         "value": "C",
+         "label": "经静脉注射空气是实验兔实施安乐死的常用方法"
+        },
+        {
+         "value": "D",
+         "label": "兔实施安乐死，100mg/kg体重戊巴比妥钠静脉注射（IV）为首选给药途径"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 13
+      },
+      {
+       "questionKey": "Q15",
+       "label": "动物实施安乐死后，需使用第二种安乐死的方法来确保动物不会从安乐死状态中恢复。通常第二种安乐死方法为物理性的操作方法，并主要通过对动物组织或器官的破坏来实现。（   ）方法不作为辅助性物理致死方法。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "双侧胸部打开"
+        },
+        {
+         "value": "B",
+         "label": "放血"
+        },
+        {
+         "value": "C",
+         "label": "颈椎脱臼"
+        },
+        {
+         "value": "D",
+         "label": "断头"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "C",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 14
+      },
+      {
+       "questionKey": "Q16",
+       "label": "下列选项中，只有（）是错误的选项。",
+       "type": "choice",
+       "required": true,
+       "options": [
+        {
+         "value": "A",
+         "label": "需使用第二种安乐死方法来确保动物不会从安乐死状态中恢复"
+        },
+        {
+         "value": "B",
+         "label": "实施安乐死的操作人员必须经过相关的培训，认证合格后方可进行操作"
+        },
+        {
+         "value": "C",
+         "label": "不同种动物不可同时实施安乐死"
+        },
+        {
+         "value": "D",
+         "label": "不同种动物可以同时实施安乐死"
+        }
+       ],
+       "config": {
+        "choiceType": "single",
+        "answer": "D",
+        "score": 6.25,
+        "level": 0
+       },
+       "sortOrder": 15
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
