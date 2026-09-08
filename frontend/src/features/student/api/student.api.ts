@@ -730,3 +730,147 @@ export async function fetchStudentActivity(): Promise<StudentActivityResponse> {
   return res.data.data!;
 }
 
+// ======================== 培训答题 / 报名 ========================
+
+export interface StudentPaperSummary {
+  id: number;
+  code: string;
+  title: string;
+  qualifyScore?: number;
+  totalTime?: number;
+  submitted?: boolean;
+  totalScore?: number | null;
+  qualifyYn?: number | null;
+  submittedAt?: string;
+}
+
+export interface StudentPaperField {
+  questionKey: string;
+  label: string;
+  type: string;
+  required?: boolean;
+  options?: unknown;
+  config?: Record<string, unknown>;
+  sortOrder?: number;
+}
+
+export interface StudentPaperSection {
+  code: string;
+  label: string;
+  fields: StudentPaperField[];
+}
+
+export interface StudentPaperDetail {
+  id: number;
+  code: string;
+  title: string;
+  qualifyScore?: number;
+  totalTime?: number;
+  sections: StudentPaperSection[];
+  myAnswers?: Record<string, unknown> | null;
+  myQualifyYn?: number | null;
+}
+
+export interface StudentTrainingOccurrence {
+  id: number;
+  startTime?: string;
+  endTime?: string;
+  address?: string;
+  enrolled?: boolean;
+  enrollmentId?: number | null;
+  testYn?: number | null;
+}
+
+export interface StudentTraining {
+  id: number;
+  code?: string;
+  name: string;
+  typeName?: string;
+  ownerIds?: string[];
+  /** 所属人展示名，与 ownerIds 同序 */
+  ownerNames?: string[];
+  eligible?: boolean;
+  examPassed?: boolean;
+  healthOk?: boolean;
+  healthState?: number;
+  papers?: { paperId: number; passed: boolean }[];
+  occurrences: StudentTrainingOccurrence[];
+}
+
+export interface MyEnrollment {
+  id: number;
+  trainingName?: string;
+  startTime?: string;
+  endTime?: string;
+  address?: string;
+  testYn?: number;
+  testFraction?: number;
+  createdAt?: string;
+}
+
+export async function fetchMyExamPapers(): Promise<StudentPaperSummary[]> {
+  const res = await authHttp.get<Result<StudentPaperSummary[]>>("/student/exam/papers");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取试卷失败");
+  return res.data.data ?? [];
+}
+
+export async function fetchMyExamPaper(id: number): Promise<StudentPaperDetail> {
+  const res = await authHttp.get<Result<StudentPaperDetail>>(`/student/exam/papers/${id}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "获取试卷失败");
+  return res.data.data;
+}
+
+export async function submitExamPaper(
+  id: number,
+  answers: Record<string, unknown>,
+): Promise<{ totalScore: number; maxScore: number; qualifyYn: number; perQuestion?: Record<string, { correct: boolean; earned: number }> }> {
+  const res = await authHttp.post<Result<{ totalScore: number; maxScore: number; qualifyYn: number; perQuestion?: Record<string, { correct: boolean; earned: number }> }>>(
+    `/student/exam/papers/${id}/submit`,
+    { answers },
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "提交失败");
+  return res.data.data;
+}
+
+export async function fetchMyTrainings(): Promise<StudentTraining[]> {
+  const res = await authHttp.get<Result<StudentTraining[]>>("/student/training");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取培训失败");
+  return res.data.data ?? [];
+}
+
+export async function enrollOccurrence(occurrenceId: number): Promise<void> {
+  const res = await authHttp.post<Result<void>>(`/student/training/occurrences/${occurrenceId}/enroll`);
+  if (!res.data?.success) throw new Error(res.data?.message || "报名失败");
+}
+
+export async function fetchMyEnrollments(): Promise<MyEnrollment[]> {
+  const res = await authHttp.get<Result<MyEnrollment[]>>("/student/training/my");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取报名失败");
+  return res.data.data ?? [];
+}
+
+export async function cancelMyEnrollment(id: number): Promise<void> {
+  const res = await authHttp.delete<Result<void>>(`/student/training/enrollments/${id}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "取消失败");
+}
+
+export interface MyQualification {
+  personId: string;
+  itemKey: string;
+  state: number;
+  fileRef?: string | null;
+}
+
+export async function fetchMyQualifications(): Promise<MyQualification[]> {
+  const res = await authHttp.get<Result<MyQualification[]>>("/student/training/qualifications");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取资格失败");
+  return res.data.data ?? [];
+}
+
+export async function fetchMyQualificationReport(itemKey: string): Promise<Blob> {
+  const res = await authHttp.get(`/student/training/qualifications/${itemKey}/report`, {
+    responseType: "blob",
+  });
+  return res.data as Blob;
+}
+
