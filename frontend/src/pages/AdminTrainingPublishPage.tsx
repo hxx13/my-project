@@ -55,7 +55,7 @@ function OwnerPicker({
         const res = await fetchUnifiedPersonnel(1, 20, { keyword: kw.trim() });
         if (!cancelled)
           setOptions(
-            (res.list ?? []).map((r) => ({ id: String(r.id), name: r.name, jobNumber: r.jobNumber ?? "" })),
+            (res.list ?? []).map((r) => ({ id: r.staffId ?? "", name: r.name, jobNumber: r.jobNumber ?? "" })),
           );
       } catch {
         if (!cancelled) setOptions([]);
