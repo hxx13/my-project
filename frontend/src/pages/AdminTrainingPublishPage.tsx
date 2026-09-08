@@ -392,7 +392,7 @@ export default function AdminTrainingPublishPage() {
             actions={
               <div className="flex items-center gap-2">
                 <AdminButton type="button" tone="secondary" size="sm" onClick={() => setRecurrenceDialogOpen(true)}>
-                  [配置]
+                  配置
                 </AdminButton>
                 <AdminButton type="button" tone="primary" size="sm" onClick={() => openOccurrenceDialog(null)}>
                   <Plus className="mr-1 h-3.5 w-3.5" />添加场次
