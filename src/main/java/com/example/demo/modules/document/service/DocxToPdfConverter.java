@@ -77,7 +77,11 @@ public class DocxToPdfConverter {
             if (!Files.exists(out)) {
                 throw new IllegalStateException("soffice 未产出 PDF");
             }
-            return Files.readAllBytes(out);
+            byte[] pdf = Files.readAllBytes(out);
+            if (pdf.length < 5 || pdf[0] != '%' || pdf[1] != 'P' || pdf[2] != 'D' || pdf[3] != 'F') {
+                throw new IllegalStateException("转换结果不是有效 PDF");
+            }
+            return pdf;
         } finally {
             deleteQuietly(work);
             deleteQuietly(profile);
@@ -92,15 +96,16 @@ public class DocxToPdfConverter {
                 "--convert-to", "pdf",
                 "--outdir", in.getParent().toString(),
                 in.toString());
+        Path logFile = in.getParent().resolve("soffice.log");
         pb.redirectErrorStream(true);
+        pb.redirectOutput(logFile.toFile());
         Process p = pb.start();
-        String output = new String(p.getInputStream().readAllBytes());
         if (!p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
             p.destroyForcibly();
             throw new IllegalStateException("转换超时（" + timeoutMs + "ms）");
         }
         if (p.exitValue() != 0) {
-            log.warn("[docx2pdf] soffice 输出: {}", output);
+            log.warn("[docx2pdf] soffice 输出: {}", Files.readString(logFile));
             throw new IllegalStateException("soffice 退出码 " + p.exitValue());
         }
     }
@@ -108,13 +113,33 @@ public class DocxToPdfConverter {
     /** 启动自检：探测不到只告警，不阻断启动。 */
     @EventListener(ApplicationReadyEvent.class)
     public void selfCheck() {
+        Path probeLog = null;
         try {
-            Process p = new ProcessBuilder(sofficePath, "--version").redirectErrorStream(true).start();
-            String version = new String(p.getInputStream().readAllBytes()).trim();
-            p.waitFor(20, TimeUnit.SECONDS);
-            log.info("[docx2pdf] LibreOffice 可用: {}", version);
+            probeLog = Files.createTempFile("soffice-probe-", ".log");
+            Process p = new ProcessBuilder(sofficePath, "--version")
+                    .redirectErrorStream(true)
+                    .redirectOutput(probeLog.toFile())
+                    .start();
+            if (!p.waitFor(20, TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                log.warn("[docx2pdf] soffice --version 探测超时");
+                return;
+            }
+            if (p.exitValue() != 0) {
+                log.warn("[docx2pdf] soffice --version 退出码 {}，健康报告 PDF 生成会失败", p.exitValue());
+                return;
+            }
+            log.info("[docx2pdf] LibreOffice 可用: {}", Files.readString(probeLog).trim());
         } catch (Exception e) {
             log.warn("[docx2pdf] 未探测到 LibreOffice（{}）：健康报告 PDF 生成会失败，请安装后设置 app.document.soffice-path", e.getMessage());
+        } finally {
+            if (probeLog != null) {
+                try {
+                    Files.deleteIfExists(probeLog);
+                } catch (IOException ignore) {
+                    // 探测日志清理失败不影响启动
+                }
+            }
         }
     }
 
