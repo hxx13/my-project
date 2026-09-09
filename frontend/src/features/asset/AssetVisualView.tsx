@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
+import { AutoImage } from "@/components/ui/AutoImage";
 import { categoryColor } from "@/features/inventory/constants";
 import LocationTree from "./LocationTree";
 import AssetDetailDrawer from "./AssetDetailDrawer";
@@ -50,10 +51,61 @@ function statusDotColor(status?: string | null) {
   return "#f59e0b";
 }
 
+/** 无照片时的兜底图标：按资产类别给 emoji（库存页同款做法） */
+function assetEmoji(row: AssetRow) {
+  const c = (row.dynamicValues?.[CATEGORY_KEY] ?? "").trim();
+  if (c.includes("科研")) return "🔬";
+  if (c.includes("教学")) return "📚";
+  if (c.includes("行政")) return "🗂️";
+  return "📦";
+}
+
+function firstPhoto(row: AssetRow): string | null {
+  const u = (row.photoUrls ?? []).find((x): x is string => typeof x === "string" && x.trim().length > 0);
+  return u ?? null;
+}
+
+/* ────────────────────────────────────────────────────────────
+   资产卡片（本空间资产：大图 / emoji 兜底）
+   ──────────────────────────────────────────────────────────── */
+function AssetCard({ row, onOpen }: { row: AssetRow; onOpen: (r: AssetRow) => void }) {
+  const photo = firstPhoto(row);
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/asset-id", row.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onClick={() => onOpen(row)}
+      title="拖到左侧地点可移动资产"
+      className="flex cursor-grab flex-col overflow-hidden rounded-twin-lg border border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas)] shadow-sm transition hover:border-[var(--twin-link-deep)] active:cursor-grabbing"
+    >
+      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
+        {photo ? (
+          <AutoImage src={photo} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <span className="text-[40px] leading-none">{assetEmoji(row)}</span>
+        )}
+      </div>
+      <div className="flex min-w-0 flex-col gap-0.5 p-2.5">
+        <span className="truncate text-[13px] font-semibold text-[var(--twin-ink)]" title={row.assetName}>
+          {row.assetName}
+        </span>
+        <span className="truncate text-[11px] text-[var(--twin-mute)]">
+          使用人 {row.dynamicValues?.[USER_KEY] || "—"}
+        </span>
+        <span className="truncate font-mono text-[10px] text-[var(--twin-mute)]">{row.assetCode}</span>
+      </div>
+    </div>
+  );
+}
+
 /* ────────────────────────────────────────────────────────────
    资产芯片（卡片内用 div：外层卡片是 button，不能套 button）
    ──────────────────────────────────────────────────────────── */
 function AssetChip({ row, onOpen }: { row: AssetRow; onOpen: (r: AssetRow) => void }) {
+  const photo = firstPhoto(row);
   return (
     <div
       draggable
@@ -66,14 +118,20 @@ function AssetChip({ row, onOpen }: { row: AssetRow; onOpen: (r: AssetRow) => vo
         onOpen(row);
       }}
       title="拖到左侧地点可移动资产"
-      className="flex min-w-0 cursor-grab flex-col gap-0.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition hover:border-[var(--twin-link-deep)] active:cursor-grabbing"
+      className="flex min-w-0 cursor-grab items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition hover:border-[var(--twin-link-deep)] active:cursor-grabbing"
     >
-      <span className="truncate font-mono text-[10px] text-[var(--twin-mute)]">{row.assetCode}</span>
-      <span className="truncate text-[11px] text-[var(--twin-ink)]" title={row.assetName}>
-        {row.assetName}
-      </span>
-      <span className="truncate text-[9.5px] text-[var(--twin-mute)]">
-        使用人 {row.dynamicValues?.[USER_KEY] || "—"}
+      {photo ? (
+        <span className="inline-block h-4 w-4 shrink-0 overflow-hidden rounded-sm">
+          <AutoImage src={photo} alt="" className="h-full w-full object-cover" />
+        </span>
+      ) : (
+        <span className="shrink-0 text-[15px] leading-none">{assetEmoji(row)}</span>
+      )}
+      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+        <span className="truncate text-[11px] text-[var(--twin-ink)]" title={row.assetName}>
+          {row.assetName}
+        </span>
+        <span className="truncate font-mono text-[9px] text-[var(--twin-mute)]">{row.assetCode}</span>
       </span>
     </div>
   );
@@ -177,6 +235,13 @@ function SpaceGroup({ title, subTotal, rows, childNodes, onSelect, onOpen }: {
                 style={{ background: statusDotColor(r.status) }}
                 title={r.status || "—"}
               />
+              {firstPhoto(r) ? (
+                <span className="inline-block h-4 w-4 shrink-0 overflow-hidden rounded-sm">
+                  <AutoImage src={firstPhoto(r)!} alt="" className="h-full w-full object-cover" />
+                </span>
+              ) : (
+                <span className="shrink-0 text-[14px] leading-none">{assetEmoji(r)}</span>
+              )}
               <span className="flex min-w-0 flex-col leading-tight">
                 <b className="truncate text-[11px] font-medium text-[var(--twin-ink)]">{r.assetName}</b>
                 <span className="truncate text-[9px] text-[var(--twin-mute)]">
@@ -555,8 +620,14 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
           </div>
         </div>
 
-        {/* 画布主体 */}
-        <div className="relative min-h-0 flex-1 overflow-auto">
+        {/* 画布主体（点阵背景，对齐库存页平面图） */}
+        <div
+          className="relative min-h-0 flex-1 overflow-auto"
+          style={{
+            background: "radial-gradient(circle at 1px 1px, var(--twin-hairline) 1px, transparent 0)",
+            backgroundSize: "22px 22px",
+          }}
+        >
           {globalSearchActive ? (
             /* 全局检索结果：替换中栏主体（树与右栏不动） */
             <div className="p-4">
@@ -622,34 +693,43 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
               <div className="min-h-0 flex-1 overflow-auto p-4">
                 {assetsLoading ? (
                   <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">加载中…</div>
-                ) : children.length > 0 ? (
-                  visibleChildren.length === 0 ? (
-                    <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">
-                      {q ? "没有匹配的资产" : "该地点暂无子空间"}
-                    </div>
-                  ) : (
-                    <div className="grid auto-rows-[minmax(160px,1fr)] grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
-                      {visibleChildren.map((c) => (
-                        <SpaceCard
-                          key={c.id}
-                          node={c}
-                          chips={chipsFor(c.id).filter(matchAsset)}
-                          onSelect={setSelectedId}
-                          onOpen={setSelectedAsset}
-                        />
-                      ))}
-                    </div>
-                  )
-                ) : visibleNodeRows.length === 0 ? (
+                ) : visibleNodeRows.length === 0 && visibleChildren.length === 0 ? (
                   <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">
                     {q ? "没有匹配的资产" : "该地点暂无资产"}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-1.5">
-                    {visibleNodeRows.map((r) => (
-                      <AssetChip key={r.id} row={r} onOpen={setSelectedAsset} />
-                    ))}
-                  </div>
+                  <>
+                    {/* 本空间资产：大图 / emoji 兜底卡片 */}
+                    {visibleNodeRows.length > 0 && (
+                      <div className="mb-4">
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className="text-[11px] font-medium text-[var(--twin-mute)]">本空间资产</span>
+                          <span className="text-[10px] text-[var(--twin-mute)]">
+                            {visibleNodeRows.length} 件
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+                          {visibleNodeRows.map((r) => (
+                            <AssetCard key={r.id} row={r} onOpen={setSelectedAsset} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* 子空间卡片 */}
+                    {visibleChildren.length > 0 && (
+                      <div className="grid auto-rows-[minmax(160px,1fr)] grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
+                        {visibleChildren.map((c) => (
+                          <SpaceCard
+                            key={c.id}
+                            node={c}
+                            chips={chipsFor(c.id).filter(matchAsset)}
+                            onSelect={setSelectedId}
+                            onOpen={setSelectedAsset}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
