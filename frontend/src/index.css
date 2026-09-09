@@ -365,10 +365,11 @@
   border-radius: 0;
 }
 
-/* 网格线开关：默认关闭。td/th 右下内描边模拟网格线 */
+/* 网格线（Excel 式淡灰细线，默认开启）：合并/不规则格也能看清边界。
+   td/th 右下内描边模拟，不参与布局计算，所以开关不会引起位移。 */
 .report-grid--ruled td,
 .report-grid--ruled th {
-  box-shadow: inset -1px -1px 0 0 color-mix(in srgb, var(--app-color-text-primary) 6%, transparent);
+  box-shadow: inset -1px -1px 0 0 color-mix(in srgb, var(--app-color-text-primary) 10%, transparent);
 }
 
 /* 选中格：accent 软底 + 内描边。特异性 (0,3,3) 高于斑马纹 (0,2,3) 与本类网格线，偶数行选中格不被盖住 */

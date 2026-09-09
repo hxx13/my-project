@@ -138,7 +138,7 @@ function DesignerInner({
   const [gridRenderKey, setGridRenderKey] = useState(0);
   const [theme, setTheme] = useState<ThemeJson>(initialTheme);
   const [stickyOverride, setStickyOverride] = useState<boolean | null>(null);
-  const [showGridLines, setShowGridLines] = useState(false);
+  const [showGridLines, setShowGridLines] = useState(true);
   const initialColBaseRef = useRef<Record<number, number>>(
     columnWidthsToRecord(
       buildBaseColumnWidths(

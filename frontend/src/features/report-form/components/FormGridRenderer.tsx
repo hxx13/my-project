@@ -436,7 +436,7 @@ export default function FormGridRenderer({ layout: rawLayout, themeJson, values,
 
   const tableEl = (
     <table
-      className={`overflow-visible report-grid${stickyFirstRow ? ' report-grid--sticky-first' : ''}`}
+      className={`overflow-visible report-grid report-grid--ruled${stickyFirstRow ? ' report-grid--sticky-first' : ''}`}
       style={{
         tableLayout: 'fixed',
         width: totalWidth,
