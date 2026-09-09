@@ -42,7 +42,7 @@ import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
 import { useAssetRelocate } from "./useAssetRelocate";
 import { AutoImage } from "@/components/ui/AutoImage";
 import EmojiPicker from "@/components/ui/EmojiPicker";
-import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
+import { AssetLocationTreeSelect } from "./AssetLocationTreeSelect";
 import { assetStatusLabel } from "./assetEditableFields";
 import { categoryColor } from "@/features/inventory/constants";
 import LocationTree from "./LocationTree";
@@ -405,6 +405,7 @@ export default function AssetVisualView(props: {
   /** 批量转移模式：禁用拖拽，点卡片多选，选目标地点后一次性移入；转完自动退出 */
   const [batchMode, setBatchMode] = useState(false);
   const [batchIds, setBatchIds] = useState<Set<string>>(new Set());
+  const [batchTargetId, setBatchTargetId] = useState<number | null>(null);
   const [batchTarget, setBatchTarget] = useState("");
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [moveTarget, setMoveTarget] = useState<AssetLocationNode | null>(null);
@@ -504,11 +505,6 @@ export default function AssetVisualView(props: {
   useEffect(() => {
     if (relocate.target && selectedId !== relocate.target.id) relocate.exit();
   }, [selectedId, relocate.target, relocate.exit]);
-
-  // 换地点即清空批量选中（选中的卡片可能已不在当前画布上）
-  useEffect(() => {
-    setBatchIds(new Set());
-  }, [selectedId]);
 
   // 「检索资产…」按编码/名称客户端过滤
   const q = assetKeyword.trim().toLowerCase();
@@ -621,23 +617,10 @@ export default function AssetVisualView(props: {
   };
 
   // ── 批量转移模式 ──
-  /** 全路径 → 节点 id（批量转移的目标地点候选） */
-  const locationPathMap = useMemo(() => {
-    const m = new Map<string, number>();
-    const walk = (nodes: AssetLocationNode[], prefix: string) => {
-      for (const n of nodes) {
-        const label = prefix ? `${prefix} / ${n.name}` : n.name;
-        m.set(label, n.id);
-        walk(n.children ?? [], label);
-      }
-    };
-    walk(tree, "");
-    return m;
-  }, [tree]);
-
   const exitBatchMode = () => {
     setBatchMode(false);
     setBatchIds(new Set());
+    setBatchTargetId(null);
     setBatchTarget("");
   };
 
@@ -650,8 +633,8 @@ export default function AssetVisualView(props: {
     });
 
   const submitBatchMove = async () => {
-    const nodeId = locationPathMap.get(batchTarget);
-    if (!nodeId || batchIds.size === 0 || batchSubmitting) return;
+    const nodeId = batchTargetId;
+    if (nodeId == null || batchIds.size === 0 || batchSubmitting) return;
     setBatchSubmitting(true);
     try {
       const res = await batchMoveAssetLocation({ ids: Array.from(batchIds), nodeId });
@@ -877,19 +860,20 @@ export default function AssetVisualView(props: {
               已选 {batchIds.size} 台
             </span>
             <div className="w-64 shrink-0">
-              <AdminSearchSelect
-                value={batchTarget}
-                onChange={setBatchTarget}
-                options={Array.from(locationPathMap.keys())}
+              <AssetLocationTreeSelect
+                value={batchTargetId}
+                onChange={(id, path) => {
+                  setBatchTargetId(id);
+                  setBatchTarget(path);
+                }}
                 placeholder="选择目标地点"
-                className="h-7 !text-[11px]"
               />
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={() => void submitBatchMove()}
-                disabled={batchIds.size === 0 || !locationPathMap.has(batchTarget) || batchSubmitting}
+                disabled={batchIds.size === 0 || batchTargetId == null || batchSubmitting}
                 className="rounded-twin-md bg-[var(--twin-link-deep)] px-2.5 py-1 text-[11px] font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {batchSubmitting ? "转移中…" : `确认转移 ${batchIds.size} 台`}

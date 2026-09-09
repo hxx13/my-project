@@ -44,6 +44,7 @@ import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
 import AssetVisualView from "@/features/asset/AssetVisualView";
 import AssetDetailDrawer from "@/features/asset/AssetDetailDrawer";
 import AssetLocationSelect from "@/features/asset/AssetLocationSelect";
+import { AssetLocationTreeSelect } from "@/features/asset/AssetLocationTreeSelect";
 import {
   ASSET_CAMPUS_OPTIONS,
   ASSET_STATUS_OPTIONS,
@@ -165,6 +166,7 @@ export default function AdminAssetRecordPage() {
   const [batchEditOpen, setBatchEditOpen] = useState(false);
   /** 批量转移：勾选资产 → 选目标地点 → 批量移入 */
   const [batchMoveOpen, setBatchMoveOpen] = useState(false);
+  const [batchMoveTargetId, setBatchMoveTargetId] = useState<number | null>(null);
   const [batchMoveTarget, setBatchMoveTarget] = useState("");
   const [searchReplaceOpen, setSearchReplaceOpen] = useState(false);
   const [batchHistoryOpen, setBatchHistoryOpen] = useState(false);
@@ -772,8 +774,8 @@ export default function AdminAssetRecordPage() {
   /** 批量转移：把勾选的资产一次性移到所选地点（直接调接口，自行汇报失败明细） */
   const doBatchMove = async () => {
     const ids = Array.from(selectedIds);
-    const node = locationOptions.find((o) => o.label === batchMoveTarget);
-    if (!ids.length || !node) return;
+    if (!ids.length || batchMoveTargetId == null) return;
+    const node = { id: batchMoveTargetId, label: batchMoveTarget || "目标地点" };
     try {
       const res = await batchMoveAssetLocation({ ids, nodeId: node.id });
       qc.invalidateQueries({ queryKey: queryKeys.asset.all });
@@ -789,6 +791,7 @@ export default function AdminAssetRecordPage() {
       }
       setSelectedIds(new Set());
       setBatchMoveOpen(false);
+      setBatchMoveTargetId(null);
       setBatchMoveTarget("");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "批量转移失败");
@@ -1091,7 +1094,7 @@ export default function AdminAssetRecordPage() {
               <Pencil className="mr-1 inline h-3.5 w-3.5" />
               批量填入
             </AdminButton>
-            <AdminButton type="button" tone="secondary" size="sm" onClick={() => { setBatchMoveTarget(""); setBatchMoveOpen(true); }}>
+            <AdminButton type="button" tone="secondary" size="sm" onClick={() => { setBatchMoveTargetId(null); setBatchMoveTarget(""); setBatchMoveOpen(true); }}>
               <ArrowRightLeft className="mr-1 inline h-3.5 w-3.5" />
               批量转移
             </AdminButton>
@@ -1786,12 +1789,13 @@ export default function AdminAssetRecordPage() {
                 </p>
                 <label className="mb-3 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
                   目标地点
-                  <AdminSearchSelect
-                    value={batchMoveTarget}
-                    onChange={setBatchMoveTarget}
-                    options={locationOptions.map((o) => o.label)}
-                    placeholder="搜索并选择地点"
-                    className="w-full"
+                  <AssetLocationTreeSelect
+                    value={batchMoveTargetId}
+                    onChange={(id, path) => {
+                      setBatchMoveTargetId(id);
+                      setBatchMoveTarget(path);
+                    }}
+                    placeholder="选择目标地点"
                   />
                 </label>
                 <div className="flex justify-end gap-2">
@@ -1800,7 +1804,7 @@ export default function AdminAssetRecordPage() {
                   </button>
                   <button
                     className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)] disabled:opacity-50"
-                    disabled={!batchMoveTarget || !locationOptions.some((o) => o.label === batchMoveTarget)}
+                    disabled={batchMoveTargetId == null}
                     onClick={() => void doBatchMove()}
                   >
                     确认转移
