@@ -205,7 +205,21 @@ export function LocationTree(props: LocationTreeProps) {
               isSelected ? "bg-[var(--twin-link-deep)]/10" : "hover:bg-[var(--twin-canvas-soft)]"
             )}
           >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--twin-mute)]">
+            {/* 展开箭头是独立热区：点击只切换展开/收起，不再被行点击吞掉 */}
+            <span
+              role="button"
+              tabIndex={-1}
+              aria-label={open ? "收起" : "展开"}
+              onClick={(e) => {
+                if (!hasChildren) return;
+                e.stopPropagation();
+                onToggle(node.id);
+              }}
+              className={cn(
+                "flex h-4 w-4 shrink-0 items-center justify-center rounded text-[var(--twin-mute)]",
+                hasChildren && "hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)]"
+              )}
+            >
               {hasChildren ? (
                 open ? (
                   <ChevronDown className="h-3 w-3" />

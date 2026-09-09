@@ -28,6 +28,7 @@
         SELECT COUNT(1) FROM inv_space WHERE parent_id = #{parentId} AND deleted = 0
     </select>
     <select id="countItemsInSpace" resultType="int">
-        SELECT COUNT(1) FROM inv_item WHERE space_id = #{spaceId} AND deleted = 0
+        <!-- 与图形视图口径一致：已废弃（RETIRED）的物品在垃圾桶里，不计入空间件数 -->
+        SELECT COUNT(1) FROM inv_item WHERE space_id = #{spaceId} AND deleted = 0 AND COALESCE(status, '') &lt;&gt; 'RETIRED'
     </select>
 </mapper>
