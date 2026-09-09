@@ -3,13 +3,13 @@ import "./health-survey.css";
 
 export type SurveyValue = Record<string, unknown>;
 
-type YesNo = { answer: "是" | "否"; detail?: string };
+type YesNo = { answer: "" | "是" | "否"; detail?: string };
 
 function asArray(v: unknown): string[] {
   return Array.isArray(v) ? (v as string[]) : [];
 }
 function asYesNo(v: unknown): YesNo {
-  return v && typeof v === "object" ? (v as YesNo) : { answer: "否" };
+  return v && typeof v === "object" ? (v as YesNo) : { answer: "" };
 }
 function asString(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -51,7 +51,7 @@ export function HealthSurveyForm({
                 <label key={o} className="hs-opt">
                   <input
                     type="checkbox"
-                    disabled={readOnly}
+                    tabIndex={readOnly ? -1 : undefined}
                     checked={cur.includes(o)}
                     onChange={() => set(f.key, cur.includes(o) ? cur.filter((x) => x !== o) : [...cur, o])}
                   />
@@ -70,7 +70,7 @@ export function HealthSurveyForm({
             <div className="hs-options">
               {f.options.map((o) => (
                 <label key={o} className="hs-opt">
-                  <input type="radio" disabled={readOnly} checked={cur === o} onChange={() => set(f.key, o)} />
+                  <input type="radio" tabIndex={readOnly ? -1 : undefined} checked={cur === o} onChange={() => set(f.key, o)} />
                   <span>{o}</span>
                 </label>
               ))}
@@ -88,7 +88,7 @@ export function HealthSurveyForm({
                 <label key={o} className="hs-opt">
                   <input
                     type="radio"
-                    disabled={readOnly}
+                    tabIndex={readOnly ? -1 : undefined}
                     checked={cur.answer === o}
                     onChange={() => set(f.key, { ...cur, answer: o })}
                   />
@@ -98,7 +98,7 @@ export function HealthSurveyForm({
               {f.detail && cur.answer === "是" && (
                 <input
                   className="hs-inline-input"
-                  disabled={readOnly}
+                  readOnly={readOnly}
                   value={cur.detail ?? ""}
                   placeholder={f.detail}
                   onChange={(e) => set(f.key, { ...cur, detail: e.target.value })}
@@ -114,7 +114,7 @@ export function HealthSurveyForm({
             <div className="hs-label">{f.label}</div>
             <input
               className="hs-input"
-              disabled={readOnly}
+              readOnly={readOnly}
               value={asString(value[f.key])}
               placeholder={f.placeholder}
               onChange={(e) => set(f.key, e.target.value)}
@@ -128,7 +128,7 @@ export function HealthSurveyForm({
             <textarea
               className="hs-textarea"
               rows={3}
-              disabled={readOnly}
+              readOnly={readOnly}
               value={asString(value[f.key])}
               onChange={(e) => set(f.key, e.target.value)}
             />
@@ -158,7 +158,7 @@ export function HealthSurveyForm({
                         <td key={c} className="hs-grid-cell">
                           <input
                             type="checkbox"
-                            disabled={readOnly}
+                            tabIndex={readOnly ? -1 : undefined}
                             checked={picked.includes(c)}
                             onChange={() => {
                               const next = picked.includes(c) ? picked.filter((x) => x !== c) : [...picked, c];
@@ -196,7 +196,7 @@ export function HealthSurveyForm({
                       <td key={c}>
                         <input
                           className="hs-cell-input"
-                          disabled={readOnly}
+                          readOnly={readOnly}
                           value={row[c] ?? ""}
                           onChange={(e) => {
                             const next = rows.map((r, j) => (j === i ? { ...r, [c]: e.target.value } : r));
@@ -232,30 +232,52 @@ export function HealthSurveyForm({
   };
 
   return (
-    <div className="hs-doc">
-      <header className="hs-header">
-        <img src="/brand/logo-shsmu.png" alt="上海交通大学医学院实验动物科学部" className="hs-logo-shsmu" />
-        <img src="/brand/logo-aaalac.png" alt="AAALAC International" className="hs-logo-aaalac" />
-      </header>
+    <div className={readOnly ? "hs-doc hs-readonly" : "hs-doc"}>
+      {/*
+        打印时用表格的 thead/tfoot 承载页眉页脚：浏览器会在每页重复并「预留空间」，
+        而 position:fixed 只是盖在内容上、会压掉分页边界处的内容。
+      */}
+      <table className="hs-print-table">
+        <thead>
+          <tr>
+            <td>
+              <header className="hs-header">
+                <img src="/brand/logo-shsmu.png" alt="上海交通大学医学院实验动物科学部" className="hs-logo-shsmu" />
+                <img src="/brand/logo-aaalac.png" alt="AAALAC International" className="hs-logo-aaalac" />
+              </header>
+            </td>
+          </tr>
+        </thead>
+        <tfoot>
+          <tr>
+            <td>
+              <footer className="hs-footer">{SURVEY_FOOTER}</footer>
+            </td>
+          </tr>
+        </tfoot>
+        <tbody>
+          <tr>
+            <td>
+              <div className="hs-title">
+                <div className="hs-title-org">{SURVEY_TITLE.org}</div>
+                <div className="hs-title-name">{SURVEY_TITLE.name}</div>
+              </div>
 
-      <div className="hs-title">
-        <div className="hs-title-org">{SURVEY_TITLE.org}</div>
-        <div className="hs-title-name">{SURVEY_TITLE.name}</div>
-      </div>
-
-      <main className="hs-body">
-        {HEALTH_SURVEY.map((sec) => (
-          <section key={sec.title} className="hs-section">
-            <h3 className="hs-section-title">{sec.title}</h3>
-            {sec.fields.map((f) => (
-              <div key={f.key}>{renderField(f)}</div>
-            ))}
-          </section>
-        ))}
-        <div className="hs-declaration">{SURVEY_DECLARATION}</div>
-      </main>
-
-      <footer className="hs-footer">{SURVEY_FOOTER}</footer>
+              <main className="hs-body">
+                {HEALTH_SURVEY.map((sec) => (
+                  <section key={sec.title} className="hs-section">
+                    <h3 className="hs-section-title">{sec.title}</h3>
+                    {sec.fields.map((f) => (
+                      <div key={f.key}>{renderField(f)}</div>
+                    ))}
+                  </section>
+                ))}
+                <div className="hs-declaration">{SURVEY_DECLARATION}</div>
+              </main>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }

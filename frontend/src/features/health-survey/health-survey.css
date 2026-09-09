@@ -13,6 +13,19 @@
   position: relative;
 }
 
+/* 承载页眉页脚的表格：屏幕上不留任何表格痕迹 */
+.hs-print-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.hs-print-table > thead > tr > td,
+.hs-print-table > tbody > tr > td,
+.hs-print-table > tfoot > tr > td {
+  padding: 0;
+  border: none;
+  vertical-align: top;
+}
+
 /* ── 页眉：两个 logo ── */
 .hs-header {
   display: flex;
@@ -100,6 +113,23 @@
   width: 3.6mm;
   height: 3.6mm;
   flex-shrink: 0;
+  accent-color: var(--app-color-primary, #2563eb);
+}
+/* 选中态：整项变色加粗 + 淡底，一眼能看出勾了什么 */
+.hs-opt:has(input:checked) {
+  color: var(--app-color-primary, #1d4ed8);
+  font-weight: 600;
+  background: #eff6ff;
+  border-radius: 3px;
+  padding: 0 2mm;
+  margin: 0 -2mm;
+}
+
+/* 只读（查看）态：不禁用控件，否则勾选框会被渲染成灰色；只挡交互 */
+.hs-readonly .hs-opt,
+.hs-readonly .hs-grid-cell,
+.hs-readonly .hs-inline-input {
+  pointer-events: none;
 }
 
 .hs-input,
@@ -187,22 +217,21 @@
 }
 
 @media print {
-  /* 固定定位在 Chromium 打印时每页重复 */
+  /* thead/tfoot 由浏览器在每页重复并预留空间，不用 fixed（fixed 会压掉内容） */
+  .hs-print-table > thead {
+    display: table-header-group;
+  }
+  .hs-print-table > tfoot {
+    display: table-footer-group;
+  }
   .hs-header {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background: #fff;
+    padding-bottom: 3mm;
+    border-bottom: 1px solid #333;
   }
   .hs-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    border-top: none;
-    margin: 0;
-    background: #fff;
+    margin-top: 2mm;
+    padding-top: 2mm;
+    border-top: 1px solid #333;
   }
   .hs-add-row,
   .hs-grid-cell button {
