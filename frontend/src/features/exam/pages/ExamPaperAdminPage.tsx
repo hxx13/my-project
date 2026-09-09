@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
@@ -21,6 +21,13 @@ import {
   fetchExamSeeds,
   fetchQualificationBinding,
   fetchQualificationPreview,
+  fetchLearningMaterials,
+  uploadLearningFile,
+  createLearningMaterial,
+  updateLearningMaterial,
+  deleteLearningMaterial,
+  fetchLearningMaterialFileAdmin,
+  type LearningMaterial,
   importExamSeeds,
   moveExamPaperToFolder,
   publishExamPaper,
@@ -69,7 +76,7 @@ const FOLDER_LABELS = {
 
 export default function ExamPaperAdminPage() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<0 | 1 | 2 | 3>(0);
+  const [tab, setTab] = useState<0 | 1 | 2 | 3 | 4>(0);
   const [keyword, setKeyword] = useState("");
 
   const [currentId, setCurrentId] = useState<number | null>(null);
@@ -777,6 +784,126 @@ export default function ExamPaperAdminPage() {
     </AdminFormCard>
   );
 
+  // ── 学习资料（PDF） ──
+  const [viewingMaterialId, setViewingMaterialId] = useState<number | null>(null);
+  const materialFileRef = useRef<HTMLInputElement>(null);
+  const { data: materials = [] } = useQuery({
+    queryKey: ["learning-materials"],
+    queryFn: fetchLearningMaterials,
+  });
+
+  const handleUploadMaterial = async (file: File) => {
+    if (!/\.pdf$/i.test(file.name)) {
+      toast.error("只支持 PDF 文件");
+      return;
+    }
+    try {
+      const uploaded = await uploadLearningFile(file);
+      const title = await appPrompt("资料标题", file.name.replace(/\.pdf$/i, ""), { allowEmpty: false });
+      if (title == null) return;
+      await createLearningMaterial({ fileId: uploaded.id, title: title.trim() });
+      toast.success("已上传并上架");
+      qc.invalidateQueries({ queryKey: ["learning-materials"] });
+    } catch (e: any) {
+      toast.error(e?.message || "上传失败");
+    }
+  };
+
+  const toggleMaterial = async (m: LearningMaterial) => {
+    try {
+      await updateLearningMaterial(m.id, { active: m.active === 1 ? 0 : 1 });
+      qc.invalidateQueries({ queryKey: ["learning-materials"] });
+    } catch (e: any) {
+      toast.error(e?.message || "操作失败");
+    }
+  };
+
+  const removeMaterial = async (m: LearningMaterial) => {
+    if (!(await appConfirm(`确定删除「${m.title}」？`))) return;
+    try {
+      await deleteLearningMaterial(m.id);
+      toast.success("已删除");
+      qc.invalidateQueries({ queryKey: ["learning-materials"] });
+    } catch (e: any) {
+      toast.error(e?.message || "删除失败");
+    }
+  };
+
+  const learningTab = (
+    <AdminFormCard title="学习资料（PDF）" fill>
+      <div className="mb-3 flex items-center gap-2">
+        <input
+          ref={materialFileRef}
+          type="file"
+          accept=".pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) handleUploadMaterial(f);
+          }}
+        />
+        <AdminButton type="button" tone="primary" size="sm" onClick={() => materialFileRef.current?.click()}>
+          <Plus className="mr-1 h-3.5 w-3.5" />上传 PDF
+        </AdminButton>
+        <span className="text-xs text-[var(--app-color-text-tertiary)]">上传后默认上架，学生端答题页可见；点「查看」可在线预览</span>
+      </div>
+      {materials.length === 0 ? (
+        <div className="py-8 text-center text-sm text-neutral-400">还没有学习资料</div>
+      ) : (
+        <table className="twin-table w-full min-w-max border-collapse text-left text-sm">
+          <thead>
+            <tr>
+              <th className="px-3 py-2">标题</th>
+              <th className="px-3 py-2">分类</th>
+              <th className="px-3 py-2">大小</th>
+              <th className="px-3 py-2">状态</th>
+              <th className="px-3 py-2 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {materials.map((m) => (
+              <tr key={m.id} className="border-b">
+                <td className="px-3 py-2">{m.title}</td>
+                <td className="px-3 py-2 text-[var(--app-color-text-tertiary)]">{m.category || "—"}</td>
+                <td className="px-3 py-2 text-[var(--app-color-text-tertiary)]">
+                  {m.sizeBytes ? `${(m.sizeBytes / 1024 / 1024).toFixed(1)} MB` : "—"}
+                </td>
+                <td className="px-3 py-2">
+                  {m.active === 1 ? (
+                    <span className="text-emerald-600">已上架</span>
+                  ) : (
+                    <span className="text-neutral-400">已下架</span>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <AdminButton type="button" tone="secondary" size="sm" onClick={() => setViewingMaterialId(m.id)}>
+                      查看
+                    </AdminButton>
+                    <AdminButton type="button" tone="secondary" size="sm" onClick={() => toggleMaterial(m)}>
+                      {m.active === 1 ? "下架" : "上架"}
+                    </AdminButton>
+                    <AdminButton type="button" tone="secondary" size="sm" onClick={() => removeMaterial(m)}>
+                      删除
+                    </AdminButton>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {viewingMaterialId != null && (
+        <PdfPreviewDialog
+          title={materials.find((m) => m.id === viewingMaterialId)?.title ?? "学习资料"}
+          fetchPdf={() => fetchLearningMaterialFileAdmin(viewingMaterialId)}
+          onClose={() => setViewingMaterialId(null)}
+        />
+      )}
+    </AdminFormCard>
+  );
+
   return (
     <AdminPageShell>
       <div className="flex flex-col h-[calc(100dvh-var(--admin-chrome-offset))]">
@@ -787,6 +914,7 @@ export default function ExamPaperAdminPage() {
               {tabBtn(tab === 1, "发布题目", () => setTab(1))}
               {tabBtn(tab === 2, "成绩管理", () => setTab(2))}
               {tabBtn(tab === 3, "健康报告", () => setTab(3))}
+              {tabBtn(tab === 4, "学习资料", () => setTab(4))}
             </div>
             <div className="flex items-center gap-2">
               <AdminButton type="button" tone="secondary" size="sm" onClick={handleNew}><Plus className="h-4 w-4 mr-1" />新建试卷</AdminButton>
@@ -795,7 +923,7 @@ export default function ExamPaperAdminPage() {
             </div>
           </div>
         </AdminFormCard>
-        <div className="flex-1 min-h-0">{tab === 0 ? configTab : tab === 1 ? publishTab : tab === 2 ? scoresTab : healthTab}</div>
+        <div className="flex-1 min-h-0">{tab === 0 ? configTab : tab === 1 ? publishTab : tab === 2 ? scoresTab : tab === 3 ? healthTab : learningTab}</div>
       </div>
 
       <Dialog open={seedOpen} onOpenChange={(v) => { if (!v) setSeedOpen(false); }}>
