@@ -1,8 +1,6 @@
-import type { CageColorConfig } from "@/api/domains/cageShelf.api";
+import type { CageColorConfig, SpecialStatusEntry } from "@/api/domains/cageShelf.api";
 
-export interface StatusEntry {
-  code: string;
-}
+type StatusEntry = Pick<SpecialStatusEntry, "code">;
 
 /**
  * 多状态底色 —— 与 CellButton 同规则：收集所有非 NORMAL 状态色，

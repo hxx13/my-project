@@ -44,4 +44,16 @@ describe("resolveMultiStatusBackground", () => {
   it("未知状态码跳过", () => {
     expect(resolveMultiStatusBackground([{ code: "NOT_A_CODE" }], COLORS)).toBeNull();
   });
+
+  it("混合已知与未知码：跳过未知、只留已知色", () => {
+    expect(
+      resolveMultiStatusBackground([{ code: "COHABITATION" }, { code: "NOT_A_CODE" }], COLORS),
+    ).toBe("#a7f3d0");
+  });
+
+  it("NORMAL 与其它码混合：忽略 NORMAL", () => {
+    expect(
+      resolveMultiStatusBackground([{ code: "NORMAL" }, { code: "HEALTH_ABNORMAL" }], COLORS),
+    ).toBe("#e9d5ff");
+  });
 });
