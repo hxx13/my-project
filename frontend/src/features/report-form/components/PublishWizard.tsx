@@ -1,8 +1,8 @@
 // components/PublishWizard.tsx
 import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useMutation } from '@tanstack/react-query';
-import { Send, X, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Send, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { adminHttp } from '@/api/core/adminHttp';
 import type { FillMode, PermissionJson, ScheduleJson, FillPolicyJson } from '../types';
 import PermissionPanel from './PermissionPanel';
@@ -115,17 +115,17 @@ export default function PublishWizard({
     }).catch((e: Error) => toast.error('保存失败: ' + e.message));
   };
 
-  return createPortal(
-    <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 800 }} onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-[var(--app-color-text-primary)]">
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl sm:rounded-[var(--app-radius-container)] max-h-[90vh] overflow-y-auto gap-0 border-0 rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 text-[var(--app-color-text-primary)]">
+        <DialogHeader className="mb-4">
+          <DialogTitle className="text-sm font-semibold text-[var(--app-color-text-primary)]">
             {isReset ? '重置发布条件' : '发布报表'}
-          </h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] hover:bg-[var(--app-color-surface-hover)]">
-            <X className="w-4 h-4 text-[var(--app-color-text-secondary)]" />
-          </button>
-        </div>
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            {isReset ? '重新设置发布条件' : '发布报表的填报模式、权限与周期设置'}
+          </DialogDescription>
+        </DialogHeader>
 
         {!mode ? (
           /* Mode selection — 仅首次发布 */
@@ -276,7 +276,7 @@ export default function PublishWizard({
             </div>
           </div>
         )}
-      </div>
-    </div>
-  , document.body);
+      </DialogContent>
+    </Dialog>
+  );
 }

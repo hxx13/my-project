@@ -1,8 +1,8 @@
 // components/OptionEditor.tsx — 绑定预设后只改预设，全表引用自动同步
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, GripVertical, X, BookmarkPlus } from 'lucide-react';
+import { Plus, Trash2, GripVertical, BookmarkPlus } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import toast from 'react-hot-toast';
 import {
   fetchOptionSets, fetchOptionSetById,
@@ -162,15 +162,6 @@ export default function OptionEditor({
     if (showSaveInput && nameInputRef.current) nameInputRef.current.focus();
   }, [showSaveInput]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
   const patchDraft = useCallback((next: OptionItem[]) => {
     setDraft(next);
     setDirty(true);
@@ -235,37 +226,19 @@ export default function OptionEditor({
 
   if (!open) return null;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4
-                 bg-[var(--app-color-overlay)]/40"
-      onClick={(e) => { if (e.target === e.currentTarget) void handleDone(); }}
-    >
-      <div
-        className="w-full max-w-[520px] max-h-[min(80vh,640px)] flex flex-col rounded-[var(--app-radius-container)]
-                   border border-[var(--app-color-border)] bg-[var(--app-color-surface-elevated)]
-                   shadow-xl"
-        onClick={e => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="option-editor-title"
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--app-color-border)] shrink-0">
-          <div>
-            <span id="option-editor-title" className="text-[13px] font-semibold text-[var(--app-color-text-primary)]">
-              {isMulti ? '编辑多选选项' : '编辑下拉选项'}
-            </span>
-            <p className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">
-              {bound
-                ? '已绑定预设，保存后引用该预设的格子会一起更新'
-                : '未绑定预设时仅影响当前格子，可新建预设供多格复用'}
-            </p>
-          </div>
-          <button type="button" onClick={() => void handleDone()}
-            className="p-0.5 rounded-[4px] hover:bg-[var(--app-color-surface-hover)]">
-            <X className="w-4 h-4 text-[var(--app-color-text-secondary)]" />
-          </button>
-        </div>
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) void handleDone(); }}>
+      <DialogContent className="sm:max-w-lg sm:rounded-[var(--app-radius-container)] max-h-[90vh] overflow-y-auto flex flex-col gap-0 p-0 rounded-[var(--app-radius-container)] border-[var(--app-color-border)] bg-[var(--app-color-surface-elevated)] shadow-xl text-[var(--app-color-text-primary)]">
+        <DialogHeader className="space-y-0 px-4 py-3 border-b border-[var(--app-color-border)] shrink-0 text-left">
+          <DialogTitle className="text-[13px] font-semibold text-[var(--app-color-text-primary)]">
+            {isMulti ? '编辑多选选项' : '编辑下拉选项'}
+          </DialogTitle>
+          <DialogDescription className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">
+            {bound
+              ? '已绑定预设，保存后引用该预设的格子会一起更新'
+              : '未绑定预设时仅影响当前格子，可新建预设供多格复用'}
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--app-color-border)] flex-wrap">
@@ -416,8 +389,7 @@ export default function OptionEditor({
             {savePresetMut.isPending ? '保存中…' : bound && dirty ? '保存并同步' : '完成'}
           </button>
         </div>
-      </div>
-    </div>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   );
 }
