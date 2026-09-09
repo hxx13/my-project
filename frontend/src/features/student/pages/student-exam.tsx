@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchMyExamPapers, fetchMyQualificationReport, fetchMyQualifications, type StudentPaperSummary } from "../api/student.api";
+import { fetchMyExamPapers, fetchMyQualificationReport, fetchMyQualifications, fetchLearningMaterialsForStudent, fetchLearningMaterialFile, type StudentPaperSummary } from "../api/student.api";
 import { useStudentQuery } from "../hooks/use-student-query";
 import { ShrinkText } from "../components/shrink-text";
 import { PdfPreviewDialog } from "@/components/common/PdfPreviewDialog";
@@ -73,7 +73,10 @@ export default function StudentExamPage() {
   const [view, setView] = useState<"card" | "list">("card");
   const [filter, setFilter] = useState<"all" | "unpassed" | "passed">("all");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
+  const [previewMaterialId, setPreviewMaterialId] = useState<number | null>(null);
   const { data: quals = [] } = useStudentQuery(["my-qualifications"], fetchMyQualifications);
+  const { data: materials = [] } = useStudentQuery(["learning-materials"], fetchLearningMaterialsForStudent);
   const healthFile = quals.find((q) => q.itemKey === "health_report")?.fileRef ?? null;
 
   const filtered = useMemo(() => {
@@ -107,6 +110,13 @@ export default function StudentExamPage() {
             onClick={() => setPreviewOpen(true)}
           >
             {healthFile ? "查看健康报告" : "上传健康报告"}
+          </button>
+          <button
+            type="button"
+            className="btn ghost small"
+            onClick={() => setMaterialsOpen(true)}
+          >
+            学习PDF
           </button>
           <span style={{ fontSize: 12, color: "var(--muted)" }}>共 {filtered.length} 套</span>
         </div>
@@ -167,6 +177,45 @@ export default function StudentExamPage() {
           title="健康报告"
           fetchPdf={() => fetchMyQualificationReport("health_report")}
           onClose={() => setPreviewOpen(false)}
+        />
+      )}
+
+      {materialsOpen && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.45)" }} onClick={() => setMaterialsOpen(false)}>
+          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-bold">学习资料</h3>
+              <button type="button" onClick={() => setMaterialsOpen(false)} aria-label="关闭">✕</button>
+            </div>
+            {materials.length === 0 ? (
+              <p className="py-6 text-center text-sm text-[var(--muted)]">暂无学习资料</p>
+            ) : (
+              <div className="max-h-[60vh] space-y-1 overflow-auto">
+                {materials.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--app-color-surface-hover)]"
+                    onClick={() => {
+                      setMaterialsOpen(false);
+                      setPreviewMaterialId(m.id);
+                    }}
+                  >
+                    <span className="font-medium">{m.title}</span>
+                    {m.category ? <span className="ml-2 text-xs text-[var(--muted)]">{m.category}</span> : null}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {previewMaterialId != null && (
+        <PdfPreviewDialog
+          title={materials.find((m) => m.id === previewMaterialId)?.title ?? "学习资料"}
+          fetchPdf={() => fetchLearningMaterialFile(previewMaterialId)}
+          onClose={() => setPreviewMaterialId(null)}
         />
       )}
     </div>
