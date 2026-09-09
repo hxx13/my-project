@@ -185,7 +185,8 @@ export default function FormGridEditor({
                       fontWeight: cell.style.bold ? 'bold' : 'normal',
                       fontSize: cell.style.fontSize ? `${cell.style.fontSize}px` : '13px',
                       color: cell.style.color || undefined,
-                      backgroundColor: isSelected ? undefined : (cell.style.bg || 'transparent'),
+                      // 无显式底色时交给 .report-grid 的斑马纹/悬停接管，不能内联 transparent 覆盖
+                      backgroundColor: isSelected ? undefined : (cell.style.bg || undefined),
                       verticalAlign: 'middle',
                     }}
                     onMouseDown={(e) => {
