@@ -464,3 +464,10 @@ export async function fetchAssetTransferHistory(assetId: string) {
   return res.data.data;
 }
 
+/** 删除一条 MOVE 留痕（仅最高权限），返回受影响行数 */
+export async function deleteAssetTransferLog(logId: string) {
+  const res = await authHttp.delete<Result<number>>(
+    `/v1/asset-transfer-logs/${encodeURIComponent(logId)}`
+  );
+  return res.data.data;
+}

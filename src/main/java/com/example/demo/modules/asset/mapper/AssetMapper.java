@@ -226,5 +226,8 @@ public interface AssetMapper {
 
     /** 某资产的 MOVE 日志，按 create_time 倒序 */
     List<Map<String, Object>> listMoveLogsByAssetId(@Param("assetId") String assetId);
+
+    /** 删除一条 MOVE 留痕（带 action_type 条件，防误删正式流程日志） */
+    int deleteMoveLogById(@Param("id") String id);
 }
 

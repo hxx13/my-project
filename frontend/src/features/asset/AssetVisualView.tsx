@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import type { AssetRow } from "@/api/domains/asset.api";
 import {
@@ -21,8 +21,10 @@ import {
   useDeleteAssetLocation,
   useMoveAssetLocation,
 } from "@/api/hooks/useAssetLocation";
-import { useAssetList, useAssetTransferHistory } from "@/api/hooks/useAsset";
+import { useAssetList, useAssetTransferHistory, useDeleteAssetTransferLog } from "@/api/hooks/useAsset";
 import { appConfirm } from "@/lib/appDialog";
+import { authStorage } from "@/features/auth/authStorage";
+import { hasMinRole } from "@/features/auth/roleAccess";
 import { cn } from "@/lib/utils";
 import LocationTree from "./LocationTree";
 import { findPath } from "./locationTreeUtils";
@@ -53,6 +55,8 @@ type HistoryItem = {
   to: string;
   status?: string;
   who?: string;
+  /** MOVE 留痕主键，用于删除 */
+  logId?: string;
 };
 
 export default function AssetVisualView() {
@@ -67,6 +71,19 @@ export default function AssetVisualView() {
   const updateMut = useUpdateAssetLocation();
   const deleteMut = useDeleteAssetLocation();
   const moveMut = useMoveAssetLocation();
+  const deleteLogMut = useDeleteAssetTransferLog();
+
+  // 仅最高权限可删除地点移动留痕
+  const canDeleteLog = hasMinRole(authStorage.getRole(), "SUPER_ADMIN");
+
+  const handleDeleteMoveLog = async (logId: string) => {
+    const ok = await appConfirm("确认删除这条地点移动留痕？删除后不可恢复。", {
+      title: "删除留痕",
+      danger: true,
+    });
+    if (!ok) return;
+    deleteLogMut.mutate(logId);
+  };
 
   // 首次加载：选中第一个节点并展开其祖先链
   useEffect(() => {
@@ -125,6 +142,7 @@ export default function AssetVisualView() {
         from: from?.trim() || "—",
         to: to?.trim() || "—",
         who: m.operatorName || m.operatorId,
+        logId: m.id,
       });
     }
     return out.sort((a, b) => normTime(b.time).localeCompare(normTime(a.time)));
@@ -357,6 +375,17 @@ export default function AssetVisualView() {
                         <span className="ml-auto shrink-0 font-mono text-[10px] text-[var(--twin-mute)]">
                           {normTime(it.time).slice(0, 16) || "—"}
                         </span>
+                        {it.kind === "move" && canDeleteLog && it.logId && (
+                          <button
+                            type="button"
+                            title="删除留痕"
+                            aria-label="删除留痕"
+                            onClick={() => handleDeleteMoveLog(it.logId as string)}
+                            className="shrink-0 text-[var(--twin-mute)] hover:text-red-600"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                       <div className="mt-1 break-words text-[11.5px] text-[var(--twin-body)]">
                         {it.from} → {it.to}

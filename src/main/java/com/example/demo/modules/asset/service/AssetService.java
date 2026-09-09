@@ -1375,6 +1375,18 @@ public class AssetService {
         return Map.of("requestId", req.getId(), "deleted", true);
     }
 
+    /** 删除一条 MOVE 留痕（仅最高权限入口调用；action_type 条件兜底防误删） */
+    public int deleteMoveLog(String id, String operatorId) {
+        if (!StringUtils.hasText(id)) {
+            throw new IllegalArgumentException("留痕 id 不能为空");
+        }
+        int deleted = assetMapper.deleteMoveLogById(id.trim());
+        if (deleted <= 0) {
+            throw new IllegalArgumentException("留痕不存在或不可删除");
+        }
+        return deleted;
+    }
+
     public Map<String, Object> listTransferRequests(String keyword, int page, int size) {
         assetMapper.markExpiredTransferExportFiles(LocalDateTime.now());
         int safePage = Math.max(1, page);

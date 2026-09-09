@@ -729,6 +729,12 @@
         ORDER BY create_time DESC
     </select>
 
+    <delete id="deleteMoveLogById">
+        DELETE FROM asset_transfer_log
+        WHERE id = #{id}
+          AND action_type = 'MOVE'
+    </delete>
+
     <!-- ==================== 导入批次 ==================== -->
 
     <insert id="insertImportBatch" parameterType="com.example.demo.modules.asset.entity.AssetImportBatch">

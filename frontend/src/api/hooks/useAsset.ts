@@ -21,6 +21,7 @@ import {
   searchReplaceAssets,
   deleteByBatchId,
   fetchAssetTransferHistory,
+  deleteAssetTransferLog,
 } from "@/api/domains/asset.api";
 import { toast } from "react-hot-toast";
 
@@ -39,6 +40,19 @@ export function useAssetTransferHistory(assetId: string | null | undefined) {
     queryKey: [...queryKeys.asset.all, "transfer-history", assetId] as const,
     queryFn: () => fetchAssetTransferHistory(assetId as string),
     enabled: !!assetId,
+  });
+}
+
+/** 删除一条 MOVE 留痕（仅最高权限入口渲染按钮） */
+export function useDeleteAssetTransferLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteAssetTransferLog,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+      toast.success("留痕已删除");
+    },
+    onError: (e: Error) => toast.error(e.message || "删除失败"),
   });
 }
 

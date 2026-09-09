@@ -457,6 +457,20 @@ public class AssetController {
         }
     }
 
+    @DeleteMapping("/asset-transfer-logs/{id}")
+    @Operation(summary = "删除地点移动留痕（仅超级管理员）")
+    public Result<?> deleteTransferMoveLog(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable String id) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.SUPER_ADMIN);
+        if (denied != null) return denied;
+        try {
+            return Result.success(assetService.deleteMoveLog(id, user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     @GetMapping("/asset-transfer-records")
     @Operation(summary = "查询转移记录")
     public Result<?> listTransferRecords(@RequestHeader(value = "Authorization", required = false) String authorization,
