@@ -45,6 +45,9 @@ describe("groupTokenMatches", () => {
     expect(groupTokenMatches("", "卢令")).toBe(false);
     expect(groupTokenMatches("卢令", "")).toBe(false);
   });
+  it("提取出的 PI 前缀为单字符时不参与匹配（>=2 阈值）", () => {
+    expect(groupTokenMatches("王的课题组", "王")).toBe(false);
+  });
 });
 
 describe("cellGroupName", () => {
