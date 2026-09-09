@@ -107,7 +107,7 @@ export default function AgvToolbar({ serverTime, layout, onLayoutChange, singleT
         })}
 
         <Link
-          to="/admin/agv-tracker/logs"
+          to="/console/admin/agv-tracker/logs"
           className="inline-flex items-center gap-1 px-2 py-1 rounded-[var(--app-radius-element)] text-[11px] border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
         >
           <FileText size={12} />

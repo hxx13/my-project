@@ -5,5 +5,5 @@ export default function AdminAccessFusionPage() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   params.set("tab", "clean");
-  return <Navigate to={`/admin/dahua-swing-tasks?${params.toString()}`} replace />;
+  return <Navigate to={`/console/admin/dahua-swing-tasks?${params.toString()}`} replace />;
 }

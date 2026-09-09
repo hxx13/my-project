@@ -13,5 +13,5 @@ export default function DahuaSwingHubRedirect({ tab, kind }: Props) {
   if (kind) {
     params.set("kind", kind);
   }
-  return <Navigate to={`/admin/dahua-swing-tasks?${params.toString()}`} replace />;
+  return <Navigate to={`/console/admin/dahua-swing-tasks?${params.toString()}`} replace />;
 }

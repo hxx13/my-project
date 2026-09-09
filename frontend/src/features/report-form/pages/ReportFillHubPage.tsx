@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
+import { toAdminRoutePath } from '@/features/admin/buildAdminNavModel';
 import {
   fetchAvailableForms,
   fetchMySubmissions,
@@ -106,8 +107,10 @@ export default function ReportFillHubPage() {
     setExpanded(next);
     snapshotReportFillHubSession(next, { lastFormId: formId, lastSubmissionId: submissionId });
     const qs = submissionId != null ? `?submissionId=${submissionId}` : '';
-    navigate(`/admin/report-fill/${formId}${qs}`, {
-      state: { returnTo: '/admin/report-fill' },
+    // 必须走 /console/admin 前缀：裸 /admin/... 命中顶层 legacy 重定向，会卸载重建整个后台壳层
+    const fillPath = toAdminRoutePath(`/admin/report-fill/${formId}`);
+    navigate(`${fillPath}${qs}`, {
+      state: { returnTo: toAdminRoutePath('/admin/report-fill') },
     });
   };
 

@@ -19,9 +19,15 @@ import FormExportActions from '../components/FormExportActions';
 import PublishWizard from '../components/PublishWizard';
 import type { ReportFormDefinition } from '../types';
 import { formatDateTimeAsiaShanghaiShort, compareApiDateTime } from '@/lib/formatDateTimeAsiaShanghai';
+import { toAdminRoutePath } from '@/features/admin/buildAdminNavModel';
 import toast from 'react-hot-toast';
 
 import { appConfirm } from "@/lib/appDialog";
+
+/** 必须走 /console/admin 前缀：裸 /admin/... 命中顶层 legacy 重定向，会卸载重建整个后台壳层 */
+const designPath = (formId: number) => toAdminRoutePath(`/admin/report-form/${formId}/design`);
+const fillPath = (formId: number) => toAdminRoutePath(`/admin/report-fill/${formId}`);
+
 export default function ReportFormListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -47,7 +53,7 @@ export default function ReportFormListPage() {
     mutationFn: createBlankForm,
     onSuccess: (form) => {
       invalidate();
-      navigate(`/admin/report-form/${form.id}/design`);
+      navigate(designPath(form.id));
       toast.success('已创建空白报表');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -57,7 +63,7 @@ export default function ReportFormListPage() {
     mutationFn: (file: File) => createFormFromExcel(file),
     onSuccess: (form) => {
       invalidate();
-      navigate(`/admin/report-form/${form.id}/design`);
+      navigate(designPath(form.id));
       toast.success('已从 Excel 创建报表');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -151,7 +157,7 @@ export default function ReportFormListPage() {
       toast.promise(
         createFormFromWord(file).then(form => {
           invalidate();
-          navigate(`/admin/report-form/${form.id}/design`);
+          navigate(designPath(form.id));
         }),
         { loading: '导入中...', success: '已从 Word 创建（已绑定打印模板，书签格已转为可编辑字段）', error: 'Word 导入失败' },
       );
@@ -160,7 +166,7 @@ export default function ReportFormListPage() {
   };
 
   const openForm = (form: ReportFormDefinition) => {
-    navigate(`/admin/report-form/${form.id}/design`);
+    navigate(designPath(form.id));
   };
 
   // 后端可能返回数组或 PageResult 对象，兼容两者
@@ -314,7 +320,7 @@ export default function ReportFormListPage() {
                 return next;
               })}
               onOpen={() => openForm(form)}
-              onEdit={() => navigate(`/admin/report-form/${form.id}/design`)}
+              onEdit={() => navigate(designPath(form.id))}
               onDelete={async () => {
                 if (await appConfirm(`确定删除「${form.name}」？`)) deleteMut.mutate(form.id);
               }}
@@ -338,7 +344,7 @@ export default function ReportFormListPage() {
                 setVersionFormId(form.id);
                 try { setVersions(await fetchVersions(form.id) || []); } catch { setVersions([]); }
               }}
-              onPreview={() => navigate(`/admin/report-fill/${form.id}`)}
+              onPreview={() => navigate(fillPath(form.id))}
               status={form.status}
             />
           ))}
@@ -415,7 +421,7 @@ export default function ReportFormListPage() {
                         const created = await createFromTemplate(t.id);
                         invalidate();
                         setShowTemplateDialog(false);
-                        navigate(`/admin/report-form/${created.id}/design`);
+                        navigate(designPath(created.id));
                         toast.success('已从模板创建');
                       } catch (e) { toast.error('创建失败: ' + (e as Error).message); }
                     }}
@@ -631,7 +637,7 @@ function FormRow({
               <MenuItem icon={Eye} label="预览（需先发布）" disabled onClick={() => setMenuOpen(false)} />
             )}
             <MenuItem icon={Link} label="复制链接" onClick={() => {
-              navigator.clipboard.writeText(`${window.location.origin}/admin/report-form/${form.id}/design`);
+              navigator.clipboard.writeText(`${window.location.origin}/#${designPath(form.id)}`);
               toast.success('链接已复制');
               setMenuOpen(false);
             }} />

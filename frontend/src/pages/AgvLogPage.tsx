@@ -62,7 +62,7 @@ export default function AgvLogPage() {
     <div className="flex flex-col h-full bg-[var(--app-color-surface-page)] -my-6 sm:-my-8">
       <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]">
         <div className="flex items-center gap-3">
-          <Link to="/admin/agv-tracker" className="p-1 text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-text-primary)]"><ArrowLeft size={16} /></Link>
+          <Link to="/console/admin/agv-tracker" className="p-1 text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-text-primary)]"><ArrowLeft size={16} /></Link>
           <h1 className="text-sm font-semibold text-[var(--app-color-text-primary)]">AGV 轨迹日志</h1>
           {data && <span className="text-[11px] text-[var(--app-color-text-tertiary)]">{data.length} 条</span>}
           <button onClick={doRefresh} className="p-1 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"><RefreshCw size={14} /></button>
@@ -107,7 +107,7 @@ export default function AgvLogPage() {
             }
           }
           return (
-          <table className="w-max min-w-full text-[10px] border-collapse">
+          <table className="w-max min-w-full text-[10px] border-collapse twin-table">
             <thead className="sticky top-0 bg-[var(--app-color-surface-container)] z-10">
               <tr className="border-b border-[var(--app-color-border-default)]">
                 {columns.map((c) => (
