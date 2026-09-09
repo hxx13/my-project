@@ -34,7 +34,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
-import AssetRelocatePanel from "./AssetRelocatePanel";
+import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
+import { useAssetRelocate } from "./useAssetRelocate";
 import { AutoImage } from "@/components/ui/AutoImage";
 import EmojiPicker from "@/components/ui/EmojiPicker";
 import { assetStatusLabel } from "./assetEditableFields";
@@ -99,6 +100,53 @@ function AssetCard({ row, onOpen, highlight }: { row: AssetRow; onOpen: (r: Asse
         </span>
         <span className="truncate text-[11px] text-[var(--twin-mute)]">
           使用人 {row.dynamicValues?.[USER_KEY] || "—"}
+        </span>
+        <span className="truncate font-mono text-[10px] text-[var(--twin-mute)]">{row.assetCode}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────
+   待归位卡片（扫码归位模式：虚线框 + 角标 + 原地点，可移除）
+   ──────────────────────────────────────────────────────────── */
+function RelocateCard({ row, onOpen, onRemove }: { row: AssetRow; onOpen: (r: AssetRow) => void; onRemove: (id: string) => void }) {
+  const photo = firstPhoto(row);
+  const from = row.dynamicValues?.["col_存放地点"] || row.location || "—";
+  return (
+    <div
+      onClick={() => onOpen(row)}
+      title="点击查看详情"
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-twin-lg border-2 border-dashed border-[var(--twin-link-deep)]/60 bg-[color-mix(in_srgb,var(--twin-link-deep)_6%,var(--twin-canvas))] transition hover:border-[var(--twin-link-deep)]"
+    >
+      <span className="absolute left-1.5 top-1.5 z-[1] rounded-full bg-[var(--twin-link-deep)] px-1.5 py-0.5 text-[9px] font-medium text-white">
+        待归位
+      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(row.id);
+        }}
+        aria-label="移除"
+        title="移除"
+        className="absolute right-1 top-1 z-[1] rounded-full bg-black/45 p-0.5 text-white opacity-0 transition group-hover:opacity-100"
+      >
+        <X className="h-3 w-3" />
+      </button>
+      <div className="flex aspect-[3/4] items-center justify-center overflow-hidden border-b border-dashed border-[var(--twin-link-deep)]/30 bg-[var(--twin-canvas-soft)]">
+        {photo ? (
+          <AutoImage src={photo} alt="" className="h-full w-full object-contain p-1" />
+        ) : (
+          <span className="text-[56px] leading-none">{iconOf(row)}</span>
+        )}
+      </div>
+      <div className="flex min-w-0 flex-col gap-0.5 p-2.5">
+        <span className="truncate text-[13px] font-semibold text-[var(--twin-ink)]" title={row.assetName}>
+          {row.assetName}
+        </span>
+        <span className="truncate text-[11px] text-[var(--twin-link-deep)]" title={from}>
+          原地点 {from}
         </span>
         <span className="truncate font-mono text-[10px] text-[var(--twin-mute)]">{row.assetCode}</span>
       </div>
@@ -311,8 +359,8 @@ export default function AssetVisualView(props: {
   /** 本次 selectedId 变化由扫码定位引起时，不清高亮 */
   const locatingRef = useRef(false);
   const [transferOpen, setTransferOpen] = useState(false);
-  /** 扫码归位面板：连续扫码把资产批量移入当前选中地点 */
-  const [relocateOpen, setRelocateOpen] = useState(false);
+  /** 扫码归位模式：连续扫码把实物资产归到目标地点（状态机在 useAssetRelocate） */
+  const relocate = useAssetRelocate();
   const [moveTarget, setMoveTarget] = useState<AssetLocationNode | null>(null);
   const [moveParentId, setMoveParentId] = useState("");
   const [iconTarget, setIconTarget] = useState<AssetLocationNode | null>(null);
@@ -404,6 +452,11 @@ export default function AssetVisualView(props: {
     }
     setSelectedAsset(null);
   }, [selectedId]);
+
+  // 换地点即退出归位模式：待归位卡片只属于当初的目标地点
+  useEffect(() => {
+    if (relocate.target && selectedId !== relocate.target.id) relocate.exit();
+  }, [selectedId, relocate.target, relocate.exit]);
 
   // 「检索资产…」按编码/名称客户端过滤
   const q = assetKeyword.trim().toLowerCase();
@@ -690,6 +743,69 @@ export default function AssetVisualView(props: {
           </div>
         </div>
 
+        {/* 扫码归位横幅：只在归位模式下出现，扫到的资产实时落到画布上的「待归位」区 */}
+        {relocate.target && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--twin-link-deep)]/30 bg-[color-mix(in_srgb,var(--twin-link-deep)_8%,var(--twin-canvas))] px-3 py-2">
+            <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-[var(--twin-ink)]">
+              <ScanLine className="h-3.5 w-3.5 shrink-0 text-[var(--twin-link-deep)]" />
+              归位到「{relocate.target.name}」
+            </span>
+            <span className="rounded-full bg-[var(--twin-canvas)] px-2 py-0.5 text-[10px] text-[var(--twin-body)]">
+              已扫 {relocate.scanned.length} 台
+            </span>
+            <button
+              type="button"
+              onClick={() => relocate.setContinuous((v) => !v)}
+              title="开启后每扫一台自动重新打开扫码"
+              aria-pressed={relocate.continuous}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] transition ${
+                relocate.continuous
+                  ? "border-[var(--twin-link-deep)] text-[var(--twin-link-deep)]"
+                  : "border-[var(--twin-hairline)] text-[var(--twin-mute)]"
+              }`}
+            >
+              <span
+                className={`relative inline-block h-2.5 w-5 shrink-0 rounded-full transition ${
+                  relocate.continuous ? "bg-[var(--twin-link-deep)]" : "bg-[var(--twin-hairline-strong)]"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-1.5 w-1.5 rounded-full bg-white transition-all ${
+                    relocate.continuous ? "left-[0.7rem]" : "left-0.5"
+                  }`}
+                />
+              </span>
+              连续扫码
+            </button>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => relocate.setScanOpen(true)}
+                disabled={relocate.looking}
+                className="inline-flex items-center gap-1 rounded-twin-md bg-[var(--twin-link-deep)] px-2.5 py-1 text-[11px] font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+              >
+                <ScanLine className="h-3.5 w-3.5" />
+                {relocate.looking ? "查询中…" : "扫码"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void relocate.submit()}
+                disabled={relocate.scanned.length === 0 || relocate.submitting}
+                className="rounded-twin-md border border-[var(--twin-link-deep)] px-2.5 py-1 text-[11px] font-medium text-[var(--twin-link-deep)] transition hover:bg-[var(--twin-link-deep)]/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {relocate.submitting ? "移入中…" : `全部移入 ${relocate.scanned.length} 台`}
+              </button>
+              <button
+                type="button"
+                onClick={relocate.exit}
+                className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-[11px] text-[var(--twin-body)] transition hover:bg-[var(--twin-canvas-soft)]"
+              >
+                退出
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 画布主体（点阵背景，对齐库存页平面图） */}
         <div
           className="relative min-h-0 flex-1 overflow-auto"
@@ -757,12 +873,28 @@ export default function AssetVisualView(props: {
               <div className="min-h-0 flex-1 overflow-auto p-4">
                 {assetsLoading ? (
                   <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">加载中…</div>
-                ) : visibleNodeRows.length === 0 && visibleChildren.length === 0 ? (
+                ) : visibleNodeRows.length === 0 && visibleChildren.length === 0 && relocate.scanned.length === 0 ? (
                   <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">
                     {q ? "没有匹配的资产" : "该地点暂无资产"}
                   </div>
                 ) : (
                   <>
+                    {/* 待归位：扫码归位模式下扫到的资产，先落在这里，确认后一次性移入 */}
+                    {relocate.target && relocate.scanned.length > 0 && (
+                      <div className="mb-4">
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className="text-[11px] font-medium text-[var(--twin-link-deep)]">待归位</span>
+                          <span className="text-[10px] text-[var(--twin-mute)]">
+                            {relocate.scanned.length} 台 · 扫完点顶部「全部移入」
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+                          {relocate.scanned.map((r) => (
+                            <RelocateCard key={r.id} row={r} onOpen={setSelectedAsset} onRemove={relocate.remove} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {/* 本空间资产：大图 / emoji 兜底卡片 */}
                     {visibleNodeRows.length > 0 && (
                       <div className="mb-4">
@@ -809,6 +941,16 @@ export default function AssetVisualView(props: {
             <h3 className="min-w-0 flex-1 truncate text-[14px] font-semibold text-[var(--twin-ink)]">
               {node?.name ?? "未选择"}
             </h3>
+            {node && (
+              <button
+                type="button"
+                onClick={() => relocate.start({ id: node.id, name: node.name })}
+                title={`扫码把实物资产归位到「${node.name}」`}
+                className="flex shrink-0 items-center gap-1 rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-[11px] text-[var(--twin-body)] transition hover:border-[var(--twin-link-deep)] hover:text-[var(--twin-link-deep)]"
+              >
+                <ScanLine className="h-3 w-3" /> 扫码归位
+              </button>
+            )}
             {node && (
               <DropdownMenu>
                 <DropdownMenuTrigger className="flex shrink-0 items-center gap-1 rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-[11px] text-[var(--twin-body)] transition hover:bg-[var(--twin-canvas-soft)]">
@@ -879,15 +1021,6 @@ export default function AssetVisualView(props: {
           >
             <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" /> 申请转移
           </button>
-          <button
-            type="button"
-            onClick={() => setRelocateOpen(true)}
-            disabled={!node}
-            title={node ? `扫码把资产归位到「${node.name}」` : "请先选择一个地点"}
-            className="flex min-w-0 flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-1.5 text-[11px] text-[var(--twin-body)] transition hover:bg-[var(--twin-canvas-soft)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <ScanLine className="h-3.5 w-3.5 shrink-0" /> 扫码归位
-          </button>
         </div>
       </div>
 
@@ -911,12 +1044,11 @@ export default function AssetVisualView(props: {
         }}
       />
 
-      {/* ════════ 扫码归位面板 ════════ */}
-      <AssetRelocatePanel
-        open={relocateOpen && node != null}
-        targetNodeId={node?.id ?? null}
-        targetNodeName={node?.name ?? null}
-        onClose={() => setRelocateOpen(false)}
+      {/* ════════ 扫码归位：扫码弹窗（连续模式下每扫一台自动重开） ════════ */}
+      <MobileScanDialog
+        open={relocate.scanOpen}
+        onClose={() => relocate.setScanOpen(false)}
+        onResult={(text) => void relocate.handleScanResult(text)}
       />
 
       {/* ════════ 地点图标选择（右栏「设置」用；左树「⋯」由 LocationTree 自持） ════════ */}
