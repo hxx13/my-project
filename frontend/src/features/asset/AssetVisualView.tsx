@@ -684,12 +684,6 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
             </div>
           ) : (
             <div className="flex h-full min-h-[420px] flex-col">
-              <div className="flex shrink-0 items-center gap-2 border-b border-[var(--twin-hairline)] px-4 py-2.5">
-                <span className="text-[13px] font-semibold text-[var(--twin-ink)]">{node.name}</span>
-                <span className="rounded-full bg-[var(--twin-canvas-soft)] px-2 py-0.5 text-[11px] text-[var(--twin-mute)]">
-                  共 {node.totalCount ?? 0} 件
-                </span>
-              </div>
               <div className="min-h-0 flex-1 overflow-auto p-4">
                 {assetsLoading ? (
                   <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">加载中…</div>
