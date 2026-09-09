@@ -32,6 +32,10 @@ interface Props {
   /** word：网页展示专用尺寸，不写入导出模板 */
   formSource?: string;
   defaultAlign?: CellAlign;
+  /** 是否显示网格线（默认关闭，由 .report-grid--ruled 接管） */
+  ruled?: boolean;
+  /** 首行是否吸顶（默认开启，由 .report-grid--sticky-first 接管） */
+  stickyFirstRow?: boolean;
 }
 
 function isStaticCell(cell: LayoutJson['cells'][0], fields: LayoutJson['fields']): boolean {
@@ -63,6 +67,8 @@ export default function FormGridEditor({
   autoFitVersion,
   formSource,
   defaultAlign = 'center',
+  ruled = false,
+  stickyFirstRow = true,
 }: Props) {
   const cells = layout.cells;
   const { containerRef, containerWidth } = useWordTableContainerWidth(true);
@@ -105,7 +111,7 @@ export default function FormGridEditor({
 
   const tableEl = (
       <table
-        className="border-collapse overflow-visible"
+        className={`overflow-visible report-grid${ruled ? ' report-grid--ruled' : ''}${stickyFirstRow ? ' report-grid--sticky-first' : ''}`}
         style={{
           tableLayout: 'fixed',
           width: totalWidth,
@@ -140,7 +146,7 @@ export default function FormGridEditor({
                   return (
                     <td
                       key={key}
-                      className={`border border-[var(--app-color-border-default)] ${GRID_CELL_TD_CLASS}`}
+                      className={GRID_CELL_TD_CLASS}
                       style={strictRowHeight
                         ? { height: rowH, minHeight: rowH }
                         : { minHeight: rowH }}
@@ -156,8 +162,8 @@ export default function FormGridEditor({
                 const hasFieldPreview = !staticCell && !!cell.fieldKey;
                 const selectedTdClass = isSelected
                   ? hasFieldPreview
-                    ? 'bg-[var(--app-color-accent-soft)] outline outline-2 outline-[var(--app-color-accent)] outline-offset-[-2px] relative z-[var(--z-dropdown)]'
-                    : 'bg-[var(--app-color-accent-soft)] outline outline-2 outline-[var(--app-color-accent)] outline-offset-[-2px] relative z-[1]'
+                    ? 'relative z-[var(--z-dropdown)]'
+                    : 'relative z-[1]'
                   : 'hover:bg-[var(--app-color-surface-hover)]';
 
                 const cellH = strictRowHeight
@@ -171,7 +177,8 @@ export default function FormGridEditor({
                     key={cell.id}
                     colSpan={cell.colSpan}
                     rowSpan={cell.rowSpan}
-                    className={`border border-[var(--app-color-border-default)] p-1.5 cursor-cell transition-colors ${GRID_CELL_TD_CLASS} ${selectedTdClass} ${isEditing ? 'relative z-[var(--z-dropdown)]' : ''}`}
+                    data-cell-selected={isSelected ? "true" : undefined}
+                    className={`p-1.5 cursor-cell transition-colors ${GRID_CELL_TD_CLASS} ${selectedTdClass} ${isEditing ? 'relative z-[var(--z-dropdown)]' : ''}`}
                     style={{
                       ...(strictRowHeight ? { height: cellH, minHeight: cellH, maxHeight: cellH } : { minHeight: cellH }),
                       textAlign: cellTextAlignStyle(cellAlign),
@@ -259,7 +266,7 @@ export default function FormGridEditor({
   return (
     <div
       ref={containerRef}
-      className="w-full overflow-auto border border-[var(--app-color-border-default)] rounded-[var(--app-radius-container)] select-none"
+      className="w-full select-none"
       onMouseUp={onMouseUp}
     >
       <div
