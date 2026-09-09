@@ -127,6 +127,12 @@ export default function AssetDetailDrawer(props: {
   }, [tree]);
   const locationLabels = useMemo(() => locationOptions.map((o) => o.label), [locationOptions]);
 
+  // 存放地点以节点路径为准（节点是结构真源，文本只是镜像，移动后不会滞后）
+  const currentPath = useMemo(() => {
+    if (!asset?.locationNodeId) return "";
+    return findPath(tree, asset.locationNodeId).map((n) => n.name).join(" / ");
+  }, [asset?.locationNodeId, tree]);
+
   // 转移记录：转移申请 + MOVE 留痕合并后按时间倒序
   // 已补建申请的 MOVE 留痕不再单独展示，改在对应申请上打标记
   const { data: history, isLoading: historyLoading } = useAssetTransferHistory(asset?.id);
@@ -314,7 +320,7 @@ export default function AssetDetailDrawer(props: {
               {[
                 ["资产编码", asset.assetCode],
                 ["资产名称", asset.assetName],
-                ["存放地点", asset.dynamicValues?.[LOCATION_KEY] || asset.location],
+                ["存放地点", currentPath || asset.dynamicValues?.[LOCATION_KEY] || asset.location],
                 ["使用人", asset.dynamicValues?.[USER_KEY]],
                 ["状态", asset.status],
                 ["最近转移时间", formatTime(asset.latestTransferTime)],
