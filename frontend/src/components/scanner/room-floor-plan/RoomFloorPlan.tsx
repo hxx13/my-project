@@ -65,7 +65,7 @@ export function RoomFloorPlan({
   if (empty || racks.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-xs text-[var(--app-color-text-tertiary)]">
-        该房间暂无笼架数据
+        该房间暂无你的课题组笼架
       </div>
     );
   }

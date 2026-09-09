@@ -337,12 +337,12 @@ export function UiverseProfilePopup(props: PopupProps) {
                         )}
                         <div className="min-h-0 flex-1">
                             <RoomFloorPlan
-                                racks={floorPlan.data.racks}
+                                racks={floorPlan.data.racks.filter((r) => r.isMine)}
                                 mineCount={floorPlan.data.mineCount}
                                 columns={2}
                                 loading={floorPlan.isLoading}
                                 error={floorPlan.isError}
-                                empty={floorPlan.data.racks.length === 0}
+                                empty={floorPlan.data.racks.filter((r) => r.isMine).length === 0}
                                 onCellClick={(c, r) => setDetailCell({ cell: c, masked: !r.isMine })}
                                 legendColors={cageColors}
                             />
