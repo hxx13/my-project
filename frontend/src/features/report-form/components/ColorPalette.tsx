@@ -60,8 +60,8 @@ export default function ColorPalette({ value, onChange, mode }: Props) {
     <div ref={ref} className="relative inline-flex">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 px-2 py-1 rounded-[6px] text-[11px] font-medium border border-[var(--app-color-border)]
-                   text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors"
+        className="flex h-[34px] items-center gap-1.5 px-2.5 rounded-[var(--app-radius-element)] text-[13px] font-medium
+                   text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] transition-colors"
         title={mode === 'bg' ? '背景色' : '字体颜色'}
       >
         <Icon className="w-3.5 h-3.5" />
