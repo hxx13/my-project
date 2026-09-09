@@ -23,11 +23,12 @@ import {
 } from "@/api/domains/asset.api";
 import { toast } from "react-hot-toast";
 
-export function useAssetList(params: Record<string, unknown>) {
+export function useAssetList(params: Record<string, unknown>, enabled = true) {
   return useQuery({
     queryKey: queryKeys.asset.list(params),
     queryFn: () => fetchAssetRecords(params as Parameters<typeof fetchAssetRecords>[0]),
     placeholderData: (prev) => prev,
+    enabled,
   });
 }
 
