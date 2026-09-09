@@ -23,6 +23,8 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +60,7 @@ public class AssetService {
     private static final DateTimeFormatter EXPORT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int TRANSFER_EXPORT_LINK_LIMIT = 10;
+    private static final Logger log = LoggerFactory.getLogger(AssetService.class);
 
     /** 导入预览缓存：key=previewId, value=预览数据，30分钟过期 */
     private final ConcurrentHashMap<String, PreviewCacheEntry> previewCache = new ConcurrentHashMap<>();
@@ -111,6 +114,22 @@ public class AssetService {
     public static void assertNoInFlightTransfer(Integer inFlightCount) {
         if (hasInFlightTransfer(inFlightCount)) {
             throw new IllegalArgumentException("该资产有进行中的转移申请，请先完成或撤回");
+        }
+    }
+
+    /**
+     * 地点文本 → 节点指针。空白文本返回 null（保持原指针不动）；解析异常吞掉并记 warn，
+     * 不让地点树的问题阻断文本写入。返回非 null 时调用方才需要回填 location_node_id。
+     */
+    static Long resolveLocationNodeQuietly(AssetLocationService assetLocationService, String locationText) {
+        if (!StringUtils.hasText(locationText)) {
+            return null;
+        }
+        try {
+            return assetLocationService.resolveOrCreateTopLevelByName(locationText);
+        } catch (Exception e) {
+            log.warn("存放地点文本解析节点失败，仅写入文本: location={}, err={}", locationText, e.getMessage());
+            return null;
         }
     }
 
@@ -848,6 +867,11 @@ public class AssetService {
             if (StringUtils.hasText(storageColKey)) {
                 assetMapper.upsertAssetValue(id, storageColKey, location.trim());
             }
+            // 文本 → 节点指针：改了地点文本，指针不能还指着旧节点
+            Long nodeId = resolveLocationNodeQuietly(assetLocationService, location);
+            if (nodeId != null) {
+                assetMapper.updateAssetLocationNode(id, nodeId);
+            }
         }
         if (dynamicValues != null && !dynamicValues.isEmpty()) {
             List<AssetColumnDef> defs = assetMapper.listColumnDefs();
@@ -902,6 +926,11 @@ public class AssetService {
         record.setCreateBy(operatorId);
         record.setUpdateBy(operatorId);
         assetMapper.insertAsset(record);
+        // 文本 → 节点指针：新建资产带地点时，指针要跟上
+        Long locationNodeId = resolveLocationNodeQuietly(assetLocationService, record.getLocation());
+        if (locationNodeId != null) {
+            assetMapper.updateAssetLocationNode(record.getId(), locationNodeId);
+        }
         if (dynamicValues != null && !dynamicValues.isEmpty()) {
             List<AssetColumnDef> defs = assetMapper.listColumnDefs();
             Set<String> validKeys = new HashSet<>();
@@ -1933,6 +1962,11 @@ public class AssetService {
                 String storageColKey = pickStorageLocationColumnKey(defs);
                 if (StringUtils.hasText(storageColKey) && validKeys.contains(storageColKey)) {
                     updated += assetMapper.batchUpdateAssetValues(ids, storageColKey, location);
+                }
+                // 文本 → 节点指针：整批同一文本，只解析一次再批量回填
+                Long nodeId = resolveLocationNodeQuietly(assetLocationService, location);
+                if (nodeId != null) {
+                    assetMapper.batchUpdateAssetLocationNode(ids, nodeId);
                 }
             }
         }
