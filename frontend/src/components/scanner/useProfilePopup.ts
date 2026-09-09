@@ -624,10 +624,12 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     const isExitLocked = (room: RoomInfo) => Boolean(isStateUnknown);
     const isRoomLocked = (room: RoomInfo) => (action === "ENTER" ? isEnterLocked(room) : isExitLocked(room));
     const getButtonText = (room: RoomInfo, roomId: string): string => {
-        const bindId = String(room.officialRoomId || room.id || "");
+        const bindId = String(room.officialRoomId || room.id || "").trim();
         const stat = myCapacityStats.find((s) => s.capacityBindRoomIds.includes(bindId));
         const roomLabel =
-            stat && stat.total > 0 ? `${room.displayName}(${stat.count}/${stat.total}人)` : room.displayName;
+            stat && stat.total > 0
+                ? `${getRoomDisplayName(room)}(${stat.count}/${stat.total}人)`
+                : getRoomDisplayName(room);
         const isActed = actedRoomId === roomId || autoActionRoomId === roomId;
         const isFinished = finishedRooms.includes(roomId);
         if (isActed || isFinished) {
