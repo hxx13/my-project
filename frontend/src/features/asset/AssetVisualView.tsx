@@ -24,6 +24,10 @@ import {
   useMoveAssetLocation,
 } from "@/api/hooks/useAssetLocation";
 import { useAssetList } from "@/api/hooks/useAsset";
+import { queryKeys } from "@/api/hooks/queryKeys";
+import { batchMoveAssetLocation } from "@/api/domains/asset.api";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "react-hot-toast";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
 import { Portal } from "@/components/Portal";
 import {
@@ -38,6 +42,7 @@ import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
 import { useAssetRelocate } from "./useAssetRelocate";
 import { AutoImage } from "@/components/ui/AutoImage";
 import EmojiPicker from "@/components/ui/EmojiPicker";
+import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
 import { assetStatusLabel } from "./assetEditableFields";
 import { categoryColor } from "@/features/inventory/constants";
 import LocationTree from "./LocationTree";
@@ -68,24 +73,46 @@ function firstPhoto(row: AssetRow): string | null {
 /* ────────────────────────────────────────────────────────────
    资产卡片（本空间资产：大图 / emoji 兜底）
    ──────────────────────────────────────────────────────────── */
-function AssetCard({ row, onOpen, highlight }: { row: AssetRow; onOpen: (r: AssetRow) => void; highlight?: boolean }) {
+function AssetCard({ row, onOpen, highlight, selectable, selected, onToggle }: {
+  row: AssetRow;
+  onOpen: (r: AssetRow) => void;
+  highlight?: boolean;
+  /** 批量转移模式：禁用拖拽，点击即选中/取消 */
+  selectable?: boolean;
+  selected?: boolean;
+  onToggle?: (id: string) => void;
+}) {
   const photo = firstPhoto(row);
   return (
     <div
-      draggable
+      draggable={!selectable}
       data-asset-id={row.id}
       onDragStart={(e) => {
+        if (selectable) return;
         e.dataTransfer.setData("text/asset-id", row.id);
         e.dataTransfer.effectAllowed = "move";
       }}
-      onClick={() => onOpen(row)}
-      title="拖到左侧地点可移动资产"
-      className={`flex cursor-grab flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] shadow-sm transition hover:border-[var(--twin-link-deep)] active:cursor-grabbing ${
-        highlight
+      onClick={() => (selectable ? onToggle?.(row.id) : onOpen(row))}
+      title={selectable ? (selected ? "点击取消选中" : "点击选中") : "拖到左侧地点可移动资产"}
+      className={`relative flex flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] shadow-sm transition hover:border-[var(--twin-link-deep)] ${
+        selectable ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
+      } ${
+        selected || highlight
           ? "border-[var(--twin-link-deep)] ring-2 ring-[var(--twin-link-deep)] ring-offset-1"
           : "border-[var(--twin-hairline-strong)]"
       }`}
     >
+      {selectable && (
+        <span
+          className={`absolute left-1.5 top-1.5 z-[1] flex h-5 w-5 items-center justify-center rounded-full border text-[11px] leading-none ${
+            selected
+              ? "border-[var(--twin-link-deep)] bg-[var(--twin-link-deep)] text-white"
+              : "border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas)]/90 text-transparent"
+          }`}
+        >
+          ✓
+        </span>
+      )}
       {/* 图区用 3:4 竖版比例：手机竖拍照片能基本填满，留白最少 */}
       <div className="flex aspect-[3/4] items-center justify-center overflow-hidden border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
         {photo ? (
@@ -157,23 +184,34 @@ function RelocateCard({ row, onOpen, onRemove }: { row: AssetRow; onOpen: (r: As
 /* ────────────────────────────────────────────────────────────
    资产芯片（卡片内用 div：外层卡片是 button，不能套 button）
    ──────────────────────────────────────────────────────────── */
-function AssetChip({ row, onOpen, highlight }: { row: AssetRow; onOpen: (r: AssetRow) => void; highlight?: boolean }) {
+function AssetChip({ row, onOpen, highlight, selectable, selected, onToggle }: {
+  row: AssetRow;
+  onOpen: (r: AssetRow) => void;
+  highlight?: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggle?: (id: string) => void;
+}) {
   const photo = firstPhoto(row);
   return (
     <div
-      draggable
+      draggable={!selectable}
       data-asset-id={row.id}
       onDragStart={(e) => {
+        if (selectable) return;
         e.dataTransfer.setData("text/asset-id", row.id);
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={(e) => {
         e.stopPropagation();
-        onOpen(row);
+        if (selectable) onToggle?.(row.id);
+        else onOpen(row);
       }}
-      title="拖到左侧地点可移动资产"
-      className={`flex min-w-0 cursor-grab items-center gap-1 rounded-twin-md border bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition hover:border-[var(--twin-link-deep)] active:cursor-grabbing ${
-        highlight
+      title={selectable ? (selected ? "点击取消选中" : "点击选中") : "拖到左侧地点可移动资产"}
+      className={`flex min-w-0 items-center gap-1 rounded-twin-md border bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition hover:border-[var(--twin-link-deep)] ${
+        selectable ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
+      } ${
+        selected || highlight
           ? "border-[var(--twin-link-deep)] ring-2 ring-[var(--twin-link-deep)] ring-offset-1"
           : "border-[var(--twin-hairline)]"
       }`}
@@ -198,12 +236,15 @@ function AssetChip({ row, onOpen, highlight }: { row: AssetRow; onOpen: (r: Asse
 /* ────────────────────────────────────────────────────────────
    子空间卡片（点击下钻）
    ──────────────────────────────────────────────────────────── */
-function SpaceCard({ node, chips, onSelect, onOpen, highlightId }: {
+function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, selectedIds, onToggle }: {
   node: AssetLocationNode;
   chips: AssetRow[];
   onSelect: (id: number) => void;
   onOpen: (r: AssetRow) => void;
   highlightId?: string | null;
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onToggle?: (id: string) => void;
 }) {
   const hasChildren = (node.children ?? []).length > 0;
   return (
@@ -227,7 +268,7 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId }: {
       {chips.length > 0 && (
         <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-1.5">
           {chips.map((r) => (
-            <AssetChip key={r.id} row={r} onOpen={onOpen} highlight={r.id === highlightId} />
+            <AssetChip key={r.id} row={r} onOpen={onOpen} highlight={r.id === highlightId} selectable={selectable} selected={selectedIds?.has(r.id)} onToggle={onToggle} />
           ))}
         </div>
       )}
@@ -361,10 +402,16 @@ export default function AssetVisualView(props: {
   const [transferOpen, setTransferOpen] = useState(false);
   /** 扫码归位模式：连续扫码把实物资产归到目标地点（状态机在 useAssetRelocate） */
   const relocate = useAssetRelocate();
+  /** 批量转移模式：禁用拖拽，点卡片多选，选目标地点后一次性移入；转完自动退出 */
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchIds, setBatchIds] = useState<Set<string>>(new Set());
+  const [batchTarget, setBatchTarget] = useState("");
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [moveTarget, setMoveTarget] = useState<AssetLocationNode | null>(null);
   const [moveParentId, setMoveParentId] = useState("");
   const [iconTarget, setIconTarget] = useState<AssetLocationNode | null>(null);
 
+  const qc = useQueryClient();
   const createMut = useCreateAssetLocation();
   const updateMut = useUpdateAssetLocation();
   const deleteMut = useDeleteAssetLocation();
@@ -457,6 +504,11 @@ export default function AssetVisualView(props: {
   useEffect(() => {
     if (relocate.target && selectedId !== relocate.target.id) relocate.exit();
   }, [selectedId, relocate.target, relocate.exit]);
+
+  // 换地点即清空批量选中（选中的卡片可能已不在当前画布上）
+  useEffect(() => {
+    setBatchIds(new Set());
+  }, [selectedId]);
 
   // 「检索资产…」按编码/名称客户端过滤
   const q = assetKeyword.trim().toLowerCase();
@@ -566,6 +618,61 @@ export default function AssetVisualView(props: {
       return; // 后端拒绝（非空节点）已由 hook toast 透出
     }
     if (selectedId === id) setSelectedId(null);
+  };
+
+  // ── 批量转移模式 ──
+  /** 全路径 → 节点 id（批量转移的目标地点候选） */
+  const locationPathMap = useMemo(() => {
+    const m = new Map<string, number>();
+    const walk = (nodes: AssetLocationNode[], prefix: string) => {
+      for (const n of nodes) {
+        const label = prefix ? `${prefix} / ${n.name}` : n.name;
+        m.set(label, n.id);
+        walk(n.children ?? [], label);
+      }
+    };
+    walk(tree, "");
+    return m;
+  }, [tree]);
+
+  const exitBatchMode = () => {
+    setBatchMode(false);
+    setBatchIds(new Set());
+    setBatchTarget("");
+  };
+
+  const toggleBatchId = (id: string) =>
+    setBatchIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const submitBatchMove = async () => {
+    const nodeId = locationPathMap.get(batchTarget);
+    if (!nodeId || batchIds.size === 0 || batchSubmitting) return;
+    setBatchSubmitting(true);
+    try {
+      const res = await batchMoveAssetLocation({ ids: Array.from(batchIds), nodeId });
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+      const failed = res.failed ?? [];
+      if (failed.length === 0) {
+        toast.success(`已转移 ${res.moved} 台到「${batchTarget}」`);
+        exitBatchMode();
+      } else {
+        const codeOf = (id: string) => rows.find((r) => r.id === id)?.assetCode ?? id;
+        toast.error(
+          `成功 ${res.moved} 台，失败 ${failed.length} 台（${failed.map((f) => `${codeOf(f.id)}：${f.reason}`).join("；")}）`,
+          { duration: 6000 }
+        );
+        setBatchIds(new Set(failed.map((f) => f.id)));
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "批量转移失败");
+    } finally {
+      setBatchSubmitting(false);
+    }
   };
 
   const handleDropAsset = async (assetId: string, nodeId: number) => {
@@ -700,6 +807,22 @@ export default function AssetVisualView(props: {
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            {/* 批量转移模式开关：开启后禁用拖拽、点卡片多选 */}
+            <button
+              type="button"
+              onClick={() => (batchMode ? exitBatchMode() : setBatchMode(true))}
+              aria-pressed={batchMode}
+              title="开启后点卡片多选，选好目标地点一次性移入"
+              className={
+                "flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[10px] transition " +
+                (batchMode
+                  ? "border-[var(--twin-link-deep)] bg-[var(--twin-link-deep)] font-medium text-white"
+                  : "border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]")
+              }
+            >
+              <ArrowRightLeft className="h-3 w-3" />
+              批量转移
+            </button>
             {/* 检索模式切换：本地点=客户端过滤当前节点；全局=服务端跨全部资产检索 */}
             <div className="flex shrink-0 items-center rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0.5">
               {(["local", "global"] as const).map((m) => (
@@ -742,6 +865,45 @@ export default function AssetVisualView(props: {
             </div>
           </div>
         </div>
+
+        {/* 批量转移横幅：点卡片多选，选好目标地点一次移入；转完自动退出 */}
+        {batchMode && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--twin-link-deep)]/30 bg-[color-mix(in_srgb,var(--twin-link-deep)_8%,var(--twin-canvas))] px-3 py-2">
+            <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-[var(--twin-ink)]">
+              <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-[var(--twin-link-deep)]" />
+              批量转移
+            </span>
+            <span className="rounded-full bg-[var(--twin-canvas)] px-2 py-0.5 text-[10px] text-[var(--twin-body)]">
+              已选 {batchIds.size} 台
+            </span>
+            <div className="w-64 shrink-0">
+              <AdminSearchSelect
+                value={batchTarget}
+                onChange={setBatchTarget}
+                options={Array.from(locationPathMap.keys())}
+                placeholder="选择目标地点"
+                className="h-7 !text-[11px]"
+              />
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void submitBatchMove()}
+                disabled={batchIds.size === 0 || !locationPathMap.has(batchTarget) || batchSubmitting}
+                className="rounded-twin-md bg-[var(--twin-link-deep)] px-2.5 py-1 text-[11px] font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {batchSubmitting ? "转移中…" : `确认转移 ${batchIds.size} 台`}
+              </button>
+              <button
+                type="button"
+                onClick={exitBatchMode}
+                className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-[11px] text-[var(--twin-body)] transition hover:bg-[var(--twin-canvas-soft)]"
+              >
+                退出
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 扫码归位横幅：只在归位模式下出现，扫到的资产实时落到画布上的「待归位」区 */}
         {relocate.target && (
@@ -906,7 +1068,15 @@ export default function AssetVisualView(props: {
                         </div>
                         <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
                           {visibleNodeRows.map((r) => (
-                            <AssetCard key={r.id} row={r} onOpen={setSelectedAsset} highlight={r.id === highlightId} />
+                            <AssetCard
+                              key={r.id}
+                              row={r}
+                              onOpen={setSelectedAsset}
+                              highlight={r.id === highlightId}
+                              selectable={batchMode}
+                              selected={batchIds.has(r.id)}
+                              onToggle={toggleBatchId}
+                            />
                           ))}
                         </div>
                       </div>
@@ -922,6 +1092,9 @@ export default function AssetVisualView(props: {
                             onSelect={setSelectedId}
                             onOpen={setSelectedAsset}
                             highlightId={highlightId}
+                            selectable={batchMode}
+                            selectedIds={batchIds}
+                            onToggle={toggleBatchId}
                           />
                         ))}
                       </div>
