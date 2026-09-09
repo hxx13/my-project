@@ -381,7 +381,10 @@ function DesignerInner({
     const cells = layout.cells.map(c =>
       c.fieldKey === oldKey ? { ...c, fieldKey: newKey } : c
     );
+    // setLayout（replaceLayout）会清空选区，重命名后恢复，否则属性栏会掉回空态
+    const keep = [...editorRef.current.selectedCellIds];
     editorRef.current.setLayout({ ...layout, cells, fields });
+    if (keep.length > 0) editorRef.current.selectRange(keep);
   }, []);
 
   const handleFieldTypeChange = useCallback((type: FieldType) => {

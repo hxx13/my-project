@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { LayoutJson, GridCell, FieldType, FieldDefinition } from '../types';
 
@@ -42,19 +42,15 @@ export default function FieldInspector({
   // 参考格：layout.cells 中第一个命中 selectedCellIds 的格子
   const referenceCell = layout.cells.find(c => selectedCellIds.has(c.id));
   const cellId = referenceCell?.id;
-
-  // 参考格切换时快照其绑定的字段 key 作为「旧 key」。编辑 key 时 onUpdateCell 只改
-  // cell.fieldKey、不碰 fields 映射，据此解析字段定义可避免输入过程中属性区闪断。
-  const committedKeyRef = useRef<string | null>(null);
-  const prevCellIdRef = useRef<string | undefined>(undefined);
-  if (prevCellIdRef.current !== cellId) {
-    prevCellIdRef.current = cellId;
-    committedKeyRef.current = referenceCell?.fieldKey ?? null;
-  }
-  const committedKey = committedKeyRef.current;
+  const cellFieldKey = referenceCell?.fieldKey ?? '';
 
   const isStatic = referenceCell?.kind === 'static';
-  const field = referenceCell && committedKey ? layout.fields[committedKey] ?? null : null;
+  const field = cellFieldKey ? layout.fields[cellFieldKey] ?? null : null;
+
+  // 字段 Key 用草稿态：输入过程只改本地，失焦才提交重命名。
+  // 这样输入途中不会让 cell.fieldKey 指向 fields 里还不存在的键，也不依赖快照。
+  const [keyDraft, setKeyDraft] = useState(cellFieldKey);
+  useEffect(() => { setKeyDraft(cellFieldKey); }, [cellId, cellFieldKey]);
 
   return (
     <div className="flex flex-col h-full w-full min-w-0">
@@ -95,15 +91,12 @@ export default function FieldInspector({
                   <div>
                     <label className={labelClass}>字段 Key</label>
                     <input
-                      value={referenceCell.fieldKey || ''}
-                      onChange={e => onUpdateCell(referenceCell.id, { fieldKey: e.target.value.trim() })}
-                      onBlur={e => {
-                        const newKey = e.target.value.trim();
-                        const oldKey = committedKeyRef.current;
-                        if (newKey && oldKey && newKey !== oldKey) {
-                          onRenameFieldKey(oldKey, newKey);
-                          committedKeyRef.current = newKey;
-                        }
+                      value={keyDraft}
+                      onChange={e => setKeyDraft(e.target.value)}
+                      onBlur={() => {
+                        const newKey = keyDraft.trim();
+                        if (newKey && newKey !== cellFieldKey) onRenameFieldKey(cellFieldKey, newKey);
+                        else setKeyDraft(cellFieldKey);
                       }}
                       className={inputClass}
                       placeholder="f_xxx"
