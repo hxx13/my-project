@@ -23,6 +23,8 @@ export interface AssetRow {
   assetName: string;
   status: string;
   location: string;
+  /** 归属地点节点 id（图形视图按节点分组用；未关联地点为 null） */
+  locationNodeId?: number | null;
   locked: number;
   note?: string;
   latestTransferRequestId?: string;
@@ -133,6 +135,9 @@ export async function fetchAssetRecords(params: {
   location?: string;
   /** 存放地点节点 id，精确匹配（可视化视图按节点筛） */
   locationNodeId?: number;
+  /** 存放地点节点 id 多值筛选。必须传逗号分隔字符串（如 "1,2,3"）：axios 默认把数组序列化成
+   *  `locationNodeIds[]=1`，Spring @RequestParam List 绑不上。 */
+  locationNodeIds?: string;
   lockStatus?: number;
   status?: string;
   sortBy?: string;

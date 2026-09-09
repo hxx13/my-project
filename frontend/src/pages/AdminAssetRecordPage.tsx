@@ -1183,7 +1183,7 @@ export default function AdminAssetRecordPage() {
       </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          <AssetVisualView />
+          <AssetVisualView onCreateAsset={openAddModal} />
         </div>
       )}
 
