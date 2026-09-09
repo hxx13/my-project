@@ -1,8 +1,8 @@
 import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createPortal } from 'react-dom';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import FormGridEditor from '../components/FormGridEditor';
 import EditorToolbar from '../components/EditorToolbar';
 import FieldInspector from '../components/FieldInspector';
@@ -674,36 +674,39 @@ function DesignerInner({
       />
 
       {/* 未保存离开确认弹窗 */}
-      {blocker.state === 'blocked' && createPortal(
-        <div className="fixed inset-0 flex items-center justify-center bg-black/50" style={{ zIndex: 800 }}>
-          <div className="w-full max-w-sm rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="w-5 h-5 text-[var(--app-color-feedback-danger)]" />
-              <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)]">未保存的修改</h3>
-            </div>
-            <p className="text-xs text-[var(--app-color-text-secondary)] mb-4">
-              你有未保存的修改，如果离开此页面，修改将会丢失。
-            </p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => blocker.reset?.()}
-                className="px-4 py-1.5 rounded-[6px] text-[12px] border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
-                继续编辑
-              </button>
-              <button onClick={async () => {
-                await saveMut.mutateAsync();
-                blocker.proceed?.();
-              }}
-                className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90">
-                保存并离开
-              </button>
-              <button onClick={() => blocker.proceed?.()}
-                className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-feedback-danger)] text-white hover:opacity-90">
-                不保存
-              </button>
-            </div>
+      <Dialog open={blocker.state === 'blocked'}>
+        <DialogContent
+          className="sm:max-w-sm"
+          showClose={false}
+          closeOnOverlayClick={false}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogTitle className="flex items-center gap-2 mb-3 text-sm font-semibold text-[var(--app-color-text-primary)]">
+            <AlertTriangle className="w-5 h-5 text-[var(--app-color-feedback-danger)]" />
+            未保存的修改
+          </DialogTitle>
+          <p className="text-xs text-[var(--app-color-text-secondary)] mb-4">
+            你有未保存的修改，如果离开此页面，修改将会丢失。
+          </p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => blocker.reset?.()}
+              className="px-4 py-1.5 rounded-[6px] text-[12px] border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
+              继续编辑
+            </button>
+            <button onClick={async () => {
+              await saveMut.mutateAsync();
+              blocker.proceed?.();
+            }}
+              className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90">
+              保存并离开
+            </button>
+            <button onClick={() => blocker.proceed?.()}
+              className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-feedback-danger)] text-white hover:opacity-90">
+              不保存
+            </button>
           </div>
-        </div>
-      , document.body)}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

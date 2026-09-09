@@ -1,6 +1,5 @@
 // ReportFormListPage — 填报报表管理列表
 import { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -17,6 +16,7 @@ import {
 import { createFromTemplate, exportPdf } from '../api/reportFill.api';
 import FormExportActions from '../components/FormExportActions';
 import PublishWizard from '../components/PublishWizard';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import type { ReportFormDefinition } from '../types';
 import { formatDateTimeAsiaShanghaiShort, compareApiDateTime } from '@/lib/formatDateTimeAsiaShanghai';
 import { toAdminRoutePath } from '@/features/admin/buildAdminNavModel';
@@ -399,72 +399,64 @@ export default function ReportFormListPage() {
       })()}
 
       {/* Template selection dialog */}
-      {showTemplateDialog && (
-        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowTemplateDialog(false)}>
-          <div className="w-full max-w-md rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg max-h-[70vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-[var(--app-color-text-primary)]">从模板创建</h2>
-              <button onClick={() => setShowTemplateDialog(false)} className="p-1 rounded-[4px] hover:bg-[var(--app-color-surface-hover)]">
-                <span className="text-[var(--app-color-text-secondary)]">✕</span>
-              </button>
+      <Dialog open={showTemplateDialog} onOpenChange={(v) => { if (!v) setShowTemplateDialog(false); }}>
+        <DialogContent className="sm:max-w-md max-h-[70vh] overflow-y-auto">
+          <DialogHeader className="mb-4">
+            <DialogTitle className="text-sm font-semibold text-[var(--app-color-text-primary)]">从模板创建</DialogTitle>
+            <DialogDescription className="sr-only">选择一个模板来创建新报表</DialogDescription>
+          </DialogHeader>
+          {templates.length === 0 ? (
+            <p className="text-xs text-[var(--app-color-text-tertiary)] text-center py-4">
+              暂无可用模板。在设计器中打开一个表单，点击"保存为模板"来创建。
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {templates.map(t => (
+                <button key={t.id}
+                  onClick={async () => {
+                    try {
+                      const created = await createFromTemplate(t.id);
+                      invalidate();
+                      setShowTemplateDialog(false);
+                      navigate(designPath(created.id));
+                      toast.success('已从模板创建');
+                    } catch (e) { toast.error('创建失败: ' + (e as Error).message); }
+                  }}
+                  className="w-full text-left p-3 rounded-[var(--app-radius-container)] border border-[var(--app-color-border)] hover:border-[var(--app-color-accent)] transition-colors">
+                  <div className="text-[12px] font-medium text-[var(--app-color-text-primary)]">{t.name}</div>
+                  {t.description && <div className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">{t.description}</div>}
+                </button>
+              ))}
             </div>
-            {templates.length === 0 ? (
-              <p className="text-xs text-[var(--app-color-text-tertiary)] text-center py-4">
-                暂无可用模板。在设计器中打开一个表单，点击"保存为模板"来创建。
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {templates.map(t => (
-                  <button key={t.id}
-                    onClick={async () => {
-                      try {
-                        const created = await createFromTemplate(t.id);
-                        invalidate();
-                        setShowTemplateDialog(false);
-                        navigate(designPath(created.id));
-                        toast.success('已从模板创建');
-                      } catch (e) { toast.error('创建失败: ' + (e as Error).message); }
-                    }}
-                    className="w-full text-left p-3 rounded-[var(--app-radius-container)] border border-[var(--app-color-border)] hover:border-[var(--app-color-accent)] transition-colors">
-                    <div className="text-[12px] font-medium text-[var(--app-color-text-primary)]">{t.name}</div>
-                    {t.description && <div className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">{t.description}</div>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Version history dialog */}
-      {versionFormId && createPortal(
-        <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 800 }} onClick={() => setVersionFormId(null)}>
-          <div className="w-full max-w-md rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg max-h-[70vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-[var(--app-color-text-primary)]">
-                版本历史 · {rawList.find(f => f.id === versionFormId)?.name}
-              </h2>
-              <button onClick={() => setVersionFormId(null)} className="p-1 rounded-[4px] hover:bg-[var(--app-color-surface-hover)]">
-                <span className="text-[var(--app-color-text-secondary)]">✕</span>
-              </button>
-            </div>
-            {versions.length === 0 ? (
-              <p className="text-xs text-[var(--app-color-text-tertiary)]">暂无发布版本</p>
-            ) : (
-              <div className="space-y-2">
-                {(versions as Array<{ version?: number; publishedAt?: string; publishedBy?: string }>).map((v, i) => (
-                  <div key={i} className="p-3 rounded-[var(--app-radius-container)] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]">
-                    <div className="text-[12px] font-medium text-[var(--app-color-text-primary)]">版本 {v.version}</div>
-                    <div className="text-[11px] text-[var(--app-color-text-tertiary)] mt-0.5">
-                      发布于 {formatDateTimeAsiaShanghaiShort(v.publishedAt)} · {v.publishedBy}
-                    </div>
+      <Dialog open={versionFormId !== null} onOpenChange={(v) => { if (!v) setVersionFormId(null); }}>
+        <DialogContent className="sm:max-w-md max-h-[70vh] overflow-y-auto">
+          <DialogHeader className="mb-4">
+            <DialogTitle className="text-sm font-semibold text-[var(--app-color-text-primary)]">
+              版本历史 · {rawList.find(f => f.id === versionFormId)?.name}
+            </DialogTitle>
+            <DialogDescription className="sr-only">查看该报表的历史发布版本</DialogDescription>
+          </DialogHeader>
+          {versions.length === 0 ? (
+            <p className="text-xs text-[var(--app-color-text-tertiary)]">暂无发布版本</p>
+          ) : (
+            <div className="space-y-2">
+              {(versions as Array<{ version?: number; publishedAt?: string; publishedBy?: string }>).map((v, i) => (
+                <div key={i} className="p-3 rounded-[var(--app-radius-container)] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]">
+                  <div className="text-[12px] font-medium text-[var(--app-color-text-primary)]">版本 {v.version}</div>
+                  <div className="text-[11px] text-[var(--app-color-text-tertiary)] mt-0.5">
+                    发布于 {formatDateTimeAsiaShanghaiShort(v.publishedAt)} · {v.publishedBy}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      , document.body)}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AdminPageShell>
   );
 }
