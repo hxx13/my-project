@@ -314,7 +314,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                                 onEnterStudentCenter={handleEnterStudentCenter}
                             />
                         </div>
-                        <div className="flex-1 min-h-0 overflow-y-auto app-themed-scrollbar">
+                        <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                             <AIPredictionCard
                                 predictions={state.predictionList}
                                 isLoading={state.isPredLoading}
@@ -333,7 +333,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                                         className={
                                             i === planRoomIdx
                                                 ? "rounded-md bg-[var(--app-color-accent)] px-2.5 py-1 text-[11px] font-medium text-[var(--app-color-text-inverse)]"
-                                                : "rounded-md border border-[var(--app-color-border-default)] px-2.5 py-1 text-[11px] text-[var(--app-color-text-secondary)]"
+                                                : "rounded-md border border-[var(--app-color-border-default)] bg-[color-mix(in_srgb,var(--app-color-surface-container)_65%,transparent)] px-2.5 py-1 text-[11px] text-[var(--app-color-text-secondary)]"
                                         }
                                     >
                                         {r.displayName || r.name}
