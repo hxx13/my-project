@@ -1,6 +1,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 import { CAGE_TYPE_LABEL } from "@/features/cage-shelf/components/CageCellOverlays";
+import { resolveCageType } from "./resolveCageType";
 
 /** cage_type_code 四值徽标色（架构文档 §4） */
 const CAGE_TYPE_COLOR: Record<number, { bg: string; fg: string }> = {
@@ -69,7 +70,7 @@ export function CellDetailPanel({ cell, onClose }: { cell: CageShelfCell; onClos
     cbi?.id,
   );
   const cageBoxCode = firstText(detail?.cageBoxCode, cbi?.cageBoxCode, cbi?.CageBoxQrCode);
-  const ct = cell.animalCageType ?? 0;
+  const ct = resolveCageType(cell) ?? 0;
   const typeColor = CAGE_TYPE_COLOR[ct];
 
   return (

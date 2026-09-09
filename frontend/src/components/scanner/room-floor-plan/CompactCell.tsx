@@ -8,6 +8,7 @@ import { useCageColors } from "@/features/cage-shelf/components/CageColorContext
 import { displayPosition } from "@/features/cage-shelf/constants";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 import { resolveMultiStatusBackground } from "./cellPaint";
+import { resolveCageType } from "./resolveCageType";
 
 /**
  * 平面图里的紧凑笼位。
@@ -46,7 +47,7 @@ export const CompactCell = memo(function CompactCell({
       }
       style={empty ? undefined : style}
     >
-      {!empty && <CageCellOverlays animalCageType={cell.animalCageType} compact />}
+      {!empty && <CageCellOverlays animalCageType={resolveCageType(cell)} compact />}
       {!empty && (
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center font-bold">
           {label}
