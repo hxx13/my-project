@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Portal } from "@/components/Portal";
 import { adminInputClass } from "@/features/admin/adminFormUi";
+import { useMultiSelectPopover } from "@/features/admin/violations/shared/useMultiSelectPopover";
 
 type AdminSearchSelectProps = {
   value: string;
@@ -17,6 +19,9 @@ type AdminSearchSelectProps = {
 /**
  * 筛选型下拉输入框：可直接输入关键字（后端按 LIKE 模糊匹配），也可从候选列表点选。
  * 用于候选值过多（数百条）时替代原生 select。
+ *
+ * 浮层经 Portal 以 fixed 定位挂到 body（复用 useMultiSelectPopover）：
+ * 弹窗/表格等 overflow 容器内不会被裁切，下方放不下会自动翻到上方。
  */
 export function AdminSearchSelect({
   value,
@@ -27,29 +32,26 @@ export function AdminSearchSelect({
   id,
 }: AdminSearchSelectProps) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
+  /** 本次打开后是否手输过：未输入时展示全部候选，避免「已填值把候选滤成一条」 */
+  const [typed, setTyped] = useState(false);
+  const triggerRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  const { panelStyle } = useMultiSelectPopover({ triggerRef, panelRef, open, onClose: close });
 
   const filtered = useMemo(() => {
     const k = value.trim().toLowerCase();
-    if (!k) return options;
+    if (!typed || !k) return options;
     return options.filter((o) => o.toLowerCase().includes(k));
-  }, [options, value]);
+  }, [options, value, typed]);
 
   const rowCls =
     "block w-full truncate rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]";
 
   return (
-    <div ref={rootRef} className="relative">
+    <div className="relative">
       <input
+        ref={triggerRef}
         id={id}
         value={value}
         autoComplete="off"
@@ -59,8 +61,12 @@ export function AdminSearchSelect({
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
+          setTyped(true);
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          setTyped(false);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Escape" || e.key === "Enter") setOpen(false);
         }}
@@ -83,25 +89,31 @@ export function AdminSearchSelect({
       )}
 
       {open && filtered.length > 0 && (
-        <div className="absolute left-0 top-full z-[var(--z-overlay)] mt-1 max-h-60 w-full min-w-[12rem] overflow-auto rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] p-1 shadow-lg">
-          <button type="button" className={cn(rowCls, "text-[var(--app-color-text-tertiary)]")} onClick={() => { onChange(""); setOpen(false); }}>
-            {placeholder}
-          </button>
-          {filtered.map((o) => (
-            <button
-              key={o}
-              type="button"
-              title={o}
-              className={cn(rowCls, o === value && "bg-[var(--app-color-surface-hover)] font-medium")}
-              onClick={() => {
-                onChange(o);
-                setOpen(false);
-              }}
-            >
-              {o}
+        <Portal>
+          <div
+            ref={panelRef}
+            style={panelStyle}
+            className="max-h-60 overflow-auto rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] p-1 shadow-lg"
+          >
+            <button type="button" className={cn(rowCls, "text-[var(--app-color-text-tertiary)]")} onClick={() => { onChange(""); setOpen(false); }}>
+              {placeholder}
             </button>
-          ))}
-        </div>
+            {filtered.map((o) => (
+              <button
+                key={o}
+                type="button"
+                title={o}
+                className={cn(rowCls, o === value && "bg-[var(--app-color-surface-hover)] font-medium")}
+                onClick={() => {
+                  onChange(o);
+                  setOpen(false);
+                }}
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+        </Portal>
       )}
     </div>
   );
