@@ -12,7 +12,7 @@
  *     前端按 row.locationNodeId 分组，落到中栏各子空间卡片与右栏各分区。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRightLeft, ChevronRight, Plus, Search, Settings, X } from "lucide-react";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import type { AssetRow } from "@/api/domains/asset.api";
@@ -215,6 +215,13 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [keyword, setKeyword] = useState("");
   const [assetKeyword, setAssetKeyword] = useState("");
+  // 检索模式：local=客户端过滤当前节点（默认）；global=服务端跨全部资产检索。
+  // 两种模式共用同一个输入框，切换模式时清空关键词（见 switchSearchMode），互不污染。
+  const [searchMode, setSearchMode] = useState<"local" | "global">("local");
+  // 全局检索防抖 400ms 后的关键词（本地点模式不使用）
+  const [globalKeyword, setGlobalKeyword] = useState("");
+  // 从全局结果跳转地点时，抑制「换地点关抽屉」的一次性副作用
+  const keepDrawerOnNavRef = useRef(false);
   const [selectedAsset, setSelectedAsset] = useState<AssetRow | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState<AssetLocationNode | null>(null);
@@ -249,6 +256,25 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
   );
   const rows = useMemo(() => assetData?.rows ?? [], [assetData]);
 
+  // 全局检索：防抖 400ms 后跨全部资产服务端查询（仅全局模式且有关键词时启用）
+  useEffect(() => {
+    if (searchMode !== "global") return;
+    const kw = assetKeyword.trim();
+    if (!kw) {
+      setGlobalKeyword("");
+      return;
+    }
+    const id = window.setTimeout(() => setGlobalKeyword(kw), 400);
+    return () => window.clearTimeout(id);
+  }, [assetKeyword, searchMode]);
+
+  const globalSearchActive = searchMode === "global" && globalKeyword.length > 0;
+  const { data: globalData, isFetching: globalLoading } = useAssetList(
+    { page: 1, size: 50, keyword: globalKeyword, sortBy: "assetCode", sortDirection: "asc" },
+    globalSearchActive
+  );
+  const globalRows = useMemo(() => globalData?.rows ?? [], [globalData]);
+
   // 抽屉持有的选中项是点击时的快照；列表刷新后按 id 取最新行，保证编辑/移动后详情即时更新
   const selectedAssetLive = useMemo(
     () => (selectedAsset ? rows.find((r) => r.id === selectedAsset.id) ?? selectedAsset : null),
@@ -280,8 +306,12 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [nodeRows]);
 
-  // 换地点后关掉抽屉
+  // 换地点后关掉抽屉（从全局结果跳转时跳过这一次，因为同时要打开该资产的抽屉）
   useEffect(() => {
+    if (keepDrawerOnNavRef.current) {
+      keepDrawerOnNavRef.current = false;
+      return;
+    }
     setSelectedAsset(null);
   }, [selectedId]);
 
@@ -298,6 +328,25 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
     if (!q) return nodeRows;
     return nodeRows.filter((r) => (r.assetCode ?? "").toLowerCase().includes(q) || (r.assetName ?? "").toLowerCase().includes(q));
   }, [nodeRows, q]);
+
+  // 共用同一个输入框：切换模式时清空关键词与全局结果，两种检索互不污染
+  const switchSearchMode = (m: "local" | "global") => {
+    if (m === searchMode) return;
+    setSearchMode(m);
+    setAssetKeyword("");
+    setGlobalKeyword("");
+  };
+
+  // 全局结果点击：跳到该资产所在地点并打开抽屉；同时清空关键词，让中栏回到该地点画布
+  const openGlobalResult = (r: AssetRow) => {
+    if (r.locationNodeId != null && r.locationNodeId !== selectedId) {
+      keepDrawerOnNavRef.current = true;
+      setSelectedId(r.locationNodeId);
+    }
+    setSelectedAsset(r);
+    setAssetKeyword("");
+    setGlobalKeyword("");
+  };
 
   const toggle = (id: number) =>
     setExpanded((prev) => {
@@ -462,30 +511,99 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
             ))}
           </nav>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-1">
-            <Search className="h-3 w-3 shrink-0 text-[var(--twin-mute)]" />
-            <input
-              value={assetKeyword}
-              onChange={(e) => setAssetKeyword(e.target.value)}
-              placeholder="检索资产…"
-              className="w-32 min-w-0 bg-transparent text-[11px] text-[var(--twin-ink)] outline-none placeholder:text-[var(--twin-mute)]"
-            />
-            {assetKeyword && (
-              <button
-                type="button"
-                onClick={() => setAssetKeyword("")}
-                className="shrink-0 text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
-                aria-label="清除检索"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            {/* 检索模式切换：本地点=客户端过滤当前节点；全局=服务端跨全部资产检索 */}
+            <div className="flex shrink-0 items-center rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0.5">
+              {(["local", "global"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => switchSearchMode(m)}
+                  className={
+                    "h-6 rounded-full px-2 text-[10px] transition " +
+                    (searchMode === m
+                      ? "bg-[var(--twin-link-deep)] font-medium text-white"
+                      : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]")
+                  }
+                >
+                  {m === "local" ? "本地点" : "全局"}
+                </button>
+              ))}
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-1">
+              <Search className="h-3 w-3 shrink-0 text-[var(--twin-mute)]" />
+              <input
+                value={assetKeyword}
+                onChange={(e) => setAssetKeyword(e.target.value)}
+                placeholder={searchMode === "global" ? "全局检索资产…" : "检索资产…"}
+                className="w-32 min-w-0 bg-transparent text-[11px] text-[var(--twin-ink)] outline-none placeholder:text-[var(--twin-mute)]"
+              />
+              {assetKeyword && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAssetKeyword("");
+                    setGlobalKeyword("");
+                  }}
+                  className="shrink-0 text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+                  aria-label="清除检索"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* 画布主体 */}
         <div className="relative min-h-0 flex-1 overflow-auto">
-          {!node ? (
+          {globalSearchActive ? (
+            /* 全局检索结果：替换中栏主体（树与右栏不动） */
+            <div className="p-4">
+              {globalLoading && globalRows.length === 0 ? (
+                <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">检索中…</div>
+              ) : globalRows.length === 0 ? (
+                <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">没有匹配的资产</div>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {globalRows.map((r) => {
+                    const locPath =
+                      r.locationNodeId != null
+                        ? findPath(tree, r.locationNodeId).map((n) => n.name).join(" / ")
+                        : "";
+                    return (
+                      <li key={r.id}>
+                        <button
+                          type="button"
+                          onClick={() => openGlobalResult(r)}
+                          className="flex w-full min-w-0 items-center gap-3 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-left transition hover:border-[var(--twin-link-deep)]"
+                        >
+                          <span className="w-28 shrink-0 truncate font-mono text-[11px] text-[var(--twin-mute)]">
+                            {r.assetCode}
+                          </span>
+                          <span
+                            className="min-w-0 flex-1 truncate text-[12px] text-[var(--twin-ink)]"
+                            title={r.assetName}
+                          >
+                            {r.assetName}
+                          </span>
+                          <span
+                            className="w-56 shrink-0 truncate text-[11px] text-[var(--twin-body)]"
+                            title={locPath || r.location}
+                          >
+                            {locPath || r.location || "—"}
+                          </span>
+                          <span className="w-24 shrink-0 truncate text-[11px] text-[var(--twin-mute)]">
+                            {r.dynamicValues?.[USER_KEY] || "—"}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          ) : !node ? (
             <div className="flex h-full items-center justify-center text-[12px] text-[var(--twin-mute)]">
               请在左侧选择一个地点
             </div>
