@@ -24,6 +24,7 @@
         <result property="photoUrls" column="photo_urls"/>
         <result property="createdByBatchId" column="created_by_batch_id"/>
         <result property="locationNodeId" column="location_node_id"/>
+        <result property="icon" column="icon"/>
     </resultMap>
 
     <resultMap id="AssetColumnDefResultMap" type="com.example.demo.modules.asset.entity.AssetColumnDef">
@@ -127,9 +128,9 @@
 
     <insert id="insertAsset" parameterType="com.example.demo.modules.asset.entity.AssetRecord">
         INSERT INTO asset_record(
-            id, asset_code, asset_name, status, location, locked, note, photo_urls, create_by, update_by, created_by_batch_id
+            id, asset_code, asset_name, status, location, locked, note, photo_urls, icon, create_by, update_by, created_by_batch_id
         ) VALUES (
-            #{id}, #{assetCode}, #{assetName}, #{status}, #{location}, #{locked}, #{note}, #{photoUrls}, #{createBy}, #{updateBy}, #{createdByBatchId}
+            #{id}, #{assetCode}, #{assetName}, #{status}, #{location}, #{locked}, #{note}, #{photoUrls}, #{icon}, #{createBy}, #{updateBy}, #{createdByBatchId}
         )
     </insert>
 
@@ -141,6 +142,7 @@
             note = #{note},
             update_by = #{updateBy},
             update_time = NOW()
+        <if test="icon != null">, icon = #{icon}</if>
         WHERE id = #{id} AND deleted = 0
     </update>
 

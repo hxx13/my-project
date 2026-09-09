@@ -16,6 +16,8 @@ public class AssetLocation {
     private String name;
     private Integer sortOrder;
     private Integer deleted;
+    /** 地点图标 emoji */
+    private String icon;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

@@ -64,7 +64,7 @@ class AssetLocationNodeBackfillTest {
         when(mapper.listColumnDefs()).thenReturn(List.of());
         when(locationService.resolveOrCreateTopLevelByName("新地点")).thenReturn(88L);
 
-        serviceWith(mapper, locationService).patchAsset("A1", null, null, null, "新地点", null, null);
+        serviceWith(mapper, locationService).patchAsset("A1", null, null, null, "新地点", null, null, null);
 
         verify(locationService, times(1)).resolveOrCreateTopLevelByName("新地点");
         verify(mapper).updateAssetLocationNode("A1", 88L);
@@ -78,7 +78,7 @@ class AssetLocationNodeBackfillTest {
         when(locationService.resolveOrCreateTopLevelByName("新地点")).thenReturn(88L);
 
         serviceWith(mapper, locationService)
-                .createAsset("op", "C1", "资产1", null, "新地点", null, null, null);
+                .createAsset("op", "C1", "资产1", null, "新地点", null, null, null, null);
 
         verify(mapper).updateAssetLocationNode(anyString(), eq(88L));
     }

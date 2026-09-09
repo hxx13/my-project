@@ -149,7 +149,7 @@ public class AssetLocationService {
     }
 
     @Transactional
-    public AssetLocation create(Long parentId, String name, String operatorId) {
+    public AssetLocation create(Long parentId, String name, String icon, String operatorId) {
         String normalized = normalizeLocationName(name);
         if (normalized == null) {
             throw new IllegalArgumentException("地点名称不能为空");
@@ -171,8 +171,18 @@ public class AssetLocationService {
         node.setParentId(parentId);
         node.setName(normalized);
         node.setSortOrder(nextSort);
+        node.setIcon(normalizeIcon(icon));
         assetLocationMapper.insert(node);
         return node;
+    }
+
+    /** emoji 图标归一化：空白串视为 null（不设图标），否则去首尾空白 */
+    private static String normalizeIcon(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String s = raw.trim();
+        return s.isEmpty() ? null : s;
     }
 
     /**
@@ -198,7 +208,7 @@ public class AssetLocationService {
                 return n.getId();
             }
         }
-        return create(null, leaf, null).getId();
+        return create(null, leaf, null, null).getId();
     }
 
     /** 按 " / " 从根逐段匹配；任一段匹配不到返回 null。 */
@@ -236,7 +246,7 @@ public class AssetLocationService {
      * ponytail: parentId=null 表示不改父节点，P1 无「移到顶层」入口；需要时加显式 toRoot 标志。
      */
     @Transactional
-    public AssetLocation update(Long id, String name, Long parentId, Integer sortOrder) {
+    public AssetLocation update(Long id, String name, Long parentId, Integer sortOrder, String icon) {
         if (id == null) {
             throw new IllegalArgumentException("节点ID不能为空");
         }
@@ -261,7 +271,11 @@ public class AssetLocationService {
         boolean moved = parentId != null && !Objects.equals(node.getParentId(), parentId);
         int order = sortOrder != null ? sortOrder : (node.getSortOrder() == null ? 0 : node.getSortOrder());
         Long targetParent = parentId != null ? parentId : node.getParentId();
-        assetLocationMapper.updateNode(id, normalized, targetParent, order);
+        String normalizedIcon = normalizeIcon(icon);
+        assetLocationMapper.updateNode(id, normalized, targetParent, order, normalizedIcon);
+        if (normalizedIcon != null) {
+            node.setIcon(normalizedIcon);
+        }
         if (renamed || moved) {
             // 同步内存态后再算新路径
             node.setName(normalized);

@@ -21,6 +21,87 @@ public class AssetSchemaMigrator implements ApplicationRunner {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /** 关键词 → emoji 规则（顺序敏感，先匹配先赢） */
+    record IconRule(String icon, String... keywords) {
+        boolean matches(String name) {
+            for (String k : keywords) {
+                if (name.contains(k)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /** 资产图标规则：按名称关键词匹配，顺序敏感 */
+    static final List<IconRule> ASSET_ICON_RULES = List.of(
+            new IconRule("🧪", "生物安全柜", "超净工作台", "洁净工作台", "净化工作台"),
+            new IconRule("💨", "通风柜", "通风系统"),
+            new IconRule("❄️", "液氮"),
+            new IconRule("🧊", "冰箱", "冷藏", "冷冻", "保存箱", "冰柜", "低温"),
+            new IconRule("🌬️", "空调", "风幕", "除湿", "鼓风", "空压", "气泵"),
+            new IconRule("🧼", "灭菌", "消毒", "洗笼", "洗衣机", "烘干", "清洗", "洗手池", "水槽", "水池"),
+            new IconRule("🔬", "显微镜"),
+            new IconRule("🌀", "离心机"),
+            new IconRule("🌡️", "培养箱", "恒温", "水浴", "金属浴"),
+            new IconRule("📊", "扩增仪", "PCR", "电泳", "酶标", "光度计", "分析仪", "检测仪", "计数器", "酸度计", "PH计", "天平", "称"),
+            new IconRule("💻", "计算机", "电脑", "微机", "服务器", "显示器", "大屏", "终端", "平板", "UPS"),
+            new IconRule("🖨️", "打印机", "复印机", "传真机", "扫描仪", "投影机", "扫描器"),
+            new IconRule("🐭", "笼", "隔离器", "IVC", "代谢笼", "饲养"),
+            new IconRule("🛒", "车", "推车", "转运"),
+            new IconRule("🩺", "手术", "解剖", "器械", "钳", "剪", "刀", "针", "牵开器", "无影灯"),
+            new IconRule("🩺", "麻醉", "呼吸机", "监护", "生理"),
+            new IconRule("📷", "成像", "CT", "荧光", "共聚焦", "摄影"),
+            new IconRule("🧫", "切片机", "包埋机", "脱水机", "摊片机", "烘片机"),
+            new IconRule("🌀", "摇床", "振荡", "混合器", "搅拌", "研磨"),
+            new IconRule("🌡️", "监控", "温度"),
+            new IconRule("🏷️", "条码", "标号", "门禁", "寄存柜"),
+            new IconRule("📝", "白板", "看板"),
+            new IconRule("🛗", "电梯"),
+            new IconRule("♨️", "锅炉", "蒸汽", "制氧", "氢氧"),
+            new IconRule("💡", "灯"),
+            new IconRule("🚰", "饮水", "纯水", "软水"),
+            new IconRule("🗃️", "货架", "置物架", "沥水架", "干燥架"),
+            new IconRule("🗄️", "柜", "更衣柜", "文件柜", "药品柜", "鞋柜", "储物"),
+            new IconRule("🪑", "椅", "凳", "沙发"),
+            new IconRule("🪑", "桌", "台"));
+
+    /** 地点图标规则：按名称关键词匹配，顺序敏感 */
+    static final List<IconRule> LOCATION_ICON_RULES = List.of(
+            new IconRule("🚻", "更衣", "洗手", "卫生间"),
+            new IconRule("🏢", "办公室", "会议"),
+            new IconRule("🧪", "实验室", "实验台", "操作间"),
+            new IconRule("🐭", "隔离器", "动物房", "饲养间", "笼架"),
+            new IconRule("🚪", "走廊", "楼梯", "电梯"),
+            new IconRule("📦", "储藏", "库房", "仓库"),
+            new IconRule("🖥️", "监控", "值班"),
+            new IconRule("🩺", "手术", "解剖"));
+
+    static final String ASSET_ICON_FALLBACK = "📦";
+    static final String LOCATION_ICON_FALLBACK = "📁";
+
+    /** 纯函数：资产名称 → emoji（无匹配走兜底） */
+    public static String resolveAssetIcon(String assetName) {
+        return matchIcon(ASSET_ICON_RULES, assetName, ASSET_ICON_FALLBACK);
+    }
+
+    /** 纯函数：地点名称 → emoji（无匹配走兜底） */
+    public static String resolveLocationIcon(String locationName) {
+        return matchIcon(LOCATION_ICON_RULES, locationName, LOCATION_ICON_FALLBACK);
+    }
+
+    private static String matchIcon(List<IconRule> rules, String name, String fallback) {
+        if (name == null) {
+            return fallback;
+        }
+        for (IconRule rule : rules) {
+            if (rule.matches(name)) {
+                return rule.icon();
+            }
+        }
+        return fallback;
+    }
+
     @Override
     public void run(ApplicationArguments args) {
         // === 关键列定义：优先执行，独立容错，确保基本列始终存在 ===
@@ -172,6 +253,12 @@ public class AssetSchemaMigrator implements ApplicationRunner {
             ensureIndexExists("asset_record", "idx_asset_record_loc_node",
                     "CREATE INDEX idx_asset_record_loc_node ON asset_record(location_node_id)");
 
+            // 1d. 图标列：asset_record 由本类创建、asset_location 由 bootstrap SQL 创建，两者都放这里补最稳
+            ensureColumnExists("asset_record", "icon",
+                    "ALTER TABLE asset_record ADD COLUMN icon VARCHAR(16) NULL COMMENT '资产图标 emoji'");
+            ensureColumnExists("asset_location", "icon",
+                    "ALTER TABLE asset_location ADD COLUMN icon VARCHAR(16) NULL COMMENT '地点图标 emoji'");
+
             log.info("[asset-schema] 资产相关表已就绪");
         } catch (Exception e) {
             log.error("[asset-schema] 表结构迁移失败: {}", e.getMessage());
@@ -182,6 +269,51 @@ public class AssetSchemaMigrator implements ApplicationRunner {
         safeRun("cleanup-dup-col", this::ensureColumnDefCleanup);
         // 地点树播种：表为空时用现有 EAV 地点文本建顶层节点并回填外键
         safeRun("seed-asset-locations", this::seedAssetLocations);
+        // 图标预置：只填 icon IS NULL 的行，人工设置过的永不覆盖
+        safeRun("seed-icons", this::seedIcons);
+    }
+
+    /**
+     * 按名称关键词预置 emoji 图标。幂等：只更新 icon IS NULL 的行；
+     * 每条规则一条 UPDATE（非逐行循环），先匹配的规则先写，后续规则不再覆盖。
+     */
+    private void seedIcons() {
+        int assetUpdated = 0;
+        for (IconRule rule : ASSET_ICON_RULES) {
+            assetUpdated += updateIconByKeywords("asset_record", "asset_name", rule);
+        }
+        assetUpdated += updateIconFallback("asset_record", ASSET_ICON_FALLBACK);
+
+        int locationUpdated = 0;
+        for (IconRule rule : LOCATION_ICON_RULES) {
+            locationUpdated += updateIconByKeywords("asset_location", "name", rule);
+        }
+        locationUpdated += updateIconFallback("asset_location", LOCATION_ICON_FALLBACK);
+
+        log.info("[asset-schema] 预置图标：资产 {} 行，地点 {} 行", assetUpdated, locationUpdated);
+    }
+
+    private int updateIconByKeywords(String table, String nameColumn, IconRule rule) {
+        StringBuilder sql = new StringBuilder("UPDATE ").append(table)
+                .append(" SET icon = ? WHERE icon IS NULL AND deleted = 0 AND (");
+        for (int i = 0; i < rule.keywords().length; i++) {
+            if (i > 0) {
+                sql.append(" OR ");
+            }
+            sql.append(nameColumn).append(" LIKE ?");
+        }
+        sql.append(")");
+        Object[] params = new Object[rule.keywords().length + 1];
+        params[0] = rule.icon();
+        for (int i = 0; i < rule.keywords().length; i++) {
+            params[i + 1] = "%" + rule.keywords()[i] + "%";
+        }
+        return jdbcTemplate.update(sql.toString(), params);
+    }
+
+    private int updateIconFallback(String table, String fallback) {
+        return jdbcTemplate.update(
+                "UPDATE " + table + " SET icon = ? WHERE icon IS NULL AND deleted = 0", fallback);
     }
 
     /**

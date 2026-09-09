@@ -140,6 +140,7 @@ public class AssetController {
                     payload.get("location") == null ? null : String.valueOf(payload.get("location")),
                     payload.get("note") == null ? null : String.valueOf(payload.get("note")),
                     payload.get("photoUrls") == null ? null : String.valueOf(payload.get("photoUrls")),
+                    payload.get("icon") == null ? null : String.valueOf(payload.get("icon")),
                     dynamicValues
             ));
         } catch (Exception e) {
@@ -168,6 +169,7 @@ public class AssetController {
                     payload.get("status") == null ? null : String.valueOf(payload.get("status")),
                     payload.get("location") == null ? null : String.valueOf(payload.get("location")),
                     payload.get("photoUrls") == null ? null : String.valueOf(payload.get("photoUrls")),
+                    payload.get("icon") == null ? null : String.valueOf(payload.get("icon")),
                     dynamicValues
             ));
         } catch (Exception e) {

@@ -42,6 +42,7 @@ public class AssetLocationController {
             return Result.success(assetLocationService.create(
                     request == null ? null : request.getParentId(),
                     request == null ? null : request.getName(),
+                    request == null ? null : request.getIcon(),
                     user.getId()));
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -61,7 +62,8 @@ public class AssetLocationController {
                     id,
                     request == null ? null : request.getName(),
                     request == null ? null : request.getParentId(),
-                    request == null ? null : request.getSortOrder()));
+                    request == null ? null : request.getSortOrder(),
+                    request == null ? null : request.getIcon()));
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }

@@ -372,6 +372,7 @@ public class AssetService {
         row.put("latestTransferPhotoUrlsBefore", latestReq == null ? List.of() : photoUrlsFromRequest(latestReq, true));
         row.put("latestTransferPhotoUrlsAfter", latestReq == null ? List.of() : photoUrlsFromRequest(latestReq, false));
         row.put("photoUrls", readPhotoUrlList(r.getPhotoUrls()));
+        row.put("icon", r.getIcon());
         row.put("updateTime", r.getUpdateTime());
         row.put("dynamicValues", valuesByAssetId.getOrDefault(r.getId(), Map.of()));
         return row;
@@ -833,6 +834,7 @@ public class AssetService {
                                           String status,
                                           String location,
                                           String photoUrls,
+                                          String icon,
                                           Map<String, String> dynamicValues) {
         AssetRecord record = assetMapper.findAssetById(id);
         if (record == null) {
@@ -852,6 +854,10 @@ public class AssetService {
         }
         if (photoUrls != null) {
             record.setPhotoUrls(photoUrls.trim());
+        }
+        String normalizedIcon = trimOrNull(icon);
+        if (normalizedIcon != null) {
+            record.setIcon(normalizedIcon);
         }
         record.setUpdateBy("system");
         int affected = assetMapper.updateAssetBase(record);
@@ -904,6 +910,7 @@ public class AssetService {
                                            String location,
                                            String note,
                                            String photoUrls,
+                                           String icon,
                                            Map<String, String> dynamicValues) {
         String code = trimOrNull(assetCode);
         String name = trimOrNull(assetName);
@@ -923,6 +930,7 @@ public class AssetService {
         record.setLocked(0);
         record.setNote(trimOrNull(note));
         record.setPhotoUrls(trimOrNull(photoUrls));
+        record.setIcon(trimOrNull(icon));
         record.setCreateBy(operatorId);
         record.setUpdateBy(operatorId);
         assetMapper.insertAsset(record);

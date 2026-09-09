@@ -21,7 +21,8 @@ public interface AssetLocationMapper {
     int updateNode(@Param("id") Long id,
                    @Param("name") String name,
                    @Param("parentId") Long parentId,
-                   @Param("sortOrder") Integer sortOrder);
+                   @Param("sortOrder") Integer sortOrder,
+                   @Param("icon") String icon);
 
     int softDelete(@Param("id") Long id);
 
