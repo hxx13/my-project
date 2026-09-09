@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRightLeft, ChevronRight, Plus, Search, Settings, X } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, ChevronRight, Plus, Search, Settings, Smile, X } from "lucide-react";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import type { AssetRow } from "@/api/domains/asset.api";
 import {
@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
 import { AutoImage } from "@/components/ui/AutoImage";
+import EmojiPicker from "@/components/ui/EmojiPicker";
 import { categoryColor } from "@/features/inventory/constants";
 import LocationTree from "./LocationTree";
 import AssetDetailDrawer from "./AssetDetailDrawer";
@@ -51,13 +52,9 @@ function statusDotColor(status?: string | null) {
   return "#f59e0b";
 }
 
-/** 无照片时的兜底图标：按资产类别给 emoji（库存页同款做法） */
-function assetEmoji(row: AssetRow) {
-  const c = (row.dynamicValues?.[CATEGORY_KEY] ?? "").trim();
-  if (c.includes("科研")) return "🔬";
-  if (c.includes("教学")) return "📚";
-  if (c.includes("行政")) return "🗂️";
-  return "📦";
+/** 无照片时的兜底图标：优先资产自身 icon（后端预置），再否则包裹 */
+function iconOf(row: AssetRow): string {
+  return row.icon?.trim() || "📦";
 }
 
 function firstPhoto(row: AssetRow): string | null {
@@ -85,7 +82,7 @@ function AssetCard({ row, onOpen }: { row: AssetRow; onOpen: (r: AssetRow) => vo
         {photo ? (
           <AutoImage src={photo} alt="" className="h-full w-full object-cover" />
         ) : (
-          <span className="text-[40px] leading-none">{assetEmoji(row)}</span>
+          <span className="text-[40px] leading-none">{iconOf(row)}</span>
         )}
       </div>
       <div className="flex min-w-0 flex-col gap-0.5 p-2.5">
@@ -125,7 +122,7 @@ function AssetChip({ row, onOpen }: { row: AssetRow; onOpen: (r: AssetRow) => vo
           <AutoImage src={photo} alt="" className="h-full w-full object-cover" />
         </span>
       ) : (
-        <span className="shrink-0 text-[15px] leading-none">{assetEmoji(row)}</span>
+        <span className="shrink-0 text-[15px] leading-none">{iconOf(row)}</span>
       )}
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
         <span className="truncate text-[11px] text-[var(--twin-ink)]" title={row.assetName}>
@@ -158,6 +155,7 @@ function SpaceCard({ node, chips, onSelect, onOpen }: {
           className="h-3.5 w-1 shrink-0 rounded-full"
           style={{ background: chips.length > 0 ? categoryColor(chips[0].dynamicValues?.[CATEGORY_KEY]) : "#a1a1a1" }}
         />
+        {node.icon && <span className="shrink-0 text-[14px] leading-none">{node.icon}</span>}
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--twin-ink)]">{node.name}</span>
         <span className="shrink-0 rounded-full bg-[var(--twin-canvas-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--twin-mute)]">
           共 {node.totalCount ?? 0} 件
@@ -240,7 +238,7 @@ function SpaceGroup({ title, subTotal, rows, childNodes, onSelect, onOpen }: {
                   <AutoImage src={firstPhoto(r)!} alt="" className="h-full w-full object-cover" />
                 </span>
               ) : (
-                <span className="shrink-0 text-[14px] leading-none">{assetEmoji(r)}</span>
+                <span className="shrink-0 text-[14px] leading-none">{iconOf(r)}</span>
               )}
               <span className="flex min-w-0 flex-col leading-tight">
                 <b className="truncate text-[11px] font-medium text-[var(--twin-ink)]">{r.assetName}</b>
@@ -291,6 +289,7 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
   const [transferOpen, setTransferOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState<AssetLocationNode | null>(null);
   const [moveParentId, setMoveParentId] = useState("");
+  const [iconTarget, setIconTarget] = useState<AssetLocationNode | null>(null);
 
   const createMut = useCreateAssetLocation();
   const updateMut = useUpdateAssetLocation();
@@ -433,6 +432,10 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
     updateMut.mutate({ id, payload: { name } });
   };
 
+  const handleSetIcon = (id: number, icon: string) => {
+    updateMut.mutate({ id, payload: { icon } });
+  };
+
   const handleMove = (id: number, parentId: number) => {
     updateMut.mutate({ id, payload: { parentId } });
   };
@@ -537,6 +540,7 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
               onRename={handleRename}
               onMove={handleMove}
               onDelete={handleDelete}
+              onSetIcon={handleSetIcon}
               onDropAsset={handleDropAsset}
             />
           )}
@@ -745,6 +749,10 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-[9rem]">
                   <DropdownMenuItem onSelect={() => void doRename(node)}>改名</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setIconTarget(node)}>
+                    <Smile className="mr-2 h-3.5 w-3.5" />
+                    设置图标
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => {
                       setMoveTarget(node);
@@ -826,6 +834,18 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
           // query invalidation is handled by useCreateAssetTransfer hook internally
         }}
       />
+
+      {/* ════════ 地点图标选择（右栏「设置」用；左树「⋯」由 LocationTree 自持） ════════ */}
+      {iconTarget && (
+        <EmojiPicker
+          value={iconTarget.icon ?? ""}
+          onChange={(emoji) => {
+            handleSetIcon(iconTarget.id, emoji);
+            setIconTarget(null);
+          }}
+          onClose={() => setIconTarget(null)}
+        />
+      )}
 
       {/* ════════ 移动地点弹层（右栏「设置」用） ════════ */}
       {moveTarget && (

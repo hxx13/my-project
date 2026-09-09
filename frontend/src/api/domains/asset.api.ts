@@ -38,6 +38,8 @@ export interface AssetRow {
   latestTransferPhotoUrlsBefore?: string[];
   latestTransferPhotoUrlsAfter?: string[];
   photoUrls?: string[];
+  /** 资产图标 emoji（无照片时兜底展示） */
+  icon?: string | null;
   updateTime?: string;
   dynamicValues: Record<string, string>;
 }
@@ -275,7 +277,7 @@ export async function createAssetColumn(columnLabel: string) {
   return res.data.data;
 }
 
-export async function patchAssetRecord(id: string, payload: { assetName?: string; note?: string; status?: string; location?: string; photoUrls?: string; dynamicValues?: Record<string, string> }) {
+export async function patchAssetRecord(id: string, payload: { assetName?: string; note?: string; status?: string; location?: string; photoUrls?: string; icon?: string; dynamicValues?: Record<string, string> }) {
   const res = await authHttp.patch<Result<{ id: string }>>(`/v1/assets/${encodeURIComponent(id)}`, payload);
   return res.data.data;
 }
@@ -385,6 +387,7 @@ export async function createAssetRecord(payload: {
   location?: string;
   note?: string;
   photoUrls?: string;
+  icon?: string;
   dynamicValues?: Record<string, string>;
 }) {
   const res = await authHttp.post<Result<{ id: string }>>("/v1/assets", payload);

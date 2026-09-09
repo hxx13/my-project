@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { ArrowDown, ArrowUp, Download, EyeOff, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, EyeOff, ImageIcon, Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   clearAssetTable,
@@ -47,6 +47,9 @@ import { findPath } from "@/features/asset/locationTreeUtils";
 import { useAssetLocationTree } from "@/api/hooks/useAssetLocation";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import { Portal } from "@/components/Portal";
+import { AutoImage } from "@/components/ui/AutoImage";
+import EmojiPicker from "@/components/ui/EmojiPicker";
+import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
@@ -122,6 +125,11 @@ export default function AdminAssetRecordPage() {
   const [editing, setEditing] = useState<Record<string, string>>({});
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState<Record<string, string>>({});
+  // 新增资产的图标 / 照片（随提交一起写入）
+  const [addIcon, setAddIcon] = useState("");
+  const [addPhotos, setAddPhotos] = useState<string[]>([]);
+  const [addIconPickerOpen, setAddIconPickerOpen] = useState(false);
+  const [addUploading, setAddUploading] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteKeyword, setDeleteKeyword] = useState("");
   const [deleteCandidates, setDeleteCandidates] = useState<DeleteCandidate[]>([]);
@@ -556,7 +564,32 @@ export default function AdminAssetRecordPage() {
       initial[c.columnKey] = "";
     }
     setAddForm(initial);
+    setAddIcon("");
+    setAddPhotos([]);
     setAddOpen(true);
+  };
+
+  const onAddUploadPhotos = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setAddUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const f of Array.from(files)) {
+        const res = await uploadSingleImage(f);
+        const url = res.publicUrl || res.url || "";
+        if (url) urls.push(url);
+      }
+      if (urls.length) {
+        setAddPhotos((prev) => [...prev, ...urls]);
+        toast.success(`已上传 ${urls.length} 张照片`);
+      } else {
+        toast.error("上传失败");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "上传失败");
+    } finally {
+      setAddUploading(false);
+    }
   };
 
   const submitAddAsset = async () => {
@@ -579,6 +612,8 @@ export default function AdminAssetRecordPage() {
         assetCode,
         assetName: newAssetName,
         dynamicValues,
+        ...(addIcon ? { icon: addIcon } : {}),
+        photoUrls: JSON.stringify(addPhotos),
         ...(locationText !== undefined ? { location: locationText } : {}),
       });
       setAddOpen(false);
@@ -1228,6 +1263,24 @@ export default function AdminAssetRecordPage() {
                 </button>
               </div>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="col-span-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                  图标
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] text-2xl">
+                      {addIcon || "📦"}
+                    </div>
+                    <AdminButton
+                      type="button"
+                      tone="secondary"
+                      size="sm"
+                      onClick={() => setAddIconPickerOpen(true)}
+                      className="inline-flex items-center gap-1.5"
+                    >
+                      <ImageIcon className="h-3.5 w-3.5" />
+                      选择图标
+                    </AdminButton>
+                  </div>
+                </div>
                 <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
                   资产编号
                   <input
@@ -1275,6 +1328,45 @@ export default function AdminAssetRecordPage() {
                   </label>
                   );
                 })}
+                <div className="col-span-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                  照片
+                  <div className="flex flex-wrap items-center gap-2">
+                    {addPhotos.map((u) => (
+                      <div
+                        key={u}
+                        className="group relative h-16 w-16 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]"
+                      >
+                        <AutoImage src={u} alt="" className="h-full w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setAddPhotos((prev) => prev.filter((x) => x !== u))}
+                          className="absolute right-0 top-0 inline-flex h-5 w-5 items-center justify-center bg-black/50 text-white opacity-0 transition group-hover:opacity-100"
+                          aria-label="删除照片"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                    <label className="flex h-16 cursor-pointer items-center gap-1.5 rounded-twin-sm border border-dashed border-[var(--twin-hairline-strong)] px-3 text-[11px] text-[var(--twin-mute)] transition hover:border-[var(--twin-link-deep)] hover:text-[var(--twin-ink)]">
+                      {addUploading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      上传照片
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          void onAddUploadPhotos(e.target.files);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
               </div>
               <div className="mt-4 flex justify-end gap-2">
                 <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setAddOpen(false)}>
@@ -1287,6 +1379,13 @@ export default function AdminAssetRecordPage() {
             </div>
             </div>
           </Portal>
+        )}
+        {addIconPickerOpen && (
+          <EmojiPicker
+            value={addIcon}
+            onChange={setAddIcon}
+            onClose={() => setAddIconPickerOpen(false)}
+          />
         )}
         {deleteOpen && (
           <Portal>

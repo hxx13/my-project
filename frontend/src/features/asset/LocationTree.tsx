@@ -22,11 +22,13 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Smile,
   Trash2,
 } from "lucide-react";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
 import { Portal } from "@/components/Portal";
+import EmojiPicker from "@/components/ui/EmojiPicker";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,6 +57,8 @@ export type LocationTreeProps = {
   onMove: (id: number, parentId: number) => void;
   /** 删除（用户已确认）；非空节点由后端拒绝，错误由父级 toast 透出 */
   onDelete: (id: number) => void;
+  /** 设置地点图标；不传则不显示「设置图标」入口（父级接 mutation，本组件不直接调接口） */
+  onSetIcon?: (id: number, icon: string) => void;
   /** 资产卡片落到节点上 */
   onDropAsset: (assetId: string, nodeId: number) => void;
 };
@@ -72,12 +76,14 @@ export function LocationTree(props: LocationTreeProps) {
     onRename,
     onMove,
     onDelete,
+    onSetIcon,
     onDropAsset,
   } = props;
 
   const [creating, setCreating] = useState<{ parentId: number | null; name: string } | null>(null);
   const [moveTarget, setMoveTarget] = useState<AssetLocationNode | null>(null);
   const [moveParentId, setMoveParentId] = useState("");
+  const [iconTarget, setIconTarget] = useState<AssetLocationNode | null>(null);
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const searching = keyword.trim().length > 0;
 
@@ -210,7 +216,9 @@ export function LocationTree(props: LocationTreeProps) {
                 <span className="h-3 w-3" />
               )}
             </span>
-            {hasChildren ? (
+            {node.icon ? (
+              <span className="shrink-0 text-[13px] leading-none">{node.icon}</span>
+            ) : hasChildren ? (
               open ? (
                 <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-400" />
               ) : (
@@ -261,6 +269,12 @@ export function LocationTree(props: LocationTreeProps) {
                 <Pencil className="mr-2 h-3.5 w-3.5" />
                 改名
               </DropdownMenuItem>
+              {onSetIcon && (
+                <DropdownMenuItem onSelect={() => setIconTarget(node)}>
+                  <Smile className="mr-2 h-3.5 w-3.5" />
+                  设置图标
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onSelect={() => {
                   setMoveTarget(node);
@@ -340,6 +354,17 @@ export function LocationTree(props: LocationTreeProps) {
             </div>
           </div>
         </Portal>
+      )}
+
+      {iconTarget && onSetIcon && (
+        <EmojiPicker
+          value={iconTarget.icon ?? ""}
+          onChange={(emoji) => {
+            onSetIcon(iconTarget.id, emoji);
+            setIconTarget(null);
+          }}
+          onClose={() => setIconTarget(null)}
+        />
       )}
     </div>
   );

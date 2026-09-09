@@ -12,7 +12,7 @@
 
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { ArrowRightLeft, Pencil, Trash2, X } from "lucide-react";
+import { ArrowRightLeft, ImageIcon, Loader2, Pencil, Trash2, Upload, X } from "lucide-react";
 import type { AssetColumnDef, AssetRow } from "@/api/domains/asset.api";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import {
@@ -27,6 +27,8 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { Portal } from "@/components/Portal";
 import { AutoImage } from "@/components/ui/AutoImage";
+import EmojiPicker from "@/components/ui/EmojiPicker";
+import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
 import { cn } from "@/lib/utils";
@@ -99,6 +101,11 @@ export default function AssetDetailDrawer(props: {
   const [baseForm, setBaseForm] = useState({ assetName: "", status: "", note: "" });
   const [dynForm, setDynForm] = useState<Record<string, string>>({});
   const [moveLabel, setMoveLabel] = useState("");
+  // 编辑弹层的图标 / 照片（随保存一起提交）
+  const [editIcon, setEditIcon] = useState("");
+  const [editPhotos, setEditPhotos] = useState<string[]>([]);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const editableCols = useMemo(() => assetEditableFields(columns).dynamic, [columns]);
 
@@ -194,6 +201,8 @@ export default function AssetDetailDrawer(props: {
     const d: Record<string, string> = {};
     for (const c of editableCols) d[c.columnKey] = asset.dynamicValues?.[c.columnKey] ?? "";
     setDynForm(d);
+    setEditIcon(asset.icon ?? "");
+    setEditPhotos(photos);
     setEditOpen(true);
   };
 
@@ -224,12 +233,38 @@ export default function AssetDetailDrawer(props: {
           status: baseForm.status.trim(),
           note: baseForm.note.trim(),
           dynamicValues,
+          // 图标空值后端视为「不改」，故仅在非空时提交
+          ...(editIcon ? { icon: editIcon } : {}),
+          photoUrls: JSON.stringify(editPhotos),
           ...(locationText !== undefined ? { location: locationText } : {}),
         },
       });
       setEditOpen(false);
     } catch {
       // 已由 hook toast 透出
+    }
+  };
+
+  const onUploadPhotos = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const f of Array.from(files)) {
+        const res = await uploadSingleImage(f);
+        const url = res.publicUrl || res.url || "";
+        if (url) urls.push(url);
+      }
+      if (urls.length) {
+        setEditPhotos((prev) => [...prev, ...urls]);
+        toast.success(`已上传 ${urls.length} 张照片`);
+      } else {
+        toast.error("上传失败");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "上传失败");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -500,6 +535,24 @@ export default function AssetDetailDrawer(props: {
 
               <div className="min-h-0 flex-1 overflow-y-auto">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="col-span-2 flex flex-col gap-1 text-xs text-[var(--twin-mute)]">
+                    图标
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] text-2xl">
+                        {editIcon || "📦"}
+                      </div>
+                      <AdminButton
+                        type="button"
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => setIconPickerOpen(true)}
+                        className="inline-flex items-center gap-1.5"
+                      >
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        更换图标
+                      </AdminButton>
+                    </div>
+                  </div>
                   <label className="col-span-2 flex flex-col gap-1 text-xs text-[var(--twin-mute)]">
                     资产名称
                     <input
@@ -525,6 +578,45 @@ export default function AssetDetailDrawer(props: {
                       className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] outline-none focus-visible:border-[var(--twin-link-deep)]"
                     />
                   </label>
+                  <div className="col-span-2 flex flex-col gap-1 text-xs text-[var(--twin-mute)]">
+                    照片
+                    <div className="flex flex-wrap items-center gap-2">
+                      {editPhotos.map((u) => (
+                        <div
+                          key={u}
+                          className="group relative h-16 w-16 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]"
+                        >
+                          <AutoImage src={u} alt="" className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setEditPhotos((prev) => prev.filter((x) => x !== u))}
+                            className="absolute right-0 top-0 inline-flex h-5 w-5 items-center justify-center bg-black/50 text-white opacity-0 transition group-hover:opacity-100"
+                            aria-label="删除照片"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <label className="flex h-16 cursor-pointer items-center gap-1.5 rounded-twin-sm border border-dashed border-[var(--twin-hairline-strong)] px-3 text-[11px] text-[var(--twin-mute)] transition hover:border-[var(--twin-link-deep)] hover:text-[var(--twin-ink)]">
+                        {uploading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                        上传照片
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            void onUploadPhotos(e.target.files);
+                            e.currentTarget.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
                   {editableCols.map((c) => (
                     <label key={c.columnKey} className="flex flex-col gap-1 text-xs text-[var(--twin-mute)]">
                       {c.columnLabel}
@@ -557,6 +649,15 @@ export default function AssetDetailDrawer(props: {
             </div>
           </div>
         </Portal>
+      )}
+
+      {/* 图标选择弹层 */}
+      {iconPickerOpen && (
+        <EmojiPicker
+          value={editIcon}
+          onChange={setEditIcon}
+          onClose={() => setIconPickerOpen(false)}
+        />
       )}
 
       {/* 移动弹层 */}
