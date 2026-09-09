@@ -96,7 +96,7 @@ export default function FieldInspector({
                     <label className={labelClass}>字段 Key</label>
                     <input
                       value={referenceCell.fieldKey || ''}
-                      onChange={e => onUpdateCell(referenceCell.id, { fieldKey: e.target.value })}
+                      onChange={e => onUpdateCell(referenceCell.id, { fieldKey: e.target.value.trim() })}
                       onBlur={e => {
                         const newKey = e.target.value.trim();
                         const oldKey = committedKeyRef.current;
