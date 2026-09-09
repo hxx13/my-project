@@ -1,5 +1,14 @@
+import { QRCodeSVG } from "qrcode.react";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 import { CAGE_TYPE_LABEL } from "@/features/cage-shelf/components/CageCellOverlays";
+
+/** cage_type_code 四值徽标色（架构文档 §4） */
+const CAGE_TYPE_COLOR: Record<number, { bg: string; fg: string }> = {
+  1: { bg: "#fef3c7", fg: "#b45309" },
+  2: { bg: "#d1fae5", fg: "#047857" },
+  3: { bg: "#ffe4e6", fg: "#be123c" },
+  4: { bg: "#dbeafe", fg: "#1d4ed8" },
+};
 
 /** 表内表单字段（cage_info_value）——项目信息 7 + 动物信息 7 + 本地扩展 3 */
 const FORM_ROWS: { key: string; label: string; group: string }[] = [
@@ -44,7 +53,25 @@ function pick(cell: CageShelfCell, key: string): string {
   return "—";
 }
 
+function firstText(...values: unknown[]): string {
+  for (const v of values) {
+    if (v !== null && v !== undefined && String(v).trim() !== "") return String(v).trim();
+  }
+  return "";
+}
+
 export function CellDetailPanel({ cell, onClose }: { cell: CageShelfCell; onClose: () => void }) {
+  const detail = (cell as unknown as { detail?: Record<string, unknown> }).detail;
+  const cbi = cell.cageBoxInfo;
+  const animalCageId = firstText(
+    (cell as unknown as { id?: unknown }).id,
+    detail?.animalCageId,
+    cbi?.id,
+  );
+  const cageBoxCode = firstText(detail?.cageBoxCode, cbi?.cageBoxCode, cbi?.CageBoxQrCode);
+  const ct = cell.animalCageType ?? 0;
+  const typeColor = CAGE_TYPE_COLOR[ct];
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]">
       <div className="flex shrink-0 items-center justify-between border-b border-[var(--app-color-border-default)] px-3 py-2">
@@ -59,11 +86,43 @@ export function CellDetailPanel({ cell, onClose }: { cell: CageShelfCell; onClos
           关闭
         </button>
       </div>
+
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-[11px] leading-relaxed">
-        <div className="mb-2 space-y-1">
-          <Row label="坐标" value={`x${cell.x} / y${cell.y}`} />
-          <Row label="笼位状态" value={CAGE_TYPE_LABEL[cell.animalCageType ?? 0] ?? "—"} />
+        {/* 头部：表外固定字段 */}
+        <div className="mb-2 flex items-center gap-2">
+          <span className="text-[10px] text-[var(--app-color-text-tertiary)]">坐标</span>
+          <span className="font-mono text-[var(--app-color-text-primary)]">
+            x{cell.x} / y{cell.y}
+          </span>
+          {typeColor ? (
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ background: typeColor.bg, color: typeColor.fg }}
+            >
+              {CAGE_TYPE_LABEL[ct] ?? "—"}
+            </span>
+          ) : (
+            <span className="text-[10px] text-[var(--app-color-text-tertiary)]">—</span>
+          )}
+          {cageBoxCode && (
+            <span className="font-mono text-[10px] text-[var(--app-color-text-tertiary)]">
+              盒:{cageBoxCode}
+            </span>
+          )}
         </div>
+
+        {animalCageId && (
+          <div className="mb-2 flex items-center gap-3 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-2">
+            <QRCodeSVG value={animalCageId} size={104} level="M" includeMargin />
+            <div className="min-w-0 text-[10px] text-[var(--app-color-text-tertiary)]">
+              <div className="text-[11px] font-semibold text-[var(--app-color-text-primary)]">
+                笼位二维码
+              </div>
+              <div className="break-all font-mono">笼位ID: {animalCageId}</div>
+            </div>
+          </div>
+        )}
+
         {GROUPS.map((g) => (
           <div key={g} className="mb-2">
             <div className="mb-1 text-[10px] font-bold tracking-wider text-[var(--app-color-text-tertiary)]">
@@ -76,9 +135,6 @@ export function CellDetailPanel({ cell, onClose }: { cell: CageShelfCell; onClos
             </div>
           </div>
         ))}
-        <p className="mt-2 text-[10px] text-[var(--app-color-text-tertiary)]">
-          状态标记（需分笼 / 需特殊饲养 / 动物转移 / 健康异常 / 需合笼 / 特殊饲养名称 / 描述）按架构文档不在此渲染。
-        </p>
       </div>
     </div>
   );
