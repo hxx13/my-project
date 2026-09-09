@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { LayoutJson, GridCell, FieldType, FieldDefinition } from '../types';
 
@@ -22,6 +22,30 @@ export default function FieldInspector({
   layout, selectedCellIds, fieldType, fieldTypeMixed, collapsed,
   onToggleCollapsed, onPatchField, onUpdateCell, onRenameFieldKey,
 }: FieldInspectorProps) {
+  // 参考格：layout.cells 中第一个命中 selectedCellIds 的格子
+  const referenceCell = layout.cells.find(c => selectedCellIds.has(c.id));
+  const cellId = referenceCell?.id;
+  const cellFieldKey = referenceCell?.fieldKey ?? '';
+
+  const isStatic = referenceCell?.kind === 'static';
+  const field = cellFieldKey ? layout.fields[cellFieldKey] ?? null : null;
+  /** 多选时 Key / 文案 / 跨度只作用于参考格，禁用以免看起来像批量生效 */
+  const multi = selectedCellIds.size > 1;
+
+  // 各输入一律草稿态、失焦才提交：逐字写 layout 会让每个击键都 pushUndo + 全表深拷贝。
+  // 草稿随「参考格 + 其落库值」变化重置——React 官方「渲染期调整 state」写法，不用 effect。
+  const syncKey = `${cellId ?? ''}|${cellFieldKey}|${field?.label ?? ''}|${referenceCell?.staticText ?? ''}`;
+  const [syncedKey, setSyncedKey] = useState(syncKey);
+  const [keyDraft, setKeyDraft] = useState(cellFieldKey);
+  const [labelDraft, setLabelDraft] = useState(field?.label ?? '');
+  const [staticDraft, setStaticDraft] = useState(referenceCell?.staticText ?? '');
+  if (syncedKey !== syncKey) {
+    setSyncedKey(syncKey);
+    setKeyDraft(cellFieldKey);
+    setLabelDraft(field?.label ?? '');
+    setStaticDraft(referenceCell?.staticText ?? '');
+  }
+
   // 折叠态：仅一条竖直窄条 + 展开按钮，不渲染任何表单
   if (collapsed) {
     return (
@@ -38,19 +62,6 @@ export default function FieldInspector({
       </div>
     );
   }
-
-  // 参考格：layout.cells 中第一个命中 selectedCellIds 的格子
-  const referenceCell = layout.cells.find(c => selectedCellIds.has(c.id));
-  const cellId = referenceCell?.id;
-  const cellFieldKey = referenceCell?.fieldKey ?? '';
-
-  const isStatic = referenceCell?.kind === 'static';
-  const field = cellFieldKey ? layout.fields[cellFieldKey] ?? null : null;
-
-  // 字段 Key 用草稿态：输入过程只改本地，失焦才提交重命名。
-  // 这样输入途中不会让 cell.fieldKey 指向 fields 里还不存在的键，也不依赖快照。
-  const [keyDraft, setKeyDraft] = useState(cellFieldKey);
-  useEffect(() => { setKeyDraft(cellFieldKey); }, [cellId, cellFieldKey]);
 
   return (
     <div className="flex flex-col h-full w-full min-w-0">
@@ -78,9 +89,16 @@ export default function FieldInspector({
             <div>
               <label className={labelClass}>文案内容</label>
               <textarea
-                value={referenceCell.staticText || ''}
-                onChange={e => onUpdateCell(referenceCell.id, { staticText: e.target.value })}
-                className={`${inputClass} h-16 resize-none`}
+                value={staticDraft}
+                onChange={e => setStaticDraft(e.target.value)}
+                onBlur={() => {
+                  if (staticDraft !== (referenceCell.staticText ?? '')) {
+                    onUpdateCell(referenceCell.id, { staticText: staticDraft });
+                  }
+                }}
+                disabled={multi}
+                title={multi ? '多选时仅作用于第一个格' : undefined}
+                className={`${inputClass} h-16 resize-none disabled:opacity-40`}
                 placeholder="输入文本..."
               />
             </div>
@@ -95,18 +113,24 @@ export default function FieldInspector({
                       onChange={e => setKeyDraft(e.target.value)}
                       onBlur={() => {
                         const newKey = keyDraft.trim();
+                        // 先回退到旧 key：重命名成功时 effect 会用新 key 覆盖，失败（如 key 已存在）则保持旧值
+                        setKeyDraft(cellFieldKey);
                         if (newKey && newKey !== cellFieldKey) onRenameFieldKey(cellFieldKey, newKey);
-                        else setKeyDraft(cellFieldKey);
                       }}
-                      className={inputClass}
+                      disabled={multi}
+                      title={multi ? '多选时仅作用于第一个格' : undefined}
+                      className={`${inputClass} disabled:opacity-40`}
                       placeholder="f_xxx"
                     />
                   </div>
                   <div>
                     <label className={labelClass}>标签</label>
                     <input
-                      value={field.label || ''}
-                      onChange={e => onPatchField({ label: e.target.value })}
+                      value={labelDraft}
+                      onChange={e => setLabelDraft(e.target.value)}
+                      onBlur={() => {
+                        if (labelDraft !== (field.label ?? '')) onPatchField({ label: labelDraft });
+                      }}
                       className={inputClass}
                       placeholder="显示名称"
                     />
@@ -184,7 +208,9 @@ export default function FieldInspector({
                   min={1}
                   value={referenceCell.colSpan}
                   onChange={e => onUpdateCell(referenceCell.id, { colSpan: Math.max(1, Number(e.target.value) || 1) })}
-                  className={inputClass}
+                  disabled={multi}
+                  title={multi ? '多选时仅作用于第一个格' : undefined}
+                  className={`${inputClass} disabled:opacity-40`}
                 />
               </div>
               <div>
@@ -194,7 +220,9 @@ export default function FieldInspector({
                   min={1}
                   value={referenceCell.rowSpan}
                   onChange={e => onUpdateCell(referenceCell.id, { rowSpan: Math.max(1, Number(e.target.value) || 1) })}
-                  className={inputClass}
+                  disabled={multi}
+                  title={multi ? '多选时仅作用于第一个格' : undefined}
+                  className={`${inputClass} disabled:opacity-40`}
                 />
               </div>
             </div>
