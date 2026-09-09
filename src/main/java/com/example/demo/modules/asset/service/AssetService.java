@@ -77,6 +77,7 @@ public class AssetService {
     private final AssetMapper assetMapper;
     private final UploadFileService uploadFileService;
     private final UserDisplayNameService userDisplayNameService;
+    private final AssetLocationService assetLocationService;
 
     @Value("${app.public.base-url:}")
     private String appPublicBaseUrl;
@@ -87,10 +88,84 @@ public class AssetService {
 
     public AssetService(AssetMapper assetMapper,
                         UploadFileService uploadFileService,
-                        UserDisplayNameService userDisplayNameService) {
+                        UserDisplayNameService userDisplayNameService,
+                        AssetLocationService assetLocationService) {
         this.assetMapper = assetMapper;
         this.uploadFileService = uploadFileService;
         this.userDisplayNameService = userDisplayNameService;
+        this.assetLocationService = assetLocationService;
+    }
+
+    /** 在途转移判定（纯函数，便于单测） */
+    public static boolean hasInFlightTransfer(Integer inFlightCount) {
+        return inFlightCount != null && inFlightCount > 0;
+    }
+
+    /** 有在途转移申请时拒绝改地点 */
+    public static void assertNoInFlightTransfer(Integer inFlightCount) {
+        if (hasInFlightTransfer(inFlightCount)) {
+            throw new IllegalArgumentException("该资产有进行中的转移申请，请先完成或撤回");
+        }
+    }
+
+    /**
+     * 拖拽改存放地点：写节点 + 文本镜像（asset_record.location 与 EAV「存放地点」）+ 留痕。
+     * 正式转移申请流程不走这里。
+     */
+    @Transactional
+    public Map<String, Object> moveAssetLocation(String assetId, Long nodeId, String operatorId) {
+        if (!StringUtils.hasText(assetId)) {
+            throw new IllegalArgumentException("资产不能为空");
+        }
+        AssetRecord asset = assetMapper.findAssetById(assetId.trim());
+        if (asset == null) {
+            throw new IllegalArgumentException("资产不存在");
+        }
+        assertNoInFlightTransfer(assetMapper.countInFlightTransfer(asset.getId()));
+        if (nodeId == null) {
+            throw new IllegalArgumentException("请选择目标存放地点");
+        }
+        String path = assetLocationService.pathOf(nodeId);
+        if (!StringUtils.hasText(path)) {
+            throw new IllegalArgumentException("存放地点节点不存在");
+        }
+        String oldLocation = StringUtils.hasText(asset.getLocation()) ? asset.getLocation().trim() : "(未设置)";
+        assetMapper.updateAssetLocationNode(asset.getId(), nodeId);
+        assetMapper.batchUpdateAssetFields(List.of(asset.getId()), null, path, null, operatorId);
+        String storageColKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
+        if (StringUtils.hasText(storageColKey)) {
+            assetMapper.upsertAssetValue(asset.getId(), storageColKey, path);
+        }
+        assetMapper.insertTransferLog(
+                "ATL_" + UUID.randomUUID().toString().replace("-", ""),
+                "",
+                asset.getId(),
+                "MOVE",
+                operatorId,
+                oldLocation + " → " + path,
+                LocalDateTime.now()
+        );
+        return Map.of("id", asset.getId(), "location", path, "locationNodeId", nodeId);
+    }
+
+    /** 批量拖拽改地点：单条失败不影响其他条，返回 {moved, failed} */
+    @Transactional
+    public Map<String, Object> batchMoveAssetLocation(List<String> ids, Long nodeId, String operatorId) {
+        int moved = 0;
+        List<Map<String, Object>> failed = new ArrayList<>();
+        if (ids != null) {
+            for (String id : ids) {
+                try {
+                    moveAssetLocation(id, nodeId, operatorId);
+                    moved++;
+                } catch (Exception e) {
+                    failed.add(Map.of(
+                            "id", id == null ? "" : id,
+                            "reason", StringUtils.hasText(e.getMessage()) ? e.getMessage() : "移动失败"));
+                }
+            }
+        }
+        return Map.of("moved", moved, "failed", failed);
     }
 
     public Map<String, Object> createColumn(String operatorId, String label) {
@@ -2163,7 +2238,7 @@ public class AssetService {
         return keys.isEmpty() ? null : keys.get(0);
     }
 
-    private String pickStorageLocationColumnKey(List<AssetColumnDef> defs) {
+    public static String pickStorageLocationColumnKey(List<AssetColumnDef> defs) {
         if (defs == null) {
             return null;
         }
@@ -2357,7 +2432,7 @@ public class AssetService {
         return text.trim();
     }
 
-    private String str(Object value) {
+    private static String str(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
 }

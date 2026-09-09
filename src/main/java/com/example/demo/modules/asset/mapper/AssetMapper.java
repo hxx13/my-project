@@ -189,5 +189,21 @@ public interface AssetMapper {
 
     // 按 label 查找列定义
     AssetColumnDef findColumnDefByLabel(@Param("columnLabel") String columnLabel);
+
+    // 存放地点节点（拖拽改地点）
+    int updateAssetLocationNode(@Param("assetId") String assetId, @Param("nodeId") Long nodeId);
+
+    int batchUpdateAssetLocationNode(@Param("ids") List<String> ids, @Param("nodeId") Long nodeId);
+
+    /** 在途转移申请数（status=IN_PROGRESS） */
+    int countInFlightTransfer(@Param("assetId") String assetId);
+
+    /** 地点节点改名/移动后，刷新其下资产的 location 文本镜像 */
+    int updateLocationTextByNode(@Param("nodeId") Long nodeId, @Param("location") String location);
+
+    /** 地点节点改名/移动后，刷新其下资产的 EAV「存放地点」镜像 */
+    int updateAssetValueTextByNode(@Param("nodeId") Long nodeId,
+                                   @Param("columnKey") String columnKey,
+                                   @Param("location") String location);
 }
 

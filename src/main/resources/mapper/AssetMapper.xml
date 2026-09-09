@@ -648,6 +648,45 @@
         AND deleted = 0
     </update>
 
+    <!-- ==================== 存放地点节点 ==================== -->
+
+    <update id="updateAssetLocationNode">
+        UPDATE asset_record
+        SET location_node_id = #{nodeId},
+            update_time = NOW()
+        WHERE id = #{assetId} AND deleted = 0
+    </update>
+
+    <update id="batchUpdateAssetLocationNode">
+        UPDATE asset_record
+        SET location_node_id = #{nodeId},
+            update_time = NOW()
+        WHERE deleted = 0 AND id IN
+        <foreach collection="ids" item="id" open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+    </update>
+
+    <select id="countInFlightTransfer" resultType="int">
+        SELECT COUNT(1) FROM asset_transfer_request
+        WHERE asset_id = #{assetId} AND status = 'IN_PROGRESS'
+    </select>
+
+    <update id="updateLocationTextByNode">
+        UPDATE asset_record
+        SET location = #{location},
+            update_time = NOW()
+        WHERE location_node_id = #{nodeId} AND deleted = 0
+    </update>
+
+    <update id="updateAssetValueTextByNode">
+        UPDATE asset_record_value v
+        JOIN asset_record a ON a.id = v.asset_id AND a.deleted = 0
+        SET v.column_value = #{location},
+            v.update_time = NOW()
+        WHERE a.location_node_id = #{nodeId} AND v.column_key = #{columnKey}
+    </update>
+
     <!-- ==================== 导入批次 ==================== -->
 
     <insert id="insertImportBatch" parameterType="com.example.demo.modules.asset.entity.AssetImportBatch">

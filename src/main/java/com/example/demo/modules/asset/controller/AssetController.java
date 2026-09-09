@@ -171,6 +171,50 @@ public class AssetController {
         }
     }
 
+    @PostMapping("/assets/{id}/location")
+    @Operation(summary = "拖拽修改资产存放地点")
+    public Result<?> moveAssetLocation(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @PathVariable String id,
+                                       @RequestBody(required = false) Map<String, Object> payload) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            return Result.success(assetService.moveAssetLocation(
+                    id,
+                    toLongId(payload == null ? null : payload.get("nodeId")),
+                    user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/assets/batch-location")
+    @Operation(summary = "批量拖拽修改资产存放地点")
+    public Result<?> batchMoveAssetLocation(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @RequestBody(required = false) Map<String, Object> payload) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        List<String> ids = new ArrayList<>();
+        Object rawIds = payload == null ? null : payload.get("ids");
+        if (rawIds instanceof List<?> list) {
+            for (Object o : list) {
+                if (o == null) continue;
+                String s = String.valueOf(o).trim();
+                if (!s.isEmpty()) ids.add(s);
+            }
+        }
+        try {
+            return Result.success(assetService.batchMoveAssetLocation(
+                    ids,
+                    toLongId(payload == null ? null : payload.get("nodeId")),
+                    user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     @GetMapping("/assets/by-code")
     @Operation(summary = "按资产编号精确查找资产")
     public Result<?> getAssetByCode(@RequestHeader(value = "Authorization", required = false) String authorization,
@@ -613,6 +657,18 @@ public class AssetController {
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    private Long toLongId(Object value) {
+        if (value instanceof Number n) return n.longValue();
+        if (value instanceof String s && !s.isBlank()) {
+            try {
+                return Long.parseLong(s.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private User resolveUser(String authorization) {
