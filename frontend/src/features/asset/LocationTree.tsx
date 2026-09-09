@@ -19,6 +19,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
@@ -26,6 +27,13 @@ import {
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
 import { Portal } from "@/components/Portal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { collectDescendantIds, filterTree } from "./locationTreeUtils";
 
@@ -211,15 +219,6 @@ export function LocationTree(props: LocationTreeProps) {
             ) : (
               <File className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]" />
             )}
-            <span
-              className={cn(
-                "min-w-0 flex-1 truncate text-[12px]",
-                isSelected ? "font-medium text-[var(--twin-link-deep)]" : "text-[var(--twin-body)]"
-              )}
-              title={node.name}
-            >
-              {node.name}
-            </span>
             {node.totalCount != null && node.totalCount > 0 && (
               <span
                 className={cn(
@@ -230,49 +229,54 @@ export function LocationTree(props: LocationTreeProps) {
                 {node.totalCount}
               </span>
             )}
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-[12px]",
+                isSelected ? "font-medium text-[var(--twin-link-deep)]" : "text-[var(--twin-body)]"
+              )}
+              title={node.name}
+            >
+              {node.name}
+            </span>
           </button>
-          <button
-            type="button"
-            title="新建子地点"
-            aria-label="新建子地点"
-            onClick={() => {
-              setCreating({ parentId: node.id, name: "" });
-              if (!open) onToggle(node.id);
-            }}
-            className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--twin-mute)] opacity-0 transition hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)] group-hover:opacity-100 focus-visible:opacity-100"
-          >
-            <FolderPlus className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            title="改名"
-            aria-label="改名"
-            onClick={() => void doRename(node)}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--twin-mute)] opacity-0 transition hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)] group-hover:opacity-100 focus-visible:opacity-100"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            title="移动地点"
-            aria-label="移动地点"
-            onClick={() => {
-              setMoveTarget(node);
-              setMoveParentId("");
-            }}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--twin-mute)] opacity-0 transition hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)] group-hover:opacity-100 focus-visible:opacity-100"
-          >
-            <ArrowRightLeft className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            title="删除地点"
-            aria-label="删除地点"
-            onClick={() => void doDelete(node)}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--twin-mute)] opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 focus-visible:opacity-100"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              title="更多操作"
+              aria-label="更多操作"
+              className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--twin-mute)] opacity-0 transition hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)] focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[9rem]">
+              <DropdownMenuItem
+                onSelect={() => {
+                  setCreating({ parentId: node.id, name: "" });
+                  if (!open) onToggle(node.id);
+                }}
+              >
+                <FolderPlus className="mr-2 h-3.5 w-3.5" />
+                新建子地点
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void doRename(node)}>
+                <Pencil className="mr-2 h-3.5 w-3.5" />
+                改名
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMoveTarget(node);
+                  setMoveParentId("");
+                }}
+              >
+                <ArrowRightLeft className="mr-2 h-3.5 w-3.5" />
+                移动地点
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => void doDelete(node)} className="text-red-600 focus:text-red-700">
+                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                删除地点
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         {isCreatingHere && renderCreateInput(depth + 1)}
         {open && hasChildren && <div className="space-y-0.5">{children.map((c) => renderNode(c, depth + 1))}</div>}
