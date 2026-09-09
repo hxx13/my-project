@@ -303,10 +303,10 @@ export function UiverseProfilePopup(props: PopupProps) {
                                 name={state.user?.name || "未知人员"}
                             />
                         </div>
-                        <div className="flex-1 min-h-0">
+                        <div className="shrink-0">
                             <ProfileHeader user={state.user} isAvatarLoaded={state.isAvatarLoaded} globalUserState={state.globalUserState} onAvatarError={() => actions.setAvatarLoaded(false)} onOpenRiskModal={() => actions.setShowRiskModal(true)} />
                         </div>
-                        <div className="min-h-0 flex-[1.3] overflow-hidden">
+                        <div className="flex-1 min-h-0 overflow-y-auto app-themed-scrollbar">
                             <AIPredictionCard
                                 predictions={state.predictionList}
                                 isLoading={state.isPredLoading}
