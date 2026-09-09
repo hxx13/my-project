@@ -10,6 +10,7 @@ import com.example.demo.modules.exam.entity.ExamSubmission;
 import com.example.demo.modules.exam.mapper.ExamSubmissionMapper;
 import com.example.demo.modules.personnel.entity.PersonnelRoomAuthorization;
 import com.example.demo.modules.personnel.mapper.PersonnelRoomAuthorizationMapper;
+import com.example.demo.modules.personnel.service.PersonKeyResolver;
 import com.example.demo.modules.training.entity.Training;
 import com.example.demo.modules.training.entity.TrainingEnrollment;
 import com.example.demo.modules.training.entity.TrainingFavorite;
@@ -65,6 +66,7 @@ public class TrainingService {
     private final ExamSubmissionMapper submissionMapper;
     private final PersonQualificationMapper qualificationMapper;
     private final UserDisplayNameService displayNameService;
+    private final PersonKeyResolver personKeyResolver;
     private final ObjectMapper objectMapper;
 
     public TrainingService(TrainingMapper trainingMapper,
@@ -78,6 +80,7 @@ public class TrainingService {
                            ExamSubmissionMapper submissionMapper,
                            PersonQualificationMapper qualificationMapper,
                            UserDisplayNameService displayNameService,
+                           PersonKeyResolver personKeyResolver,
                            ObjectMapper objectMapper) {
         this.trainingMapper = trainingMapper;
         this.occurrenceMapper = occurrenceMapper;
@@ -90,6 +93,7 @@ public class TrainingService {
         this.submissionMapper = submissionMapper;
         this.qualificationMapper = qualificationMapper;
         this.displayNameService = displayNameService;
+        this.personKeyResolver = personKeyResolver;
         this.objectMapper = objectMapper;
     }
 
@@ -547,7 +551,8 @@ public class TrainingService {
             if (!passed) examPassed = false;
             papers.add(Map.of("paperId", pid, "passed", passed));
         }
-        PersonQualification q = qualificationMapper.findByPersonAndItem(personId, "health_report");
+        PersonQualification q = qualificationMapper.findByPersonKeysAndItem(
+                personKeyResolver.lookupKeys(personId), "health_report");
         // 报名门槛只要求「已提交」；是否合格属事后审核，不阻断报名
         boolean healthOk = q != null && q.getFileRef() != null && !q.getFileRef().isBlank();
         int healthState = (q == null || q.getState() == null) ? 0 : q.getState();

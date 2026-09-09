@@ -29,6 +29,19 @@ public interface PersonQualificationMapper {
             """)
     PersonQualification findByPersonAndItem(@Param("personId") String personId, @Param("itemKey") String itemKey);
 
+    /** 按该人的全部可能键查询（人员主键 + 两个账号 id），兼容历史按账号 id 存的数据。 */
+    @Select("""
+            <script>
+            SELECT id, person_id AS personId, item_key AS itemKey, state, file_ref AS fileRef, updated_at AS updatedAt
+            FROM person_qualification
+            WHERE item_key = #{itemKey} AND person_id IN
+            <foreach collection="keys" item="k" open="(" separator="," close=")">#{k}</foreach>
+            ORDER BY updated_at DESC LIMIT 1
+            </script>
+            """)
+    PersonQualification findByPersonKeysAndItem(@Param("keys") List<String> keys,
+                                                @Param("itemKey") String itemKey);
+
     @Select("""
             <script>
             SELECT id, person_id AS personId, item_key AS itemKey, state, file_ref AS fileRef, updated_at AS updatedAt

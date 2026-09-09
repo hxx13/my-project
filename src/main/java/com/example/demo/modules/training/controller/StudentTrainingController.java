@@ -10,6 +10,7 @@ import com.example.demo.modules.training.entity.PersonQualification;
 import com.example.demo.modules.training.mapper.HealthSurveyResponseMapper;
 import com.example.demo.modules.training.mapper.LearningMaterialMapper;
 import com.example.demo.modules.training.mapper.PersonQualificationMapper;
+import com.example.demo.modules.personnel.service.PersonKeyResolver;
 import com.example.demo.modules.training.service.TrainingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,6 +32,7 @@ public class StudentTrainingController {
     private final LearningMaterialMapper learningMaterialMapper;
     private final AdminFileTemplateService adminFileTemplateService;
     private final HealthSurveyResponseMapper healthSurveyMapper;
+    private final PersonKeyResolver personKeyResolver;
     private final ObjectMapper objectMapper;
 
     public StudentTrainingController(TrainingService service,
@@ -40,6 +42,7 @@ public class StudentTrainingController {
                                      LearningMaterialMapper learningMaterialMapper,
                                      AdminFileTemplateService adminFileTemplateService,
                                      HealthSurveyResponseMapper healthSurveyMapper,
+                                     PersonKeyResolver personKeyResolver,
                                      ObjectMapper objectMapper) {
         this.service = service;
         this.authContextService = authContextService;
@@ -48,6 +51,7 @@ public class StudentTrainingController {
         this.learningMaterialMapper = learningMaterialMapper;
         this.adminFileTemplateService = adminFileTemplateService;
         this.healthSurveyMapper = healthSurveyMapper;
+        this.personKeyResolver = personKeyResolver;
         this.objectMapper = objectMapper;
     }
 
@@ -91,7 +95,7 @@ public class StudentTrainingController {
     public Result<?> myQualifications() {
         User user = resolveUser();
         if (user == null) return Result.fail(401, "未登录");
-        return Result.success(qualificationMapper.listByItem("health_report", List.of(user.getId())));
+        return Result.success(qualificationMapper.listByItem("health_report", personKeyResolver.lookupKeys(user.getId())));
     }
 
     /** 已上架的学习资料。 */
@@ -130,7 +134,7 @@ public class StudentTrainingController {
     public Result<?> myHealthSurvey() {
         User user = resolveUser();
         if (user == null) return Result.fail(401, "未登录");
-        HealthSurveyResponse row = healthSurveyMapper.findByPersonId(user.getId());
+        HealthSurveyResponse row = healthSurveyMapper.findByPersonKeys(personKeyResolver.lookupKeys(user.getId()));
         if (row == null) return Result.success(null);
         try {
             return Result.success(Map.of(
@@ -149,15 +153,17 @@ public class StudentTrainingController {
         Object data = body.get("data");
         if (data == null) return Result.fail(400, "缺少 data");
         try {
+            String personKey = personKeyResolver.toPersonKey(user.getId());
             HealthSurveyResponse row = new HealthSurveyResponse();
-            row.setPersonId(user.getId());
+            row.setPersonId(personKey);
             row.setDataJson(objectMapper.writeValueAsString(data));
             healthSurveyMapper.upsert(row);
 
-            PersonQualification existing = qualificationMapper.findByPersonAndItem(user.getId(), "health_report");
+            PersonQualification existing = qualificationMapper.findByPersonKeysAndItem(
+                    personKeyResolver.lookupKeys(user.getId()), "health_report");
             boolean alreadyPassed = existing != null && existing.getState() != null && existing.getState() == 1;
             PersonQualification q = new PersonQualification();
-            q.setPersonId(user.getId());
+            q.setPersonId(personKey);
             q.setItemKey("health_report");
             q.setState(alreadyPassed ? 1 : 0);
             q.setFileRef("survey");
