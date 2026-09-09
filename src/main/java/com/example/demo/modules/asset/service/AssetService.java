@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.demo.modules.asset.dto.AssetTransferApplyRequest;
 import com.example.demo.modules.asset.entity.AssetColumnDef;
 import com.example.demo.modules.asset.entity.AssetImportBatch;
+import com.example.demo.modules.asset.entity.AssetLocation;
 import com.example.demo.modules.asset.entity.AssetRecord;
 import com.example.demo.modules.asset.entity.AssetTransferExportFile;
 import com.example.demo.modules.asset.entity.AssetTransferRequest;
@@ -22,6 +23,8 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +43,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -49,9 +53,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AssetService {
     private static final Set<String> RESERVED_HEADERS = Set.of("资产编码", "资产编号", "资产名称", "状态", "当前位置", "存放地点", "当前存放地点", "标注", "备注");
     private static final Set<String> RESERVED_KEYS = Set.of("assetCode", "assetName", "status", "location", "note", "locked");
+    /** 导入「存放地点」列表头识别（与 importAssetsFrom* 保持一致） */
+    private static final List<String> LOCATION_HEADER_NAMES = List.of("当前位置", "存放地点", "位置");
+    /** 预览返回的去重地点值上限 */
+    private static final int LOCATION_VALUE_LIMIT = 200;
     private static final DateTimeFormatter EXPORT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int TRANSFER_EXPORT_LINK_LIMIT = 10;
+    private static final Logger log = LoggerFactory.getLogger(AssetService.class);
 
     /** 导入预览缓存：key=previewId, value=预览数据，30分钟过期 */
     private final ConcurrentHashMap<String, PreviewCacheEntry> previewCache = new ConcurrentHashMap<>();
@@ -77,6 +86,7 @@ public class AssetService {
     private final AssetMapper assetMapper;
     private final UploadFileService uploadFileService;
     private final UserDisplayNameService userDisplayNameService;
+    private final AssetLocationService assetLocationService;
 
     @Value("${app.public.base-url:}")
     private String appPublicBaseUrl;
@@ -87,10 +97,107 @@ public class AssetService {
 
     public AssetService(AssetMapper assetMapper,
                         UploadFileService uploadFileService,
-                        UserDisplayNameService userDisplayNameService) {
+                        UserDisplayNameService userDisplayNameService,
+                        AssetLocationService assetLocationService) {
         this.assetMapper = assetMapper;
         this.uploadFileService = uploadFileService;
         this.userDisplayNameService = userDisplayNameService;
+        this.assetLocationService = assetLocationService;
+    }
+
+    /** 在途转移判定（纯函数，便于单测） */
+    public static boolean hasInFlightTransfer(Integer inFlightCount) {
+        return inFlightCount != null && inFlightCount > 0;
+    }
+
+    /** 有在途转移申请时拒绝改地点 */
+    public static void assertNoInFlightTransfer(Integer inFlightCount) {
+        if (hasInFlightTransfer(inFlightCount)) {
+            throw new IllegalArgumentException("该资产有进行中的转移申请，请先完成或撤回");
+        }
+    }
+
+    /**
+     * 地点文本 → 节点指针。空白文本返回 null（保持原指针不动）；解析异常吞掉并记 warn，
+     * 不让地点树的问题阻断文本写入。返回非 null 时调用方才需要回填 location_node_id。
+     */
+    static Long resolveLocationNodeQuietly(AssetLocationService assetLocationService, String locationText) {
+        if (!StringUtils.hasText(locationText)) {
+            return null;
+        }
+        try {
+            return assetLocationService.resolveOrCreateTopLevelByName(locationText);
+        } catch (Exception e) {
+            log.warn("存放地点文本解析节点失败，仅写入文本: location={}, err={}", locationText, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 拖拽改存放地点：写节点 + 文本镜像（asset_record.location 与 EAV「存放地点」）+ 留痕。
+     * 正式转移申请流程不走这里。
+     */
+    @Transactional
+    public Map<String, Object> moveAssetLocation(String assetId, Long nodeId, String operatorId) {
+        if (!StringUtils.hasText(assetId)) {
+            throw new IllegalArgumentException("资产不能为空");
+        }
+        AssetRecord asset = assetMapper.findAssetById(assetId.trim());
+        if (asset == null) {
+            throw new IllegalArgumentException("资产不存在");
+        }
+        assertNoInFlightTransfer(assetMapper.countInFlightTransfer(asset.getId()));
+        if (nodeId == null) {
+            throw new IllegalArgumentException("请选择目标存放地点");
+        }
+        String path = assetLocationService.pathOf(nodeId);
+        if (!StringUtils.hasText(path)) {
+            throw new IllegalArgumentException("存放地点节点不存在");
+        }
+        // 原地点留痕：优先 EAV「存放地点」（真实来源），为空才回落固定列
+        String eavLocation = pickCurrentDynamicValue(asset.getId(), "存放地点");
+        String oldLocation = StringUtils.hasText(eavLocation) ? eavLocation.trim()
+                : (StringUtils.hasText(asset.getLocation()) ? asset.getLocation().trim() : "(未设置)");
+        // 已在目标地点：幂等返回，不产生「A → A」的噪音留痕
+        if (path.equals(oldLocation)) {
+            return Map.of("id", asset.getId(), "location", path, "locationNodeId", nodeId);
+        }
+        assetMapper.updateAssetLocationNode(asset.getId(), nodeId);
+        assetMapper.batchUpdateAssetFields(List.of(asset.getId()), null, path, null, operatorId);
+        String storageColKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
+        if (StringUtils.hasText(storageColKey)) {
+            assetMapper.upsertAssetValue(asset.getId(), storageColKey, path);
+        }
+        assetMapper.insertTransferLog(
+                "ATL_" + UUID.randomUUID().toString().replace("-", ""),
+                "",
+                asset.getId(),
+                "MOVE",
+                operatorId,
+                oldLocation + " → " + path,
+                LocalDateTime.now()
+        );
+        return Map.of("id", asset.getId(), "location", path, "locationNodeId", nodeId);
+    }
+
+    /** 批量拖拽改地点：单条失败不影响其他条，返回 {moved, failed} */
+    @Transactional
+    public Map<String, Object> batchMoveAssetLocation(List<String> ids, Long nodeId, String operatorId) {
+        int moved = 0;
+        List<Map<String, Object>> failed = new ArrayList<>();
+        if (ids != null) {
+            for (String id : ids) {
+                try {
+                    moveAssetLocation(id, nodeId, operatorId);
+                    moved++;
+                } catch (Exception e) {
+                    failed.add(Map.of(
+                            "id", id == null ? "" : id,
+                            "reason", StringUtils.hasText(e.getMessage()) ? e.getMessage() : "移动失败"));
+                }
+            }
+        }
+        return Map.of("moved", moved, "failed", failed);
     }
 
     public Map<String, Object> createColumn(String operatorId, String label) {
@@ -121,6 +228,9 @@ public class AssetService {
                                           String campus,
                                           String user,
                                           String model,
+                                          String location,
+                                          Long locationNodeId,
+                                          List<Long> locationNodeIds,
                                           Integer lockStatus,
                                           String status,
                                           int page,
@@ -164,6 +274,7 @@ public class AssetService {
         String campusVal = trimOrNull(campus);
         String userVal = trimOrNull(user);
         String modelVal = trimOrNull(model);
+        String locationVal = trimOrNull(location);
         String statusVal = trimOrNull(status);
         String orderDir = "asc".equalsIgnoreCase(sortDirection) ? "asc" : "desc";
         String orderBy = StringUtils.hasText(sortBy) ? sortBy : "updateTime";
@@ -194,7 +305,7 @@ public class AssetService {
         List<AssetRecord> records;
         int total;
         if (sortByDynamic) {
-            List<AssetRecord> all = assetMapper.listAssetsAll(keywordVal, assetNameVal, campusVal, userVal, modelVal, campusKeys, userKeys, modelKeys, lockStatus, statusVal);
+            List<AssetRecord> all = assetMapper.listAssetsAll(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, locationNodeIds, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal);
             Map<String, Map<String, String>> allValues = buildValueMap(extractIds(all));
             all.sort((a, b) -> {
                 String av = allValues.getOrDefault(a.getId(), Map.of()).getOrDefault(orderBy, "");
@@ -208,8 +319,8 @@ public class AssetService {
             records = all.subList(from, to);
         } else {
             int offset = (safePage - 1) * safeSize;
-            records = assetMapper.listAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, campusKeys, userKeys, modelKeys, lockStatus, statusVal, safeSize, offset, orderBy, orderDir);
-            total = assetMapper.countAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, campusKeys, userKeys, modelKeys, lockStatus, statusVal);
+            records = assetMapper.listAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, locationNodeIds, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal, safeSize, offset, orderBy, orderDir);
+            total = assetMapper.countAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, locationNodeIds, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal);
         }
 
         Map<String, Map<String, String>> valuesByAssetId = buildValueMap(extractIds(records));
@@ -246,6 +357,7 @@ public class AssetService {
         row.put("assetName", r.getAssetName());
         row.put("status", r.getStatus());
         row.put("location", r.getLocation());
+        row.put("locationNodeId", r.getLocationNodeId());
         row.put("locked", r.getLocked());
         row.put("note", r.getNote());
         row.put("latestTransferRequestId", r.getLatestTransferRequestId());
@@ -260,6 +372,7 @@ public class AssetService {
         row.put("latestTransferPhotoUrlsBefore", latestReq == null ? List.of() : photoUrlsFromRequest(latestReq, true));
         row.put("latestTransferPhotoUrlsAfter", latestReq == null ? List.of() : photoUrlsFromRequest(latestReq, false));
         row.put("photoUrls", readPhotoUrlList(r.getPhotoUrls()));
+        row.put("icon", r.getIcon());
         row.put("updateTime", r.getUpdateTime());
         row.put("dynamicValues", valuesByAssetId.getOrDefault(r.getId(), Map.of()));
         return row;
@@ -287,6 +400,7 @@ public class AssetService {
         for (AssetColumnDef d : defs) {
             defByKey.put(d.getColumnKey(), d);
         }
+        String storageColKey = pickStorageLocationColumnKey(defs);
 
         // 如果传入了 createNewColumns，先创建这些列定义
         if (createNewColumns != null) {
@@ -334,7 +448,7 @@ public class AssetService {
             int codeIdx = findHeader(headers, List.of("资产编码", "资产编号", "编号"));
             int nameIdx = findHeader(headers, List.of("资产名称", "名称"));
             int statusIdx = findHeader(headers, List.of("状态"));
-            int locationIdx = findHeader(headers, List.of("当前位置", "存放地点", "位置"));
+            int locationIdx = findHeader(headers, LOCATION_HEADER_NAMES);
             int noteIdx = findHeader(headers, List.of("标注", "备注"));
             if (codeIdx < 0 || nameIdx < 0) {
                 throw new IllegalArgumentException("Excel 必须包含【资产编码】和【资产名称】列");
@@ -404,6 +518,10 @@ public class AssetService {
                     String value = getCellText(row, e.getKey(), formatter);
                     assetMapper.upsertAssetValue(record.getId(), e.getValue(), value);
                 }
+                // 「存放地点」是保留列（只写固定列），但列表/筛选/地点树读的是 EAV，这里补镜像
+                if (StringUtils.hasText(location) && StringUtils.hasText(storageColKey)) {
+                    assetMapper.upsertAssetValue(record.getId(), storageColKey, location.trim());
+                }
             }
         } catch (Exception e) {
             // 更新批次错误信息
@@ -448,6 +566,7 @@ public class AssetService {
         for (AssetColumnDef d : defs) {
             defByKey.put(d.getColumnKey(), d);
         }
+        String storageColKey = pickStorageLocationColumnKey(defs);
 
         // 插入导入批次记录（待导入完成后更新计数）
         assetMapper.insertImportBatch(batch);
@@ -464,7 +583,7 @@ public class AssetService {
             int codeIdx = findHeader(headers, List.of("资产编码", "资产编号", "编号"));
             int nameIdx = findHeader(headers, List.of("资产名称", "名称"));
             int statusIdx = findHeader(headers, List.of("状态"));
-            int locationIdx = findHeader(headers, List.of("当前位置", "存放地点", "位置"));
+            int locationIdx = findHeader(headers, LOCATION_HEADER_NAMES);
             int noteIdx = findHeader(headers, List.of("标注", "备注"));
             if (codeIdx < 0 || nameIdx < 0) {
                 throw new IllegalArgumentException("CSV 必须包含【资产编码】和【资产名称】列");
@@ -533,6 +652,10 @@ public class AssetService {
                     String value = getCsvCell(cells, e.getKey());
                     assetMapper.upsertAssetValue(record.getId(), e.getValue(), value);
                 }
+                // 「存放地点」是保留列（只写固定列），但列表/筛选/地点树读的是 EAV，这里补镜像
+                if (StringUtils.hasText(location) && StringUtils.hasText(storageColKey)) {
+                    assetMapper.upsertAssetValue(record.getId(), storageColKey, location.trim());
+                }
             }
         } catch (IllegalArgumentException e) {
             batch.setErrorDetail(e.getMessage());
@@ -566,12 +689,13 @@ public class AssetService {
         return result;
     }
 
-    public byte[] exportAssetsAsExcel(String keyword, String assetName, String campus, String user, String model, Integer lockStatus, String status, java.util.List<String> selectedColumns) {
+    public byte[] exportAssetsAsExcel(String keyword, String assetName, String campus, String user, String model, String location, Integer lockStatus, String status, java.util.List<String> selectedColumns) {
         String keywordVal = trimOrNull(keyword);
         String assetNameVal = trimOrNull(assetName);
         String campusVal = trimOrNull(campus);
         String userVal = trimOrNull(user);
         String modelVal = trimOrNull(model);
+        String locationVal = trimOrNull(location);
         String statusVal = trimOrNull(status);
 
         List<AssetColumnDef> columnDefs = assetMapper.listColumnDefs();
@@ -588,11 +712,12 @@ public class AssetService {
         List<String> modelKeys = mergeKeys(
                 resolveKeys(columnDefs, List.of("规格型号", "型号"), List.of(), "col_型号"),
                 List.of("col_规格型号", "col_型号", "col_规格"));
+        String locationKey = pickStorageLocationColumnKey(columnDefs);
 
         // 使用 listAssetsAll 不截断，导出全部数据
         List<AssetRecord> allRecords = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, campusVal, userVal, modelVal,
-                campusKeys, userKeys, modelKeys, lockStatus, statusVal);
+                keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, null, null,
+                campusKeys, userKeys, modelKeys, locationKey, lockStatus, statusVal);
 
         Map<String, Map<String, String>> valuesByAssetId = buildValueMap(extractIds(allRecords));
         List<String> requestIds = allRecords.stream()
@@ -709,6 +834,7 @@ public class AssetService {
                                           String status,
                                           String location,
                                           String photoUrls,
+                                          String icon,
                                           Map<String, String> dynamicValues) {
         AssetRecord record = assetMapper.findAssetById(id);
         if (record == null) {
@@ -729,6 +855,10 @@ public class AssetService {
         if (photoUrls != null) {
             record.setPhotoUrls(photoUrls.trim());
         }
+        String normalizedIcon = trimOrNull(icon);
+        if (normalizedIcon != null) {
+            record.setIcon(normalizedIcon);
+        }
         record.setUpdateBy("system");
         int affected = assetMapper.updateAssetBase(record);
         if (affected <= 0) {
@@ -742,6 +872,11 @@ public class AssetService {
             String storageColKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
             if (StringUtils.hasText(storageColKey)) {
                 assetMapper.upsertAssetValue(id, storageColKey, location.trim());
+            }
+            // 文本 → 节点指针：改了地点文本，指针不能还指着旧节点
+            Long nodeId = resolveLocationNodeQuietly(assetLocationService, location);
+            if (nodeId != null) {
+                assetMapper.updateAssetLocationNode(id, nodeId);
             }
         }
         if (dynamicValues != null && !dynamicValues.isEmpty()) {
@@ -775,6 +910,7 @@ public class AssetService {
                                            String location,
                                            String note,
                                            String photoUrls,
+                                           String icon,
                                            Map<String, String> dynamicValues) {
         String code = trimOrNull(assetCode);
         String name = trimOrNull(assetName);
@@ -794,9 +930,15 @@ public class AssetService {
         record.setLocked(0);
         record.setNote(trimOrNull(note));
         record.setPhotoUrls(trimOrNull(photoUrls));
+        record.setIcon(trimOrNull(icon));
         record.setCreateBy(operatorId);
         record.setUpdateBy(operatorId);
         assetMapper.insertAsset(record);
+        // 文本 → 节点指针：新建资产带地点时，指针要跟上
+        Long locationNodeId = resolveLocationNodeQuietly(assetLocationService, record.getLocation());
+        if (locationNodeId != null) {
+            assetMapper.updateAssetLocationNode(record.getId(), locationNodeId);
+        }
         if (dynamicValues != null && !dynamicValues.isEmpty()) {
             List<AssetColumnDef> defs = assetMapper.listColumnDefs();
             Set<String> validKeys = new HashSet<>();
@@ -1176,6 +1318,11 @@ public class AssetService {
         if (StringUtils.hasText(storageColKey)) {
             assetMapper.upsertAssetValue(asset.getId(), storageColKey, req.getTransferLocation().trim());
         }
+        // 文本 → 节点指针：正式转移后 location_node_id 不能还指着旧节点
+        Long locationNodeId = assetLocationService.resolveOrCreateTopLevelByName(req.getTransferLocation());
+        if (locationNodeId != null) {
+            assetMapper.updateAssetLocationNode(asset.getId(), locationNodeId);
+        }
         assetMapper.updateAssetLock(asset.getId(), 0, operatorId);
         assetMapper.insertTransferLog(
                 "ATL_" + UUID.randomUUID().toString().replace("-", ""),
@@ -1266,6 +1413,129 @@ public class AssetService {
         }
         recalculateLatestTransferForAsset(req.getAssetId(), operatorId);
         return Map.of("requestId", req.getId(), "deleted", true);
+    }
+
+    /** 删除一条 MOVE 留痕（仅最高权限入口调用；action_type 条件兜底防误删） */
+    public int deleteMoveLog(String id, String operatorId) {
+        if (!StringUtils.hasText(id)) {
+            throw new IllegalArgumentException("留痕 id 不能为空");
+        }
+        int deleted = assetMapper.deleteMoveLogById(id.trim());
+        if (deleted <= 0) {
+            throw new IllegalArgumentException("留痕不存在或不可删除");
+        }
+        return deleted;
+    }
+
+    /** MOVE 留痕 remark「旧地点 → 新地点」的拆分结果 */
+    public record MoveRemarkParts(String from, String to) {}
+
+    /** 拆分 MOVE 留痕 remark；无箭头时 from=null、to=整串（纯函数，便于单测） */
+    public static MoveRemarkParts splitMoveRemark(String remark) {
+        String text = remark == null ? "" : remark.trim();
+        int idx = text.indexOf(" → ");
+        if (idx < 0) {
+            return new MoveRemarkParts(null, text.isEmpty() ? null : text);
+        }
+        String from = text.substring(0, idx).trim();
+        String to = text.substring(idx + " → ".length()).trim();
+        return new MoveRemarkParts(from.isEmpty() ? null : from, to.isEmpty() ? null : to);
+    }
+
+    /**
+     * 由地点移动留痕补建一条已完成的转移申请，并把该留痕挂到新申请上。
+     * payload: {remark?, photoUrlsBefore?: string[], photoUrlsAfter?: string[]}
+     */
+    @Transactional
+    public Map<String, Object> promoteMoveLogToRequest(String logId, Map<String, Object> payload, String operatorId) {
+        if (!StringUtils.hasText(logId)) {
+            throw new IllegalArgumentException("留痕 id 不能为空");
+        }
+        Map<String, Object> log = assetMapper.findTransferLogById(logId.trim());
+        if (log == null) {
+            throw new IllegalArgumentException("留痕不存在");
+        }
+        if (!"MOVE".equals(str(log.get("actionType")))) {
+            throw new IllegalArgumentException("仅地点移动留痕可补建申请");
+        }
+        if (StringUtils.hasText(str(log.get("requestId")))) {
+            throw new IllegalArgumentException("该留痕已关联申请");
+        }
+        String assetId = str(log.get("assetId"));
+        AssetRecord asset = StringUtils.hasText(assetId) ? assetMapper.findAssetById(assetId) : null;
+        if (asset == null) {
+            throw new IllegalArgumentException("资产不存在");
+        }
+        MoveRemarkParts parts = splitMoveRemark(str(log.get("remark")));
+        if (!StringUtils.hasText(parts.to())) {
+            throw new IllegalArgumentException("留痕缺少目标地点，无法补建申请");
+        }
+        String logOperatorId = str(log.get("operatorId"));
+        String applicantId = StringUtils.hasText(logOperatorId) ? logOperatorId : operatorId;
+        String applicantName = StringUtils.hasText(logOperatorId)
+                ? userDisplayNameService.resolveDisplayName(logOperatorId)
+                : null;
+        Object createdTime = log.get("createTime");
+        LocalDateTime transferTime = toLocalDateTime(createdTime);
+        if (transferTime == null) {
+            transferTime = LocalDateTime.now();
+        }
+
+        List<String> before = readPhotoUrlsFromPayload(payload == null ? null : payload.get("photoUrlsBefore"));
+        List<String> after = readPhotoUrlsFromPayload(payload == null ? null : payload.get("photoUrlsAfter"));
+
+        String reqId = "ATR_" + UUID.randomUUID().toString().replace("-", "");
+        AssetTransferRequest row = new AssetTransferRequest();
+        row.setId(reqId);
+        row.setAssetId(asset.getId());
+        row.setAssetCode(asset.getAssetCode());
+        row.setAssetName(asset.getAssetName());
+        row.setApplicantId(applicantId);
+        row.setApplicantName(StringUtils.hasText(applicantName) ? applicantName : applicantId);
+        row.setTransferTime(transferTime);
+        row.setTransferLocation(parts.to());
+        row.setFromLocation(parts.from());
+        row.setRemark(trimOrNull(payload == null ? null : str(payload.get("remark"))));
+        row.setPhotoUrl(before.isEmpty() ? null : before.get(0));
+        row.setPhotoUrlsBefore(before.isEmpty() ? null : writeJsonArray(before));
+        row.setPhotoUrlsAfter(after.isEmpty() ? null : writeJsonArray(after));
+        row.setStatus("COMPLETED");
+        row.setCreateTime(LocalDateTime.now());
+        assetMapper.insertTransferRequest(row);
+        assetMapper.updateTransferLogRequestId(logId.trim(), reqId);
+        assetMapper.updateAssetLatestTransferPointer(asset.getId(), reqId, operatorId);
+        return Map.of("requestId", reqId);
+    }
+
+    /** 请求体里的照片数组（JSON 反序列化为 List）转成去空字符串列表 */
+    private List<String> readPhotoUrlsFromPayload(Object raw) {
+        List<String> out = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                if (o != null && StringUtils.hasText(String.valueOf(o))) {
+                    out.add(String.valueOf(o).trim());
+                }
+            }
+        }
+        return out;
+    }
+
+    /** MyBatis Map 结果里的时间列可能是 LocalDateTime / java.util.Date / 字符串，统一成 LocalDateTime */
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value instanceof LocalDateTime ldt) {
+            return ldt;
+        }
+        if (value instanceof java.util.Date date) {
+            return LocalDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
+        }
+        if (value instanceof CharSequence cs && StringUtils.hasText(cs)) {
+            try {
+                return parseTime(cs.toString().trim());
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     public Map<String, Object> listTransferRequests(String keyword, int page, int size) {
@@ -1520,12 +1790,14 @@ public class AssetService {
                                                String assetName,
                                                String campus,
                                                String user,
-                                               String model) {
+                                               String model,
+                                               String location) {
         String keywordVal = trimOrNull(keyword);
         String assetNameVal = trimOrNull(assetName);
         String campusVal = trimOrNull(campus);
         String userVal = trimOrNull(user);
         String modelVal = trimOrNull(model);
+        String locationVal = trimOrNull(location);
 
         List<AssetColumnDef> defs = assetMapper.listColumnDefs();
         List<String> campusKeys = mergeKeys(
@@ -1547,23 +1819,23 @@ public class AssetService {
 
         // 维度联动：每个维度的可选项都由"其他维度 + 关键词"共同约束，不包含本维度自身过滤。
         List<AssetRecord> forAssetNames = assetMapper.listAssetsAll(
-                keywordVal, null, campusVal, userVal, modelVal,
-                campusKeys, userKeys, modelKeys,
+                keywordVal, null, campusVal, userVal, modelVal, locationVal, null, null,
+                campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
         List<AssetRecord> forCampuses = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, null, userVal, modelVal,
-                campusKeys, userKeys, modelKeys,
+                keywordVal, assetNameVal, null, userVal, modelVal, locationVal, null, null,
+                campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
         List<AssetRecord> forUsers = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, campusVal, null, modelVal,
-                campusKeys, userKeys, modelKeys,
+                keywordVal, assetNameVal, campusVal, null, modelVal, locationVal, null, null,
+                campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
         List<AssetRecord> forModels = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, campusVal, userVal, null,
-                campusKeys, userKeys, modelKeys,
+                keywordVal, assetNameVal, campusVal, userVal, null, locationVal, null, null,
+                campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
 
@@ -1572,6 +1844,8 @@ public class AssetService {
         data.put("campuses", distinctDynamicValues(forCampuses, campusKeys));
         data.put("users", distinctDynamicValues(forUsers, userKeys));
         data.put("models", distinctDynamicValues(forModels, modelKeys));
+        // 存放地点基数大（数百个），全局取一次，不做联动收敛
+        data.put("locations", listDistinctLocations());
         return data;
     }
 
@@ -1697,6 +1971,11 @@ public class AssetService {
                 if (StringUtils.hasText(storageColKey) && validKeys.contains(storageColKey)) {
                     updated += assetMapper.batchUpdateAssetValues(ids, storageColKey, location);
                 }
+                // 文本 → 节点指针：整批同一文本，只解析一次再批量回填
+                Long nodeId = resolveLocationNodeQuietly(assetLocationService, location);
+                if (nodeId != null) {
+                    assetMapper.batchUpdateAssetLocationNode(ids, nodeId);
+                }
             }
         }
 
@@ -1808,11 +2087,132 @@ public class AssetService {
         // 缓存到内存（30分钟过期），同时缓存文件字节供 confirm 阶段重放
         byte[] fileBytes;
         try { fileBytes = file.getBytes(); } catch (Exception e) { fileBytes = new byte[0]; }
+        // 存放地点列全部去重值 + 与现有节点的匹配结果（供前端修正窗口用）
+        result.put("locationValues", buildLocationValues(fileBytes, isCsv));
         previewCache.put(previewId, new PreviewCacheEntry(result, fileBytes, file.getOriginalFilename()));
         // 清理过期缓存
         previewCache.entrySet().removeIf(e -> e.getValue().isExpired());
 
         return result;
+    }
+
+    /**
+     * 重读整表取「存放地点」列去重值（上限 {@link #LOCATION_VALUE_LIMIT}），
+     * 按 normalizeLocationName 与 asset_location 精确匹配（任意层级，命中多个取 id 最小）。
+     * 文件无该列或解析失败返回空列表。
+     */
+    List<Map<String, Object>> buildLocationValues(byte[] fileBytes, boolean isCsv) {
+        LinkedHashSet<String> texts = new LinkedHashSet<>();
+        try {
+            if (isCsv) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(fileBytes), StandardCharsets.UTF_8))) {
+                    String headerLine = reader.readLine();
+                    if (headerLine == null) {
+                        return List.of();
+                    }
+                    if (headerLine.startsWith("﻿")) {
+                        headerLine = headerLine.substring(1);
+                    }
+                    int locIdx = findHeader(parseCsvLine(headerLine), LOCATION_HEADER_NAMES);
+                    if (locIdx < 0) {
+                        return List.of();
+                    }
+                    String line;
+                    while ((line = reader.readLine()) != null && texts.size() < LOCATION_VALUE_LIMIT) {
+                        String value = getCsvCell(parseCsvLine(line), locIdx);
+                        if (StringUtils.hasText(value)) {
+                            texts.add(value);
+                        }
+                    }
+                }
+            } else {
+                try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(fileBytes))) {
+                    Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
+                    if (sheet == null) {
+                        return List.of();
+                    }
+                    DataFormatter formatter = new DataFormatter();
+                    Row headerRow = sheet.getRow(0);
+                    if (headerRow == null) {
+                        return List.of();
+                    }
+                    int last = Math.max(headerRow.getLastCellNum(), 0);
+                    List<String> headers = new ArrayList<>();
+                    for (int i = 0; i < last; i++) {
+                        headers.add(formatter.formatCellValue(headerRow.getCell(i)).trim());
+                    }
+                    int locIdx = findHeader(headers, LOCATION_HEADER_NAMES);
+                    if (locIdx < 0) {
+                        return List.of();
+                    }
+                    for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum() && texts.size() < LOCATION_VALUE_LIMIT; rowIndex++) {
+                        Row row = sheet.getRow(rowIndex);
+                        if (row == null) {
+                            continue;
+                        }
+                        String value = getCellText(row, locIdx, formatter);
+                        if (StringUtils.hasText(value)) {
+                            texts.add(value);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            return List.of();
+        }
+        List<AssetLocation> nodes = assetLocationService.listAll();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String text : texts) {
+            AssetLocation matched = AssetLocationService.matchByName(nodes, text);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("text", text);
+            item.put("matchedNodeId", matched == null ? null : matched.getId());
+            item.put("matchedNodeName", matched == null ? null : matched.getName());
+            out.add(item);
+        }
+        return out;
+    }
+
+    /** 2i. 资产转移历史：转移申请 + MOVE 日志 */
+    public Map<String, Object> transferHistory(String assetId) {
+        if (!StringUtils.hasText(assetId)) {
+            throw new IllegalArgumentException("资产ID不能为空");
+        }
+        String id = assetId.trim();
+        List<AssetTransferRequest> requestRows = assetMapper.listTransferRequestsByAssetId(id);
+        enrichTransferApplicantNames(requestRows);
+        List<Map<String, Object>> requests = new ArrayList<>();
+        if (requestRows != null) {
+            for (AssetTransferRequest r : requestRows) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("id", r.getId());
+                row.put("transferTime", r.getTransferTime());
+                row.put("transferLocation", r.getTransferLocation());
+                row.put("fromLocation", r.getFromLocation());
+                row.put("status", r.getStatus());
+                row.put("applicantName", r.getApplicantName());
+                row.put("remark", r.getRemark());
+                row.put("createTime", r.getCreateTime());
+                requests.add(row);
+            }
+        }
+        List<Map<String, Object>> rawMoves = assetMapper.listMoveLogsByAssetId(id);
+        List<Map<String, Object>> moves = new ArrayList<>();
+        if (rawMoves != null) {
+            for (Map<String, Object> m : rawMoves) {
+                Map<String, Object> row = new LinkedHashMap<>(m);
+                Object op = m.get("operatorId");
+                String operatorId = op == null ? null : String.valueOf(op);
+                row.put("operatorName", StringUtils.hasText(operatorId)
+                        ? userDisplayNameService.resolveDisplayName(operatorId)
+                        : null);
+                moves.add(row);
+            }
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("requests", requests);
+        data.put("moves", moves);
+        return data;
     }
 
     private List<Map<String, Object>> buildPreviewColumns(List<String> headers, List<Map<String, String>> warnings) {
@@ -1848,8 +2248,11 @@ public class AssetService {
         return columns;
     }
 
-    /** 2e. 确认导入：根据用户勾选的列创建定义后执行实际导入 */
-    public Map<String, Object> confirmImport(String previewId, List<String> createNewColumns, String operatorId) {
+    /** 2e. 确认导入：根据用户勾选的列创建定义后执行实际导入，并按地点映射回填 location_node_id */
+    public Map<String, Object> confirmImport(String previewId,
+                                             List<String> createNewColumns,
+                                             List<Map<String, Object>> locationMappings,
+                                             String operatorId) {
         if (!StringUtils.hasText(previewId)) {
             throw new IllegalArgumentException("previewId 不能为空");
         }
@@ -1871,10 +2274,88 @@ public class AssetService {
             @Override public void transferTo(java.io.File dest) throws IOException { java.nio.file.Files.write(dest.toPath(), cachedBytes); }
         };
         String batchId = "BATCH_" + UUID.randomUUID().toString().replace("-", "");
-        Map<String, Object> result = importAssetsFromExcelInternal(operatorId, file, batchId, createNewColumns);
+        // CSV 与 Excel 走各自的解析器：WorkbookFactory 打不开 CSV（会报 unsupported file type）
+        Map<String, Object> result;
+        if (cachedName != null && cachedName.toLowerCase(Locale.ROOT).endsWith(".csv")) {
+            result = importAssetsFromCsv(operatorId, file);
+        } else {
+            result = importAssetsFromExcelInternal(operatorId, file, batchId, createNewColumns);
+        }
+        Object resultBatchId = result.get("batchId");
+        if (resultBatchId != null) {
+            batchId = String.valueOf(resultBatchId);
+        }
+        int linked = 0;
+        if (locationMappings != null && !locationMappings.isEmpty()) {
+            String columnKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
+            if (StringUtils.hasText(columnKey)) {
+                linked = applyLocationMappings(batchId, locationMappings, columnKey, ensureWarnings(result));
+            }
+        }
+        result.put("locationLinked", linked);
         // 清理缓存
         previewCache.remove(previewId);
         return result;
+    }
+
+    /**
+     * 按 locationMappings 回填 location_node_id：create=true 建/复用节点，否则用给定 nodeId（须存在且未删）。
+     * 返回回填成功的资产条数。包级可见，便于单测。
+     */
+    int applyLocationMappings(String batchId,
+                              List<Map<String, Object>> mappings,
+                              String columnKey,
+                              List<Map<String, String>> warnings) {
+        int linked = 0;
+        for (Map<String, Object> mapping : mappings) {
+            if (mapping == null) {
+                continue;
+            }
+            String text = trimOrNull(str(mapping.get("text")));
+            if (!StringUtils.hasText(text)) {
+                continue;
+            }
+            boolean create = Boolean.TRUE.equals(mapping.get("create"))
+                    || "true".equalsIgnoreCase(str(mapping.get("create")));
+            Long nodeId;
+            if (create) {
+                nodeId = assetLocationService.resolveOrCreateTopLevelByName(text);
+            } else {
+                Long raw = toLongValue(mapping.get("nodeId"));
+                nodeId = (raw != null && assetLocationService.exists(raw)) ? raw : null;
+            }
+            if (nodeId == null) {
+                warnings.add(Map.of("header", "locationMappings", "reason", "地点未匹配或节点不存在: " + text));
+                continue;
+            }
+            linked += assetMapper.linkAssetsToLocationNode(batchId, columnKey, text, nodeId);
+        }
+        return linked;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, String>> ensureWarnings(Map<String, Object> result) {
+        Object raw = result.get("warnings");
+        if (raw instanceof List<?>) {
+            return (List<Map<String, String>>) raw;
+        }
+        List<Map<String, String>> created = new ArrayList<>();
+        result.put("warnings", created);
+        return created;
+    }
+
+    private static Long toLongValue(Object value) {
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        if (value instanceof String s && !s.isBlank()) {
+            try {
+                return Long.parseLong(s.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     // ==================== 查找替换 ====================
@@ -2163,7 +2644,7 @@ public class AssetService {
         return keys.isEmpty() ? null : keys.get(0);
     }
 
-    private String pickStorageLocationColumnKey(List<AssetColumnDef> defs) {
+    public static String pickStorageLocationColumnKey(List<AssetColumnDef> defs) {
         if (defs == null) {
             return null;
         }
@@ -2357,7 +2838,7 @@ public class AssetService {
         return text.trim();
     }
 
-    private String str(Object value) {
+    private static String str(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
 }

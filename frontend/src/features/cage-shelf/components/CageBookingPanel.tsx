@@ -350,7 +350,7 @@ export default function CageBookingPanel({ room, roomId, onChanged }: Props) {
               <p className="text-[11px] mt-1">点击"新增分配"为此房间添加课题组</p>
             </div>
           ) : (
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-xs border-collapse twin-table">
               <thead className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] border-b-2 border-[var(--app-color-border-strong)]">
                 <tr className="text-[var(--app-color-text-secondary)] font-bold">
                   <th className="px-3 py-2">课题组</th>

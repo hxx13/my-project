@@ -64,6 +64,12 @@ public interface CageClaimMapper {
     /** 按架子查池中可用的笼位（cageTypeCode=2 + 无 active claim） */
     List<Map<String, Object>> selectPoolCells(@Param("shelfIndexId") Long shelfIndexId);
 
+    /**
+     * 分笼/转移的目标候选池：全库空笼盒(type2) + 无活跃认领 + 已挂课题组归属，带校区/房间/笼架名。
+     * shelfIndexId 传 null 表示不限笼架（转移可能跨房间/跨架）；已归属过滤是因为无 PI/部门的笼位不可能匹配任何课题组。
+     */
+    List<Map<String, Object>> selectOpTargets(@Param("shelfIndexId") Long shelfIndexId);
+
     /** 按架子索引 id 反查房间数值 id（配额用） */
     Long selectRoomIdByShelfIndexId(@Param("shelfIndexId") Long shelfIndexId);
 

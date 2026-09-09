@@ -37,10 +37,10 @@ export default function AgvAnalysisModal({ open, onClose, onRequestPick, onReque
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center pointer-events-none">
+        <div className="absolute inset-0 z-[var(--z-modal)] flex items-center justify-center pointer-events-none">
           {/* Modal */}
           <motion.div
-            className="pointer-events-auto relative w-[90vw] max-w-[1320px] h-[70vh] max-h-[720px] bg-[var(--app-color-surface-container)] rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] shadow-2xl flex flex-col overflow-hidden"
+            className="pointer-events-auto relative w-[calc(100%-2.5rem)] max-w-[1320px] h-[calc(100%-2.5rem)] max-h-[720px] bg-[var(--app-color-surface-container)] rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] shadow-2xl flex flex-col overflow-hidden"
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}

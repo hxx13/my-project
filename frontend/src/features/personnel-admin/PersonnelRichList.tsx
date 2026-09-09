@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { usePrefersReducedMotion } from "@/hooks/useTypewriterText";
@@ -76,6 +77,7 @@ export function PersonnelRichList({
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const navigate = useNavigate();
 
   useGSAP(() => {
     if (!listRef.current || reducedMotion) return;
@@ -124,6 +126,19 @@ export function PersonnelRichList({
                       {rooms.length ? <span className="ml-1 text-indigo-500">· {rooms.slice(0, 2).join("/")}{rooms.length > 2 ? "…" : ""}</span> : null}
                     </div>
                   </div>
+                  {(() => {
+                    const accountId = row.staffId || row.aroUserId;
+                    return (
+                      <AdminButton type="button" tone="ghost" size="sm" disabled={!accountId}
+                        title={accountId ? "查看该人员的健康调查表" : "该人员还没有账号"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (accountId) navigate(`/console/admin/health-survey/${accountId}`);
+                        }}>
+                        健康报告
+                      </AdminButton>
+                    );
+                  })()}
                   <AdminButton type="button" tone="ghost" size="sm"
                     onClick={(e) => { e.stopPropagation(); onQuickResetPassword(row); }}>
                     重置

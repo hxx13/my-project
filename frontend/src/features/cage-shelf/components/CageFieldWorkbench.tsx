@@ -61,15 +61,19 @@ const REQUIRED_OPTS = [
 
 /**
  * 字段角色（与 NHP FieldRole 同语义，取值引擎一律占位）：
- * VALUE=可填写/选择；DERIVED=自动获取只读；PK=取号只读；FK=实体只读。
- * PK/FK/DERIVED 的取值引擎未接入：占位角色只保证「详情弹窗只读 + 拒绝手动写入」，
- * 不调用 NHP 取号器，值仅可来自外部同步或后续接入的笼位自有引擎。
+ * VALUE=可填写/选择；DERIVED=自动获取；PK=取号；FK=实体。
+ * 角色只描述「值从哪来」，不再决定能否编辑——能否编辑由下面的「允许人工修改」独立控制。
  */
 const ROLE_OPTS = [
   { value: "VALUE", label: "VALUE 可填写 / 选择" },
-  { value: "DERIVED", label: "DERIVED 自动获取（只读）" },
+  { value: "DERIVED", label: "DERIVED 自动获取" },
   { value: "PK", label: "PK 取号（占位，引擎未接入）" },
   { value: "FK", label: "FK 实体（占位）" },
+];
+
+const EDITABLE_OPTS = [
+  { value: "YES", label: "允许修改" },
+  { value: "NO", label: "只读" },
 ];
 
 const STATUS_LABEL: Record<string, string> = {
@@ -104,6 +108,12 @@ function roleLabel(r?: string | null): string {
   return ROLE_OPTS.find((x) => x.value === r)?.label ?? r ?? "—";
 }
 
+/** editable 缺省（旧数据）按 role 口径回退：VALUE 可改，其余只读。 */
+function editableLabel(e: boolean | null | undefined, role?: string | null): string {
+  const on = e ?? (role == null || role === "VALUE");
+  return on ? "允许修改" : "只读";
+}
+
 type FieldForm = {
   canonical: string;
   label: string;
@@ -113,6 +123,7 @@ type FieldForm = {
   domainCode: string;
   submoduleCode: string;
   role: string;
+  editable: string;
   required: string;
   sort: string;
 };
@@ -126,6 +137,7 @@ const emptyForm = (): FieldForm => ({
   domainCode: "",
   submoduleCode: "",
   role: "VALUE",
+  editable: "YES",
   required: "NO",
   sort: "",
 });
@@ -453,6 +465,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
       domainCode: selected.domainCode ?? "",
       submoduleCode: selected.submoduleCode ?? "",
       role: selected.role ?? "VALUE",
+      editable: (selected.editable ?? (selected.role == null || selected.role === "VALUE")) ? "YES" : "NO",
       required: selected.required ?? "NO",
       sort: selected.sort != null ? String(selected.sort) : "",
     });
@@ -477,6 +490,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
       domainCode: form.domainCode.trim() || undefined,
       submoduleCode: form.submoduleCode.trim() || undefined,
       role: form.role,
+      editable: form.editable === "YES",
       required: form.required,
     });
   };
@@ -497,6 +511,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
         domainCode: form.domainCode.trim() || undefined,
         submoduleCode: form.submoduleCode.trim() || undefined,
         role: form.role,
+        editable: form.editable === "YES",
         required: form.required,
         sort: form.sort.trim() === "" ? null : Number(form.sort),
       },
@@ -766,6 +781,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
             )}
             {metaCell("必填", requiredLabel(selected.required))}
             {metaCell("字段角色", roleLabel(selected.role))}
+            {metaCell("允许修改", editableLabel(selected.editable, selected.role))}
             {metaCell("排序", selected.sort != null ? String(selected.sort) : "—", { mono: true })}
             {metaCell("状态", statusLabel(selected.status))}
             {metaCell("同步来源", selected.syncSource || "—", { wrap: true, mono: true })}
@@ -806,6 +822,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
               {form.domainCode && row("子模块", submoduleSelect)}
               {row("必填", <select className="select" value={form.required} onChange={(e) => setForm({ ...form, required: e.target.value })}>{REQUIRED_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>)}
               {row("字段角色", <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>{ROLE_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>)}
+              {row("允许修改", <select className="select" value={form.editable} onChange={(e) => setForm({ ...form, editable: e.target.value })}>{EDITABLE_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>)}
               <div className="aup-modal-actions">
                 <button className="btn ghost" onClick={() => setCreateOpen(false)}>取消</button>
                 <button className="btn primary" disabled={!form.canonical.trim() || !form.label.trim() || createMut.isPending} onClick={submitCreate}>确定</button>
@@ -830,6 +847,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
               {form.domainCode && row("子模块", submoduleSelect)}
               {row("必填", <select className="select" value={form.required} onChange={(e) => setForm({ ...form, required: e.target.value })}>{REQUIRED_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>)}
               {row("字段角色", <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>{ROLE_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>)}
+              {row("允许修改", <select className="select" value={form.editable} onChange={(e) => setForm({ ...form, editable: e.target.value })}>{EDITABLE_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>)}
               {row("排序", <input className="input" placeholder="数值，留空为 null" value={form.sort} onChange={(e) => setForm({ ...form, sort: e.target.value })} />)}
               <div className="aup-modal-actions">
                 <button className="btn ghost" onClick={() => setEditOpen(false)}>取消</button>

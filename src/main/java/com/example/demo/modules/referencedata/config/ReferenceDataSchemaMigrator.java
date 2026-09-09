@@ -90,6 +90,7 @@ public class ReferenceDataSchemaMigrator implements ApplicationRunner {
                         project_group_id BIGINT NULL COMMENT '课题组主键外键 → project_group.id（关键枢纽）',
                         aup_record_id BIGINT NULL COMMENT '下单选定的 AUP → aup_record.id',
                         register_no VARCHAR(64) NULL COMMENT 'AUP 编号冗余快照',
+                        campus VARCHAR(16) NOT NULL DEFAULT '浦东' COMMENT '下单校区：浦东|浦西',
                         status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/APPROVED/REJECTED/COMPLETED/CANCELLED',
                         submit_remark VARCHAR(500) NULL,
                         submitted_at DATETIME NULL,
@@ -114,6 +115,10 @@ public class ReferenceDataSchemaMigrator implements ApplicationRunner {
                     "ALTER TABLE ref_order ADD COLUMN register_no VARCHAR(64) NULL COMMENT 'AUP 编号冗余快照' AFTER aup_record_id");
             ensureColumnExists("ref_order", "estimated_delivery_date",
                     "ALTER TABLE ref_order ADD COLUMN estimated_delivery_date DATE NULL COMMENT '下单时计算的预计送达日（工作日）' AFTER submitted_at");
+            ensureColumnExists("ref_order", "campus",
+                    "ALTER TABLE ref_order ADD COLUMN campus VARCHAR(16) NOT NULL DEFAULT '浦东' COMMENT '下单校区：浦东|浦西' AFTER register_no");
+            ensureIndexExists("ref_order", "idx_order_campus",
+                    "CREATE INDEX idx_order_campus ON ref_order (campus, status)");
 
             ensureTableExists("ref_order_line", """
                     CREATE TABLE ref_order_line (

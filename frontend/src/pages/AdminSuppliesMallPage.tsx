@@ -605,6 +605,10 @@ export default function AdminSuppliesMallPage() {
     const key = cartKey || String(item.id);
     const max = maxForItem(item);
     if (max <= 0) { toast.error("暂无库存"); return; }
+    if ((sync.cartRef.current[key] || 0) >= max) {
+      toast.error(`已超出库存上限，当前库存剩余 ${max}`);
+      return;
+    }
     syncCart(cartAdd(sync.cartRef.current, key, 1, max));
   };
 
@@ -640,7 +644,7 @@ export default function AdminSuppliesMallPage() {
     const n = Number.parseInt(raw || "0", 10);
     const safe = Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
     syncCart(cartSetQty(sync.cartRef.current, key, safe, max));
-    if (Number.isFinite(n) && n > max) toast.error(`最多可下单 ${max}`);
+    if (Number.isFinite(n) && n > max) toast.error(`已超出库存上限，当前库存剩余 ${max}`);
   };
 
   /** 由购物车构建提交行（提交/修订/合并共用） */

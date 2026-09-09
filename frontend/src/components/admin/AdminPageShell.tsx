@@ -47,7 +47,7 @@ type AdminFillScrollRegionProps = {
 /** fillHeight 页壳内的可滚动主体（表格、长列表） */
 export function AdminFillScrollRegion({ children, className }: AdminFillScrollRegionProps) {
   return (
-    <div className={cn("min-h-0 flex-1 overflow-auto overscroll-y-contain", className)}>
+    <div className={cn("min-h-0 flex-1 overflow-auto overscroll-y-contain [scrollbar-gutter:stable]", className)}>
       {children}
     </div>
   );
@@ -120,7 +120,7 @@ export function AdminTableShell({
       <div
         className={cn(
           "admin-table-shell-inner min-w-0",
-          scrollable && "max-h-[min(72vh,780px)] overflow-y-auto overscroll-y-contain"
+          scrollable && "max-h-[min(72vh,780px)] overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]"
         )}
       >
         {children}
@@ -150,7 +150,7 @@ export function AdminDataTableWrap({ children, className, scrollable }: AdminDat
       <div
         className={cn(
           "admin-data-table-wrap min-w-0",
-          scrollable && "max-h-[min(72vh,780px)] overflow-y-auto overscroll-y-contain"
+          scrollable && "max-h-[min(72vh,780px)] overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]"
         )}
       >
         {children}
@@ -165,15 +165,21 @@ type AdminFormCardProps = {
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** 填满父容器高度，内容区内部滚动（用于左右两栏固定高度布局） */
+  fill?: boolean;
 };
 
 /** 长表单分区卡片。当 title / description / actions 均未传入时，不渲染 header 区域。 */
-export function AdminFormCard({ title, description, actions, children, className }: AdminFormCardProps) {
+export function AdminFormCard({ title, description, actions, children, className, fill }: AdminFormCardProps) {
   const hasHeader = !!(title || description || actions);
   return (
-    <section className={cn("rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-sm", className)}>
+    <section className={cn(
+      "rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-sm",
+      fill && "flex h-full min-h-0 flex-col",
+      className
+    )}>
       {hasHeader ? (
-        <div className="mb-3 flex items-start justify-between border-b border-[var(--app-color-border-default)] pb-2">
+        <div className="mb-3 flex shrink-0 items-start justify-between border-b border-[var(--app-color-border-default)] pb-2">
           <div>
             {title ? <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)]">{title}</h3> : null}
             {description ? <div className="mt-1 text-xs text-[var(--app-color-text-tertiary)]">{description}</div> : null}
@@ -181,7 +187,7 @@ export function AdminFormCard({ title, description, actions, children, className
           {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </div>
       ) : null}
-      <div className={hasHeader ? "space-y-3" : undefined}>{children}</div>
+      <div className={fill ? "min-h-0 flex-1 overflow-auto" : (hasHeader ? "space-y-3" : undefined)}>{children}</div>
     </section>
   );
 }

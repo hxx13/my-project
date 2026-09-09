@@ -30,6 +30,7 @@ interface AIPredictionCardProps {
 
 const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                                                                predictions = [],
+                                                               isLoading = false,
                                                                accentVariant = "cool",
                                                                onQuickActions,
                                                                onEnterStudentCenter,
@@ -140,7 +141,16 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                 </div>
 
                 {/* 💥 终极 4 列排版：包含全景东方明珠、极度压缩纵向体积、智能折行 */}
-                {visiblePredictions.length === 0 ? (
+                {isLoading && visiblePredictions.length === 0 ? (
+                    <div className="flex flex-col gap-2">
+                        {[0, 1, 2].map((i) => (
+                            <div
+                                key={i}
+                                className="h-10 w-full animate-pulse rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)]"
+                            />
+                        ))}
+                    </div>
+                ) : visiblePredictions.length === 0 ? (
                     <p className="py-2 text-center text-[10px] font-medium text-[var(--app-color-text-tertiary)]">
                         暂无已完成推演的房间数据
                     </p>
@@ -314,22 +324,24 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                     </div>
                 </div>
 
-                <div className="flex gap-2.5 border-t border-[var(--app-color-border-default)] pt-3">
-                    <ScanActionButton
-                        layout="compact"
-                        variant="quick"
-                        icon={LayoutGrid}
-                        label="快捷业务"
-                        onClick={() => onQuickActions?.()}
-                    />
-                    <ScanActionButton
-                        layout="compact"
-                        variant="student"
-                        icon={GraduationCap}
-                        label="个人中心"
-                        onClick={() => onEnterStudentCenter?.()}
-                    />
-                </div>
+                {(onQuickActions || onEnterStudentCenter) ? (
+                    <div className="flex gap-2.5 border-t border-[var(--app-color-border-default)] pt-3">
+                        <ScanActionButton
+                            layout="compact"
+                            variant="quick"
+                            icon={LayoutGrid}
+                            label="快捷业务"
+                            onClick={() => onQuickActions?.()}
+                        />
+                        <ScanActionButton
+                            layout="compact"
+                            variant="student"
+                            icon={GraduationCap}
+                            label="个人中心"
+                            onClick={() => onEnterStudentCenter?.()}
+                        />
+                    </div>
+                ) : null}
             </div>
         </div>
     );

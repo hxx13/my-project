@@ -20,14 +20,54 @@ import {
   batchUpdateAssets,
   searchReplaceAssets,
   deleteByBatchId,
+  fetchAssetTransferHistory,
+  deleteAssetTransferLog,
+  promoteAssetTransferLog,
 } from "@/api/domains/asset.api";
 import { toast } from "react-hot-toast";
 
-export function useAssetList(params: Record<string, unknown>) {
+export function useAssetList(params: Record<string, unknown>, enabled = true) {
   return useQuery({
     queryKey: queryKeys.asset.list(params),
     queryFn: () => fetchAssetRecords(params as Parameters<typeof fetchAssetRecords>[0]),
     placeholderData: (prev) => prev,
+    enabled,
+  });
+}
+
+/** 某资产的转移申请 + MOVE 留痕（按时间倒序，后端已排好） */
+export function useAssetTransferHistory(assetId: string | null | undefined) {
+  return useQuery({
+    queryKey: [...queryKeys.asset.all, "transfer-history", assetId] as const,
+    queryFn: () => fetchAssetTransferHistory(assetId as string),
+    enabled: !!assetId,
+  });
+}
+
+/** 删除一条 MOVE 留痕（仅最高权限入口渲染按钮） */
+export function useDeleteAssetTransferLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteAssetTransferLog,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+      toast.success("留痕已删除");
+    },
+    onError: (e: Error) => toast.error(e.message || "删除失败"),
+  });
+}
+
+/** 由地点移动留痕补建转移申请 */
+export function usePromoteAssetTransferLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ logId, payload }: { logId: string; payload: Parameters<typeof promoteAssetTransferLog>[1] }) =>
+      promoteAssetTransferLog(logId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+      toast.success("已补建转移申请");
+    },
+    onError: (e: Error) => toast.error(e.message || "补建失败"),
   });
 }
 

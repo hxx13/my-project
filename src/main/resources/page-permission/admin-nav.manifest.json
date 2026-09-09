@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-28T17:35:46.764Z",
+  "generatedAt": "2026-09-09T17:45:27.309Z",
   "pages": [
     {
       "path": "/about",
@@ -143,6 +143,13 @@
       "registryId": "cage-special-status"
     },
     {
+      "path": "/admin/card-print",
+      "label": "卡牌打印",
+      "fallbackMinRole": "STAFF",
+      "groupTitle": "ARO 房间与联动",
+      "registryId": "card-print"
+    },
+    {
       "path": "/admin/content-hub",
       "label": "小程序内容中心",
       "fallbackMinRole": "ADMIN",
@@ -204,6 +211,20 @@
       "fallbackMinRole": "ADMIN",
       "groupTitle": "ARO 房间与联动",
       "registryId": "door-group"
+    },
+    {
+      "path": "/admin/door-swipe-rules",
+      "label": "门禁成功刷卡规则",
+      "fallbackMinRole": "PLATFORM_OWNER",
+      "groupTitle": "门禁、元数据与环境",
+      "registryId": "door-swipe-rules"
+    },
+    {
+      "path": "/admin/exam-papers",
+      "label": "试卷管理",
+      "fallbackMinRole": "STAFF",
+      "groupTitle": "ARO 房间与联动",
+      "registryId": "exam-papers"
     },
     {
       "path": "/admin/exp-stats",
@@ -430,13 +451,6 @@
       "registryId": "telemetry-insights"
     },
     {
-      "path": "/admin/telemetry-insights-config",
-      "label": "遥测对比组配置",
-      "fallbackMinRole": "ADMIN",
-      "groupTitle": "门禁、元数据与环境",
-      "registryId": "telemetry-insights-config"
-    },
-    {
       "path": "/admin/telemetry-watchlists",
       "label": "WinCC 变量导入",
       "fallbackMinRole": "SUPER_ADMIN",
@@ -549,6 +563,13 @@
       "registryId": null
     },
     {
+      "path": "/student/exam",
+      "label": "培训",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "培训",
+      "registryId": null
+    },
+    {
       "path": "/student/feedback",
       "label": "帮助反馈",
       "fallbackMinRole": "MEMBER",
@@ -588,6 +609,13 @@
       "label": "设置",
       "fallbackMinRole": "MEMBER",
       "groupTitle": "账号",
+      "registryId": null
+    },
+    {
+      "path": "/student/training",
+      "label": "培训报名",
+      "fallbackMinRole": "MEMBER",
+      "groupTitle": "培训",
       "registryId": null
     }
   ],

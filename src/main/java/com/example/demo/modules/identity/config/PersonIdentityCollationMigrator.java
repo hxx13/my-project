@@ -34,18 +34,15 @@ public class PersonIdentityCollationMigrator implements ApplicationRunner {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /** 需兜底的核心表：动态扫描只命中「有 0900 列」的表；若某表所有列均已显式 unicode_ci 而表默认仍 0900，新列会继承 0900，须在此修表默认。 */
+    private static final String[] CORE_TABLES = {
+            "person_identity_tag", "person_identity", "personnel", "aro_personnel",
+            "institution", "department", "project_group"};
+
     @Override
     public void run(ApplicationArguments args) {
         Set<String> tables = new LinkedHashSet<>();
-        // 显式列（防御，确保核心表即使表级 collation 已改、个别列仍残留 0900 时也被统一）
-        tables.add("person_identity_tag");
-        tables.add("person_identity");
-        tables.add("personnel");
-        tables.add("aro_personnel");
-        tables.add("institution");
-        tables.add("department");
-        tables.add("project_group");
-        // 动态查询所有含 0900 列的表
+        // 含 0900 列的表（覆盖任意列级残留；CONVERT 后消除，稳态为空集 → 静默）
         try {
             tables.addAll(jdbcTemplate.queryForList(
                     "SELECT DISTINCT TABLE_NAME FROM information_schema.COLUMNS " +
@@ -53,7 +50,16 @@ public class PersonIdentityCollationMigrator implements ApplicationRunner {
         } catch (Exception e) {
             log.warn("[person-identity-collation] 动态查询 0900 表跳过: {}", e.getMessage());
         }
-        if (tables.isEmpty()) return;
+        // 表默认仍非 unicode_ci 的核心表
+        try {
+            tables.addAll(jdbcTemplate.queryForList(
+                    "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() " +
+                            "AND TABLE_COLLATION <> 'utf8mb4_unicode_ci' AND TABLE_NAME IN ('person_identity_tag','person_identity','personnel','aro_personnel','institution','department','project_group')",
+                    String.class));
+        } catch (Exception e) {
+            log.warn("[person-identity-collation] 核心表 collation 查询跳过: {}", e.getMessage());
+        }
+        if (tables.isEmpty()) return; // 已全部统一，无需处理
         // 同一连接内禁用外键检查，统一 CONVERT，避免 3780
         try {
             jdbcTemplate.execute((ConnectionCallback<Void>) con -> {

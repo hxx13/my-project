@@ -16,4 +16,5 @@ public class TelemetryFleetAggRow {
     private Double avgValue;
     private Long sampleCount;
     private LocalDateTime latestAt;
+    private Long compliantCount;
 }

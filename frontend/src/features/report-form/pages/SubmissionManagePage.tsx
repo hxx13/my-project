@@ -129,7 +129,7 @@ export default function SubmissionManagePage() {
       ) : viewMode === 'table' ? (
         /* Table mode */
         <div className="overflow-auto rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)]">
-          <table className="min-w-full text-sm border-collapse">
+          <table className="min-w-full text-sm border-collapse twin-table">
             <thead className="bg-[var(--app-color-surface-container)]">
               <tr>
                 <th className="px-3 py-2 text-left text-[11px] font-medium text-[var(--app-color-text-secondary)]">

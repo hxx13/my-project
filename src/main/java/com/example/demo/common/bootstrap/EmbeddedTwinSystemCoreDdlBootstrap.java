@@ -126,6 +126,25 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-swipe-alert-notify-user-ids.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-swipe-alert-notify-cardholder.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-dahua-record-id-unique.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-door-swipe-rule.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-exam-paper.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-exam-paper-folder.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-exam-paper-scoring.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-exam-submission.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-person-qualification.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-learning-material.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-health-survey.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-drop-aro-training.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-favorite.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-publish-location.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-recurrence.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-recurrence-period.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-paper-ids.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-owner-ids.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-type-name.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-type-preset.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-occurrence-time-limit.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-push-channel-master.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-twin-violation-text-template.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-upload-file-record.sql", ctx)) success++;
@@ -216,6 +235,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-agv-stats-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-inventory.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-inventory-item-images.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-asset-location.sql", ctx)) success++;
 
         // --- NHP 异种移植 CRF/EDC ---
         total++; if (runScript("db/bootstrap-nhp-meta.sql", ctx)) success++;
@@ -300,6 +320,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-nhp-form-access.sql", ctx)) success++;
         // 团队角色字典（内置 6 角色 + 团队自定义）
         total++; if (runScript("db/bootstrap-nhp-team-role.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-card-print.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");
@@ -386,6 +407,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             ResourceDatabasePopulator populator = new ResourceDatabasePopulator();
             populator.addScript(new ClassPathResource(classpath));
             populator.setSeparator(";");
+            populator.setSqlScriptEncoding("UTF-8");
             populator.setContinueOnError(false);
             DatabasePopulatorUtils.execute(populator, dataSource);
             return true;
@@ -399,6 +421,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             ResourceDatabasePopulator populator = new ResourceDatabasePopulator();
             populator.addScript(new ClassPathResource(classpath));
             populator.setSeparator(";");
+            populator.setSqlScriptEncoding("UTF-8");
             populator.setContinueOnError(false);
             DatabasePopulatorUtils.execute(populator, dataSource);
             return true;

@@ -143,3 +143,11 @@ export function metricKindForVariable(
   if (catHit?.metricKindCode) return catHit.metricKindCode;
   return "";
 }
+
+/** 指标码 → 图表 kind（temp/hum/pressure），统一别名判定（TEMP/T、HUM/RH、PRESS/PA/P） */
+export function metricKindFromCode(code: string | null | undefined): "temp" | "hum" | "pressure" {
+  const mk = (code ?? "").trim().toUpperCase();
+  if (mk.includes("HUM") || mk.includes("RH") || mk === "H") return "hum";
+  if (mk.includes("PRESS") || mk.includes("PA") || mk === "P") return "pressure";
+  return "temp";
+}

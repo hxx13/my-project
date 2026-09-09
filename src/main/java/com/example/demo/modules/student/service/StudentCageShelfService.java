@@ -103,36 +103,31 @@ public class StudentCageShelfService {
         return buildScopedFilterOptions(scope, ownGroupShelveIds, campusId, areaId, floorId, roomId);
     }
 
-    /** 手机 HTML5 笼架列表：非管理员仅返回本课题组有占用笼位的笼架 */
+    /**
+     * 手机端笼架列表：**三端学生视角统一为「全量笼架」**（2026-09-10 定案，与 Web 学生端一致），
+     * 课题组范围只用来给本组笼架打 `highlight` 标记；格内容脱敏仍在网格层（local-grid + applyGroupMask）做。
+     * 历史行为（非管理员只返回本组有笼位的笼架）已废弃。
+     */
     public List<Map<String, Object>> listAllShelvesForMobile(User user, boolean html5PrivilegeBypass) {
-        List<Map<String, Object>> rows;
-        if (isAdminUser(user) || html5PrivilegeBypass) {
-            rows = cageShelfMapper.listAllShelfSummaries();
-        } else {
-            if (resolveUserGroupNames(user.getId()).isEmpty()) {
-                throw new IllegalStateException("您还没有课题组，无法选笼认领。课题组绑定 AUP，请先联系管理员绑定课题组");
-            }
-            Set<String> ownGroupShelveIds = resolveOwnGroupShelveIds(user);
-            if (ownGroupShelveIds.isEmpty()) {
-                // 有课题组但本地数据暂无本组笼位：返回空列表展示空态，而非 500
-                return List.of();
-            }
-            rows = cageShelfMapper.listAllShelfSummaries();
-            if (rows == null || rows.isEmpty()) {
-                return List.of();
-            }
-            List<Map<String, Object>> filtered = new ArrayList<>();
-            for (Map<String, Object> row : rows) {
-                if (row == null) continue;
-                String shelveId = objToStr(row.get("shelveId"));
-                if (!ownGroupShelveIds.contains(shelveId)) continue;
-                Map<String, Object> shelf = new LinkedHashMap<>(row);
-                shelf.put("highlight", true);
-                filtered.add(shelf);
-            }
-            rows = filtered;
-        }
+        List<Map<String, Object>> rows = cageShelfMapper.listAllShelfSummaries();
         if (rows == null || rows.isEmpty()) return List.of();
+        if (!isAdminUser(user) && !html5PrivilegeBypass) {
+            Set<String> ownGroupShelveIds = resolveUserGroupNames(user.getId()).isEmpty()
+                    ? Set.of()
+                    : resolveOwnGroupShelveIds(user);
+            if (!ownGroupShelveIds.isEmpty()) {
+                rows = new ArrayList<>(rows);
+                for (int i = 0; i < rows.size(); i++) {
+                    Map<String, Object> row = rows.get(i);
+                    if (row == null) continue;
+                    if (ownGroupShelveIds.contains(objToStr(row.get("shelveId")))) {
+                        Map<String, Object> shelf = new LinkedHashMap<>(row);
+                        shelf.put("highlight", true);
+                        rows.set(i, shelf);
+                    }
+                }
+            }
+        }
 
         // 本地数据源：从 cage_shelf_index + cage_cell_index + cage_cell_detail 联表统计类型分布
         // （与 admin 本地视图同源，不再走扫描快照）
@@ -229,7 +224,10 @@ public class StudentCageShelfService {
 
             if (!visible) {
                 gridCell.put("projectPiName", "***");
+                gridCell.put("piName", "***");
                 gridCell.put("departmentName", "***");
+                gridCell.put("aupNumber", "");
+                gridCell.put("experimenterName", "***");
                 gridCell.put("specialStatuses", List.of());
                 // cageBoxInfo 和 detail 中可能含敏感信息，清空
                 Map<String, Object> cageBoxInfo = (Map<String, Object>) gridCell.get("cageBoxInfo");
@@ -274,6 +272,7 @@ public class StudentCageShelfService {
                     c.put("piName", "***");
                     c.put("departmentName", "***");
                     c.put("aupNumber", "");
+                    c.put("experimenterName", "***");
                     // specialStatuses（需分笼/健康异常等）是笼位状态，非课题组归属信息，保留不做脱敏，
                     // 否则学生视角下非本组笼位的特殊状态色块会丢失。
                     Map<String, Object> detail = castMap(c.get("detail"));
@@ -282,6 +281,7 @@ public class StudentCageShelfService {
                         detail.put("piName", "***");
                         detail.put("departmentName", "***");
                         detail.put("aupNumber", "");
+                        detail.put("experimenterName", "***");
                     }
                 }
             }

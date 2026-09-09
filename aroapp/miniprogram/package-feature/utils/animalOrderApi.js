@@ -173,8 +173,8 @@ function fetchOrders(groupId) {
 }
 
 // ── 时间窗口 ──
-function fetchTimePolicy(categoryKey) {
-  const url = withQuery('/api/animal-order/time-policy', { categoryKey: categoryKey });
+function fetchTimePolicy(categoryKey, campus) {
+  const url = withQuery('/api/animal-order/time-policy', { categoryKey: categoryKey, campus: campus });
   return springAuth.springRequest({ url: url, method: 'GET', data: {} }).then(function (res) {
     const p = parseResponse(res);
     if (!p.ok) throw new Error(p.message);

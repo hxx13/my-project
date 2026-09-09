@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cardprint.mapper.CardPrintArchiveMapper">
+
+    <resultMap id="CardPrintArchiveMap" type="com.example.demo.modules.cardprint.entity.CardPrintArchive">
+        <id property="id" column="id"/>
+        <result property="templateId" column="template_id"/>
+        <result property="templateName" column="template_name"/>
+        <result property="specSnapshotJson" column="spec_snapshot_json"/>
+        <result property="slotsSnapshotJson" column="slots_snapshot_json"/>
+        <result property="cageIdsJson" column="cage_ids_json"/>
+        <result property="pageCount" column="page_count"/>
+        <result property="fileName" column="file_name"/>
+        <result property="storedPath" column="stored_path"/>
+        <result property="fileSize" column="file_size"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, template_id, template_name, spec_snapshot_json, slots_snapshot_json, cage_ids_json,
+        page_count, file_name, stored_path, file_size, created_by, created_at
+    </sql>
+
+    <select id="selectPage" resultMap="CardPrintArchiveMap">
+        SELECT <include refid="BaseColumns"/> FROM card_print_archive
+        ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="count" resultType="int">
+        SELECT COUNT(*) FROM card_print_archive
+    </select>
+
+    <select id="selectById" resultMap="CardPrintArchiveMap">
+        SELECT <include refid="BaseColumns"/> FROM card_print_archive WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO card_print_archive
+        (template_id, template_name, spec_snapshot_json, slots_snapshot_json, cage_ids_json,
+         page_count, file_name, stored_path, file_size, created_by)
+        VALUES (#{templateId}, #{templateName}, #{specSnapshotJson}, #{slotsSnapshotJson}, #{cageIdsJson},
+                #{pageCount}, #{fileName}, #{storedPath}, #{fileSize}, #{createdBy})
+    </insert>
+
+    <delete id="deleteById">
+        DELETE FROM card_print_archive WHERE id = #{id}
+    </delete>
+</mapper>

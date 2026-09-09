@@ -35,6 +35,9 @@ const ALL_STATUS_OPTIONS = [
   { code: "COHABITATION", label: "合笼/繁殖" },
 ];
 
+/** 告警列表每组每页条数：告警笼位可能上千，全量渲染导致卡顿，按状态分组后组内分页。 */
+const ALERTS_PAGE_SIZE = 20;
+
 type Tab = "overview" | "snapshots" | "config" | "alerts";
 const TAB_OPTIONS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "overview", label: "特殊状态总览", icon: <Eye className="h-3.5 w-3.5" /> },
@@ -193,6 +196,20 @@ export default function AdminSpecialStatusOverviewPage() {
   });
   const alerts = alertData?.alerts ?? [];
   const spanDays = alertData?.spanDays ?? 0;
+
+  // 告警按状态分类（固定顺序），组内分页，避免上千条全量渲染卡顿
+  const alertsByStatus = useMemo(() => {
+    const byCode = new Map<string, PersistedAlert[]>();
+    for (const a of alerts) {
+      const arr = byCode.get(a.statusCode) ?? [];
+      arr.push(a);
+      byCode.set(a.statusCode, arr);
+    }
+    return ALL_STATUS_OPTIONS
+      .map(o => ({ code: o.code, label: o.label, items: byCode.get(o.code) ?? [] }))
+      .filter(g => g.items.length > 0);
+  }, [alerts]);
+  const [alertPageByStatus, setAlertPageByStatus] = useState<Record<string, number>>({});
 
   /* ---- Overview tab state ---- */
   const [overviewBatchId, setOverviewBatchId] = useState<string>("");
@@ -489,18 +506,53 @@ export default function AdminSpecialStatusOverviewPage() {
             <div className="flex-1 min-h-0 overflow-y-auto log-scroll rounded-twin-lg border border-[var(--twin-hairline)]">
               {alertsLoading ? <div className="text-xs text-[var(--twin-mute)] py-12 text-center">加载中…</div>
               : alerts.length === 0 ? <div className="text-xs text-[var(--twin-mute)] py-12 text-center"><AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-20" />{spanDays > 0 ? "没有笼位存在天数超过设定" : "请先选择一个对比基准快照"}</div>
-              : <table className="w-full text-xs"><thead className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold"><tr><th className="px-3 py-2 text-left">状态</th><th className="px-3 py-2 text-left w-[60px]">位置</th><th className="px-3 py-2 text-left">校区</th><th className="px-3 py-2 text-left">房间</th><th className="px-3 py-2 text-left">PI</th><th className="px-3 py-2 text-left w-[80px]">已存在</th><th className="px-3 py-2 text-left w-[60px]">不超过</th></tr></thead><tbody>
-                {alerts.map((a, i) => (
-                  <tr key={`${a.shelveId}-${a.position}-${i}`} onClick={() => navigate(toAdminRoutePath("/admin/cage-shelves"))} className="border-t border-[var(--twin-hairline)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer transition">
-                    <td className="px-3 py-1.5"><span className="inline-flex items-center gap-1"><span className={`w-2 h-2 rounded-full shrink-0 ${({NEED_DIVIDE:"bg-amber-500",HEALTH_ABNORMAL:"bg-purple-500",ANIMAL_TRANSFER:"bg-cyan-500",SPECIAL_FEEDING:"bg-red-500",COHABITATION:"bg-emerald-500"} as Record<string,string>)[a.statusCode]||"bg-red-500"}`} />{a.statusLabel}</span></td>
-                    <td className="px-3 py-1.5 font-mono font-semibold">{a.position}</td>
-                    <td className="px-3 py-1.5">{a.campusName || "-"}</td>
-                    <td className="px-3 py-1.5">{a.roomName || "-"}</td>
-                    <td className="px-3 py-1.5">{a.projectPiName || "-"}</td>
-                    <td className="px-3 py-1.5"><span className={`font-semibold ${a.persistedDays >= a.thresholdDays * 2 ? "text-red-600" : "text-amber-600"}`}>{a.persistedDays} 天</span></td>
-                    <td className="px-3 py-1.5 text-[var(--twin-mute)]">{a.thresholdDays} 天</td>
-                  </tr>))}
-              </tbody></table>}
+              : <div className="space-y-3 p-3">
+                  {alertsByStatus.map(group => {
+                    const code = group.code;
+                    const colorClass = STATUS_COLOR[code] ?? "bg-gray-400 ring-gray-200";
+                    const page = alertPageByStatus[code] ?? 0;
+                    const totalPages = Math.max(1, Math.ceil(group.items.length / ALERTS_PAGE_SIZE));
+                    const items = group.items.slice(page * ALERTS_PAGE_SIZE, (page + 1) * ALERTS_PAGE_SIZE);
+                    return (
+                      <div key={code} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] overflow-hidden">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-[var(--twin-canvas-soft)] text-xs">
+                          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${colorClass}`} />
+                          <span className="font-semibold text-[var(--twin-ink)]">{group.label}</span>
+                          <span className="rounded-full bg-[var(--twin-canvas)] px-2 py-0.5 text-[10px] text-[var(--twin-body)]">{group.items.length} 个笼位</span>
+                          {totalPages > 1 && (
+                            <span className="ml-auto flex items-center gap-1.5">
+                              <button type="button" disabled={page === 0} onClick={() => setAlertPageByStatus(p => ({ ...p, [code]: page - 1 }))} className="w-6 h-6 rounded-twin-sm border border-[var(--twin-hairline)] text-[var(--twin-ink)] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--twin-canvas)] transition leading-none">‹</button>
+                              <span className="text-[10px] text-[var(--twin-mute)]">{page + 1} / {totalPages}</span>
+                              <button type="button" disabled={page >= totalPages - 1} onClick={() => setAlertPageByStatus(p => ({ ...p, [code]: page + 1 }))} className="w-6 h-6 rounded-twin-sm border border-[var(--twin-hairline)] text-[var(--twin-ink)] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--twin-canvas)] transition leading-none">›</button>
+                            </span>
+                          )}
+                        </div>
+                        <table className="w-full text-xs">
+                          <thead className="bg-[var(--twin-canvas-soft)] text-[var(--app-color-text-secondary)]"><tr>
+                            <th className="px-3 py-1.5 text-left w-[70px]">位置</th>
+                            <th className="px-3 py-1.5 text-left">校区</th>
+                            <th className="px-3 py-1.5 text-left">房间</th>
+                            <th className="px-3 py-1.5 text-left">PI</th>
+                            <th className="px-3 py-1.5 text-left w-[80px]">已存在</th>
+                            <th className="px-3 py-1.5 text-left w-[60px]">不超过</th>
+                          </tr></thead>
+                          <tbody>
+                            {items.map((a, i) => (
+                              <tr key={`${a.shelveId}-${a.position}-${i}`} onClick={() => navigate(toAdminRoutePath("/admin/cage-shelves"))} className="border-t border-[var(--twin-hairline)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer transition">
+                                <td className="px-3 py-1.5 font-mono font-semibold">{a.position}</td>
+                                <td className="px-3 py-1.5">{a.campusName || "-"}</td>
+                                <td className="px-3 py-1.5">{a.roomName || "-"}</td>
+                                <td className="px-3 py-1.5">{a.projectPiName || "-"}</td>
+                                <td className="px-3 py-1.5"><span className={`font-semibold ${a.persistedDays >= a.thresholdDays * 2 ? "text-red-600" : "text-amber-600"}`}>{a.persistedDays} 天</span></td>
+                                <td className="px-3 py-1.5 text-[var(--twin-mute)]">{a.thresholdDays} 天</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
+                </div>}
             </div>
           </div>
         )}

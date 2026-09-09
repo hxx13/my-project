@@ -44,6 +44,9 @@ public class CageClaimConfigSeed implements ApplicationRunner {
             def("cage_claim", "cage.claim.confirm_required", "是否需要到位确认",
                     "开启后认领需到场确认（locked），扫码确认到位后转 confirmed", "BOOLEAN",
                     boolOpts, "true");
+            def("cage_claim", "cage.claim.student_op_approval_required", "学生分笼/转移是否需要审核",
+                    "开启后学生视角提交的分笼、转移笼位进入待审队列；教职工视角一律直接执行", "BOOLEAN",
+                    boolOpts, "false");
             // 默认开启到位确认：历史环境若仍停留在旧的默认 false，翻转为 true（审核通过 → locked 待确认，而非直接已到位）。
             // 仅当该配置从未被人工改过（无 audit 记录）时翻转，避免覆盖管理员显式关闭的选择。
             jdbc.update("UPDATE sys_system_config sc SET sc.config_value = 'true', sc.update_time = NOW() " +
@@ -63,16 +66,38 @@ public class CageClaimConfigSeed implements ApplicationRunner {
             Integer exists = jdbc.queryForObject(
                     "SELECT COUNT(1) FROM sys_system_config_def WHERE module = ? AND config_key = ?",
                     Integer.class, module, configKey);
-            if (exists != null && exists > 0) return;
+            if (exists != null && exists > 0) {
+                ensureRuntimeValue(module, configKey, defaultValue);
+                return;
+            }
             jdbc.update("""
                     INSERT INTO sys_system_config_def
                     (module, config_key, label_zh, description, value_type, options_json, default_value, is_sensitive, requires_restart, is_public, update_time)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, NOW())
                     """,
                     module, configKey, labelZh, description, valueType, optionsJson, defaultValue);
+            ensureRuntimeValue(module, configKey, defaultValue);
         } catch (Exception e) {
             // 表可能不存在或列名不同，静默跳过（与 CredentialsConfigSeed 一致）
             log.warn("[cage-claim-config] 配置定义播种失败 {}.{}: {}", module, configKey, e.getMessage());
+        }
+    }
+
+    /**
+     * 补齐 sys_system_config 运行时行。设置中心按 id 更新值，缺行时前端显示「配置项未初始化」无法保存，
+     * 故播种时必须同时落一条运行值（已存在则不覆盖，避免冲掉管理员改过的值）。
+     */
+    private void ensureRuntimeValue(String module, String configKey, String defaultValue) {
+        try {
+            Integer exists = jdbc.queryForObject(
+                    "SELECT COUNT(1) FROM sys_system_config WHERE module = ? AND config_key = ?",
+                    Integer.class, module, configKey);
+            if (exists != null && exists > 0) return;
+            jdbc.update(
+                    "INSERT INTO sys_system_config (module, config_key, config_value, update_time) VALUES (?, ?, ?, NOW())",
+                    module, configKey, defaultValue);
+        } catch (Exception e) {
+            log.warn("[cage-claim-config] 运行值播种失败 {}.{}: {}", module, configKey, e.getMessage());
         }
     }
 }

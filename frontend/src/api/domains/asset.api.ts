@@ -23,6 +23,8 @@ export interface AssetRow {
   assetName: string;
   status: string;
   location: string;
+  /** 归属地点节点 id（图形视图按节点分组用；未关联地点为 null） */
+  locationNodeId?: number | null;
   locked: number;
   note?: string;
   latestTransferRequestId?: string;
@@ -36,6 +38,8 @@ export interface AssetRow {
   latestTransferPhotoUrlsBefore?: string[];
   latestTransferPhotoUrlsAfter?: string[];
   photoUrls?: string[];
+  /** 资产图标 emoji（无照片时兜底展示） */
+  icon?: string | null;
   updateTime?: string;
   dynamicValues: Record<string, string>;
 }
@@ -53,6 +57,8 @@ export interface AssetFacets {
   campuses: string[];
   users?: string[];
   models: string[];
+  /** 存放地点（含 asset_record.location 与 EAV 存放地点列） */
+  locations?: string[];
 }
 
 export interface AssetTransferRecord {
@@ -127,6 +133,13 @@ export async function fetchAssetRecords(params: {
   campus?: string;
   user?: string;
   model?: string;
+  /** 存放地点，模糊匹配 */
+  location?: string;
+  /** 存放地点节点 id，精确匹配（可视化视图按节点筛） */
+  locationNodeId?: number;
+  /** 存放地点节点 id 多值筛选。必须传逗号分隔字符串（如 "1,2,3"）：axios 默认把数组序列化成
+   *  `locationNodeIds[]=1`，Spring @RequestParam List 绑不上。 */
+  locationNodeIds?: string;
   lockStatus?: number;
   status?: string;
   sortBy?: string;
@@ -150,11 +163,27 @@ export async function importAssetExcel(file: File) {
   return res.data.data;
 }
 
+/** 文件「存放地点」列的去重值（上限 200）；matchedNodeId/Name 为按名称归一化后的自动匹配结果，可能为 null */
+export interface ImportLocationValue {
+  text: string;
+  matchedNodeId: number | null;
+  matchedNodeName: string | null;
+}
+
+/** create=true 表示新建同名顶层节点；否则用 nodeId（nodeId=null 表示不关联） */
+export interface ImportLocationMapping {
+  text: string;
+  nodeId?: number | null;
+  create?: boolean;
+}
+
 export interface ImportPreview {
   previewId: string;
   columns: { header: string; matchedKey: string | null; matchedLabel: string | null }[];
   sample: Record<string, string>[];
-  warnings: { header: string; reason: string }[];
+  /** 后端 warnings 为空时该字段不下发 */
+  warnings?: { header: string; reason: string }[];
+  locationValues?: ImportLocationValue[];
 }
 
 export interface ImportBatch {
@@ -192,10 +221,15 @@ export async function previewImportAssets(file: File) {
   return res.data.data;
 }
 
-export async function confirmImportAssets(previewId: string, createNewColumns?: string[]) {
-  const res = await authHttp.post<Result<{ created: number; updated: number; skipped: number }>>("/v1/assets/import/confirm", {
+export async function confirmImportAssets(
+  previewId: string,
+  createNewColumns?: string[],
+  locationMappings?: ImportLocationMapping[]
+) {
+  const res = await authHttp.post<Result<{ created: number; updated: number; skipped: number; locationLinked?: number }>>("/v1/assets/import/confirm", {
     previewId,
     createNewColumns: createNewColumns || [],
+    locationMappings: locationMappings || [],
   }, { timeout: IMPORT_TIMEOUT });
   return res.data.data;
 }
@@ -226,6 +260,7 @@ export async function exportAssetExcel(params: {
   campus?: string;
   user?: string;
   model?: string;
+  location?: string;
   lockStatus?: number;
   status?: string;
   columns?: string;
@@ -242,7 +277,7 @@ export async function createAssetColumn(columnLabel: string) {
   return res.data.data;
 }
 
-export async function patchAssetRecord(id: string, payload: { assetName?: string; note?: string; status?: string; location?: string; photoUrls?: string; dynamicValues?: Record<string, string> }) {
+export async function patchAssetRecord(id: string, payload: { assetName?: string; note?: string; status?: string; location?: string; photoUrls?: string; icon?: string; dynamicValues?: Record<string, string> }) {
   const res = await authHttp.patch<Result<{ id: string }>>(`/v1/assets/${encodeURIComponent(id)}`, payload);
   return res.data.data;
 }
@@ -329,7 +364,7 @@ export async function listTransferPdfLinks(requestId: string) {
   return res.data.data;
 }
 
-export async function fetchAssetFacets(params?: { keyword?: string; campus?: string; assetName?: string; user?: string; model?: string }) {
+export async function fetchAssetFacets(params?: { keyword?: string; campus?: string; assetName?: string; user?: string; model?: string; location?: string }) {
   const res = await authHttp.get<Result<AssetFacets>>("/v1/assets/facets", { params });
   return res.data.data;
 }
@@ -352,6 +387,7 @@ export async function createAssetRecord(payload: {
   location?: string;
   note?: string;
   photoUrls?: string;
+  icon?: string;
   dynamicValues?: Record<string, string>;
 }) {
   const res = await authHttp.post<Result<{ id: string }>>("/v1/assets", payload);
@@ -386,3 +422,74 @@ export async function exportTransferRecords(params: { keyword?: string }) {
   return res.data;
 }
 
+export async function moveAssetLocation(assetId: string, nodeId: number) {
+  const res = await authHttp.post<Result<{ id: string; location: string; locationNodeId: number }>>(
+    `/v1/assets/${encodeURIComponent(assetId)}/location`,
+    { nodeId }
+  );
+  return res.data.data;
+}
+
+export async function batchMoveAssetLocation(payload: { ids: string[]; nodeId: number }) {
+  const res = await authHttp.post<Result<{ moved: number; failed: { id: string; reason: string }[] }>>(
+    "/v1/assets/batch-location",
+    payload
+  );
+  return res.data.data;
+}
+
+/** 资产转移历史：转移申请 + MOVE 留痕（均按时间倒序） */
+export interface AssetTransferHistoryRequest {
+  id: string;
+  transferTime?: string;
+  transferLocation?: string;
+  fromLocation?: string | null;
+  status: string;
+  applicantName?: string;
+  remark?: string;
+  createTime?: string;
+}
+
+/** MOVE 留痕；remark 形如「旧地点 → 新地点」 */
+export interface AssetMoveLog {
+  id: string;
+  remark?: string;
+  operatorId?: string;
+  /** 后端已解析的展示名，缺失时前端回落 operatorId */
+  operatorName?: string;
+  createTime?: string;
+  /** 已补建申请时指向该申请；非空表示该留痕不再单独展示 */
+  requestId?: string | null;
+}
+
+export interface AssetTransferHistory {
+  requests: AssetTransferHistoryRequest[];
+  moves: AssetMoveLog[];
+}
+
+export async function fetchAssetTransferHistory(assetId: string) {
+  const res = await authHttp.get<Result<AssetTransferHistory>>(
+    `/v1/assets/${encodeURIComponent(assetId)}/transfer-history`
+  );
+  return res.data.data;
+}
+
+/** 删除一条 MOVE 留痕（仅最高权限），返回受影响行数 */
+export async function deleteAssetTransferLog(logId: string) {
+  const res = await authHttp.delete<Result<number>>(
+    `/v1/asset-transfer-logs/${encodeURIComponent(logId)}`
+  );
+  return res.data.data;
+}
+
+/** 由地点移动留痕补建一条已完成的转移申请 */
+export async function promoteAssetTransferLog(
+  logId: string,
+  payload: { remark?: string; photoUrlsBefore?: string[]; photoUrlsAfter?: string[] }
+) {
+  const res = await authHttp.post<Result<{ requestId: string }>>(
+    `/v1/asset-transfer-logs/${encodeURIComponent(logId)}/promote`,
+    payload
+  );
+  return res.data.data;
+}

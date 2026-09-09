@@ -3,7 +3,8 @@
  * 学生：仅自己/自己课题组。教职工：可选任意人员/课题组。
  * 统一日期区间筛选 + 合并表格，无需区分单次/多次。
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
@@ -19,7 +20,7 @@ import {
 } from "@/api/domains/material.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
-import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
+import { AdminDataTableWrap, AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 import { sanitizeExportFilenamePart } from "@/features/report-form/utils/reportFormExportFilename";
 import { recomputeMovementStockAfter } from "@/utils/materialStockAfterHelpers";
@@ -99,13 +100,16 @@ type ItemFlowRow = {
   remark: string;
 };
 
-const FLOW_PAGE_SIZE = 30;
+const PAGE_SIZE = 30;
 
 function dateInRange(v: string | null | undefined, from: string, to: string): boolean {
-  if (!from.trim() || !to.trim()) return !!v;
   if (!v) return false;
   const d = v.slice(0, 10);
-  return d >= from && d <= to;
+  const f = from.trim();
+  const t = to.trim();
+  if (f && d < f) return false;
+  if (t && d > t) return false;
+  return true;
 }
 
 function movementTypeZh(t: string): string {
@@ -191,6 +195,80 @@ function buildItemFlowRows(
   return rows;
 }
 
+type SearchOption = { value: string; label: string };
+
+/** 整合型筛选框：单个输入框即选即搜，点开后顶部搜索框过滤选项。 */
+function SearchableSelect({
+  value,
+  options,
+  onChange,
+  placeholder,
+  className,
+}: {
+  value: string;
+  options: SearchOption[];
+  onChange: (v: string) => void;
+  placeholder: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [kw, setKw] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const selected = options.find((o) => o.value === value);
+  const filtered = useMemo(() => {
+    const k = kw.trim().toLowerCase();
+    return !k ? options : options.filter((o) => o.label.toLowerCase().includes(k));
+  }, [options, kw]);
+
+  const rowCls = "w-full px-3 py-2 text-left text-sm hover:bg-[var(--twin-canvas-soft)]";
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        className={`${className ?? ""} flex items-center justify-between gap-2 text-left`}
+        onClick={() => { setOpen((o) => !o); if (!open) setKw(""); }}
+      >
+        <span className="min-w-0 flex-1 truncate">{selected?.label ?? placeholder}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-full min-w-[180px] overflow-hidden rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-lg">
+          <input
+            autoFocus
+            className="w-full border-b border-[var(--twin-hairline)] bg-transparent px-3 py-2 text-sm outline-none placeholder:text-[var(--twin-mute)]"
+            placeholder="搜索…"
+            value={kw}
+            onChange={(e) => setKw(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
+          />
+          <div className="max-h-56 overflow-y-auto py-1">
+            <button type="button" className={rowCls} onClick={() => { onChange(""); setOpen(false); }}>
+              {placeholder}
+            </button>
+            {filtered.map((o) => (
+              <button key={o.value} type="button" className={rowCls} onClick={() => { onChange(o.value); setOpen(false); }}>
+                {o.label}
+              </button>
+            ))}
+            {filtered.length === 0 && <div className="px-3 py-2 text-xs text-[var(--twin-mute)]">无匹配</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MaterialAuditExportPage() {
   const role = authStorage.getRole() || "MEMBER";
   const isStaff = hasMinRole(role, "STAFF");
@@ -203,6 +281,7 @@ export default function MaterialAuditExportPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [listPage, setListPage] = useState(1);
 
   const [selectedUserId, setSelectedUserId] = useState("");
   const { data: applicantList = [] } = useQuery({
@@ -278,6 +357,20 @@ export default function MaterialAuditExportPage() {
     );
   }, [auditRequests]);
 
+  const listTotalPages = Math.max(1, Math.ceil(currentRows.length / PAGE_SIZE));
+  const listPageRows = useMemo(() => {
+    const start = (listPage - 1) * PAGE_SIZE;
+    return currentRows.slice(start, start + PAGE_SIZE);
+  }, [currentRows, listPage]);
+
+  useEffect(() => {
+    if (listPage > listTotalPages) setListPage(1);
+  }, [listPage, listTotalPages]);
+
+  useEffect(() => {
+    setListPage(1);
+  }, [tab, from, to, selectedUserId, selectedGroup]);
+
   const isItemTab = tab === "item" || tab === "item-group";
 
   const { data: categories = [] } = useQuery({
@@ -315,10 +408,10 @@ export default function MaterialAuditExportPage() {
     () => buildItemFlowRows(claimData?.data ?? [], movementData?.data ?? [], from, to, currentStockByItemId),
     [claimData, movementData, from, to, currentStockByItemId],
   );
-  const itemFlowTotalPages = Math.max(1, Math.ceil(itemFlowRows.length / FLOW_PAGE_SIZE));
+  const itemFlowTotalPages = Math.max(1, Math.ceil(itemFlowRows.length / PAGE_SIZE));
   const itemFlowPageRows = useMemo(() => {
-    const start = (flowPage - 1) * FLOW_PAGE_SIZE;
-    return itemFlowRows.slice(start, start + FLOW_PAGE_SIZE);
+    const start = (flowPage - 1) * PAGE_SIZE;
+    return itemFlowRows.slice(start, start + PAGE_SIZE);
   }, [itemFlowRows, flowPage]);
 
   useEffect(() => {
@@ -412,29 +505,25 @@ export default function MaterialAuditExportPage() {
                 {tab === "personal" && isStaff && (
                   <div>
                     <label className="mb-1 block text-xs text-[var(--twin-body)]">申领人</label>
-                    <select
-                      className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[180px]"
+                    <SearchableSelect
                       value={selectedUserId}
-                      onChange={(e) => setSelectedUserId(e.target.value)}
-                    >
-                      <option value="">全部申领人</option>
-                      {applicantList.map((a) => (
-                        <option key={a.userId} value={a.userId}>{a.applicantName || a.userId}</option>
-                      ))}
-                    </select>
+                      onChange={setSelectedUserId}
+                      options={applicantList.map((a) => ({ value: a.userId, label: a.applicantName || a.userId }))}
+                      placeholder="全部申领人"
+                      className={`${inputCls} min-w-[180px]`}
+                    />
                   </div>
                 )}
                 {tab === "group" && isStaff && (
                   <div>
                     <label className="mb-1 block text-xs text-[var(--twin-body)]">课题组</label>
-                    <select
-                      className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[180px]"
+                    <SearchableSelect
                       value={selectedGroup}
-                      onChange={(e) => setSelectedGroup(e.target.value)}
-                    >
-                      <option value="">全部课题组</option>
-                      {groupList.map((g) => <option key={g} value={g}>{g}</option>)}
-                    </select>
+                      onChange={setSelectedGroup}
+                      options={groupList.map((g) => ({ value: g, label: g }))}
+                      placeholder="全部课题组"
+                      className={`${inputCls} min-w-[180px]`}
+                    />
                   </div>
                 )}
                 {tab === "personal" && !isStaff && <span className="text-sm text-[var(--twin-body)] pb-2">申领人：本人</span>}
@@ -447,37 +536,45 @@ export default function MaterialAuditExportPage() {
 
             <div className="flex-1 min-h-0 flex flex-col">
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <div>
+                <AdminDataTableWrap>
                   <table className="min-w-full text-xs">
-                    <thead className="border-b-2 border-[var(--app-color-border-strong)]">
-                      <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
-                        <th className="p-3 text-left">单号</th>
-                        <th className="p-3 text-left">物品</th>
-                        <th className="p-3">数量</th>
-                        <th className="p-3">规格</th>
-                        <th className="p-3">状态</th>
-                        <th className="p-3 text-left">申领人</th>
-                        <th className="p-3 text-left">课题组</th>
-                        <th className="p-3 text-left">时间</th>
+                    <thead className="whitespace-nowrap">
+                      <tr>
+                        <th className="text-left">单号</th>
+                        <th className="text-left">物品</th>
+                        <th className="text-center">数量</th>
+                        <th className="text-center">规格</th>
+                        <th className="text-center">状态</th>
+                        <th className="text-left">申领人</th>
+                        <th className="text-left">课题组</th>
+                        <th className="text-left">时间</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {currentRows.map((r, i) => (
-                        <tr key={i} className="hover:bg-[var(--twin-canvas-soft)]">
-                          <td className="px-2 py-2 font-mono text-[10px]">{cellZh(r.requestId)}</td>
-                          <td className="px-2 py-2">{cellZh(r.snapshotName)}</td>
-                          <td className="px-2 py-2 text-center">{r.qty ?? "无"}</td>
-                          <td className="px-2 py-2 text-center text-[10px]">{formatSpecLabel((r as { specSnapshot?: string }).specSnapshot) || "无"}</td>
-                          <td className="px-2 py-2 text-center">{statusZh(r.status)}</td>
-                          <td className="px-2 py-2">{cellZh(r.applicantName)}</td>
-                          <td className="px-2 py-2">{cellZh(r.applicantGroup)}</td>
-                          <td className="px-2 py-2 whitespace-nowrap">{toTime(r.createdAt)}</td>
+                      {listPageRows.map((r, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 font-mono text-[10px]">{cellZh(r.requestId)}</td>
+                          <td className="px-3 py-2">{cellZh(r.snapshotName)}</td>
+                          <td className="px-3 py-2 text-center">{r.qty ?? "无"}</td>
+                          <td className="px-3 py-2 text-center text-[10px]">{formatSpecLabel((r as { specSnapshot?: string }).specSnapshot) || "无"}</td>
+                          <td className="px-3 py-2 text-center">{statusZh(r.status)}</td>
+                          <td className="px-3 py-2">{cellZh(r.applicantName)}</td>
+                          <td className="px-3 py-2">{cellZh(r.applicantGroup)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{toTime(r.createdAt)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </AdminDataTableWrap>
               </div>
+
+              {currentRows.length > PAGE_SIZE && (
+                <div className="shrink-0 pt-2 flex items-center gap-2 text-xs">
+                  <button className="rounded-twin-sm border px-2 py-1 disabled:opacity-40" disabled={listPage <= 1} onClick={() => setListPage((p) => p - 1)}>上一页</button>
+                  <span className="text-[var(--twin-mute)]">第 {listPage} 页 / 共 {listTotalPages} 页（{currentRows.length} 行）</span>
+                  <button className="rounded-twin-sm border px-2 py-1 disabled:opacity-40" disabled={listPage >= listTotalPages} onClick={() => setListPage((p) => p + 1)}>下一页</button>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -496,14 +593,13 @@ export default function MaterialAuditExportPage() {
                 {tab === "item-group" && (
                   <div>
                     <label className="mb-1 block text-xs text-[var(--twin-body)]">课题组</label>
-                    <select
-                      className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[160px]"
+                    <SearchableSelect
                       value={selectedItemGroup}
-                      onChange={(e) => { setSelectedItemGroup(e.target.value); setFlowPage(1); }}
-                    >
-                      <option value="">全部课题组</option>
-                      {groupList.map((g) => <option key={g} value={g}>{g}</option>)}
-                    </select>
+                      onChange={(v) => { setSelectedItemGroup(v); setFlowPage(1); }}
+                      options={groupList.map((g) => ({ value: g, label: g }))}
+                      placeholder="全部课题组"
+                      className={`${inputCls} min-w-[160px]`}
+                    />
                   </div>
                 )}
                 <div>
@@ -536,44 +632,44 @@ export default function MaterialAuditExportPage() {
 
             <div className="flex-1 min-h-0 flex flex-col">
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <div>
+                <AdminDataTableWrap>
                   <table className="min-w-full text-xs">
-                    <thead className="border-b-2 border-[var(--app-color-border-strong)]">
-                      <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
-                        <th className="p-3 text-left">时间</th>
-                        <th className="p-3 text-left">类型</th>
-                        <th className="p-3 text-left">物品</th>
-                        <th className="p-3">规格</th>
-                        <th className="p-3">变动数量</th>
-                        <th className="p-3">库存</th>
-                        <th className="p-3 text-left">申领人</th>
-                        <th className="p-3 text-left">课题组</th>
-                        <th className="p-3 text-left">关联单号</th>
-                        <th className="p-3 text-left">备注</th>
+                    <thead className="whitespace-nowrap">
+                      <tr>
+                        <th className="text-left">时间</th>
+                        <th className="text-left">类型</th>
+                        <th className="text-left">物品</th>
+                        <th className="text-center">规格</th>
+                        <th className="text-center">变动数量</th>
+                        <th className="text-center">库存</th>
+                        <th className="text-left">申领人</th>
+                        <th className="text-left">课题组</th>
+                        <th className="text-left">关联单号</th>
+                        <th className="text-left">备注</th>
                       </tr>
                     </thead>
                     <tbody>
                       {itemFlowPageRows.map((row) => (
-                        <tr key={row.key} className="hover:bg-[var(--twin-canvas-soft)]">
-                          <td className="px-2 py-2 whitespace-nowrap">{toTime(row.time)}</td>
-                          <td className="px-2 py-2">{row.eventType}</td>
-                          <td className="px-2 py-2">{row.itemName}</td>
-                          <td className="px-2 py-2 text-center text-[10px]">{row.specLabel}</td>
-                          <td className="px-2 py-2 text-center font-medium">{row.qty}</td>
-                          <td className="px-2 py-2 text-center">{row.stockAfter}</td>
-                          <td className="px-2 py-2">{row.applicantName}</td>
-                          <td className="px-2 py-2">{row.applicantGroup}</td>
-                          <td className="px-2 py-2 font-mono text-[10px]">{row.requestId}</td>
-                          <td className="px-2 py-2">{row.remark}</td>
+                        <tr key={row.key}>
+                          <td className="px-3 py-2 whitespace-nowrap">{toTime(row.time)}</td>
+                          <td className="px-3 py-2">{row.eventType}</td>
+                          <td className="px-3 py-2">{row.itemName}</td>
+                          <td className="px-3 py-2 text-center text-[10px]">{row.specLabel}</td>
+                          <td className="px-3 py-2 text-center font-medium">{row.qty}</td>
+                          <td className="px-3 py-2 text-center">{row.stockAfter}</td>
+                          <td className="px-3 py-2">{row.applicantName}</td>
+                          <td className="px-3 py-2">{row.applicantGroup}</td>
+                          <td className="px-3 py-2 font-mono text-[10px]">{row.requestId}</td>
+                          <td className="px-3 py-2">{row.remark}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </AdminDataTableWrap>
               </div>
 
               {/* Item tab pagination */}
-              {itemFlowRows.length > FLOW_PAGE_SIZE && (
+              {itemFlowRows.length > PAGE_SIZE && (
                 <div className="shrink-0 pt-2 flex items-center gap-2 text-xs">
                   <button className="rounded-twin-sm border px-2 py-1 disabled:opacity-40" disabled={flowPage <= 1} onClick={() => setFlowPage((p) => p - 1)}>上一页</button>
                   <span className="text-[var(--twin-mute)]">第 {flowPage} 页 / 共 {itemFlowTotalPages} 页</span>

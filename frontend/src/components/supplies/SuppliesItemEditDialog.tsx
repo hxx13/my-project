@@ -76,6 +76,8 @@ export default function SuppliesItemEditDialog({ item, categories, open, onClose
   }, [open, item]);
 
   if (!open || !item) return null;
+  const stockLocked = Number(item.lockedQty || 0);
+  const stockAvail = Math.max(0, (item.stockQty ?? 0) - stockLocked);
 
   const handleSave = () => {
     if (!name.trim()) {
@@ -377,7 +379,7 @@ export default function SuppliesItemEditDialog({ item, categories, open, onClose
                   库存{" "}
                   <span className="font-medium text-[var(--twin-ink)]">{stockQty}</span>
                   <span className="text-[var(--twin-mute)]">
-                    {" "}· 不含锁定 {Number(item.lockedQty || 0)}
+                    {" "}（剩余可领 {stockAvail} · 已锁定 {stockLocked}）
                   </span>
                 </>
               ) : (

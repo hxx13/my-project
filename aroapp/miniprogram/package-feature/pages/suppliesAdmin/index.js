@@ -50,6 +50,12 @@ Page({
     categoryBlocks: [],
     searchKeyword: '',
     newCatName: '',
+    /** 顶部工具栏「+」底部菜单 */
+    createMenuShow: false,
+    createMenuActions: [{ name: '新建物资' }, { name: '新建分类' }],
+    /** 新建分类：带图标的标注输入卡（消除工具栏上新分类输入歧义） */
+    addCatOpen: false,
+    addCatFocus: false,
     inboundOpenId: null,
     stockOpenId: null,
     inboundSubmittingId: null,
@@ -220,6 +226,42 @@ Page({
     this.setData({ searchKeyword: e.detail.value || '' }, () => this.applyItemFilter());
   },
 
+  onClearSearch() {
+    if (!this.data.searchKeyword) return;
+    this.setData({ searchKeyword: '' }, () => this.applyItemFilter());
+  },
+
+  onCreateMenuOpen() {
+    this.setData({ createMenuShow: true });
+  },
+
+  onCreateMenuClose() {
+    this.setData({ createMenuShow: false });
+  },
+
+  onCreateMenuSelect(e) {
+    const action = e.detail;
+    const name = action && action.name;
+    this.setData({ createMenuShow: false });
+    if (name === '新建物资') {
+      this.openCreate();
+    } else if (name === '新建分类') {
+      this.openAddCat();
+    }
+  },
+
+  openAddCat() {
+    this.setData({ addCatOpen: true, addCatFocus: true });
+  },
+
+  closeAddCat() {
+    this.setData({ addCatOpen: false, addCatFocus: false, newCatName: '' });
+  },
+
+  onAddCatBlur() {
+    this.setData({ addCatFocus: false });
+  },
+
   onInboundQtyFor(e) {
     const id = e.currentTarget.dataset.id;
     const key = `inboundQtyById.${id}`;
@@ -326,7 +368,7 @@ Page({
     const p = parseResponse(res);
     if (!p.ok) return wx.showToast({ title: p.message, icon: 'none' });
     wx.showToast({ title: '已添加', icon: 'success' });
-    this.setData({ newCatName: '' });
+    this.setData({ newCatName: '', addCatOpen: false, addCatFocus: false });
     await this.loadAll();
   },
 

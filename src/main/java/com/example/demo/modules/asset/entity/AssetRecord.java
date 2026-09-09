@@ -24,5 +24,9 @@ public class AssetRecord {
     private String deletedBy;
     private LocalDateTime purgeAfterTime;
     private String createdByBatchId;
+    /** 所属存放地点节点 id（asset_location.id） */
+    private Long locationNodeId;
+    /** 资产图标 emoji（无照片时兜底展示） */
+    private String icon;
 }
 

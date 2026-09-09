@@ -35,7 +35,7 @@
 
     <!-- Vant 下拉筛选（默认收起，紧凑尺寸） -->
     <view wx:if="{{ showFilters }}" class="filter-drop">
-      <van-dropdown-menu active-color="#3b82f6" z-index="{{ 900 }}">
+      <van-dropdown-menu active-color="#2563eb" z-index="{{ 900 }}">
         <van-dropdown-item
           title="{{ filterAssetNameIndex > 0 ? assetNameOptions[filterAssetNameIndex] : '资产名称' }}"
           value="{{ filterAssetNameIndex }}"
@@ -85,7 +85,7 @@
           </view>
           <view class="item-row">
             <text class="item-row-label">资产名称</text>
-            <text class="item-row-value">{{ item.assetName || '-' }}</text>
+            <text class="item-row-value"><text wx:if="{{ item.icon }}" class="item-icon">{{ item.icon }}</text>{{ item.assetName || '-' }}</text>
           </view>
           <view class="item-row">
             <text class="item-row-label">存放地点</text>
@@ -135,7 +135,7 @@
               <input class="input detail-edit-input" value="{{ detailAssetName }}" bindinput="onDetailAssetNameInput" placeholder="请输入资产名称" />
             </block>
             <block wx:else>
-              <text class="detail-value">{{ detailAsset.assetName || '-' }}</text>
+              <text class="detail-value"><text wx:if="{{ detailAsset.icon }}" class="item-icon">{{ detailAsset.icon }}</text>{{ detailAsset.assetName || '-' }}</text>
             </block>
           </view>
           <view class="detail-row">
@@ -145,7 +145,7 @@
           <view class="detail-row">
             <text class="detail-label">存放地点</text>
             <block wx:if="{{ detailEditing }}">
-              <input class="input detail-edit-input" value="{{ detailLocation }}" bindinput="onDetailLocationInput" placeholder="请输入存放地点" />
+              <location-tree-picker value="{{ detailLocation }}" bind:change="onLocationPicked" data-target="detail" />
             </block>
             <block wx:else>
               <text class="detail-value">{{ detailLocation || '-' }}</text>
@@ -304,12 +304,7 @@
         </view>
         <view class="field">
           <text class="label">存放地点</text>
-          <view class="location-input-wrap">
-            <input class="input" value="{{ addLocation }}" bindinput="onAddLocationInput" bindblur="onAddLocationBlur" placeholder="输入或选择已有地点" />
-            <view wx:if="{{ showLocationPicker && locationFiltered.length }}" class="location-suggestions">
-              <view wx:for="{{ locationFiltered }}" wx:key="index" class="location-suggestion-item" data-index="{{ index }}" catchtap="selectLocationSuggestion">{{ item }}</view>
-            </view>
-          </view>
+          <location-tree-picker value="{{ addLocation }}" bind:change="onLocationPicked" data-target="add" />
         </view>
         <view class="field">
           <text class="label">备注（可选）</text>
@@ -384,12 +379,7 @@
 
         <view class="field">
           <text class="label">转移至</text>
-          <view class="location-input-wrap">
-            <input class="input" value="{{ transferLocation }}" bindinput="onTransferLocationInput" bindblur="onTransferLocationBlur" placeholder="目标存放地点" />
-            <view wx:if="{{ transferLocationPickerShow && transferLocationFiltered.length }}" class="location-suggestions">
-              <view wx:for="{{ transferLocationFiltered }}" wx:key="index" class="location-suggestion-item" data-index="{{ index }}" catchtap="selectTransferLocationSuggestion">{{ item }}</view>
-            </view>
-          </view>
+          <location-tree-picker value="{{ transferLocation }}" bind:change="onLocationPicked" data-target="transfer" />
         </view>
 
         <view class="field">
@@ -523,7 +513,12 @@
                 <text class="batch-fill-label">{{ field.label }}</text>
               </view>
               <block wx:if="{{ batchEditChecked[field.key] }}">
-                <input class="input batch-edit-input" value="{{ batchEditValues[field.key] || '' }}" data-key="{{ field.key }}" bindinput="onBatchEditValueInput" placeholder="输入新值" />
+                <location-tree-picker
+                  wx:if="{{ field.isLocation }}"
+                  value="{{ batchEditValues[field.key] || '' }}"
+                  bind:change="onBatchEditLocationPicked"
+                />
+                <input wx:else class="input batch-edit-input" value="{{ batchEditValues[field.key] || '' }}" data-key="{{ field.key }}" bindinput="onBatchEditValueInput" placeholder="输入新值" />
                 <view wx:if="{{ field.previews.length }}" class="batch-fill-previews">
                   <text class="batch-fill-previews-title">当前批量中的值：</text>
                   <view wx:for="{{ field.previews }}" wx:for-item="pv" wx:for-index="pvi" wx:key="pvi" class="batch-fill-preview-row">

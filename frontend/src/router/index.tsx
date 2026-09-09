@@ -82,8 +82,12 @@ import CageScopeAssignmentPage from "@/features/cage-shelf/pages/CageScopeAssign
 import CageFormEditorPage from "@/features/cage-shelf/pages/CageFormEditorPage";
 import CageCodelistPage from "@/features/cage-shelf/pages/CageCodelistPage";
 import CageFieldPage from "@/features/cage-shelf/pages/CageFieldPage";
+import CardPrintPage from "@/features/card-print/pages/CardPrintPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
 import AdminAroBindingPage from "@/pages/AdminAroBindingPage";
+import AdminHealthSurveyViewPage from "@/pages/AdminHealthSurveyViewPage";
+import AdminTrainingPublishPage from "@/pages/AdminTrainingPublishPage";
+import ExamPaperAdminPage from "@/features/exam/pages/ExamPaperAdminPage";
 import AdminExpStatsPage from "@/pages/AdminExpStatsPage";
 import AnimalRoomTelemetryPage from "@/pages/AnimalRoomTelemetryPage";
 import AnimalRoomCockpitPage from "@/pages/AnimalRoomCockpitPage";
@@ -105,6 +109,7 @@ import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
 import AdminNavManager from "@/features/admin/AdminNavManager";
 import AdminConversationArchivePage from "@/pages/AdminConversationArchivePage";
 import AdminPushConfigPage from "@/pages/AdminPushConfigPage";
+import AdminDoorSwipeRulesPage from "@/pages/AdminDoorSwipeRulesPage";
 import AdminNotificationDigestPage from "@/pages/AdminNotificationDigestPage";
 import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
@@ -141,6 +146,11 @@ import StudentFeedbackPage from "@/features/student/pages/student-feedback";
 import StudentSettingsPage from "@/features/student/pages/student-settings";
 import StudentCageShelfPage from "@/features/student/pages/student-cage-shelf";
 import StudentMaterialPage from "@/features/student/pages/student-material";
+import StudentExamPage from "@/features/student/pages/student-exam";
+import StudentExamAnswerPage from "@/features/student/pages/student-exam-answer";
+import StudentTrainingPage from "@/features/student/pages/student-training";
+import StudentTrainingMyPage from "@/features/student/pages/student-training-my";
+import StudentHealthSurveyPage from "@/features/student/pages/student-health-survey";
 import ReportFormListPage from "@/features/report-form/pages/ReportFormListPage";
 import ReportFormDesignPage from "@/features/report-form/pages/ReportFormDesignPage";
 import ReportFillHubPage from "@/features/report-form/pages/ReportFillHubPage";
@@ -276,6 +286,11 @@ export const router = createHashRouter([
       { path: "animal-order", element: <ReferenceDataPage /> },
       { path: "aup", element: <StudentAupPage /> },
       { path: "aup/review/:id", element: <AupReviewPage /> },
+      { path: "exam", element: <StudentExamPage /> },
+      { path: "exam/:paperId", element: <StudentExamAnswerPage /> },
+      { path: "training", element: <StudentTrainingPage /> },
+      { path: "training/my", element: <StudentTrainingMyPage /> },
+      { path: "health-survey", element: <StudentHealthSurveyPage /> },
     ],
   },
 
@@ -367,8 +382,12 @@ export const router = createHashRouter([
               { path: "cage-shelves/records", element: <CageOccupancyRecordsPage /> },
               { path: "cage-shelves/scope", element: <CageScopeAssignmentPage /> },
               { path: "cage-shelf-indexes", element: <AdminCageShelfIndexPage /> },
+              { path: "card-print", element: <CardPrintPage /> },
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },
               { path: "aro-binding", element: <AdminAroBindingPage /> },
+              { path: "health-survey/:personId", element: <AdminHealthSurveyViewPage /> },
+              { path: "training/new", element: <AdminTrainingPublishPage /> },
+              { path: "training/edit/:id", element: <AdminTrainingPublishPage /> },
               { path: "notification-digest", element: <AdminNotificationDigestPage /> },
               { path: "exp-stats", element: <AdminExpStatsPage /> },
               { path: "supplies/audit-export", element: <AdminSuppliesAuditExportPage /> },
@@ -383,6 +402,7 @@ export const router = createHashRouter([
                   { path: "door-group-storage", element: <AdminDoorGroupStoragePage /> },
                   { path: "device-channels", element: <AdminDeviceChannelPage /> },
                   { path: "aro-rooms", element: <AdminRoomMappingPage /> },
+                  { path: "exam-papers", element: <ExamPaperAdminPage /> },
                   { path: "room-mapping", element: <Navigate to={`${STAFF_NS}/admin/aro-rooms`} replace /> },
                   { path: "access-rules", element: <AdminAccessRulesPage /> },
                   { path: "department-storage", element: <AdminDepartmentStoragePage /> },
@@ -393,7 +413,7 @@ export const router = createHashRouter([
                   { path: "report-form/:id/design", element: <ReportFormDesignPage /> },
                   { path: "report-form/:id/submissions", element: <SubmissionManagePage /> },
                   { path: "telemetry-insights", element: <AdminTelemetryInsightsPage /> },
-                  { path: "telemetry-insights-config", element: <AdminTelemetryInsightsConfigPage /> },
+                  { path: "telemetry-insights/config", element: <AdminTelemetryInsightsConfigPage /> },
                   { path: "dahua-swing-tasks", element: <AdminDahuaSwingTasksPage /> },
                   { path: "dahua-swing-stats-tasks", element: <AdminDahuaSwingStatsDailyPage /> },
                   { path: "dahua-swing-stats-backfill", element: <AdminDahuaSwingStatsBackfillPage /> },
@@ -434,6 +454,7 @@ export const router = createHashRouter([
                   { path: "nav-manager", element: <AdminNavManager /> },
                   { path: "push-config", element: <AdminPushConfigPage /> },
                   { path: "push-dashboard", element: <AdminPushDashboardPage /> },
+                  { path: "door-swipe-rules", element: <AdminDoorSwipeRulesPage /> },
                   { path: "face-debug", element: <FaceDebugPage /> },
                   { path: "door-control", element: <AdminDoorControlPage /> },
                   { path: "telemetry-watchlists", element: <AdminTelemetryWatchlistsPage /> },

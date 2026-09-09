@@ -427,7 +427,7 @@ public class JobExecutionRegistry {
                             + summary.get("upserted5min") + " upsert1h=" + summary.get("upserted1h"), summary);
                 }
                 case JOB_TELEMETRY_VIEW_SNAPSHOT -> {
-                    var summary = telemetryViewSnapshotService.captureSnapshot("PRESENTATION", null, null, null);
+                    var summary = telemetryViewSnapshotService.captureSnapshot("PRESENTATION", null, null, null, null, null);
                     yield JobRunOutcome.ok(jobKey, "视图快照已捕获 id=" + summary.get("snapshotId"), summary);
                 }
                 case JOB_ACCESS_CLEAN_PACKAGE_DAILY -> {

@@ -170,9 +170,9 @@ export default function AgvSidebar({ serverTime, focusedAgvIp, onFocusedAgvIpCha
 
       <span className="w-px h-3 bg-[var(--app-color-border-default)]" />
 
-      <Link to="/admin/agv-tracker/logs"
+      <Link to="/console/admin/agv-tracker/logs"
         className="px-2 py-0.5 rounded-full text-[10px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors flex items-center gap-1 whitespace-nowrap"><FileText size={11} />日志</Link>
-      <Link to="/admin/agv-tracker/analytics"
+      <Link to="/console/admin/agv-tracker/analytics"
         className="px-2 py-0.5 rounded-full text-[10px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors flex items-center gap-1 whitespace-nowrap"><BarChart3 size={11} />分析</Link>
       <button onClick={onAnalysisToggle}
         className={`px-1.5 py-0.5 rounded-full text-[10px] transition-colors flex items-center ${analysisOpen ? "bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]" : "text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"}`}><Settings2 size={11} /></button>

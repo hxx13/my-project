@@ -8,11 +8,16 @@ import com.example.demo.modules.policy.BizDomains;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
 import com.example.demo.modules.referencedata.dto.*;
 import com.example.demo.modules.referencedata.registry.ReferenceFieldRegistry;
+import com.example.demo.modules.referencedata.service.AnimalOrderExportService;
 import com.example.demo.modules.referencedata.service.ReferenceDataService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -24,15 +29,18 @@ public class ReferenceDataController {
     private final ReferenceDataService referenceDataService;
     private final CapabilityPolicyService capabilityPolicyService;
     private final ReferenceFieldRegistry fieldRegistry;
+    private final AnimalOrderExportService animalOrderExportService;
 
     public ReferenceDataController(AuthContextService authContextService,
                                     ReferenceDataService referenceDataService,
                                     CapabilityPolicyService capabilityPolicyService,
-                                    ReferenceFieldRegistry fieldRegistry) {
+                                    ReferenceFieldRegistry fieldRegistry,
+                                    AnimalOrderExportService animalOrderExportService) {
         this.authContextService = authContextService;
         this.referenceDataService = referenceDataService;
         this.capabilityPolicyService = capabilityPolicyService;
         this.fieldRegistry = fieldRegistry;
+        this.animalOrderExportService = animalOrderExportService;
     }
 
     // ==================== RefData ====================
@@ -256,15 +264,45 @@ public class ReferenceDataController {
     }
 
     @GetMapping("/orders/all")
-    @Operation(summary = "全部订单（后台审核页，分页）")
+    @Operation(summary = "全部订单（后台审核页，按校区分页，支持时间范围）")
     public Result<Map<String, Object>> listAllOrders(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int pageSize) {
+            @RequestParam(defaultValue = "50") int pageSize,
+            @RequestParam(required = false) String campus,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
         User user = resolveUser(authorization);
         Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
         if (denied != null) return Result.error(denied.getMessage());
-        return Result.success(referenceDataService.listAllOrders(page, pageSize));
+        return Result.success(referenceDataService.listAllOrders(page, pageSize, campus, from, to));
+    }
+
+    @GetMapping("/orders/export")
+    @Operation(summary = "导出订购审核 Excel（按 课题组→申领人→物品 逐层小计）")
+    public ResponseEntity<byte[]> exportOrderReviewExcel(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) String campus,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
+        User user = resolveUser(authorization);
+        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
+        if (denied != null) {
+            return ResponseEntity.status(403).contentType(MediaType.TEXT_PLAIN)
+                    .body(String.valueOf(denied.getMessage()).getBytes(StandardCharsets.UTF_8));
+        }
+        try {
+            byte[] body = animalOrderExportService.buildReviewSheet(
+                    referenceDataService.listOrdersForExport(campus, from, to));
+            String fn = "animal-order-review-" + (from == null ? "all" : from) + "_" + (to == null ? "now" : to) + ".xlsx";
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fn + "\"")
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .body(body);
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN)
+                    .body(("导出失败: " + ex.getMessage()).getBytes(StandardCharsets.UTF_8));
+        }
     }
 
     @GetMapping("/orders/{id}")

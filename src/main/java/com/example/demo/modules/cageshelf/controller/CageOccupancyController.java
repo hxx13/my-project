@@ -114,17 +114,20 @@ public class CageOccupancyController {
     }
 
     @GetMapping("/records")
-    @Operation(summary = "占用记录查询（view=cage 笼位视角 / view=person 个人视角）")
-    public Result<List<Map<String, Object>>> records(@RequestParam String view,
-                                                     @RequestParam(required = false) Long cageId,
-                                                     @RequestParam(required = false) Long occupantId,
-                                                     HttpServletRequest req) {
+    @Operation(summary = "占用记录查询（view=cage 笼位视角 / view=person 个人视角，分页 + 事件类型过滤）")
+    public Result<Map<String, Object>> records(@RequestParam String view,
+                                               @RequestParam(required = false) Long cageId,
+                                               @RequestParam(required = false) Long occupantId,
+                                               @RequestParam(required = false) String eventType,
+                                               @RequestParam(defaultValue = "1") int page,
+                                               @RequestParam(defaultValue = "20") int pageSize,
+                                               HttpServletRequest req) {
         User u = resolveUser(req);
         Result<?> denied = requireEditor(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
         Long id = "person".equals(view) ? occupantId : cageId;
         if (id == null) return Result.fail(400, "缺少 cageId 或 occupantId");
-        return Result.success(occupancyService.records(view, id));
+        return Result.success(occupancyService.records(view, id, eventType, page, pageSize));
     }
 
     private static String str(Map<String, Object> body, String key) {

@@ -6,7 +6,7 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface AnimalOrderTimePolicyMapper {
-    AnimalOrderTimePolicy findById(@Param("id") Long id);
+    AnimalOrderTimePolicy findByCampus(@Param("campus") String campus);
 
     int update(AnimalOrderTimePolicy row);
 }

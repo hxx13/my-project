@@ -8,13 +8,14 @@
      只设 max-height 会导致 flex 父元素高度 = 内容高度，
      子元素 flex:1 的「剩余空间」恒为 0 → scroll-view 塌缩到 0×0。
 
-   【按钮颜色规则】
-     蓝 #3b82f6 = 主操作 / 绿 #10b981 = 成功/导出
-     红 #ef4444 = 危险/删除 / 灰 #6b7280 = 中性/取消
-     琥珀 #f59e0b = 编辑/转移 / 天蓝 #0ea5e9 = 详情
+   【按钮颜色规则】同一界面只允许一个实心主按钮
+     实心主操作: #2563EB（蓝）/ 实心危险: #DC2626（仅「清空全部」）
+     次级/取消: #F1F3F7 底 + #334155 字（无边框）
+     次级强调: #EFF4FF 底 + #1D4ED8 字 / 次级危险: #FEF1F1 底 + #B91C1C 字
+     禁止再新增实心色块；新按钮先复用 .ui-btn-plain / .panel-close
 
    【保留不动】
-     悬浮扫码: #f97316 橙 / 浦东: #3b82f6 蓝 / 浦西: #f97316 橙
+     悬浮扫码: #f97316 橙（唯一橙色实心，语义=扫码）
 
      参考面板: .batch-panel (height + max-height 正确写法)
    ═══════════════════════════════════════════════════════════════ */
@@ -86,52 +87,52 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  border-radius: 8rpx;
+  border-radius: 10rpx;
   white-space: nowrap;
   text-align: center;
-  font-size: 20rpx;
+  font-size: 24rpx;
   line-height: 1;
   border: none;
-  height: 40rpx;
-  padding: 0 14rpx;
+  height: 56rpx;
+  padding: 0 16rpx;
   font-weight: 500;
   gap: 4rpx;
 }
 
-/* ── 校区按钮 ── */
+/* ── 校区按钮（保留语义色，降为浅底） ── */
 .ui-btn-campus {
-  background: #f1f5f9;
-  color: #64748b;
+  background: #f1f3f7;
+  color: #334155;
 }
 
 .campus-pudong {
-  background: #3b82f6;
-  color: #ffffff;
+  background: #eff4ff;
+  color: #1d4ed8;
 }
 
 .campus-puxi {
-  background: #f97316;
-  color: #ffffff;
+  background: #fff4ec;
+  color: #c2410c;
 }
 
 .campus-arrow {
   font-size: 14rpx;
 }
 
-/* ── 标题行按钮（市面标准配色） ── */
+/* ── 标题行按钮：只有「添加」是实心主按钮 ── */
 .ui-btn-add {
-  background: #3b82f6;
+  background: #2563eb;
   color: #ffffff;
 }
 
 .ui-btn-export {
-  background: #10b981;
-  color: #ffffff;
+  background: #f1f3f7;
+  color: #334155;
 }
 
 .ui-btn-transfer {
-  background: #3b82f6;
-  color: #ffffff;
+  background: #f1f3f7;
+  color: #334155;
 }
 
 /* ── 搜索栏 ── */
@@ -151,7 +152,7 @@
 .search-input {
   width: 100%;
   height: 56rpx;
-  border: 1rpx solid #dce3ef;
+  border: 1rpx solid #e4e8ef;
   border-radius: 10rpx;
   padding: 0 106rpx 0 16rpx;
   background: #fff;
@@ -174,13 +175,13 @@
   width: 44rpx;
   height: 44rpx;
   margin-top: -22rpx;
-  border: 1rpx solid #dce3ef;
+  border: none;
   border-radius: 10rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #64748b;
-  background: #f8fafc;
+  background: #f1f3f7;
 }
 
 .clear-btn {
@@ -190,10 +191,10 @@
   width: 44rpx;
   height: 44rpx;
   margin-top: -22rpx;
-  border: 1rpx solid #dce3ef;
+  border: none;
   border-radius: 10rpx;
   color: #94a3b8;
-  background: #f8fafc;
+  background: #f1f3f7;
   font-size: 24rpx;
   line-height: 44rpx;
   text-align: center;
@@ -201,7 +202,7 @@
 }
 
 .ui-btn-search-main {
-  background: #3b82f6;
+  background: #2563eb;
   color: #ffffff;
   height: 56rpx;
   padding: 0 16rpx;
@@ -210,8 +211,8 @@
 }
 
 .ui-btn-search-sub {
-  background: #6b7280;
-  color: #ffffff;
+  background: #f1f3f7;
+  color: #334155;
   height: 56rpx;
   padding: 0 16rpx;
   font-size: 26rpx;
@@ -219,8 +220,8 @@
 }
 
 .ui-btn-search-filter {
-  background: #6b7280;
-  color: #ffffff;
+  background: #f1f3f7;
+  color: #334155;
   height: 56rpx;
   padding: 0 16rpx;
   font-size: 26rpx;
@@ -228,8 +229,8 @@
 }
 
 .ui-btn-search-filter.filter-active {
-  background: #3b82f6;
-  color: #ffffff;
+  background: #eff4ff;
+  color: #1d4ed8;
 }
 
 /* 筛选条件下拉区域 */
@@ -266,7 +267,7 @@
 
 /* 校区左边框色条 */
 .card-campus-pudong {
-  border-left: 6rpx solid #3b82f6;
+  border-left: 6rpx solid #2563eb;
 }
 
 .card-campus-puxi {
@@ -321,8 +322,8 @@
 }
 
 .inline-card-actions .ui-btn {
-  background: #6b7280;
-  color: #ffffff;
+  background: #f1f3f7;
+  color: #334155;
   font-size: 22rpx;
   height: 52rpx;
   min-width: 80rpx;
@@ -330,25 +331,25 @@
   font-weight: 500;
 }
 
-/* 卡片按钮颜色（实心标准配色） */
+/* 卡片按钮：一律次级色，只有「详情」带强调色 */
 .inline-card-actions .ui-btn.ui-btn-batch-add {
-  background: #3b82f6;
-  color: #ffffff;
+  background: #f1f3f7;
+  color: #334155;
 }
 
 .inline-card-actions .ui-btn.ui-btn-batch-remove {
-  background: #ef4444;
-  color: #ffffff;
+  background: #fef1f1;
+  color: #b91c1c;
 }
 
 .inline-card-actions .ui-btn.ui-btn-transfer-card {
-  background: #f59e0b;
-  color: #ffffff;
+  background: #f1f3f7;
+  color: #334155;
 }
 
 .inline-card-actions .ui-btn.ui-btn-detail-card {
-  background: #0ea5e9;
-  color: #ffffff;
+  background: #eff4ff;
+  color: #1d4ed8;
 }
 
 /* 校区标签 */
@@ -363,19 +364,18 @@
 }
 
 .campus-tag-pudong {
-  color: #ffffff;
-  background: #3b82f6;
+  color: #1d4ed8;
+  background: #eff4ff;
 }
 
 .campus-tag-puxi {
-  color: #ffffff;
-  background: #f97316;
+  color: #c2410c;
+  background: #fff4ec;
 }
 
 .campus-tag-unknown {
   color: #64748b;
-  background: #f1f5f9;
-  border: 1rpx dashed #cbd5e1;
+  background: #f1f3f7;
 }
 
 .campus-tag:active {
@@ -392,7 +392,7 @@
 
 .input {
   flex: 1;
-  border: 1rpx solid #dce3ef;
+  border: 1rpx solid #e4e8ef;
   border-radius: 10rpx;
   padding: 12rpx 16rpx;
   background: #fff;
@@ -450,61 +450,55 @@
   justify-content: flex-end;
 }
 
-/* 面板操作按钮统一基底 */
+/* 面板操作按钮统一基底（无边框，靠底色分层） */
 .panel-act-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 44rpx;
-  padding: 0 14rpx;
-  border-radius: 8rpx;
+  height: 52rpx;
+  padding: 0 16rpx;
+  border-radius: 10rpx;
   font-size: 22rpx;
   font-weight: 500;
   white-space: nowrap;
-  border: 1rpx solid transparent;
+  border: none;
   box-sizing: border-box;
 }
 
 /* 编辑 */
 .panel-act-edit {
-  background: #f59e0b;
-  color: #ffffff;
-  border-color: #d97706;
+  background: #f1f3f7;
+  color: #334155;
 }
 
 /* 保存 */
 .panel-act-save {
-  background: #10b981;
+  background: #2563eb;
   color: #ffffff;
-  border-color: #059669;
 }
 
 /* 扫码填充 */
 .panel-act-scan {
-  background: #3b82f6;
-  color: #ffffff;
-  border-color: #2563eb;
+  background: #eff4ff;
+  color: #1d4ed8;
 }
 
-/* 关闭（中性灰） */
+/* 关闭 */
 .panel-act-close {
-  background: #6b7280;
-  color: #ffffff;
-  border-color: #4b5563;
+  background: #f1f3f7;
+  color: #334155;
 }
 
 /* 加入批量 */
 .panel-act-add {
-  background: #3b82f6;
-  color: #ffffff;
-  border-color: #2563eb;
+  background: #eff4ff;
+  color: #1d4ed8;
 }
 
 /* 移出批量 */
 .panel-act-remove {
-  background: #ef4444;
-  color: #ffffff;
-  border-color: #dc2626;
+  background: #fef1f1;
+  color: #b91c1c;
 }
 
 /* 通用关闭/操作按钮（其他面板沿用） */
@@ -512,20 +506,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 44rpx;
-  padding: 0 14rpx;
-  border-radius: 8rpx;
+  height: 52rpx;
+  padding: 0 16rpx;
+  border-radius: 10rpx;
   font-size: 22rpx;
   font-weight: 500;
-  color: #ffffff;
-  background: #6b7280;
-  border: 1rpx solid #4b5563;
+  color: #334155;
+  background: #f1f3f7;
+  border: none;
 }
 
 .panel-close-primary {
   color: #ffffff;
-  background: #3b82f6;
-  border-color: #2563eb;
+  background: #2563eb;
 }
 
 .field {
@@ -599,7 +592,7 @@
   align-items: center;
   gap: 16rpx;
   padding: 10rpx 0;
-  border-bottom: 1rpx solid #f1f5f9;
+  border-bottom: 1rpx solid #f1f3f7;
   min-height: 56rpx;
 }
 .detail-row:last-child {
@@ -696,27 +689,12 @@
   width: 44rpx;
   height: 44rpx;
   border-radius: 10rpx;
-  border: 1rpx solid #3b82f6;
-  color: #3b82f6;
-  background: #eff6ff;
+  border: none;
+  color: #1d4ed8;
+  background: #eff4ff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-/* ── 动态列（旧，保留） ── */
-.dyn-wrap {
-  margin-top: 8rpx;
-}
-
-.dyn-line {
-  font-size: 24rpx;
-  color: #334155;
-  margin-bottom: 6rpx;
-}
-
-.dyn-key {
-  color: #64748b;
 }
 
 /* ── 照片 ── */
@@ -741,7 +719,7 @@
   width: 120rpx;
   height: 120rpx;
   border-radius: 10rpx;
-  background: #f1f5f9;
+  background: #f1f3f7;
 }
 
 .photo-remove {
@@ -758,20 +736,14 @@
   border-radius: 18rpx;
 }
 
-.detail-photo-block {
-  margin-top: 16rpx;
-  padding-top: 12rpx;
-  border-top: 1rpx solid #e2e8f0;
-}
-
 /* ── 上传/图标按钮 ── */
 .ui-icon-btn {
   width: 56rpx;
   height: 56rpx;
-  border-radius: 14rpx;
-  border: 1rpx solid #3b82f6;
-  color: #3b82f6;
-  background: #eff6ff;
+  border-radius: 12rpx;
+  border: none;
+  color: #1d4ed8;
+  background: #eff4ff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -784,7 +756,7 @@
 
 /* 通用实心按钮（蓝底白字，用于弹窗内确认等） */
 .ui-btn-primary {
-  background: #3b82f6;
+  background: #2563eb;
   color: #ffffff;
   border: none;
 }
@@ -811,50 +783,20 @@
 
 .apply-search-scroll {
   max-height: 360rpx;
-  border: 1rpx solid #e2e8f0;
+  border: 1rpx solid #e4e8ef;
   border-radius: 10rpx;
   background: #fff;
 }
 
 .ui-btn-submit {
   width: 100%;
-  height: 52rpx;
-  margin-top: 12rpx;
-  border-radius: 10rpx;
-  font-size: 26rpx;
-  font-weight: 500;
-  background: #3b82f6;
+  height: 88rpx;
+  margin-top: 16rpx;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  background: #2563eb;
   color: #fff;
-}
-
-/* ── 路径联想 ── */
-.location-input-wrap {
-  position: relative;
-}
-
-.location-suggestions {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: #fff;
-  border: 1rpx solid #e2e8f0;
-  border-radius: 10rpx;
-  max-height: 280rpx;
-  overflow-y: auto;
-  z-index: 10;
-  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.12);
-}
-
-.location-suggestion-item {
-  padding: 14rpx 18rpx;
-  font-size: 24rpx;
-  color: #334155;
-  border-bottom: 1rpx solid #f1f5f9;
-}
-
-.location-suggestion-item:active {
-  background: #eff6ff;
 }
 
 /* ── 扫码填充面板 ── */
@@ -881,7 +823,7 @@
   align-items: center;
   gap: 12rpx;
   padding: 12rpx 8rpx;
-  border-bottom: 1rpx solid #f1f5f9;
+  border-bottom: 1rpx solid #f1f3f7;
 }
 
 .fill-checkbox {
@@ -898,8 +840,8 @@
 }
 
 .fill-checkbox-on {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: #2563eb;
+  border-color: #2563eb;
   color: #fff;
 }
 
@@ -927,13 +869,13 @@
   padding-top: 16rpx;
   padding-bottom: 4rpx;
   justify-content: center;
-  border-top: 1rpx solid #e2e8f0;
+  border-top: 1rpx solid #e4e8ef;
   background: #fff;
   flex-shrink: 0;
 }
 
 .fill-actions .ui-btn {
-  height: 44rpx;
+  height: 56rpx;
   border: none;
 }
 
@@ -975,7 +917,7 @@
 .transfer-asset-card {
   background: #f8fafc;
   border-radius: 12rpx;
-  border: 1rpx solid #e2e8f0;
+  border: 1rpx solid #e4e8ef;
   padding: 20rpx;
   margin-bottom: 20rpx;
 }
@@ -995,7 +937,7 @@
 
 .transfer-asset-from {
   font-size: 24rpx;
-  color: #f97316;
+  color: #475569;
   font-weight: 500;
 }
 
@@ -1008,7 +950,7 @@
 /* ── 搜索/转移面板 ── */
 .search-row {
   padding: 10rpx 12rpx;
-  border-bottom: 1rpx solid #f1f5f9;
+  border-bottom: 1rpx solid #f1f3f7;
 }
 
 .search-name {
@@ -1021,22 +963,9 @@
   color: #64748b;
 }
 
-.transfer-time-row {
-  align-items: center;
-}
-
-.time-picker {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-.time-picker-inner {
-  text-align: center;
-}
-
 .picker {
   width: 100%;
-  border: 1rpx solid #dce3ef;
+  border: 1rpx solid #e4e8ef;
   border-radius: 10rpx;
   height: 56rpx;
   line-height: 56rpx;
@@ -1054,19 +983,19 @@
 
 /* ── 批量入口按钮（标题行） ── */
 .ui-btn-batch-entry {
-  background: #3b82f6;
-  color: #ffffff;
+  background: #eff4ff;
+  color: #1d4ed8;
   gap: 2rpx;
 }
 
 .ui-btn-batch-entry-empty {
-  background: #6b7280;
-  color: #ffffff;
+  background: #f1f3f7;
+  color: #334155;
 }
 
 .batch-entry-count {
-  background: #ffffff;
-  color: #3b82f6;
+  background: #2563eb;
+  color: #ffffff;
   border-radius: 50%;
   width: 32rpx;
   height: 32rpx;
@@ -1105,8 +1034,8 @@
   width: 96rpx;
   height: 96rpx;
   border-radius: 48rpx;
-  background: #fed7aa;
-  box-shadow: 0 6rpx 20rpx rgba(254, 215, 170, 0.6);
+  background: #1e293b;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.28);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1158,15 +1087,15 @@
 }
 
 .ui-btn-plain {
-  background: #6b7280;
-  color: #ffffff;
-  border: 1rpx solid #4b5563;
+  background: #f1f3f7;
+  color: #334155;
+  border: none;
 }
 
 .ui-btn-clear-all {
-  background: #ef4444;
+  background: #dc2626;
   color: #ffffff !important;
-  border: 1rpx solid #dc2626;
+  border: none;
 }
 
 .batch-scroll {
@@ -1199,8 +1128,8 @@
 }
 
 .batch-checkbox-on {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: #2563eb;
+  border-color: #2563eb;
   color: #fff;
 }
 
@@ -1236,8 +1165,8 @@
   align-items: center;
   justify-content: center;
   font-size: 36rpx;
-  color: #ffffff;
-  background: #ef4444;
+  color: #b91c1c;
+  background: #fef1f1;
   border-radius: 8rpx;
   flex: 0 0 auto;
 }
@@ -1268,8 +1197,8 @@
 
 .batch-fill-source {
   font-size: 24rpx;
-  color: #3b82f6;
-  background: #eff6ff;
+  color: #1d4ed8;
+  background: #eff4ff;
   border-radius: 8rpx;
   padding: 8rpx 14rpx;
   margin-bottom: 12rpx;
@@ -1282,7 +1211,7 @@
 }
 
 .batch-fill-field {
-  border-bottom: 1rpx solid #f1f5f9;
+  border-bottom: 1rpx solid #f1f3f7;
   padding: 10rpx 0;
 }
 
@@ -1301,12 +1230,12 @@
 
 .batch-fill-arrow {
   font-size: 20rpx;
-  color: #3b82f6;
+  color: #2563eb;
 }
 
 .batch-fill-source-val {
   font-size: 24rpx;
-  color: #3b82f6;
+  color: #1d4ed8;
   font-weight: 500;
 }
 
@@ -1371,9 +1300,9 @@
 }
 
 .export-confirm-config {
-  font-size: 22rpx;
-  color: #94a3b8;
-  text-decoration: underline;
+  font-size: 24rpx;
+  color: #1d4ed8;
+  text-decoration: none;
 }
 
 .export-confirm-right {
@@ -1407,7 +1336,7 @@
   align-items: center;
   gap: 14rpx;
   padding: 14rpx 8rpx;
-  border-bottom: 1rpx solid #f1f5f9;
+  border-bottom: 1rpx solid #f1f3f7;
 }
 
 .export-col-label {
@@ -1421,3 +1350,10 @@
   box-sizing: border-box;
 }
 
+
+/* 资产图标（emoji，来自地点/资产图标预置） */
+.item-icon {
+  margin-right: 6rpx;
+  font-size: 28rpx;
+  line-height: 1;
+}

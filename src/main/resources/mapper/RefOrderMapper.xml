@@ -11,6 +11,7 @@
         <result property="projectGroupId" column="project_group_id"/>
         <result property="aupRecordId" column="aup_record_id"/>
         <result property="registerNo" column="register_no"/>
+        <result property="campus" column="campus"/>
         <result property="status" column="status"/>
         <result property="submitRemark" column="submit_remark"/>
         <result property="submittedAt" column="submitted_at"/>
@@ -19,8 +20,8 @@
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ref_order(group_id, submitter_id, submitter_name, project_group_name, project_group_id, aup_record_id, register_no, status, submit_remark, submitted_at, estimated_delivery_date)
-        VALUES (#{groupId}, #{submitterId}, #{submitterName}, #{projectGroupName}, #{projectGroupId}, #{aupRecordId}, #{registerNo}, #{status}, #{submitRemark}, #{submittedAt}, #{estimatedDeliveryDate})
+        INSERT INTO ref_order(group_id, submitter_id, submitter_name, project_group_name, project_group_id, aup_record_id, register_no, campus, status, submit_remark, submitted_at, estimated_delivery_date)
+        VALUES (#{groupId}, #{submitterId}, #{submitterName}, #{projectGroupName}, #{projectGroupId}, #{aupRecordId}, #{registerNo}, #{campus}, #{status}, #{submitRemark}, #{submittedAt}, #{estimatedDeliveryDate})
     </insert>
 
     <update id="updateStatus">
@@ -52,11 +53,22 @@
     </select>
 
     <select id="listAll" resultMap="Base">
-        SELECT * FROM ref_order ORDER BY created_at DESC LIMIT #{limit} OFFSET #{offset}
+        SELECT * FROM ref_order
+        <where>
+            <if test="campus != null">AND campus = #{campus}</if>
+            <if test="from != null">AND created_at &gt;= #{from}</if>
+            <if test="to != null">AND created_at &lt;= #{to}</if>
+        </where>
+        ORDER BY created_at DESC LIMIT #{limit} OFFSET #{offset}
     </select>
 
     <select id="countAll" resultType="int">
         SELECT COUNT(1) FROM ref_order
+        <where>
+            <if test="campus != null">AND campus = #{campus}</if>
+            <if test="from != null">AND created_at &gt;= #{from}</if>
+            <if test="to != null">AND created_at &lt;= #{to}</if>
+        </where>
     </select>
 
 </mapper>

@@ -5,6 +5,7 @@ import com.example.demo.modules.twin.common.dto.GroupedOrderAdminResponseDTO;
 import com.example.demo.modules.twin.common.dto.ListMapDataResponseDTO;
 import com.example.demo.modules.twin.common.dto.SimpleMessageResponseDTO;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
+import com.example.demo.modules.twin.common.service.AnimalOrderProcurementService;
 import com.example.demo.modules.twin.common.service.AnimalOrderSyncService;
 import com.example.demo.modules.twin.common.service.JobExecutionRegistry;
 import com.example.demo.modules.twin.common.service.JobSchedulerService;
@@ -12,8 +13,12 @@ import com.example.demo.modules.twin.common.service.LongRunningSyncCancel;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -39,6 +44,39 @@ public class AnimalOrderController {
     private LongRunningSyncCancel longRunningSyncCancel;
     @Autowired
     private JobSchedulerService jobSchedulerService;
+
+    @Autowired
+    private AnimalOrderProcurementService procurementService;
+
+    /**
+     * 采购汇总：面向供应商的备货口径统计，维度 到货日期 × 供应商 × 品系 × 规格 × 性别，不含课题组/PI。
+     * dateField=arrival 按到货日期筛选（默认），dateField=order 按下单时间筛选。
+     */
+    @GetMapping("/admin/procurement-summary")
+    @Operation(summary = "采购汇总（含供应商小计与总计）")
+    public Result<ListMapDataResponseDTO> getProcurementSummary(@RequestParam(defaultValue = "arrival") String dateField,
+                                                                @RequestParam(required = false) String startDate,
+                                                                @RequestParam(required = false) String endDate) {
+        return Result.success(new ListMapDataResponseDTO(procurementService.buildRows(dateField, startDate, endDate)));
+    }
+
+    @GetMapping("/admin/procurement-summary/export")
+    @Operation(summary = "导出采购汇总 Excel")
+    public ResponseEntity<byte[]> exportProcurementSummary(@RequestParam(defaultValue = "arrival") String dateField,
+                                                           @RequestParam(required = false) String startDate,
+                                                           @RequestParam(required = false) String endDate) {
+        try {
+            byte[] body = procurementService.buildExcel(dateField, startDate, endDate);
+            String fn = "procurement-summary-" + LocalDate.now() + ".xlsx";
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fn + "\"")
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .body(body);
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.internalServerError().contentType(MediaType.TEXT_PLAIN)
+                    .body((ex.getMessage() == null ? "导出失败" : ex.getMessage()).getBytes(StandardCharsets.UTF_8));
+        }
+    }
 
     /**
      * 🏆 接口：Debug 页面专属 - 按课题组聚合分页的高级查询 (一页一组画像)

@@ -631,7 +631,8 @@ public class TwinStudentViolationService {
             List<String> sources,
             Boolean excludeCage,
             Boolean lockedOnly,
-            int limit) {
+            int limit,
+            int offset) {
         if (violationTableAbsent.get()) {
             return Collections.emptyList();
         }
@@ -640,16 +641,45 @@ public class TwinStudentViolationService {
             return Collections.emptyList();
         }
         int lim = Math.min(Math.max(limit, 1), 500);
+        int off = Math.max(offset, 0);
         try {
             return violationMapper.selectRecent(
                     StringUtils.hasText(targetUserId) ? targetUserId.trim() : null,
                     statuses, sources, excludeCage, lockedOnly,
-                    lim
+                    lim, off
             );
         } catch (Exception e) {
             if (isTwinStudentViolationTableMissing(e)) {
                 markTableAbsentOnce();
                 return Collections.emptyList();
+            }
+            throw e;
+        }
+    }
+
+    /** 与 listRecent 同过滤条件的分页总数。 */
+    public int countRecent(
+            String targetUserId,
+            List<String> statuses,
+            List<String> sources,
+            Boolean excludeCage,
+            Boolean lockedOnly) {
+        if (violationTableAbsent.get()) {
+            return 0;
+        }
+        touchExpireStale();
+        if (violationTableAbsent.get()) {
+            return 0;
+        }
+        try {
+            return violationMapper.countRecent(
+                    StringUtils.hasText(targetUserId) ? targetUserId.trim() : null,
+                    statuses, sources, excludeCage, lockedOnly
+            );
+        } catch (Exception e) {
+            if (isTwinStudentViolationTableMissing(e)) {
+                markTableAbsentOnce();
+                return 0;
             }
             throw e;
         }

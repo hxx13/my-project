@@ -10,6 +10,8 @@ import com.example.demo.modules.aro.service.AroDatabaseService;
 import com.example.demo.modules.aro.service.RealtimeEventDedupService;
 import com.example.demo.modules.aro.service.RealtimeFeedPushService;
 import com.example.demo.modules.aro.service.AroService;
+import com.example.demo.modules.personnel.entity.PersonnelRoomAuthorization;
+import com.example.demo.modules.personnel.mapper.PersonnelRoomAuthorizationMapper;
 import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
 import com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper;
 import com.example.demo.modules.twin.scan.state.ScanDataSource;
@@ -95,6 +97,9 @@ public class TwinScanService {
 
     @Autowired
     private AroPersonnelMapper aroPersonnelMapper;
+
+    @Autowired
+    private PersonnelRoomAuthorizationMapper personnelRoomAuthorizationMapper;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -511,7 +516,14 @@ public class TwinScanService {
         List<Map<String, Object>> rooms = new ArrayList<>();
         try {
             AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
-            String json = p == null ? null : p.getAllowedRoomsJson();
+            if (p == null) {
+                return rooms;
+            }
+            if (p.getRoomAuthManaged() != null && p.getRoomAuthManaged() == 1) {
+                // 本地管理：读 personnel_room_authorization 覆盖层，空列表 = 未授予任何房间
+                return loadLocalRoomAuthorizations(userId);
+            }
+            String json = p.getAllowedRoomsJson();
             if (json == null || json.isBlank()) {
                 return rooms;
             }
@@ -522,6 +534,54 @@ public class TwinScanService {
             }
         } catch (Exception e) {
             log.warn("[scan-status] 加载可进房间快照失败 userId={} err={}", userId, e.getMessage());
+        }
+        return rooms;
+    }
+
+    /**
+     * 本地覆盖层：逐房间翻译为与 ARO 快照（{@code buildAllowedRoomsSnapshot}）完全一致的字段结构。
+     */
+    private List<Map<String, Object>> loadLocalRoomAuthorizations(String userId) {
+        List<Map<String, Object>> rooms = new ArrayList<>();
+        List<PersonnelRoomAuthorization> rows = personnelRoomAuthorizationMapper.selectByUser(userId);
+        if (rows == null) {
+            return rooms;
+        }
+        for (PersonnelRoomAuthorization row : rows) {
+            String roomId = row.getRoomId();
+            if (roomId == null || roomId.isBlank()) {
+                continue;
+            }
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("officialRoomId", roomId);
+            try {
+                RoomDictionaryManager.RoomMapping mapping = dictionaryManager.translate(roomId);
+                RoomMappingRoom catalog = roomMappingRoomMapper.selectByRoomId(roomId);
+                if (mapping != null) {
+                    entry.put("displayName", mapping.displayName);
+                    entry.put("floorName", mapping.floorName);
+                } else {
+                    entry.put("displayName", roomId);
+                }
+                if (catalog != null) {
+                    if (catalog.getRoomName() != null) {
+                        entry.put("officialRoomName", catalog.getRoomName());
+                    }
+                    if (catalog.getRegionName() != null) {
+                        entry.put("regionName", catalog.getRegionName());
+                    }
+                    if (catalog.getOfficialPermissionLevel() != null) {
+                        entry.put("officialPermissionLevel", catalog.getOfficialPermissionLevel());
+                    }
+                }
+                String campusTag = ScanCampusTagResolver.resolve(catalog, mapping != null ? mapping.displayName : roomId);
+                if (!campusTag.isEmpty()) {
+                    entry.put("campusTag", campusTag);
+                }
+            } catch (Exception e) {
+                log.warn("[scan-status] 本地房间授权翻译失败 roomId={} err={}", roomId, e.getMessage());
+            }
+            rooms.add(entry);
         }
         return rooms;
     }

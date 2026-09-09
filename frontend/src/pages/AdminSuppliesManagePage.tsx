@@ -20,7 +20,7 @@ import {
 import type { SupplyItem } from "@/api/domains/supplies.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { webImageSrc } from "@/utils/mediaUrl";
-import { formatSupplyStockLabel } from "@/utils/supplyStockLabel";
+import { formatSupplyStockAdminLabel } from "@/utils/supplyStockLabel";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import DataSkeleton from "@/components/ui/DataSkeleton";
@@ -482,7 +482,7 @@ export default function AdminSuppliesManagePage() {
                   <div className="min-w-0">
                     <div className="font-medium text-[var(--twin-ink)] leading-snug truncate">{it.name}</div>
                     <div className="mt-1 text-xs text-[var(--twin-mute)]">
-                      ID {it.id} · {it.stockMode} · {formatSupplyStockLabel(it)} · {it.shelfStatus}
+                      ID {it.id} · {it.stockMode} · {formatSupplyStockAdminLabel(it)} · {it.shelfStatus}
                     </div>
                   </div>
                 </div>

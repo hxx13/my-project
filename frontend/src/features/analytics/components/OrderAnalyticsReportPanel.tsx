@@ -767,7 +767,7 @@ function HeatmapCard() {
       ) : heatmapData.rows.length === 0 ? (
         <div className="flex h-full items-center justify-center text-xs text-[var(--app-color-text-tertiary)]">暂无数据</div>
       ) : (
-        <table className="border-collapse text-[11px] w-full">
+        <table className="border-collapse text-[11px] w-full twin-table">
           <thead>
             <tr>
               <th className="sticky left-0 z-30 top-0 bg-[var(--app-color-surface-container)] px-2 py-1.5 text-left font-semibold text-[var(--app-color-text-secondary)] border-b border-[var(--app-color-border-default)]">

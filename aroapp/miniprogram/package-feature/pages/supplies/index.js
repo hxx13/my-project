@@ -1019,6 +1019,10 @@ Page({
     try { wx.vibrateShort({ type: 'light' }); } catch (err) { /* ignore */ }
     var cart = { ...this.data.cart };
     var cur = cart[key] || 0;
+    if (cur >= max) {
+      wx.showToast({ title: `已超出库存上限，当前库存剩余 ${max}`, icon: 'none' });
+      return;
+    }
     cart[key] = Math.min(cur + 1, max);
     this.syncCart(cart);
   },
@@ -1058,6 +1062,10 @@ Page({
     }
     const cart = { ...this.data.cart };
     const cur = cart[id] || 0;
+    if (cur >= max) {
+      wx.showToast({ title: `已超出库存上限，当前库存剩余 ${max}`, icon: 'none' });
+      return;
+    }
     cart[id] = Math.min(cur + 1, max);
     this.syncCart(cart);
   },
@@ -1104,7 +1112,7 @@ Page({
     const next = Math.min(Math.floor(num), max);
     cart[key] = next;
     if (num > max) {
-      wx.showToast({ title: `最多可下单 ${max}`, icon: 'none' });
+      wx.showToast({ title: `已超出库存上限，当前库存剩余 ${max}`, icon: 'none' });
     }
     this.syncCart(cart);
   },

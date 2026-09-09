@@ -785,6 +785,42 @@ public class AroService {
     }
 
     /**
+     * 笼位列表（含无笼盒格 AUP 回填）：/two 相对 /back 额外在顶层 aupRegisterNumber/aupId
+     * 回填「已预约(无笼盒)」格子的 AUP 编号（/back 只在 cageBoxVo 内返回，无笼盒格为空）。
+     * GET /jtu/api/admin/cageBox/{roomId}/{shelveId}/animalCages/back/two
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> fetchAnimalCagesByRoomAndShelveTwo(Long roomId, Long shelveId) {
+        if (roomId == null || shelveId == null) {
+            return Map.of();
+        }
+        if (this.cachedToken == null && !login()) {
+            return Map.of();
+        }
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/cageBox/"
+                + roomId + "/" + shelveId + "/animalCages/back/two";
+        try {
+            java.net.URI uri = java.net.URI.create(urlString);
+            HttpEntity<String> entity = new HttpEntity<>(null, getAuthHeaders());
+            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return (Map<String, Object>) response.getBody();
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                this.cachedToken = null;
+                if (login()) {
+                    return fetchAnimalCagesByRoomAndShelveTwo(roomId, shelveId);
+                }
+            }
+            log.warn("[aro] 笼位AUP回填请求失败 roomId={} shelveId={} err={}", roomId, shelveId, e.getMessage());
+        } catch (Exception e) {
+            log.warn("[aro] 笼位AUP回填网络异常 roomId={} shelveId={} err={}", roomId, shelveId, e.getMessage());
+        }
+        return Map.of();
+    }
+
+    /**
      * 兼容状态回填：老接口通常包含更完整的状态字段（animalCageType/state/stateName）。
      * GET /jtu/api/admin/book/{roomId}/{shelveId}/animalCages
      */

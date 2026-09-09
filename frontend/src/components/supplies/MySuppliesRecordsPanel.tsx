@@ -215,7 +215,7 @@ export default function MySuppliesRecordsPanel({ onClose }: { onClose: () => voi
 
                 {/* Lines table */}
                 <div className="flex-1 overflow-y-auto">
-                  <table className="min-w-full border-collapse text-left text-sm">
+                  <table className="min-w-full border-collapse text-left text-sm twin-table">
                     <thead className="sticky top-0 bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                       <tr>
                         <th className="border-b border-[var(--twin-hairline)] px-4 py-2">物品</th>
@@ -511,7 +511,7 @@ export default function MySuppliesRecordsPanel({ onClose }: { onClose: () => voi
                 </div>
               </div>
               <div className="max-h-[55vh] overflow-auto rounded border border-[var(--twin-hairline)]">
-                <table className="min-w-full border-collapse text-xs">
+                <table className="min-w-full border-collapse text-xs twin-table">
                   <thead className="bg-[var(--twin-canvas-soft)]">
                     <tr>
                       <th className="border-b border-[var(--twin-hairline)] px-2 py-2 text-left">文件名</th>

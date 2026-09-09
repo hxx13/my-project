@@ -160,15 +160,15 @@ export const queryKeys = {
       ["referenceData", "orderDetail", id] as const,
     orderLogs: (id: number) =>
       ["referenceData", "orderLogs", id] as const,
-    allOrders: (page?: number, pageSize?: number) =>
-      ["referenceData", "allOrders", page ?? 1, pageSize ?? 50] as const,
+    allOrders: (page?: number, pageSize?: number, campus?: string) =>
+      ["referenceData", "allOrders", page ?? 1, pageSize ?? 50, campus ?? "all"] as const,
   },
 
   animalOrderTime: {
     all: ["animalOrderTime"] as const,
-    summary: (categoryKey?: string) =>
-      ["animalOrderTime", "summary", categoryKey ?? "global"] as const,
-    admin: ["animalOrderTime", "admin"] as const,
+    summary: (campus?: string, categoryKey?: string) =>
+      ["animalOrderTime", "summary", campus ?? "none", categoryKey ?? "global"] as const,
+    admin: (campus?: string) => ["animalOrderTime", "admin", campus ?? "none"] as const,
     holidays: (year: number) => ["animalOrderTime", "holidays", year] as const,
   },
 } as const;

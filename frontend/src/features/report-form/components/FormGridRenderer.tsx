@@ -48,6 +48,8 @@ interface Props {
   permissionJson?: PermissionJson;
   /** word：网页展示专用行高/列宽（不影响 Word 导出） */
   formSource?: string;
+  /** 首行是否吸顶（默认开启，由 .report-grid--sticky-first 接管） */
+  stickyFirstRow?: boolean;
 }
 
 function parseThemeJson(raw: unknown): ThemeJson {
@@ -73,7 +75,7 @@ export function parseLayoutJson(raw: unknown): LayoutJson {
   return raw as LayoutJson;
 }
 
-export default function FormGridRenderer({ layout: rawLayout, themeJson, values, editable, onChange, userRoles = [], permissionJson, formSource }: Props) {
+export default function FormGridRenderer({ layout: rawLayout, themeJson, values, editable, onChange, userRoles = [], permissionJson, formSource, stickyFirstRow = true }: Props) {
   const layout = parseLayoutJson(rawLayout);
   const theme = parseThemeJson(themeJson);
   const { containerRef, containerWidth } = useWordTableContainerWidth(true);
@@ -434,7 +436,7 @@ export default function FormGridRenderer({ layout: rawLayout, themeJson, values,
 
   const tableEl = (
     <table
-      className="border-collapse overflow-visible"
+      className={`overflow-visible report-grid report-grid--ruled${stickyFirstRow ? ' report-grid--sticky-first' : ''}`}
       style={{
         tableLayout: 'fixed',
         width: totalWidth,
@@ -461,7 +463,7 @@ export default function FormGridRenderer({ layout: rawLayout, themeJson, values,
                 return (
                   <td
                     key={key}
-                    className={`border border-[var(--app-color-border-default)] ${GRID_CELL_TD_CLASS}`}
+                    className={GRID_CELL_TD_CLASS}
                     style={strictRowHeight
                       ? { height: rowH, minHeight: rowH }
                       : { minHeight: rowH }}
@@ -494,7 +496,7 @@ export default function FormGridRenderer({ layout: rawLayout, themeJson, values,
                   data-fill-cell-id={cell.id}
                   colSpan={cell.colSpan}
                   rowSpan={cell.rowSpan}
-                  className={`border border-[var(--app-color-border-default)] px-1.5 py-1 ${GRID_CELL_TD_CLASS} ${
+                  className={`px-1.5 py-1 ${GRID_CELL_TD_CLASS} ${
                     showFillEdit
                       ? 'outline outline-2 outline-[var(--app-color-accent)] outline-offset-[-2px] relative z-[var(--z-dropdown)]'
                       : fillMeasure && editable && fieldEditable
@@ -557,7 +559,7 @@ export default function FormGridRenderer({ layout: rawLayout, themeJson, values,
   return (
     <div
       ref={containerRef}
-      className="overflow-auto border border-[var(--app-color-border-default)] rounded-[var(--app-radius-container)] w-full"
+      className="w-full"
     >
       <div
         className="flex justify-center w-full"

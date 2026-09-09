@@ -106,6 +106,11 @@ function OrderCard({ order, expanded, onToggle }: { order: RefOrder; expanded: b
           >
             {statusLabel}
           </span>
+          {order.campus && (
+            <span className="shrink-0 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-0.5 text-[10px] font-medium text-[var(--twin-body)]">
+              {order.campus}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-2">
           {order.estimatedDeliveryDate && (

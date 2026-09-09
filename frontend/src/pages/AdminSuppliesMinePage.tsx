@@ -396,7 +396,7 @@ export default function AdminSuppliesMinePage() {
               </div>
             </div>
             <div className="max-h-[55vh] overflow-auto rounded border border-[var(--twin-hairline)]">
-              <table className="min-w-full border-collapse text-xs">
+              <table className="min-w-full border-collapse text-xs twin-table">
                 <thead className="bg-[var(--twin-canvas-soft)]">
                   <tr>
                     <th className="border-b border-[var(--twin-hairline)] px-2 py-2 text-left">文件名</th>

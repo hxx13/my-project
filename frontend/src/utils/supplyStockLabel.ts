@@ -1,23 +1,32 @@
-/** QUANTIFIED：有锁定时展示账面库存 + 锁定量；无锁定仅「库存 N」。FLAG：有货/缺货。 */
-export function formatSupplyStockLabel(item: {
+type StockInfo = {
   stockMode?: string | null;
   stockQty?: number | null;
   lockedQty?: number | null;
   availableQty?: number | null;
-}): string {
-  const mode = String(item.stockMode || "");
+};
+
+function resolveStockInfo(item: StockInfo) {
   const stock = Number(item.stockQty ?? 0);
   const locked = Number(item.lockedQty ?? 0);
   const avail =
     item.availableQty != null
       ? Number(item.availableQty)
-      : Math.max(0, stock - (Number.isFinite(locked) ? locked : 0));
+      : Math.max(0, stock - locked);
+  return { stock, locked, avail };
+}
 
-  if (mode === "FLAG") {
-    return avail >= 1 ? "有货" : "缺货";
-  }
-  if (Number.isFinite(locked) && locked > 0) {
-    return `库存 ${stock} · 不含锁定 ${locked}`;
-  }
+/** 商城/领用侧：首数字=剩余可领（账面−锁定），有锁定时标注锁定占用。FLAG：有货/缺货。 */
+export function formatSupplyStockLabel(item: StockInfo): string {
+  const { stock, locked, avail } = resolveStockInfo(item);
+  if (String(item.stockMode || "") === "FLAG") return avail >= 1 ? "有货" : "缺货";
+  if (locked > 0) return `库存剩余 ${avail} · 已锁定 ${locked}`;
+  return `库存 ${stock}`;
+}
+
+/** 管理侧：改库存针对账面总数，因此首数字=账面，有锁定时同屏披露剩余可领与锁定占用。 */
+export function formatSupplyStockAdminLabel(item: StockInfo): string {
+  const { stock, locked, avail } = resolveStockInfo(item);
+  if (String(item.stockMode || "") === "FLAG") return avail >= 1 ? "有货" : "缺货";
+  if (locked > 0) return `库存 ${stock}（剩余可领 ${avail} · 已锁定 ${locked}）`;
   return `库存 ${stock}`;
 }

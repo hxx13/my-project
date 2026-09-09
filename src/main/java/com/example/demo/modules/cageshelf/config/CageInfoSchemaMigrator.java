@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -47,11 +48,13 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
         try {
             createTableIfNeeded();
             ensurePublishedColumn();
+            ensureEditableColumn();
             ensureFolderColumn();
             createCodelistTablesIfNeeded();
             createAuditTablesIfNeeded();
             seedFromMapping();
             seedLocalFields();
+            ensureAnimalFieldsEditable();
             retireStateFields();
         } catch (Exception e) {
             log.error("[cage-info-schema] 迁移失败: {}", e.getMessage(), e);
@@ -68,6 +71,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
                     dict_key VARCHAR(64) NULL COMMENT '码表键',
                     folder VARCHAR(64) NULL COMMENT '文件夹分类（NULL=未分类）',
                     role VARCHAR(16) NOT NULL DEFAULT 'VALUE' COMMENT '字段角色',
+                    editable TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否允许人工修改（与 role 解耦）',
                     required VARCHAR(8) NOT NULL DEFAULT 'NO' COMMENT '是否必填 YES/NO',
                     show_when JSON NULL COMMENT '条件显示规则',
                     sync_source VARCHAR(256) NULL COMMENT 'ARO字段路径',
@@ -101,6 +105,27 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
             }
         }
         log.info("[cage-info-schema] {} published 列就绪", TABLE);
+    }
+
+    /**
+     * 补齐 editable 列（兼容旧表）：与 role 解耦的「是否允许人工修改」开关。
+     * 仅在「新加列」时按 role 回填一次：VALUE → 1，其余（DERIVED/PK/FK）→ 0。
+     * 之后由字段管理页自由调整，播种不再覆盖（见 {@link #upsert}）。
+     */
+    private void ensureEditableColumn() {
+        boolean added = false;
+        try {
+            jdbcTemplate.execute("ALTER TABLE cage_info_field ADD COLUMN editable TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否允许人工修改（与 role 解耦）' AFTER role");
+            added = true;
+        } catch (Exception ignored) { /* 列已存在 */ }
+        if (added) {
+            try {
+                jdbcTemplate.update("UPDATE cage_info_field SET editable = CASE WHEN role = 'VALUE' THEN 1 ELSE 0 END");
+            } catch (Exception e) {
+                log.warn("[cage-info-schema] 回填 editable 失败: {}", e.getMessage());
+            }
+        }
+        log.info("[cage-info-schema] {} editable 列就绪{}", TABLE, added ? "（新加）" : "");
     }
 
     /**
@@ -245,33 +270,65 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
         // 目前「订单到达 → 回写笼位」尚未实现；后续接入时从这里直写对应字段，勿再依赖 ARO cageBoxVo 的动物字段。
     }
 
-    /** 退役字段：state/state_label/rent_type 为 ARO 原始残留或不再需要，从字段字典与表单值中删除。 */
-    private void retireStateFields() {
-        for (String canonical : new String[]{"state", "state_label", "rent_type", "cage_type_code", "cage_name", "cage_box_name", "animal_cage_id", "position_x", "position_y", "cage_box_code", "cohabitation_date"}) {
+    /**
+     * 动物信息四个字段开放人工编辑（一次性播种，用 config 是否为空当「没播过」的标记）。
+     *  - 动物品系：optionsSource=AUP_ANIMAL_STRAIN，选项按笼位所属 AUP 的白名单现算
+     *  - 性别/周龄/动物来源：暂时手填（这些值最终来自动物订购订单，订单系统尚未接入）
+     * 播种后 config 非空，管理员在字段管理页的改动不会再被启动覆盖。
+     */
+    private void ensureAnimalFieldsEditable() {
+        Object[][] rows = {
+            {"animal_strain_name", "select", "{\"optionsSource\":\"AUP_ANIMAL_STRAIN\"}"},
+            {"animal_sex", null, "{}"},
+            {"animal_week_age", null, "{}"},
+            {"animal_come_from", null, "{}"},
+        };
+        int n = 0;
+        for (Object[] r : rows) {
             try {
-                Long fieldId = jdbcTemplate.queryForObject(
-                        "SELECT id FROM cage_info_field WHERE canonical = ?", Long.class, canonical);
-                if (fieldId != null) {
-                    jdbcTemplate.update("DELETE FROM cage_info_value WHERE field_id = ?", fieldId);
-                    jdbcTemplate.update("DELETE FROM cage_info_field WHERE id = ?", fieldId);
-                    log.info("[cage-info-schema] 退役字段已删除: {}", canonical);
-                }
+                n += jdbcTemplate.update(
+                        "UPDATE cage_info_field SET editable = 1, config = ?, field_type = COALESCE(?, field_type) "
+                                + "WHERE canonical = ? AND (config IS NULL OR config = '')",
+                        r[2], r[1], r[0]);
             } catch (Exception e) {
-                log.warn("[cage-info-schema] 退役字段 {} 失败(可能已删除): {}", canonical, e.getMessage());
+                log.warn("[cage-info-schema] 动物字段开放编辑失败 {}: {}", r[0], e.getMessage());
             }
+        }
+        if (n > 0) {
+            log.info("[cage-info-schema] 动物信息字段开放人工编辑 {} 个", n);
+        }
+    }
+
+    /** 退役字段：state/state_label/rent_type 为 ARO 原始残留或不再需要；pi_name 与 project_pi_name 同义，只保留后者（课题组组长）。从字段字典与表单值中删除。 */
+    private void retireStateFields() {
+        int retired = 0;
+        for (String canonical : new String[]{"state", "state_label", "rent_type", "cage_type_code", "cage_name", "cage_box_name", "animal_cage_id", "position_x", "position_y", "cage_box_code", "cohabitation_date", "pi_name"}) {
+            // 已退役（上轮删过或 mapping 不再播种）时为空集，静默跳过，不产生噪音。
+            List<Long> ids = jdbcTemplate.queryForList(
+                    "SELECT id FROM cage_info_field WHERE canonical = ?", Long.class, canonical);
+            for (Long fieldId : ids) {
+                jdbcTemplate.update("DELETE FROM cage_info_value WHERE field_id = ?", fieldId);
+                jdbcTemplate.update("DELETE FROM cage_info_field WHERE id = ?", fieldId);
+                retired++;
+            }
+        }
+        if (retired > 0) {
+            log.info("[cage-info-schema] 退役字段清理完成，共 {} 个", retired);
         }
     }
 
     private void upsert(String canonical, String label, String dataType, String syncSource, int sort, String role) {
-        // dict_key/show_when/config 暂无种子来源，置 NULL；种子字段一律 published=1。role 决定只读性（DERIVED=自动获取只读 / VALUE=可填写）。
+        // dict_key/show_when/config 暂无种子来源，置 NULL；种子字段一律 published=1。
+        // editable 只在首次插入时按 role 给默认值；ON DUPLICATE 不覆盖——它是人工配置项，不能被每次启动的播种冲掉。
+        int editable = "VALUE".equals(role) ? 1 : 0;
         jdbcTemplate.update(
             "INSERT INTO cage_info_field " +
-            "(canonical, label, data_type, dict_key, role, required, show_when, sync_source, config, sort, published, created_at, updated_at) " +
-            "VALUES (?, ?, ?, NULL, ?, 'NO', NULL, ?, NULL, ?, 1, NOW(), NOW()) " +
+            "(canonical, label, data_type, dict_key, role, editable, required, show_when, sync_source, config, sort, published, created_at, updated_at) " +
+            "VALUES (?, ?, ?, NULL, ?, ?, 'NO', NULL, ?, NULL, ?, 1, NOW(), NOW()) " +
             "ON DUPLICATE KEY UPDATE " +
             "label = VALUES(label), data_type = VALUES(data_type), role = VALUES(role), " +
             "sync_source = VALUES(sync_source), sort = VALUES(sort), updated_at = NOW()",
-            canonical, label, dataType, role, syncSource, sort);
+            canonical, label, dataType, role, editable, syncSource, sort);
     }
 
     /** 读取 classpath 上的映射文件；缺失或解析失败返回 null（no-op）。 */
@@ -342,8 +399,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
         m.put("position_x", "X坐标");
         m.put("position_y", "Y坐标");
         m.put("cage_box_code", "笼盒编号");
-        m.put("pi_name", "课题组长");
-        m.put("project_pi_name", "项目组长");
+        m.put("project_pi_name", "课题组组长");
         m.put("project_name", "项目名称");
         m.put("department_name", "部门");
         m.put("aup_number", "AUP注册号");
@@ -374,7 +430,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
         String[][] groups = {
             {"笼位身份", "animal_cage_id", "position_x", "position_y", "cage_type_code", "state", "state_label",
                 "rent_type", "cage_name", "cage_box_code", "cage_box_name"},
-            {"项目信息", "pi_name", "project_pi_name", "project_name", "department_name", "aup_number",
+            {"项目信息", "project_pi_name", "project_name", "department_name", "aup_number",
                 "experimenter_name", "lab_assistant_name"},
             {"动物信息", "animal_strain_name", "animal_sex", "animal_week_age", "animal_male_number",
                 "animal_female_number", "animal_come_from", "cage_use_time"},

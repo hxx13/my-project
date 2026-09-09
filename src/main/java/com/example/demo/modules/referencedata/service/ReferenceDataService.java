@@ -3,6 +3,7 @@ package com.example.demo.modules.referencedata.service;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.animalorder.AnimalOrderCampus;
 import com.example.demo.modules.animalorder.service.AnimalOrderTimePolicyService;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
@@ -442,6 +443,8 @@ public class ReferenceDataService {
 
         RefOrder order = new RefOrder();
         order.setGroupId(req.getGroupId());
+        String campus = AnimalOrderCampus.normalize(req.getCampus());
+        order.setCampus(campus);
         order.setSubmitterId(userId);
         // 展示名以后端统一解析为准（兼容 staffId / 19 位 id），不依赖前端传入
         String resolvedSubmitterName = userDisplayNameService.resolveDisplayName(userId);
@@ -474,12 +477,12 @@ public class ReferenceDataService {
         LocalDate maxEta = null;
         for (RefCart item : itemsToProcess) {
             String categoryKey = resolveBreedCategoryKey(item.getRefDataId());
-            if (!animalOrderTimePolicyService.canOrderAt(orderAt, categoryKey)) {
+            if (!animalOrderTimePolicyService.canOrderAt(campus, orderAt, categoryKey)) {
                 throw TwinBusinessException.of(
                         ErrorCodeConstants.ANIMAL_ORDER_WINDOW_CLOSED,
                         "当前不在可购时间窗口内");
             }
-            LocalDate lineEta = animalOrderTimePolicyService.estimateDeliveryAt(orderAt, categoryKey);
+            LocalDate lineEta = animalOrderTimePolicyService.estimateDeliveryAt(campus, orderAt, categoryKey);
             if (maxEta == null || lineEta.isAfter(maxEta)) {
                 maxEta = lineEta;
             }
@@ -715,12 +718,29 @@ public class ReferenceDataService {
         return orderMapper.listByGroupId(groupId).stream().map(this::toOrderView).toList();
     }
 
-    /** 全部订单（后台审核页：按状态 tab 前端过滤） */
-    public Map<String, Object> listAllOrders(int page, int pageSize) {
+    /** 全部订单（后台审核页：按校区过滤，状态 tab 前端过滤） */
+    public Map<String, Object> listAllOrders(int page, int pageSize, String campus, String from, String to) {
         int offset = (page - 1) * pageSize;
-        List<RefOrderView> list = orderMapper.listAll(pageSize, offset).stream().map(this::toOrderView).toList();
-        return Map.of("list", list, "total", orderMapper.countAll(), "page", page, "pageSize", pageSize);
+        String campusFilter = StringUtils.hasText(campus) ? AnimalOrderCampus.normalize(campus) : null;
+        String fromFilter = StringUtils.hasText(from) ? from.trim() : null;
+        String toFilter = StringUtils.hasText(to) ? to.trim() : null;
+        List<RefOrderView> list = orderMapper.listAll(campusFilter, fromFilter, toFilter, pageSize, offset)
+                .stream().map(this::toOrderView).toList();
+        return Map.of("list", list,
+                "total", orderMapper.countAll(campusFilter, fromFilter, toFilter),
+                "page", page, "pageSize", pageSize);
     }
+
+    /** 导出用：区间内全部订单（不分页）。 */
+    public List<RefOrderView> listOrdersForExport(String campus, String from, String to) {
+        String campusFilter = StringUtils.hasText(campus) ? AnimalOrderCampus.normalize(campus) : null;
+        String fromFilter = StringUtils.hasText(from) ? from.trim() : null;
+        String toFilter = StringUtils.hasText(to) ? to.trim() : null;
+        return orderMapper.listAll(campusFilter, fromFilter, toFilter, EXPORT_MAX_ROWS, 0)
+                .stream().map(this::toOrderView).toList();
+    }
+
+    private static final int EXPORT_MAX_ROWS = 20000;
 
     @Transactional(rollbackFor = Exception.class)
     public Result<RefOrderView> updateOrderStatus(Long orderId, String newStatus, String operatorId) {
@@ -873,6 +893,7 @@ public class ReferenceDataService {
         v.setProjectGroupId(row.getProjectGroupId());
         v.setAupRecordId(row.getAupRecordId());
         v.setRegisterNo(row.getRegisterNo());
+        v.setCampus(row.getCampus());
         v.setStatus(row.getStatus());
         v.setSubmitRemark(row.getSubmitRemark());
         v.setSubmittedAt(row.getSubmittedAt());

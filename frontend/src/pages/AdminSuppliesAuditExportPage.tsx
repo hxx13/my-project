@@ -749,7 +749,7 @@ export default function AdminSuppliesAuditExportPage() {
                       </dl>
                       <p className="px-3 pb-2 text-xs text-[var(--twin-body)]">下列与「领用单明细」导出 Excel 列一致（无库存类列、无领用单号行）。</p>
                       <div>
-                        <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
+                        <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse twin-table">
                           <thead className="border-b-2 border-[var(--app-color-border-strong)]">
                             <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                               <th className="p-3">物资名称</th>
@@ -799,7 +799,7 @@ export default function AdminSuppliesAuditExportPage() {
                       </p>
                       {aggregateFlatRows.length > 0 ? (
                         <div>
-                          <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
+                          <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse twin-table">
                             <thead className="border-b-2 border-[var(--app-color-border-strong)]">
                               <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                                 <th className="p-3">物资名称</th>
@@ -847,7 +847,7 @@ export default function AdminSuppliesAuditExportPage() {
               <>
                 {/* Audit tab table */}
                 <div>
-                  <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
+                  <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse twin-table">
                     <thead className="border-b-2 border-[var(--app-color-border-strong)]">
                       <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                         <th className="p-3">变动时间</th>

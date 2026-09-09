@@ -28,6 +28,8 @@ import { useAupMyRoles } from "@/features/aup/hooks/useAup";
 import { getTypeConfig } from "@/features/reference-data/typeRegistry";
 import { webImageSrc } from "@/utils/mediaUrl";
 import SpecSelectPanel from "@/features/reference-data/SpecSelectPanel";
+import CampusGate from "@/features/reference-data/CampusGate";
+import { ANIMAL_ORDER_CAMPUSES, readStoredCampus, storeCampus, type AnimalOrderCampus } from "@/features/reference-data/campus";
 import { appConfirm } from "@/lib/appDialog";
 import { cn } from "@/lib/utils";
 import { SplitSidebarScrollLayout } from "@/components/layout/ScrollFillLayout";
@@ -76,6 +78,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
   const [submitRemark, setSubmitRemark] = useState("");
   const [packageRemark, setPackageRemark] = useState("");
   const [itemLabelMap, setItemLabelMap] = useState<Record<number, string>>({});
+  // 校区：首次进入强制选择，之后记住并可在顶栏切换
+  const [campus, setCampus] = useState<AnimalOrderCampus | null>(() => readStoredCampus());
   const [selectedAupId, setSelectedAupId] = useState<string>(() => {
     try { return localStorage.getItem("ref_active_aup") || ""; } catch { return ""; }
   });
@@ -103,7 +107,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
     return undefined;
   }, [drillStack, specSelectItem, activeTypeKey]);
 
-  const { data: timePolicy } = useAnimalOrderTimePolicy(breedCategoryKey);
+  const { data: timePolicy } = useAnimalOrderTimePolicy(campus ?? undefined, breedCategoryKey);
   const orderingBlocked = timePolicy != null && !timePolicy.canOrderNow;
 
   const groupId = useMemo(() => {
@@ -332,6 +336,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
         projectGroupName,
         cartIds: readyLines.map((l) => l.id),
         submitRemark: submitRemark.trim() || undefined,
+        campus: campus ?? undefined,
       },
       {
         onSuccess: () => {
@@ -343,7 +348,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
         },
       },
     );
-  }, [orderingBlocked, timePolicy?.closedReason, isPi, readyLines, submitOrderMut, groupId, currentUserId, currentUserName, projectGroupName, submitRemark, qc, refetchCart]);
+  }, [orderingBlocked, timePolicy?.closedReason, isPi, readyLines, submitOrderMut, groupId, currentUserId, currentUserName, projectGroupName, submitRemark, campus, qc, refetchCart]);
 
   const breadcrumb: DrillSegment[] = drillStack;
 
@@ -484,10 +489,43 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
     </div>
   );
 
+  if (!campus) {
+    return (
+      <div className="h-full bg-[var(--student-canvas)]">
+        <CampusGate
+          onSelect={(c) => {
+            storeCampus(c);
+            setCampus(c);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--student-canvas)]">
       {/* AUP + 订单记录 */}
       <div className="shrink-0 border-b border-[var(--student-hairline)] bg-[var(--student-surface)] px-3 py-2">
+        <div className="mb-1.5 flex items-center gap-1">
+          {ANIMAL_ORDER_CAMPUSES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => {
+                storeCampus(c);
+                setCampus(c);
+              }}
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[11px] font-medium",
+                campus === c
+                  ? "bg-emerald-600 text-white"
+                  : "border border-[var(--student-hairline)] text-[var(--student-mute)]",
+              )}
+            >
+              {c}校区
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -786,6 +824,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
                     <span className="shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--student-body)]">{o.status}</span>
                   </div>
                   <p className="mt-1 text-xs text-[var(--student-mute)]">
+                    {o.campus ? `${o.campus} · ` : ""}
                     {o.submittedAt ? formatDateTimeAsiaShanghai(o.submittedAt) : ""}
                     {o.estimatedDeliveryDate ? ` · 预计送达 ${o.estimatedDeliveryDate}` : ""}
                   </p>

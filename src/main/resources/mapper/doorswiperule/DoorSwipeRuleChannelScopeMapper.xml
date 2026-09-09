@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.doorswiperule.mapper.DoorSwipeRuleChannelScopeMapper">
+
+    <select id="selectAll" resultType="com.example.demo.modules.doorswiperule.entity.DoorSwipeRuleChannelScope">
+        SELECT id, channel_code AS channelCode, channel_name AS channelName,
+               enabled, updated_by AS updatedBy, updated_at AS updatedAt
+        FROM door_swipe_rule_channel_scope
+        ORDER BY channel_code
+    </select>
+
+    <select id="enabledChannelCodes" resultType="string">
+        SELECT channel_code FROM door_swipe_rule_channel_scope
+        WHERE enabled = 1
+        ORDER BY channel_code
+    </select>
+
+    <select id="findByCode" resultType="com.example.demo.modules.doorswiperule.entity.DoorSwipeRuleChannelScope">
+        SELECT id, channel_code AS channelCode, channel_name AS channelName,
+               enabled, updated_by AS updatedBy, updated_at AS updatedAt
+        FROM door_swipe_rule_channel_scope
+        WHERE channel_code = #{channelCode}
+        LIMIT 1
+    </select>
+
+    <delete id="deleteAll">DELETE FROM door_swipe_rule_channel_scope</delete>
+
+    <insert id="insertBatch">
+        INSERT INTO door_swipe_rule_channel_scope (channel_code, channel_name, enabled, updated_by)
+        VALUES
+        <foreach collection="items" item="it" separator=",">
+            (#{it.channelCode}, #{it.channelName}, #{it.enabled}, #{it.updatedBy})
+        </foreach>
+    </insert>
+
+    <update id="updateEnabled">
+        UPDATE door_swipe_rule_channel_scope
+        SET enabled = #{enabled},
+            updated_by = #{updatedBy}
+        WHERE channel_code = #{channelCode}
+    </update>
+</mapper>

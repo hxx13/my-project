@@ -1,10 +1,11 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Loader2, Upload, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createIcon, fetchIcons } from "@/api/domains/inventory.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { Portal } from "@/components/Portal";
+import { allEmojiItems } from "@/components/ui/emojiCatalog";
 import { cn } from "@/lib/utils";
 
 function guessMime(url: string): string {
@@ -31,6 +32,7 @@ export default function IconPicker(props: {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [urlInput, setUrlInput] = useState("");
+  const [emojiQuery, setEmojiQuery] = useState("");
   const [busy, setBusy] = useState(false);
 
   const { data } = useQuery({
@@ -38,7 +40,28 @@ export default function IconPicker(props: {
     queryFn: fetchIcons,
   });
 
-  const builtin = data?.builtin ?? [];
+  // 内置图标统一走共用 emoji 库（@/components/ui/emojiCatalog），后端下发的医疗图标按 emoji 去重追加
+  const builtin = (() => {
+    const seen = new Set<string>();
+    const out: { key: string; label: string; emoji: string }[] = [];
+    for (const [i, it] of allEmojiItems.entries()) {
+      if (seen.has(it.emoji)) continue;
+      seen.add(it.emoji);
+      out.push({ key: `emoji-${i}`, label: it.keywords, emoji: it.emoji });
+    }
+    for (const ic of data?.builtin ?? []) {
+      if (seen.has(ic.emoji)) continue;
+      seen.add(ic.emoji);
+      out.push(ic);
+    }
+    return out;
+  })();
+
+  const filteredBuiltin = useMemo(() => {
+    const q = emojiQuery.trim().toLowerCase();
+    if (!q) return builtin;
+    return builtin.filter((ic) => ic.emoji === q || ic.label.toLowerCase().includes(q));
+  }, [builtin, emojiQuery]);
   const uploaded = data?.uploaded ?? [];
 
   const select = (v: string) => {
@@ -105,9 +128,17 @@ export default function IconPicker(props: {
             </button>
           </div>
 
-          <div className="mb-2 text-xs font-semibold text-slate-500">内置图标</div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-slate-500">内置图标</span>
+            <input
+              value={emojiQuery}
+              onChange={(e) => setEmojiQuery(e.target.value)}
+              placeholder="搜索图标（如 椅 / 冰箱 / 显微镜）"
+              className="w-48 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none focus-visible:border-slate-300"
+            />
+          </div>
           <div className="grid max-h-44 grid-cols-8 gap-2 overflow-y-auto">
-            {builtin.map((ic) => {
+            {filteredBuiltin.map((ic) => {
               const active = value === ic.emoji || value === ic.key;
               return (
                 <button

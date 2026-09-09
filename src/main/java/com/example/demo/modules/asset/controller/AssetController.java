@@ -49,6 +49,9 @@ public class AssetController {
                                 @RequestParam(required = false) String campus,
                                 @RequestParam(required = false, name = "user") String userFilter,
                                 @RequestParam(required = false) String model,
+                                @RequestParam(required = false) String location,
+                                @RequestParam(required = false) Long locationNodeId,
+                                @RequestParam(required = false) List<Long> locationNodeIds,
                                 @RequestParam(required = false) Integer lockStatus,
                                 @RequestParam(required = false) String status,
                                 @RequestParam(defaultValue = "1") int page,
@@ -59,7 +62,7 @@ public class AssetController {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-        return Result.success(assetService.listAssets(keyword, assetName, campus, userFilter, model, lockStatus, status, page, size, sortBy, sortDirection, assetId));
+        return Result.success(assetService.listAssets(keyword, assetName, campus, userFilter, model, location, locationNodeId, locationNodeIds, lockStatus, status, page, size, sortBy, sortDirection, assetId));
     }
 
     @PostMapping("/assets/import")
@@ -84,6 +87,7 @@ public class AssetController {
                                                @RequestParam(required = false) String campus,
                                                @RequestParam(required = false, name = "user") String userFilter,
                                                @RequestParam(required = false) String model,
+                                               @RequestParam(required = false) String location,
                                                @RequestParam(required = false) Integer lockStatus,
                                                @RequestParam(required = false) String status,
                                                @RequestParam(required = false) String columns) {
@@ -93,7 +97,7 @@ public class AssetController {
         }
         List<String> selectedColumns = columns != null && !columns.isBlank()
                 ? Arrays.asList(columns.split(",")) : null;
-        byte[] file = assetService.exportAssetsAsExcel(keyword, assetName, campus, userFilter, model, lockStatus, status, selectedColumns);
+        byte[] file = assetService.exportAssetsAsExcel(keyword, assetName, campus, userFilter, model, location, lockStatus, status, selectedColumns);
         String name = "asset-records-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
@@ -136,6 +140,7 @@ public class AssetController {
                     payload.get("location") == null ? null : String.valueOf(payload.get("location")),
                     payload.get("note") == null ? null : String.valueOf(payload.get("note")),
                     payload.get("photoUrls") == null ? null : String.valueOf(payload.get("photoUrls")),
+                    payload.get("icon") == null ? null : String.valueOf(payload.get("icon")),
                     dynamicValues
             ));
         } catch (Exception e) {
@@ -164,8 +169,67 @@ public class AssetController {
                     payload.get("status") == null ? null : String.valueOf(payload.get("status")),
                     payload.get("location") == null ? null : String.valueOf(payload.get("location")),
                     payload.get("photoUrls") == null ? null : String.valueOf(payload.get("photoUrls")),
+                    payload.get("icon") == null ? null : String.valueOf(payload.get("icon")),
                     dynamicValues
             ));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/assets/{id}/location")
+    @Operation(summary = "拖拽修改资产存放地点")
+    public Result<?> moveAssetLocation(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @PathVariable String id,
+                                       @RequestBody(required = false) Map<String, Object> payload) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            return Result.success(assetService.moveAssetLocation(
+                    id,
+                    toLongId(payload == null ? null : payload.get("nodeId")),
+                    user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/assets/batch-location")
+    @Operation(summary = "批量拖拽修改资产存放地点")
+    public Result<?> batchMoveAssetLocation(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @RequestBody(required = false) Map<String, Object> payload) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        List<String> ids = new ArrayList<>();
+        Object rawIds = payload == null ? null : payload.get("ids");
+        if (rawIds instanceof List<?> list) {
+            for (Object o : list) {
+                if (o == null) continue;
+                String s = String.valueOf(o).trim();
+                if (!s.isEmpty()) ids.add(s);
+            }
+        }
+        try {
+            return Result.success(assetService.batchMoveAssetLocation(
+                    ids,
+                    toLongId(payload == null ? null : payload.get("nodeId")),
+                    user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @GetMapping("/assets/{id}/transfer-history")
+    @Operation(summary = "资产转移历史（转移申请 + MOVE 日志）")
+    public Result<?> transferHistory(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     @PathVariable String id) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            return Result.success(assetService.transferHistory(id));
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
@@ -208,11 +272,12 @@ public class AssetController {
                                  @RequestParam(required = false) String assetName,
                                  @RequestParam(required = false) String campus,
                                  @RequestParam(required = false, name = "user") String userFilter,
-                                 @RequestParam(required = false) String model) {
+                                 @RequestParam(required = false) String model,
+                                 @RequestParam(required = false) String location) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-        return Result.success(assetService.listAssetFacets(keyword, assetName, campus, userFilter, model));
+        return Result.success(assetService.listAssetFacets(keyword, assetName, campus, userFilter, model, location));
     }
 
     @DeleteMapping("/assets")
@@ -395,6 +460,35 @@ public class AssetController {
         }
     }
 
+    @DeleteMapping("/asset-transfer-logs/{id}")
+    @Operation(summary = "删除地点移动留痕（仅超级管理员）")
+    public Result<?> deleteTransferMoveLog(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable String id) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.SUPER_ADMIN);
+        if (denied != null) return denied;
+        try {
+            return Result.success(assetService.deleteMoveLog(id, user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/asset-transfer-logs/{id}/promote")
+    @Operation(summary = "由地点移动留痕补建转移申请")
+    public Result<?> promoteTransferMoveLog(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @PathVariable String id,
+                                            @RequestBody(required = false) Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            return Result.success(assetService.promoteMoveLogToRequest(id, body, user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     @GetMapping("/asset-transfer-records")
     @Operation(summary = "查询转移记录")
     public Result<?> listTransferRecords(@RequestHeader(value = "Authorization", required = false) String authorization,
@@ -559,10 +653,13 @@ public class AssetController {
             @SuppressWarnings("unchecked")
             List<String> createNewColumns = body.get("createNewColumns") instanceof List
                     ? (List<String>) body.get("createNewColumns") : new ArrayList<>();
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> locationMappings = body.get("locationMappings") instanceof List
+                    ? (List<Map<String, Object>>) body.get("locationMappings") : new ArrayList<>();
             if (previewId == null || previewId.isBlank()) {
                 return Result.error("缺少 previewId 参数");
             }
-            return Result.success(assetService.confirmImport(previewId, createNewColumns, user.getId()));
+            return Result.success(assetService.confirmImport(previewId, createNewColumns, locationMappings, user.getId()));
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
@@ -613,6 +710,18 @@ public class AssetController {
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    private Long toLongId(Object value) {
+        if (value instanceof Number n) return n.longValue();
+        if (value instanceof String s && !s.isBlank()) {
+            try {
+                return Long.parseLong(s.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private User resolveUser(String authorization) {

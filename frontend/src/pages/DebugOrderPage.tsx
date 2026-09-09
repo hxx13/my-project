@@ -1,10 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchGroupOrderDetailData, syncAnimalOrders, cancelAnimalOrderSync } from "@/api/twinApi";
+import {
+    fetchGroupOrderDetailData,
+    syncAnimalOrders,
+    cancelAnimalOrderSync,
+    fetchProcurementSummary,
+    downloadProcurementSummaryExcel,
+    type ProcurementDateField,
+    type ProcurementParams,
+    type ProcurementRow,
+} from "@/api/twinApi";
 import { AdminToolbarSearchField } from "@/components/admin/AdminToolbarSearchField";
 import { AdminToolbar, AdminToolbarActions } from "@/components/admin/AdminToolbar";
 import { DebugDangerousOpsMenu } from "@/components/admin/DebugDangerousOpsMenu";
-import { Crown, Mouse, Search } from "lucide-react";
+import { Crown, Download, Mouse, Search } from "lucide-react";
+import { calendarDayKeyBeijing } from "@/utils/beijingTime";
 
 import { appAlert } from "@/lib/appDialog";
 type GroupOrderSummary = {
@@ -24,6 +34,7 @@ type GroupOrderResponse = {
 };
 
 export default function DebugOrderPage() {
+    const [tab, setTab] = useState<"detail" | "procurement">("detail");
     const [page, setPage] = useState(1);
     const [isSyncing, setIsSyncing] = useState(false);
     const orderSyncAbortRef = useRef<AbortController | null>(null);
@@ -121,6 +132,26 @@ export default function DebugOrderPage() {
                     </h1>
                     <p className="truncate text-xs text-[var(--app-color-text-tertiary)] sm:text-sm">数据来源：<code className="rounded bg-[var(--app-color-surface-hover)] px-1">aro_animal_order</code>。同步会拉取官方订单，耗时较长。</p>
                 </div>
+                <div className="flex shrink-0 items-center gap-1">
+                    {([
+                        ["detail", "流水明细"],
+                        ["procurement", "采购汇总"],
+                    ] as ["detail" | "procurement", string][]).map(([key, label]) => (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => setTab(key)}
+                            className={`rounded-full px-3 py-1 text-xs font-bold transition-colors whitespace-nowrap ${
+                                tab === key
+                                    ? "bg-[var(--app-color-accent)] text-white"
+                                    : "border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                {tab === "detail" && (
                 <AdminToolbarActions className="ml-auto flex min-w-0 shrink-0 flex-nowrap items-center gap-2">
                     <DebugDangerousOpsMenu
                         items={[
@@ -150,13 +181,17 @@ export default function DebugOrderPage() {
                         <button type="button" disabled={page === totalGroups || totalGroups === 0} onClick={() => setPage(p => p + 1)} className="text-lg font-black text-[var(--app-color-accent)] disabled:text-[var(--app-color-text-tertiary)]">▶</button>
                     </div>
                 </AdminToolbarActions>
+                )}
             </AdminToolbar>
 
-            {/* 表格容器 */}
+            {tab === "procurement" ? (
+                <ProcurementSummaryTab />
+            ) : (
+            /* 表格容器 */
             <div className="flex-1 bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] rounded-2xl shadow-xl overflow-auto relative pb-24">
 
                 {summary ? (
-                    <table className="w-max min-w-full text-left text-base whitespace-nowrap border-collapse">
+                    <table className="w-max min-w-full text-left text-base whitespace-nowrap border-collapse twin-table">
                         {/* 💥 优化 1：压缩表头垂直高度 (py-3代替py-5)，字号提升 (text-base) */}
                         <thead className="bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold border-b border-[var(--app-color-border-strong)] sticky top-0 z-30 text-base">
                         <tr>
@@ -283,6 +318,156 @@ export default function DebugOrderPage() {
                         <Search className="w-12 h-12 mb-4 opacity-50" />
                         <span className="font-bold text-lg">本地库中暂无该课题组的订购流水源数据</span>
                     </div>
+                )}
+            </div>
+            )}
+        </div>
+    );
+}
+
+/* ════════════════ 采购汇总（供应商备货口径） ════════════════ */
+
+const PROCUREMENT_DATE_FIELDS: Array<[ProcurementDateField, string]> = [
+    ["arrival", "按到货日期"],
+    ["order", "按下单时间"],
+];
+
+function downloadBlob(blob: Blob, fileName: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function ProcurementSummaryTab() {
+    const [dateField, setDateField] = useState<ProcurementDateField>("arrival");
+    const [startDate, setStartDate] = useState(() => calendarDayKeyBeijing(new Date()).slice(0, 8) + "01");
+    const [endDate, setEndDate] = useState(() => calendarDayKeyBeijing(new Date()));
+    const [exporting, setExporting] = useState(false);
+
+    const params: ProcurementParams = { dateField, startDate, endDate };
+
+    const { data: rows = [], isLoading, error } = useQuery({
+        queryKey: ["procurementSummary", dateField, startDate, endDate],
+        queryFn: () => fetchProcurementSummary(params),
+    });
+
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const blob = await downloadProcurementSummaryExcel(params);
+            downloadBlob(blob, `采购汇总-${startDate}_${endDate}.xlsx`);
+        } catch {
+            await appAlert("❌ 导出失败，请检查后端。");
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    const inputCls = "rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1.5 text-xs text-[var(--app-color-text-primary)]";
+
+    return (
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1">
+                    {PROCUREMENT_DATE_FIELDS.map(([key, label]) => (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => setDateField(key)}
+                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap ${
+                                dateField === key
+                                    ? "bg-[var(--app-color-accent)] text-white"
+                                    : "border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inputCls} />
+                <span className="text-xs text-[var(--app-color-text-tertiary)]">至</span>
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={inputCls} />
+                <button
+                    type="button"
+                    onClick={() => void handleExport()}
+                    disabled={exporting || rows.length === 0}
+                    className="flex items-center gap-1 rounded-full bg-[var(--app-color-accent)] px-3 py-1.5 text-xs font-bold text-white transition-opacity disabled:opacity-50"
+                >
+                    <Download className="h-3.5 w-3.5" /> {exporting ? "导出中…" : "导出 Excel"}
+                </button>
+                <span className="text-xs text-[var(--app-color-text-tertiary)]">
+                    面向供应商备货口径，不含课题组/PI；已排除取消、审批不通过、驳回订单。
+                </span>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-xl">
+                {isLoading ? (
+                    <div className="p-10 text-base font-bold text-[var(--app-color-text-tertiary)]">正在汇总采购数据…</div>
+                ) : error ? (
+                    <div className="p-10 text-base font-bold text-red-500">读取数据崩溃！请检查后端。</div>
+                ) : rows.length === 0 ? (
+                    <div className="flex h-full flex-col items-center justify-center p-20 text-[var(--app-color-text-tertiary)]">
+                        <Search className="mb-4 h-12 w-12 opacity-50" />
+                        <span className="text-lg font-bold">该区间内没有可汇总的订单</span>
+                    </div>
+                ) : (
+                    <table className="w-max min-w-full border-collapse text-left text-base whitespace-nowrap twin-table">
+                        <thead className="sticky top-0 z-30 border-b border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-hover)] text-base font-bold text-[var(--app-color-text-secondary)]">
+                        <tr>
+                            <th className="px-4 py-3 text-center">到货日期</th>
+                            <th className="px-4 py-3 text-center">供应商</th>
+                            <th className="px-4 py-3 text-center">品系</th>
+                            <th className="px-4 py-3 text-center">规格</th>
+                            <th className="px-4 py-3 text-center">雄（只）</th>
+                            <th className="px-4 py-3 text-center">雌（只）</th>
+                            <th className="px-4 py-3 text-center">合计（只）</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {rows.map((row: ProcurementRow, index: number) => {
+                            if (row.rowType === "GRAND_TOTAL") {
+                                return (
+                                    <tr key={index} className="border-b-2 border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-active)] font-black">
+                                        <td className="px-4 py-3 text-center">总计</td>
+                                        <td className="px-4 py-3" />
+                                        <td className="px-4 py-3" />
+                                        <td className="px-4 py-3" />
+                                        <td className="px-4 py-3 text-center text-xl text-indigo-600">{row.maleQty}</td>
+                                        <td className="px-4 py-3 text-center text-xl text-rose-600">{row.femaleQty}</td>
+                                        <td className="px-4 py-3 text-center text-xl text-blue-700">{row.totalQty}</td>
+                                    </tr>
+                                );
+                            }
+                            if (row.rowType === "SUPPLIER_SUBTOTAL") {
+                                return (
+                                    <tr key={index} className="border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] font-bold">
+                                        <td className="px-4 py-2.5 text-center text-[var(--app-color-text-secondary)]">{row.arrivalDate || "-"}</td>
+                                        <td className="px-4 py-2.5 text-center">{row.supplierName || "-"}</td>
+                                        <td className="px-4 py-2.5 text-center text-[var(--app-color-text-tertiary)]" colSpan={2}>小计</td>
+                                        <td className="px-4 py-2.5 text-center text-indigo-500">{row.maleQty}</td>
+                                        <td className="px-4 py-2.5 text-center text-rose-500">{row.femaleQty}</td>
+                                        <td className="px-4 py-2.5 text-center text-blue-700">{row.totalQty}</td>
+                                    </tr>
+                                );
+                            }
+                            const rowBg = index % 2 === 0 ? "bg-[var(--app-color-surface-container)]" : "bg-[var(--app-color-surface-hover)]";
+                            return (
+                                <tr key={index} className={`${rowBg} border-b border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-active)]`}>
+                                    <td className="px-4 py-2.5 text-center font-bold text-[var(--app-color-text-secondary)]">{row.arrivalDate || "-"}</td>
+                                    <td className="px-4 py-2.5 text-center text-sm text-[var(--app-color-text-secondary)]">{row.supplierName || "-"}</td>
+                                    <td className="px-4 py-2.5 text-center text-lg font-black text-blue-800">{row.strainName || "-"}</td>
+                                    <td className="px-4 py-2.5 text-center text-sm font-bold text-[var(--app-color-text-secondary)]">{row.specName || "-"}</td>
+                                    <td className="px-4 py-2.5 text-center text-xl font-black text-indigo-500">{row.maleQty}</td>
+                                    <td className="px-4 py-2.5 text-center text-xl font-black text-rose-500">{row.femaleQty}</td>
+                                    <td className="px-4 py-2.5 text-center text-xl font-black text-blue-700">{row.totalQty}</td>
+                                </tr>
+                            );
+                        })}
+                        </tbody>
+                    </table>
                 )}
             </div>
         </div>

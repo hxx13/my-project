@@ -23,6 +23,8 @@
         <result property="purgeAfterTime" column="purge_after_time"/>
         <result property="photoUrls" column="photo_urls"/>
         <result property="createdByBatchId" column="created_by_batch_id"/>
+        <result property="locationNodeId" column="location_node_id"/>
+        <result property="icon" column="icon"/>
     </resultMap>
 
     <resultMap id="AssetColumnDefResultMap" type="com.example.demo.modules.asset.entity.AssetColumnDef">
@@ -126,9 +128,9 @@
 
     <insert id="insertAsset" parameterType="com.example.demo.modules.asset.entity.AssetRecord">
         INSERT INTO asset_record(
-            id, asset_code, asset_name, status, location, locked, note, photo_urls, create_by, update_by, created_by_batch_id
+            id, asset_code, asset_name, status, location, locked, note, photo_urls, icon, create_by, update_by, created_by_batch_id
         ) VALUES (
-            #{id}, #{assetCode}, #{assetName}, #{status}, #{location}, #{locked}, #{note}, #{photoUrls}, #{createBy}, #{updateBy}, #{createdByBatchId}
+            #{id}, #{assetCode}, #{assetName}, #{status}, #{location}, #{locked}, #{note}, #{photoUrls}, #{icon}, #{createBy}, #{updateBy}, #{createdByBatchId}
         )
     </insert>
 
@@ -140,6 +142,7 @@
             note = #{note},
             update_by = #{updateBy},
             update_time = NOW()
+        <if test="icon != null">, icon = #{icon}</if>
         WHERE id = #{id} AND deleted = 0
     </update>
 
@@ -257,6 +260,28 @@
                   </choose>
                   AND mv.column_value LIKE CONCAT('%', #{model}, '%')
             )
+        </if>
+        <if test="location != null and location != ''">
+            AND (
+                a.location LIKE CONCAT('%', #{location}, '%')
+                <if test="locationKey != null and locationKey != ''">
+                    OR EXISTS (
+                        SELECT 1 FROM asset_record_value lv
+                        WHERE lv.asset_id = a.id
+                          AND lv.column_key = #{locationKey}
+                          AND lv.column_value LIKE CONCAT('%', #{location}, '%')
+                    )
+                </if>
+            )
+        </if>
+        <if test="locationNodeId != null">
+            AND a.location_node_id = #{locationNodeId}
+        </if>
+        <if test="locationNodeIds != null and locationNodeIds.size() > 0">
+            AND a.location_node_id IN
+            <foreach collection="locationNodeIds" item="nodeId" open="(" close=")" separator=",">
+                #{nodeId}
+            </foreach>
         </if>
     </sql>
 
@@ -646,6 +671,97 @@
             #{id}
         </foreach>
         AND deleted = 0
+    </update>
+
+    <!-- ==================== 存放地点节点 ==================== -->
+
+    <update id="updateAssetLocationNode">
+        UPDATE asset_record
+        SET location_node_id = #{nodeId},
+            update_time = NOW()
+        WHERE id = #{assetId} AND deleted = 0
+    </update>
+
+    <update id="batchUpdateAssetLocationNode">
+        UPDATE asset_record
+        SET location_node_id = #{nodeId},
+            update_time = NOW()
+        WHERE deleted = 0 AND id IN
+        <foreach collection="ids" item="id" open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+    </update>
+
+    <select id="countInFlightTransfer" resultType="int">
+        SELECT COUNT(1) FROM asset_transfer_request
+        WHERE asset_id = #{assetId} AND status = 'IN_PROGRESS'
+    </select>
+
+    <update id="updateLocationTextByNode">
+        UPDATE asset_record
+        SET location = #{location},
+            update_time = NOW()
+        WHERE location_node_id = #{nodeId} AND deleted = 0
+    </update>
+
+    <update id="updateAssetValueTextByNode">
+        UPDATE asset_record_value v
+        JOIN asset_record a ON a.id = v.asset_id AND a.deleted = 0
+        SET v.column_value = #{location},
+            v.update_time = NOW()
+        WHERE a.location_node_id = #{nodeId} AND v.column_key = #{columnKey}
+    </update>
+
+    <update id="linkAssetsToLocationNode">
+        UPDATE asset_record a
+        LEFT JOIN asset_record_value v ON v.asset_id = a.id AND v.column_key = #{columnKey}
+        SET a.location_node_id = #{nodeId}
+        WHERE a.deleted = 0
+          AND (TRIM(COALESCE(v.column_value, '')) = #{text} OR TRIM(COALESCE(a.location, '')) = #{text})
+          AND (a.created_by_batch_id = #{batchId} OR a.location_node_id IS NULL)
+    </update>
+
+    <select id="listTransferRequestsByAssetId" resultMap="AssetTransferRequestResultMap">
+        SELECT *
+        FROM asset_transfer_request
+        WHERE asset_id = #{assetId}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="listMoveLogsByAssetId" resultType="java.util.Map">
+        SELECT id AS id,
+               request_id AS requestId,
+               remark AS remark,
+               operator_id AS operatorId,
+               create_time AS createTime
+        FROM asset_transfer_log
+        WHERE asset_id = #{assetId} AND action_type = 'MOVE'
+        ORDER BY create_time DESC
+    </select>
+
+    <delete id="deleteMoveLogById">
+        DELETE FROM asset_transfer_log
+        WHERE id = #{id}
+          AND action_type = 'MOVE'
+    </delete>
+
+    <select id="findTransferLogById" resultType="java.util.Map">
+        SELECT id AS id,
+               request_id AS requestId,
+               asset_id AS assetId,
+               action_type AS actionType,
+               operator_id AS operatorId,
+               remark AS remark,
+               create_time AS createTime
+        FROM asset_transfer_log
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <update id="updateTransferLogRequestId">
+        UPDATE asset_transfer_log
+        SET request_id = #{requestId}
+        WHERE id = #{id}
     </update>
 
     <!-- ==================== 导入批次 ==================== -->

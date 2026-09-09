@@ -1042,7 +1042,7 @@ export default function AdminFacilityMaintenancePage() {
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] table-auto border-collapse border border-[var(--twin-hairline)] text-sm">
+              <table className="w-full min-w-[720px] table-auto border-collapse border border-[var(--twin-hairline)] text-sm twin-table">
               <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                 <tr>
                   <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">时间</th>
@@ -1133,7 +1133,7 @@ export default function AdminFacilityMaintenancePage() {
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] table-auto border-collapse border border-[var(--twin-hairline)] text-sm">
+              <table className="w-full min-w-[760px] table-auto border-collapse border border-[var(--twin-hairline)] text-sm twin-table">
               <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                 <tr>
                   <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">更换时间</th>

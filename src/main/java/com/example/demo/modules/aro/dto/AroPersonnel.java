@@ -66,6 +66,10 @@ public class AroPersonnel {
     @JsonAlias({"hasOfficialRoomPermission", "has_official_room_permission"})
     private Integer hasOfficialRoomPermission;
 
+    /** 0=ARO 管理 1=本地管理（人→房间授权覆盖层开关） */
+    @JsonAlias({"roomAuthManaged", "room_auth_managed"})
+    private Integer roomAuthManaged;
+
     // 💥 官方文档中定义的内部结构体
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)

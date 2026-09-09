@@ -7,6 +7,8 @@ import java.util.List;
 
 @Data
 public class AnimalOrderTimePolicyAdminDto {
+    /** 浦东 | 浦西 */
+    private String campus;
     private String defaultMode;
     private String etaMode;
     private Integer etaWorkdayOffset;

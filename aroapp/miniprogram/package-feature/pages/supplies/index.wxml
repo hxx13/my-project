@@ -101,7 +101,7 @@
               <text wx:if="{{ item.subtitle }}" class="goods-sub-inline">{{ item.subtitle }}</text>
             </view>
             <view class="goods-stock-line">
-              {{ item.stockMode === 'QUANTIFIED' ? '库存 ' + (item.availableQty != null ? item.availableQty : item.stockQty) : ((item.availableQty != null ? item.availableQty : item.stockQty) >= 1 ? '有货' : '缺货') }}
+              {{ item.stockMode === 'QUANTIFIED' ? (item.lockedQty > 0 ? '库存剩余 ' + (item.availableQty != null ? item.availableQty : item.stockQty) + ' · 已锁定 ' + item.lockedQty : '库存 ' + item.stockQty) : ((item.availableQty != null ? item.availableQty : item.stockQty) >= 1 ? '有货' : '缺货') }}
             </view>
             <!-- Spec SKU panel for items with specSchema -->
             <view wx:if="{{ item.specSchema }}" class="sku-panel">

@@ -2,7 +2,7 @@ var springAuth = require('../../../utils/springAuth.js');
 var pagePermission = require('../../../utils/pagePermission.js');
 var { isStudentAccount } = require('../../../utils/roleAccess.js');
 var { readCustomNavMetrics } = require('../../../utils/customNavMetrics.js');
-var { CAGE_FORM_KEY, flattenTemplateFields, buildCodelistDict, buildFormRows } = require('../../../utils/cageForm.js');
+var { CAGE_FORM_KEY, flattenTemplateFields, buildCodelistDict, buildFormRows, buildEditableFormRows, toApiValue } = require('../../../utils/cageForm.js');
 var cageStatus = require('../../../utils/cageStatus.js');
 var CAGE_STATUS_ACTIONS = cageStatus.CAGE_STATUS_ACTIONS;
 var assetApi = require('../../utils/assetApi.js');
@@ -593,6 +593,30 @@ Page({
     reserveResults: [],
     reserveGroups: [],      // 已选笼位所属 AUP 的课题组名，供弹窗提示
     reserveSubmitting: false,
+    // 选人弹窗复用目的：'' = 预定；'claimOnBehalf' = 代认领
+    personPickerPurpose: '',
+    // 分笼 / 转移（选位模式，对齐 Web 端 useCageOpSelect）
+    opActive: false,
+    opKind: '',                    // divide | transfer
+    opSourceCageId: '',
+    opSourceLabel: '',
+    opTargetMap: {},               // animalCageId → 目标行（selectable/reason/坐标）
+    opSelectedCageIds: {},         // animalCageId → true
+    opSelectedCount: 0,
+    opLoading: false,
+    opError: '',
+    opConfirmOpen: false,
+    opPicked: [],                  // 确认弹窗用的坐标清单
+    opKeepSource: true,            // 分笼默认保留源笼位；不勾选才归档
+    opReason: '',
+    opSubmitting: false,
+    // 详情弹窗内的操作入口（/cage-op/operable 结果）
+    detailOperable: false,
+    detailOperableCode: '',
+    detailOperableReason: '',
+    detailCanClaimOnBehalf: false,
+    detailGroupNames: [],
+    detailClaiming: false,
     // 归档
     archiveTarget: null,
     showArchiveDialog: false,
@@ -668,6 +692,10 @@ Page({
     formRows: [],
     formLoading: false,
     formError: '',
+    formEditable: false,     // 服务端 /cage-op/editable 判定
+    formEditing: false,
+    formSaving: false,
+    formSaveMsg: '',
     detailSaving: false,
     detailSaveMsg: "",
     detailSaveMsgType: "",
@@ -741,7 +769,10 @@ Page({
     springAuth.springRequest({ url: '/api/cage-mode/visible', method: 'GET', data: {} }).then(function(res) {
       var up = unwrap(res);
       var modes = (up.ok && up.data && up.data.modes) || [];
-      if (modes.length > 0) {
+      // 与 Web 一致（student-cage-shelf.tsx:134 `isStudent ? modes : null`）：学生视角仅在后端确认是学生时才用其列表过滤，
+      // 否则不过滤——镜像/高权限场景后端下发的是教职工模式，取交集会把「申请预约」滤掉。
+      var backendIsStudent = !!(up.ok && up.data && up.data.isStudent);
+      if (modes.length > 0 && (self.data.isStaffView || backendIsStudent)) {
         self.setData({
           visibleModes: modes,
           modeOptions: buildModeOptions(self.data.isStaffView, modes)
@@ -1721,10 +1752,10 @@ Page({
     return names;
   },
 
-  /** 按课题组批量拉成员作为默认候选；无课题组则留空等用户手搜 */
-  previewReserveCandidates: function() {
+  /** 按课题组批量拉成员作为默认候选；无课题组则留空等用户手搜。namesOverride 供代认领复用。 */
+  previewReserveCandidates: function(namesOverride) {
     var self = this;
-    var names = self.reserveGroupNames();
+    var names = namesOverride || self.reserveGroupNames();
     self.setData({ reserveGroups: names });
     if (names.length === 0) return;
     self.setData({ reserveSearching: true });
@@ -1759,7 +1790,7 @@ Page({
   },
 
   onCloseReservePerson: function() {
-    this.setData({ reservePersonOpen: false });
+    this.setData({ reservePersonOpen: false, personPickerPurpose: '' });
   },
 
   onReserveKeywordInput: function(e) {
@@ -1789,7 +1820,12 @@ Page({
     var accountId = e.currentTarget.dataset.accountId;
     var name = e.currentTarget.dataset.name;
     if (!accountId) { wx.showToast({ title: '该人员无账号', icon: 'none' }); return; }
-    this.setData({ reservePersonOpen: false });
+    var purpose = this.data.personPickerPurpose;
+    this.setData({ reservePersonOpen: false, personPickerPurpose: '' });
+    if (purpose === 'claimOnBehalf') {
+      this.handleClaimOnBehalfConfirm({ name: name, accountId: accountId });
+      return;
+    }
     this.handleReserveConfirm({ name: name, accountId: accountId });
   },
 
@@ -2408,6 +2444,9 @@ Page({
     }
     if (!cell || cell.empty) return;
 
+    // 分笼/转移选位模式：点击切换目标选中（优先于其它模式分派）
+    if (self.data.opActive) { self.toggleOpTarget(cell); return; }
+
     // 依当前模式分派点击（选中/归档/记录/确认/申请 → 各自处理，其余落到详情）
     var mode = self.data.pageMode;
     if (mode === 'allocate') { self.toggleAllocateCell(cell); return; }
@@ -2527,6 +2566,30 @@ Page({
       initialDetailActions: JSON.parse(JSON.stringify(initialActions))
     });
 
+    // 分笼/转移/认领入口：后端按「认领记录 + 实验员字段 + 操作身份」给出三态
+    var detailCageId = String(cell.id || cell.animalCageId || '');
+    self.setData({
+      detailOperable: false, detailOperableCode: '', detailOperableReason: '',
+      detailCanClaimOnBehalf: false, detailGroupNames: []
+    });
+    if (detailCageId) {
+      springAuth.springRequest({ url: '/api/cage-op/operable', method: 'GET', data: { animalCageId: detailCageId } }).then(function(res) {
+        var p = unwrap(res);
+        var d = (p.ok && p.data) || {};
+        // 用 id 比对而非对象引用：setData 之后 data.selectedCell 未必是同一个对象
+        var cur = self.data.selectedCell || {};
+        var curId = String(cur.id || cur.animalCageId || '');
+        if (curId !== detailCageId) return; // 弹窗已切换到别的笼位
+        self.setData({
+          detailOperable: !!d.operable,
+          detailOperableCode: d.code || '',
+          detailOperableReason: d.reason || '',
+          detailCanClaimOnBehalf: !!d.canClaimOnBehalf,
+          detailGroupNames: d.groupNames || []
+        });
+      }).catch(function() { /* 取不到就只显示详情 */ });
+    }
+
     if (detailMeta.permitted) {
       self.loadCellFormValues(cell);
       self.loadCellAnnotation(cell);
@@ -2582,7 +2645,7 @@ Page({
       self.setData({ formRows: [], formLoading: false, formError: '' });
       return;
     }
-    self.setData({ formRows: [], formLoading: true, formError: '' });
+    self.setData({ formRows: [], formLoading: true, formError: '', formEditing: false, formSaveMsg: '' });
     // 连点不同笼位时，只认最后一次请求的结果
     var seq = (self._formReqSeq || 0) + 1;
     self._formReqSeq = seq;
@@ -2594,7 +2657,14 @@ Page({
         var up = unwrap(res);
         if (!up.ok) throw new Error(up.message || '表单值读取失败');
         return up.data || [];
-      })
+      }),
+      // 编辑权限与 Web/H5 同源：后端按「认领记录 + 实验员字段 + 操作身份」判定
+      springAuth.springRequest({
+        url: '/api/cage-op/editable', method: 'GET', data: { animalCageId: animalCageId }
+      }).then(function(res) {
+        var up = unwrap(res);
+        return (up.ok && up.data && up.data.editable) ? true : false;
+      }).catch(function() { return false; })
     ]).then(function(arr) {
       if (seq !== self._formReqSeq) return;
       var tpl = arr[0];
@@ -2604,7 +2674,8 @@ Page({
         .filter(function(a) { return activeActions[a.action]; })
         .map(function(a) { return { code: a.statusField, label: a.label, color: a.color, bg: a.bg, statusField: a.statusField }; });
       self.setData({
-        formRows: buildFormRows(tpl.fields, arr[1], tpl.dict),
+        formRows: buildEditableFormRows(tpl.fields, arr[1], tpl.dict),
+        formEditable: !!arr[2],
         'cellDetail.statusChips': statusChips,
         formLoading: false,
         formError: ''
@@ -2613,9 +2684,86 @@ Page({
       if (seq !== self._formReqSeq) return;
       self.setData({
         formRows: [],
+        formEditable: false,
         formLoading: false,
         formError: (err && err.message) || '表单加载失败'
       });
+    });
+  },
+
+  /** 表单编辑：进入编辑态（复制一份可改值，取消可还原） */
+  onFormEditStart: function() { this.setData({ formEditing: true, formSaveMsg: '' }); },
+  onFormEditCancel: function() { this.setData({ formEditing: false, formSaveMsg: '' }); },
+  onFormSaveMsgClear: function() { this.setData({ formSaveMsg: '' }); },
+
+  /** 文本框/数字框改动：写回 formRows[i].raw */
+  onFormInput: function(e) {
+    var idx = Number(e.currentTarget.dataset.idx);
+    var rows = this.data.formRows || [];
+    if (isNaN(idx) || idx < 0 || idx >= rows.length) return;
+    var patch = {};
+    patch['formRows[' + idx + '].raw'] = e.detail.value;
+    this.setData(patch);
+  },
+
+  /** 开关（BOOLEAN）改动 */
+  onFormSwitch: function(e) {
+    var idx = Number(e.currentTarget.dataset.idx);
+    var rows = this.data.formRows || [];
+    if (isNaN(idx) || idx < 0 || idx >= rows.length) return;
+    var patch = {};
+    patch['formRows[' + idx + '].raw'] = !!e.detail.value;
+    this.setData(patch);
+  },
+
+  /** 码表/日期 picker 选中 */
+  onFormPicker: function(e) {
+    var idx = Number(e.currentTarget.dataset.idx);
+    var rows = this.data.formRows || [];
+    if (isNaN(idx) || idx < 0 || idx >= rows.length) return;
+    var row = rows[idx];
+    var val;
+    var patch = {};
+    if (row.fieldType === 'select' || row.fieldType === 'choice') {
+      var opt = row.options[Number(e.detail.value)] || {};
+      val = opt.value === undefined ? '' : opt.value;
+      patch['formRows[' + idx + '].value'] = opt.label === undefined ? '' : opt.label;
+    } else {
+      val = e.detail.value;
+      patch['formRows[' + idx + '].value'] = val;
+    }
+    patch['formRows[' + idx + '].raw'] = val;
+    this.setData(patch);
+  },
+
+  /** 保存：只提交可编辑字段，值按 dataType 归一 */
+  onFormSave: function() {
+    var self = this;
+    var cell = self.data.selectedCell;
+    var animalCageId = cell ? String(cell.id || cell.animalCageId || '') : '';
+    if (!animalCageId) return;
+    var rows = self.data.formRows || [];
+    var values = [];
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (!r || !r.editable || !r.fieldId) continue;
+      values.push({ fieldId: r.fieldId, value: toApiValue(r.dataType, r.raw) });
+    }
+    if (values.length === 0) { wx.showToast({ title: '没有可保存的字段', icon: 'none' }); return; }
+    self.setData({ formSaving: true, formSaveMsg: '' });
+    springAuth.springRequest({
+      url: '/api/admin/cage-info/values/' + animalCageId, method: 'PUT', data: { values: values }
+    }).then(function(res) {
+      var up = unwrap(res);
+      self.setData({ formSaving: false });
+      if (!up.ok) { wx.showToast({ title: up.message || '保存失败', icon: 'none' }); return; }
+      wx.showToast({ title: '已保存', icon: 'success' });
+      self.setData({ formEditing: false });
+      // 重新拉一次，让只读展示与最新值一致
+      self.loadCellFormValues(cell);
+    }).catch(function(err) {
+      self.setData({ formSaving: false });
+      wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' });
     });
   },
 
@@ -2810,7 +2958,171 @@ _closeDetail: function() {
       detailImageUploading: false,
       detailActions: cageStatus.newActionState(),
       initialDetailActions: cageStatus.newActionState(),
-      detailActionSubmitting: false
+      detailActionSubmitting: false,
+      formEditable: false, formEditing: false, formSaving: false, formSaveMsg: '',
+      detailOperable: false, detailOperableCode: '', detailOperableReason: '',
+      detailCanClaimOnBehalf: false, detailGroupNames: [], detailClaiming: false
+    });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  分笼 / 转移（选位模式） + 认领                                        */
+  /* ------------------------------------------------------------------ */
+
+  /** 详情弹窗点「分笼」/「转移笼位」：拉目标池 → 关详情 → 进入选位模式 */
+  onStartOp: function(e) {
+    var self = this;
+    var kind = e.currentTarget.dataset.kind;
+    var cell = self.data.selectedCell;
+    var cageId = cell ? String(cell.id || cell.animalCageId || '') : '';
+    if (!kind || !cageId) return;
+    var label = (cell && (cell._displayPosition || cell.position)) || '';
+    self._closeDetail();
+    self.setData({
+      opActive: true, opKind: kind, opSourceCageId: cageId, opSourceLabel: label,
+      opTargetMap: {}, opSelectedCageIds: {}, opSelectedCount: 0,
+      opLoading: true, opError: '', opConfirmOpen: false, opKeepSource: true, opReason: ''
+    });
+    springAuth.springRequest({ url: '/api/cage-op/targets', method: 'GET', data: { sourceAnimalCageId: cageId } }).then(function(res) {
+      var p = unwrap(res);
+      if (!p.ok) { self.setData({ opLoading: false, opError: p.message || '加载可选笼位失败' }); return; }
+      var map = {};
+      var list = p.data || [];
+      for (var i = 0; i < list.length; i++) map[String(list[i].animalCageId)] = list[i];
+      self.setData({ opLoading: false, opTargetMap: map }, self.applyOpToGrid.bind(self));
+    }).catch(function() {
+      self.setData({ opLoading: false, opError: '加载可选笼位失败' });
+    });
+  },
+
+  /** 选位模式：点击格子切换目标（分笼多选、转移单选） */
+  toggleOpTarget: function(cell) {
+    var cid = String(cell.id || cell.animalCageId || '');
+    var t = (this.data.opTargetMap || {})[cid];
+    if (!t || !t.selectable) { wx.showToast({ title: '该笼位不在可选范围内', icon: 'none' }); return; }
+    var sel = Object.assign({}, this.data.opSelectedCageIds || {});
+    if (this.data.opKind === 'divide') {
+      if (sel[cid]) delete sel[cid]; else sel[cid] = true;
+    } else {
+      var next = {};
+      if (!sel[cid]) next[cid] = true;
+      sel = next;
+    }
+    var count = 0;
+    for (var k in sel) { if (sel[k]) count++; }
+    this.setData({ opSelectedCageIds: sel, opSelectedCount: count }, this.applyOpToGrid.bind(this));
+  },
+
+  /** 可选池 → _inPool（绿环），已选 → _selected */
+  applyOpToGrid: function() {
+    var grid = this.data.grid || [];
+    var tmap = this.data.opTargetMap || {};
+    var sel = this.data.opSelectedCageIds || {};
+    var patch = {};
+    for (var i = 0; i < grid.length; i++) {
+      var cid = String(grid[i].id || grid[i].animalCageId || '');
+      patch['grid[' + i + ']._inPool'] = !!cid && !!(tmap[cid] && tmap[cid].selectable);
+      patch['grid[' + i + ']._selected'] = !!cid && !!sel[cid];
+    }
+    this.setData(patch);
+  },
+
+  onOpCancel: function() {
+    this.setData({
+      opActive: false, opKind: '', opSourceCageId: '', opSourceLabel: '',
+      opTargetMap: {}, opSelectedCageIds: {}, opSelectedCount: 0,
+      opLoading: false, opError: '', opConfirmOpen: false, opPicked: [],
+      opKeepSource: true, opReason: ''
+    }, this.applyOpToGrid.bind(this));
+  },
+
+  onOpOpenConfirm: function() {
+    if (this.data.opSelectedCount === 0) { wx.showToast({ title: '请先选择目标笼位', icon: 'none' }); return; }
+    var picked = [];
+    var sel = this.data.opSelectedCageIds || {};
+    var tmap = this.data.opTargetMap || {};
+    for (var k in sel) { if (sel[k] && tmap[k]) picked.push(tmap[k]); }
+    this.setData({ opConfirmOpen: true, opPicked: picked });
+  },
+
+  onOpCloseConfirm: function() { this.setData({ opConfirmOpen: false }); },
+  onOpKeepSourceChange: function(e) { this.setData({ opKeepSource: !!e.detail.value }); },
+  onOpReasonInput: function(e) { this.setData({ opReason: e.detail.value || '' }); },
+
+  onOpSubmit: function() {
+    var self = this;
+    var sel = self.data.opSelectedCageIds || {};
+    var ids = [];
+    for (var k in sel) { if (sel[k]) ids.push(k); }
+    if (ids.length === 0) { wx.showToast({ title: '请先选择目标笼位', icon: 'none' }); return; }
+    self.setData({ opSubmitting: true });
+    var isDivide = self.data.opKind === 'divide';
+    var url = isDivide ? '/api/cage-op/divide' : '/api/cage-op/transfer';
+    var data = isDivide
+      ? { sourceAnimalCageId: self.data.opSourceCageId, targetAnimalCageIds: ids, keepSource: !!self.data.opKeepSource, reason: self.data.opReason }
+      : { fromAnimalCageId: self.data.opSourceCageId, toAnimalCageId: ids[0], reason: self.data.opReason };
+    springAuth.springRequest({ url: url, method: 'POST', data: data }).then(function(res) {
+      var p = unwrap(res);
+      self.setData({ opSubmitting: false });
+      if (!p.ok) { wx.showToast({ title: p.message || '操作失败', icon: 'none' }); return; }
+      var r = p.data || {};
+      wx.showToast({ title: r.needApproval ? '已提交，等待审核' : '操作已完成', icon: 'success' });
+      self.onOpCancel();
+      self.onRetry();
+    }).catch(function() {
+      self.setData({ opSubmitting: false });
+      wx.showToast({ title: '操作失败', icon: 'none' });
+    });
+  },
+
+  /** 本人一键认领（实验员为空且无认领记录时可用） */
+  onSelfClaim: function() {
+    var self = this;
+    var cell = self.data.selectedCell;
+    var cageId = cell ? String(cell.id || cell.animalCageId || '') : '';
+    if (!cageId) return;
+    self.setData({ detailClaiming: true });
+    springAuth.springRequest({ url: '/api/cage-op/claim', method: 'POST', data: { animalCageId: cageId } }).then(function(res) {
+      var p = unwrap(res);
+      self.setData({ detailClaiming: false });
+      if (!p.ok) { wx.showToast({ title: p.message || '认领失败', icon: 'none' }); return; }
+      wx.showToast({ title: '已认领', icon: 'success' });
+      self._closeDetail();
+      self.onRetry();
+    }).catch(function() {
+      self.setData({ detailClaiming: false });
+      wx.showToast({ title: '认领失败', icon: 'none' });
+    });
+  },
+
+  /** 教职工代认领：复用选人弹窗（按笼位课题组预览成员） */
+  onOpenClaimOnBehalf: function() {
+    var names = this.data.detailGroupNames || [];
+    this.setData({
+      personPickerPurpose: 'claimOnBehalf',
+      reservePersonOpen: true, reserveKeyword: '', reserveResults: [], reserveSearching: false,
+      reserveGroups: names
+    });
+    this.previewReserveCandidates(names);
+  },
+
+  handleClaimOnBehalfConfirm: function(p) {
+    var self = this;
+    var cell = self.data.selectedCell;
+    var cageId = cell ? String(cell.id || cell.animalCageId || '') : '';
+    if (!cageId || !p || !p.accountId) return;
+    self.setData({ detailClaiming: true });
+    springAuth.springRequest({ url: '/api/cage-op/claim-on-behalf', method: 'POST', data: { animalCageId: cageId, accountId: p.accountId } }).then(function(res) {
+      var r = unwrap(res);
+      self.setData({ detailClaiming: false });
+      if (!r.ok) { wx.showToast({ title: r.message || '代认领失败', icon: 'none' }); return; }
+      var nm = (r.data && r.data.claimantName) || p.name;
+      wx.showToast({ title: '已认领给 ' + nm, icon: 'success' });
+      self._closeDetail();
+      self.onRetry();
+    }).catch(function() {
+      self.setData({ detailClaiming: false });
+      wx.showToast({ title: '代认领失败', icon: 'none' });
     });
   },
 

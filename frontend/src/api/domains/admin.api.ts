@@ -177,6 +177,22 @@ export async function updatePersonnelField(id: number, field: string, value: str
   await authHttp.put(`/personnel/${id}/field`, { field, value });
 }
 
+/** 房间授权有效态：managed=1 表示本地覆盖层生效，roomIds 为有效房间 id 列表 */
+export interface PersonnelRoomAuthorization {
+  managed: number;
+  roomIds: string[];
+  rooms: Array<{ roomId: string; roomName?: string; regionName?: string; floorName?: string }>;
+}
+
+export async function fetchPersonnelRoomAuthorization(id: number | string): Promise<PersonnelRoomAuthorization> {
+  const res = await authHttp.get<Result<PersonnelRoomAuthorization>>(`/personnel/${id}/room-authorization`);
+  return res.data.data ?? { managed: 0, roomIds: [], rooms: [] };
+}
+
+export async function updatePersonnelRoomAuthorization(id: number | string, roomIds: string[]) {
+  await authHttp.put(`/personnel/${id}/room-authorization`, { roomIds });
+}
+
 /** 修改真实姓名（personnel.name），不会改登录账号 username */
 export async function updatePersonnelName(id: number, name: string) {
   await authHttp.put(`/personnel/${id}/name`, { name });
@@ -267,46 +283,4 @@ export async function resetPersonnelPassword(
     throw new Error(res.data?.message || "重置密码失败");
   }
   return res.data.data;
-}
-
-// ========== CAS 个人 Token 绑定 ==========
-
-export interface CasBindingStatus {
-  bound: boolean;
-  casAccount?: string;
-  expiresAt?: number;
-  remainingSeconds?: number;
-}
-
-export async function fetchCasBindingStatus(): Promise<CasBindingStatus> {
-  const res = await adminHttp.get<Result<CasBindingStatus>>(
-    "/account/binding/cas-status"
-  );
-  if (!res.data?.success)
-    throw new Error(res.data?.message || "获取状态失败");
-  return res.data.data;
-}
-
-export async function bindCasAccount(
-  aroTokenOrAccount: string,
-  password?: string
-): Promise<{ casAccount: string; bound: boolean }> {
-  const body: Record<string, string> = {};
-  if (password) {
-    body.aroAccount = aroTokenOrAccount;
-    body.aroPassword = password;
-  } else {
-    body.aroToken = aroTokenOrAccount;
-  }
-  const res = await adminHttp.post<Result<{ casAccount: string; bound: boolean }>>("/account/binding/cas-bind", body);
-  if (!res.data?.success) throw new Error(res.data?.message || "绑定失败");
-  return res.data.data;
-}
-
-export async function unbindCasAccount(): Promise<void> {
-  const res = await adminHttp.delete<Result<null>>(
-    "/account/binding/cas-unbind"
-  );
-  if (!res.data?.success)
-    throw new Error(res.data?.message || "解绑失败");
 }

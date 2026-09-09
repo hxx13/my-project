@@ -43,7 +43,17 @@ public interface TwinStudentViolationMapper {
             @Param("sources") List<String> sources,
             @Param("excludeCage") Boolean excludeCage,
             @Param("lockedOnly") Boolean lockedOnly,
-            @Param("limit") int limit
+            @Param("limit") int limit,
+            @Param("offset") int offset
+    );
+
+    /** 与 selectRecent 同过滤条件的分页总数（管理端分页用） */
+    int countRecent(
+            @Param("targetUserId") String targetUserId,
+            @Param("statuses") List<String> statuses,
+            @Param("sources") List<String> sources,
+            @Param("excludeCage") Boolean excludeCage,
+            @Param("lockedOnly") Boolean lockedOnly
     );
 
     /** 主页大屏公示：仅 ACTIVE 且未过期，每人最新一条；按创建时间倒序 */

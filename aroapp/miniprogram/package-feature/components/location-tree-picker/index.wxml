@@ -1,0 +1,52 @@
+<!-- 存放地点树选择器：触发器 + 底部弹出面板（分级 / 默认收起 / 可搜索） -->
+<view class="ltp">
+  <view
+    class="ltp-trigger {{disabled ? 'ltp-trigger-disabled' : ''}}"
+    hover-class="{{disabled ? '' : 'ltp-trigger-hover'}}"
+    bindtap="onToggleOpen"
+  >
+    <text class="ltp-value {{value ? '' : 'ltp-placeholder'}}">{{value || placeholder}}</text>
+    <text class="ltp-arrow">▾</text>
+  </view>
+
+  <view wx:if="{{open}}" class="ltp-mask" bindtap="close" catchtouchmove="noop">
+    <view class="ltp-panel" catchtap="noop">
+      <view class="ltp-head">
+        <text class="ltp-title">选择存放地点</text>
+        <text class="ltp-close" bindtap="close">关闭</text>
+      </view>
+
+      <view class="ltp-search">
+        <input
+          class="ltp-input"
+          value="{{keyword}}"
+          bindinput="onKeywordInput"
+          placeholder="搜索地点…"
+          confirm-type="search"
+        />
+        <text wx:if="{{keyword}}" class="ltp-clear" bindtap="onClearKeyword">✕</text>
+      </view>
+
+      <scroll-view scroll-y class="ltp-list">
+        <view
+          wx:for="{{rows}}"
+          wx:key="id"
+          class="ltp-row {{item.selected ? 'ltp-row-selected' : ''}}"
+          style="padding-left: {{item.depth * 24}}rpx"
+          data-id="{{item.id}}"
+          data-path="{{item.path}}"
+          bindtap="onPick"
+        >
+          <view
+            class="ltp-chevron"
+            catchtap="onToggleExpand"
+            data-id="{{item.id}}"
+          >{{item.hasChildren ? (item.open ? '▾' : '▸') : ''}}</view>
+          <text wx:if="{{item.icon}}" class="ltp-icon">{{item.icon}}</text>
+          <text class="ltp-name">{{item.name}}</text>
+        </view>
+        <view wx:if="{{!rows.length}}" class="ltp-empty">没有匹配的地点</view>
+      </scroll-view>
+    </view>
+  </view>
+</view>

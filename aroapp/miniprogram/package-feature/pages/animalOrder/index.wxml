@@ -2,6 +2,23 @@
 <view class="page">
   <subpage-nav-bar title="动物订购" />
 
+  <!-- 校区门禁：未选校区前不渲染业务内容 -->
+  <view wx:if="{{ !campus }}" class="campus-gate">
+    <view class="campus-gate-card">
+      <view class="campus-gate-title">请选择校区</view>
+      <view class="campus-gate-sub">可购时间、预计送达与订单归属均按校区区分</view>
+      <view class="campus-gate-actions">
+        <view class="campus-gate-btn" wx:for="{{ campusOptions }}" wx:key="*this" data-campus="{{ item }}" bindtap="onSelectCampus">{{ item }}校区</view>
+      </view>
+    </view>
+  </view>
+
+  <block wx:else>
+  <!-- 校区切换 -->
+  <view class="campus-bar">
+    <view wx:for="{{ campusOptions }}" wx:key="*this" class="campus-pill {{ campus === item ? 'campus-pill-on' : '' }}" data-campus="{{ item }}" bindtap="onSelectCampus">{{ item }}</view>
+  </view>
+
   <!-- AUP 选择条 -->
   <view class="aup-bar {{ selectedAupId ? '' : 'aup-bar-empty' }}" bindtap="openAupSheet">
     <text class="aup-tag">AUP</text>
@@ -76,6 +93,7 @@
       <view wx:if="{{ cartCount > 0 }}" class="cart-badge">{{ cartCount > 99 ? '99+' : cartCount }}</view>
     </view>
   </view>
+  </block>
 </view>
 
 <!-- 规格选购 -->
@@ -187,7 +205,7 @@
         <view class="order-card" wx:for="{{ orders }}" wx:key="id" wx:for-item="o">
           <view class="order-row">
             <text class="order-id">订单 #{{ o.id }}</text>
-            <text class="order-status">{{ o.status }}</text>
+            <text class="order-status">{{ o.campus ? o.campus + ' · ' : '' }}{{ o.status }}</text>
           </view>
           <text class="order-meta">{{ o.estimatedDeliveryDate ? '预计送达 ' + o.estimatedDeliveryDate : '' }}</text>
         </view>

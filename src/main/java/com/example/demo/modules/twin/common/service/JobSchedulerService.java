@@ -240,7 +240,7 @@ public class JobSchedulerService {
         ensureDefaults();
         LocalDateTime now = LocalDateTime.now().withSecond(0).withNano(0);
         for (TwinJobScheduleConfig cfg : mapper.selectAll()) {
-            if (skipSchedulerTick(cfg)) {
+            if (skipSchedulerTick(cfg) || skipBootstrapCatchup(cfg)) {
                 continue;
             }
             if (cfg.getEnabled() == null || cfg.getEnabled() != 1) {
@@ -250,6 +250,12 @@ public class JobSchedulerService {
                 runWithStatus(cfg.getJobKey(), "system-bootstrap", true);
             }
         }
+    }
+
+    /** 启动不补跑的任务：只按配置到点触发或手动触发，重启不拉取。 */
+    private static boolean skipBootstrapCatchup(TwinJobScheduleConfig cfg) {
+        // ARO 培训同步：按 DAILY 20:00 或手动「同步培训」执行；后续将废弃，仅保留手动同步
+        return JobExecutionRegistry.JOB_ARO_TRAINING_SYNC.equals(cfg.getJobKey());
     }
 
     private static boolean skipSchedulerTick(TwinJobScheduleConfig cfg) {

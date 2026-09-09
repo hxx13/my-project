@@ -5,8 +5,11 @@ import type { AnimalOrderTimePolicyAdmin } from "@/api/domains/animalOrderTime.a
 import TimeWindowRuleEditor from "./TimeWindowRuleEditor";
 import EtaPolicyEditor from "./EtaPolicyEditor";
 import HolidayImportPanel from "./HolidayImportPanel";
+import { ANIMAL_ORDER_CAMPUSES, type AnimalOrderCampus } from "./campus";
 
 interface OrderTimeManagerProps {
+  /** 打开时的校区，弹窗内可切换到另一校区分别维护 */
+  campus: AnimalOrderCampus;
   onClose: () => void;
 }
 
@@ -18,14 +21,16 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "holiday", label: "节假日" },
 ];
 
-export default function OrderTimeManager({ onClose }: OrderTimeManagerProps) {
-  const { data: admin, isLoading } = useAnimalOrderTimePolicyAdmin();
+export default function OrderTimeManager({ campus: initialCampus, onClose }: OrderTimeManagerProps) {
+  const [campus, setCampus] = useState<AnimalOrderCampus>(initialCampus);
+  const { data: admin, isLoading } = useAnimalOrderTimePolicyAdmin(campus);
   const [activeTab, setActiveTab] = useState<TabKey>("window");
   const [draft, setDraft] = useState<AnimalOrderTimePolicyAdmin | null>(null);
 
   useEffect(() => {
     if (admin) {
       setDraft({
+        campus: admin.campus,
         defaultMode: admin.defaultMode,
         etaMode: admin.etaMode,
         etaWorkdayOffset: admin.etaWorkdayOffset,
@@ -45,7 +50,7 @@ export default function OrderTimeManager({ onClose }: OrderTimeManagerProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex shrink-0 items-center justify-between">
-          <h3 className="text-base font-semibold text-[var(--twin-ink)]">动物订购时间管理</h3>
+          <h3 className="text-base font-semibold text-[var(--twin-ink)]">动物订购时间管理 · {campus}</h3>
           <button
             type="button"
             onClick={onClose}
@@ -55,21 +60,44 @@ export default function OrderTimeManager({ onClose }: OrderTimeManagerProps) {
           </button>
         </div>
 
-        <div className="mb-3 flex shrink-0 gap-1 border-b border-[var(--twin-hairline)] pb-2">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                activeTab === tab.key
-                  ? "bg-sky-600 text-white"
-                  : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="mb-3 flex shrink-0 items-center gap-2 border-b border-[var(--twin-hairline)] pb-2">
+          <div className="flex gap-1">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  activeTab === tab.key
+                    ? "bg-sky-600 text-white"
+                    : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="min-w-0 flex-1" />
+          {activeTab === "holiday" ? (
+            <span className="shrink-0 text-[11px] text-[var(--twin-mute)]">节假日为全国口径，两校区共用</span>
+          ) : (
+            <div className="flex shrink-0 items-center gap-1">
+              {ANIMAL_ORDER_CAMPUSES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCampus(c)}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                    campus === c
+                      ? "bg-emerald-600 text-white"
+                      : "border border-[var(--twin-hairline)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -80,7 +108,7 @@ export default function OrderTimeManager({ onClose }: OrderTimeManagerProps) {
           ) : activeTab === "eta" ? (
             <EtaPolicyEditor draft={draft} onChange={setDraft} />
           ) : (
-            <HolidayImportPanel />
+            <HolidayImportPanel campus={campus} />
           )}
         </div>
       </div>

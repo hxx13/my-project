@@ -271,7 +271,7 @@ export default function AdminInventoryPage() {
               empty={!itemsQuery.isLoading && !itemsQuery.isError && rows.length === 0}
               emptyMessage={trashMode ? "垃圾桶为空" : "暂无物品数据，请先新增物品。"}
             >
-              <table className="w-full min-w-[960px] border-collapse text-sm">
+              <table className="w-full min-w-[960px] border-collapse text-sm twin-table">
                 <thead>
                   <tr className="border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-left text-xs text-[var(--app-color-text-secondary)]">
                     <th className="px-3 py-2 font-medium">物品</th>

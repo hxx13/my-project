@@ -343,7 +343,7 @@ export default function AdminExpStatsPage() {
               暂无排行数据
             </div>
           ) : (
-            <table className="w-full min-w-max text-left text-xs whitespace-nowrap border-collapse">
+            <table className="w-full min-w-max text-left text-xs whitespace-nowrap border-collapse twin-table">
               <thead>
                 <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                   <th className="px-3 py-2 w-12">#</th>
@@ -509,7 +509,7 @@ export default function AdminExpStatsPage() {
               <div className="flex min-h-[160px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">暂无经验值流水</div>
             ) : (
               <div>
-          <table className="w-full min-w-max text-left text-xs whitespace-nowrap border-collapse">
+          <table className="w-full min-w-max text-left text-xs whitespace-nowrap border-collapse twin-table">
             <thead className="border-b-2 border-[var(--app-color-border-strong)]">
               <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                 <th className="px-1 py-1.5 w-8">

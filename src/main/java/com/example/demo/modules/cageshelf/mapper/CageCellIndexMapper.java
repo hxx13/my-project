@@ -46,6 +46,9 @@ public interface CageCellIndexMapper {
     /** 全局反查：根据 animalCageId 查所属架子+坐标 */
     Map<String, Object> lookupByAnimalCageId(@Param("animalCageId") Long animalCageId);
 
+    /** 批量反查：按 animalCageId 列表查所属架子+坐标+房间（替代逐条 lookup，避免 N+1） */
+    List<Map<String, Object>> lookupByAnimalCageIds(@Param("animalCageIds") List<Long> animalCageIds);
+
     /** 按 animalCageId 查单个笼位索引（含房间ID） */
     Map<String, Object> selectByAnimalCageId(@Param("animalCageId") Long animalCageId);
 }

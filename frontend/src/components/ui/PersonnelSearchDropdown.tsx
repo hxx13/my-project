@@ -176,7 +176,12 @@ export function PersonnelSearchDropdown() {
                             <div className="mt-14 flex flex-col items-center w-full">
                                 <div className="flex items-center gap-2">
                                     <h2 className="text-2xl font-black text-slate-800 tracking-tight">{safeSelected.name}</h2>
-                                    {safeSelected.gender && <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${safeSelected.gender === '男' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>{safeSelected.gender}</span>}
+                                    {(() => {
+                                        const g = String(safeSelected.gender ?? "").trim();
+                                        const label = g === "1" ? "男" : g === "2" ? "女" : g === "男" || g === "女" ? g : "";
+                                        if (!label) return null;
+                                        return <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${label === "男" ? "bg-blue-100 text-blue-600" : "bg-pink-100 text-pink-600"}`}>{label}</span>;
+                                    })()}
                                 </div>
                                 <p className="font-mono text-slate-400 text-xs mt-1 mb-4 tracking-widest bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
                                     ID: {safeSelected.userId}

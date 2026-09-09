@@ -252,8 +252,6 @@ Page({
     searchRows: [],
     transferDate: '',
     transferLocation: '',
-    transferLocationFiltered: [],
-    transferLocationPickerShow: false,
     transferUserName: '',
     transferUserEmployeeId: '',
     transferRemark: '',
@@ -267,9 +265,6 @@ Page({
     addNote: '',
     addPhotoUrls: [],
     addUploadingPhoto: false,
-    allLocations: [],
-    locationFiltered: [],
-    showLocationPicker: false,
     addExistingAsset: null,
     showFilters: false,            // 筛选条件默认收起
     // ── 批量记录 ──
@@ -316,13 +311,11 @@ Page({
       this._pendingSearchCode = null;
       this.setData({ page: 1, rows: [], searchKeyword: searchCode }, () => this.loadData(1));
       this.loadFacets();
-      this.loadAllLocations();
       return;
     }
 
     this.setData({ page: 1, rows: [] }, () => this.loadData(1));
     this.loadFacets();
-    this.loadAllLocations();
   },
 
   onPullDownRefresh() {
@@ -712,9 +705,6 @@ Page({
     this.setData({ detailAssetName: e.detail.value || '' });
   },
 
-  onDetailLocationInput(e) {
-    this.setData({ detailLocation: e.detail.value || '' });
-  },
 
   onDetailEditInput(e) {
     const key = e.currentTarget.dataset.key;
@@ -800,11 +790,8 @@ Page({
       addNote: '',
       addPhotoUrls: [],
       addUploadingPhoto: false,
-      locationFiltered: [],
-      showLocationPicker: false,
       addExistingAsset: null,
     });
-    this.loadAllLocations();
   },
 
   closeAddPanel() {
@@ -819,12 +806,6 @@ Page({
     });
   },
 
-  async loadAllLocations() {
-    try {
-      const locations = await assetApi.fetchDistinctLocations();
-      this.setData({ allLocations: locations || [] });
-    } catch (e) { /* ignore */ }
-  },
 
   async onScanAddAssetCode() {
     wx.scanCode({
@@ -858,34 +839,25 @@ Page({
     });
   },
 
+  /**
+   * 地点树选择器统一回调（详情编辑 / 新增面板 / 转移申请共用）。
+   * e.detail = { path, nodeId }；这里只取全路径文本写回对应字段，
+   * 后端在 patchAsset / createAsset / completeTransfer 时会据此回填地点节点。
+   */
+  onLocationPicked(e) {
+    const path = (e.detail && e.detail.path) || '';
+    const target = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.target) || '';
+    if (target === 'detail') this.setData({ detailLocation: path });
+    else if (target === 'add') this.setData({ addLocation: path });
+    else if (target === 'transfer') this.setData({ transferLocation: path });
+  },
+
   onAddAssetNameInput(e) {
     this.setData({ addAssetName: e.detail.value || '' });
   },
 
-  onAddLocationInput(e) {
-    const value = e.detail.value || '';
-    const filtered = (this.data.allLocations || [])
-      .filter((l) => l.toLowerCase().includes(value.toLowerCase()))
-      .slice(0, 8);
-    this.setData({
-      addLocation: value,
-      locationFiltered: filtered,
-      showLocationPicker: filtered.length > 0 && value.length > 0,
-    });
-  },
 
-  selectLocationSuggestion(e) {
-    const idx = Number(e.currentTarget.dataset.index || 0);
-    const value = this.data.locationFiltered[idx] || '';
-    this.setData({
-      addLocation: value,
-      showLocationPicker: false,
-    });
-  },
 
-  onAddLocationBlur() {
-    setTimeout(() => this.setData({ showLocationPicker: false }), 200);
-  },
 
   onAddNoteInput(e) {
     this.setData({ addNote: e.detail.value || '' });
@@ -1214,9 +1186,7 @@ Page({
       searchKeyword: '',
       transferDate: todayStr(),
       transferLocation: '',
-      transferLocationFiltered: [],
-      transferLocationPickerShow: false,
-      transferUserName: '',
+          transferUserName: '',
       transferUserEmployeeId: '',
       transferRemark: '',
       transferPhotosBefore: [],
@@ -1248,9 +1218,7 @@ Page({
       searchKeyword: '',
       transferDate: todayStr(),
       transferLocation: '',
-      transferLocationFiltered: [],
-      transferLocationPickerShow: false,
-      transferUserName: '',
+          transferUserName: '',
       transferUserEmployeeId: '',
       transferRemark: '',
       transferPhotosBefore: [],
@@ -1337,30 +1305,8 @@ Page({
     this.setData({ transferDate: (e.detail && e.detail.value) || '' });
   },
 
-  onTransferLocationInput(e) {
-    const value = e.detail.value || '';
-    const filtered = (this.data.allLocations || [])
-      .filter((l) => l.toLowerCase().includes(value.toLowerCase()))
-      .slice(0, 6);
-    this.setData({
-      transferLocation: value,
-      transferLocationFiltered: filtered,
-      transferLocationPickerShow: filtered.length > 0 && value.length > 0,
-    });
-  },
 
-  onTransferLocationBlur() {
-    setTimeout(() => this.setData({ transferLocationPickerShow: false }), 200);
-  },
 
-  selectTransferLocationSuggestion(e) {
-    const idx = Number(e.currentTarget.dataset.index || 0);
-    const value = this.data.transferLocationFiltered[idx] || '';
-    this.setData({
-      transferLocation: value,
-      transferLocationPickerShow: false,
-    });
-  },
 
   onTransferUserNameInput(e) {
     this.setData({ transferUserName: e.detail.value || '' });
@@ -1750,22 +1696,14 @@ Page({
       wx.showToast({ title: '请先勾选资产', icon: 'none' });
       return;
     }
-    // 构建 fixedFields 和 dynamicValues（_location 兜底 → 动态列，与显示一致）
-    const locCol = pickCurrentLocationColumn(this.data.columns);
-    const locKey = locCol ? locCol.columnKey : '';
+    // 存放地点走「按节点批量移动」（后端同步文本与节点指针），不再当普通字段做文本覆盖
+    const locField = selectedFields.find((f) => f.key === '_location');
     const fixedFields = {};
     const dynamicValues = {};
     for (let i = 0; i < selectedFields.length; i += 1) {
       const f = selectedFields[i];
-      if (f.key === '_location') {
-        if (locKey) {
-          dynamicValues[locKey] = f.sourceValue;
-        } else {
-          fixedFields.location = f.sourceValue;
-        }
-      } else {
-        dynamicValues[f.key] = f.sourceValue;
-      }
+      if (f.key === '_location') continue;
+      dynamicValues[f.key] = f.sourceValue;
     }
     wx.showModal({
       title: '确认批量填充',
@@ -1774,12 +1712,26 @@ Page({
         if (!modalRes.confirm) return;
         wx.showLoading({ title: '批量更新中…', mask: true });
         try {
-          await assetApi.batchUpdateAssets({
-            ids: checkedIds,
-            fixedFields: Object.keys(fixedFields).length ? fixedFields : undefined,
-            dynamicValues: Object.keys(dynamicValues).length ? dynamicValues : undefined,
-          });
-          wx.showToast({ title: `已更新${checkedIds.length}条`, icon: 'success' });
+          let movedFail = 0;
+          if (locField) {
+            const nodeId = (this.data.fillSourceAsset || {}).locationNodeId;
+            if (nodeId) {
+              const r = await assetApi.batchMoveAssetLocation(checkedIds, nodeId);
+              movedFail = (r.failed || []).length;
+            }
+          }
+          if (Object.keys(fixedFields).length || Object.keys(dynamicValues).length) {
+            await assetApi.batchUpdateAssets({
+              ids: checkedIds,
+              fixedFields: Object.keys(fixedFields).length ? fixedFields : undefined,
+              dynamicValues: Object.keys(dynamicValues).length ? dynamicValues : undefined,
+            });
+          }
+          if (movedFail > 0) {
+            wx.showToast({ title: `已更新${checkedIds.length}条，${movedFail}条地点未改`, icon: 'none' });
+          } else {
+            wx.showToast({ title: `已更新${checkedIds.length}条`, icon: 'success' });
+          }
           // 清除批量快照 + 关闭面板 + 回第一页刷新列表
           this.setData({
             batchAssets: [], batchAssetIdMap: {}, batchChecked: {}, batchCheckedCount: 0,
@@ -1818,6 +1770,7 @@ Page({
       key: editLocKey,
       label: '存放地点',
       editValue: '',
+      isLocation: true,
       previews: this.buildBatchFieldPreviews(editLocKey),
     });
     // 默认不勾选，用户自行选择（跳过空表头和存放地点类）
@@ -1836,11 +1789,31 @@ Page({
       batchEditFields,
       batchEditChecked,
       batchEditValues,
+      batchEditLocationKey: editLocKey,
+      batchEditLocationNodeId: null,
     });
   },
 
   closeBatchEditPanel() {
-    this.setData({ showBatchEditPanel: false, batchEditFields: [], batchEditChecked: {}, batchEditValues: {} });
+    this.setData({
+      showBatchEditPanel: false,
+      batchEditFields: [],
+      batchEditChecked: {},
+      batchEditValues: {},
+      batchEditLocationKey: '',
+      batchEditLocationNodeId: null,
+    });
+  },
+
+  /** 批量编辑里的「存放地点」用树选择器：回填路径文本 + 记录节点 id */
+  onBatchEditLocationPicked(e) {
+    const path = (e.detail && e.detail.path) || '';
+    const nodeId = (e.detail && e.detail.nodeId) || null;
+    const key = this.data.batchEditLocationKey;
+    if (!key) return;
+    const values = Object.assign({}, this.data.batchEditValues || {});
+    values[key] = path;
+    this.setData({ batchEditValues: values, batchEditLocationNodeId: nodeId });
   },
 
   onBatchEditFieldToggle(e) {
@@ -1878,19 +1851,21 @@ Page({
       wx.showToast({ title: '请先勾选资产', icon: 'none' });
       return;
     }
-    const locCol2 = pickCurrentLocationColumn(this.data.columns);
-    const locKey2 = locCol2 ? locCol2.columnKey : '';
+    // 存放地点走「按节点批量移动」（后端同步文本与节点指针），其余字段走批量更新
+    const locFieldKey = this.data.batchEditLocationKey || '';
+    const locNodeId = this.data.batchEditLocationNodeId || null;
+    let locSelected = false;
     const fixedFields = {};
     const dynamicValues = {};
     for (let i = 0; i < selectedKeys.length; i += 1) {
       const key = selectedKeys[i];
       const val = (batchEditValues[key] || '').trim();
+      if (locFieldKey && key === locFieldKey) {
+        locSelected = true;
+        continue;
+      }
       if (key === '_location') {
-        if (locKey2) {
-          dynamicValues[locKey2] = val;
-        } else {
-          fixedFields.location = val;
-        }
+        fixedFields.location = val;
       } else {
         dynamicValues[key] = val;
       }
@@ -1902,12 +1877,23 @@ Page({
         if (!modalRes.confirm) return;
         wx.showLoading({ title: '批量更新中…', mask: true });
         try {
-          await assetApi.batchUpdateAssets({
-            ids: checkedIds,
-            fixedFields: Object.keys(fixedFields).length ? fixedFields : undefined,
-            dynamicValues: Object.keys(dynamicValues).length ? dynamicValues : undefined,
-          });
-          wx.showToast({ title: `已更新${checkedIds.length}条`, icon: 'success' });
+          let movedFail = 0;
+          if (locSelected && locNodeId) {
+            const r = await assetApi.batchMoveAssetLocation(checkedIds, locNodeId);
+            movedFail = (r.failed || []).length;
+          }
+          if (Object.keys(fixedFields).length || Object.keys(dynamicValues).length) {
+            await assetApi.batchUpdateAssets({
+              ids: checkedIds,
+              fixedFields: Object.keys(fixedFields).length ? fixedFields : undefined,
+              dynamicValues: Object.keys(dynamicValues).length ? dynamicValues : undefined,
+            });
+          }
+          if (movedFail > 0) {
+            wx.showToast({ title: `已更新${checkedIds.length}条，${movedFail}条地点未改`, icon: 'none' });
+          } else {
+            wx.showToast({ title: `已更新${checkedIds.length}条`, icon: 'success' });
+          }
           this.setData({
             batchAssets: [], batchAssetIdMap: {}, batchChecked: {}, batchCheckedCount: 0,
             showBatchPanel: false, showBatchFillPanel: false, showBatchEditPanel: false,

@@ -72,7 +72,7 @@ export default function AgvAnalyticsPage() {
     <div className="flex flex-col bg-[var(--app-color-surface-page)] -my-6 sm:-my-8">
       {/* Header */}
       <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]">
-        <Link to="/admin/agv-tracker" className="p-1 text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-text-primary)]"><ArrowLeft size={16} /></Link>
+        <Link to="/console/admin/agv-tracker" className="p-1 text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-text-primary)]"><ArrowLeft size={16} /></Link>
         <h1 className="text-sm font-semibold text-[var(--app-color-text-primary)]">{robot.label} 数据分析</h1>
         <span className="text-[10px] text-[var(--app-color-text-tertiary)] flex items-center gap-1">
           <Clock size={10} />最近{preset.label}
@@ -172,7 +172,7 @@ export default function AgvAnalyticsPage() {
                   <MapPin size={13} className="text-[var(--app-color-accent)]" />站点停留排行
                 </h3>
                 <div className="rounded border border-[var(--app-color-border-default)] overflow-hidden">
-                  <table className="w-full text-[10px] border-collapse">
+                  <table className="w-full text-[10px] border-collapse twin-table">
                     <thead>
                       <tr className="bg-[var(--app-color-surface-container)] text-[var(--app-color-text-tertiary)]">
                         <th className="text-left px-3 py-1.5 font-normal">站点</th>

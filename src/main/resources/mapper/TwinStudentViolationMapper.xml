@@ -135,9 +135,7 @@
           AND status = 'ACTIVE'
     </update>
 
-    <select id="selectRecent" resultMap="TwinStudentViolationMap">
-        SELECT v.*
-        FROM twin_student_violation v
+    <sql id="recentFilter">
         <where>
             <if test="targetUserId != null and targetUserId != ''">
                 AND v.target_user_id = #{targetUserId}
@@ -183,29 +181,34 @@
                 )
             </if>
         </where>
+    </sql>
+
+    <select id="selectRecent" resultMap="TwinStudentViolationMap">
+        SELECT v.*
+        FROM twin_student_violation v
+        <include refid="recentFilter"/>
         ORDER BY v.id DESC
-        LIMIT #{limit}
+        LIMIT #{offset}, #{limit}
     </select>
 
-    <!-- 与扫码端 selectActiveByTargetUserId 一致：拼图未完成且超期仍视为生效公示 -->
+    <select id="countRecent" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_student_violation v
+        <include refid="recentFilter"/>
+    </select>
+
+    <!-- 大屏公示严格按到期时间过滤：拼图未完成者超期后扫码端仍弹窗（selectActiveByTargetUserId），
+         但已下榜，不再出现在主页「提醒公示」 -->
     <select id="selectActiveForDashboardBoard" resultMap="TwinStudentViolationMap">
         SELECT v.*
         FROM twin_student_violation v
         WHERE v.status = 'ACTIVE'
-          AND (
-            v.expire_at IS NULL
-            OR v.expire_at &gt; NOW()
-            OR (<include refid="pendingInteractivePastExpireClause"/>)
-          )
+          AND (v.expire_at IS NULL OR v.expire_at &gt; NOW())
           AND v.id IN (
               SELECT MAX(id)
               FROM twin_student_violation
               WHERE status = 'ACTIVE'
-                AND (
-                  expire_at IS NULL
-                  OR expire_at &gt; NOW()
-                  OR (<include refid="pendingInteractivePastExpireClause"/>)
-                )
+                AND (expire_at IS NULL OR expire_at &gt; NOW())
               GROUP BY target_user_id
           )
         ORDER BY v.created_at DESC, v.id DESC

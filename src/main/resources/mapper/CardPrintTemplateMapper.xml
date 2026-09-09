@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cardprint.mapper.CardPrintTemplateMapper">
+
+    <resultMap id="CardPrintTemplateMap" type="com.example.demo.modules.cardprint.entity.CardPrintTemplate">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="specJson" column="spec_json"/>
+        <result property="slotsJson" column="slots_json"/>
+        <result property="isDefault" column="is_default"/>
+        <result property="enabled" column="enabled"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, name, spec_json, slots_json, is_default, enabled, created_by, created_at, updated_by, updated_at
+    </sql>
+
+    <select id="selectAll" resultMap="CardPrintTemplateMap">
+        SELECT <include refid="BaseColumns"/> FROM card_print_template ORDER BY is_default DESC, id ASC
+    </select>
+
+    <select id="selectById" resultMap="CardPrintTemplateMap">
+        SELECT <include refid="BaseColumns"/> FROM card_print_template WHERE id = #{id}
+    </select>
+
+    <select id="selectByName" resultMap="CardPrintTemplateMap">
+        SELECT <include refid="BaseColumns"/> FROM card_print_template WHERE name = #{name}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO card_print_template (name, spec_json, slots_json, is_default, enabled, created_by, updated_by)
+        VALUES (#{name}, #{specJson}, #{slotsJson}, #{isDefault}, #{enabled}, #{createdBy}, #{updatedBy})
+    </insert>
+
+    <update id="update">
+        UPDATE card_print_template
+        SET name = #{name}, spec_json = #{specJson}, slots_json = #{slotsJson},
+            is_default = #{isDefault}, enabled = #{enabled}, updated_by = #{updatedBy}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM card_print_template WHERE id = #{id}
+    </delete>
+
+    <update id="clearDefault">
+        UPDATE card_print_template SET is_default = 0
+    </update>
+
+    <update id="markDefault">
+        UPDATE card_print_template SET is_default = 1 WHERE id = #{id}
+    </update>
+</mapper>

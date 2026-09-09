@@ -8,9 +8,21 @@ import {
   type CageTemplateDetail,
   type CageTemplateField,
 } from "../api/cageForm.api";
+import { fetchCageOpEditable, fetchCageOpFieldOptions } from "@/api/domains/cageShelf.api";
 import { CAGE_FORM_KEY } from "../cageFormConstants";
 
 type CodelistOptions = Record<string, { value: string; label: string }[]>;
+
+/** 字段是否声明了动态选项源（config.optionsSource），如动物品系取该笼位 AUP 白名单 */
+function optionsSourceOf(field: CageTemplateField): string | null {
+  if (!field.config) return null;
+  try {
+    const c = JSON.parse(field.config) as { optionsSource?: unknown };
+    return typeof c?.optionsSource === "string" ? c.optionsSource : null;
+  } catch {
+    return null;
+  }
+}
 
 /** 从模板结构平铺出所有字段（去重，保留 section/subsection 归属） */
 function flattenFields(template: CageTemplateDetail): Array<{ section: string; subsection?: string; field: CageTemplateField }> {
@@ -38,21 +50,47 @@ function errText(e: unknown): string {
  */
 export default function CageFormFill({
   animalCageId,
-  claimed,
+  claimed = false,
   editable = false,
 }: {
   animalCageId: number | string | null;
+  /** 是否已有认领记录（认领流程的领地；与「一键认领」入口互斥） */
   claimed?: boolean;
   editable?: boolean;
 }) {
   const [template, setTemplate] = useState<CageTemplateDetail | null>(null);
   const [codelists, setCodelists] = useState<CodelistOptions>({});
+  /** 动态选项（canonical → 选项），按笼位现算，如动物品系 */
+  const [dynOptions, setDynOptions] = useState<CodelistOptions>({});
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  /** 服务端判定：该笼位当前用户能否编辑（与分笼/转移同源：管理员+/额外身份/认领人/实验员本人） */
+  const [serverEditable, setServerEditable] = useState(false);
   const initialValues = useRef<Record<string, unknown>>({});
+
+  useEffect(() => {
+    if (animalCageId == null) {
+      setServerEditable(false);
+      return;
+    }
+    let cancelled = false;
+    fetchCageOpEditable(animalCageId)
+      .then((r) => {
+        if (!cancelled) setServerEditable(r.editable);
+      })
+      .catch(() => {
+        if (!cancelled) setServerEditable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [animalCageId]);
+
+  /** 可编辑 = 调用方给的模式权限 或 服务端按笼位判定（学生认领后即可编辑自己的笼位） */
+  const canEdit = editable || serverEditable;
 
   // 载入发布模板 + 当前笼位的表单值（两个请求一起收敛，避免 loading 早于模板落地）
   useEffect(() => {
@@ -115,6 +153,37 @@ export default function CageFormFill({
     };
   }, [template]);
 
+  // 载入动态选项源字段的选项（按笼位现算）
+  useEffect(() => {
+    if (!template || animalCageId == null) {
+      setDynOptions({});
+      return;
+    }
+    const targets = flattenFields(template)
+      .map(({ field }) => field)
+      .filter((f) => optionsSourceOf(f) != null);
+    if (targets.length === 0) {
+      setDynOptions({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const m: CodelistOptions = {};
+      for (const f of targets) {
+        try {
+          const r = await fetchCageOpFieldOptions(animalCageId, f.canonical);
+          m[f.canonical] = r.options ?? [];
+        } catch {
+          m[f.canonical] = [];
+        }
+      }
+      if (!cancelled) setDynOptions(m);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [template, animalCageId]);
+
   const setValue = (canonical: string, value: unknown) => setValues((v) => ({ ...v, [canonical]: value }));
 
   const handleSave = async () => {
@@ -158,10 +227,21 @@ export default function CageFormFill({
   if (template.status !== "FROZEN") return <div className="py-3 text-center text-[11px] text-[var(--twin-mute)]">表单未发布（当前状态：{template.status}）</div>;
   if (fields.length === 0) return <div className="py-3 text-center text-[11px] text-[var(--twin-mute)]">表单无字段</div>;
 
-  const isChoice = (field: CageTemplateField) => field.dictKey || field.fieldType === "select" || field.fieldType === "choice" || field.fieldType === "cascade";
+  const isChoice = (field: CageTemplateField) => field.dictKey || optionsSourceOf(field) != null || field.fieldType === "select" || field.fieldType === "choice" || field.fieldType === "cascade";
 
-  /** 自动获取只读字段：role 非 VALUE（DERIVED/PK/FK，发布时由表单配置决定），编辑态也不开放填写。 */
+  /** 字段选项：动态源优先（按笼位现算），否则取静态码表 */
+  const optionsFor = (field: CageTemplateField) =>
+    optionsSourceOf(field) != null ? (dynOptions[field.canonical] ?? []) : (codelists[field.dictKey ?? ""] ?? []);
+
+  /** 自动获取字段（role 非 VALUE）：只决定角标，不再决定能否编辑。 */
   const isAuto = (field: CageTemplateField) => field.role != null && field.role !== "VALUE";
+
+  /**
+   * 能否人工修改 — 只看 editable（与 role 解耦，由字段管理页配置）。
+   * 字段未下发 editable 时回退旧口径（role=VALUE 可改），避免旧接口把整表锁死。
+   */
+  const canEditField = (field: CageTemplateField) =>
+    field.editable ?? (field.role == null || field.role === "VALUE");
 
   /** 占位标签：取值引擎未接入，只提示角色语义（不调用任何取号器）。 */
   const roleTagLabel = (field: CageTemplateField): string => {
@@ -176,7 +256,7 @@ export default function CageFormFill({
     const ft = field.fieldType || (field.dictKey ? "select" : "text");
     if (ft === "checkbox") return val === true ? "是" : "否";
     if (isChoice(field)) {
-      const opt = (codelists[field.dictKey ?? ""] ?? []).find((o) => o.value === String(val));
+      const opt = optionsFor(field).find((o) => o.value === String(val));
       return opt ? opt.label : String(val);
     }
     return String(val);
@@ -197,7 +277,7 @@ export default function CageFormFill({
           <span className="text-[9px] text-[var(--twin-warning)]">编辑中 · 保存仅提交有改动的字段</span>
         ) : (
           <span className="text-[9px] text-[var(--twin-mute)]">
-            {editable ? "只读 · 点「编辑」可修改" : "只读"}
+            {canEdit ? "只读 · 点「编辑」可修改" : "只读"}
           </span>
         )}
       </div>
@@ -210,7 +290,7 @@ export default function CageFormFill({
           return (
             <div key={field.fieldId} className={`rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-1.5 ${isWide ? "col-span-2" : ""}`}>
               <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-[var(--twin-mute)]">
+                <span className="text-[10px] tracking-[0.06em] text-[var(--twin-mute)]">
                   {field.label || field.canonical}
                   {field.required === "YES" && <span className="text-red-500"> *</span>}
                   {isAuto(field) && (
@@ -223,8 +303,8 @@ export default function CageFormFill({
                   )}
                   {subsection ? <span className="ml-1 text-[9px] text-[var(--twin-mute)]/60">{subsection}</span> : null}
                 </span>
-                {!editing || isAuto(field) ? (
-                  <span className="text-[12px] text-[var(--twin-ink)] font-variant-numeric tabular-nums">{readOnlyValue(field)}</span>
+                {!editing || !canEditField(field) ? (
+                  <span className="text-[12px] font-semibold text-[var(--twin-ink)] font-variant-numeric tabular-nums">{readOnlyValue(field)}</span>
                 ) : isChoice(field) ? (
                   <select
                     value={typeof val === "string" ? val : ""}
@@ -232,7 +312,7 @@ export default function CageFormFill({
                     className="w-full rounded-twin-md border border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas)] px-2 py-1 text-[11px] text-[var(--twin-ink)]"
                   >
                     <option value="">—</option>
-                    {(codelists[field.dictKey ?? ""] ?? []).map((o) => (
+                    {(optionsFor(field)).map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.label}
                       </option>
@@ -280,7 +360,7 @@ export default function CageFormFill({
         })}
       </div>
 
-      {editable && (
+      {canEdit && (
         <div className="flex items-center gap-2">
           {editing ? (
             <>

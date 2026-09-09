@@ -16,6 +16,7 @@ public class CageInfoField {
     private String domainCode;     // 域编码 Dn
     private String submoduleCode;  // 子模块编码 Dn.mm
     private String role;           // 字段角色，默认 VALUE
+    private Boolean editable;      // 是否允许人工修改（与 role 解耦：DERIVED 也可配置为可改）
     private String required;       // YES / NO，默认 NO
     private String showWhen;       // 条件显示规则 JSON
     private String syncSource;     // ARO 字段路径
@@ -57,6 +58,9 @@ public class CageInfoField {
 
     public String getRole() { return role; }
     public void setRole(String v) { this.role = v; }
+
+    public Boolean getEditable() { return editable; }
+    public void setEditable(Boolean v) { this.editable = v; }
 
     public String getRequired() { return required; }
     public void setRequired(String v) { this.required = v; }

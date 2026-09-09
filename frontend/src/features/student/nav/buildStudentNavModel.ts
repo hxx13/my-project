@@ -10,6 +10,8 @@ import {
   ShoppingCart,
   FileText,
   Bell,
+  ClipboardList,
+  GraduationCap,
   MessageSquare,
   Settings,
 } from "lucide-react";
@@ -50,6 +52,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ShoppingCart,
   FileText,
   Bell,
+  ClipboardList,
+  GraduationCap,
   MessageSquare,
   Settings,
 };
@@ -128,6 +132,31 @@ export async function buildStudentNavModel(ctx: StudentNavContext): Promise<{
 
   if (nodes.length > 0) {
     sidebarGroups = convertStudentConfigToModel(nodes, ctx);
+    // 注册表中 DB 缺失的条目：补回侧栏并异步同步到 DB（新加代码入口无需重启即可见）。
+    // 与管理端 buildAdminNavModel 的 syncQueue 逻辑对齐。
+    const knownPaths = new Set(sidebarGroups.flatMap((g) => g.items.map((it) => normalizeStudentPath(it.to))));
+    const syncQueue: { path: string; label: string; icon: string; groupTitle: string }[] = [];
+    for (const g of STUDENT_NAV_REGISTRY) {
+      const missing = g.items.filter(
+        (it) => !knownPaths.has(normalizeStudentPath(it.path)) && it.sidebarVisible(ctx),
+      );
+      if (missing.length === 0) continue;
+      let target = sidebarGroups.find((x) => x.title === g.title);
+      if (!target) {
+        target = { id: g.id, title: g.title, items: [] };
+        sidebarGroups.push(target);
+      }
+      for (const it of missing) {
+        target.items.push({ key: it.id, to: it.path, label: it.label, icon: it.icon });
+        knownPaths.add(normalizeStudentPath(it.path));
+        syncQueue.push({ path: it.path, label: it.label, icon: iconNameOf(it.icon), groupTitle: g.title });
+      }
+    }
+    if (syncQueue.length > 0) {
+      import("@/api/domains/adminNavConfig.api").then(({ ensureNavItems }) => {
+        ensureNavItems(syncQueue, "STUDENT").catch(() => {});
+      });
+    }
   } else {
     // 回退到硬编码注册表（同样受 sidebarVisible 权限门控）
     sidebarGroups = STUDENT_NAV_REGISTRY.map((g) => ({

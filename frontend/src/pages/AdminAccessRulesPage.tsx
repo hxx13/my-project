@@ -298,22 +298,23 @@ export default function AdminAccessRulesPage() {
                   <td className="border-b border-[var(--twin-hairline)] px-3 py-2 font-mono text-xs">{r.ruleCode || "—"}</td>
                   <td className="border-b border-[var(--twin-hairline)] px-3 py-2">{r.name || "—"}</td>
                   <td className="border-b border-[var(--twin-hairline)] px-3 py-2">
-                    {r.enabled === 1 ? (
-                      <span className="text-emerald-700">启用</span>
-                    ) : (
-                      <span className="text-[var(--twin-mute)]">停用</span>
-                    )}
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--app-color-text-secondary)]">
+                      <span className={`h-1.5 w-1.5 rounded-full ${r.enabled === 1 ? "bg-[var(--app-color-feedback-success)]" : "bg-[var(--app-color-text-tertiary)]"}`} />
+                      {r.enabled === 1 ? "启用" : "停用"}
+                    </span>
                   </td>
-                  <td className="border-b border-[var(--twin-hairline)] px-3 py-2 text-xs text-[var(--twin-mute)] whitespace-nowrap">
+                  <td className="border-b border-[var(--twin-hairline)] px-3 py-2 text-xs text-[var(--twin-mute)] whitespace-nowrap tabular-nums">
                     {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—"}
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <AdminButton type="button" tone="ghost" size="sm" className="mr-1 gap-1" onClick={() => void openEdit(r.id)}>
-                      <Pencil className="h-3.5 w-3.5" aria-hidden /> 编辑
-                    </AdminButton>
-                    <AdminButton type="button" tone="destructive" size="sm" className="gap-1" onClick={() => void handleDelete(r)}>
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden /> 删除
-                    </AdminButton>
+                    <div className="flex items-center justify-end gap-4">
+                      <button type="button" onClick={() => void openEdit(r.id)} className="inline-flex items-center gap-1 text-xs font-medium text-[var(--app-color-accent)] hover:underline">
+                        <Pencil className="h-3.5 w-3.5" aria-hidden /> 编辑
+                      </button>
+                      <button type="button" onClick={() => void handleDelete(r)} className="inline-flex items-center gap-1 text-xs font-medium text-[var(--app-color-feedback-danger)] hover:underline">
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden /> 删除
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

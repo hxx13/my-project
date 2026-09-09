@@ -2,8 +2,6 @@ package com.example.demo.modules.cageshelf.service;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.exception.TwinBusinessException;
-import com.example.demo.modules.aro.dto.AroPersonnel;
-import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aup.entity.AupRecord;
 import com.example.demo.modules.aup.mapper.AupRecordMapper;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
@@ -52,13 +50,13 @@ public class CageClaimService {
     private final CageQuotaService quotaService;
     private final CageInfoValueService infoValueService;
     private final CageFormAuditService auditService;
-    private final AroPersonnelMapper aroPersonnelMapper;
     private final AupRecordMapper aupRecordMapper;
     private final CageTransferLogMapper transferLogMapper;
     private final PersonnelService personnelService;
     private final CageCellDetailService detailService;
     private final CageAuditAssignmentService auditAssignmentService;
     private final CageCellIndexMapper cellIndexMapper;
+    private final UserGroupNameResolver userGroupNameResolver;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -70,13 +68,13 @@ public class CageClaimService {
                             CageQuotaService quotaService,
                             CageInfoValueService infoValueService,
                             CageFormAuditService auditService,
-                            AroPersonnelMapper aroPersonnelMapper,
                             AupRecordMapper aupRecordMapper,
                             CageTransferLogMapper transferLogMapper,
                             PersonnelService personnelService,
                             CageCellDetailService detailService,
                             CageAuditAssignmentService auditAssignmentService,
-                            CageCellIndexMapper cellIndexMapper) {
+                            CageCellIndexMapper cellIndexMapper,
+                            UserGroupNameResolver userGroupNameResolver) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -87,13 +85,13 @@ public class CageClaimService {
         this.quotaService = quotaService;
         this.infoValueService = infoValueService;
         this.auditService = auditService;
-        this.aroPersonnelMapper = aroPersonnelMapper;
         this.aupRecordMapper = aupRecordMapper;
         this.transferLogMapper = transferLogMapper;
         this.personnelService = personnelService;
         this.detailService = detailService;
         this.auditAssignmentService = auditAssignmentService;
         this.cellIndexMapper = cellIndexMapper;
+        this.userGroupNameResolver = userGroupNameResolver;
     }
 
     private String displayNameOf(User user) {
@@ -216,14 +214,7 @@ public class CageClaimService {
     }
 
     private List<String> resolveUserGroupNames(String userId) {
-        try {
-            AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
-            if (personnel == null) return List.of();
-            return PersonnelProjectGroupUtil.splitGroups(personnel.getResolvedProjectGroupNames());
-        } catch (Exception e) {
-            log.warn("[cage-claim] 解析用户课题组失败 userId={}", userId, e);
-            return List.of();
-        }
+        return userGroupNameResolver.resolve(userId);
     }
 
     private void assertClaimableByUser(User student, CageCellDetail detail) {

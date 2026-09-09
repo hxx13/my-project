@@ -32,9 +32,6 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
             jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
                 "VALUES ('item-telemetry-insights', 'access-meta-env', 'ITEM', '遥测历史分析', '/admin/telemetry-insights', 'PieChart', 10)");
-            jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-telemetry-insights-config', 'access-meta-env', 'ITEM', '遥测对比组配置', '/admin/telemetry-insights-config', 'LineChart', 11)");
 
             jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) " +
@@ -65,6 +62,11 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         }
     }
 
+    private int navCount() {
+        Integer c = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM admin_nav_config", Integer.class);
+        return c == null ? 0 : c;
+    }
+
     /** 旧独立分页已合并至「门禁数据工作台」，从侧栏/工作台隐藏 */
     private void hideMergedDahuaSwingHubEntries() {
         String[] mergedPaths = {
@@ -87,7 +89,7 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
 
     /** 扫码延迟配置已并入大华发卡页，移除独立侧栏入口 */
     private void hideObsoleteNavEntries() {
-        String[] obsoletePaths = { "/admin/scan-delay-config" };
+        String[] obsoletePaths = { "/admin/scan-delay-config", "/admin/telemetry-insights-config" };
         for (String path : obsoletePaths) {
             int deleted = jdbcTemplate.update("DELETE FROM admin_nav_config WHERE item_path = ?", path);
             if (deleted > 0) {
@@ -143,7 +145,6 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                 "WHERE table_schema = DATABASE() AND table_name = 'admin_nav_config' " +
                 "AND index_name = 'idx_nav_path' AND column_name = 'scope'", Integer.class);
         if (composite != null && composite > 0) {
-            log.info("[admin-nav-config] UNIQUE(scope, item_path) already exists, skip rebuild");
             return;
         }
         try {
@@ -168,7 +169,6 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         Integer cnt = jdbcTemplate.queryForObject(
                 "SELECT COUNT(1) FROM admin_nav_config WHERE scope = 'ADMIN'", Integer.class);
         if (cnt != null && cnt > 0) {
-            log.info("[admin-nav-config] 已有 {} 条配置，跳过种子数据", cnt);
             return;
         }
         // 组织与通知
@@ -204,7 +204,6 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         seedItem("access-meta-env", 8, "item-telemetry-wl", "/admin/telemetry-watchlists", "WinCC 变量导入", "Table2", null);
         seedItem("access-meta-env", 9, "item-telemetry-arch", "/admin/telemetry-archive", "温湿度数据归档", "Archive", null);
         seedItem("access-meta-env", 10, "item-telemetry-insights", "/admin/telemetry-insights", "遥测历史分析", "PieChart", null);
-        seedItem("access-meta-env", 11, "item-telemetry-insights-config", "/admin/telemetry-insights-config", "遥测对比组配置", "LineChart", null);
         seedItem("access-meta-env", 12, "item-animal-tel", "/animal-room-telemetry", "动物房温湿度监测", "Thermometer", null);
         seedItem("access-meta-env", 13, "item-animal-cockpit", "/animal-room-cockpit", "动物房驾驶舱", "BarChart3", null);
         seedItem("access-meta-env", 14, "item-digital-twin-screen", "/digital-twin-screen", "数字孪生大屏", "Monitor", null);
@@ -253,6 +252,7 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
 
     /** 播种学生端侧边栏分支（scope='STUDENT'），使用固定 ID + INSERT IGNORE 保证幂等 */
     private void seedStudentBranch() {
+        int before = navCount();
         // 空间
         seedGroup("STUDENT", null, 0, "stu-space", "空间");
         seedItem("STUDENT", "stu-space", 0, "item-stu-cage-shelf", "/student/cage-shelf", "笼架信息", "LayoutGrid", null);
@@ -279,7 +279,10 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         seedGroup("STUDENT", null, 5, "stu-account", "账号");
         seedItem("STUDENT", "stu-account", 0, "item-stu-settings", "/student/settings", "设置", "Settings", null);
 
-        log.info("[admin-nav-config] STUDENT 种子数据已写入");
+        int added = navCount() - before;
+        if (added > 0) {
+            log.info("[admin-nav-config] STUDENT 种子数据已写入（新增 {} 条）", added);
+        }
     }
 
     private void seedGroup(String parentId, int sortOrder, String id, String title) {

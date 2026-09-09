@@ -196,7 +196,7 @@ export default function DebugTablePage() {
                 className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-card)]"
             >
                 <div className="flex-1 overflow-auto relative">
-                    <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse relative">
+                    <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse relative twin-table">
                         <thead className="bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold border-b-2 border-[var(--app-color-border-strong)] sticky top-0 z-20 shadow-sm">
                         <tr>
                             <th className="p-4">时间</th>

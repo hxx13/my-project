@@ -22,6 +22,9 @@ public class NotifySourceRegistry implements ApplicationRunner {
     private final NotifySourceChannelMapper channelMapper;
     private final NotifySourceRecipientMapper recipientMapper;
 
+    private int totalSources;
+    private int newSources;
+
     /** 前序部署可能遗留的脏数据 — 以 source_name 匹配并删除（级联清理渠道+接收人） */
     private static final Set<String> OBSOLETE_SOURCE_NAMES = Set.of(
             "设备告警通知", "学生审核通知");
@@ -36,8 +39,9 @@ public class NotifySourceRegistry implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        totalSources = 0;
+        newSources = 0;
         cleanObsoleteSources();
-        log.info("[Push] 注册通知源...");
 
         register("ACTIVATION_SUCCESS", "激活成功通知", "刷卡进入后刷激活门成功",
                 Map.of("doorLabel", "门禁名称", "channelCode", "通道编码", "swingTime", "刷卡时间", "targetUserId", "刷卡人员ID（自动索引）"));
@@ -140,7 +144,7 @@ public class NotifySourceRegistry implements ApplicationRunner {
                         "doorLabel", "门禁名称", "exitTime", "离开时间",
                         "department", "部门/课题组", "targetUserId", "离开人员ID（自动索引）"));
 
-        log.info("[Push] 通知源注册完成（29个源）");
+        log.info("[Push] 通知源注册完成：共 {} 个，新增 {}，其余已存在", totalSources, newSources);
     }
 
     /** 清理前序部署遗留的脏数据：以名称匹配，级联删除渠道+接收人+源本身 */
@@ -183,8 +187,8 @@ public class NotifySourceRegistry implements ApplicationRunner {
         source.setDescription(desc);
         source.setVariables(toJson(variables));
         source.setEnabled(1);
-        int rows = sourceMapper.insertOrIgnore(source);
-        log.info("[Push] 注册通知源 {}: {}", rows > 0 ? "新增" : "已存在", code);
+        totalSources++;
+        if (sourceMapper.insertOrIgnore(source) > 0) newSources++;
     }
 
     private String toJson(Map<String, String> map) {

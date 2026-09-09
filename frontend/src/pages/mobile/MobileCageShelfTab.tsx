@@ -29,6 +29,9 @@ import AllocDialog from "@/features/cage-shelf/components/AllocDialog";
 import CageHistoryModal from "@/features/cage-shelf/components/CageHistoryModal";
 import CageBookingPanel from "@/features/cage-shelf/components/CageBookingPanel";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
+import CageOpSelectBanner from "@/features/cage-shelf/components/CageOpSelectBanner";
+import CageOperationDialog from "@/features/cage-shelf/components/CageOperationDialog";
+import { useCageOpSelect } from "@/features/cage-shelf/useCageOpSelect";
 import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
 import MobileCageCellDetailDialog from "./MobileCageCellDetailDialog";
 import MobileScanDialog from "./MobileScanDialog";
@@ -366,17 +369,17 @@ const GridCellButton = memo(function GridCellButton({
         </div>
       )}
       <div className="flex flex-col items-center justify-center gap-0.5 px-0.5 py-0.5 text-center w-full h-full">
-        <div className="w-full font-bold text-[10px] leading-tight">{displayPosition(cell.position)}</div>
+        <div className="w-full font-bold text-[12px] leading-tight">{displayPosition(cell.position)}</div>
         {isEmpty ? (
           <div className="text-[8px]">空位</div>
         ) : cell.visible !== false ? (
           <>
             {nonEmptyText(piName) && (
-              <div className="w-full truncate text-[8px] leading-tight font-semibold"
+              <div className="w-full truncate text-[9px] leading-tight font-semibold"
                 style={{ color: "var(--app-color-text-primary, #1e293b)" }}>{piName}</div>
             )}
             {nonEmptyText(cell.experimenterName) && (
-              <div className="w-full truncate text-[7px] leading-tight"
+              <div className="w-full truncate text-[8px] leading-tight"
                 style={{ color: "var(--app-color-text-primary, #1e293b)" }}>{cell.experimenterName}</div>
             )}
           </>
@@ -1116,6 +1119,7 @@ function CageShelfGridView({
   onAllocateOpen, onAllocateCancel, allocSubmitting, allocBatchKind,
   onReserveOpen, reserveSubmitting,
   onClaimSubmit, claimSubmitting,
+  opSelectActive,
 }: {
   shelf: MobileCageShelfSummary;
   detail: CageShelfDetail | null;
@@ -1150,6 +1154,8 @@ function CageShelfGridView({
   reserveSubmitting: boolean;
   onClaimSubmit: () => void;
   claimSubmitting: boolean;
+  /** 分笼/转移选位模式：复用池高亮 + 勾选态 */
+  opSelectActive?: boolean;
 }) {
   const cells = detail && detail.grid.length > 0 ? detail.grid : buildPlaceholderGridCells();
   const meta = detail?.shelfMeta;
@@ -1327,8 +1333,8 @@ function CageShelfGridView({
                       isCached={cachedKeys.has(ck)}
                       isLastScanned={ck === lastScannedKey}
                       cachedActions={cacheEntry?.currentActions}
-                      selected={(isAlloc || isClaim) && selectedCells.has(`${sid}:${cell.x}:${cell.y}`)}
-                      isPoolCell={isClaim && aid !== "" && claimPoolIds.has(aid)}
+                      selected={(isAlloc || isClaim || !!opSelectActive) && selectedCells.has(`${sid}:${cell.x}:${cell.y}`)}
+                      isPoolCell={(isClaim || !!opSelectActive) && aid !== "" && claimPoolIds.has(aid)}
                       isMyClaimCell={aid !== "" && myClaimCageIds.has(aid)}
                     />
                     {isLockHighlight && (
@@ -1667,6 +1673,24 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   }, [detail]);
 
   const currentSid = String(detail?.shelfMeta?.shelveId ?? selectedShelf?.shelveId ?? "");
+
+  /* ---- 分笼 / 转移：选位模式（复用主网格池高亮 + 勾选态）---- */
+  const opSel = useCageOpSelect();
+  const opActive = opSel.active;
+  const handleOpCellToggle = (cell: CageShelfCell) => {
+    const id = String((cell as any).id ?? (cell as any).animalCageId ?? "");
+    if (id) opSel.toggle(id);
+  };
+  /** 当前笼架上的已选目标（其他笼架的目标无法映射回本架网格，但确认弹窗里齐全） */
+  const opSelectedCells = useMemo(() => {
+    const s = new Set<string>();
+    const sid = String(detail?.shelfMeta?.shelveId ?? "");
+    for (const c of detail?.grid ?? []) {
+      const id = String((c as any).id ?? (c as any).animalCageId ?? "");
+      if (id && opSel.selected.has(id)) s.add(`${sid}:${c.x}:${c.y}`);
+    }
+    return s;
+  }, [detail, opSel.selected]);
 
   /**
    * 分配模式当前批次的动作类型（与 Web 管理端同一套规则）：
@@ -2324,13 +2348,14 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
 
         {screen === "grid" && selectedShelf && (
           <div className="absolute inset-0 z-10 flex flex-col">
+            {opActive && <div className="shrink-0 p-2"><CageOpSelectBanner sel={opSel} /></div>}
             <CageShelfGridView
               shelf={selectedShelf}
               detail={detail}
               loading={detailLoading}
               error={detailError}
               onRetry={() => setDetailReloadKey((k) => k + 1)}
-              onCellClick={handleCellClick}
+              onCellClick={opActive ? handleOpCellToggle : handleCellClick}
               isStaffView={isStaffView}
               mode={mode}
               onSetMode={switchMode}
@@ -2344,9 +2369,10 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               onActionSubmit={handleScanActionsSubmit}
               actionSubmitting={actionSubmitting}
               scanLockHighlight={scanLockHighlight}
-              selectedCells={selectedCells}
-              claimPoolIds={new Set(poolCells.keys())}
+              selectedCells={opActive ? opSelectedCells : selectedCells}
+              claimPoolIds={opActive ? opSel.eligibleIds : new Set(poolCells.keys())}
               myClaimCageIds={myClaimCageIds}
+              opSelectActive={opActive}
               onAllocateOpen={() => setAllocDialogOpen(true)}
               onAllocateCancel={handleCancelAlloc}
               allocBatchKind={allocBatchKind}
@@ -2365,8 +2391,19 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
             cell={selectedCell}
             onClose={() => setSelectedCell(null)}
             staffView={isStaffView}
+            onStartOp={(k, s) => { setSelectedCell(null); void opSel.start(k, s); }}
+            onChanged={() => setDetailReloadKey((k) => k + 1)}
           />
         )}
+
+        <CageOperationDialog
+          open={opSel.confirmOpen}
+          op={opSel.kind ?? "divide"}
+          source={opSel.source}
+          picked={opSel.picked}
+          onClose={opSel.closeConfirm}
+          onDone={() => { opSel.cancel(); setDetailReloadKey((k) => k + 1); }}
+        />
 
         {/* ── 编辑模式：轻量 action popup（3 个 chip + 上传按钮）── */}
         {editMode && editActionCell && (

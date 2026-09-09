@@ -1,16 +1,18 @@
 import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createPortal } from 'react-dom';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import FormGridEditor from '../components/FormGridEditor';
 import EditorToolbar from '../components/EditorToolbar';
+import FieldInspector from '../components/FieldInspector';
 import { fetchFormById, updateForm, publishForm } from '../api/reportForm.api';
 import type { LayoutJson, FieldType, FieldDefinition, CellStyle, ThemeJson, ReportFormDefinition, FillPolicyJson, PermissionJson, ScheduleJson } from '../types';
 import { useFormGridEditor } from '../hooks/useFormGridEditor';
 import { useFieldOptionSets } from '../hooks/useFieldOptionSets';
 import { calcColumnWidths, columnWidthsToRecord, mergeColumnWidths, buildBaseColumnWidths, applyColumnWidthCap, getWordLayoutMaxCol, mergeWordWebColumnWidths } from '../utils/gridColumnWidths';
 import { calcRowHeights, rowHeightsToRecord } from '../utils/gridRowHeights';
+import { row0LooksLikeHeader } from '../utils/reportGridHeader';
 import toast from 'react-hot-toast';
 import ThemePanel from '../components/ThemePanel';
 import PublishWizard from '../components/PublishWizard';
@@ -131,9 +133,12 @@ function DesignerInner({
   const [publishWizardIntent, setPublishWizardIntent] = useState<'initial' | 'reset'>('initial');
   const [showWordTemplate, setShowWordTemplate] = useState(false);
   const [showThemePanel, setShowThemePanel] = useState(false);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [autoFitKey, setAutoFitKey] = useState(0);
   const [gridRenderKey, setGridRenderKey] = useState(0);
   const [theme, setTheme] = useState<ThemeJson>(initialTheme);
+  const [stickyOverride, setStickyOverride] = useState<boolean | null>(null);
+  const [showGridLines, setShowGridLines] = useState(true);
   const initialColBaseRef = useRef<Record<number, number>>(
     columnWidthsToRecord(
       buildBaseColumnWidths(
@@ -189,20 +194,14 @@ function DesignerInner({
     ? editor.layout.fields[selectedCell.fieldKey]
     : (selectedCell?.kind === 'static' ? { type: 'STATIC' as FieldType, label: selectedCell.staticText || '' } : null);
 
-  const fieldStaticText = useMemo(() => {
-    if (selectedCells.length !== 1 || !selectedCell) return undefined;
-    if (selectedCell.kind === 'static') return selectedCell.staticText || '';
-    if (selectedCell.fieldKey) {
-      const f = editor.layout.fields[selectedCell.fieldKey];
-      if (f?.type === 'STATIC') return f.label || '';
-    }
-    return undefined;
-  }, [selectedCells, selectedCell, editor.layout.fields]);
-
   /** 多选时样式以第一个选中格为参考 */
   const referenceStyle = selectedCells[0]?.style;
 
   const fieldKeys = Object.keys(editor.layout.fields || {});
+
+  // 首行吸顶：默认按「第 0 行像不像列名」自动判断，用户可手动覆盖（纯视图偏好，不进 JSON）
+  const headerRow = row0LooksLikeHeader(editor.layout);
+  const stickyFirstRow = stickyOverride ?? headerRow;
 
   // 导入 Excel 报表若未带列宽/行高，首次进入设计页按内容测算（Word 网页尺寸在渲染层计算，不写 theme）
   useEffect(() => {
@@ -374,6 +373,27 @@ function DesignerInner({
     }
   }, [editor.selectedCellIds, selectedCell]);
 
+  /** 字段 Key 重命名：参考格已在输入时改好 fieldKey，这里把其余引用旧 Key 的格子与 fields 键名一并更新（一次 setLayout，避免逐格 pushUndo） */
+  const handleRenameFieldKey = useCallback((oldKey: string, newKey: string) => {
+    if (oldKey === newKey) return;
+    const layout = editorRef.current.layout;
+    if (layout.fields[newKey]) {
+      toast.error('字段 Key 已存在');
+      return;
+    }
+    const fields: Record<string, FieldDefinition> = {};
+    for (const [key, def] of Object.entries(layout.fields)) {
+      fields[key === oldKey ? newKey : key] = def;
+    }
+    const cells = layout.cells.map(c =>
+      c.fieldKey === oldKey ? { ...c, fieldKey: newKey } : c
+    );
+    // setLayout（replaceLayout）会清空选区，重命名后恢复，否则属性栏会掉回空态
+    const keep = [...editorRef.current.selectedCellIds];
+    editorRef.current.setLayout({ ...layout, cells, fields });
+    if (keep.length > 0) editorRef.current.selectRange(keep);
+  }, []);
+
   const handleFieldTypeChange = useCallback((type: FieldType) => {
     if (editor.selectedCellIds.size === 0) return;
     editorRef.current.batchUpdateFieldType(editor.selectedCellIds, type);
@@ -394,22 +414,6 @@ function DesignerInner({
   const handleOptionPresetUpdated = useCallback(() => {
     setGridRenderKey(k => k + 1);
   }, []);
-
-  const handleFieldStaticTextChange = useCallback((text: string) => {
-    if (editor.selectedCellIds.size === 0) return;
-    if (editor.selectedCellIds.size === 1 && selectedCell) {
-      if (selectedCell.kind === 'static') {
-        editorRef.current.updateCell(selectedCell.id, { staticText: text });
-        return;
-      }
-      if (selectedCell.fieldKey) {
-        editorRef.current.updateFieldDefinition(selectedCell.fieldKey, { label: text });
-      }
-    } else {
-      editorRef.current.batchUpdateFieldType(editor.selectedCellIds, 'STATIC');
-      applyFieldPatch({ label: text });
-    }
-  }, [editor.selectedCellIds, selectedCell, applyFieldPatch]);
 
   const handleStyleChange = useCallback((patch: Partial<CellStyle>) => {
     if (editor.selectedCellIds.size === 0) return;
@@ -506,22 +510,14 @@ function DesignerInner({
         onStyleChange={handleStyleChange}
         fieldType={fieldTypeInfo.type ?? field?.type}
         fieldTypeMixed={fieldTypeInfo.mixed}
-        fieldStaticText={fieldStaticText}
-        onFieldStaticTextChange={handleFieldStaticTextChange}
         fieldOptions={field && !field.optionSetId ? (field.options || []) : []}
         fieldOptionCount={field ? getFieldOptions(field).length : 0}
         fieldOptionSetId={field?.optionSetId}
-        fieldMaxLength={field?.maxLength}
-        fieldMin={field?.min}
-        fieldMax={field?.max}
         onFieldTypeChange={handleFieldTypeChange}
         onBindOptionPreset={handleBindOptionPreset}
         onUnbindOptionPreset={handleUnbindOptionPreset}
         onInlineFieldOptionsChange={handleFieldOptionsChange}
         onOptionPresetUpdated={handleOptionPresetUpdated}
-        onFieldMaxLengthChange={(v) => applyFieldPatch({ maxLength: v })}
-        onFieldMinChange={(v) => applyFieldPatch({ min: v })}
-        onFieldMaxChange={(v) => applyFieldPatch({ max: v })}
         onOpenTheme={() => setShowThemePanel(!showThemePanel)}
         onOpenWordTemplate={() => setShowWordTemplate(true)}
         onAutoFit={() => {
@@ -595,6 +591,11 @@ function DesignerInner({
         hasSelection={editor.selectedCellIds.size > 0}
         selectionKey={[...editor.selectedCellIds].sort().join(',')}
         formId={formId}
+        showGridLines={showGridLines}
+        stickyFirstRow={stickyFirstRow}
+        firstRowIsHeader={headerRow}
+        onToggleGridLines={() => setShowGridLines(v => !v)}
+        onToggleStickyFirstRow={() => setStickyOverride(!stickyFirstRow)}
       />
       {showThemePanel && (
         <div className="shrink-0 border-b border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-3 py-2">
@@ -612,36 +613,55 @@ function DesignerInner({
         </div>
       )}
 
-      {/* 主编辑区 — 全宽 */}
-      <div className="flex-1 min-h-0 overflow-auto p-3">
-        {hasCells ? (
-          <FormGridEditor
-            key={`${gridRenderKey}-${optionSetRevision}`}
-            autoFitVersion={autoFitKey}
-            columnWidths={theme.columnWidths}
-            rowHeights={theme.rowHeights}
-            formSource={source}
-            defaultAlign={theme.defaultAlign}
+      {/* 主编辑区 — 左右分栏：左画布 + 右属性栏 */}
+      <div className="flex-1 min-h-0 flex">
+        <div className="report-canvas">
+          <div className="report-sheet">
+          {hasCells ? (
+            <FormGridEditor
+              key={`${gridRenderKey}-${optionSetRevision}`}
+              autoFitVersion={autoFitKey}
+              columnWidths={theme.columnWidths}
+              rowHeights={theme.rowHeights}
+              formSource={source}
+              defaultAlign={theme.defaultAlign}
+              layout={editor.layout}
+              selectedCellIds={editor.selectedCellIds}
+              editingCellId={editingCellId}
+              editingText={editingText}
+              ruled={showGridLines}
+              stickyFirstRow={stickyFirstRow}
+              onCellMouseDown={handleCellMouseDown}
+              onCellMouseEnter={handleCellMouseEnter}
+              onMouseUp={handleMouseUp}
+              onCellDoubleClick={handleDoubleClick}
+              onEditingTextChange={setEditingText}
+              onEditingCommit={commitEdit}
+              onPreviewCellFocus={handlePreviewCellFocus}
+            />
+          ) : (
+            <div className="text-center py-16">
+              <p className="text-sm text-[var(--app-color-text-tertiary)] mb-3">当前表格为空</p>
+              <p className="text-xs text-[var(--app-color-text-tertiary)]">
+                请从列表页「从 Excel 创建」导入表格，或点击"导入"按钮
+              </p>
+            </div>
+          )}
+          </div>
+        </div>
+        <div className={`${inspectorCollapsed ? 'w-8' : 'w-[300px]'} shrink-0 min-h-0 mb-6 mr-6 rounded-2xl overflow-hidden bg-[var(--app-color-surface-container)] shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_-12px_rgba(0,0,0,.12)]`}>
+          <FieldInspector
             layout={editor.layout}
             selectedCellIds={editor.selectedCellIds}
-            editingCellId={editingCellId}
-            editingText={editingText}
-            onCellMouseDown={handleCellMouseDown}
-            onCellMouseEnter={handleCellMouseEnter}
-            onMouseUp={handleMouseUp}
-            onCellDoubleClick={handleDoubleClick}
-            onEditingTextChange={setEditingText}
-            onEditingCommit={commitEdit}
-            onPreviewCellFocus={handlePreviewCellFocus}
+            fieldType={fieldTypeInfo.type ?? field?.type}
+            fieldTypeMixed={fieldTypeInfo.mixed}
+            collapsed={inspectorCollapsed}
+            onToggleCollapsed={() => setInspectorCollapsed(c => !c)}
+            onPatchField={applyFieldPatch}
+            onUpdateCell={editor.updateCell}
+            onRenameFieldKey={handleRenameFieldKey}
           />
-        ) : (
-          <div className="text-center py-16">
-            <p className="text-sm text-[var(--app-color-text-tertiary)] mb-3">当前表格为空</p>
-            <p className="text-xs text-[var(--app-color-text-tertiary)]">
-              请从列表页「从 Excel 创建」导入表格，或点击"导入"按钮
-            </p>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* 发布向导 */}
@@ -670,36 +690,39 @@ function DesignerInner({
       />
 
       {/* 未保存离开确认弹窗 */}
-      {blocker.state === 'blocked' && createPortal(
-        <div className="fixed inset-0 flex items-center justify-center bg-black/50" style={{ zIndex: 800 }}>
-          <div className="w-full max-w-sm rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="w-5 h-5 text-[var(--app-color-feedback-danger)]" />
-              <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)]">未保存的修改</h3>
-            </div>
-            <p className="text-xs text-[var(--app-color-text-secondary)] mb-4">
-              你有未保存的修改，如果离开此页面，修改将会丢失。
-            </p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => blocker.reset?.()}
-                className="px-4 py-1.5 rounded-[6px] text-[12px] border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
-                继续编辑
-              </button>
-              <button onClick={async () => {
-                await saveMut.mutateAsync();
-                blocker.proceed?.();
-              }}
-                className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90">
-                保存并离开
-              </button>
-              <button onClick={() => blocker.proceed?.()}
-                className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-feedback-danger)] text-white hover:opacity-90">
-                不保存
-              </button>
-            </div>
+      <Dialog open={blocker.state === 'blocked'}>
+        <DialogContent
+          className="sm:max-w-sm border-0 rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] shadow-xl"
+          showClose={false}
+          closeOnOverlayClick={false}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogTitle className="flex items-center gap-2 mb-3 text-sm font-semibold text-[var(--app-color-text-primary)]">
+            <AlertTriangle className="w-5 h-5 text-[var(--app-color-feedback-danger)]" />
+            未保存的修改
+          </DialogTitle>
+          <p className="text-xs text-[var(--app-color-text-secondary)] mb-4">
+            你有未保存的修改，如果离开此页面，修改将会丢失。
+          </p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => blocker.reset?.()}
+              className="px-4 py-1.5 rounded-[6px] text-[12px] border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
+              继续编辑
+            </button>
+            <button onClick={async () => {
+              await saveMut.mutateAsync();
+              blocker.proceed?.();
+            }}
+              className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90">
+              保存并离开
+            </button>
+            <button onClick={() => blocker.proceed?.()}
+              className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-feedback-danger)] text-white hover:opacity-90">
+              不保存
+            </button>
           </div>
-        </div>
-      , document.body)}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -42,7 +42,7 @@ export type TelemetryChartGroupPanelProps = {
   to: string;
   displayProfile: DisplayProfileMode;
   fromRollup?: boolean;
-  onSeriesClick?: (variableName: string, displayLabel: string) => void;
+  onSeriesClick?: (variableName: string, displayLabel: string, metricKindCode: string) => void;
 };
 
 export function TelemetryChartGroupPanel({
@@ -125,7 +125,7 @@ export function TelemetryChartGroupPanel({
                           type="button"
                           className="mb-0.5 max-w-full truncate text-left text-[10px] text-[var(--app-color-accent-primary)] hover:underline"
                           title={vn}
-                          onClick={() => onSeriesClick?.(vn, label)}
+                          onClick={() => onSeriesClick?.(vn, label, metricRowForVariable(vn, group, catalog).key)}
                         >
                           {label}
                         </button>
@@ -159,7 +159,7 @@ export function TelemetryChartGroupPanel({
                   type="button"
                   className="mb-0.5 text-[10px] text-[var(--app-color-accent-primary)] hover:underline"
                   title={vn}
-                  onClick={() => onSeriesClick?.(vn, label)}
+                  onClick={() => onSeriesClick?.(vn, label, metricRowForVariable(vn, group, catalog).key)}
                 >
                   {label}
                 </button>

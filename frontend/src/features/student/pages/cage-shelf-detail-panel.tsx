@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { authHttp } from "@/api/core/authHttp";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
+import CageOperationActions from "@/features/cage-shelf/components/CageOperationActions";
+import type { CageOpKind, CageOpSource } from "@/features/cage-shelf/useCageOpSelect";
 import { CAGE_BOX_ACTIONS, actionsFromFormValues } from "@/features/cage-shelf/constants";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
@@ -22,9 +24,13 @@ interface CellDetailPanelProps {
   } | null;
   shelveId: string;
   onClose: () => void;
+  /** 分笼/转移：由页面进入选位模式（主网格选目标），不传则不显示入口 */
+  onStartOp?: (kind: CageOpKind, source: CageOpSource) => void;
+  /** 认领成功后刷新 */
+  onChanged?: () => void;
 }
 
-export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetailPanelProps) {
+export function CellDetailPanel({ cell, gridMeta, shelveId, onClose, onStartOp, onChanged }: CellDetailPanelProps) {
   const detail = (cell as any)?.detail as Record<string, any> | undefined;
   const animalCageId = String((cell as any)?.id ?? detail?.animalCageId ?? (cell as any)?.animalCageId ?? "");
   const [notes, setNotes] = useState("");
@@ -142,9 +148,19 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
           )}
           <span className="text-sm font-semibold text-[var(--student-ink)]">{cell.position.replace(/^([A-H])-(\d+)$/, (_,l:any,n:any)=>`${l}-${11-parseInt(n)}`).replace(/^(\d+)-(\d+)$/, (_,x:any,y:any)=>`${String.fromCharCode(64+parseInt(x))}-${11-parseInt(y)}`)}</span>
         </div>
-        <button onClick={onClose} className="rounded-md p-1 hover:bg-[var(--student-canvas-soft)]">
-          <span className="text-lg text-[var(--student-mute)]">&times;</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onStartOp && (
+            <CageOperationActions
+              source={{ animalCageId, position: cell.position, occupantName: cell.occupantName, cageTypeCode: ct }}
+              occupied={ct === 3}
+              onStart={onStartOp}
+              onChanged={onChanged}
+            />
+          )}
+          <button onClick={onClose} className="rounded-md p-1 hover:bg-[var(--student-canvas-soft)]">
+            <span className="text-lg text-[var(--student-mute)]">&times;</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">

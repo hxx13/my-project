@@ -26,10 +26,11 @@ export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.
     queryFn: () => listCageStatusViolations(),
     refetchInterval: 30_000,
   });
-  const { data: studentRows = [] } = useQuery({
+  const { data: studentListData } = useQuery({
     queryKey: ["studentViolations"],
-    queryFn: () => listStudentViolations({ limit: 400 }),
+    queryFn: () => listStudentViolations({ limit: 500 }),
   });
+  const studentRows = studentListData?.list ?? [];
 
   const groups = useMemo(() => {
     const map = new Map<string, { groupName: string; parents: CageStatusViolationRow[] }>();

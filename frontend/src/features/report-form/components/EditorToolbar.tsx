@@ -1,8 +1,9 @@
-// components/EditorToolbar.tsx — 左栏可横向滚动，右栏紧凑 + 更多菜单
+// components/EditorToolbar.tsx — 四段分组工具栏：字段 / 样式 / 结构 / 操作
 import { useState, useEffect, useRef } from 'react';
 import {
   Undo2, Redo2, Save, Combine, Ungroup, Palette, FileText, Send,
   ListTree, Columns2, PaintBucket, RefreshCw, Settings2, MoreHorizontal,
+  LayoutGrid, Pin, Check,
 } from 'lucide-react';
 import type { FieldType, CellStyle } from '../types';
 import ColorPalette from './ColorPalette';
@@ -44,22 +45,14 @@ interface Props {
   onStyleChange: (p: Partial<CellStyle>) => void;
   fieldType?: FieldType;
   fieldTypeMixed?: boolean;
-  fieldStaticText?: string;
-  onFieldStaticTextChange?: (text: string) => void;
   fieldOptions?: { label: string; value: string }[];
   fieldOptionCount?: number;
   fieldOptionSetId?: string;
-  fieldMaxLength?: number;
-  fieldMin?: number;
-  fieldMax?: number;
   onFieldTypeChange: (t: FieldType) => void;
   onBindOptionPreset: (id: string) => void;
   onUnbindOptionPreset: () => void;
   onInlineFieldOptionsChange: (opts: { label: string; value: string }[]) => void;
   onOptionPresetUpdated?: () => void;
-  onFieldMaxLengthChange: (v: number | undefined) => void;
-  onFieldMinChange: (v: number | undefined) => void;
-  onFieldMaxChange: (v: number | undefined) => void;
   onOpenTheme: () => void;
   onOpenWordTemplate: () => void;
   onAutoFit: () => void;
@@ -74,6 +67,14 @@ interface Props {
   formId?: number;
   /** 选中格子 id 拼接，用于检测选区变化 */
   selectionKey?: string;
+  /** 网格线开关（纯视图偏好，不进 JSON） */
+  showGridLines: boolean;
+  /** 首行吸顶最终生效值（stickyOverride ?? headerRow） */
+  stickyFirstRow: boolean;
+  /** 首行是否像列名（false 时「首行吸顶」置灰） */
+  firstRowIsHeader: boolean;
+  onToggleGridLines: () => void;
+  onToggleStickyFirstRow: () => void;
 }
 
 function UndoRedoSplit({
@@ -86,15 +87,14 @@ function UndoRedoSplit({
 }) {
   return (
     <div
-      className="inline-flex shrink-0 rounded-[6px] border border-[var(--app-color-border)] overflow-hidden"
+      className="inline-flex shrink-0 items-center gap-0.5"
       title="撤销 / 重做"
     >
       <button
         type="button"
         onClick={onUndo}
         disabled={!canUndo}
-        className="px-2 py-1.5 text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]
-                   disabled:opacity-30 disabled:pointer-events-none border-r border-[var(--app-color-border)]"
+        className="inline-flex items-center justify-center h-[34px] w-[34px] rounded-[var(--app-radius-element)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] disabled:opacity-[0.35] disabled:pointer-events-none transition-colors"
         title="撤销"
         aria-label="撤销"
       >
@@ -104,8 +104,7 @@ function UndoRedoSplit({
         type="button"
         onClick={onRedo}
         disabled={!canRedo}
-        className="px-2 py-1.5 text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]
-                   disabled:opacity-30 disabled:pointer-events-none"
+        className="inline-flex items-center justify-center h-[34px] w-[34px] rounded-[var(--app-radius-element)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] disabled:opacity-[0.35] disabled:pointer-events-none transition-colors"
         title="重做"
         aria-label="重做"
       >
@@ -116,23 +115,28 @@ function UndoRedoSplit({
 }
 
 function ToolbarMenuItem({
-  icon: Icon, label, onClick, disabled,
+  icon: Icon, label, onClick, disabled, active, title,
 }: {
   icon: typeof Save;
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  /** 当前是否开启：开启时右侧显示勾选标记 */
+  active?: boolean;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
+      title={title ?? label}
       className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-[var(--app-color-text-secondary)]
                  hover:bg-[var(--app-color-surface-hover)] text-left disabled:opacity-40 disabled:pointer-events-none"
     >
       <Icon className="w-3.5 h-3.5 shrink-0" />
       {label}
+      {active && <Check className="w-3.5 h-3.5 shrink-0 ml-auto text-[var(--app-color-accent)]" />}
     </button>
   );
 }
@@ -147,16 +151,15 @@ export default function EditorToolbar(props: Props) {
     canUndo, canRedo, isSaving, isDirty, isPublished,
     onMergeCells, onUnmergeCells, canMerge, canUnmerge,
     selectedStyle, onStyleChange,
-    fieldType, fieldTypeMixed, fieldStaticText, onFieldStaticTextChange,
+    fieldType, fieldTypeMixed,
     fieldOptions, fieldOptionCount, fieldOptionSetId,
-    fieldMaxLength, fieldMin, fieldMax,
     onFieldTypeChange,
     onBindOptionPreset, onUnbindOptionPreset, onInlineFieldOptionsChange, onOptionPresetUpdated,
-    onFieldMaxLengthChange, onFieldMinChange, onFieldMaxChange,
     onOpenTheme, onOpenWordTemplate, onAutoFit,
     onRestoreWordImportWidths, isWordSource,
     formatBrushActive, onBrushPickup, onBrushApply,
     cellCount, selectedCount, hasSelection, formId, selectionKey,
+    showGridLines, stickyFirstRow, firstRowIsHeader, onToggleGridLines, onToggleStickyFirstRow,
   } = props;
 
   const isOptionFieldType = fieldType === 'SELECT' || fieldType === 'MULTI_SELECT';
@@ -183,24 +186,20 @@ export default function EditorToolbar(props: Props) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [moreOpen]);
 
-  const showOptions = fieldType === 'SELECT' || fieldType === 'MULTI_SELECT';
-  const showNumberRange = fieldType === 'NUMBER';
-  const showMaxLength = fieldType === 'TEXT';
-  const showStaticText = fieldType === 'STATIC';
-
-  const btnSm = 'px-2 py-1 rounded-[6px] text-[11px] font-medium transition-colors';
-  const btnOut = `${btnSm} border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 disabled:pointer-events-none inline-flex items-center gap-1`;
-  const btnIcon = `${btnSm} border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 disabled:pointer-events-none inline-flex items-center justify-center`;
-  const btnOn = `${btnSm} bg-[var(--app-color-accent)] text-white hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1`;
-  const inputDisabled = !hasSelection ? 'opacity-40 pointer-events-none' : '';
+  const btnBase = 'inline-flex items-center gap-1.5 h-[34px] px-2.5 text-[13px] font-medium transition-colors rounded-[var(--app-radius-element)] shrink-0';
+  const btnGhost = `${btnBase} text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] disabled:opacity-[0.35] disabled:pointer-events-none`;
+  const btnIcon = `${btnBase} justify-center px-0 w-[34px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] disabled:opacity-[0.35] disabled:pointer-events-none`;
+  const btnPrimary = `${btnBase} bg-[var(--app-color-accent)] text-[var(--app-color-text-inverse)] shadow-[0_1px_2px_var(--app-color-accent)] hover:opacity-90 disabled:opacity-[0.35] disabled:pointer-events-none`;
+  const btnAccentGhost = `${btnBase} text-[var(--app-color-accent)] hover:bg-[var(--app-color-accent-soft)] disabled:opacity-[0.35] disabled:pointer-events-none`;
+  const inputDisabled = !hasSelection ? 'opacity-[0.35] pointer-events-none' : '';
 
   return (
-    <div className="border-b border-[var(--app-color-border)] bg-[var(--app-color-surface-page)] shrink-0 z-[var(--z-sticky)]">
-      <div className="flex items-center gap-2 px-3 py-2 min-h-[44px]">
-        {/* 左栏：不换行，横向滚动 */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--app-color-border)]">
+    <div className="mx-6 mt-2 shrink-0 rounded-2xl bg-[var(--app-color-surface-container)] shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_-12px_rgba(0,0,0,.12)] z-[var(--z-sticky)]">
+      <div className="flex items-center gap-2 px-3 py-1.5 min-h-[48px]">
+        {/* 左栏：极窄视口下换行，1280px 单行 */}
+        <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
           <span
-            className={`text-[10px] font-medium shrink-0 px-1.5 py-0.5 rounded-[4px] min-w-[64px] text-center ${
+            className={`text-[10px] font-medium shrink-0 px-1.5 py-0.5 rounded-[var(--app-radius-element)] min-w-[64px] text-center ${
               selectedCount > 1
                 ? 'text-[var(--app-color-accent)] bg-[var(--app-color-accent-soft)]'
                 : 'invisible'
@@ -220,30 +219,19 @@ export default function EditorToolbar(props: Props) {
                 setShowOptionEditor(true);
               }
             }}
-            className={`rounded-[6px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]
-                       px-2 py-1 text-[11px] text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)] shrink-0 disabled:opacity-40`}
+            className={`rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-hover)]
+                       h-[34px] px-2 text-[13px] text-[var(--app-color-text-primary)] outline-none shrink-0 disabled:opacity-[0.35]`}
           >
             {!hasSelection && <option value="">未选中</option>}
             {fieldTypeMixed && <option value="">多种类型</option>}
             {FIELD_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
           </select>
 
-          <input
-            type="text"
-            value={hasSelection && showStaticText ? (fieldStaticText ?? '') : ''}
-            disabled={!hasSelection || !showStaticText}
-            onChange={e => onFieldStaticTextChange?.(e.target.value)}
-            placeholder="静态文本"
-            className={`w-[100px] max-w-[180px] rounded-[6px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]
-                       px-2 py-1 text-[11px] text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)] shrink-0
-                       disabled:opacity-40 ${!showStaticText ? 'w-0 min-w-0 max-w-0 px-0 border-transparent opacity-0 pointer-events-none overflow-hidden' : ''}`}
-          />
-
           <button
             type="button"
-            disabled={!hasSelection || !showOptions}
+            disabled={!hasSelection || !isOptionFieldType}
             onClick={() => setShowOptionEditor(true)}
-            className={`${btnOut} shrink-0 ${!showOptions ? 'hidden' : ''}`}
+            className={`${btnGhost} shrink-0`}
           >
             <ListTree className="w-3.5 h-3.5" />
             选项{(fieldOptionCount ?? (fieldOptions || []).length) > 0
@@ -251,41 +239,24 @@ export default function EditorToolbar(props: Props) {
               : ''}
           </button>
 
-          <span className={`flex items-center gap-1 shrink-0 ${!showNumberRange ? 'hidden' : ''}`}>
-            <input type="number" step="any" value={fieldMin ?? ''} disabled={!hasSelection}
-              onChange={e => { const v = e.target.value; onFieldMinChange(v === '' ? undefined : Number(v)); }}
-              placeholder="最小" className="w-[56px] rounded-[6px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-1.5 py-1 text-[11px] outline-none focus:border-[var(--app-color-accent)] disabled:opacity-40" />
-            <span className="text-[10px] text-[var(--app-color-text-tertiary)]">~</span>
-            <input type="number" step="any" value={fieldMax ?? ''} disabled={!hasSelection}
-              onChange={e => { const v = e.target.value; onFieldMaxChange(v === '' ? undefined : Number(v)); }}
-              placeholder="最大" className="w-[56px] rounded-[6px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-1.5 py-1 text-[11px] outline-none focus:border-[var(--app-color-accent)] disabled:opacity-40" />
-          </span>
-
-          <span className={`flex items-center gap-1 shrink-0 ${!showMaxLength ? 'hidden' : ''}`}>
-            <span className="text-[10px] text-[var(--app-color-text-tertiary)]">最长</span>
-            <input type="number" value={fieldMaxLength ?? ''} disabled={!hasSelection}
-              onChange={e => onFieldMaxLengthChange(e.target.value ? Number(e.target.value) : undefined)}
-              placeholder="不限" className="w-[52px] rounded-[6px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-1.5 py-1 text-[11px] outline-none focus:border-[var(--app-color-accent)] disabled:opacity-40" />
-          </span>
-
-          <span className="w-px h-5 bg-[var(--app-color-border)] shrink-0" />
+          <span className="w-px h-5 mx-1 shrink-0 bg-[color-mix(in_srgb,var(--app-color-text-primary)_8%,transparent)]" />
 
           <button type="button" disabled={!hasSelection}
             onClick={() => onStyleChange({ bold: !selectedStyle?.bold })}
-            className={`w-7 h-7 rounded-[4px] flex items-center justify-center text-[12px] font-bold transition-colors shrink-0 disabled:opacity-40 disabled:pointer-events-none ${selectedStyle?.bold ? 'bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]' : 'text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]'}`}
+            className={`w-[34px] h-[34px] rounded-[var(--app-radius-element)] flex items-center justify-center text-[13px] font-bold transition-colors shrink-0 disabled:opacity-[0.35] disabled:pointer-events-none ${selectedStyle?.bold ? 'bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]' : 'text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]'}`}
             title="加粗">B</button>
 
           <select value={selectedStyle?.fontSize || 13} disabled={!hasSelection}
             onChange={e => onStyleChange({ fontSize: Number(e.target.value) })}
-            className="rounded-[4px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-1 py-0.5 text-[11px] outline-none shrink-0 disabled:opacity-40" title="字号">
+            className="rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-hover)] h-[34px] px-1.5 text-[13px] outline-none shrink-0 disabled:opacity-[0.35]" title="字号">
             {FONT_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
 
-          <span className={`flex rounded-[4px] border border-[var(--app-color-border)] overflow-hidden shrink-0 ${inputDisabled}`}>
+          <span className={`inline-flex items-center rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-hover)] p-0.5 shrink-0 ${inputDisabled}`}>
             {(['left', 'center', 'right'] as const).map(a => (
               <button key={a} type="button" disabled={!hasSelection}
                 onClick={() => onStyleChange({ align: a })}
-                className={`px-1.5 py-0.5 text-[10px] transition-colors disabled:pointer-events-none ${(selectedStyle?.align || 'left') === a ? 'bg-[var(--app-color-accent)] text-white' : 'text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]'}`}
+                className={`h-[30px] px-2.5 text-[13px] font-medium rounded-[var(--app-radius-element)] transition-colors disabled:pointer-events-none ${(selectedStyle?.align || 'left') === a ? 'bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-sm' : 'text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-text-primary)]'}`}
                 title={a === 'left' ? '左对齐' : a === 'center' ? '居中' : '右对齐'}>
                 {a === 'left' ? '左' : a === 'center' ? '中' : '右'}
               </button>
@@ -301,17 +272,17 @@ export default function EditorToolbar(props: Props) {
 
           <button type="button" disabled={!hasSelection}
             onClick={() => formatBrushActive ? onBrushApply() : onBrushPickup()}
-            className={`w-7 h-7 rounded-[4px] flex items-center justify-center transition-colors shrink-0 disabled:opacity-40 disabled:pointer-events-none ${
+            className={`w-[34px] h-[34px] rounded-[var(--app-radius-element)] flex items-center justify-center transition-colors shrink-0 disabled:opacity-[0.35] disabled:pointer-events-none ${
               formatBrushActive
-                ? 'bg-[var(--app-color-accent)] text-white ring-2 ring-[var(--app-color-accent)] ring-offset-1'
-                : 'text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]'
+                ? 'bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]'
+                : 'text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]'
             }`}
             title={formatBrushActive ? '应用格式刷' : '吸取样式'}
           >
             <PaintBucket className="w-3.5 h-3.5" />
           </button>
 
-          <span className="w-px h-5 bg-[var(--app-color-border)] shrink-0" />
+          <span className="w-px h-5 mx-1 shrink-0 bg-[color-mix(in_srgb,var(--app-color-text-primary)_8%,transparent)]" />
 
           <button type="button" onClick={onMergeCells} disabled={!canMerge} className={btnIcon} title="合并单元格">
             <Combine className="w-3.5 h-3.5" />
@@ -329,19 +300,24 @@ export default function EditorToolbar(props: Props) {
           )}
         </div>
 
+        <span className="w-px h-5 mx-1 shrink-0 bg-[color-mix(in_srgb,var(--app-color-text-primary)_8%,transparent)]" />
+
         {/* 右栏：紧凑操作区 */}
-        <div className="flex items-center gap-1.5 shrink-0 pl-1 border-l border-[var(--app-color-border)]">
+        <div className="flex items-center gap-1.5 shrink-0">
           <UndoRedoSplit onUndo={onUndo} onRedo={onRedo} canUndo={canUndo} canRedo={canRedo} />
 
           <button
             type="button"
             onClick={onSave}
             disabled={isSaving}
-            className={`${btnOn} ${isDirty ? 'bg-[var(--app-color-feedback-danger)]' : ''}`}
+            className={btnPrimary}
             title={isSaving ? '保存中' : isDirty ? '有未保存修改' : '保存'}
           >
             <Save className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{isSaving ? '保存中' : isDirty ? '保存*' : '保存'}</span>
+            <span className="hidden sm:inline">{isSaving ? '保存中' : '保存'}</span>
+            {isDirty && !isSaving && (
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-white" aria-hidden="true" />
+            )}
           </button>
 
           {isPublished ? (
@@ -349,14 +325,14 @@ export default function EditorToolbar(props: Props) {
               type="button"
               onClick={onRepublish}
               disabled={!onRepublish}
-              className={btnOn}
+              className={btnAccentGhost}
               title="重新发布（沿用上次发布条件）"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">重发</span>
             </button>
           ) : (
-            <button type="button" onClick={onPublish} className={btnOn} title="发布报表">
+            <button type="button" onClick={onPublish} className={btnAccentGhost} title="发布报表">
               <Send className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">发布</span>
             </button>
@@ -374,11 +350,24 @@ export default function EditorToolbar(props: Props) {
             </button>
             {moreOpen && (
               <div
-                className="absolute right-0 top-full mt-1 w-[168px] rounded-[var(--app-radius-container)] border border-[var(--app-color-border)]
-                           bg-[var(--app-color-surface-elevated)] shadow-lg py-1 z-[var(--z-dropdown)]"
+                className="absolute right-0 top-full mt-2 w-[176px] rounded-xl bg-[var(--app-color-surface-elevated)] shadow-[0_4px_6px_-2px_rgba(0,0,0,.08),0_12px_28px_-8px_rgba(0,0,0,.18)] py-1.5 overflow-hidden z-[var(--z-dropdown)]"
               >
                 <ToolbarMenuItem icon={Palette} label="主题" onClick={() => { onOpenTheme(); setMoreOpen(false); }} />
                 <ToolbarMenuItem icon={FileText} label="Word 模板" onClick={() => { onOpenWordTemplate(); setMoreOpen(false); }} />
+                <ToolbarMenuItem
+                  icon={LayoutGrid}
+                  label="显示网格线"
+                  active={showGridLines}
+                  onClick={() => { onToggleGridLines(); setMoreOpen(false); }}
+                />
+                <ToolbarMenuItem
+                  icon={Pin}
+                  label="首行吸顶"
+                  active={stickyFirstRow}
+                  disabled={!firstRowIsHeader}
+                  title={firstRowIsHeader ? '首行吸顶' : '首行不是列名'}
+                  onClick={() => { onToggleStickyFirstRow(); setMoreOpen(false); }}
+                />
                 {isPublished && onResetPublishConditions && (
                   <ToolbarMenuItem
                     icon={Settings2}
@@ -386,7 +375,7 @@ export default function EditorToolbar(props: Props) {
                     onClick={() => { onResetPublishConditions(); setMoreOpen(false); }}
                   />
                 )}
-                <div className="my-1 border-t border-[var(--app-color-border)]" />
+                <div className="my-1.5 h-px bg-[color-mix(in_srgb,var(--app-color-text-primary)_8%,transparent)]" />
                 <div className="px-3 py-1 text-[10px] text-[var(--app-color-text-tertiary)]">
                   {cellCount} 格 · {selectedCount} 选
                   {isDirty && <span className="text-[var(--app-color-feedback-danger)] ml-0.5">*</span>}

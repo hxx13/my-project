@@ -105,6 +105,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
 import LocalDetailPanel from "@/features/cage-shelf/components/LocalDetailPanel";
+import CageOperationDialog from "@/features/cage-shelf/components/CageOperationDialog";
+import CageOpSelectBanner from "@/features/cage-shelf/components/CageOpSelectBanner";
+import { useCageOpSelect } from "@/features/cage-shelf/useCageOpSelect";
 import CageHistoryModal from "@/features/cage-shelf/components/CageHistoryModal";
 import CageScanSettingsPanel from "@/features/cage-shelf/components/CageScanSettingsPanel";
 import CageModeVisibilitySettings from "@/features/cage-shelf/components/CageModeVisibilitySettings";
@@ -153,6 +156,8 @@ function Inner(){
   // 教职工账号即使 role 偏低也应拿到教职工视角，故按账号来源判定而非角色等级。
   const canEdit = useMemo(() => !isStudentAccount(), []);
   const isSuperAdmin = useMemo(() => hasMinRole(authStorage.getRole(), "SUPER_ADMIN"), []);
+  // 设置中心入口：ADMIN 起可见（分笼/转移审核开关等业务配置由管理员维护，不再限超管）
+  const canOpenSettings = useMemo(() => hasMinRole(authStorage.getRole(), "ADMIN"), []);
   // 平台所有者：与系统内其它平台管理者级入口同口径（hasMinRole(role, "PLATFORM_OWNER")）
   const isPlatformOwner = useMemo(() => hasMinRole(authStorage.getRole(), "PLATFORM_OWNER"), []);
   // 可见模式（按身份），null = 尚未加载；加载失败回退到 canEdit 全量。
@@ -371,6 +376,45 @@ function Inner(){
     if (shelfDetail) add(shelfDetail);
     return m;
   }, [details, shelfDetail]);
+
+  /* ---- 分笼 / 转移：选位模式（复用主网格高亮 + 多选）---- */
+  const opSel = useCageOpSelect();
+  const opActive = opSel.active;
+  const cageIdOfCell = useCallback((c: any) => String((c as any)?.id ?? (c as any)?.animalCageId ?? (c as any)?.detail?.animalCageId ?? ""), []);
+  /** cageId → sid:x:y（把选中的目标映射回网格的 selectedCells） */
+  const keyByCageId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [k, c] of cellAtKey) {
+      const id = cageIdOfCell(c);
+      if (id) m.set(id, k);
+    }
+    return m;
+  }, [cellAtKey, cageIdOfCell]);
+  const opSelectedCells = useMemo(() => {
+    const s = new Set<string>();
+    for (const id of opSel.selected) {
+      const k = keyByCageId.get(id);
+      if (k) s.add(k);
+    }
+    return s;
+  }, [opSel.selected, keyByCageId]);
+  const handleOpToggle = useCallback((sid: string, x: number, y: number) => {
+    const id = cageIdOfCell(cellAtKey.get(`${sid}:${x}:${y}`));
+    if (id) opSel.toggle(id);
+  }, [cellAtKey, cageIdOfCell, opSel.toggle]);
+  /** 选位模式下覆盖网格的选择类 props（展开在最后，优先级最高） */
+  const opGridProps = opActive ? {
+    selectable: true,
+    selectedCells: opSelectedCells,
+    onToggleCell: handleOpToggle,
+    allocMode: true,
+    clickMode: "toggle" as const,
+    claimMode: true,
+    poolCells: opSel.eligibleMap as Map<string, any>,
+    restrictSelectToPool: true,
+    // 选位期间点非目标格不应弹详情，避免把源笼位详情顶掉
+    onCellClick: undefined,
+  } : {};
   const [configMode, setConfigMode] = useState<"auto"|"manual"|"off">("auto");
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const { data: batchList = [] } = useQuery({ queryKey: ["snapshotBatches"], queryFn: fetchSnapshotBatches, staleTime: 60_000 });
@@ -1386,10 +1430,11 @@ function Inner(){
             {isPlatformOwner&&<a href={toAdminRoutePath("/admin/cage-shelves/forms")} onClick={e=>{e.preventDefault();nav(toAdminRoutePath("/admin/cage-shelves/forms"));}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold no-underline bg-[var(--twin-primary)] text-white hover:opacity-90 transition">表单管理</a>}
             {isPlatformOwner&&<button type="button" onClick={handleReconcileOccupancy} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold border border-[var(--twin-hairline)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas)] transition">修正占用</button>}
             <button type="button" onClick={()=>setLegend(v=>!v)} className={`flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition ${legend?'bg-[var(--twin-link-deep)] text-white':'text-[var(--twin-mute)] hover:text-[var(--twin-ink)]'}`}><Info className="h-3 w-3"/>图例{legend?' ▲':' ▼'}</button>
-            {isSuperAdmin&&<button type="button" onClick={()=>setSettingsOpen(true)} className="flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title="设置中心"><Settings2 className="h-3 w-3"/>设置</button>}
+            {canOpenSettings&&<button type="button" onClick={()=>setSettingsOpen(true)} className="flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title="设置中心"><Settings2 className="h-3 w-3"/>设置</button>}
           </div>
         </div>
         {legend&&<CageShelfLegend/>}
+        {opActive&&<div className="shrink-0"><CageOpSelectBanner sel={opSel}/></div>}
         {/* ── 编辑模式：动作缓存面板 ── */}
         {editMode&&<div className="shrink-0 rounded-twin-lg border border-transparent bg-transparent p-2" style={scanCache.size===0?{padding:0,borderWidth:0}:{borderColor:"var(--twin-hairline)",backgroundColor:"var(--twin-canvas)"}}>
           <div className="flex flex-wrap gap-2">{Array.from(scanCache.entries()).map(([key,entry])=>{
@@ -1453,6 +1498,7 @@ function Inner(){
                     scanCache={scanCache} lastScannedKey={lastScannedKey}
                     editMode={editMode}
                     crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}
+                    {...opGridProps}
                                      />
                 )}
               </div>
@@ -1465,7 +1511,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,sid):confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode} selectedCells={pageMode==="allocate"||reserveMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:undefined} allocMode={pageMode==="allocate"||reserveMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,sid):confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode} selectedCells={pageMode==="allocate"||reserveMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:undefined} allocMode={pageMode==="allocate"||reserveMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} {...opGridProps}/></div>;
             })}</div>}
           </>}
 
@@ -1475,7 +1521,7 @@ function Inner(){
             <div className="w-1/2 flex flex-col min-w-0">
               {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
               {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
-              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode} selectedCells={pageMode==="allocate"||reserveMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:undefined} allocMode={pageMode==="allocate"||reserveMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget}/>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode} selectedCells={pageMode==="allocate"||reserveMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:undefined} allocMode={pageMode==="allocate"||reserveMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} {...opGridProps}/>}
             </div>
             {/* Right: cell detail / edit actions / bind confirm */}
             <div className="w-1/2 flex flex-col min-w-0 gap-2">
@@ -1507,7 +1553,7 @@ function Inner(){
                 return<div className="flex-1 overflow-y-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3">
                 <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>setCell(null)}>清除</button></div>
                 {dataSource==="local"
-                  ? <LocalDetailPanel cell={cell} onClose={()=>setCell(null)}/>
+                  ? <LocalDetailPanel cell={cell} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)}/>
                   : <div className="grid grid-cols-2 gap-2 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
                   return<div key={k} className={`rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 ${k==="CageBoxQrCode"?"col-span-2":""}`}><div className="text-[var(--twin-mute)]">{CAGE_BOX_INFO_LABEL[k]??k}</div><div className="mt-0.5 flex flex-wrap items-start gap-3"><div className="min-w-0 flex-1 break-all text-[var(--twin-ink)]">{display}</div>{k==="CageBoxQrCode"&&qr!==""&&<div className="shrink-0 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1"><QRCodeSVG value={qr} size={80} level="M" includeMargin={false}/></div>}</div></div>;
                 })}</div>
@@ -1529,7 +1575,7 @@ function Inner(){
     {cell&&viewMode!=="shelf"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
       <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-3" onClick={e=>e.stopPropagation()}>
         {dataSource==="local"
-          ? <LocalDetailPanel cell={cell} onClose={()=>{setCell(null);setShelfId(null);}}/>
+          ? <LocalDetailPanel cell={cell} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)}/>
           : <>
         <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>{setCell(null);setShelfId(null);}}>关闭</button></div>
         <div className="grid grid-cols-2 gap-2 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
@@ -1816,6 +1862,14 @@ function Inner(){
     </Dialog>
     {/* ---- 设置中心（齿轮）---- */}
     <CageHistoryModal animalCageId={recordTarget} onClose={()=>setRecordTarget(null)} />
+    <CageOperationDialog
+      open={opSel.confirmOpen}
+      op={opSel.kind ?? "divide"}
+      source={opSel.source}
+      picked={opSel.picked}
+      onClose={opSel.closeConfirm}
+      onDone={()=>{opSel.cancel();setDetailReloadKey(k=>k+1);}}
+    />
 
     <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
       <DialogContent className="z-[var(--z-modal)] sm:max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -1839,7 +1893,7 @@ function Inner(){
           </div>
         </details>
         <details className="mb-3 rounded-twin-lg border border-[var(--twin-hairline)]">
-          <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-[var(--twin-ink)]">笼位确认</summary>
+          <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-[var(--twin-ink)]">认领 / 确认 / 分笼转移</summary>
           <div className="px-3 pb-3"><CageScanSettingsPanel /></div>
         </details>
         <details className="mb-3 rounded-twin-lg border border-[var(--twin-hairline)]">
@@ -1847,7 +1901,7 @@ function Inner(){
           <div className="px-3 pb-3"><CageAuditAssignmentSettings /></div>
         </details>
         <details className="rounded-twin-lg border border-[var(--twin-hairline)]">
-          <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-[var(--twin-ink)]">模式可见性</summary>
+          <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-[var(--twin-ink)]">模式可见性 / 分笼转移操作身份</summary>
           <div className="px-3 pb-3"><CageModeVisibilitySettings /></div>
         </details>
       </DialogContent>

@@ -57,6 +57,7 @@ export function ShelfGrid({
   confirmMode,
   poolCells,
   myClaimCageIds,
+  restrictSelectToPool,
 }: {
   title: string;
   detail: CageShelfDetail | null;
@@ -87,6 +88,8 @@ export function ShelfGrid({
   poolCells?: Map<string, PoolCell>;
   /** 本人待确认到位的 animalCageId 集合；认领/确认模式下高亮 */
   myClaimCageIds?: Set<string>;
+  /** 只有池内格子可勾选（分笼/转移选位用） */
+  restrictSelectToPool?: boolean;
 }) {
   const sid = detail?.shelfMeta?.shelveId ?? "";
   const cells = detail?.grid ?? [];
@@ -137,6 +140,7 @@ export function ShelfGrid({
               confirmMode={confirmMode}
               isPoolCell={claimMode && poolCells ? poolCells.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
               isMyClaimCell={myClaimCageIds ? myClaimCageIds.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
+              restrictSelectToPool={restrictSelectToPool}
             />
           );
         })}

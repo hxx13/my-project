@@ -4,6 +4,7 @@
 
     <resultMap id="Base" type="com.example.demo.modules.animalorder.entity.AnimalOrderTimePolicy">
         <id property="id" column="id"/>
+        <result property="campus" column="campus"/>
         <result property="defaultMode" column="default_mode"/>
         <result property="etaMode" column="eta_mode"/>
         <result property="etaWorkdayOffset" column="eta_workday_offset"/>
@@ -13,8 +14,8 @@
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
-    <select id="findById" resultMap="Base">
-        SELECT * FROM animal_order_time_policy WHERE id = #{id} LIMIT 1
+    <select id="findByCampus" resultMap="Base">
+        SELECT * FROM animal_order_time_policy WHERE campus = #{campus} LIMIT 1
     </select>
 
     <update id="update">

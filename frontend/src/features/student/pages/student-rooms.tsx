@@ -296,17 +296,17 @@ export default function StudentRoomsPage() {
 
   return (
     <AdminPageShell>
-      <div className="min-h-full">
+      <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] flex-col">
         {view === "records" ? (
-          <StudentRecordsPage embedded />
+          <div className="flex-1 min-h-0 overflow-y-auto"><StudentRecordsPage embedded /></div>
         ) : (
         <>
         {/* Top bar */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex shrink-0 items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-[var(--student-ink)]">
+          <span className="text-sm text-[var(--student-mute)]">
             全部房间 · {totalRoomCount}
-          </h2>
+          </span>
           {isFetching && <RefreshCw className="size-4 text-[var(--student-mute)] animate-spin" />}
         </div>
         <div className="flex items-center gap-2">
@@ -318,6 +318,7 @@ export default function StudentRoomsPage() {
         </div>
       </div>
 
+      <div className="flex-1 min-h-0 overflow-y-auto">
       {/* ================================================================ */}
       {/* 1. 收藏的房间（isPinned）                                         */}
       {/* ================================================================ */}
@@ -392,6 +393,8 @@ export default function StudentRoomsPage() {
           ))}
         </div>
       )}
+
+      </div>
 
       {/* ---- Occupant Modal ---- */}
       {occupantRoom && createPortal((() => {

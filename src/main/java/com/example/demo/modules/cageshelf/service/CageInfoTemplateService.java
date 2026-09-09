@@ -334,6 +334,8 @@ public class CageInfoTemplateService {
                 ff.setFieldType(f.getFieldType());
                 ff.setDictKey(f.getDictKey());
                 ff.setRole(f.getRole());
+                ff.setEditable(f.getEditable());
+                ff.setConfig(f.getConfig());
                 ff.setRequired(f.getRequired());
                 ff.setSortOrder(f.getSort() == null ? 0 : f.getSort());
                 formFieldMapper.insert(ff);
@@ -383,6 +385,8 @@ public class CageInfoTemplateService {
         m.put("fieldType", f.getFieldType());
         m.put("dictKey", f.getDictKey());
         m.put("role", f.getRole());
+        m.put("editable", Boolean.TRUE.equals(f.getEditable()));
+        m.put("config", f.getConfig());
         m.put("required", f.getRequired());
         m.put("sortOrder", f.getSortOrder());
         return m;

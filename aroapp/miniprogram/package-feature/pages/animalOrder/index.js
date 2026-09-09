@@ -63,6 +63,10 @@ Page({
     selectedAupNo: '',
     isPi: false,
 
+    // 校区：首次进入强制选择，之后记住并可在顶栏切换
+    campus: '',
+    campusOptions: ['浦东', '浦西'],
+
     timePolicy: null,     // {canOrderNow, closedReason, nextOpenAt, estimatedDeliveryDate}
     orderingBlocked: false,
 
@@ -99,8 +103,23 @@ Page({
       this.setData({ pageGateOk: false, loading: false });
       return;
     }
-    this.setData({ pageGateOk: true });
-    this.loadAll();
+    let campus = '';
+    try { campus = String(wx.getStorageSync('animal_order_campus') || ''); } catch (e) { campus = ''; }
+    this.setData({ pageGateOk: true, campus: campus }, function () {
+      if (campus) this.loadAll();
+    });
+  },
+
+  /** 门禁弹窗与顶栏共用：首次选择后加载全部数据，之后仅刷新时间策略 */
+  onSelectCampus(e) {
+    const campus = String(e.currentTarget.dataset.campus || '');
+    if (!campus || campus === this.data.campus) return;
+    const first = !this.data.campus;
+    try { wx.setStorageSync('animal_order_campus', campus); } catch (err) { /* ignore */ }
+    this.setData({ campus: campus }, function () {
+      if (first) this.loadAll();
+      else this.loadTimePolicy();
+    });
   },
 
   onShow() {
@@ -275,7 +294,7 @@ Page({
     const stack = this.data.drillStack;
     const breedSeg = stack.find(function (s) { return s.typeKey === 'ANIMAL_BREED'; });
     const categoryKey = breedSeg ? String(breedSeg.id) : undefined;
-    api.fetchTimePolicy(categoryKey).then(function (policy) {
+    api.fetchTimePolicy(categoryKey, this.data.campus).then(function (policy) {
       self.setData({
         timePolicy: policy,
         orderingBlocked: !!(policy && !policy.canOrderNow),
@@ -544,6 +563,7 @@ Page({
       projectGroupName: projectGroupName,
       cartIds: cartIds,
       submitRemark: (this.data.submitRemark || '').trim() || undefined,
+      campus: this.data.campus || undefined,
     }).then(function () {
       self.setData({ submitting: false, submitConfirmOpen: false, cartSheetOpen: false, submitRemark: '' });
       wx.showToast({ title: '订单已提交', icon: 'success' });

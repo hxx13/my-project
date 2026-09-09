@@ -10,7 +10,6 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { useProfilePopup } from "./useProfilePopup";
 import { ProfileHeader } from "./components/ProfileHeader";
-import { StudentEntryCard } from "./StudentEntryCard";
 import { ActionButtons } from "./components/ActionButtons";
 import { DisciplinaryModal } from "./components/DisciplinaryModal";
 import { ScanAccessMotionOverlay } from "./ScanAccessMotionOverlay";
@@ -36,7 +35,6 @@ import { commitStudentCenterEntryFromScan } from "./studentCenterEntry";
 import {
   resolveScanAccentVariant,
   SCAN_MODAL_LAYER_PROPS,
-  CHART_CARD,
   SCAN_POPUP_BACKDROP,
   scanPaletteCssVars,
 } from "./scanPopupTheme";
@@ -44,74 +42,11 @@ import { ScanLevelBadge } from "./ScanLevelBadge";
 import { ScanPopupBackdropDecor } from "./ScanPopupBackdropDecor";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { useScanAssistantStore } from "@/store/useScanAssistantStore";
-
-/** 预期核心在馆时间带 — 颜色由父级 schemeCssVars 注入的 --scan-chart-* / --scan-card-tint */
-const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
-    const days = 7;
-    const width = 300;
-    const height = 60;
-    const entryCurve = new Array(days).fill(0);
-    const exitCurve = new Array(days).fill(0);
-    if (predictions?.length) {
-        const toArray = (raw: unknown, expected: number): number[] => {
-            if (Array.isArray(raw)) return raw.map((v) => Number(v) || 0);
-            return new Array(expected).fill(0);
-        };
-        let valid = 0;
-        predictions.forEach((p) => {
-            const wec = toArray(p?.weeklyEntryCurve, 7);
-            const wxc = toArray(p?.weeklyExitCurve, 7);
-            if (wec.length === 7 && wxc.length === 7 && (wec.some((v) => v > 0) || wxc.some((v) => v > 0))) {
-                valid += 1;
-                for (let i = 0; i < days; i += 1) {
-                    entryCurve[i] += wec[i] || 0;
-                    exitCurve[i] += wxc[i] || 0;
-                }
-            }
-        });
-        if (valid > 0) {
-            for (let i = 0; i < days; i += 1) {
-                entryCurve[i] /= valid;
-                exitCurve[i] /= valid;
-            }
-        } else {
-            entryCurve.fill(0.45);
-            exitCurve.fill(0.55);
-        }
-    }
-    const maxVal = Math.max(...entryCurve, ...exitCurve, 0.01);
-    const mapY = (val: number) => height - (Math.max(0, val) / maxVal) * height;
-    const getX = (idx: number) => (idx / (days - 1)) * width;
-    const entryPath = entryCurve.map((v, i) => `${getX(i)},${mapY(v)}`).join(" L ");
-    const exitPath = exitCurve.map((v, i) => `${getX(i)},${mapY(v)}`).join(" L ");
-    return (
-        <div className={`w-full ${CHART_CARD} p-4`}>
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold tracking-wider text-[var(--app-color-text-primary)]">预期核心在馆时间带</span>
-                <span className="scan-weekly-chart-badge rounded-full px-2 py-0.5 text-[9px] font-bold">
-                    Time Band
-                </span>
-            </div>
-            <div className="scan-weekly-chart-plot relative w-full pb-1 pl-8 pr-1">
-                <div className="absolute left-1 top-0 text-[8px] text-[var(--app-color-text-tertiary)]">{maxVal.toFixed(2)}</div>
-                <div className="absolute left-1 bottom-1 text-[8px] text-[var(--app-color-text-tertiary)]">0</div>
-                <svg className="w-full h-[60px]" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-                    {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-                        <line key={i} x1={getX(i)} y1={0} x2={getX(i)} y2={height} stroke="var(--scan-chart-grid)" strokeDasharray="2" />
-                    ))}
-                    <path d={`M ${entryPath} L ${exitPath.split(" L ").reverse().join(" L ")} Z`} fill="var(--scan-chart-fill)" stroke="none" />
-                    <path d={`M ${exitPath}`} fill="none" stroke="var(--scan-chart-exit)" strokeWidth="1.5" strokeDasharray="3 3" />
-                    <path d={`M ${entryPath}`} fill="none" stroke="var(--scan-chart-entry)" strokeWidth="1.5" />
-                </svg>
-                <div className="flex justify-between w-full mt-1.5">
-                    {["一", "二", "三", "四", "五", "六", "日"].map((day) => (
-                        <span key={day} className="text-[9px] font-bold text-[var(--app-color-text-secondary)]">{day}</span>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-};
+import { RoomFloorPlan } from "./room-floor-plan/RoomFloorPlan";
+import { CellDetailPanel } from "./room-floor-plan/CellDetailPanel";
+import { useRoomFloorPlan } from "./room-floor-plan/useRoomFloorPlan";
+import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
+import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 
 export function UiverseProfilePopup(props: PopupProps) {
     const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind, onViolationInteractiveVerified, pinAlternativeEnabled, onFaceVerifyRequest, onFaceVerifyCancel, personalCenterFace, onBindStudentCenterSuccess } = props;
@@ -160,6 +95,21 @@ export function UiverseProfilePopup(props: PopupProps) {
     const navigate = useNavigate();
     const [showKeypad, setShowKeypad] = useState<"set" | "verify" | null>(null);
     const [showQuickActions, setShowQuickActions] = useState(false);
+    const [planRoomIdx, setPlanRoomIdx] = useState(0);
+    const [detailCell, setDetailCell] = useState<{ cell: CageShelfCell; masked: boolean } | null>(null);
+
+    useEffect(() => {
+        setPlanRoomIdx(0);
+        setDetailCell(null);
+    }, [result?.userInfo?.userId]);
+
+    const planRoom = state.targetRooms[planRoomIdx] ?? state.targetRooms[0];
+    const floorPlan = useRoomFloorPlan(
+      planRoom?.officialRoomId || planRoom?.id,
+      planRoom?.displayName || planRoom?.name,
+      state.user?.project_group_name,
+    );
+    const { colors: cageColors } = useCageColors();
     const [keypadUserId, setKeypadUserId] = useState("");
     const pendingPersonalFaceVerifyRef = useRef(false);
     const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
@@ -344,8 +294,8 @@ export function UiverseProfilePopup(props: PopupProps) {
                         />
                     </div>
                     <div className="grid min-h-0 w-full max-w-[1920px] flex-1 min-h-0 grid-cols-[25fr_50fr_25fr] gap-8 overflow-visible">
-                    <div className="flex flex-col h-full min-h-0 pt-6 pb-6 gap-4">
-                        <div className="w-full h-[60px] mb-1">
+                    <div className="flex flex-col h-full min-h-0 pt-0 pb-6 gap-3">
+                        <div className="w-full h-[52px]">
                             <ScanLevelBadge
                                 level={state.user?.rpg?.level ?? 0}
                                 exp={state.user?.rpg?.exp ?? 0}
@@ -353,32 +303,59 @@ export function UiverseProfilePopup(props: PopupProps) {
                                 name={state.user?.name || "未知人员"}
                             />
                         </div>
-                        <div className="flex-1 min-h-0">
-                            <ProfileHeader user={state.user} isAvatarLoaded={state.isAvatarLoaded} globalUserState={state.globalUserState} onAvatarError={() => actions.setAvatarLoaded(false)} onOpenRiskModal={() => actions.setShowRiskModal(true)} />
-                        </div>
-                        <div className="flex-1 min-h-0 flex flex-col min-h-0">
-                            <StudentEntryCard
-                                capacityStats={state.myCapacityStats}
-                                roomOverviewFetching={state.roomOverviewFetching}
-                                roomOverviewSourceCount={state.roomOverviewSourceCount}
-                                studentUserId={studentUserId}
-                                studentName={state.user?.name}
+                        <div className="shrink-0">
+                            <ProfileHeader
+                                user={state.user}
+                                isAvatarLoaded={state.isAvatarLoaded}
+                                globalUserState={state.globalUserState}
+                                onAvatarError={() => actions.setAvatarLoaded(false)}
+                                onOpenRiskModal={() => actions.setShowRiskModal(true)}
+                                onQuickActions={() => setShowQuickActions(true)}
                                 onEnterStudentCenter={handleEnterStudentCenter}
-                                onOpenQuickActions={() => setShowQuickActions(true)}
-                                onClosePopup={onClose}
+                            />
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                            <AIPredictionCard
+                                predictions={state.predictionList}
+                                isLoading={state.isPredLoading}
+                                accentVariant={accentVariant}
                             />
                         </div>
                     </div>
-                    <div className="flex flex-col items-center justify-center gap-14">
-                        <div style={{ transform: "scale(1.1)", transformOrigin: "center center" }} className="w-[500px] mb-6">
-                            <WeeklyRoutineMatrixChart predictions={state.predictionList} />
-                        </div>
-                        <div style={{ transform: "scale(1.1)", transformOrigin: "center center" }} className="w-[500px]">
-                            <AIPredictionCard predictions={state.predictionList} isLoading={state.isPredLoading} accentVariant={accentVariant} onQuickActions={() => setShowQuickActions(true)} onEnterStudentCenter={handleEnterStudentCenter} />
+                    <div className="flex h-full min-h-0 flex-col gap-2">
+                        {state.targetRooms.length > 1 && (
+                            <div className="flex shrink-0 flex-wrap gap-1.5">
+                                {state.targetRooms.map((r, i) => (
+                                    <button
+                                        key={r.officialRoomId || r.id || i}
+                                        type="button"
+                                        onClick={() => { setPlanRoomIdx(i); setDetailCell(null); }}
+                                        className={
+                                            i === planRoomIdx
+                                                ? "rounded-md bg-[var(--app-color-accent)] px-2.5 py-1 text-[11px] font-medium text-[var(--app-color-text-inverse)]"
+                                                : "rounded-md border border-[var(--app-color-border-default)] bg-[color-mix(in_srgb,var(--app-color-surface-container)_65%,transparent)] px-2.5 py-1 text-[11px] text-[var(--app-color-text-secondary)]"
+                                        }
+                                    >
+                                        {r.displayName || r.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        <div className="min-h-0 flex-1">
+                            <RoomFloorPlan
+                                racks={floorPlan.data.racks.filter((r) => r.isMine)}
+                                mineCount={floorPlan.data.mineCount}
+                                columns={2}
+                                loading={floorPlan.isLoading}
+                                error={floorPlan.isError}
+                                empty={floorPlan.data.racks.filter((r) => r.isMine).length === 0}
+                                onCellClick={(c, r) => setDetailCell({ cell: c, masked: !r.isMine })}
+                                legendColors={cageColors}
+                            />
                         </div>
                     </div>
                     <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
-                        {/* 上 2/5：面包机区贴底，预留动画空间；下 3/5 给操作按钮 */}
+                        {/* 上 2/5：面包机区贴底，预留动画空间（ExpToaster 有 160px 固定高度，压缩会把动画卡出视图）；下 3/5 给操作按钮 */}
                         <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 pb-0.5">
                             <div className="pointer-events-none flex h-[160px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">
                                 <ExpToaster key={state.toastData.nonce} expAdded={state.toastData.exp} play={state.toastData.play} />
@@ -469,6 +446,21 @@ export function UiverseProfilePopup(props: PopupProps) {
                     </div>
                     </div>
                 </div>
+
+                {/* 笼位详情：弹窗浮层，不销毁平面图（关闭后回到原来的滚动位置） */}
+                {detailCell ? (
+                    <div
+                        className="absolute inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/45 p-6 backdrop-blur-sm"
+                        onClick={() => setDetailCell(null)}
+                    >
+                        <div
+                            className="h-[min(78vh,680px)] w-full max-w-[600px]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <CellDetailPanel cell={detailCell.cell} masked={detailCell.masked} onClose={() => setDetailCell(null)} />
+                        </div>
+                    </div>
+                ) : null}
 
                 {/* 进入确认：居中弹窗 + 倒计时 → 最小化到角落胶囊。
                     离开确认弹窗打开时完全卸载，避免两个弹窗同时出现。 */}

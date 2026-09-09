@@ -43,9 +43,13 @@ public interface AssetMapper {
                                  @Param("campus") String campus,
                                  @Param("user") String user,
                                  @Param("model") String model,
+                                 @Param("location") String location,
+                                 @Param("locationNodeId") Long locationNodeId,
+                                 @Param("locationNodeIds") List<Long> locationNodeIds,
                                  @Param("campusKeys") List<String> campusKeys,
                                  @Param("userKeys") List<String> userKeys,
                                  @Param("modelKeys") List<String> modelKeys,
+                                 @Param("locationKey") String locationKey,
                                  @Param("lockStatus") Integer lockStatus,
                                  @Param("status") String status,
                                  @Param("limit") int limit,
@@ -58,9 +62,13 @@ public interface AssetMapper {
                     @Param("campus") String campus,
                     @Param("user") String user,
                     @Param("model") String model,
+                    @Param("location") String location,
+                    @Param("locationNodeId") Long locationNodeId,
+                                 @Param("locationNodeIds") List<Long> locationNodeIds,
                     @Param("campusKeys") List<String> campusKeys,
                     @Param("userKeys") List<String> userKeys,
                     @Param("modelKeys") List<String> modelKeys,
+                    @Param("locationKey") String locationKey,
                     @Param("lockStatus") Integer lockStatus,
                     @Param("status") String status);
 
@@ -69,9 +77,13 @@ public interface AssetMapper {
                                     @Param("campus") String campus,
                                     @Param("user") String user,
                                     @Param("model") String model,
+                                    @Param("location") String location,
+                                    @Param("locationNodeId") Long locationNodeId,
+                                 @Param("locationNodeIds") List<Long> locationNodeIds,
                                     @Param("campusKeys") List<String> campusKeys,
                                     @Param("userKeys") List<String> userKeys,
                                     @Param("modelKeys") List<String> modelKeys,
+                                    @Param("locationKey") String locationKey,
                                     @Param("lockStatus") Integer lockStatus,
                                     @Param("status") String status);
 
@@ -189,5 +201,42 @@ public interface AssetMapper {
 
     // 按 label 查找列定义
     AssetColumnDef findColumnDefByLabel(@Param("columnLabel") String columnLabel);
+
+    // 存放地点节点（拖拽改地点）
+    int updateAssetLocationNode(@Param("assetId") String assetId, @Param("nodeId") Long nodeId);
+
+    int batchUpdateAssetLocationNode(@Param("ids") List<String> ids, @Param("nodeId") Long nodeId);
+
+    /** 在途转移申请数（status=IN_PROGRESS） */
+    int countInFlightTransfer(@Param("assetId") String assetId);
+
+    /** 地点节点改名/移动后，刷新其下资产的 location 文本镜像 */
+    int updateLocationTextByNode(@Param("nodeId") Long nodeId, @Param("location") String location);
+
+    /** 地点节点改名/移动后，刷新其下资产的 EAV「存放地点」镜像 */
+    int updateAssetValueTextByNode(@Param("nodeId") Long nodeId,
+                                   @Param("columnKey") String columnKey,
+                                   @Param("location") String location);
+
+    /** 导入回填：把本批次（或尚未关联的）资产的 EAV 地点文本对应的资产挂到节点 */
+    int linkAssetsToLocationNode(@Param("batchId") String batchId,
+                                 @Param("columnKey") String columnKey,
+                                 @Param("text") String text,
+                                 @Param("nodeId") Long nodeId);
+
+    /** 某资产的转移申请，按 create_time 倒序 */
+    List<AssetTransferRequest> listTransferRequestsByAssetId(@Param("assetId") String assetId);
+
+    /** 某资产的 MOVE 日志，按 create_time 倒序 */
+    List<Map<String, Object>> listMoveLogsByAssetId(@Param("assetId") String assetId);
+
+    /** 删除一条 MOVE 留痕（带 action_type 条件，防误删正式流程日志） */
+    int deleteMoveLogById(@Param("id") String id);
+
+    /** 单条转移留痕（由地点移动补建申请时读取） */
+    Map<String, Object> findTransferLogById(@Param("id") String id);
+
+    /** 把留痕挂到补建的转移申请上 */
+    int updateTransferLogRequestId(@Param("id") String id, @Param("requestId") String requestId);
 }
 

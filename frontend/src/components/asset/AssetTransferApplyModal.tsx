@@ -2,10 +2,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { Upload } from "lucide-react";
-import { lockAsset, searchAssets, submitTransferRequest, type AssetRow } from "@/api/domains/asset.api";
+import { lockAsset, fetchAssetRecords, submitTransferRequest, type AssetRow } from "@/api/domains/asset.api";
+import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
+import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
 import { authHttp } from "@/api/core/authHttp";
 import { authStorage } from "@/features/auth/authStorage";
 
+/** 真实存放地点所在动态列；固定列 location 只有少数行有值 */
+const STORAGE_LOCATION_KEY = "col_存放地点";
+
+/** 资产真实存放地点：动态列优先，回落固定列 location */
+function assetLocationText(a: Pick<AssetRow, "location" | "dynamicValues">) {
+  return ((a.dynamicValues?.[STORAGE_LOCATION_KEY] || a.location) ?? "").trim();
+}
+
+/** 地点树扁平化为全路径文本候选（与树内展示一致） */
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -15,8 +26,8 @@ interface Props {
 
 export default function AssetTransferApplyModal({ open, onClose, onSuccess, initialAsset }: Props) {
   const [keyword, setKeyword] = useState("");
-  const [results, setResults] = useState<Array<Pick<AssetRow, "id" | "assetCode" | "assetName" | "location" | "status" | "locked">>>([]);
-  const [selected, setSelected] = useState<Pick<AssetRow, "id" | "assetCode" | "assetName" | "location" | "status" | "locked"> | null>(initialAsset || null);
+  const [results, setResults] = useState<AssetRow[]>([]);
+  const [selected, setSelected] = useState<AssetRow | null>(initialAsset || null);
   const [transferTime, setTransferTime] = useState("");
   const [transferLocation, setTransferLocation] = useState("");
   const [remark, setRemark] = useState("");
@@ -27,14 +38,15 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
   const beforeFileRef = useRef<HTMLInputElement>(null);
   const afterFileRef = useRef<HTMLInputElement>(null);
 
+
   const title = useMemo(() => (selected ? `${selected.assetName} (${selected.assetCode})` : ""), [selected]);
 
-  const resetForm = (nextSelected?: Pick<AssetRow, "id" | "assetCode" | "assetName" | "location" | "status" | "locked"> | null) => {
+  const resetForm = (nextSelected?: AssetRow | null) => {
     setKeyword("");
     setResults([]);
     setSelected(nextSelected ?? null);
     setTransferTime("");
-    setTransferLocation(nextSelected?.location || "");
+    setTransferLocation(nextSelected ? assetLocationText(nextSelected) : "");
     setRemark("");
     setPhotosBeforeLines("");
     setPhotosAfterLines("");
@@ -60,8 +72,8 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
     }
     setLoading(true);
     try {
-      const rows = await searchAssets(key, 15);
-      setResults(rows);
+      const data = await fetchAssetRecords({ page: 1, size: 15, keyword: key });
+      setResults(data.rows);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "检索失败");
     } finally {
@@ -175,14 +187,14 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
                   key={it.id}
                   onClick={() => {
                     setSelected(it);
-                    if (!transferLocation && it.location) setTransferLocation(it.location);
+                    setTransferLocation(assetLocationText(it));
                   }}
                   className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-slate-50 ${
                     selected?.id === it.id ? "bg-blue-50" : ""
                   }`}
                 >
                   <div className="font-medium text-slate-900">{it.assetName}</div>
-                  <div className="text-xs text-slate-500">{it.assetCode} · {it.location || "未填存放地点"}</div>
+                  <div className="text-xs text-slate-500">{it.assetCode} · {assetLocationText(it) || "未填存放地点"}</div>
                 </button>
               ))}
               {!results.length && <div className="px-3 py-6 text-center text-sm text-slate-500">{loading ? "检索中..." : "暂无结果"}</div>}
@@ -211,7 +223,11 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
             </label>
             <label className="flex flex-col gap-1 text-sm text-slate-700">
               申请转移地点
-              <input value={transferLocation} onChange={(e) => setTransferLocation(e.target.value)} className="rounded border border-slate-300 px-3 py-2" />
+              <AssetLocationTreeSelect
+                value={transferLocation}
+                onChange={(path) => setTransferLocation(path)}
+                placeholder="选择地点"
+              />
             </label>
             <label className="flex flex-col gap-1 text-sm text-slate-700">
               申请备注

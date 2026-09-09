@@ -3,24 +3,15 @@ package com.example.demo.modules.admin.controller;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
-import com.example.demo.modules.aro.client.CasClient;
 import com.example.demo.modules.aro.dto.AroPersonnel;
-import com.example.demo.modules.aro.dto.CasTokenInfo;
-import com.example.demo.modules.aro.dto.CasUserInfo;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
-import com.example.demo.modules.aro.token.TokenStore;
-import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.entity.UserAroBinding;
 import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import jakarta.servlet.http.HttpServletRequest;
-import com.example.demo.modules.aro.client.CasClient;
-import com.example.demo.modules.aro.dto.CasTokenInfo;
-import com.example.demo.modules.aro.token.TokenStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -39,21 +30,15 @@ public class AdminAccountBindingController {
     private final AroPersonnelMapper aroPersonnelMapper;
     private final AuthContextService authContextService;
     private final UserMapper userMapper;
-    private final CasClient casClient;
-    private final TokenStore tokenStore;
 
     public AdminAccountBindingController(UserAroBindingMapper userAroBindingMapper,
                                          AroPersonnelMapper aroPersonnelMapper,
                                          AuthContextService authContextService,
-                                         UserMapper userMapper,
-                                         CasClient casClient,
-                                         @Qualifier("cachedTokenStore") TokenStore tokenStore) {
+                                         UserMapper userMapper) {
         this.userAroBindingMapper = userAroBindingMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.authContextService = authContextService;
         this.userMapper = userMapper;
-        this.casClient = casClient;
-        this.tokenStore = tokenStore;
     }
 
     @GetMapping("/account/binding")
@@ -171,117 +156,6 @@ public class AdminAccountBindingController {
             result.add(item);
         }
         return Result.success(result);
-    }
-
-    // ========== CAS 个人 Token 绑定 ==========
-
-    @PostMapping("/account/binding/cas-bind")
-    public Result<?> bindCas(@RequestBody Map<String, String> body, HttpServletRequest request) {
-        User user = resolveUser(request);
-        if (user == null) return Result.fail(401, "未登录");
-
-        // 优先：用 ARO 账号密码直接登录换 token
-        String aroAccount = body.get("aroAccount");
-        String aroPassword = body.get("aroPassword");
-        if (aroAccount != null && !aroAccount.isBlank() && aroPassword != null && !aroPassword.isBlank()) {
-            CasTokenInfo tokenInfo = casClient.loginWithCredentials(aroAccount, aroPassword);
-            if (tokenInfo == null) return Result.fail(400, "ARO 登录失败：账号或密码错误");
-
-            tokenStore.save(user.getId(), tokenInfo);
-            // 加密存储凭据用于后续自动续期
-            tokenStore.saveCredentials(user.getId(), aroAccount, aroPassword);
-
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("casAccount", tokenInfo.getAccount());
-            data.put("bound", true);
-            return Result.success(data);
-        }
-
-        // 降级：直接用 token 字符串绑定
-        String aroToken = body.get("aroToken");
-        if (aroToken == null || aroToken.isBlank()) return Result.fail(400, "请提供 ARO 账号密码或 Token");
-
-        CasTokenInfo tokenInfo = casClient.parseToken(aroToken);
-        if (tokenInfo == null) return Result.fail(400, "ARO Token 解析失败：token 格式无效或已损坏");
-
-        tokenStore.save(user.getId(), tokenInfo);
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("casAccount", tokenInfo.getAccount());
-        data.put("bound", true);
-        return Result.success(data);
-    }
-
-    @GetMapping("/account/binding/cas-status")
-    public Result<?> getCasStatus(HttpServletRequest request) {
-        User user = resolveUser(request);
-        if (user == null) return Result.fail(401, "未登录");
-
-        boolean exists = tokenStore.exists(user.getId());
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("bound", exists);
-        if (exists) {
-            CasTokenInfo info = tokenStore.load(user.getId());
-            data.put("casAccount", info != null ? info.getAccount() : null);
-            if (info != null && info.getExp() > 0) {
-                data.put("expiresAt", info.getExp());
-                long remainingSec = info.getExp() - System.currentTimeMillis() / 1000;
-                data.put("remainingSeconds", Math.max(0, remainingSec));
-            }
-        }
-        return Result.success(data);
-    }
-
-    @PostMapping("/account/binding/cas-renew")
-    public Result<?> renewCas(@RequestBody(required = false) Map<String, String> body, HttpServletRequest request) {
-        User user = resolveUser(request);
-        if (user == null) return Result.fail(401, "未登录");
-
-        CasTokenInfo info = tokenStore.load(user.getId());
-        if (info == null) return Result.fail(400, "未绑定 ARO 认证");
-
-        // 优先：用已有 token 续期（只需 token header + Referer）
-        String oldToken = info.getToken();
-        if (oldToken != null && !oldToken.isBlank()) {
-            CasTokenInfo newToken = casClient.refreshToken(oldToken);
-            if (newToken != null) {
-                tokenStore.save(user.getId(), newToken);
-                Map<String, Object> data = new LinkedHashMap<>();
-                data.put("casAccount", newToken.getAccount());
-                data.put("bound", true);
-                data.put("renewed", true);
-                data.put("remainingSeconds", Math.max(0, newToken.getExp() - System.currentTimeMillis() / 1000));
-                log.info("[ARO] Token 自动续期成功: userId={}, account={}", user.getId(), newToken.getAccount());
-                return Result.success(data);
-            }
-        }
-
-        // 降级：用存储的 ARO 账号密码重新登录
-        String[] creds = tokenStore.loadCredentials(user.getId());
-        if (creds != null && creds[0] != null && creds[1] != null) {
-            CasTokenInfo newToken = casClient.loginWithCredentials(creds[0], creds[1]);
-            if (newToken != null) {
-                tokenStore.save(user.getId(), newToken);
-                Map<String, Object> data = new LinkedHashMap<>();
-                data.put("casAccount", newToken.getAccount());
-                data.put("bound", true);
-                data.put("renewed", true);
-                data.put("remainingSeconds", Math.max(0, newToken.getExp() - System.currentTimeMillis() / 1000));
-                log.info("[ARO] 凭据登录续期成功: userId={}", user.getId());
-                return Result.success(data);
-            }
-        }
-
-        return Result.fail(400, "自动续期失败，请重新绑定 ARO 认证。");
-    }
-
-    @DeleteMapping("/account/binding/cas-unbind")
-    public Result<?> unbindCas(HttpServletRequest request) {
-        User user = resolveUser(request);
-        if (user == null) return Result.fail(401, "未登录");
-
-        tokenStore.delete(user.getId());
-        return Result.success();
     }
 
     // ========== 私有工具方法 ==========

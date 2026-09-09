@@ -324,14 +324,35 @@ public class ReportFormImportService {
             if (element instanceof XWPFParagraph para) {
                 WordParagraphBlock block = analyzeWordParagraph(para);
                 if (block.isEmpty()) continue;
-                ObjectNode style = block.style();
-                if (block.imageSrc() != null) {
-                    style.put("imageSrc", block.imageSrc());
+                List<String> imageSrcs = block.imageSrcs();
+                if (imageSrcs.size() >= 2) {
+                    // 一段多图（Word 常用锚定浮动图做「左右并排」页眉）：按图片数量拆成并排多列。
+                    // 原先整行一格且只保留最后一张，横向排布会丢失。
+                    int n = imageSrcs.size();
+                    int span = Math.max(1, docMaxCols / n);
+                    for (int i = 0; i < n; i++) {
+                        int col = Math.min(i * span, Math.max(0, docMaxCols - span));
+                        ObjectNode imgStyle = block.style().deepCopy();
+                        imgStyle.put("imageSrc", imageSrcs.get(i));
+                        cells.add(buildStaticCell("c" + cells.size(), currentRow, col, span, 1, "", imgStyle));
+                    }
+                    rowHeights.merge(currentRow, block.rowHeightPx(), Math::max);
+                    currentRow++;
+                    if (block.text() != null && !block.text().isBlank()) {
+                        cells.add(buildStaticCell("c" + cells.size(), currentRow, 0, docMaxCols, 1,
+                                block.text(), block.style().deepCopy()));
+                        currentRow++;
+                    }
+                } else {
+                    ObjectNode style = block.style().deepCopy();
+                    if (!imageSrcs.isEmpty()) {
+                        style.put("imageSrc", imageSrcs.get(0));
+                    }
+                    cells.add(buildStaticCell(
+                            "c" + cells.size(), currentRow, 0, docMaxCols, 1, block.text(), style));
+                    rowHeights.merge(currentRow, block.rowHeightPx(), Math::max);
+                    currentRow++;
                 }
-                cells.add(buildStaticCell(
-                        "c" + cells.size(), currentRow, 0, docMaxCols, 1, block.text(), style));
-                rowHeights.merge(currentRow, block.rowHeightPx(), Math::max);
-                currentRow++;
             } else if (element instanceof XWPFTable table) {
                 extractWordTableRowHeights(table, currentRow, rowHeights);
                 currentRow += importWordTable(
@@ -342,16 +363,16 @@ public class ReportFormImportService {
         return currentRow;
     }
 
-    private record WordParagraphBlock(String text, String imageSrc, ObjectNode style, int rowHeightPx) {
+    private record WordParagraphBlock(String text, List<String> imageSrcs, ObjectNode style, int rowHeightPx) {
         boolean isEmpty() {
-            return (text == null || text.isBlank()) && (imageSrc == null || imageSrc.isBlank());
+            return (text == null || text.isBlank()) && (imageSrcs == null || imageSrcs.isEmpty());
         }
     }
 
     private WordParagraphBlock analyzeWordParagraph(XWPFParagraph para) {
         ObjectNode style = mapParagraphStyle(para);
         StringBuilder text = new StringBuilder();
-        String imageSrc = null;
+        List<String> imageSrcs = new ArrayList<>();
         int maxImgPx = 0;
         int fontSize = 13;
 
@@ -366,7 +387,8 @@ public class ReportFormImportService {
             for (XWPFPicture picture : run.getEmbeddedPictures()) {
                 String uri = pictureToDataUri(picture);
                 if (uri != null) {
-                    imageSrc = uri;
+                    // 一个段落可能有多张图（Word 常用锚定浮动图做「左右并排」页眉），全部保留
+                    imageSrcs.add(uri);
                     maxImgPx = Math.max(maxImgPx, estimatePictureHeightPx(picture));
                 }
             }
@@ -381,7 +403,7 @@ public class ReportFormImportService {
         if (maxImgPx > 0) {
             rowH = Math.max(rowH, maxImgPx + 20);
         }
-        return new WordParagraphBlock(normalized, imageSrc, style, rowH);
+        return new WordParagraphBlock(normalized, imageSrcs, style, rowH);
     }
 
     private String pictureToDataUri(XWPFPicture picture) {

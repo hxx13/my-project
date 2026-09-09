@@ -2,7 +2,8 @@
 import { useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
-import FormGridRenderer from '../components/FormGridRenderer';
+import FormGridRenderer, { parseLayoutJson } from '../components/FormGridRenderer';
+import { row0LooksLikeHeader } from '../utils/reportGridHeader';
 import { useReportFill } from '../hooks/useReportFill';
 import FormExportActions from '../components/FormExportActions';
 import { printForm, fetchCanEdit } from '../api/reportFill.api';
@@ -33,6 +34,12 @@ export default function ReportFillPage() {
     // Word 填报页与设计页一致：展示完整版式（含页眉/页脚），仅可编辑字段受权限控制
     return { layout: form.layoutJson, theme: form.themeJson };
   }, [form]);
+
+  // 首行吸顶：按「第 0 行像不像列名」自动判断（页眉 logo 行等不吸顶）
+  const stickyFirstRow = useMemo(
+    () => row0LooksLikeHeader(parseLayoutJson(fillLayout)),
+    [fillLayout],
+  );
 
   if (formLoading || !form) {
     return (
@@ -129,16 +136,21 @@ export default function ReportFillPage() {
           <Eye className="w-3.5 h-3.5" /> 只读模式 — 你无权编辑此报表的内容
         </div>
       )}
-      <FormGridRenderer
-        layout={fillLayout ?? form.layoutJson}
-        themeJson={fillTheme ?? form.themeJson}
-        formSource={form.source}
-        values={values}
-        editable={canEdit}
-        onChange={updateValue}
-        permissionJson={form.permissionJson}
-        userRoles={[userRole]}
-      />
+      <div className="report-canvas">
+        <div className="report-sheet">
+          <FormGridRenderer
+            layout={fillLayout ?? form.layoutJson}
+            themeJson={fillTheme ?? form.themeJson}
+            formSource={form.source}
+            values={values}
+            editable={canEdit}
+            onChange={updateValue}
+            permissionJson={form.permissionJson}
+            userRoles={[userRole]}
+            stickyFirstRow={stickyFirstRow}
+          />
+        </div>
+      </div>
     </AdminPageShell>
   );
 }

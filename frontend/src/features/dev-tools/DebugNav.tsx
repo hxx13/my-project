@@ -424,6 +424,9 @@ export default function DebugNav() {
 
         const handleKeyDown = (e: KeyboardEvent) => {
             if (scannerLockRef.current) return; // 💥 只有网络请求时才拦截，弹窗展示时绝不拦截！
+            // 修饰键组合（Ctrl/Cmd/Alt 的复制/粘贴/剪切/全选等）交给浏览器原生处理，绝不能当普通按键拦截，
+            // 否则会 preventDefault 掉系统快捷键并向输入框塞入残留字符（与 useCardReaderEnterGuard 同规则）
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
 
             // 焦点在扫码输入框自身时，交给该 input 的 onKeyDown 处理，这里不重复捕获；
             // 其余情况（body/按钮/其他输入框）一律走全局缓冲，刷卡识别不依赖焦点。

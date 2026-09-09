@@ -42,6 +42,10 @@ public class CageModeVisibilityService {
     public static final String CODE_LEADER = "BREEDING_GROUP_LEADER";
     public static final String CODE_SECRETARY = "SECRETARY";
 
+    /** 分笼/转移的**额外**操作身份配置：值为逗号分隔身份 code（占用者本人恒定放行，不在此列）。 */
+    public static final String KEY_OP_MANAGE = "cage.op.manage_identities";
+    public static final String DEFAULT_OP_MANAGE = CODE_BREEDER + "," + CODE_LEADER;
+
     private static final Map<String, String> DEFAULTS = Map.of(
             "booking", CODE_SECRETARY,
             "allocate", CODE_LEADER,
@@ -87,6 +91,39 @@ public class CageModeVisibilityService {
         return user.getRole().getLevel() >= RoleEnum.SUPER_ADMIN.getLevel();
     }
 
+    /**
+     * 是否学生视角 — 笼架域唯一判定口径：account_source = STUDENT。
+     * 三端前端用 isStudentAccount()（按同一字段二分），后端只有这一处，改口径必须同步。
+     */
+    public boolean isStudent(User user) {
+        return user != null && user.getAccountSource() != null
+                && "STUDENT".equalsIgnoreCase(user.getAccountSource());
+    }
+
+    /** 分笼/转移允许的**额外**操作身份 code 集合（占用者本人恒定放行，不在配置里）。 */
+    public Set<String> opManageCodes() {
+        return splitCodes(settingsService.getEffectiveValue(MODULE, KEY_OP_MANAGE, DEFAULT_OP_MANAGE));
+    }
+
+    /** 是否为分笼/转移的「额外操作身份」（饲养员/饲养组长等，配置见 cage.op.manage_identities）。 */
+    public boolean isOpExtraOperator(User user) {
+        if (user == null) return false;
+        if (isSuperAdmin(user)) return true;
+        Set<String> allowed = opManageCodes();
+        if (allowed.isEmpty()) return true; // 未配置 = 不限制
+        return !Collections.disjoint(allowed, identityCodesOf(user.getId()));
+    }
+
+    /**
+     * 能否对该笼位执行分笼/转移。
+     * 额外操作身份放行；否则须是占用者本人（认领记录或实验员姓名任一匹配）。
+     */
+    public boolean canOperateCage(User user, String occupantAccountId) {
+        if (user == null) return false;
+        if (isOpExtraOperator(user)) return true;
+        return occupantAccountId != null && occupantAccountId.equals(user.getId());
+    }
+
     /** 教职工视角下，某模式是否允许该用户使用。view 恒 true。 */
     public boolean canUseMode(User user, String modeKey) {
         if ("view".equals(modeKey)) return true;
@@ -98,8 +135,7 @@ public class CageModeVisibilityService {
         return !Collections.disjoint(codes, mine);
     }
 
-    /** 教职工视角可见模式 key 列表（含恒可见的 view）。 */
-    public List<String> visibleStaffModes(User user) {
+    /** 教职工视角可见模式 key 列表（含恒可见的 view）。 */    public List<String> visibleStaffModes(User user) {
         if (isSuperAdmin(user)) {
             LinkedHashSet<String> all = new LinkedHashSet<>();
             all.add("view");

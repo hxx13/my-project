@@ -17,12 +17,16 @@ import { searchPersonnelByKeyword } from "@/api/domains/cageShelf.api";
  * 打开时自动按笼位 AUP 的课题组预览成员；也可手动搜索姓名/账号。
  * Web 管理端与 H5 共用同一个弹窗——移动端视口下 shadcn Dialog 自适应，不另写一套。
  */
-export default function ReservePersonDialog({ open, submitting, groupNames, onClose, onConfirm }: {
+export default function ReservePersonDialog({ open, submitting, groupNames, onClose, onConfirm, title, description, confirmText }: {
   open: boolean;
   submitting: boolean;
   groupNames: string[];
   onClose: () => void;
   onConfirm: (p: { name: string; accountId: string }) => void;
+  /** 可选：复用给「代认领」等其它场景时的文案覆盖 */
+  title?: string;
+  description?: string;
+  confirmText?: string;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Array<{ id: number; name: string; accountId: string; projectGroupName: string }>>([]);
@@ -63,8 +67,8 @@ export default function ReservePersonDialog({ open, submitting, groupNames, onCl
       {/* 手机收窄到 92vw + 小内边距 + 大圆角并限高滚动；sm 以上恢复桌面原样 */}
       <DialogContent className="z-[var(--z-modal)] w-[92vw] max-w-[92vw] p-4 rounded-2xl max-h-[85vh] overflow-y-auto sm:w-full sm:max-w-md sm:p-6 sm:rounded-lg sm:max-h-none sm:overflow-visible">
         <DialogHeader>
-          <DialogTitle>选择占用者</DialogTitle>
-          <DialogDescription>预定笼位后，该人员将成为占用者（免审核，直接锁定）</DialogDescription>
+          <DialogTitle>{title ?? "选择占用者"}</DialogTitle>
+          <DialogDescription>{description ?? "预定笼位后，该人员将成为占用者（免审核，直接锁定）"}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <div className="flex items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1">
@@ -102,7 +106,7 @@ export default function ReservePersonDialog({ open, submitting, groupNames, onCl
         <DialogFooter className="gap-2">
           <AdminButton type="button" tone="secondary" size="default" onClick={() => { setSelected(null); onClose(); }}>取消</AdminButton>
           <AdminButton type="button" size="default" disabled={submitting || !selected} onClick={() => selected && onConfirm(selected)}>
-            {submitting ? "预定中..." : "确认预定"}
+            {submitting ? "处理中..." : (confirmText ?? "确认预定")}
           </AdminButton>
         </DialogFooter>
       </DialogContent>

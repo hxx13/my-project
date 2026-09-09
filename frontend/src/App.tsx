@@ -24,6 +24,7 @@ import { useCageNoticeAlertStore } from "@/store/useCageNoticeAlertStore";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { doRefresh } from "@/api/core/tokenRefresh";
 import { ThemeProvider } from "@/features/theme/ThemeProvider";
+import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
 import type { AnimalRoomTelemetryPageDto, TelemetryTagItem } from "@/api/telemetryApi";
 import {
   ANIMAL_ROOM_TELEMETRY_PAGE_QUERY_KEY,
@@ -382,6 +383,7 @@ function App() {
     return (
         <QueryClientProvider client={queryClient}>
             <ThemeProvider>
+              <CageColorProvider>
                 {/* 💥 将基站挂载在 React 根节点，只要网页开着就永远在线！ */}
                 <GlobalSocketListener />
                 {/* 🔒 读卡器 Enter 键全局防护（capture 阶段） */}
@@ -399,6 +401,7 @@ function App() {
                 {window.location.hash.startsWith('#/console') && !window.location.hash.includes('/dashboard-preview') && (
                   <ScanDelayPendingAlertSync />
                 )}
+              </CageColorProvider>
             </ThemeProvider>
         </QueryClientProvider>
     );

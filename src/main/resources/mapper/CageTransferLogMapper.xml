@@ -39,4 +39,40 @@
         ORDER BY created_at DESC
     </select>
 
+    <select id="pageByCage" resultMap="CageTransferLogMap">
+        SELECT * FROM cage_transfer_log
+        WHERE (from_animal_cage_id = #{animalCageId} OR to_animal_cage_id = #{animalCageId})
+        <if test="eventType != null and eventType != ''">
+            AND event_type = #{eventType}
+        </if>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByCage" resultType="int">
+        SELECT COUNT(1) FROM cage_transfer_log
+        WHERE (from_animal_cage_id = #{animalCageId} OR to_animal_cage_id = #{animalCageId})
+        <if test="eventType != null and eventType != ''">
+            AND event_type = #{eventType}
+        </if>
+    </select>
+
+    <select id="pageByOccupant" resultMap="CageTransferLogMap">
+        SELECT * FROM cage_transfer_log
+        WHERE occupant_id = #{occupantId}
+        <if test="eventType != null and eventType != ''">
+            AND event_type = #{eventType}
+        </if>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByOccupant" resultType="int">
+        SELECT COUNT(1) FROM cage_transfer_log
+        WHERE occupant_id = #{occupantId}
+        <if test="eventType != null and eventType != ''">
+            AND event_type = #{eventType}
+        </if>
+    </select>
+
 </mapper>

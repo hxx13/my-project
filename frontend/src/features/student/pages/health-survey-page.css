@@ -1,0 +1,116 @@
+.hs-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--student-chrome-offset, 0px));
+  background: var(--app-color-surface-hover, #f5f5f5);
+}
+
+.hs-page-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid var(--app-color-border-default, #e5e5e5);
+  flex-shrink: 0;
+}
+.hs-page-bar-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+.hs-page-bar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hs-page-hint {
+  font-size: 12px;
+  color: var(--app-color-text-tertiary, #999);
+}
+
+/* 工具栏按钮 */
+.hs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.hs-btn-ghost {
+  border: 1px solid var(--app-color-border-default, #e5e5e5);
+  background: #fff;
+  color: var(--app-color-text-primary, #111);
+}
+.hs-btn-ghost:hover {
+  background: var(--app-color-surface-hover, #f5f5f5);
+}
+.hs-btn-primary {
+  border: 1px solid transparent;
+  background: var(--app-color-primary, #2563eb);
+  color: #fff;
+}
+.hs-btn-primary:hover {
+  opacity: 0.9;
+}
+.hs-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hs-page-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 0 32px;
+}
+
+.hs-page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  color: var(--app-color-text-tertiary, #999);
+  font-size: 13px;
+}
+
+/* 打印时只输出文档本身：解除祖先约束，并剪掉祖先链上的旁支（侧栏/顶栏） */
+@media print {
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  /* .hs-doc 的所有祖先一律解除高度/裁剪/flex 约束 */
+  *:has(.hs-doc) {
+    display: block !important;
+    flex: none !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+  /* 祖先链上不包含文档的分支（侧栏、顶栏）直接移除 */
+  *:has(.hs-doc):not(.hs-doc) > *:not(:has(.hs-doc)):not(.hs-doc) {
+    display: none !important;
+  }
+  .hs-page-bar {
+    display: none !important;
+  }
+  .hs-doc {
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+}

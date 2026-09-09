@@ -59,8 +59,9 @@ export default function StudentObligationsPage() {
   }, [active?.id]);
 
   return (
-    <AdminPageShell title="待办确认" description="完成违规确认、公告阅读或答题后即可解除限制。">
-      <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
+    <AdminPageShell>
+      <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] flex-col p-4">
+        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
         {loading ? (
           <div className="space-y-2">
             <Skeleton className="h-10 w-full" />
@@ -72,7 +73,7 @@ export default function StudentObligationsPage() {
           <EmptyState icon={ClipboardCheck} title="暂无待办" description="当前没有需要确认的事项。" />
         ) : (
           <>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex shrink-0 flex-wrap gap-2 pb-4">
               {rows.map((r) => (
                 <button
                   key={r.id}
@@ -88,17 +89,20 @@ export default function StudentObligationsPage() {
                 </button>
               ))}
             </div>
-            {active ? (
-              <ObligationDispositionPanel
-                row={active}
-                onCompleted={async () => {
-                  toast.success("已完成确认");
-                  await reload();
-                }}
-              />
-            ) : null}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {active ? (
+                <ObligationDispositionPanel
+                  row={active}
+                  onCompleted={async () => {
+                    toast.success("已完成确认");
+                    await reload();
+                  }}
+                />
+              ) : null}
+            </div>
           </>
         )}
+        </div>
       </div>
     </AdminPageShell>
   );

@@ -611,6 +611,10 @@ public class PagePermissionService {
 
     private String inferWebMinRole(String path) {
         if (!StringUtils.hasText(path)) return "MEMBER";
+        // ── PLATFORM_OWNER ──
+        if (path.startsWith("/admin/door-swipe-rules")) {
+            return "PLATFORM_OWNER";
+        }
         // ── SUPER_ADMIN ──
         if (path.startsWith("/admin/personnel")
                 || path.startsWith("/admin/settings")
@@ -664,7 +668,6 @@ public class PagePermissionService {
                 || path.startsWith("/admin/access-fusion")
                 || path.startsWith("/admin/access-clean-rule-profiles")
                 || path.startsWith("/admin/telemetry-insights")
-                || path.startsWith("/admin/telemetry-insights-config")
                 || path.startsWith("/animal-room-telemetry")
                 || path.startsWith("/animal-room-cockpit")
                 || path.startsWith("/digital-twin-screen")

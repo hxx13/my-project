@@ -6,5 +6,5 @@ export default function AdminAccessCleanRuleProfilesPage() {
   const params = new URLSearchParams(location.search);
   params.set("tab", "clean");
   params.set("profiles", "1");
-  return <Navigate to={`/admin/dahua-swing-tasks?${params.toString()}`} replace />;
+  return <Navigate to={`/console/admin/dahua-swing-tasks?${params.toString()}`} replace />;
 }

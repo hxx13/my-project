@@ -31,6 +31,9 @@ public interface AroPersonnelMapper {
     @Update("UPDATE aro_personnel SET allowed_rooms_json = #{json}, update_time = #{currentTime} WHERE user_id = #{userId}")
     int updateAllowedRoomsJson(@Param("userId") String userId, @Param("json") String json, @Param("currentTime") String currentTime);
 
+    @Update("UPDATE aro_personnel SET room_auth_managed = #{managed} WHERE user_id = #{userId}")
+    int updateRoomAuthManaged(@Param("userId") String userId, @Param("managed") Integer managed);
+
     @Select("SELECT * FROM aro_personnel WHERE user_id = #{userId}")
     @Results({
             @Result(property = "id", column = "user_id")

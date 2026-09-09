@@ -98,10 +98,11 @@ export function useOrderLogs(id: number) {
   });
 }
 
-export function useAllOrders(page = 1, pageSize = 50) {
+export function useAllOrders(page = 1, pageSize = 50, campus?: string, from?: string, to?: string) {
   return useQuery({
-    queryKey: queryKeys.referenceData.allOrders(page, pageSize),
-    queryFn: () => fetchAllOrders(page, pageSize),
+    queryKey: [...queryKeys.referenceData.allOrders(page, pageSize, campus), from ?? "", to ?? ""],
+    queryFn: () => fetchAllOrders(page, pageSize, campus, from, to),
+    enabled: !!campus,
   });
 }
 

@@ -141,17 +141,17 @@ export default function AgvStatsConfigPanel({ open, onClose }: Props) {
       {open && (
         <>
           <motion.div
-            className="fixed inset-0 z-[var(--z-modal-backdrop)] bg-black/40"
+            className="absolute inset-0 z-[var(--z-modal-backdrop)] bg-black/40"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }} onClick={onClose}
           />
           <motion.div
-            className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4"
+            className="absolute inset-0 z-[var(--z-modal)] flex items-center justify-center p-4"
             initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.15 }}
           >
             <div
-              className="relative w-full max-w-xl max-h-[85vh] flex flex-col bg-[var(--app-color-surface-container)] rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] shadow-2xl"
+              className="relative w-full max-w-xl max-h-[calc(100%-2rem)] flex flex-col bg-[var(--app-color-surface-container)] rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] shadow-2xl"
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}

@@ -95,12 +95,24 @@ const TITLE_SUPPRESSED_PREFIXES = [
   "/admin/cage-shelves/forms/fields/",
 ];
 
+/** 动态子路由页题（含 :id 等段），注册表列不了 */
+const SECONDARY_ROUTE_TITLE_PREFIX: { prefix: string; suffix?: string; title: string }[] = [
+  { prefix: "/admin/report-form/", suffix: "/design", title: "报表设计" },
+  { prefix: "/admin/report-form/", suffix: "/submissions", title: "填报记录" },
+  { prefix: "/admin/report-fill/", title: "报表填报" },
+];
+
 export function adminChromeTitle(pathname: string): string {
   const p = stripPathQuery(pathname);
   if (p === "/admin") return "后台工作台";
   if (TITLE_SUPPRESSED_PATHS.has(p)) return "";
   if (TITLE_SUPPRESSED_PREFIXES.some((prefix) => p.startsWith(prefix) && p.length > prefix.length)) return "";
-  return SECONDARY_ROUTE_TITLE[p] ?? titleForUnknownAdminPath(p);
+  const exact = SECONDARY_ROUTE_TITLE[p];
+  if (exact) return exact;
+  for (const { prefix, suffix, title } of SECONDARY_ROUTE_TITLE_PREFIX) {
+    if (p.startsWith(prefix) && p.length > prefix.length && (!suffix || p.endsWith(suffix))) return title;
+  }
+  return titleForUnknownAdminPath(p);
 }
 
 export function resolveAdminShellBackTo(pathname: string, returnToState: unknown): string {
