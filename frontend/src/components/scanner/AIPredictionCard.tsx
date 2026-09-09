@@ -324,22 +324,24 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                     </div>
                 </div>
 
-                <div className="flex gap-2.5 border-t border-[var(--app-color-border-default)] pt-3">
-                    <ScanActionButton
-                        layout="compact"
-                        variant="quick"
-                        icon={LayoutGrid}
-                        label="快捷业务"
-                        onClick={() => onQuickActions?.()}
-                    />
-                    <ScanActionButton
-                        layout="compact"
-                        variant="student"
-                        icon={GraduationCap}
-                        label="个人中心"
-                        onClick={() => onEnterStudentCenter?.()}
-                    />
-                </div>
+                {(onQuickActions || onEnterStudentCenter) ? (
+                    <div className="flex gap-2.5 border-t border-[var(--app-color-border-default)] pt-3">
+                        <ScanActionButton
+                            layout="compact"
+                            variant="quick"
+                            icon={LayoutGrid}
+                            label="快捷业务"
+                            onClick={() => onQuickActions?.()}
+                        />
+                        <ScanActionButton
+                            layout="compact"
+                            variant="student"
+                            icon={GraduationCap}
+                            label="个人中心"
+                            onClick={() => onEnterStudentCenter?.()}
+                        />
+                    </div>
+                ) : null}
             </div>
         </div>
     );

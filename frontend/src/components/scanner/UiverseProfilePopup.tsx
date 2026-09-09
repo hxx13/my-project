@@ -304,15 +304,21 @@ export function UiverseProfilePopup(props: PopupProps) {
                             />
                         </div>
                         <div className="shrink-0">
-                            <ProfileHeader user={state.user} isAvatarLoaded={state.isAvatarLoaded} globalUserState={state.globalUserState} onAvatarError={() => actions.setAvatarLoaded(false)} onOpenRiskModal={() => actions.setShowRiskModal(true)} />
+                            <ProfileHeader
+                                user={state.user}
+                                isAvatarLoaded={state.isAvatarLoaded}
+                                globalUserState={state.globalUserState}
+                                onAvatarError={() => actions.setAvatarLoaded(false)}
+                                onOpenRiskModal={() => actions.setShowRiskModal(true)}
+                                onQuickActions={() => setShowQuickActions(true)}
+                                onEnterStudentCenter={handleEnterStudentCenter}
+                            />
                         </div>
                         <div className="flex-1 min-h-0 overflow-y-auto app-themed-scrollbar">
                             <AIPredictionCard
                                 predictions={state.predictionList}
                                 isLoading={state.isPredLoading}
                                 accentVariant={accentVariant}
-                                onQuickActions={() => setShowQuickActions(true)}
-                                onEnterStudentCenter={handleEnterStudentCenter}
                             />
                         </div>
                     </div>

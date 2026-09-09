@@ -1,6 +1,7 @@
-import { AlertOctagon, Briefcase, Phone, ShieldCheck, Users } from "lucide-react";
+import { AlertOctagon, Briefcase, GraduationCap, LayoutGrid, Phone, ShieldCheck, Users } from "lucide-react";
 import type { AnalyzeUserInfo } from "@/api/types/scanner";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
+import { ScanActionButton } from "../ScanActionButton";
 import { PROFILE_CARD } from "../scanPopupTheme";
 
 interface ProfileHeaderProps {
@@ -9,6 +10,9 @@ interface ProfileHeaderProps {
     globalUserState: number;
     onAvatarError: () => void;
     onOpenRiskModal: () => void;
+    /** 入口按钮（原先在 AI 预测卡底部，现移到个人信息卡上） */
+    onQuickActions?: () => void;
+    onEnterStudentCenter?: () => void;
 }
 
 const Field = ({ label, value }: { label: string; value: string }) => (
@@ -24,6 +28,8 @@ export const ProfileHeader = ({
     globalUserState,
     onAvatarError,
     onOpenRiskModal,
+    onQuickActions,
+    onEnterStudentCenter,
 }: ProfileHeaderProps) => {
     const avatarSrc = resolvePersonnelAvatarUrl(user.head);
     return (
@@ -67,6 +73,24 @@ export const ProfileHeader = ({
                 <Briefcase /><Users /><Phone /><ShieldCheck />
             </div>
         </div>
+        {(onQuickActions || onEnterStudentCenter) && (
+            <div className="mt-3 flex gap-2 border-t border-[var(--app-color-border-default)] pt-3">
+                <ScanActionButton
+                    layout="compact"
+                    variant="quick"
+                    icon={LayoutGrid}
+                    label="快捷业务"
+                    onClick={() => onQuickActions?.()}
+                />
+                <ScanActionButton
+                    layout="compact"
+                    variant="student"
+                    icon={GraduationCap}
+                    label="个人中心"
+                    onClick={() => onEnterStudentCenter?.()}
+                />
+            </div>
+        )}
     </div>
     );
 };
